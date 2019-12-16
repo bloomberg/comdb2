@@ -23,10 +23,7 @@
 #include "sqloffload.h"
 
 typedef struct osql_req osql_req_t;
-typedef struct blocksql_tran blocksql_tran_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
-
-enum { REQ_OPTION_QUERY_LIMITS = 1 };
 
 /**
  * Terminates an in-use osql session (for which we could potentially
@@ -39,12 +36,6 @@ enum { REQ_OPTION_QUERY_LIMITS = 1 };
  */
 int osql_close_session(osql_sess_t **sess, int is_linked, const char *func,
                        const char *callfunc, int line);
-
-/**
- * Get the request id, aka rqid
- *
- */
-unsigned long long osql_sess_getrqid(osql_sess_t *sess);
 
 /**
  * Register client

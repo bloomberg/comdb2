@@ -1223,7 +1223,6 @@ static int process_this_session(
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
                 struct block_err *, int *, SBUF2 *))
 {
-    unsigned long long rqid = osql_sess_getrqid(sess);
     int countops = 0;
     int lastrcv = 0;
     int rc = 0, rc_out = 0;
@@ -1234,15 +1233,13 @@ static int process_this_session(
     int step = 0;
     int receivedrows = 0;
     int flags = 0;
-    uuid_t uuid;
 
     iq->queryid = osql_sess_queryid(sess);
-    osql_sess_getuuid(sess, uuid);
 
-    if (rqid != OSQL_RQID_USE_UUID)
-        reqlog_set_rqid(iq->reqlogger, &rqid, sizeof(unsigned long long));
+    if (sess->rqid != OSQL_RQID_USE_UUID)
+        reqlog_set_rqid(iq->reqlogger, &sess->rqid, sizeof(unsigned long long));
     else
-        reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
+        reqlog_set_rqid(iq->reqlogger, sess->uuid, sizeof(sess->uuid));
     reqlog_set_event(iq->reqlogger, EV_TXN);
 
 #if DEBUG_REORDER
@@ -1268,9 +1265,9 @@ static int process_this_session(
 
     if (rc == IX_NOTFND) {
         uuidstr_t us;
-        comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR, "%s: session %llx %s has no update rows?\n", __func__,
-                rqid, us);
+        comdb2uuidstr(sess->uuid, us);
+        logmsg(LOGMSG_ERROR, "%s: session %llx %s has no update rows?\n",
+               __func__, sess->rqid, us);
     }
 
     oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
@@ -1312,8 +1309,8 @@ static int process_this_session(
 
         /* This call locks pages:
          * func is osql_process_packet or osql_process_schemachange */
-        rc_out = func(iq, rqid, uuid, iq_tran, &data, datalen, &flags, &updCols,
-                      blobs, step, err, &receivedrows, logsb);
+        rc_out = func(iq, sess->rqid, sess->uuid, iq_tran, &data, datalen,
+                      &flags, &updCols, blobs, step, err, &receivedrows, logsb);
         free(data);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
@@ -1515,10 +1512,9 @@ void osql_bplog_time_done(struct ireq *iq)
 
         /* these are failed */
         osql_sess_getsummary(tran->sess, &tottm, &rtrs);
-        snprintf0(msg + len, sizeof(msg) - len,
-                  " %s(rqid=%llu time=%ums retries=%u)",
-                  (tran->iscomplete ? "C" : "F"), osql_sess_getrqid(tran->sess),
-                  tottm, rtrs);
+        snprintf0(
+            msg + len, sizeof(msg) - len, " %s(rqid=%llu time=%ums retries=%u)",
+            (tran->iscomplete ? "C" : "F"), tran->sess->rqid, tottm, rtrs);
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);

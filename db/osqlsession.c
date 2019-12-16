@@ -150,15 +150,6 @@ static void _destroy_session(osql_sess_t **prq, int phase)
 }
 
 /**
- * Get the request id, aka rqid
- *
- */
-inline unsigned long long osql_sess_getrqid(osql_sess_t *sess)
-{
-    return sess->rqid;
-}
-
-/**
  * Register client
  * Prevent temporary the session destruction
  *

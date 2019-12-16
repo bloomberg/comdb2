@@ -114,8 +114,6 @@ static char hex(unsigned char a)
 int osql_repository_add(osql_sess_t *sess, int *replaced)
 {
     osql_sess_t *sess_chk;
-    uuid_t uuid;
-    unsigned long long rqid;
     int rc = 0;
     osql_repository_t *theosql = get_theosql();
     if (theosql == NULL) {
@@ -144,16 +142,14 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
 
     /* how about we check if this session is added again due to an early replay
      */
-    rqid = osql_sess_getrqid(sess);
-    osql_sess_getuuid(sess, uuid);
-    if (rqid == OSQL_RQID_USE_UUID)
-        sess_chk = hash_find_readonly(theosql->rqsuuid, &uuid);
+    if (sess->rqid == OSQL_RQID_USE_UUID)
+        sess_chk = hash_find_readonly(theosql->rqsuuid, &sess->uuid);
     else {
-        sess_chk = hash_find_readonly(theosql->rqs, &rqid);
+        sess_chk = hash_find_readonly(theosql->rqs, &sess->rqid);
     }
     if (sess_chk) {
         char *p = (char *)alloca(64);
-        p = util_tohex(p, (char *)uuid, 16);
+        p = util_tohex(p, (char *)sess->uuid, 16);
 
         logmsg(LOGMSG_ERROR,
                "%s: trying to add another session with the same rqid, "

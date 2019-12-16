@@ -1229,6 +1229,7 @@ enum OSQL_REQ_TYPE {
 
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
+typedef struct blocksql_tran blocksql_tran_t;
 
 struct osql_sess {
 
