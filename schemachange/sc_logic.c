@@ -584,6 +584,10 @@ int do_schema_change_tran(sc_arg_t *arg)
         rc = do_ddl(do_add_view, finalize_add_view, iq, s, trans, user_view);
     else if (s->drop_view)
         rc = do_ddl(do_drop_view, finalize_drop_view, iq, s, trans, user_view);
+    else if (s->add_qdb_file)
+        rc = 0; /* TBD */
+    else if (s->del_qdb_file)
+        rc = 0; /* TBD */
 
     if (rc == SC_MASTER_DOWNGRADE) {
         while (s->logical_livesc) {
@@ -716,6 +720,10 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_add_view, iq, s, trans, user_view);
     else if (s->drop_view)
         rc = do_finalize(finalize_drop_view, iq, s, trans, user_view);
+    else if (s->add_qdb_file)
+        rc = 0; /* TBD */
+    else if (s->del_qdb_file)
+        rc = 0; /* TBD */
 
     reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);

@@ -91,13 +91,13 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
     return p_buf;
 }
 
-static void *queuedb_cron_event(struct cron_event *_, struct errstat *err)
+static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
-    if (gbl_queuedb_file_interval > 0) {
+    if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
         void *rc = cron_add_event(gbl_queuedb_cron, NULL, tm,
-                            (FCRON)queuedb_cron_event, NULL,
-                            NULL, NULL, NULL, err, NULL);
+                                  (FCRON)queuedb_cron_event, NULL,
+                                  NULL, NULL, NULL, err, NULL);
         if (rc == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
                             "rc = %d, errstr = %s\n",
@@ -107,21 +107,14 @@ static void *queuedb_cron_event(struct cron_event *_, struct errstat *err)
     return NULL;
 }
 
-static void *queuedb_cron_kickoff(struct cron_event *_, struct errstat *err)
+static void *queuedb_cron_kickoff(struct cron_event *evt, struct errstat *err)
 {
-    logmsg(LOGMSG_INFO, "Starting queuedb cron job. "
-                    "Will check queuedb usage every %d seconds.\n",
-            gbl_queuedb_file_interval / 1000);
-
-    int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
-    void *rc = cron_add_event(gbl_queuedb_cron, NULL, tm,
-                              (FCRON)queuedb_cron_event, NULL,
-                              NULL, NULL, NULL, err, NULL);
-    if (rc == NULL)
-        logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
-                        "rc = %d, errstr = %s\n",
-                err->errval, err->errstr);
-
+    if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
+        logmsg(LOGMSG_INFO, "Starting queuedb cron job. "
+                        "Will check queuedb usage every %d seconds.\n",
+                gbl_queuedb_file_interval / 1000);
+        return queuedb_cron_event(evt, err);
+    }
     return NULL;
 }
 

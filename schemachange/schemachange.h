@@ -141,6 +141,10 @@ struct schema_change_type {
     int add_view;
     int drop_view;
 
+    /* QueueDB operations */
+    int add_qdb_file;
+    int del_qdb_file;
+
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
     int nothrevent;
