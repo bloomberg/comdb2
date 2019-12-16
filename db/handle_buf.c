@@ -860,7 +860,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->__limits.temptables_warn = gbl_querylimits_temptables_warn;
 
     iq->cost = 0;
-    iq->sorese->osqllog = NULL;
     iq->luxref = luxref;
 
     if (iq->is_fromsocket) {
