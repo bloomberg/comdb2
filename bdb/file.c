@@ -1298,13 +1298,14 @@ static inline void fileid_str(u_int8_t *fileid, char *str)
  * Hence this function will now never fail - although it may spit out errors.
  * After this is called, the db is closed.
  */
-static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
+static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *intid, int flags)
 
 
 {
     int rc;
     int i;
     int dtanum, strnum;
+    DB_TXN *tid = NULL;
     u_int8_t fileid[21] = {0};
     char fid_str[41] = {0};
 
@@ -1319,6 +1320,16 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         bdb_trigger_close(bdb_state);
+    }
+
+    /* Create a new transaction for closing this.  We will commit immediately */
+    if (intid != NULL) {
+        if ((rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0))
+                != 0) {
+            logmsg(LOGMSG_ERROR, "%s begin close txn failed with %d\n",
+                    __func__, rc);
+            return -1;
+        }
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
@@ -1369,7 +1380,13 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     /* since we always succeed, mark the db as closed now */
     bdb_state->isopen = 0;
 
+    if (tid) {
+        tid->commit(tid, 0);
+        tid = NULL;
+    }
+
     return 0;
+
 }
 
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
