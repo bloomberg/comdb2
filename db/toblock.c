@@ -5718,7 +5718,8 @@ add_blkseq:
         /*
         if (iq->sorese)
         {
-            fprintf(stderr, "i don't have a blkseq & sorese is set? from %s\n", iq->frommach);
+            fprintf(stderr, "i don't have a blkseq & sorese is set? from %s\n",
+        iq->frommach);
         }
         */
 
