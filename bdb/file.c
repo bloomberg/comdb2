@@ -135,8 +135,9 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
 static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
-static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
-static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
+static int close_dbs(bdb_state_type *bdb_state);
+static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *tid);
+static int close_dbs_flush(bdb_state_type *bdb_state);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
 
 void berkdb_set_recovery(DB_ENV *dbenv);
@@ -1020,7 +1021,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
     char *saved_origname; /* certain sc set this, preserve */
     int rc;
 
-    rc = close_dbs_flush(bdb_state, tid);
+    rc = close_dbs_flush(bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -1298,14 +1299,11 @@ static inline void fileid_str(u_int8_t *fileid, char *str)
  * Hence this function will now never fail - although it may spit out errors.
  * After this is called, the db is closed.
  */
-static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *intid, int flags)
-
-
+static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
 {
     int rc;
     int i;
     int dtanum, strnum;
-    DB_TXN *tid = NULL;
     u_int8_t fileid[21] = {0};
     char fid_str[41] = {0};
 
@@ -1320,16 +1318,6 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *intid, int flags)
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         bdb_trigger_close(bdb_state);
-    }
-
-    /* Create a new transaction for closing this.  We will commit immediately */
-    if (intid != NULL) {
-        if ((rc = bdb_state->dbenv->txn_begin(bdb_state->dbenv, NULL, &tid, 0))
-                != 0) {
-            logmsg(LOGMSG_ERROR, "%s begin close txn failed with %d\n",
-                    __func__, rc);
-            return -1;
-        }
     }
 
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
@@ -1380,23 +1368,17 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *intid, int flags)
     /* since we always succeed, mark the db as closed now */
     bdb_state->isopen = 0;
 
-    if (tid) {
-        tid->commit(tid, 0);
-        tid = NULL;
-    }
-
     return 0;
-
 }
 
-static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
+static int close_dbs(bdb_state_type *bdb_state)
 {
-    return close_dbs_int(bdb_state, tid, DB_NOSYNC);
+    return close_dbs_int(bdb_state, NULL, DB_NOSYNC);
 }
 
-static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid)
+static int close_dbs_flush(bdb_state_type *bdb_state)
 {
-    return close_dbs_int(bdb_state, tid, 0);
+    return close_dbs_int(bdb_state, NULL, 0);
 }
 
 int bdb_isopen(bdb_state_type *bdb_handle) { return bdb_handle->isopen; }
@@ -1619,7 +1601,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     /* close all database files.   doesn't fail. */
     if (!envonly) {
-        rc = close_dbs(bdb_state, tid);
+        rc = close_dbs(bdb_state);
     }
 
     /* now do it for all of our children */
@@ -1629,7 +1611,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         /* close all of our databases.  doesn't fail. */
         if (child) {
-            rc = close_dbs(child, tid);
+            rc = close_dbs(child);
             bdb_access_destroy(child);
         }
     }
@@ -1700,7 +1682,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = close_dbs(bdb_state, tid);
+    int rc = close_dbs(bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -4860,7 +4842,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
 
     if (!bdb_state->envonly) {
         /* close all of our databases.  doesn't fail */
-        rc = close_dbs(bdb_state, NULL);
+        rc = close_dbs(bdb_state);
 
         /* fprintf(stderr, "back from close_dbs\n"); */
 
@@ -4883,7 +4865,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             child->read_write = 0;
 
             /* close all of our databases.  doesn't fail */
-            rc = close_dbs(child, NULL);
+            rc = close_dbs(child);
 
             /* fprintf(stderr, "back from close_dbs\n"); */
 
@@ -6759,7 +6741,7 @@ int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    rc = close_dbs(bdb_state, NULL);
+    rc = close_dbs(bdb_state);
 
     return rc;
 }
@@ -6823,7 +6805,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
         return 0;
 
     /* close doesn't fail */
-    close_dbs(bdb_state, tid);
+    close_dbs(bdb_state);
 
     /* now remove myself from my parents list of children */
 
@@ -8546,3 +8528,11 @@ void bdb_assert_notran(bdb_state_type *bdb_state)
     bdb_state->dbenv->txn_assert_notran(bdb_state->dbenv);
 }
 
+int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
+{
+    DB_TXN *tid = trans ? trans->tid : NULL;
+    DBT op = {0};
+    op.size = sizeof(int);
+    op.data = &inop;
+    return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
+}

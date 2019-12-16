@@ -1415,6 +1415,7 @@ struct ireq {
 
     tran_type *sc_logical_tran;
     tran_type *sc_tran;
+    tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
     double cost;
     uint64_t sc_seed;

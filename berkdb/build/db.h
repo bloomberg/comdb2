@@ -2405,6 +2405,7 @@ struct __db_env {
 	int  (*set_tx_max) __P((DB_ENV *, u_int32_t));
 	int  (*get_tx_timestamp) __P((DB_ENV *, time_t *));
 	int  (*set_tx_timestamp) __P((DB_ENV *, time_t *));
+	int  (*debug_log) __P((DB_ENV *, DB_TXN *, const DBT *op, const DBT *key, const DBT *data));
 	int  (*txn_begin) __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
 	int  (*txn_assert_notran) __P((DB_ENV *));
 	int  (*txn_checkpoint) __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));

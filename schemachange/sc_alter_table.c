@@ -857,7 +857,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "Schema change ok\n");
 
-    rc = bdb_close_only_sc(old_bdb_handle, transac, &bdberr);
+    rc = bdb_close_only_sc(old_bdb_handle, NULL, &bdberr);
     if (rc) {
         sc_errf(s, "Failed closing old db, bdberr %d\n", bdberr);
         goto failed;
@@ -924,7 +924,7 @@ backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
     change_schemas_recover(/*s->tablename*/ db->tablename);
-    bdb_close_only_sc(new_bdb_handle, transac, &bdberr);
+    bdb_close_only_sc(new_bdb_handle, NULL, &bdberr);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
