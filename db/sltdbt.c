@@ -163,7 +163,7 @@ retry:
         logmsg(LOGMSG_USER, "Test blkseq replay: returning "
                             "ERR_NOT_DURABLE to test replay:\n");
         logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n", rc,
-               iq->errstat.errval, iq->errstat.errstr, iq->sorese->rcout);
+               iq->errstat.errval, iq->errstat.errstr, iq->sorese?iq->sorese->rcout:0);
         rc = ERR_NOT_DURABLE;
     }
 
@@ -212,7 +212,7 @@ retry:
         rc != RC_INTERNAL_FORWARD && rc != RC_INTERNAL_RETRY &&
         rc != ERR_TRAN_TOO_BIG && /* THIS IS SENT BY BLOCKSQL WHEN TOOBIG */
         rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITABLE_TXN &&
-        (rc != ERR_NOT_DURABLE || !iq->sorese->type)) {
+        (rc != ERR_NOT_DURABLE || !iq->sorese)) {
         /* XXX CLIENT_RETRY DOESNT ACTUALLY CAUSE A RETRY USUALLY, just
            a bad rc to the client! */
         /*rc = RC_TRAN_CLIENT_RETRY;*/
@@ -303,7 +303,7 @@ int handle_ireq(struct ireq *iq)
         /* pack data at tail of reply */
         pack_tail(iq);
 
-        if (iq->sorese->type) {
+        if (iq->sorese) {
             /* we don't have a socket or a buffer for that matter,
              * instead, we need to send back the result of transaction from rc
              */
@@ -429,7 +429,7 @@ int handle_ireq(struct ireq *iq)
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
 
-    if (iq->sorese->type) {
+    if (iq->sorese) {
         if (iq->p_buf_out_start) {
             free(iq->p_buf_out_start);
             iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;

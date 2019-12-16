@@ -1031,7 +1031,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     }
                 }
 
-                if (iq->sorese->type) {
+                if (iq->sorese) {
                     /* reconstruct sorese rcout similar to toblock_main */
                     if (outrc) {
                         switch (outrc) {
@@ -1056,7 +1056,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
             } else {
                 /* we need to clear sorese->rcout, it might store some
                    2nd run error */
-                iq->sorese->rcout = 0;
+                if (iq->sorese)
+                    iq->sorese->rcout = 0;
 
                 outrc = RC_OK;
             }
@@ -1117,7 +1118,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
-               iq->sorese->rcout);
+               iq->sorese?iq->sorese->rcout:0);
     }
     blkseq_replay_count++;
     return outrc;
@@ -5274,7 +5275,7 @@ backout:
     case ERR_SC:
     case ERR_TRAN_TOO_BIG:
         outrc = rc;
-        if (iq->sorese->type)
+        if (iq->sorese)
             iq->sorese->rcout = outrc;
         break;
     default:
@@ -5287,7 +5288,7 @@ backout:
 #if 0
                 iq->errstat.errval = outrc+err.errcode;
 #endif
-            if (iq->sorese->type)
+            if (iq->sorese)
                 iq->sorese->rcout = outrc + err.errcode;
         }
 
@@ -5561,7 +5562,7 @@ add_blkseq:
                            "blkseq add '%s', outrc=%d errval=%d "
                            "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                           iq->sorese->rcout, irc);
+                           iq->sorese?iq->sorese->rcout:0, irc);
                 }
             } else {
                 if (hascommitlock) {

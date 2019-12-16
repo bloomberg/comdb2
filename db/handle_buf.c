@@ -534,7 +534,7 @@ static void *thd_req(void *vthd)
                 pool_free(thd->iq->vfy_genid_pool);
                 thd->iq->vfy_genid_pool = NULL;
             }
-            if (thd->iq->sorese->osqllog) {
+            if (thd->iq->sorese && thd->iq->sorese->osqllog) {
                 sbuf2close(thd->iq->sorese->osqllog);
                 thd->iq->sorese->osqllog = NULL;
             }
@@ -694,7 +694,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
 
 static int reterr_withfree(struct ireq *iq, int rc)
 {
-    if (iq->is_fromsocket || iq->sorese->type) {
+    if (iq->is_fromsocket || iq->sorese) {
         if (iq->is_fromsocket) {
             /* process socket end request */
             if (iq->is_socketrequest) {
