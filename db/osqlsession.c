@@ -36,8 +36,7 @@
 #include "reqlog.h"
 
 struct sess_impl {
-    unsigned long long completed; /* set to rqid of the completed rqid */
-    uuid_t completed_uuid;
+    bool completed : 1;
     pthread_mutex_t completed_lock;
 
     bool dispatched : 1; /* Set when session is dispatched to handle_buf */
@@ -180,11 +179,6 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
 
     Pthread_mutex_lock(&impl->completed_lock);
 
-    if (sess->rqid != rqid || comdb2uuidcmp(uuid, sess->uuid)) {
-        Pthread_mutex_unlock(&impl->completed_lock);
-        return 0;
-    }
-
     if (impl->completed != 0) {
         Pthread_mutex_unlock(&impl->completed_lock);
         return 0;
@@ -200,8 +194,7 @@ int osql_sess_set_complete(unsigned long long rqid, uuid_t uuid,
         bzero(&sess->xerr, sizeof(sess->xerr));
     }
 
-    impl->completed = rqid;
-    comdb2uuidcpy(impl->completed_uuid, uuid);
+    impl->completed = true;
     Pthread_mutex_unlock(&impl->completed_lock);
 
     return 0;
