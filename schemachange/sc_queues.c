@@ -598,3 +598,27 @@ int reopen_queue_dbs(const char *queue_name)
 {
     return 0;
 }
+
+int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *tran)
+{
+    return 0;
+}
+
+int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *tran)
+{
+    return 0;
+}
+
+int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    return 0;
+}
+
+int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    return 0;
+}
