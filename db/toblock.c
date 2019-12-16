@@ -1118,7 +1118,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
-               iq->sorese?iq->sorese->rcout:0);
+               iq->sorese ? iq->sorese->rcout : 0);
     }
     blkseq_replay_count++;
     return outrc;
@@ -5562,7 +5562,7 @@ add_blkseq:
                            "blkseq add '%s', outrc=%d errval=%d "
                            "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                           iq->sorese?iq->sorese->rcout:0, irc);
+                           iq->sorese ? iq->sorese->rcout : 0, irc);
                 }
             } else {
                 if (hascommitlock) {

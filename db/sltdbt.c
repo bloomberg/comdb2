@@ -163,7 +163,8 @@ retry:
         logmsg(LOGMSG_USER, "Test blkseq replay: returning "
                             "ERR_NOT_DURABLE to test replay:\n");
         logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n", rc,
-               iq->errstat.errval, iq->errstat.errstr, iq->sorese?iq->sorese->rcout:0);
+               iq->errstat.errval, iq->errstat.errstr,
+               iq->sorese ? iq->sorese->rcout : 0);
         rc = ERR_NOT_DURABLE;
     }
 
