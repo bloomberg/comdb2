@@ -4334,6 +4334,9 @@ deadlock_again:
                     if (tid) tid->abort(tid);
                     return rc;
                 }
+                char new[PATH_MAX];
+                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
+                unlink(bdb_trans(tmpname, new));
             } else {
                 unsigned long long qdb_file_version;
                 if (should_stop_looking_for_queuedb_files(bdb_state, &tran,
@@ -4344,11 +4347,6 @@ deadlock_again:
                 form_queuedb_name_int(
                     bdb_state, tmpname, sizeof(tmpname), qdb_file_version
                 );
-            }
-            if (create) {
-                char new[PATH_MAX];
-                print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
-                unlink(bdb_trans(tmpname, new));
             }
             DB *dbp;
             rc = db_create(&dbp, bdb_state->dbenv, 0);
