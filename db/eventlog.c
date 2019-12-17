@@ -57,8 +57,8 @@ static int eventlog_verbose = 0;
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
 static gzFile eventlog_open(void);
-int eventlog_every_n = 1;
-int64_t eventlog_count = 0;
+static int eventlog_every_n = 1;
+static int64_t eventlog_count = 0;
 
 static void eventlog_roll(void);
 #define min(x, y) ((x) < (y) ? (x) : (y))
@@ -421,7 +421,7 @@ static void eventlog_path(cson_object *obj, const struct reqlogger *logger)
 }
 
 /* add never seen before "newsql" query, also print it to log */
-static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger)
+static void eventlog_add_newsql(const struct reqlogger *logger)
 {
     struct sqltrack *st;
     st = malloc(sizeof(struct sqltrack));
@@ -454,22 +454,8 @@ static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger
     cson_value_free(newval);
 }
 
-static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
+static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 {
-    Pthread_mutex_lock(&eventlog_lk);
-    if (eventlog == NULL || !eventlog_enabled) {
-        Pthread_mutex_unlock(&eventlog_lk);
-        return;
-    }
-
-    bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
-    bool isSqlErr = logger->error && logger->stmt;
-
-    if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
-        eventlog_add_newsql(obj, logger);
-    }
-    Pthread_mutex_unlock(&eventlog_lk);
-
     cson_object_set(obj, "time", cson_new_int(logger->startus));
     if (logger->event_type)
         cson_object_set(obj, "type",
@@ -547,6 +533,16 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     eventlog_path(obj, logger);
 }
 
+static inline void add_to_fingerprints(const struct reqlogger *logger)
+{
+    bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
+    bool isSqlErr = logger->error && logger->stmt;
+
+    if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
+        eventlog_add_newsql(logger);
+    }
+}
+
 void eventlog_add(const struct reqlogger *logger)
 {
     Pthread_mutex_lock(&eventlog_lk);
@@ -554,9 +550,6 @@ void eventlog_add(const struct reqlogger *logger)
         Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-
-    cson_value *val;
-    cson_object *obj;
 
     eventlog_count++;
     if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
@@ -568,13 +561,16 @@ void eventlog_add(const struct reqlogger *logger)
     }
     Pthread_mutex_unlock(&eventlog_lk);
 
-    val = cson_value_new_object();
-    obj = cson_value_get_object(val);
-    eventlog_add_int(obj, logger);
+    cson_value *val = cson_value_new_object();
+    cson_object *obj = cson_value_get_object(val);
+    populate_obj(obj, logger);
 
     Pthread_mutex_lock(&eventlog_lk);
-    if (eventlog != NULL && eventlog_enabled)
+
+    if (eventlog != NULL && eventlog_enabled) {
+        add_to_fingerprints(logger);
         cson_output(val, write_json, eventlog, &opt);
+    }
     Pthread_mutex_unlock(&eventlog_lk);
 
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
@@ -733,12 +729,9 @@ void eventlog_process_message(char *line, int lline, int *toff)
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
                         u_int32_t nlockers, u_int32_t victim)
 {
-    Pthread_mutex_lock(&eventlog_lk);
     if (!eventlog_enabled || eventlog == NULL) {
-        Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_value *dval = cson_value_new_object();
     cson_object *obj = cson_value_get_object(dval);
