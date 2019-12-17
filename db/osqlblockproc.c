@@ -88,7 +88,6 @@ struct blocksql_tran {
     pthread_cond_t cond;
     int delayed;
     int rows;
-    bool iscomplete;
 };
 
 typedef struct oplog_key {
@@ -465,9 +464,7 @@ char *osql_get_tran_summary(struct ireq *iq)
             return NULL;
         }
 
-        if (tran->iscomplete) {
-            osql_sess_getsummary(tran->sess, &tottm, &rtrs);
-        }
+        osql_sess_getsummary(tran->sess, &tottm, &rtrs);
 
         nametype = osql_sorese_type_to_str(iq->sorese->type);
 
@@ -1350,8 +1347,7 @@ static int process_this_session(
 int osql_bplog_reqlog_queries(struct ireq *iq)
 {
     blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    if (tran->iscomplete)
-        osql_sess_reqlogquery(tran->sess, iq->reqlogger);
+    osql_sess_reqlogquery(tran->sess, iq->reqlogger);
     return 0;
 }
 
@@ -1412,10 +1408,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
     /* go through the complete list and apply all the changes */
-    if (tran->iscomplete) {
-        out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops,
-                                      err, logsb, dbc, dbc_ins, func);
-    }
+    out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops,
+            err, logsb, dbc, dbc_ins, func);
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
@@ -1499,8 +1493,8 @@ void osql_bplog_time_done(struct ireq *iq)
         /* these are failed */
         osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         snprintf0(
-            msg + len, sizeof(msg) - len, " %s(rqid=%llu time=%ums retries=%u)",
-            (tran->iscomplete ? "C" : "F"), tran->sess->rqid, tottm, rtrs);
+            msg + len, sizeof(msg) - len, " C(rqid=%llu time=%ums retries=%u)",
+            tran->sess->rqid, tottm, rtrs);
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
