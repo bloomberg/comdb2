@@ -4331,8 +4331,9 @@ deadlock_again:
         }
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
+        int max_qdb_dtanum = create ? 1 : BDB_QUEUEDB_MAX_FILES;
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
-        for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
+        for (int dtanum = 0; dtanum < max_qdb_dtanum; dtanum++) {
             if (create) {
                 if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
                                             tmpname, sizeof(tmpname)))) {
