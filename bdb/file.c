@@ -649,6 +649,10 @@ static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
     int bdberr = 0;
     if (bdb_get_file_version_qdb(bdb_state, tran, file_num,
                                  &local_file_version, &bdberr) != 0) {
+        /*
+        ** NOTE: For queuedb, all files after the first one are optional
+        **       and may not actually exist.
+        */
         if (file_version != NULL) *file_version = 0;
         if (file_num > 0) {
             logmsg(LOGMSG_DEBUG,
@@ -6552,18 +6556,16 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
                 return -1;
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
-            char name[PATH_MAX];
-            form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name));
-            /*
-             * NOTE: For queuedb, all files after the first one are optional
-             *       and may not actually exist.
-             */
-            char new[PATH_MAX];
-            struct stat sb; /* NOT USED */
-            if ((dtanum > 0) && (stat(bdb_trans(name, new), &sb) != 0)) {
-                print(bdb_state, "stopping at %s, it does not exist\n", new);
+            unsigned long long qdb_file_version;
+            if (should_stop_looking_for_queuedb_files(bdb_state, &tran,
+                                                      dtanum,
+                                                      &qdb_file_version)) {
                 break;
             }
+            char name[PATH_MAX];
+            form_queuedb_name_int(
+                bdb_state, name, sizeof(name), qdb_file_version
+            );
             rc = bdb_del_file(bdb_state, tid, name, bdberr);
             if (rc != 0) break;
         }
