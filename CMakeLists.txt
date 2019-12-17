@@ -95,6 +95,12 @@ if(STACK_AT_DB_OPEN_CLOSE)
     add_definitions(-DSTACK_AT_DB_OPEN_CLOSE)
 endif()
 
+option(STACK_AT_DBREG_RECOVER "Print a cheapstack at dbreg recover operations" OFF)
+mark_as_advanced(STACK_AT_DBREG_RECOVER)
+if(STACK_AT_DBREG_RECOVER)
+    add_definitions(-DSTACK_AT_DBREG_RECOVER)
+endif()
+
 option(STACK_AT_DBREG_LOG "Print a cheapstack at dbreg log operations" OFF)
 mark_as_advanced(STACK_AT_DBREG_LOG)
 if(STACK_AT_DBREG_LOG)

@@ -8539,8 +8539,9 @@ void bdb_assert_notran(bdb_state_type *bdb_state)
 int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
+    int endianized = htonl(inop);
     DBT op = {0};
     op.size = sizeof(int);
-    op.data = &inop;
+    op.data = &endianized;
     return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
 }
