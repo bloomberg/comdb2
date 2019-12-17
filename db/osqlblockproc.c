@@ -309,7 +309,7 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (rc)
         csc2_free_all();
 
-    if (!rc && iq->sc && gbl_sc_close_txn) {
+    if (!rc && iq->sc_pending && gbl_sc_close_txn) {
         if ((rc = trans_start(iq, NULL, &iq->sc_close_tran)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: error creating sc close txn, %d\n",
                     __func__, rc);
