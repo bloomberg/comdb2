@@ -4331,6 +4331,7 @@ deadlock_again:
         }
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
+        assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             if (create) {
                 if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
@@ -6555,6 +6556,7 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
             if (0 != bdb_del_ix_int(bdb_state, tid, i, bdberr))
                 return -1;
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+        assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             unsigned long long qdb_file_version;
             if (should_stop_looking_for_queuedb_files(bdb_state, tran,

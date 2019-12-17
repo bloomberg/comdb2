@@ -698,17 +698,99 @@ done:
         trans_abort(&iq, tran);
         tran = NULL;
     }
+    logmsg(LOGMSG_DEBUG, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
+           (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
 }
 
-int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
-                    tran_type *tran)
+int del_qdb_file(struct schema_change_type *s)
 {
-    return 0;
-}
+    int rc, bdberr;
+    struct ireq iq;
+    struct dbtable *db;
+    void *tran = NULL;
+    SBUF2 *sb = s->sb;
 
-int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
-                          tran_type *tran)
-{
-    return 0;
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = &thedb->static_table;
+
+    db = getqueuebyname(s->tablename);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
+               __func__, s->tablename);
+        sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
+        rc = -1;
+        goto done;
+    }
+
+    rc = trans_start(&iq, NULL, (void *)&tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+        sbuf2printf(sb, "!Failed to start transaction\n");
+        goto done;
+    }
+
+    assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
+    unsigned long long file_versions[BDB_QUEUEDB_MAX_FILES] = {0};
+    for (int file_num = 0; file_num < BDB_QUEUEDB_MAX_FILES; file_num++) {
+        bdberr = 0;
+        rc = bdb_get_file_version_qdb(db->handle, tran, file_num,
+                                      &file_versions[file_num], &bdberr);
+        if ((rc != 0) || (file_versions[file_num] == 0)) {
+            logmsg(LOGMSG_ERROR,
+                 "%s: bdb_get_file_version_qdb rc %d name %s num %d ver %lld "
+                 "bdberr %d\n", __func__, rc, s->tablename, file_num,
+                 file_versions[file_num], bdberr);
+            sbuf2printf(sb,
+                 "!Bad or missing qdb %s file version %lld for file #%d\n",
+                 s->tablename, file_versions[file_num], file_num);
+            goto done;
+        }
+    }
+
+    bdberr = 0;
+    rc = bdb_new_file_version_qdb(db->handle, tran, 0, file_versions[1],
+                                  &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_new_file_version_qdb rc %d err %d\n",
+               __func__, rc, bdberr);
+        sbuf2printf(sb, "!Failed to reset file version\n");
+        goto done;
+    }
+
+    bdberr = 0;
+    rc = bdb_del_file_version(db->handle, tran, LLMETA_FVER_FILE_TYPE_QDB, 1,
+                              &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_del_file_version rc %d err %d\n",
+               __func__, rc, bdberr);
+        sbuf2printf(sb, "!Failed to delete file version\n");
+        goto done;
+    }
+
+    rc = trans_commit(&iq, tran, gbl_mynode);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_commit rc %d\n", __func__, rc);
+        sbuf2printf(sb, "!Failed to commit transaction\n");
+        goto done;
+    }
+    tran = NULL; /* skip abort */
+
+    /* log for replicants to do the same */
+    rc = bdb_llog_scdone(db->handle, queue_db, 1, &bdberr);
+    if (rc) {
+        sbuf2printf(sb, "!Failed to broadcast change for queuedb\n");
+        logmsg(LOGMSG_ERROR, "Failed to broadcast change for queuedb\n");
+        /* shouldn't be possible -- yeah right */
+        goto done;
+    }
+
+done:
+    if (tran) {
+        trans_abort(&iq, tran);
+        tran = NULL;
+    }
+    logmsg(LOGMSG_DEBUG, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
+           (rc == 0) ? "SUCCESS" : "FAILURE", rc);
+    return rc;
 }
