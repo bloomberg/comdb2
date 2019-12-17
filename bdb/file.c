@@ -113,6 +113,9 @@ extern size_t gbl_blobmem_cap;
 
 #define FILENAMELEN 100
 
+#define USE_GENID_IN_QUEUEDB_FILE_NAME() \
+    (gbl_queuedb_genid_filename || (gbl_queuedb_file_threshold > 0))
+
 extern int is_db_roomsync();
 
 static const char NEW_PREFIX[] = "new.";
@@ -638,26 +641,43 @@ int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
 int gbl_queuedb_file_interval = 60000;
 
+static void form_queuedb_name_int(bdb_state_type *bdb_state, char *name,
+                                  size_t len, unsigned long long file_version)
+{
+    if (file_version != 0) {
+        snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name,
+                  file_version);
+    } else {
+        snprintf0(name, len, "XXX.%s.queuedb", bdb_state->name);
+    }
+}
+
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
                              int file_num, int create, char *name, size_t len,
                              int fail_on_no_version)
 {
     unsigned long long ver;
     int rc, bdberr;
-    if (create && (gbl_queuedb_genid_filename || gbl_queuedb_file_threshold > 0)) {
+    if (create && USE_GENID_IN_QUEUEDB_FILE_NAME()) {
         ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
         rc = bdb_new_file_version_qdb(bdb_state, tran, file_num, ver, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             return -1;
         }
     }
-    if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver, &bdberr) == 0) {
-        snprintf0(name, len, "XXX.%s_%016llx.queuedb", bdb_state->name, ver);
+    /* NOTE: This point is reached even if we (just) successfully set the file
+    **       version above. */
+    if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver,
+                                 &bdberr) == 0) {
+        /* success, do nothing yet. */
     } else if (fail_on_no_version) {
+        /* no version -AND- do not fallback to versionless */
         return -1;
     } else {
-        snprintf0(name, len, "XXX.%s.queuedb", bdb_state->name);
+        /* no version -AND- do fallback to versionless */
+        ver = 0;
     }
+    form_queuedb_name_int(bdb_state, name, len, ver);
     return 0;
 }
 
