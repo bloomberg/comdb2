@@ -309,11 +309,16 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     /* save op */
-    rc = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
+    int irc = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
 
-    if (rc) {
+    /* release the session */
+    if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
+    }
+
+    if (irc) {
         osql_sess_try_terminate(sess);
-        return rc;
+        return irc;
     }
 
     /* Must increment seq under completed_lock */
