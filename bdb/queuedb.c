@@ -87,15 +87,24 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
 
 static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
+    struct dbenv *dbenv = NULL;
+    if (evt != NULL) dbenv = evt->arg1;
     if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
         void *rc = cron_add_event(gbl_queuedb_cron, NULL, tm,
-                                  (FCRON)queuedb_cron_event, NULL,
+                                  (FCRON)queuedb_cron_event, dbenv,
                                   NULL, NULL, NULL, err, NULL);
         if (rc == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
                             "rc = %d, errstr = %s\n",
                     err->errval, err->errstr);
+        }
+    }
+    if (dbenv != NULL) {
+        for (int i = 0; i < dbenv->num_qdbs; i++) {
+
+
+
         }
     }
     return NULL;
@@ -130,7 +139,7 @@ static char *queuedb_cron_event_describe(sched_if_t *impl, cron_event_t *event)
     return strdup(name);
 }
 
-int bdb_queuedb_create_cron(void)
+int bdb_queuedb_create_cron(struct dbenv *dbenv)
 {
     struct errstat xerr = {0};
 
@@ -142,11 +151,11 @@ int bdb_queuedb_create_cron(void)
             );
             gbl_queuedb_cron = cron_add_event(NULL, "QueueDB Job Scheduler",
                                       INT_MIN, (FCRON)queuedb_cron_kickoff,
-                                      NULL, NULL, NULL, NULL, &xerr, &impl);
+                                      dbenv, NULL, NULL, NULL, &xerr, &impl);
         } else {
             gbl_queuedb_cron = cron_add_event(gbl_queuedb_cron, NULL, INT_MIN,
                                       (FCRON)queuedb_cron_kickoff, NULL, NULL,
-                                      NULL, NULL, &xerr, NULL);
+                                      dbenv, NULL, &xerr, NULL);
         }
         if (gbl_queuedb_cron == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule queuedb cron job. "

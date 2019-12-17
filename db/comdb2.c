@@ -5521,7 +5521,7 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    if (bdb_queuedb_create_cron() != 0)
+    if (bdb_queuedb_create_cron(thedb) != 0)
         abort();
 
     gbl_ready = 1;

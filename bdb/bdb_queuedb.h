@@ -1,7 +1,7 @@
 #ifndef INCLUDED_QUEUEDB_H
 #define INCLUDED_QUEUEDB_H
 
-int bdb_queuedb_create_cron(void);
+int bdb_queuedb_create_cron(struct dbenv *);
 
 void bdb_queuedb_init_priv(bdb_state_type *bdb_state);
 
