@@ -29,6 +29,7 @@
 
 #include "debug_switches.h"
 #include "comdb2_atomic.h"
+#include "intern_strings.h"
 
 #include <uuid/uuid.h>
 #include "str0.h"
@@ -533,7 +534,7 @@ int gbl_selectv_writelock_on_update = 1;
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              bool is_reorder_on)
+                              const char *host, bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
 
@@ -566,6 +567,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
     comdb2uuidcpy(sess->uuid, uuid);
     /*save_sql(iq, sess, sql, sqlen);*/
     sess->type = type;
+    sess->host = host ? intern(host) : NULL;
     sess->startus = comdb2_time_epochus();
     sess->is_reorder_on = is_reorder_on;
     sess->selectv_writelock_on_update = gbl_selectv_writelock_on_update;

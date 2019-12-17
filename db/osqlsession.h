@@ -108,7 +108,7 @@ int osql_session_testterminate(void *obj, void *arg);
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              bool is_reorder_on);
+                              const char *host, bool is_reorder_on);
 
 /**
  * Returns
