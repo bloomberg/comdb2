@@ -654,9 +654,12 @@ int add_qdb_file(struct schema_change_type *s)
                                   &bdberr);
     if (rc == 0 && file_version != 0) {
         logmsg(LOGMSG_ERROR,
-               "%s: bdb_get_file_version_qdb rc %d ver %lld bdberr %d\n",
-               __func__, rc, file_version, bdberr);
-        sbuf2printf(sb, "!Should not find file version for qdb file #1\n");
+             "%s: bdb_get_file_version_qdb rc %d name %s num %d ver %lld "
+             "bdberr %d\n", __func__, rc, s->tablename, file_num, file_version,
+             bdberr);
+        sbuf2printf(sb,
+             "!Should not find qdb %s file version %lld for file #%d\n",
+             s->tablename, file_version, file_num);
         goto done;
     }
     file_version = flibc_htonll(bdb_get_cmp_context(db->handle));
@@ -665,9 +668,11 @@ int add_qdb_file(struct schema_change_type *s)
                                   &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR,
-               "%s: bdb_new_file_version_qdb rc %d ver %lld bdberr %d\n",
-               __func__, rc, file_version, bdberr);
-        sbuf2printf(sb, "!Failed to add queuedb file version\n");
+             "%s: bdb_new_file_version_qdb rc %d name %s num %d ver %lld "
+             "bdberr %d\n", __func__, rc, s->tablename, file_num, file_version,
+             bdberr);
+        sbuf2printf(sb, "!Failed add qdb %s file num %d file version %lld\n",
+                    s->tablename, file_num, file_version);
         goto done;
     }
 
