@@ -723,8 +723,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_add_view, iq, s, trans, user_view);
     else if (s->drop_view)
         rc = do_finalize(finalize_drop_view, iq, s, trans, user_view);
-    else if (s->add_qdb_file)
-        rc = do_finalize(finalize_add_qdb_file, iq, s, trans, queue_db);
     else if (s->del_qdb_file)
         rc = do_finalize(finalize_del_qdb_file, iq, s, trans, queue_db);
 
