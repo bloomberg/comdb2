@@ -735,7 +735,7 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey,
-                            int blkkeylen)
+                            int blkkeylen, int release_schema_lk)
 {
     int rc;
     db_seqnum_type ss;
@@ -756,6 +756,11 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         cnonce[cn_len] = '\0';
         logmsg(LOGMSG_USER, "%s %s line %d: trans_commit returns %d\n", cnonce,
                __func__, __LINE__, rc);
+    }
+
+    if (release_schema_lk && iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 
     if (rc != 0) {
@@ -780,25 +785,26 @@ int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
                          void *blkkey, int blkkeylen)
 {
     return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1,
-                            blkseq, blklen, blkkey, blkkeylen);
+                            blkseq, blklen, blkkey, blkkeylen, 0);
 }
 
 /* XXX i made this be the same as trans_commit_adaptive */
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
+            0);
 }
 
 int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host,
                          int timeoutms)
 {
     return trans_commit_int(iq, trans, source_host, timeoutms, 0, 0, NULL, 0,
-                            NULL, 0);
+                            NULL, 0, 0);
 }
 
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 1);
 }
 
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
