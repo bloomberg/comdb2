@@ -1408,8 +1408,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
     /* go through the complete list and apply all the changes */
-    out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops,
-            err, logsb, dbc, dbc_ins, func);
+    out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops, err,
+                                  logsb, dbc, dbc_ins, func);
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
@@ -1492,9 +1492,9 @@ void osql_bplog_time_done(struct ireq *iq)
 
         /* these are failed */
         osql_sess_getsummary(tran->sess, &tottm, &rtrs);
-        snprintf0(
-            msg + len, sizeof(msg) - len, " C(rqid=%llu time=%ums retries=%u)",
-            tran->sess->rqid, tottm, rtrs);
+        snprintf0(msg + len, sizeof(msg) - len,
+                  " C(rqid=%llu time=%ums retries=%u)", tran->sess->rqid, tottm,
+                  rtrs);
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
