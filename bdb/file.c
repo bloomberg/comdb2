@@ -641,6 +641,30 @@ int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
 int gbl_queuedb_file_interval = 60000;
 
+static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
+                                                 tran_type *tran, int file_num,
+                                              unsigned long long *file_version)
+{
+    unsigned long long local_file_version = 0;
+    int bdberr = 0;
+    if (bdb_get_file_version_qdb(bdb_state, tran, file_num,
+                                 &local_file_version, &bdberr) != 0) {
+        if (file_version != NULL) *file_version = 0;
+        if (file_num > 0) {
+            logmsg(LOGMSG_DEBUG,
+                "%s: queuedb %s file %d version not found, stopping...\n",
+                __func__, bdb_state->name, file_num);
+            return 1; 
+        } else {
+            logmsg(LOGMSG_ERROR,
+                "%s: queuedb %s file %d version not found, error %d\n",
+                __func__, bdb_state->name, file_num, bdberr);
+        }
+    }
+    if (file_version != NULL) *file_version = local_file_version;
+    return 0;
+}
+
 static void form_queuedb_name_int(bdb_state_type *bdb_state, char *name,
                                   size_t len, unsigned long long file_version)
 {
@@ -653,8 +677,7 @@ static void form_queuedb_name_int(bdb_state_type *bdb_state, char *name,
 }
 
 static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
-                             int file_num, int create, char *name, size_t len,
-                             int fail_on_no_version)
+                             int file_num, int create, char *name, size_t len)
 {
     unsigned long long ver;
     int rc, bdberr;
@@ -665,14 +688,11 @@ static int form_queuedb_name(bdb_state_type *bdb_state, tran_type *tran,
             return -1;
         }
     }
-    /* NOTE: This point is reached even if we (just) successfully set the file
-    **       version above. */
+    /* NOTE: This point is reached even if we (just) successfully
+    **       set the file version above. */
     if (bdb_get_file_version_qdb(bdb_state, tran, file_num, &ver,
                                  &bdberr) == 0) {
         /* success, do nothing yet. */
-    } else if (fail_on_no_version) {
-        /* no version -AND- do not fallback to versionless */
-        return -1;
     } else {
         /* no version -AND- do fallback to versionless */
         ver = 0;
@@ -4308,14 +4328,22 @@ deadlock_again:
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
-            if (create && (rc = form_queuedb_name(bdb_state, &tran, dtanum, 0,
-                                               tmpname, sizeof(tmpname), 1))) {
-                if (dtanum > 0) break;
-            }
-            if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, create,
-                                        tmpname, sizeof(tmpname), 0))) {
-                if (tid) tid->abort(tid);
-                return rc;
+            if (create) {
+                if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
+                                            tmpname, sizeof(tmpname)))) {
+                    if (tid) tid->abort(tid);
+                    return rc;
+                }
+            } else {
+                unsigned long long qdb_file_version;
+                if (should_stop_looking_for_queuedb_files(bdb_state, &tran,
+                                                          dtanum,
+                                                          &qdb_file_version)) {
+                    break;
+                }
+                form_queuedb_name_int(
+                    bdb_state, tmpname, sizeof(tmpname), qdb_file_version
+                );
             }
             if (create) {
                 char new[PATH_MAX];
@@ -6527,7 +6555,7 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
             char name[PATH_MAX];
-            form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name), 0);
+            form_queuedb_name(bdb_state, tran, dtanum, 0, name, sizeof(name));
             /*
              * NOTE: For queuedb, all files after the first one are optional
              *       and may not actually exist.
