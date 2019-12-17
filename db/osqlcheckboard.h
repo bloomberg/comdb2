@@ -43,6 +43,8 @@ struct osql_sqlthr {
     int type;            /* type of the request, enum OSQL_REQ_TYPE */
     pthread_mutex_t c_mtx; /* mutex and cond for commitrc sync */
     pthread_cond_t cond;
+    pthread_mutex_t cleanup_mtx; /* mutex and cond for cleanup/freeing entry */
+    pthread_cond_t cleanup_cond;
     int master_changed; /* set if we detect that node we were waiting for was
                            disconnected */
     int nops;

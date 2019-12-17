@@ -167,6 +167,8 @@ int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 
     Pthread_mutex_init(&entry->c_mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
+    Pthread_mutex_init(&entry->cleanup_mtx, NULL);
+    Pthread_cond_init(&entry->cleanup_cond, NULL);
 
     /* insert entry */
     Pthread_mutex_lock(&checkboard->checkboard_mtx);
@@ -252,11 +254,25 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     clnt->osql.rqid = 0;
 
     int cnt = 0;
-    /* wait till not in use to free; use a mutex and signal/cond on in_use-- */
+    /* wait till not in use to free; TODO: Can i reuse entry->c_mtx instead? */
+    Pthread_mutex_lock(&entry->cleanup_mtx);
     while (ATOMIC_LOAD32(entry->in_use) > 0) {
-        if (cnt++ > 1000000) abort();
-        usleep(10); // tiny sleep for concurrent thread to finish using entry
+        if (cnt > 10) // 10 seconds
+            abort();
+
+        struct timespec timeout;
+        struct timeval tp;
+        gettimeofday(&tp, NULL);
+        timeout.tv_sec = tp.tv_sec + 1;
+        timeout.tv_nsec = tp.tv_usec * 1000;
+
+        int rc = pthread_cond_timedwait(&entry->cleanup_cond,
+                                        &entry->cleanup_mtx, &timeout);
+        if (rc == ETIMEDOUT) {
+            cnt++;
+        }
     }
+    Pthread_mutex_unlock(&entry->cleanup_mtx);
 
     if (clnt->osql.logsb) {
         sbuf2close(clnt->osql.logsb);
@@ -274,6 +290,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     /* free sql thread registration entry */
     Pthread_cond_destroy(&entry->cond);
     Pthread_mutex_destroy(&entry->c_mtx);
+    Pthread_mutex_destroy(&entry->cleanup_mtx);
+    Pthread_cond_destroy(&entry->cleanup_cond);
     free(entry);
 
     return rc;
@@ -344,6 +362,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     Pthread_cond_signal(&entry->cond);
     Pthread_mutex_unlock(&entry->c_mtx);
     ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
 
     return 0;
 }
@@ -587,6 +606,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
 
     *xerr = entry->err; // will deep copy err structure
     ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
 
     if (xerr->errval)
         logmsg(LOGMSG_DEBUG, "%s: done xerr->errval=%d\n", __func__,
@@ -627,6 +647,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     Pthread_mutex_unlock(&entry->c_mtx);
     ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
 
     return 0;
 }
@@ -667,6 +688,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     Pthread_mutex_unlock(&entry->c_mtx);
 
     ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
     return 0;
 }
 
