@@ -41,7 +41,7 @@ struct osql_sqlthr {
                             transactions*/
     struct errstat err;  /* valid if done = 1 */
     int type;            /* type of the request, enum OSQL_REQ_TYPE */
-    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
+    pthread_mutex_t c_mtx; /* mutex and cond for commitrc sync */
     pthread_cond_t cond;
     int master_changed; /* set if we detect that node we were waiting for was
                            disconnected */
