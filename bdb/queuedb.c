@@ -218,16 +218,6 @@ static DB *bdb_queuedb_get_dbp_for_add(bdb_state_type *bdb_state)
     return qstate->dbp_add;
 }
 
-static void bdb_queuedb_maybe_switch_consume_dbp(bdb_state_type *bdb_state)
-{
-    // TBD
-}
-
-static void bdb_queuedb_maybe_switch_add_dbp(bdb_state_type *bdb_state)
-{
-    // TBD
-}
-
 void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, void *tid)
 {
     if (gbl_debug_queuedb)
@@ -260,7 +250,6 @@ int bdb_queuedb_best_pagesize(int avg_item_sz)
 int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                     size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
-    bdb_queuedb_maybe_switch_add_dbp(bdb_state);
     DB *db = bdb_queuedb_get_dbp_for_add(bdb_state);
     struct queuedb_key k;
     int rc;
@@ -364,7 +353,6 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
-    bdb_queuedb_maybe_switch_consume_dbp(bdb_state);
     DB *db = bdb_queuedb_get_dbp_for_consume(bdb_state);
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
@@ -467,7 +455,6 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
                     struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
                     int *bdberr)
 {
-    bdb_queuedb_maybe_switch_consume_dbp(bdb_state);
     DB *db = bdb_queuedb_get_dbp_for_consume(bdb_state);
     if (db == NULL) { // trigger dropped?
         *bdberr = BDBERR_BADARGS;
@@ -684,7 +671,6 @@ done:
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const void *prevfnd, int *bdberr)
 {
-    bdb_queuedb_maybe_switch_consume_dbp(bdb_state);
     DB *db = bdb_queuedb_get_dbp_for_consume(bdb_state);
     struct bdb_queue_found qfnd;
     uint8_t *p_buf, *p_buf_end;

@@ -510,6 +510,8 @@ char *get_ddl_type_str(struct schema_change_type *s)
         return "ALTER STRIPE";
     else if (s->add_view)
         return "VIEW";
+    else if (s->add_qdb_file || s->del_qdb_file)
+        return "QUEUE_DB";
 
     return "UNKNOWN";
 }

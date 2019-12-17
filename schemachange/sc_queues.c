@@ -85,6 +85,16 @@ int do_alter_queues_int(struct schema_change_type *sc)
     return rc;
 }
 
+int static add_to_qdbs(struct dbtable *db)
+{
+    thedb->qdbs =
+        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
+    thedb->qdbs[thedb->num_qdbs++] = db;
+
+    /* Add queue to the hash. */
+    hash_add(thedb->qdb_hash, db);
+}
+
 int static remove_from_qdbs(struct dbtable *db)
 {
     for (int i = 0; i < thedb->num_qdbs; i++) {
@@ -149,12 +159,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
                thedb->basedir, newdb->tablename, bdberr);
         return SC_BDB_ERROR;
     }
-    thedb->qdbs =
-        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
-    thedb->qdbs[thedb->num_qdbs++] = newdb;
-
-    /* Add queue to the hash. */
-    hash_add(thedb->qdb_hash, newdb);
+    add_to_qdbs(newdb);
 
     return SC_OK;
 }
@@ -211,12 +216,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             rc = -1;
             goto done;
         }
-        thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
-        thedb->qdbs[thedb->num_qdbs++] = db;
-
-        /* Add queue to the hash. */
-        hash_add(thedb->qdb_hash, db);
+        add_to_qdbs(db);
 
         /* TODO: needs locking */
         rc =
@@ -431,13 +431,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    thedb->basedir, db->tablename, bdberr);
             goto done;
         }
-
-        thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
-        thedb->qdbs[thedb->num_qdbs++] = db;
-
-        /* Add queue to the hash. */
-        hash_add(thedb->qdb_hash, db);
+        add_to_qdbs(db);
 
         /* create a consumer for this guy */
         /* TODO: needs locking */
@@ -596,13 +590,42 @@ int finalize_trigger(struct schema_change_type *s)
 // TBD: Make sure the queuedb DBPs are setup correctly now?
 int reopen_queue_dbs(const char *queue_name)
 {
+    struct dbtable *db = getqueuebyname(queue_name);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: %s is not a valid trigger\n", __func__,
+               queue_name);
+        return -1;
+    }
+    remove_from_qdbs(db);
+    int rc = bdb_close_only(db->handle, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
+               __func__, rc, bdberr);
+        return -1;
+    }
+    int bdberr = 0;
+    db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
+                                     65536, thedb->bdb_env, 1, NULL,
+                                     &bdberr);
+    if (db->handle == NULL) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_open_more_queue(%s/%s) failed, bdberr %d\n",
+               __func__, thedb->basedir, db->tablename, bdberr);
+        return -1;
+    }
+    add_to_qdbs(db);
     return 0;
 }
 
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    return 0;
+
+
+
+
+
+
 }
 
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
