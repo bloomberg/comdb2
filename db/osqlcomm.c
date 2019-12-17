@@ -2896,7 +2896,6 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromnode,
 static void net_startthread_rtn(void *arg);
 static void net_stopthread_rtn(void *arg);
 
-static void *osql_heartbeat_thread(void *arg);
 static void signal_rtoff(void);
 
 static int check_master(const char *tohost);
@@ -2943,11 +2942,9 @@ int osql_comm_init(struct dbenv *dbenv)
 {
 
     osql_comm_t *tmp = NULL;
-    pthread_t stat_hbeat_tid = 0;
     int ii = 0;
     void *rcv = NULL;
     int rc = 0;
-    pthread_attr_t attr;
 
     /* allocate comm */
     tmp = (osql_comm_t *)calloc(sizeof(osql_comm_t), 1);
@@ -3099,20 +3096,6 @@ int osql_comm_init(struct dbenv *dbenv)
     thecomm_obj = tmp;
 
     bdb_register_rtoff_callback(dbenv->bdb_env, signal_rtoff);
-
-    Pthread_attr_init(&attr);
-    pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    Pthread_attr_setstacksize(&attr, 100 * 1024);
-
-    rc = pthread_create(&stat_hbeat_tid, &attr, osql_heartbeat_thread, NULL);
-
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: pthread_create error %d %s\n", __func__, rc,
-                strerror(errno));
-        return -1;
-    }
-
-    Pthread_attr_destroy(&attr);
 
     return 0;
 }
@@ -3418,8 +3401,6 @@ static int osql_net_type_to_net_uuid_type(int type)
         return NET_OSQL_SERIAL_REQ_UUID;
     case NET_OSQL_SERIAL_RPL:
         return NET_OSQL_SERIAL_RPL_UUID;
-    case NET_HBEAT_SQL:
-        return NET_HBEAT_SQL_UUID;
     case NET_OSQL_MASTER_CHECK:
         return NET_OSQL_MASTER_CHECK_UUID;
     case NET_OSQL_MASTER_CHECKED:
@@ -5463,45 +5444,6 @@ static void signal_rtoff(void)
                 __func__);
         osql_repository_cancelall();
     }
-}
-
-/*
-   thread responsible for sending heartbeats to the master
- */
-static void *osql_heartbeat_thread(void *arg)
-{
-
-    int rc = 0;
-    hbeat_t msg;
-
-    thread_started("osql heartbeat");
-
-    while (!db_is_stopped()) {
-        uint8_t buf[OSQLCOMM_HBEAT_TYPE_LEN],
-            *p_buf = buf, *p_buf_end = (buf + OSQLCOMM_HBEAT_TYPE_LEN);
-
-        /* we get away with setting source and destination to 0 since the
-         * callback code
-         * doesn't actually care - it just needs heartbeats, but doesn't look at
-         * the contents */
-        msg.dst = 0;
-        msg.src = 0;
-        msg.time = comdb2_time_epoch();
-
-        osqlcomm_hbeat_type_put(&(msg), p_buf, p_buf_end);
-
-        osql_comm_t *comm = get_thecomm();
-        if (g_osql_ready && comm) {
-            rc =
-                net_send_message(comm->handle_sibling, thedb->master,
-                                 NET_HBEAT_SQL, &buf, sizeof(buf), 0, 5 * 1000);
-            if (rc && rc != NET_SEND_FAIL_SENDTOME)
-                logmsg(LOGMSG_INFO, "%s:%d rc=%d\n", __FILE__, __LINE__, rc);
-        }
-
-        poll(NULL, 0, gbl_osql_heartbeat_send * 1000);
-    }
-    return NULL;
 }
 
 /* this function routes the packet in the case of local communication */
