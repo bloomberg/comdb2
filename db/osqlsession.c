@@ -461,7 +461,7 @@ int osql_session_testterminate(void *obj, void *arg)
     Pthread_mutex_lock(&sess->completed_lock);
 
     sess->terminate = OSQL_TERMINATE;
-    need_clean = sess->dispatched;
+    need_clean = !sess->dispatched;
 
     Pthread_mutex_unlock(&sess->completed_lock);
     Pthread_mutex_unlock(&sess->mtx);
@@ -495,7 +495,7 @@ int osql_session_testterminate(void *obj, void *arg)
         Pthread_mutex_lock(&sess->mtx);
         Pthread_mutex_lock(&sess->completed_lock);
 
-        need_clean = sess->dispatched;
+        need_clean = !sess->dispatched;
     }
     Pthread_mutex_unlock(&sess->completed_lock);
     Pthread_mutex_unlock(&sess->mtx);
