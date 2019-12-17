@@ -85,7 +85,7 @@ int do_alter_queues_int(struct schema_change_type *sc)
     return rc;
 }
 
-int static add_to_qdbs(struct dbtable *db)
+void static add_to_qdbs(struct dbtable *db)
 {
     thedb->qdbs =
         realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
@@ -587,23 +587,22 @@ int finalize_trigger(struct schema_change_type *s)
     return 0;
 }
 
-// TBD: Make sure the queuedb DBPs are setup correctly now?
 int reopen_queue_dbs(const char *queue_name)
 {
     struct dbtable *db = getqueuebyname(queue_name);
     if (db == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: %s is not a valid trigger\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n", __func__,
                queue_name);
         return -1;
     }
     remove_from_qdbs(db);
+    int bdberr = 0;
     int rc = bdb_close_only(db->handle, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                __func__, rc, bdberr);
         return -1;
     }
-    int bdberr = 0;
     db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
                                      65536, thedb->bdb_env, 1, NULL,
                                      &bdberr);
@@ -617,25 +616,88 @@ int reopen_queue_dbs(const char *queue_name)
     return 0;
 }
 
-int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
-                    tran_type *tran)
+int add_qdb_file(struct schema_change_type *s)
 {
+    int rc, bdberr;
+    struct ireq iq;
+    struct dbtable *db;
+    void *tran = NULL;
+    SBUF2 *sb = sc->sb;
 
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = &thedb->static_table;
 
+    db = getqueuebyname(s->tablename);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
+               __func__, s->tablename);
+        sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
+        rc = -1;
+        goto done;
+    }
 
+    rc = trans_start(&iq, NULL, (void *)&tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+        sbuf2printf(sb, "!Failed to start transaction\n");
+        goto done;
+    }
 
+    /* NOTE: The file number is hard-coded to 1 here because a queuedb is
+    **       limited to having either one or two files -AND- we are adding
+    **       a file, which implies there should only be one file for this
+    **       queuedb at the moment, with file number 0. */
+    int file_num = 1;
+    unsigned long long file_version = 0;
+    bdberr = 0;
+    rc = bdb_get_file_version_qdb(db->handle, tran, file_num, &file_version,
+                                  &bdberr);
+    if (rc == 0 && file_version != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_get_file_version_qdb rc %d ver %lld bdberr %d\n",
+               __func__, rc, file_version, bdberr);
+        sbuf2printf(sb, "!Should not find file version for qdb file #1\n");
+        goto done;
+    }
+    file_version = flibc_htonll(bdb_get_cmp_context(db->handle));
+    bdberr = 0;
+    rc = bdb_new_file_version_qdb(db->handle, tran, file_num, file_version,
+                                  &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_new_file_version_qdb rc %d ver %lld bdberr %d\n",
+               __func__, rc, file_version, bdberr);
+        sbuf2printf(sb, "!Failed to add queuedb file version\n");
+        goto done;
+    }
 
+    rc = trans_commit(&iq, tran, gbl_mynode);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_commit rc %d\n", __func__, rc);
+        sbuf2printf(sb, "!Failed to commit transaction\n");
+        goto done;
+    }
+    tran = NULL; /* skip abort */
 
+    /* log for replicants to do the same */
+    rc = bdb_llog_scdone(db->handle, queue_db, 1, &bdberr);
+    if (rc) {
+        sbuf2printf(sb, "!Failed to broadcast change for queuedb\n");
+        logmsg(LOGMSG_ERROR, "Failed to broadcast change for queuedb\n");
+        /* shouldn't be possible -- yeah right */
+        goto done;
+    }
+
+done:
+    if (tran) {
+        trans_abort(iq, tran);
+        tran = NULL;
+    }
+    return rc;
 }
 
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
-{
-    return 0;
-}
-
-int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
-                          tran_type *tran)
 {
     return 0;
 }
