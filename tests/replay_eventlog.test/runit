@@ -4,9 +4,7 @@ bash -n "$0" | exit 1
 set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
-RESTART_DELAY=35
 INITNUMREC=100
-NUMREC=300
 
 if [ "x${DBNAME}" == "x" ] ; then
     echo "need a DB name"
@@ -183,7 +181,6 @@ delete_records()
 
 # Make sure we talk to the same host
 node=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default "SELECT comdb2_host()"`
-export CDB2_HOST="$node"
 
 echo "Test with insert, SC should not fail"
 
@@ -217,6 +214,7 @@ assertcnt t1 $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
+export CDB2_HOST="$node"  # cdb2api_caller will connect to CDB2_HOST
 ${TESTSBUILDDIR}/cdb2api_caller ${DBNAME} t1 > cdb2api_caller.out
 
 cdb2sql --host $node ${DBNAME} "select * from t1 order by alltypes_u_short" > orig.txt
@@ -238,18 +236,18 @@ if [ $node != `hostname` ] ; then
     logfl=`ssh -o StrictHostKeyChecking=no $node "find $TESTDIR/var/log/cdb2/ | grep $logfl"`
     logflunziped=${node}.events.unzipped
     ssh -o StrictHostKeyChecking=no $node wc $logfl
-    ssh -o StrictHostKeyChecking=no $node "zcat $logfl" > $logflunziped
+    ssh -o StrictHostKeyChecking=no $node "zcat $logfl | grep -v 'sys.cmd.send'" > $logflunziped
 else
     ls -ltr $TESTDIR/var/log/cdb2/ | grep events
     logfl=`ls -1Sr $TESTDIR/var/log/cdb2/ | grep events | grep ${DBNAME} | tail -1`
     logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
     logflunziped=events.unzipped
     wc $logfl
-    zcat $logfl  | grep -v '"type": "txn"'> $logflunziped
+    zcat $logfl  | grep -v '"type": "txn"' | grep -v 'sys.cmd.send' > $logflunziped
 fi
 
 count=`wc -l $logflunziped | cut -f 1 -d' '`
-CSHOULDBE=4135 # number of lines that should be in the log when single node
+CSHOULDBE=4125  # 16newsql+8select+1create+200ins+200upd+100del+100ins + 3500cdb2api_caller(1000ins+1000upd+500del+1000ins)
 if [[ $count -ne $CSHOULDBE ]] ; then 
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
 fi
