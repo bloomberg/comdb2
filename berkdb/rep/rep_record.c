@@ -1307,11 +1307,11 @@ skip:				/*
 						__FILE__, __LINE__, lsn.file,
 						lsn.offset);
 #endif
-                    assert (lsn.file > 0);
-
-					(void)__rep_send_message(dbenv, *eidp,
-						REP_VERIFY_REQ,
-						&lsn, NULL, 0, NULL);
+					if (lsn.file > 0) {
+						(void)__rep_send_message(dbenv, *eidp,
+								REP_VERIFY_REQ,
+								&lsn, NULL, 0, NULL);
+					}
 				}
 			}
 			fromline = __LINE__;
