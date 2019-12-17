@@ -1967,7 +1967,7 @@ int bdb_del_file_versions(
     return bdb_chg_file_versions(bdb_state, input_trans, NULL, bdberr);
 }
 
-int bdb_del_file_version(
+static int bdb_del_file_version(
     bdb_state_type *bdb_state,
     tran_type *input_trans,    /* if this is !NULL it will be used as
                                 * the transaction for all actions, if
@@ -2105,6 +2105,19 @@ backout:
         logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
     }
     return -1;
+}
+
+int bdb_del_file_version_qdb(
+    bdb_state_type *bdb_state,
+    tran_type *input_trans,    /* if this is !NULL it will be used as
+                                * the transaction for all actions, if
+                                * it is NULL a new transaction will be
+                                * created internally */
+    int file_num,              /* ixnum or dtanum */
+    int *bdberr)
+{
+    return bdb_del_file_version(bdb_state, input_trans,
+                                LLMETA_FVER_FILE_TYPE_QDB, file_num, bdberr);
 }
 
 static int

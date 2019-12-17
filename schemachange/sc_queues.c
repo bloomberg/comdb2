@@ -759,8 +759,7 @@ int del_qdb_file(struct schema_change_type *s)
     }
 
     bdberr = 0;
-    rc = bdb_del_file_version(db->handle, tran, LLMETA_FVER_FILE_TYPE_QDB, 1,
-                              &bdberr);
+    rc = bdb_del_file_version_qdb(db->handle, tran, 1, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_del_file_version rc %d err %d\n",
                __func__, rc, bdberr);
