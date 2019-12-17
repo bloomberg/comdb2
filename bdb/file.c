@@ -7214,19 +7214,28 @@ static size_t dirent_buf_size(const char *dir)
 
 uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
 {
-    char tmpname[PATH_MAX];
-    struct stat st;
-
+    uint64_t totalSize = 0;
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
-
-    snprintf(tmpname, sizeof(tmpname), "%s/%s.queuedb", bdb_state->dir,
-             bdb_state->name);
-    int rc = stat(tmpname, &st);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", tmpname, rc);
-        return 0;
+    assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
+    for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
+        unsigned long long qdb_file_version;
+        if (should_stop_looking_for_queuedb_files(bdb_state, NULL, dtanum,
+                                                  &qdb_file_version)) {
+            break;
+        }
+        char tmpname[PATH_MAX];
+        form_queuedb_name_int(
+            bdb_state, tmpname, sizeof(tmpname), qdb_file_version
+        );
+        int rc = stat(tmpname, &st);
+        if (rc == 0) {
+            totalSize += st.st_size;
+        } else {
+            logmsg(LOGMSG_ERROR, "%s: stat(%s) rc %d\n",
+                   __func__, tmpname, rc);
+        }
     }
-    return st.st_size;
+    return totalSize;
 }
 
 uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
