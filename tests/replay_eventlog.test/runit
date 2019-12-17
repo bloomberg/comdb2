@@ -248,10 +248,10 @@ else
     zcat $logfl  | grep -v '"type": "txn"' | grep -v 'sys.cmd.send' > $logflunziped
 fi
 
-count=`wc -l $logflunziped | cut -f 1 -d' '`
-CSHOULDBE=4125  # 16newsql+8select+1create+200ins+200upd+100del+100ins + 3500cdb2api_caller(1000ins+1000upd+500del+1000ins)
-if [[ $count -ne $CSHOULDBE ]] ; then 
-    failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
+echo "Make sure that the data we expect is in the event log file"
+cat $logflunziped | grep fingerprint | grep -oP '(?<="fingerprint": ").*?(?=",)' > fingerprints_only.out
+if [ ! diff fingerprints_only.out fingerprints_only.exp ] ; then
+    failexit "fingerprints_only.out contains different fingerprint data than expected"
 fi
 
 set -e
