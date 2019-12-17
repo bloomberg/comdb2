@@ -187,6 +187,9 @@ export CDB2_HOST="$node"
 
 echo "Test with insert, SC should not fail"
 
+cdb2sql --tabs --host $node ${DBNAME} 'exec procedure sys.cmd.send("flush")'
+cdb2sql --tabs --host $node ${DBNAME} 'exec procedure sys.cmd.send("reql events roll")'
+
 cdb2sql --host $node ${DBNAME} "exec procedure sys.cmd.send('debg 0')"
 cdb2sql --host $node ${DBNAME} "create table t1  { `cat alltypes.csc2 ` }"
 
@@ -242,11 +245,11 @@ else
     logfl=`find $TESTDIR/var/log/cdb2/ | grep $logfl`
     logflunziped=events.unzipped
     wc $logfl
-    zcat $logfl > $logflunziped
+    zcat $logfl  | grep -v '"type": "txn"'> $logflunziped
 fi
 
 count=`wc -l $logflunziped | cut -f 1 -d' '`
-CSHOULDBE=8244 # number of lines that should be in the log when single node
+CSHOULDBE=4135 # number of lines that should be in the log when single node
 if [[ -z "$CLUSTER" ]] && [[ $count -ne $CSHOULDBE ]] ; then 
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
 elif [ $count -lt 4142 ] ; then
