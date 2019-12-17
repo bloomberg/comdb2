@@ -622,7 +622,7 @@ int add_qdb_file(struct schema_change_type *s)
     struct ireq iq;
     struct dbtable *db;
     void *tran = NULL;
-    SBUF2 *sb = sc->sb;
+    SBUF2 *sb = s->sb;
 
     init_fake_ireq(thedb, &iq);
     iq.usedb = &thedb->static_table;
@@ -690,7 +690,7 @@ int add_qdb_file(struct schema_change_type *s)
 
 done:
     if (tran) {
-        trans_abort(iq, tran);
+        trans_abort(&iq, tran);
         tran = NULL;
     }
     return rc;
