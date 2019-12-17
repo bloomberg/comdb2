@@ -1406,6 +1406,9 @@ int bdb_set_pagesize_alldata(tran_type *tran, int pagesize, int *bdberr);
 int bdb_set_pagesize_allblob(tran_type *tran, int pagesize, int *bdberr);
 int bdb_set_pagesize_allindex(tran_type *tran, int pagesize, int *bdberr);
 
+int bdb_del_file_version(bdb_state_type *bdb_state, tran_type *tran,
+                         int file_type, int file_num, int *bdberr);
+
 int bdb_new_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long version_num,
                               int *bdberr);
