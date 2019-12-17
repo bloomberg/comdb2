@@ -7227,6 +7227,7 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
         form_queuedb_name_int(
             bdb_state, tmpname, sizeof(tmpname), qdb_file_version
         );
+        struct stat st;
         int rc = stat(tmpname, &st);
         if (rc == 0) {
             totalSize += st.st_size;
