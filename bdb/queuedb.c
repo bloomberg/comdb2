@@ -200,19 +200,6 @@ static int bdb_queuedb_is_db_full(DB *db)
     return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
 }
 
-void bdb_queuedb_setup_dbps(bdb_state_type *bdb_state, void *tid)
-{
-    if (gbl_debug_queuedb)
-        logmsg(LOGMSG_USER, ">>> bdb_queuedb_setup_dbps %s\n", bdb_state->name);
-    struct bdb_queue_priv *qstate = bdb_state->qpriv;
-    if (qstate != NULL) {
-        DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-        DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
-        qstate->dbp_consume = db1;
-        qstate->dbp_add = (db2 != NULL) ? db2 : db1;
-    }
-}
-
 void bdb_queuedb_init_priv(bdb_state_type *bdb_state)
 {
     if (gbl_debug_queuedb)
@@ -233,6 +220,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                     size_t dtalen, int *bdberr, unsigned long long *out_genid)
 {
     DB *db = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+    if (db == NULL) db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
     struct queuedb_key k;
     int rc;
     DBT dbt_key = {0}, dbt_data = {0};

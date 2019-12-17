@@ -4401,7 +4401,6 @@ deadlock_again:
             }
             bdb_state->dbp_data[dtanum][0] = dbp;
         }
-        bdb_queuedb_setup_dbps(bdb_state, tid);
     }
     if (bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_LITE) {
         switch (bdbtype) {
