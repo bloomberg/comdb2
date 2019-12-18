@@ -3034,8 +3034,6 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
 
     netinfo_ptr->bufsz = 1 * 1024 * 1024;
 
-    netinfo_ptr->accept_thread_created = 0;
-    netinfo_ptr->portmux_register_time = 0;
     netinfo_ptr->portmux_register_interval = gbl_net_portmux_register_interval;
     netinfo_ptr->ischild = ischild;
     netinfo_ptr->use_getservbyname = use_getservbyname;
@@ -3101,16 +3099,12 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     netinfo_ptr->myhostname = intern(myhostname);
     netinfo_ptr->myhostname_len = strlen(netinfo_ptr->myhostname) + 1;
 
-    memset(netinfo_ptr->userfuncs, 0, sizeof(netinfo_ptr->userfuncs));
     netinfo_ptr->fake = fake;
     netinfo_ptr->offload = offload;
 
     strncpy0(netinfo_ptr->app, app, sizeof(netinfo_ptr->app));
     strncpy0(netinfo_ptr->service, service, sizeof(netinfo_ptr->service));
     strncpy0(netinfo_ptr->instance, instance, sizeof(netinfo_ptr->instance));
-
-    netinfo_ptr->stats.bytes_read = netinfo_ptr->stats.bytes_written = 0;
-    netinfo_ptr->stats.throttle_waits = netinfo_ptr->stats.reorders = 0;
 
     host_node_ptr = add_to_netinfo(netinfo_ptr, myhostname, myportnum);
     if (host_node_ptr == NULL) {
@@ -3133,13 +3127,7 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
 
     netinfo_ptr->conntime_all = quantize_new(1, 100, "ms");
     netinfo_ptr->conntime_periodic = quantize_new(1, 100, "ms");
-    netinfo_ptr->num_accepts = 0;
-    netinfo_ptr->num_accept_timeouts = 0;
     netinfo_ptr->conntime_dump_period = 10 * 60;
-    netinfo_ptr->num_current_non_appsock_accepts = 0;
-
-    netinfo_ptr->num_accepts = 0;
-    netinfo_ptr->num_accept_timeouts = 0;
 
     return netinfo_ptr;
 
