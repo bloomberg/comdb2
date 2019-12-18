@@ -41,6 +41,7 @@
 #include "dbinc/locker_info.h"
 
 #include "cson_amalgamation_core.h"
+#include "comdb2_atomic.h"
 
 extern int64_t comdb2_time_epochus(void);
 extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
@@ -545,21 +546,14 @@ static inline void add_to_fingerprints(const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    Pthread_mutex_lock(&eventlog_lk);
     if (eventlog == NULL || !eventlog_enabled) {
-        Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
 
-    eventlog_count++;
-    if (eventlog_every_n > 1 && eventlog_count % eventlog_every_n != 0) {
-        Pthread_mutex_unlock(&eventlog_lk);
+    int loc_count = ATOMIC_ADD64(eventlog_count, 1);
+    if (eventlog_every_n > 1 && loc_count % eventlog_every_n != 0) {
         return;
     }
-    if (bytes_written > eventlog_rollat) {
-        eventlog_roll();
-    }
-    Pthread_mutex_unlock(&eventlog_lk);
 
     cson_value *val = cson_value_new_object();
     cson_object *obj = cson_value_get_object(val);
@@ -568,6 +562,9 @@ void eventlog_add(const struct reqlogger *logger)
     Pthread_mutex_lock(&eventlog_lk);
 
     if (eventlog != NULL && eventlog_enabled) {
+        if (bytes_written > eventlog_rollat) {
+            eventlog_roll();
+        }
         add_to_fingerprints(logger);
         cson_output(val, write_json, eventlog, &opt);
     }
