@@ -7396,7 +7396,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 
     rc = osql_repository_add(sess, &replaced);
     if (rc || replaced) {
-        free(malcd);
         rc = -7;
         goto done;
     }
