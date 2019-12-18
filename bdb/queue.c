@@ -399,6 +399,12 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
         return -1;
     }
 
+    int rc = bdb_lock_table_read(bdb_state, tran);
+    if (rc) {
+        *bdberr = rc;
+        return -1;
+    }
+
     *bdberr = BDBERR_NOERROR;
 
     /* if no consumers are registered then don't enqueue this thing, since

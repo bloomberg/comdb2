@@ -459,8 +459,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->tablename, config,
                                     sc->dests.count, dests, &bdberr);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_alter_queue returned %d\n",
-                   __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_alter_queue returned %d %d\n",
+                   __func__, rc, bdberr);
             goto done;
         }
 
