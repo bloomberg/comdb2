@@ -509,6 +509,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
 
     if (iq->p_buf_orig) {
         free(iq->p_buf_orig);
+        iq->p_buf_orig = NULL;
         iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
         iq->p_buf_in_end = iq->p_buf_in = NULL;
     }
