@@ -94,7 +94,7 @@ struct seqnum_wait{
     char str[80];
     DB_LSN nodelsn;
     errstat_t errstat;
-    sorese_info_t sorese;
+    osql_sess_t sorese;
     uint32_t nodegen;
     int num_successfully_acked;
     int total_connected;
@@ -114,7 +114,7 @@ typedef struct{
     uint64_t next_commit_timestamp;
 }seqnum_wait_queue;
 // Add work item to seqnum_wait_queue.
-int add_to_seqnum_wait_queue(bdb_state_type* bdb_state,seqnum_type *seqnum,struct dbenv *dbenv,sorese_info_t *sorese, errstat_t *errstat,int rc);
+int add_to_seqnum_wait_queue(bdb_state_type* bdb_state,seqnum_type *seqnum,struct dbenv *dbenv,osql_sess_t *sorese, errstat_t *errstat,int rc);
 int seqnum_wait_gbl_mem_init();
 void seqnum_wait_cleanup();
 

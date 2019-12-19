@@ -42,7 +42,7 @@ extern int glblroute_get_buffer_capacity(int *bf);
 extern int sorese_send_commitrc(struct ireq *iq, int rc);
 
 void (*comdb2_ipc_sndbak_len_sinfo)(struct ireq *, int) = 0;
-int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,struct dbenv *dbenv,sorese_info_t *sorese, errstat_t *errstat,int rc);
+int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,struct dbenv *dbenv,osql_sess_t *sorese, errstat_t *errstat,int rc);
 int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
                                      struct ireq *iq, char *source_node,
                                      int timeoutms, int adaptive,
@@ -352,12 +352,12 @@ int handle_ireq(struct ireq *iq)
         /* pack data at tail of reply */
         pack_tail(iq);
         int enqueued = 0;
-        if (iq->sorese.type) {
+        if (iq->sorese) {
             bdb_state_type *bdb_handle = (bdb_state_type *)bdb_handle_from_ireq(iq);
             struct dbenv *dbenv = (struct dbenv *)dbenv_from_ireq(iq);
             // For now we intend to support asynchronous distributed commit only for sorese type AND if durable lsns are not enabled
             if(iq->should_enqueue){ 
-                enqueued = add_to_seqnum_wait_queue(bdb_handle, (seqnum_type *)iq->commit_seqnum, dbenv, &iq->sorese,&iq->errstat,rc);
+                enqueued = add_to_seqnum_wait_queue(bdb_handle, (seqnum_type *)iq->commit_seqnum, dbenv, iq->sorese,&iq->errstat,rc);
                 if(enqueued){
                     free(iq->commit_seqnum);
                     goto cleanup;
@@ -378,15 +378,15 @@ int handle_ireq(struct ireq *iq)
                override the extended code (which we don't care about, with
                the primary error code
                */
-	    if (rc && (!iq->sorese.rcout || rc == ERR_NOT_DURABLE))
-                    iq->sorese.rcout = rc;
+	    if (rc && (!iq->sorese->rcout || rc == ERR_NOT_DURABLE))
+                    iq->sorese->rcout = rc;
 	    int sorese_rc = rc;
-	    if (rc == 0 && iq->sorese.rcout == 0 &&
+	    if (rc == 0 && iq->sorese->rcout == 0 &&
 			    iq->errstat.errval == COMDB2_SCHEMACHANGE_OK) {
 		    // pretend error happend to get errstat shipped to replicant
 		    sorese_rc = 1;
 	    } else {
-		    iq->errstat.errval = iq->sorese.rcout;
+		    iq->errstat.errval = iq->sorese->rcout;
 	    }
 
             if (iq->debug) {
@@ -491,7 +491,7 @@ cleanup:
             if (gbl_print_deadlock_cycles)
                 osql_snap_info = NULL;
 
-            if (iq->sorese.type) {
+            if (iq->sorese) {
                 if (iq->p_buf_out_start) {
                     free(iq->p_buf_out_start);
                     iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
