@@ -148,7 +148,7 @@ void add_to_absolute_ts_list(struct seqnum_wait *item){
 }
 
 
-int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,struct dbenv *dbenv,sorese_info_t *sorese, errstat_t *errstat,int rc){
+int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,struct dbenv *dbenv,osql_sess_t *sorese, errstat_t *errstat,int rc){
     struct seqnum_wait *swait = allocate_seqnum_wait();
     if(swait==NULL){
         // Could not allocate memory...  return 0 here to relapse to waiting inline
@@ -171,7 +171,7 @@ int add_to_seqnum_wait_queue(bdb_state_type* bdb_state, seqnum_type *seqnum,stru
     swait->outrc = rc;
     swait->lsn_lnk.next = NULL;
     swait->lsn_lnk.prev = NULL;
-    memcpy(&swait->sorese,sorese, sizeof(sorese_info_t));
+    memcpy(&swait->sorese,sorese, sizeof(osql_sess_t));
     memcpy(&swait->errstat,errstat, sizeof(errstat_t));
     Pthread_mutex_lock(&(work_queue->mutex));
     if(listc_size(&work_queue->lsn_list) >= gbl_async_dist_commit_max_outstanding_trans){

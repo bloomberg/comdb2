@@ -759,7 +759,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
      * If request is sorese_type , AND
      * If durable_lsns are not enabled, then we return... Distributed commit happens later.
      */
-    if(!(((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0) && gbl_async_dist_commit && iq->sorese.type && !((bdb_state_type *)bdb_handle)->attr->durable_lsns){
+    if(!(((seqnum_type *)ss)->lsn.file==0 && ((seqnum_type *)ss)->lsn.offset==0) && gbl_async_dist_commit && iq->sorese && !((bdb_state_type *)bdb_handle)->attr->durable_lsns){
         //grab a pointer to ss and return rc
         iq->commit_seqnum = ss;
         iq->should_enqueue = 1;
