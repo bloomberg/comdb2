@@ -49,7 +49,7 @@ cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
 echo "$after/$before=$ratio"
-if [ $ratio -gt 1 ]; then
+if [ $ratio -gt 2 ]; then
   echo "leak 1 ratio is $ratio" >&2
   exit 1
 fi
@@ -64,8 +64,9 @@ sleep 5
 kill $pid
 
 # Get a steady memory snapshot
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+sleep 2 # allow the sql engine to detect the disconnect and back out
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 sleep 5
 
@@ -75,8 +76,9 @@ sleep 120
 kill $pid
 
 # Get a memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+sleep 2 # allow the sql engine to detect the disconnect and back out
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
