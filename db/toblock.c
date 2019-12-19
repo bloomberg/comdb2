@@ -1031,7 +1031,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     }
                 }
 
-                if (iq->sorese.type) {
+                if (iq->sorese) {
                     /* reconstruct sorese rcout similar to toblock_main */
                     if (outrc) {
                         switch (outrc) {
@@ -1045,18 +1045,19 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         case ERR_NOTSERIAL:
                         case ERR_SC:
                         case ERR_TRAN_TOO_BIG:
-                            iq->sorese.rcout = outrc;
+                            iq->sorese->rcout = outrc;
                             break;
                         default:
-                            iq->sorese.rcout = outrc + err.errcode;
+                            iq->sorese->rcout = outrc + err.errcode;
                             break;
                         }
                     }
                 }
             } else {
-                /* we need to clear sorese.rcout, it might store some
+                /* we need to clear sorese->rcout, it might store some
                    2nd run error */
-                iq->sorese.rcout = 0;
+                if (iq->sorese)
+                    iq->sorese->rcout = 0;
 
                 outrc = RC_OK;
             }
@@ -1117,7 +1118,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
-               iq->sorese.rcout);
+               iq->sorese ? iq->sorese->rcout : 0);
     }
     blkseq_replay_count++;
     return outrc;
@@ -1949,11 +1950,11 @@ int toblock(struct ireq *iq)
         char *mstr = iq->dbenv->master;
 
         if (mstr != gbl_mynode) {
-            if (iq->is_sorese) {
+            if (iq->sorese) {
 
                 /* Ask the replicant to retry against the new master. */
-                if (iq->is_sorese) {
-                    iq->sorese.rcout = ERR_NOMASTER;
+                if (iq->sorese) {
+                    iq->sorese->rcout = ERR_NOMASTER;
                 }
                 return ERR_REJECTED;
             }
@@ -2652,7 +2653,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     /* If this is a sorese transaction, don't recreate transaction objects */
-    if (iq->is_sorese)
+    if (iq->sorese)
         osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
 
     int lrc = check_for_node_up(iq, p_blkstate);
@@ -4748,14 +4749,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iq->osql_step_ix = NULL;
         }
 
-        delayed = iq->sorese.is_delayed ? 1 : 0;
+        delayed = iq->sorese->is_delayed ? 1 : 0;
 
         if (rc) {
             numerrs = 1;
             GOTOBACKOUT;
         } else {
             nops += tmpnops;
-            iq->sorese.nops = nops;
+            iq->sorese->nops = nops;
         }
     }
 
@@ -5274,8 +5275,8 @@ backout:
     case ERR_SC:
     case ERR_TRAN_TOO_BIG:
         outrc = rc;
-        if (iq->sorese.type)
-            iq->sorese.rcout = outrc;
+        if (iq->sorese)
+            iq->sorese->rcout = outrc;
         break;
     default:
         outrc = ERR_BLOCK_FAILED;
@@ -5287,8 +5288,8 @@ backout:
 #if 0
                 iq->errstat.errval = outrc+err.errcode;
 #endif
-            if (iq->sorese.type)
-                iq->sorese.rcout = outrc + err.errcode;
+            if (iq->sorese)
+                iq->sorese->rcout = outrc + err.errcode;
         }
 
         break;
@@ -5561,7 +5562,7 @@ add_blkseq:
                            "blkseq add '%s', outrc=%d errval=%d "
                            "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                           iq->sorese.rcout, irc);
+                           iq->sorese ? iq->sorese->rcout : 0, irc);
                 }
             } else {
                 if (hascommitlock) {
@@ -5716,9 +5717,10 @@ add_blkseq:
         thrman_wheref(thr_self, "%s [commit and replicate]", req2a(iq->opcode));
 
         /*
-        if (iq->is_sorese)
+        if (iq->sorese)
         {
-            fprintf(stderr, "i don't have a blkseq & is_sorese is set? from %s\n", iq->frommach);
+            fprintf(stderr, "i don't have a blkseq & sorese is set? from %s\n",
+        iq->frommach);
         }
         */
 

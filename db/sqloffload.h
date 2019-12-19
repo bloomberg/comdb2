@@ -23,21 +23,6 @@
 #include "errstat.h"
 #include "sql.h"
 
-enum OSQL_REQ_TYPE {
-    OSQL_REQINV = 0,
-    OSQL_BLOCK_REQ = 1, /* obsolete */
-    OSQL_SOCK_REQ = 2,
-    OSQL_RECOM_REQ = 3,
-    OSQL_SERIAL_REQ = 4,
-
-    OSQL_BLOCK_REQ_COST = 5, /* obsolete */
-    OSQL_SOCK_REQ_COST = 6,
-
-    OSQL_SNAPISOL_REQ = 7,
-    OSQL_SNAP_UID_REQ = 8,
-    OSQL_MAX_REQ = 9,
-};
-
 /* codes for blockproc <-> osql comm */
 enum {
     OSQL_RC_OK = 0,

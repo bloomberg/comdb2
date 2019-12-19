@@ -82,7 +82,7 @@ static int collect_osql_session(void *obj, void *arg)
 static int collect_bplog_session(void *obj, void *arg)
 {
     osql_sess_t *sess = obj;
-    struct ireq *iq = sess->iqcopy;
+    struct ireq *iq = sess->iq;
 
     getosqlsessions_t *osqls = arg;
     osqls->count++;
@@ -101,7 +101,7 @@ static int collect_bplog_session(void *obj, void *arg)
     memset(o, 0, sizeof(*o));
 
     o->type = bplogtype;
-    o->origin = (iq && iq->sorese.host)? strdup(iq->sorese.host) : NULL;
+    o->origin = sess->host? strdup(sess->host) : NULL;
     o->where = iq && iq->where ? strdup(iq->where) : NULL;
     if (iq && iq->have_snap_info) {
         o->cnonce = malloc(iq->snap_info.keylen + 1);
