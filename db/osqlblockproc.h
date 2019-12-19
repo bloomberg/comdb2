@@ -133,9 +133,9 @@ int osql_bplog_reqlog_queries(struct ireq *iq);
 void osql_bplog_time_done(struct ireq *);
 
 /**
- * Throw bplog to /dev/null, sql does not need this
+ * Free the bplog, in case it does not need to run
  *
  */
-int sql_cancelled_transaction(struct ireq *iq);
+void sql_cancelled_transaction(struct ireq *iq);
 
 #endif

@@ -271,14 +271,10 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
         /* sqlite aborted the transaction, skip all the work here
            master not needed */
-        rc = sql_cancelled_transaction(sess->iq);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed cancelling transaction! rc %d\n",
-                   __func__, rc);
-        }
+        sql_cancelled_transaction(sess->iq);
 
         /* done here */
-        return rc;
+        return perr->errval;
     }
 
     *found = 1;
@@ -311,6 +307,12 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* save op */
     int irc = osql_bplog_saveop(sess, data, datalen, rqid, uuid, type);
 
+    /* Must increment seq under completed_lock */
+    Pthread_mutex_lock(&impl->completed_lock);
+    sess->seq++;
+    sess->last_row = time(NULL);
+    Pthread_mutex_unlock(&impl->completed_lock);
+
     /* release the session */
     if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
@@ -321,11 +323,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         return irc;
     }
 
-    /* Must increment seq under completed_lock */
-    Pthread_mutex_lock(&impl->completed_lock);
-    sess->seq++;
-    sess->last_row = time(NULL);
-    Pthread_mutex_unlock(&impl->completed_lock);
     return 0;
 }
 

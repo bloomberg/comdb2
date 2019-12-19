@@ -793,8 +793,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     /* if error from sqlite, just cancel the transaction */
     if (type == OSQL_XERR) {
-        rc = sql_cancelled_transaction(sess->iq);
-        return rc;
+        sql_cancelled_transaction(sess->iq);
+        return xerr->errval;
     }
 
     /* only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS here */
@@ -816,8 +816,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
                "%s: Replicant sent %d opcodes, master received %lld\n",
                __func__, numops, sess->seq + 1);
 
-        rc = sql_cancelled_transaction(sess->iq);
-        return rc;
+        sql_cancelled_transaction(sess->iq);
+        return -1;
     }
 
     return handle_buf_sorese(sess);
@@ -1500,14 +1500,8 @@ void osql_bplog_time_done(struct ireq *iq)
     logmsg(LOGMSG_USER, "%s]\n", msg);
 }
 
-/**
- * Throw bplog to /dev/null, sql does not need this
- *
- */
-int sql_cancelled_transaction(struct ireq *iq)
+void sql_cancelled_transaction(struct ireq *iq)
 {
-    int rc = 0;
-
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     osql_bplog_free(iq, 1, __func__, NULL, 0);
 
@@ -1515,11 +1509,11 @@ int sql_cancelled_transaction(struct ireq *iq)
         /* nothing changed this siince init_ireq */
         free(iq->p_buf_orig);
         iq->p_buf_orig = NULL;
+        iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
+        iq->p_buf_in_end = iq->p_buf_in = NULL;
     }
 
     destroy_ireq(thedb, iq);
-
-    return rc;
 }
 
 int backout_schema_changes(struct ireq *iq, tran_type *tran);
