@@ -2030,19 +2030,15 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             last_long_request_epoch = comdb2_time_epoch();
 
             if (long_request_out != default_out) {
-                char *sqlinfo;
 
-                if (logger->iq) {
-                    sqlinfo = osql_get_tran_summary(logger->iq);
-                } else {
-                    sqlinfo = NULL;
-                }
-                if (sqlinfo) {
+                if (logger->iq && logger->iq->sorese) {
+                    char *sqlinfo = osql_sess_info(logger->iq->sorese);
                     if (long_request_count == 1) {
                         logmsg(LOGMSG_USER,
-                               "LONG REQUEST %d MS logged in %s [%s]\n",
+                               "LONG REQUEST %d MS logged in %s [%s time %d]\n",
                                U2M(logger->durationus),
-                               long_request_out->filename, sqlinfo);
+                               long_request_out->filename, sqlinfo,
+                               U2M(logger->iq->sorese->endus - logger->iq->sorese->startus));
                     } else {
                         logmsg(LOGMSG_USER,
                                "%d LONG REQUESTS %d MS - %d MS logged "
@@ -2075,7 +2071,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
 
     if (logger->iq && logger->iq->blocksql_tran) {
-        if (gbl_time_osql) osql_bplog_time_done(logger->iq);
+        if (gbl_time_osql)
+            osql_bplog_time_done(&logger->iq->timings);
 
         osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
     }

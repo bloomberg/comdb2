@@ -155,34 +155,23 @@ void osql_sess_remclient(osql_sess_t *sess)
 }
 
 /**
- * Print summary session
+ * Return malloc-ed string:
+ * sess_type rqid uuid local/remote host
  *
  */
-int osql_sess_getcrtinfo(void *obj, void *arg)
+char* osql_sess_info(osql_sess_t * sess)
 {
-
-    osql_sess_t *sess = (osql_sess_t *)obj;
     uuidstr_t us;
+    char *ret = malloc(OSQL_SESS_INFO_LEN);
 
-    printf("   %llx %s %s %s\n", sess->rqid, comdb2uuidstr(sess->uuid, us),
-           sess->host ? "REMOTE" : "LOCAL",
-           sess->host ? sess->host : "localhost");
-
-    return 0;
-}
-
-
-/**
- * Returns
- * - total time (tottm)
- * - last roundtrip time (rtt)
- * - retries (rtrs)
- *
- */
-void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs)
-{
-    *tottm = U2M(sess->endus - sess->startus);
-    *rtrs = sess->iq ? sess->iq->retries : 0;
+    if (ret) {
+        snprintf(ret, OSQL_SESS_INFO_LEN, "%s, %llx %s %s%s", 
+                osql_sorese_type_to_str(sess->type),
+                sess->rqid, comdb2uuidstr(sess->uuid, us),
+                sess->host ? "REMOTE " : "LOCAL ",
+                sess->host ? sess->host : "");
+    }
+    return ret;
 }
 
 /**
@@ -190,20 +179,16 @@ void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs)
  */
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
-    uuidstr_t us;
-    char rqid[25];
-    if (sess->rqid == OSQL_RQID_USE_UUID) {
-        comdb2uuidstr(sess->uuid, us);
-    } else
-        snprintf(rqid, sizeof(rqid), "%llx", sess->rqid);
-
+    char *info = osql_sess_info(sess);
     reqlog_logf(reqlog, REQL_INFO,
-                "rqid %s node %s time %" PRId64 "ms rtrs %d queuetime=%" PRId64
+                "%s time %" PRId64 "ms queuetime=%" PRId64
                 "ms \"%s\"\n",
-                sess->rqid == OSQL_RQID_USE_UUID ? us : rqid,
-                sess->host ? sess->host : "", U2M(sess->endus - sess->startus),
-                reqlog_get_retries(reqlog), U2M(reqlog_get_queue_time(reqlog)),
+                (info)?info:"unknown",
+                U2M(sess->endus - sess->startus),
+                U2M(reqlog_get_queue_time(reqlog)),
                 sess->sql ? sess->sql : "()");
+    if(info)
+        free(info);
 }
 
 /**

@@ -440,42 +440,6 @@ char *osql_sorese_type_to_str(int stype)
 }
 
 /**
- * Prints summary for the current osql bp transaction
- *
- */
-char *osql_get_tran_summary(struct ireq *iq)
-{
-
-    char *ret = NULL;
-    char *nametype;
-
-    /* format
-       (BLOCKSQL OPS:[4] MIN:[8]msec MAX:[8]msec)
-     */
-    if (iq->blocksql_tran) {
-        blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-        int sz = 128;
-        int tottm = 0;
-        int rtrs = 0;
-
-        ret = (char *)malloc(sz);
-        if (!ret) {
-            logmsg(LOGMSG_ERROR, "%s: failed to allocated %d bytes\n", __func__, sz);
-            return NULL;
-        }
-
-        osql_sess_getsummary(tran->sess, &tottm, &rtrs);
-
-        nametype = osql_sorese_type_to_str(iq->sorese->type);
-
-        snprintf(ret, sz, "%s tot=%ums rtrs=%u", nametype, tottm, rtrs);
-        ret[sz - 1] = '\0';
-    }
-
-    return ret;
-}
-
-/**
  * Free all the sessions and free the bplog
  * HACKY: since we want to catch and report long requests in block
  * process, call this function only after reqlog_end_request is called
@@ -1340,17 +1304,6 @@ static int process_this_session(
     return rc_out;
 }
 
-/**
- * Log the strings for each completed blocksql request for the
- * reqlog
- */
-int osql_bplog_reqlog_queries(struct ireq *iq)
-{
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    osql_sess_reqlogquery(tran->sess, iq->reqlogger);
-    return 0;
-}
-
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err, SBUF2 *logsb,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
@@ -1459,45 +1412,26 @@ static int req2blockop(int reqtype)
     return OSQL_REQINV;
 }
 
-void osql_bplog_time_done(struct ireq *iq)
+void osql_bplog_time_done(osql_bp_timings_t *tms)
 {
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    osql_bp_timings_t *tms = &iq->timings;
     char msg[4096];
-    int tottm = 0;
-    int rtrs = 0;
-    int len;
 
-    if (!gbl_time_osql)
-        return;
+    if (tms->req_sentrc == 0)
+        tms->req_sentrc = tms->req_applied;
 
-    if (tran) {
-        if (tms->req_sentrc == 0)
-            tms->req_sentrc = tms->req_applied;
-
-        snprintf0(
-            msg, sizeof(msg),
+    snprintf0(msg, sizeof(msg),
             "Total %llu (sql=%llu upd=%llu repl=%llu signal=%llu retries=%u) [",
             tms->req_finished - tms->req_received, /* total time */
             tms->req_alldone -
-                tms->req_received, /* time to get sql processing done */
+            tms->req_received, /* time to get sql processing done */
             tms->req_applied - tms->req_alldone,    /* time to apply updates */
             tms->req_sentrc - tms->replication_end, /* time to sent rc back to
                                                        sql (non-relevant for
                                                        blocksql*/
             tms->replication_end -
-                tms->replication_start, /* time to replicate */
+            tms->replication_start, /* time to replicate */
             tms->retries - 1);          /* how many time bplog was retried */
-        len = strlen(msg);
-
-        /* these are failed */
-        osql_sess_getsummary(tran->sess, &tottm, &rtrs);
-        snprintf0(msg + len, sizeof(msg) - len,
-                  " C(rqid=%llu time=%ums retries=%u)", tran->sess->rqid, tottm,
-                  rtrs);
-        len = strlen(msg);
-    }
-    logmsg(LOGMSG_USER, "%s]\n", msg);
+   logmsg(LOGMSG_USER, "%s]\n", msg);
 }
 
 void sql_cancelled_transaction(struct ireq *iq)

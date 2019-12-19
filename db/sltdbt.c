@@ -423,8 +423,8 @@ int handle_ireq(struct ireq *iq)
     }
 
     /* Finish off logging. */
-    if (iq->blocksql_tran) {
-        osql_bplog_reqlog_queries(iq);
+    if (iq->sorese) {
+        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     release_node_stats(NULL, NULL, iq->frommach);

@@ -361,6 +361,18 @@ void osql_set_cancelall(int disable)
         osql_repository_cancelall();
 }
 
+static int _getcrtinfo(void *obj, void *arg)
+{
+    char *str = osql_sess_info((osql_sess_t *)obj);
+
+    logmsg(LOGMSG_USER, "   %s\n", str?str:"unknown");
+
+    if (str)
+        free(str);
+
+    return 0;
+}
+
 /**
  * Print info about pending osql sessions
  *
@@ -386,7 +398,7 @@ int osql_repository_printcrtsessions(void)
     Pthread_mutex_lock(&stat->hshlck);
 
     logmsg(LOGMSG_USER, "Begin osql session info:\n");
-    if ((rc = hash_for(stat->rqs, osql_sess_getcrtinfo, NULL))) {
+    if ((rc = hash_for(stat->rqs, _getcrtinfo, NULL))) {
         logmsg(LOGMSG_USER, "hash_for failed with rc = %d\n", rc);
         rc = -1;
     } else

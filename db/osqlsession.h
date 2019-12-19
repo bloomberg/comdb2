@@ -56,10 +56,13 @@ void osql_sess_remclient(osql_sess_t *sess);
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
 
 /**
- * Print summary session
+ * Session information 
+ * Return malloc-ed string:
+ * sess_type rqid uuid local/remote host
  *
  */
-int osql_sess_getcrtinfo(void *obj, void *arg);
+#define OSQL_SESS_INFO_LEN 256
+char* osql_sess_info(osql_sess_t * sess);
 
 /**
  * Returns associated blockproc transaction
@@ -94,25 +97,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
                               const char *host, bool is_reorder_on);
 
-/**
- * Returns
- * - total time in ms (tottm)
- * - retries (rtrs)
- *
- */
-void osql_sess_getsummary(osql_sess_t *sess, int *tottm, int *rtrs);
-
 int osql_sess_queryid(osql_sess_t *sess);
-
-/**
- * Needed for socksql and bro-s, which creates sessions before
- * iq->bplogs.
- * If we fail to dispatch to a blockprocession thread, we need this function
- * to clear the session from repository and free that leaked memory
- *
- */
-void osql_sess_clear_on_error(struct ireq *iq, unsigned long long rqid,
-                              uuid_t uuid);
 
 int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long,
                        char *rpl);

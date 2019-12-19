@@ -87,14 +87,6 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
                      const char *callfunc, int line);
 
 /**
- * Prints summary for the current osql bp transaction
- * It uses the specified "printfn" function to dump the information
- * to a reqlog engine.
- *
- */
-char *osql_get_tran_summary(struct ireq *iq);
-
-/**
  * Inserts the op in the iq oplog
  * If sql processing is local, this is called by sqlthread
  * If sql processing is remote, this is called by reader_thread for the
@@ -120,17 +112,11 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
                                 unsigned long long rqid, uuid_t uuid);
 
 /**
- * Log the strings for each completed blocksql request for the
- * reqlog
- */
-int osql_bplog_reqlog_queries(struct ireq *iq);
-
-/**
  * Debugging support
  * Prints all the timings recorded for this bplog
  *
  */
-void osql_bplog_time_done(struct ireq *);
+void osql_bplog_time_done(osql_bp_timings_t *tms);
 
 /**
  * Free the bplog, in case it does not need to run

@@ -3204,7 +3204,6 @@ struct dbtable *systable_get_db(int systableid);
 extern int gbl_num_contexts;
 extern int gbl_buffers_per_context;
 
-char *osql_get_tran_summary(struct ireq *iq);
 char *osql_sorese_type_to_str(int stype);
 extern int gbl_malloc_regions;
 
