@@ -151,6 +151,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         }
     }
     if ((dbenv == NULL) || (dbenv->master != gbl_mynode)) return NULL;
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     for (int i = 0; i < dbenv->num_qdbs; i++) {
         dbtable *tbl = dbenv->qdbs[i];
         if (tbl == NULL) continue;
@@ -200,6 +201,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             }
         }
     }
+    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     return NULL;
 }
 
