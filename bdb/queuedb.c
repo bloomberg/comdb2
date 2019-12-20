@@ -17,6 +17,7 @@
 #include "bdb_cursor.h"
 #include "bdb_int.h"
 #include "locks.h"
+#include "str0.h"
 
 #include "bdb_queue.h"
 #include "bdb_queuedb.h"
@@ -87,6 +88,49 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
     return p_buf;
 }
 
+static int bdb_queuedb_is_db_empty(DB *db, tran_type *tran)
+{
+    int rc;
+    DBC *dbcp = NULL;
+    DBT dbt_key = {0}, dbt_data = {0};
+
+    rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
+    if (rc != 0) {
+        rc = 0; /* TODO: Safe failure choice here is non-empty? */
+        goto done;
+    }
+    dbt_data.flags = dbt_key.flags = DB_DBT_MALLOC;
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
+    if (rc == DB_NOTFOUND) {
+        rc = 1; /* NOTE: Confirmed empty. */
+    } else if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: c_get berk rc %d\n", __func__, rc);
+        rc = 0; /* TODO: Safe failure choice here is non-empty? */
+    } else {
+        rc = 0; /* NOTE: Confirmed non-empty. */
+    }
+done:
+    if (dbcp) {
+        int crc = dbcp->c_close(dbcp);
+        if (crc) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+        }
+    }
+    if (dbt_key.data)
+        free(dbt_key.data);
+    if (dbt_data.data)
+        free(dbt_data.data);
+    return rc;
+}
+
+static int bdb_queuedb_is_db_full(DB *db)
+{
+    struct stat sb;
+    if (gbl_queuedb_file_threshold <= 0) return 0; /* never full? */
+    if (stat(db->fname, &sb) != 0) return 0; /* cannot detect, assume no? */
+    return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
+}
+
 static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
     struct dbenv *dbenv = NULL;
@@ -106,7 +150,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         for (int i = 0; i < dbenv->num_qdbs; i++) {
             dbtable *tbl = dbenv->qdbs[i];
             if (tbl == NULL) continue;
-            bdb_state_type *bdb_state = db->handle;
+            bdb_state_type *bdb_state = tbl->handle;
             if (bdb_state == NULL) continue;
             DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
             DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
@@ -119,7 +163,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                         continue;
                     }
                     strncpy0(
-                        sc->tablename, db1->tablename, sizeof(sc->tablename)
+                        sc->tablename, bdb_state->name, sizeof(sc->tablename)
                     );
                     sc->type = DBTYPE_QUEUEDB;
                     sc->del_qdb_file = 1;
@@ -138,7 +182,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                     continue;
                 }
                 strncpy0(
-                    sc->tablename, db1->tablename, sizeof(sc->tablename)
+                    sc->tablename, bdb_state->name, sizeof(sc->tablename)
                 );
                 sc->type = DBTYPE_QUEUEDB;
                 sc->add_qdb_file = 1;
@@ -210,49 +254,6 @@ int bdb_queuedb_create_cron(void *arg)
         }
     }
     return xerr.errval;
-}
-
-static int bdb_queuedb_is_db_empty(DB *db, tran_type *tran)
-{
-    int rc;
-    DBC *dbcp = NULL;
-    DBT dbt_key = {0}, dbt_data = {0};
-
-    rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
-    if (rc != 0) {
-        rc = 0; /* TODO: Safe failure choice here is non-empty? */
-        goto done;
-    }
-    dbt_data.flags = dbt_key.flags = DB_DBT_MALLOC;
-    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
-    if (rc == DB_NOTFOUND) {
-        rc = 1; /* NOTE: Confirmed empty. */
-    } else if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: c_get berk rc %d\n", __func__, rc);
-        rc = 0; /* TODO: Safe failure choice here is non-empty? */
-    } else {
-        rc = 0; /* NOTE: Confirmed non-empty. */
-    }
-done:
-    if (dbcp) {
-        int crc = dbcp->c_close(dbcp);
-        if (crc) {
-            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
-        }
-    }
-    if (dbt_key.data)
-        free(dbt_key.data);
-    if (dbt_data.data)
-        free(dbt_data.data);
-    return rc;
-}
-
-static int bdb_queuedb_is_db_full(DB *db)
-{
-    struct stat sb;
-    if (gbl_queuedb_file_threshold <= 0) return 0; /* never full? */
-    if (stat(db->fname, &sb) != 0) return 0; /* cannot detect, assume no? */
-    return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
 }
 
 void bdb_queuedb_init_priv(bdb_state_type *bdb_state)
