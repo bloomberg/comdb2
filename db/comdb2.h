@@ -709,6 +709,7 @@ typedef struct dbtable {
 
     /* One of the DBTYPE_ constants. */
     int dbtype;
+    int qdb_was_full;
 
     struct consumer *consumers[MAXCONSUMERS];
 

@@ -180,8 +180,9 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                            __func__, sc->tablename);
                     free_schema_change_type(sc);
                 }
+                tbl->qdb_was_full = 0;
             }
-        } else if (bdb_queuedb_is_db_full(db1)) {
+        } else if (tbl->qdb_was_full == 0 && bdb_queuedb_is_db_full(db1)) {
             sc = new_schemachange_type();
             if (sc == NULL) {
                 continue;
@@ -199,6 +200,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                            __func__, sc->tablename);
                 free_schema_change_type(sc);
             }
+            tbl->qdb_was_full = 1;
         }
     }
     bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDWR);
