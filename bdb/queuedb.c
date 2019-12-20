@@ -125,9 +125,12 @@ done:
 
 static int bdb_queuedb_is_db_full(DB *db)
 {
-    struct stat sb;
     if (gbl_queuedb_file_threshold <= 0) return 0; /* never full? */
-    if (stat(db->fname, &sb) != 0) return 0; /* cannot detect, assume no? */
+    char new[PATH_MAX];
+    struct stat sb;
+    if (stat(bdb_trans(db->fname, new), &sb) != 0) {
+        return 0; /* cannot detect, assume no? */
+    }
     return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
 }
 
@@ -135,7 +138,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
     if (db_is_stopped()) return NULL;
     struct dbenv *dbenv = NULL;
-    if (evt != NULL) dbenv = evt->arg1;
+    if (evt != NULL) dbenv = evt->arg4NoFree;
     if (gbl_queuedb_file_interval > 0) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
         void *p = cron_add_event(gbl_queuedb_cron, NULL, tm,

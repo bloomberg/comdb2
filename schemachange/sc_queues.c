@@ -698,7 +698,7 @@ done:
         trans_abort(&iq, tran);
         tran = NULL;
     }
-    logmsg(LOGMSG_DEBUG, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
+    logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
 }
@@ -791,7 +791,7 @@ done:
         trans_abort(&iq, tran);
         tran = NULL;
     }
-    logmsg(LOGMSG_DEBUG, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
+    logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
 }
