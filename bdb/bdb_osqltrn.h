@@ -91,7 +91,7 @@ void bdb_set_gbl_recoverable_lsn(void *lsn, int32_t timestamp);
  * Do a quick count of all the clients - don't bother parsing
  * the log if there are none.
  */
-int bdb_osql_trn_count_clients(int *count, int lock_repo, int *bdberr);
+void bdb_osql_trn_count_clients(int *count, int lock_repo);
 
 /**
  * Returns the first log

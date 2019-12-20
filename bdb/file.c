@@ -201,6 +201,9 @@ static int bdb_checkpoint_list_ok_to_delete_log(int min_keep_logs_age,
             if (time(NULL) - ckp->timestamp < min_keep_logs_age) {
                 Pthread_mutex_unlock(&ckp_lst_mtx);
                 return 0;
+            } else {
+                Pthread_mutex_unlock(&ckp_lst_mtx);
+                return 1;
             }
         }
     }
@@ -1062,7 +1065,8 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
                      int *bdberr)
 {
     DB_TXN *tid = tran ? tran->tid : NULL;
-    char *orig_name;
+    char *saved_name;
+    char *saved_origname; /* certain sc set this, preserve */
     int rc;
 
     rc = close_dbs_flush(bdb_state, tid);
@@ -1071,21 +1075,25 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
         return -1;
     }
 
+    saved_origname = bdb_state->origname;
+    bdb_state->origname = NULL;
     rc = bdb_rename_file_versioning_table(bdb_state, tran, newname, bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
+        bdb_state->origname = saved_origname;
         return -1;
     }
 
-    orig_name = bdb_state->name;
+    saved_name = bdb_state->name;
     bdb_state->name = newname;
     rc = open_dbs(bdb_state, 1, 1, 0, tid);
     if (rc != 0) {
-        bdb_state->name = orig_name;
+        bdb_state->name = saved_name;
+        bdb_state->origname = saved_origname;
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
     }
-    bdb_state->name = orig_name;
+    bdb_state->name = saved_name;
     bdb_state->isopen = 1;
 
     return 0;

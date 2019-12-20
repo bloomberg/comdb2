@@ -991,7 +991,7 @@ static int bdb_free_shadows_table(bdb_state_type *bdb_state,
 }
 
 /* init bdb osql support for snapshot/serializable sql transactions */
-int bdb_osql_init(int *bdberr)
+inline int bdb_osql_init(int *bdberr)
 {
     int rc = 0;
 

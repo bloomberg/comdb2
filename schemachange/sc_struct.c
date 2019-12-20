@@ -838,7 +838,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return rc;
         }
 
-        foundix = getdbidxbyname(table);
+        foundix = getdbidxbyname_ll(table);
         if (foundix == -1) {
             logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
             exit(1);

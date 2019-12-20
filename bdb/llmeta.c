@@ -8755,6 +8755,8 @@ int bdb_llmeta_drop_queue(bdb_state_type *bdb_state, tran_type *tran,
 
     *bdberr = BDBERR_NOERROR;
 
+    bdb_lock_table_write(bdb_state, tran);
+
     p_buf = (uint8_t *)key;
     p_buf_end = p_buf + LLMETA_IXLEN;
     qk.file_type = LLMETA_TRIGGER;

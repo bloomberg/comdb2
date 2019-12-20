@@ -114,7 +114,6 @@ extern int gbl_use_appsock_as_sqlthread;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
 extern int portmux_port;
-extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;
@@ -255,6 +254,8 @@ extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
+extern int gbl_ref_sync_pollms;
+extern int gbl_ref_sync_iterations;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;

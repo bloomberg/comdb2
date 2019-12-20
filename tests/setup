@@ -393,38 +393,44 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="$paths:${PATH}"
-    SETENV="${PWD}/setenv.sh "
-    RUNTEST="${PWD}/runtest.sh "
+    SETENV="${PWD}/setenv.sh"
+    RUNTEST="${PWD}/runtest.sh"
+    RUNDIR=${TESTSROOTDIR}/${TESTCASE}.test/
     echo "Once db is ready, please run: $RUNTEST"
-    echo "#!/usr/bin/env bash" > $RUNTEST
-    echo "#!/usr/bin/env bash" > $SETENV
-    #echo "set +x"  >> $RUNTEST
-    for env in $vars; do
-        echo "export $env=\"${!env}\"" >> $SETENV
-    done
-    if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
-        echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
-        echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
-        echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
-        echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
-        echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
-    fi
-    echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
-    echo "export PATH=${paths}"':${PATH}' >> $SETENV
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
-    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
-    echo ". $SETENV" >> $RUNTEST
-    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
-    echo "./runit ${DBNAME} " >> $RUNTEST
-    echo "echo; echo; echo;" >> $RUNTEST
-    echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo
     echo
-    chmod +x $SETENV
-    chmod +x $RUNTEST
+else
+    RUNDIR=${TESTDIR}/${TESTCASE}.test/
+    SETENV="${RUNDIR}/setenv.sh"
+    RUNTEST="${RUNDIR}/runtest.sh"
 fi
 
 
+#generate runtest and setenv scripts
+echo "#!/usr/bin/env bash" > $RUNTEST
+echo "#!/usr/bin/env bash" > $SETENV
+#echo "set +x"  >> $RUNTEST
+for env in $vars; do
+    echo "export $env=\"${!env}\"" >> $SETENV
+done
+if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
+    echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
+    echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
+    echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
+    echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
+fi
+echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
+echo "export PATH=${paths}"':${PATH}' >> $SETENV
+[[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
+[[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
+echo ". $SETENV" >> $RUNTEST
+echo "cd $RUNDIR" >> $RUNTEST
+echo "./runit ${DBNAME} " >> $RUNTEST
+echo "echo; echo; echo;" >> $RUNTEST
+echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
+chmod +x $SETENV
+chmod +x $RUNTEST
 
 
 echo 'setup successful'

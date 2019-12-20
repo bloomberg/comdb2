@@ -107,8 +107,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
                        stored_sc->rqid, us, stored_sc->tablename,
                        stored_sc->addonly, stored_sc->drop_table,
                        stored_sc->fastinit, stored_sc->alteronly);
-                if (stored_sc->rqid == iq->sorese.rqid &&
-                    comdb2uuidcmp(stored_sc->uuid, iq->sorese.uuid) == 0) {
+                if (stored_sc->rqid == iq->sorese->rqid &&
+                    comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     if (last_sc)
                         last_sc = stored_sc->sc_next;
                     else
@@ -186,8 +186,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (stored_sc && !stored_sc->fulluprecs &&
                 !stored_sc->partialuprecs &&
                 stored_sc->type == DBTYPE_TAGGED_TABLE) {
-                if (stored_sc->rqid && stored_sc->rqid == iq->sorese.rqid &&
-                    comdb2uuidcmp(stored_sc->uuid, iq->sorese.uuid) == 0) {
+                if (stored_sc->rqid && stored_sc->rqid == iq->sorese->rqid &&
+                    comdb2uuidcmp(stored_sc->uuid, iq->sorese->uuid) == 0) {
                     s->rqid = stored_sc->rqid;
                     comdb2uuidcpy(s->uuid, stored_sc->uuid);
                     s->resume = 1;
@@ -947,7 +947,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         abort();
     }
 
-    if ((foundix = getdbidxbyname(s->tablename)) < 0) {
+    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
         logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         abort();
     }
