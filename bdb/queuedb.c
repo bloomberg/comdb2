@@ -23,6 +23,8 @@
 #include "plbitlib.h"
 #include "logmsg.h"
 #include "cron.h"
+#include "schemachange.h"
+#include "comdb2.h"
 
 extern int gbl_queuedb_file_threshold;
 extern int gbl_queuedb_file_interval;
@@ -91,10 +93,10 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     if (evt != NULL) dbenv = evt->arg1;
     if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
-        void *rc = cron_add_event(gbl_queuedb_cron, NULL, tm,
-                                  (FCRON)queuedb_cron_event, dbenv,
-                                  NULL, NULL, NULL, err, NULL);
-        if (rc == NULL) {
+        void *p = cron_add_event(gbl_queuedb_cron, NULL, tm,
+                                 (FCRON)queuedb_cron_event, dbenv,
+                                 NULL, NULL, NULL, err, NULL);
+        if (p == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
                             "rc = %d, errstr = %s\n",
                     err->errval, err->errstr);
@@ -102,9 +104,53 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     }
     if (dbenv != NULL) {
         for (int i = 0; i < dbenv->num_qdbs; i++) {
-
-
-
+            dbtable *tbl = dbenv->qdbs[i];
+            if (tbl == NULL) continue;
+            bdb_state_type *bdb_state = db->handle;
+            if (bdb_state == NULL) continue;
+            DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+            DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+            struct schema_change_type *sc = NULL;
+            int rc;
+            if (db2 != NULL) {
+                if (bdb_queuedb_is_db_empty(db1, NULL)) {
+                    sc = new_schemachange_type();
+                    if (sc == NULL) {
+                        continue;
+                    }
+                    strncpy0(
+                        sc->tablename, db1->tablename, sizeof(sc->tablename)
+                    );
+                    sc->type = DBTYPE_QUEUEDB;
+                    sc->del_qdb_file = 1;
+                    rc = start_schema_change(sc);
+                    if (rc != SC_OK && rc != SC_ASYNC) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s: failed to start schema change to delete "
+                               "old file for queuedb '%s'\n",
+                               __func__, sc->tablename);
+                        free_schema_change_type(sc);
+                    }
+                }
+            } else if (bdb_queuedb_is_db_full(db1)) {
+                sc = new_schemachange_type();
+                if (sc == NULL) {
+                    continue;
+                }
+                strncpy0(
+                    sc->tablename, db1->tablename, sizeof(sc->tablename)
+                );
+                sc->type = DBTYPE_QUEUEDB;
+                sc->add_qdb_file = 1;
+                rc = start_schema_change(sc);
+                if (rc != SC_OK && rc != SC_ASYNC) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: failed to start schema change to add "
+                           "new file for queuedb '%s'\n",
+                               __func__, sc->tablename);
+                    free_schema_change_type(sc);
+                }
+            }
         }
     }
     return NULL;
@@ -139,7 +185,7 @@ static char *queuedb_cron_event_describe(sched_if_t *impl, cron_event_t *event)
     return strdup(name);
 }
 
-int bdb_queuedb_create_cron(struct dbenv *dbenv)
+int bdb_queuedb_create_cron(void *arg)
 {
     struct errstat xerr = {0};
 
@@ -151,11 +197,11 @@ int bdb_queuedb_create_cron(struct dbenv *dbenv)
             );
             gbl_queuedb_cron = cron_add_event(NULL, "QueueDB Job Scheduler",
                                       INT_MIN, (FCRON)queuedb_cron_kickoff,
-                                      dbenv, NULL, NULL, NULL, &xerr, &impl);
+                                      arg, NULL, NULL, NULL, &xerr, &impl);
         } else {
             gbl_queuedb_cron = cron_add_event(gbl_queuedb_cron, NULL, INT_MIN,
                                       (FCRON)queuedb_cron_kickoff, NULL, NULL,
-                                      dbenv, NULL, &xerr, NULL);
+                                      arg, NULL, &xerr, NULL);
         }
         if (gbl_queuedb_cron == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule queuedb cron job. "
@@ -172,7 +218,7 @@ static int bdb_queuedb_is_db_empty(DB *db, tran_type *tran)
     DBC *dbcp = NULL;
     DBT dbt_key = {0}, dbt_data = {0};
 
-    rc = db->cursor(db, tran->tid, &dbcp, 0);
+    rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
     if (rc != 0) {
         rc = 0; /* TODO: Safe failure choice here is non-empty? */
         goto done;
