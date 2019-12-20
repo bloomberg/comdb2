@@ -1047,57 +1047,61 @@ __dbreg_pluck_id(dbenv, id)
 	return (0);
 }
 
-#ifdef DEBUG
 /*
- * __dbreg_print_dblist --
- *	Display the list of files.
+ * __bb_dbreg_print_all_dblist --
+ *	Display all entries in dblist.
  *
- * PUBLIC: void __dbreg_print_dblist __P((DB_ENV *));
+ * PUBLIC: void __bb_dbreg_print_all_dblist __P((DB_ENV *, void(*)(void *, const char *, ...), void *));
  */
 void
-__dbreg_print_dblist(dbenv)
+__bb_dbreg_print_all_dblist(dbenv, prncallback, userptr)
 	DB_ENV *dbenv;
+	void (*prncallback)(void *userptr, const char *fmt, ...);
+	void *userptr;
 {
-	DB *dbp;
-	DB_LOG *dblp;
+    DB *ldbp;
 	FNAME *fnp;
-	LOG *lp;
 	int del, first;
 	char *name;
 
-	dblp = dbenv->lg_handle;
-	lp = dblp->reginfo.primary;
+    MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
+    DB_MPOOL *dbmp = dbenv->mp_handle;
+	int longest_len = 0;
 
-	MUTEX_LOCK(dbenv, &lp->fq_mutex);
+	for (ldbp = LIST_FIRST(&dbenv->dblist);
+			ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
+		name = (char*)R_ADDR(dbmp->reginfo, ldbp->mpf->mfp->path_off); 
+		int len = strlen(name);
+		if (longest_len < len)
+			longest_len = len;
+	}
 
-	for (first = 1, fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
-	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+	prncallback(userptr, "__bb_dbreg_print_dblist ----------\n");
+	for (first = 1, ldbp = LIST_FIRST(&dbenv->dblist);
+			ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
+
 		if (first) {
 			first = 0;
-			__db_err(dbenv,
-			    "ID\t\t\tName\tType\tPgno\tTxnid\tDBP-info");
+			prncallback(userptr, "%5s %-*s%-8s%-10s%-10s%s\n",
+					"ID", longest_len + 1, "Name", "Type", "Pgno", "Txnid", "DBP-Info");
 		}
+		fnp = ldbp->log_filename;
 		if (fnp->name_off == INVALID_ROFF)
 			name = "";
 		else
-			name = R_ADDR(&dblp->reginfo, fnp->name_off);
+			name = (char*)R_ADDR(dbmp->reginfo, ldbp->mpf->mfp->path_off); 
 
-		dbp = fnp->id >= dblp->dbentry_cnt ? NULL :
-		    dblp->dbentry[fnp->id].dbp;
-		del = fnp->id >= dblp->dbentry_cnt ? 0 :
-		    dblp->dbentry[fnp->id].deleted;
-		__db_err(dbenv, "%ld\t%s\t\t\t%s\t%lu\t%lx\t%s %d %lx %lx",
-		    (long)fnp->id, name,
-		    __db_dbtype_to_string(fnp->s_type),
-		    (u_long)fnp->meta_pgno, (u_long)fnp->create_txnid,
-		    dbp == NULL ? "No DBP" : "DBP", del, P_TO_ULONG(dbp),
-		    (u_long)(dbp == NULL ? 0 : dbp->flags));
-	}
+		prncallback(userptr,
+		    "%5ld %-*s %-8s%-10lu%-10lx%s %d %lx %lx\n",
+		    (long)fnp->id, longest_len, name, __db_dbtype_to_string(ldbp->type),
+		    (u_long)ldbp->meta_pgno, (u_long)fnp->create_txnid,
+		    ldbp == NULL ? "No DBP" : "DBP", NULL, P_TO_ULONG(ldbp),
+		    (u_long)(ldbp == NULL ? 0 : ldbp->flags));
+    }
 
-	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
+    MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
+	prncallback(userptr, "__bb_dbreg_print_dblist ^^^^^^^^^^\n");
 }
-#endif
-
 
 /*
  * __bb_dbreg_print_dblist --
@@ -1119,9 +1123,19 @@ __bb_dbreg_print_dblist(dbenv, prncallback, userptr)
 	LOG *lp;
 	int del, first;
 	char *name;
+	int longest_len = 0;
 
 	dblp = dbenv->lg_handle;
 	lp = dblp->reginfo.primary;
+	for (first = 1, fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
+	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
+		if (fnp->name_off == INVALID_ROFF)
+            continue;
+        name = R_ADDR(&dblp->reginfo, fnp->name_off);
+		int len = strlen(name);
+		if (longest_len < len)
+			longest_len = len;
+    }
 
 	prncallback(userptr, "__bb_dbreg_print_dblist ----------\n");
 	MUTEX_LOCK(dbenv, &lp->fq_mutex);
@@ -1130,8 +1144,8 @@ __bb_dbreg_print_dblist(dbenv, prncallback, userptr)
 	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
 		if (first) {
 			first = 0;
-			prncallback(userptr, "  %-5s%-32s%-8s%-10s%-10s%s\n",
-					"ID", "Name", "Type", "Pgno", "Txnid", "DBP-Info");
+			prncallback(userptr, "%5s %-*s%-8s%-10s%-10s%s\n",
+					"ID", longest_len + 1, "Name", "Type", "Pgno", "Txnid", "DBP-Info");
 		}
 		if (fnp->name_off == INVALID_ROFF)
 			name = "";
@@ -1143,8 +1157,8 @@ __bb_dbreg_print_dblist(dbenv, prncallback, userptr)
 		del = fnp->id >= dblp->dbentry_cnt ? 0 :
 		    dblp->dbentry[fnp->id].deleted;
 		prncallback(userptr,
-		    "  %-5ld%-32s %-8s%-10lu%-10lx%s %d %lx %lx\n",
-		    (long)fnp->id, name, __db_dbtype_to_string(fnp->s_type),
+		    "%5ld %-*s %-8s%-10lu%-10lx%s %d %lx %lx\n",
+		    (long)fnp->id, longest_len, name, __db_dbtype_to_string(fnp->s_type),
 		    (u_long)fnp->meta_pgno, (u_long)fnp->create_txnid,
 		    dbp == NULL ? "No DBP" : "DBP", del, P_TO_ULONG(dbp),
 		    (u_long)(dbp == NULL ? 0 : dbp->flags));

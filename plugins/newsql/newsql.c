@@ -59,7 +59,7 @@ static int newsql_has_parallel_sql(struct sqlclntstate *);
 struct newsqlheader {
     int type;        /*  newsql request/response type */
     int compression; /*  Some sort of compression done? */
-    int dummy;       /*  Make it equal to fsql header. */
+    int state;       /*  query state - whether it's progressing, etc. */
     int length;      /*  length of response */
 };
 
@@ -359,10 +359,11 @@ static inline int newsql_to_client_type(int newsql_type)
     }
 }
 
-static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
+static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int state)
 {
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
+    hdr.state = ntohl(state);
     int rc;
     lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
@@ -615,11 +616,18 @@ static int newsql_flush(struct sqlclntstate *clnt)
 
 static int newsql_heartbeat(struct sqlclntstate *clnt)
 {
+    int state;
+
     if (!clnt->heartbeat)
         return 0;
     if (!clnt->ready_for_heartbeats)
         return 0;
-    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT);
+
+    state = (clnt->sqltick > clnt->sqltick_last_seen);
+    clnt->sqltick_last_seen = clnt->sqltick;
+
+    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT,
+                           state);
 }
 
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
@@ -1456,6 +1464,69 @@ static int newsql_send_intrans_response(struct sqlclntstate *clnt)
     return appdata->send_intrans_response;
 }
 
+int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
+{
+    int iswarn = 0;
+    double cost;
+    char *endp;
+
+    sqlstr += 11;
+    sqlstr = skipws(sqlstr);
+
+    if (strncasecmp(sqlstr, "warn", 4) == 0) {
+        sqlstr += 4;
+        sqlstr = skipws(sqlstr);
+        iswarn = 1;
+    }
+
+    if (strncasecmp(sqlstr, "maxcost", 7) == 0) {
+        sqlstr += 7;
+        sqlstr = skipws(sqlstr);
+        cost = strtod(sqlstr, &endp);
+        if (*endp != 0)
+            return 1;
+        if (iswarn) {
+            clnt->limits.maxcost_warn = cost;
+        } else {
+            clnt->limits.maxcost = cost;
+        }
+        return 0;
+    } else if (strncasecmp(sqlstr, "tablescans", 10) == 0) {
+        int onoff = 1;
+        sqlstr += 10;
+        sqlstr = skipws(sqlstr);
+        if (strncasecmp(sqlstr, "on", 2) == 0) {
+            onoff = 1;
+        } else if (strncasecmp(sqlstr, "off", 3) == 0) {
+            onoff = 0;
+        } else
+            return 0;
+        if (iswarn) {
+            clnt->limits.tablescans_warn = onoff;
+        } else {
+            clnt->limits.tablescans_ok = htonl(onoff);
+        }
+        return 0;
+    } else if (strncasecmp(sqlstr, "temptables", 10) == 0) {
+        int onoff = 1;
+        sqlstr += 10;
+        sqlstr = skipws(sqlstr);
+        if (strncasecmp(sqlstr, "on", 2) == 0) {
+            onoff = 0;
+        } else if (strncasecmp(sqlstr, "off", 3) == 0) {
+            onoff = 1;
+        } else
+            return 0;
+        if (iswarn) {
+            clnt->limits.temptables_warn = htonl(onoff);
+        } else {
+            clnt->limits.temptables_ok = htonl(onoff);
+        }
+        return 0;
+    } else
+        return 1;
+}
+
 /* Process sql query if it is a set command. */
 static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                 CDB2SQLQUERY *sql_query)
@@ -1805,6 +1876,8 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 } else {
                     clnt->admin = 1;
                 }
+            } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
+                rc = handle_set_querylimits(sqlstr, clnt);
             } else {
                 rc = ii + 1;
             }
@@ -2119,7 +2192,7 @@ retry_read:
         }
 
         if (client_supports_ssl) {
-            newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL);
+            newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
             cdb2__query__free_unpacked(query, &pb_alloc);
             query = NULL;
             goto retry_read;

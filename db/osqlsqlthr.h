@@ -115,14 +115,6 @@ int get_osql_maxtransfer(void);
 int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype);
 
 /**
- * Called when all rows are retrieved
- * Informs block process that the sql processing is over
- * and it can start processing bloplog
- *
- */
-int osql_block_commit(struct sql_thread *thd);
-
-/**
  * Start a sosql session, which
  * creates a blockprocessor peer
  * if keep_rqid, this is a retry and we want to

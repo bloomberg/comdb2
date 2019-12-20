@@ -569,7 +569,7 @@ Table of users for the database that do or do not have operator access.
 
 Information about recent schema changes.
 
-    comdb2_sc_status(name, type, newcsc2, start, status, last_updated,
+    comdb2_sc_status(name, type, newcsc2, start, status, seed, last_updated,
                      converted, error)
 
 * `name` - Name of the table.
@@ -577,6 +577,7 @@ Information about recent schema changes.
 * `newcsc2` - New schema in csc2 format.
 * `start` - Start time of the schema change.
 * `status` - Current status of the schema change.
+* `seed` - Seed (ID) of schema change running for this table (NULL if not currently running).
 * `last_updated` - Time of the last status change.
 * `converted` - Number of records converted.
 * `error` - Error message of the schema change.

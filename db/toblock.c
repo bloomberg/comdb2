@@ -74,6 +74,7 @@
 #include "bpfunc.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 #if 0
 #define TEST_OSQL
@@ -90,7 +91,6 @@ extern int verbose_deadlocks;
 extern int gbl_goslow;
 extern int n_commits;
 extern int n_commit_time;
-extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
@@ -1031,7 +1031,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                     }
                 }
 
-                if (iq->sorese.type) {
+                if (iq->sorese) {
                     /* reconstruct sorese rcout similar to toblock_main */
                     if (outrc) {
                         switch (outrc) {
@@ -1045,18 +1045,19 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         case ERR_NOTSERIAL:
                         case ERR_SC:
                         case ERR_TRAN_TOO_BIG:
-                            iq->sorese.rcout = outrc;
+                            iq->sorese->rcout = outrc;
                             break;
                         default:
-                            iq->sorese.rcout = outrc + err.errcode;
+                            iq->sorese->rcout = outrc + err.errcode;
                             break;
                         }
                     }
                 }
             } else {
-                /* we need to clear sorese.rcout, it might store some
+                /* we need to clear sorese->rcout, it might store some
                    2nd run error */
-                iq->sorese.rcout = 0;
+                if (iq->sorese)
+                    iq->sorese->rcout = 0;
 
                 outrc = RC_OK;
             }
@@ -1117,7 +1118,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
-               iq->sorese.rcout);
+               iq->sorese ? iq->sorese->rcout : 0);
     }
     blkseq_replay_count++;
     return outrc;
@@ -1162,7 +1163,6 @@ static int tolongblock_req_pre_hdr_int(struct ireq *iq,
     }
 
     iq->errstrused = req.flags & BLKF_ERRSTAT;
-    iq->transflags = req.flags;
 
     p_blkstate->source_host = NULL;
 
@@ -1197,6 +1197,7 @@ static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
     return RC_OK;
 }
 
+/* this is used in bb-plugins */
 int tolongblock(struct ireq *iq)
 {
     unsigned long long tranid = 0LL;
@@ -1223,7 +1224,6 @@ int tolongblock(struct ireq *iq)
     blkstate.longblock_single = 0;
 
     iq->errstrused = 0;
-    iq->transflags = 0;
 
     /* fill blkstate's type specific fields */
     switch (iq->opcode) {
@@ -1856,7 +1856,6 @@ static int toblock_req_int(struct ireq *iq, block_state_t *p_blkstate)
     }
 
     iq->errstrused = req.flags & BLKF_ERRSTAT;
-    iq->transflags = req.flags;
 
     if ((rc = block_state_set_end(iq, p_blkstate, req.offset)))
         return rc;
@@ -1951,11 +1950,11 @@ int toblock(struct ireq *iq)
         char *mstr = iq->dbenv->master;
 
         if (mstr != gbl_mynode) {
-            if (iq->is_sorese) {
+            if (iq->sorese) {
 
                 /* Ask the replicant to retry against the new master. */
-                if (iq->is_sorese) {
-                    iq->sorese.rcout = ERR_NOMASTER;
+                if (iq->sorese) {
+                    iq->sorese->rcout = ERR_NOMASTER;
                 }
                 return ERR_REJECTED;
             }
@@ -2585,8 +2584,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int opcode_counts[NUM_BLOCKOP_OPCODES];
     int nops = 0;
     int is_block2sqlmode = 0; /* set this for all osql modes */
-    /* enable this only for blocksql to handle verify errors */
-    int is_block2sqlmode_blocksql = 0; 
     int osql_needtransaction = OSQL_BPLOG_NONE;
     int blkpos = -1, ixout = -1, errout = 0;
     int backed_out = 0;
@@ -2656,7 +2653,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     }
 
     /* If this is a sorese transaction, don't recreate transaction objects */
-    if (iq->is_sorese)
+    if (iq->sorese)
         osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
 
     int lrc = check_for_node_up(iq, p_blkstate);
@@ -4292,7 +4289,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 rc = ERR_BADREQ;
                 GOTOBACKOUT;
             }
-            iq->transflags = p_setflags.flags;
             break;
         }
 
@@ -4444,7 +4440,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             p_buf_sqlq = iq->p_buf_in;
             iq->p_buf_in += sql.sqlqlen;
 
-            if (iq->sorese.osql_retry) {
+            if (iq->retries > 0) {
                 if (iq->debug)
                     reqprintf(iq, "query retries '%s'", (char *)p_buf_sqlq);
                 break;
@@ -4674,15 +4670,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         int tmpnops = 0;
         int needbackout = 0;
 
-        rc = osql_bplog_finish_sql(iq, &err);
-        if (rc) {
-            /* this is hacky but I don't wanna mess around with toblock return
-               code path
-               create a transaction and backout */
-            numerrs = 1;
-            needbackout = 1;
-        }
-
         if (iq->tranddl) {
             int iirc;
             if (trans) {
@@ -4762,24 +4749,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iq->osql_step_ix = NULL;
         }
 
-        delayed = osql_get_delayed(iq);
-
-        /* FOR DEADLOCK ON THE SERVER,
-         * WE'RE NOT REPEATING THE SQL PROCESSING PART
-         * INSTEAD WE JUST REPLAY THE BPLOG
-         * we set osql_retry so that we ignore BLOCK2_SQL, BLOCK2_SOSQL,
-         * BLOCK2_RECOM, BLOCK2_SNAPISOL, BLOCK2_SERIAL if we retry
-         *
-         * we don't retry successful sql session; we do this here
-         * as delayed_add_key and similar can deadlock and replay the log */
-        iq->sorese.osql_retry = 1;
+        delayed = iq->sorese->is_delayed ? 1 : 0;
 
         if (rc) {
             numerrs = 1;
             GOTOBACKOUT;
         } else {
             nops += tmpnops;
-            iq->sorese.nops = nops;
+            iq->sorese->nops = nops;
         }
     }
 
@@ -5241,37 +5218,12 @@ backout:
             }
         }
 
-        if (rc == ERR_UNCOMMITABLE_TXN /*&& is_block2sqlmode_blocksql*/) {
+        if (rc == ERR_UNCOMMITABLE_TXN) {
             logmsg(
                 LOGMSG_ERROR,
                 "Forced VERIFY-FAIL for uncommitable blocksql transaction\n");
-            if (is_block2sqlmode_blocksql) {
-                err.errcode = OP_FAILED_VERIFY;
-                rc = ERR_VERIFY;
-            } else {
-                err.errcode = ERR_UNCOMMITABLE_TXN;
-                rc = ERR_UNCOMMITABLE_TXN;
-            }
-        } else if (rc == ERR_VERIFY && is_block2sqlmode_blocksql) {
-
-            iq->sorese.verify_retries++;
-
-            if (iq->sorese.verify_retries > gbl_osql_verify_retries_max) {
-                logmsg(LOGMSG_ERROR,
-                       "Blocksql request repeated too many times (%d)\n",
-                       iq->sorese.verify_retries);
-            } else {
-                logmsg(LOGMSG_ERROR,
-                       "Repeating VERIFY for blocksql transaction %d\n",
-                       iq->sorese.verify_retries);
-                /* We want to repeat offloading the session */
-                iq->sorese.osql_retry =
-                    0; /* this will let us repeat offloading */
-                /* we need to clear the sessions also */
-                osql_bplog_free(iq, 1, __func__, NULL, 0);
-
-                rc = RC_INTERNAL_RETRY;
-            }
+            err.errcode = ERR_UNCOMMITABLE_TXN;
+            rc = ERR_UNCOMMITABLE_TXN;
         }
 
         if (rc == RC_INTERNAL_RETRY) {
@@ -5323,8 +5275,8 @@ backout:
     case ERR_SC:
     case ERR_TRAN_TOO_BIG:
         outrc = rc;
-        if (iq->sorese.type)
-            iq->sorese.rcout = outrc;
+        if (iq->sorese)
+            iq->sorese->rcout = outrc;
         break;
     default:
         outrc = ERR_BLOCK_FAILED;
@@ -5336,8 +5288,8 @@ backout:
 #if 0
                 iq->errstat.errval = outrc+err.errcode;
 #endif
-            if (iq->sorese.type)
-                iq->sorese.rcout = outrc + err.errcode;
+            if (iq->sorese)
+                iq->sorese->rcout = outrc + err.errcode;
         }
 
         break;
@@ -5610,7 +5562,7 @@ add_blkseq:
                            "blkseq add '%s', outrc=%d errval=%d "
                            "errstr='%s', rcout=%d commit-rc=%d\n",
                            bskey, outrc, iq->errstat.errval, iq->errstat.errstr,
-                           iq->sorese.rcout, irc);
+                           iq->sorese ? iq->sorese->rcout : 0, irc);
                 }
             } else {
                 if (hascommitlock) {
@@ -5765,9 +5717,10 @@ add_blkseq:
         thrman_wheref(thr_self, "%s [commit and replicate]", req2a(iq->opcode));
 
         /*
-        if (iq->is_sorese)
+        if (iq->sorese)
         {
-            fprintf(stderr, "i don't have a blkseq & is_sorese is set? from %s\n", iq->frommach);
+            fprintf(stderr, "i don't have a blkseq & sorese is set? from %s\n",
+        iq->frommach);
         }
         */
 
@@ -5870,10 +5823,8 @@ add_blkseq:
 
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
-    Pthread_mutex_lock(&commit_stat_lk);
-    n_commit_time += diff_time_micros;
-    n_commits++;
-    Pthread_mutex_unlock(&commit_stat_lk);
+    ATOMIC_ADD64(n_commit_time, diff_time_micros);
+    ATOMIC_ADD32(n_commits, 1);
 
     if (outrc == 0) {
         if (iq->__limits.maxcost_warn &&

@@ -92,14 +92,6 @@ static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
 
-int handle_buf_main(
-    struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
-    const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-    char *fromtask, sorese_info_t *sorese, int qtype,
-    void *data_hndl, // handle to data that can be used according to request
-                     // type
-    int luxref, unsigned long long rqid);
-
 static pthread_mutex_t lock;
 pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_attr_t attr;
@@ -542,9 +534,9 @@ static void *thd_req(void *vthd)
                 pool_free(thd->iq->vfy_genid_pool);
                 thd->iq->vfy_genid_pool = NULL;
             }
-            if (thd->iq->sorese.osqllog) {
-                sbuf2close(thd->iq->sorese.osqllog);
-                thd->iq->sorese.osqllog = NULL;
+            if (thd->iq->sorese && thd->iq->sorese->osqllog) {
+                sbuf2close(thd->iq->sorese->osqllog);
+                thd->iq->sorese->osqllog = NULL;
             }
             thd->iq->vfy_genid_track = 0;
 #if 0
@@ -678,10 +670,10 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                         iq->sb = NULL;
                     }
-                } else if (iq->is_sorese) {
-                    if (iq->sorese.osqllog) {
-                        sbuf2close(iq->sorese.osqllog);
-                        iq->sorese.osqllog = NULL;
+                } else if (iq->sorese) {
+                    if (iq->sorese->osqllog) {
+                        sbuf2close(iq->sorese->osqllog);
+                        iq->sorese->osqllog = NULL;
                     }
                 }
                 pool_relablk(p_reqs, iq);
@@ -689,7 +681,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
         }
         UNLOCK(&lock);
     }
-    if (comdb2_ipc_sndbak) {
+    if (comdb2_ipc_sndbak && curswap) {
         /* curswap is just a pointer to the buffer */
         int *ibuf = (int *)curswap;
         ibuf += 2;
@@ -702,7 +694,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
 
 static int reterr_withfree(struct ireq *iq, int rc)
 {
-    if (iq->is_fromsocket || iq->sorese.type) {
+    if (iq->is_fromsocket || iq->sorese) {
         if (iq->is_fromsocket) {
             /* process socket end request */
             if (iq->is_socketrequest) {
@@ -752,16 +744,6 @@ int handle_buf_block_offload(struct dbenv *dbenv, uint8_t *p_buf,
     return rc;
 }
 
-int handle_buf_sorese(struct dbenv *dbenv, struct ireq *iq, int debug)
-{
-    int rc = 0;
-
-    rc = handle_buf_main(dbenv, iq, NULL, NULL, NULL, debug, 0, 0, NULL, NULL,
-                         REQ_OFFLOAD, NULL, 0, 0);
-
-    return rc;
-}
-
 int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
                                    uint8_t *p_buf, const uint8_t *p_buf_end,
                                    int debug, char *frommach, int frompid,
@@ -802,22 +784,17 @@ int handled_queue;
 
 int q_reqs_len(void) { return q_reqs.count; }
 
-static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
-                     uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
-                     char *frommach, int frompid, char *fromtask, int qtype,
-                     void *data_hndl, int luxref, unsigned long long rqid,
-                     void *p_sinfo, intptr_t curswap)
+static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
+                            uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
+                            char *frommach, int frompid, char *fromtask,
+                            int qtype, void *data_hndl, int luxref,
+                            unsigned long long rqid, void *p_sinfo,
+                            intptr_t curswap)
 {
     struct req_hdr hdr;
     uint64_t nowus;
 
     nowus = comdb2_time_epochus();
-
-    if (iq == 0) {
-        errUNLOCK(&lock);
-        logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
-        return reterr(curswap, /*thd*/ 0, /*iq*/ 0, ERR_INTERNAL);
-    }
 
     /* set up request */
     const size_t len = sizeof(*iq) - offsetof(struct ireq, region3);
@@ -835,7 +812,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->debug = debug_this_request(gbl_debug_until) || (debug && gbl_debug);
     iq->debug_now = iq->nowus = nowus;
     iq->dbenv = dbenv;
-    iq->rqid = rqid;
+    iq->fwd_tag_rqid = rqid;
 
     iq->p_buf_orig =
         p_buf; /* need this for optimized fast fail (skip blkstate) */
@@ -850,9 +827,8 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->curswap = curswap;
 
     if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end))) {
-        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
-        return reterr(curswap, /*thd*/ 0, iq, ERR_BADREQ);
+        return ERR_BADREQ;
     }
 
     iq->opcode = hdr.opcode;
@@ -884,17 +860,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->__limits.temptables_warn = gbl_querylimits_temptables_warn;
 
     iq->cost = 0;
-    iq->sorese.osqllog = NULL;
     iq->luxref = luxref;
-
-#if 0
-    Pulled this one out of init_req, it only adds to the confusion
-    This code was only triggered by create_ireq,i.e. create_sorese_ireq, called by sorese_rcvreq
-    when a new sorese request is received. 
-
-    if(qtype==REQ_OFFLOAD) {
-    }
-#endif
 
     if (iq->is_fromsocket) {
         if (iq->frommach == gbl_mynode)
@@ -906,23 +872,16 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     }
 
     if (luxref < 0 || luxref >= dbenv->num_dbs) {
-        errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
                luxref, dbenv->num_dbs);
-        return reterr(curswap, /*thd*/ 0, iq, ERR_REJECTED);
+        return ERR_REJECTED;
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
     if (iq->origdb == NULL)
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
-    if (db_is_stopped()) {
-        errUNLOCK(&lock);
-        return reterr(curswap, NULL, iq, ERR_REJECTED);
-    }
 
-    if (gbl_debug_verify_tran)
-        iq->transflags |= TRAN_VERIFY;
     if (iq->frommach == NULL)
         iq->frommach = intern(gbl_mynode);
 
@@ -934,7 +893,7 @@ int gbl_handle_buf_add_latency_ms = 0;
 int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                      char *frommach, int frompid, char *fromtask,
-                     sorese_info_t *sorese, int qtype, void *data_hndl,
+                     osql_sess_t *sorese, int qtype, void *data_hndl,
                      int luxref, unsigned long long rqid, void *p_sinfo,
                      intptr_t curswap)
 {
@@ -943,6 +902,10 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     struct thd *thd;
     int numwriterthreads;
     struct dbq_entry_t *newent = NULL;
+
+    if (db_is_stopped()) {
+        return ERR_REJECTED;
+    }
 
     net_delay(frommach);
 
@@ -954,21 +917,29 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         debug = 1;
     }
 
-    /* allocate a request for later dispatch to available thread */
 
-    Pthread_mutex_lock(&lock);
     if (iq == NULL) {
-        iq = (struct ireq *)pool_getablk(p_reqs);
 #if 0
         fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
 
-        rc = init_ireq(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
-                       frommach, frompid, fromtask, qtype, data_hndl, luxref,
-                       rqid, p_sinfo, curswap);
+        /* allocate a request for later dispatch to available thread */
+        LOCK(&lock)
+        {
+            iq = (struct ireq *)pool_getablk(p_reqs);
+        }
+        UNLOCK(&lock);
+        if (!iq) {
+            logmsg(LOGMSG_ERROR, "handle_buf:failed allocate req\n");
+            return reterr(0, 0, iq, ERR_INTERNAL);
+        }
+
+        rc = init_ireq_legacy(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
+                              frommach, frompid, fromtask, qtype, data_hndl,
+                              luxref, rqid, p_sinfo, curswap);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
-            return rc;
+            return reterr(curswap, /*thd*/ 0, iq, rc);
         }
     } else {
 #if 0
@@ -976,6 +947,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 #endif
     }
 
+    Pthread_mutex_lock(&lock);
     {
         ++handled_queue;
 
@@ -1188,16 +1160,16 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                     const uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                     char *frommach, int frompid, char *fromtask,
-                    sorese_info_t *sorese, int qtype, void *data_hndl,
-                    int luxref, unsigned long long rqid)
+                    osql_sess_t *sorese, int qtype, void *data_hndl, int luxref,
+                    unsigned long long rqid)
 {
     return handle_buf_main2(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,
                             rqid, 0, 0);
 }
-struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
+struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
-                                char *frommach, sorese_info_t *sorese)
+                                char *frommach, osql_sess_t *sorese)
 {
     int rc;
     struct ireq *iq;
@@ -1207,21 +1179,24 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         iq = (struct ireq *)pool_getablk(p_reqs);
     }
     UNLOCK(&lock);
-
 #if 0
     fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
-    if (iq == NULL) {
-        logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
-    }
-    rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0, NULL,
-                   REQ_OFFLOAD, NULL, 0, 0, 0, 0);
-    if (rc)
-        /* init_ireq unlocks on error */
-        return NULL;
 
-    iq->sorese = *sorese;
-    iq->is_sorese = 1;
+    if (!iq) {
+        reterr(0, 0, iq, ERR_INTERNAL);
+        logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
+        return NULL;
+    }
+
+    rc = init_ireq_legacy(dbenv, iq, NULL, p_buf, p_buf_end, debug, frommach, 0,
+                          NULL, REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+    if (rc) {
+        reterr(0, /*thd*/ 0, iq, rc);
+        return NULL;
+    }
+
+    iq->sorese = sorese;
     iq->use_handle = thedb->bdb_env;
 
 #if 0
@@ -1229,8 +1204,8 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
 #endif
     /* this creates the socksql/recom/serial local log (temp table) */
     snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
-             iq->sorese.host, osql_sorese_type_to_str(iq->sorese.type),
-             iq->sorese.rqid);
+             iq->sorese->host, osql_sorese_type_to_str(iq->sorese->type),
+             iq->sorese->rqid);
 
     /* enable logging, if any */
     if (gbl_enable_osql_logging) {
@@ -1244,8 +1219,8 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         if (ffile == -1) {
             logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
         } else {
-            iq->sorese.osqllog = sbuf2open(ffile, 0);
-            if (!iq->sorese.osqllog) {
+            iq->sorese->osqllog = sbuf2open(ffile, 0);
+            if (!iq->sorese->osqllog) {
                 close(ffile);
             }
         }

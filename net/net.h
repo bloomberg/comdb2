@@ -333,10 +333,6 @@ int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
 /* pick a sibling for sql offloading */
 char *net_get_osql_node(netinfo_type *netinfo_ptr);
 
-/* pick a sibling for sql offloading using blackout list */
-char *net_get_osql_node_blkout(netinfo_type *netinfo_ptr, char *nodes[REPMAX],
-                               int lnodes);
-
 /* netinfo getters and setters so that we don't have tomake the entire
  * netinfo struct public. */
 char *net_get_mynode(netinfo_type *netinfo_ptr);

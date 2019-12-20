@@ -89,9 +89,6 @@ REGISTER_TUNABLE("blocksql_grace",
                  "being killed (and returning an error). (Default: 10sec)",
                  TUNABLE_INTEGER, &gbl_blocksql_grace, 0, NULL, NULL, NULL,
                  NULL);
-REGISTER_TUNABLE("blocksql_throttle", NULL, TUNABLE_INTEGER,
-                 &g_osql_blocksql_parallel_max, READONLY, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("broken_max_rec_sz", NULL, TUNABLE_INTEGER,
                  &gbl_broken_max_rec_sz, READONLY, NULL, NULL,
                  broken_max_rec_sz_update, NULL);
@@ -813,8 +810,6 @@ REGISTER_TUNABLE("nullsort", NULL, TUNABLE_ENUM,
 */
 REGISTER_TUNABLE("num_contexts", NULL, TUNABLE_INTEGER, &gbl_num_contexts,
                  READONLY | NOZERO, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("num_qdbs", NULL, TUNABLE_INTEGER, &db->num_qdbs, READONLY,
-                 NULL, NULL, num_qdbs_update, NULL);
 REGISTER_TUNABLE("num_record_converts",
                  "During schema changes, pack this many records into a "
                  "transaction. (Default: 100)",
@@ -1864,6 +1859,18 @@ REGISTER_TUNABLE("waitalive_iterations",
 REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ref_sync_pollms",
+                 "Set pollms for ref_sync thread.  "
+                 "(Default: 250)",
+                 TUNABLE_INTEGER, &gbl_ref_sync_pollms, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ref_sync_iterations",
+                 "Set iterations for ref_sync thread.  "
+                 "(Default: 4)",
+                 TUNABLE_INTEGER, &gbl_ref_sync_iterations,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "Maximum size in bytes of the output buffer of an appsock "

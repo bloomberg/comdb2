@@ -686,6 +686,8 @@ static void *thdpool_thd(void *voidarg)
 
         LOCK(&pool->mutex)
         {
+            thd->persistent_info = "looking for work...";
+
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
@@ -783,7 +785,7 @@ static void *thdpool_thd(void *voidarg)
          * from the perspective of other threads that may need
          * to examine it. */
         LOCK(&pool->mutex) {
-            thd->persistent_info = NULL;
+            thd->persistent_info = "work completed.";
             if (work.persistent_info != NULL) {
                 free(work.persistent_info);
                 work.persistent_info = NULL;
@@ -808,6 +810,12 @@ static void *thdpool_thd(void *voidarg)
             }
             UNLOCK(&pool->mutex);
         }
+
+        // ready to perform yield operation, update thread info again
+        LOCK(&pool->mutex) {
+            thd->persistent_info = "yielding...";
+        }
+        UNLOCK(&pool->mutex);
 
         // before acquiring next request, yield
         comdb2bma_yield_all();
