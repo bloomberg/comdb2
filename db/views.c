@@ -179,7 +179,8 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 
     /* create the timepart scheduler */
     timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
-                                    NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
+                                    NULL, NULL, NULL, NULL, NULL, &xerr,
+                                    &tpt_cron);
 
     if (timepart_sched == NULL)
         return NULL;
@@ -351,7 +352,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str = strdup(view->name),
-                             NULL, NULL, &view->source_id, err, NULL) == NULL)
+                             NULL, NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         if (rc != VIEW_NOERR) {
@@ -997,7 +998,7 @@ done:
             if (cron_add_event(_get_sched_byname(view->period, view->name),
                                NULL, shardChangeTime, _view_cron_phase2,
                                tmp_str = strdup(name), pShardName, NULL,
-                               &view->source_id, err, NULL) == NULL) {
+                               NULL, NULL, &view->source_id, err, NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
@@ -1035,7 +1036,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
         if (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                            tm, _view_cron_phase3, removeShardName, NULL, NULL,
-                           &view->source_id, err, NULL) == NULL) {
+                           NULL, &view->source_id, err, NULL) == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
@@ -1051,7 +1052,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
     if (cron_add_event(_get_sched_byname(view->period, view->name), NULL, tm,
                        _view_cron_phase1, tmp_str = strdup(name), NULL, NULL,
-                       &view->source_id, err, NULL) == NULL) {
+                       NULL, &view->source_id, err, NULL) == NULL) {
         if (tmp_str) {
             free(tmp_str);
         }
@@ -1673,7 +1674,7 @@ static int _schedule_drop_shard(timepart_view_t *view,
     rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                          evict_time, _view_cron_phase3,
                          tmp_str1 = strdup(evicted_shard), NULL, NULL, NULL,
-                         err, NULL) == NULL)
+                         NULL, err, NULL) == NULL)
              ? err->errval
              : VIEW_NOERR;
 
@@ -1863,7 +1864,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str1 = strdup(view->name),
-                             NULL, NULL, &view->source_id, err, NULL) == NULL)
+                             NULL, NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         tmp_str2 = NULL;
@@ -1877,7 +1878,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                              view->roll_time, _view_cron_phase2,
                              tmp_str1 = strdup(view->name),
                              tmp_str2 = strdup(next_existing_shard), NULL,
-                             &view->source_id, err, NULL) == NULL)
+                             NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
     }
@@ -2486,7 +2487,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
                irc =
                    (cron_add_event(_get_sched_byname(view->period, view->name),
                                    NULL, 0, _view_cron_phase3, extra_shards[i],
-                                   NULL, NULL, NULL, err, NULL) == NULL)
+                                   NULL, NULL, NULL, NULL, err, NULL) == NULL)
                        ? err->errval
                        : VIEW_NOERR;
                if (irc != VIEW_NOERR) {

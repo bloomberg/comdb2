@@ -138,8 +138,8 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
         void *p = cron_add_event(gbl_queuedb_cron, NULL, tm,
-                                 (FCRON)queuedb_cron_event, dbenv,
-                                 NULL, NULL, NULL, err, NULL);
+                                 (FCRON)queuedb_cron_event, NULL,
+                                 NULL, NULL, dbenv, NULL, err, NULL);
         if (p == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule next queuedb event. "
                             "rc = %d, errstr = %s\n",
@@ -241,11 +241,12 @@ int bdb_queuedb_create_cron(void *arg)
             );
             gbl_queuedb_cron = cron_add_event(NULL, "QueueDB Job Scheduler",
                                       INT_MIN, (FCRON)queuedb_cron_kickoff,
-                                      arg, NULL, NULL, NULL, &xerr, &impl);
+                                      NULL, NULL, NULL, arg, NULL, &xerr,
+                                      &impl);
         } else {
             gbl_queuedb_cron = cron_add_event(gbl_queuedb_cron, NULL, INT_MIN,
                                       (FCRON)queuedb_cron_kickoff, NULL, NULL,
-                                      arg, NULL, &xerr, NULL);
+                                      NULL, arg, NULL, &xerr, NULL);
         }
         if (gbl_queuedb_cron == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to schedule queuedb cron job. "

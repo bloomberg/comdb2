@@ -9479,7 +9479,7 @@ static void uprec_sender_array_init(void)
     // kick off upgradetable cron
     uprec_sched =
         cron_add_event(NULL, "uprec_cron", INT_MIN, uprec_cron_kickoff, NULL,
-                       NULL, NULL, NULL, &xerr, NULL);
+                       NULL, NULL, NULL, NULL, &xerr, NULL);
 
     if (uprec_sched == NULL) {
         logmsg(LOGMSG_FATAL, "%s: failed to create uprec cron scheduler.\n",
@@ -9523,7 +9523,8 @@ int offload_comm_send_upgrade_records(const dbtable *db,
                 uprec->touch = uprec->owner;
                 uprec_sched = cron_add_event(
                     uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
-                    uprec_cron_event, NULL, NULL, NULL, NULL, &xerr, NULL);
+                    uprec_cron_event, NULL, NULL, NULL, NULL, NULL, &xerr,
+                    NULL);
 
                 if (uprec_sched == NULL)
                     logmsg(LOGMSG_ERROR, "%s: failed to schedule uprec cron job.\n",

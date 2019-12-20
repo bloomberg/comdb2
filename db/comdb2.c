@@ -4837,7 +4837,7 @@ static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
         rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                            NULL, NULL, NULL, err, NULL);
+                            NULL, NULL, NULL, NULL, err, NULL);
 
         if (rc == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
@@ -4859,7 +4859,7 @@ static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 
     tm = comdb2_time_epoch() + gbl_memstat_freq;
     rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                        NULL, NULL, NULL, err, NULL);
+                        NULL, NULL, NULL, NULL, err, NULL);
     if (rc == NULL)
         logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
                         "rc = %d, errstr = %s\n",
@@ -4896,12 +4896,12 @@ static int comdb2ma_stats_cron(void)
             time_cron_create(&impl, gbl_cron_describe, gbl_cron_event_describe);
             gbl_cron = cron_add_event(NULL, "Global Job Scheduler", INT_MIN,
                                       (FCRON)memstat_cron_kickoff, NULL, NULL,
-                                      NULL, NULL, &xerr, &impl);
+                                      NULL, NULL, NULL, &xerr, &impl);
 
         } else {
             gbl_cron = cron_add_event(gbl_cron, NULL, INT_MIN,
                                       (FCRON)memstat_cron_kickoff, NULL, NULL,
-                                      NULL, NULL, &xerr, NULL);
+                                      NULL, NULL, NULL, &xerr, NULL);
         }
         if (gbl_cron == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule memstat cron job. "
