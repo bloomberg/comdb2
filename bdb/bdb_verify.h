@@ -47,8 +47,9 @@ typedef struct {
     unsigned long long records_processed; // progress report in default mode
     unsigned long long saved_progress;    // previous progress counter
     int nrecs_progress;                   // progress done in this time window
-    int last_reported;                    // last reported time
-    int progress_report_seconds;
+    int last_connection_check;            // last reported time in ms
+    int progress_report_seconds;          // freq of report in seconds
+    int progress_report_counter;          // counter used to print progress
     int attempt_fix;
     unsigned short threads_spawned;
     unsigned short threads_completed; // atomic inc

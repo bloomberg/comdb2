@@ -202,27 +202,34 @@ ret:
     return rc;
 }
 
-static inline int print_verify_progress(verify_common_t *par, int now)
+/* Check client connection and print progress, called for every item verified
+ * Every second will client connection will be checked if it dropped 
+ * Print progress report report every progress_report_seconds
+ */
+static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 {
-    if (!par->progress_report_seconds)
+    int last = par->last_connection_check; // get a copy of the last timestamp
+
+    // do the comparison with t_ms, we want to check connection every 1s
+    if ((t_ms - last) < 1000)
         goto out;
 
-    int last = par->last_reported; // get a copy of the last timestamp
-
-    // do the comparison with now
-    if (((now - last) < (par->progress_report_seconds * 1000)))
-        goto out;
-
-    // enough time has passed, attempt to update
-    int res = CAS32(par->last_reported, last, now);
+    // enough time has passed, attempt to update last_connection_check
+    int res = CAS32(par->last_connection_check, last, t_ms);
     if (!res)
-        goto out; // someonelse updated, get out
+        goto out; // another thread updated, nothing to do
 
     if (bdb_dropped_connection(par->sb)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
         par->client_dropped_connection = 1;
         goto out;
     }
+
+    // one of the threads gets here every second, and we want to skip printing
+    // if progress_report_seconds is zero or if the time passed is not enough
+    if (!par->progress_report_seconds || 
+        (++par->progress_report_counter) % par->progress_report_seconds != 0)
+        goto out;
 
     int rc;
     if (par->verify_mode == VERIFY_SERIAL) {
@@ -292,7 +299,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
-        if (print_verify_progress(par, now))
+        if (check_connection_and_progress(par, now))
             break;
 
         unsigned long long genid;
@@ -669,7 +676,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
-        if (print_verify_progress(par, now))
+        if (check_connection_and_progress(par, now))
             break;
 
         if (dbt_data.size < sizeof(unsigned long long)) {
@@ -1032,7 +1039,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
-        if (print_verify_progress(par, now))
+        if (check_connection_and_progress(par, now))
             break;
 
 #ifdef _LINUX_SOURCE
@@ -1235,7 +1242,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
     };
     logmsg(LOGMSG_DEBUG, "%s: Verify %s in parallel mode\n", __func__, tp);
 #endif
-    par->last_reported = comdb2_time_epochms(); // initialize
+    par->last_connection_check = comdb2_time_epochms(); // initialize
 
     if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
         /* scan 1 - run through data, verify all the keys and blobs */
@@ -1296,7 +1303,7 @@ int bdb_verify(verify_common_t *par)
         return rc;
     }
 
-    par->last_reported = comdb2_time_epochms(); // initialize
+    par->last_connection_check = comdb2_time_epochms(); // initialize
 
     rc = bdb_verify_sequential(par, lid);
 
