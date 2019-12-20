@@ -998,7 +998,7 @@ done:
             if (cron_add_event(_get_sched_byname(view->period, view->name),
                                NULL, shardChangeTime, _view_cron_phase2,
                                tmp_str = strdup(name), pShardName, NULL,
-                               NULL, NULL, &view->source_id, err, NULL) == NULL) {
+                               NULL, &view->source_id, err, NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
