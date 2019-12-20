@@ -133,9 +133,10 @@ static int bdb_queuedb_is_db_full(DB *db)
 
 static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
+    if (db_is_stopped()) return NULL;
     struct dbenv *dbenv = NULL;
     if (evt != NULL) dbenv = evt->arg1;
-    if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
+    if (gbl_queuedb_file_interval > 0) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
         void *p = cron_add_event(gbl_queuedb_cron, NULL, tm,
                                  (FCRON)queuedb_cron_event, NULL,
@@ -202,7 +203,8 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 
 static void *queuedb_cron_kickoff(struct cron_event *evt, struct errstat *err)
 {
-    if ((gbl_queuedb_file_interval > 0) && !db_is_stopped()) {
+    if (db_is_stopped()) return NULL;
+    if (gbl_queuedb_file_interval > 0) {
         logmsg(LOGMSG_INFO, "Starting queuedb cron job. "
                         "Will check queuedb usage every %d seconds.\n",
                 gbl_queuedb_file_interval / 1000);

@@ -767,6 +767,8 @@ int del_qdb_file(struct schema_change_type *s)
         goto done;
     }
 
+    sc_del_unused_files_tran(db, tran);
+
     rc = trans_commit(&iq, tran, gbl_mynode);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_commit rc %d\n", __func__, rc);
