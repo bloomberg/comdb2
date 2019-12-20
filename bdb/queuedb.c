@@ -147,37 +147,18 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                     err->errval, err->errstr);
         }
     }
-    if (dbenv != NULL) {
-        for (int i = 0; i < dbenv->num_qdbs; i++) {
-            dbtable *tbl = dbenv->qdbs[i];
-            if (tbl == NULL) continue;
-            bdb_state_type *bdb_state = tbl->handle;
-            if (bdb_state == NULL) continue;
-            DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-            DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
-            struct schema_change_type *sc = NULL;
-            int rc;
-            if (db2 != NULL) {
-                if (bdb_queuedb_is_db_empty(db1, NULL)) {
-                    sc = new_schemachange_type();
-                    if (sc == NULL) {
-                        continue;
-                    }
-                    strncpy0(
-                        sc->tablename, bdb_state->name, sizeof(sc->tablename)
-                    );
-                    sc->type = DBTYPE_QUEUEDB;
-                    sc->del_qdb_file = 1;
-                    rc = start_schema_change(sc);
-                    if (rc != SC_OK && rc != SC_ASYNC) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: failed to start schema change to delete "
-                               "old file for queuedb '%s'\n",
-                               __func__, sc->tablename);
-                        free_schema_change_type(sc);
-                    }
-                }
-            } else if (bdb_queuedb_is_db_full(db1)) {
+    if ((dbenv == NULL) || (dbenv->master != gbl_mynode)) return NULL;
+    for (int i = 0; i < dbenv->num_qdbs; i++) {
+        dbtable *tbl = dbenv->qdbs[i];
+        if (tbl == NULL) continue;
+        bdb_state_type *bdb_state = tbl->handle;
+        if (bdb_state == NULL) continue;
+        DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+        DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+        struct schema_change_type *sc = NULL;
+        int rc;
+        if (db2 != NULL) {
+            if (bdb_queuedb_is_db_empty(db1, NULL)) {
                 sc = new_schemachange_type();
                 if (sc == NULL) {
                     continue;
@@ -186,15 +167,33 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                     sc->tablename, bdb_state->name, sizeof(sc->tablename)
                 );
                 sc->type = DBTYPE_QUEUEDB;
-                sc->add_qdb_file = 1;
+                sc->del_qdb_file = 1;
                 rc = start_schema_change(sc);
                 if (rc != SC_OK && rc != SC_ASYNC) {
                     logmsg(LOGMSG_ERROR,
-                           "%s: failed to start schema change to add "
-                           "new file for queuedb '%s'\n",
-                               __func__, sc->tablename);
+                           "%s: failed to start schema change to delete "
+                           "old file for queuedb '%s'\n",
+                           __func__, sc->tablename);
                     free_schema_change_type(sc);
                 }
+            }
+        } else if (bdb_queuedb_is_db_full(db1)) {
+            sc = new_schemachange_type();
+            if (sc == NULL) {
+                continue;
+            }
+            strncpy0(
+                sc->tablename, bdb_state->name, sizeof(sc->tablename)
+            );
+            sc->type = DBTYPE_QUEUEDB;
+            sc->add_qdb_file = 1;
+            rc = start_schema_change(sc);
+            if (rc != SC_OK && rc != SC_ASYNC) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to start schema change to add "
+                       "new file for queuedb '%s'\n",
+                           __func__, sc->tablename);
+                free_schema_change_type(sc);
             }
         }
     }
