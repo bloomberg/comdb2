@@ -480,7 +480,7 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
     pthread_once(&once, init_verify_thdpool);
 
     verify_common_t par = {
-        .sb = NULL,
+        .sb = sb,
         .bdb_state = db->handle,
         .db_table = db,
         .formkey_callback = verify_formkey_callback,

@@ -48,7 +48,9 @@ extern void fsnapf(FILE *, void *, int);
 extern int peer_dropped_connection_sb(SBUF2 *sb);
 
 
-/* print to sb if available lua callback otherwise */
+/* use lua_callback if it is available to print
+ * otherwise if sb is available print to sb and flush 
+ */
 static int locprint(verify_common_t *par, char *fmt, ...)
 {
     char lbuf[1024];
@@ -56,13 +58,23 @@ static int locprint(verify_common_t *par, char *fmt, ...)
     va_start(ap, fmt);
     int wrote = vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
     va_end(ap);
-    if (par->lua_callback)
-        return par->lua_callback(par->lua_params, lbuf);
-    else if (par->sb) {
+
+    if (par->lua_callback) {
+        int rc = par->lua_callback(par->lua_params, lbuf);
+        if (rc) {
+            logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
+            par->client_dropped_connection = 1;
+        }
+        return rc;
+    }
+    
+    if (par->sb) {
         if (wrote < sizeof(lbuf) - 1)
             strcat(lbuf, "\n");
-        return sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
-    }
+        int rc = sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
+        sbuf2flush(par->sb);
+        return rc;
+    } 
     return -1;
 }
 
@@ -208,6 +220,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
     int res = CAS32(par->last_connection_check, last, t_ms);
     if (!res)
         goto out; // another thread updated, nothing to do
+    printf("AZ checking connection\n");
 
     if (peer_dropped_connection_sb(par->sb)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
@@ -222,25 +235,19 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
         goto out;
 
     printf("AZ: par->progress_report_counter %d , par->progress_report_seconds %d \n", par->progress_report_counter, par->progress_report_seconds);
-    int rc;
     if (par->verify_mode == VERIFY_SERIAL) {
-        rc = locprint(par, "!%s, did %d records, %d per second", par->header,
-                      par->nrecs_progress,
-                      par->nrecs_progress / par->progress_report_seconds);
+        locprint(par, "!%s, did %d records, %d per second", par->header,
+                 par->nrecs_progress,
+                 par->nrecs_progress / par->progress_report_seconds);
         par->nrecs_progress = 0;
     } else {
         unsigned long long delta = par->items_processed - par->saved_progress;
-        rc = locprint(par, "!verify: processed %lld items, %lld per second",
-                      par->items_processed,
-                      delta / par->progress_report_seconds);
+        locprint(par, "!verify: processed %lld items, %lld per second",
+                 par->items_processed,
+                 delta / par->progress_report_seconds);
         par->saved_progress = par->items_processed;
     }
 
-    if (rc) {
-        par->client_dropped_connection = 1;
-        goto out;
-    }
-    sbuf2flush(par->sb);
 out:
     return par->client_dropped_connection;
 }
@@ -517,7 +524,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             ckey = NULL;
         }
         par->free_blob_buffer_callback(blob_buf);
-        sbuf2flush(par->sb);
     next_record:
 
         dbt_data.flags = DB_DBT_USERMEM;
@@ -529,7 +535,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
         rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver,
                              DB_NEXT);
-        usleep(50000);
     }
     if (rc != DB_NOTFOUND) {
         par->verify_status = 1;
@@ -722,7 +727,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                               dbt_dta_check_data.data,
                                               blobsizes, bloboffs, &nblobs);
             if (rc) {
-                sbuf2printf(par->sb, "!%016llx blob size rc %d", genid, rc);
+                locprint(par, "!%016llx blob size rc %d", genid, rc);
             } else {
                 /* verify blobs */
                 int realblobsz[16];
@@ -737,7 +742,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
                     dtafile = get_dtafile_from_genid(genid);
                     if (dtafile < 0) {
-                        sbuf2printf(par->sb, "!%016llx unknown dtafile",
+                        locprint(par, "!%016llx unknown dtafile",
                                     genid_flipped);
                         goto next_key;
                     }
@@ -746,7 +751,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
                     rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                     if (rc) {
-                        sbuf2printf(par->sb, "!%016llx cursor on blob %d rc %d",
+                        locprint(par, "!%016llx cursor on blob %d rc %d",
                                     genid_flipped, blobno, rc);
                         goto next_key;
                     }
@@ -771,32 +776,32 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                         realblobsz[blobno] = -1;
                         if (blobsizes[blobno] != -1 &&
                             blobsizes[blobno] != -2) {
-                            sbuf2printf(par->sb,
+                            locprint(par,
                                         "!%016llx no blob %d found "
                                         "expected sz %d",
                                         genid_flipped, blobno,
                                         blobsizes[blobno]);
                         }
                     } else if (rc) {
-                        sbuf2printf(par->sb, "!%016llx blob %d rc %d",
+                        locprint(par, "!%016llx blob %d rc %d",
                                     genid_flipped, blobno, rc);
                     }
 
                     if (rc == 0) {
                         realblobsz[blobno] = dbt_blob_data.size;
                         if (blobsizes[blobno] == -1) {
-                            sbuf2printf(par->sb,
+                            locprint(par,
                                         "!%016llx blob %d null but found blob",
                                         genid_flipped, blobno);
                         } else if (blobsizes[blobno] == -2) {
-                            sbuf2printf(par->sb,
+                            locprint(par,
                                         "!%016llx blob %d size %d expected "
                                         "none (inline vutf8)",
                                         genid_flipped, blobno,
                                         realblobsz[blobno]);
                         } else if (blobsizes[blobno] != -1 &&
                                    dbt_blob_data.size != blobsizes[blobno]) {
-                            sbuf2printf(par->sb,
+                            locprint(par,
                                         "!%016llx blob %d size "
                                         "mismatch got %d expected %d",
                                         genid_flipped, blobno,
