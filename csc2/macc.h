@@ -25,11 +25,11 @@ enum synctype {
 #define MAX_CLUSTER 16
 #define MAX_KEY_SIZE 512
 /* currently, we have 28 indeces in comdb2 due to buffer size restrictions */
-#define MAX_KEY_INDEX  28 
+#define MAX_KEY_INDEX 28
 
 /* Limitation imposed by comdb2. If increased, many changes must be
 made throughout comdb2. */
-#define MAX_FIELDS_PER_KEY 128 
+#define MAX_FIELDS_PER_KEY 128
 
 /*
    The largest possible buffer through comdb2_api right now is update by rrn in
