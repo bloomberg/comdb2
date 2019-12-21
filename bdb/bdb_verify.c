@@ -45,6 +45,7 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
+extern int peer_dropped_connection_sb(SBUF2 *sb);
 
 
 /* print to sb if available lua callback otherwise */
@@ -55,27 +56,16 @@ static int locprint(verify_common_t *par, char *fmt, ...)
     va_start(ap, fmt);
     int wrote = vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
     va_end(ap);
-    if (par->sb) {
+    if (par->lua_callback)
+        return par->lua_callback(par->lua_params, lbuf);
+    else if (par->sb) {
         if (wrote < sizeof(lbuf) - 1)
             strcat(lbuf, "\n");
         return sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
-    } else if (par->lua_callback)
-        return par->lua_callback(par->lua_params, lbuf);
+    }
     return -1;
 }
 
-int bdb_dropped_connection(SBUF2 *sb)
-{
-    struct pollfd p;
-    int rc;
-
-    p.fd = sbuf2fileno(sb);
-    p.events = POLLIN;
-    rc = poll(&p, 1, 0);
-    if (rc == 1)
-        return 1;
-    return 0;
-}
 
 static int restore_cursor_at_genid(DB *db, DBC **cdata,
                                    unsigned long long genid, unsigned int lid)
@@ -219,7 +209,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
     if (!res)
         goto out; // another thread updated, nothing to do
 
-    if (bdb_dropped_connection(par->sb)) {
+    if (peer_dropped_connection_sb(par->sb)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
         par->client_dropped_connection = 1;
         goto out;
@@ -231,6 +221,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
         (++par->progress_report_counter) % par->progress_report_seconds != 0)
         goto out;
 
+    printf("AZ: par->progress_report_counter %d , par->progress_report_seconds %d \n", par->progress_report_counter, par->progress_report_seconds);
     int rc;
     if (par->verify_mode == VERIFY_SERIAL) {
         rc = locprint(par, "!%s, did %d records, %d per second", par->header,
@@ -538,6 +529,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
         rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver,
                              DB_NEXT);
+        usleep(50000);
     }
     if (rc != DB_NOTFOUND) {
         par->verify_status = 1;

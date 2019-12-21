@@ -412,6 +412,9 @@ static void *verify_td(void *arg)
     return NULL;
 }
 
+/* verify table main entry point called both by lua/syssp.c
+ * and by verify_table() which is called by bb plugins 
+ */
 int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
                       int attempt_fix,
                       int (*lua_callback)(void *, const char *),
@@ -477,7 +480,7 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
     pthread_once(&once, init_verify_thdpool);
 
     verify_common_t par = {
-        .sb = sb,
+        .sb = NULL,
         .bdb_state = db->handle,
         .db_table = db,
         .formkey_callback = verify_formkey_callback,
@@ -501,7 +504,8 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
 
     // wait for all our enqueued work items to complete for this verify
     while (par.threads_spawned > par.threads_completed) {
-        if (!par.client_dropped_connection && bdb_dropped_connection(par.sb)) {
+        if (!par.client_dropped_connection && 
+            peer_dropped_connection_sb(par.sb)) {
             logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
             par.client_dropped_connection = 1;
         }
@@ -522,6 +526,7 @@ done:
     return par.verify_status;
 }
 
+/* used by bb plugins */
 inline int verify_table(const char *table, SBUF2 *sb,
                         int progress_report_seconds, int attempt_fix,
                         int (*lua_callback)(void *, const char *),
