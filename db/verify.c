@@ -382,12 +382,13 @@ done:
 
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb)
+        if (sb && !lua_callback)
             sbuf2printf(sb, "FAILED\n");
-    } else if (sb)
+    } else if (sb && !lua_callback)
         sbuf2printf(sb, "SUCCESS\n");
 
-    sbuf2flush(sb);
+    if (!lua_callback)
+        sbuf2flush(sb);
     return rc;
 }
 
@@ -444,7 +445,8 @@ int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
     if ((rc = pthread_create(&v.tid, &attr, verify_td, &v))) {
         logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",
                __func__, strerror(errno));
-        sbuf2printf(sb, "FAILED\n");
+        if (!lua_callback)
+            sbuf2printf(sb, "FAILED\n");
         Pthread_attr_destroy(&attr);
         return -1;
     }
@@ -471,7 +473,7 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
 
     if (rc) {
         logmsg(LOGMSG_INFO, "Readlock table %s %d\n", table, rc);
-        if (sb)
+        if (sb && !lua_callback)
             sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
         rc = 1;
         goto done;
@@ -517,12 +519,13 @@ done:
 
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb)
+        if (sb && !lua_callback)
             sbuf2printf(sb, "FAILED\n");
-    } else if (sb)
+    } else if (sb && !lua_callback)
         sbuf2printf(sb, "SUCCESS\n");
 
-    sbuf2flush(sb);
+    if (!lua_callback)
+        sbuf2flush(sb);
     return par.verify_status;
 }
 
