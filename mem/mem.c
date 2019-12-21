@@ -1059,7 +1059,7 @@ int comdb2_malloc_stats(comdb2ma cm, int verbose, int hr, int toctrc)
             (*(cm->print_stats_fn))(&info, verbose, hr, cm->arg);
         } else {
             ma_stats_head(cm->len, strlen(cm->thr_type), COMDB2MA_GRP_NONE,
-                          verbose, hr, 0, toctrc);
+                          verbose, 0, toctrc);
             ma_stats_dashes(ma_stats_int(cm->len, strlen(cm->thr_type),
                                          COMDB2MA_GRP_NONE, cm, verbose, hr,
                                          NULL, toctrc),
@@ -1619,7 +1619,7 @@ static void ma_pair_dump(pair_t *pairs, size_t len, int columns, int verbose,
             maxscopesz = strlen(pairs[idx].cm->thr_type);
     }
 
-    np = ma_stats_head(maxnamesz, maxscopesz, columns, verbose, hr, 1, toctrc);
+    np = ma_stats_head(maxnamesz, maxscopesz, columns, verbose, 1, toctrc);
     for (idx = 0; idx != len; ++idx) {
         curpos = pairs[idx].cm;
         if (COMDB2MA_LOCK(curpos) == 0) {

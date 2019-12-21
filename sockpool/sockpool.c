@@ -283,7 +283,7 @@ static int open_sockpool_ll(void)
 
 static void default_destructor(enum socket_pool_event event,
                                const char *typestr, int fd, int dbnum,
-                               int flags, int ttl)
+                               int flags, int ttl, void *voidarg)
 {
     if (event != SOCKET_POOL_EVENT_DONATE) {
 
