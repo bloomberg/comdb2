@@ -604,7 +604,7 @@ int reopen_queue_dbs(const char *queue_name)
     }
     remove_from_qdbs(db);
     int bdberr = 0;
-    int rc = bdb_close_only(db->handle, &bdberr);
+    rc = bdb_close_only(db->handle, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                __func__, rc, bdberr);
