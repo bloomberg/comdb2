@@ -1159,13 +1159,10 @@ __log_putr(dblp, lsn, dbt, prev, h)
 	if (lp->num_segments > 1) {
 		tmplsn = *lsn;
 		ret = __log_fill_segments(dblp, lsn, &tmplsn, hdr, nr);
-		assert(tmplsn.offset == lsn->offset + hdr->size);
+		assert(tmplsn.offset == lsn->offset + nr);
 	} else {
 		ret = __log_fill(dblp, lsn, hdr, (u_int32_t)nr);
 	}
-
-	if (LOG_SWAPPED())
-		__log_hdrswap(hdr, CRYPTO_ON(dbenv));
 
 	if (ret != 0)
 		goto err;
@@ -1175,7 +1172,7 @@ __log_putr(dblp, lsn, dbt, prev, h)
 		ret =
 		    __log_fill_segments(dblp, lsn, &tmplsn, dbt->data,
 		    dbt->size);
-		assert(tmplsn.offset == lsn->offset + hdr->size + dbt->size);
+		assert(tmplsn.offset == lsn->offset + nr + dbt->size);
 	} else {
 		ret = __log_fill(dblp, lsn, dbt->data, dbt->size);
 	}
@@ -1183,8 +1180,8 @@ __log_putr(dblp, lsn, dbt, prev, h)
 	if (ret != 0)
 		goto err;
 
-	lp->len = (u_int32_t)(hdr->size + dbt->size);
-	lp->lsn.offset += (u_int32_t)(hdr->size + dbt->size);
+	lp->len = (u_int32_t)(nr + dbt->size);
+	lp->lsn.offset += (u_int32_t)(nr + dbt->size);
 	return (0);
 
 err:
