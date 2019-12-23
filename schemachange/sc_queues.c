@@ -704,6 +704,9 @@ done:
         trans_abort(&iq, tran);
         tran = NULL;
     }
+    if (rc == 0) {
+        rc = reopen_queue_dbs(s->tablename);
+    }
     unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
@@ -798,6 +801,9 @@ done:
     if (tran) {
         trans_abort(&iq, tran);
         tran = NULL;
+    }
+    if (rc == 0) {
+        rc = reopen_queue_dbs(s->tablename);
     }
     unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
