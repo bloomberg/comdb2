@@ -177,6 +177,8 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     char **dests;
     int bdberr;
 
+    wrlock_schema_lk();
+
     /* Queue information should already be in llmeta. Fetch it and create
      * queue/consumer handles. */
 
@@ -186,6 +188,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_queue %s rc %d bdberr %d\n",
                    queue_name, rc, bdberr);
+            unlock_schema_lk();
             return rc;
         }
     }
@@ -301,6 +304,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     }
 
 done:
+    unlock_schema_lk();
     return rc;
 }
 
@@ -589,11 +593,14 @@ int finalize_trigger(struct schema_change_type *s)
 
 int reopen_queue_dbs(const char *queue_name)
 {
+    int rc = 0;
+    wrlock_schema_lk();
     struct dbtable *db = getqueuebyname(queue_name);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n", __func__,
                queue_name);
-        return -1;
+        rc = -1;
+        goto done;
     }
     remove_from_qdbs(db);
     int bdberr = 0;
@@ -601,7 +608,8 @@ int reopen_queue_dbs(const char *queue_name)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                __func__, rc, bdberr);
-        return -1;
+        rc = -1;
+        goto done;
     }
     db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
                                      65536, thedb->bdb_env, 1, NULL,
@@ -610,10 +618,13 @@ int reopen_queue_dbs(const char *queue_name)
         logmsg(LOGMSG_ERROR,
                "%s: bdb_open_more_queue(%s/%s) failed, bdberr %d\n",
                __func__, thedb->basedir, db->tablename, bdberr);
-        return -1;
+        rc = -1;
+        goto done;
     }
     add_to_qdbs(db);
-    return 0;
+done:
+    unlock_schema_lk();
+    return rc;
 }
 
 int add_qdb_file(struct schema_change_type *s)
@@ -627,6 +638,7 @@ int add_qdb_file(struct schema_change_type *s)
     init_fake_ireq(thedb, &iq);
     iq.usedb = &thedb->static_table;
 
+    wrlock_schema_lk();
     db = getqueuebyname(s->tablename);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
@@ -698,6 +710,7 @@ done:
         trans_abort(&iq, tran);
         tran = NULL;
     }
+    unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
@@ -714,6 +727,7 @@ int del_qdb_file(struct schema_change_type *s)
     init_fake_ireq(thedb, &iq);
     iq.usedb = &thedb->static_table;
 
+    wrlock_schema_lk();
     db = getqueuebyname(s->tablename);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
@@ -791,6 +805,7 @@ done:
         trans_abort(&iq, tran);
         tran = NULL;
     }
+    unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
