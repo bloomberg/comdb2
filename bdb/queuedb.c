@@ -165,7 +165,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             if (bdb_queuedb_is_db_empty(db1, NULL)) {
                 logmsg(LOGMSG_DEBUG,
                     "%s: queuedb '%s' has two files and old file is empty, "
-                    "attempting to delete it...\n", __func__, sc->tablename);
+                    "attempting to delete it...\n", __func__, bdb_state->name);
                 sc = new_schemachange_type();
                 if (sc == NULL) {
                     continue;
@@ -187,12 +187,12 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             } else {
                 logmsg(LOGMSG_DEBUG,
                     "%s: queuedb '%s' has two files and old file is not "
-                    "empty, doing nothing...\n", __func__, sc->tablename);
+                    "empty, doing nothing...\n", __func__, bdb_state->name);
             }
         } else if (bdb_queuedb_is_db_full(db1)) {
             logmsg(LOGMSG_DEBUG,
                 "%s: queuedb '%s' has one file and old file is full, "
-                "attempting to add new file...\n", __func__, sc->tablename);
+                "attempting to add new file...\n", __func__, bdb_state->name);
             sc = new_schemachange_type();
             if (sc == NULL) {
                 continue;
@@ -214,7 +214,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         } else {
             logmsg(LOGMSG_DEBUG,
                 "%s: queuedb '%s' has one file and old file is not "
-                "full, doing nothing...\n", __func__, sc->tablename);
+                "full, doing nothing...\n", __func__, bdb_state->name);
         }
     }
     bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDWR);
