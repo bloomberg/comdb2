@@ -716,7 +716,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case change_stripe:
         return reload_stripe_info(bdb_state);
     case queue_db:
-        return reopen_queue_dbs(table);
+        return reopen_queue_dbs(table, 0);
     default:
         break;
     }

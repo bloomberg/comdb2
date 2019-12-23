@@ -147,12 +147,12 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         /* I am master: create new db */
         newdb->handle =
             bdb_create_queue(newdb->tablename, thedb->basedir, avgitemsz,
-                             pagesize, thedb->bdb_env, 0, &bdberr);
+                             pagesize, thedb->bdb_env, 0, 0, &bdberr);
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle =
             bdb_open_more_queue(newdb->tablename, thedb->basedir, avgitemsz,
-                                pagesize, thedb->bdb_env, 0, NULL, &bdberr);
+                                pagesize, thedb->bdb_env, 0, 0, NULL, &bdberr);
     }
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -208,7 +208,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         }
         db->handle =
             bdb_open_more_queue(queue_name, thedb->basedir, 65536, 65536,
-                                thedb->bdb_env, 1, NULL, &bdberr);
+                                thedb->bdb_env, 1, 0, NULL, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -424,7 +424,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* I am master: create new db */
         db->handle =
             bdb_create_queue_tran(tran, db->tablename, thedb->basedir, 65536,
-                                  65536, thedb->bdb_env, 1, &bdberr);
+                                  65536, thedb->bdb_env, 1, 0, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -587,7 +587,7 @@ int finalize_trigger(struct schema_change_type *s)
     return 0;
 }
 
-int reopen_queue_dbs(const char *queue_name)
+int reopen_queue_dbs(const char *queue_name, int create_file)
 {
     int rc = 0;
     struct dbtable *db = getqueuebyname(queue_name);
@@ -607,8 +607,8 @@ int reopen_queue_dbs(const char *queue_name)
         goto done;
     }
     db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
-                                     65536, thedb->bdb_env, 1, NULL,
-                                     &bdberr);
+                                     65536, thedb->bdb_env, 1, create_file,
+                                     NULL, &bdberr);
     if (db->handle == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: bdb_open_more_queue(%s/%s) failed, bdberr %d\n",
@@ -705,7 +705,7 @@ done:
         tran = NULL;
     }
     if (rc == 0) {
-        rc = reopen_queue_dbs(s->tablename);
+        rc = reopen_queue_dbs(s->tablename, 1);
     }
     unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
@@ -803,7 +803,7 @@ done:
         tran = NULL;
     }
     if (rc == 0) {
-        rc = reopen_queue_dbs(s->tablename);
+        rc = reopen_queue_dbs(s->tablename, 0);
     }
     unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,

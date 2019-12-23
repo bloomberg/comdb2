@@ -3950,7 +3950,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 
         db->handle = bdb_open_more_queue(
             db->tablename, dbenv->basedir, db->avgitemsz, pagesize,
-            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, tran,
+            dbenv->bdb_env, db->dbtype == DBTYPE_QUEUEDB ? 1 : 0, 0, tran,
             &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
