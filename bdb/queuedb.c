@@ -163,6 +163,9 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         int rc;
         if (db2 != NULL) {
             if (bdb_queuedb_is_db_empty(db1, NULL)) {
+                logmsg(LOGMSG_DEBUG,
+                    "%s: queuedb '%s' has two files and old file is empty, "
+                    "attempting to delete it...\n", __func__, sc->tablename);
                 sc = new_schemachange_type();
                 if (sc == NULL) {
                     continue;
@@ -172,6 +175,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 );
                 sc->type = DBTYPE_QUEUEDB;
                 sc->del_qdb_file = 1;
+                sc->nothrevent = 1;
                 rc = start_schema_change(sc);
                 if (rc != SC_OK && rc != SC_ASYNC) {
                     logmsg(LOGMSG_ERROR,
@@ -180,9 +184,15 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                            __func__, sc->tablename);
                     free_schema_change_type(sc);
                 }
-                tbl->qdb_was_full = 0;
+            } else {
+                logmsg(LOGMSG_DEBUG,
+                    "%s: queuedb '%s' has two files and old file is not "
+                    "empty, doing nothing...\n", __func__, sc->tablename);
             }
-        } else if (tbl->qdb_was_full == 0 && bdb_queuedb_is_db_full(db1)) {
+        } else if (bdb_queuedb_is_db_full(db1)) {
+            logmsg(LOGMSG_DEBUG,
+                "%s: queuedb '%s' has one file and old file is full, "
+                "attempting to add new file...\n", __func__, sc->tablename);
             sc = new_schemachange_type();
             if (sc == NULL) {
                 continue;
@@ -192,6 +202,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             );
             sc->type = DBTYPE_QUEUEDB;
             sc->add_qdb_file = 1;
+            sc->nothrevent = 1;
             rc = start_schema_change(sc);
             if (rc != SC_OK && rc != SC_ASYNC) {
                 logmsg(LOGMSG_ERROR,
@@ -200,7 +211,10 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                            __func__, sc->tablename);
                 free_schema_change_type(sc);
             }
-            tbl->qdb_was_full = 1;
+        } else {
+            logmsg(LOGMSG_DEBUG,
+                "%s: queuedb '%s' has one file and old file is not "
+                "full, doing nothing...\n", __func__, sc->tablename);
         }
     }
     bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDWR);
