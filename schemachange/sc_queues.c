@@ -177,8 +177,6 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     char **dests;
     int bdberr;
 
-    wrlock_schema_lk();
-
     /* Queue information should already be in llmeta. Fetch it and create
      * queue/consumer handles. */
 
@@ -188,7 +186,6 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_queue %s rc %d bdberr %d\n",
                    queue_name, rc, bdberr);
-            unlock_schema_lk();
             return rc;
         }
     }
@@ -304,7 +301,6 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     }
 
 done:
-    unlock_schema_lk();
     return rc;
 }
 
@@ -594,7 +590,6 @@ int finalize_trigger(struct schema_change_type *s)
 int reopen_queue_dbs(const char *queue_name)
 {
     int rc = 0;
-    wrlock_schema_lk();
     struct dbtable *db = getqueuebyname(queue_name);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n", __func__,
@@ -623,7 +618,6 @@ int reopen_queue_dbs(const char *queue_name)
     }
     add_to_qdbs(db);
 done:
-    unlock_schema_lk();
     return rc;
 }
 
