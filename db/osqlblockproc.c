@@ -806,7 +806,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
-#ifndef NDEBUG
+#if DEBUG_REORDER
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,

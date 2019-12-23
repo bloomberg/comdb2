@@ -124,7 +124,7 @@ static int osql_create_bpfunc_temptbl(bdb_state_type *bdb_state,
 static int osql_destroy_bpfunc_temptbl(bdb_state_type *bdb_state,
                                        struct sqlclntstate *clnt);
 
-#ifndef NDEBUG
+#if DEBUG_REORDER
 #define DEBUG_PRINT_NUMOPS()                                                   \
     do {                                                                       \
         uuidstr_t us;                                                          \
