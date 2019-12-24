@@ -975,9 +975,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         p_fstblk_buf, p_fstblk_buf_end)))  {
                     abort();
                 }
-                if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
-                        p_fstblk_buf, p_fstblk_buf_end))) {
-                    abort();
+                if (snapinfo_outrc != 0) {
+                    if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(
+                              &(iq->errstat), p_fstblk_buf,
+                              p_fstblk_buf_end))) {
+                        abort();
+                    }
                 }
             }
 
@@ -5458,9 +5461,12 @@ add_blkseq:
                                 p_buf_fstblk_end))) {
                             return ERR_INTERNAL;
                 }
-                if (!(p_buf_fstblk = osqlcomm_errstat_type_put(&(iq->errstat),
-                            p_buf_fstblk, p_buf_fstblk_end))) {
-                            return ERR_INTERNAL;
+                if (outrc != 0) {
+                    if (!(p_buf_fstblk = osqlcomm_errstat_type_put(
+                              &(iq->errstat), p_buf_fstblk,
+                              p_buf_fstblk_end))) {
+                        return ERR_INTERNAL;
+                    }
                 }
             }
 

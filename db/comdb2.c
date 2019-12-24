@@ -2248,14 +2248,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
         }
+        dyns_init_globals();
         rc = dyns_load_schema_string(csc2text, dbname, tblnames[i]);
+        free(csc2text);
+        csc2text = NULL;
         if (rc) {
             logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
                     __LINE__);
             break;
         }
-        free(csc2text);
-        csc2text = NULL;
         tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
@@ -2303,7 +2304,9 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
         /* Free the table name. */
         free(tblnames[i]);
+        dyns_cleanup_globals();
     }
+    dyns_cleanup_globals();
 
     /* we have to do this after all the meta table lookups so that the hack in
      * get_meta_int works */
@@ -3273,6 +3276,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
        return -1;
     }
 
+    // dyns_init_globals() is called by the caller, cleanup as well
     rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
@@ -3314,11 +3318,15 @@ static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
 static int init_sqlite_tables(struct dbenv *dbenv)
 {
     int rc;
+    dyns_init_globals();
     rc = init_sqlite_table(dbenv, "sqlite_stat1");
+    dyns_cleanup_globals();
     if (rc)
         return rc;
     /* There's no 2 or 3.  There used to be 2.  There was never 3. */
+    dyns_init_globals();
     rc = init_sqlite_table(dbenv, "sqlite_stat4");
+    dyns_cleanup_globals();
     if (rc)
         return rc;
     return 0;

@@ -4000,46 +4000,46 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
-        struct dbtable *d = dbenv->dbs[ii];
+        struct dbtable *tbl = dbenv->dbs[ii];
         int compress, compress_blobs, datacopy_odh;
         int bthashsz;
         if (gbl_create_mode) {
-            if (init_odh_lrl(d, &compress, &compress_blobs, &datacopy_odh) !=
+            if (init_odh_lrl(tbl, &compress, &compress_blobs, &datacopy_odh) !=
                 0) {
                 logmsg(LOGMSG_ERROR, "save odh to llmeta failed\n");
                 return -1;
             }
             if (gbl_init_with_bthash &&
-                put_db_bthash(d, NULL, gbl_init_with_bthash) != 0) {
+                put_db_bthash(tbl, NULL, gbl_init_with_bthash) != 0) {
                 logmsg(LOGMSG_ERROR, "save bthash size to llmeta failed\n");
                 return -1;
             }
             bthashsz = gbl_init_with_bthash;
         } else {
-            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh,
+            if (init_odh_llmeta(tbl, &compress, &compress_blobs, &datacopy_odh,
                                 tran) != 0) {
                 logmsg(LOGMSG_ERROR, "fetch odh from llmeta failed\n");
                 return -1;
             }
 
-            if (get_db_bthash_tran(d, &bthashsz, tran) != 0) {
+            if (get_db_bthash_tran(tbl, &bthashsz, tran) != 0) {
                 bthashsz = 0;
             }
 
-            get_disable_skipscan(d, tran);
+            get_disable_skipscan(tbl, tran);
         }
 
         if (bthashsz) {
             logmsg(LOGMSG_INFO,
                    "Building bthash for table %s, size %dkb per stripe\n",
-                   d->tablename, bthashsz);
-            bdb_handle_dbp_add_hash(d->handle, bthashsz);
+                   tbl->tablename, bthashsz);
+            bdb_handle_dbp_add_hash(tbl->handle, bthashsz);
         }
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
-        set_bdb_option_flags(d, d->odh, d->inplace_updates,
-                             d->instant_schema_change, d->schema_version,
+        set_bdb_option_flags(tbl, tbl->odh, tbl->inplace_updates,
+                             tbl->instant_schema_change, tbl->schema_version,
                              compress, compress_blobs, datacopy_odh);
 
         ctrace("Table %s  "
@@ -4048,9 +4048,10 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               d->tablename, d->schema_version, d->odh ? "yes" : "no",
-               d->instant_schema_change ? "yes" : "no",
-               datacopy_odh ? "yes" : "no", d->inplace_updates ? "yes" : "no");
+               tbl->tablename, tbl->schema_version, tbl->odh ? "yes" : "no",
+               tbl->instant_schema_change ? "yes" : "no",
+               datacopy_odh ? "yes" : "no",
+               tbl->inplace_updates ? "yes" : "no");
     }
 
     if (gbl_create_mode) {

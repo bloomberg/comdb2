@@ -465,7 +465,8 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
         } else {
             logmsg(LOGMSG_ERROR, "%s find/next berk rc %d\n", __func__, rc);
             *bdberr = BDBERR_MISC;
-            return -1;
+            assert(rc != 0);
+            goto done;
         }
     }
 done:
@@ -473,14 +474,13 @@ done:
         int crc;
         crc = dbcp->c_close(dbcp);
         if (crc == DB_LOCK_DEADLOCK) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
-            goto done;
         } else if (crc) {
             logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_MISC;
             rc = -1;
-            goto done;
         }
     }
     if (dbt_key.data)
@@ -698,21 +698,25 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     rc = 0;
 
 done:
-    if (dbt_key.data && dbt_key.data != key /*this puppy isn't malloced*/)
-        free(dbt_key.data);
-    if (dbt_data.data)
-        free(dbt_data.data);
     if (dbcp) {
         int crc;
         crc = dbcp->c_close(dbcp);
         if (crc) {
             if (crc == DB_LOCK_DEADLOCK) {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
                 *bdberr = DB_LOCK_DEADLOCK;
                 rc = -1;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+                *bdberr = BDBERR_MISC;
+                rc = -1;
             }
-            /* TODO: log any other error, shouldn't happen */
         }
     }
+    if (dbt_key.data && dbt_key.data != key /*this puppy isn't malloced*/)
+        free(dbt_key.data);
+    if (dbt_data.data)
+        free(dbt_data.data);
 
     return rc;
 }
@@ -840,6 +844,7 @@ done:
         int crc;
         crc = dbcp->c_close(dbcp);
         if (crc == DB_LOCK_DEADLOCK) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
         } else if (crc) {

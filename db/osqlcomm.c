@@ -4603,10 +4603,9 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
             sbuf2flush(logsb);
         }
 
+#if DEBUG_REORDER
         DEBUGMSG("[%llu] send %s rc = %d, nops = %d\n", rqid,
                  osql_reqtype_str(rpl_ok.hd.type), rc, nops);
-#if 0
-      printf("Sending rqid=%llu tmp=%llu\n", rqid, osql_log_time());
 #endif
 
         if (!(p_buf = osqlcomm_done_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
@@ -4740,9 +4739,11 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
             sbuf2flush(logsb);
         }
 
+#if DEBUG_REORDER
         DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_ok.hd.type), rc,
                  nops);
+#endif
 
         if (!(p_buf = osqlcomm_done_uuid_rpl_put(&rpl_ok, p_buf, p_buf_end))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
@@ -4775,7 +4776,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
 
         memcpy(&rpl_xerr.dt, xerr, sizeof(rpl_xerr.dt));
 
-#ifndef NDEBUG
+#if DEBUG_REORDER
         uuidstr_t us;
         DEBUGMSG("uuid=%s send %s rc = %d, nops = %d\n",
                  comdb2uuidstr(uuid, us), osql_reqtype_str(rpl_xerr.hd.type),
