@@ -252,6 +252,7 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
+extern char *gbl_test_log_file;
 extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;

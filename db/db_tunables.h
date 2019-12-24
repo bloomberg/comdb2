@@ -1885,4 +1885,9 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "thread.  (Default: 8 MiB)",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("test_log_file",
+                 "Dedicated log file for use by the test suite only.  "
+                 "(Default: off)", TUNABLE_STRING, &gbl_test_log_file,
+                 READONLY | READEARLY, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
