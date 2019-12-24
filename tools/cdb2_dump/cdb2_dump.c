@@ -611,6 +611,17 @@ cdb2_dump_usage()
 	(void)fprintf(stderr, "%s\n\t%s\n",
 	    "usage: cdb2_dump [-klNprRV]",
     "[-d ahr] [-f output] [-h home] [-P /path/to/password] [-s database] db_file");
+    "   -d    dump options, a - detailed, r - test recovery"
+    "   -f    output to file"
+    "   -h    home db directory"
+    "   -k    keyflag"
+    "   -l    check if DB file contains subtadabases"
+    "   -N    set no locking mode"
+    "   -p    escape printed output"
+    "   -P    password file to decrypt btree content"
+    "   -r    verify as well"
+    "   -R    aggressive mode for verify"
+    "   -V    display version"
 	return (EXIT_FAILURE);
 }
 
