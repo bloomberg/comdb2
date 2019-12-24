@@ -45,8 +45,8 @@ pthread_mutex_t _crons_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static void *_cron_runner(void *arg);
 static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
-                        void *arg2, void *arg3, void *arg4NoFree,
-                        uuid_t *source_id, struct errstat *err);
+                        void *arg2, void *arg3, void *arg4, uuid_t *source_id,
+                        struct errstat *err);
 
 void init_cron(void)
 {
@@ -61,8 +61,8 @@ void init_cron(void)
  */
 cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
                              FCRON func, void *arg1, void *arg2, void *arg3,
-                             void *arg4NoFree, uuid_t *source_id,
-                             struct errstat *err, sched_if_t *impl)
+                             void *arg4, uuid_t *source_id, struct errstat *err,
+                             sched_if_t *impl)
 {
     int created;
     int rc;
@@ -110,8 +110,8 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
     }
 
     Pthread_mutex_lock(&sched->mtx);
-    rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, arg4NoFree,
-                      source_id, err);
+    rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, arg4, source_id,
+                      err);
     Pthread_mutex_unlock(&sched->mtx);
 
     if (rc == CRON_NOERR) {
@@ -139,15 +139,14 @@ oom:
 }
 
 static void _set_event(cron_event_t *event, int epoch, FCRON func, void *arg1,
-                       void *arg2, void *arg3, void *arg4NoFree,
-                       cron_sched_t *sched)
+                       void *arg2, void *arg3, void *arg4, cron_sched_t *sched)
 {
     event->epoch = epoch;
     event->func = func;
     event->arg1 = arg1;
     event->arg2 = arg2;
     event->arg3 = arg3;
-    event->arg4NoFree = arg4NoFree;
+    event->arg4 = arg4; /* NOT OWNED: NEVER FREED */
     event->schedif = &sched->impl;
 }
 
@@ -192,8 +191,8 @@ static void _insert_ordered_event(cron_sched_t *sched, cron_event_t *event)
 }
 
 static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
-                        void *arg2, void *arg3, void *arg4NoFree,
-                        uuid_t *source_id, struct errstat *err)
+                        void *arg2, void *arg3, void *arg4, uuid_t *source_id,
+                        struct errstat *err)
 {
     cron_event_t *event;
 
@@ -209,7 +208,7 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     }
 
     /* A new event is born */
-    _set_event(event, epoch, func, arg1, arg2, arg3, arg4NoFree, sched);
+    _set_event(event, epoch, func, arg1, arg2, arg3, arg4, sched);
 
     if (source_id) {
         comdb2uuidcpy(event->source_id, *source_id);
@@ -231,8 +230,8 @@ static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
         free(event->arg2);
     if (event->arg3)
         free(event->arg3);
-    if (event->arg4NoFree)
-        event->arg4NoFree = NULL; /* NOT OWNED, DO NOT FREE */
+    if (event->arg4)
+        event->arg4 = NULL; /* NOT OWNED, DO NOT FREE */
     free(event);
 }
 
@@ -336,7 +335,7 @@ void cron_signal_worker(cron_sched_t *sched)
  *
  */
 int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
-                      void *arg2, void *arg3, void *arg4NoFree, uuid_t source_id,
+                      void *arg2, void *arg3, void *arg4, uuid_t source_id,
                       struct errstat *err)
 {
     cron_event_t *event = NULL, *tmp = NULL;
@@ -349,7 +348,7 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
         if (comdb2uuidcmp(event->source_id, source_id) == 0) {
 
             /* we can process this */
-            _set_event(event, epoch, func, arg1, arg2, arg3, arg4NoFree, sched);
+            _set_event(event, epoch, func, arg1, arg2, arg3, arg4, sched);
 
             /* remote the event, and reinsert it in the new position */
             listc_rfl(&sched->events, event);

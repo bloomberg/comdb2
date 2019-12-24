@@ -138,7 +138,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
     if (db_is_stopped()) return NULL;
     struct dbenv *dbenv = NULL;
-    if (evt != NULL) dbenv = evt->arg4NoFree;
+    if (evt != NULL) dbenv = evt->arg4;
     if (gbl_queuedb_file_interval > 0) {
         int tm = comdb2_time_epoch() + (gbl_queuedb_file_interval / 1000);
         void *p = cron_add_event(gbl_queuedb_cron, NULL, tm,
