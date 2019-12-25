@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 
 gen() {
     IN=$SECONDS
@@ -26,22 +28,21 @@ do_verify()
 
 export -f gen
 
+cnt=0
 while :; do
+    let cnt=$cnt+1
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "truncate t"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('delfiles t')"
     gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out1.txt &
     gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out2.txt &
     gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out3.txt &
     gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out4.txt &
+    gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out4.txt &
+    gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out4.txt &
+    gen | cdb2sql ${CDB2_OPTIONS} $DBNAME default > out4.txt &
 
     wait
 
-    set -e
-
     do_verify t
-    for i in $(seq 1 4); do
-        cdb2sql ${CDB2_OPTIONS} $DBNAME default "rebuild t"
-        do_verify t
-    done
-    set +e
+    echo "done with run $cnt"
 done
