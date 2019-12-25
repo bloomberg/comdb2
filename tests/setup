@@ -154,6 +154,7 @@ setup_db() {
         echo "logmsg level debug" >> ${LRL}
     fi
     echo "eventlog_nkeep 0" >> ${LRL}
+    echo "pagesizeix 1024" >> ${LRL}
 
     if [[ -f lrl ]]; then
         cat lrl >> ${LRL}
