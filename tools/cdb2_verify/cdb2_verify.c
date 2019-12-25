@@ -235,7 +235,14 @@ static int
 cdb2_verify_usage()
 {
 	fprintf(stderr, "%s\n",
-	    "usage: cdb2_verify [-NoqV] [-h home] [-P /path/to/password] db_file ...");
+       "usage: cdb2_verify [-NoqV] [-h home] [-P /path/to/password] db_file ..."
+        "  -h       this usage help message"
+        "  -N       set db env to no locking"
+        "  -o       order check"
+        "  -q       quiet mode"
+        "  -V       print version information"
+        );
+
 	return (EXIT_FAILURE);
 }
 
