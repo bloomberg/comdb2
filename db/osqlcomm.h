@@ -48,15 +48,6 @@ int osql_comm_init(struct dbenv *dbenv);
  */
 void osql_comm_destroy(void);
 
-/**
- * Disable temporarily replicant "node"
- * "node" will receive no more offloading requests
- * until a blackout window will expire
- * It is used mainly with blocksql
- *
- */
-int osql_comm_blkout_node(const char *host);
-
 /* Offload upgrade record request. */
 int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
 
@@ -86,8 +77,8 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
  * or -1 otherwise
  *
  */
-int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
-                      struct errstat **xerr, struct ireq *);
+int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
+                      int hasuuid, struct errstat **xerr);
 
 /**
  * Send a "POKE" message to "tonode" inquering about session "rqid"
@@ -269,7 +260,7 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(sorese_info_t *sorese, struct errstat *xerr,
+int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
                                int rc);
 
 /**
@@ -427,5 +418,8 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid);
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err);
+
+void osql_extract_snap_info(struct ireq *iq, void *data, int datalen,
+                            int hasuuid);
 
 #endif

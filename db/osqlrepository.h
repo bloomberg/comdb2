@@ -68,16 +68,6 @@ int osql_repository_init(void);
 void osql_repository_destroy(void);
 
 /**
- * Disable temporarily replicant "node"
- * Lock the repository during update
- * "node" will receive no more offloading requests
- * until a blackout window will expire
- * It is used mainly with blocksql
- *
- */
-int osql_repository_blkout_node(char *node);
-
-/**
  * Returns true if all requests are being
  * cancelled (this is usually done because
  * of a schema change)

@@ -26,8 +26,6 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
 int check_table_schema(struct dbenv *dbenv, const char *table,
                        const char *csc2file);
 
-int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp);
-
 /* adds a new version of a schema (loaded from a file) to the meta table */
 int load_new_table_schema_file_tran(struct dbenv *dbenv, tran_type *tran,
                                     const char *table, const char *csc2file);

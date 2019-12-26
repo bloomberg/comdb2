@@ -266,14 +266,15 @@ typedef enum cdb2_event_type {
     CDB2_AFTER_SEND_QUERY = 1 << 7,
     CDB2_BEFORE_READ_RECORD = 1 << 8,
     CDB2_AFTER_READ_RECORD = 1 << 9,
+    CDB2_AT_RECEIVE_HEARTBEAT = 1 << 10,
 
     /* Logical operation events.
        A logicial operation event typically
        consists of multiple network events. */
-    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 10,
-    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 11,
-    CDB2_AT_ENTER_NEXT_RECORD = 1 << 12,
-    CDB2_AT_EXIT_NEXT_RECORD = 1 << 13,
+    CDB2_AT_ENTER_RUN_STATEMENT = 1 << 11,
+    CDB2_AT_EXIT_RUN_STATEMENT = 1 << 12,
+    CDB2_AT_ENTER_NEXT_RECORD = 1 << 13,
+    CDB2_AT_EXIT_NEXT_RECORD = 1 << 14,
 
     /* Lifecycle events */
     CDB2_BEFORE_DISCOVERY = 1 << 27,
@@ -286,7 +287,8 @@ typedef enum cdb2_event_arg {
     CDB2_HOSTNAME = 1,
     CDB2_PORT,
     CDB2_SQL,
-    CDB2_RETURN_VALUE
+    CDB2_RETURN_VALUE,
+    CDB2_QUERY_STATE
 } cdb2_event_arg;
 
 typedef struct cdb2_event cdb2_event;

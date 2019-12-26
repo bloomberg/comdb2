@@ -34,3 +34,27 @@ end}$$
 EOF
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_fp()"
+
+cdb2sql --host $SP_HOST $SP_OPTIONS - <<'EOF'
+CREATE PROCEDURE test_fp_emit VERSION '1' {
+local function main()
+  local t, rc = db:exec('SELECT 1')
+  db:emit(t)
+end}$$
+EOF
+
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_fp_emit()"
+
+cdb2sql --host $SP_HOST $SP_OPTIONS - <<'EOF'
+CREATE PROCEDURE test_fp_close VERSION '1' {
+local function main()
+  local s, rc = db:prepare('SELECT 1 UNION SELECT 2 UNION SELECT 3')
+  local row, rc = s:fetch()
+  db:emit(row)
+  row, rc = s:fetch();
+  db:emit(row)
+  s:close()
+end}$$
+EOF
+
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE test_fp_close()"

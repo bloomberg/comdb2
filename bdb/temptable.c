@@ -153,36 +153,35 @@ struct temp_cursor {
 typedef struct arr_elem {
     int keylen;
     int dtalen;
-    void *key;
-    void *dta;
+    uint8_t *key;
+    uint8_t *dta;
 } arr_elem_t;
 
 #define COPY_KV_TO_CUR(c)                                                      \
     do {                                                                       \
         arr_elem_t *elem = &(c)->tbl->elements[(c)->ind];                      \
-        int maxkeylen = (c)->tbl->maxkeylen;                                   \
-        if ((c)->key == NULL || (c)->keymalloclen < maxkeylen) {               \
-            (c)->key = realloc((c)->key, maxkeylen);                           \
-            (c)->keymalloclen = maxkeylen;                                     \
+        int keylen = elem->keylen, dtalen = elem->dtalen;                      \
+        if ((c)->key == NULL || (c)->keymalloclen < keylen) {                  \
+            (c)->key = malloc_resize((c)->key, keylen);                        \
+            (c)->keymalloclen = keylen;                                        \
         }                                                                      \
         if ((c)->key == NULL) {                                                \
             (c)->valid = 0;                                                    \
             return -1;                                                         \
         }                                                                      \
-        int maxdatalen = (c)->tbl->maxdatalen;                                 \
-        if ((c)->data == NULL || (c)->datamalloclen < maxdatalen) {            \
-            (c)->data = realloc((c)->data, maxdatalen);                        \
-            (c)->datamalloclen = maxdatalen;                                   \
+        if ((c)->data == NULL || (c)->datamalloclen < dtalen) {                \
+            (c)->data = malloc_resize((c)->data, dtalen);                      \
+            (c)->datamalloclen = dtalen;                                       \
         }                                                                      \
         if ((c)->data == NULL) {                                               \
             free((c)->data);                                                   \
             (c)->valid = 0;                                                    \
             return -1;                                                         \
         }                                                                      \
-        (c)->keylen = elem->keylen;                                            \
-        (c)->datalen = elem->dtalen;                                           \
-        memcpy((c)->key, elem->key, (c)->keylen);                              \
-        memcpy((c)->data, elem->dta, (c)->datalen);                            \
+        (c)->keylen = keylen;                                                  \
+        (c)->datalen = dtalen;                                                 \
+        memcpy((c)->key, elem->key, keylen);                                   \
+        memcpy((c)->data, elem->dta, dtalen);                                  \
         (c)->valid = 1;                                                        \
     } while (0);
 
@@ -222,11 +221,6 @@ struct temp_table {
     unsigned long long inmemsz;
     unsigned long long cachesz;
     arr_elem_t *elements;
-    /* Keep track of the max key length and data length.
-       We allocate that much for a tempcursor such that
-       a tempcursor can reuse the same piece of memory. */
-    int maxkeylen;
-    int maxdatalen;
 };
 
 enum { TMPTBL_PRIORITY, TMPTBL_WAIT };
@@ -371,7 +365,6 @@ static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
     for (ii = 0; ii != nents; ++ii) {
         elem = &tbl->elements[ii];
         free(elem->key);
-        free(elem->dta);
     }
     tbl->inmemsz = 0;
     tbl->num_mem_entries = nents;
@@ -912,7 +905,7 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
     DBT dkey, ddata;
     int rc = 0;
     arr_elem_t *elem;
-    void *keycopy, *dtacopy;
+    uint8_t *keycopy, *dtacopy;
 
     if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE ||
         cur->tbl->temp_table_type != TEMP_TABLE_TYPE_ARRAY) {
@@ -928,18 +921,13 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
         /* Free the existing elements and update the memory footprint. */
         elem = &cur->tbl->elements[cur->ind];
         free(elem->key);
-        free(elem->dta);
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
 
         /* malloc and copy */
-        keycopy = malloc(keylen);
+        keycopy = malloc(keylen + dtalen);
         if (keycopy == NULL)
             return -1;
-        dtacopy = malloc(dtalen);
-        if (dtacopy == NULL) {
-            free(keycopy);
-            return -1;
-        }
+        dtacopy = keycopy + keylen;
         memcpy(keycopy, key, keylen);
         memcpy(dtacopy, data, dtalen);
 
@@ -1434,7 +1422,6 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
         for (; ii != tbl->num_mem_entries; ++ii) {
             elem = &tbl->elements[ii];
             free(elem->key);
-            free(elem->dta);
         }
         tbl->inmemsz = 0;
         tbl->num_mem_entries = 0;
@@ -1668,7 +1655,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         for (ii = 0; ii != tbl->num_mem_entries; ++ii) {
             elem = &tbl->elements[ii];
             free(elem->key);
-            free(elem->dta);
         }
         break;
 
@@ -1738,7 +1724,6 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         elem = &cur->tbl->elements[cur->ind];
         free(elem->key);
-        free(elem->dta);
         --cur->tbl->num_mem_entries;
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
@@ -2299,7 +2284,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
     int rc, cmp, lo, hi, mid;
     tmptbl_cmp cmpfn;
     arr_elem_t *elem;
-    void *keycopy, *dtacopy;
+    uint8_t *keycopy, *dtacopy;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         struct temp_list_node *c_node = calloc(1, sizeof(struct temp_list_node));
@@ -2347,14 +2332,10 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
            If 1 or more elements of the same key already exist,
            insert it after the last one of those elements. */
 
-        keycopy = malloc(keylen);
+        keycopy = malloc(keylen + dtalen);
         if (keycopy == NULL)
             return -1;
-        dtacopy = malloc(dtalen);
-        if (dtacopy == NULL) {
-            free(keycopy);
-            return -1;
-        }
+        dtacopy = keycopy + keylen;
         memcpy(keycopy, key, keylen);
         memcpy(dtacopy, data, dtalen);
 
@@ -2398,11 +2379,6 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                 return -1;
             }
         }
-
-        if (keylen > tbl->maxkeylen)
-            tbl->maxkeylen = keylen;
-        if (dtalen > tbl->maxdatalen)
-            tbl->maxdatalen = dtalen;
 
         return 0;
     }
