@@ -127,8 +127,9 @@ int add_table_to_environment(char *table, const char *csc2,
     }
     newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
 
-    if (newdb == NULL) return SC_INTERNAL_ERROR;
-
+    if (newdb == NULL) {
+        return SC_INTERNAL_ERROR;
+    }
     newdb->dtastripe = gbl_dtastripe;
 
     newdb->iq = iq;
@@ -166,7 +167,8 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if ((rc = get_db_handle(newdb, trans))) goto err;
+    if ((rc = get_db_handle(newdb, trans)))
+        goto err;
 
     /* must re add the dbs if you're a physical replicant */
     if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
@@ -229,7 +231,9 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
+    dyns_init_globals();
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");

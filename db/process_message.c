@@ -988,18 +988,6 @@ clipper_usage:
         }
     }
 
-    else if (tokcmp(tok, ltok, "blocksqlthrottle") == 0) {
-        int num;
-
-        tok = segtok(line, lline, &st, &ltok);
-        num = toknum(tok, ltok);
-        logmsg(LOGMSG_USER, "setting blocksql maximmum concurrent in-transaction "
-                        "sessions to %d\n",
-                num);
-
-        osql_bplog_setlimit(num);
-    }
-
     else if (tokcmp(tok, ltok, "purge") == 0) {
         /* maintenance command: purge records/ index items/ blobs by genid
            These will typically be reported by e.g. the verify feature. */

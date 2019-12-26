@@ -527,6 +527,7 @@ int bdb_queue_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     int rc = 0;
 
     BDB_READLOCK("bdb_queue_add");
+    bdb_lock_table_read(bdb_state, tran);
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         rc = bdb_queuedb_add(bdb_state, tran, dta, dtalen, bdberr, out_genid);
     } else {

@@ -59,7 +59,7 @@ static int newsql_has_parallel_sql(struct sqlclntstate *);
 struct newsqlheader {
     int type;        /*  newsql request/response type */
     int compression; /*  Some sort of compression done? */
-    int dummy;       /*  Make it equal to fsql header. */
+    int state;       /*  query state - whether it's progressing, etc. */
     int length;      /*  length of response */
 };
 
@@ -359,10 +359,11 @@ static inline int newsql_to_client_type(int newsql_type)
     }
 }
 
-static int newsql_send_hdr(struct sqlclntstate *clnt, int h)
+static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int state)
 {
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
+    hdr.state = ntohl(state);
     int rc;
     lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
@@ -615,11 +616,18 @@ static int newsql_flush(struct sqlclntstate *clnt)
 
 static int newsql_heartbeat(struct sqlclntstate *clnt)
 {
+    int state;
+
     if (!clnt->heartbeat)
         return 0;
     if (!clnt->ready_for_heartbeats)
         return 0;
-    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT);
+
+    state = (clnt->sqltick > clnt->sqltick_last_seen);
+    clnt->sqltick_last_seen = clnt->sqltick;
+
+    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT,
+                           state);
 }
 
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
@@ -2184,7 +2192,7 @@ retry_read:
         }
 
         if (client_supports_ssl) {
-            newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL);
+            newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
             cdb2__query__free_unpacked(query, &pb_alloc);
             query = NULL;
             goto retry_read;

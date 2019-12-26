@@ -28,6 +28,7 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
+#include "sc_struct.h"
 
 extern void free_cached_idx(uint8_t **cached_idx);
 
@@ -769,7 +770,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                "Replicant setting compression flags for table:%s\n", table);
     } else if (type == add && add_new_db) {
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
-        if (add_table_to_environment(table_copy, csc2text, NULL, NULL, tran)) {
+        dyns_init_globals();
+        rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran);
+        dyns_cleanup_globals();
+        if (rc) {
             logmsg(LOGMSG_FATAL, "%s: error adding table "
                                  "%s.\n",
                    __func__, table);

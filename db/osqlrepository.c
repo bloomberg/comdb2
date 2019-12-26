@@ -411,29 +411,6 @@ int osql_repository_printcrtsessions(void)
 }
 
 /**
- * Disable temporarily replicant "node"
- * It will receive no more offloading requests
- * until a blackout window will expire
- * It is used mainly with blocksql
- *
- */
-int osql_repository_blkout_node(char *host)
-{
-    osql_repository_t *theosql = get_theosql();
-    if (theosql == NULL) {
-        return -1;
-    }
-    int outrc = 0;
-    Pthread_rwlock_wrlock(&theosql->hshlck);
-
-    outrc = osql_comm_blkout_node(host);
-
-    Pthread_rwlock_unlock(&theosql->hshlck);
-
-    return outrc;
-}
-
-/**
  * Go through all the sessions executing on node
  * "node" and mark them "terminate", which cancel
  * them.
@@ -466,15 +443,6 @@ int osql_repository_terminatenode(char *host)
     }
     if ((rc = hash_for(theosql->rqsuuid, osql_session_testterminate, host))) {
         logmsg(LOGMSG_ERROR, "hash_for failed with rc = %d\n", rc);
-        Pthread_rwlock_unlock(&theosql->hshlck);
-        return -1;
-    }
-
-    /* blackout node
-       this will prevent also active osql threads from sending requests in vain
-    */
-    if ((rc = osql_comm_blkout_node(host))) {
-        logmsg(LOGMSG_ERROR, "fail to blackout node %s\n", host);
         Pthread_rwlock_unlock(&theosql->hshlck);
         return -1;
     }
