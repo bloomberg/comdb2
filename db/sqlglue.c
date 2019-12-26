@@ -598,6 +598,9 @@ static int sql_tick(struct sql_thread *thd)
     if (clnt == NULL)
         return 0;
 
+    /* Increment per-clnt sqltick */
+    ++clnt->sqltick;
+
     /* statement cancelled? done */
     if (clnt->stop_this_statement)
         return SQLITE_BUSY;

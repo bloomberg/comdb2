@@ -66,7 +66,9 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     }
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
+    dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
+        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return rc;
     }
@@ -76,6 +78,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1);
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
+        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
@@ -86,9 +89,11 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
         backout_schemas(newdb->tablename);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
+        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     /* create temporary tables.  to try to avoid strange issues always

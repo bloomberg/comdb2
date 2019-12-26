@@ -2430,11 +2430,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
         return 0;
 
     /* Skip entirely if there are no clients */
-    if ((rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) !=0 ) {
-        logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
-        return rc;
-    }
-
+    bdb_osql_trn_count_clients(&count, !is_master);
     /* Don't parse if no one cares */
     if (count == 0)
         return 0;

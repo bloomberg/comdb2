@@ -78,12 +78,15 @@ int compute_all_data(int tidx)
 {
     int i = 0, off = 0, padk = 0, pad = 0, afterpad = 0;
     int j = 0, maxsym = 0, maxaln = 0, padbytes = 0;
+    struct table *tables = macc_globals->tables;
 
     for (i = 0; i < tables[tidx].nsym; i++) {
-        if (i == un_start[tables[tidx].sym[i].un_idx]) {
+        if (i == macc_globals->un_start[tables[tidx].sym[i].un_idx]) {
             /* do nothing */
-        } else if (un_reset[i]) {
-            off = tables[tidx].sym[un_start[tables[tidx].sym[i].un_idx]].off;
+        } else if (macc_globals->un_reset[i]) {
+            off = tables[tidx]
+                      .sym[macc_globals->un_start[tables[tidx].sym[i].un_idx]]
+                      .off;
         }
 
         /* NOW CHECK IF PADDING IS NECESSARY */
@@ -100,13 +103,17 @@ int compute_all_data(int tidx)
            the size is stored in last symbol in the union. */
         if (tables[tidx].sym[i].un_idx != -1) {
             /*fprintf(stderr, "(%d:%d) new off %d %d\n", i,
-             * un_end[sym[i].un_idx],sym[un_end[sym[i].un_idx]].un_max_size,off);*/
+             * macc_globals->un_end[sym[i].un_idx],sym[macc_globals->un_end[sym[i].un_idx]].un_max_size,off);*/
             for (j = 0; j < tables[tidx].sym[i].dpth; j++) {
                 char *curdpth = (char *)&tables[tidx].sym[i].dpth_tree[j];
                 if (curdpth[0] == 'u') {
                     int union_num = (int)(curdpth[1]);
-                    if (off > tables[tidx].sym[un_end[union_num]].un_max_size)
-                        tables[tidx].sym[un_end[union_num]].un_max_size = off;
+                    if (off > tables[tidx]
+                                  .sym[macc_globals->un_end[union_num]]
+                                  .un_max_size)
+                        tables[tidx]
+                            .sym[macc_globals->un_end[union_num]]
+                            .un_max_size = off;
                 }
             }
         }
@@ -118,7 +125,7 @@ int compute_all_data(int tidx)
            */
         pad = afterpad = 0;
         if (tables[tidx].sym[i].un_idx != -1 &&
-            i == un_end[tables[tidx].sym[i].un_idx]) {
+            i == macc_globals->un_end[tables[tidx].sym[i].un_idx]) {
             int largest = largest_idx(tidx, tables[tidx].sym[i].un_idx);
             if (character(tidx, largest)) {
                 afterpad = 0;
@@ -132,10 +139,12 @@ int compute_all_data(int tidx)
                                    tables[tidx].sym[largest].size;
                     tables[tidx].sym[i].padaf =
                         tables[tidx]
-                            .sym[un_end[tables[tidx].sym[i].un_idx]]
+                            .sym[macc_globals
+                                     ->un_end[tables[tidx].sym[i].un_idx]]
                             .un_max_size -
                         tables[tidx]
-                            .sym[un_start[tables[tidx].sym[i].un_idx]]
+                            .sym[macc_globals
+                                     ->un_start[tables[tidx].sym[i].un_idx]]
                             .off +
                         afterpad;
                 }
@@ -165,7 +174,7 @@ int compute_all_data(int tidx)
         if (tables[tidx].sym[j].align > tables[tidx].sym[maxaln].align)
             maxaln = j;
     }
-    if (opt_reclen == 0 && !opt_macc2pack &&
+    if (macc_globals->opt_reclen == 0 && !macc_globals->opt_macc2pack &&
         strcmp(tables[tidx].table_tag, ONDISKTAG)) {
         if (!character(tidx, maxsym)) {
             /* if structure does not have 4 bytes members, it
@@ -187,23 +196,25 @@ int compute_all_data(int tidx)
         off += padbytes;
         tables[tidx].table_padbytes = padbytes;
     }
-    if (opt_reclen != 0) {
-        if (off > opt_reclen) {
-            logmsg(LOGMSG_ERROR, " **** ERROR: RECORD LEN IS %d BYTES; "
-                            "YOU SPECIFIED A RECLEN OF %d BYTES.\n",
-                    off, opt_reclen);
+    if (macc_globals->opt_reclen != 0) {
+        if (off > macc_globals->opt_reclen) {
+            logmsg(LOGMSG_ERROR,
+                   " **** ERROR: RECORD LEN IS %d BYTES; "
+                   "YOU SPECIFIED A RECLEN OF %d BYTES.\n",
+                   off, macc_globals->opt_reclen);
             return -1;
         }
 
-        if (!character(tidx, maxsym) && !opt_macc2pack) {
-            padbytes = offpad(opt_reclen, tables[tidx].sym[maxsym].size);
+        if (!character(tidx, maxsym) && !macc_globals->opt_macc2pack) {
+            padbytes =
+                offpad(macc_globals->opt_reclen, tables[tidx].sym[maxsym].size);
             if (padbytes != 0) {
                 /*fprintf(stderr, "WARNING: CMACC STRUCTURE MAY NOT BE
                  * COMPATIBLE WITH MACC2 RECORD\n");*/
             }
         }
 
-        padbytes += opt_reclen - off;
+        padbytes += macc_globals->opt_reclen - off;
         off += padbytes;
         tables[tidx].table_padbytes += padbytes;
     }
@@ -221,14 +232,14 @@ int compute_all_data(int tidx)
     }
 
     /* we're done with computations of unions and offsets, and padbytes */
-    un_init = 1;
+    macc_globals->un_init = 1;
 
     /* set tables size */
     tables[tidx].table_size = off;
 
-    bufszw = (off + 3) / 4;
-    bufszb = bufszw * 4;
-    bufszhw = bufszw * 2;
+    macc_globals->bufszw = (off + 3) / 4;
+    macc_globals->bufszb = macc_globals->bufszw * 4;
+    macc_globals->bufszhw = macc_globals->bufszw * 2;
 
     return 0;
 }
@@ -238,13 +249,14 @@ int compute_key_data(void)
     int lastix, i, j;
     /* compute key sizes */
     for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix != keyixnum[i]) {
-            lastix = keyixnum[i];
-            ixsize[lastix] = -1;
+        if (lastix != macc_globals->keyixnum[i]) {
+            lastix = macc_globals->keyixnum[i];
+            macc_globals->ixsize[lastix] = -1;
         }
-        j = wholekeysize(keys[i]); /* figure out largest index size */
-        if (j > ixsize[lastix]) {
-            ixsize[lastix] = j;
+        j = wholekeysize(
+            macc_globals->keys[i]); /* figure out largest index size */
+        if (j > macc_globals->ixsize[lastix]) {
+            macc_globals->ixsize[lastix] = j;
         }
     }
     return 0;
@@ -253,9 +265,11 @@ int compute_key_data(void)
 int case_first(int tidx, int symb)
 {
     int i;
-    for (i = 0; i < tables[tidx].nsym; i++) {
-        if ((tables[tidx].sym[symb].un_idx == tables[tidx].sym[i].un_idx) &&
-            (tables[tidx].sym[symb].caseno == tables[tidx].sym[i].caseno)) {
+    for (i = 0; i < macc_globals->tables[tidx].nsym; i++) {
+        if ((macc_globals->tables[tidx].sym[symb].un_idx ==
+             macc_globals->tables[tidx].sym[i].un_idx) &&
+            (macc_globals->tables[tidx].sym[symb].caseno ==
+             macc_globals->tables[tidx].sym[i].caseno)) {
             return i;
         }
     }
@@ -265,11 +279,12 @@ int case_first(int tidx, int symb)
 int largest_idx(int tidx, int unionnum)
 {
     int largest = -1, i = 0, endidx = 0, startidx = 0;
-    endidx = un_end[unionnum];
-    startidx = un_start[unionnum];
-    for (i = 0; i < current_union; i++) {
-        if (un_start[i] == startidx && un_end[i] > endidx) {
-            endidx = un_end[i];
+    endidx = macc_globals->un_end[unionnum];
+    startidx = macc_globals->un_start[unionnum];
+    for (i = 0; i < macc_globals->current_union; i++) {
+        if (macc_globals->un_start[i] == startidx &&
+            macc_globals->un_end[i] > endidx) {
+            endidx = macc_globals->un_end[i];
         }
     }
 
@@ -280,17 +295,19 @@ int largest_idx(int tidx, int unionnum)
         } else if (character(tidx, i))
             continue;
 
-        if (tables[tidx].sym[i].size > tables[tidx].sym[largest].size) {
+        if (macc_globals->tables[tidx].sym[i].size >
+            macc_globals->tables[tidx].sym[largest].size) {
             largest = i;
         }
     }
     if (largest == -1)
-        largest = un_start[unionnum];
+        largest = macc_globals->un_start[unionnum];
     return largest;
 }
 
 int offsetpad(int off, int idx, int tbl)
 {
+    struct table *tables = macc_globals->tables;
     if (tables[tbl].sym[idx].un_idx ==
         -1) /*  if we're simple struct symbol, do regular pad, and return */
     {
@@ -306,7 +323,7 @@ int offsetpad(int off, int idx, int tbl)
             off,
             tables[tbl].sym[idx].align); /* compute padding for this symbol */
 
-        for (i = 0; i < nsym; i++) {
+        for (i = 0; i < macc_globals->nsym; i++) {
             if (tables[tbl].sym[i].un_idx == tables[tbl].sym[idx].un_idx) {
                 if (offpad(off, tables[tbl].sym[i].align) > mostpad)
                 /* find symbol in the table which need most */
@@ -364,45 +381,45 @@ int offsetpad(int off, int idx, int tbl)
 
 int character(int tidx, int idx)
 {
-    if ((tables[tidx].sym[idx].type == T_PSTR) ||
-        (tables[tidx].sym[idx].type == T_UCHAR) ||
-        (tables[tidx].sym[idx].type == T_CSTR))
+    if ((macc_globals->tables[tidx].sym[idx].type == T_PSTR) ||
+        (macc_globals->tables[tidx].sym[idx].type == T_UCHAR) ||
+        (macc_globals->tables[tidx].sym[idx].type == T_CSTR))
         return 1;
     return 0;
 }
 
 int iscstr(int tidx, int idx)
 {
-    if (tables[tidx].sym[idx].type == T_CSTR)
+    if (macc_globals->tables[tidx].sym[idx].type == T_CSTR)
         return 1;
     return 0;
 }
 
 int ispstr(int tidx, int idx)
 {
-    if (tables[tidx].sym[idx].type == T_PSTR)
+    if (macc_globals->tables[tidx].sym[idx].type == T_PSTR)
         return 1;
     return 0;
 }
 
 int isblob(int tidx, int idx)
 {
-    if (tables[tidx].sym[idx].type == T_BLOB)
+    if (macc_globals->tables[tidx].sym[idx].type == T_BLOB)
         return 1;
     return 0;
 }
 
 int isvutf8(int tidx, int idx)
 {
-    if (tables[tidx].sym[idx].type == T_VUTF8 ||
-        tables[tidx].sym[idx].type == T_BLOB2)
+    if (macc_globals->tables[tidx].sym[idx].type == T_VUTF8 ||
+        macc_globals->tables[tidx].sym[idx].type == T_BLOB2)
         return 1;
     return 0;
 }
 
 int isblob2(int tidx, int idx)
 {
-    if (tables[tidx].sym[idx].type == T_BLOB2)
+    if (macc_globals->tables[tidx].sym[idx].type == T_BLOB2)
         return 1;
     return 0;
 }

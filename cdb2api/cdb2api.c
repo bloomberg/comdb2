@@ -880,7 +880,7 @@ static int cdb2_free_context_msgs(cdb2_hndl_tp *hndl);
 struct newsqlheader {
     int type;
     int compression;
-    int dummy;
+    int state; /* query state */
     int length;
 };
 
@@ -923,7 +923,7 @@ static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
    4096 txn/us (~4 billion transactions per second) till September 17, 2112.
 
    See next_cnonce() for details. */
-#define CNONCE_STR_FMT "%ld-%d-%p-"
+#define CNONCE_STR_FMT "%lx-%x-%llx-"
 #define CNONCE_STR_SZ 52 /* 8 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
 
 #define CNT_BITS 12
@@ -2646,6 +2646,7 @@ retry:
 
     hdr.type = ntohl(hdr.type);
     hdr.compression = ntohl(hdr.compression);
+    hdr.state = ntohl(hdr.state);
     hdr.length = ntohl(hdr.length);
     hndl->ack = (hdr.type == RESPONSE_HEADER__SQL_RESPONSE_PING);
 
@@ -2664,6 +2665,18 @@ retry:
     if (hdr.length == 0) {
         debugprint("hdr length (0) from mach %s - going to retry\n",
                    hndl->hosts[hndl->connected_host]);
+
+        /* If we have an AT_RECEIVE_HEARTBEAT event, invoke it now. */
+        cdb2_event *e = NULL;
+        void *callbackrc;
+        while ((e = cdb2_next_callback(hndl, CDB2_AT_RECEIVE_HEARTBEAT, e)) !=
+               NULL) {
+            int unused;
+            (void)unused;
+            callbackrc =
+                cdb2_invoke_callback(hndl, e, 1, CDB2_QUERY_STATE, hdr.state);
+            PROCESS_EVENT_CTRL_AFTER(hndl, e, unused, callbackrc);
+        }
         goto retry;
     }
 
@@ -3494,8 +3507,8 @@ static int next_cnonce(cdb2_hndl_tp *hndl)
             c->hostid = _MACHINE_ID;
             c->pid = _PID;
             c->hndl = hndl;
-            c->ofs =
-                sprintf(c->str, CNONCE_STR_FMT, c->hostid, c->pid, c->hndl);
+            c->ofs = sprintf(c->str, CNONCE_STR_FMT, c->hostid, c->pid,
+                             (unsigned long long)c->hndl);
         }
         c->seq = (now << CNT_BITS);
     } else {
@@ -6395,6 +6408,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
     int port;
     const char *sql = NULL;
     void *rc;
+    int state;
 
     /* Fast return if no arguments need to be passed to the callback. */
     if (e->argc == 0)
@@ -6409,6 +6423,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         port = hndl->ports[hndl->connected_host];
     }
     rc = 0;
+    state = 0;
 
     /* If the event has specified its own arguments, use them. */
     va_start(ap, argc);
@@ -6425,6 +6440,9 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             break;
         case CDB2_RETURN_VALUE:
             rc = va_arg(ap, void *);
+            break;
+        case CDB2_QUERY_STATE:
+            state = va_arg(ap, int);
             break;
         default:
             (void)va_arg(ap, void *);
@@ -6447,6 +6465,9 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             break;
         case CDB2_RETURN_VALUE:
             argv[i] = (void *)(intptr_t)rc;
+            break;
+        case CDB2_QUERY_STATE:
+            argv[i] = (void *)(intptr_t)state;
             break;
         default:
             break;

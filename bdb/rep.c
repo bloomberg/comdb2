@@ -769,6 +769,20 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
     tran = NULL;
 
+    /* get a pointer back to our bdb_state */
+    bdb_state = (bdb_state_type *)dbenv->app_private;
+
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    /* Fast return if broadcasting in standalone mode. */
+    if (host == db_eid_broadcast) {
+        count =
+            net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
+        if (count == 0)
+            return 0;
+    }
+
     callcount++;
 
     /*
@@ -817,12 +831,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
        if (__bdb_no_send)
        return 0;
        */
-
-    /* get a pointer back to our bdb_state */
-    bdb_state = (bdb_state_type *)dbenv->app_private;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
 
     bufsz = sizeof(int) +   /* seqnum */
             sizeof(int) +   /* recsz */
@@ -982,9 +990,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
     }
 
     if (host == db_eid_broadcast) {
-        /* send to all */
-        count =
-            net_get_all_nodes_connected(bdb_state->repinfo->netinfo, hostlist);
         for (i = 0; i < count; i++) {
             int tmpseq;
             uint8_t *p_seq_num = (uint8_t *)seqnum;
