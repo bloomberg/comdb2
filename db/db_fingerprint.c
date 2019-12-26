@@ -25,6 +25,8 @@
 #include "util.h"
 #include "tohex.h"
 
+extern int gbl_old_column_names;
+
 hash_t *gbl_fingerprint_hash = NULL;
 pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 
@@ -53,7 +55,40 @@ int clear_fingerprints(void) {
     return count;
 }
 
-void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
+void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
+                      unsigned char fingerprint[FINGERPRINTSZ]) {
+    MD5Context ctx = {0};
+
+    assert(zNormSql);
+    assert(pnNormSql);
+
+    *pnNormSql = strlen(zNormSql);
+
+    MD5Init(&ctx);
+    MD5Update(&ctx, (unsigned char *)zNormSql, *pnNormSql);
+    memset(fingerprint, 0, FINGERPRINTSZ);
+    MD5Final(fingerprint, &ctx);
+}
+
+static int compare_column_names(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    if (gbl_old_column_names == 0 || clnt->old_columns_count == 0 ||
+        (sqlite3_column_count(stmt) == 0)) {
+        // do nothing
+        return 0;
+    }
+
+    assert(clnt->old_columns_count == sqlite3_column_count(stmt));
+
+    for (int i = 0; i < clnt->old_columns_count; i++) {
+        if (strcmp(sqlite3_column_name(stmt, i), clnt->old_columns[i]))
+            return 1; // mismatch!
+    }
+    return 0;
+}
+
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                     const char *zSql, const char *zNormSql, int64_t cost,
                      int64_t time, int64_t nrows, struct reqlogger *logger,
                      unsigned char *fingerprint_out)
 {
@@ -109,6 +144,14 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         if (gbl_verbose_normalized_queries) {
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                    fp, zSql, t->zNormSql);
+        }
+
+        if (gbl_old_column_names && compare_column_names(clnt, stmt)) {
+            logmsg(LOGMSG_USER,
+                   "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
+                   "column names stable, fp:%s "
+                   "(https://www.sqlite.org/c3ref/column_name.html)",
+                   fp);
         }
     } else {
         t->count++;

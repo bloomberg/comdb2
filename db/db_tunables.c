@@ -305,15 +305,19 @@ extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 
-int gbl_debug_tmptbl_corrupt_mem;
-
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int eventlog_nkeep;
 
-int gbl_page_order_table_scan = 0;
+int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
+                                   sqlite's limit */
+int gbl_page_order_table_scan;
+int gbl_old_column_names = 1;
+int gbl_debug_tmptbl_corrupt_mem;
+
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
 /*
