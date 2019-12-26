@@ -7589,7 +7589,7 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
     }
     bzero(&logent, sizeof(DBT));
     logent.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &current_lsn, &logent, DB_LAST);
+    rc = logc->get(logc, &current_lsn, &logent, DB_FIRST);
     if (rc) {
         logc->close(logc, 0);
         logmsg(LOGMSG_ERROR, "%s: logc->get last LSN rc %d\n", __func__, rc);
