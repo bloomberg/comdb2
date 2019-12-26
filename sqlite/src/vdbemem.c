@@ -765,8 +765,7 @@ i64 sqlite3VdbeIntValue(Mem *pMem){
   }else if( pMem->flags & MEM_Datetime ){
     return pMem->du.dt.dttz_sec;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  }else if( flags & (MEM_Str|MEM_Blob) ){
-    assert( pMem->z || pMem->n==0 );
+  }else if( (flags & (MEM_Str|MEM_Blob))!=0 && pMem->z!=0 ){
     return memIntValue(pMem);
   }else{
     return 0;
@@ -965,8 +964,8 @@ int sqlite3VdbeMemCast(Vdbe *p, Mem *pMem, u8 aff, u8 encoding){
   sqlite3 *db = p->db;
   if( pMem->flags & MEM_Null ) return rc;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-void sqlite3VdbeMemCast(Mem *pMem, u8 aff, u8 encoding){
-  if( pMem->flags & MEM_Null ) return;
+int sqlite3VdbeMemCast(Mem *pMem, u8 aff, u8 encoding){
+  if( pMem->flags & MEM_Null ) return SQLITE_OK;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   switch( aff ){
     case SQLITE_AFF_BLOB: {   /* Really a cast to BLOB */
@@ -1042,11 +1041,13 @@ void sqlite3VdbeMemCast(Mem *pMem, u8 aff, u8 encoding){
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       pMem->flags &= ~(MEM_Int|MEM_Real|MEM_IntReal|MEM_Blob|MEM_Zero);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      break;
+      return sqlite3VdbeChangeEncoding(pMem, encoding);
     }
   }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   return rc;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  return SQLITE_OK;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 

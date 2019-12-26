@@ -465,6 +465,26 @@
 #endif
 
 /*
+** The harmless(X) macro indicates that expression X is usually false
+** but can be true without causing any problems, but we don't know of
+** any way to cause X to be true.
+**
+** In debugging and testing builds, this macro will abort if X is ever
+** true.  In this way, developers are alerted to a possible test case
+** that causes X to be true.  If a harmless macro ever fails, that is
+** an opportunity to change the macro into a testcase() and add a new
+** test case to the test suite.
+**
+** For normal production builds, harmless(X) is a no-op, since it does
+** not matter whether expression X is true or false.
+*/
+#ifdef SQLITE_DEBUG
+# define harmless(X)  assert(!(X));
+#else
+# define harmless(X)
+#endif
+
+/*
 ** Some conditionals are optimizations only.  In other words, if the
 ** conditionals are replaced with a constant 1 (true) or 0 (false) then
 ** the correct answer is still obtained, though perhaps not as quickly.
@@ -1845,12 +1865,6 @@ struct FuncDestructor {
 #define LIKEFUNC(zName, nArg, arg, flags) \
   {nArg, SQLITE_FUNC_CONSTANT|SQLITE_UTF8|flags, \
    (void *)arg, 0, likeFunc, 0, 0, 0, #zName, {0} }
-#define AGGREGATE(zName, nArg, arg, nc, xStep, xFinal, xValue) \
-  {nArg, SQLITE_UTF8|(nc*SQLITE_FUNC_NEEDCOLL), \
-   SQLITE_INT_TO_PTR(arg), 0, xStep,xFinal,xValue,0,#zName, {0}}
-#define AGGREGATE2(zName, nArg, arg, nc, xStep, xFinal, extraFlags) \
-  {nArg, SQLITE_UTF8|(nc*SQLITE_FUNC_NEEDCOLL)|extraFlags, \
-   SQLITE_INT_TO_PTR(arg), 0, xStep,xFinal,xFinal,0,#zName, {0}}
 #define WAGGREGATE(zName, nArg, arg, nc, xStep, xFinal, xValue, xInverse, f) \
   {nArg, SQLITE_UTF8|(nc*SQLITE_FUNC_NEEDCOLL)|f, \
    SQLITE_INT_TO_PTR(arg), 0, xStep,xFinal,xValue,xInverse,#zName, {0}}
@@ -3045,13 +3059,13 @@ struct Upsert {
 ** sequences for the ORDER BY clause.
 */
 struct Select {
-  ExprList *pEList;      /* The fields of the result */
   u8 op;                 /* One of: TK_UNION TK_ALL TK_INTERSECT TK_EXCEPT */
   LogEst nSelectRow;     /* Estimated number of result rows */
   u32 selFlags;          /* Various SF_* values */
   int iLimit, iOffset;   /* Memory registers holding LIMIT & OFFSET counters */
   u32 selId;             /* Unique identifier number for this SELECT */
   int addrOpenEphm[2];   /* OP_OpenEphem opcodes related to this select */
+  ExprList *pEList;      /* The fields of the result */
   SrcList *pSrc;         /* The FROM clause */
   Expr *pWhere;          /* The WHERE clause */
   ExprList *pGroupBy;    /* The GROUP BY clause */
@@ -3100,6 +3114,7 @@ struct Select {
 #define SF_ComplexResult 0x0040000 /* Result contains subquery or function */
 #define SF_WhereBegin    0x0080000 /* Really a WhereBegin() call.  Debug Only */
 #define SF_WinRewrite    0x0100000 /* Window function rewrite accomplished */
+#define SF_View          0x0200000 /* SELECT statement is a view */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SF_ASTIncluded   0x1000000 /* AST Generated */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3418,8 +3433,8 @@ struct Parse {
 
 #define PARSE_MODE_NORMAL        0
 #define PARSE_MODE_DECLARE_VTAB  1
-#define PARSE_MODE_RENAME_COLUMN 2
-#define PARSE_MODE_RENAME_TABLE  3
+#define PARSE_MODE_RENAME        2
+#define PARSE_MODE_UNMAP         3
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #if NODEBUG 
@@ -3462,7 +3477,7 @@ static int GET_CURSOR_RECORDING(Parse *p, int i){
 #if defined(SQLITE_OMIT_ALTERTABLE)
   #define IN_RENAME_OBJECT 0
 #else
-  #define IN_RENAME_OBJECT (pParse->eParseMode>=PARSE_MODE_RENAME_COLUMN)
+  #define IN_RENAME_OBJECT (pParse->eParseMode>=PARSE_MODE_RENAME)
 #endif
 
 #if defined(SQLITE_OMIT_VIRTUALTABLE) && defined(SQLITE_OMIT_ALTERTABLE)
@@ -4310,6 +4325,7 @@ int sqlite3Select(Parse*, Select*, SelectDest*);
 Select *sqlite3SelectNew(Parse*,ExprList*,SrcList*,Expr*,ExprList*,
                          Expr*,ExprList*,u32,Expr*);
 void sqlite3SelectDelete(sqlite3*, Select*);
+void sqlite3SelectReset(Parse*, Select*);
 Table *sqlite3SrcListLookup(Parse*, SrcList*);
 int sqlite3IsReadOnly(Parse*, Table*, int);
 void sqlite3OpenTable(Parse*, int iCur, int iDb, Table*, int);

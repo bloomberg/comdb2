@@ -102,7 +102,10 @@ static void _set_src_recording(
 
 /*
 ** Delete all the content of a Select structure.  Deallocate the structure
-** itself only if bFree is true.
+** itself depending on the value of bFree
+**
+** If bFree==1, call sqlite3DbFree() on the p object.
+** If bFree==0, Leave the first Select object unfreed
 */
 static void clearSelect(sqlite3 *db, Select *p, int bFree){
   while( p ){
@@ -207,6 +210,20 @@ Select *sqlite3SelectNew(
 */
 void sqlite3SelectDelete(sqlite3 *db, Select *p){
   if( OK_IF_ALWAYS_TRUE(p) ) clearSelect(db, p, 1);
+}
+
+/*
+** Delete all the substructure for p, but keep p allocated.  Redefine
+** p to be a single SELECT where every column of the result set has a
+** value of NULL.
+*/
+void sqlite3SelectReset(Parse *pParse, Select *p){
+  if( ALWAYS(p) ){
+    clearSelect(pParse->db, p, 0);
+    memset(&p->iLimit, 0, sizeof(Select) - offsetof(Select,iLimit));
+    p->pEList = sqlite3ExprListAppend(pParse, 0,
+                     sqlite3ExprAlloc(pParse->db,TK_NULL,0,0));
+  }
 }
 
 /*
@@ -2555,6 +2572,7 @@ static int multiSelectValues(
     assert( p->selFlags & SF_Values );
     assert( p->op==TK_ALL || (p->op==TK_SELECT && p->pPrior==0) );
     assert( p->pNext==0 || p->pEList->nExpr==p->pNext->pEList->nExpr );
+    if( p->pWin ) return -1;
     if( p->pPrior==0 ) break;
     assert( p->pPrior->pNext==p );
     p = p->pPrior;
@@ -2645,7 +2663,8 @@ static int multiSelect(
   */
   if( p->selFlags & SF_MultiValue ){
     rc = multiSelectValues(pParse, p, &dest);
-    goto multi_select_end;
+    if( rc>=0 ) goto multi_select_end;
+    rc = SQLITE_OK;
   }
 
   /* Make sure all SELECTs in the statement have the same number of elements
@@ -2790,9 +2809,9 @@ static int multiSelect(
         ** it is that we currently need.
         */
         assert( unionTab==dest.iSDParm || dest.eDest!=priorOp );
-        if( dest.eDest!=priorOp ){
+        assert( p->pEList || db->mallocFailed );
+        if( dest.eDest!=priorOp && db->mallocFailed==0 ){
           int iCont, iBreak, iStart;
-          assert( p->pEList );
           iBreak = sqlite3VdbeMakeLabel(pParse);
           iCont = sqlite3VdbeMakeLabel(pParse);
           computeLimitRegisters(pParse, p, iBreak);
@@ -2891,6 +2910,7 @@ static int multiSelect(
     }
   #endif
   }
+  if( pParse->nErr ) goto multi_select_end;
   
   /* Compute collating sequences used by 
   ** temporary tables needed to implement the compound select.
@@ -3682,6 +3702,7 @@ static void substSelect(
 **        (3b) the FROM clause of the subquery may not contain a virtual
 **             table and
 **        (3c) the outer query may not be an aggregate.
+**        (3d) the outer query may not be DISTINCT.
 **
 **   (4)  The subquery can not be DISTINCT.
 **
@@ -3878,8 +3899,11 @@ static int flattenSubquery(
   */
   if( (pSubitem->fg.jointype & JT_OUTER)!=0 ){
     isLeftJoin = 1;
-    if( pSubSrc->nSrc>1 || isAgg || IsVirtual(pSubSrc->a[0].pTab) ){
-      /*  (3a)             (3c)     (3b) */
+    if( pSubSrc->nSrc>1                   /* (3a) */
+     || isAgg                             /* (3b) */
+     || IsVirtual(pSubSrc->a[0].pTab)     /* (3c) */
+     || (p->selFlags & SF_Distinct)!=0    /* (3d) */
+    ){
       return 0;
     }
   }
@@ -4659,6 +4683,9 @@ static int convertCompoundSelectToSubquery(Walker *pWalker, Select *p){
   p->pPrior = 0;
   p->pNext = 0;
   p->pWith = 0;
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  p->pWinDefn = 0;
+#endif
   p->selFlags &= ~SF_Compound;
   assert( (p->selFlags & SF_Converted)==0 );
   p->selFlags |= SF_Converted;
@@ -5876,7 +5903,9 @@ int sqlite3Select(
   }
 
 #ifndef SQLITE_OMIT_WINDOWFUNC
-  if( sqlite3WindowRewrite(pParse, p) ){
+  rc = sqlite3WindowRewrite(pParse, p);
+  if( rc ){
+    assert( db->mallocFailed || pParse->nErr>0 );
     goto select_end;
   }
 #if SELECTTRACE_ENABLED

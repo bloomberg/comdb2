@@ -686,7 +686,7 @@ int sqlite3VdbeMemNumerify(Mem*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int sqlite3VdbeMemCast(Vdbe *, Mem*,u8,u8);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-void sqlite3VdbeMemCast(Mem*,u8,u8);
+int sqlite3VdbeMemCast(Mem*,u8,u8);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 int sqlite3VdbeMemFromBtree(BtCursor*,u32,u32,Mem*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)

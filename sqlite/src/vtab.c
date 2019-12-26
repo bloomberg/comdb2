@@ -457,6 +457,8 @@ void sqlite3VtabFinishParse(Parse *pParse, Token *pEnd){
     int iReg;
     Vdbe *v;
 
+    sqlite3MayAbort(pParse);
+
     /* Compute the complete text of the CREATE VIRTUAL TABLE statement */
     if( pEnd ){
       pParse->sNameToken.n = (int)(pEnd->z - pParse->sNameToken.z) + pEnd->n;
@@ -482,13 +484,13 @@ void sqlite3VtabFinishParse(Parse *pParse, Token *pEnd){
       zStmt,
       pParse->regRowid
     );
-    sqlite3DbFree(db, zStmt);
     v = sqlite3GetVdbe(pParse);
     sqlite3ChangeCookie(pParse, iDb);
 
     sqlite3VdbeAddOp0(v, OP_Expire);
-    zWhere = sqlite3MPrintf(db, "name='%q' AND type='table'", pTab->zName);
+    zWhere = sqlite3MPrintf(db, "name=%Q AND sql=%Q", pTab->zName, zStmt);
     sqlite3VdbeAddParseSchemaOp(v, iDb, zWhere);
+    sqlite3DbFree(db, zStmt);
 
     iReg = ++pParse->nMem;
     sqlite3VdbeLoadString(v, iReg, pTab->zName);
@@ -890,7 +892,8 @@ int sqlite3VtabCallDestroy(sqlite3 *db, int iDb, const char *zTab){
     }
     p = vtabDisconnectAll(db, pTab);
     xDestroy = p->pMod->pModule->xDestroy;
-    assert( xDestroy!=0 );  /* Checked before the virtual table is created */
+    if( xDestroy==0 ) xDestroy = p->pMod->pModule->xDisconnect;
+    assert( xDestroy!=0 );
     pTab->nTabRef++;
     rc = xDestroy(p->pVtab);
     /* Remove the sqlite3_vtab* from the aVTrans[] array, if applicable */

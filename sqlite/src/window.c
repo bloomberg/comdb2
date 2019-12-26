@@ -895,9 +895,11 @@ static ExprList *exprListAppendList(
     int nInit = pList ? pList->nExpr : 0;
     for(i=0; i<pAppend->nExpr; i++){
       Expr *pDup = sqlite3ExprDup(pParse->db, pAppend->a[i].pExpr, 0);
+      assert( pDup==0 || !ExprHasProperty(pDup, EP_MemToken) );
       if( bIntToNull && pDup && pDup->op==TK_INTEGER ){
         pDup->op = TK_NULL;
         pDup->flags &= ~(EP_IntValue|EP_IsTrue|EP_IsFalse);
+        pDup->u.zToken = 0;
       }
       pList = sqlite3ExprListAppend(pParse, pList, pDup);
       if( pList ) pList->a[nInit+i].sortFlags = pAppend->a[i].sortFlags;
@@ -932,7 +934,7 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
 
     pTab = sqlite3DbMallocZero(db, sizeof(Table));
     if( pTab==0 ){
-      return SQLITE_NOMEM;
+      return sqlite3ErrorToParser(db, SQLITE_NOMEM);
     }
 
     p->pSrc = 0;
@@ -1023,6 +1025,9 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
       pSub->selFlags |= SF_Expanded;
       pTab2 = sqlite3ResultSetOfSelect(pParse, pSub, SQLITE_AFF_NONE);
       if( pTab2==0 ){
+        /* Might actually be some other kind of error, but in that case
+        ** pParse->nErr will be set, so if SQLITE_NOMEM is set, we will get
+        ** the correct error message regardless. */
         rc = SQLITE_NOMEM;
       }else{
         memcpy(pTab, pTab2, sizeof(Table));
@@ -1041,6 +1046,13 @@ int sqlite3WindowRewrite(Parse *pParse, Select *p){
     sqlite3DbFree(db, pTab);
   }
 
+  if( rc ){
+    if( pParse->nErr==0 ){
+      assert( pParse->db->mallocFailed );
+      sqlite3ErrorToParser(pParse->db, SQLITE_NOMEM);
+    }
+    sqlite3SelectReset(pParse, p);
+  }
   return rc;
 }
 

@@ -415,7 +415,8 @@ static Expr *removeUnindexableInClauseTerms(
   Expr *pX              /* The IN expression to be reduced */
 ){
   sqlite3 *db = pParse->db;
-  Expr *pNew = sqlite3ExprDup(db, pX, 0);
+  Expr *pNew;
+  pNew = sqlite3ExprDup(db, pX, 0);
   if( db->mallocFailed==0 ){
     ExprList *pOrigRhs = pNew->x.pSelect->pEList;  /* Original unmodified RHS */
     ExprList *pOrigLhs = pNew->pLeft->x.pList;     /* Original unmodified LHS */
@@ -1198,6 +1199,9 @@ static int whereIndexExprTransNode(Walker *p, Expr *pExpr){
     pExpr->iTable = pX->iIdxCur;
     pExpr->iColumn = pX->iIdxCol;
     pExpr->y.pTab = 0;
+    testcase( ExprHasProperty(pExpr, EP_Skip) );
+    testcase( ExprHasProperty(pExpr, EP_Unlikely) );
+    ExprClearProperty(pExpr, EP_Skip|EP_Unlikely);
     return WRC_Prune;
   }else{
     return WRC_Continue;
@@ -1259,9 +1263,20 @@ static void whereIndexExprTrans(
     if( iRef==XN_EXPR ){
       assert( aColExpr->a[iIdxCol].pExpr!=0 );
       x.pIdxExpr = aColExpr->a[iIdxCol].pExpr;
+      if( sqlite3ExprIsConstant(x.pIdxExpr) ) continue;
       w.xExprCallback = whereIndexExprTransNode;
 #ifndef SQLITE_OMIT_GENERATED_COLUMNS
-    }else if( iRef>=0 && (pTab->aCol[iRef].colFlags & COLFLAG_VIRTUAL)!=0 ){
+    }else if( iRef>=0
+       && (pTab->aCol[iRef].colFlags & COLFLAG_VIRTUAL)!=0
+       && (pTab->aCol[iRef].zColl==0
+           || sqlite3StrICmp(pTab->aCol[iRef].zColl, sqlite3StrBINARY)==0)
+    ){
+      /* Check to see if there are direct references to generated columns
+      ** that are contained in the index.  Pulling the generated column
+      ** out of the index is an optimization only - the main table is always
+      ** available if the index cannot be used.  To avoid unnecessary
+      ** complication, omit this optimization if the collating sequence for
+      ** the column is non-standard */
       x.iTabCol = iRef;
       w.xExprCallback = whereIndexExprTransColumn;
 #endif /* SQLITE_OMIT_GENERATED_COLUMNS */
@@ -1938,10 +1953,10 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     if( omitTable ){
       /* pIdx is a covering index.  No need to access the main table. */
     }else if( HasRowid(pIdx->pTable) ){
-      if( (pWInfo->wctrlFlags & WHERE_SEEK_TABLE) || (
-          (pWInfo->wctrlFlags & WHERE_SEEK_UNIQ_TABLE) 
-       && (pWInfo->eOnePass==ONEPASS_SINGLE)
-      )){
+      if( (pWInfo->wctrlFlags & WHERE_SEEK_TABLE)
+       || ( (pWInfo->wctrlFlags & WHERE_SEEK_UNIQ_TABLE)!=0
+           && (pWInfo->eOnePass==ONEPASS_SINGLE || pLoop->nLTerm==0) )
+      ){
         iRowidReg = ++pParse->nMem;
         sqlite3VdbeAddOp2(v, OP_IdxRowid, iIdxCur, iRowidReg);
         sqlite3VdbeAddOp3(v, OP_NotExists, iCur, 0, iRowidReg);

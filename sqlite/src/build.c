@@ -1314,13 +1314,15 @@ i16 sqlite3StorageColumnToTable(Table *pTab, i16 iCol){
 ** the end.
 **
 ** If SQLITE_OMIT_GENERATED_COLUMNS then there are no virtual columns and
-** this routine is a no-op macro.
+** this routine is a no-op macro.  If the pTab does not have any virtual
+** columns, then this routine is no-op that always return iCol.  If iCol
+** is negative (indicating the ROWID column) then this routine return iCol.
 */
 i16 sqlite3TableColumnToStorage(Table *pTab, i16 iCol){
   int i;
   i16 n;
   assert( iCol<pTab->nCol );
-  if( (pTab->tabFlags & TF_HasVirtual)==0 ) return iCol;
+  if( (pTab->tabFlags & TF_HasVirtual)==0 || iCol<0 ) return iCol;
   for(i=0, n=0; i<iCol; i++){
     if( (pTab->aCol[i].colFlags & COLFLAG_VIRTUAL)==0 ) n++;
   }
@@ -1993,6 +1995,7 @@ void sqlite3AddPrimaryKey(
     assert( autoInc==0 || autoInc==1 );
     pTab->tabFlags |= autoInc*TF_Autoincrement;
     if( pList ) pParse->iPkSortOrder = pList->a[0].sortFlags;
+    (void)sqlite3HasExplicitNulls(pParse, pList);
   }else if( autoInc ){
 #ifndef SQLITE_OMIT_AUTOINCREMENT
     sqlite3ErrorMsg(pParse, "AUTOINCREMENT is only allowed on an "
@@ -2077,7 +2080,10 @@ void sqlite3AddGenerated(Parse *pParse, Expr *pExpr, Token *pType){
   u8 eType = COLFLAG_VIRTUAL;
   Table *pTab = pParse->pNewTable;
   Column *pCol;
-  if( NEVER(pTab==0) ) goto generated_done;
+  if( pTab==0 ){
+    /* generated column in an CREATE TABLE IF NOT EXISTS that already exists */
+    goto generated_done;
+  }
   pCol = &(pTab->aCol[pTab->nCol-1]);
   if( IN_DECLARE_VTAB ){
     sqlite3ErrorMsg(pParse, "virtual tables cannot use computed columns");
@@ -2711,6 +2717,12 @@ void sqlite3EndTable(
   */
   if( p->pCheck ){
     sqlite3ResolveSelfReference(pParse, p, NC_IsCheck, 0, p->pCheck);
+    if( pParse->nErr ){
+      /* If errors are seen, delete the CHECK constraints now, else they might
+      ** actually be used if PRAGMA writable_schema=ON is set. */
+      sqlite3ExprListDelete(db, p->pCheck);
+      p->pCheck = 0;
+    }
   }
 #endif /* !defined(SQLITE_OMIT_CHECK) */
 #ifndef SQLITE_OMIT_GENERATED_COLUMNS
@@ -2721,10 +2733,19 @@ void sqlite3EndTable(
     for(ii=0; ii<p->nCol; ii++){
       u32 colFlags = p->aCol[ii].colFlags;
       if( (colFlags & COLFLAG_GENERATED)!=0 ){
+        Expr *pX = p->aCol[ii].pDflt;
         testcase( colFlags & COLFLAG_VIRTUAL );
         testcase( colFlags & COLFLAG_STORED );
-        sqlite3ResolveSelfReference(pParse, p, NC_GenCol, 
-                                    p->aCol[ii].pDflt, 0);
+        if( sqlite3ResolveSelfReference(pParse, p, NC_GenCol, pX, 0) ){
+          /* If there are errors in resolving the expression, change the
+          ** expression to a NULL.  This prevents code generators that operate
+          ** on the expression from inserting extra parts into the expression
+          ** tree that have been allocated from lookaside memory, which is
+          ** illegal in a schema and will lead to errors heap corruption when
+          ** the database connection closes. */
+          sqlite3ExprDelete(db, pX);
+          p->aCol[ii].pDflt = sqlite3ExprAlloc(db, TK_NULL, 0, 0);
+        }
       }else{
         nNG++;
       }
@@ -2992,6 +3013,7 @@ void sqlite3CreateView(
   ** allocated rather than point to the input string - which means that
   ** they will persist after the current sqlite3_exec() call returns.
   */
+  pSelect->selFlags |= SF_View;
   if( IN_RENAME_OBJECT ){
     p->pSelect = pSelect;
     pSelect = 0;
@@ -4480,26 +4502,9 @@ void sqlite3CreateIndex(
       sqlite3VdbeJumpHere(v, pIndex->tnum);
     }
   }
-
-  /* When adding an index to the list of indices for a table, make
-  ** sure all indices labeled OE_Replace come after all those labeled
-  ** OE_Ignore.  This is necessary for the correct constraint check
-  ** processing (in sqlite3GenerateConstraintChecks()) as part of
-  ** UPDATE and INSERT statements.  
-  */
   if( db->init.busy || pTblName==0 ){
-    if( onError!=OE_Replace || pTab->pIndex==0
-         || pTab->pIndex->onError==OE_Replace){
-      pIndex->pNext = pTab->pIndex;
-      pTab->pIndex = pIndex;
-    }else{
-      Index *pOther = pTab->pIndex;
-      while( pOther->pNext && pOther->pNext->onError!=OE_Replace ){
-        pOther = pOther->pNext;
-      }
-      pIndex->pNext = pOther->pNext;
-      pOther->pNext = pIndex;
-    }
+    pIndex->pNext = pTab->pIndex;
+    pTab->pIndex = pIndex;
     pIndex = 0;
   }
   else if( IN_RENAME_OBJECT ){
@@ -4511,6 +4516,21 @@ void sqlite3CreateIndex(
   /* Clean up before exiting */
 exit_create_index:
   if( pIndex ) sqlite3FreeIndex(db, pIndex);
+  if( pTab ){  /* Ensure all REPLACE indexes are at the end of the list */
+    Index **ppFrom = &pTab->pIndex;
+    Index *pThis;
+    for(ppFrom=&pTab->pIndex; (pThis = *ppFrom)!=0; ppFrom=&pThis->pNext){
+      Index *pNext;
+      if( pThis->onError!=OE_Replace ) continue;
+      while( (pNext = pThis->pNext)!=0 && pNext->onError!=OE_Replace ){
+        *ppFrom = pNext;
+        pThis->pNext = pNext->pNext;
+        pNext->pNext = pThis;
+        ppFrom = &pNext->pNext;
+      }
+      break;
+    }
+  }
   sqlite3ExprDelete(db, pPIWhere);
   sqlite3ExprListDelete(db, pList);
   sqlite3SrcListDelete(db, pTblName);

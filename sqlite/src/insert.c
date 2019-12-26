@@ -254,6 +254,36 @@ void sqlite3ComputeGeneratedColumns(
   Walker w;
   Column *pRedo;
   int eProgress;
+  VdbeOp *pOp;
+
+  assert( pTab->tabFlags & TF_HasGenerated );
+  testcase( pTab->tabFlags & TF_HasVirtual );
+  testcase( pTab->tabFlags & TF_HasStored );
+
+  /* Before computing generated columns, first go through and make sure
+  ** that appropriate affinity has been applied to the regular columns
+  */
+  sqlite3TableAffinity(pParse->pVdbe, pTab, iRegStore);
+  if( (pTab->tabFlags & TF_HasStored)!=0
+   && (pOp = sqlite3VdbeGetOp(pParse->pVdbe,-1))->opcode==OP_Affinity
+  ){
+    /* Change the OP_Affinity argument to '@' (NONE) for all stored
+    ** columns.  '@' is the no-op affinity and those columns have not
+    ** yet been computed. */
+    int ii, jj;
+    char *zP4 = pOp->p4.z;
+    assert( zP4!=0 );
+    assert( pOp->p4type==P4_DYNAMIC );
+    for(ii=jj=0; zP4[jj]; ii++){
+      if( pTab->aCol[ii].colFlags & COLFLAG_VIRTUAL ){
+        continue;
+      }
+      if( pTab->aCol[ii].colFlags & COLFLAG_STORED ){
+        zP4[jj] = SQLITE_AFF_NONE;
+      }
+      jj++;
+    }
+  }
 
   /* Because there can be multiple generated columns that refer to one another,
   ** this is a two-pass algorithm.  On the first pass, mark all generated
@@ -994,6 +1024,10 @@ void sqlite3Insert(
               pTab->zName);
       goto insert_cleanup;
     }
+    if( pTab->pSelect ){
+      sqlite3ErrorMsg(pParse, "cannot UPSERT a view");
+      goto insert_cleanup;
+    }
     if( sqlite3HasExplicitNulls(pParse, pUpsert->pUpsertTarget) ){
       goto insert_cleanup;
     }
@@ -1241,10 +1275,8 @@ void sqlite3Insert(
     /* Compute the new value for generated columns after all other
     ** columns have already been computed.  This must be done after
     ** computing the ROWID in case one of the generated columns
-    ** refers to the ROWID. */
+    ** is derived from the INTEGER PRIMARY KEY. */
     if( pTab->tabFlags & TF_HasGenerated ){
-      testcase( pTab->tabFlags & TF_HasVirtual );
-      testcase( pTab->tabFlags & TF_HasStored );
       sqlite3ComputeGeneratedColumns(pParse, regRowid+1, pTab);
     }
 #endif
@@ -2359,6 +2391,10 @@ void sqlite3CompleteInsertion(
   if( need_index_checks_for_upsert(pTab, pUpsert, onError, 0) ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   for(i=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, i++){
+    /* All REPLACE indexes are at the end of the list */
+    assert( pIdx->onError!=OE_Replace
+         || pIdx->pNext==0
+         || pIdx->pNext->onError==OE_Replace );
     if( aRegIdx[i]==0 ) continue;
     if( pIdx->pPartIdxWhere ){
       sqlite3VdbeAddOp2(v, OP_IsNull, aRegIdx[i], sqlite3VdbeCurrentAddr(v)+2);

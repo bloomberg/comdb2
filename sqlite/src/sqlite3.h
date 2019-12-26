@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.31.0"
 #define SQLITE_VERSION_NUMBER 3031000
-#define SQLITE_SOURCE_ID      "2019-11-27 19:20:14 fd358c26cae05c15b2617efd897b852f26c511c1dd0a20523a569ecb3ec7cde6"
+#define SQLITE_SOURCE_ID      "2019-12-26 20:57:09 71f4ab07c173c7b72dea82cfd64a26b116dd42755b81d45c8c1ecf65d3f60000"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -6668,7 +6668,13 @@ enum {
 ** the right-hand side of the corresponding aConstraint[] is evaluated
 ** and becomes the argvIndex-th entry in argv.  ^(If aConstraintUsage[].omit
 ** is true, then the constraint is assumed to be fully handled by the
-** virtual table and is not checked again by SQLite.)^
+** virtual table and might not be checked again by the byte code.)^ ^(The
+** aConstraintUsage[].omit flag is an optimization hint. When the omit flag
+** is left in its default setting of false, the constraint will always be
+** checked separately in byte code.  If the omit flag is change to true, then
+** the constraint may or may not be checked in byte code.  In other words,
+** when the omit flag is true there is no guarantee that the constraint will
+** not be checked again using byte code.)^
 **
 ** ^The idxNum and idxPtr values are recorded and passed into the
 ** [xFilter] method.
