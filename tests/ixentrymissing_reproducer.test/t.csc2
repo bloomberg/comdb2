@@ -9,5 +9,5 @@ tag ondisk {
 }
 
 keys {
-dup "d" = a+b+c
+dup "a" = a
 }
