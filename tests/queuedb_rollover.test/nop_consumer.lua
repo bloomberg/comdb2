@@ -1,6 +1,5 @@
 local function main()
 	local consumer = db:consumer()
-	db:begin()
+	consumer:get()
 	consumer:consume()
-	db:commit()
 end
