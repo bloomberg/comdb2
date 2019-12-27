@@ -1,2 +1,4 @@
+setattr PRIVATE_BLKSEQ_MAXAGE 30
+setattr MIN_KEEP_LOGS 1
 queuedb_file_threshold 1
 queuedb_file_interval 5000
