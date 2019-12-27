@@ -1,2 +1,3 @@
+test_log_file XXX.comdb2_dedicated_test.log
 queuedb_file_threshold 1
 queuedb_file_interval 5000

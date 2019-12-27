@@ -30,6 +30,7 @@
 #include "portmuxapi.h"
 #include "config.h"
 #include "net.h"
+#include "bdb_int.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -865,6 +866,16 @@ static int page_order_table_scan_update(void *context, void *value)
                  gbl_page_order_table_scan);
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
+}
+
+static int test_log_file_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    char newValue[PATH_MAX];
+    bdb_trans((char *)value, newValue);
+    free(*(char **)tunable->var);
+    *(char **)tunable->var = strdup(newValue);
     return 0;
 }
 
