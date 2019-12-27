@@ -13,7 +13,7 @@ for ((i=1;i<9600;++i)); do
     echo "insert into foraudit values(${i})"
 done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
 
-cdb2sql --host $SP_HOST $SP_OPTIONS - "put tunable test_log_file XXX.comdb2_dedicated_test.log" > /dev/null
+cdb2sql --host $SP_HOST $SP_OPTIONS - "put tunable test_log_file 'XXX.comdb2_dedicated_test.log'" > /dev/null
 
 for ((i=1;i<9600;++i)); do
     echo "exec procedure nop0()"
