@@ -21,6 +21,9 @@ last_batch=
 # post-process
 pproc=cat
 
+# figure out which host should deal with the tunable
+export SP_HOST=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $a_dbn default "SELECT comdb2_host()")
+
 # Iterate through input files
 for testcase in $files ; do
 
@@ -50,7 +53,7 @@ for testcase in $files ; do
     else
 
         # Be verbose
-        cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+        cmd="cdb2sql --host $SP_HOST -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
         echo $cmd
 
         # run command

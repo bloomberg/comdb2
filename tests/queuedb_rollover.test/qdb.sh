@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 [[ -n "$3" ]] && exec >$3 2>&1
-cdb2sql $SP_OPTIONS - <<EOF
+cdb2sql --host $SP_HOST $SP_OPTIONS - <<EOF
 create table foraudit {$(cat foraudit.csc2)}\$\$
 create procedure nop0 version 'noptest' {$(cat nop_consumer.lua)}\$\$
 create procedure log1 version 'logtest' {$(cat log_consumer.lua)}\$\$
@@ -11,9 +11,11 @@ EOF
 
 for ((i=1;i<9600;++i)); do
     echo "insert into foraudit values(${i})"
-done | cdb2sql $SP_OPTIONS - > /dev/null
+done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
+
+cdb2sql --host $SP_HOST $SP_OPTIONS - "put tunable test_log_file XXX.comdb2_dedicated_test.log" > /dev/null
 
 for ((i=1;i<9600;++i)); do
     echo "exec procedure nop0()"
     echo "exec procedure log1()"
-done | cdb2sql $SP_OPTIONS - > /dev/null
+done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
