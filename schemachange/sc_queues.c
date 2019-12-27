@@ -691,7 +691,7 @@ int add_qdb_file(struct schema_change_type *s)
     tran = NULL; /* skip abort */
 
     /* log for replicants to do the same */
-    rc = bdb_llog_scdone(db->handle, queue_db, 1, &bdberr);
+    rc = bdb_llog_scdone(db->handle, add_qdb_file, 1, &bdberr);
     if (rc) {
         sbuf2printf(sb, "!Failed to broadcast change for queuedb\n");
         logmsg(LOGMSG_ERROR, "Failed to broadcast change for queuedb\n");
@@ -789,7 +789,7 @@ int del_qdb_file(struct schema_change_type *s)
     tran = NULL; /* skip abort */
 
     /* log for replicants to do the same */
-    rc = bdb_llog_scdone(db->handle, queue_db, 1, &bdberr);
+    rc = bdb_llog_scdone(db->handle, del_qdb_file, 1, &bdberr);
     if (rc) {
         sbuf2printf(sb, "!Failed to broadcast change for queuedb\n");
         logmsg(LOGMSG_ERROR, "Failed to broadcast change for queuedb\n");
