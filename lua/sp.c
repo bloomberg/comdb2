@@ -4515,9 +4515,17 @@ static int db_consumer(Lua L)
     strcpy(spname, sp->spname);
     Q4SP(qname, spname);
 
+    rdlock_schema_lk();
     struct dbtable *db = getqueuebyname(qname);
+    unlock_schema_lk();
     if (db == NULL) {
         return luaL_error(L, "trigger not found for sp:%s", spname);
+    }
+
+    int rc = bdb_lock_table_read_fromlid(db->handle,
+              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    if (rc != 0) {
+        return luaL_error(L, "cannot read-lock queue for sp:%s", spname);
     }
 
     struct consumer *consumer = db->consumers[0];
@@ -6555,11 +6563,21 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     char *spname = reg->spname;
     Q4SP(qname, spname);
+
+    rdlock_schema_lk();
     struct dbtable *db = getqueuebyname(qname);
+    unlock_schema_lk();
     if (db == NULL) {
         *err = strdup("getqueuebyname failed");
         return -1;
     }
+
+    rc = bdb_lock_table_read_fromlid(db->handle,
+              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    if (rc != 0) {
+        return luaL_error(L, "cannot read-lock queue for sp:%s", spname);
+    }
+
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
         *err = strdup("no consumer for db");
