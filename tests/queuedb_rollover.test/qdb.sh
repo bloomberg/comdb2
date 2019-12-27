@@ -1,3 +1,6 @@
+#!/usr/bin/env bash
+
+[[ -n "$3" ]] && exec >$3 2>&1
 cdb2sql $SP_OPTIONS - <<EOF
 create table foraudit {$(cat foraudit.csc2)}\$\$
 create procedure nop0 version 'noptest' {$(cat nop_consumer.lua)}\$\$
