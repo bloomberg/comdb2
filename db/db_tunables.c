@@ -30,7 +30,6 @@
 #include "portmuxapi.h"
 #include "config.h"
 #include "net.h"
-#include "bdb_int.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
@@ -290,6 +289,9 @@ extern int max_replication_trans_retries;
 
 /* net/net.c */
 extern int explicit_flush_trace;
+
+/* bdb/file.c */
+extern char *bdb_trans(const char infile[], char outfile[]);
 
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
