@@ -48,8 +48,8 @@ typedef enum scdone {
     rename_table,
     change_stripe,
     user_view,
-    add_qdb_file,
-    del_qdb_file
+    add_queue_file,
+    del_queue_file
 } scdone_t;
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,

@@ -716,9 +716,9 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         return reload_rename_table(bdb_state, table, (char *)arg);
     case change_stripe:
         return reload_stripe_info(bdb_state);
-    case add_qdb_file:
+    case add_queue_file:
         return reopen_queue_dbs(table, 1);
-    case del_qdb_file:
+    case del_queue_file:
         return reopen_queue_dbs(table, 0);
     default:
         break;
