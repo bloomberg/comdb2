@@ -762,13 +762,16 @@ static void comdb2TestLogFunc(
   assert( argc==1 );
   if( sqlite3_value_type(argv[0])==SQLITE_TEXT ){
     const unsigned char *zMsg = sqlite3_value_text(argv[0]);
-    if( zMsg && zMsg[0] ){
+    if( zMsg ){
       Pthread_mutex_lock(&test_log_file_mtx);
       if( gbl_test_log_file!=NULL ){
         FILE *file = fopen(gbl_test_log_file, "a+");
         if( file!=NULL ){
           size_t nLen = strlen((char*)zMsg);
-          size_t nRet = fwrite(zMsg, sizeof(char), nLen, file);
+          size_t nRet = 0;
+          if( nLen>0 ){
+            nRet = fwrite(zMsg, sizeof(char), nLen, file);
+          }
           fflush(file); fclose(file);
           sqlite3_result_int64(context, (i64)nRet);
         }
