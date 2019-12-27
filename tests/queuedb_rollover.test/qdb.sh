@@ -17,5 +17,8 @@ cdb2sql --host $SP_HOST $SP_OPTIONS - "put tunable test_log_file XXX.comdb2_dedi
 
 for ((i=1;i<9600;++i)); do
     echo "exec procedure nop0()"
+done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
+
+for ((i=1;i<9600;++i)); do
     echo "exec procedure log1()"
 done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
