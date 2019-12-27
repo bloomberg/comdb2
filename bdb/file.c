@@ -4344,13 +4344,13 @@ deadlock_again:
         int max_qdb_dtanum = create ? 1 : BDB_QUEUEDB_MAX_FILES;
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
         for (int dtanum = 0; dtanum < max_qdb_dtanum; dtanum++) {
+            char new[PATH_MAX];
             if (create) {
                 if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
                                             tmpname, sizeof(tmpname)))) {
                     if (tid) tid->abort(tid);
                     return rc;
                 }
-                char new[PATH_MAX];
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
             } else {
@@ -4386,8 +4386,13 @@ deadlock_again:
             int qdb_type = dta_type;
             u_int32_t qdb_flags = db_flags;
             if (create_file && (dtanum > 0)) {
-                qdb_type = DB_BTREE;
-                qdb_flags |= DB_CREATE;
+                if (iammaster) {
+                    qdb_type = DB_BTREE;
+                    qdb_flags |= DB_CREATE;
+                } else {
+                    int fd = open(bdb_trans(tmpname, new), O_CREAT, db_mode);
+                    if (fd >= 0) close(fd);
+                }
             }
             rc = dbp->open(dbp, tid, tmpname, NULL, qdb_type, qdb_flags,
                            db_mode);
