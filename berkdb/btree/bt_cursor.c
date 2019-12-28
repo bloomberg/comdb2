@@ -3032,7 +3032,7 @@ split:	ret = stack = 0;
 		 * in order to adjust the record count.
 		 */
 		if ((ret = __bam_c_search(dbc,
-		    F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
+		    cp->root, key,
 		    flags == DB_KEYFIRST || dbp->dup_compare != NULL ?
 		    DB_KEYFIRST : DB_KEYLAST, &exact)) != 0)
 			goto err;
