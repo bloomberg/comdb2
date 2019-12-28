@@ -65,18 +65,20 @@ gen_series_test()
 echo $CDB2_CONFIG
 THRDS=20
 CNT=10000
-ITERATIONS=10
+ITERATIONS=5
 TRANSIZE=0
 
 gen_series_test
 
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
+do_verify t1
 
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
 
 TRANSIZE=2800
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
+do_verify t1
 
 echo "Success"
