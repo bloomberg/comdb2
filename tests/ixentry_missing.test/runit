@@ -30,7 +30,10 @@ export -f gen
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
 cnt=0
-while :; do
+
+# one min less than the TEST_TIMEOUT
+MAXDURATION=`echo "(${TEST_TIMEOUT%%m}-1)*60" | bc`
+while [ $SECONDS -lt $MAXDURATION ] ; do
     let cnt=$cnt+1
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "truncate t"
     for node in $cluster; do
