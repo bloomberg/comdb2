@@ -29,7 +29,10 @@ do_verify()
 export -f gen
 
 cnt=0
-while :; do
+
+# one min less than the TEST_TIMEOUT
+MAXDURATION=`echo "(${TEST_TIMEOUT%%m}-1)*60" | bc`
+while [ $SECONDS -lt $MAXDURATION ] ; do
     let cnt=$cnt+1
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "truncate t"
     cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('delfiles t')"
