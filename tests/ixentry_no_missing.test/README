@@ -1,0 +1,2 @@
+This test makes sure that the dup indices are correcly populated, 
+by inserting lots of data in parallel.
