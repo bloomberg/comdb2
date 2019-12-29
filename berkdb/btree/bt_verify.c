@@ -375,7 +375,6 @@ __bam_vrfy(dbp, vdp, h, pgno, flags)
 		    "Page %lu: item order check unsafe: skipping",
 		    (u_long)pgno));
 	} else if (!LF_ISSET(DB_NOORDERCHK) && (ret =
-		/* AZ: make sure keys in a page sort correctly, we can pass prev idx and check too */
 	    __bam_vrfy_itemorder(dbp, vdp, h, pgno, 0, 0, 0, flags)) != 0) {
 		/*
 		 * We know that the elements of inp are reasonable.

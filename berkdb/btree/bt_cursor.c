@@ -3031,8 +3031,13 @@ split:	ret = stack = 0;
 		 * numbering.  In that case, we'll need the true root page
 		 * in order to adjust the record count.
 		 */
+		db_pgno_t start_search_pg = F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno;
+		if(gbl_skip_cget_in_db_put) {
+			start_search_pg = root_pgno ;
+		}
+
 		if ((ret = __bam_c_search(dbc,
-		    cp->root, key,
+		    start_search_pg, key,
 		    flags == DB_KEYFIRST || dbp->dup_compare != NULL ?
 		    DB_KEYFIRST : DB_KEYLAST, &exact)) != 0)
 			goto err;
