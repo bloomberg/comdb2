@@ -22,6 +22,7 @@ static const char revid[] = "$Id: bt_cursor.c,v 11.169 2003/11/19 18:41:06 bosti
 #endif
 #include <walkback.h>
 #include <pthread.h>
+#include <unistd.h>
 
 #include "db_int.h"
 #include "dbinc/db_page.h"
@@ -3031,13 +3032,8 @@ split:	ret = stack = 0;
 		 * numbering.  In that case, we'll need the true root page
 		 * in order to adjust the record count.
 		 */
-		db_pgno_t start_search_pg = F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno;
-		if(gbl_skip_cget_in_db_put) {
-			start_search_pg = root_pgno ;
-		}
-
 		if ((ret = __bam_c_search(dbc,
-		    start_search_pg, key,
+            F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
 		    flags == DB_KEYFIRST || dbp->dup_compare != NULL ?
 		    DB_KEYFIRST : DB_KEYLAST, &exact)) != 0)
 			goto err;
@@ -3158,6 +3154,17 @@ split:	ret = stack = 0;
 		 * is in the case where C_RECNUM is set.
 		 */
 
+		if(gbl_skip_cget_in_db_put) {
+            BTREE_CURSOR *__cp = (BTREE_CURSOR *)(dbc)->internal;
+            ret = __db_lget(dbc, LOCK_ISSET(__cp->lock) ? LCK_COUPLE : 0,
+                              __cp->pgno, DB_LOCK_WRITE, 0, &__cp->lock);
+            if (ret != 0)
+                goto err;
+		}
+
+        //printf("BEFORE: printing locks held fname=%s own=%d stack=%d\n", dbc->dbp->fname, own, stack);
+        //__lock_dump_active_locks(dbc->dbp->dbenv, stderr);
+
 		/* Invalidate the cursor before releasing the pagelock */
 		if (own == 0) {
 			cp->pgno = PGNO_INVALID;
@@ -3173,10 +3180,13 @@ split:	ret = stack = 0;
 		 */
 		if (stack)
 			ret = __bam_stkrel(dbc, STK_CLRDBC | STK_NOLOCK);
-		else
+		else if (!gbl_skip_cget_in_db_put)
 			DISCARD_CUR(dbc, ret);
 		if (ret != 0)
 			goto err;
+
+        //printf("AFTER: printing locks held own=%d stack=%d\n", own, stack);
+        //__lock_dump_active_locks(dbc->dbp->dbenv, stderr);
 
 		/* Split the tree. */
 		if ((ret = __bam_split(dbc, arg, &root_pgno)) != 0)
