@@ -19,6 +19,7 @@ static const char revid[] = "$Id: bt_verify.c,v 1.87 2003/10/06 14:09:23 bostic 
 #include <string.h>
 #endif
 
+#include "flibc.h"
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
@@ -373,7 +374,9 @@ __bam_vrfy(dbp, vdp, h, pgno, flags)
 		EPRINT((dbenv,
 		    "Page %lu: item order check unsafe: skipping",
 		    (u_long)pgno));
-	} else if (!LF_ISSET(DB_NOORDERCHK) && (ret =
+	}
+#if 0
+	else if (!LF_ISSET(DB_NOORDERCHK) && (ret =
 	    __bam_vrfy_itemorder(dbp, vdp, h, pgno, 0, 0, 0, flags)) != 0) {
 		/*
 		 * We know that the elements of inp are reasonable.
@@ -385,6 +388,7 @@ __bam_vrfy(dbp, vdp, h, pgno, flags)
 		else
 			goto err;
 	}
+#endif
 
 err:	if ((t_ret = __db_vrfy_putpageinfo(dbenv, vdp, pip)) != 0 && ret == 0)
 		ret = t_ret;
@@ -903,6 +907,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 	int (*dupfunc) __P((DB *, const DBT *, const DBT *));
 	int (*func) __P((DB *, const DBT *, const DBT *));
 	void *buf1, *buf2, *tmpbuf;
+	static DBT last_key_from_prev_pg = {0};
 
 	/*
 	 * We need to work in the ORDERCHKONLY environment where we might
@@ -950,6 +955,15 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 	p1 = &dbta;
 	p2 = &dbtb;
 
+	if (last_key_from_prev_pg.data && (TYPE(h) == P_LBTREE)) {
+		/*
+        long int genid = *(long int*)(last_key_from_prev_pg.data+5);
+		printf("setting pgno=%lu from last_key_from_prev_pg, sz=%d, data=%p *data=%016lx\n", (u_long)pgno, last_key_from_prev_pg.size, last_key_from_prev_pg.data, flibc_ntohll(genid));
+		*/
+		p2->data = last_key_from_prev_pg.data;
+		p2->size = last_key_from_prev_pg.size;
+	}
+
 	/*
 	 * Loop through the entries.  nentries ought to contain the
 	 * actual count, and so is a safe way to terminate the loop;  whether
@@ -980,7 +994,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 			bi = GET_BINTERNAL(dbp, h, i);
 			if (B_TYPE(bi) == B_OVERFLOW) {
 				bo = (BOVERFLOW *)(bi->data);
-				goto overflow;
+				abort(); //goto overflow;
 			} else {
 				p2->data = bi->data;
 				p2->size = bi->len;
@@ -1010,7 +1024,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 			bk = GET_BKEYDATA(dbp, h, i);
 			if (B_TYPE(bk) == B_OVERFLOW) {
 				bo = (BOVERFLOW *)bk;
-				goto overflow;
+				abort(); //goto overflow;
 			} else {
 				p2->data = bk->data;
 				p2->size = bk->len;
@@ -1028,6 +1042,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 			goto err;
 		}
 
+#if 0
 		if (0) {
 			/*
 			 * If ovflok != 1, we can't safely go chasing
@@ -1064,6 +1079,7 @@ overflow:		if (!ovflok) {
 			/* In case it got realloc'ed and thus changed. */
 			buf2 = p2->data;
 		}
+#endif
 
 		/* Compare with the last key. */
 		if (p1->data != NULL && p2->data != NULL) {
@@ -1072,9 +1088,11 @@ overflow:		if (!ovflok) {
 			/* comparison succeeded */
 			if (cmp > 0) {
 				isbad = 1;
+                long int genid1 = *(long int*)(p1->data+5);
+                long int genid2 = *(long int*)(p2->data+5);
 				EPRINT((dbenv,
-				    "Page %lu: out-of-order key at entry %lu",
-				    (u_long)pgno, (u_long)i));
+				    "Page %lu: out-of-order key at entry %lu *p1=%016lx *p2=%016lx",
+				    (u_long)pgno, (u_long)i, flibc_ntohll(genid1), flibc_ntohll(genid2)));
 				/* proceed */
 			} else if (cmp == 0) {
 				/*
@@ -1156,6 +1174,19 @@ overflow:		if (!ovflok) {
 				}
 			}
 		}
+	}
+	if ((TYPE(h) == P_LBTREE)) {
+		if (last_key_from_prev_pg.data && p2->size > last_key_from_prev_pg.size) {
+			last_key_from_prev_pg.data = realloc(last_key_from_prev_pg.data, p2->size);
+		} else 
+			last_key_from_prev_pg.data = malloc(p2->size);
+		if (!last_key_from_prev_pg.data) abort();
+		memcpy(last_key_from_prev_pg.data, p2->data, p2->size);
+		last_key_from_prev_pg.size = p2->size;
+		/*
+		long int genid = *(long int*)(last_key_from_prev_pg.data+5);
+		printf("putting pgno=%lu last_key_from_prev_pg, sz=%d, data=%p *data=%016lx\n", (u_long)pgno, last_key_from_prev_pg.size, last_key_from_prev_pg.data, flibc_ntohll(genid));
+		*/
 	}
 
 err:	if (pip != NULL && ((t_ret =

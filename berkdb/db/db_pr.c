@@ -19,6 +19,7 @@ static const char revid[] = "$Id: db_pr.c,v 11.94 2003/06/30 17:19:46 bostic Exp
 #include <string.h>
 #endif
 
+#include "tohex.h"
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
@@ -717,17 +718,22 @@ __db_pr(p, len, fp)
 	lastch = '.';
 	if (len != 0) {
 		logmsgf(LOGMSG_USER, fp, " data: ");
+        char temp[2*len+1];
+        util_tohex(temp, (const char*)p, len);
+        logmsgf(LOGMSG_USER, fp, "%s", temp);
+        /*
 		for (i = len <= 20 ? len : 20; i > 0; --i, ++p) {
 			lastch = *p;
 			if (isprint((int)*p) || *p == '\n')
 				logmsgf(LOGMSG_USER, fp, "%c", *p);
 			else
-				logmsgf(LOGMSG_USER, fp, "0x%.2x", (u_int)*p);
+				logmsgf(LOGMSG_USER, fp, "%x", (u_int)*p);
 		}
 		if (len > 20) {
 			logmsgf(LOGMSG_USER, fp, "...");
 			lastch = '.';
 		}
+        */
 	}
 	if (lastch != '\n')
 		logmsgf(LOGMSG_USER, fp, "\n");
