@@ -374,9 +374,7 @@ __bam_vrfy(dbp, vdp, h, pgno, flags)
 		EPRINT((dbenv,
 		    "Page %lu: item order check unsafe: skipping",
 		    (u_long)pgno));
-	}
-#if 0
-	else if (!LF_ISSET(DB_NOORDERCHK) && (ret =
+	} else if (!LF_ISSET(DB_NOORDERCHK) && (ret =
 	    __bam_vrfy_itemorder(dbp, vdp, h, pgno, 0, 0, 0, flags)) != 0) {
 		/*
 		 * We know that the elements of inp are reasonable.
@@ -388,7 +386,6 @@ __bam_vrfy(dbp, vdp, h, pgno, flags)
 		else
 			goto err;
 	}
-#endif
 
 err:	if ((t_ret = __db_vrfy_putpageinfo(dbenv, vdp, pip)) != 0 && ret == 0)
 		ret = t_ret;
@@ -955,7 +952,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 	p1 = &dbta;
 	p2 = &dbtb;
 
-	if (last_key_from_prev_pg.data && (TYPE(h) == P_LBTREE)) {
+	if (last_key_from_prev_pg.data && (TYPE(h) == P_LBTREE) && LF_ISSET(DB_IN_ORDER_CHECK)) {
 		/*
         long int genid = *(long int*)(last_key_from_prev_pg.data+5);
 		printf("setting pgno=%lu from last_key_from_prev_pg, sz=%d, data=%p *data=%016lx\n", (u_long)pgno, last_key_from_prev_pg.size, last_key_from_prev_pg.data, flibc_ntohll(genid));
@@ -1175,7 +1172,7 @@ overflow:		if (!ovflok) {
 			}
 		}
 	}
-	if ((TYPE(h) == P_LBTREE)) {
+	if ((TYPE(h) == P_LBTREE) && LF_ISSET(DB_IN_ORDER_CHECK)) {
 		if (last_key_from_prev_pg.data && p2->size > last_key_from_prev_pg.size) {
 			last_key_from_prev_pg.data = realloc(last_key_from_prev_pg.data, p2->size);
 		} else 

@@ -613,6 +613,7 @@ __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, pgno)
 	PAGE *h;
 	db_pgno_t i;
 	int ret, t_ret, isbad;
+    LF_SET(DB_IN_ORDER_CHECK);
 
 	dbenv = dbp->dbenv;
 	mpf = dbp->mpf;

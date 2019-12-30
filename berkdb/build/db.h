@@ -351,6 +351,7 @@ struct __db_trigger_subscription;
 #define	DB_PR_RECOVERYTEST    0x0000010	/* Recovery test (-dr). */
 #define	DB_PRINTABLE	      0x0000020	/* Use printable format for salvage. */
 #define	DB_SALVAGE	      0x0000040	/* Salvage what looks like data. */
+#define	DB_IN_ORDER_CHECK 0x0000080	/* We are traversing in order so check intra page for out-of-order keys. */
 /*
  * !!!
  * These must not go over 0x8000, or they will collide with the flags
