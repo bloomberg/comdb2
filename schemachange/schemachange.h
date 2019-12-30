@@ -144,6 +144,7 @@ struct schema_change_type {
     /* QueueDB operations */
     int add_qdb_file;
     int del_qdb_file;
+    unsigned long long qdb_file_ver; /* part of file name to add */
 
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */

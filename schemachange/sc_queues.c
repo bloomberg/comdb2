@@ -621,16 +621,11 @@ done:
     return rc;
 }
 
-int add_qdb_file(struct schema_change_type *s)
+int add_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
-    struct ireq iq;
     struct dbtable *db;
-    void *tran = NULL;
     SBUF2 *sb = s->sb;
-
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = &thedb->static_table;
 
     wrlock_schema_lk();
     db = getqueuebyname(s->tablename);
@@ -639,13 +634,6 @@ int add_qdb_file(struct schema_change_type *s)
                __func__, s->tablename);
         sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
         rc = -1;
-        goto done;
-    }
-
-    rc = trans_start(&iq, NULL, (void *)&tran);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
-        sbuf2printf(sb, "!Failed to start transaction\n");
         goto done;
     }
 
@@ -668,7 +656,7 @@ int add_qdb_file(struct schema_change_type *s)
              s->tablename, file_version, file_num);
         goto done;
     }
-    file_version = flibc_htonll(bdb_get_cmp_context(db->handle));
+    file_version = sc->qdb_file_ver;
     bdberr = 0;
     rc = bdb_new_file_version_qdb(db->handle, tran, file_num, file_version,
                                   &bdberr);
@@ -682,14 +670,6 @@ int add_qdb_file(struct schema_change_type *s)
         goto done;
     }
 
-    rc = trans_commit(&iq, tran, gbl_mynode);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_commit rc %d\n", __func__, rc);
-        sbuf2printf(sb, "!Failed to commit transaction\n");
-        goto done;
-    }
-    tran = NULL; /* skip abort */
-
     /* log for replicants to do the same */
     rc = bdb_llog_scdone(db->handle, add_queue_file, 1, &bdberr);
     if (rc) {
@@ -700,29 +680,17 @@ int add_qdb_file(struct schema_change_type *s)
     }
 
 done:
-    if (tran) {
-        trans_abort(&iq, tran);
-        tran = NULL;
-    }
-    if (rc == 0) {
-        rc = reopen_queue_dbs(s->tablename, 1);
-    }
     unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
 }
 
-int del_qdb_file(struct schema_change_type *s)
+int del_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
-    struct ireq iq;
     struct dbtable *db;
-    void *tran = NULL;
     SBUF2 *sb = s->sb;
-
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = &thedb->static_table;
 
     wrlock_schema_lk();
     db = getqueuebyname(s->tablename);
@@ -731,13 +699,6 @@ int del_qdb_file(struct schema_change_type *s)
                __func__, s->tablename);
         sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
         rc = -1;
-        goto done;
-    }
-
-    rc = trans_start(&iq, NULL, (void *)&tran);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
-        sbuf2printf(sb, "!Failed to start transaction\n");
         goto done;
     }
 
@@ -780,14 +741,6 @@ int del_qdb_file(struct schema_change_type *s)
 
     sc_del_unused_files_tran(db, tran);
 
-    rc = trans_commit(&iq, tran, gbl_mynode);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_commit rc %d\n", __func__, rc);
-        sbuf2printf(sb, "!Failed to commit transaction\n");
-        goto done;
-    }
-    tran = NULL; /* skip abort */
-
     /* log for replicants to do the same */
     rc = bdb_llog_scdone(db->handle, del_queue_file, 1, &bdberr);
     if (rc) {
@@ -798,15 +751,32 @@ int del_qdb_file(struct schema_change_type *s)
     }
 
 done:
-    if (tran) {
-        trans_abort(&iq, tran);
-        tran = NULL;
-    }
-    if (rc == 0) {
-        rc = reopen_queue_dbs(s->tablename, 0);
-    }
     unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
+}
+
+int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *trans)
+{
+    return 0;
+}
+
+int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    return 0;
+}
+
+int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *trans)
+{
+    return 0;
+}
+
+int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    return 0;
 }
