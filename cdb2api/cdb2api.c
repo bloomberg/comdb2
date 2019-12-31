@@ -1583,9 +1583,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               int *comdb2db_ports, int *master,
                               const char *comdb2db_name, int *num_hosts,
                               int *comdb2db_num, const char *dbname,
-                              char db_hosts[][64],
-                              int *num_db_hosts, int *dbnum, int read_cfg,
-                              int dbinfo_or_dns)
+                              char db_hosts[][64], int *num_db_hosts,
+                              int *dbnum, int read_cfg, int dbinfo_or_dns)
 {
     int rc;
 
@@ -2337,7 +2336,8 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     if (sb == NULL)
         return;
 
-    debugprint("disconnecting from %s, line %d\n", hndl->hosts[hndl->connected_host], line);
+    debugprint("disconnecting from %s, line %d\n",
+               hndl->hosts[hndl->connected_host], line);
     int fd = sbuf2fileno(sb);
 
     int timeoutms = 10 * 1000;
@@ -4682,9 +4682,10 @@ read_record:
             PRINT_AND_RETURN(return_value);
         }
 
-        if (hndl->is_hasql && (((is_retryable(rc) && hndl->snapshot_file) ||
-            is_begin) || (!hndl->sb && ((hndl->in_trans && hndl->snapshot_file)
-            || commit_file)))) {
+        if (hndl->is_hasql &&
+            (((is_retryable(rc) && hndl->snapshot_file) || is_begin) ||
+             (!hndl->sb &&
+              ((hndl->in_trans && hndl->snapshot_file) || commit_file)))) {
 
             if (hndl->sb)
                 sbuf2close(hndl->sb);
@@ -5480,8 +5481,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 
     rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
                             comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
-                            hndl->dbname, hndl->hosts,
-                            &(hndl->num_hosts), &hndl->dbnum, 1, 0);
+                            hndl->dbname, hndl->hosts, &(hndl->num_hosts),
+                            &hndl->dbnum, 1, 0);
 
     /* Before database destination discovery */
     cdb2_event *e = NULL;
@@ -5520,10 +5521,10 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
                                          "replication", hndl->dbname);
         hndl->flags |= CDB2_DIRECT_CPU;
     } else {
-        rc = get_comdb2db_hosts(
-            hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name,
-            &num_comdb2db_hosts, &comdb2db_num, hndl->dbname,
-            hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0, 1);
+        rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
+                                comdb2db_name, &num_comdb2db_hosts,
+                                &comdb2db_num, hndl->dbname, hndl->hosts,
+                                &(hndl->num_hosts), &hndl->dbnum, 0, 1);
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);
