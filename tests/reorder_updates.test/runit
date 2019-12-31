@@ -178,7 +178,7 @@ wait
 assertcnt t1 $NUM
 
 # get master node
-master=$(get_master)
+master=`getmaster`
 
 export LOGDIR=$TESTDIR/logs # from setup
 if [[ -z "$CLUSTER" ]] ; then

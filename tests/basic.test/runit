@@ -12,8 +12,7 @@ fi
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
-    echo "need a DB name"
-    exit 1
+    failexit "need a DB name"
 fi
 
 # Number of insert_records function calls
@@ -23,8 +22,7 @@ nins=0
 if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
     lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
     if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
-       echo "FAILURE: DB is not running in snapshot isolation mode"
-       exit 1
+       failexit "DB is not running in snapshot isolation mode"
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
