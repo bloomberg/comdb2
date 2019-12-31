@@ -301,6 +301,8 @@ int sqlite3BtreeNext(BtCursor*, int);
 int sqlite3BtreeEof(BtCursor*);
 int sqlite3BtreePrevious(BtCursor*, int);
 i64 sqlite3BtreeIntegerKey(BtCursor*);
+void sqlite3BtreeCursorPin(BtCursor*);
+void sqlite3BtreeCursorUnpin(BtCursor*);
 int sqlite3BtreeKey(BtCursor*, u32 offset, u32 amt, void*);
 const void *sqlite3BtreeKeyFetch(BtCursor*, u32 *pAmt);
 const void *sqlite3BtreeDataFetch(BtCursor*, u32 *pAmt);

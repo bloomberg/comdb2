@@ -10378,6 +10378,16 @@ int sqlite3BtreeCount(sqlite3 *db, BtCursor *pCur, i64 *pnEntry)
 }
 
 /*
+** Pin or unpin a cursor.
+*/
+void sqlite3BtreeCursorPin(BtCursor *pCur){
+  /* TODO: Is this needed? */
+}
+void sqlite3BtreeCursorUnpin(BtCursor *pCur){
+  /* TODO: Is this needed? */
+}
+
+/*
  ** Return the size of a BtCursor object in bytes.
  **
  ** This interfaces is needed so that users of cursors can preallocate

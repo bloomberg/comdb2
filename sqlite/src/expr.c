@@ -949,9 +949,11 @@ Expr *sqlite3ExprAnd(Parse *pParse, Expr *pLeft, Expr *pRight){
     return pRight;
   }else if( pRight==0 ){
     return pLeft;
-  }else if( ExprAlwaysFalse(pLeft) || ExprAlwaysFalse(pRight) ){
-    sqlite3ExprUnmapAndDelete(pParse, pLeft);
-    sqlite3ExprUnmapAndDelete(pParse, pRight);
+  }else if( (ExprAlwaysFalse(pLeft) || ExprAlwaysFalse(pRight)) 
+         && !IN_RENAME_OBJECT
+  ){
+    sqlite3ExprDelete(db, pLeft);
+    sqlite3ExprDelete(db, pRight);
     return sqlite3Expr(db, TK_INTEGER, "0");
   }else{
     return sqlite3PExpr(pParse, TK_AND, pLeft, pRight);
@@ -2338,7 +2340,7 @@ static Select *isCandidateForInOpt(Expr *pX){
     testcase( (p->selFlags & (SF_Distinct|SF_Aggregate))==SF_Aggregate );
     return 0; /* No DISTINCT keyword and no aggregate functions */
   }
-  assert( p->pGroupBy==0 );              /* Has no GROUP BY clause */
+  if( p->pGroupBy ) return 0;            /* Has no GROUP BY clause */
   if( p->pLimit ) return 0;              /* Has no LIMIT clause */
   if( p->pWhere ) return 0;              /* Has no WHERE clause */
   pSrc = p->pSrc;
@@ -5546,12 +5548,13 @@ struct SrcCount {
 ** Count the number of references to columns.
 */
 static int exprSrcCount(Walker *pWalker, Expr *pExpr){
-  /* The NEVER() on the second term is because sqlite3FunctionUsesThisSrc()
-  ** is always called before sqlite3ExprAnalyzeAggregates() and so the
-  ** TK_COLUMNs have not yet been converted into TK_AGG_COLUMN.  If
-  ** sqlite3FunctionUsesThisSrc() is used differently in the future, the
-  ** NEVER() will need to be removed. */
-  if( pExpr->op==TK_COLUMN || NEVER(pExpr->op==TK_AGG_COLUMN) ){
+  /* There was once a NEVER() on the second term on the grounds that
+  ** sqlite3FunctionUsesThisSrc() was always called before 
+  ** sqlite3ExprAnalyzeAggregates() and so the TK_COLUMNs have not yet 
+  ** been converted into TK_AGG_COLUMN. But this is no longer true due
+  ** to window functions - sqlite3WindowRewrite() may now indirectly call
+  ** FunctionUsesThisSrc() when creating a new sub-select. */
+  if( pExpr->op==TK_COLUMN || pExpr->op==TK_AGG_COLUMN ){
     int i;
     struct SrcCount *p = pWalker->u.pSrcCount;
     SrcList *pSrc = p->pSrc;
@@ -5589,6 +5592,11 @@ int sqlite3FunctionUsesThisSrc(Expr *pExpr, SrcList *pSrcList){
   cnt.nThis = 0;
   cnt.nOther = 0;
   sqlite3WalkExprList(&w, pExpr->x.pList);
+#ifndef SQLITE_OMIT_WINDOWFUNC
+  if( ExprHasProperty(pExpr, EP_WinFunc) ){
+    sqlite3WalkExpr(&w, pExpr->y.pWin->pFilter);
+  }
+#endif
   return cnt.nThis>0 || cnt.nOther==0;
 }
 

@@ -908,6 +908,10 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
                        op->p3, op->p1);
         break;
+    case OP_FinishSeek:
+        strbuf_appendf(out, "End of deferred seek for cursor [%d] if needed",
+                       op->p1);
+        break;
     case OP_IfNoHope:
     case OP_NoConflict:
     case OP_NotFound:
@@ -1206,8 +1210,14 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_OpFuncString:
         strbuf_appendf(out, "Next String of R%d into R%d", op->p1, op->p2);
         break;
-
-
+    case OP_CursorLock:
+        strbuf_appendf(out, "Lock btree to which cursor [%d] is pointing",
+                       op->p1);
+        break;
+    case OP_CursorUnlock:
+        strbuf_appendf(out, "Unlock btree to which cursor [%d] is pointing",
+                       op->p1);
+        break;
     case OP_TableLock:
     case OP_VBegin:
     case OP_VCreate:

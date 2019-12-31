@@ -1210,6 +1210,20 @@ int sqlite3VdbeExec(
 ** to the current line should be indented for EXPLAIN output.
 */
 case OP_Goto: {             /* jump */
+
+#ifdef SQLITE_DEBUG
+  /* In debuggging mode, when the p5 flags is set on an OP_Goto, that
+  ** means we should really jump back to the preceeding OP_ReleaseReg
+  ** instruction. */
+  if( pOp->p5 ){
+    assert( pOp->p2 < (int)(pOp - aOp) );
+    assert( pOp->p2 > 1 );
+    pOp = &aOp[pOp->p2 - 2];
+    assert( pOp[1].opcode==OP_ReleaseReg );
+    goto check_for_interrupt;
+  }
+#endif
+
 jump_to_p2_and_check_for_interrupt:
   pOp = &aOp[pOp->p2 - 1];
 
@@ -1846,12 +1860,21 @@ case OP_ResultRow: {
             || (pMem[i].flags & (MEM_Str|MEM_Blob))==0 );
     sqlite3VdbeMemNulTerminate(&pMem[i]);
     REGISTER_TRACE(pOp->p1+i, &pMem[i]);
+#ifdef SQLITE_DEBUG
+    /* The registers in the result will not be used again when the
+    ** prepared statement restarts.  This is because sqlite3_column()
+    ** APIs might have caused type conversions of made other changes to
+    ** the register values.  Therefore, we can go ahead and break any
+    ** OP_SCopy dependencies. */
+    pMem[i].pScopyFrom = 0;
+#endif
   }
   if( db->mallocFailed ) goto no_mem;
 
   if( db->mTrace & SQLITE_TRACE_ROW ){
     db->xTrace(SQLITE_TRACE_ROW, db->pTraceArg, p, 0);
   }
+
 
   /* Return SQLITE_ROW
   */
@@ -5617,6 +5640,7 @@ case OP_Insert: {
   pC = p->apCsr[pOp->p1];
   assert( pC!=0 );
   assert( pC->eCurType==CURTYPE_BTREE );
+  assert( pC->deferredMoveto==0 );
   assert( pC->uc.pCursor!=0 );
   assert( (pOp->p5 & OPFLAG_ISNOOP) || pC->isTable );
   assert( pOp->p4type==P4_TABLE || pOp->p4type>=P4_STATIC );
@@ -6563,6 +6587,24 @@ case OP_IdxRowid: {           /* out2 */
   }else{
     assert( pOp->opcode==OP_IdxRowid );
     sqlite3VdbeMemSetNull(&aMem[pOp->p2]);
+  }
+  break;
+}
+
+/* Opcode: FinishSeek P1 * * * *
+** 
+** If cursor P1 was previously moved via OP_DeferredSeek, complete that
+** seek operation now, without further delay.  If the cursor seek has
+** already occurred, this instruction is a no-op.
+*/
+case OP_FinishSeek: {
+  VdbeCursor *pC;             /* The P1 index cursor */
+
+  assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  pC = p->apCsr[pOp->p1];
+  if( pC->deferredMoveto ){
+    rc = sqlite3VdbeFinishMoveto(pC);
+    if( rc ) goto abort_due_to_error;
   }
   break;
 }
@@ -7883,6 +7925,36 @@ case OP_Expire: {
   }else{
     p->expired = pOp->p2+1;
   }
+  break;
+}
+
+/* Opcode: CursorLock P1 * * * *
+**
+** Lock the btree to which cursor P1 is pointing so that the btree cannot be
+** written by an other cursor.
+*/
+case OP_CursorLock: {
+  VdbeCursor *pC;
+  assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  pC = p->apCsr[pOp->p1];
+  assert( pC!=0 );
+  assert( pC->eCurType==CURTYPE_BTREE );
+  sqlite3BtreeCursorPin(pC->uc.pCursor);
+  break;
+}
+
+/* Opcode: CursorUnlock P1 * * * *
+**
+** Unlock the btree to which cursor P1 is pointing so that it can be
+** written by other cursors.
+*/
+case OP_CursorUnlock: {
+  VdbeCursor *pC;
+  assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  pC = p->apCsr[pOp->p1];
+  assert( pC!=0 );
+  assert( pC->eCurType==CURTYPE_BTREE );
+  sqlite3BtreeCursorUnpin(pC->uc.pCursor);
   break;
 }
 

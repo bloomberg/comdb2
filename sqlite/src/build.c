@@ -3143,7 +3143,10 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
     pSelTab = sqlite3ResultSetOfSelect(pParse, pSel, SQLITE_AFF_NONE);
 #endif
     pParse->nTab = n;
-    if( pTable->pCheck ){
+    if( pSelTab==0 ){
+      pTable->nCol = 0;
+      nErr++;
+    }else if( pTable->pCheck ){
       /* CREATE VIEW name(arglist) AS ...
       ** The names of the columns in the table are taken from
       ** arglist which is stored in pTable->pCheck.  The pCheck field
@@ -3153,13 +3156,13 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
       sqlite3ColumnsFromExprList(pParse, pTable->pCheck, 
                                  &pTable->nCol, &pTable->aCol);
       if( db->mallocFailed==0 
-       && pParse->nErr==0
+       && ALWAYS(pParse->nErr==0)
        && pTable->nCol==pSel->pEList->nExpr
       ){
         sqlite3SelectAddColumnTypeAndCollation(pParse, pTable, pSel,
                                                SQLITE_AFF_NONE);
       }
-    }else if( pSelTab ){
+    }else{
       /* CREATE VIEW name AS...  without an argument list.  Construct
       ** the column names from the SELECT statement that defines the view.
       */
@@ -3169,9 +3172,6 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
       pSelTab->nCol = 0;
       pSelTab->aCol = 0;
       assert( sqlite3SchemaMutexHeld(db, 0, pTable->pSchema) );
-    }else{
-      pTable->nCol = 0;
-      nErr++;
     }
     pTable->nNVCol = pTable->nCol;
     sqlite3DeleteTable(db, pSelTab);

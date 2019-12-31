@@ -1112,6 +1112,7 @@ static void codeDeferredSeek(
   assert( iIdxCur>0 );
   assert( pIdx->aiColumn[pIdx->nColumn-1]==-1 );
   
+  pWInfo->bDeferredSeek = 1;
   sqlite3VdbeAddOp3(v, OP_DeferredSeek, iIdxCur, 0, iCur);
   if( (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1355,6 +1356,21 @@ Bitmask sqlite3WhereCodeOneLoopStart(
   pLevel->notReady = notReady & ~sqlite3WhereGetMask(&pWInfo->sMaskSet, iCur);
   bRev = (pWInfo->revMask>>iLevel)&1;
   VdbeModuleComment((v, "Begin WHERE-loop%d: %s",iLevel,pTabItem->pTab->zName));
+#if WHERETRACE_ENABLED /* 0x20800 */
+  if( sqlite3WhereTrace & 0x800 ){
+    sqlite3DebugPrintf("Coding level %d of %d:  notReady=%llx  iFrom=%d\n",
+       iLevel, pWInfo->nLevel, (u64)notReady, pLevel->iFrom);
+    sqlite3WhereLoopPrint(pLoop, pWC);
+  }
+  if( sqlite3WhereTrace & 0x20000 ){
+    if( iLevel==0 ){
+      sqlite3DebugPrintf("WHERE clause being coded:\n");
+      sqlite3TreeViewExpr(0, pWInfo->pWhere, 0);
+    }
+    sqlite3DebugPrintf("All WHERE-clause terms before coding:\n");
+    sqlite3WhereClausePrint(pWC);
+  }
+#endif
 
   /* Create labels for the "break" and "continue" instructions
   ** for the current loop.  Jump to addrBrk to break out of a loop.
@@ -1749,7 +1765,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     ){
       assert( bSeekPastNull==0 && nExtraReg==0 && nBtm==0 && nTop==0 );
       assert( pRangeEnd==0 && pRangeStart==0 );
-      assert( pLoop->nSkip==0 );
+      testcase( pLoop->nSkip>0 );
       nExtraReg = 1;
       bSeekPastNull = 1;
       pLevel->regBignull = regBignull = ++pParse->nMem;
@@ -2427,6 +2443,10 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         VdbeNoopComment((v, "WhereTerm[%d] (%p) priority=%d",
                          pWC->nTerm-j, pTerm, iLoop));
       }
+      if( sqlite3WhereTrace & 0x800 ){
+        sqlite3DebugPrintf("Coding auxiliary constraint:\n");
+        sqlite3WhereTermPrint(pTerm, pWC->nTerm-j);
+      }
 #endif
       sqlite3ExprIfFalse(pParse, pE, addrCont, SQLITE_JUMPIFNULL);
       if( skipLikeAddr ) sqlite3VdbeJumpHere(v, skipLikeAddr);
@@ -2450,8 +2470,14 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     if( (pTerm->eOperator & (WO_EQ|WO_IS))==0 ) continue;
     if( (pTerm->eOperator & WO_EQUIV)==0 ) continue;
     if( pTerm->leftCursor!=iCur ) continue;
-    if( pLevel->iLeftJoin ) continue;
+    if( pTabItem->fg.jointype & JT_LEFT ) continue;
     pE = pTerm->pExpr;
+#ifdef WHERETRACE_ENABLED /* 0x800 */
+    if( sqlite3WhereTrace & 0x800 ){
+      sqlite3DebugPrintf("Coding transitive constraint:\n");
+      sqlite3WhereTermPrint(pTerm, pWC->nTerm-j);
+    }
+#endif
     assert( !ExprHasProperty(pE, EP_FromJoin) );
     assert( (pTerm->prereqRight & pLevel->notReady)!=0 );
     pAlt = sqlite3WhereFindTerm(pWC, iCur, pTerm->u.leftColumn, notReady,
@@ -2494,5 +2520,16 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     }
   }
 
+#if WHERETRACE_ENABLED /* 0x20800 */
+  if( sqlite3WhereTrace & 0x20000 ){
+    sqlite3DebugPrintf("All WHERE-clause terms after coding level %d:\n",
+                       iLevel);
+    sqlite3WhereClausePrint(pWC);
+  }
+  if( sqlite3WhereTrace & 0x800 ){
+    sqlite3DebugPrintf("End Coding level %d:  notReady=%llx\n",
+       iLevel, (u64)pLevel->notReady);
+  }
+#endif
   return pLevel->notReady;
 }
