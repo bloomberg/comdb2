@@ -53,16 +53,6 @@ assert_schema()
     fi
 }
 
-do_verify()
-{
-    tbl=$1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "verify $tbl failed"
-    fi
-}
-
 insert_records()
 {
     j=$1
