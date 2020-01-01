@@ -84,14 +84,6 @@ function insert_records
     done
 }
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
 
 function assert_vers
 {
@@ -139,7 +131,7 @@ assertcnt t1 $(( nrecs * 2 ))
 assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
-do_verify
+do_verify t1
 
 
 echo ""
@@ -177,7 +169,7 @@ assertcnt t1 $nrecs
 assert_vers $tblver
 
 echo "NOTE: schemachange above CORRECTLY failed"
-do_verify
+do_verify t1
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE COMMITSLEEP 0"
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
@@ -185,6 +177,6 @@ cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "PUT SCHEMACHANGE CONVERTSLEEP 0"
 do_schema_changes
 assertcnt t1 $nrecs
 assert_vers $(( tblver + 1 ))
-do_verify
+do_verify t1
 
 echo "Success"

@@ -57,16 +57,6 @@ function assert_schema
 }
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 # Update all records in the table
 function update_all_records
 {
@@ -264,7 +254,7 @@ echo check records match inserted
 assert_vers t1 0
 assertcnt t1 200
 assertsel rows1.txt
-do_verify
+do_verify t1
 
 kill_restart_node $master
 cdb2sql ${CDB2_OPTIONS} --tabs --host $node $dbnm  'select 1'
@@ -274,7 +264,7 @@ assert_vers t1 0
 assert_schema t1 t1_1.csc2
 assertcnt t1 200
 assertsel rows1.txt
-do_verify
+do_verify t1
 
 lsn=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | sed 's/.*lsn //g ; s/ .*//g'`
 echo "got present lsn up to which we will recover, lsn=$lsn"
@@ -302,6 +292,6 @@ assert_vers t1 0
 assert_schema t1 t1_1.csc2
 assertcnt t1 200
 assertsel rows1.txt
-do_verify
+do_verify t1
 
 echo "Success"

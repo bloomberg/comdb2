@@ -46,15 +46,6 @@ assert_schema()
     fi
 }
 
-do_verify()
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 # Update all records in the table
 update_all_records()
 {
