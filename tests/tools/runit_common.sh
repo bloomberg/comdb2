@@ -57,7 +57,7 @@ getmaster()
 do_verify()
 {
     tbl=$1
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl')" &> verify_$tbl.out
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out
 
     if ! grep succeeded verify_$tbl.out > /dev/null ; then
         failexit "verify $tbl failed"
