@@ -608,20 +608,20 @@ err:	if (data.data != NULL)
 static int
 cdb2_dump_usage()
 {
-	(void)fprintf(stderr, "%s\n\t%s\n",
-	    "usage: cdb2_dump [-klNprRV]",
-    "[-d ahr] [-f output] [-h home] [-P /path/to/password] [-s database] db_file");
-    "   -d    dump options, a - detailed, r - test recovery"
-    "   -f    output to file"
-    "   -h    home db directory"
-    "   -k    keyflag"
-    "   -l    check if DB file contains subtadabases"
-    "   -N    set no locking mode"
-    "   -p    escape printed output"
-    "   -P    password file to decrypt btree content"
-    "   -r    verify as well"
-    "   -R    aggressive mode for verify"
-    "   -V    display version"
+	(void)fprintf(stderr,
+    "usage: cdb2_dump [-klNprRV]\n\t"
+    "[-d ahr] [-f output] [-h home] [-P /path/to/password] [-s database] db_file\n"
+    "   -d    dump options, a - detailed, r - test recovery\n"
+    "   -f    output to file\n"
+    "   -h    home db directory\n"
+    "   -k    keyflag\n"
+    "   -l    check if DB file contains subtadabases\n"
+    "   -N    set no locking mode\n"
+    "   -p    escape printed output\n"
+    "   -P    password file to decrypt btree content\n"
+    "   -r    verify as well\n"
+    "   -R    aggressive mode for verify\n"
+    "   -V    display version\n");
 	return (EXIT_FAILURE);
 }
 
