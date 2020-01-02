@@ -4387,17 +4387,8 @@ deadlock_again:
                 logmsg(LOGMSG_ERROR, "unable to set pagesize on qdb to %d\n",
                        pagesize);
             }
-            int qdb_type = dta_type;
-            u_int32_t qdb_flags = db_flags;
-            if ((iammaster) && (dtanum > 0) && (qdb_file_ver != 0)) {
-                logmsg(LOGMSG_DEBUG,
-                       "open_dbs: qdb file %s (%d) with CREATE flag\n",
-                       tmpname, dtanum);
-                qdb_type = DB_BTREE;
-                qdb_flags |= DB_CREATE;
-            }
             print(bdb_state, "opening %s ([%d])\n", tmpname, dtanum);
-            rc = dbp->open(dbp, tid, tmpname, NULL, qdb_type, qdb_flags,
+            rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                            db_mode);
             logmsg(
                 LOGMSG_DEBUG,
