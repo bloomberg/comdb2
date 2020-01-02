@@ -621,7 +621,7 @@ done:
     return rc;
 }
 
-int add_qdb_file(struct schema_change_type *s, tran_type *tran)
+static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
     struct dbtable *db;
@@ -684,7 +684,7 @@ done:
     return rc;
 }
 
-int del_qdb_file(struct schema_change_type *s, tran_type *tran)
+static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
     struct dbtable *db;
@@ -762,7 +762,9 @@ int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    return add_qdb_file(s, tran);
+    int rc = add_qdb_file(s, tran);
+    if (rc != 0) return rc;
+    return reopen_queue_dbs(s->tablename, 0);
 }
 
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
@@ -774,5 +776,7 @@ int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    return del_qdb_file(s, tran);
+    int rc = del_qdb_file(s, tran);
+    if (rc != 0) return rc;
+    return reopen_queue_dbs(s->tablename, 0);
 }
