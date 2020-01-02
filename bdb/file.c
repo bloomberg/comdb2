@@ -4353,7 +4353,7 @@ deadlock_again:
                 char new[PATH_MAX];
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
-            } else if (qdb_file_ver != 0) {
+            } else if ((dtanum > 0) && (qdb_file_ver != 0)) {
                 form_queuedb_name_int(
                     bdb_state, tmpname, sizeof(tmpname), qdb_file_ver
                 );
@@ -4388,7 +4388,7 @@ deadlock_again:
             }
             int qdb_type = dta_type;
             u_int32_t qdb_flags = db_flags;
-            if ((iammaster) && (qdb_file_ver != 0)) {
+            if ((iammaster) && (dtanum > 0) && (qdb_file_ver != 0)) {
                 qdb_type = DB_BTREE;
                 qdb_flags |= DB_CREATE;
             }
