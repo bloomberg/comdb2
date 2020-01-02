@@ -609,7 +609,7 @@ int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver,
     }
     db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
                                      65536, thedb->bdb_env, 1, qdb_file_ver,
-                                     NULL, &bdberr);
+                                     tran, &bdberr);
     if (db->handle == NULL) {
         logmsg(LOGMSG_ERROR,
                "%s: bdb_open_more_queue(%s/%s) failed, bdberr %d\n",
