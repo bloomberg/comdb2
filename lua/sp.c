@@ -4495,8 +4495,8 @@ void force_unregister(Lua L, trigger_reg_t *reg)
     luabb_trigger_unregister(L, q);
 }
 
-static int get_queue_and_grab_table_read_lock(Lua L, char *spname,
-                                              struct dbtable **pDb,
+static int get_queue_and_grab_table_read_lock(Lua L, struct sqlclntstate *clnt,
+                                              char *spname, struct dbtable **pDb,
                                               char **err)
 {
     Q4SP(qname, spname);
@@ -4550,7 +4550,7 @@ static int db_consumer(Lua L)
     strcpy(spname, sp->spname);
     struct dbtable *db = NULL;
 
-    int rc = get_queue_and_grab_table_read_lock(L, spname, &db, NULL);
+    int rc = get_queue_and_grab_table_read_lock(L, clnt, spname, &db, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -6591,7 +6591,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     char *spname = reg->spname;
     struct dbtable *db = NULL;
 
-    rc = get_queue_and_grab_table_read_lock(L, spname, &db, err);
+    rc = get_queue_and_grab_table_read_lock(L, clnt, spname, &db, err);
     if (rc != 0) {
         return rc;
     }
