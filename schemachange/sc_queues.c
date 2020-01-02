@@ -755,7 +755,7 @@ done:
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    int rc = bdb_lock_table_write(s->db, tran);
+    int rc = bdb_lock_table_write(s->db->handle, tran);
     if (rc != 0) return rc;
     return reopen_queue_dbs(s->tablename, s->qdb_file_ver, tran);
 }
@@ -771,7 +771,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    return bdb_lock_table_write(s->db, tran);
+    return bdb_lock_table_write(s->db->handle, tran);
 }
 
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
