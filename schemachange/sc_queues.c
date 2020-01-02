@@ -627,7 +627,6 @@ int add_qdb_file(struct schema_change_type *s, tran_type *tran)
     struct dbtable *db;
     SBUF2 *sb = s->sb;
 
-    wrlock_schema_lk();
     db = getqueuebyname(s->tablename);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
@@ -680,7 +679,6 @@ int add_qdb_file(struct schema_change_type *s, tran_type *tran)
     }
 
 done:
-    unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
@@ -692,7 +690,6 @@ int del_qdb_file(struct schema_change_type *s, tran_type *tran)
     struct dbtable *db;
     SBUF2 *sb = s->sb;
 
-    wrlock_schema_lk();
     db = getqueuebyname(s->tablename);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
@@ -751,7 +748,6 @@ int del_qdb_file(struct schema_change_type *s, tran_type *tran)
     }
 
 done:
-    unlock_schema_lk();
     logmsg(LOGMSG_INFO, "%s: %s ==> %s (%d)\n", __func__, s->tablename,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
