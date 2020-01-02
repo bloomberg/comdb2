@@ -587,7 +587,7 @@ int finalize_trigger(struct schema_change_type *s)
     return 0;
 }
 
-int reopen_queue_dbs(const char *queue_name, int create_file)
+int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver)
 {
     int rc = 0;
     struct dbtable *db = getqueuebyname(queue_name);
@@ -607,7 +607,7 @@ int reopen_queue_dbs(const char *queue_name, int create_file)
         goto done;
     }
     db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
-                                     65536, thedb->bdb_env, 1, create_file,
+                                     65536, thedb->bdb_env, 1, qdb_file_ver,
                                      NULL, &bdberr);
     if (db->handle == NULL) {
         logmsg(LOGMSG_ERROR,
@@ -758,25 +758,25 @@ done:
 }
 
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
-                    tran_type *trans)
+                    tran_type *tran)
 {
-    return 0;
+    return reopen_queue_dbs(s->tablename, s->qdb_file_ver);
 }
 
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    return 0;
+    return add_qdb_file(s, tran);
 }
 
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
-                    tran_type *trans)
+                    tran_type *tran)
 {
-    return 0;
+    return 0; /* TODO: Is this actually needed? */
 }
 
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    return 0;
+    return del_qdb_file(s, tran);
 }

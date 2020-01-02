@@ -4127,7 +4127,7 @@ int calc_pagesize(int recsize)
 
 static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
                         int create, DB_TXN *tid, uint32_t flags,
-                        int create_file)
+                        unsigned long long qdb_file_ver)
 {
     int rc;
     char tmpname[PATH_MAX];
@@ -4353,15 +4353,19 @@ deadlock_again:
                 char new[PATH_MAX];
                 print(bdb_state, "deleting %s\n", bdb_trans(tmpname, new));
                 unlink(bdb_trans(tmpname, new));
+            } else if (qdb_file_ver != 0) {
+                form_queuedb_name_int(
+                    bdb_state, tmpname, sizeof(tmpname), qdb_file_ver
+                );
             } else {
-                unsigned long long qdb_file_version;
+                unsigned long long old_qdb_file_ver;
                 if (should_stop_looking_for_queuedb_files(bdb_state, &tran,
                                                           dtanum,
-                                                          &qdb_file_version)) {
+                                                          &old_qdb_file_ver)) {
                     break;
                 }
                 form_queuedb_name_int(
-                    bdb_state, tmpname, sizeof(tmpname), qdb_file_version
+                    bdb_state, tmpname, sizeof(tmpname), old_qdb_file_ver
                 );
             }
             DB *dbp;
@@ -4379,17 +4383,11 @@ deadlock_again:
             }
             rc = dbp->set_pagesize(dbp, pagesize);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "unable to set pagesize on dta to %d\n",
+                logmsg(LOGMSG_ERROR, "unable to set pagesize on qdb to %d\n",
                        pagesize);
             }
             print(bdb_state, "opening %s\n", tmpname);
-            int qdb_type = dta_type;
-            u_int32_t qdb_flags = db_flags;
-            if (create_file && (dtanum > 0)) {
-                qdb_type = DB_BTREE;
-                qdb_flags |= DB_CREATE;
-            }
-            rc = dbp->open(dbp, tid, tmpname, NULL, qdb_type, qdb_flags,
+            rc = dbp->open(dbp, tid, tmpname, NULL, dta_type, db_flags,
                            db_mode);
             logmsg(
                 LOGMSG_DEBUG,
@@ -4714,12 +4712,12 @@ deadlock_again:
 static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
 static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
                           int create, DB_TXN *tid, uint32_t flags,
-                          int create_file)
+                          unsigned long long qdb_file_ver)
 {
     int rc = 0;
     Pthread_mutex_lock(&open_dbs_mtx);
     rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags,
-                      create_file);
+                      qdb_file_ver);
     Pthread_mutex_unlock(&open_dbs_mtx);
     return rc;
 }
@@ -5487,7 +5485,8 @@ static bdb_state_type *bdb_open_int(
     int numdtafiles, bdb_attr_type *bdb_attr, bdb_callback_type *bdb_callback,
     void *usr_ptr, netinfo_type *netinfo, int upgrade, int create, int *bdberr,
     bdb_state_type *parent_bdb_state, int pagesize_override, bdbtype_t bdbtype,
-    DB_TXN *tid, int temp, char *recoverylsn, uint32_t flags, int create_file)
+    DB_TXN *tid, int temp, char *recoverylsn, uint32_t flags,
+    unsigned long long qdb_file_ver)
 {
     bdb_state_type *bdb_state;
     int rc;
@@ -6027,7 +6026,7 @@ static bdb_state_type *bdb_open_int(
         bdb_state->bdbtype = bdbtype;
         bdb_state->pagesize_override = pagesize_override;
         rc = open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, flags,
-                            create_file);
+                            qdb_file_ver);
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
@@ -6344,7 +6343,8 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     int item_size, int pagesize,
                                     bdb_state_type *parent_bdb_state,
-                                    int isqueuedb, int create_file,
+                                    int isqueuedb,
+                                    unsigned long long qdb_file_ver,
                                     tran_type *tran, int *bdberr)
 {
     bdb_state_type *bdb_state, *ret = NULL;
@@ -6373,7 +6373,7 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                      parent_bdb_state->attr->createdbs,  /* create */
                      bdberr, parent_bdb_state, pagesize, /* pagesize override */
                      isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE,
-                     tran ? tran->tid : NULL, 0, NULL, 0, create_file);
+                     tran ? tran->tid : NULL, 0, NULL, 0, qdb_file_ver);
 
     BDB_RELLOCK();
 
@@ -6384,7 +6384,8 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
                                       const char dir[], int item_size,
                                       int pagesize,
                                       bdb_state_type *parent_bdb_state,
-                                      int isqueuedb, int create_file,
+                                      int isqueuedb,
+                                      unsigned long long qdb_file_ver,
                                       int *bdberr)
 {
     DB_TXN *tid = tran ? tran->tid : NULL;
@@ -6414,7 +6415,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
         isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL, 0,
-        create_file);
+        qdb_file_ver);
 
     BDB_RELLOCK();
 
@@ -6424,11 +6425,12 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
 bdb_state_type *bdb_create_queue(const char name[], const char dir[],
                                  int item_size, int pagesize,
                                  bdb_state_type *parent_bdb_state,
-                                 int isqueuedb, int create_file,
+                                 int isqueuedb,
+                                 unsigned long long qdb_file_ver,
                                  int *bdberr)
 {
     return bdb_create_queue_tran(NULL, name, dir, item_size, pagesize,
-                                 parent_bdb_state, isqueuedb, create_file,
+                                 parent_bdb_state, isqueuedb, qdb_file_ver,
                                  bdberr);
 }
 
@@ -6583,15 +6585,15 @@ static int bdb_del_int(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     } else if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
         for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
-            unsigned long long qdb_file_version;
+            unsigned long long old_qdb_file_ver;
             if (should_stop_looking_for_queuedb_files(bdb_state, tran,
                                                       dtanum,
-                                                      &qdb_file_version)) {
+                                                      &old_qdb_file_ver)) {
                 break;
             }
             char name[PATH_MAX];
             form_queuedb_name_int(
-                bdb_state, name, sizeof(name), qdb_file_version
+                bdb_state, name, sizeof(name), old_qdb_file_ver
             );
             rc = bdb_del_file(bdb_state, tid, name, bdberr);
             if (rc != 0) break;
@@ -7243,14 +7245,14 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
     assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
     for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
-        unsigned long long qdb_file_version;
+        unsigned long long old_qdb_file_ver;
         if (should_stop_looking_for_queuedb_files(bdb_state, NULL, dtanum,
-                                                  &qdb_file_version)) {
+                                                  &old_qdb_file_ver)) {
             break;
         }
         char tmpname[PATH_MAX];
         form_queuedb_name_int(
-            bdb_state, tmpname, sizeof(tmpname), qdb_file_version
+            bdb_state, tmpname, sizeof(tmpname), old_qdb_file_ver
         );
         char tmpnamenew[PATH_MAX];
         struct stat st;
