@@ -4344,6 +4344,11 @@ deadlock_again:
     if (bdbtype == BDBTYPE_QUEUEDB) {
         int max_qdb_dtanum = create ? 1 : BDB_QUEUEDB_MAX_FILES;
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
+        if ((max_qdb_dtanum < BDB_QUEUEDB_MAX_FILES) && (qdb_file_ver != 0)) {
+            max_qdb_dtanum++;
+        }
+        assert(max_qdb_dtanum >= 1);
+        assert(max_qdb_dtanum <= BDB_QUEUEDB_MAX_FILES);
         for (int dtanum = 0; dtanum < max_qdb_dtanum; dtanum++) {
             if (create) {
                 if ((rc = form_queuedb_name(bdb_state, &tran, dtanum, 1,
