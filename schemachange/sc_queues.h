@@ -25,8 +25,8 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t);
 int finalize_trigger(struct schema_change_type *);
 
 int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver);
-int add_qdb_file(struct schema_change_type *s);
-int del_qdb_file(struct schema_change_type *s);
+int add_qdb_file(struct schema_change_type *s, tran_type *tran);
+int del_qdb_file(struct schema_change_type *s, tran_type *tran);
 
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran);
