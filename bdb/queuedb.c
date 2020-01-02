@@ -159,6 +159,8 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         if (bdb_state == NULL) continue;
         DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
         DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+        struct ireq iq = {0};
+        tran_type *tran = NULL;
         struct schema_change_type *sc = NULL;
         int rc;
         if (db2 != NULL) {
@@ -166,6 +168,15 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 logmsg(LOGMSG_DEBUG,
                     "%s: queuedb '%s' has two files and old file is empty, "
                     "attempting to delete it...\n", __func__, bdb_state->name);
+                init_fake_ireq(dbenv, &iq);
+                iq.usedb = tbl;
+                rc = trans_start_sc(&iq, NULL, &tran);
+                if ((rc != 0) || (tran == NULL)) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: trans_start failed for '%s', rc %d\n",
+                           __func__, bdb_state->name, rc);
+                    continue;
+                }
                 sc = new_schemachange_type();
                 if (sc == NULL) {
                     continue;
@@ -178,13 +189,14 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 sc->nothrevent = 1;
                 sc->finalize = 1;
                 sc->db = tbl;
-                rc = start_schema_change(sc);
-                if (rc != SC_OK && rc != SC_ASYNC) {
+                rc = start_schema_change_tran(sc, tran);
+                if ((rc != SC_OK) && (rc != SC_ASYNC)) {
                     logmsg(LOGMSG_ERROR,
                            "%s: failed to start schema change to delete "
                            "old file for queuedb '%s'\n",
                            __func__, sc->tablename);
                     free_schema_change_type(sc);
+                    trans_abort(&iq, tran);
                 }
             } else {
                 logmsg(LOGMSG_DEBUG,
@@ -195,6 +207,15 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             logmsg(LOGMSG_DEBUG,
                 "%s: queuedb '%s' has one file and old file is full, "
                 "attempting to add new file...\n", __func__, bdb_state->name);
+            init_fake_ireq(dbenv, &iq);
+            iq.usedb = tbl;
+            rc = trans_start_sc(&iq, NULL, &tran);
+            if ((rc != 0) || (tran == NULL)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: trans_start failed for '%s', rc %d\n",
+                       __func__, bdb_state->name, rc);
+                continue;
+            }
             sc = new_schemachange_type();
             if (sc == NULL) {
                 continue;
@@ -208,13 +229,14 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             sc->nothrevent = 1;
             sc->finalize = 1;
             sc->db = tbl;
-            rc = start_schema_change(sc);
-            if (rc != SC_OK && rc != SC_ASYNC) {
+            rc = start_schema_change_tran(sc, tran);
+            if ((rc != SC_OK) && (rc != SC_ASYNC)) {
                 logmsg(LOGMSG_ERROR,
                        "%s: failed to start schema change to add "
                        "new file for queuedb '%s'\n",
                            __func__, sc->tablename);
                 free_schema_change_type(sc);
+                trans_abort(&iq, tran);
             }
         } else {
             logmsg(LOGMSG_DEBUG,
