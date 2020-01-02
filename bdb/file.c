@@ -4281,7 +4281,8 @@ deadlock_again:
                             tmpname, pagesize);
                 }
 
-                print(bdb_state, "opening %s\n", tmpname);
+                print(bdb_state, "opening %s ([%d][%d])\n", tmpname,
+                      dtanum, strnum);
                 // dbp is datafile
                 db_flags |= DB_DATAFILE;
                 int iter = 0;
@@ -4389,10 +4390,13 @@ deadlock_again:
             int qdb_type = dta_type;
             u_int32_t qdb_flags = db_flags;
             if ((iammaster) && (dtanum > 0) && (qdb_file_ver != 0)) {
+                logmsg(LOGMSG_DEBUG,
+                       "open_dbs: qdb file %s (%d) with CREATE flag\n",
+                       tmpname, dtanum);
                 qdb_type = DB_BTREE;
                 qdb_flags |= DB_CREATE;
             }
-            print(bdb_state, "opening %s\n", tmpname);
+            print(bdb_state, "opening %s ([%d])\n", tmpname, dtanum);
             rc = dbp->open(dbp, tid, tmpname, NULL, qdb_type, qdb_flags,
                            db_mode);
             logmsg(
@@ -4607,7 +4611,7 @@ deadlock_again:
 
             /*fprintf(stderr, "opening %s\n", tmpname);*/
 
-            print(bdb_state, "opening %s\n", tmpname);
+            print(bdb_state, "opening %s ([%d])\n", tmpname, i);
             if (bdb_state->attr->page_compact_indexes /* compact index */
                 && !bdb_state->ixrecnum[i]            /* not recnum */
                 && strncasecmp(bdb_state->name, "sqlite_stat1", 11) != 0)
@@ -4809,7 +4813,8 @@ static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
                         tmpname, pagesize);
             }
 
-            print(bdb_state, "opening %s\n", tmpname);
+            print(bdb_state, "opening %s ([%d][%d])\n", tmpname,
+                  dtanum, strnum);
             if (dtanum == 0 /* not blob */
                 && strncasecmp(bdb_state->name, "sqlite_stat", 11) != 0)
                 /* don't compact sqlite_stat tables */
