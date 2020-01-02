@@ -587,7 +587,8 @@ int finalize_trigger(struct schema_change_type *s)
     return 0;
 }
 
-int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver)
+int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver,
+                     tran_type *tran)
 {
     int rc = 0;
     struct dbtable *db = getqueuebyname(queue_name);
@@ -756,7 +757,7 @@ done:
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    return reopen_queue_dbs(s->tablename, s->qdb_file_ver);
+    return reopen_queue_dbs(s->tablename, s->qdb_file_ver, tran);
 }
 
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
@@ -764,7 +765,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 {
     int rc = add_qdb_file(s, tran);
     if (rc != 0) return rc;
-    return reopen_queue_dbs(s->tablename, 0);
+    return reopen_queue_dbs(s->tablename, 0, tran);
 }
 
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
@@ -778,5 +779,5 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
 {
     int rc = del_qdb_file(s, tran);
     if (rc != 0) return rc;
-    return reopen_queue_dbs(s->tablename, 0);
+    return reopen_queue_dbs(s->tablename, 0, tran);
 }
