@@ -4495,6 +4495,41 @@ void force_unregister(Lua L, trigger_reg_t *reg)
     luabb_trigger_unregister(L, q);
 }
 
+static int get_queue_and_grab_table_read_lock(char *spname,
+                                              struct dbtable **pDb,
+                                              char **err)
+{
+    Q4SP(qname, spname);
+    rdlock_schema_lk();
+    struct dbtable *db = getqueuebyname(qname);
+    if (db == NULL) {
+        *pDb = NULL;
+        unlock_schema_lk();
+        if (err != NULL) {
+            *err = strdup("getqueuebyname failed");
+            return -1;
+        } else {
+            return luaL_error(L, "trigger not found for sp:%s", spname);
+        }
+    }
+    int rc = bdb_lock_table_read_fromlid(db->handle,
+              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    if (rc != 0) {
+        *pDb = NULL;
+        unlock_schema_lk();
+        if (err != NULL) {
+            *err = strdup("bdb_lock_table_read_fromlid failed");
+            return rc;
+        } else {
+            return luaL_error(L, "cannot read-lock queue for sp:%s (%d)",
+                              spname, rc);
+        }
+    }
+    *pDb = db;
+    unlock_schema_lk();
+    return 0;
+}
+
 static int db_consumer(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -4513,21 +4548,12 @@ static int db_consumer(Lua L)
     }
     char spname[strlen(sp->spname) + 1];
     strcpy(spname, sp->spname);
-    Q4SP(qname, spname);
+    struct dbtable *db = NULL;
 
-    rdlock_schema_lk();
-    struct dbtable *db = getqueuebyname(qname);
-    if (db == NULL) {
-        unlock_schema_lk();
-        return luaL_error(L, "trigger not found for sp:%s", spname);
-    }
-    int rc = bdb_lock_table_read_fromlid(db->handle,
-              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    int rc = get_queue_and_grab_table_read_lock(spname, &db, NULL);
     if (rc != 0) {
-        unlock_schema_lk();
-        return luaL_error(L, "cannot read-lock queue for sp:%s", spname);
+        return rc;
     }
-    unlock_schema_lk();
 
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
@@ -6563,22 +6589,12 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     remove_emit(L);
 
     char *spname = reg->spname;
-    Q4SP(qname, spname);
+    struct dbtable *db = NULL;
 
-    rdlock_schema_lk();
-    struct dbtable *db = getqueuebyname(qname);
-    if (db == NULL) {
-        *err = strdup("getqueuebyname failed");
-        unlock_schema_lk();
-        return -1;
-    }
-    rc = bdb_lock_table_read_fromlid(db->handle,
-              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    rc = get_queue_and_grab_table_read_lock(spname, &db, err);
     if (rc != 0) {
-        unlock_schema_lk();
-        return luaL_error(L, "cannot read-lock queue for sp:%s", spname);
+        return rc;
     }
-    unlock_schema_lk();
 
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
