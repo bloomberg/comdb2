@@ -137,7 +137,7 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
 static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t,
-                          int);
+                          unsigned long long);
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
 static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
