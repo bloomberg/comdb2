@@ -656,7 +656,7 @@ int add_qdb_file(struct schema_change_type *s, tran_type *tran)
              s->tablename, file_version, file_num);
         goto done;
     }
-    file_version = sc->qdb_file_ver;
+    file_version = s->qdb_file_ver;
     bdberr = 0;
     rc = bdb_new_file_version_qdb(db->handle, tran, file_num, file_version,
                                   &bdberr);
