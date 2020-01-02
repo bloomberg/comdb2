@@ -4527,10 +4527,10 @@ static int db_consumer(Lua L)
         unlock_schema_lk();
         return luaL_error(L, "cannot read-lock queue for sp:%s", spname);
     }
-    unlock_schema_lk();
 
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
+        unlock_schema_lk();
         return luaL_error(L, "consumer not found for sp:%s", spname);
     }
 
@@ -4544,13 +4544,16 @@ static int db_consumer(Lua L)
             if (rc == -2) {
                 /* timeout */
                 lua_pushnil(L);
+                unlock_schema_lk();
                 return 1;
             }
+            unlock_schema_lk();
             return luaL_error(L, sp->error);
         }
     } else {
         luabb_error(L, sp, "no such consumer");
         lua_pushnil(L);
+        unlock_schema_lk();
         return 1;
     }
 
@@ -4560,11 +4563,13 @@ static int db_consumer(Lua L)
     if (setup_dbconsumer(q, consumer, db, t) != 0) {
         luabb_error(L, sp, "failed to register consumer with qdb");
         lua_pushnil(L);
+        unlock_schema_lk();
         return 1;
     }
     q->push_tid = push_tid;
     q->register_timeoutms = register_timeoutms;
     sp->parent->have_consumer = 1;
+    unlock_schema_lk();
     return 1;
 }
 
@@ -6578,11 +6583,11 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
         unlock_schema_lk();
         return luaL_error(L, "cannot read-lock queue for sp:%s", spname);
     }
-    unlock_schema_lk();
 
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
         *err = strdup("no consumer for db");
+        unlock_schema_lk();
         return -1;
     }
 
@@ -6591,11 +6596,13 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     init_new_t(newq, DBTYPES_DBCONSUMER);
     if (setup_dbconsumer(newq, consumer, db, reg) != 0) {
         *err = strdup("failed to register trigger with qdb");
+        unlock_schema_lk();
         return -1;
     }
     *q = newq;
 
     lua_settop(L, 1);
+    unlock_schema_lk();
     return rc;
 }
 
