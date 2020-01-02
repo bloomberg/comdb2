@@ -755,15 +755,15 @@ done:
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    int rc = bdb_lock_table_write(s->db->handle, tran);
-    if (rc != 0) return rc;
     return reopen_queue_dbs(s->tablename, s->qdb_file_ver, tran);
 }
 
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc = add_qdb_file(s, tran);
+    int rc = bdb_lock_table_write(s->db->handle, tran);
+    if (rc != 0) return rc;
+    rc = add_qdb_file(s, tran);
     if (rc != 0) return rc;
     return reopen_queue_dbs(s->tablename, 0, tran);
 }
@@ -771,13 +771,15 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    return bdb_lock_table_write(s->db->handle, tran);
+    return 0; /* TODO: Is this even necessary? */
 }
 
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc = del_qdb_file(s, tran);
+    int rc = bdb_lock_table_write(s->db->handle, tran);
+    if (rc != 0) return rc;
+    rc = del_qdb_file(s, tran);
     if (rc != 0) return rc;
     return reopen_queue_dbs(s->tablename, 0, tran);
 }
