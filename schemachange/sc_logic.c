@@ -587,9 +587,11 @@ int do_schema_change_tran(sc_arg_t *arg)
     else if (s->drop_view)
         rc = do_ddl(do_drop_view, finalize_drop_view, iq, s, trans, user_view);
     else if (s->add_qdb_file)
-        rc = add_qdb_file(s);
+        rc = do_ddl(do_add_qdb_file, finalize_add_qdb_file, iq, s, trans,
+                    add_queue_file);
     else if (s->del_qdb_file)
-        rc = del_qdb_file(s);
+        rc = do_ddl(do_del_qdb_file, finalize_del_qdb_file, iq, s, trans,
+                    del_queue_file);
 
     if (rc == SC_MASTER_DOWNGRADE) {
         while (s->logical_livesc) {
