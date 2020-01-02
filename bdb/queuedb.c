@@ -203,7 +203,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             );
             sc->type = DBTYPE_QUEUEDB;
             sc->add_qdb_file = 1;
-            sc->qdb_file_ver = flibc_htonll(bdb_get_cmp_context(db->handle));
+            sc->qdb_file_ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
             sc->nothrevent = 1;
             sc->finalize = 1;
             rc = start_schema_change(sc);
