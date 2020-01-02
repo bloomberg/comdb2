@@ -598,7 +598,6 @@ int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver,
         rc = -1;
         goto done;
     }
-    remove_from_qdbs(db);
     int bdberr = 0;
     rc = bdb_close_only(db->handle, &bdberr);
     if (rc) {
@@ -617,7 +616,6 @@ int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver,
         rc = -1;
         goto done;
     }
-    add_to_qdbs(db);
 done:
     return rc;
 }
@@ -757,6 +755,8 @@ done:
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
+    int rc = bdb_lock_table_write(s->db, tran);
+    if (rc != 0) return rc;
     return reopen_queue_dbs(s->tablename, s->qdb_file_ver, tran);
 }
 
@@ -771,7 +771,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    return 0; /* TODO: Is this actually needed? */
+    return bdb_lock_table_write(s->db, tran);
 }
 
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
