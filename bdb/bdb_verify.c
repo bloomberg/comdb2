@@ -72,7 +72,8 @@ static int locprint(verify_common_t *par, char *fmt, ...)
         if (wrote < sizeof(lbuf) - 1)
             strcat(lbuf, "\n");
         int rc = sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
-        sbuf2flush(par->sb);
+        if (rc) return rc;
+        rc = sbuf2flush(par->sb);
         return rc;
     } 
     return -1;
@@ -220,7 +221,6 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
     int res = CAS32(par->last_connection_check, last, t_ms);
     if (!res)
         goto out; // another thread updated, nothing to do
-    printf("AZ checking connection\n");
 
     if (peer_dropped_connection_sb(par->sb)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
@@ -234,7 +234,6 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
         (++par->progress_report_counter) % par->progress_report_seconds != 0)
         goto out;
 
-    printf("AZ: par->progress_report_counter %d , par->progress_report_seconds %d \n", par->progress_report_counter, par->progress_report_seconds);
     if (par->verify_mode == VERIFY_SERIAL) {
         locprint(par, "!%s, did %d records, %d per second", par->header,
                  par->nrecs_progress,
