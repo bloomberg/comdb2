@@ -272,7 +272,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
-    DB *db;
     DBC *cblob = NULL;
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
@@ -295,7 +294,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
     DBT dbt_old_key = {
         .flags = DB_DBT_USERMEM, .ulen = sizeof(oldgenid), .data = &oldgenid};
 
-    db = bdb_state->dbp_data[0][dtastripe];
+    DB *db = bdb_state->dbp_data[0][dtastripe];
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d cursor rc %d\n", dtastripe, rc);
@@ -319,13 +318,13 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             break;
 
         unsigned long long genid;
+        memcpy(&genid, dbt_key.data, sizeof(genid));
         /* is it the right size? */
         if (dbt_key.size != sizeof(genid)) {
             par->verify_status = 1;
             locprint(par, "!bad genid sz %d", dbt_key.size);
             goto next_record;
         }
-        memcpy(&genid, dbt_key.data, sizeof(genid));
 
         /* why do we open a cursor for each record/blob?
         1) cursors are cheap - berkeley opens one for every cursor operation
@@ -547,6 +546,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         par->free_blob_buffer_callback(blob_buf);
         sbuf2flush(par->sb);
 next_record:
+        dbt_old_key.size = sizeof(genid);
+        memcpy(dbt_old_key.data, &genid, dbt_old_key.size);
 
         dbt_data.flags = DB_DBT_USERMEM;
         dbt_data.ulen = sizeof(databuf);
@@ -554,9 +555,6 @@ next_record:
         dbt_key.flags = DB_DBT_USERMEM;
         dbt_key.ulen = sizeof(keybuf);
         dbt_key.data = keybuf;
-
-        dbt_old_key.size = dbt_key.size;
-        memcpy(dbt_old_key.data, &genid, dbt_key.size);
 
         rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver,
                              DB_NEXT);
