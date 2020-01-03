@@ -339,7 +339,6 @@ __db_verify(dbp, name, subdb, handle, callback, flags)
 			F_SET(vdp, SALVAGE_PRINTHEADER);
 	}
 
-
 	if ((ret =
 	    __db_vrfy_walkpages(dbp, vdp, handle, callback, flags)) != 0) {
 		if (ret == DB_VERIFY_BAD)
@@ -349,7 +348,7 @@ __db_verify(dbp, name, subdb, handle, callback, flags)
 	}
 
 	if ((ret =
-        __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, 1)) != 0) {
+		__db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, 1)) != 0) {
 		if (ret == DB_VERIFY_BAD)
 			isbad = 1;
 		else if (ret != 0)
@@ -613,40 +612,40 @@ __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, pgno)
 	PAGE *h;
 	db_pgno_t i;
 	int ret, t_ret, isbad;
-    LF_SET(DB_IN_ORDER_CHECK);
 
 	dbenv = dbp->dbenv;
 	mpf = dbp->mpf;
 	ret = isbad = t_ret = 0;
-    // printf("__db_vrfy_depthfirst pg=%d\n", pgno);
+	// printf("__db_vrfy_depthfirst pg=%d\n", pgno);
 
-    if ((t_ret = __memp_fget(mpf, &pgno, 0, &h)) != 0) {
-        return (t_ret);
-    }
-    
-    if (TYPE(h) == P_IBTREE) {
-        VRFY_PAGEINFO *pip;
-        if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
-            return (ret);
-        u_int32_t nentries = pip->entries;
-        db_indx_t i;
-        for (i = 1; i < nentries; i+= O_INDX) {
-            BINTERNAL *bi;
+	if ((t_ret = __memp_fget(mpf, &pgno, 0, &h)) != 0) {
+		return (t_ret);
+	}
+
+	if (TYPE(h) == P_IBTREE) {
+		VRFY_PAGEINFO *pip;
+		if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
+			return (ret);
+		u_int32_t nentries = pip->entries;
+		db_indx_t i;
+		for (i = 1; i < nentries; i+= O_INDX) {
+			BINTERNAL *bi;
 			bi = GET_BINTERNAL(dbp, h, i);
 
-            // printf("from pg %d to pg %d\n", pgno, bi->pgno);
-            ret = __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, (u_long)bi->pgno);
-            if (ret) 
-                isbad = 1;
-        }
-    } else if (TYPE(h) == P_LBTREE) {
-        ret = __bam_vrfy_itemorder(dbp, vdp, h, pgno, 0, 0, 0, flags);
-    }
+			// printf("from pg %d to pg %d\n", pgno, bi->pgno);
+			ret = __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, (u_long)bi->pgno);
+			if (ret) 
+				isbad = 1;
+		}
+	} else if (TYPE(h) == P_LBTREE) {
+		LF_SET(DB_IN_ORDER_CHECK);
+		ret = __bam_vrfy_itemorder(dbp, vdp, h, pgno, 0, 0, 0, flags);
+	}
 
-    if ((t_ret = __memp_fput(mpf, h, 0)) != 0) 
-        return t_ret;
+	if ((t_ret = __memp_fput(mpf, h, 0)) != 0) 
+		return t_ret;
 
-    return (ret || isbad) ? DB_VERIFY_BAD : 0;
+	return (ret || isbad) ? DB_VERIFY_BAD : 0;
 }
 
 /*

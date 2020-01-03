@@ -718,10 +718,10 @@ __db_pr(p, len, fp)
 	lastch = '.';
 	if (len != 0) {
 		logmsgf(LOGMSG_USER, fp, " data: ");
-        char temp[2*len+1];
-        util_tohex(temp, (const char*)p, len);
-        logmsgf(LOGMSG_USER, fp, "%s", temp);
-        /*
+		char temp[2*len+1];
+		util_tohex(temp, (const char*)p, len);
+		logmsgf(LOGMSG_USER, fp, "%s", temp);
+		/* COMDB2_MODIFICATION
 		for (i = len <= 20 ? len : 20; i > 0; --i, ++p) {
 			lastch = *p;
 			if (isprint((int)*p) || *p == '\n')
@@ -733,7 +733,7 @@ __db_pr(p, len, fp)
 			logmsgf(LOGMSG_USER, fp, "...");
 			lastch = '.';
 		}
-        */
+		 */
 	}
 	if (lastch != '\n')
 		logmsgf(LOGMSG_USER, fp, "\n");

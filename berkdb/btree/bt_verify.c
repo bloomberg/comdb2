@@ -19,7 +19,7 @@ static const char revid[] = "$Id: bt_verify.c,v 1.87 2003/10/06 14:09:23 bostic 
 #include <string.h>
 #endif
 
-#include "flibc.h"
+#include "tohex.h"
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
@@ -952,11 +952,8 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 	p1 = &dbta;
 	p2 = &dbtb;
 
-	if (last_key_from_prev_pg.data && (TYPE(h) == P_LBTREE) && LF_ISSET(DB_IN_ORDER_CHECK)) {
-		/*
-        long int genid = *(long int*)(last_key_from_prev_pg.data+5);
-		printf("setting pgno=%lu from last_key_from_prev_pg, sz=%d, data=%p *data=%016lx\n", (u_long)pgno, last_key_from_prev_pg.size, last_key_from_prev_pg.data, flibc_ntohll(genid));
-		*/
+	if (last_key_from_prev_pg.data && (TYPE(h) == P_LBTREE)
+		&& LF_ISSET(DB_IN_ORDER_CHECK)) {
 		p2->data = last_key_from_prev_pg.data;
 		p2->size = last_key_from_prev_pg.size;
 	}
@@ -991,7 +988,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 			bi = GET_BINTERNAL(dbp, h, i);
 			if (B_TYPE(bi) == B_OVERFLOW) {
 				bo = (BOVERFLOW *)(bi->data);
-				abort(); //goto overflow;
+				goto overflow;
 			} else {
 				p2->data = bi->data;
 				p2->size = bi->len;
@@ -1021,7 +1018,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 			bk = GET_BKEYDATA(dbp, h, i);
 			if (B_TYPE(bk) == B_OVERFLOW) {
 				bo = (BOVERFLOW *)bk;
-				abort(); //goto overflow;
+				goto overflow;
 			} else {
 				p2->data = bk->data;
 				p2->size = bk->len;
@@ -1039,7 +1036,6 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 			goto err;
 		}
 
-#if 0
 		if (0) {
 			/*
 			 * If ovflok != 1, we can't safely go chasing
@@ -1076,7 +1072,6 @@ overflow:		if (!ovflok) {
 			/* In case it got realloc'ed and thus changed. */
 			buf2 = p2->data;
 		}
-#endif
 
 		/* Compare with the last key. */
 		if (p1->data != NULL && p2->data != NULL) {
@@ -1085,11 +1080,13 @@ overflow:		if (!ovflok) {
 			/* comparison succeeded */
 			if (cmp > 0) {
 				isbad = 1;
-                long int genid1 = *(long int*)(p1->data+5);
-                long int genid2 = *(long int*)(p2->data+5);
+				char tmp1[p1->size * 2 + 1];
+				char tmp2[p2->size * 2 + 1];
+				util_tohex(tmp1, p1->data, p1->size);
+				util_tohex(tmp2, p2->data, p2->size);
 				EPRINT((dbenv,
-				    "Page %lu: out-of-order key at entry %lu *p1=%016lx *p2=%016lx",
-				    (u_long)pgno, (u_long)i, flibc_ntohll(genid1), flibc_ntohll(genid2)));
+				    "Page %lu: out-of-order key at entry %lu *p1=%s *p2=%s",
+				    (u_long)pgno, (u_long)i, tmp1, tmp2));
 				/* proceed */
 			} else if (cmp == 0) {
 				/*
@@ -1177,13 +1174,10 @@ overflow:		if (!ovflok) {
 			last_key_from_prev_pg.data = realloc(last_key_from_prev_pg.data, p2->size);
 		} else 
 			last_key_from_prev_pg.data = malloc(p2->size);
-		if (!last_key_from_prev_pg.data) abort();
+		if (!last_key_from_prev_pg.data)
+			abort();
 		memcpy(last_key_from_prev_pg.data, p2->data, p2->size);
 		last_key_from_prev_pg.size = p2->size;
-		/*
-		long int genid = *(long int*)(last_key_from_prev_pg.data+5);
-		printf("putting pgno=%lu last_key_from_prev_pg, sz=%d, data=%p *data=%016lx\n", (u_long)pgno, last_key_from_prev_pg.size, last_key_from_prev_pg.data, flibc_ntohll(genid));
-		*/
 	}
 
 err:	if (pip != NULL && ((t_ret =
