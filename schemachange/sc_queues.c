@@ -755,7 +755,7 @@ done:
 int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    return reopen_queue_dbs(s->tablename, s->qdb_file_ver, tran);
+    return 0; /* TODO: Is this even necessary? */
 }
 
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
