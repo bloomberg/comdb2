@@ -758,7 +758,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
         bdberr = 0;
-        if (bdb_tran_abort(s->db->handle, sc_logical_tran, &bdberr) != 0)
+        if (bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr) != 0)
             abort();
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
                __func__);
@@ -777,7 +777,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
     bdberr = 0;
-    rc = bdb_llog_scdone_tran(s->db->handle, add_queue_file, sc_phys_tran,
+    rc = bdb_llog_scdone_tran(thedb->bdb_env, add_queue_file, sc_phys_tran,
                               NULL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
@@ -818,7 +818,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
         bdberr = 0;
-        if (bdb_tran_abort(s->db->handle, sc_logical_tran, &bdberr) != 0)
+        if (bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr) != 0)
             abort();
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
                __func__);
@@ -837,7 +837,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
     bdberr = 0;
-    rc = bdb_llog_scdone_tran(s->db->handle, del_queue_file, sc_phys_tran,
+    rc = bdb_llog_scdone_tran(thedb->bdb_env, del_queue_file, sc_phys_tran,
                               NULL, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
