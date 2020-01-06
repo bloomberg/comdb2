@@ -721,13 +721,13 @@ __db_pr(p, len, fp)
 		char temp[2*len+1];
 		util_tohex(temp, (const char*)p, len);
 		logmsgf(LOGMSG_USER, fp, "%s", temp);
-		/* COMDB2_MODIFICATION
+		/* COMDB2_MODIFICATION: better output with util_tohex
 		for (i = len <= 20 ? len : 20; i > 0; --i, ++p) {
 			lastch = *p;
 			if (isprint((int)*p) || *p == '\n')
 				logmsgf(LOGMSG_USER, fp, "%c", *p);
 			else
-				logmsgf(LOGMSG_USER, fp, "%x", (u_int)*p);
+				logmsgf(LOGMSG_USER, fp, "0x%.2x", (u_int)*p);
 		}
 		if (len > 20) {
 			logmsgf(LOGMSG_USER, fp, "...");

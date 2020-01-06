@@ -879,6 +879,9 @@ err:	if (nentriesp != NULL)
  *	and we run into an overflow page, carp and return DB_VERIFY_BAD;
  *	we shouldn't be called if any exist.
  *
+ *  COMDB2_MODIFICATION: if flag DB_IN_ORDER_CHECK is set we will compare
+ *  first record on leaf page with last record from prev pg.
+ *
  * PUBLIC: int __bam_vrfy_itemorder __P((DB *, VRFY_DBINFO *, PAGE *,
  * PUBLIC:     db_pgno_t, u_int32_t, int, int, u_int32_t));
  */

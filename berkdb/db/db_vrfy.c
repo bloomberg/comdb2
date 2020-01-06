@@ -616,7 +616,6 @@ __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, pgno)
 	dbenv = dbp->dbenv;
 	mpf = dbp->mpf;
 	ret = isbad = t_ret = 0;
-	// printf("__db_vrfy_depthfirst pg=%d\n", pgno);
 
 	if ((t_ret = __memp_fget(mpf, &pgno, 0, &h)) != 0) {
 		return (t_ret);
@@ -632,7 +631,6 @@ __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, pgno)
 			BINTERNAL *bi;
 			bi = GET_BINTERNAL(dbp, h, i);
 
-			// printf("from pg %d to pg %d\n", pgno, bi->pgno);
 			ret = __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, (u_long)bi->pgno);
 			if (ret) 
 				isbad = 1;
