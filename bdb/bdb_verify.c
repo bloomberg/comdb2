@@ -59,6 +59,9 @@ static int locprint(verify_common_t *par, char *fmt, ...)
     int wrote = vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
     va_end(ap);
 
+    if (par->client_dropped_connection)
+        return -1;
+
     if (par->lua_callback) {
         int rc = par->lua_callback(par->lua_params, lbuf);
         if (rc) {
