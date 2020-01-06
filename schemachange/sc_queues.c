@@ -744,17 +744,14 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
     int rc;
-    struct ireq iq = {0};
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
     wrlock_schema_lk();
 
-    init_fake_ireq(s->db->handle, &iq);
-    iq.usedb = &s->db->handle->static_table;
-    iq.tranddl = 1;
+    iq->tranddl = 1;
 
-    rc = trans_start_logical_sc(&iq, &sc_logical_tran);
+    rc = trans_start_logical_sc(iq, &sc_logical_tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
                __func__, rc);
@@ -793,7 +790,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
         unlock_schema_lk();
         return rc;
     }
-    rc = trans_commit(&iq, sc_logical_tran, gbl_mynode);
+    rc = trans_commit(iq, sc_logical_tran, gbl_mynode);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: could not commit trans %p\n",
                __func__, sc_logical_tran);
@@ -815,17 +812,14 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
     int rc;
-    struct ireq iq = {0};
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
     wrlock_schema_lk();
 
-    init_fake_ireq(s->db->handle, &iq);
-    iq.usedb = &s->db->handle->static_table;
-    iq.tranddl = 1;
+    iq->tranddl = 1;
 
-    rc = trans_start_logical_sc(&iq, &sc_logical_tran);
+    rc = trans_start_logical_sc(iq, &sc_logical_tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
                __func__, rc);
@@ -864,7 +858,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
         unlock_schema_lk();
         return rc;
     }
-    rc = trans_commit(&iq, sc_logical_tran, gbl_mynode);
+    rc = trans_commit(iq, sc_logical_tran, gbl_mynode);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: could not commit trans %p\n",
                __func__, sc_logical_tran);
