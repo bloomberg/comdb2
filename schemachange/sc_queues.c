@@ -589,12 +589,14 @@ int finalize_trigger(struct schema_change_type *s)
 
 static int close_qdb(struct dbtable *db, tran_type *tran)
 {
-    int bdberr = 0;
-    int rc = bdb_close_only_sc(db->handle, tran, &bdberr);
+    int rc, bdberr = 0;
+    assert(db->handle != NULL);
+    rc = bdb_close_only_sc(db->handle, tran, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                __func__, rc, bdberr);
     }
+    db->handle = NULL;
     return rc;
 }
 
@@ -602,6 +604,7 @@ static int open_qdb(struct dbtable *db, const char *queue_name,
                     unsigned long long qdb_file_ver, tran_type *tran)
 {
     int bdberr = 0;
+    assert(db->handle == NULL);
     db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
                                      65536, thedb->bdb_env, 1, qdb_file_ver,
                                      tran, &bdberr);
