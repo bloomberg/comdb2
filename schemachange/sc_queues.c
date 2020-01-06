@@ -743,7 +743,7 @@ int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc;
+    int rc, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
@@ -760,6 +760,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     }
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
+        bdberr = 0;
         if (bdb_tran_abort(s->db->handle, sc_logical_tran, &bdberr) != 0)
             abort();
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
@@ -782,6 +783,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
         unlock_schema_lk();
         return rc;
     }
+    bdberr = 0;
     rc = bdb_llog_scdone_tran(s->db->handle, add_queue_file, sc_phys_tran,
                               NULL, &bdberr);
     if (rc) {
@@ -811,7 +813,7 @@ int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc;
+    int rc, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
@@ -828,6 +830,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     }
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
+        bdberr = 0;
         if (bdb_tran_abort(s->db->handle, sc_logical_tran, &bdberr) != 0)
             abort();
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
@@ -850,6 +853,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
         unlock_schema_lk();
         return rc;
     }
+    bdberr = 0;
     rc = bdb_llog_scdone_tran(s->db->handle, del_queue_file, sc_phys_tran,
                               NULL, &bdberr);
     if (rc) {
