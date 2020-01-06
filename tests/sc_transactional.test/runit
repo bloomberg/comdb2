@@ -41,21 +41,6 @@ function assert_schema
     fi
 }
 
-function do_verify
-{
-    tbl=$1
-    typeset cnt=0
-
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "verify $tbl failed"
-    fi
-}
-
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
 
 master=`getmaster`
 echo "master is $master"

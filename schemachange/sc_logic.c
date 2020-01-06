@@ -508,7 +508,7 @@ char *get_ddl_type_str(struct schema_change_type *s)
         return "ALTER QUEUE";
     else if (s->type == DBTYPE_MORESTRIPE)
         return "ALTER STRIPE";
-    else if (s->add_view)
+    else if (s->add_view || s->drop_view)
         return "VIEW";
 
     return "UNKNOWN";

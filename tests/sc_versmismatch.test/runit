@@ -25,16 +25,6 @@ function failexit
     exit -1
 }
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 function insert_records_oneshot
 {
     j=$1
@@ -177,9 +167,9 @@ function test1
     rm alter3.done have.txt shouldhave.txt
     echo "Resetting table to t1_1 version"
     #cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 0')"
-    do_verify
+    do_verify t1
     cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" || failexit "alter to t1_1"
-    do_verify
+    do_verify t1
     cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate t1" || failexit "truncate"
 }
 

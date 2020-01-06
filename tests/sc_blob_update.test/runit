@@ -28,15 +28,6 @@ nrecs=2000
 max_nusc=1000
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 function do_alter
 {
     locnewtbl=$1
@@ -70,7 +61,7 @@ function do_sc_track_pid
             failed=1
         fi
 
-        do_verify 
+        do_verify $loc_tbl
         let scnt=scnt+1
         #sleep 1
     done
@@ -104,7 +95,7 @@ function do_rebuild_track_pid
             exit 1
         fi
 
-        do_verify 
+        do_verify $loc_tbl
         let scnt=scnt+1
         #sleep 1
     done
@@ -131,7 +122,7 @@ function add_compression_rebuild
         exit 1
     fi
 
-    do_verify 
+    do_verify $loc_tbl
 
     return 0
 }
@@ -153,7 +144,7 @@ function remove_compression_rebuild
         exit 1
     fi
 
-    do_verify 
+    do_verify $loc_tbl
 
     return 0
 }
@@ -174,7 +165,7 @@ function do_rebuild
             return 1
         fi
         let scnt=scnt+1
-        do_verify
+        do_verify $tbl
     done
     assertcnt $tbl $nrecs
 
@@ -357,7 +348,7 @@ function run_parallel_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     echo "updating $nrecs records, field f"
     update_f $nrecs 0 &
@@ -371,7 +362,7 @@ function run_parallel_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
 
     echo "deleting all records in background"
@@ -386,7 +377,7 @@ function run_parallel_test
     wait
 
     assertcnt $tbl $EXTRA
-    do_verify
+    do_verify $tbl
 }
 
 
@@ -419,14 +410,14 @@ function run_compress_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     if [ $rebuild -eq 1 ] ; then
       remove_compression_rebuild $dbnm $tbl $upid
     fi
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     rebuild=1
 
@@ -442,12 +433,12 @@ function run_compress_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     remove_compression_rebuild $dbnm $tbl $upid
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
 
     echo "deleting all records in background"
@@ -462,12 +453,12 @@ function run_compress_test
     wait
 
     assertcnt $tbl $EXTRA
-    do_verify
+    do_verify $tbl
 
     remove_compression_rebuild $dbnm $tbl $upid
 
     assertcnt $tbl $((EXTRA))
-    do_verify
+    do_verify $tbl
 }
 
 echo "running test in machine $(hostname):${PWD}"

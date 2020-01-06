@@ -32,16 +32,6 @@ nrecs=2000
 max_nusc=1000
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 function do_alter
 {
     locnewtbl=$1
@@ -75,7 +65,7 @@ function do_sc_track_pid
             failed=1
         fi
 
-        do_verify 
+        do_verify $loc_tbl
         let scnt=scnt+1
         #sleep 1
     done
@@ -109,7 +99,7 @@ function do_rebuild_track_pid
             exit 1
         fi
 
-        do_verify 
+        do_verify $loc_tbl
         let scnt=scnt+1
         #sleep 1
     done
@@ -137,7 +127,7 @@ function do_rebuild
             return 1
         fi
         let scnt=scnt+1
-        do_verify
+        do_verify $tbl
     done
     assertcnt $tbl $nrecs
 
@@ -271,7 +261,7 @@ function run_first_test
     > insert.out
     insert_records $nrecs 0
     assertcnt $tbl $nrecs
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${newtbl}.csc2 ` }"
     if [ $? -eq 0 ] ; then
@@ -281,11 +271,11 @@ function run_first_test
     echo "SC correctly failed due to foreign constraint violation"
 
     assertcnt $tbl $nrecs
-    do_verify
+    do_verify $tbl
 
     delete_records 
     assertcnt $tbl 0
-    do_verify
+    do_verify $tbl
 }
 
 
@@ -299,7 +289,7 @@ function run_second_test
 	echo "adding $EXTRA records to one stripe"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
     assertcnt $tbl $EXTRA
-    do_verify
+    do_verify $tbl
 
     #SC_FORCE_DELAY is needed because "verify constraints" is very-very fast
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
@@ -320,7 +310,7 @@ function run_second_test
 
     echo "SC correctly failed due to foreign constraint violation"
     assertcnt $tbl $((EXTRA+1))
-    do_verify
+    do_verify $tbl
 
     echo "add 1 missing"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a) select e from t2 where e not in t1"  
@@ -342,7 +332,7 @@ function run_second_test
 
     echo "SC correctly failed due to foreign constraint violation"
     assertcnt $tbl $((EXTRA+1))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 
@@ -379,7 +369,7 @@ function run_third_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     echo "deleting all records in background"
     delete_records &
@@ -391,7 +381,7 @@ function run_third_test
     wait
 
     assertcnt $tbl $EXTRA
-    do_verify
+    do_verify $tbl
 }
 
 function run_fourth_test
@@ -422,7 +412,7 @@ function run_fourth_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
     echo "rebuild tbl for verification"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
@@ -454,7 +444,7 @@ function run_fifth_test
     echo "SC correctly failed due to foreign constraint violation"
 
     assertcnt $tbl $((EXTRA))
-    do_verify
+    do_verify $tbl
     echo "rebuild tbl for verification"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
     if [ $? -ne 0 ] ; then
@@ -495,7 +485,7 @@ function run_sixth_test
     wait
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 
     echo "rebuild tbl for verification"
@@ -544,7 +534,7 @@ function run_seventh_test
 
     echo "SC correctly failed due to foreign constraint violation"
     assertcnt $tbl $((EXTRA+1))
-    do_verify
+    do_verify $tbl
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 
     echo "rebuild tbl for verification"
@@ -576,7 +566,7 @@ function run_seventh_test
 
     echo "SC correctly failed due to foreign constraint violation"
     assertcnt $tbl $((EXTRA+1))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 
@@ -608,7 +598,7 @@ function run_eighth_test
     echo "SC correctly failed due to nonexistent foreign constraint"
 
     assertcnt $tbl $((EXTRA))
-    do_verify
+    do_verify $tbl
     echo "rebuild tbl for verification"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
     if [ $? -ne 0 ] ; then
@@ -647,7 +637,7 @@ function run_ninth_test
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 
     assertcnt $tbl $((EXTRA))
-    do_verify
+    do_verify $tbl
     echo "rebuild tbl for verification"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
     if [ $? -ne 0 ] ; then

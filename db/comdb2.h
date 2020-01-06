@@ -2396,7 +2396,6 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
-int reload_schema(char *table, const char *csc2, tran_type *tran);
 int add_db(struct dbtable *db);
 void delete_db(char *db_name);
 int rename_db(struct dbtable *db, const char *newname);

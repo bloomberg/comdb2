@@ -251,13 +251,31 @@ out:
     return par->client_dropped_connection;
 }
 
+extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
+
+// compare with previous key, ensure order
+static inline void check_order(DB *db, DBT *old, DBT *curr,
+                               verify_common_t *par)
+{
+    if (old->size == 0)
+        return;
+    int cmp = __bam_defcmp(db, old, curr);
+    if (cmp >= 0) {
+        par->verify_status = 1;
+        char hexstr1[old->size * 2 + 1];
+        char hexstr2[curr->size * 2 + 1];
+        util_tohex(hexstr1, old->data, old->size);
+        util_tohex(hexstr2, curr->data, curr->size);
+        locprint(par, "!%s out-of-order key, prev %s", hexstr2, hexstr1);
+    }
+}
+
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
 static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                                   unsigned int lid)
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
-    DB *db;
     DBC *cblob = NULL;
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
@@ -276,7 +294,11 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
     DBT dbt_key = {
         .flags = DB_DBT_USERMEM, .ulen = sizeof(keybuf), .data = keybuf};
 
-    db = bdb_state->dbp_data[0][dtastripe];
+    unsigned long long oldgenid;
+    DBT dbt_old_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(oldgenid), .data = &oldgenid};
+
+    DB *db = bdb_state->dbp_data[0][dtastripe];
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d cursor rc %d\n", dtastripe, rc);
@@ -300,13 +322,13 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             break;
 
         unsigned long long genid;
+        memcpy(&genid, dbt_key.data, sizeof(genid));
         /* is it the right size? */
         if (dbt_key.size != sizeof(genid)) {
             par->verify_status = 1;
             locprint(par, "!bad genid sz %d", dbt_key.size);
             goto next_record;
         }
-        memcpy(&genid, dbt_key.data, sizeof(genid));
 
         /* why do we open a cursor for each record/blob?
         1) cursors are cheap - berkeley opens one for every cursor operation
@@ -321,6 +343,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 #else
         genid_flipped = genid;
 #endif
+
+        check_order(db, &dbt_old_key, &dbt_key, par);
+
         par->vtag_callback(par->db_table, dbt_data.data, (int *)&dbt_data.size,
                            ver);
         rc = par->get_blob_sizes_callback(par->db_table, dbt_data.data,
@@ -524,6 +549,8 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         }
         par->free_blob_buffer_callback(blob_buf);
     next_record:
+        dbt_old_key.size = sizeof(genid);
+        memcpy(dbt_old_key.data, &genid, dbt_old_key.size);
 
         dbt_data.flags = DB_DBT_USERMEM;
         dbt_data.ulen = sizeof(databuf);
@@ -582,7 +609,7 @@ static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
             if (rc) {
                 logmsg(LOGMSG_ERROR, "unexpected rc get cursor for ix %d: %d\n",
                        ridx, rc);
-                continue; // so we continue to next
+                continue; // so we continue to next rule
             }
 
             /* fetch the genid portion to verify existence */
@@ -628,12 +655,16 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     DBT dbt_key = {
         .data = keybuf, .ulen = sizeof(keybuf), .flags = DB_DBT_USERMEM};
 
+    unsigned char oldkeybuf[18 * 1024];
+    DBT dbt_old_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(oldkeybuf), .data = oldkeybuf};
+
     DBT dbt_data = {
         .data = databuf, .ulen = sizeof(databuf), .flags = DB_DBT_USERMEM};
 
     unsigned long long genid;
-    DBT dbt_dta_check_key = {.ulen = sizeof(unsigned long long),
-                             .size = sizeof(unsigned long long),
+    DBT dbt_dta_check_key = {.ulen = sizeof(genid),
+                             .size = sizeof(genid),
                              .data = &genid,
                              .flags = DB_DBT_USERMEM};
 
@@ -646,8 +677,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     logmsg(LOGMSG_DEBUG, "%p:%s Entering ix=%d\n", (void *)pthread_self(),
            __func__, ix);
 
-    rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(bdb_state->dbp_ix[ix],
-                                                       lid, &ckey, 0);
+    DB *db = bdb_state->dbp_ix[ix];
+    rc = db->paired_cursor_from_lid(db, lid, &ckey, 0);
     if (rc) {
         par->verify_status = 1;
         locprint(par, "!ix %d cursor rc %d", ix, rc);
@@ -680,6 +711,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             locprint(par, "!ix %d unexpected length %d", ix, dbt_data.size);
             goto next_key;
         }
+
         memcpy(&genid, dbt_data.data, sizeof(unsigned long long));
         unsigned long long genid_flipped;
 
@@ -690,9 +722,11 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         genid_flipped = genid;
 #endif
 
+        check_order(db, &dbt_old_key, &dbt_key, par);
+
         /* make sure the data entry exists: */
-        DB *db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
-        rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
+        DB *db_d = get_dbp_from_genid(bdb_state, 0, genid, NULL);
+        rc = db_d->paired_cursor_from_lid(db_d, lid, &cdata, 0);
         if (rc) {
             par->verify_status = 1;
             locprint(par, "!%016llx ix %d rc %d", genid_flipped, ix, rc);
@@ -958,7 +992,10 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             }
         }
 
-    next_key:
+next_key:
+        dbt_old_key.size = dbt_key.size;
+        memcpy(dbt_old_key.data, dbt_key.data, dbt_key.size);
+
         rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_NEXT);
     }
     if (rc && rc != DB_NOTFOUND) {
@@ -1005,18 +1042,21 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
     char dumbuf;
     unsigned long long genid;
 
-    DBT dbt_key = {.ulen = sizeof(unsigned long long),
-                   .size = sizeof(unsigned long long),
+    DBT dbt_key = {.ulen = sizeof(genid),
                    .data = &genid,
                    .flags = DB_DBT_USERMEM};
 
     DBT dbt_data = {
         .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
-    DBT dbt_dta_check_key = {.size = sizeof(unsigned long long),
-                             .ulen = sizeof(int), // TODO: why sizeof int?
+    DBT dbt_dta_check_key = {.size = sizeof(genid),
+                             .ulen = sizeof(genid),
                              .data = &genid,
                              .flags = DB_DBT_USERMEM};
+
+    unsigned long long oldgenid;
+    DBT dbt_old_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(oldgenid), .data = &oldgenid};
 
     DBT dbt_dta_check_data = {
         .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
@@ -1046,6 +1086,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         genid_flipped = genid;
 #endif
 
+        check_order(db, &dbt_old_key, &dbt_key, par);
+
         int stripe = get_dtafile_from_genid(genid);
 
         if (!bdb_state->blobstripe_convert_genid ||
@@ -1063,8 +1105,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         if (rc) {
             logmsg(LOGMSG_ERROR, "dtastripe %d genid %016llx cursor rc %d\n",
                    stripe, genid_flipped, rc);
-            rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
-            return;
+            goto next_key;
         }
 
         rc = cdata->c_get(cdata, &dbt_dta_check_key, &dbt_dta_check_data,
@@ -1080,6 +1121,10 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         rc = cdata->c_close(cdata);
         if (rc)
             logmsg(LOGMSG_ERROR, "close rc %d\n", rc);
+
+next_key:
+        dbt_old_key.size = dbt_key.size;
+        memcpy(dbt_old_key.data, dbt_key.data, dbt_key.size);
 
         rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
     }
