@@ -2501,8 +2501,7 @@ static int dyns_load_schema_int(const char *filename, char *schematxt, const cha
         ipos = 0;
         iusestr = 1;
     } else if (filename) {
-        const char *ifn = NULL;
-        ifn = filename;
+        const char *ifn = filename;
         if (ifn) {
             yyin = fopen(ifn, "r");
             if (yyin == NULL) {

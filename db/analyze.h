@@ -64,7 +64,7 @@ int64_t analyze_get_sampled_nrecs(const char *dbname, int ixnum);
 /**
  * Scale and analyze this table.  Write the results to sqlite_stat1.
  */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta);
+int analyze_table(const char *table, SBUF2 *sb, int scale, int override_llmeta);
 
 /**
  * Scale and analyze all tables in the database.  Write the results to

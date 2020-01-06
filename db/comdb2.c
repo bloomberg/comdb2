@@ -5613,7 +5613,7 @@ int rename_db(dbtable *db, const char *newname)
 
     /* db */
     hash_del(thedb->db_hash, db);
-    db->tablename_ip = intern((char *)newname);
+    db->tablename_ip = intern(newname);
     hash_add(thedb->db_hash, db);
 
     Pthread_rwlock_unlock(&thedb_lock);

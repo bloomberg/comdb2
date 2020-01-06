@@ -1032,7 +1032,7 @@ int get_analyze_abort_requested()
 
 
 /* analyze 'table' */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
+int analyze_table(const char *table, SBUF2 *sb, int scale, int override_llmeta)
 {
     if (check_stat1(sb))
         return -1;

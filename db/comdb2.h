@@ -2396,40 +2396,40 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
-int add_db(struct dbtable *db);
+int add_db(dbtable *db);
 void delete_db(const char *db_name);
-int rename_db(struct dbtable *db, const char *newname);
+int rename_db(dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,
                            void *fndkey, int *fndrrn, unsigned long long *genid,
                            void *fnddta, int *fndlen, int *recnum, int maxlen);
 int get_schema_version(const char *table);
 int put_schema_version(const char *table, void *tran, int version);
 
-int put_db_odh(struct dbtable *db, tran_type *, int odh);
-int get_db_odh(struct dbtable *db, int *odh);
-int get_db_odh_tran(struct dbtable *, int *odh, tran_type *);
-int put_db_compress(struct dbtable *db, tran_type *, int compress);
-int get_db_compress(struct dbtable *db, int *compress);
-int get_db_compress_tran(struct dbtable *, int *compress, tran_type *);
-int put_db_compress_blobs(struct dbtable *db, tran_type *, int compress_blobs);
-int get_db_compress_blobs(struct dbtable *db, int *compress_blobs);
-int get_db_compress_blobs_tran(struct dbtable *, int *compress_blobs, tran_type *);
-int put_db_inplace_updates(struct dbtable *db, tran_type *, int ipupdates);
-int get_db_inplace_updates(struct dbtable *db, int *ipupdates);
-int get_db_inplace_updates_tran(struct dbtable *, int *ipupdates, tran_type *);
-int put_db_datacopy_odh(struct dbtable *db, tran_type *, int cdc);
-int get_db_datacopy_odh(struct dbtable *db, int *cdc);
-int get_db_datacopy_odh_tran(struct dbtable *, int *cdc, tran_type *);
-int put_db_bthash(struct dbtable *db, tran_type *, int bthashsz);
-int get_db_bthash(struct dbtable *db, int *bthashsz);
-int get_db_bthash_tran(struct dbtable *, int *bthashsz, tran_type *);
-int put_db_instant_schema_change(struct dbtable *db, tran_type *tran, int isc);
-int get_db_instant_schema_change(struct dbtable *db, int *isc);
-int get_db_instant_schema_change_tran(struct dbtable *, int *isc, tran_type *tran);
+int put_db_odh(dbtable *db, tran_type *, int odh);
+int get_db_odh(dbtable *db, int *odh);
+int get_db_odh_tran(dbtable *, int *odh, tran_type *);
+int put_db_compress(dbtable *db, tran_type *, int compress);
+int get_db_compress(dbtable *db, int *compress);
+int get_db_compress_tran(dbtable *, int *compress, tran_type *);
+int put_db_compress_blobs(dbtable *db, tran_type *, int compress_blobs);
+int get_db_compress_blobs(dbtable *db, int *compress_blobs);
+int get_db_compress_blobs_tran(dbtable *, int *compress_blobs, tran_type *);
+int put_db_inplace_updates(dbtable *db, tran_type *, int ipupdates);
+int get_db_inplace_updates(dbtable *db, int *ipupdates);
+int get_db_inplace_updates_tran(dbtable *, int *ipupdates, tran_type *);
+int put_db_datacopy_odh(dbtable *db, tran_type *, int cdc);
+int get_db_datacopy_odh(dbtable *db, int *cdc);
+int get_db_datacopy_odh_tran(dbtable *, int *cdc, tran_type *);
+int put_db_bthash(dbtable *db, tran_type *, int bthashsz);
+int get_db_bthash(dbtable *db, int *bthashsz);
+int get_db_bthash_tran(dbtable *, int *bthashsz, tran_type *);
+int put_db_instant_schema_change(dbtable *db, tran_type *tran, int isc);
+int get_db_instant_schema_change(dbtable *db, int *isc);
+int get_db_instant_schema_change_tran(dbtable *, int *isc, tran_type *tran);
 
-int set_meta_odh_flags(struct dbtable *db, int odh, int compress, int compress_blobs,
+int set_meta_odh_flags(dbtable *db, int odh, int compress, int compress_blobs,
                        int ipupates);
-int set_meta_odh_flags_tran(struct dbtable *db, tran_type *tran, int odh,
+int set_meta_odh_flags_tran(dbtable *db, tran_type *tran, int odh,
                             int compress, int compress_blobs, int ipupdates);
 
 int get_csc2_version(const char *table);
@@ -2438,10 +2438,10 @@ int get_csc2_file(const char *table, int version, char **text, int *len);
 int get_csc2_file_tran(const char *table, int version, char **text, int *len,
                        tran_type *);
 int put_csc2_file(const char *table, void *tran, int version, const char *text);
-int put_csc2_stuff(struct dbtable *db, void *trans, void *stuff, size_t lenstuff);
-int put_blobstripe_genid(struct dbtable *db, void *tran, unsigned long long genid);
-int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid);
-int get_blobstripe_genid_tran(struct dbtable *db, unsigned long long *genid,
+int put_csc2_stuff(dbtable *db, void *trans, void *stuff, size_t lenstuff);
+int put_blobstripe_genid(dbtable *db, void *tran, unsigned long long genid);
+int get_blobstripe_genid(dbtable *db, unsigned long long *genid);
+int get_blobstripe_genid_tran(dbtable *db, unsigned long long *genid,
                               tran_type *tran);
 
 int load_new_table_schema_file(struct dbenv *dbenv, const char *table,
@@ -2454,11 +2454,11 @@ int load_new_table_schema(struct dbenv *dbenv, const char *table,
                           const char *csc2_text);
 void fix_blobstripe_genids(tran_type *tran);
 int dump_all_csc2_to_disk();
-int dump_table_csc2_to_disk_fname(struct dbtable *db, const char *csc2_fname);
+int dump_table_csc2_to_disk_fname(dbtable *db, const char *csc2_fname);
 int dump_table_csc2_to_disk(const char *table);
-int get_csc2_fname(const struct dbtable *db, const char *dir, char *fname,
+int get_csc2_fname(const dbtable *db, const char *dir, char *fname,
                    size_t fname_len);
-int get_generic_csc2_fname(const struct dbtable *db, char *fname, size_t fname_len);
+int get_generic_csc2_fname(const dbtable *db, char *fname, size_t fname_len);
 
 void flush_db(void);
 void dump_cache(const char *file, int max_pages);
@@ -2466,16 +2466,16 @@ void load_cache(const char *file);
 void load_cache_default(void);
 void dump_cache_default(void);
 int compare_all_tags(const char *table, FILE *out);
-int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
-int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
-int populate_reverse_constraints(struct dbtable *db);
-int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
+int restore_constraint_pointers(dbtable *db, dbtable *newdb);
+int backout_constraint_pointers(dbtable *db, dbtable *newdb);
+int populate_reverse_constraints(dbtable *db);
+int has_index_changed(dbtable *db, char *keynm, int ct_check, int newkey,
                       FILE *out, int accept_type_change);
 int resume_schema_change(void);
 
 void debug_trap(char *line, int lline);
-int count_db(struct dbtable *db);
-int compact_db(struct dbtable *db, int timeout, int freefs);
+int count_db(dbtable *db);
+int compact_db(dbtable *db, int timeout, int freefs);
 int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
                              void *fndkey, int *fndrrn,
                              unsigned long long *genid, void *fnddta,
@@ -2494,7 +2494,7 @@ int ix_next_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
 int ix_find_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
                  void *fndkey, int *fndrrn, unsigned long long *genid,
                  void *fnddta, int *fndlen, int *recnum, int maxlen);
-void purgerrns(struct dbtable *db);
+void purgerrns(dbtable *db);
 
 /* broadcast messages to other nodes */
 int send_to_all_nodes(void *dta, int len, int type, int waittime);
@@ -2545,7 +2545,7 @@ typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
              void *userptr);
-int dbq_dump(struct dbtable *db, FILE *out);
+int dbq_dump(dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
 int dbq_add_goose(struct ireq *iq, void *trans);
 int dbq_check_goose(struct ireq *iq, void *trans);
@@ -2568,19 +2568,19 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
                                   int *oldnentries, int lock);
 void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
                            int nents);
-master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
+master_entry_t *create_master_entry_array(dbtable **dbs, int num_dbs,
                                           hash_t *view_hash, int *nents);
 void cleanup_sqlite_master();
 void create_sqlite_master();
 int destroy_sqlite_master(master_entry_t *, int);
-int sql_syntax_check(struct ireq *iq, struct dbtable *db);
+int sql_syntax_check(struct ireq *iq, dbtable *db);
 void sql_dump_running_statements(void);
 char *stradd(char **s1, char *s2, int freeit);
 void dbgtrace(int, char *, ...);
 
 int get_sqlite_entry_size(struct sql_thread *thd, int n);
 void *get_sqlite_entry(struct sql_thread *thd, int n);
-struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
+dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);
@@ -2626,8 +2626,8 @@ void purge_old_cached_blobs(void);
 void commit_schemas(const char *tblname);
 struct schema *new_dynamic_schema(const char *s, int len, int trace);
 void free_dynamic_schema(const char *table, struct schema *dsc);
-int getdefaultkeysize(const struct dbtable *tbl, int ixnum);
-int getdefaultdatsize(const struct dbtable *tbl);
+int getdefaultkeysize(const dbtable *tbl, int ixnum);
+int getdefaultdatsize(const dbtable *tbl);
 int update_sqlite_stats(struct ireq *iq, void *trans, void *dta);
 void *do_verify(void *);
 void dump_tagged_buf(const char *table, const char *tag,
@@ -2640,16 +2640,16 @@ int ix_find_by_rrn_and_genid_get_curgenid(struct ireq *iq, int rrn,
 int ix_find_last_dup_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
                           void *fndkey, int *fndrrn, unsigned long long *genid,
                           void *fnddta, int *fndlen, int *recnum, int maxlen);
-void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid);
-void upgrade_record_by_genid(struct dbtable *db, unsigned long long genid);
+void dump_record_by_rrn_genid(dbtable *db, int rrn, unsigned long long genid);
+void upgrade_record_by_genid(dbtable *db, unsigned long long genid);
 void backend_thread_event(struct dbenv *dbenv, int event);
 void backend_cmd(struct dbenv *dbenv, char *line, int lline, int st);
-uint64_t calc_table_size(struct dbtable *db, int skip_blobs);
+uint64_t calc_table_size(dbtable *db, int skip_blobs);
 
 enum { WHOLE_BUFFER = -1 };
 
-void diagnostics_dump_rrn(struct dbtable *tbl, int rrn);
-void diagnostics_dump_dta(struct dbtable *db, int dtanum);
+void diagnostics_dump_rrn(dbtable *tbl, int rrn);
+void diagnostics_dump_dta(dbtable *db, int dtanum);
 
 /* queue stuff */
 void dbqueuedb_coalesce(struct dbenv *dbenv);
