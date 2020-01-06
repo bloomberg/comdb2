@@ -772,7 +772,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         return rc;
     }
-    rc = reopen_queue_dbs(s->tablename, 0, sc_phys_tran);
+    rc = reopen_queue_dbs(s->tablename, 1, sc_phys_tran);
     if (rc != 0) {
         return rc;
     }
