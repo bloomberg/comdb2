@@ -1142,8 +1142,9 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 {
     int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
-    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe;
-         dtastripe++) {
+    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe &&
+            !par->client_dropped_connection;
+        dtastripe++) {
         char header[256];
         snprintf(header, sizeof(header), "verifying dtastripe %d", dtastripe);
         par->header = header;
@@ -1155,7 +1156,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     }
 
     /* scan 2: scan each key, verify data exists */
-    for (int ix = 0; ix < par->bdb_state->numix; ix++) {
+    for (int ix = 0; ix < par->bdb_state->numix && 
+            !par->client_dropped_connection; ix++) {
         par->records_processed = 0;
         par->nrecs_progress = 0;
         char header[256];
@@ -1168,7 +1170,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 
     /* scan 3: scan each blob, verify data exists */
     int nblobs = get_numblobs(par->db_table);
-    for (int blobno = 0; blobno < nblobs; blobno++) {
+    for (int blobno = 0; blobno < nblobs &&
+            !par->client_dropped_connection; blobno++) {
         par->records_processed = 0;
         par->nrecs_progress = 0;
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
