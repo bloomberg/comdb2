@@ -41,7 +41,7 @@ int gbl_debug_aa;
 
 /* reset autoanalyze counters to zero
  */
-void reset_aa_counter(char *tblname)
+void reset_aa_counter(const char *tblname)
 {
     int save_freq = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_LLMETA_SAVE_FREQ);
     bdb_state_type *bdb_state = thedb->bdb_env;
@@ -90,9 +90,8 @@ static inline void loc_print_date(const time_t *timep)
  */
 void *auto_analyze_table(void *arg)
 {
-    char *tblname = (char *)arg;
+    const char *tblname = (const char *)arg;
     if (is_sqlite_stat(tblname)) {
-        free(tblname);
         return NULL;
     }
     int rc;
@@ -118,7 +117,6 @@ void *auto_analyze_table(void *arg)
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     sbuf2free(sb);
-    free(tblname);
     if (gbl_debug_aa) {
         ctrace("AUTOANALYZE: sleep for testing for %d seconds\n",
                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
@@ -404,9 +402,8 @@ void *auto_analyze_main(void *unused)
                 auto_analyze_running = true; // will be reset by
                                              // auto_analyze_table()
                 pthread_t analyze;
-                // will be freed in auto_analyze_table()
-                char *tblname = strdup(tbl->tablename_ip);
-                pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table, tblname);
+                pthread_create(&analyze, &gbl_pthread_attr_detached,
+                               auto_analyze_table, (void*) tbl->tablename_ip);
             }
         } else if (save_freq > 0 && (call_counter % save_freq) == 0) {
             // save updated autoanalyze counter if there is a delta
