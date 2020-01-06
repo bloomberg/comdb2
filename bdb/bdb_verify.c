@@ -73,7 +73,7 @@ static int locprint(verify_common_t *par, char *fmt, ...)
             strcat(lbuf, "\n");
         int rc = sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
         if (rc) return rc;
-        rc = sbuf2flush(par->sb);
+        rc = sbuf2flush(par->sb) >= 0 ? 0 : -1;
         return rc;
     } 
     return -1;
