@@ -599,7 +599,7 @@ int reopen_queue_dbs(const char *queue_name, unsigned long long qdb_file_ver,
         goto done;
     }
     int bdberr = 0;
-    rc = bdb_close_only(db->handle, &bdberr);
+    rc = bdb_close_only_sc(db->handle, tran, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                __func__, rc, bdberr);

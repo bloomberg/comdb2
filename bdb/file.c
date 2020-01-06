@@ -4396,7 +4396,7 @@ deadlock_again:
             u_int32_t qdb_flags = db_flags;
             if ((iammaster) && (dtanum > 0) && (qdb_file_ver != 0)) {
                 logmsg(LOGMSG_DEBUG,
-                       "open_dbs: qdb file %s (%d) with CREATE flag\n",
+                       "open_dbs: file %s (%d) with CREATE flag\n",
                        tmpname, dtanum);
                 qdb_type = DB_BTREE;
                 qdb_flags |= DB_CREATE;
