@@ -72,7 +72,7 @@ extern int gbl_enable_pageorder_trace;
 extern int gbl_disable_overflow_page_trace;
 #endif
 
-int gbl_skip_cget_in_db_put = 1;
+int gbl_skip_cget_in_db_put = 0;
 __thread DB *prefault_dbp = NULL;
 
 /*
