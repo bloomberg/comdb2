@@ -14,23 +14,12 @@
    limitations under the License.
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <string.h>
-#include <stddef.h>
-#include <strings.h>
-#include <alloca.h>
-#include <sys/poll.h>
-#include <unistd.h>
-#include <bdb_api.h>
-#include <bdb_verify.h>
-
+#include "bdb_api.h"
+#include "bdb_verify.h"
 #include "sbuf2.h"
 #include "bdb_int.h"
 #include "locks.h"
 #include "endian_core.h"
-
 #include "logmsg.h"
 #include "tohex.h"
 #include "blob_buffer.h"
@@ -46,6 +35,7 @@ extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
 extern int peer_dropped_connection_sb(SBUF2 *sb);
+extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
 
 
 /* use lua_callback if it is available to print
@@ -254,9 +244,8 @@ out:
     return par->client_dropped_connection;
 }
 
-extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
-
-// compare with previous key, ensure order
+/* compare with previous key, ensure order of keys in the btree
+ */
 static inline void check_order(DB *db, DBT *old, DBT *curr,
                                verify_common_t *par)
 {
@@ -582,7 +571,10 @@ err:
     return rc;
 }
 
-/* similar to check_single_key_constraint but uses a paired cursor/cget
+/* Verify all the foreign key constraints for the given key in lcl_key
+ * Returns nonzero if any foreign key is not found
+ *
+ * similar to check_single_key_constraint but uses a paired cursor/cget
  * so we can release the lock at the end of this function
  */
 static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
@@ -621,12 +613,11 @@ static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
                             .dlen = sizeof(verify_genid),
                             .ulen = sizeof(verify_genid),
                             .size = sizeof(verify_genid),
-                            .doff = 0,
                             .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
             dbt_key.size = rixlen;
 
             rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET_RANGE);
-            ckey->c_close(ckey);
+            ckey->c_close(ckey); // close cursor, check rc below
         }
 
         if (rc != IX_FND && rc != IX_FNDMORE) {
@@ -1045,9 +1036,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
     char dumbuf;
     unsigned long long genid;
 
-    DBT dbt_key = {.ulen = sizeof(genid),
-                   .data = &genid,
-                   .flags = DB_DBT_USERMEM};
+    DBT dbt_key = {
+        .ulen = sizeof(genid), .data = &genid, .flags = DB_DBT_USERMEM};
 
     DBT dbt_data = {
         .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
@@ -1224,6 +1214,11 @@ void bdb_verify_handler(td_processing_info_t *info)
         break;
     }
 
+    DB_LOCKREQ rq = {0};
+    rq.op = DB_LOCK_PUT_ALL;
+    bdb_state->dbenv->lock_vec(bdb_state->dbenv, lid, 0, &rq, 1, NULL);
+    bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lid);
+
     BDB_RELLOCK();
     ATOMIC_ADD32(par->threads_completed, 1);
 }
@@ -1341,35 +1336,4 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
     }
 
     return par->verify_status;
-}
-
-/* this is the sequential verify version
- */
-int bdb_verify(verify_common_t *par)
-{
-    int rc;
-    unsigned int lid;
-    bdb_state_type *bdb_state = par->bdb_state;
-
-    BDB_READLOCK("bdb_verify");
-
-    if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
-                                              DB_LOCK_ID_READONLY)) != 0) {
-        BDB_RELLOCK();
-        logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
-        return rc;
-    }
-
-    par->last_connection_check = comdb2_time_epochms(); // initialize
-
-    rc = bdb_verify_sequential(par, lid);
-
-    DB_LOCKREQ rq = {0};
-    rq.op = DB_LOCK_PUT_ALL;
-    bdb_state->dbenv->lock_vec(bdb_state->dbenv, lid, 0, &rq, 1, NULL);
-    bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lid);
-
-    BDB_RELLOCK();
-
-    return rc;
 }
