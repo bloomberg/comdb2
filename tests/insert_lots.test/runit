@@ -83,29 +83,31 @@ TRANSIZE=2800
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
 
+node=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
+
 ### testing cancelling verify behavior ###
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1', 'parallel', 'verbose')" &> verify_t1.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'parallel', 'verbose')" &> verify_t1.out &
 pid=$!
 sleep 0.5
 kill -9 $pid
 sleep 2.5
 assertthdpoolcntzero
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1', 'parallel')" &> verify_t1.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'parallel')" &> verify_t1.out &
 pid=$!
 sleep 0.5
 kill -9 $pid
 sleep 2.5
 assertthdpoolcntzero
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1', 'verbose')" &> verify_t1.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'verbose')" &> verify_t1.out &
 pid=$!
 sleep 0.5
 kill -9 $pid
 sleep 2.5
 assertthdpoolcntzero
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1')" &> verify_t1.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1')" &> verify_t1.out &
 pid=$!
 sleep 0.5
 kill -9 $pid
