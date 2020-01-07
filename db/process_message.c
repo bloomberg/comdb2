@@ -4931,6 +4931,8 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "get_verify_thdpool_status") == 0) {
         if (gbl_verify_thdpool)
             thdpool_print_stats(stdout, gbl_verify_thdpool);
+        else
+            logmsg(LOGMSG_USER, "Verify threadpool is not active\n");
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;

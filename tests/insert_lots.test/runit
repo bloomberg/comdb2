@@ -21,7 +21,6 @@ nins=0
 
 assertthdpoolcntzero()
 {
-    tbl=$1
     cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("get_verify_thdpool_status")' &> assertthdpoolcntzero.out
     grep "Current num threads       : 0"  assertthdpoolcntzero.out
     if [ $? -eq 0 ] ; then
@@ -84,25 +83,25 @@ time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> in
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
 
 ### testing cancelling verify behavior ###
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel', 'verbose')" &> verify_$tbl.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1', 'parallel', 'verbose')" &> verify_t1.out &
 pid=$!
 sleep 1
 kill -9 $pid
 assertthdpoolcntzero
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1', 'parallel')" &> verify_t1.out &
 pid=$!
 sleep 1
 kill -9 $pid
 assertthdpoolcntzero
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'verbose')" &> verify_$tbl.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1', 'verbose')" &> verify_t1.out &
 pid=$!
 sleep 1
 kill -9 $pid
 assertthdpoolcntzero
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl')" &> verify_$tbl.out &
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('t1')" &> verify_t1.out &
 pid=$!
 sleep 1
 kill -9 $pid
