@@ -19,10 +19,14 @@ fi
 nins=0
 
 
-failexit()
+assertthdpoolcntzero()
 {
-    echo "Failed $1"
-    exit -1
+    tbl=$1
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("get_verify_thdpool_status")' &> assertthdpoolcntzero.out
+    grep "Current num threads       : 0"  assertthdpoolcntzero.out
+    if [ $? -eq 0 ] ; then
+        failexit "nonzero count of current threads running verify, see assertthdpoolcntzero.out"
+    fi
 }
 
 assert_vers()
@@ -78,5 +82,30 @@ cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
 TRANSIZE=2800
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
+
+### testing cancelling verify behavior ###
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel', 'verbose')" &> verify_$tbl.out &
+pid=$!
+sleep 1
+kill -9 $pid
+assertthdpoolcntzero
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out &
+pid=$!
+sleep 1
+kill -9 $pid
+assertthdpoolcntzero
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'verbose')" &> verify_$tbl.out &
+pid=$!
+sleep 1
+kill -9 $pid
+assertthdpoolcntzero
+
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl')" &> verify_$tbl.out &
+pid=$!
+sleep 1
+kill -9 $pid
+assertthdpoolcntzero
 
 echo "Success"
