@@ -1210,6 +1210,9 @@ void bdb_verify_handler(td_processing_info_t *info)
     }
 
     switch (info->type) {
+    case PROCESS_SEQUENTIAL:
+        bdb_verify_sequential(par, lid);
+        break;
     case PROCESS_DATA:
         bdb_verify_data_stripe(par, info->dtastripe, lid);
         break;
@@ -1274,18 +1277,29 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 #ifndef NDEBUG
     const char *tp = "";
     switch (v_mode) {
-    case VERIFY_PARALLEL: break;
+    case VERIFY_PARALLEL:
+        tp = "in parallel"; break;
     case VERIFY_DATA:
-        tp = "DATA"; break;
+        tp = "DATA in parallel"; break;
     case VERIFY_INDICES:
-        tp = "INDICES"; break;
+        tp = "INDICES in parallel"; break;
     case VERIFY_BLOBS:
-        tp = "BLOBS"; break;
+        tp = "BLOBS in parallel"; break;
+    case VERIFY_SERIAL:
+        tp = "in serial"; break;
     default: abort();
     };
-    logmsg(LOGMSG_DEBUG, "%s: Verify %s in parallel mode\n", __func__, tp);
+    logmsg(LOGMSG_DEBUG, "%s: Verify %s mode\n", __func__, tp);
 #endif
     par->last_connection_check = comdb2_time_epochms(); // initialize
+
+    if (v_mode == VERIFY_SERIAL) {
+        td_processing_info_t *work = malloc(sizeof(*work));
+        memcpy(work, info, sizeof(*work));
+        work->type = PROCESS_SEQUENTIAL;
+        enqueue_work(work, verify_thdpool);
+        return 0;
+    }
 
     if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
         /* scan 1 - run through data, verify all the keys and blobs */

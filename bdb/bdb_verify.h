@@ -23,7 +23,7 @@ struct SBUF2;
 struct bdb_state_type;
 typedef struct thdpool thdpool;
 
-typedef enum { PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB } processing_type;
+typedef enum { PROCESS_SEQUENTIAL, PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB } processing_type;
 
 // common data for all verify threads
 typedef struct {

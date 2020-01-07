@@ -421,10 +421,9 @@ int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
                       int (*lua_callback)(void *, const char *),
                       void *lua_params, verify_mode_t mode)
 {
-    if (mode != VERIFY_SERIAL)
-        return parallel_verify_table(table, sb, progress_report_seconds,
-                                     attempt_fix, lua_callback, lua_params,
-                                     mode);
+    return parallel_verify_table(table, sb, progress_report_seconds,
+                                 attempt_fix, lua_callback, lua_params,
+                                 mode);
 
     int rc;
     struct verify_args v;
