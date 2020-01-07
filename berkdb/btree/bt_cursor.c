@@ -3033,7 +3033,7 @@ split:	ret = stack = 0;
 		 * in order to adjust the record count.
 		 */
 		if ((ret = __bam_c_search(dbc,
-            F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
+						F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
 		    flags == DB_KEYFIRST || dbp->dup_compare != NULL ?
 		    DB_KEYFIRST : DB_KEYLAST, &exact)) != 0)
 			goto err;
@@ -3155,15 +3155,13 @@ split:	ret = stack = 0;
 		 */
 
 		if(gbl_skip_cget_in_db_put) {
-            BTREE_CURSOR *__cp = (BTREE_CURSOR *)(dbc)->internal;
-            ret = __db_lget(dbc, LOCK_ISSET(__cp->lock) ? LCK_COUPLE : 0,
-                              __cp->pgno, DB_LOCK_WRITE, 0, &__cp->lock);
-            if (ret != 0)
-                goto err;
+			/* COMDB2_MODIFICATION since we are not calling cget before cput
+			 * then we need an extra lock on this page about to be split */
+			ret = __db_lget(dbc, LOCK_ISSET(cp->lock) ? LCK_COUPLE : 0,
+					cp->pgno, DB_LOCK_WRITE, 0, &cp->lock);
+			if (ret != 0)
+				goto err;
 		}
-
-        //printf("BEFORE: printing locks held fname=%s own=%d stack=%d\n", dbc->dbp->fname, own, stack);
-        //__lock_dump_active_locks(dbc->dbp->dbenv, stderr);
 
 		/* Invalidate the cursor before releasing the pagelock */
 		if (own == 0) {
@@ -3184,9 +3182,6 @@ split:	ret = stack = 0;
 			DISCARD_CUR(dbc, ret);
 		if (ret != 0)
 			goto err;
-
-        //printf("AFTER: printing locks held own=%d stack=%d\n", own, stack);
-        //__lock_dump_active_locks(dbc->dbp->dbenv, stderr);
 
 		/* Split the tree. */
 		if ((ret = __bam_split(dbc, arg, &root_pgno)) != 0)
