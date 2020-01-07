@@ -17,9 +17,53 @@
 #ifndef _TIME_ACCOUNTING_H
 #define _TIME_ACCOUNTING_H
 
+#ifdef TIMING_ACCOUNTING
 #include <sys/time.h>
 
+/* NB: this construct is ment to encompass a function call like this:
+ * ACCUMULATE_TIMING(CHR_FUNCTOMEASURE
+ *   rc = func_to_measure();
+ * );
+ *
+ * You will have to add CHR_FUNCTOMEASURE to the CHR_ENUM above and
+ * CHR_NAMES (in time_accounting.c for printing purposes).
+ * To print accumulated time for that function then you can
+ * call print_time_accounting(CHR_FUNCTOMEASURE);
+ */
+extern int gbl_ready;
+extern __thread int already_timing;
+
+extern const char *CHR_IXADDK;
+extern const char *CHR_DATADD;
+extern const char *CHR_TMPSVOP;
+
+#define ACCUMULATE_TIMING(NAME, CODE)                                          \
+    do {                                                                       \
+        struct timeval __tv1;                                                  \
+        if(gbl_ready && !already_timing) {                                     \
+            gettimeofday(&__tv1, NULL);                                        \
+        }                                                                      \
+        CODE;                                                                  \
+        if(gbl_ready && !already_timing) {                                     \
+            already_timing = 1; /* stop from recurring */                      \
+            struct timeval __tv2;                                              \
+            gettimeofday(&__tv2, NULL);                                        \
+            unsigned int __sec_part = (__tv2.tv_sec - __tv1.tv_sec) * 1000000;          \
+            unsigned int __usec_part = (__tv2.tv_usec - __tv1.tv_usec);                 \
+            accumulate_time(NAME, __sec_part + __usec_part);                  \
+            already_timing = 0;                                                \
+        }                                                                      \
+    } while (0);
+
+void accumulate_time(const char *name, unsigned int us);
+
+void print_time_accounting(const char *name);
+void print_all_time_accounting();
+
+#else
+
 #ifndef NDEBUG
+#include <sys/time.h>
 
 enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX } CHR_ENUM;
 
@@ -55,6 +99,8 @@ void print_all_time_accounting();
 
 #define ACCUMULATE_TIMING(NAME, CODE)                                          \
     do {                                                                       \
+        abort(); \
+        fprintf(stderr, "Func %s\n", #NAME);\
         CODE;                                                                  \
     } while (0);
 #define print_all_time_accounting()                                            \
@@ -63,6 +109,10 @@ void print_all_time_accounting();
 #define print_time_accounting(el)                                              \
     do {                                                                       \
     } while (0);
+
+#endif
+
+
 #endif
 
 #endif

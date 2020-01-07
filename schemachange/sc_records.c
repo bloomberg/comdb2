@@ -3065,11 +3065,9 @@ static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
                                              struct schema_change_type *s)
 {
     struct sc_redo_lsn *redo = NULL;
-    pthread_mutex_t *mtx = &bdb_state->sc_redo_lk;
-    pthread_cond_t *cond = &bdb_state->sc_redo_wait;
     int wait = 1;
 
-    Pthread_mutex_lock(mtx);
+    Pthread_mutex_lock(&bdb_state->sc_redo_lk);
 
     if (s->sc_convert_done[MAXDTASTRIPE]) {
         /* all converter threads have finished */
@@ -3081,7 +3079,7 @@ static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 10;
-        int rc = pthread_cond_timedwait(cond, mtx, &ts);
+        int rc = pthread_cond_timedwait(&bdb_state->sc_redo_wait, &bdb_state->sc_redo_lk, &ts);
         if (rc != 0 && rc != ETIMEDOUT)
             logmsg(LOGMSG_ERROR, "%s:pthread_cond_timedwait: %d %s\n", __func__,
                    rc, strerror(rc));
@@ -3090,7 +3088,7 @@ static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
         }
     }
 
-    Pthread_mutex_unlock(mtx);
+    Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
     return redo;
 }
 

@@ -3187,20 +3187,18 @@ static int dbthread_error(lua_State *lua)
 
 static void dbthread_join_int(Lua L, dbthread_type *thd)
 {
-    pthread_mutex_t *mtx = &thd->lua_thread_mutex;
-    pthread_cond_t *cond = &thd->lua_thread_cond;
-    Pthread_mutex_lock(mtx);
+    Pthread_mutex_lock(&thd->lua_thread_mutex);
     while (thd->status == THREAD_STATUS_DISPATCH_WAITING ||
            thd->status == THREAD_STATUS_RUNNING) {
         check_retry_conditions(L, 1);
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
-        pthread_cond_timedwait(cond, mtx, &ts);
+        pthread_cond_timedwait(&thd->lua_thread_cond, &thd->lua_thread_mutex, &ts);
     }
     pthread_join(thd->lua_tid, NULL);
     thd->status = THREAD_STATUS_JOINED;
-    Pthread_mutex_unlock(mtx);
+    Pthread_mutex_unlock(&thd->lua_thread_mutex);
 }
 
 static int dbthread_join(Lua lua1)

@@ -13,6 +13,7 @@
 #define MAX_LINE 65536
 
 static int debug = 0;
+int gbl_ready;
 
 static int usage( char *prg);
 static int parse_line( char *line, char **query);

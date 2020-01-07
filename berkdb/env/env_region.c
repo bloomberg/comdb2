@@ -459,11 +459,8 @@ creation:
 		goto err;
 	}
 
-	if (!F_ISSET(&renv->mutex, MUTEX_IGNORE) &&
-	    (ret = __db_mutex_lock(dbenv, &renv->mutex)) != 0) {
-		__db_err(dbenv, "%s: unable to acquire environment lock: %s",
-		    infop->name, db_strerror(ret));
-		goto err;
+	if (!F_ISSET(&renv->mutex, MUTEX_IGNORE)) {
+		__db_mutex_lock(dbenv, &renv->mutex);
 	}
 
 	/*

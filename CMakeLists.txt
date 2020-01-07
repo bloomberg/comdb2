@@ -57,6 +57,11 @@ if(WITH_RDKAFKA)
   add_definitions(-DWITH_RDKAFKA)
 endif()
 
+option(TIMING_ACCOUNTING "Turn ON to compile with timing accounting" ON)
+if(TIMING_ACCOUNTING)
+  add_definitions(-DTIMING_ACCOUNTING)
+endif()
+
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
