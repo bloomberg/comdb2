@@ -1146,8 +1146,7 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe &&
-            !par->client_dropped_connection;
-        dtastripe++) {
+            !par->client_dropped_connection; dtastripe++) {
         char header[256];
         snprintf(header, sizeof(header), "verifying dtastripe %d", dtastripe);
         par->header = header;
@@ -1234,6 +1233,7 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work,
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
     bdb_verify_handler(info);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    free(work);
 }
 
 /* Enqueue work object onto verify_thdpool
@@ -1256,7 +1256,8 @@ static inline void enqueue_work(td_processing_info_t *work,
             verify_thdpool = NULL;
         }
     }
-    if (!verify_thdpool) {
+
+    if (!verify_thdpool) { // if null or in case of enqueue error
         bdb_verify_handler(work);
         free(work);
     }
@@ -1273,19 +1274,14 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 #ifndef NDEBUG
     const char *tp = "";
     switch (v_mode) {
-    case VERIFY_PARALLEL:
-        break;
+    case VERIFY_PARALLEL: break;
     case VERIFY_DATA:
-        tp = "DATA";
-        break;
+        tp = "DATA"; break;
     case VERIFY_INDICES:
-        tp = "INDICES";
-        break;
+        tp = "INDICES"; break;
     case VERIFY_BLOBS:
-        tp = "BLOBS";
-        break;
-    default:
-        abort();
+        tp = "BLOBS"; break;
+    default: abort();
     };
     logmsg(LOGMSG_DEBUG, "%s: Verify %s in parallel mode\n", __func__, tp);
 #endif
