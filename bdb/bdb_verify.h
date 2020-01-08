@@ -30,6 +30,7 @@ typedef struct {
     SBUF2 *sb;
     bdb_state_type *bdb_state;
     dbtable *db_table;
+    const char *tablename;
     int (*formkey_callback)(const dbtable *tbl, void *dta, void *blob_parm,
                             int ix, void *keyout, int *keysz);
     int (*get_blob_sizes_callback)(const dbtable *tbl, void *dta, int blobs[16],

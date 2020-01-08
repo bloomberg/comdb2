@@ -1238,24 +1238,27 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work,
  * If verify_thdpool is NULL then processing occurs sequentially.
  */
 static inline void enqueue_work(td_processing_info_t *work,
-                                thdpool *verify_thdpool)
+                                const char * desc, thdpool *verify_thdpool)
 {
     // this function is called sequentially, no need for atomics
     work->common_params->threads_spawned++;
 
     if (verify_thdpool) {
+        char *desc_copy = strdup(desc);
         int rc = thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp,
-                                 work, 0, NULL, THDPOOL_FORCE_QUEUE,
+                                 work, 0, desc_copy, THDPOOL_FORCE_QUEUE,
                                  PRIORITY_T_DEFAULT);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:thdpool_enqueue error, proceeding sequentially\n",
                    __func__);
             verify_thdpool = NULL;
+            free(desc_copy);
         }
     }
 
     if (!verify_thdpool) { // if null or in case of enqueue error
+        work->common_params->threads_spawned--;
         bdb_verify_handler(work);
         free(work);
     }
@@ -1269,7 +1272,6 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
     verify_mode_t v_mode = par->verify_mode;
-#ifndef NDEBUG
     const char *tp = "";
     switch (v_mode) {
     case VERIFY_PARALLEL:
@@ -1284,7 +1286,10 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         tp = "in serial"; break;
     default: abort();
     };
-    logmsg(LOGMSG_DEBUG, "%s: Verify %s mode\n", __func__, tp);
+    char desc[512] = {0};
+    snprintf(desc, sizeof(desc) - 1, "Verify %s %s mode\n", par->tablename, tp);
+#ifndef NDEBUG
+    logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, desc);
 #endif
     par->last_connection_check = comdb2_time_epochms(); // initialize
 
@@ -1292,7 +1297,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         td_processing_info_t *work = malloc(sizeof(*work));
         memcpy(work, info, sizeof(*work));
         work->type = PROCESS_SEQUENTIAL;
-        enqueue_work(work, verify_thdpool);
+        enqueue_work(work, desc, verify_thdpool);
         return 0;
     }
 
@@ -1304,7 +1309,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             memcpy(work, info, sizeof(*work));
             work->type = PROCESS_DATA;
             work->dtastripe = dtastripe;
-            enqueue_work(work, verify_thdpool);
+            enqueue_work(work, desc, verify_thdpool);
         }
     }
 
@@ -1315,7 +1320,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             memcpy(work, info, sizeof(*work));
             work->type = PROCESS_KEY;
             work->index = ix;
-            enqueue_work(work, verify_thdpool);
+            enqueue_work(work, desc, verify_thdpool);
         }
     }
 
@@ -1330,7 +1335,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
                 work->type = PROCESS_BLOB;
                 work->blobno = blobno;
                 work->dtastripe = dtastripe;
-                enqueue_work(work, verify_thdpool);
+                enqueue_work(work, desc, verify_thdpool);
             }
         }
     }
