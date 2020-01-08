@@ -22,7 +22,6 @@ static const char revid[] = "$Id: bt_cursor.c,v 11.169 2003/11/19 18:41:06 bosti
 #endif
 #include <walkback.h>
 #include <pthread.h>
-#include <unistd.h>
 
 #include "db_int.h"
 #include "dbinc/db_page.h"
@@ -3153,7 +3152,6 @@ split:	ret = stack = 0;
 		 * posistioned to a particular record.  This
 		 * is in the case where C_RECNUM is set.
 		 */
-
 		if(gbl_skip_cget_in_db_put) {
 			/* COMDB2_MODIFICATION since we are not calling cget before cput
 			 * then we need an extra lock on this page about to be split */
@@ -3178,7 +3176,7 @@ split:	ret = stack = 0;
 		 */
 		if (stack)
 			ret = __bam_stkrel(dbc, STK_CLRDBC | STK_NOLOCK);
-		else if (!gbl_skip_cget_in_db_put)
+		else
 			DISCARD_CUR(dbc, ret);
 		if (ret != 0)
 			goto err;
