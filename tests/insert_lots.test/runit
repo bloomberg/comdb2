@@ -22,7 +22,7 @@ nins=0
 assertthdpoolcntzero()
 {
     node=$1
-    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host node 'exec procedure sys.cmd.send("get_verify_thdpool_status")' &> assertthdpoolcntzero.out
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("get_verify_thdpool_status")' &> assertthdpoolcntzero.out
     grep "Current num threads       : 0"  assertthdpoolcntzero.out
     if [ $? -ne 0 ] ; then
         failexit "nonzero count of current threads running verify, see assertthdpoolcntzero.out"
