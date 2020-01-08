@@ -772,6 +772,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     } else if (type == add_queue_file || type == del_queue_file) {
         // TODO: How should we ideally handle failure cases here?
         rc = reopen_qdb(table, 0, tran);
+        logmsg(LOGMSG_INFO, "Replicant %s queuedb '%s', rc %d\n",
+               (rc == 0) ? "reopened" : "failed to reopen", table, rc);
     } else if (type == add && add_new_db) {
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
         dyns_init_globals();
@@ -899,6 +901,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
             goto done;
         }
         db->dbnum = dbnum;
+
         fix_lrl_ixlen_tran(tran);
     }
 
