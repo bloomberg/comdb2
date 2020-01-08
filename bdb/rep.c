@@ -5437,8 +5437,7 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_FATAL,
                    "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__, elapsed);
-            lock_info_lockers(stdout, bdb_state);
-            abort();
+            bdb_dump_threads_and_maybe_abort(bdb_state, 1);
         }
 
         /* are we incoherent?  see how we're doing, lets send commitdelay
@@ -5555,7 +5554,7 @@ void *watcher_thread(void *arg)
                 logmsg(LOGMSG_WARN, "rep_process_message running for 10 seconds,"
                                 "dumping thread pool\n");
                 bdb_state->repinfo->rep_process_message_start_time = 0;
-                bdb_dump_threads_and_maybe_abort(bdb_state, 1);
+                bdb_dump_threads_and_maybe_abort(bdb_state, 0);
             }
         }
 
@@ -5563,7 +5562,7 @@ void *watcher_thread(void *arg)
         if (gbl_dump_locks_on_repwait && list_start > 0 &&
             (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
-            lock_info_lockers(stdout, bdb_state);
+            bdb_dump_threads_and_maybe_abort(bdb_state, 0);
         }
 
         if (bdb_state->exiting) {
