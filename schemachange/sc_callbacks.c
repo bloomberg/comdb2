@@ -855,8 +855,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
 
     if (type != add_queue_file && type != del_queue_file) {
         set_odh_options_tran(db, tran);
+        db->tableversion = table_version_select(db, tran);
     }
-    db->tableversion = table_version_select(db, tran);
 
     /* Make sure to add a version 1 schema for instant-schema change tables */
     if (add_new_db && db->odh && db->instant_schema_change) {
