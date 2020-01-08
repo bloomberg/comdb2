@@ -716,10 +716,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         return reload_rename_table(bdb_state, table, (char *)arg);
     case change_stripe:
         return reload_stripe_info(bdb_state);
-    case add_queue_file:
-        return reopen_qdb(table, 0, NULL);
-    case del_queue_file:
-        return reopen_qdb(table, 0, NULL);
     default:
         break;
     }
@@ -772,6 +768,9 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     if (type == setcompr) {
         logmsg(LOGMSG_INFO,
                "Replicant setting compression flags for table:%s\n", table);
+    } else if (type == add_queue_file || type == del_queue_file) {
+        // TODO: How should we ideally handle failure cases here?
+        rc = reopen_qdb(table, 0, tran);
     } else if (type == add && add_new_db) {
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
         dyns_init_globals();
