@@ -3154,15 +3154,6 @@ split:	ret = stack = 0;
 		 * is in the case where C_RECNUM is set.
 		 */
 
-		if(gbl_skip_cget_in_db_put) {
-			/* COMDB2_MODIFICATION since we are not calling cget before cput
-			 * then we need an extra lock on this page about to be split */
-			ret = __db_lget(dbc, LOCK_ISSET(cp->lock) ? LCK_COUPLE : 0,
-					cp->pgno, DB_LOCK_WRITE, 0, &cp->lock);
-			if (ret != 0)
-				goto err;
-		}
-
 		/* Invalidate the cursor before releasing the pagelock */
 		if (own == 0) {
 			cp->pgno = PGNO_INVALID;
