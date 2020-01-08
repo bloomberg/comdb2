@@ -881,23 +881,26 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_tag_schema(db->tablename, ver_one);
     }
 
-    llmeta_dump_mapping_tran(tran, thedb);
-    llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
+    if (type != add_queue_file && type != del_queue_file) {
+        llmeta_dump_mapping_tran(tran, thedb);
+        llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
+    }
 
     /* Fetch the correct dbnum for this table.  We need this step because db
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch
      * it from there. */
-    dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
-    if (dbnum == -1) {
-        logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
-               db->tablename);
-        rc = BDBERR_MISC;
-        goto done;
+    if (db != NULL) {
+        dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
+        if (dbnum == -1) {
+            logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
+                   db->tablename);
+            rc = BDBERR_MISC;
+            goto done;
+        }
+        db->dbnum = dbnum;
+        fix_lrl_ixlen_tran(tran);
     }
-    db->dbnum = dbnum;
-
-    fix_lrl_ixlen_tran(tran);
 
     rc = 0;
 done:
