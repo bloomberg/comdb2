@@ -743,7 +743,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
-    if (olddb) {
+    if (olddb && (type != add_queue_file && type != del_queue_file)) {
         /* protect us from getting rep_handle_dead'ed to death */
         rc = bdb_get_csc2_highest(tran, table, &highest_ver, &bdberr);
         if (rc && bdberr == BDBERR_DEADLOCK) {
