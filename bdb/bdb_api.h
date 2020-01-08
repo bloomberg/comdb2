@@ -1132,6 +1132,8 @@ int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_open_again(bdb_state_type *bdb_handle, int *bdberr);
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran,
                         int *bdberr);
+int bdb_open_again_tran_queue(bdb_state_type *bdb_state, tran_type *tran,
+                              unsigned long long qdb_file_ver, int *bdberr);
 
 /* destroy resources related to bdb_handle.  assumes that bdb_close_only
    was called */

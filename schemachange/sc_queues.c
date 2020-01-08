@@ -596,25 +596,21 @@ static int close_qdb(struct dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                __func__, rc, bdberr);
     }
-    db->handle = NULL;
     return rc;
 }
 
-static int open_qdb(struct dbtable *db, const char *queue_name,
-                    unsigned long long qdb_file_ver, tran_type *tran)
+static int open_qdb(struct dbtable *db, unsigned long long qdb_file_ver,
+                    tran_type *tran)
 {
-    int bdberr = 0;
-    assert(db->handle == NULL);
-    db->handle = bdb_open_more_queue(queue_name, thedb->basedir, 65536,
-                                     65536, thedb->bdb_env, 1, qdb_file_ver,
-                                     tran, &bdberr);
-    if (db->handle == NULL) {
+    int rc, bdberr = 0;
+    assert(db->handle != NULL);
+    rc = bdb_open_again_tran_queue(db->handle, tran, qdb_file_ver, &bdberr);
+    if (rc != 0) {
         logmsg(LOGMSG_ERROR,
-               "%s: bdb_open_more_queue(%s/%s) failed, bdberr %d\n",
-               __func__, thedb->basedir, db->tablename, bdberr);
-        return -1;
+               "%s: bdb_open_again_tran failed, bdberr %d\n",
+               __func__, bdberr);
     }
-    return 0;
+    return rc;
 }
 
 int reopen_qdb(const char *queue_name, unsigned long long qdb_file_ver,
@@ -628,7 +624,7 @@ int reopen_qdb(const char *queue_name, unsigned long long qdb_file_ver,
     }
     int rc = close_qdb(db, tran);
     if (rc != 0) return rc;
-    return open_qdb(db, queue_name, qdb_file_ver, tran);
+    return open_qdb(db, qdb_file_ver, tran);
 }
 
 static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
@@ -787,7 +783,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         return rc;
     }
-    rc = open_qdb(s->db, s->tablename, s->qdb_file_ver, sc_phys_tran);
+    rc = open_qdb(s->db, s->qdb_file_ver, sc_phys_tran);
     if (rc != 0) {
         return rc;
     }
@@ -851,7 +847,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         return rc;
     }
-    rc = open_qdb(s->db, s->tablename, 0, sc_phys_tran);
+    rc = open_qdb(s->db, 0, sc_phys_tran);
     if (rc != 0) {
         return rc;
     }

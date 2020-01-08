@@ -135,7 +135,8 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
 static int bdb_reopen_int(bdb_state_type *bdb_state);
-static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
+static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *,
+                    unsigned long long);
 static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t,
                           unsigned long long);
 static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
@@ -1087,7 +1088,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
 
     saved_name = bdb_state->name;
     bdb_state->name = newname;
-    rc = open_dbs(bdb_state, 1, 1, 0, tid);
+    rc = open_dbs(bdb_state, 1, 1, 0, tid, 0);
     if (rc != 0) {
         bdb_state->name = saved_name;
         bdb_state->origname = saved_origname;
@@ -1717,7 +1718,7 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, tid);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, 0);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -4738,9 +4739,10 @@ static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
 }
 
 static int open_dbs(bdb_state_type *bdb_state, int iammaster, int upgrade,
-                    int create, DB_TXN *tid)
+                    int create, DB_TXN *tid, unsigned long long qdb_file_ver)
 {
-    return open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, 0, 0);
+    return open_dbs_flags(bdb_state, iammaster, upgrade, create, tid, 0,
+                          qdb_file_ver);
 }
 
 static int bdb_create_stripes_int(bdb_state_type *bdb_state, tran_type *tran,
@@ -4959,7 +4961,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
         /* fprintf(stderr, "back from close_dbs\n"); */
 
         /* now reopen them as a client */
-        rc = open_dbs(bdb_state, 0, 1, 0, tid);
+        rc = open_dbs(bdb_state, 0, 1, 0, tid, 0);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "upgrade: open_dbs as client failed\n");
             outrc = 1;
@@ -4982,7 +4984,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             /* fprintf(stderr, "back from close_dbs\n"); */
 
             /* now reopen them as a client */
-            rc = open_dbs(child, 0, 1, 0, tid);
+            rc = open_dbs(child, 0, 1, 0, tid, 0);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "upgrade: open_dbs as client failed\n");
                 outrc = 1;
@@ -7088,7 +7090,8 @@ int bdb_free_and_replace(bdb_state_type *bdb_state, bdb_state_type *replace,
 }
 
 /* re-open bdb handle as master/client depending on how it used to be */
-int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid,
+                            unsigned long long qdb_file_ver, int *bdberr)
 {
     int iammaster;
     int rc;
@@ -7118,7 +7121,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, tid);
+    rc = open_dbs(bdb_state, iammaster, 1, 0, tid, qdb_file_ver);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         BDB_RELLOCK();
@@ -7164,7 +7167,7 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
         exit(1);
     }
 
-    rc = bdb_open_again_tran_int(bdb_state, tid, bdberr);
+    rc = bdb_open_again_tran_int(bdb_state, tid, 0, bdberr);
 
     rc = tid->commit(tid, 0);
     if (rc != 0) {
@@ -7177,7 +7180,14 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
 
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
-    return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL, bdberr);
+    return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL, 0, bdberr);
+}
+
+int bdb_open_again_tran_queue(bdb_state_type *bdb_state, tran_type *tran,
+                              unsigned long long qdb_file_ver, int *bdberr)
+{
+    return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL,
+                                   qdb_file_ver, bdberr);
 }
 
 int bdb_rebuild_done(bdb_state_type *bdb_state)
