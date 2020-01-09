@@ -23,6 +23,7 @@
 #include <unistd.h>
 #include <poll.h>
 #include <plhash.h>
+#include <sys/time.h>
 #include <ctrace.h>
 #include "comdb2.h"
 #include "osqlcheckboard.h"
@@ -34,7 +35,7 @@
 #include "osqlrepository.h"
 #include "bdb_api.h"
 #include "comdb2uuid.h"
-#include <net_types.h>
+#include "net_types.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
@@ -43,20 +44,18 @@
 #define SQLHERR_MASTER_TIMEOUT -109
 
 typedef struct osql_checkboard {
-
-    hash_t *
-        rqs; /* all the sql thread processing a blocksql are registered here */
+    hash_t * rqs; /* sql threads processing a blocksql are registered here */
     hash_t *rqsuuid;         /* like above, but register by uuid */
-    pthread_mutex_t checkboard_mtx; /* protect all the requests */
+    pthread_mutex_t mtx; /* protect all the requests */
 
 } osql_checkboard_t;
 
 static osql_checkboard_t *checkboard = NULL;
 
-/* will get rdlock on checkboard->checkboard_mtx if parameter lock is set
- * if caller already has checkboard_mtx, call this func with lock = false
+/* will get rdlock on checkboard->mtx if parameter lock is set
+ * if caller already has mtx, call this func with lock = false
  *
- * If calling with lock == false, make sure you don't dereference 
+ * NB: If calling with lock == false, make sure you don't dereference 
  * pointer returned because it may be freed from under you.
  */
 static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
@@ -65,7 +64,7 @@ static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
     osql_sqlthr_t *entry = NULL;
 
     if (lock)
-        Pthread_mutex_lock(&checkboard->checkboard_mtx);
+        Pthread_mutex_lock(&checkboard->mtx);
 
     if (rqid == OSQL_RQID_USE_UUID)
         entry = hash_find_readonly(checkboard->rqsuuid, uuid);
@@ -73,7 +72,7 @@ static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
         entry = hash_find_readonly(checkboard->rqs, &rqid);
 
     if (lock)
-        Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+        Pthread_mutex_unlock(&checkboard->mtx);
     return entry;
 }
 
@@ -86,6 +85,10 @@ int osql_checkboard_init(void)
         return 0;
 
     tmp = (osql_checkboard_t *)calloc(1, sizeof(osql_checkboard_t));
+    if (!tmp) {
+        logmsg(LOGMSG_ERROR, "%s: calloc error\n", __func__);
+        abort();
+    }
 
     tmp->rqs = hash_init(sizeof(unsigned long long));
     if (!tmp->rqs) {
@@ -95,7 +98,7 @@ int osql_checkboard_init(void)
     }
     tmp->rqsuuid = hash_init_o(offsetof(osql_sqlthr_t, uuid), sizeof(uuid_t));
 
-    Pthread_mutex_init(&tmp->checkboard_mtx, NULL);
+    Pthread_mutex_init(&tmp->mtx, NULL);
     checkboard = tmp;
 
     return 0;
@@ -109,6 +112,52 @@ int osql_checkboard_init(void)
  */
 void osql_checkboard_destroy(void) { /* TODO*/ }
 
+/* insert entry into checkerboard */
+static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
+                                           osql_sqlthr_t *entry)
+{
+    int rc = 0;
+    Pthread_mutex_lock(&checkboard->mtx);
+
+    if (entry->rqid == OSQL_RQID_USE_UUID)
+        rc = hash_add(checkboard->rqsuuid, entry);
+    else
+        rc = hash_add(checkboard->rqs, entry);
+
+    Pthread_mutex_unlock(&checkboard->mtx);
+    return rc;
+}
+
+/* delete entry from checkerboard */
+static inline osql_sqlthr_t * delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
+{
+    Pthread_mutex_lock(&checkboard->mtx);
+
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
+    if (!entry) {
+        goto done;
+    }
+    if (osql->rqid == OSQL_RQID_USE_UUID) {
+        int rc = hash_del(checkboard->rqsuuid, entry);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
+                   __func__, entry->rqid, rc);
+    } else {
+        int rc = hash_del(checkboard->rqs, entry);
+        if (rc) {
+            uuidstr_t us;
+            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
+                   __func__, entry->rqid, comdb2uuidstr(osql->uuid, us),
+                   rc);
+        }
+    }
+    /*reset rqid */
+    osql->rqid = 0;
+done:
+    Pthread_mutex_unlock(&checkboard->mtx);
+    return entry;
+}
+
 /**
  * Register an osql thread with the checkboard
  * This allows block processor to query the status
@@ -118,7 +167,6 @@ void osql_checkboard_destroy(void) { /* TODO*/ }
 int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 {
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
-    int rc = 0;
     int retry = 0;
     uuidstr_t us;
 
@@ -170,15 +218,7 @@ int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
     Pthread_mutex_init(&entry->cleanup_mtx, NULL);
     Pthread_cond_init(&entry->cleanup_cond, NULL);
 
-    /* insert entry */
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
-
-    if (entry->rqid == OSQL_RQID_USE_UUID)
-        rc = hash_add(checkboard->rqsuuid, entry);
-    else
-        rc = hash_add(checkboard->rqs, entry);
-
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    int rc = insert_into_checkerboard(checkboard, entry);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
@@ -222,36 +262,13 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     if (clnt->osql.rqid == 0)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
-
-    osql_sqlthr_t *entry =
-        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
+    osql_sqlthr_t *entry = delete_from_checkerboard(checkboard, &clnt->osql);
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->checkboard_mtx);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
                __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         return 0;
     }
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-        rc = hash_del(checkboard->rqsuuid, entry);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
-                   __func__, entry->rqid, rc);
-    } else {
-        rc = hash_del(checkboard->rqs, entry);
-        if (rc) {
-            uuidstr_t us;
-            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
-                   __func__, entry->rqid, comdb2uuidstr(clnt->osql.uuid, us),
-                   rc);
-        }
-    }
-
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
-
-    /*reset rqid */
-    clnt->osql.rqid = 0;
 
     int cnt = 0;
     /* wait till not in use to free; TODO: Can i reuse entry->c_mtx instead? */
@@ -315,11 +332,11 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     if (!checkboard)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
+    Pthread_mutex_lock(&checkboard->mtx);
 
     osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+        Pthread_mutex_unlock(&checkboard->mtx);
         /* This happens naturally for example
            if the client drops the connection while block processor
            is sending back the result
@@ -335,7 +352,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     }
 
     ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     Pthread_mutex_lock(&entry->c_mtx);
 
@@ -361,7 +378,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_cond_signal(&entry->cond);
     Pthread_mutex_unlock(&entry->c_mtx);
-    ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
     Pthread_cond_signal(&entry->cleanup_cond);
 
     return 0;
@@ -394,12 +411,12 @@ void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
     if (!checkboard)
         return;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
+    Pthread_mutex_lock(&checkboard->mtx);
 
     hash_for(checkboard->rqs, func, arg);
     hash_for(checkboard->rqsuuid, func, arg);
 
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 }
 
 static int osql_checkboard_check_request_down_node(void *obj, void *arg)
@@ -555,18 +572,18 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     if (!checkboard)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
+    Pthread_mutex_lock(&checkboard->mtx);
     osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
 
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+        Pthread_mutex_unlock(&checkboard->mtx);
         logmsg(LOGMSG_ERROR,
                "%s: received result for missing session %llu\n", __func__,
                rqid);
         return -2;
     }
     ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
 
     while (!entry->done) {
@@ -605,7 +622,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     }
 
     *xerr = entry->err; // will deep copy err structure
-    ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
     Pthread_cond_signal(&entry->cleanup_cond);
 
     if (xerr->errval)
@@ -626,18 +643,18 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     if (!checkboard)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
+    Pthread_mutex_lock(&checkboard->mtx);
 
     osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+        Pthread_mutex_unlock(&checkboard->mtx);
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
                __func__, rqid, comdb2uuidstr(uuid, us));
         return -1;
     }
 
     ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     Pthread_mutex_lock(&entry->c_mtx);
 
@@ -646,7 +663,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     entry->last_updated = comdb2_time_epochms();
 
     Pthread_mutex_unlock(&entry->c_mtx);
-    ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
     Pthread_cond_signal(&entry->cleanup_cond);
 
     return 0;
@@ -662,12 +679,12 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     if (clnt->osql.rqid == 0)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
+    Pthread_mutex_lock(&checkboard->mtx);
 
     osql_sqlthr_t *entry =
         osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+        Pthread_mutex_unlock(&checkboard->mtx);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
                 clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
@@ -675,7 +692,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     }
 
     ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     Pthread_mutex_lock(&entry->c_mtx);
     entry->last_checked = entry->last_updated =
@@ -687,7 +704,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     bzero(&entry->err, sizeof(entry->err));
     Pthread_mutex_unlock(&entry->c_mtx);
 
-    ATOMIC_ADD32(entry->in_use, -1); /* no need for checkboard_mtx because atomic */
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
     Pthread_cond_signal(&entry->cleanup_cond);
     return 0;
 }
@@ -706,7 +723,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
     if (!checkboard)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->checkboard_mtx);
+    Pthread_mutex_lock(&checkboard->mtx);
 
     osql_sqlthr_t *entry = hash_find_readonly(h, k);
     if (!entry) {
@@ -735,7 +752,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
         Pthread_mutex_lock(&(*clnt)->dtran_mtx);
     }
 
-    Pthread_mutex_unlock(&checkboard->checkboard_mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     return rc;
 }
