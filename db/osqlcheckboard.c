@@ -108,6 +108,47 @@ int osql_checkboard_init(void)
  */
 void osql_checkboard_destroy(void) { /* TODO*/ }
 
+/* insert entry into checkerboard */
+static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
+                                           osql_sqlthr_t *entry)
+{
+    int rc = 0;
+    Pthread_mutex_lock(&checkboard->mtx);
+
+    if (entry->rqid == OSQL_RQID_USE_UUID)
+        rc = hash_add(checkboard->rqsuuid, entry);
+    else
+        rc = hash_add(checkboard->rqs, entry);
+
+    Pthread_mutex_unlock(&checkboard->mtx);
+    return rc;
+}
+
+/* delete entry from checkerboard -- called with checkerboard->mtx held */
+static inline osql_sqlthr_t * delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
+{    
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
+    if (!entry) {
+        goto done;
+    }
+    if (osql->rqid == OSQL_RQID_USE_UUID) {
+        int rc = hash_del(checkboard->rqsuuid, entry);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
+                   __func__, entry->rqid, rc);
+    } else {
+        int rc = hash_del(checkboard->rqs, entry);
+        if (rc) {
+            uuidstr_t us;
+            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
+                   __func__, entry->rqid, comdb2uuidstr(osql->uuid, us),
+                   rc);
+        }
+    }
+done:
+    return entry;
+}
+
 /**
  * Register an osql thread with the checkboard
  * This allows block processor to query the status
@@ -167,15 +208,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
 
-    /* insert entry */
-    Pthread_mutex_lock(&checkboard->mtx);
-
-    if (entry->rqid == OSQL_RQID_USE_UUID)
-        rc = hash_add(checkboard->rqsuuid, entry);
-    else
-        rc = hash_add(checkboard->rqs, entry);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
+    insert_into_checkerboard(checkboard, entry);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
@@ -239,30 +272,13 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         return 0;
 
     Pthread_mutex_lock(&checkboard->mtx);
-
-    osql_sqlthr_t *entry =
-        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
+    osql_sqlthr_t *entry = delete_from_checkerboard(checkboard, &clnt->osql);
     if (!entry) {
         Pthread_mutex_unlock(&checkboard->mtx);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
                __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         return 0;
-    }
-
-    if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
-        rc = hash_del(checkboard->rqsuuid, entry);
-        if (rc)
-            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
-                   __func__, entry->rqid, rc);
-    } else {
-        rc = hash_del(checkboard->rqs, entry);
-        if (rc) {
-            uuidstr_t us;
-            logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
-                   __func__, entry->rqid, comdb2uuidstr(clnt->osql.uuid, us),
-                   rc);
-        }
     }
 
     if (clnt->osql.logsb) {
