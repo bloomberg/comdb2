@@ -94,6 +94,7 @@ static int __dbenv_trigger_subscribe __P((DB_ENV *, const char *,
 static int __dbenv_trigger_unsubscribe __P((DB_ENV *, const char *));
 static int __dbenv_trigger_open __P((DB_ENV *, const char *));
 static int __dbenv_trigger_close __P((DB_ENV *, const char *));
+static int __dbenv_trigger_ispaused __P((DB_ENV *, const char *));
 static int __dbenv_trigger_pause __P((DB_ENV *, const char *));
 static int __dbenv_trigger_unpause __P((DB_ENV *, const char *));
 int __dbenv_apply_log __P((DB_ENV *, unsigned int, unsigned int, int64_t,
