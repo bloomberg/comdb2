@@ -34,15 +34,14 @@
 #include "osqlrepository.h"
 #include "bdb_api.h"
 #include "comdb2uuid.h"
-#include <net_types.h>
-#include <logmsg.h>
+#include "net_types.h"
+#include "logmsg.h"
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
 
 typedef struct osql_checkboard {
-
     hash_t * rqs; /* sql threads processing a blocksql are registered here */
     hash_t *rqsuuid;                /* like above, but register by uuid */
     pthread_mutex_t mtx; /* protect all the requests */
@@ -158,7 +157,6 @@ done:
 int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 {
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
-    int rc = 0;
     int retry = 0;
     uuidstr_t us;
 
@@ -208,11 +206,12 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
 
-    insert_into_checkerboard(checkboard, entry);
+    int rc = insert_into_checkerboard(checkboard, entry);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
+        free(entry);
     }
 
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
@@ -281,6 +280,11 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         return 0;
     }
 
+    /*reset rqid */
+    clnt->osql.rqid = 0;
+
+    Pthread_mutex_unlock(&checkboard->mtx);
+
     if (clnt->osql.logsb) {
         sbuf2close(clnt->osql.logsb);
         clnt->osql.logsb = NULL;
@@ -299,10 +303,6 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&entry->mtx);
     free(entry);
 
-    /*reset rqid */
-    clnt->osql.rqid = 0;
-
-    Pthread_mutex_unlock(&checkboard->mtx);
     return rc;
 }
 
@@ -349,6 +349,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         bzero(&entry->err, sizeof(entry->err));
 
     Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
@@ -367,8 +368,6 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_cond_signal(&entry->cond);
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
 
     return 0;
 }
