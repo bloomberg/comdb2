@@ -897,6 +897,12 @@ int bdb_trigger_close(bdb_state_type *bdb_state)
     return dbenv->trigger_close(dbenv, bdb_state->name);
 }
 
+int bdb_trigger_ispaused(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_ispaused(dbenv, bdb_state->name);
+}
+
 int bdb_trigger_pause(bdb_state_type *bdb_state)
 {
     DB_ENV *dbenv = bdb_state->dbenv;

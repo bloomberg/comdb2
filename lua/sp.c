@@ -173,6 +173,11 @@ static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
 
+#define setup_dbq_ts(ts) do {             \
+    clock_gettime(CLOCK_REALTIME, &(ts)); \
+    (ts).tv_sec += (dbq_delay / 1000);    \
+  while(0);
+
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
     (sizeof(dbconsumer_t) - sizeof(trigger_reg_t) + trigger_reg_sz(spname))
@@ -711,12 +716,14 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
         }
         int rc;
         uint8_t status;
+        struct timespec ts;
         Pthread_mutex_lock(q->lock);
 again:  status = *q->status;
         if (status == TRIGGER_SUBSCRIPTION_OPEN) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
-            sleep(1); // TODO: Perhaps a shorter sleep?
+            setup_dbq_ts(ts);
+            pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
             goto again;
         } else {
             assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
@@ -730,9 +737,7 @@ again:  status = *q->status;
             luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
             return rc;
         }
-        struct timespec ts;
-        clock_gettime(CLOCK_REALTIME, &ts);
-        ts.tv_sec += (dbq_delay / 1000);
+        setup_dbq_ts(ts);
         Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
             // was woken up -- try getting from queue

@@ -339,6 +339,7 @@ __dbenv_init(dbenv)
 	dbenv->trigger_unsubscribe = __dbenv_trigger_unsubscribe;
 	dbenv->trigger_open = __dbenv_trigger_open;
 	dbenv->trigger_close = __dbenv_trigger_close;
+	dbenv->trigger_ispaused = __dbenv_trigger_ispaused;
 	dbenv->trigger_pause = __dbenv_trigger_pause;
 	dbenv->trigger_unpause = __dbenv_trigger_unpause;
 
@@ -1438,6 +1439,20 @@ __dbenv_trigger_close(dbenv, fname)
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
+}
+
+static int
+__dbenv_trigger_ispaused(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	int paused;
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	Pthread_mutex_lock(&t->lock);
+	paused = (t->status == TRIGGER_SUBSCRIPTION_PAUSED);
+	Pthread_mutex_unlock(&t->lock);
+	return paused;
 }
 
 static int

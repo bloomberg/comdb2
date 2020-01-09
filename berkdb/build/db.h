@@ -2582,6 +2582,7 @@ struct __db_env {
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
+	int(*trigger_ispaused) __P((DB_ENV *, const char *));
 	int(*trigger_pause) __P((DB_ENV *, const char *));
 	int(*trigger_unpause) __P((DB_ENV *, const char *));
 
