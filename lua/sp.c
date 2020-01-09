@@ -710,8 +710,9 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
             return -1;
         }
         int rc;
+        uint8_t status;
         Pthread_mutex_lock(q->lock);
-again:  uint8_t status = *q->status;
+again:  status = *q->status;
         if (status == TRIGGER_SUBSCRIPTION_OPEN) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
