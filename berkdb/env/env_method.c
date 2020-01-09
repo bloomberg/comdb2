@@ -1371,22 +1371,22 @@ __dbenv_get_durable_lsn(dbenv, lsnp, generation)
 }
 
 static int
-__dbenv_trigger_subscribe(dbenv, fname, cond, lock, open)
+__dbenv_trigger_subscribe(dbenv, fname, cond, lock, status)
 	DB_ENV *dbenv;
 	const char *fname;
 	pthread_cond_t **cond;
 	pthread_mutex_t **lock;
-	const uint8_t **open;
+	const uint8_t **status;
 {
 	int rc = 1;
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
-	if (t->open) {
+	if (t->status) {
 		++t->active;
 		*cond = &t->cond;
 		*lock = &t->lock;
-		*open = &t->open;
+		*status = &t->status;
 		rc = 0;
 	}
 	Pthread_mutex_unlock(&t->lock);
@@ -1413,7 +1413,7 @@ __dbenv_trigger_open(dbenv, fname)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
-	t->open = 1;
+	t->status = 1;
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
@@ -1427,7 +1427,7 @@ __dbenv_trigger_close(dbenv, fname)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
-	t->open = 0;
+	t->status = 0;
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;

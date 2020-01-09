@@ -366,7 +366,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     void *fnddta;
     size_t fnddtalen;
     size_t fnddtaoff;
-    const uint8_t *open;
+    const uint8_t *status;
     pthread_mutex_t *mu;
     pthread_cond_t *cond;
 
@@ -374,7 +374,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     iq.usedb = table;
     genid = 0;
 
-    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &open);
+    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &status);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR,
                "dbq_get_front_genid: bdb_trigger_subscribe "
@@ -384,7 +384,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     }
     Pthread_mutex_lock(mu);
 
-    if (*open != 1) {
+    if (*status != 1) {
         goto skip;
     }
 

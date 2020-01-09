@@ -158,7 +158,7 @@ typedef struct {
     /* signaling from libdb on qdb insert */
     pthread_mutex_t *lock;
     pthread_cond_t *cond;
-    const uint8_t *open;
+    const uint8_t *status;
     trigger_reg_t info; // must be last in struct
 } dbconsumer_t;
 
@@ -188,7 +188,7 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     // memcpy because variable size struct breaks fortify checks in strcpy.
     memcpy(q->info.spname, info->spname, spname_len + 1);
     strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
-    return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->open);
+    return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->status);
 }
 
 static int db_emiterror(lua_State *lua);
@@ -471,7 +471,7 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
 {
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
-        if (*q->open) {
+        if (*q->status) {
             bdb_trigger_unsubscribe(q->iq.usedb->handle);
         }
         Pthread_mutex_unlock(q->lock);
@@ -711,7 +711,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
         }
         int rc;
         Pthread_mutex_lock(q->lock);
-again:  if (*q->open) {
+again:  if (*q->status) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
             Pthread_mutex_unlock(q->lock);

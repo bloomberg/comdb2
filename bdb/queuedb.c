@@ -873,10 +873,10 @@ const struct bdb_queue_stats *bdb_queuedb_get_stats(bdb_state_type *bdb_state)
 }
 
 int bdb_trigger_subscribe(bdb_state_type *bdb_state, pthread_cond_t **cond,
-                          pthread_mutex_t **lock, const uint8_t **open)
+                          pthread_mutex_t **lock, const uint8_t **status)
 {
     DB_ENV *dbenv = bdb_state->dbenv;
-    return dbenv->trigger_subscribe(dbenv, bdb_state->name, cond, lock, open);
+    return dbenv->trigger_subscribe(dbenv, bdb_state->name, cond, lock, status);
 }
 
 int bdb_trigger_unsubscribe(bdb_state_type *bdb_state)
