@@ -384,7 +384,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     }
     Pthread_mutex_lock(mu);
 
-    if (*status != 1) {
+    if (*status != TRIGGER_SUBSCRIPTION_OPEN) {
         goto skip;
     }
 

@@ -1,11 +1,7 @@
 #ifndef INCLUDED_QUEUEDB_H
 #define INCLUDED_QUEUEDB_H
 
-enum bdb_trigger_subscription_status {
-    BDB_TRIGGER_SUBSCRIPTION_CLOSED,
-    BDB_TRIGGER_SUBSCRIPTION_OPEN,
-    BDB_TRIGGER_SUBSCRIPTION_PAUSED
-};
+#include "trigger_sub_status.h"
 
 int bdb_queuedb_create_cron(void *);
 
@@ -56,5 +52,7 @@ int bdb_trigger_subscribe(bdb_state_type *, pthread_cond_t **,
 int bdb_trigger_unsubscribe(bdb_state_type *);
 int bdb_trigger_open(bdb_state_type *);
 int bdb_trigger_close(bdb_state_type *);
+int bdb_trigger_pause(bdb_state_type *);
+int bdb_trigger_unpause(bdb_state_type *);
 
 #endif
