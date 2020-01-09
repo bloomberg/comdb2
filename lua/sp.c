@@ -176,7 +176,7 @@ static void reset_sp(SP);
 #define setup_dbq_ts(ts) do {             \
     clock_gettime(CLOCK_REALTIME, &(ts)); \
     (ts).tv_sec += (dbq_delay / 1000);    \
-  while(0);
+  } while(0);
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
