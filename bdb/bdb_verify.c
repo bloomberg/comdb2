@@ -37,9 +37,8 @@ extern void fsnapf(FILE *, void *, int);
 extern int peer_dropped_connection_sb(SBUF2 *sb);
 extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
 
-
 /* use lua_callback if it is available to print
- * otherwise if sb is available print to sb and flush 
+ * otherwise if sb is available print to sb and flush
  */
 static int locprint(verify_common_t *par, char *fmt, ...)
 {
@@ -60,15 +59,16 @@ static int locprint(verify_common_t *par, char *fmt, ...)
         }
         return rc;
     }
-    
+
     if (par->sb) {
         if (wrote < sizeof(lbuf) - 1)
             strcat(lbuf, "\n");
         int rc = sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
-        if (rc) return rc;
+        if (rc)
+            return rc;
         rc = sbuf2flush(par->sb) >= 0 ? 0 : -1;
         return rc;
-    } 
+    }
     return -1;
 }
 
@@ -199,7 +199,7 @@ ret:
 }
 
 /* Check client connection and print progress, called for every item verified
- * Every second will client connection will be checked if it dropped 
+ * Every second will client connection will be checked if it dropped
  * Print progress report report every progress_report_seconds
  */
 static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
@@ -223,7 +223,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 
     // one of the threads gets here every second, and we want to skip printing
     // if progress_report_seconds is zero or if the time passed is not enough
-    if (!par->progress_report_seconds || 
+    if (!par->progress_report_seconds ||
         (++par->progress_report_counter) % par->progress_report_seconds != 0)
         goto out;
 
@@ -235,8 +235,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
     } else {
         unsigned long long delta = par->items_processed - par->saved_progress;
         locprint(par, "!verify: processed %lld items, %lld per second",
-                 par->items_processed,
-                 delta / par->progress_report_seconds);
+                 par->items_processed, delta / par->progress_report_seconds);
         par->saved_progress = par->items_processed;
     }
 
@@ -770,7 +769,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     dtafile = get_dtafile_from_genid(genid);
                     if (dtafile < 0) {
                         locprint(par, "!%016llx unknown dtafile",
-                                    genid_flipped);
+                                 genid_flipped);
                         goto next_key;
                     }
                     blobdb =
@@ -779,7 +778,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                     if (rc) {
                         locprint(par, "!%016llx cursor on blob %d rc %d",
-                                    genid_flipped, blobno, rc);
+                                 genid_flipped, blobno, rc);
                         goto next_key;
                     }
 
@@ -804,35 +803,32 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                         if (blobsizes[blobno] != -1 &&
                             blobsizes[blobno] != -2) {
                             locprint(par,
-                                        "!%016llx no blob %d found "
-                                        "expected sz %d",
-                                        genid_flipped, blobno,
-                                        blobsizes[blobno]);
+                                     "!%016llx no blob %d found expected sz %d",
+                                     genid_flipped, blobno, blobsizes[blobno]);
                         }
                     } else if (rc) {
-                        locprint(par, "!%016llx blob %d rc %d",
-                                    genid_flipped, blobno, rc);
+                        locprint(par, "!%016llx blob %d rc %d", genid_flipped,
+                                 blobno, rc);
                     }
 
                     if (rc == 0) {
                         realblobsz[blobno] = dbt_blob_data.size;
                         if (blobsizes[blobno] == -1) {
                             locprint(par,
-                                        "!%016llx blob %d null but found blob",
-                                        genid_flipped, blobno);
+                                     "!%016llx blob %d null but found blob",
+                                     genid_flipped, blobno);
                         } else if (blobsizes[blobno] == -2) {
                             locprint(par,
-                                        "!%016llx blob %d size %d expected "
-                                        "none (inline vutf8)",
-                                        genid_flipped, blobno,
-                                        realblobsz[blobno]);
+                                     "!%016llx blob %d size %d expected "
+                                     "none (inline vutf8)",
+                                     genid_flipped, blobno, realblobsz[blobno]);
                         } else if (blobsizes[blobno] != -1 &&
                                    dbt_blob_data.size != blobsizes[blobno]) {
                             locprint(par,
-                                        "!%016llx blob %d size "
-                                        "mismatch got %d expected %d",
-                                        genid_flipped, blobno,
-                                        dbt_blob_data.size, blobsizes[blobno]);
+                                     "!%016llx blob %d size "
+                                     "mismatch got %d expected %d",
+                                     genid_flipped, blobno, dbt_blob_data.size,
+                                     blobsizes[blobno]);
                         }
 
                         if (blobsizes[blobno] >= 0 && realblobsz[blobno] >= 0) {
@@ -1136,7 +1132,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe &&
-            !par->client_dropped_connection; dtastripe++) {
+                            !par->client_dropped_connection;
+         dtastripe++) {
         char header[256];
         snprintf(header, sizeof(header), "verifying dtastripe %d", dtastripe);
         par->header = header;
@@ -1148,8 +1145,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     }
 
     /* scan 2: scan each key, verify data exists */
-    for (int ix = 0; ix < par->bdb_state->numix && 
-            !par->client_dropped_connection; ix++) {
+    for (int ix = 0;
+         ix < par->bdb_state->numix && !par->client_dropped_connection; ix++) {
         par->records_processed = 0;
         par->nrecs_progress = 0;
         char header[256];
@@ -1162,8 +1159,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 
     /* scan 3: scan each blob, verify data exists */
     int nblobs = get_numblobs(par->db_table);
-    for (int blobno = 0; blobno < nblobs &&
-            !par->client_dropped_connection; blobno++) {
+    for (int blobno = 0; blobno < nblobs && !par->client_dropped_connection;
+         blobno++) {
         par->records_processed = 0;
         par->nrecs_progress = 0;
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
@@ -1237,17 +1234,17 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work,
 /* Enqueue work object onto verify_thdpool
  * If verify_thdpool is NULL then processing occurs sequentially.
  */
-static inline void enqueue_work(td_processing_info_t *work,
-                                const char * desc, thdpool *verify_thdpool)
+static inline void enqueue_work(td_processing_info_t *work, const char *desc,
+                                thdpool *verify_thdpool)
 {
     // this function is called sequentially, no need for atomics
     work->common_params->threads_spawned++;
 
     if (verify_thdpool) {
         char *desc_copy = strdup(desc);
-        int rc = thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp,
-                                 work, 0, desc_copy, THDPOOL_FORCE_QUEUE,
-                                 PRIORITY_T_DEFAULT);
+        int rc =
+            thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp, work, 0,
+                            desc_copy, THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:thdpool_enqueue error, proceeding sequentially\n",
@@ -1275,16 +1272,22 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
     const char *tp = "";
     switch (v_mode) {
     case VERIFY_PARALLEL:
-        tp = "in parallel"; break;
+        tp = "in parallel";
+        break;
     case VERIFY_DATA:
-        tp = "DATA in parallel"; break;
+        tp = "DATA in parallel";
+        break;
     case VERIFY_INDICES:
-        tp = "INDICES in parallel"; break;
+        tp = "INDICES in parallel";
+        break;
     case VERIFY_BLOBS:
-        tp = "BLOBS in parallel"; break;
+        tp = "BLOBS in parallel";
+        break;
     case VERIFY_SERIAL:
-        tp = "in serial"; break;
-    default: abort();
+        tp = "in serial";
+        break;
+    default:
+        abort();
     };
     char desc[512] = {0};
     snprintf(desc, sizeof(desc) - 1, "Verify %s %s mode\n", par->tablename, tp);

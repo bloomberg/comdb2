@@ -487,7 +487,8 @@ int authenticate_cursor(BtCursor *pCur, int how)
 
 inline int peer_dropped_connection_sb(SBUF2 *sb)
 {
-    if (!sb) return 0;
+    if (!sb)
+        return 0;
 
     int rc;
     struct pollfd fd = {0};

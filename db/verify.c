@@ -317,7 +317,7 @@ static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
 }
 
 /* verify table main entry point called both by lua/syssp.c
- * and by verify_table() which is called by bb plugins 
+ * and by verify_table() which is called by bb plugins
  */
 int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
                       int attempt_fix,
@@ -368,7 +368,7 @@ int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
 
     // wait for all our enqueued work items to complete for this verify
     while (par.threads_spawned > par.threads_completed) {
-        if (!par.client_dropped_connection && 
+        if (!par.client_dropped_connection &&
             peer_dropped_connection_sb(par.sb)) {
             logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
             par.client_dropped_connection = 1;
