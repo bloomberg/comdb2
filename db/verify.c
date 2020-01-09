@@ -14,32 +14,12 @@
    limitations under the License.
  */
 
-#include <errno.h>
-#include <string.h>
-#include <strings.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <netinet/in.h>
-
-#include <epochlib.h>
-#include <sbuf2.h>
-
-#include "comdb2.h"
-#include "tag.h"
-#include "verify.h"
-#include "segstr.h"
-
-#include <bdb_api.h>
-#include <bdb_verify.h>
-#include <bdb/locks.h>
 #include <unistd.h>
+#include "comdb2.h"
+#include "verify.h"
+#include "bdb_verify.h"
 
 struct thdpool *gbl_verify_thdpool;
-static int parallel_verify_table(const char *table, SBUF2 *sb,
-                                 int progress_report_seconds, int attempt_fix,
-                                 int (*lua_callback)(void *, const char *),
-                                 void *lua_params, verify_mode_t mode);
-
 static pthread_once_t once = PTHREAD_ONCE_INIT;
 
 struct verify_thd_state {
@@ -75,6 +55,7 @@ void init_verify_thdpool(void)
     thdpool_set_maxqueue(gbl_verify_thdpool, 100);
     thdpool_set_mem_size(gbl_verify_thdpool, 4 * 1024);
 }
+
 void dump_record_by_rrn_genid(struct dbtable *db, int rrn, unsigned long long genid)
 {
     int rc;
@@ -335,128 +316,14 @@ static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
     return bdb_lock_tablename_read(thedb->bdb_env, table, loctran);
 }
 
-static int verify_table_int(const char *table, SBUF2 *sb,
-                            int progress_report_seconds, int attempt_fix,
-                            int (*lua_callback)(void *, const char *),
-                            void *lua_params)
-{
-    int bdberr;
-    int rc;
-    tran_type *tran = NULL;
-    struct dbtable *db = NULL;
-
-    rdlock_schema_lk();
-    rc = get_tbl_and_lock_in_tran(table, sb, &db, &tran);
-    unlock_schema_lk();
-
-    if (rc) {
-        logmsg(LOGMSG_INFO, "Readlock table %s %d\n", table, rc);
-        if (sb)
-            sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
-        rc = 1;
-        goto done;
-    }
-
-    assert(tran && "tran is null but should not be");
-    assert(db && "db is null but should not be");
-    verify_common_t par = {
-        .sb = sb,
-        .bdb_state = db->handle,
-        .db_table = db,
-        .formkey_callback = verify_formkey_callback,
-        .get_blob_sizes_callback = verify_blobsizes_callback,
-        .vtag_callback =
-            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
-        .add_blob_buffer_callback = verify_add_blob_buffer_callback,
-        .free_blob_buffer_callback = verify_free_blob_buffer_callback,
-        .verify_indexes_callback = verify_indexes_callback,
-        .lua_callback = lua_callback,
-        .lua_params = lua_params,
-        .progress_report_seconds = progress_report_seconds,
-        .attempt_fix = attempt_fix};
-    rc = bdb_verify(&par); // non-parallel version
-
-done:
-    if (tran)
-        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-
-    if (rc) {
-        logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb)
-            sbuf2printf(sb, "FAILED\n");
-    } else if (sb)
-        sbuf2printf(sb, "SUCCESS\n");
-
-    sbuf2flush(sb);
-    return rc;
-}
-
-struct verify_args {
-    pthread_t tid;
-    const char *table;
-    SBUF2 *sb;
-    int progress_report_seconds;
-    int attempt_fix;
-    int rcode;
-    int (*lua_callback)(void *, const char *);
-    void *lua_params;
-};
-
-static void *verify_td(void *arg)
-{
-    struct verify_args *v = (struct verify_args *)arg;
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-    v->rcode = verify_table_int(v->table, v->sb, v->progress_report_seconds,
-                                v->attempt_fix, v->lua_callback, v->lua_params);
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
-    return NULL;
-}
-
+/* verify table main entry point called both by lua/syssp.c
+ * and by verify_table() which is called by bb plugins
+ */
 int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
                       int attempt_fix,
                       int (*lua_callback)(void *, const char *),
                       void *lua_params, verify_mode_t mode)
 {
-    if (mode != VERIFY_SERIAL)
-        return parallel_verify_table(table, sb, progress_report_seconds,
-                                     attempt_fix, lua_callback, lua_params,
-                                     mode);
-
-    int rc;
-    struct verify_args v;
-    pthread_attr_t attr;
-    size_t stacksize;
-    v.table = table;
-    v.sb = sb;
-    v.progress_report_seconds = progress_report_seconds;
-    v.attempt_fix = attempt_fix;
-    v.lua_callback = lua_callback;
-    v.lua_params = lua_params;
-    v.rcode = 0;
-
-    stacksize = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_VERIFY_THREAD_STACKSZ);
-    Pthread_attr_init(&attr);
-    Pthread_attr_setstacksize(&attr, stacksize);
-
-    if ((rc = pthread_create(&v.tid, &attr, verify_td, &v))) {
-        logmsg(LOGMSG_ERROR, "%s unable to create thread for verify: %s\n",
-               __func__, strerror(errno));
-        sbuf2printf(sb, "FAILED\n");
-        Pthread_attr_destroy(&attr);
-        return -1;
-    }
-
-    pthread_join(v.tid, NULL);
-
-    Pthread_attr_destroy(&attr);
-    return v.rcode;
-}
-
-static int parallel_verify_table(const char *table, SBUF2 *sb,
-                                 int progress_report_seconds, int attempt_fix,
-                                 int (*lua_callback)(void *, const char *),
-                                 void *lua_params, verify_mode_t mode)
-{
     int rc;
     int bdberr;
     tran_type *tran = NULL;
@@ -468,7 +335,7 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
 
     if (rc) {
         logmsg(LOGMSG_INFO, "Readlock table %s %d\n", table, rc);
-        if (sb)
+        if (sb && !lua_callback)
             sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
         rc = 1;
         goto done;
@@ -501,7 +368,8 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
 
     // wait for all our enqueued work items to complete for this verify
     while (par.threads_spawned > par.threads_completed) {
-        if (!par.client_dropped_connection && bdb_dropped_connection(par.sb)) {
+        if (!par.client_dropped_connection &&
+            peer_dropped_connection_sb(par.sb)) {
             logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
             par.client_dropped_connection = 1;
         }
@@ -513,15 +381,17 @@ done:
 
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb)
+        if (sb && !lua_callback)
             sbuf2printf(sb, "FAILED\n");
-    } else if (sb)
+    } else if (sb && !lua_callback)
         sbuf2printf(sb, "SUCCESS\n");
 
-    sbuf2flush(sb);
+    if (!lua_callback)
+        sbuf2flush(sb);
     return par.verify_status;
 }
 
+/* used by bb plugins */
 inline int verify_table(const char *table, SBUF2 *sb,
                         int progress_report_seconds, int attempt_fix,
                         int (*lua_callback)(void *, const char *),
