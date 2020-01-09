@@ -486,16 +486,12 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
 bdb_state_type *bdb_create_queue(const char name[], const char dir[],
                                  int item_size, int pagesize,
                                  bdb_state_type *parent_bdb_state,
-                                 int isqueuedb,
-                                 unsigned long long qdb_file_ver,
-                                 int *bdberr);
+                                 int isqueuedb, int *bdberr);
 bdb_state_type *bdb_create_queue_tran(tran_type *, const char name[],
                                       const char dir[], int item_size,
                                       int pagesize,
                                       bdb_state_type *parent_bdb_state,
-                                      int isqueuedb,
-                                      unsigned long long qdb_file_ver,
-                                      int *bdberr);
+                                      int isqueuedb, int *bdberr);
 
 /* create a lite table */
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],

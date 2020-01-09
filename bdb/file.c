@@ -6404,9 +6404,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
                                       const char dir[], int item_size,
                                       int pagesize,
                                       bdb_state_type *parent_bdb_state,
-                                      int isqueuedb,
-                                      unsigned long long qdb_file_ver,
-                                      int *bdberr)
+                                      int isqueuedb, int *bdberr)
 {
     DB_TXN *tid = tran ? tran->tid : NULL;
     bdb_state_type *bdb_state, *ret = NULL;
@@ -6434,8 +6432,7 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
         0,                    /* upgrade */
         1,                    /* create */
         bdberr, parent_bdb_state, pagesize, /* pagesize override */
-        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL, 0,
-        qdb_file_ver);
+        isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE, tid, 0, NULL, 0, 0);
 
     BDB_RELLOCK();
 
@@ -6445,13 +6442,10 @@ bdb_state_type *bdb_create_queue_tran(tran_type *tran, const char name[],
 bdb_state_type *bdb_create_queue(const char name[], const char dir[],
                                  int item_size, int pagesize,
                                  bdb_state_type *parent_bdb_state,
-                                 int isqueuedb,
-                                 unsigned long long qdb_file_ver,
-                                 int *bdberr)
+                                 int isqueuedb, int *bdberr)
 {
     return bdb_create_queue_tran(NULL, name, dir, item_size, pagesize,
-                                 parent_bdb_state, isqueuedb, qdb_file_ver,
-                                 bdberr);
+                                 parent_bdb_state, isqueuedb, bdberr);
 }
 
 bdb_state_type *bdb_create_more_lite(const char name[], const char dir[],

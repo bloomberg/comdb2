@@ -147,7 +147,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         /* I am master: create new db */
         newdb->handle =
             bdb_create_queue(newdb->tablename, thedb->basedir, avgitemsz,
-                             pagesize, thedb->bdb_env, 0, 0, &bdberr);
+                             pagesize, thedb->bdb_env, 0, &bdberr);
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle =
@@ -424,7 +424,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* I am master: create new db */
         db->handle =
             bdb_create_queue_tran(tran, db->tablename, thedb->basedir, 65536,
-                                  65536, thedb->bdb_env, 1, 0, &bdberr);
+                                  65536, thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
