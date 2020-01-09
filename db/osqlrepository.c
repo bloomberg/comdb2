@@ -32,16 +32,14 @@
 #include "tohex.h"
 #include "comdb2_atomic.h"
 
-struct osql_repository {
-
+typedef struct osql_repository {
     hash_t *rqs; /* hash of outstanding requests */
     hash_t *rqsuuid;
     pthread_mutex_t hshlck; /* protect the hash */
-    pthread_mutex_t cancelall_mtx; /* cancelall mutex */
-    struct dbenv *dbenv; /* dbenv */
+    struct dbenv *dbenv;    /* dbenv */
     int cancelall; /* set this if we want to prevent new blocksqls */
 
-};
+} osql_repository_t;
 
 static osql_repository_t *theosql_obj = NULL;
 
