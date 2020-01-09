@@ -6365,9 +6365,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     int item_size, int pagesize,
                                     bdb_state_type *parent_bdb_state,
-                                    int isqueuedb,
-                                    unsigned long long qdb_file_ver,
-                                    tran_type *tran, int *bdberr)
+                                    int isqueuedb, tran_type *tran, int *bdberr)
 {
     bdb_state_type *bdb_state, *ret = NULL;
 
@@ -6395,7 +6393,7 @@ bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                      parent_bdb_state->attr->createdbs,  /* create */
                      bdberr, parent_bdb_state, pagesize, /* pagesize override */
                      isqueuedb ? BDBTYPE_QUEUEDB : BDBTYPE_QUEUE,
-                     tran ? tran->tid : NULL, 0, NULL, 0, qdb_file_ver);
+                     tran ? tran->tid : NULL, 0, NULL, 0, 0);
 
     BDB_RELLOCK();
 

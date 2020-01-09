@@ -480,9 +480,7 @@ bdb_state_type *bdb_open_more_lite(const char name[], const char dir[], int lrl,
 bdb_state_type *bdb_open_more_queue(const char name[], const char dir[],
                                     int item_size, int pagesize,
                                     bdb_state_type *parent_bdb_state,
-                                    int isqueuedb,
-                                    unsigned long long qdb_file_ver,
-                                    tran_type *, int *bdberr);
+                                    int isqueuedb, tran_type *, int *bdberr);
 
 /* create a new queue */
 bdb_state_type *bdb_create_queue(const char name[], const char dir[],
