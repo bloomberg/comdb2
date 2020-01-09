@@ -724,6 +724,11 @@ again:  status = *q->status;
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
             setup_dbq_ts(ts);
             pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
+            Pthread_mutex_unlock(q->lock);
+            if (stop_waiting(L, q)) {
+                return -1;
+            }
+            Pthread_mutex_lock(q->lock);
             goto again;
         } else {
             assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
