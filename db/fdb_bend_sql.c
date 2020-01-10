@@ -417,6 +417,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
                 logmsg(LOGMSG_ERROR, "%s: failed %s rc=%d bdberr=%d\n", __func__,
                         (rc == SQLITE_OK) ? "commit" : "abort", irc, bdberr);
             }
+            clnt->dbtran.shadow_tran = NULL;
         }
     }
 

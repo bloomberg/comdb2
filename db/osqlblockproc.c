@@ -1444,8 +1444,10 @@ void *bplog_commit_timepart_resuming_sc(void *p)
 
 abort_sc:
     logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
-    if (iq.sc_tran)
+    if (iq.sc_tran) {
         trans_abort(&iq, iq.sc_tran);
+        iq.sc_tran = NULL;
+    }
     backout_schema_changes(&iq, parent_trans);
     if (iq.sc_locked) {
         unlock_schema_lk();

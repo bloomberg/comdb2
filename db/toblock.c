@@ -2103,12 +2103,14 @@ static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
     int rc = 0;
 
     rc = trans_abort(iq, *trans);
+    *trans = NULL;
     if (rc) {
         logmsg(LOGMSG_ERROR, "aborting transaction failed\n");
         error = 1;
     }
     if (parent_trans && *parent_trans) {
         rc = trans_abort(iq, *parent_trans);
+        *parent_trans = NULL;
         if (rc) {
             logmsg(LOGMSG_ERROR, "aborting parent transaction failed\n");
             error = 1;
@@ -2116,9 +2118,6 @@ static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
     }
 
     *osql_needtransaction = OSQL_BPLOG_NOTRANS;
-    if (parent_trans)
-        *parent_trans = NULL;
-    *trans = NULL;
 
     return error;
 }
@@ -2402,6 +2401,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
     if (rowlocks) {
         assert(parent);
         rc = trans_abort(iq, bdb_get_physical_tran(parent));
+        bdb_reset_physical_tran(parent);
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
                    __LINE__, rc);
@@ -5607,6 +5607,7 @@ add_blkseq:
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                    parent_trans = NULL;
                 }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:

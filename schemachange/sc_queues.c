@@ -709,11 +709,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
     if (!same_tran) {
         rc = trans_commit(&iq, tran, gbl_myhostname);
+        tran = NULL;
         if (rc) {
             sbuf2printf(sb, "!Failed to commit transaction\n");
             goto done;
         }
-        tran = NULL;
     }
 
     /* log for replicants to do the same */
@@ -766,11 +766,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         if (!same_tran) {
             rc = trans_commit(&iq, tran, gbl_myhostname);
+            tran = NULL;
             if (rc) {
                 sbuf2printf(sb, "!Failed to commit transaction\n");
                 goto done;
             }
-            tran = NULL;
         }
     }
 
@@ -782,12 +782,12 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
         rc = trans_commit(&iq, ltran, gbl_myhostname);
+        tran = NULL;
+        ltran = NULL;
         if (rc || bdberr != BDBERR_NOERROR) {
             sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
             goto done;
         }
-        tran = NULL;
-        ltran = NULL;
     }
 
     if (sc->addonly || sc->alteronly) {

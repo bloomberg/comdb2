@@ -4735,7 +4735,6 @@ int sqlite3BtreeCommit(Btree *pBt)
 
             if (!rc) {
                 irc = trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
-                clnt->dbtran.shadow_tran = NULL;
             } else {
                 irc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran,
                                          &bdberr);
@@ -4744,6 +4743,7 @@ int sqlite3BtreeCommit(Btree *pBt)
                 logmsg(LOGMSG_ERROR, "%s: commit failed rc=%d bdberr=%d\n", __func__,
                         irc, bdberr);
             }
+            clnt->dbtran.shadow_tran = NULL;
         }
 
         /* UPSERT: Restore the isolation level back to what it was. */
@@ -4785,7 +4785,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         if (clnt->dbtran.shadow_tran) {
             rc = serial_commit(clnt, thd, clnt->tzname);
             if (!rc) {
-                if (clnt->dbtran.shadow_tran) {
+                if (clnt->dbtran.shadow_tran) { // TODO: NULL possible here?  Maybe from serial_commit?
                     irc =
                         trans_commit_shadow(clnt->dbtran.shadow_tran, &bdberr);
                 }
