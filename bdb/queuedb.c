@@ -150,6 +150,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                     err->errval, err->errstr);
         }
     }
+    if (gbl_queuedb_file_threshold <= 0) return NULL;
     if ((dbenv == NULL) || (dbenv->master != gbl_mynode)) return NULL;
     bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_START_RDWR);
     for (int i = 0; i < dbenv->num_qdbs; i++) {

@@ -476,7 +476,7 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
 {
     if (q->lock) {
         Pthread_mutex_lock(q->lock);
-        if (*q->status) {
+        if (*q->status != TRIGGER_SUBSCRIPTION_CLOSED) {
             bdb_trigger_unsubscribe(q->iq.usedb->handle);
         }
         Pthread_mutex_unlock(q->lock);
