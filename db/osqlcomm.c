@@ -7271,17 +7271,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
+    int rc = 0;
+    struct ireq *iq = NULL;
     uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
     if (!malcd)
         goto done;
 
     osql_sess_t *sess = NULL;
-    struct ireq *iq = NULL;
     osql_req_t req;
     bool is_reorder_on = false;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
-    int rc = 0;
     uint8_t *p_buf = malcd;
     const uint8_t *p_buf_end = p_buf + OSQL_BP_MAXLEN;
     char *sql;
