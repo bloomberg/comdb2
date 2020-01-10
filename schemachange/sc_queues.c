@@ -535,6 +535,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * file handle is stil open on the
      * replicant until the scdone, and we can't delete it until it's closed. */
     if (sc->drop_table) {
+        assert(tran == NULL);
         rc = trans_start(&iq, NULL, (void *)&tran);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
