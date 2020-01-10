@@ -97,10 +97,8 @@ int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
    }
 #endif
 
-    /*
-       wait for all receivers to go away (in current implem, this is only 1, the
-       reader_thread
-       since we removed the hash entry, no new messages are added
+    /* wait for all receivers to go away, in current implem this is only 1--the
+       reader_thread, since we removed the hash entry no new messages are added
      */
     if (!rc) {
         while (ATOMIC_LOAD32(sess->clients) > 0) {
@@ -172,11 +170,10 @@ int osql_sess_addclient(osql_sess_t *sess)
 }
 
 /**
- * Register client
- * Prevent temporary the session destruction
- *
+ * UnRegister client -- atomically decrement client count
+ * After this session may be destroyed
  */
-int osql_sess_remclient(osql_sess_t *sess)
+inline int osql_sess_remclient(osql_sess_t *sess)
 {
 #if 0
    uuidstr_t us;
@@ -188,8 +185,9 @@ int osql_sess_remclient(osql_sess_t *sess)
     int loc_clients = ATOMIC_ADD32(sess->clients, -1);
 
     if (loc_clients < 0) {
+        abort(); // remove this in future
         uuidstr_t us;
-        fprintf(stderr,
+        logmsg(LOGMSG_ERROR,
                 "%s: BUG ALERT, session %llu %s freed one too many times\n",
                 __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
@@ -693,8 +691,11 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 {
     int rc = 0;
     sess->terminate = OSQL_TERMINATE;
-    rc = osql_repository_rem(sess, 0, __func__, NULL,
-                             __LINE__); /* already have exclusive lock */
+    Pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->mtx);
+
+    const int need_lock = 0; /* already have exclusive lock for osql hash */
+    rc = osql_repository_rem(sess, need_lock, __func__, NULL, __LINE__);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to remove session from repository rc=%d\n", __func__,
@@ -710,6 +711,8 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 
 /**
  * Terminate a session if the session is not yet completed/dispatched
+ * we come here from osql_repository_add() if already in osql hash map
+ * which can happen in case there is an early replay
  * Return 0 if session is successfully terminated,
  *        -1 for errors,
  *        1 otherwise (if session was already processed)
