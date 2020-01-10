@@ -74,8 +74,15 @@ static void save_sql(struct ireq *iq, osql_sess_t *sess, const char *sql,
  * receive message from sql thread).
  * Returns 0 if success
  *
- * NOTE: it is possible to inline clean a request on master bounce,
- * which starts by unlinking the session first, and freeing bplog afterwards
+ * This function will remove from osql_repository_rem() if is_linked is set
+ * then wait till there are no more clients using this sess then destroy obj
+ *
+ * NOTE: 
+ * - it is possible to inline clean a request on master bounce,
+ *   which starts by unlinking the session first, and freeing bplog afterwards
+ *
+ * - if caller has already removed sess from osql repository, they should 
+ *   call this function with is_linked = 0
  */
 int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
                        const char *callfunc, int line)
@@ -97,18 +104,17 @@ int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
    }
 #endif
 
+    if (rc)
+        return rc;
+
     /* wait for all receivers to go away, in current implem this is only 1--the
-       reader_thread, since we removed the hash entry no new messages are added
-     */
-    if (!rc) {
-        while (ATOMIC_LOAD32(sess->clients) > 0) {
-            poll(NULL, 0, 10);
-        }
-
-        _destroy_session(psess, 0);
+       reader_thread, since we removed the hash entry no new messages are added */
+    while (ATOMIC_LOAD32(sess->clients) > 0) {
+        poll(NULL, 0, 10);
     }
+    _destroy_session(psess, 0);
 
-    return rc;
+    return 0;
 }
 
 static int free_selectv_genids(void *obj, void *arg)
