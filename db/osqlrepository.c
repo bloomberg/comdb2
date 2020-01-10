@@ -172,12 +172,7 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
             Pthread_rwlock_unlock(&theosql->hshlck);
             return -1;
         }
-        if (rc == 0) {
-            /* old request was terminated successfully, let's add the new one */
-            logmsg(LOGMSG_INFO,
-                   "%s: cancelled old request for rqid=%llx, uuid=%s\n",
-                   __func__, sess->rqid, p);
-        } else {
+        if (rc) {
             /* old request was already processed, ignore new ones */
             Pthread_rwlock_unlock(&theosql->hshlck);
             *replaced = 1;
@@ -186,6 +181,10 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
                    __func__, sess->rqid, p);
             return 0;
         }
+        /* old request was terminated successfully, let's add the new one */
+        logmsg(LOGMSG_INFO,
+               "%s: cancelled old request for rqid=%llx, uuid=%s\n",
+               __func__, sess->rqid, p);
     }
 
     if (sess->rqid == OSQL_RQID_USE_UUID)
@@ -218,7 +217,7 @@ int gbl_abort_on_missing_osql_session = 0;
  * Remove an osql session from the repository
  * return 0 on success
  */
-int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const char *callfunc, int line)
+int osql_repository_rem(osql_sess_t *sess, const int lock, const char *func, const char *callfunc, int line)
 {
     osql_repository_t *theosql = get_theosql();
     if (theosql == NULL) {
@@ -226,15 +225,18 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
     }
     int rc = 0;
 
-    if (lock) {
+    if (lock)
         Pthread_rwlock_wrlock(&theosql->hshlck);
-    }
 
     if (sess->rqid == OSQL_RQID_USE_UUID) {
         rc = hash_del(theosql->rqsuuid, sess);
     } else {
         rc = hash_del(theosql->rqs, sess);
     }
+
+    if (lock)
+        Pthread_rwlock_unlock(&theosql->hshlck);
+
 
 #ifdef TRACK_OSQL_SESSIONS
     static uuid_t uuid_list[MAX_UUID_LIST];
@@ -272,15 +274,9 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
             logmsg(LOGMSG_ERROR, "%s unable to find previous uuid %s\n", __func__, p);
         }
         else {
-            logmsg(LOGMSG_ERROR, "%s found %s %d times in tracking array\n", __func__, 
-                    p, found_uuid);
+            logmsg(LOGMSG_ERROR, "%s found %s %d times in tracking array\n", __func__, p, found_uuid);
         }
 #endif
-
-        if (lock) {
-            Pthread_rwlock_unlock(&theosql->hshlck);
-            lock = 0;
-        }
 
         /* This can happen legitimately on master swing */
         if (gbl_abort_on_missing_osql_session)
@@ -296,10 +292,6 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
         current_uuid = ((current_uuid + 1) % MAX_UUID_LIST);
     }
 #endif
-
-    if (lock) {
-        Pthread_rwlock_unlock(&theosql->hshlck);
-    }
 
     return 0;
 }
