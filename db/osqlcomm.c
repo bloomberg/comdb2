@@ -7265,8 +7265,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
-    osql_sess_t *sess = NULL;
     uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
+    if (!malcd)
+        goto done;
+
+    osql_sess_t *sess = NULL;
     struct ireq *iq = NULL;
     osql_req_t req;
     bool is_reorder_on = false;
@@ -7282,15 +7285,11 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     uuid_t uuid;
     int replaced = 0;
 
-    if (!malcd)
-        goto done;
-
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
         osql_uuid_req_t uuid_req;
         sql = (char *)osqlcomm_req_uuid_type_get(&uuid_req, p_req_buf,
                                                  p_req_buf_end);
-
         req.type = uuid_req.type;
         req.rqlen = uuid_req.rqlen;
         req.sqlqlen = uuid_req.sqlqlen;
@@ -7387,15 +7386,11 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         debug = 1;
     }
 
-    /*
-       Blockproc does not create a copy of the request,
+    /* Blockproc does not create a copy of the request,
        but creates a different thread to work on it
-       Let THAT thread free it...
-    free(p_buf);
-    */
+       Let THAT thread free p_buf (malcd)...  */
 
-    /* for socksql, is this a retry that need to be checked for self-deadlock?
-     */
+    /* for socksql, is it a retry that needs to be checked for self-deadlock? */
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         (req.flags & OSQL_FLAGS_CHECK_SELFLOCK)) {
         /* just make sure we are above the threshold */
@@ -7403,73 +7398,64 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
-
-    if (rc) {
-        int rc2;
-
-        if (malcd)
-            free(malcd);
-
-        if (iq)
-            destroy_ireq(thedb, iq);
-
-        /* notify the sql thread there will be no response! */
-        struct errstat generr = {0};
-
-        generr.errval = ERR_TRAN_FAILED;
-        if (rc == -4) {
-            strncpy0(generr.errstr, "fail to create block processor log",
-                     sizeof(generr.errstr));
-        } else {
-            strncpy0(generr.errstr, "failed to create transaction",
-                     sizeof(generr.errstr));
-        }
-
-        int onstack = 0;
-        if (!sess) {
-            onstack = 1; /* used to avoid debugging confusion */
-            sess = alloca(sizeof(osql_sess_t));
-            sess->host = fromhost;
-            sess->rqid = req.rqid;
-            comdb2uuidcpy(sess->uuid, uuid);
-            sess->nops = 0;
-        }
-
-        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
-        if (rc2) {
-            uuidstr_t us;
-            comdb2uuidstr(uuid, us);
-            logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
-                            "error to create bplog\n",
-                    __func__, req.rqid, us, fromhost);
-        }
-        if (onstack)
-            sess = NULL;
-        else
-            osql_close_session(&sess, 0, __func__, NULL, __LINE__);
-
-    } else {
-        int rc2;
-
+    if (rc == 0) {
         /*
-           successful, let the session lose
+           successful, let the session loose
            It is possible that we are clearing sessions due to
            master being rtcpu-ed, and it will wait for the session
            clients to disappear before it will wipe out the session
          */
 
-        rc2 = osql_sess_remclient(sess);
+        int rc2 = osql_sess_remclient(sess);
         if (rc2) {
             uuidstr_t us;
             comdb2uuidstr(uuid, us);
             logmsg(LOGMSG_ERROR, "%s: failed to release session rqid=[%llx %s] node=%s\n",
                     __func__, req.rqid, us, fromhost);
         }
+        return 0;
     }
 
-#if 0
-   printf( "Done in here rc=%d %llu\n", rc, osql_log_time());
-#endif
+    if (malcd)
+        free(malcd);
+
+    if (iq)
+        destroy_ireq(thedb, iq);
+
+    /* notify the sql thread there will be no response! */
+    struct errstat generr = {0};
+
+    generr.errval = ERR_TRAN_FAILED;
+    if (rc == -4) {
+        strncpy0(generr.errstr, "fail to create block processor log",
+                 sizeof(generr.errstr));
+    } else {
+        strncpy0(generr.errstr, "failed to create transaction",
+                 sizeof(generr.errstr));
+    }
+
+    int onstack = 0;
+    if (!sess) {
+        onstack = 1; /* used to avoid debugging confusion */
+        sess = alloca(sizeof(osql_sess_t));
+        sess->host = fromhost;
+        sess->rqid = req.rqid;
+        comdb2uuidcpy(sess->uuid, uuid);
+        sess->nops = 0;
+    }
+
+    int rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
+    if (rc2) {
+        uuidstr_t us;
+        comdb2uuidstr(uuid, us);
+        logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
+                        "error to create bplog\n",
+                __func__, req.rqid, us, fromhost);
+    }
+    if (onstack)
+        sess = NULL;
+    else
+        osql_close_session(&sess, 0, __func__, NULL, __LINE__);
 
     return rc;
 }
