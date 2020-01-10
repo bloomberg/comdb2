@@ -5095,7 +5095,17 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
     int msglen = 0;
     char uuid[37];
     int type;
-    uint8_t *buf = NULL;
+    /* Constructing one of 4 message types so get a buffer big enough */
+    int max = 0;
+    if (OSQLCOMM_DONE_XERR_UUID_RPL_LEN > max)
+        max = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
+    if (OSQLCOMM_DONE_UUID_RPL_LEN > max)
+        max = OSQLCOMM_DONE_UUID_RPL_LEN;
+    if (OSQLCOMM_DONE_XERR_RPL_LEN > max)
+        max = OSQLCOMM_DONE_XERR_RPL_LEN;
+    if (OSQLCOMM_DONE_RPL_LEN > max)
+        max = OSQLCOMM_DONE_RPL_LEN;
+    uint8_t *buf = alloca(max);
 
     /* test if the sql thread was the one closing the
        request, and if so, don't send anything back
@@ -5118,7 +5128,6 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
 
         if (rc) {
             msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-            buf = alloca(msglen);
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
             rpl_xerr.hd.type = OSQL_XERR;
@@ -5130,7 +5139,6 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
         } else {
             msglen = OSQLCOMM_DONE_UUID_RPL_LEN;
             uint8_t *p_buf = buf;
-            buf = alloca(msglen);
             uint8_t *p_buf_end = buf + msglen;
 
             rpl_ok.hd.type = OSQL_DONE;
@@ -5152,7 +5160,6 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
 
         if (rc) {
             msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
-            buf = alloca(msglen);
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
             rpl_xerr.hd.type = OSQL_XERR;
@@ -5162,7 +5169,6 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
             osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
         } else {
             msglen = OSQLCOMM_DONE_RPL_LEN;
-            buf = alloca(msglen);
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
 
