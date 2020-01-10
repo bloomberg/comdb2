@@ -1642,6 +1642,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                                __func__, (rc == SQLITE_OK) ? "commit" : "abort",
                                irc, bdberr);
                     }
+                    clnt->dbtran.shadow_tran = NULL;
                 }
             } else {
                 reset_query_effects(clnt);
@@ -1715,6 +1716,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                                __func__, (rc == SQLITE_OK) ? "commit" : "abort",
                                irc, bdberr);
                     }
+                    clnt->dbtran.shadow_tran = NULL;
                 } else {
                     sql_debug_logf(clnt, __func__, __LINE__,
                                    "no-shadow-tran returning %d\n", rc);
