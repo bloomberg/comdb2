@@ -209,7 +209,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
 
     if (!is_event_from_sc(flags) && !(flags & RECFLAGS_DONT_LOCK_TBL)) {
         // dont lock table if adding from SC or if RECFLAGS_DONT_LOCK_TBL
-        assert(!iq->is_sorese); // sorese codepaths will have locked it already
+        assert(!iq->sorese); // sorese codepaths will have locked it already
 
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -764,7 +764,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
-        assert(!iq->is_sorese); // sorese codepaths will have locked it already
+        assert(!iq->sorese); // sorese codepaths will have locked it already
 
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);
@@ -1594,7 +1594,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
-        assert(!iq->is_sorese); // sorese codepaths will have locked it already
+        assert(!iq->sorese); // sorese codepaths will have locked it already
 
         reqprintf(iq, "Calling bdb_lock_table_read()");
         rc = bdb_lock_table_read(iq->usedb->handle, trans);

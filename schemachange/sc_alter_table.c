@@ -402,7 +402,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
+    dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
+        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return rc;
     }
@@ -414,8 +416,9 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
 #endif
 
     if (newdb == NULL) {
-        sc_errf(s, "Internal error\n");
+        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        sc_errf(s, "Internal error\n");
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
@@ -425,22 +428,25 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout(newdb);
         cleanup_newdb(newdb);
-        sc_errf(s, "Failed to process schema!\n");
+        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        sc_errf(s, "Failed to process schema!\n");
         return -1;
     }
 
     if ((rc = sql_syntax_check(iq, newdb))) {
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        sc_errf(s, "Sqlite syntax check failed\n");
         backout(newdb);
         cleanup_newdb(newdb);
+        dyns_cleanup_globals();
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        sc_errf(s, "Sqlite syntax check failed\n");
         return SC_CSC2_ERROR;
     } else {
         sc_printf(s, "Sqlite syntax check succeeded\n");
     }
     newdb->ix_blob = newdb->schema->ix_blob;
 
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&

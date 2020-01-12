@@ -485,14 +485,14 @@ int authenticate_cursor(BtCursor *pCur, int how)
     return 0;
 }
 
-int peer_dropped_connection(struct sqlclntstate *clnt)
+inline int peer_dropped_connection_sb(SBUF2 *sb)
 {
-    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
+    if (!sb)
         return 0;
-    }
+
     int rc;
     struct pollfd fd = {0};
-    fd.fd = sbuf2fileno(clnt->sb);
+    fd.fd = sbuf2fileno(sb);
     fd.events = POLLIN;
     if ((rc = poll(&fd, 1, 0)) >= 0) {
         if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -503,6 +503,14 @@ int peer_dropped_connection(struct sqlclntstate *clnt)
         return 0;
     }
     return 1;
+}
+
+inline int peer_dropped_connection(struct sqlclntstate *clnt)
+{
+    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
+        return 0;
+    }
+    return peer_dropped_connection_sb(clnt->sb);
 }
 
 int throttle_num = 0;
@@ -597,6 +605,9 @@ static int sql_tick(struct sql_thread *thd)
 
     if (clnt == NULL)
         return 0;
+
+    /* Increment per-clnt sqltick */
+    ++clnt->sqltick;
 
     /* statement cancelled? done */
     if (clnt->stop_this_statement)

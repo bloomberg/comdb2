@@ -70,7 +70,6 @@
 #include "dyn_array.h"
 #define DEBUG_REORDER 0
 
-int g_osql_blocksql_parallel_max = 5;
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 extern int gbl_reorder_idx_writes;
@@ -88,7 +87,6 @@ struct blocksql_tran {
     pthread_mutex_t mtx; /* mutex and cond for notifying when any session
                            has completed */
     pthread_cond_t cond;
-    int dowait; /* mark this when session completes to avoid loosing signal */
     int delayed;
     int rows;
     bool iscomplete;
@@ -249,8 +247,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     }
     */
 
-    tran->dowait = 1;
-
     iq->timings.req_received = osql_log_time();
     iq->tranddl = 0;
     /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
@@ -259,82 +255,6 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     return 0;
 }
 
-/* Wait for pending sessions to finish;
-   If any request has failed because of deadlock, repeat */
-int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
-{
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    int error = 0;
-    struct errstat generr = {0}, *xerr;
-    int rc = 0;
-    int stop_time = 0;
-    iq->timings.req_alldone = osql_log_time();
-
-    if (tran->iscomplete) // already complete this is a replicant replay??
-        return 0;
-
-    /* if the session finished with deadlock on replicant, or failed
-       session, resubmit it */
-
-    rc = osql_sess_test_complete(tran->sess, &xerr);
-    switch (rc) {
-    case SESS_DONE_OK:
-        tran->iscomplete = 1;
-        break;
-    case SESS_DONE_ERROR_REPEATABLE:
-        /* generate a new id for this session */
-        if (iq->sorese.type) {
-            /* this is socksql, recom, snapisol or serial; no retry here
-             */
-            generr.errval = ERR_INTERNAL;
-            strncpy0(generr.errstr, "master cancelled transaction",
-                     sizeof(generr.errstr));
-            xerr = &generr;
-            error = 1;
-            break;
-        }
-        break;
-    case SESS_DONE_ERROR:
-        error = 1;
-        break;
-    case SESS_PENDING:
-        rc = osql_sess_test_slow(tran->sess);
-        if (rc)
-            return rc;
-        break;
-    }
-
-    /* please stop !!! */
-    if (db_is_stopped()) {
-        if (stop_time == 0) {
-            stop_time = comdb2_time_epoch();
-        } else {
-            if (stop_time + gbl_blocksql_grace /*seconds grace time*/ <=
-                comdb2_time_epoch()) {
-                logmsg(LOGMSG_ERROR,
-                       "blocksql session closing early, db stopped\n");
-                return ERR_NOMASTER;
-            }
-        }
-    }
-
-    if (bdb_lock_desired(thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
-               pthread_self(), __FILE__, __LINE__);
-        err->blockop_num = 0;
-        err->errcode = ERR_NOMASTER;
-        err->ixnum = 0;
-        return ERR_NOMASTER;
-    }
-
-    if (error) {
-        iq->errstat.errval = xerr->errval;
-        errstat_cat_str(&iq->errstat, errstat_get_str(xerr));
-        return xerr->errval;
-    }
-
-    return 0;
-}
 
 int sc_set_running(char *table, int running, uint64_t seed, const char *host,
                    time_t time);
@@ -357,7 +277,7 @@ int osql_bplog_schemachange(struct ireq *iq)
     iq->sc_locked = 0;
     iq->sc_should_abort = 0;
 
-    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
+    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese->osqllog,
                        osql_process_schemachange);
 
     if (rc)
@@ -497,7 +417,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     }
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese.osqllog,
+    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese->osqllog,
                        osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
@@ -546,7 +466,6 @@ char *osql_get_tran_summary(struct ireq *iq)
     if (iq->blocksql_tran) {
         blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
         int sz = 128;
-        int rtt = 0;
         int tottm = 0;
         int rtrs = 0;
 
@@ -557,13 +476,12 @@ char *osql_get_tran_summary(struct ireq *iq)
         }
 
         if (tran->iscomplete) {
-            osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
+            osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         }
 
-        nametype = osql_sorese_type_to_str(iq->sorese.type);
+        nametype = osql_sorese_type_to_str(iq->sorese->type);
 
-        snprintf(ret, sz, "%s tot=%u rtt=%u rtrs=%u", nametype, tottm, rtt,
-                 rtrs);
+        snprintf(ret, sz, "%s tot=%ums rtrs=%u", nametype, tottm, rtrs);
         ret[sz - 1] = '\0';
     }
 
@@ -595,8 +513,15 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
      */
 
     /* remove the sessions from repository and free them */
-    osql_close_session(iq, &tran->sess, are_sessions_linked, func, callfunc,
-                       line);
+    osql_close_session(&tran->sess, are_sessions_linked, func, callfunc, line);
+    iq->sorese = NULL;
+
+    if (iq->p_buf_orig) {
+        free(iq->p_buf_orig);
+        iq->p_buf_orig = NULL;
+        iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
+        iq->p_buf_in_end = iq->p_buf_in = NULL;
+    }
 
     /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
@@ -652,7 +577,7 @@ const char *osql_reqtype_str(int type)
 }
 
 void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
-                       struct ireq *iq, char *rpl, oplog_key_t *key)
+                       char *rpl, oplog_key_t *key)
 {
     key->tbl_idx = USHRT_MAX;
     switch (type) {
@@ -741,23 +666,17 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     }
 }
 
-static void send_error_to_replicant(int rqid, const char *host, int errval,
+static void send_error_to_replicant(osql_sess_t *sess, int errval,
                                     const char *errstr)
 {
-    sorese_info_t sorese_info = {0};
     struct errstat generr = {0};
 
     logmsg(LOGMSG_ERROR, "%s: %s\n", __func__, errstr);
 
-    sorese_info.rqid = rqid;
-    sorese_info.host = host;
-    sorese_info.type = -1; /* I don't need it */
-
     generr.errval = errval;
     strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
-    int rc =
-        osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
+    int rc = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
@@ -803,13 +722,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         return 0;
     }
 
-    struct ireq *iq = osql_session_get_ireq(sess);
-    int rc = 0, rc_op = 0;
+    int rc = 0;
     oplog_key_t key = {0};
-    int debug = 0;
-
-    if (type == OSQL_SCHEMACHANGE)
-        iq->tranddl++;
 
     assert(sess->rqid == rqid);
     key.seq = sess->seq;
@@ -844,7 +758,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         osql_cache_selectv(type, sess, rqid, rpl);
 
     if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, rqid, iq, rpl, &key);
+        setup_reorder_key(type, sess, rqid, rpl, &key);
     }
 
     DEBUG_PRINT_TMPBL_SAVING();
@@ -854,10 +768,10 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
         arr = &tran->add_osql_rows;
 
     ACCUMULATE_TIMING(CHR_TMPSVOP,
-        rc_op = dyn_array_append(arr, &key, sizeof(key), rpl, rplen););
-    if (rc_op) {
+        rc = dyn_array_append(arr, &key, sizeof(key), rpl, rplen););
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d\n",
-               __func__, sess->seq, rc_op);
+               __func__, sess->seq, rc);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
                            &(osql_session_get_ireq(sess)->osql_step_ix), rqid,
@@ -868,13 +782,13 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
-    if (rc_op)
-        return rc_op;
+    if (rc)
+        return rc;
 
     struct errstat *xerr;
     /* check if type is done */
-    rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                           osql_session_get_ireq(sess));
+    rc = osql_comm_is_done(sess, type, rpl, rplen, rqid == OSQL_RQID_USE_UUID,
+                           &xerr);
     if (rc == 0)
         return 0;
 
@@ -883,7 +797,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (type != OSQL_XERR) { // if tran not aborted
         int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
-#ifndef NDEBUG
+#if DEBUG_REORDER
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
         DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,
@@ -893,7 +807,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
         if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
             send_error_to_replicant(
-                rqid, sess->offhost, RC_INTERNAL_RETRY,
+                sess, RC_INTERNAL_RETRY,
                 "Master received inconsistent number of opcodes");
 
             logmsg(LOGMSG_ERROR,
@@ -912,31 +826,8 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     osql_sess_set_complete(rqid, uuid, sess, xerr);
 
-    /* if we received a too early, check the coherency and mark blackout node */
-    if (xerr && xerr->errval == OSQL_TOOEARLY) {
-        osql_comm_blkout_node(sess->offhost);
-    }
-
-    debug = debug_this_request(gbl_debug_until);
-    if (gbl_who > 0 && gbl_debug) {
-        debug = 1;
-    }
-
-    if (osql_session_is_sorese(sess)) {
-        osql_sess_lock(sess);
-        osql_sess_lock_complete(sess);
-        if (!osql_sess_dispatched(sess) && !osql_sess_is_terminated(sess)) {
-            osql_session_set_ireq(sess, NULL);
-            osql_sess_set_dispatched(sess, 1);
-            rc = handle_buf_sorese(thedb, iq, debug);
-        }
-        osql_sess_unlock_complete(sess);
-        osql_sess_unlock(sess);
-
-        return rc;
-    }
-
-    return 0;
+    tran->iscomplete = (type != OSQL_XERR);
+    return handle_buf_sorese(sess);
 }
 
 
@@ -1186,12 +1077,6 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     *pp_buf_end = p_buf;
     return 0;
 }
-
-/**
- * Set parallelism threshold
- *
- */
-void osql_bplog_setlimit(int limit) { g_osql_blocksql_parallel_max = limit; }
 
 /************************* INTERNALS
  * ***************************************************/
@@ -1501,7 +1386,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     /* if we've already had a few verify-failures, add extended checking now */
     if (!iq->vfy_genid_track &&
-        iq->sorese.verify_retries >= gbl_osql_verify_ext_chk) {
+        iq->sorese->verify_retries >= gbl_osql_verify_ext_chk) {
         iq->vfy_genid_track = 1;
         iq->vfy_genid_hash = hash_init(sizeof(unsigned long long));
         iq->vfy_genid_pool =
@@ -1532,9 +1417,6 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype)
 {
     switch (reqtype) {
-    case OSQL_BLOCK_REQ:
-        return BLOCK2_SQL;
-
     case OSQL_SOCK_REQ:
         return BLOCK2_SOCK_SQL;
 
@@ -1566,7 +1448,6 @@ void osql_bplog_time_done(struct ireq *iq)
     osql_bp_timings_t *tms = &iq->timings;
     char msg[4096];
     int tottm = 0;
-    int rtt = 0;
     int rtrs = 0;
     int len;
 
@@ -1593,33 +1474,14 @@ void osql_bplog_time_done(struct ireq *iq)
         len = strlen(msg);
 
         /* these are failed */
-        osql_sess_getsummary(tran->sess, &tottm, &rtt, &rtrs);
+        osql_sess_getsummary(tran->sess, &tottm, &rtrs);
         snprintf0(msg + len, sizeof(msg) - len,
-                  " %s(rqid=%llu time=%u lastrtt=%u retries=%u)",
+                  " %s(rqid=%llu time=%ums retries=%u)",
                   (tran->iscomplete ? "C" : "F"), osql_sess_getrqid(tran->sess),
-                  tottm, rtt, rtrs);
+                  tottm, rtrs);
         len = strlen(msg);
     }
     logmsg(LOGMSG_USER, "%s]\n", msg);
-}
-
-void osql_set_delayed(struct ireq *iq)
-{
-    if (iq) {
-        blocksql_tran_t *t = (blocksql_tran_t *)iq->blocksql_tran;
-        if (t)
-            t->delayed = 1;
-    }
-}
-
-int osql_get_delayed(struct ireq *iq)
-{
-    if (iq) {
-        blocksql_tran_t *t = (blocksql_tran_t *)iq->blocksql_tran;
-        if (t)
-            return t->delayed;
-    }
-    return 1;
 }
 
 /**

@@ -563,6 +563,47 @@ static int lrltokignore(char *tok, int ltok)
     return 1;
 }
 
+static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
+                                 char *fname, int dbnum, char *tok)
+{
+    int rc;
+    struct dbtable *db;
+    rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
+        return -1;
+    }
+
+    /* create one */
+    db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs, 0);
+    if (db == NULL) {
+        return -1;
+    }
+
+    db->dbs_idx = dbenv->num_dbs;
+    dbenv->dbs[dbenv->num_dbs++] = db;
+
+    /* Add table to the hash. */
+    hash_add(dbenv->db_hash, db);
+
+    /* just got a bunch of data. remember it so key forming
+       routines and SQL can get at it */
+    rc = add_cmacc_stmt(db, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "Failed to load schema: can't process schema file %s\n", tok);
+        return -1;
+    }
+
+    /* Initialize table's check constraint members. */
+    if (init_check_constraints(db)) {
+        logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
+               db->tablename);
+        return -1;
+    }
+    return 0;
+}
+
 #define parse_lua_funcs(pfx)                                                   \
     do {                                                                       \
         tok = segtok(line, sizeof(line), &st, &ltok);                          \
@@ -875,26 +916,33 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "afuncs") == 0) {
         parse_lua_funcs(a);
     } else if (tokcmp(tok, ltok, "queuedb") == 0) {
-        char **slot = &qdbs[0];
-        while (*slot)
-            ++slot;
-        tok = segtok(line, len, &st, &ltok);
-        *slot = tokdup(tok, ltok);
-        struct dbtable **qdb = &dbenv->qdbs[0];
-        while (*qdb)
-            ++qdb;
-        char *name = get_qdb_name(*slot);
-        if (name == NULL) {
-            logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
-                   *slot);
+        int nqdbs = thedb->num_qdbs;
+        qdbs = realloc(qdbs, (nqdbs + 1) * sizeof(char *));
+        if (qdbs == NULL) {
+            logmsgperror("realloc");
             return -1;
         }
-        *qdb = newqdb(dbenv, name, 65536, 65536, 1);
-        if (*qdb == NULL) {
+        thedb->qdbs = realloc(thedb->qdbs, (nqdbs + 1) * sizeof(dbtable *));
+        if (thedb->qdbs == NULL) {
+            logmsgperror("realloc");
+            return -1;
+        }
+        tok = segtok(line, len, &st, &ltok);
+        qdbs[nqdbs] = tokdup(tok, ltok);
+        char *name = get_qdb_name(qdbs[nqdbs]);
+        if (name == NULL) {
+            logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
+                   qdbs[nqdbs]);
+            return -1;
+        }
+        dbtable *qdb = newqdb(dbenv, name, 65536, 65536, 1);
+        if (qdb == NULL) {
             logmsg(LOGMSG_ERROR, "newqdb failed for:%s\n", name);
             return -1;
         }
         free(name);
+        thedb->qdbs[nqdbs] = qdb;
+        ++thedb->num_qdbs;
     } else if (tokcmp(tok, ltok, "table") == 0) {
         /*
          * variants:
@@ -935,7 +983,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         } else if (strstr(fname, ".csc2") != 0) {
             int dbnum;
-            struct dbtable *db;
 
             bdb_attr_set(dbenv->bdb_attr, BDB_ATTR_GENIDS, 1);
 
@@ -966,41 +1013,13 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     return -1;
                 }
             }
-            rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
-                return -1;
-            }
 
-            /* create one */
-            db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs,
-                                   0);
-            if (db == NULL) {
-                return -1;
-            }
+            dyns_init_globals();
+            rc = new_table_from_schema(dbenv, tblname, fname, dbnum, tok);
+            dyns_cleanup_globals();
+            if (rc)
+                return rc;
 
-            db->dbs_idx = dbenv->num_dbs;
-            dbenv->dbs[dbenv->num_dbs++] = db;
-
-            /* Add table to the hash. */
-            hash_add(dbenv->db_hash, db);
-
-            /* just got a bunch of data. remember it so key forming
-               routines and SQL can get at it */
-            if (add_cmacc_stmt(db, 0)) {
-                logmsg(LOGMSG_ERROR,
-                       "Failed to load schema: can't process schema file %s\n",
-                       tok);
-                return -1;
-            }
-
-            /* Initialize table's check constraint members. */
-            if (init_check_constraints(db)) {
-                logmsg(LOGMSG_ERROR,
-                       "Failed to load check constraints for %s\n",
-                       db->tablename);
-                return -1;
-            }
         } else {
             logmsg(LOGMSG_ERROR, "Invalid table option\n");
             return -1;

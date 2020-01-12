@@ -696,7 +696,6 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
                                       int ignore_limit, int *bdberr, int check)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    unsigned long long *pgenid;
     int rc = 0;
 
     /* we dont ever expect to get here with a synthetic genid */
@@ -760,17 +759,9 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
 
         if (cur->skip) {
             /* we have a skip cursor */
-            pgenid = (unsigned long long *)malloc(sizeof(*pgenid));
-            if (!pgenid) {
-                *bdberr = BDBERR_MALLOC;
-                return -1;
-            }
-            *pgenid = genid;
 
-            rc = bdb_temp_table_find_exact(cur->state, cur->skip, pgenid,
-                                           sizeof(*pgenid), bdberr);
-            if (rc != IX_FND)
-                free(pgenid);
+            rc = bdb_temp_table_find_exact(cur->state, cur->skip, &genid,
+                                           sizeof(genid), bdberr);
             if (rc < 0)
                 return rc;
 
@@ -991,7 +982,7 @@ static int bdb_free_shadows_table(bdb_state_type *bdb_state,
 }
 
 /* init bdb osql support for snapshot/serializable sql transactions */
-int bdb_osql_init(int *bdberr)
+inline int bdb_osql_init(int *bdberr)
 {
     int rc = 0;
 

@@ -1304,26 +1304,26 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
              * doesn't
              * exist before inserting it.  */
             if (tabletype == BDBC_BL) {
-                unsigned long long *gcopy = malloc(sizeof(unsigned long long));
-                *gcopy = get_search_genid(bdb_state, genid);
+                unsigned long long gcopy = get_search_genid(bdb_state, genid);
 
-                rc = bdb_temp_table_find_exact(bdb_state, cur, gcopy,
-                                               sizeof(*gcopy), bdberr);
+                rc = bdb_temp_table_find_exact(bdb_state, cur, &gcopy,
+                                               sizeof(gcopy), bdberr);
                 if (rc != IX_FND) {
-                    rc = bdb_temp_table_insert(bdb_state, cur, gcopy,
-                                               sizeof(*gcopy), dta, dtalen,
+                    rc = bdb_temp_table_insert(bdb_state, cur, &gcopy,
+                                               sizeof(gcopy), dta, dtalen,
                                                bdberr);
                     if (trak & SQL_DBG_SHADOW) {
-                        logmsg(LOGMSG_USER, "INSERTING SEARCH-GENID %llx, GENID %llx INTO "
+                        logmsg(LOGMSG_USER,
+                               "INSERTING SEARCH-GENID %llx, GENID %llx INTO "
                                "THE BLOB SHADOW TABLE\n",
-                               *gcopy, genid);
+                               gcopy, genid);
                     }
-                    free(gcopy);
                 } else {
                     if (trak & SQL_DBG_SHADOW) {
-                        logmsg(LOGMSG_USER, "NOT INSERTING ALREADY EXISTING SEARCH-GENID "
+                        logmsg(LOGMSG_USER,
+                               "NOT INSERTING ALREADY EXISTING SEARCH-GENID "
                                "%lld, GENID %lld INTO THE BLOB SHADOW TABLE\n",
-                               *gcopy, genid);
+                               gcopy, genid);
                     }
                 }
             } else {
@@ -2430,11 +2430,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
         return 0;
 
     /* Skip entirely if there are no clients */
-    if ((rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) !=0 ) {
-        logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
-        return rc;
-    }
-
+    bdb_osql_trn_count_clients(&count, !is_master);
     /* Don't parse if no one cares */
     if (count == 0)
         return 0;

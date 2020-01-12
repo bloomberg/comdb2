@@ -1249,8 +1249,8 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     uint64_t oldsize, newsize, diff;
     char b1[32], b2[32], b3[32], b4[32];
 
-    oldsize = calc_table_size(olddb);
-    newsize = calc_table_size(newdb);
+    oldsize = calc_table_size(olddb, 0);
+    newsize = calc_table_size(newdb, 0);
 
     if (newsize > oldsize)
         diff = oldsize / 3; /* newdb already larger; assume 33% growth */

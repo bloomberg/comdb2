@@ -1308,6 +1308,10 @@ extern void __bb_dbreg_print_dblist(DB_ENV *dbenv,
                                     void (*prncallback)(void *userptr,
                                                         const char *fmt, ...),
                                     void *userptr);
+extern void __bb_dbreg_print_all_dblist(DB_ENV *dbenv,
+                                    void (*prncallback)(void *userptr,
+                                                        const char *fmt, ...),
+                                    void *userptr);
 #if 0
 extern void __db_cprint(DB *db);
 #endif

@@ -1250,9 +1250,19 @@ badend(dbenv)
 static int
 cdb2_load_usage()
 {
-	(void)fprintf(stderr, "%s\n\t%s\n",
-	    "usage: cdb2_load [-nTV] [-c name=value] [-f file]",
-    "[-h home] [-P password] [-t btree | hash | recno | queue] db_file");
+	(void)fprintf(stderr,
+	    "usage: cdb2_load [-nTV] [-c name=value] [-f file]\n\t"
+    "[-h home] [-P password] [-t btree | hash | recno | queue] db_file\n"
+    "    -c   - configuration in name=value format\n"
+    "    -f   - file to open\n"
+    "    -h   - home directory for db\n"
+    "    -n   - do not overwrite\n"
+    "    -P   - password file\n"
+    "    -T   - no header\n"
+    "    -t   - type of db\n"
+    "    -V   - print version info\n"
+    "    ?    - this usage info\n"
+    );
 	return (EXIT_FAILURE);
 }
 

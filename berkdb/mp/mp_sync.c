@@ -547,7 +547,13 @@ struct writable_range {
 static struct thdpool *trickle_thdpool;
 static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
+int gbl_ref_sync_pollms = 250;
+int gbl_ref_sync_iterations = 4;
+int gbl_ref_sync_wait_txnlist = 0;
 
+#define MAX_TXNARRAY 64
+void collect_txnids(DB_ENV *dbenv, u_int32_t *txnarray, int max, int *count);
+int still_running(DB_ENV *dbenv, u_int32_t *txnarray, int count);
 
 static void
 trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
@@ -563,9 +569,11 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	DB_MPOOL_HASH **hparray;
 	DB_MUTEX *mutexp;
 	MPOOLFILE *mfp;
+	u_int32_t txnarray[MAX_TXNARRAY];
+	int txncnt = 0;
 	int ar_cnt, hb_lock, i, j, pass, remaining, ret;
 	int wait_cnt, write_cnt, wrote;
-	int sgio, gathered, delay_write;
+	int sgio, gathered, delay_write, total_txns = 0;
 	db_pgno_t off_gather;
 
 	ret = 0;
@@ -645,7 +653,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 			i = 0;
 			++pass;
 			sgio = 0;
-			(void)__os_sleep(dbenv, 1, 0);
+			if (!gbl_ref_sync_wait_txnlist)
+				(void)__os_sleep(dbenv, 1, 0);
 		}
 		if ((hp = bharray[i].track_hp) == NULL)
 			continue;
@@ -721,18 +730,16 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		 */
 		MUTEX_UNLOCK(dbenv, mutexp);
 
-#ifdef REF_SYNC_TEST
-		while (bhp->ref_sync != 0) {
-			fprintf(stderr,
-		    "... bhp->ref_sync is %d (waiting for it to go to 0)\n",
-			    bhp->ref_sync);
-			(void)__os_sleep(dbenv, 1, 0);
-		}
-#else
-		for (wait_cnt = 1;
-		    bhp->ref_sync != 0 && wait_cnt < 4; ++wait_cnt)
-			(void)__os_sleep(dbenv, 1, 0);
-#endif
+		int rs_iters = gbl_ref_sync_iterations;
+		int rs_pollms = gbl_ref_sync_pollms;
+
+		rs_iters = (rs_iters > 0 ? rs_iters : 4);
+		rs_pollms = (rs_pollms > 0 ? rs_pollms : 250);
+
+		for (wait_cnt = 0; bhp->ref_sync != 0 && wait_cnt < rs_iters;
+				++wait_cnt) {
+			poll(NULL, 0, rs_pollms);
+ 		}
 
 		MUTEX_LOCK(dbenv, mutexp);
 		hb_lock = 1;
@@ -744,6 +751,9 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		if (bhp->ref_sync == 0) {
 			--remaining;
 			bharray[i].track_hp = NULL;
+		} else if (gbl_ref_sync_wait_txnlist){
+			collect_txnids(dbenv, txnarray, MAX_TXNARRAY, &txncnt);
+			total_txns += txncnt;
 		}
 
 		/*
@@ -961,6 +971,24 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 		if (ret != 0)
 			break;
+
+		if (txncnt) {
+			int c = 0, cnt;
+			while(gbl_ref_sync_wait_txnlist &&
+                    (cnt = still_running(dbenv, txnarray, txncnt)) > 0) {
+				c++;
+				if (c > 2) {
+					fprintf(stderr, "%s: waiting for %d txns to complete, cnt %d\n",
+							__func__, cnt, c);
+				}
+				__os_sleep(dbenv, 1, 0);
+			}
+			txncnt = 0;
+			if (total_txns > 20) {
+				fprintf(stderr, "%s: waited on %d total txns so far\n",
+						__func__, total_txns);
+			}
+		}
 	}
 
 	/* 

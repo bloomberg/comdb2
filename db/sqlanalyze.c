@@ -131,8 +131,10 @@ int backout_stats_frm_tbl(struct sqlclntstate *clnt, const char *table,
                           int stattbl)
 {
     char *sql = NULL;
-    sql = sqlite3_mprintf("delete from sqlite_stat%d where tbl='%q'",
-                          stattbl, table);
+    sql = sqlite3_mprintf(
+        "delete from sqlite_stat%d where tbl='%q' and exists (select tbl from "
+        "sqlite_stat%d where tbl='cdb2.%q.sav')",
+        stattbl, table, stattbl, table);
     assert(sql != NULL);
     int rc = run_internal_sql_clnt(clnt, sql);
     sqlite3_free(sql); sql = NULL;
@@ -817,7 +819,7 @@ static int analyze_table_int(table_descriptor_t *td,
     }
 
     /* grab the size of the table */
-    int64_t totsiz = calc_table_size_analyze(tbl);
+    int64_t totsiz = calc_table_size(tbl, 1);
 
     if (sampled_tables_enabled)
         get_sampling_threshold(td->table, &sampling_threshold);

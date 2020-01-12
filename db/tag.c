@@ -6634,23 +6634,23 @@ static struct field *get_field_position(struct schema *s, const char *name,
     return NULL;
 }
 
-static void update_fld_hints(dbtable *db)
+static void update_fld_hints(dbtable *tbl)
 {
-    struct schema *ondisk = db->schema;
+    struct schema *ondisk = tbl->schema;
     int n = ondisk->nmembers;
     uint16_t *hints = malloc(sizeof(*hints) * (n + 1));
     for (int i = 0; i < n; ++i) {
         hints[i] = ondisk->member[i].len;
     }
     hints[n] = 0;
-    bdb_set_fld_hints(db->handle, hints);
+    bdb_set_fld_hints(tbl->handle, hints);
 }
 
-void set_bdb_option_flags(dbtable *db, int odh, int ipu, int isc, int ver,
+void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh)
 {
-    update_fld_hints(db);
-    bdb_state_type *handle = db->handle;
+    update_fld_hints(tbl);
+    bdb_state_type *handle = tbl->handle;
     bdb_set_odh_options(handle, odh, compr, blob_compr);
     bdb_set_inplace_updates(handle, ipu);
     bdb_set_instant_schema_change(handle, isc);
@@ -6927,6 +6927,7 @@ struct schema *create_version_schema(char *csc2, int version,
     int rc;
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
+    dyns_init_globals();
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -6957,6 +6958,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
@@ -6975,6 +6977,7 @@ struct schema *create_version_schema(char *csc2, int version,
     return ver_schema;
 
 err:
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
@@ -7038,6 +7041,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         goto err;
     }
 
+    dyns_init_globals();
     rc = dyns_load_schema_string(csc2, db->dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -7084,6 +7088,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     old_bdb_handle = db->handle;
@@ -7113,6 +7118,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     return 0;
 
 err:
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
     return 1;
