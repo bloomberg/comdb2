@@ -47,16 +47,6 @@ function randbl
 }
 
 
-function do_verify
-{
-    tbl=$1
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "verify $tbl failed"
-    fi
-}
-
 function insert_rows
 {
     s=$1

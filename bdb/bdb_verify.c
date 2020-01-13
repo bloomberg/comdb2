@@ -14,23 +14,12 @@
    limitations under the License.
  */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <errno.h>
-#include <string.h>
-#include <stddef.h>
-#include <strings.h>
-#include <alloca.h>
-#include <sys/poll.h>
-#include <unistd.h>
-#include <bdb_api.h>
-#include <bdb_verify.h>
-
+#include "bdb_api.h"
+#include "bdb_verify.h"
 #include "sbuf2.h"
 #include "bdb_int.h"
 #include "locks.h"
 #include "endian_core.h"
-
 #include "logmsg.h"
 #include "tohex.h"
 #include "blob_buffer.h"
@@ -45,9 +34,12 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
+extern int peer_dropped_connection_sb(SBUF2 *sb);
+extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
 
-
-/* print to sb if available lua callback otherwise */
+/* use lua_callback if it is available to print
+ * otherwise if sb is available print to sb and flush
+ */
 static int locprint(verify_common_t *par, char *fmt, ...)
 {
     char lbuf[1024];
@@ -55,27 +47,31 @@ static int locprint(verify_common_t *par, char *fmt, ...)
     va_start(ap, fmt);
     int wrote = vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
     va_end(ap);
+
+    if (par->client_dropped_connection)
+        return -1;
+
+    if (par->lua_callback) {
+        int rc = par->lua_callback(par->lua_params, lbuf);
+        if (rc) {
+            logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
+            par->client_dropped_connection = 1;
+        }
+        return rc;
+    }
+
     if (par->sb) {
         if (wrote < sizeof(lbuf) - 1)
             strcat(lbuf, "\n");
-        return sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
-    } else if (par->lua_callback)
-        return par->lua_callback(par->lua_params, lbuf);
+        int rc = sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
+        if (rc)
+            return rc;
+        rc = sbuf2flush(par->sb) >= 0 ? 0 : -1;
+        return rc;
+    }
     return -1;
 }
 
-int bdb_dropped_connection(SBUF2 *sb)
-{
-    struct pollfd p;
-    int rc;
-
-    p.fd = sbuf2fileno(sb);
-    p.events = POLLIN;
-    rc = poll(&p, 1, 0);
-    if (rc == 1)
-        return 1;
-    return 0;
-}
 
 static int restore_cursor_at_genid(DB *db, DBC **cdata,
                                    unsigned long long genid, unsigned int lid)
@@ -202,49 +198,67 @@ ret:
     return rc;
 }
 
-static inline int print_verify_progress(verify_common_t *par, int now)
+/* Check client connection and print progress, called for every item verified
+ * Every second will client connection will be checked if it dropped
+ * Print progress report report every progress_report_seconds
+ */
+static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 {
-    if (!par->progress_report_seconds)
+    int last = par->last_connection_check; // get a copy of the last timestamp
+
+    // do the comparison with t_ms, we want to check connection every 1s
+    if ((t_ms - last) < 1000)
         goto out;
 
-    int last = par->last_reported; // get a copy of the last timestamp
-
-    // do the comparison with now
-    if (((now - last) < (par->progress_report_seconds * 1000)))
-        goto out;
-
-    // enough time has passed, attempt to update
-    int res = CAS32(par->last_reported, last, now);
+    // enough time has passed, attempt to update last_connection_check
+    int res = CAS32(par->last_connection_check, last, t_ms);
     if (!res)
-        goto out; // someonelse updated, get out
+        goto out; // another thread updated, nothing to do
 
-    if (bdb_dropped_connection(par->sb)) {
+    if (peer_dropped_connection_sb(par->sb)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
         par->client_dropped_connection = 1;
         goto out;
     }
 
-    int rc;
+    // one of the threads gets here every second, and we want to skip printing
+    // if progress_report_seconds is zero or if the time passed is not enough
+    if (!par->progress_report_seconds ||
+        (++par->progress_report_counter) % par->progress_report_seconds != 0)
+        goto out;
+
     if (par->verify_mode == VERIFY_SERIAL) {
-        rc = locprint(par, "!%s, did %d records, %d per second", par->header,
-                      par->nrecs_progress,
-                      par->nrecs_progress / par->progress_report_seconds);
+        locprint(par, "!%s, did %d records, %d per second", par->header,
+                 par->nrecs_progress,
+                 par->nrecs_progress / par->progress_report_seconds);
         par->nrecs_progress = 0;
     } else {
         unsigned long long delta = par->items_processed - par->saved_progress;
-        rc = locprint(par, "!verify: processed %lld items, %lld per second",
-                      par->items_processed,
-                      delta / par->progress_report_seconds);
+        locprint(par, "!verify: processed %lld items, %lld per second",
+                 par->items_processed, delta / par->progress_report_seconds);
         par->saved_progress = par->items_processed;
     }
 
-    if (rc) {
-        par->client_dropped_connection = 1;
-        goto out;
-    }
-    sbuf2flush(par->sb);
 out:
     return par->client_dropped_connection;
+}
+
+/* compare with previous key, ensure order of keys in the btree
+ */
+static inline void check_order(DB *db, DBT *old, DBT *curr,
+                               verify_common_t *par)
+{
+    if (old->size == 0)
+        return;
+    int cmp = __bam_defcmp(db, old, curr);
+    if (cmp >= 0) {
+        par->verify_status = 1;
+        char hexstr1[old->size * 2 + 1];
+        char hexstr2[curr->size * 2 + 1];
+        util_tohex(hexstr1, old->data, old->size);
+        util_tohex(hexstr2, curr->data, curr->size);
+        locprint(par, "!%s out-of-order key, prev %s", hexstr2, hexstr1);
+    }
 }
 
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
@@ -253,7 +267,6 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 {
     DBC *cdata = NULL;
     DBC *ckey = NULL;
-    DB *db;
     DBC *cblob = NULL;
     unsigned char databuf[17 * 1024];
     unsigned char keybuf[18 * 1024];
@@ -272,7 +285,11 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
     DBT dbt_key = {
         .flags = DB_DBT_USERMEM, .ulen = sizeof(keybuf), .data = keybuf};
 
-    db = bdb_state->dbp_data[0][dtastripe];
+    unsigned long long oldgenid;
+    DBT dbt_old_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(oldgenid), .data = &oldgenid};
+
+    DB *db = bdb_state->dbp_data[0][dtastripe];
     rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d cursor rc %d\n", dtastripe, rc);
@@ -292,17 +309,17 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
-        if (print_verify_progress(par, now))
+        if (check_connection_and_progress(par, now))
             break;
 
         unsigned long long genid;
+        memcpy(&genid, dbt_key.data, sizeof(genid));
         /* is it the right size? */
         if (dbt_key.size != sizeof(genid)) {
             par->verify_status = 1;
             locprint(par, "!bad genid sz %d", dbt_key.size);
             goto next_record;
         }
-        memcpy(&genid, dbt_key.data, sizeof(genid));
 
         /* why do we open a cursor for each record/blob?
         1) cursors are cheap - berkeley opens one for every cursor operation
@@ -317,6 +334,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 #else
         genid_flipped = genid;
 #endif
+
+        check_order(db, &dbt_old_key, &dbt_key, par);
+
         par->vtag_callback(par->db_table, dbt_data.data, (int *)&dbt_data.size,
                            ver);
         rc = par->get_blob_sizes_callback(par->db_table, dbt_data.data,
@@ -519,8 +539,9 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
             ckey = NULL;
         }
         par->free_blob_buffer_callback(blob_buf);
-        sbuf2flush(par->sb);
     next_record:
+        dbt_old_key.size = sizeof(genid);
+        memcpy(dbt_old_key.data, &genid, dbt_old_key.size);
 
         dbt_data.flags = DB_DBT_USERMEM;
         dbt_data.ulen = sizeof(databuf);
@@ -549,7 +570,10 @@ err:
     return rc;
 }
 
-/* similar to check_single_key_constraint but uses a paired cursor/cget
+/* Verify all the foreign key constraints for the given key in lcl_key
+ * Returns nonzero if any foreign key is not found
+ *
+ * similar to check_single_key_constraint but uses a paired cursor/cget
  * so we can release the lock at the end of this function
  */
 static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
@@ -579,7 +603,7 @@ static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
             if (rc) {
                 logmsg(LOGMSG_ERROR, "unexpected rc get cursor for ix %d: %d\n",
                        ridx, rc);
-                continue; // so we continue to next
+                continue; // so we continue to next rule
             }
 
             /* fetch the genid portion to verify existence */
@@ -588,12 +612,11 @@ static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
                             .dlen = sizeof(verify_genid),
                             .ulen = sizeof(verify_genid),
                             .size = sizeof(verify_genid),
-                            .doff = 0,
                             .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
             dbt_key.size = rixlen;
 
             rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET_RANGE);
-            ckey->c_close(ckey);
+            ckey->c_close(ckey); // close cursor, check rc below
         }
 
         if (rc != IX_FND && rc != IX_FNDMORE) {
@@ -625,12 +648,16 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     DBT dbt_key = {
         .data = keybuf, .ulen = sizeof(keybuf), .flags = DB_DBT_USERMEM};
 
+    unsigned char oldkeybuf[18 * 1024];
+    DBT dbt_old_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(oldkeybuf), .data = oldkeybuf};
+
     DBT dbt_data = {
         .data = databuf, .ulen = sizeof(databuf), .flags = DB_DBT_USERMEM};
 
     unsigned long long genid;
-    DBT dbt_dta_check_key = {.ulen = sizeof(unsigned long long),
-                             .size = sizeof(unsigned long long),
+    DBT dbt_dta_check_key = {.ulen = sizeof(genid),
+                             .size = sizeof(genid),
                              .data = &genid,
                              .flags = DB_DBT_USERMEM};
 
@@ -643,8 +670,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
     logmsg(LOGMSG_DEBUG, "%p:%s Entering ix=%d\n", (void *)pthread_self(),
            __func__, ix);
 
-    rc = bdb_state->dbp_ix[ix]->paired_cursor_from_lid(bdb_state->dbp_ix[ix],
-                                                       lid, &ckey, 0);
+    DB *db = bdb_state->dbp_ix[ix];
+    rc = db->paired_cursor_from_lid(db, lid, &ckey, 0);
     if (rc) {
         par->verify_status = 1;
         locprint(par, "!ix %d cursor rc %d", ix, rc);
@@ -669,7 +696,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
-        if (print_verify_progress(par, now))
+        if (check_connection_and_progress(par, now))
             break;
 
         if (dbt_data.size < sizeof(unsigned long long)) {
@@ -677,6 +704,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             locprint(par, "!ix %d unexpected length %d", ix, dbt_data.size);
             goto next_key;
         }
+
         memcpy(&genid, dbt_data.data, sizeof(unsigned long long));
         unsigned long long genid_flipped;
 
@@ -687,9 +715,11 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         genid_flipped = genid;
 #endif
 
+        check_order(db, &dbt_old_key, &dbt_key, par);
+
         /* make sure the data entry exists: */
-        DB *db = get_dbp_from_genid(bdb_state, 0, genid, NULL);
-        rc = db->paired_cursor_from_lid(db, lid, &cdata, 0);
+        DB *db_d = get_dbp_from_genid(bdb_state, 0, genid, NULL);
+        rc = db_d->paired_cursor_from_lid(db_d, lid, &cdata, 0);
         if (rc) {
             par->verify_status = 1;
             locprint(par, "!%016llx ix %d rc %d", genid_flipped, ix, rc);
@@ -723,7 +753,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                                               dbt_dta_check_data.data,
                                               blobsizes, bloboffs, &nblobs);
             if (rc) {
-                sbuf2printf(par->sb, "!%016llx blob size rc %d", genid, rc);
+                locprint(par, "!%016llx blob size rc %d", genid, rc);
             } else {
                 /* verify blobs */
                 int realblobsz[16];
@@ -738,8 +768,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
                     dtafile = get_dtafile_from_genid(genid);
                     if (dtafile < 0) {
-                        sbuf2printf(par->sb, "!%016llx unknown dtafile",
-                                    genid_flipped);
+                        locprint(par, "!%016llx unknown dtafile",
+                                 genid_flipped);
                         goto next_key;
                     }
                     blobdb =
@@ -747,8 +777,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
                     rc = blobdb->paired_cursor_from_lid(blobdb, lid, &cblob, 0);
                     if (rc) {
-                        sbuf2printf(par->sb, "!%016llx cursor on blob %d rc %d",
-                                    genid_flipped, blobno, rc);
+                        locprint(par, "!%016llx cursor on blob %d rc %d",
+                                 genid_flipped, blobno, rc);
                         goto next_key;
                     }
 
@@ -772,36 +802,33 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                         realblobsz[blobno] = -1;
                         if (blobsizes[blobno] != -1 &&
                             blobsizes[blobno] != -2) {
-                            sbuf2printf(par->sb,
-                                        "!%016llx no blob %d found "
-                                        "expected sz %d",
-                                        genid_flipped, blobno,
-                                        blobsizes[blobno]);
+                            locprint(par,
+                                     "!%016llx no blob %d found expected sz %d",
+                                     genid_flipped, blobno, blobsizes[blobno]);
                         }
                     } else if (rc) {
-                        sbuf2printf(par->sb, "!%016llx blob %d rc %d",
-                                    genid_flipped, blobno, rc);
+                        locprint(par, "!%016llx blob %d rc %d", genid_flipped,
+                                 blobno, rc);
                     }
 
                     if (rc == 0) {
                         realblobsz[blobno] = dbt_blob_data.size;
                         if (blobsizes[blobno] == -1) {
-                            sbuf2printf(par->sb,
-                                        "!%016llx blob %d null but found blob",
-                                        genid_flipped, blobno);
+                            locprint(par,
+                                     "!%016llx blob %d null but found blob",
+                                     genid_flipped, blobno);
                         } else if (blobsizes[blobno] == -2) {
-                            sbuf2printf(par->sb,
-                                        "!%016llx blob %d size %d expected "
-                                        "none (inline vutf8)",
-                                        genid_flipped, blobno,
-                                        realblobsz[blobno]);
+                            locprint(par,
+                                     "!%016llx blob %d size %d expected "
+                                     "none (inline vutf8)",
+                                     genid_flipped, blobno, realblobsz[blobno]);
                         } else if (blobsizes[blobno] != -1 &&
                                    dbt_blob_data.size != blobsizes[blobno]) {
-                            sbuf2printf(par->sb,
-                                        "!%016llx blob %d size "
-                                        "mismatch got %d expected %d",
-                                        genid_flipped, blobno,
-                                        dbt_blob_data.size, blobsizes[blobno]);
+                            locprint(par,
+                                     "!%016llx blob %d size "
+                                     "mismatch got %d expected %d",
+                                     genid_flipped, blobno, dbt_blob_data.size,
+                                     blobsizes[blobno]);
                         }
 
                         if (blobsizes[blobno] >= 0 && realblobsz[blobno] >= 0) {
@@ -955,7 +982,10 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
             }
         }
 
-    next_key:
+next_key:
+        dbt_old_key.size = dbt_key.size;
+        memcpy(dbt_old_key.data, dbt_key.data, dbt_key.size);
+
         rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_NEXT);
     }
     if (rc && rc != DB_NOTFOUND) {
@@ -1002,18 +1032,20 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
     char dumbuf;
     unsigned long long genid;
 
-    DBT dbt_key = {.ulen = sizeof(unsigned long long),
-                   .size = sizeof(unsigned long long),
-                   .data = &genid,
-                   .flags = DB_DBT_USERMEM};
+    DBT dbt_key = {
+        .ulen = sizeof(genid), .data = &genid, .flags = DB_DBT_USERMEM};
 
     DBT dbt_data = {
         .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
 
-    DBT dbt_dta_check_key = {.size = sizeof(unsigned long long),
-                             .ulen = sizeof(int), // TODO: why sizeof int?
+    DBT dbt_dta_check_key = {.size = sizeof(genid),
+                             .ulen = sizeof(genid),
                              .data = &genid,
                              .flags = DB_DBT_USERMEM};
+
+    unsigned long long oldgenid;
+    DBT dbt_old_key = {
+        .flags = DB_DBT_USERMEM, .ulen = sizeof(oldgenid), .data = &oldgenid};
 
     DBT dbt_dta_check_data = {
         .data = &dumbuf, .ulen = 1, .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
@@ -1032,7 +1064,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
-        if (print_verify_progress(par, now))
+        if (check_connection_and_progress(par, now))
             break;
 
 #ifdef _LINUX_SOURCE
@@ -1042,6 +1074,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 #else
         genid_flipped = genid;
 #endif
+
+        check_order(db, &dbt_old_key, &dbt_key, par);
 
         int stripe = get_dtafile_from_genid(genid);
 
@@ -1060,8 +1094,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         if (rc) {
             logmsg(LOGMSG_ERROR, "dtastripe %d genid %016llx cursor rc %d\n",
                    stripe, genid_flipped, rc);
-            rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
-            return;
+            goto next_key;
         }
 
         rc = cdata->c_get(cdata, &dbt_dta_check_key, &dbt_dta_check_data,
@@ -1077,6 +1110,10 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         rc = cdata->c_close(cdata);
         if (rc)
             logmsg(LOGMSG_ERROR, "close rc %d\n", rc);
+
+next_key:
+        dbt_old_key.size = dbt_key.size;
+        memcpy(dbt_old_key.data, dbt_key.data, dbt_key.size);
 
         rc = cblob->c_get(cblob, &dbt_key, &dbt_data, DB_NEXT);
     }
@@ -1094,7 +1131,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 {
     int rc = 0;
     /* scan 1 - run through data, verify all the keys and blobs */
-    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe;
+    for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe &&
+                            !par->client_dropped_connection;
          dtastripe++) {
         char header[256];
         snprintf(header, sizeof(header), "verifying dtastripe %d", dtastripe);
@@ -1107,7 +1145,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
     }
 
     /* scan 2: scan each key, verify data exists */
-    for (int ix = 0; ix < par->bdb_state->numix; ix++) {
+    for (int ix = 0;
+         ix < par->bdb_state->numix && !par->client_dropped_connection; ix++) {
         par->records_processed = 0;
         par->nrecs_progress = 0;
         char header[256];
@@ -1120,7 +1159,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
 
     /* scan 3: scan each blob, verify data exists */
     int nblobs = get_numblobs(par->db_table);
-    for (int blobno = 0; blobno < nblobs; blobno++) {
+    for (int blobno = 0; blobno < nblobs && !par->client_dropped_connection;
+         blobno++) {
         par->records_processed = 0;
         par->nrecs_progress = 0;
         for (int dtastripe = 0; dtastripe < par->bdb_state->attr->blobstripe;
@@ -1157,6 +1197,9 @@ void bdb_verify_handler(td_processing_info_t *info)
     }
 
     switch (info->type) {
+    case PROCESS_SEQUENTIAL:
+        bdb_verify_sequential(par, lid);
+        break;
     case PROCESS_DATA:
         bdb_verify_data_stripe(par, info->dtastripe, lid);
         break;
@@ -1167,6 +1210,11 @@ void bdb_verify_handler(td_processing_info_t *info)
         bdb_verify_blob(par, info->blobno, info->dtastripe, lid);
         break;
     }
+
+    DB_LOCKREQ rq = {0};
+    rq.op = DB_LOCK_PUT_ALL;
+    bdb_state->dbenv->lock_vec(bdb_state->dbenv, lid, 0, &rq, 1, NULL);
+    bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lid);
 
     BDB_RELLOCK();
     ATOMIC_ADD32(par->threads_completed, 1);
@@ -1180,29 +1228,34 @@ static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work,
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
     bdb_verify_handler(info);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    free(work);
 }
 
 /* Enqueue work object onto verify_thdpool
  * If verify_thdpool is NULL then processing occurs sequentially.
  */
-static inline void enqueue_work(td_processing_info_t *work,
+static inline void enqueue_work(td_processing_info_t *work, const char *desc,
                                 thdpool *verify_thdpool)
 {
     // this function is called sequentially, no need for atomics
     work->common_params->threads_spawned++;
 
     if (verify_thdpool) {
-        int rc = thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp,
-                                 work, 0, NULL, THDPOOL_FORCE_QUEUE,
-                                 PRIORITY_T_DEFAULT);
+        char *desc_copy = strdup(desc);
+        int rc =
+            thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp, work, 0,
+                            desc_copy, THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:thdpool_enqueue error, proceeding sequentially\n",
                    __func__);
             verify_thdpool = NULL;
+            free(desc_copy);
         }
     }
-    if (!verify_thdpool) {
+
+    if (!verify_thdpool) { // if null or in case of enqueue error
+        work->common_params->threads_spawned--;
         bdb_verify_handler(work);
         free(work);
     }
@@ -1216,26 +1269,40 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
     verify_mode_t v_mode = par->verify_mode;
-#ifndef NDEBUG
     const char *tp = "";
     switch (v_mode) {
     case VERIFY_PARALLEL:
+        tp = "in parallel";
         break;
     case VERIFY_DATA:
-        tp = "DATA";
+        tp = "DATA in parallel";
         break;
     case VERIFY_INDICES:
-        tp = "INDICES";
+        tp = "INDICES in parallel";
         break;
     case VERIFY_BLOBS:
-        tp = "BLOBS";
+        tp = "BLOBS in parallel";
+        break;
+    case VERIFY_SERIAL:
+        tp = "in serial";
         break;
     default:
         abort();
     };
-    logmsg(LOGMSG_DEBUG, "%s: Verify %s in parallel mode\n", __func__, tp);
+    char desc[512] = {0};
+    snprintf(desc, sizeof(desc) - 1, "Verify %s %s mode\n", par->tablename, tp);
+#ifndef NDEBUG
+    logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, desc);
 #endif
-    par->last_reported = comdb2_time_epochms(); // initialize
+    par->last_connection_check = comdb2_time_epochms(); // initialize
+
+    if (v_mode == VERIFY_SERIAL) {
+        td_processing_info_t *work = malloc(sizeof(*work));
+        memcpy(work, info, sizeof(*work));
+        work->type = PROCESS_SEQUENTIAL;
+        enqueue_work(work, desc, verify_thdpool);
+        return 0;
+    }
 
     if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
         /* scan 1 - run through data, verify all the keys and blobs */
@@ -1245,7 +1312,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             memcpy(work, info, sizeof(*work));
             work->type = PROCESS_DATA;
             work->dtastripe = dtastripe;
-            enqueue_work(work, verify_thdpool);
+            enqueue_work(work, desc, verify_thdpool);
         }
     }
 
@@ -1256,7 +1323,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             memcpy(work, info, sizeof(*work));
             work->type = PROCESS_KEY;
             work->index = ix;
-            enqueue_work(work, verify_thdpool);
+            enqueue_work(work, desc, verify_thdpool);
         }
     }
 
@@ -1271,41 +1338,10 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
                 work->type = PROCESS_BLOB;
                 work->blobno = blobno;
                 work->dtastripe = dtastripe;
-                enqueue_work(work, verify_thdpool);
+                enqueue_work(work, desc, verify_thdpool);
             }
         }
     }
 
     return par->verify_status;
-}
-
-/* this is the sequential verify version
- */
-int bdb_verify(verify_common_t *par)
-{
-    int rc;
-    unsigned int lid;
-    bdb_state_type *bdb_state = par->bdb_state;
-
-    BDB_READLOCK("bdb_verify");
-
-    if ((rc = bdb_state->dbenv->lock_id_flags(bdb_state->dbenv, &lid,
-                                              DB_LOCK_ID_READONLY)) != 0) {
-        BDB_RELLOCK();
-        logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
-        return rc;
-    }
-
-    par->last_reported = comdb2_time_epochms(); // initialize
-
-    rc = bdb_verify_sequential(par, lid);
-
-    DB_LOCKREQ rq = {0};
-    rq.op = DB_LOCK_PUT_ALL;
-    bdb_state->dbenv->lock_vec(bdb_state->dbenv, lid, 0, &rq, 1, NULL);
-    bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lid);
-
-    BDB_RELLOCK();
-
-    return rc;
 }

@@ -23,13 +23,19 @@ struct SBUF2;
 struct bdb_state_type;
 typedef struct thdpool thdpool;
 
-typedef enum { PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB } processing_type;
+typedef enum {
+    PROCESS_SEQUENTIAL,
+    PROCESS_DATA,
+    PROCESS_KEY,
+    PROCESS_BLOB
+} processing_type;
 
 // common data for all verify threads
 typedef struct {
     SBUF2 *sb;
     bdb_state_type *bdb_state;
     dbtable *db_table;
+    const char *tablename;
     int (*formkey_callback)(const dbtable *tbl, void *dta, void *blob_parm,
                             int ix, void *keyout, int *keysz);
     int (*get_blob_sizes_callback)(const dbtable *tbl, void *dta, int blobs[16],
@@ -47,8 +53,9 @@ typedef struct {
     unsigned long long records_processed; // progress report in default mode
     unsigned long long saved_progress;    // previous progress counter
     int nrecs_progress;                   // progress done in this time window
-    int last_reported;                    // last reported time
-    int progress_report_seconds;
+    int last_connection_check;            // last reported time in ms
+    int progress_report_seconds;          // freq of report in seconds
+    int progress_report_counter;          // counter used to print progress
     int attempt_fix;
     unsigned short threads_spawned;
     unsigned short threads_completed; // atomic inc

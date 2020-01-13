@@ -20,16 +20,6 @@ nrecs=100
 max_nusc=100
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if cat verify.out | grep -i success > /dev/null ; then
-        failexit "failed verify"
-    fi
-}
-
-
 function do_rebuild_track_pid
 {
     typeset loc_dbnm=$1
@@ -48,7 +38,7 @@ function do_rebuild_track_pid
         echo "Done with rebuild iteration $scnt"
 
         echo "Running verify"
-        do_verify $loc_dbnm $loc_tbl
+        do_verify $loc_tbl
         echo "Done with verify"
         let scnt=scnt+1
     done
@@ -95,7 +85,7 @@ function run_test
     wait
 
     assertcnt $tbl $nrecs
-    do_verify
+    do_verify $tbl
 }
 
 

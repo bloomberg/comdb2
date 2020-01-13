@@ -256,6 +256,7 @@ extern char *gbl_test_log_file;
 extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;
+extern int gbl_ref_sync_wait_txnlist;
 extern int gbl_ref_sync_iterations;
 
 extern char *gbl_kafka_topic;

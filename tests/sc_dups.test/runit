@@ -39,7 +39,7 @@ function do_rebuild
             return 1
         fi
         let scnt=scnt+1
-        do_verify
+        do_verify $tbl
         assertcnt $tbl $nrecs
     done
 
@@ -72,16 +72,6 @@ function insert_records
     done
     if [ $1 -gt 0 ] ; then
         sleep $1
-    fi
-}
-
-
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
     fi
 }
 

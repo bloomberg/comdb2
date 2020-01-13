@@ -6625,13 +6625,11 @@ int db_verify_table_callback(void *v, const char *buf)
     SP sp = getsp(L);
 
     if (peer_dropped_connection(sp->clnt)) {
-        luabb_error(L, sp, "client disconnect");
         return -2;
     }
     if (buf[0] == '!' || buf[0] == '?') buf++;
     char *row[] = {(char*)buf};
-    struct sqlclntstate *clnt = sp->clnt;
-    write_response(clnt, RESPONSE_ROW_STR, row, 1);
+    write_response(sp->clnt, RESPONSE_ROW_STR, row, 1);
     return 0;
 }
 
