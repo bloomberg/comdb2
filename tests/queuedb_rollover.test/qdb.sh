@@ -24,3 +24,13 @@ for ((i=1;i<9600;++i)); do
 done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"
+
+if [ $SP_HOST != `hostname` ]; then
+  scp $SP_HOST:$DBDIR/comdb2_dedicated_test.log $DBDIR/comdb2_dedicated_test.log
+fi
+
+added_to_log=$(cat $DBDIR/comdb2_dedicated_test.log | egrep "^add, <nil>, [0123456789]{1,4}$" | uniq | wc -l)
+
+if [ $added_to_log -ne 9599 ] ; then 
+    failexit "bad queuedb log, need 9599 entries, got $added_to_log"
+fi
