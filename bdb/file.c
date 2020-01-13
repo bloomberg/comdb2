@@ -1694,8 +1694,6 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans, tran_type
         return -1;
     }
 
-    /* !!!!! Might have to COMMIT cltid before reopening !!!!! */
-
     int iammaster;
     if (bdb_state->read_write)
         iammaster = 1;
