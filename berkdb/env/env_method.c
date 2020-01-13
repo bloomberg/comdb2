@@ -1389,7 +1389,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, status)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
-	if (t->status) {
+	if (t->status == TRIGGER_SUBSCRIPTION_OPEN) {
 		++t->active;
 		*cond = &t->cond;
 		*lock = &t->lock;

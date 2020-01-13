@@ -4563,7 +4563,7 @@ static int db_consumer(Lua L)
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
         trigger_reg_init(t, sp->spname);
-        int rc = luabb_trigger_register(L, t, register_timeoutms);
+        rc = luabb_trigger_register(L, t, register_timeoutms);
         if (rc != CDB2_TRIG_REQ_SUCCESS) {
             force_unregister(L, t);
             if (rc == -2) {
