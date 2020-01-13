@@ -4547,24 +4547,22 @@ static int db_consumer(Lua L)
     if (sp->parent->have_consumer) {
         return 0;
     }
-    char spname[strlen(sp->spname) + 1];
-    strcpy(spname, sp->spname);
     struct dbtable *db = NULL;
 
-    int rc = get_qdb(L, spname, &db, NULL);
+    int rc = get_qdb(L, sp->spname, &db, NULL);
     if (rc != 0) {
         return rc;
     }
 
     struct consumer *consumer = db->consumers[0];
     if (consumer == NULL) {
-        return luaL_error(L, "consumer not found for sp:%s", spname);
+        return luaL_error(L, "consumer not found for sp:%s", sp->spname);
     }
 
     enum consumer_t type = dbqueue_consumer_type(consumer);
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
-        trigger_reg_init(t, spname);
+        trigger_reg_init(t, sp->spname);
         int rc = luabb_trigger_register(L, t, register_timeoutms);
         if (rc != CDB2_TRIG_REQ_SUCCESS) {
             force_unregister(L, t);
@@ -4582,7 +4580,7 @@ static int db_consumer(Lua L)
     }
 
     dbconsumer_t *q;
-    size_t sz = dbconsumer_sz(spname);
+    size_t sz = dbconsumer_sz(sp->spname);
     new_lua_t_sz(L, q, dbconsumer_t, DBTYPES_DBCONSUMER, sz);
     if (setup_dbconsumer(q, consumer, db, t) != 0) {
         luabb_error(L, sp, "failed to register consumer with qdb");
@@ -6589,10 +6587,9 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     remove_consumer(L);
     remove_emit(L);
 
-    char *spname = reg->spname;
     struct dbtable *db = NULL;
 
-    rc = get_qdb(L, spname, &db, err);
+    rc = get_qdb(L, reg->spname, &db, err);
     if (rc != 0) {
         return rc;
     }
@@ -6603,7 +6600,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
         return -1;
     }
 
-    size_t sz = dbconsumer_sz(spname);
+    size_t sz = dbconsumer_sz(reg->spname);
     dbconsumer_t *newq = calloc(1, sz);
     init_new_t(newq, DBTYPES_DBCONSUMER);
     if (setup_dbconsumer(newq, consumer, db, reg) != 0) {
