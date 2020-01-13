@@ -155,8 +155,7 @@ int schema_init(void)
 }
 
 #if defined STACK_TAG_SCHEMA
-void comdb2_cheap_stack_one_line(const char *func, int line, const char *msg,
-        FILE *f);
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 #else
@@ -192,10 +191,8 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
 #if defined STACK_TAG_SCHEMA
-    char msg[256];
-    snprintf(msg, sizeof(msg), "%s:%s", table, schema->tag);
-    comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
-
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+            table, schema->tag);
     schema->frames = backtrace(schema->buf, MAX_TAG_STACK_FRAMES);
     schema->tid = pthread_self();
 #endif
@@ -219,9 +216,8 @@ static void del_tag_schema_lk(const char *table, const char *tagname)
     if (sc) {
         hash_del(tag->tags, sc);
 #if defined STACK_TAG_SCHEMA
-        char msg[256];
-        snprintf(msg, sizeof(msg), "%s:%s", table, tagname);
-        comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
+        comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                table, tagname);
 #endif
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
@@ -1458,10 +1454,8 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
 
     hash_add(tag->tags, sc);
 #if defined STACK_TAG_SCHEMA
-    char msg[256];
-    snprintf(msg, sizeof(msg), "%s:%s", table, name);
-    comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
-
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+            table, name);
     sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
     sc->tid = pthread_self();
 #endif
@@ -6428,10 +6422,8 @@ void commit_schemas(const char *tblname)
         } else {
             hash_add(dbt->tags, sc);
 #if defined STACK_TAG_SCHEMA
-            char msg[256];
-            snprintf(msg, sizeof(msg), "%s:%s", tblname, sc->tag);
-            comdb2_cheap_stack_one_line(__func__, __LINE__, msg, NULL);
-
+            comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                    tblname, sc->tag);
             sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
             sc->tid = pthread_self();
 #endif
@@ -6843,7 +6835,7 @@ void delete_schema(const char *tblname)
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &tblname);
 #if defined STACK_TAG_SCHEMA
-    comdb2_cheap_stack_one_line(__func__, __LINE__, tblname, NULL);
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s", __func__, __LINE__, tblname);
 #endif
     assert(dbt != NULL);
     hash_del(gbl_tag_hash, dbt);
@@ -6870,9 +6862,8 @@ void rename_schema(const char *oldname, char *newname)
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &oldname);
 #if defined STACK_TAG_SCHEMA
-    char msg[256];
-    snprintf(msg, sizeof(msg), "%s->%s", oldname, newname);
-    comdb2_cheap_stack_one_line(__func__, __LINE__, oldname, NULL);
+    comdb2_cheapstack_sym(stderr, "%s:%d rename %s to %s\n", __func__,
+            __LINE__, oldname, newname);
 #endif
     hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);

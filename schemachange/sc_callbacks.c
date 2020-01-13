@@ -293,8 +293,6 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     int rc = 0;
 
     if (usedb->sc_downgrading) {
-        logmsg(LOGMSG_DEBUG, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     }
 

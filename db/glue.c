@@ -321,8 +321,6 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
         /* struct dbenv *dbenv = dbenv_from_ireq(iq); */
         if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_mynode*/) {
             /* return NOMASTER so client retries. */
-            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                    __LINE__);
             return ERR_NOMASTER;
         }
         logmsg(LOGMSG_ERROR, "*ERROR* trans_start:failed err %d\n", bdberr);
@@ -549,8 +547,6 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
         if (bdberr == BDBERR_READONLY) {
             /* I was downgraded in the middle..
                return NOMASTER so client retries. */
-            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                    __LINE__);
             return ERR_NOMASTER;
         } else if (logical && bdberr == BDBERR_ADD_DUPE) {
             /*
@@ -967,8 +963,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     /*fall through to default*/
     default:
@@ -1017,8 +1011,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
     case BDBERR_DELNOTFOUND:
         return IX_NOTFND;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     /*fall through to default*/
     default:
@@ -1048,9 +1040,8 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     case BDBERR_DELNOTFOUND:
         return IX_NOTFND;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
+
     /*fall through to default*/
     default:
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_delkey return unhandled rc %d\n", bdberr);
@@ -1108,8 +1099,6 @@ int dat_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr, void *vdta,
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     default:
         logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
@@ -1144,8 +1133,6 @@ int blob_upv_auxdb(int auxdb, struct ireq *iq, void *trans, int vptr,
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     default:
         logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
@@ -1179,8 +1166,6 @@ int blob_upd_genid(struct ireq *iq, void *trans, int blobno, int rrn,
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     default:
         logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
@@ -1230,11 +1215,8 @@ int dat_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_TRANTOOCOMPLEX)
         return RC_TRAN_TOO_COMPLEX;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
@@ -1270,11 +1252,8 @@ int dat_set(struct ireq *iq, void *trans, void *data, size_t length, int rrn,
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_TRANTOOCOMPLEX)
         return RC_TRAN_TOO_COMPLEX;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
@@ -1302,11 +1281,8 @@ int blob_add(struct ireq *iq, void *trans, int blobno, void *data,
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_TRANTOOCOMPLEX)
         return RC_TRAN_TOO_COMPLEX;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     logmsg(LOGMSG_ERROR, "%s: return unhandled rc %d\n", __func__, bdberr);
     return ERR_INTERNAL;
 }
@@ -1332,8 +1308,6 @@ int dat_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
     case BDBERR_DEADLOCK:
         return RC_INTERNAL_RETRY;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     case BDBERR_DELNOTFOUND:
         return ERR_VERIFY;
@@ -1382,8 +1356,6 @@ int blob_del_auxdb(int auxdb, struct ireq *iq, void *trans, int rrn,
     case BDBERR_DELNOTFOUND:
         return IX_NOTFND;
     case BDBERR_READONLY:
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     /*fall through to default*/
     default:
@@ -5022,11 +4994,8 @@ int lite_add_auxdb(int auxdb, struct ireq *iq, void *trans, void *data,
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_TRANTOOCOMPLEX)
         return RC_TRAN_TOO_COMPLEX;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     if (bdberr == BDBERR_ADD_DUPE)
         return IX_DUP;
     return map_unhandled_bdb_wr_rcode("bdb_lite_add", bdberr);
@@ -5051,11 +5020,8 @@ int lite_del_auxdb(int auxdb, struct ireq *iq, void *trans, void *key)
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_TRANTOOCOMPLEX)
         return RC_TRAN_TOO_COMPLEX;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     if (bdberr == BDBERR_DEL_DTA)
         return IX_NOTFND;
     return map_unhandled_bdb_wr_rcode("lite_del_multiple_auxdb", bdberr);
@@ -5099,11 +5065,8 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     }
     if (bdberr == BDBERR_DEADLOCK)
         return RC_INTERNAL_RETRY;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     if (bdberr == BDBERR_ADD_DUPE)
         return IX_DUP;
     return map_unhandled_bdb_wr_rcode("bdb_queue_add", bdberr);
@@ -5124,11 +5087,8 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd)
         return 0;
     if (bdberr == BDBERR_DEADLOCK)
         return RC_INTERNAL_RETRY;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     if (bdberr == BDBERR_DELNOTFOUND)
         return IX_NOTFND;
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume", bdberr);
@@ -5191,11 +5151,8 @@ int dbq_add_goose(struct ireq *iq, void *trans)
         return 0;
     if (bdberr == BDBERR_DEADLOCK)
         return RC_INTERNAL_RETRY;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     return map_unhandled_bdb_wr_rcode("bdb_queue_add_goose", bdberr);
 }
 
@@ -5218,11 +5175,8 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
         return RC_INTERNAL_RETRY;
     if (bdberr == BDBERR_DELNOTFOUND)
         return IX_NOTFND;
-    if (bdberr == BDBERR_READONLY) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
+    if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
-    }
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
@@ -5573,11 +5527,8 @@ int ix_fetch_last_key_tran(struct ireq *iq, void *tran, int write, int ixnum,
     if (rc == -1) {
         if (bdberr == BDBERR_DEADLOCK)
             return RC_INTERNAL_RETRY;
-        if (bdberr == BDBERR_READONLY) {
-            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                    __LINE__);
+        if (bdberr == BDBERR_READONLY)
             return ERR_NOMASTER;
-        }
         logmsg(LOGMSG_ERROR, "*ERROR* bdb_prim_allocdta return unhandled rc %d\n", bdberr);
         return ERR_INTERNAL;
     }

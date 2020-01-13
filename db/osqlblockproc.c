@@ -287,9 +287,6 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            /* Backout code should reset and free */
-            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                    __LINE__);
             rc = ERR_NOMASTER;
         } else if (sc->sc_rc == SC_PAUSED) {
             Pthread_mutex_lock(&sc->mtx);
@@ -325,8 +322,6 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (rc == ERR_NOMASTER) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         struct schema_change_type *next;
         sc = iq->sc_pending;
         while (sc != NULL) {
@@ -1323,8 +1318,6 @@ static int process_this_session(
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;
             reqlog_set_error(iq->reqlogger, "ERR_NOMASTER", ERR_NOMASTER);
-            logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                    __LINE__);
             return ERR_NOMASTER /*OSQL_FAILDISPATCH*/;
         }
 

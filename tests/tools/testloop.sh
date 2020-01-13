@@ -5,10 +5,6 @@
 
 DOMAIN=comdb2-d1.org
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
-COREPATTERN=$(</proc/sys/kernel/core_pattern)
-COREDIR=$(dirname $COREPATTERN)
-export CHECK_DB_AT_FINISH=1
-export CORE_ON_FAILURE=1
 export DUMPLOCK_ON_TIMEOUT=1
 export CORE_ON_TIMEOUT=1
 email="mhannum72@gmail.com"
@@ -48,12 +44,9 @@ function mail_error
     [[ "$debug" == "1" ]] && set -x
     [[ $domail == "0" ]] && return 
 
-    echo "Mailing failure"
-    print_status > status.txt
-    echo "$1" > body.txt
+    text="$1"
     for addr in $email ; do
-        mail -s "TESTCASE FAILURE STATUS" -r testloop@$DOMAIN $addr < status.txt
-        mail -s "TESTCASE FAILURE" -r testloop@$DOMAIN $addr < body.txt
+        mail -s "$text" -r testloop@$DOMAIL $addr < $l
     done
 }
 
@@ -188,18 +181,6 @@ while :; do
                 echo "Jepsen broke error: continuing"
                 let jbroke=jbroke+1
                 err=0
-            fi
-
-            if [[ -n "$CLUSTER" ]]; then
-                for node in $CLUSTER ; do
-                    cnt=$(ssh $node ls -l $COREDIR | egrep core | wc -l)
-                    if [[ $cnt != "0" ]]; then
-                        echo "found core, failing test"
-                        err=1
-                    fi
-                done
-            else
-                cnt=$(ssh $node ls -l $COREDIR | egrep core | wc -l)
             fi
 
             if [[ $err == 1 ]]; then

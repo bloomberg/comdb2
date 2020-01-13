@@ -401,14 +401,17 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
 
-    if (!iq->sc_locked)
+    int local_lock = 0;
+    if (!iq->sc_locked) {
         wrlock_schema_lk();
+        local_lock = 1;
+    }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         return rc;
     }
@@ -419,7 +422,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Internal error\n");
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         return SC_INTERNAL_ERROR;
     }
@@ -433,14 +436,14 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Failed to process schema!\n");
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         return -1;
     }
 
     if ((rc = sql_syntax_check(iq, newdb))) {
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         sc_errf(s, "Sqlite syntax check failed\n");
         backout(newdb);
@@ -459,7 +462,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         backout(newdb);
         cleanup_newdb(newdb);
@@ -471,7 +474,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         prepare_changes(s, db, newdb, &s->plan, &scinfo);
     if (changed == SC_UNKNOWN_ERROR) {
         backout(newdb);
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         cleanup_newdb(newdb);
         sc_errf(s, "Internal error");
@@ -500,7 +503,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");
         change_schemas_recover(s->tablename);
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         return -1;
     }
@@ -519,12 +522,12 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
                        "the new master can sort it out\n");
         }
 
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         clean_exit();
     }
 
-    if (!iq->sc_locked)
+    if (local_lock)
         unlock_schema_lk();
 
     /* we can resume sql threads at this point */

@@ -256,7 +256,6 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
-    rc = 0;
     rc = sc_set_running(iq, s->tablename, s->preempted ? 2 : 1, node,
                 time(NULL), 0, __func__, __LINE__);
     if (rc != 0) {
@@ -645,8 +644,6 @@ int live_sc_post_delete_int(struct ireq *iq, void *trans,
                             blob_buffer_t *oldblobs)
 {
     if (iq->usedb->sc_downgrading) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     }
 
@@ -715,8 +712,6 @@ int live_sc_post_add_int(struct ireq *iq, void *trans, unsigned long long genid,
     int rc;
 
     if (iq->usedb->sc_downgrading) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     }
 
@@ -807,8 +802,6 @@ int live_sc_post_update_int(struct ireq *iq, void *trans,
                             blob_buffer_t *oldblobs, blob_buffer_t *newblobs)
 {
     if (iq->usedb->sc_downgrading) {
-        logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                __LINE__);
         return ERR_NOMASTER;
     }
 

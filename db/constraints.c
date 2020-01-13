@@ -1239,8 +1239,7 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                     if (gbl_exit_on_internal_error) {
                         exit(1);
                     }
-                    logmsg(LOGMSG_INFO, "%s %d returning ERR_NOMASTER\n", __func__,
-                            __LINE__);
+
                     rc = ERR_NOMASTER;
                 }
                 return rc;

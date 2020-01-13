@@ -416,10 +416,13 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         s->finalize = 0;
         rc = SC_COMMIT_PENDING;
     } else if (s->finalize) {
-        if (!iq->sc_locked)
+        int local_lock = 0;
+        if (!iq->sc_locked) {
             wrlock_schema_lk();
+            local_lock = 1;
+        }
         rc = do_finalize(post, iq, s, tran, type);
-        if (!iq->sc_locked)
+        if (local_lock)
             unlock_schema_lk();
         if (type == fastinit && gbl_replicate_local)
             local_replicant_write_clear(iq, tran, s->db);

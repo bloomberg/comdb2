@@ -29,16 +29,6 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
-#if defined (STACK_AT_DBREG_LOG)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-char **backtrace_symbols(void *const *, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols(A, B)
-#endif
-#endif
-
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
 /*
