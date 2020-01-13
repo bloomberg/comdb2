@@ -4511,9 +4511,7 @@ void force_unregister(Lua L, trigger_reg_t *reg)
     luabb_trigger_unregister(L, q);
 }
 
-static int get_queue_and_grab_table_read_lock(Lua L, struct sqlclntstate *clnt,
-                                              char *spname, struct dbtable **pDb,
-                                              char **err)
+static int get_qdb(Lua L, char *spname, struct dbtable **pDb, char **err)
 {
     Q4SP(qname, spname);
     rdlock_schema_lk();
@@ -4526,19 +4524,6 @@ static int get_queue_and_grab_table_read_lock(Lua L, struct sqlclntstate *clnt,
             return -1;
         } else {
             return luaL_error(L, "trigger not found for sp:%s", spname);
-        }
-    }
-    int rc = bdb_lock_table_read_fromlid(db->handle,
-              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
-    if (rc != 0) {
-        *pDb = NULL;
-        unlock_schema_lk();
-        if (err != NULL) {
-            *err = strdup("bdb_lock_table_read_fromlid failed");
-            return rc;
-        } else {
-            return luaL_error(L, "cannot read-lock queue for sp:%s (%d)",
-                              spname, rc);
         }
     }
     *pDb = db;
@@ -4566,7 +4551,7 @@ static int db_consumer(Lua L)
     strcpy(spname, sp->spname);
     struct dbtable *db = NULL;
 
-    int rc = get_queue_and_grab_table_read_lock(L, clnt, spname, &db, NULL);
+    int rc = get_qdb(L, spname, &db, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -6607,7 +6592,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     char *spname = reg->spname;
     struct dbtable *db = NULL;
 
-    rc = get_queue_and_grab_table_read_lock(L, clnt, spname, &db, err);
+    rc = get_qdb(L, spname, &db, err);
     if (rc != 0) {
         return rc;
     }
