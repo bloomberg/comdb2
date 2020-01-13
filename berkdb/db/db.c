@@ -42,15 +42,7 @@
 #include "cheapstack.h"
 
 #if defined (STACK_AT_DB_OPEN_CLOSE)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-extern void backtrace_symbols_fd(void *const *, int, int);
-extern char **backtrace_symbols(void *const *, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols_fd(A, B, C)
-#define backtrace_symbols(A, B)
-#endif
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
 
 #ifndef lint
@@ -75,6 +67,7 @@ static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
 #include "logmsg.h"
+#include <tohex.h>
 
 static int __db_dbenv_mpool __P((DB *, const char *, u_int32_t));
 static int __db_disassociate __P((DB *));
@@ -835,15 +828,6 @@ __db_close(dbp, txn, flags)
 	return (ret);
 }
 
-static inline void fileid_str(u_int8_t *fileid, char *str)
-{
-	char *p = str;
-	u_int8_t *f = fileid;
-	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
-		sprintf(p, "%2.2x", (u_int)*f);
-	}
-}
-
 /*
  * __db_refresh --
  *	Refresh the DB structure, releasing any allocated resources.
@@ -1103,21 +1087,9 @@ never_opened:
 		dbp->mpf = NULL;
 	}
 #if defined (STACK_AT_DB_OPEN_CLOSE)
-	dbp->frames = backtrace(dbp->buf, MAX_BERK_STACK_FRAMES);
 	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-    char **strings;
 	fileid_str(dbp->fileid, fid_str);
-	logmsg(LOGMSG_USER, "%ld closed %s:", pthread_self(), fid_str);
-    strings = backtrace_symbols(dbp->buf, dbp->frames);
-    for (int j = 0; j < dbp->frames; j++) {
-        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-        if (p && q) {
-            (*p) = (*q) = '\0';
-            logmsg(LOGMSG_USER, " %s", &p[1]);
-        }
-    }
-    logmsg(LOGMSG_USER, "\n");
-    free(strings);
+    comdb2_cheapstack_sym(stderr, "%ld closed %s:", pthread_self(), fid_str);
 #endif
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);

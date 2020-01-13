@@ -26,13 +26,8 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "locks_wrap.h"
 
 #if defined (STACK_AT_DBREG_LOG)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-char **backtrace_symbols(void *const *, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols(A, B)
-#endif
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#include <tohex.h>
 #endif
 
 /*
@@ -241,17 +236,6 @@ __dbreg_new_id(dbp, txn)
 	return (ret);
 }
 
-#if defined (STACK_AT_DBREG_LOG)
-static inline void fileid_str(u_int8_t *fileid, char *str)
-{
-	char *p = str;
-	u_int8_t *f = fileid;
-	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
-		sprintf(p, "%2.2x", (u_int)*f);
-	}
-}
-#endif
-
 pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
 
 /*
@@ -325,24 +309,9 @@ __dbreg_get_id(dbp, txn, idp)
         goto err;
 
 #if defined (STACK_AT_DBREG_LOG)
-    int frames;
-    void *buf[MAX_BERK_STACK_FRAMES];
-    char **strings;
-    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-	frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
-    strings = backtrace_symbols(buf, frames);
-    fileid_str(dbp->fileid, fid_str);
-    logmsg(LOGMSG_USER, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "open",
-            id, fid_str, retlsn.file, retlsn.offset);
-
-    for (int j = 0; j < frames; j++) {
-        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-        if (p && q) {
-            (*p) = (*q) = '\0';
-            logmsg(LOGMSG_USER, " %s", &p[1]);
-        }
-    }
-    logmsg(LOGMSG_USER, "\n");
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ",
+			pthread_self(), "open", id, fid_str, retlsn.file, retlsn.offset);
 #endif
 
 	/*
@@ -570,24 +539,10 @@ __dbreg_close_id(dbp, txn)
 		fnp->s_type, fnp->meta_pgno, TXN_INVALID);
 
 #if defined (STACK_AT_DBREG_LOG)
-    int frames;
-    void *buf[MAX_BERK_STACK_FRAMES];
-    char **strings;
-    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-	frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
-    strings = backtrace_symbols(buf, frames);
-    fileid_str(fnp->ufid, fid_str);
-    logmsg(LOGMSG_USER, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "close",
-            fnp->id, fid_str, rlsn.file, rlsn.offset);
-
-    for (int j = 0; j < frames; j++) {
-        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-        if (p && q) {
-            (*p) = (*q) = '\0';
-            logmsg(LOGMSG_USER, " %s", &p[1]);
-        }
-    }
-    logmsg(LOGMSG_USER, "\n");
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(fnp->ufid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "close",
+			fnp->id, fid_str, rlsn.file, rlsn.offset);
 #endif
 
 	Pthread_rwlock_unlock(&gbl_dbreg_log_lock);

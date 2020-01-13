@@ -1367,8 +1367,6 @@ void timeval_add(struct timeval *tvp,
                   struct timeval *uvp,
                   struct timeval *vvp);
 
-#define MAX_BERK_STACK_FRAMES 64
-
 /* Database handle. */
 struct __db {
 	/*******************************************************
@@ -1421,12 +1419,6 @@ struct __db {
 	DBT	 my_rskey;		/* Secondary key. */
 	DBT	 my_rkey;		/* [Primary] key. */
 	DBT	 my_rdata;		/* Data. */
-
-#if defined (STACK_AT_DB_OPEN_CLOSE)
-	int  frames;
-	void *buf[MAX_BERK_STACK_FRAMES];
-	pthread_t tid;
-#endif
 
 	/*
 	 * !!!

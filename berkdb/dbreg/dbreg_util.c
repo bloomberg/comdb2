@@ -140,16 +140,9 @@ __ufid_sanity_check(dbenv, fnp)
 }
 
 #if defined (STACK_AT_DBREG_LOG)
-static inline void fileid_str(u_int8_t *fileid, char *str)
-{
-	char *p = str;
-	u_int8_t *f = fileid;
-	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
-		sprintf(p, "%2.2x", (u_int)*f);
-	}
-}
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#include <tohex.h>
 #endif
-
 
 /*
  * __dbreg_open_files --
@@ -217,25 +210,11 @@ __dbreg_open_files_int(dbenv, flags)
 			 break;
 
 #if defined (STACK_AT_DBREG_LOG)
-        int frames;
-        void *buf[MAX_BERK_STACK_FRAMES];
-        char **strings;
         char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-        frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
-        strings = backtrace_symbols(buf, frames);
         char *op = (F_ISSET(dblp, DBLOG_RECOVER)) ? "rclose" : "ckpt";
         fileid_str(fnp->ufid, fid_str);
-        logmsg(LOGMSG_USER, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), op,
+        comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), op,
                 fnp->id, fid_str, rlsn.file, rlsn.offset);
-
-        for (int j = 0; j < frames; j++) {
-            char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-            if (p && q) {
-                (*p) = (*q) = '\0';
-                logmsg(LOGMSG_USER, " %s", &p[1]);
-            }
-        }
-        logmsg(LOGMSG_USER, "\n");
 #endif
 	}
 

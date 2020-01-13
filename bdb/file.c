@@ -103,6 +103,7 @@
 
 #include <bdb_queuedb.h>
 #include <schema_lk.h>
+#include <tohex.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -1283,15 +1284,6 @@ static void net_startthread_rtn(void *arg)
 static void net_stopthread_rtn(void *arg)
 {
     bdb_thread_event((bdb_state_type *)arg, 0);
-}
-
-static inline void fileid_str(u_int8_t *fileid, char *str)
-{
-	char *p = str;
-	u_int8_t *f = fileid;
-	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
-		sprintf(p, "%2.2x", (u_int)*f);
-	}
 }
 
 /* According to the berkdb docs, after the DB/DBENV close() functions have

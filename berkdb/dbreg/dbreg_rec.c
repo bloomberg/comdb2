@@ -65,21 +65,7 @@ int
 __dbreg_register_print(DB_ENV *dbenv, DBT *dbtp, DB_LSN *lsnp, db_recops notused2, void *notused3);
 
 #if defined (STACK_AT_DBREG_RECOVER)
-static inline void fileid_str(u_int8_t *fileid, char *str)
-{
-	char *p = str;
-	u_int8_t *f = fileid;
-	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
-		sprintf(p, "%2.2x", (u_int)*f);
-	}
-}
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-char **backtrace_symbols(void *const *, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols(A, B)
-#endif
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
 
 
@@ -225,23 +211,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 			 */
 		}
 #if defined (STACK_AT_DBREG_RECOVER)
-        int frames;
-        void *buf[MAX_BERK_STACK_FRAMES];
-        char **strings;
-        char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-        frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
-        strings = backtrace_symbols(buf, frames);
-        logmsg(LOGMSG_USER, "%ld op %s ix:%d [%d:%d] ret=%d: ", pthread_self(), "open",
-                argp->id, lsnp->file, lsnp->offset, ret);
-
-        for (int j = 0; j < frames; j++) {
-            char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-            if (p && q) {
-                (*p) = (*q) = '\0';
-                logmsg(LOGMSG_USER, " %s", &p[1]);
-            }
-        }
-        logmsg(LOGMSG_USER, "\n");
+		comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d [%d:%d] ret=%d: ", pthread_self(), "open",
+				argp->id, lsnp->file, lsnp->offset, ret);
 #endif
 
 		if (ret == ENOENT || ret == EINVAL) {
@@ -285,22 +256,8 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		do_rem = 0;
 		MUTEX_THREAD_LOCK(dbenv, dblp->mutexp);
 #if defined (STACK_AT_DBREG_RECOVER)
-        int frames;
-        void *buf[MAX_BERK_STACK_FRAMES];
-        char **strings;
-        char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-        frames = backtrace(buf, MAX_BERK_STACK_FRAMES);
-        strings = backtrace_symbols(buf, frames);
-        logmsg(LOGMSG_USER, "%ld op %s ix:%d [%d:%d] ret=(not-here): ", pthread_self(), "close",
-                argp->id, lsnp->file, lsnp->offset);
-        for (int j = 0; j < frames; j++) {
-            char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-            if (p && q) {
-                (*p) = (*q) = '\0';
-                logmsg(LOGMSG_USER, " %s", &p[1]);
-            }
-        }
-        logmsg(LOGMSG_USER, "\n");
+		comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d [%d:%d] ret=(not-here): ", pthread_self(), "close",
+				argp->id, lsnp->file, lsnp->offset);
 #endif
 
 		if (argp->fileid < dblp->dbentry_cnt) {

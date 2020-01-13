@@ -38,26 +38,9 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
 #include <string.h>
 
 #if defined (STACK_AT_DB_OPEN_CLOSE)
-#ifdef __GLIBC__
-extern int backtrace(void **, int);
-extern void backtrace_symbols_fd(void *const *, int, int);
-extern char **backtrace_symbols(void *const *, int);
-#else
-#define backtrace(A, B) 1
-#define backtrace_symbols_fd(A, B, C)
-#define backtrace_symbols(A, B)
+#include <tohex.h>
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
-#endif
-
-static inline void fileid_str(u_int8_t *fileid, char *str)
-{
-	char *p = str;
-	u_int8_t *f = fileid;
-	for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
-		sprintf(p, "%2.2x", (u_int)*f);
-	}
-}
-
 /*
  * __db_open --
  *	DB->open method.
@@ -261,22 +244,9 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 		dbp->offset_bias = 1;
 
 #if defined (STACK_AT_DB_OPEN_CLOSE)
-	dbp->frames = backtrace(dbp->buf, MAX_BERK_STACK_FRAMES);
-	dbp->tid = pthread_self();
     char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-    char **strings;
     fileid_str(dbp->fileid, fid_str);
-    logmsg(LOGMSG_USER, "%ld opened %s:", dbp->tid, fid_str);
-    strings = backtrace_symbols(dbp->buf, dbp->frames);
-    for (int j = 0; j < dbp->frames; j++) {
-        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
-        if (p && q) {
-            (*p) = (*q) = '\0';
-            logmsg(LOGMSG_USER, " %s", &p[1]);
-        }
-    }
-    logmsg(LOGMSG_USER, "\n");
-    free(strings);
+    comdb2_cheapstack_sym(stderr, "%ld opened %s:", pthread_self(), fid_str);
 #endif
 	// printf(">>>> %s pagesize %d bias %d\n", fname, dbp->pgsize, dbp->offset_bias);
 
