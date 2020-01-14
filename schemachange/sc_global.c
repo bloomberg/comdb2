@@ -270,9 +270,6 @@ int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
     assert(running >= 0);
     assert(table);
 
-    if (!iq)
-        return 0;
-
     if (iq)
         assert(!replicant);
 
@@ -310,14 +307,17 @@ int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
         sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
         sctbl->time = time;
         hash_add(sc_tables, sctbl);
-        iq->sc_running++;
+        if (iq)
+            iq->sc_running++;
     } else { /* not running */
         if ((sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
             free(sctbl);
             decrement_schema_change_in_progress(func, line);
-            iq->sc_running--;
-            assert(iq->sc_running >= 0);
+            if (iq) {
+                iq->sc_running--;
+                assert(iq->sc_running >= 0);
+            }
         } else {
             logmsg(LOGMSG_FATAL, "%s:%d unfound table %s\n", func, line, table);
             abort();

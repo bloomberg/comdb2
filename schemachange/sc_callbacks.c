@@ -80,8 +80,6 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     if (rc)
         logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
                 rc);
-    sc_set_running(NULL, (char *)name, 0 /*running*/, NULL, 0, 0,
-            __func__, __LINE__);
     return rc;
 }
 
@@ -907,7 +905,5 @@ done:
         }
     }
 
-    sc_set_running(NULL, (char *)table, 0 /*running*/, NULL, 0, 1, __func__,
-            __LINE__);
     return rc; /* success */
 }
