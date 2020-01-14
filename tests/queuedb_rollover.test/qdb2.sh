@@ -10,12 +10,12 @@ EOF
 ./qdb2_adds.sh 9600 &
 sleep 2
 
-cdb2sql $SP_OPTIONS "select depth > 0 from comdb2_queues where queuename = '__qnop1';"
+cdb2sql $SP_OPTIONS "select (depth > 0) as hasDepth from comdb2_queues where queuename = '__qnop1';"
 
 ./qdb2_cons.sh 9600 &
 sleep 2
 
-cdb2sql $SP_OPTIONS "select depth > 0 from comdb2_queues where queuename = '__qnop1';"
+cdb2sql $SP_OPTIONS "select (depth > 0) as hasDepth from comdb2_queues where queuename = '__qnop1';"
 
 wait
 cdb2sql $SP_OPTIONS "select depth from comdb2_queues where queuename = '__qnop1';"

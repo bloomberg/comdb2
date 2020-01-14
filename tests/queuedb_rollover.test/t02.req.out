@@ -1,4 +1,4 @@
 (version='noptest')
-(depth > 0=1)
-(depth > 0=1)
+(hasDepth=1)
+(hasDepth=1)
 (depth=0)
