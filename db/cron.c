@@ -521,6 +521,7 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
         arr[narr].arg1 = event->arg1 ? strdup(event->arg1) : NULL;
         arr[narr].arg2 = event->arg2 ? strdup(event->arg2) : NULL;
         arr[narr].arg3 = event->arg3 ? strdup(event->arg3) : NULL;
+        arr[narr].arg4 = event->arg4; /* NOTE: May not be displayable str. */
         arr[narr].sourceid = strdup(comdb2uuidstr(event->source_id, us));
         narr++;
     }
@@ -570,6 +571,8 @@ void cron_systable_events_free(void *arr, int nrecords)
             free(parr[i].arg2);
         if (parr[i].arg3)
             free(parr[i].arg3);
+        if (parr[i].arg4)
+            parr[i].arg4 = NULL; /* NOT OWNED, DO NOT FREE */
         if (parr[i].sourceid)
             free(parr[i].sourceid);
     }

@@ -31,6 +31,7 @@ fi
 
 added_to_log=$(cat $DBDIR/comdb2_dedicated_test.log | egrep "^add, <nil>, [0123456789]{1,4}$" | uniq | wc -l)
 
-if [ $added_to_log -ne 9599 ] ; then 
-    failexit "bad queuedb log, need 9599 entries, got $added_to_log"
+if [ $added_to_log -ne 9599 ] ; then
+    echo "bad queuedb log, need 9599 entries, got $added_to_log"
+    exit 1
 fi
