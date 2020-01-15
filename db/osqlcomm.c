@@ -5096,14 +5096,14 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
     char uuid[37];
     int type;
     union {
-        char a [OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
-        char b [OSQLCOMM_DONE_UUID_RPL_LEN];
-        char c [OSQLCOMM_DONE_XERR_RPL_LEN];
-        char d [OSQLCOMM_DONE_RPL_LEN];
+        char a[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
+        char b[OSQLCOMM_DONE_UUID_RPL_LEN];
+        char c[OSQLCOMM_DONE_XERR_RPL_LEN];
+        char d[OSQLCOMM_DONE_RPL_LEN];
     } largest_message;
-    uint8_t *buf = (uint8_t *) &largest_message;
+    uint8_t *buf = (uint8_t *)&largest_message;
 
-    /* test if the sql thread was the one closing the request, 
+    /* test if the sql thread was the one closing the request,
      * and if so, don't send anything back, request might be gone already anyway
      */
     if (xerr->errval == SQLITE_ABORT)
@@ -7449,9 +7449,10 @@ done:
     if (rc2) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
-                        "error to create bplog\n",
-                __func__, req.rqid, us, fromhost);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to signaled rqid=[%llx %s] host=%s of "
+               "error to create bplog\n",
+               __func__, req.rqid, us, fromhost);
     }
     if (onstack)
         sess = NULL;

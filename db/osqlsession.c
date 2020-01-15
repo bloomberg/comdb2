@@ -77,11 +77,11 @@ static void save_sql(struct ireq *iq, osql_sess_t *sess, const char *sql,
  * This function will remove from osql_repository_rem() if is_linked is set
  * then wait till there are no more clients using this sess then destroy obj
  *
- * NOTE: 
+ * NOTE:
  * - it is possible to inline clean a request on master bounce,
  *   which starts by unlinking the session first, and freeing bplog afterwards
  *
- * - if caller has already removed sess from osql repository, they should 
+ * - if caller has already removed sess from osql repository, they should
  *   call this function with is_linked = 0
  */
 int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
@@ -108,7 +108,8 @@ int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
         return rc;
 
     /* wait for all receivers to go away, in current implem this is only 1--the
-       reader_thread, since we removed the hash entry no new messages are added */
+       reader_thread, since we removed the hash entry no new messages are added
+     */
     while (ATOMIC_LOAD32(sess->clients) > 0) {
         poll(NULL, 0, 10);
     }
@@ -194,8 +195,8 @@ inline int osql_sess_remclient(osql_sess_t *sess)
         abort(); // remove this in future
         uuidstr_t us;
         logmsg(LOGMSG_ERROR,
-                "%s: BUG ALERT, session %llu %s freed one too many times\n",
-                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
+               "%s: BUG ALERT, session %llu %s freed one too many times\n",
+               __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
 
     return 0;
