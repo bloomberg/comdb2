@@ -21,7 +21,11 @@
 /* All threads share a single random number generator.
 ** This structure is the current state of the generator.
 */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static __thread SQLITE_WSD struct sqlite3PrngType {
+#else
 static SQLITE_WSD struct sqlite3PrngType {
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   unsigned char isInit;          /* True if initialized */
   unsigned char i, j;            /* State variables */
   unsigned char s[256];          /* State variables */
