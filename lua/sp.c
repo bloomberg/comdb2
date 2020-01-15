@@ -687,6 +687,16 @@ static int dbq_pushargs(Lua L, dbconsumer_t *q, struct qfound *f)
     return rc;
 }
 
+static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
+                                    struct dbtable *db, int have_schema_lock)
+{
+    if (!have_schema_lock) rdlock_schema_lk();
+    int rc = bdb_lock_table_read_fromlid(db->handle,
+             bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    if (!have_schema_lock) unlock_schema_lk();
+    return rc;
+}
+
 static const int dbq_delay = 1000; // ms
 // Call with q->lock held.
 // Unlocks q->lock on return.
@@ -4520,16 +4530,6 @@ void force_unregister(Lua L, trigger_reg_t *reg)
     q->lock = NULL;
     memcpy(&q->info, reg, trigger_reg_sz(reg->spname));
     luabb_trigger_unregister(L, q);
-}
-
-static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
-                                    struct dbtable *db, int have_schema_lock)
-{
-    if (!have_schema_lock) rdlock_schema_lk();
-    int rc = bdb_lock_table_read_fromlid(db->handle,
-             bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
-    if (!have_schema_lock) unlock_schema_lk();
-    return rc;
 }
 
 static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
