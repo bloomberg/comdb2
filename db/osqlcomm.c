@@ -7268,16 +7268,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 {
     int rc = 0;
     struct ireq *iq = NULL;
-    uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
-    if (!malcd)
-        goto done;
-
+    uint8_t onstackbuf[OSQL_BP_MAXLEN];
     osql_sess_t *sess = NULL;
     osql_req_t req;
     bool is_reorder_on = false;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
-    uint8_t *p_buf = malcd;
+    uint8_t *p_buf = onstackbuf;
     const uint8_t *p_buf_end = p_buf + OSQL_BP_MAXLEN;
     char *sql;
     char *sqlret = NULL;
@@ -7309,13 +7306,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         comdb2uuid_clear(uuid);
     }
 
-    if (!p_buf) {
-        logmsg(LOGMSG_ERROR, "%s:unable to allocate %d bytes\n", __func__,
-                OSQL_BP_MAXLEN);
-        rc = -1;
-        goto done;
-    }
-
     if (osql_repository_cancelled()) {
         logmsg(LOGMSG_ERROR, 
                "sorese request cancelled (schema change or exiting database)\n");
@@ -7335,8 +7325,20 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         goto done;
     }
 
+    size_t sz = p_buf_end - p_buf;
+    uint8_t *malcd = malloc(sz);
+    if (!malcd) {
+        logmsg(LOGMSG_ERROR, "%s:unable to allocate %ld bytes\n", __func__, sz);
+        rc = -1;
+        goto done;
+    }
+
+    memcpy(malcd, p_buf, sz);
+    p_buf = malcd;
+    p_buf_end = p_buf + sz;
+
     /* create the request */
-    sess = osql_sess_create(sqlret, sqllenret, req.tzname, type, req.rqid, uuid,
+    sess = osql_sess_create(req.tzname, type, req.rqid, uuid,
                             fromhost, is_reorder_on);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new session\n", __func__);

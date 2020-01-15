@@ -106,9 +106,9 @@ int osql_session_testterminate(void *obj, void *arg);
  * Returns created object if success, NULL otherwise
  *
  */
-osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
-                              int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, bool is_reorder_on);
+osql_sess_t *osql_sess_create(char *tzname, int type, unsigned long long rqid,
+                              uuid_t uuid, const char *host,
+                              bool is_reorder_on);
 
 /**
  * Returns

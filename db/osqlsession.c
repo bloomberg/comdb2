@@ -537,12 +537,9 @@ int gbl_selectv_writelock_on_update = 1;
  * Returns created object if success, NULL otherwise
  *
  */
-osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
-                              int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, bool is_reorder_on)
+osql_sess_t *osql_sess_create(char *tzname, int type, unsigned long long rqid,
+                              uuid_t uuid, const char *host, bool is_reorder_on)
 {
-    osql_sess_t *sess = NULL;
-
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;
     logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
@@ -550,7 +547,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
 #endif
 
     /* alloc object */
-    sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
+    osql_sess_t *sess = (osql_sess_t *)calloc(sizeof(*sess), 1);
     if (!sess) {
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
                sizeof(*sess));
@@ -559,8 +556,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
 #if DEBUG_REORDER
     uuidstr_t us;
     comdb2uuidstr(uuid, us);
-    logmsg(LOGMSG_DEBUG, "%s:processing sql=%s sess=%p, uuid=%s\n", __func__,
-           sql, sess, us);
+    logmsg(LOGMSG_DEBUG, "%s:process sess=%p, uuid=%s\n", __func__, sess, us);
 #endif
 
     /* init sync fields */
@@ -570,7 +566,6 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
-    /*save_sql(iq, sess, sql, sqlen);*/
     sess->type = type;
     sess->host = host ? intern(host) : NULL;
     sess->startus = comdb2_time_epochus();
