@@ -7282,6 +7282,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int debug = 0;
     uuid_t uuid;
     int replaced = 0;
+    uint8_t *malcd = NULL;
 
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
@@ -7326,7 +7327,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
     size_t sz = p_buf_end - p_buf;
-    uint8_t *malcd = malloc(sz);
+    malcd = malloc(sz);
     if (!malcd) {
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %ld bytes\n", __func__, sz);
         rc = -1;
