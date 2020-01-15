@@ -18,7 +18,7 @@ sleep 10
 cdb2sql $SP_OPTIONS "select (depth > 0) as hasDepth from comdb2_queues where queuename = '__qnop1';"
 
 for ((i=0;i<10;++i)); do
-    for ((i=0;i<3;++i)); do
+    for ((j=0;j<3;++j)); do
         ./qdb2_adds.sh 96 &
         ./qdb2_cons.sh 96 &
     done
@@ -27,3 +27,4 @@ for ((i=0;i<10;++i)); do
 done
 
 cdb2sql $SP_OPTIONS "select depth from comdb2_queues where queuename = '__qnop1';"
+cdb2sql $SP_OPTIONS "select count(*) as row_count from foraudit2;"
