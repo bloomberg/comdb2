@@ -5092,135 +5092,104 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
 int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
                                int rc)
 {
-
-    int irc = 0;
     int msglen = 0;
     char uuid[37];
     int type;
+    union {
+        char a[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
+        char b[OSQLCOMM_DONE_UUID_RPL_LEN];
+        char c[OSQLCOMM_DONE_XERR_RPL_LEN];
+        char d[OSQLCOMM_DONE_RPL_LEN];
+    } largest_message;
+    uint8_t *buf = (uint8_t *)&largest_message;
 
-    /* slightly kludgy - we're constructing one of 4 message types - get a
-     * buffer
-     * big enough for the biggest of them */
-    uint8_t *buf;
-    int max = 0;
-    if (OSQLCOMM_DONE_XERR_UUID_RPL_LEN > max)
-        max = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-    if (OSQLCOMM_DONE_UUID_RPL_LEN > max)
-        max = OSQLCOMM_DONE_UUID_RPL_LEN;
-    if (OSQLCOMM_DONE_XERR_RPL_LEN > max)
-        max = OSQLCOMM_DONE_XERR_RPL_LEN;
-    if (OSQLCOMM_DONE_RPL_LEN > max)
-        max = OSQLCOMM_DONE_RPL_LEN;
-    buf = alloca(max);
-
-    /* test if the sql thread was the one closing the
-       request, and if so, don't send anything back
-       (request might be gone already anyway)
+    /* test if the sql thread was the one closing the request,
+     * and if so, don't send anything back, request might be gone already anyway
      */
     if (xerr->errval == SQLITE_ABORT)
         return 0;
 
     /* if error, lets send the error string */
-    if (sorese->host) {
-        /* remote */
-        if (sorese->rqid == OSQL_RQID_USE_UUID) {
-            osql_done_xerr_uuid_t rpl_xerr = {{0}};
-            osql_done_uuid_rpl_t rpl_ok = {{0}};
-
-            if (rc) {
-                uint8_t *p_buf = buf;
-                uint8_t *p_buf_end = buf + OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-                rpl_xerr.hd.type = OSQL_XERR;
-                comdb2uuidcpy(rpl_xerr.hd.uuid, sorese->uuid);
-                rpl_xerr.dt = *xerr;
-
-                osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
-                logmsg(LOGMSG_DEBUG,
-                       "%s line %d master signaling %s uuid %s with rc=%d "
-                       "xerr=%d\n",
-                       __func__, __LINE__, sorese->host,
-                       comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
-
-                msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-
-            } else {
-                uint8_t *p_buf = buf;
-                uint8_t *p_buf_end = buf + OSQLCOMM_DONE_UUID_RPL_LEN;
-
-                rpl_ok.hd.type = OSQL_DONE;
-                comdb2uuidcpy(rpl_ok.hd.uuid, sorese->uuid);
-                rpl_ok.dt.rc = 0;
-                rpl_ok.dt.nops = sorese->nops;
-
-                osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
-
-                logmsg(LOGMSG_DEBUG,
-                       "%s line %d master signaling %s uuid %s with rc=%d "
-                       "xerr=%d\n",
-                       __func__, __LINE__, sorese->host,
-                       comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
-
-                msglen = OSQLCOMM_DONE_RPL_LEN;
-            }
-            type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
-        } else {
-            osql_done_xerr_t rpl_xerr = {{0}};
-            osql_done_rpl_t rpl_ok = {{0}};
-
-            if (rc) {
-                uint8_t *p_buf = buf;
-                uint8_t *p_buf_end = buf + OSQLCOMM_DONE_XERR_RPL_LEN;
-                rpl_xerr.hd.type = OSQL_XERR;
-                rpl_xerr.hd.sid = sorese->rqid;
-                rpl_xerr.dt = *xerr;
-
-                logmsg(LOGMSG_DEBUG,
-                       "%s line %d master signaling %s rqid %llu with rc=%d "
-                       "xerr=%d\n",
-                       __func__, __LINE__, sorese->host, sorese->rqid, rc,
-                       xerr->errval);
-
-                osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
-
-                msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
-
-            } else {
-                uint8_t *p_buf = buf;
-                uint8_t *p_buf_end = buf + OSQLCOMM_DONE_RPL_LEN;
-
-                rpl_ok.hd.type = OSQL_DONE;
-                rpl_ok.hd.sid = sorese->rqid;
-                rpl_ok.dt.rc = 0;
-                rpl_ok.dt.nops = sorese->nops;
-
-                logmsg(LOGMSG_DEBUG,
-                       "%s line %d master signaling %s rqid %llu with rc=%d "
-                       "xerr=%d\n",
-                       __func__, __LINE__, sorese->host, sorese->rqid, rc,
-                       xerr->errval);
-
-                osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
-
-                msglen = OSQLCOMM_DONE_RPL_LEN;
-            }
-            type = NET_OSQL_SIGNAL;
-        }
-#if 0
-      printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, sorese->rqid, osql_log_time());
-#endif
-        /* lazy again, works just because node!=0 */
-        irc = offload_net_send(sorese->host, type, buf, msglen, 1);
-        if (irc) {
-            irc = -1;
-            logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__,
-                    sorese->host);
-        }
-
-    } else {
+    if (!sorese->host) {
         /* local */
+        return osql_chkboard_sqlsession_rc(sorese->rqid, sorese->uuid,
+                                           sorese->nops, NULL, xerr);
+    }
 
-        irc = osql_chkboard_sqlsession_rc(sorese->rqid, sorese->uuid,
-                                          sorese->nops, NULL, xerr);
+    /* remote */
+    if (sorese->rqid == OSQL_RQID_USE_UUID) {
+        osql_done_xerr_uuid_t rpl_xerr = {{0}};
+        osql_done_uuid_rpl_t rpl_ok = {{0}};
+
+        if (rc) {
+            msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
+            uint8_t *p_buf = buf;
+            uint8_t *p_buf_end = buf + msglen;
+            rpl_xerr.hd.type = OSQL_XERR;
+            comdb2uuidcpy(rpl_xerr.hd.uuid, sorese->uuid);
+            rpl_xerr.dt = *xerr;
+
+            osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
+
+        } else {
+            msglen = OSQLCOMM_DONE_UUID_RPL_LEN;
+            uint8_t *p_buf = buf;
+            uint8_t *p_buf_end = buf + msglen;
+
+            rpl_ok.hd.type = OSQL_DONE;
+            comdb2uuidcpy(rpl_ok.hd.uuid, sorese->uuid);
+            rpl_ok.dt.rc = 0;
+            rpl_ok.dt.nops = sorese->nops;
+
+            osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
+        }
+
+        type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
+               __func__, __LINE__, sorese->host,
+               comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
+    } else {
+        osql_done_xerr_t rpl_xerr = {{0}};
+        osql_done_rpl_t rpl_ok = {{0}};
+
+        if (rc) {
+            msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
+            uint8_t *p_buf = buf;
+            uint8_t *p_buf_end = buf + msglen;
+            rpl_xerr.hd.type = OSQL_XERR;
+            rpl_xerr.hd.sid = sorese->rqid;
+            rpl_xerr.dt = *xerr;
+
+            osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
+        } else {
+            msglen = OSQLCOMM_DONE_RPL_LEN;
+            uint8_t *p_buf = buf;
+            uint8_t *p_buf_end = buf + msglen;
+
+            rpl_ok.hd.type = OSQL_DONE;
+            rpl_ok.hd.sid = sorese->rqid;
+            rpl_ok.dt.rc = 0;
+            rpl_ok.dt.nops = sorese->nops;
+
+            osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
+        }
+
+        type = NET_OSQL_SIGNAL;
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d master signaling %s rqid %llu with rc=%d xerr=%d\n",
+               __func__, __LINE__, sorese->host, sorese->rqid, rc,
+               xerr->errval);
+    }
+#if 0
+  printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, sorese->rqid, osql_log_time());
+#endif
+    /* lazy again, works just because node!=0 */
+    int irc = offload_net_send(sorese->host, type, buf, msglen, 1);
+    if (irc) {
+        irc = -1;
+        logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__,
+               sorese->host);
     }
 
     return irc;
@@ -7297,14 +7266,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
-    osql_sess_t *sess = NULL;
-    uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
+    int rc = 0;
     struct ireq *iq = NULL;
+    uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
+    if (!malcd)
+        goto done;
+
+    osql_sess_t *sess = NULL;
     osql_req_t req;
     bool is_reorder_on = false;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
-    int rc = 0;
     uint8_t *p_buf = malcd;
     const uint8_t *p_buf_end = p_buf + OSQL_BP_MAXLEN;
     char *sql;
@@ -7314,15 +7286,11 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     uuid_t uuid;
     int replaced = 0;
 
-    if (!malcd)
-        goto done;
-
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
         osql_uuid_req_t uuid_req;
         sql = (char *)osqlcomm_req_uuid_type_get(&uuid_req, p_req_buf,
                                                  p_req_buf_end);
-
         req.type = uuid_req.type;
         req.rqlen = uuid_req.rqlen;
         req.sqlqlen = uuid_req.sqlqlen;
@@ -7419,15 +7387,11 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         debug = 1;
     }
 
-    /*
-       Blockproc does not create a copy of the request,
+    /* Blockproc does not create a copy of the request,
        but creates a different thread to work on it
-       Let THAT thread free it...
-    free(p_buf);
-    */
+       Let THAT thread free p_buf (malcd)...  */
 
-    /* for socksql, is this a retry that need to be checked for self-deadlock?
-     */
+    /* for socksql, is it a retry that needs to be checked for self-deadlock? */
     if ((type == OSQL_SOCK_REQ || type == OSQL_SOCK_REQ_COST) &&
         (req.flags & OSQL_FLAGS_CHECK_SELFLOCK)) {
         /* just make sure we are above the threshold */
@@ -7435,73 +7399,65 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
-
-    if (rc) {
-        int rc2;
-
-        if (malcd)
-            free(malcd);
-
-        if (iq)
-            destroy_ireq(thedb, iq);
-
-        /* notify the sql thread there will be no response! */
-        struct errstat generr = {0};
-
-        generr.errval = ERR_TRAN_FAILED;
-        if (rc == -4) {
-            strncpy0(generr.errstr, "fail to create block processor log",
-                     sizeof(generr.errstr));
-        } else {
-            strncpy0(generr.errstr, "failed to create transaction",
-                     sizeof(generr.errstr));
-        }
-
-        int onstack = 0;
-        if (!sess) {
-            onstack = 1; /* used to avoid debugging confusion */
-            sess = alloca(sizeof(osql_sess_t));
-            sess->host = fromhost;
-            sess->rqid = req.rqid;
-            comdb2uuidcpy(sess->uuid, uuid);
-            sess->nops = 0;
-        }
-
-        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
-        if (rc2) {
-            uuidstr_t us;
-            comdb2uuidstr(uuid, us);
-            logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
-                            "error to create bplog\n",
-                    __func__, req.rqid, us, fromhost);
-        }
-        if (onstack)
-            sess = NULL;
-        else
-            osql_close_session(&sess, 0, __func__, NULL, __LINE__);
-
-    } else {
-        int rc2;
-
+    if (rc == 0) {
         /*
-           successful, let the session lose
+           successful, let the session loose
            It is possible that we are clearing sessions due to
            master being rtcpu-ed, and it will wait for the session
            clients to disappear before it will wipe out the session
          */
 
-        rc2 = osql_sess_remclient(sess);
+        int rc2 = osql_sess_remclient(sess);
         if (rc2) {
             uuidstr_t us;
             comdb2uuidstr(uuid, us);
             logmsg(LOGMSG_ERROR, "%s: failed to release session rqid=[%llx %s] node=%s\n",
                     __func__, req.rqid, us, fromhost);
         }
+        return 0;
     }
 
-#if 0
-   printf( "Done in here rc=%d %llu\n", rc, osql_log_time());
-#endif
+    if (malcd)
+        free(malcd);
+
+    if (iq)
+        destroy_ireq(thedb, iq);
+
+    /* notify the sql thread there will be no response! */
+    struct errstat generr = {0};
+
+    generr.errval = ERR_TRAN_FAILED;
+    if (rc == -4) {
+        strncpy0(generr.errstr, "fail to create block processor log",
+                 sizeof(generr.errstr));
+    } else {
+        strncpy0(generr.errstr, "failed to create transaction",
+                 sizeof(generr.errstr));
+    }
+
+    int onstack = 0;
+    if (!sess) {
+        onstack = 1; /* used to avoid debugging confusion */
+        sess = alloca(sizeof(osql_sess_t));
+        sess->host = fromhost;
+        sess->rqid = req.rqid;
+        comdb2uuidcpy(sess->uuid, uuid);
+        sess->nops = 0;
+    }
+
+    int rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
+    if (rc2) {
+        uuidstr_t us;
+        comdb2uuidstr(uuid, us);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to signaled rqid=[%llx %s] host=%s of "
+               "error to create bplog\n",
+               __func__, req.rqid, us, fromhost);
+    }
+    if (onstack)
+        sess = NULL;
+    else
+        osql_close_session(&sess, 0, __func__, NULL, __LINE__);
 
     return rc;
 }
