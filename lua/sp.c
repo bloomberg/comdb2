@@ -4526,6 +4526,19 @@ static int get_qdb(Lua L, char *spname, struct dbtable **pDb, char **err)
             return luaL_error(L, "trigger not found for sp:%s", spname);
         }
     }
+    int rc = bdb_lock_table_read_fromlid(db->handle,
+              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    if (rc != 0) {
+        *pDb = NULL;
+        unlock_schema_lk();
+        if (err != NULL) {
+            *err = strdup("bdb_lock_table_read_fromlid failed");
+            return rc;
+        } else {
+            return luaL_error(L, "cannot read-lock queue for sp:%s (%d)",
+                              spname, rc);
+        }
+    }
     *pDb = db;
     unlock_schema_lk();
     return 0;
