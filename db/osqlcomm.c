@@ -5095,21 +5095,16 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
     int msglen = 0;
     char uuid[37];
     int type;
-    /* Constructing one of 4 message types so get a buffer big enough */
-    int max = 0;
-    if (OSQLCOMM_DONE_XERR_UUID_RPL_LEN > max)
-        max = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
-    if (OSQLCOMM_DONE_UUID_RPL_LEN > max)
-        max = OSQLCOMM_DONE_UUID_RPL_LEN;
-    if (OSQLCOMM_DONE_XERR_RPL_LEN > max)
-        max = OSQLCOMM_DONE_XERR_RPL_LEN;
-    if (OSQLCOMM_DONE_RPL_LEN > max)
-        max = OSQLCOMM_DONE_RPL_LEN;
-    uint8_t *buf = alloca(max);
+    union {
+        char a [OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
+        char b [OSQLCOMM_DONE_UUID_RPL_LEN];
+        char c [OSQLCOMM_DONE_XERR_RPL_LEN];
+        char d [OSQLCOMM_DONE_RPL_LEN];
+    } largest_message;
+    uint8_t *buf = (uint8_t *) &largest_message;
 
-    /* test if the sql thread was the one closing the
-       request, and if so, don't send anything back
-       (request might be gone already anyway)
+    /* test if the sql thread was the one closing the request, 
+     * and if so, don't send anything back, request might be gone already anyway
      */
     if (xerr->errval == SQLITE_ABORT)
         return 0;
