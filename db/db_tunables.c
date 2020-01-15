@@ -260,6 +260,8 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
+extern char *gbl_test_log_file;
+extern pthread_mutex_t gbl_test_log_file_mtx;
 extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;
 extern int gbl_ref_sync_wait_txnlist;
@@ -298,6 +300,9 @@ extern int max_replication_trans_retries;
 
 /* net/net.c */
 extern int explicit_flush_trace;
+
+/* bdb/file.c */
+extern char *bdb_trans(const char infile[], char outfile[]);
 
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
@@ -894,6 +899,18 @@ static void *portmux_bind_path_get(void *dum)
 static int portmux_bind_path_set(void *dum, void *path)
 {
     return set_portmux_bind_path(path);
+}
+
+static int test_log_file_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    char newValue[PATH_MAX];
+    bdb_trans((char *)value, newValue);
+    Pthread_mutex_lock(&gbl_test_log_file_mtx);
+    free(*(char **)tunable->var);
+    *(char **)tunable->var = strdup(newValue);
+    Pthread_mutex_unlock(&gbl_test_log_file_mtx);
+    return 0;
 }
 
 /* Routines for the tunable system itself - tunable-specific
