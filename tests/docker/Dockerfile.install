@@ -38,8 +38,8 @@ RUN apt-get update && \
     strace \
     gdb \
     openssh-server \
-    psmisc &&
-  ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime &&
+    psmisc && \
+  ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
   dpkg-reconfigure --frontend noninteractive tzdata
 
 COPY . /comdb2
