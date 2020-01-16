@@ -320,7 +320,7 @@ int osql_bplog_schemachange(struct ireq *iq)
         }
     }
 
-    if (rc == ERR_NOMASTER) {
+    if (rc) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
         struct schema_change_type *next;
