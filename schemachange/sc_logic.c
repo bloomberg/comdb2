@@ -39,6 +39,8 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+
 extern int gbl_is_physical_replicant;
 
 /**** Utility functions */
@@ -700,6 +702,7 @@ int do_schema_change_locked(struct schema_change_type *s)
         s->db = get_dbtable_by_name(s->tablename);
     }
     iq->usedb = s->db;
+    iq->sc_running = (s->set_running ? 1 : 0);
     s->usedbtablevers = s->db ? s->db->tableversion : 0;
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = iq;

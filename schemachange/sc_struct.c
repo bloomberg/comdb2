@@ -1032,6 +1032,7 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->use_new_genids = newsc->use_new_genids;
     newsc->finalize = sc->finalize;
     newsc->finalize_only = sc->finalize_only;
+    newsc->is_osql = sc->is_osql;
 
     if (!p_buf) {
         free(newsc);
