@@ -5994,6 +5994,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         handle_postabort_bpfunc(iq);
     }
 
+    assert(iq->sc_running == 0);
+
     Pthread_mutex_lock(&blklk);
     blkcnt--;
     block_processor_ms += (end - start);

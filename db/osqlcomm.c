@@ -6532,8 +6532,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         /* Success: reset the table counters */
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            sc_set_running(iq, iq->sc->tablename, 0, NULL, 0, 0, __func__,
-                    __LINE__);
+            sc_set_running(iq, iq->sc, iq->sc->tablename, 0, NULL, 0, 0,
+                    __func__, __LINE__);
             iq->sc = iq->sc->sc_next;
         }
 

@@ -244,8 +244,9 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
     return 0;
 }
 
-int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
-        time_t time, int fromnet, const char *func, int line);
+int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
+        int running, const char *host, time_t time, int fromnet,
+        const char *func, int line);
 
 void sc_set_downgrading(struct schema_change_type *s);
 
@@ -333,7 +334,7 @@ int osql_bplog_schemachange(struct ireq *iq)
                 freedb(sc->newdb);
                 sc->newdb = NULL;
             }
-            sc_set_running(iq, sc->tablename, 0, NULL, 0, 0, __func__,
+            sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
                     __LINE__);
             free_schema_change_type(sc);
             sc = next;
@@ -1583,7 +1584,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
-            sc_set_running(&iq, sc->tablename, 0, NULL, 0, 0, __func__,
+            sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
                     __LINE__);
             free_schema_change_type(sc);
             error = 1;

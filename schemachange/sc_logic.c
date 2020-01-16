@@ -219,7 +219,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(iq, s->tablename, 0, NULL, 0, 0, __func__,
+    sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__,
             __LINE__);
     if (do_free) {
         free_sc(s);
@@ -661,7 +661,7 @@ downgraded:
         reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
     if (rc == SC_MASTER_DOWNGRADE) {
-        sc_set_running(iq, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
+        sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
         free_sc(s);
     } else {
         stop_and_free_sc(iq, rc, s, 1 /*do_free*/);
@@ -726,7 +726,14 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         sleep(30);
         logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
     }
-    if (s->is_trigger)
+    /* finalize_x_sp are placeholders */
+    else if (s->addsp)
+        rc = finalize_add_sp(s);
+    else if (s->delsp)
+        rc = finalize_del_sp(s);
+    else if (s->defaultsp)
+        rc = finalize_default_sp(s);
+    else if (s->is_trigger)
         rc = finalize_trigger(s);
     else if (s->is_sfunc)
         rc = finalize_lua_sfunc();
@@ -1502,7 +1509,7 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-    sc_set_running(iq, s->tablename, 0, gbl_mynode, time(NULL), 0, __func__,
+    sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL), 0, __func__,
             __LINE__);
     if (s->db && s->db->handle) {
         if (s->addonly) {

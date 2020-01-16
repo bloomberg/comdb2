@@ -104,6 +104,7 @@ int get_stopsc(const char *func, int line)
     return ret;
 }
 
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 static int increment_schema_change_in_progress(const char *func, int line)
 {
     int val=0, didit=0;
@@ -118,6 +119,7 @@ static int increment_schema_change_in_progress(const char *func, int line)
     Pthread_mutex_unlock(&gbl_sc_progress_lk);
     if (gbl_verbose_set_sc_in_progress) {
         if (didit) {
+            comdb2_cheapstack_sym(stderr, "Incrementing sc");
             logmsg(LOGMSG_USER, "%s line %d %s incremented to %d\n",
                     func, line, __func__, val);
         }
@@ -141,6 +143,7 @@ static int decrement_schema_change_in_progress(const char *func, int line)
     }
     Pthread_mutex_unlock(&gbl_sc_progress_lk);
     if (gbl_verbose_set_sc_in_progress) {
+        comdb2_cheapstack_sym(stderr, "Decremented sc");
         logmsg(LOGMSG_USER, "%s line %d %s decremented to %d\n",
                func, line, __func__, val);
     }
@@ -257,8 +260,9 @@ static int freesc(void *obj, void *arg)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
-        time_t time, int replicant, const char *func, int line)
+int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
+        int running, const char *host, time_t time, int replicant, const char *func,
+        int line)
 {
     sc_table_t *sctbl = NULL;
 #ifdef DEBUG_SC
@@ -269,9 +273,6 @@ int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
 
     assert(running >= 0);
     assert(table);
-
-    if (iq)
-        assert(!replicant);
 
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
@@ -309,6 +310,10 @@ int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
         hash_add(sc_tables, sctbl);
         if (iq)
             iq->sc_running++;
+        if (s) {
+            assert(s->set_running == 0);
+            s->set_running++;
+        }
     } else { /* not running */
         if ((sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
@@ -317,6 +322,10 @@ int sc_set_running(struct ireq *iq, char *table, int running, const char *host,
             if (iq) {
                 iq->sc_running--;
                 assert(iq->sc_running >= 0);
+            }
+            if (s) {
+                s->set_running--;
+                assert(s->set_running == 0);
             }
         } else {
             logmsg(LOGMSG_FATAL, "%s:%d unfound table %s\n", func, line, table);
