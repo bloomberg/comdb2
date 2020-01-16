@@ -5,8 +5,8 @@ cdb2sql --host $SP_HOST $SP_OPTIONS - <<EOF
 create table foraudit {$(cat foraudit.csc2)}\$\$
 create procedure nop0 version 'noptest' {$(cat nop_consumer.lua)}\$\$
 create procedure log1 version 'logtest' {$(cat log_consumer.lua)}\$\$
-create lua consumer nop0 on (table foraudit for insert and update and delete)
-create lua consumer log1 on (table foraudit for insert and update and delete)
+create lua consumer nop0 on (table foraudit for insert)
+create lua consumer log1 on (table foraudit for insert)
 EOF
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "put tunable test_log_file 'XXX.comdb2_dedicated_test.log'" > /dev/null
