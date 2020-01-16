@@ -3154,6 +3154,8 @@ static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     struct net_sc_msg *sc;
     bdb_state_type *bdb_state = thedb->bdb_env;
+    if (!bdb_state)
+        return;
 
     sc = (struct net_sc_msg *)dtap;
     sc->table[sizeof(sc->table) - 1] = '\0';
@@ -3170,6 +3172,9 @@ static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
 {
     struct net_sc_msg *sc;
     bdb_state_type *bdb_state = thedb->bdb_env;
+    if (!bdb_state)
+        return;
+
     sc = (struct net_sc_msg *)dtap;
 
     sc->table[sizeof(sc->table) - 1] = '\0';

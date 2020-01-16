@@ -279,6 +279,7 @@ int osql_bplog_schemachange(struct ireq *iq)
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
+    int abort_sc = 0;
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
@@ -288,6 +289,8 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
             rc = ERR_NOMASTER;
         } else if (sc->sc_rc == SC_PAUSED) {
             Pthread_mutex_lock(&sc->mtx);
@@ -299,15 +302,19 @@ int osql_bplog_schemachange(struct ireq *iq)
             Pthread_mutex_unlock(&sc->mtx);
             rc = ERR_SC;
         } else if (sc->sc_rc != SC_DETACHED) {
-            if (sc->sc_rc)
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
+            if (sc->sc_rc) {
+                abort_sc = 1;
                 rc = ERR_SC;
+            }
         }
         sc = iq->sc;
     }
-    if (rc)
+    if (rc || abort_sc)
         csc2_free_all();
 
-    if (!rc && iq->sc_pending && gbl_sc_close_txn) {
+    if (!rc && !abort_sc && iq->sc_pending && gbl_sc_close_txn) {
         if ((rc = trans_start(iq, NULL, &iq->sc_close_tran)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: error creating sc close txn, %d\n",
                     __func__, rc);
@@ -320,7 +327,7 @@ int osql_bplog_schemachange(struct ireq *iq)
         }
     }
 
-    if (rc) {
+    if (rc || abort_sc) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
         struct schema_change_type *next;

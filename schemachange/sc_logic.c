@@ -662,11 +662,13 @@ downgraded:
     if (!no_reset)
         reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
-    if (rc == SC_MASTER_DOWNGRADE) {
-        sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
-        free_sc(s);
-    } else {
-        stop_and_free_sc(iq, rc, s, 1 /*do_free*/);
+    if (!s->is_osql) {
+        if (rc == SC_MASTER_DOWNGRADE) {
+            sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
+            free_sc(s);
+        } else {
+            stop_and_free_sc(iq, rc, s, 1);
+        }
     }
     return rc;
 }
