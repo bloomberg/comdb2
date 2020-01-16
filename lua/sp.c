@@ -713,6 +713,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     if (rc != 0) {
         // TODO: Temporary hack for testing.
         //       Transform -2 (schema lock fail) to 0 (success).
+        Pthread_mutex_unlock(q->lock);
         return rc == -2 ? 0 : -1;
     }
     rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
