@@ -400,12 +400,14 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     }
 
 skip:
-    rc = bdb_trigger_unsubscribe(table->handle);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR,
-               "dbq_get_front_genid: bdb_trigger_unsubscribe "
-               "failed (rc: %d)\n",
-               rc);
+    if (*status != TRIGGER_SUBSCRIPTION_PAUSED) {
+        rc = bdb_trigger_unsubscribe(table->handle);
+        if (rc != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "dbq_get_front_genid: bdb_trigger_unsubscribe "
+                   "failed (rc: %d)\n",
+                   rc);
+        }
     }
     Pthread_mutex_unlock(mu);
 
