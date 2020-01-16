@@ -7,8 +7,8 @@ create procedure nop1 version 'noptest' {$(cat nop_consumer.lua)}\$\$
 create lua consumer nop1 on (table foraudit2 for insert and update and delete)
 EOF
 
-for ((i=0;i<10;++i)); do
-    for ((j=0;j<3;++j)); do
+for ((i=0;i<50;++i)); do
+    for ((j=0;j<15;++j)); do
         ./qdb2_adds.sh 96 &
         ./qdb2_cons.sh 96 &
     done
