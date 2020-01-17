@@ -312,7 +312,7 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
             iq->sc_running++;
         if (s) {
             assert(s->set_running == 0);
-            s->set_running++;
+            s->set_running = 1;
         }
     } else { /* not running */
         if ((sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
@@ -324,8 +324,8 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
                 assert(iq->sc_running >= 0);
             }
             if (s) {
-                s->set_running--;
-                assert(s->set_running == 0);
+                assert(s->set_running == 1);
+                s->set_running = 0;
             }
         } else {
             logmsg(LOGMSG_FATAL, "%s:%d unfound table %s\n", func, line, table);
