@@ -335,8 +335,8 @@ int osql_bplog_schemachange(struct ireq *iq)
             if (sc->newdb && sc->newdb->handle) {
                 void live_sc_off(struct dbtable *db);
                 int bdberr = 0;
-                bdb_clear_logical_live_sc(sc->newdb->handle, 1);
                 live_sc_off(sc->newdb);
+                bdb_clear_logical_live_sc(sc->newdb->handle, 1);
                 if (rc == ERR_NOMASTER)
                     sc_set_downgrading(sc);
                 bdb_close_only(sc->newdb->handle, &bdberr);
