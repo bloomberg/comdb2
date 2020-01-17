@@ -22,6 +22,7 @@
 
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include "comdb2.h"
 #include "comdb2systbl.h"
@@ -81,7 +82,7 @@ static int systblQueuesDisconnect(sqlite3_vtab *pVtab){
 
 static int get_stats(struct systbl_queues_cursor *pCur) {
   struct consumer_stat stats[MAXCONSUMERS] = {{0}};
-  unsigned long long depth = 0;
+  unsigned long long depth;
   char *spname = NULL;
 
   dbqueuedb_get_name(thedb->qdbs[pCur->last_qid], &spname);
@@ -97,9 +98,14 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   if (rc) {
       /* TODO: signal error? */
   }
+  depth = ULLONG_MAX;
   for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
-      if (stats[consumern].has_stuff)
-          depth += stats[consumern].depth;
+      if (stats[consumern].has_stuff) {
+          if (depth == ULLONG_MAX)
+              depth = stats[consumern].depth;
+          else
+              depth += stats[consumern].depth;
+      }
   }
 
   pCur->depth = depth;
@@ -176,7 +182,10 @@ static int systblQueuesColumn(
       break;
     }
     case STQUEUE_DEPTH: {
-      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->depth);
+      if (pCur->depth == ULLONG_MAX)
+        sqlite3_result_null(ctx);
+      else
+        sqlite3_result_int64(ctx, (sqlite3_int64)pCur->depth);
       break;
     }    
     case STQUEUE_HEADTIME: {

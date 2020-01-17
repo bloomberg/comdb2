@@ -15,5 +15,5 @@ for ((i=0;i<5;++i)); do
 done
 wait
 
-cdb2sql $SP_OPTIONS "select (depth > 0) as hasDepth from comdb2_queues where queuename = '__qconst3';"
+cdb2sql $SP_OPTIONS "select (depth IS NOT NULL) as hadDepth from comdb2_queues where queuename = '__qconst3';"
 cdb2sql $SP_OPTIONS "select (count(*) > 0) as hasRows from foraudit3;"
