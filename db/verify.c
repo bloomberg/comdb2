@@ -347,6 +347,7 @@ int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
         .sb = sb,
         .bdb_state = db->handle,
         .db_table = db,
+        .tablename = table,
         .formkey_callback = verify_formkey_callback,
         .get_blob_sizes_callback = verify_blobsizes_callback,
         .vtag_callback =
