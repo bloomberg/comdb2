@@ -408,7 +408,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
-    DB dbs[2] = {
+    DB *dbs[2] = {
       BDB_QUEUEDB_GET_DBP_ZERO(bdb_state),
       BDB_QUEUEDB_GET_DBP_ONE(bdb_state)
     };
