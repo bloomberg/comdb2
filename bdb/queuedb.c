@@ -408,7 +408,10 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, void *userptr,
                      int *bdberr)
 {
-    DB *db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    DB dbs[2] = {
+      BDB_QUEUEDB_GET_DBP_ZERO(bdb_state),
+      BDB_QUEUEDB_GET_DBP_ONE(bdb_state)
+    };
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     int rc;
@@ -416,63 +419,83 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_walk %s\n", bdb_state->name);
 
-    dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
+    for (int i = 0; i < sizeof(dbs); i++) {
+        if (dbcp) {
+            int crc2;
+            crc2 = dbcp->c_close(dbcp);
+            dbcp = NULL;
+            if (crc2 == DB_LOCK_DEADLOCK) {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc2);
+                *bdberr = BDBERR_DEADLOCK;
+                rc = -1;
+                goto done;
+            } else if (crc2) {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc2);
+                *bdberr = BDBERR_MISC;
+                rc = -1;
+                goto done;
+            }
+        }
 
-    /* this API is a little nutty... */
-    rc = db->cursor(db, NULL, &dbcp, 0);
-    if (rc != 0) {
-        *bdberr = BDBERR_MISC;
-        return -1;
-    }
+        db = dbs[i]; if (db == NULL) continue;
+        dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    if (flags & BDB_QUEUE_WALK_RESTART) {
-        /* this is a restart, and lastitem containts a copy of the last key when
-         * we stopped */
-        dbt_key.data = lastitem;
-        dbt_key.size = sizeof(struct queuedb_key);
-        rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
-    } else {
-        rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET_RANGE);
-    }
-    while (rc == 0) {
-        struct bdb_queue_found qfnd;
-        int consumern = 0;
-        uint8_t *p_buf, *p_buf_end;
-
-        lastitem = (void *)dbt_key.data;
-
-        p_buf = dbt_data.data;
-        p_buf_end = p_buf + dbt_data.size;
-        p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
-        if (p_buf == NULL) {
-            logmsg(LOGMSG_ERROR, "%s failed to decode queue header for %s\n",
-                    __func__, bdb_state->name);
+        /* this API is a little nutty... */
+        rc = db->cursor(db, NULL, &dbcp, 0);
+        if (rc != 0) {
             *bdberr = BDBERR_MISC;
-            rc = -1;
-            goto done;
+            return -1;
         }
 
-        rc = callback(consumern, dbt_data.size, qfnd.epoch, userptr);
-        if (rc) {
-            rc = 0;
-            break;
-        }
-        rc = dbcp->c_get(dbcp, &dbt_key, &dbt_key, DB_NEXT);
-    }
-    if (rc) {
-        if (rc == DB_LOCK_DEADLOCK) {
-            *bdberr = BDBERR_DEADLOCK;
-            rc = -1;
-            goto done;
-        } else if (rc == DB_NOTFOUND) {
-            /* EOF */
-            rc = 0;
-            goto done;
+        if (flags & BDB_QUEUE_WALK_RESTART) {
+            /* this is a restart, and lastitem containts a copy of the last key when
+             * we stopped */
+            dbt_key.data = lastitem;
+            dbt_key.size = sizeof(struct queuedb_key);
+            rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
         } else {
-            logmsg(LOGMSG_ERROR, "%s find/next berk rc %d\n", __func__, rc);
-            *bdberr = BDBERR_MISC;
-            assert(rc != 0);
-            goto done;
+            rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET_RANGE);
+        }
+        while (rc == 0) {
+            struct bdb_queue_found qfnd;
+            int consumern = 0;
+            uint8_t *p_buf, *p_buf_end;
+
+            lastitem = (void *)dbt_key.data;
+
+            p_buf = dbt_data.data;
+            p_buf_end = p_buf + dbt_data.size;
+            p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
+            if (p_buf == NULL) {
+                logmsg(LOGMSG_ERROR, "%s failed to decode queue header for %s\n",
+                        __func__, bdb_state->name);
+                *bdberr = BDBERR_MISC;
+                rc = -1;
+                goto done;
+            }
+
+            rc = callback(consumern, dbt_data.size, qfnd.epoch, userptr);
+            if (rc) {
+                rc = 0;
+                break;
+            }
+            rc = dbcp->c_get(dbcp, &dbt_key, &dbt_key, DB_NEXT);
+        }
+        if (rc) {
+            if (rc == DB_LOCK_DEADLOCK) {
+                *bdberr = BDBERR_DEADLOCK;
+                rc = -1;
+                goto done;
+            } else if (rc == DB_NOTFOUND) {
+                /* EOF */
+                rc = 0;
+                goto done;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s find/next berk rc %d\n", __func__, rc);
+                *bdberr = BDBERR_MISC;
+                assert(rc != 0);
+                goto done;
+            }
         }
     }
 done:
