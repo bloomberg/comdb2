@@ -1514,8 +1514,9 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-    sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL), 0, __func__,
-            __LINE__);
+    if (s->set_running)
+        sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL), 0,
+                __func__, __LINE__);
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);

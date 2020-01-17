@@ -279,7 +279,6 @@ int osql_bplog_schemachange(struct ireq *iq)
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
-    int abort_sc = 0;
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
@@ -305,16 +304,15 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
             if (sc->sc_rc) {
-                abort_sc = 1;
                 rc = ERR_SC;
             }
         }
         sc = iq->sc;
     }
-    if (rc || abort_sc)
+    if (rc)
         csc2_free_all();
 
-    if (!rc && !abort_sc && iq->sc_pending && gbl_sc_close_txn) {
+    if (!rc && iq->sc_pending && gbl_sc_close_txn) {
         if ((rc = trans_start(iq, NULL, &iq->sc_close_tran)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: error creating sc close txn, %d\n",
                     __func__, rc);
@@ -327,7 +325,7 @@ int osql_bplog_schemachange(struct ireq *iq)
         }
     }
 
-    if (rc || abort_sc) {
+    if (rc) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
         struct schema_change_type *next;
@@ -335,8 +333,12 @@ int osql_bplog_schemachange(struct ireq *iq)
         while (sc != NULL) {
             next = sc->sc_next;
             if (sc->newdb && sc->newdb->handle) {
+                void live_sc_off(struct dbtable *db);
                 int bdberr = 0;
-                sc_set_downgrading(sc);
+                bdb_clear_logical_live_sc(sc->newdb->handle, 1);
+                live_sc_off(sc->newdb);
+                if (rc == ERR_NOMASTER)
+                    sc_set_downgrading(sc);
                 bdb_close_only(sc->newdb->handle, &bdberr);
                 freedb(sc->newdb);
                 sc->newdb = NULL;
