@@ -8,9 +8,12 @@ create lua consumer const3 on (table foraudit3 for insert)
 EOF
 
 for ((i=0;i<5;++i)); do
-    ./qdb3_dml_adds.sh 1000 2>&1 >/dev/null &
-    ./qdb3_dml_cons.sh 1000 2>&1 >/dev/null &
-    ./qdb3_ddl_cons.sh 10 2>&1 >/dev/null &
-    ./qdb3_ddl_proc.sh 10 2>&1 >/dev/null &
+    ./qdb3_dml_adds.sh 1000 &
+    ./qdb3_dml_cons.sh 1000 &
+    ./qdb3_ddl_cons.sh 10 &
+    ./qdb3_ddl_proc.sh 10 &
 done
 wait
+
+cdb2sql $SP_OPTIONS "select (depth > 0) as hasDepth from comdb2_queues where queuename = '__qconst3';"
+cdb2sql $SP_OPTIONS "select (count(*) > 0) as hasRows from foraudit3;"

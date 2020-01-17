@@ -9,19 +9,19 @@ create lua consumer nop0 on (table foraudit for insert)
 create lua consumer log1 on (table foraudit for insert)
 EOF
 
-cdb2sql --host $SP_HOST $SP_OPTIONS "put tunable test_log_file 'XXX.comdb2_dedicated_test.log'" > /dev/null
+cdb2sql --host $SP_HOST $SP_OPTIONS "put tunable test_log_file 'XXX.comdb2_dedicated_test.log'" >/dev/null
 
 for ((i=1;i<9600;++i)); do
     echo "insert into foraudit values(${i})"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
+done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
 
 for ((i=1;i<9600;++i)); do
     echo "exec procedure nop0()"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
+done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
 
 for ((i=1;i<9600;++i)); do
     echo "exec procedure log1()"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS - > /dev/null
+done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"
 
