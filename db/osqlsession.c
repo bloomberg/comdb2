@@ -1018,6 +1018,9 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 {
     int rc = 0;
     sess->terminate = OSQL_TERMINATE;
+    Pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->mtx);
+
     rc = osql_repository_rem(sess, 0, __func__, NULL,
                              __LINE__); /* already have exclusive lock */
     if (rc) {
