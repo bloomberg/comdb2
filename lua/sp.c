@@ -71,6 +71,7 @@
 
 #endif
 
+extern int gbl_queuedb_read_locks;
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
 extern int gbl_max_sqlcache;
@@ -690,6 +691,7 @@ static int dbq_pushargs(Lua L, dbconsumer_t *q, struct qfound *f)
 static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
                                     struct dbtable *db, int have_schema_lock)
 {
+    if (!gbl_queuedb_read_locks) return 0;
     if (!have_schema_lock && (tryrdlock_schema_lk() != 0)) {
         return -2;
     }
