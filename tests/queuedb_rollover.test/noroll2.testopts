@@ -1,0 +1,3 @@
+queuedb_file_threshold 0
+queuedb_file_interval 0
+queuedb_read_locks 1
