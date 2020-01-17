@@ -437,7 +437,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
             }
         }
 
-        db = dbs[i]; if (db == NULL) continue;
+        DB *db = dbs[i]; if (db == NULL) continue;
         dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
         /* this API is a little nutty... */
