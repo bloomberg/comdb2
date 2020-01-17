@@ -693,10 +693,15 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
 {
     if (!gbl_queuedb_read_locks) return 0;
     if (!have_schema_lock && (tryrdlock_schema_lk() != 0)) {
+        logmsg(LOGMSG_WARN, "%s: tryrdlock_schema_lk failed\n", __func__);
         return -2;
     }
     int rc = bdb_lock_table_read_fromlid(db->handle,
              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_lock_table_read_fromlid rc %d\n",
+               __func__, rc);
+    }
     if (!have_schema_lock) unlock_schema_lk();
     return rc;
 }
@@ -4560,7 +4565,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
         *pDb = NULL;
         unlock_schema_lk();
         if (err != NULL) {
-            *err = strdup("bdb_lock_table_read_fromlid failed");
+            *err = strdup("grab_qdb_table_read_lock failed");
             return rc;
         } else {
             return luaL_error(L, "cannot read-lock queue for sp:%s (%d)",
