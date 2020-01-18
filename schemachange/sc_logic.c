@@ -731,8 +731,9 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         sleep(30);
         logmsg(LOGMSG_INFO, "%s: slept 30s\n", __func__);
     }
+
     /* finalize_x_sp are placeholders */
-    else if (s->addsp)
+    if (s->addsp)
         rc = finalize_add_sp(s);
     else if (s->delsp)
         rc = finalize_del_sp(s);
