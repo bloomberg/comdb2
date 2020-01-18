@@ -53,6 +53,7 @@
 #include <epochlib.h>
 #include <plhash.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "osqlblockproc.h"
@@ -336,7 +337,13 @@ int osql_bplog_schemachange(struct ireq *iq)
                 void live_sc_off(struct dbtable *db);
                 int bdberr = 0;
                 live_sc_off(sc->db);
-                bdb_clear_logical_live_sc(sc->db->handle, 1);
+                while (sc->logical_livesc) {
+                    usleep(200);
+                }
+                if (sc->db->sc_live_logical) {
+                    bdb_clear_logical_live_sc(sc->db->handle, 1);
+                    sc->db->sc_live_logical = 0;
+                }
                 if (rc == ERR_NOMASTER)
                     sc_set_downgrading(sc);
                 bdb_close_only(sc->newdb->handle, &bdberr);
