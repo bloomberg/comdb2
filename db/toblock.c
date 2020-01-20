@@ -2562,7 +2562,6 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
-    int did_replay = 0;
     int rowlocks = gbl_rowlocks;
     int fromline = -1;
     int opnum, jj, num_reqs;
@@ -2598,6 +2597,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     int is_mixed_sqldyn = 0;
 
+#if DEBUG_DID_REPLAY
+    int did_replay = 0;
+#endif
     /* The blob buffer.  If the tag includes blobs then we are sent the blob
      * data in separate opcodes before we are sent the add/update command.
      * After each keyless write op we clear this buffer ready for the next one.
@@ -2770,7 +2772,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                        iq->snap_info.keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+#if DEBUG_DID_REPLAY
                 did_replay = 1;
+#endif
                 fromline = __LINE__;
                 goto cleanup;
             }
@@ -2800,7 +2804,9 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 outrc = do_replay_case(iq, iq->seq, iq->seqlen, num_reqs, 0,
                                        NULL, 0, __LINE__);
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
+#if DEBUG_DID_REPLAY
                 did_replay = 1;
+#endif
                 fromline = __LINE__;
                 goto cleanup;
             }
@@ -5590,7 +5596,9 @@ add_blkseq:
                            (int)pthread_self(), __FILE__, __LINE__);
                     outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                            replay_data, replay_len, __LINE__);
+#if DEBUG_DID_REPLAY
                     did_replay = 1;
+#endif
                     logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
                            (int)pthread_self(), __FILE__, __LINE__, outrc);
                     fromline = __LINE__;
@@ -5694,7 +5702,9 @@ add_blkseq:
                        (int)pthread_self(), __FILE__, __LINE__);
                 outrc = do_replay_case(iq, bskey, bskeylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
+#if DEBUG_DID_REPLAY
                 did_replay = 1;
+#endif
                 logmsg(LOGMSG_DEBUG, "%x %s:%d replay returned %d!\n",
                        (int)pthread_self(), __FILE__, __LINE__, outrc);
                 fromline = __LINE__;
@@ -5843,8 +5853,10 @@ add_blkseq:
 
     fromline = __LINE__;
 cleanup:
+#if DEBUG_DID_REPLAY
     logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
            did_replay, fromline);
+#endif
     bdb_checklock(thedb->bdb_env);
 
     iq->timings.req_finished = osql_log_time();

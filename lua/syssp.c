@@ -268,7 +268,7 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table_mode(tblname, NULL, verbose, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
+        rc = verify_table_mode(tblname, clnt->sb, verbose, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {

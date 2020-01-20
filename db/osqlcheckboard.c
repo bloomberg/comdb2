@@ -42,8 +42,8 @@
 #define SQLHERR_MASTER_TIMEOUT -109
 
 typedef struct osql_checkboard {
-    hash_t * rqs; /* sql threads processing a blocksql are registered here */
-    hash_t *rqsuuid;                /* like above, but register by uuid */
+    hash_t *rqs;     /* sql threads processing a blocksql are registered here */
+    hash_t *rqsuuid; /* like above, but register by uuid */
     pthread_mutex_t mtx; /* protect all the requests */
 
 } osql_checkboard_t;
@@ -124,9 +124,11 @@ static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
 }
 
 /* delete entry from checkerboard -- called with checkerboard->mtx held */
-static inline osql_sqlthr_t * delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
-{    
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
+static inline osql_sqlthr_t * delete_from_checkerboard(
+        osql_checkboard_t *checkboard, osqlstate_t *osql)
+{
+    osql_sqlthr_t *entry =
+        osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
     if (!entry) {
         goto done;
     }
@@ -140,8 +142,7 @@ static inline osql_sqlthr_t * delete_from_checkerboard(osql_checkboard_t *checkb
         if (rc) {
             uuidstr_t us;
             logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
-                   __func__, entry->rqid, comdb2uuidstr(osql->uuid, us),
-                   rc);
+                   __func__, entry->rqid, comdb2uuidstr(osql->uuid, us), rc);
         }
     }
 done:
@@ -368,7 +369,6 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_cond_signal(&entry->cond);
     Pthread_mutex_unlock(&entry->mtx);
-
     return 0;
 }
 
