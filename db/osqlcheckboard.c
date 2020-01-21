@@ -617,11 +617,10 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 logmsg(LOGMSG_ERROR, "%s: [%llx][%s] master changed\n",
                        __func__, entry->rqid, comdb2uuidstr(entry->uuid, us));
             }
-            goto done;
+            break;
         }
     } /* done */
 
-done:
     if (xerr->errval)
         logmsg(LOGMSG_DEBUG, "%s: done xerr->errval=%d\n", __func__,
                xerr->errval);
