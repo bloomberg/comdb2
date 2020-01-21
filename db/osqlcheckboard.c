@@ -149,22 +149,12 @@ done:
     return entry;
 }
 
-/**
- * Register an osql thread with the checkboard
- * This allows block processor to query the status
- * of its sql peer
- *
- */
-int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
+
+static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
 {
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
-    int retry = 0;
-    uuidstr_t us;
-
     if (!entry) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-               sizeof(unsigned long long));
-        return -1;
+        return NULL;
     }
 
     entry->rqid = clnt->osql.rqid;
@@ -177,6 +167,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->register_time = osql_log_time();
 
 #ifdef DEBUG
+    uuidstr_t us;
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_USER, "Registered %llx %s %s %d\n", entry->rqid,
                comdb2uuidstr(entry->uuid, us), entry->master, entry->type);
@@ -185,6 +176,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
+        int retry = 0;
         while ((entry->master = clnt->osql.host = thedb->master) == 0 &&
                retry < 60) {
             poll(NULL, 0, 500);
@@ -193,7 +185,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
         if (retry >= 60) {
             logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
             free(entry);
-            return -1;
+            return NULL;
         }
     }
 
@@ -206,9 +198,26 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
+    return entry;
+}
 
+/**
+ * Register an osql thread with the checkboard
+ * This allows block processor to query the status
+ * of its sql peer
+ *
+ */
+int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
+{
+    uuidstr_t us;
+    osql_sqlthr_t *entry = get_new_entry(clnt, type);
+    if (!entry) {
+        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
+               sizeof(unsigned long long));
+        return -1;
+    }
+ 
     int rc = insert_into_checkerboard(checkboard, entry);
-
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
@@ -642,14 +651,13 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     }
 
     Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     entry->status = status;
     entry->timestamp = timestamp;
     entry->last_updated = comdb2_time_epochms();
 
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
 
     return 0;
 }
@@ -677,6 +685,8 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     }
 
     Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
+
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* reset these time */
     entry->done = 0;
@@ -685,8 +695,6 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         master ? master : gbl_mynode; /* master changed, store it here */
     bzero(&entry->err, sizeof(entry->err));
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
 
     return 0;
 }
