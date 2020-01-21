@@ -1472,6 +1472,7 @@ out:
 int backout_schema_changes(struct ireq *iq, tran_type *tran)
 {
     struct schema_change_type *s = NULL;
+    comdb2_cheapstack_sym(stderr, "%s iq %p", __func__, iq);
 
     if (iq->sc_pending && !iq->sc_locked) {
         wrlock_schema_lk();

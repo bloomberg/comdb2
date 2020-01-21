@@ -843,7 +843,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     live_sc_off(db);
 
-    /* artificial sleep to aid testing */ if (s->commit_sleep) {
+    /* artificial sleep to aid testing */
+    if (s->commit_sleep) {
         sc_printf(s, "artificially sleeping for %d...\n", s->commit_sleep);
         logmsg(LOGMSG_INFO, "artificially sleeping for %d...\n",
                s->commit_sleep);

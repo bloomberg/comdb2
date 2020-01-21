@@ -244,9 +244,10 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 		dbp->offset_bias = 1;
 
 #if defined (STACK_AT_DB_OPEN_CLOSE)
-    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-    fileid_str(dbp->fileid, fid_str);
-    comdb2_cheapstack_sym(stderr, "%ld opened %s:", pthread_self(), fid_str);
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld opened %s %s at %p txn=0x%x:",
+			pthread_self(), fname, fid_str, dbp, txn ? txn->txnid : 0);
 #endif
 	// printf(">>>> %s pagesize %d bias %d\n", fname, dbp->pgsize, dbp->offset_bias);
 

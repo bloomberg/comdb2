@@ -857,6 +857,13 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 
 	dbenv = dbp->dbenv;
 
+#if defined (STACK_AT_DB_OPEN_CLOSE)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld closed %s at %p txn=0x%x unopened=%u:",
+			pthread_self(), fid_str, dbp, txn ? txn->txnid : 0,
+			F_ISSET(dbp, DB_AM_OPEN_CALLED));
+#endif
 	/* If never opened, or not currently open, it's easy. */
 	if (!F_ISSET(dbp, DB_AM_OPEN_CALLED))
 		goto never_opened;
@@ -1086,11 +1093,6 @@ never_opened:
 			ret = t_ret;
 		dbp->mpf = NULL;
 	}
-#if defined (STACK_AT_DB_OPEN_CLOSE)
-	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-	fileid_str(dbp->fileid, fid_str);
-    comdb2_cheapstack_sym(stderr, "%ld closed %s:", pthread_self(), fid_str);
-#endif
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
