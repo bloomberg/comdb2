@@ -124,9 +124,10 @@ static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
 }
 
 /* delete entry from checkerboard -- called with checkerboard->mtx held */
-static inline osql_sqlthr_t * delete_from_checkerboard(
+static inline osql_sqlthr_t *delete_from_checkerboard(
         osql_checkboard_t *checkboard, osqlstate_t *osql)
 {
+    Pthread_mutex_lock(&checkboard->mtx);
     osql_sqlthr_t *entry =
         osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
     if (!entry) {
@@ -146,6 +147,7 @@ static inline osql_sqlthr_t * delete_from_checkerboard(
         }
     }
 done:
+    Pthread_mutex_unlock(&checkboard->mtx);
     return entry;
 }
 
@@ -280,24 +282,12 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     if (clnt->osql.rqid == 0)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->mtx);
     osql_sqlthr_t *entry = delete_from_checkerboard(checkboard, &clnt->osql);
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->mtx);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
                __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         return 0;
-    }
-
-    /*reset rqid */
-    clnt->osql.rqid = 0;
-
-    Pthread_mutex_unlock(&checkboard->mtx);
-
-    if (clnt->osql.logsb) {
-        sbuf2close(clnt->osql.logsb);
-        clnt->osql.logsb = NULL;
     }
 
 #ifdef DEBUG
@@ -307,6 +297,14 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
                comdb2uuidstr(clnt->osql.uuid, us), entry->master, entry->type);
     }
 #endif
+
+    /*reset rqid */
+    clnt->osql.rqid = 0;
+
+    if (clnt->osql.logsb) {
+        sbuf2close(clnt->osql.logsb);
+        clnt->osql.logsb = NULL;
+    }
 
     /* free sql thread registration entry */
     Pthread_cond_destroy(&entry->cond);
