@@ -151,6 +151,13 @@ done:
     return entry;
 }
 
+/* cleanup and free sql thread registration entry */
+static inline void cleanup_entry(osql_sqlthr_t *entry)
+{
+    Pthread_cond_destroy(&entry->cond);
+    Pthread_mutex_destroy(&entry->mtx);
+    free(entry);
+}
 
 static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
 {
@@ -223,7 +230,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
-        free(entry);
+        cleanup_entry(entry);
     }
 
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
@@ -306,11 +313,7 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         clnt->osql.logsb = NULL;
     }
 
-    /* free sql thread registration entry */
-    Pthread_cond_destroy(&entry->cond);
-    Pthread_mutex_destroy(&entry->mtx);
-    free(entry);
-
+    cleanup_entry(entry);
     return rc;
 }
 
