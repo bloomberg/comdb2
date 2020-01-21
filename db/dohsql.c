@@ -762,8 +762,9 @@ wait_for_others:
         if (bdb_lock_desired(thedb->bdb_env)) {
             rc = recover_deadlock_simple(thedb->bdb_env);
             if (rc) {
-                logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n", __func__, rc);
-            return rc;
+                logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
+                       __func__, rc);
+                return rc;
             }
         }
         goto wait_for_others;
@@ -1765,7 +1766,8 @@ retry_row:
     if (bdb_lock_desired(thedb->bdb_env)) {
         rc = recover_deadlock_simple(thedb->bdb_env);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n", __func__, rc);
+            logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
+                   __func__, rc);
             return rc;
         }
     }
