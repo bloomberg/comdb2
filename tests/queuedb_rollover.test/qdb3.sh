@@ -23,7 +23,7 @@ for ((i=0;i<5;++i)); do
     had_deq=$(cdb2sql $SP_OPTIONS "select (total_dequeued > 0) as hadDeq from comdb2_queues where queuename = '__qconst3'")
 
     if [[ "$had_deq" == "(hadDeq=1)" ]]; then
-        something_was_enqueued=1
+        something_was_dequeued=1
     fi
 
     ./qdb3_ddl_cons.sh 10 &
