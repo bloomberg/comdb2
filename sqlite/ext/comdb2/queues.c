@@ -43,6 +43,8 @@ struct systbl_queues_cursor {
   unsigned long long     age;
   int           last_qid;
   int           is_last;
+  unsigned long long     tot_enqueued;
+  unsigned long long     tot_dequeued;
 };
 
 /* Column numbers */
@@ -50,6 +52,8 @@ struct systbl_queues_cursor {
 #define STQUEUE_SPNAME       1
 #define STQUEUE_HEADTIME     2
 #define STQUEUE_DEPTH        3
+#define STQUEUE_TOT_ENQUEUED 4
+#define STQUEUE_TOT_DEQUEUED 5
 
 static int systblQueuesConnect(
   sqlite3 *db,
@@ -63,7 +67,8 @@ static int systblQueuesConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE comdb2_queues(queuename, spname, head_age, depth)");
+     "CREATE TABLE comdb2_queues(queuename, spname, head_age, depth, "
+     "total_enqueued, total_dequeued)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -82,7 +87,7 @@ static int systblQueuesDisconnect(sqlite3_vtab *pVtab){
 
 static int get_stats(struct systbl_queues_cursor *pCur) {
   struct consumer_stat stats[MAXCONSUMERS] = {{0}};
-  unsigned long long depth;
+  unsigned long long depth = 0;
   char *spname = NULL;
   struct dbtable *qdb = thedb->qdbs[pCur->last_qid];
 
@@ -99,14 +104,9 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   if (rc) {
       /* TODO: signal error? */
   }
-  depth = (bdb_get_qdb_adds(qdb->handle) > 0) ? 0 : ULLONG_MAX;
   for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
-      if (stats[consumern].has_stuff) {
-          if (depth == ULLONG_MAX)
-              depth = stats[consumern].depth;
-          else
-              depth += stats[consumern].depth;
-      }
+      if (stats[consumern].has_stuff)
+          depth += stats[consumern].depth;
   }
 
   pCur->depth = depth;
@@ -114,6 +114,8 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
       pCur->age  = comdb2_time_epoch() - stats[0].epoch;
   else
       pCur->age  = 0;
+  pCur->tot_enqueued = bdb_get_qdb_adds(qdb->handle);
+  pCur->tot_dequeued = bdb_get_qdb_cons(qdb->handle);
   return 0;
 }
 
@@ -183,12 +185,17 @@ static int systblQueuesColumn(
       break;
     }
     case STQUEUE_DEPTH: {
-      if (pCur->depth == ULLONG_MAX)
-        sqlite3_result_null(ctx);
-      else
-        sqlite3_result_int64(ctx, (sqlite3_int64)pCur->depth);
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->depth);
       break;
     }    
+    case STQUEUE_TOT_ENQUEUED: {
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->tot_enqueued);
+      break;
+    }
+    case STQUEUE_TOT_DEQUEUED: {
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->tot_dequeued);
+      break;
+    }
     case STQUEUE_HEADTIME: {
       sqlite3_result_int64(ctx, (sqlite3_int64)pCur->age);
       break;

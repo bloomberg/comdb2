@@ -865,6 +865,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
             goto done;
         }
     }
+    bdb_state->qdb_cons++;
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">> CONSUMED!\n");
 

@@ -2038,6 +2038,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
         }
     }
 
+    bdb_state->qdb_cons++;
     return 0;
 }
 
