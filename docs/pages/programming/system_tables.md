@@ -303,8 +303,8 @@ List all queues in the database.
 * `spname` - Stored procedure attached to the queue
 * `head_age` - Age of the head element in the queue
 * `depth` - Number of elements in the queue
-* `total_enqueued` - Total number of elements added
-* `total_dequeued` - Total number of elements removed
+* `total_enqueued` - Total number of elements added since process start
+* `total_dequeued` - Total number of elements removed since process start
 
 ## comdb2_repl_stats
 
