@@ -396,6 +396,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
             }
         }
     }
+    bdb_state->qdb_adds++;
     rc = 0;
 
 done:

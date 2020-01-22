@@ -84,9 +84,10 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   struct consumer_stat stats[MAXCONSUMERS] = {{0}};
   unsigned long long depth;
   char *spname = NULL;
+  struct dbtable *qdb = thedb->qdbs[pCur->last_qid];
 
-  dbqueuedb_get_name(thedb->qdbs[pCur->last_qid], &spname);
-  strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid]->tablename);
+  dbqueuedb_get_name(qdb, &spname);
+  strcpy(pCur->queue_name, qdb->tablename);
   if (spname) {
       strcpy(pCur->spname, spname);
       free(spname);
@@ -94,11 +95,11 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   else
       pCur->spname[0] = 0;
 
-  int rc = dbqueuedb_get_stats(thedb->qdbs[pCur->last_qid], stats);
+  int rc = dbqueuedb_get_stats(qdb, stats);
   if (rc) {
       /* TODO: signal error? */
   }
-  depth = ULLONG_MAX;
+  depth = (qdb->handle && (qdb->handle->qdb_adds > 0)) ? 0 : ULLONG_MAX;
   for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
       if (stats[consumern].has_stuff) {
           if (depth == ULLONG_MAX)

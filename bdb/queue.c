@@ -500,6 +500,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     free(fragment);
     if (out_genid)
         *out_genid = genid;
+    bdb_state->qdb_adds++;
     return 0;
 }
 
