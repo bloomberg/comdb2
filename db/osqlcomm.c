@@ -7443,6 +7443,8 @@ done:
         sess->rqid = req.rqid;
         comdb2uuidcpy(sess->uuid, uuid);
         sess->nops = 0;
+    } else {
+        osql_sess_remclient(sess);
     }
 
     int rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
