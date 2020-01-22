@@ -200,8 +200,6 @@ static watchlist_node_type *get_watchlist_node(SBUF2 *, const char *funcname);
 
 int sbuf2ungetc(char c, SBUF2 *sb);
 
-static int net_portmux_hello(void *);
-
 /* We can't change the on-wire protocol easily.  So it
  * retains node numbers, but they're unused for now */
 /* type 0 is internal connect message.
@@ -6287,9 +6285,6 @@ int net_init(netinfo_type *netinfo_ptr)
     }
 
     if (netinfo_ptr->accept_on_child || !netinfo_ptr->ischild) {
-        portmux_register_reconnect_callback(net_portmux_hello, netinfo_ptr);
-        net_portmux_hello(netinfo_ptr);
-
         /* create accept thread */
         rc = pthread_create(&(netinfo_ptr->accept_thread_id),
                             &(netinfo_ptr->pthread_attr_detach), accept_thread,
@@ -6316,19 +6311,6 @@ int net_init(netinfo_type *netinfo_ptr)
     usleep(10000);
 
     return 0;
-}
-
-static int net_portmux_hello(void *p)
-{
-    netinfo_type *netinfo_ptr = (netinfo_type *)p;
-    if (netinfo_ptr->hellofd != -1) {
-        close(netinfo_ptr->hellofd);
-        netinfo_ptr->hellofd = -1;
-    }
-    char register_name[16 + 16 + MAX_DBNAME_LENGTH + 1];
-    snprintf(register_name, sizeof(register_name), "%s/%s/%s", netinfo_ptr->app,
-             netinfo_ptr->service, netinfo_ptr->instance);
-    return portmux_hello("localhost", register_name, &netinfo_ptr->hellofd);
 }
 
 int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)

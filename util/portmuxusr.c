@@ -1801,35 +1801,6 @@ int set_portmux_bind_path(const char *path)
     return -1;
 }
 
-int portmux_hello(char *host, char *name, int *fdout)
-{
-    struct in_addr addr;
-    int port;
-    int fd;
-    int rc;
-
-    if (fdout) *fdout = -1;
-
-    rc = tcpresolve(host, &addr, &port);
-    if (rc) return rc;
-
-    fd = tcpconnect_to(addr, get_portmux_port(), 0, 5000);
-    if (fd == -1) return 1;
-    portmux_denagle(fd);
-
-    SBUF2 *sb = sbuf2open(fd, SBUF2_WRITE_LINE | SBUF2_NO_CLOSE_FD);
-    sbuf2printf(sb, "hello %s\n", name);
-    rc = sbuf2flush(sb);
-    if (rc < 0) return 2;
-    char line[10];
-    /* The reponse is always ok. We read it to make sure
-     * pmux had a chance to register us. */
-    sbuf2gets(line, sizeof(line), sb);
-    sbuf2close(sb);
-    if (fdout) *fdout = fd;
-    return 0;
-}
-
 void portmux_register_reconnect_callback(int (*callback)(void *), void *arg)
 {
     reconnect_callback = callback;
