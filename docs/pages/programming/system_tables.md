@@ -297,12 +297,14 @@ List all stored procedures in the database.
 
 List all queues in the database.
 
-    comdb2_queues(queuename, spname, head_age, depth)
+    comdb2_queues(queuename, spname, head_age, depth, total_enqueued, total_dequeued)
 
 * `queuename` - Name of the queue
 * `spname` - Stored procedure attached to the queue
 * `head_age` - Age of the head element in the queue
 * `depth` - Number of elements in the queue
+* `total_enqueued` - Total number of elements added
+* `total_dequeued` - Total number of elements removed
 
 ## comdb2_repl_stats
 
