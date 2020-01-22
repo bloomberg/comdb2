@@ -99,7 +99,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   if (rc) {
       /* TODO: signal error? */
   }
-  depth = (qdb->handle && (qdb->handle->qdb_adds > 0)) ? 0 : ULLONG_MAX;
+  depth = (bdb_get_qdb_adds(qdb->handle) > 0) ? 0 : ULLONG_MAX;
   for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
       if (stats[consumern].has_stuff) {
           if (depth == ULLONG_MAX)

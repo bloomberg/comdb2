@@ -417,6 +417,8 @@ void bdb_attr_dump(FILE *fh, const bdb_attr_type *bdb_attr);
 /* Get the type of this bdb-state object as a BDBTYPE_ constant */
 bdbtype_t bdb_get_type(bdb_state_type *bdb_state);
 
+int bdb_get_qdb_adds(bdb_state_type *bdb_state);
+
 bdb_state_type *bdb_clone_handle_with_other_data_files(
     const bdb_state_type *clone_bdb_state,
     const bdb_state_type *data_files_bdb_state);
