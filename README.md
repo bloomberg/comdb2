@@ -39,6 +39,7 @@ On every machine in the cluster:
        cmake \
        flex \
        protobuf-c-compiler \
+       libevent-dev \
        liblz4-dev \
        ncurses-dev  \
        libprotobuf-c-dev \
@@ -66,6 +67,7 @@ On every machine in the cluster:
        cmake3           \
        make             \
        protobuf-c       \
+       libevent-devel   \
        libunwind        \
        libunwind-devel  \
        protobuf-c-devel \
