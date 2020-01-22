@@ -1304,18 +1304,6 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         return 0;
     }
 
-    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
-        /* scan 1 - run through data, verify all the keys and blobs */
-        for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe;
-             dtastripe++) {
-            td_processing_info_t *work = malloc(sizeof(*work));
-            memcpy(work, info, sizeof(*work));
-            work->type = PROCESS_DATA;
-            work->dtastripe = dtastripe;
-            enqueue_work(work, desc, verify_thdpool);
-        }
-    }
-
     if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_INDICES) {
         /* scan 2: scan each key, verify data exists */
         for (int ix = 0; ix < par->bdb_state->numix; ix++) {
@@ -1340,6 +1328,18 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
                 work->dtastripe = dtastripe;
                 enqueue_work(work, desc, verify_thdpool);
             }
+        }
+    }
+
+    if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_DATA) {
+        /* scan 1 - run through data, verify all the keys and blobs */
+        for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe;
+             dtastripe++) {
+            td_processing_info_t *work = malloc(sizeof(*work));
+            memcpy(work, info, sizeof(*work));
+            work->type = PROCESS_DATA;
+            work->dtastripe = dtastripe;
+            enqueue_work(work, desc, verify_thdpool);
         }
     }
 

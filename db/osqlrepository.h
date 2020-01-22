@@ -21,15 +21,6 @@
 #include "comdb2uuid.h"
 
 /**
- *
- * This defines the osql repository
- * It is maintain on the master and contains
- * all pending blocksql/socksql/recom/snapisol/serial sessions
- */
-
-typedef struct osql_repository osql_repository_t;
-
-/**
  * Adds an osql session to the repository
  * Returns 0 on success
  */
