@@ -50,20 +50,17 @@ int SBUF2_FUNC(sslio_has_x509)(SBUF2 *);
    Return 1 upon success. */
 #if SBUF2_SERVER
 int SBUF2_FUNC(sslio_connect)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
-                              int nid, char *err, size_t n,
-                              int close_on_verify_error);
+                              int nid, int close_on_verify_error);
 #else
 int SBUF2_FUNC(sslio_connect)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
-                              int nid, char *err, size_t n, SSL_SESSION *,
-                              int *unrecoverable);
+                              int nid, SSL_SESSION *);
 #endif
 #define sslio_connect SBUF2_FUNC(sslio_connect)
 
 /* Perform an SSL handshake.
    Return 1 upon success. */
 int SBUF2_FUNC(sslio_accept)(SBUF2 *, SSL_CTX *, ssl_mode, const char *dbname,
-                             int nid, char *err, size_t n,
-                             int close_on_verify_error);
+                             int nid, int close_on_verify_error);
 #define sslio_accept SBUF2_FUNC(sslio_accept)
 
 /* Given an NID, return the attribute in the X509 certificate in `out'. */
