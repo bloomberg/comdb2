@@ -111,7 +111,7 @@ void fileid_str(u_int8_t *fileid, char *str)
 {
     char *p = str;
     u_int8_t *f = fileid;
-    for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p+=2) {
+    for (int i = 0; i < DB_FILE_ID_LEN; i++, f++, p += 2) {
         sprintf(p, "%2.2x", (u_int)*f);
     }
 }

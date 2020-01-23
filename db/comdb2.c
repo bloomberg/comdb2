@@ -1300,8 +1300,10 @@ static void *purge_old_files_thread(void *arg)
                     retries++;
                     goto retry;
                 }
-                logmsg(LOGMSG_ERROR, "%s: failed to commit purged file, "
-                        "rc=%d\n", __func__, rc);
+                logmsg(LOGMSG_ERROR,
+                       "%s: failed to commit purged file, "
+                       "rc=%d\n",
+                       __func__, rc);
                 sleep(empty_pause);
                 continue;
             }

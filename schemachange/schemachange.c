@@ -46,7 +46,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     struct schema_change_type *s = iq->sc;
     int maxcancelretry = 10;
     int rc;
-    
+
     if (!bdb_iam_master(thedb->bdb_env)) {
         sc_errf(s, "I am not master\n");
         free_schema_change_type(s);
@@ -258,7 +258,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
-                time(NULL), 0, __func__, __LINE__);
+                        time(NULL), 0, __func__, __LINE__);
     if (rc != 0) {
         logmsg(LOGMSG_INFO, "Failed sc_set_running [%llx %s] rc %d\n", s->rqid,
                us, rc);
@@ -284,7 +284,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
             if (s->db && s->db->doing_upgrade) {
                 sc_errf(s, "failed to cancel table upgrade threads\n");
-            } 
+            }
 
             free_schema_change_type(s);
             return SC_CANT_SET_RUNNING;
@@ -373,8 +373,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (arg)
                 free(arg);
             if (!s->is_osql) {
-                sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL), 0,
-                        __func__, __LINE__);
+                sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL),
+                               0, __func__, __LINE__);
                 free_schema_change_type(s);
             }
             rc = SC_ASYNC_FAILED;
@@ -1175,7 +1175,7 @@ int sc_timepart_add_table(const char *existingTableName,
     }
 
     if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_mynode, time(NULL), 0,
-                __func__, __LINE__) != 0) {
+                       __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1236,7 +1236,7 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     }
 
     if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_mynode, time(NULL), 0,
-                __func__, __LINE__) != 0) {
+                       __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;

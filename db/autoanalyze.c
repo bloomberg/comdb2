@@ -97,8 +97,8 @@ void *auto_analyze_table(void *arg)
     int rc;
 
     for (int retries = 0;
-            get_schema_change_in_progress(__func__, __LINE__) &&
-            retries < 10; retries++) {
+         get_schema_change_in_progress(__func__, __LINE__) && retries < 10;
+         retries++) {
         sleep(5); // wait around for sequential fastinits to finish
     }
 
@@ -351,7 +351,7 @@ void *auto_analyze_main(void *unused)
     // for each table update the counters
     for (int i = 0; i < thedb->num_dbs; i++) {
         if (thedb->master != gbl_mynode ||
-                get_schema_change_in_progress(__func__, __LINE__))
+            get_schema_change_in_progress(__func__, __LINE__))
             break;
 
         struct dbtable *tbl = thedb->dbs[i];

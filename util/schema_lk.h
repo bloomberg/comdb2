@@ -43,7 +43,7 @@ void assert_rdlock_schema_int(const char *file, const char *func, int line);
     assert_lock_schema_int(__FILE__, __func__, __LINE__);
 void assert_lock_schema_int(const char *file, const char *func, int line);
 
-#define assert_no_schema_lk()                                                \
+#define assert_no_schema_lk()                                                  \
     assert_no_schema_lock_int(__FILE__, __func__, __LINE__);
 void assert_no_schema_lock_int(const char *file, const char *func, int line);
 

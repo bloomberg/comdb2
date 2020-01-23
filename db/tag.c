@@ -191,8 +191,8 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
 #if defined STACK_TAG_SCHEMA
-    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
-            table, schema->tag);
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          schema->tag);
     schema->frames = backtrace(schema->buf, MAX_TAG_STACK_FRAMES);
     schema->tid = pthread_self();
 #endif
@@ -217,7 +217,7 @@ static void del_tag_schema_lk(const char *table, const char *tagname)
         hash_del(tag->tags, sc);
 #if defined STACK_TAG_SCHEMA
         comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
-                table, tagname);
+                              table, tagname);
 #endif
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
@@ -1454,8 +1454,8 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
 
     hash_add(tag->tags, sc);
 #if defined STACK_TAG_SCHEMA
-    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
-            table, name);
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          name);
     sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
     sc->tid = pthread_self();
 #endif
@@ -6423,7 +6423,7 @@ void commit_schemas(const char *tblname)
             hash_add(dbt->tags, sc);
 #if defined STACK_TAG_SCHEMA
             comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
-                    tblname, sc->tag);
+                                  tblname, sc->tag);
             sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
             sc->tid = pthread_self();
 #endif
@@ -6862,8 +6862,8 @@ void rename_schema(const char *oldname, char *newname)
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &oldname);
 #if defined STACK_TAG_SCHEMA
-    comdb2_cheapstack_sym(stderr, "%s:%d rename %s to %s\n", __func__,
-            __LINE__, oldname, newname);
+    comdb2_cheapstack_sym(stderr, "%s:%d rename %s to %s\n", __func__, __LINE__,
+                          oldname, newname);
 #endif
     hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);
@@ -7132,7 +7132,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     newdb->dtastripe = gbl_dtastripe;
 
     extern int gbl_rowlocks;
-    tran_type *arg_tran = gbl_rowlocks ? NULL : tran; 
+    tran_type *arg_tran = gbl_rowlocks ? NULL : tran;
 
     /* Must use tran or this can cause deadlocks */
     newdb->handle = bdb_open_more_tran(

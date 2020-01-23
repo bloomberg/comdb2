@@ -985,7 +985,7 @@ done:
         Pthread_rwlock_unlock(&views_lk);
         /* commit_adaptive unlocks the schema-lk */
         if (rc != VIEW_NOERR)
-            unlock_schema_lk(); 
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);

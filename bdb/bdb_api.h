@@ -331,7 +331,7 @@ typedef int (*GETROOMFP)(bdb_state_type *bdb_handle, const char *host);
   do NOT call back into the bdb library from this routine.
 */
 typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host,
-        int assert_sc_clear);
+                             int assert_sc_clear);
 
 /*
   pass in a routine that will be called when the replication

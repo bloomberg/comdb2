@@ -570,7 +570,7 @@ void bdb_get_the_readlock(const char *idstr, const char *function, int line)
 }
 
 void bdb_assert_wrlock(bdb_state_type *bdb_state, const char *funcname,
-        int line)
+                       int line)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
@@ -580,13 +580,13 @@ void bdb_assert_wrlock(bdb_state_type *bdb_state, const char *funcname,
 
     if (lk == NULL) {
         logmsg(LOGMSG_FATAL, "%s(%s): bdb lock not inited in this thread\n",
-                funcname, __func__);
+               funcname, __func__);
         abort();
     }
 
     if (lk->lockref == 0 || lk->locktype != WRITELOCK) {
-        logmsg(LOGMSG_FATAL, "%s(%s): I do not hold the writelock!\n",
-                funcname, __func__);
+        logmsg(LOGMSG_FATAL, "%s(%s): I do not hold the writelock!\n", funcname,
+               __func__);
         abort_lk(lk);
     }
 }

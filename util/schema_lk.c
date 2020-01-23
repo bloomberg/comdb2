@@ -90,8 +90,7 @@ inline void assert_rdlock_schema_int(const char *file, const char *func,
     }
 }
 
-inline void assert_lock_schema_int(const char *file, const char *func,
-                                     int line)
+inline void assert_lock_schema_int(const char *file, const char *func, int line)
 {
     if (have_readlock == 0 && have_writelock == 0) {
         logmsg(LOGMSG_FATAL, "%p:ASSERT-RDLOCK %s:%d\n", (void *)pthread_self(),

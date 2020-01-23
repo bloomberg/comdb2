@@ -210,7 +210,7 @@ static void free_sc(struct schema_change_type *s)
 }
 
 static void stop_and_free_sc(struct ireq *iq, int rc,
-        struct schema_change_type *s, int do_free)
+                             struct schema_change_type *s, int do_free)
 {
     if (!s->partialuprecs) {
         if (rc != 0) {
@@ -221,8 +221,7 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
             sbuf2printf(s->sb, "SUCCESS\n");
         }
     }
-    sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__,
-            __LINE__);
+    sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
     if (do_free) {
         free_sc(s);
     }
@@ -664,7 +663,8 @@ downgraded:
     Pthread_mutex_unlock(&s->mtx);
     if (!s->is_osql) {
         if (rc == SC_MASTER_DOWNGRADE) {
-            sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__, __LINE__);
+            sc_set_running(iq, s, s->tablename, 0, NULL, 0, 0, __func__,
+                           __LINE__);
             free_sc(s);
         } else {
             stop_and_free_sc(iq, rc, s, 1);
@@ -1518,7 +1518,7 @@ int scdone_abort_cleanup(struct ireq *iq)
     mark_schemachange_over(s->tablename);
     if (s->set_running)
         sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL), 0,
-                __func__, __LINE__);
+                       __func__, __LINE__);
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);

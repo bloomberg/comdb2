@@ -246,8 +246,8 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
 }
 
 int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
-        int running, const char *host, time_t time, int fromnet,
-        const char *func, int line);
+                   int running, const char *host, time_t time, int fromnet,
+                   const char *func, int line);
 
 void sc_set_downgrading(struct schema_change_type *s);
 
@@ -275,7 +275,6 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (rc) {
         logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
     }
-
 
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
@@ -316,13 +315,13 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (!rc && iq->sc_pending && gbl_sc_close_txn) {
         if ((rc = trans_start(iq, NULL, &iq->sc_close_tran)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: error creating sc close txn, %d\n",
-                    __func__, rc);
-        /* Write a debug log-record so that the "start" of the close-txn
-         * preceeds the start of the sc-txn */
-        } else if ((rc = bdb_debug_log(thedb->bdb_env, iq->sc_close_tran, 3))
-                != 0) {
+                   __func__, rc);
+            /* Write a debug log-record so that the "start" of the close-txn
+             * preceeds the start of the sc-txn */
+        } else if ((rc = bdb_debug_log(thedb->bdb_env, iq->sc_close_tran, 3)) !=
+                   0) {
             logmsg(LOGMSG_ERROR, "%s: error writing close txn log, %d\n",
-                    __func__, rc);
+                   __func__, rc);
         }
     }
 
@@ -334,7 +333,7 @@ int osql_bplog_schemachange(struct ireq *iq)
         while (sc != NULL) {
             next = sc->sc_next;
             if (sc->newdb && sc->newdb->handle) {
-                void live_sc_off(struct dbtable *db);
+                void live_sc_off(struct dbtable * db);
                 int bdberr = 0;
                 live_sc_off(sc->db);
                 while (sc->logical_livesc) {
@@ -351,7 +350,7 @@ int osql_bplog_schemachange(struct ireq *iq)
                 sc->newdb = NULL;
             }
             sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
-                    __LINE__);
+                           __LINE__);
             free_schema_change_type(sc);
             sc = next;
         }
@@ -1601,7 +1600,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
             sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
-                    __LINE__);
+                           __LINE__);
             free_schema_change_type(sc);
             error = 1;
         }

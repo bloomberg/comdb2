@@ -79,7 +79,7 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (rc)
         logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
-                rc);
+               rc);
     return rc;
 }
 

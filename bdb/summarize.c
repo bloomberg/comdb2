@@ -456,9 +456,9 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         }
 
         int inprogress;
-        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__))
-                || get_analyze_abort_requested()) {
-            if (inprogress) 
+        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
+            get_analyze_abort_requested()) {
+            if (inprogress)
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "schema_change_in_progress\n", __func__);
             if (get_analyze_abort_requested())

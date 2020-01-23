@@ -76,9 +76,9 @@ struct schema {
     int *datacopy;
     char *where;
 #if defined STACK_TAG_SCHEMA
-	int  frames;
-	void *buf[MAX_TAG_STACK_FRAMES];
-	pthread_t tid;
+    int frames;
+    void *buf[MAX_TAG_STACK_FRAMES];
+    pthread_t tid;
 #endif
     LINKC_T(struct schema) lnk;
 };

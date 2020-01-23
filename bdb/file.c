@@ -1304,7 +1304,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     if (!bdb_state->isopen) {
         print(bdb_state, "%s not open, not closing\n", bdb_state->name);
         logmsg(LOGMSG_DEBUG, "%s:%d %s not open, not closing\n", __func__,
-                __LINE__, bdb_state->name);
+               __LINE__, bdb_state->name);
         return 0;
     }
 
@@ -1316,10 +1316,10 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
         for (strnum = 0; strnum < MAXDTASTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
                 bdb_state->dbp_data[dtanum][strnum]->get_fileid(
-                        bdb_state->dbp_data[dtanum][strnum], fileid);
+                    bdb_state->dbp_data[dtanum][strnum], fileid);
                 fileid_str(fileid, fid_str);
                 logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__,
-                        __LINE__, fid_str);
+                       __LINE__, fid_str);
                 rc = bdb_state->dbp_data[dtanum][strnum]->closetxn(
                     bdb_state->dbp_data[dtanum][strnum], tid, flags);
                 if (0 != rc) {
@@ -1329,22 +1329,25 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
                            db_strerror(rc));
                 }
             } else {
-                logmsg(LOGMSG_DEBUG, "%s:%d not closing dtafile %d stripe %d "
-                        "(NULL ptr)\n", __func__, __LINE__, dtanum, strnum);
+                logmsg(LOGMSG_DEBUG,
+                       "%s:%d not closing dtafile %d stripe %d "
+                       "(NULL ptr)\n",
+                       __func__, __LINE__, dtanum, strnum);
             }
         }
     }
 
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
         logmsg(LOGMSG_DEBUG, "%s:%d  looking through table %s numix %d\n",
-                __func__, __LINE__, bdb_state->name, bdb_state->numix);
+               __func__, __LINE__, bdb_state->name, bdb_state->numix);
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
             bdb_state->dbp_ix[i]->get_fileid(bdb_state->dbp_ix[i], fileid);
             fileid_str(fileid, fid_str);
             logmsg(LOGMSG_DEBUG, "%s:%d closing fileid %s\n", __func__,
-                    __LINE__, fid_str);
-            rc = bdb_state->dbp_ix[i]->closetxn(bdb_state->dbp_ix[i], tid, flags);
+                   __LINE__, fid_str);
+            rc = bdb_state->dbp_ix[i]->closetxn(bdb_state->dbp_ix[i], tid,
+                                                flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
                        __func__, bdb_state->name, i, rc, db_strerror(rc));
@@ -1676,7 +1679,8 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     return 0;
 }
 
-int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans, tran_type *cltrans)
+int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
+                          tran_type *cltrans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
     DB_TXN *cltid = cltrans ? cltrans->tid : NULL;
@@ -4306,7 +4310,7 @@ deadlock_again:
 
             /* Don't print this trace during schemachange */
             extern int get_schema_change_in_progress(const char *func,
-                    int line);
+                                                     int line);
             if (!get_schema_change_in_progress(__func__, __LINE__)) {
                 int calc_pgsz = calc_pagesize(bdb_state->lrl);
                 if (calc_pgsz > x) {
@@ -4918,9 +4922,8 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
     BDB_RELLOCK();
 
     if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host,
-                                               0);
+        (bdb_state->callback->whoismaster_rtn)(
+            bdb_state, bdb_state->repinfo->master_host, 0);
 }
 
 static inline void bdb_set_read_only(bdb_state_type *bdb_state)
@@ -5097,9 +5100,8 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
 
     /* notify the user that we are the master */
     if (bdb_state->callback->whoismaster_rtn) {
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host,
-                                               1);
+        (bdb_state->callback->whoismaster_rtn)(
+            bdb_state, bdb_state->repinfo->master_host, 1);
     }
 
     /* master cannot be incoherent, that makes no sense.
@@ -5244,9 +5246,8 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     /* call the user with a NEWMASTER of -1 */
     if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host,
-                                               1);
+        (bdb_state->callback->whoismaster_rtn)(
+            bdb_state, bdb_state->repinfo->master_host, 1);
 
     allow_sc_to_run();
     BDB_RELLOCK();
@@ -7878,7 +7879,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             abort();
 
         rc = bdb_is_new_sc_file(bdb_state, tran, (const char *)bdb_state->name,
-                file_version, bdberr);
+                                file_version, bdberr);
         if (rc == 1) {
             found_in_llmeta = 1;
             rc = 0;

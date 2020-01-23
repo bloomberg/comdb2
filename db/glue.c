@@ -788,7 +788,7 @@ int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
     return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
-            0);
+                            0);
 }
 
 int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host,
@@ -800,7 +800,8 @@ int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host,
 
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0, 1);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
+                            1);
 }
 
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
@@ -2892,7 +2893,7 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
 
 /* callback to report new master */
 static int new_master_callback(void *bdb_handle, char *host,
-        int assert_sc_clear)
+                               int assert_sc_clear)
 {
     ++gbl_master_changes;
     struct dbenv *dbenv;

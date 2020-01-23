@@ -687,8 +687,11 @@ errout:
     return SC_OK;
 }
 
-#define BACKOUT do { sc_errf(s, "%s:%d backing out\n", __func__, __LINE__); goto backout; } while (0);
-
+#define BACKOUT                                                                \
+    do {                                                                       \
+        sc_errf(s, "%s:%d backing out\n", __func__, __LINE__);                 \
+        goto backout;                                                          \
+    } while (0);
 
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)

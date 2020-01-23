@@ -2245,8 +2245,8 @@ static int cursor_move_preprop(BtCursor *pCur, int *pRes, int how, int *done)
 
     int inprogress;
     if (thd->clnt->is_analyze &&
-       (inprogress = get_schema_change_in_progress(__func__, __LINE__) ||
-         get_analyze_abort_requested())) {
+        (inprogress = get_schema_change_in_progress(__func__, __LINE__) ||
+                      get_analyze_abort_requested())) {
         if (inprogress)
             logmsg(LOGMSG_ERROR, 
                     "%s: Aborting Analyze because schema_change_in_progress\n",
