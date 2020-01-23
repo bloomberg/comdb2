@@ -2411,10 +2411,13 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         parent = bdb_get_sc_parent_tran(parent);
     }
     if (iq->sc_close_tran) {
-        rc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+        if (iq->sc_closed_files)
+            rc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+        else
+            rc = trans_abort(iq, iq->sc_close_tran);
         if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d\n", __func__,
-                   __LINE__, rc);
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d\n", __func__,
+                   __LINE__, iq->sc_closed_files ? "COMMIT" : "ABORT", rc);
             comdb2_die(0);
         }
         iq->sc_close_tran = NULL;
@@ -5170,11 +5173,15 @@ backout:
 
             if (iq->tranddl) {
                 if (iq->sc_close_tran) {
-                    irc = trans_commit(iq, iq->sc_close_tran, source_host);
+                    if (iq->sc_closed_files)
+                        irc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+                    else
+                        irc = trans_abort(iq, iq->sc_close_tran);
                     if (irc != 0) {
                         logmsg(LOGMSG_FATAL,
-                               "%s:%d TRANS_COMMIT FAILED RC %d\n", __func__,
-                               __LINE__, irc);
+                               "%s:%d TRANS_%s FAILED RC %d\n", __func__,
+                               __LINE__, iq->sc_closed_files ? "COMMIT" :
+                               "ABORT", irc);
                         comdb2_die(0);
                     }
                     iq->sc_close_tran = NULL;
@@ -5555,12 +5562,16 @@ add_blkseq:
                         trans = NULL;
 
                         if (iq->sc_close_tran) {
-                            irc = trans_commit(iq, iq->sc_close_tran,
-                                               source_host);
+                            if (iq->sc_closed_files)
+                                irc = trans_commit(iq, iq->sc_close_tran,
+                                        source_host);
+                            else
+                                irc = trans_abort(iq, iq->sc_close_tran);
                             if (irc != 0) {
                                 logmsg(LOGMSG_FATAL,
-                                       "%s:%d TRANS_COMMIT FAILED RC %d\n",
-                                       __func__, __LINE__, irc);
+                                       "%s:%d TRANS_%s FAILED RC %d\n",
+                                       __func__, __LINE__, iq->sc_closed_files ?
+                                       "COMMIT" : "ABORT", irc);
                                 comdb2_die(0);
                             }
                             iq->sc_close_tran = NULL;
@@ -5692,11 +5703,17 @@ add_blkseq:
                 /*fprintf(stderr, "trans_commit_logical\n");*/
                 if (iq->tranddl) {
                     if (iq->sc_close_tran) {
+                        if (iq->sc_closed_files)
+                            irc = trans_commit(iq, iq->sc_close_tran,
+                                    source_host);
+                        else
+                            irc = trans_abort(iq, iq->sc_close_tran);
                         irc = trans_commit(iq, iq->sc_close_tran, source_host);
                         if (irc != 0) {
                             logmsg(LOGMSG_FATAL,
-                                   "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
-                                   __LINE__, irc);
+                                   "%s:%d TRANS_%s FAILED RC %d", __func__,
+                                   __LINE__, iq->sc_closed_files ? "COMMIT" :
+                                   "ABORT", irc);
                             comdb2_die(0);
                         }
                         iq->sc_close_tran = NULL;

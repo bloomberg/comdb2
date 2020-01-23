@@ -1466,6 +1466,7 @@ struct ireq {
     bool sc_locked : 1;
     bool have_snap_info : 1;
     bool sc_should_abort : 1;
+    bool sc_closed_files : 1;
 
     int written_row_count;
     int sc_running;
