@@ -2013,6 +2013,8 @@ static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
     return irc;
 }
 
+int gbl_sc_close_txn = 1;
+
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, tran_type **trans,
@@ -2037,8 +2039,11 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                        "%s:%d/%d td %ld failed to get physical "
                        "tran\n",
                        __func__, __LINE__, line, pthread_self());
-            } else
+            } else {
                 irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
+                if (irc == 0 && gbl_sc_close_txn)
+                    irc = trans_start_sc(iq, sc_parent, &(iq->sc_close_tran));
+            }
         } else if (irc == 0) { // pagelock
             if (parent_trans) {
                 *parent_trans = bdb_get_physical_tran(iq->sc_logical_tran);
@@ -2048,10 +2053,17 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                     /* start another child tran for schema changes */
                     irc = create_child_transaction(iq, *parent_trans,
                                                    &(iq->sc_tran));
+                    /* Another for close-old files */
+                    if (irc == 0 && gbl_sc_close_txn)
+                        irc = create_child_transaction(iq, *parent_trans,
+                                                       &(iq->sc_close_tran));
                 }
             } else {
                 *trans = bdb_get_physical_tran(iq->sc_logical_tran);
                 irc = create_child_transaction(iq, *trans, &(iq->sc_tran));
+                if (irc == 0 && gbl_sc_close_txn)
+                    irc = create_child_transaction(iq, *parent_trans,
+                                                   &(iq->sc_close_tran));
             }
         }
     } else if (!gbl_rowlocks) {

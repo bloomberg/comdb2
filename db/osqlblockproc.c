@@ -251,7 +251,6 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
 
 void sc_set_downgrading(struct schema_change_type *s);
 
-int gbl_sc_close_txn = 1;
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -312,18 +311,6 @@ int osql_bplog_schemachange(struct ireq *iq)
     if (rc)
         csc2_free_all();
 
-    if (!rc && iq->sc_pending && gbl_sc_close_txn) {
-        if ((rc = trans_start(iq, NULL, &iq->sc_close_tran)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: error creating sc close txn, %d\n",
-                   __func__, rc);
-            /* Write a debug log-record so that the "start" of the close-txn
-             * preceeds the start of the sc-txn */
-        } else if ((rc = bdb_debug_log(thedb->bdb_env, iq->sc_close_tran, 3)) !=
-                   0) {
-            logmsg(LOGMSG_ERROR, "%s: error writing close txn log, %d\n",
-                   __func__, rc);
-        }
-    }
 
     if (rc) {
         /* free schema changes that have finished without marking schema change
