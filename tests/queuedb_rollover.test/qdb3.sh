@@ -13,17 +13,18 @@ something_was_dequeued=0
 for ((i=0;i<5;++i)); do
     ./qdb3_dml_adds.sh 1000 &
     ./qdb3_dml_cons.sh 1000 &
+    sleep 20
 
     had_enq=$(cdb2sql $SP_OPTIONS "select (total_enqueued > 0) as hadEnq from comdb2_queues where queuename = '__qconst3'")
 
     if [[ "$had_enq" == "(hadEnq=1)" ]]; then
-        something_was_enqueued=1
+        something_was_enqueued=$((something_was_enqueued+1))
     fi
 
     had_deq=$(cdb2sql $SP_OPTIONS "select (total_dequeued > 0) as hadDeq from comdb2_queues where queuename = '__qconst3'")
 
     if [[ "$had_deq" == "(hadDeq=1)" ]]; then
-        something_was_dequeued=1
+        something_was_dequeued=$((something_was_dequeued+1))
     fi
 
     ./qdb3_ddl_cons.sh 10 &
