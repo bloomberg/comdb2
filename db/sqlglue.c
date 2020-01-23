@@ -100,7 +100,7 @@
 
 #include "str0.h"
 #include "comdb2_atomic.h"
-#include "sc_global.h"
+#include "sc_util.h"
 
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,

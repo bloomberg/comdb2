@@ -35,7 +35,7 @@
 #include "cron_systable.h"
 #include "timepart_systable.h"
 #include "logical_cron.h"
-#include "sc_global.h"
+#include "sc_util.h"
 
 #define VIEWS_MAX_RETENTION 1000
 

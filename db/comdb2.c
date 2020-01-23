@@ -4300,7 +4300,7 @@ int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
-#include <sc_global.h>
+#include <sc_util.h>
 
 void *statthd(void *p)
 {

@@ -46,7 +46,7 @@
 #include <comdb2rle.h>
 #include <lz4.h>
 #include <logmsg.h>
-#include "sc_global.h"
+#include "sc_util.h"
 
 #if LZ4_VERSION_NUMBER < 10701
 #define LZ4_compress_default LZ4_compress_limitedOutput

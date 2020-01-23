@@ -37,7 +37,7 @@
 #include <ctrace.h>
 #include <logmsg.h>
 #include "str0.h"
-#include "sc_global.h"
+#include "sc_util.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC

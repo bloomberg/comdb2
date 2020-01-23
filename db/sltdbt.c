@@ -32,7 +32,7 @@
 #include "plhash.h"
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
-#include "sc_global.h"
+#include "sc_util.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);

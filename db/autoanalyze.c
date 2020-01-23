@@ -31,7 +31,7 @@
 #include <ctrace.h>
 #include <autoanalyze.h>
 #include <sqlstat1.h>
-#include "schemachange/sc_global.h"
+#include "schemachange/sc_util.h"
 
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";

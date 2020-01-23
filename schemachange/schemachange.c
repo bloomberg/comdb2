@@ -30,6 +30,7 @@
 #include "sc_lua.h"
 #include "sc_add_table.h"
 #include "sc_callbacks.h"
+#include "sc_util.h"
 #include "sc_schema.h"
 #include "crc32c.h"
 #include "comdb2_atomic.h"
