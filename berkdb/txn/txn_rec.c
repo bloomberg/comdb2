@@ -680,7 +680,7 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 #ifdef TXN_CHILD_INSTRUMENTATION
 #define TRACE_RET(ret) do { \
         if (ret != 0) \
-            logmsg(LOGMSG_USER, "%s:%s ret is %d\n",__func__,__LINE__, ret); \
+            logmsg(LOGMSG_USER, "%s:%d ret is %d\n", __func__, __LINE__, ret); \
     } while(0);
 #else
 #define TRACE_RET(ret)

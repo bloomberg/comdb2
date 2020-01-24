@@ -959,7 +959,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_LOCKREQ request;
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
-	TXN_DETAIL *td = NULL;
+	TXN_DETAIL *td = NULL, *ptd = NULL;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
 	uint32_t gen;
@@ -1257,12 +1257,14 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				goto err;
 			}
 
-			if (log_compare(&txnp->begin_lsn, &txnp->parent->begin_lsn) < 0) {
+            ptd = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->parent->off);
+
+			if (log_compare(&td->begin_lsn, &ptd->begin_lsn) < 0) {
 				logmsg(LOGMSG_INFO, "Reset parent begin-lsn from [%d:%d] to "
-						"[%d:%d]\n", txnp->parent->begin_lsn->file,
-						txnp->parent->begin_lsn->offset, txnp->begin_lsn->file,
-						txnp->begin_lsn->offset);
-				txnp->parent->begin_lsn = txnp->begin_lsn;
+						"[%d:%d]\n", ptd->begin_lsn.file,
+						ptd->begin_lsn.offset, td->begin_lsn.file,
+						td->begin_lsn.offset);
+				ptd->begin_lsn = td->begin_lsn;
 			}
 
 			if (__lock_set_parent_has_pglk_lsn(dbenv,
