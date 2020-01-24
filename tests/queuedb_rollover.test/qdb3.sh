@@ -11,8 +11,8 @@ something_was_enqueued=0
 something_was_dequeued=0
 
 for ((i=0;i<5;++i)); do
-    ./qdb3_dml_adds.sh 1000 &
-    ./qdb3_dml_cons.sh 1000 $i &
+    ./qdb3_dml_adds.sh 100000 &
+    ./qdb3_dml_cons.sh 100000 $i &
 
     had_enq=$(cdb2sql $SP_OPTIONS "select (total_enqueued > 0) as hadEnq from comdb2_queues where queuename = '__qconst3'")
 
