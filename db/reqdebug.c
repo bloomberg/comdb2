@@ -18,6 +18,7 @@
 #include <stdarg.h>
 #include <epochlib.h>
 #include "comdb2.h"
+#include "reqlog.h"
 
 /* flush output. */
 void reqprintflush(struct ireq *iq)

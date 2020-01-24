@@ -29,6 +29,7 @@
 #include "osqlblockproc.h"
 #include "osqlblkseq.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "plhash.h"
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"

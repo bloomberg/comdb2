@@ -74,6 +74,7 @@
 #include "bpfunc.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2_atomic.h"
 
 #if 0

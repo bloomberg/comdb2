@@ -34,6 +34,7 @@
 #include <sqlite3.h>
 #include <sqliteInt.h>
 #include <comdb2.h>
+#include <reqlog.h>
 #include <sqlglue.h>
 #include <types.h>
 #include <sql.h>
@@ -2645,7 +2646,7 @@ static const char *db_rollback_int(Lua L, int *rc)
     reset_stmts(sp);
     sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
                             SQLENG_FNSH_RBK_STATE);
-    reqlog_set_event(sp->thd->logger, "sp");
+    reqlog_set_event(sp->thd->logger, EV_SP);
     *rc = handle_sql_commitrollback(sp->thd, sp->clnt, TRANS_CLNTCOMM_NOREPLY);
     sp->clnt->ready_for_heartbeats = 1;
     if ((sp->in_parent_trans == 0) && sp->make_parent_trans) {
@@ -6494,7 +6495,7 @@ static int exec_procedure_int(struct sqlthdstate *thd,
     int rc, args, new_vm;
     *err = NULL;
 
-    reqlog_set_event(thd->logger, "sp");
+    reqlog_set_event(thd->logger, EV_SP);
 
     if ((rc = get_spname(clnt, &s, spname, err)) != 0)
         return rc;

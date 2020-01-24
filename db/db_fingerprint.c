@@ -19,6 +19,7 @@
 #include <string.h>
 #include <stddef.h>
 
+#include "reqlog.h"
 #include "logmsg.h"
 #include "md5.h"
 #include "sql.h"

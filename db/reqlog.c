@@ -66,6 +66,7 @@
 #include "util.h"
 #include "tohex.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2uuid.h"
 #include "strbuf.h"
 #include "roll_file.h"
@@ -2842,9 +2843,9 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
     logger->have_fingerprint = 1;
 }
 
-inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
+inline void reqlog_set_event(struct reqlogger *logger, evtype_t ev)
 {
-    logger->event_type = evtype;
+    logger->event_type = ev;
 }
 
 void reqlog_add_table(struct reqlogger *logger, const char *table)

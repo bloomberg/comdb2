@@ -33,6 +33,7 @@
 
 #include <uuid/uuid.h>
 #include "str0.h"
+#include "reqlog.h"
 
 static void _destroy_session(osql_sess_t **prq, int phase);
 

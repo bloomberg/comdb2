@@ -54,7 +54,6 @@ void berk_memp_sync_alarm_ms(int);
 
 #include <mem_uncategorized.h>
 
-#include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
 #include "thread_stats.h"
@@ -76,6 +75,8 @@ void berk_memp_sync_alarm_ms(int);
 
 #include "comdb2.h"
 #include "sql.h"
+#include "logmsg.h"
+#include "reqlog.h"
 
 #include "comdb2_trn_intrl.h"
 #include "history.h"
