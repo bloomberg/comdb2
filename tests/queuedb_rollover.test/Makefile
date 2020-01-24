@@ -5,7 +5,7 @@ else
 endif
 
 ifeq ($(TEST_TIMEOUT),)
-	export TEST_TIMEOUT=20m
+	export TEST_TIMEOUT=60m
 endif
 
 export SP_OPTIONS=-s --cdb2cfg $(CDB2_CONFIG) $(DBNAME) default
