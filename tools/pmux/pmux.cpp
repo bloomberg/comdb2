@@ -173,7 +173,6 @@ static void writecb(int, short, void *);
 
 struct connection {
   private:
-    int is_unix;
     in_addr_t addr;
     event ev;
     evbuffer *rdbuf;
@@ -191,6 +190,7 @@ struct connection {
 
   public:
     int fd;
+    int is_unix;
     std::string svc;
     connection(int f)
         : fd{f}, is_unix{1}, addr{0}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}
@@ -224,49 +224,19 @@ struct connection {
         }
         return 1;
     }
-    void writebuf()
-    {
-        int rc = evbuffer_write(wrbuf, fd);
-        if (rc <= 0) {
-            if (rc == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
-                debug_log("write fd:%d rc:%d errno:%d-%s\n", fd, rc, errno, strerror(errno));
-            } else {
-                debug_log("write would block\n");
-            }
-            return;
-        }
-        if (evbuffer_get_length(wrbuf) == 0) {
-            debug_log("completed writing reply\n");
-            event_del(&ev);
-            enable_read();
-        } else {
-            debug_log("waiting to write reply\n");
-            event_del(&ev);
-            enable_write();
-        }
-    }
     int readln(char **out)
     {
         size_t len;
-        int rc = evbuffer_read(rdbuf, fd, 256);
         *out = evbuffer_readln(rdbuf, &len, EVBUFFER_EOL_ANY);
         if (*out) {
             return 0;
         }
-        if (rc <= 0) {
-            if (rc == 0 || (errno != EAGAIN && errno != EWOULDBLOCK)) {
-                debug_log("read fd:%d rc:%d errno:%d-%s\n", fd, rc, errno, strerror(errno));
-                delete(this);
-            }
-            return -1;
-        }
         len = evbuffer_get_length(rdbuf);
         if (len < 1024) {
-            debug_log("did not see newline - waiting for more data\n");
             return 0;
         }
         debug_log("no newline in %zu bytes\n", len);
-        delete(this);
+        delete this;
         return -1;
     }
     void route(int dest)
@@ -281,25 +251,52 @@ struct connection {
         if (rc != 0) return 0;
         return write(fd, NULL, 0) == 0;
     }
+    int readbuf()
+    {
+        return evbuffer_read(rdbuf, fd, 256);
+    }
+    void writebuf()
+    {
+        int rc = evbuffer_write(wrbuf, fd);
+        if (rc <= 0) {
+            delete this;
+            return;
+        }
+        event_del(&ev);
+        if (evbuffer_get_length(wrbuf) == 0) {
+            debug_log("%s fd:%d completed writing reply\n", __func__, fd);
+            enable_read();
+        } else {
+            debug_log("%s fd:%d waiting to write reply\n", __func__, fd);
+            enable_write();
+        }
+    }
     void reply(const char *fmt, ...)
     {
         va_list args;
         va_start(args, fmt);
 #       ifdef VERBOSE
+        evbuffer *logbuf = evbuffer_new();
+        evbuffer_add_printf(logbuf, "%s fd:%d %s", __func__, fd, fmt);
+        char *logfmt = (char *)evbuffer_pullup(logbuf, -1);
         va_list log_args;
         va_copy(log_args, args);
-        vsyslog(LOG_DEBUG, fmt, log_args);
+        vsyslog(LOG_DEBUG, logfmt, log_args);
         va_end(log_args);
+        evbuffer_free(logbuf);
 #       endif
         evbuffer_add_vprintf(wrbuf, fmt, args);
         va_end(args);
-        writebuf();
+        evbuffer_write(wrbuf, fd);
+        if (evbuffer_get_length(wrbuf) != 0) {
+            debug_log("%s fd:%d waiting to write reply\n", __func__, fd);
+            event_del(&ev);
+            enable_write();
+        }
     }
     void reply_not_permitted()
     {
-        debug_log("write requests not permitted from this host\n");
-        evbuffer_add_printf(wrbuf, "-1 write requests not permitted from this host\n");
-        writebuf();
+        reply("-1 write requests not permitted from this host\n");
     }
 };
 
@@ -314,7 +311,7 @@ static int get_fd(const char *key)
 
 static void writecb(int fd, short what, void *arg)
 {
-    connection *c = static_cast<connection *>(arg);
+    connection *c = (connection *)(arg);
     c->writebuf();
 }
 
@@ -337,7 +334,7 @@ static void make_socket_blocking(int fd)
 
 static void routefd(int serverfd, short what, void *arg)
 {
-    connection *c = static_cast<connection *>(arg);
+    connection *c = (connection *)(arg);
     int clientfd = c->fd;
     make_socket_blocking(clientfd);
     debug_log("%s send fd:%d to fd:%d\n", __func__, clientfd, serverfd);
@@ -367,10 +364,10 @@ static void routefd(int serverfd, short what, void *arg)
                serverfd, rc, sizeof(buf), strerror(errno));
         const auto &s = connection_map.find(c->svc);
         if (s != connection_map.end()) {
-            delete(s->second);
+            delete s->second;
         }
     }
-    delete(c);
+    delete c;
 }
 
 static int check_active(const char *svc)
@@ -409,11 +406,11 @@ static int run_cmd(char *cmd, connection *c)
             c->reply("%d\n", port);
             return 0;
         }
-        c->svc = svc;
-        connection_map.insert(std::make_pair(svc, c));
+        if (c->is_unix) {
+            c->svc = svc;
+            connection_map.insert(std::make_pair(svc, c));
+        }
         c->reply("%d\n", port);
-    } else if (strcmp(cmd, "hello") == 0) {
-        c->reply("ok\n");
     } else if (strcmp(cmd, "get") == 0) {
         char *svc;
         char *echo = strtok_r(nullptr, " ", &sav);
@@ -502,7 +499,7 @@ static int run_cmd(char *cmd, connection *c)
             c->reply_not_permitted();
             return 0;
         }
-        delete(c);
+        delete c;
         event_base_loopbreak(base);
         return -1;
     } else if (strcmp(cmd, "range") == 0) {
@@ -529,14 +526,21 @@ static int run_cmd(char *cmd, connection *c)
 
 static void readcb(int fd, short what, void *arg)
 {
-    debug_log("%s fd:%d\n", __func__, fd);
-    connection *c = static_cast<connection *>(arg);
+    debug_log("%s fd:%d start\n", __func__, fd);
+    connection *c = (connection *)(arg);
+    int rc = c->readbuf();
+    if (rc <= 0) {
+        debug_log("read fd:%d rc:%d errno:%d-%s\n", fd, rc, errno, strerror(errno));
+        delete c;
+        return;
+    }
     char *res;
     while (c->readln(&res) == 0 && res != NULL) {
         int rc = run_cmd(res, c);
         free(res);
         if (rc) break;
     }
+    debug_log("%s fd:%d done", __func__, fd);
 }
 
 static void tcp_cb(evconnlistener *listener, evutil_socket_t fd, sockaddr *addr,
@@ -704,13 +708,10 @@ int main(int argc, char **argv)
     bool foreground_mode = false;
     std::string cluster("prod");
     std::string dbname("pmuxdb");
-    std::vector<int> listen_ports = {5105};
-    bool default_ports = true;
-    bool default_range = true;
+    std::vector<int> listen_ports;
     enum store_mode { MODE_NONE, MODE_LOCAL, MODE_COMDB2 };
     store_mode store_mode = MODE_NONE;
     std::pair<int, int> custom_range;
-    port_ranges = {{19000, 19999}}; // default range
 
     int c;
     while ((c = getopt(argc, argv, "hc:d:b:p:r:lnf")) != -1) {
@@ -729,17 +730,9 @@ int main(int argc, char **argv)
             unix_bind_path = optarg;
             break;
         case 'p':
-            if (default_ports) {
-                listen_ports.resize(0);
-                default_ports = false;
-            }
             listen_ports.push_back(atoi(optarg));
             break;
         case 'r':
-            if (default_range) {
-                port_ranges.resize(0);
-                default_range = false;
-            }
             if (make_port_range(optarg, custom_range) != 0) {
                 return usage(stderr, EXIT_FAILURE);
             }
@@ -758,6 +751,14 @@ int main(int argc, char **argv)
             foreground_mode = true;
             break;
         }
+    }
+
+    if (listen_ports.size() == 0) {
+        listen_ports.push_back(5105); // default port
+    }
+
+    if (port_ranges.size() == 0) {
+        port_ranges = {{19000, 19999}}; // default range
     }
 
     try {
@@ -836,7 +837,7 @@ int main(int argc, char **argv)
     }
     for (const auto& c : connection_map) {
         connection *conn = c.second;
-        delete(conn);
+        delete conn;
     }
     event_base_free(base);
     syslog(LOG_INFO, "GOODBYE\n");
