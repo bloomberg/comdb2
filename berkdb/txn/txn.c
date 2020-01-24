@@ -1259,6 +1259,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 
             ptd = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->parent->off);
 
+            R_LOCK(dbenv, &txnp->mgrp->reginfo);
 			if (log_compare(&td->begin_lsn, &ptd->begin_lsn) < 0) {
 				logmsg(LOGMSG_INFO, "Reset parent begin-lsn from [%d:%d] to "
 						"[%d:%d]\n", ptd->begin_lsn.file,
@@ -1266,6 +1267,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						td->begin_lsn.offset);
 				ptd->begin_lsn = td->begin_lsn;
 			}
+            R_UNLOCK(dbenv, &txnp->mgrp->reginfo);
 
 			if (__lock_set_parent_has_pglk_lsn(dbenv,
 				txnp->parent->txnid, txnp->txnid) != 0)
@@ -2470,8 +2472,7 @@ do_ckp:
 		timestamp = (int32_t)time(NULL);
 
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
-			(ret = __txn_ckp_log(dbenv, NULL,
-				&ckp_lsn,
+			(ret = __txn_ckp_log(dbenv, NULL, &ckp_lsn,
 				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
 				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
 				gen)) != 0) {
