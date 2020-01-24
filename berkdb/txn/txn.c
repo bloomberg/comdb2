@@ -1257,6 +1257,13 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				goto err;
 			}
 
+			if (log_compare(&txnp->begin_lsn, &txnp->parent->begin_lsn) < 0) {
+				logmsg(LOGMSG_INFO, "Reset parent begin-lsn from [%d:%d] to "
+						"[%d:%d]\n", txnp->parent->begin_lsn->file,
+						txnp->parent->begin_lsn->offset, txnp->begin_lsn->file,
+						txnp->begin_lsn->offset);
+				txnp->parent->begin_lsn = txnp->begin_lsn;
+			}
 
 			if (__lock_set_parent_has_pglk_lsn(dbenv,
 				txnp->parent->txnid, txnp->txnid) != 0)
