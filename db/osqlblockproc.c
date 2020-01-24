@@ -1573,6 +1573,14 @@ void *osql_commit_timepart_resuming_sc(void *p)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     init_fake_ireq(thedb, &iq);
     iq.tranddl = 1;
+
+    /* iq sc_running count */
+    sc = sc_pending;
+    while (sc != NULL) {
+        if (sc->set_running)
+            iq.sc_running++;
+        sc = sc->sc_next;
+    }
     iq.sc = sc = sc_pending;
     sc_pending = NULL;
     while (sc != NULL) {
