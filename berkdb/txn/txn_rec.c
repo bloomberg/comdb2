@@ -676,16 +676,6 @@ __txn_ckp_recover(dbenv, dbtp, lsnp, op, info)
 	return (DB_TXN_CKP);
 }
 
-#define TXN_CHILD_INSTRUMENTATION
-#ifdef TXN_CHILD_INSTRUMENTATION
-#define TRACE_RET(ret) do { \
-        if (ret != 0) \
-            logmsg(LOGMSG_USER, "%s:%d ret is %d\n", __func__, __LINE__, ret); \
-    } while(0);
-#else
-#define TRACE_RET(ret)
-#endif
-
 /*
  * __txn_child_recover
  *	Recover a commit record for a child transaction.
@@ -707,11 +697,8 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 #ifdef DEBUG_RECOVER
 	(void)__txn_child_print(dbenv, dbtp, lsnp, op, info);
 #endif
-	if ((ret = __txn_child_read(dbenv, dbtp->data, &argp)) != 0) {
-        __log_flush(dbenv, NULL);
-        abort();
+	if ((ret = __txn_child_read(dbenv, dbtp->data, &argp)) != 0)
 		return (ret);
-    }
 
 	/*
 	 * This is a record in a PARENT's log trail indicating that a
@@ -759,7 +746,6 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		 */
 		ret = __db_txnlist_lsnadd(dbenv, info,
 		    &argp->c_lsn, TXNLIST_NEW);
-        TRACE_RET(ret);
 	} else if (op == DB_TXN_BACKWARD_ROLL) {
 		/* Child might exist -- look for it. */
 		c_stat = __db_txnlist_find(dbenv, info, argp->child);
@@ -782,7 +768,6 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			    info, argp->child, c_stat, NULL);
 			if (ret > 0)
 				ret = 0;
-            TRACE_RET(ret);
 		} else if (c_stat == TXN_UNEXPECTED) {
 			/*
 			 * The open after this create failed.  If the parent
@@ -796,7 +781,6 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			    NULL);
 			if (ret > 0)
 				ret = 0;
-            TRACE_RET(ret);
 		} else if (c_stat != TXN_IGNORE) {
 			switch (p_stat) {
 			case TXN_COMMIT:
@@ -810,7 +794,6 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			}
 
 			ret = __db_txnlist_add(dbenv, info, argp->child, c_stat, NULL);
-            TRACE_RET(ret);
 		}
 	} else if (op == DB_TXN_OPENFILES) {
 		/*
@@ -821,15 +804,12 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		if (c_stat == TXN_NOTFOUND) {
 			p_stat =
 			     __db_txnlist_find(dbenv, info, argp->txnid->txnid);
-			if (p_stat == TXN_NOTFOUND) {
+			if (p_stat == TXN_NOTFOUND)
 				ret = __db_txnlist_add(dbenv, info,
 				     argp->txnid->txnid, TXN_IGNORE, NULL);
-                TRACE_RET(ret);
-            } else {
+			else
 				ret = __db_txnlist_update(dbenv, info,
 				     argp->txnid->txnid, TXN_IGNORE, NULL);
-                TRACE_RET(ret);
-            }
 		}
 	} else if (DB_REDO(op)) {
 		/* Forward Roll */

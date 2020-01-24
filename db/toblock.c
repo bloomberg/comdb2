@@ -5721,10 +5721,10 @@ add_blkseq:
                         else
                             irc = trans_abort(iq, iq->sc_close_tran);
                         if (irc != 0) {
-                            logmsg(LOGMSG_FATAL,
-                                   "%s:%d TRANS_%s FAILED RC %d", __func__,
-                                   __LINE__, iq->sc_closed_files ? "COMMIT" :
-                                   "ABORT", irc);
+                            logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d",
+                                   __func__, __LINE__,
+                                   iq->sc_closed_files ? "COMMIT" : "ABORT",
+                                   irc);
                             comdb2_die(0);
                         }
                         iq->sc_close_tran = NULL;

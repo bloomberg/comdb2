@@ -119,6 +119,12 @@ if(DEBUG_SC)
     add_definitions(-DDEBUG_SC)
 endif()
 
+option(ABORT_ON_RECOVER_FAILURE "Abort task on recovery failure" OFF)
+mark_as_advanced(ABORT_ON_RECOVER_FAILURE)
+if(ABORT_ON_RECOVER_FAILURE)
+    add_definitions(-DABORT_ON_RECOVER_FAILURE)
+endif()
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)
