@@ -124,8 +124,8 @@ static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
 }
 
 /* delete entry from checkerboard -- called with checkerboard->mtx held */
-static inline osql_sqlthr_t *delete_from_checkerboard(
-        osql_checkboard_t *checkboard, osqlstate_t *osql)
+static inline osql_sqlthr_t *
+delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
 {
     Pthread_mutex_lock(&checkboard->mtx);
     osql_sqlthr_t *entry =
@@ -225,7 +225,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
                sizeof(unsigned long long));
         return -1;
     }
- 
+
     int rc = insert_into_checkerboard(checkboard, entry);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",

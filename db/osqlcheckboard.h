@@ -34,13 +34,13 @@ struct errstat;
 struct sqlclntstate;
 
 struct osql_sqlthr {
-    struct errstat err;  /* valid if done = 1 */
+    struct errstat err; /* valid if done = 1 */
     pthread_cond_t cond;
     unsigned long long rqid; /* osql rq id */
     uuid_t uuid;             /* request id, take 2 */
     char *master;            /* who was the master I was talking to */
     struct sqlclntstate *clnt; /* cache clnt */
-    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
+    pthread_mutex_t mtx;       /* mutex and cond for commitrc sync */
     int done;            /* result of socksql, recom, snapisol and serial master
                             transactions*/
     int type;            /* type of the request, enum OSQL_REQ_TYPE */
