@@ -899,7 +899,9 @@ static int dbconsumer_emit(Lua L)
 static int dbconsumer_free(Lua L)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
+    ctrace("consumer:%s %016" PRIx64 " unregister req\n", q->info.spname, q->info.trigger_cookie);
     luabb_trigger_unregister(L, q);
+    ctrace("consumer:%s %016" PRIx64 " unregister done\n", q->info.spname, q->info.trigger_cookie);
     return 0;
 }
 
@@ -4529,8 +4531,11 @@ static int db_consumer(Lua L)
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
         trigger_reg_init(t, spname);
+        ctrace("consumer:%s %016" PRIx64 " register req\n", t->spname, t->trigger_cookie);
         int rc = luabb_trigger_register(L, t, register_timeoutms);
         if (rc != CDB2_TRIG_REQ_SUCCESS) {
+            ctrace("consumer:%s %016" PRIx64 " register failed rc:%d\n", t->spname,
+                   t->trigger_cookie, rc);
             force_unregister(L, t);
             if (rc == -2) {
                 /* timeout */
@@ -4539,6 +4544,7 @@ static int db_consumer(Lua L)
             }
             return luaL_error(L, sp->error);
         }
+        ctrace("consumer:%s %016" PRIx64 " register success\n", t->spname, t->trigger_cookie);
     } else {
         luabb_error(L, sp, "no such consumer");
         lua_pushnil(L);
@@ -6758,8 +6764,9 @@ void *exec_trigger(trigger_reg_t *reg)
         put_curtran(thedb->bdb_env, &clnt);
     }
     if (q) {
+        ctrace("trigger:%s %016" PRIx64 " unregister req\n", q->info.spname, q->info.trigger_cookie);
         luabb_trigger_unregister(L, q);
-        ctrace("trigger:%s %016" PRIx64 " finished\n", reg->spname, q->info.trigger_cookie);
+        ctrace("trigger:%s %016" PRIx64 " unregister done\n", q->info.spname, q->info.trigger_cookie);
         free(q);
     } else {
         force_unregister(L, reg);
