@@ -9,6 +9,7 @@ RUN apt-get update && \
     build-essential \
     flex \
     gawk \
+    libevent-dev \
     liblz4-dev \
     libprotobuf-c-dev \
     libreadline-dev \
