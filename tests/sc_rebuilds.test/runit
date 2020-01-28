@@ -24,15 +24,6 @@ nrecs=2000
 # Max number of schema changes
 max_nusc=1000
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 
 function do_alter
 {
@@ -67,7 +58,7 @@ function do_sc_track_pid
             failed=1
         fi
 
-        do_verify 
+        do_verify $loc_tbl
         let scnt=scnt+1
         #sleep 1
     done
@@ -101,7 +92,7 @@ function do_rebuild_track_pid
             exit 1
         fi
 
-        do_verify 
+        do_verify $loc_tbl
         let scnt=scnt+1
         #sleep 1
     done
@@ -129,7 +120,7 @@ function do_rebuild
             return 1
         fi
         let scnt=scnt+1
-        do_verify
+        do_verify $tbl
     done
     assertcnt $tbl $nrecs
 
@@ -311,7 +302,7 @@ function run_plain_rebuilds
     fi
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl A"
     if [[ $? != 0 ]]; then
@@ -319,7 +310,7 @@ function run_plain_rebuilds
     fi
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl D"
     if [[ $? != 0 ]]; then
@@ -327,28 +318,28 @@ function run_plain_rebuilds
     fi
 
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding index fd on $loc_tbl"
     fi
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding data on $loc_tbl"
     fi
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding blobs on $loc_tbl"
     fi
     assertcnt $tbl $((EXTRA+nrecs))
-    do_verify
+    do_verify $tbl
 
 }
 
@@ -367,7 +358,7 @@ function run_pageorder_rebuilds
         failexit "Page-order full rebuild in readonly mode should have succeeded"
     fi
     assertcnt $tbl $cnt
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl options pageorder"
     if [[ $? == 0 ]]; then
@@ -378,7 +369,7 @@ function run_pageorder_rebuilds
         failexit "Page-order data rebuild in readonly mode should have succeeded"
     fi
     assertcnt $tbl $cnt
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl options pageorder"
     if [[ $? == 0 ]]; then
@@ -390,7 +381,7 @@ function run_pageorder_rebuilds
         failexit "Page-order datablob rebuild in readonly mode should have succeeded"
     fi
     assertcnt $tbl $cnt
-    do_verify
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd options pageorder"
     if [[ $? == 0 ]]; then
@@ -402,7 +393,7 @@ function run_pageorder_rebuilds
         failexit "Page-order index rebuild in readonly mode should have succeeded"
     fi
     assertcnt $tbl $cnt
-    do_verify
+    do_verify $tbl
 }
 
 
@@ -418,7 +409,7 @@ function rebuild_new_field_and_idx
     if [[ $? != 0 ]]; then
         failexit "Failed altering on $loc_tbl with $new_tbl"
     fi
-    do_verify
+    do_verify $tbl
 }
 
 

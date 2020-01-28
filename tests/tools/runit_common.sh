@@ -53,3 +53,14 @@ getmaster()
     cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
+
+do_verify()
+{
+    tbl=$1
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out
+
+    if ! grep succeeded verify_$tbl.out > /dev/null ; then
+        failexit "verify $tbl failed"
+    fi
+}
+
