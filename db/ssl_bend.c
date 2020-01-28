@@ -368,10 +368,8 @@ void ssl_stats(void)
 
     logmsg(LOGMSG_USER, "Certificate: %s\n",
            gbl_cert_file ? gbl_cert_file : "N/A");
-    logmsg(LOGMSG_USER, "Key: %s\n",
-           gbl_key_file ? gbl_key_file : "N/A");
-    logmsg(LOGMSG_USER, "CA: %s\n",
-           gbl_ca_file ? gbl_ca_file : "N/A");
+    logmsg(LOGMSG_USER, "Key: %s\n", gbl_key_file ? gbl_key_file : "N/A");
+    logmsg(LOGMSG_USER, "CA: %s\n", gbl_ca_file ? gbl_ca_file : "N/A");
     logmsg(LOGMSG_USER, "CRL: %s\n", gbl_ca_file ? gbl_crl_file : "N/A");
     logmsg(LOGMSG_USER, "Allow remote SQL: %s\n",
            gbl_ssl_allow_remsql ? "YES" : "no");
