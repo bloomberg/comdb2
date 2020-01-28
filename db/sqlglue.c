@@ -10532,7 +10532,7 @@ sqlite3_file *sqlite3PagerJrnlFile(Pager *pPager) { return NULL; }
 /*
  ** Return the full pathname of the database file.
  */
-const char *sqlite3PagerFilename(Pager *pPager, int dummy) { return NULL; }
+const char *sqlite3PagerFilename(const Pager *pPager, int dummy) { return NULL; }
 
 /*
  ** Return the approximate number of bytes of memory currently
