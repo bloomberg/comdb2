@@ -3657,7 +3657,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 
                 pList->a[i].pExpr->op = TK_ID;
                 pList->a[i].pExpr->u.zToken = child_idx_part->name;
-                pList->a[i].zName = child_idx_part->name;
+                pList->a[i].zEName = child_idx_part->name;
                 if (child_idx_part->flags & INDEX_ORDER_DESC) {
                     pList->a[i].sortFlags |= KEYINFO_ORDER_DESC;
                 } else {
@@ -5547,7 +5547,7 @@ void comdb2CreateForeignKey(
             if (idx_part == 0)
                 goto oom;
 
-            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zName);
+            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zEName);
             if (idx_part->name == 0)
                 goto oom;
 
@@ -5571,7 +5571,7 @@ void comdb2CreateForeignKey(
         if (idx_part == 0)
             goto oom;
 
-        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zName);
+        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zEName);
         if (idx_part->name == 0)
             goto oom;
 
