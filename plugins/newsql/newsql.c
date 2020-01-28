@@ -2004,9 +2004,13 @@ retry_read:
            send back an error to the client. */
         if (ssl_able == 'Y' &&
             sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname,
-                         gbl_nid_dbname, NULL, 0, 0) != 1) {
+                         gbl_nid_dbname, 0) != 1) {
             newsql_error(clnt, "Client certificate authentication failed.",
                          CDB2ERR_CONNECT_ERROR);
+            /* Print the error message in the sbuf2. */
+            char err[256];
+            sbuf2lasterror(sb, err, sizeof(err));
+            logmsg(LOGMSG_ERROR, "%s\n", err);
             return NULL;
         }
 

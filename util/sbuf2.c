@@ -50,6 +50,18 @@
 #  define SBUF2UNGETC_BUF_MAX 4
 #endif
 
+#if WITH_SSL
+#ifdef my_ssl_println
+#undef my_ssl_println
+#endif
+#ifdef my_ssl_eprintln
+#undef my_ssl_eprintln
+#endif
+#define my_ssl_println(fmt, ...) ssl_println("SBUF2", fmt, ##__VA_ARGS__)
+#define my_ssl_eprintln(fmt, ...)                                              \
+    ssl_eprintln("SBUF2", "%s: " fmt, __func__, ##__VA_ARGS__)
+#endif
+
 struct sbuf2 {
     int fd;
     int flags;
@@ -86,6 +98,8 @@ struct sbuf2 {
     /* Server always supports SSL. */
     SSL *ssl;
     X509 *cert;
+    int protocolerr;
+    char sslerr[120];
 #endif
 };
 
@@ -345,8 +359,9 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
 ssl_downgrade:
         ssl = sb->ssl;
         rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
-        if (rc == 0 && sb->ssl != ssl)
+        if (rc == 0 && sb->ssl != ssl) {
             goto ssl_downgrade;
+        }
 #else
         rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
 #endif
@@ -573,9 +588,11 @@ ssl_downgrade:
             int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_WANT_WRITE:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_ZERO_RETURN:
@@ -589,11 +606,30 @@ ssl_downgrade:
                 }
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
-                if (n == 0)
+                sb->protocolerr = 0;
+                if (n == 0) {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "Unexpected EOF observed.");
                     errno = ECONNRESET;
+                } else {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "IO error. errno %d.", errno);
+                }
+                break;
+            case SSL_ERROR_SSL:
+                errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr),
+                                  my_ssl_eprintln,
+                                  "A failure in SSL library occured");
                 break;
             default:
                 errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "Failed to establish connection with peer. "
+                             "SSL error = %d.",
+                             ioerr);
                 break;
             }
         }
@@ -654,9 +690,11 @@ ssl_downgrade:
             int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_WANT_WRITE:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_ZERO_RETURN:
@@ -670,11 +708,30 @@ ssl_downgrade:
                 }
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
-                if (n == 0)
+                sb->protocolerr = 0;
+                if (n == 0) {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "Unexpected EOF observed.");
                     errno = ECONNRESET;
+                } else {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "IO error. errno %d.", errno);
+                }
+                break;
+            case SSL_ERROR_SSL:
+                errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr),
+                                  my_ssl_eprintln,
+                                  "A failure in SSL library occured");
                 break;
             default:
                 errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "Failed to establish connection with peer. "
+                             "SSL error = %d.",
+                             ioerr);
                 break;
             }
         }
@@ -754,11 +811,10 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     SBUF2 dummy = {.allocator = alloc};
     sb = &dummy;
 #endif
-    sb = malloc(sizeof(SBUF2));
+    sb = calloc(1, sizeof(SBUF2));
     if (sb == NULL) {
         goto error;
     }
-    memset(sb, 0, sizeof(SBUF2));
     sb->fd = fd;
     sb->flags = flags;
 #if SBUF2_SERVER
@@ -1038,16 +1094,18 @@ void SBUF2_FUNC(cleanup_peer_hash)()
 #endif
 }
 
+int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n)
+{
 #if WITH_SSL
-#  ifdef my_ssl_println
-#    undef my_ssl_println
-#  endif
-#  ifdef my_ssl_eprintln
-#    undef my_ssl_eprintln
-#  endif
-#  define my_ssl_println(fmt, ...)    \
-      ssl_println("SBUF2", fmt, ##__VA_ARGS__)
-#  define my_ssl_eprintln(fmt, ...)   \
-      ssl_eprintln("SBUF2", "%s: " fmt, __func__, ##__VA_ARGS__)
+    if (err != NULL)
+        strncpy(err, sb->sslerr,
+                n > sizeof(sb->sslerr) ? sizeof(sb->sslerr) : n);
+    return sb->protocolerr;
+#else
+    return 0;
+#endif
+}
+
+#if WITH_SSL
 #  include "ssl_io.c"
 #endif
