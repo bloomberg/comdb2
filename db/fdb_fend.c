@@ -2241,7 +2241,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 /*fprintf(stderr, "READ Y\n");*/
 
                 if (sslio_connect(*psb, gbl_ssl_ctx, fdb->ssl, NULL,
-                                  gbl_nid_dbname, NULL, 0, 1) != 1) {
+                                  gbl_nid_dbname, 1) != 1) {
                 failed:
                     sbuf2close(*psb);
                     *psb = NULL;

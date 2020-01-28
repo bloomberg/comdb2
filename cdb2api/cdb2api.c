@@ -145,6 +145,7 @@ static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
+static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl);
 #endif
 
 static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -1013,6 +1014,8 @@ struct cdb2_hndl {
     int cache_ssl_sess;
     cdb2_ssl_sess_list *sess_list;
     int nid_dbname;
+    /* 1 if it's a newly established session which needs to be cached. */
+    int newsess;
 #endif
     struct context_messages context_msgs;
     char *env_tz;
@@ -2039,10 +2042,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     /* An application may use different certificates.
        So we allocate an SSL context for each handle. */
     SSL_CTX *ctx;
-    int rc, i, dossl = 0;
+    int rc, dossl = 0;
     cdb2_ssl_sess *p;
-    cdb2_ssl_sess_list *store;
-    SSL_SESSION *sess;
 
     if (hndl->c_sslmode >= SSL_REQUIRE) {
         switch (hndl->s_sslmode) {
@@ -2120,72 +2121,17 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     p = (hndl->sess_list == NULL) ? NULL : &(hndl->sess_list->list[indx]);
 
     rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname,
-                       hndl->errstr, sizeof(hndl->errstr),
-                       ((p != NULL) ? p->sess : NULL), &hndl->sslerr);
+                       ((p != NULL) ? p->sess : NULL));
 
     SSL_CTX_free(ctx);
     if (rc != 1) {
+        hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sess = NULL;
         return -1;
     }
-
-    if (hndl->cache_ssl_sess) {
-        if (hndl->sess_list == NULL) {
-            hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
-            if (hndl->sess_list == NULL)
-                return ENOMEM;
-            hndl->sess_list->list = NULL;
-            strncpy(hndl->sess_list->dbname,
-                    hndl->dbname, sizeof(hndl->dbname) - 1);
-            hndl->sess_list->dbname[sizeof(hndl->dbname) - 1] = '\0';
-            strncpy(hndl->sess_list->cluster,
-                    hndl->cluster, sizeof(hndl->cluster) - 1);
-            hndl->sess_list->cluster[sizeof(hndl->cluster) - 1] = '\0';
-            hndl->sess_list->ref = 1;
-            hndl->sess_list->n = hndl->num_hosts;
-
-            /* Append it to our internal linkedlist. */
-            rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
-            if (rc != 0) {
-                /* If we fail to lock (which is quite rare), don't error out. 
-                   we lose the caching ability, and that's it. */
-                free(hndl->sess_list);
-                hndl->sess_list = NULL;
-                hndl->cache_ssl_sess = 0;
-                return 0;
-            }
-
-            /* move store to the last element. */
-            for (store = &cdb2_ssl_sess_cache; store->next != NULL;
-                 store = store->next) {
-                /* right, blank. */
-            };
-            hndl->sess_list->next = NULL;
-            store->next = hndl->sess_list;
-            pthread_mutex_unlock(&cdb2_ssl_sess_lock);
-        }
-
-        if (hndl->sess_list->list == NULL) {
-            p = malloc(sizeof(cdb2_ssl_sess) * hndl->num_hosts);
-            if (p == NULL)
-                return ENOMEM;
-            hndl->sess_list->list = p;
-
-            for (i = 0; i != hndl->num_hosts; ++i, ++p) {
-                strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
-                p->host[sizeof(p->host) - 1] = '\0';
-                p->sess = NULL;
-            }
-        }
-
-        /* Refresh in case of renegotiation. */
-        p = &(hndl->sess_list->list[indx]);
-        sess = p->sess;
-        p->sess = SSL_get1_session(sslio_get_ssl(sb));
-        if (sess != NULL) SSL_SESSION_free(sess);
-    }
+    hndl->newsess = 1;
     return 0;
 }
 #endif
@@ -2631,6 +2577,12 @@ retry:
         debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%lu):\n",
                    b_read, sizeof(hdr));
         rc = -1;
+        /* In TLS 1.3, client authentication happens after handshake (RFC 8446).
+           An invalid client (e.g., a revoked cert) may see a successful
+           handshake but encounter an error when reading data from the server.
+           Catch the error here. */
+        if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
+            sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         goto after_callback;
     }
 
@@ -4367,63 +4319,73 @@ read_record:
                                          : "NOT-CONNECTED",
                rc, type);
 
-    if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+    if (rc == 0) {
+        if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
 #if WITH_SSL
-        hndl->s_sslmode = PEER_SSL_REQUIRE;
-        /* server wants us to use ssl so turn ssl on in same connection */
-        try_ssl(hndl, hndl->sb, hndl->connected_host);
+            hndl->s_sslmode = PEER_SSL_REQUIRE;
+            /* server wants us to use ssl so turn ssl on in same connection */
+            try_ssl(hndl, hndl->sb, hndl->connected_host);
 
-        /* Decrement retry counter: It is not a real retry. */
-        --retries_done;
-        /* Resend client info (argv0, cheapstack and etc.)
-           over the SSL connection. */
-        hndl->sent_client_info = 0;
-        GOTO_RETRY_QUERIES();
+            /* Decrement retry counter: It is not a real retry. */
+            --retries_done;
+            /* Resend client info (argv0, cheapstack and etc.)
+               over the SSL connection. */
+            hndl->sent_client_info = 0;
+            GOTO_RETRY_QUERIES();
 #else
-        sprintf(hndl->errstr, "%s: The database requires SSL connections.",
-                __func__);
-        PRINT_AND_RETURN(-1);
+            sprintf(hndl->errstr, "%s: The database requires SSL connections.",
+                    __func__);
+            PRINT_AND_RETURN(-1);
 #endif
-    }
+        } else if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
+            /* Dbinfo .. go to new node */
+            if (hndl->flags & CDB2_DIRECT_CPU) {
+                /* direct cpu should not do anything with dbinfo, just retry */
+                GOTO_RETRY_QUERIES();
+            }
+            /* We got back info about nodes that might be coherent. */
+            CDB2DBINFORESPONSE *dbinfo_resp = NULL;
+            dbinfo_resp =
+                cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
+            parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports,
+                             &hndl->master, &hndl->num_hosts,
+                             &hndl->num_hosts_sameroom, hndl->debug_trace
+#if WITH_SSL
+                             ,
+                             &hndl->s_sslmode
+#endif
+            );
+            cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
 
-    /* Dbinfo .. go to new node */
-    if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
-        if (hndl->flags & CDB2_DIRECT_CPU) {
-            /* direct cpu should not do anything with dbinfo, just retry */
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            hndl->connected_host = -1;
+            hndl->retry_all = 1;
+
+#if WITH_SSL
+            /* Clear cached SSL sessions - Hosts may have changed. */
+            if (hndl->sess_list != NULL) {
+                cdb2_ssl_sess_list *sl = hndl->sess_list;
+                for (int i = 0; i != sl->n; ++i)
+                    SSL_SESSION_free(sl->list[i].sess);
+                free(sl->list);
+                sl->list = NULL;
+            }
+#endif
+
             GOTO_RETRY_QUERIES();
         }
-        /* We got back info about nodes that might be coherent. */
-        CDB2DBINFORESPONSE *dbinfo_resp = NULL;
-        dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports, &hndl->master,
-                         &hndl->num_hosts, &hndl->num_hosts_sameroom,
-                         hndl->debug_trace
-#if WITH_SSL
-                         ,
-                         &hndl->s_sslmode
-#endif
-        );
-        cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
-
-        newsql_disconnect(hndl, hndl->sb, __LINE__);
-        hndl->connected_host = -1;
-        hndl->retry_all = 1;
 
 #if WITH_SSL
-        /* Clear cached SSL sessions - Hosts may have changed. */
-        if (hndl->sess_list != NULL) {
-            cdb2_ssl_sess_list *sl = hndl->sess_list;
-            for (int i = 0; i != sl->n; ++i)
-                SSL_SESSION_free(sl->list[i].sess);
-            free(sl->list);
-            sl->list = NULL;
-        }
+        /* We used to cache a session immediately after a handshake.
+           However in TLSv1.3, a session is not established until a
+           separate post-handshake message containing the session
+           details from the server has been received by the client.
+           So we do it here after we've successfully read the first
+           response from the server. */
+        if ((rc = cdb2_add_ssl_session(hndl)) != 0)
+            PRINT_AND_RETURN(rc);
 #endif
-
-        GOTO_RETRY_QUERIES();
-    }
-
-    if (rc) {
+    } else {
         if (err_val) {
             /* we get here because skip feature is off
                and the sql is either commit or rollback.
@@ -5978,41 +5940,72 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
     return 0;
 }
 
-#if 0
-static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *p)
+static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
 {
     int i, rc;
-    cdb2_ssl_sess_list *pos;
+    SSL_SESSION *sess;
+    cdb2_ssl_sess_list *store;
+    cdb2_ssl_sess *p;
 
-    if (p == NULL)
-        return;
+    if (!hndl->cache_ssl_sess || !hndl->newsess)
+        return 0;
+    hndl->newsess = 1;
+    if (hndl->sess_list == NULL) {
+        hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
+        if (hndl->sess_list == NULL)
+            return ENOMEM;
+        hndl->sess_list->list = NULL;
+        strncpy(hndl->sess_list->dbname, hndl->dbname,
+                sizeof(hndl->dbname) - 1);
+        hndl->sess_list->dbname[sizeof(hndl->dbname) - 1] = '\0';
+        strncpy(hndl->sess_list->cluster, hndl->cluster,
+                sizeof(hndl->cluster) - 1);
+        hndl->sess_list->cluster[sizeof(hndl->cluster) - 1] = '\0';
+        hndl->sess_list->ref = 1;
+        hndl->sess_list->n = hndl->num_hosts;
 
-    if (p->ref != 0)
-        return;
+        /* Append it to our internal linkedlist. */
+        rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
+        if (rc != 0) {
+            /* If we fail to lock (which is quite rare), don't error out.
+               we lose the caching ability, and that's it. */
+            free(hndl->sess_list);
+            hndl->sess_list = NULL;
+            hndl->cache_ssl_sess = 0;
+            return 0;
+        }
 
-    /* Remove from the linkedlist first. */
-    rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
-    if (rc != 0)
-        return;
+        /* move store to the last element. */
+        for (store = &cdb2_ssl_sess_cache; store->next != NULL;
+             store = store->next) {
+            /* right, blank. */
+        };
+        hndl->sess_list->next = NULL;
+        store->next = hndl->sess_list;
+        pthread_mutex_unlock(&cdb2_ssl_sess_lock);
+    }
 
-    if (p->ref == 0) {
-        /* pos points to the element before p. */
-        for (pos = &cdb2_ssl_sess_cache; pos->next != NULL; pos = pos->next) {
-            if (pos->next == p) {
-                pos->next = p->next;
-                break;
-            }
+    if (hndl->sess_list->list == NULL) {
+        p = malloc(sizeof(cdb2_ssl_sess) * hndl->num_hosts);
+        if (p == NULL)
+            return ENOMEM;
+        hndl->sess_list->list = p;
+
+        for (i = 0; i != hndl->num_hosts; ++i, ++p) {
+            strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
+            p->host[sizeof(p->host) - 1] = '\0';
+            p->sess = NULL;
         }
     }
 
-    pthread_mutex_unlock(&cdb2_ssl_sess_lock);
-
-    for (i = 0; i != p->n; ++i)
-        SSL_SESSION_free(p->list[i].sess);
-    free(p->list);
-    free(p);
+    /* Refresh in case of renegotiation. */
+    p = &(hndl->sess_list->list[hndl->connected_host]);
+    sess = p->sess;
+    p->sess = SSL_get1_session(sslio_get_ssl(hndl->sb));
+    if (sess != NULL)
+        SSL_SESSION_free(sess);
+    return 0;
 }
-#endif
 #else /* WITH_SSL */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 {

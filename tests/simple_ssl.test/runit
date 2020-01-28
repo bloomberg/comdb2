@@ -83,5 +83,4 @@ if [ "$host" != "" ]; then
     fi
 fi
 
-
 echo "Passed."
