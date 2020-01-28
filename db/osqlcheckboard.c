@@ -34,15 +34,14 @@
 #include "osqlrepository.h"
 #include "bdb_api.h"
 #include "comdb2uuid.h"
-#include <net_types.h>
-#include <logmsg.h>
+#include "net_types.h"
+#include "logmsg.h"
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
 #define SQLHERR_MASTER_TIMEOUT -109
 
 typedef struct osql_checkboard {
-
     hash_t *rqs;     /* sql threads processing a blocksql are registered here */
     hash_t *rqsuuid; /* like above, but register by uuid */
     pthread_mutex_t mtx; /* protect all the requests */
@@ -128,6 +127,7 @@ static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
 static inline osql_sqlthr_t *
 delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
 {
+    Pthread_mutex_lock(&checkboard->mtx);
     osql_sqlthr_t *entry =
         osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
     if (!entry) {
@@ -147,26 +147,23 @@ delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
         }
     }
 done:
+    Pthread_mutex_unlock(&checkboard->mtx);
     return entry;
 }
 
-/**
- * Register an osql thread with the checkboard
- * This allows block processor to query the status
- * of its sql peer
- *
- */
-int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
+/* cleanup and free sql thread registration entry */
+static inline void cleanup_entry(osql_sqlthr_t *entry)
+{
+    Pthread_cond_destroy(&entry->cond);
+    Pthread_mutex_destroy(&entry->mtx);
+    free(entry);
+}
+
+static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
 {
     osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
-    int rc = 0;
-    int retry = 0;
-    uuidstr_t us;
-
     if (!entry) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-               sizeof(unsigned long long));
-        return -1;
+        return NULL;
     }
 
     entry->rqid = clnt->osql.rqid;
@@ -179,6 +176,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     entry->register_time = osql_log_time();
 
 #ifdef DEBUG
+    uuidstr_t us;
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_USER, "Registered %llx %s %s %d\n", entry->rqid,
                comdb2uuidstr(entry->uuid, us), entry->master, entry->type);
@@ -187,6 +185,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
+        int retry = 0;
         while ((entry->master = clnt->osql.host = thedb->master) == 0 &&
                retry < 60) {
             poll(NULL, 0, 500);
@@ -195,7 +194,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
         if (retry >= 60) {
             logmsg(LOGMSG_ERROR, "No master, failed to register request\n");
             free(entry);
-            return -1;
+            return NULL;
         }
     }
 
@@ -208,12 +207,30 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
 
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
+    return entry;
+}
 
-    insert_into_checkerboard(checkboard, entry);
+/**
+ * Register an osql thread with the checkboard
+ * This allows block processor to query the status
+ * of its sql peer
+ *
+ */
+int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
+{
+    uuidstr_t us;
+    osql_sqlthr_t *entry = get_new_entry(clnt, type);
+    if (!entry) {
+        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
+               sizeof(unsigned long long));
+        return -1;
+    }
 
+    int rc = insert_into_checkerboard(checkboard, entry);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
+        cleanup_entry(entry);
     }
 
     if (gbl_enable_osql_logging && !clnt->osql.logsb) {
@@ -272,19 +289,12 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     if (clnt->osql.rqid == 0)
         return 0;
 
-    Pthread_mutex_lock(&checkboard->mtx);
     osql_sqlthr_t *entry = delete_from_checkerboard(checkboard, &clnt->osql);
     if (!entry) {
-        Pthread_mutex_unlock(&checkboard->mtx);
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n",
                __func__, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
         return 0;
-    }
-
-    if (clnt->osql.logsb) {
-        sbuf2close(clnt->osql.logsb);
-        clnt->osql.logsb = NULL;
     }
 
 #ifdef DEBUG
@@ -295,15 +305,15 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
     }
 #endif
 
-    /* free sql thread registration entry */
-    Pthread_cond_destroy(&entry->cond);
-    Pthread_mutex_destroy(&entry->mtx);
-    free(entry);
-
     /*reset rqid */
     clnt->osql.rqid = 0;
 
-    Pthread_mutex_unlock(&checkboard->mtx);
+    if (clnt->osql.logsb) {
+        sbuf2close(clnt->osql.logsb);
+        clnt->osql.logsb = NULL;
+    }
+
+    cleanup_entry(entry);
     return rc;
 }
 
@@ -350,6 +360,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         bzero(&entry->err, sizeof(entry->err));
 
     Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
@@ -368,9 +379,6 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_cond_signal(&entry->cond);
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
-
     return 0;
 }
 
@@ -610,11 +618,10 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                 logmsg(LOGMSG_ERROR, "%s: [%llx][%s] master changed\n",
                        __func__, entry->rqid, comdb2uuidstr(entry->uuid, us));
             }
-            goto done;
+            break;
         }
     } /* done */
 
-done:
     if (xerr->errval)
         logmsg(LOGMSG_DEBUG, "%s: done xerr->errval=%d\n", __func__,
                xerr->errval);
@@ -644,14 +651,13 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     }
 
     Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
 
     entry->status = status;
     entry->timestamp = timestamp;
     entry->last_updated = comdb2_time_epochms();
 
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
 
     return 0;
 }
@@ -679,6 +685,8 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     }
 
     Pthread_mutex_lock(&entry->mtx);
+    Pthread_mutex_unlock(&checkboard->mtx);
+
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* reset these time */
     entry->done = 0;
@@ -687,8 +695,6 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         master ? master : gbl_mynode; /* master changed, store it here */
     bzero(&entry->err, sizeof(entry->err));
     Pthread_mutex_unlock(&entry->mtx);
-
-    Pthread_mutex_unlock(&checkboard->mtx);
 
     return 0;
 }

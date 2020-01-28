@@ -89,6 +89,15 @@ inline int is_dta_being_rebuilt(struct scplan *plan)
 
 int gbl_verbose_set_sc_in_progress = 0;
 
+int get_schema_change_in_progress(const char *func, int line)
+{
+    if (gbl_verbose_set_sc_in_progress) {
+        logmsg(LOGMSG_USER, "%s line %d get schema_change_in_progress rtn %d\n",
+               func, line, gbl_schema_change_in_progress);
+    }
+    return gbl_schema_change_in_progress;
+}
+
 void set_schema_change_in_progress(const char *func, int line, int val)
 {
     if (gbl_verbose_set_sc_in_progress) {

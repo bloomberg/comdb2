@@ -191,6 +191,13 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     }
 
     if (type == llmeta_queue_add) {
+        /* Legacy schemachange mode - we could have restarted and opened files
+         * already. Make this scdone a no-op. We trust that master did
+         * necessary checks before adding this queue */
+        if (getqueuebyname(queue_name) != NULL) {
+            rc = 0;
+            goto done;
+        }
         rc = javasp_do_procedure_op(JAVASP_OP_LOAD, queue_name, NULL, config);
         if (rc) {
             /* TODO: fatal error? */

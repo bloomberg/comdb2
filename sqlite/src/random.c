@@ -23,7 +23,7 @@
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static __thread SQLITE_WSD struct sqlite3PrngType {
-#else
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 static SQLITE_WSD struct sqlite3PrngType {
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   unsigned char isInit;          /* True if initialized */
