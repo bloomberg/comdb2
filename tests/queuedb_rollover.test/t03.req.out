@@ -1,4 +1,2 @@
 (version='const_test')
-something_was_enqueued=1
-something_was_dequeued=1
 (hasRows=1)
