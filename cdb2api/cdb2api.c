@@ -2630,7 +2630,8 @@ retry:
            An invalid client (e.g., a revoked cert) may see a successful
            handshake but encounter an error when reading data from the server.
            Catch the error here. */
-        hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+        if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
+            sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         goto after_callback;
     }
 

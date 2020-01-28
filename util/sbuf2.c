@@ -1097,7 +1097,9 @@ void SBUF2_FUNC(cleanup_peer_hash)()
 int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n)
 {
 #if WITH_SSL
-    strncpy(err, sb->sslerr, n > sizeof(sb->sslerr) ? sizeof(sb->sslerr) : n);
+    if (err != NULL)
+        strncpy(err, sb->sslerr,
+                n > sizeof(sb->sslerr) ? sizeof(sb->sslerr) : n);
     return sb->protocolerr;
 #else
     return 0;
