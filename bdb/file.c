@@ -7070,12 +7070,17 @@ static size_t dirent_buf_size(const char *dir)
 uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
 {
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
-    char tmpname[PATH_MAX];
-    form_queuedb_name(bdb_state, NULL, 0, tmpname, sizeof(tmpname));
+
+    char filename[PATH_MAX];
+    form_queuedb_name(bdb_state, NULL, 0, filename, sizeof(filename));
+
+    char fullpath[PATH_MAX];
+    snprintf(fullpath, sizeof(fullpath), "%s/%s", bdb_state->dir, filename);
+
     struct stat st;
-    int rc = stat(tmpname, &st);
+    int rc = stat(fullpath, &st);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", tmpname, rc);
+        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", fullpath, rc);
         return 0;
     }
     return st.st_size;
