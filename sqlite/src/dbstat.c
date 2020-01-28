@@ -167,6 +167,7 @@ static int statConnect(
   }else{
     iDb = 0;
   }
+  sqlite3_vtab_config(db, SQLITE_VTAB_DIRECTONLY);
   rc = sqlite3_declare_vtab(db, zDbstatSchema);
   if( rc==SQLITE_OK ){
     pTab = (StatTable *)sqlite3_malloc64(sizeof(StatTable));
@@ -237,17 +238,14 @@ static int statBestIndex(sqlite3_vtab *tab, sqlite3_index_info *pIdxInfo){
   i = 0;
   if( iSchema>=0 ){
     pIdxInfo->aConstraintUsage[iSchema].argvIndex = ++i;
-    pIdxInfo->aConstraintUsage[iSchema].omit = 1;
     pIdxInfo->idxNum |= 0x01;
   }
   if( iName>=0 ){
     pIdxInfo->aConstraintUsage[iName].argvIndex = ++i;
-    pIdxInfo->aConstraintUsage[iName].omit = 1;
     pIdxInfo->idxNum |= 0x02;
   }
   if( iAgg>=0 ){
     pIdxInfo->aConstraintUsage[iAgg].argvIndex = ++i;
-    pIdxInfo->aConstraintUsage[iAgg].omit = 1;
     pIdxInfo->idxNum |= 0x04;
   }
   pIdxInfo->estimatedCost = 1.0;
@@ -703,9 +701,9 @@ static int statFilter(
     const char *zDbase = (const char*)sqlite3_value_text(argv[iArg++]);
     pCsr->iDb = sqlite3FindDbName(pTab->db, zDbase);
     if( pCsr->iDb<0 ){
-      sqlite3_free(pCursor->pVtab->zErrMsg);
-      pCursor->pVtab->zErrMsg = sqlite3_mprintf("no such schema: %s", zDbase);
-      return pCursor->pVtab->zErrMsg ? SQLITE_ERROR : SQLITE_NOMEM_BKPT;
+      pCsr->iDb = 0;
+      pCsr->isEof = 1;
+      return SQLITE_OK;
     }
   }else{
     pCsr->iDb = pTab->iDb;

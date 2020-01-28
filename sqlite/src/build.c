@@ -1848,8 +1848,9 @@ void sqlite3AddDefaultValue(
   sqlite3 *db = pParse->db;
   p = pParse->pNewTable;
   if( p!=0 ){
+    int isInit = db->init.busy && db->init.iDb!=1;
     pCol = &(p->aCol[p->nCol-1]);
-    if( !sqlite3ExprIsConstantOrFunction(pExpr, db->init.busy) ){
+    if( !sqlite3ExprIsConstantOrFunction(pExpr, isInit) ){
       sqlite3ErrorMsg(pParse, "default value of column [%s] is not constant",
           pCol->zName);
 #ifndef SQLITE_OMIT_GENERATED_COLUMNS
@@ -2741,8 +2742,8 @@ void sqlite3EndTable(
           ** expression to a NULL.  This prevents code generators that operate
           ** on the expression from inserting extra parts into the expression
           ** tree that have been allocated from lookaside memory, which is
-          ** illegal in a schema and will lead to errors heap corruption when
-          ** the database connection closes. */
+          ** illegal in a schema and will lead to errors or heap corruption
+          ** when the database connection closes. */
           sqlite3ExprDelete(db, pX);
           p->aCol[ii].pDflt = sqlite3ExprAlloc(db, TK_NULL, 0, 0);
         }
@@ -3156,7 +3157,7 @@ int sqlite3ViewGetColumnNames(Parse *pParse, Table *pTable){
       sqlite3ColumnsFromExprList(pParse, pTable->pCheck, 
                                  &pTable->nCol, &pTable->aCol);
       if( db->mallocFailed==0 
-       && ALWAYS(pParse->nErr==0)
+       && pParse->nErr==0
        && pTable->nCol==pSel->pEList->nExpr
       ){
         sqlite3SelectAddColumnTypeAndCollation(pParse, pTable, pSel,
@@ -3647,7 +3648,7 @@ void sqlite3CreateForeignKey(
   nByte = sizeof(*pFKey) + (nCol-1)*sizeof(pFKey->aCol[0]) + pTo->n + 1;
   if( pToCol ){
     for(i=0; i<pToCol->nExpr; i++){
-      nByte += sqlite3Strlen30(pToCol->a[i].zName) + 1;
+      nByte += sqlite3Strlen30(pToCol->a[i].zEName) + 1;
     }
   }
   pFKey = sqlite3DbMallocZero(db, nByte );
@@ -3674,7 +3675,7 @@ void sqlite3CreateForeignKey(
     for(i=0; i<nCol; i++){
       int j;
       for(j=0; j<p->nCol; j++){
-        if( sqlite3StrICmp(p->aCol[j].zName, pFromCol->a[i].zName)==0 ){
+        if( sqlite3StrICmp(p->aCol[j].zName, pFromCol->a[i].zEName)==0 ){
           pFKey->aCol[i].iFrom = j;
           break;
         }
@@ -3682,26 +3683,26 @@ void sqlite3CreateForeignKey(
       if( j>=p->nCol ){
         sqlite3ErrorMsg(pParse, 
           "unknown column \"%s\" in foreign key definition", 
-          pFromCol->a[i].zName);
+          pFromCol->a[i].zEName);
         goto fk_end;
       }
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       if( IN_RENAME_OBJECT ){
-        sqlite3RenameTokenRemap(pParse, &pFKey->aCol[i], pFromCol->a[i].zName);
+        sqlite3RenameTokenRemap(pParse, &pFKey->aCol[i], pFromCol->a[i].zEName);
       }
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
   if( pToCol ){
     for(i=0; i<nCol; i++){
-      int n = sqlite3Strlen30(pToCol->a[i].zName);
+      int n = sqlite3Strlen30(pToCol->a[i].zEName);
       pFKey->aCol[i].zCol = z;
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       if( IN_RENAME_OBJECT ){
-        sqlite3RenameTokenRemap(pParse, z, pToCol->a[i].zName);
+        sqlite3RenameTokenRemap(pParse, z, pToCol->a[i].zEName);
       }
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
-      memcpy(z, pToCol->a[i].zName, n);
+      memcpy(z, pToCol->a[i].zEName, n);
       z[n] = 0;
       z += n+1;
     }

@@ -1078,7 +1078,7 @@ void sqlite3Insert(
     **         goto C
     **      D: ...
     */
-    sqlite3VdbeReleaseRegisters(pParse, regData, pTab->nCol, 0);
+    sqlite3VdbeReleaseRegisters(pParse, regData, pTab->nCol, 0, 0);
     addrInsTop = addrCont = sqlite3VdbeAddOp1(v, OP_Yield, dest.iSDParm);
     VdbeCoverage(v);
     if( ipkColumn>=0 ){
@@ -1735,6 +1735,7 @@ void sqlite3GenerateConstraintChecks(
       }
       if( b2ndPass ) break;  /* Never need more than 2 passes */
       b2ndPass = 1;
+#ifndef SQLITE_OMIT_GENERATED_COLUMNS
       if( nSeenReplace>0 && (pTab->tabFlags & TF_HasGenerated)!=0 ){
         /* If any NOT NULL ON CONFLICT REPLACE constraints fired on the
         ** first pass, recomputed values for all generated columns, as
@@ -1742,6 +1743,7 @@ void sqlite3GenerateConstraintChecks(
         */
         sqlite3ComputeGeneratedColumns(pParse, regNewData+1, pTab);
       }
+#endif
     } /* end of 2-pass loop */
   } /* end if( has-not-null-constraints ) */
 
@@ -1768,7 +1770,7 @@ void sqlite3GenerateConstraintChecks(
       if( onError==OE_Ignore ){
         sqlite3VdbeGoto(v, ignoreDest);
       }else{
-        char *zName = pCheck->a[i].zName;
+        char *zName = pCheck->a[i].zEName;
         if( zName==0 ) zName = pTab->zName;
         if( onError==OE_Replace ) onError = OE_Abort; /* IMP: R-26383-51744 */
         sqlite3HaltConstraint(pParse, SQLITE_CONSTRAINT_CHECK,
@@ -2078,6 +2080,7 @@ void sqlite3GenerateConstraintChecks(
       sqlite3SetMakeRecordP5(v, pIdx->pTable);
     }
 #endif
+    sqlite3VdbeReleaseRegisters(pParse, regIdx, pIdx->nColumn, 0, 0);
 
     /* In an UPDATE operation, if this index is the PRIMARY KEY index 
     ** of a WITHOUT ROWID table and there has been no change the
