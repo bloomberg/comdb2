@@ -702,7 +702,7 @@ void sqlite3VdbeMemPrettyPrint(Mem *pMem, StrAccum *pStr){
     newMem.db = pMem->db;
     sqlite3VdbeMemStringify(&newMem, SQLITE_UTF8, 0);
     newMem.db = 0;
-    sqlite3_snprintf(100, zCsr, newMem.z);
+    sqlite3_str_appendf(pStr, "%s", newMem.z);
     sqlite3_value_free_inplace(&newMem);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
