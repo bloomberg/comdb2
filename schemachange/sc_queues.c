@@ -681,7 +681,7 @@ static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
     }
 
 done:
-    logmsg(LOGMSG_INFO, "%s: %s (%llu) ==> %s (%d)\n",
+    logmsg(LOGMSG_INFO, "%s: %s (0x%llx) ==> %s (%d)\n",
            __func__, s->tablename, file_version,
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
@@ -742,7 +742,7 @@ static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
     sc_del_unused_files_tran(db, tran);
 
 done:
-    logmsg(LOGMSG_INFO, "%s: %s (%llu) ==> %s (%d)\n",
+    logmsg(LOGMSG_INFO, "%s: %s (0x%llx) ==> %s (%d)\n",
            __func__, s->tablename, file_versions[0],
            (rc == 0) ? "SUCCESS" : "FAILURE", rc);
     return rc;
