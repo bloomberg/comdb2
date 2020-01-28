@@ -152,34 +152,35 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     }
     if (gbl_queuedb_file_threshold <= 0) return NULL;
     if (dbenv == NULL) return NULL;
-    bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_START_RDONLY);
+    bdb_state_type *bdb_state = dbenv->bdb_env;
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
     BDB_READLOCK("queuedb cron thread");
     if (dbenv->master != gbl_mynode) {
         BDB_RELLOCK();
-        bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+        bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
         return NULL; 
     }
     rdlock_schema_lk();
     for (int i = 0; i < dbenv->num_qdbs; i++) {
         dbtable *tbl = dbenv->qdbs[i];
         if (tbl == NULL) continue;
-        bdb_state_type *bdb_state = tbl->handle;
-        if (bdb_state == NULL) continue;
-        DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-        DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+        bdb_state_type *tbl_bdb_state = tbl->handle;
+        if (tbl_bdb_state == NULL) continue;
+        DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(tbl_bdb_state);
+        DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(tbl_bdb_state);
         struct schema_change_type *sc = NULL;
         int rc;
         if (db2 != NULL) {
             if (bdb_queuedb_is_db_empty(db1, NULL)) {
                 logmsg(LOGMSG_DEBUG,
                     "%s: queuedb '%s' has two files and old file is empty, "
-                    "attempting to delete it...\n", __func__, bdb_state->name);
+                    "attempting to delete it...\n", __func__, tbl_bdb_state->name);
                 sc = new_schemachange_type();
                 if (sc == NULL) {
                     continue;
                 }
                 strncpy0(
-                    sc->tablename, bdb_state->name, sizeof(sc->tablename)
+                    sc->tablename, tbl_bdb_state->name, sizeof(sc->tablename)
                 );
                 sc->type = DBTYPE_QUEUEDB;
                 sc->del_qdb_file = 1;
@@ -197,22 +198,22 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             } else {
                 logmsg(LOGMSG_DEBUG,
                     "%s: queuedb '%s' has two files and old file is not "
-                    "empty, doing nothing...\n", __func__, bdb_state->name);
+                    "empty, doing nothing...\n", __func__, tbl_bdb_state->name);
             }
         } else if (bdb_queuedb_is_db_full(db1)) {
             logmsg(LOGMSG_DEBUG,
                 "%s: queuedb '%s' has one file and old file is full, "
-                "attempting to add new file...\n", __func__, bdb_state->name);
+                "attempting to add new file...\n", __func__, tbl_bdb_state->name);
             sc = new_schemachange_type();
             if (sc == NULL) {
                 continue;
             }
             strncpy0(
-                sc->tablename, bdb_state->name, sizeof(sc->tablename)
+                sc->tablename, tbl_bdb_state->name, sizeof(sc->tablename)
             );
             sc->type = DBTYPE_QUEUEDB;
             sc->add_qdb_file = 1;
-            sc->qdb_file_ver = flibc_htonll(bdb_get_cmp_context(bdb_state));
+            sc->qdb_file_ver = flibc_htonll(bdb_get_cmp_context(tbl_bdb_state));
             sc->nothrevent = 1;
             sc->finalize = 1;
             sc->db = tbl;
@@ -227,12 +228,12 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         } else {
             logmsg(LOGMSG_DEBUG,
                 "%s: queuedb '%s' has one file and old file is not "
-                "full, doing nothing...\n", __func__, bdb_state->name);
+                "full, doing nothing...\n", __func__, tbl_bdb_state->name);
         }
     }
     unlock_schema_lk();
     BDB_RELLOCK();
-    bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
     return NULL;
 }
 
