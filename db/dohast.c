@@ -50,14 +50,14 @@ static char *generate_columns(Vdbe *v, ExprList *c, const char **tbl,
         }
         if (!cols)
             cols = sqlite3_mprintf("%s%s%w%s", sExpr,
-                                   (c->a[i].zName) ? " aS \"" : "",
-                                   (c->a[i].zName) ? c->a[i].zName : "",
-                                   (c->a[i].zName) ? "\" " : "");
+                                   (c->a[i].zEName) ? " aS \"" : "",
+                                   (c->a[i].zEName) ? c->a[i].zEName : "",
+                                   (c->a[i].zEName) ? "\" " : "");
         else {
             accum = sqlite3_mprintf("%s, %s%s%w%s", cols, sExpr,
-                                    (c->a[i].zName) ? " aS \"" : "",
-                                    (c->a[i].zName) ? c->a[i].zName : "",
-                                    (c->a[i].zName) ? "\" " : "");
+                                    (c->a[i].zEName) ? " aS \"" : "",
+                                    (c->a[i].zEName) ? c->a[i].zEName : "",
+                                    (c->a[i].zEName) ? "\" " : "");
             sqlite3_free(cols);
             cols = accum;
         }
