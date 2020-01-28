@@ -4424,7 +4424,7 @@ read_record:
                              ,
                              &hndl->s_sslmode
 #endif
-                             );
+            );
             cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
 
             newsql_disconnect(hndl, hndl->sb, __LINE__);
