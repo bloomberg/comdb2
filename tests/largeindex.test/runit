@@ -16,16 +16,6 @@ fi
 nins=0
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 # Update all records in the table
 function update_all_records
 {
@@ -298,13 +288,13 @@ echo "Test with insert, updates, deletes into t1"
 insert_records_oneshot 1 $INITCNT
 
 assertcnt t1 $INITCNT
-do_verify
+do_verify t1
 
 NEWCNT=$((INITCNT*2))
 
 insert_records_oneshot $INITCNT $NEWCNT
 assertcnt t1 $NEWCNT
-do_verify
+do_verify t1
 
 > shouldhave.txt
 i=1
@@ -354,7 +344,7 @@ fi
 
 
 
-do_verify
+do_verify t1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where c % 2 = 1"
 
 > shouldhave.txt
@@ -383,7 +373,7 @@ if ! diff have_c.txt shouldhave.txt ; then
 fi    
 
 
-do_verify
+do_verify t1
 cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"  > rebuild.txt 
 
 

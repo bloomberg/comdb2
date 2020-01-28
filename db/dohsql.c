@@ -759,7 +759,14 @@ wait_for_others:
         }
     }
     if (!empty) {
-        poll(NULL, 0, 10);
+        if (bdb_lock_desired(thedb->bdb_env)) {
+            rc = recover_deadlock_simple(thedb->bdb_env);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
+                       __func__, rc);
+                return rc;
+            }
+        }
         goto wait_for_others;
     }
 
@@ -1753,6 +1760,18 @@ retry_row:
     }
     if (rc != SQLITE_OK)
         return rc;
+    /* we look at all contributing children, and need to wait;
+       since we have the bdb read lock here, check if we need
+       to run recovery_deadlock */
+    if (bdb_lock_desired(thedb->bdb_env)) {
+        rc = recover_deadlock_simple(thedb->bdb_env);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
+                   __func__, rc);
+            return rc;
+        }
+    }
+
     goto retry_row;
 }
 

@@ -2121,6 +2121,48 @@ __txn_checkpoint_pp(dbenv, kbytes, minutes, flags)
 	return (ret);
 }
 
+int still_running(DB_ENV *dbenv, u_int32_t *txnarray, int count)
+{
+	int runcount = 0;
+	DB_TXNMGR *mgr;
+	TXN_DETAIL *txnp;
+	DB_TXNREGION *region;
+	mgr = dbenv->tx_handle;
+	region = mgr->reginfo.primary;
+	R_LOCK(dbenv, &mgr->reginfo);
+	for (txnp = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
+			txnp != NULL && runcount == 0;
+		txnp = SH_TAILQ_NEXT(txnp, links, __txn_detail)) {
+		for (int j = 0; j < count; j++) {
+			if (txnarray[j] == txnp->txnid) {
+				runcount++;
+			}
+		}
+	}
+	R_UNLOCK(dbenv, &mgr->reginfo);
+	return runcount;
+}
+
+void collect_txnids(DB_ENV *dbenv, u_int32_t *txnarray, int max, int *count)
+{
+	int idx = 0;
+	DB_TXNMGR *mgr;
+	TXN_DETAIL *txnp;
+	DB_TXNREGION *region;
+	mgr = dbenv->tx_handle;
+	region = mgr->reginfo.primary;
+	R_LOCK(dbenv, &mgr->reginfo);
+	for (txnp = SH_TAILQ_FIRST(&region->active_txn, __txn_detail);
+			txnp != NULL;
+		txnp = SH_TAILQ_NEXT(txnp, links, __txn_detail)) {
+		if (idx < max) {
+			txnarray[idx++] = txnp->txnid;
+		}
+	}
+	R_UNLOCK(dbenv, &mgr->reginfo);
+	(*count) = idx;
+}
+
 int bdb_checkpoint_list_push(DB_LSN lsn, DB_LSN ckp_lsn, int32_t timestamp);
 
 /* Configure txn_checkpoint() to sleep this much time before memp_sync() */

@@ -2,7 +2,6 @@
 bash -n "$0" | exit 1
 
 set -e
-set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
@@ -12,8 +11,7 @@ fi
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
-    echo "need a DB name"
-    exit 1
+    failexit "need a DB name"
 fi
 
 # Number of insert_records function calls
@@ -23,8 +21,7 @@ nins=0
 if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
     lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
     if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
-       echo "FAILURE: DB is not running in snapshot isolation mode"
-       exit 1
+       failexit "DB is not running in snapshot isolation mode"
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
@@ -50,16 +47,6 @@ assert_schema()
     if ! diff -Bw schema.out $schema ; then 
         cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
         failexit "final schema is not same as $schema: diff schema.out $schema"
-    fi
-}
-
-do_verify()
-{
-    tbl=$1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "verify $tbl failed"
     fi
 }
 
@@ -458,9 +445,19 @@ test_bulk() {
         cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from mytable6 where 1"
     done
 }
+test_generate_series() {
+    CNT=5000
+    for j in `seq 1 2` ; do
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into mytable6 select value, value, value from generate_series limit $CNT"
+        assertcnt mytable6 $CNT
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from mytable6 where 1"
+    done
+}
+
 
 test_t1
 test_bulk
+test_generate_series
 
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
@@ -475,3 +472,4 @@ res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select i from trowid where co
 assertres $res 12345
 
 echo "Success"
+

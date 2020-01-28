@@ -16,16 +16,6 @@ fi
 nins=0
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 function update_records
 {
     j=0
@@ -83,12 +73,12 @@ fi
 
 wait
 assertcnt t1 3000
-do_verify
+do_verify t1
 
 echo "Alter table to t1_1 version"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
 assertcnt t1 3000
-do_verify
+do_verify t1
 
 
 update_records 3000 &
@@ -104,7 +94,7 @@ fi
 
 wait
 assertcnt t1 3000
-do_verify
+do_verify t1
 
 
 
@@ -113,7 +103,7 @@ function do_alter_and_update (){
 #[update t1 set c=c+10000 where 1] failed with rc 304 unable to update record rc = 199
 cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }" 
 assertcnt t1 3000
-do_verify
+do_verify t1
 
 (cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }" || touch alter.failed) &
 sleep 0.1
@@ -127,7 +117,7 @@ fi
 
 wait
 assertcnt t1 3000
-do_verify
+do_verify t1
 if [ -f alter.failed ] ; then
     failexit "Alter while updating where 1"
 fi
@@ -153,7 +143,7 @@ fi
 
 wait
 assertcnt t1 3000
-do_verify
+do_verify t1
 if [ -f rebuild.failed ] ; then
     failexit "Rebuild while updating where 1"
 fi
@@ -175,7 +165,7 @@ fi
 
 wait
 assertcnt t1 4000
-do_verify
+do_verify t1
 
 
 
@@ -200,7 +190,7 @@ wait
 if [ -f alter.failed ] ; then
     failexit "Alter to t1_4.csc2 failed, but it should have succeeded"
 fi
-do_verify
+do_verify t1
 
 echo "Add default null field"
 
