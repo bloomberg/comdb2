@@ -151,8 +151,15 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         }
     }
     if (gbl_queuedb_file_threshold <= 0) return NULL;
-    if ((dbenv == NULL) || (dbenv->master != gbl_mynode)) return NULL;
-    bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_START_RDWR);
+    if (dbenv == NULL) return NULL;
+    bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_START_RDONLY);
+    BDB_READLOCK("queuedb cron thread");
+    if (dbenv->master != gbl_mynode) {
+        BDB_RELLOCK();
+        bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
+        return NULL; 
+    }
+    rdlock_schema_lk();
     for (int i = 0; i < dbenv->num_qdbs; i++) {
         dbtable *tbl = dbenv->qdbs[i];
         if (tbl == NULL) continue;
@@ -223,7 +230,9 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 "full, doing nothing...\n", __func__, bdb_state->name);
         }
     }
-    bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDWR);
+    unlock_schema_lk();
+    BDB_RELLOCK();
+    bdb_thread_event(dbenv->bdb_env, BDBTHR_EVENT_DONE_RDONLY);
     return NULL;
 }
 
