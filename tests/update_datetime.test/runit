@@ -15,15 +15,6 @@ fi
 # Number of insert_records function calls
 nins=0
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 
 function insert_records
 {

@@ -94,17 +94,6 @@ assert_sc_seed()
 }
 
 
-do_verify()
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
-
 insert_records()
 {
     j=$1
@@ -275,7 +264,7 @@ done
 master=`getmaster`
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > all_rows.txt
 assertcnt t1 $NUMREC
-do_verify
+do_verify t1
 
 #sleep 15
 

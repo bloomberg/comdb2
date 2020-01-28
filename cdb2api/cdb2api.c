@@ -106,6 +106,9 @@ static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
 #define CDB2_POLL_TIMEOUT_DEFAULT 250
 static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
 
+#define CDB2_PROTOBUF_SIZE_DEFAULT 4096
+static int CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
+
 #define CDB2_TCPBUFSZ_DEFAULT 0
 static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
@@ -285,6 +288,9 @@ static void reset_the_configuration(void)
     CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
     CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
     COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+    CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
+    CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+    CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
     cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
@@ -1026,7 +1032,36 @@ struct cdb2_hndl {
     int comdb2db_timeout;
     int socket_timeout;
     cdb2_event events;
+    // Protobuf allocator data used only for row data i.e. lastresponse
+    void *protobuf_data;
+    int protobuf_size;
+    int protobuf_offset;
+    int protobuf_used_sysmalloc;
+    ProtobufCAllocator allocator;
 };
+
+static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
+{
+    struct cdb2_hndl *hndl = allocator_data;
+    void *p = NULL;
+    if (size <= hndl->protobuf_size - hndl->protobuf_offset) {
+        p = hndl->protobuf_data + hndl->protobuf_offset;
+        hndl->protobuf_offset += size;
+    } else {
+        p = malloc(size);
+        hndl->protobuf_used_sysmalloc = 1;
+    }
+    return p;
+}
+void cdb2_protobuf_free(void *allocator_data, void *p)
+{
+    struct cdb2_hndl *hndl = allocator_data;
+    hndl->protobuf_used_sysmalloc = 0;
+    if (p < hndl->protobuf_data ||
+        p > (hndl->protobuf_data + hndl->protobuf_size)) {
+        free(p);
+    }
+}
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
                                int myport, int timeoutms)
@@ -1294,6 +1329,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                     hndl->socket_timeout = atoi(tok);
                 else if (tok)
                     CDB2_SOCKET_TIMEOUT = atoi(tok);
+            } else if (strcasecmp("protobuf_size", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (hndl)
+                    hndl->protobuf_size = atoi(tok);
+                else
+                    CDB2_PROTOBUF_SIZE = atoi(tok);
             } else if (strcasecmp("comdb2dbname", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1583,9 +1624,8 @@ static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               int *comdb2db_ports, int *master,
                               const char *comdb2db_name, int *num_hosts,
                               int *comdb2db_num, const char *dbname,
-                              char *dbtype, char db_hosts[][64],
-                              int *num_db_hosts, int *dbnum, int read_cfg,
-                              int dbinfo_or_dns)
+                              char db_hosts[][64], int *num_db_hosts,
+                              int *dbnum, int read_cfg, int dbinfo_or_dns)
 {
     int rc;
 
@@ -1937,8 +1977,7 @@ int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
 }
 
 void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
-                                 int dbnum, int flags, void *destructor,
-                                 void *voidarg)
+                                 int dbnum)
 {
     int enabled = 0;
     int sockpool_fd = -1;
@@ -2261,8 +2300,7 @@ static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
 /* Tries to connect to specified node using sockpool.
  * If there is none, then makes a new socket connection.
  */
-static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
-                          int timeoutms)
+static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 {
     const char *host = hndl->hosts[node_indx];
     const int port = hndl->ports[node_indx];
@@ -2339,7 +2377,8 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     if (sb == NULL)
         return;
 
-    debugprint("disconnecting from %s\n", hndl->hosts[hndl->connected_host]);
+    debugprint("disconnecting from %s, line %d\n",
+               hndl->hosts[hndl->connected_host], line);
     int fd = sbuf2fileno(sb);
 
     int timeoutms = 10 * 1000;
@@ -2352,7 +2391,7 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
     } else {
         sbuf2free(sb);
         cdb2_socket_pool_donate_ext(hndl->newsql_typestr, fd, timeoutms / 1000,
-                                    hndl->dbnum, 5, NULL, NULL);
+                                    hndl->dbnum);
     }
     hndl->use_hint = 0;
     hndl->sb = NULL;
@@ -2463,7 +2502,7 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
         if (i == hndl->master || hndl->ports[i] <= 0 ||
             i == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
-        if (newsql_connect(hndl, i, 0, 100) == 0)
+        if (newsql_connect(hndl, i) == 0)
             return 0;
     }
     return -1;
@@ -2581,7 +2620,7 @@ retry_connect:
         /* After this retry on other nodes. */
         bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
         if (hndl->ports[hndl->master] > 0) {
-            if (newsql_connect(hndl, hndl->master, 0, 100) == 0)
+            if (newsql_connect(hndl, hndl->master) == 0)
                 return 0;
         }
     }
@@ -2766,7 +2805,10 @@ static int cdb2_convert_error_code(int rc)
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                             &hndl->allocator);
+        hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
         hndl->last_buf = NULL;
         hndl->lastresponse = NULL;
@@ -3068,7 +3110,7 @@ after_callback:
 }
 
 /* All "soft" errors are retryable .. constraint violation are not */
-static int is_retryable(cdb2_hndl_tp *hndl, int err_val)
+static int is_retryable(int err_val)
 {
     switch (err_val) {
     case CDB2ERR_CHANGENODE:
@@ -3178,10 +3220,15 @@ retry_next_record:
     }
 
     /* free previous response */
-    if (hndl->lastresponse)
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+    if (hndl->lastresponse) {
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                             &hndl->allocator);
+        hndl->protobuf_offset = 0;
+    }
 
-    hndl->lastresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
+    hndl->lastresponse =
+        cdb2__sqlresponse__unpack(&hndl->allocator, len, hndl->last_buf);
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
@@ -3193,7 +3240,7 @@ retry_next_record:
 
     if (hndl->lastresponse->response_type == RESPONSE_TYPE__COLUMN_VALUES) {
         // "Good" rcodes are not retryable
-        if (is_retryable(hndl, hndl->lastresponse->error_code) &&
+        if (is_retryable(hndl->lastresponse->error_code) &&
             hndl->snapshot_file) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
@@ -3217,7 +3264,7 @@ retry_next_record:
         int ii = 0;
 
         // check for begin that couldn't retrieve the durable lsn from master
-        if (is_retryable(hndl, hndl->lastresponse->error_code)) {
+        if (is_retryable(hndl->lastresponse->error_code)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             sprintf(hndl->errstr,
                     "%s: Timeout while reading response from server", __func__);
@@ -3421,9 +3468,16 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                             &hndl->allocator);
+        hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
     }
+
+    if (hndl->protobuf_data)
+        free(hndl->protobuf_data);
+
     if (hndl->num_set_commands) {
         while (hndl->num_set_commands) {
             hndl->num_set_commands--;
@@ -4448,7 +4502,7 @@ read_record:
                suppress any error. */
             if (is_rollback) {
                 PRINT_AND_RETURN(0);
-            } else if (is_retryable(hndl, err_val) &&
+            } else if (is_retryable(err_val) &&
                        (hndl->snapshot_file ||
                         (!hndl->in_trans && !is_commit) || commit_file)) {
                 hndl->error_in_trans = 0;
@@ -4521,7 +4575,7 @@ read_record:
 
             if (is_rollback) {
                 PRINT_AND_RETURN(0);
-            } else if (is_retryable(hndl, err_val) &&
+            } else if (is_retryable(err_val) &&
                        (hndl->snapshot_file ||
                         (!hndl->in_trans && !is_commit) || commit_file)) {
                 hndl->error_in_trans = 0;
@@ -4641,7 +4695,7 @@ read_record:
 
     if (hndl->firstresponse->response_type == RESPONSE_TYPE__COLUMN_NAMES) {
         /* Handle rejects from Server. */
-        if (is_retryable(hndl, hndl->firstresponse->error_code) &&
+        if (is_retryable(hndl->firstresponse->error_code) &&
             (hndl->snapshot_file || (!hndl->in_trans && !is_commit) ||
              commit_file)) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);
@@ -4684,9 +4738,10 @@ read_record:
             PRINT_AND_RETURN(return_value);
         }
 
-        if (hndl->is_hasql && (((is_retryable(hndl, rc) && hndl->snapshot_file) ||
-            is_begin) || (!hndl->sb && ((hndl->in_trans && hndl->snapshot_file)
-            || commit_file)))) {
+        if (hndl->is_hasql &&
+            (((is_retryable(rc) && hndl->snapshot_file) || is_begin) ||
+             (!hndl->sb &&
+              ((hndl->in_trans && hndl->snapshot_file) || commit_file)))) {
 
             if (hndl->sb)
                 sbuf2close(hndl->sb);
@@ -5255,7 +5310,7 @@ free_vars:
     free(p);
     int timeoutms = 10 * 1000;
     cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000,
-                                comdb2db_num, 5, NULL, NULL);
+                                comdb2db_num);
 
     sbuf2free(ss);
     free_events(&tmp);
@@ -5433,8 +5488,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     int timeoutms = 10 * 1000;
 
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum, 5,
-                                NULL, NULL);
+    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
 
     sbuf2free(sb);
 
@@ -5483,8 +5537,8 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 
     rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
                             comdb2db_name, &num_comdb2db_hosts, &comdb2db_num,
-                            hndl->dbname, hndl->cluster, hndl->hosts,
-                            &(hndl->num_hosts), &hndl->dbnum, 1, 0);
+                            hndl->dbname, hndl->hosts, &(hndl->num_hosts),
+                            &hndl->dbnum, 1, 0);
 
     /* Before database destination discovery */
     cdb2_event *e = NULL;
@@ -5523,10 +5577,10 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
                                          "replication", hndl->dbname);
         hndl->flags |= CDB2_DIRECT_CPU;
     } else {
-        rc = get_comdb2db_hosts(
-            hndl, comdb2db_hosts, comdb2db_ports, &master, comdb2db_name,
-            &num_comdb2db_hosts, &comdb2db_num, hndl->dbname, hndl->cluster,
-            hndl->hosts, &(hndl->num_hosts), &hndl->dbnum, 0, 1);
+        rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
+                                comdb2db_name, &num_comdb2db_hosts,
+                                &comdb2db_num, hndl->dbname, hndl->hosts,
+                                &(hndl->num_hosts), &hndl->dbnum, 0, 1);
         if (rc != 0 || (num_comdb2db_hosts == 0 && hndl->num_hosts == 0)) {
             sprintf(hndl->errstr, "cdb2_get_dbhosts: no %s hosts found.",
                     comdb2db_name);
@@ -6205,6 +6259,13 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
+
+    if (!hndl->protobuf_size)
+        hndl->protobuf_size = CDB2_PROTOBUF_SIZE;
+    hndl->protobuf_data = malloc(hndl->protobuf_size);
+    hndl->allocator.alloc = &cdb2_protobuf_alloc;
+    hndl->allocator.free = &cdb2_protobuf_free;
+    hndl->allocator.allocator_data = hndl;
 
 out:
     if (log_calls) {

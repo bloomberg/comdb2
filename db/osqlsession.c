@@ -74,8 +74,15 @@ static void save_sql(struct ireq *iq, osql_sess_t *sess, const char *sql,
  * receive message from sql thread).
  * Returns 0 if success
  *
- * NOTE: it is possible to inline clean a request on master bounce,
- * which starts by unlinking the session first, and freeing bplog afterwards
+ * This function will remove from osql_repository_rem() if is_linked is set
+ * then wait till there are no more clients using this sess then destroy obj
+ *
+ * NOTE:
+ * - it is possible to inline clean a request on master bounce,
+ *   which starts by unlinking the session first, and freeing bplog afterwards
+ *
+ * - if caller has already removed sess from osql repository, they should
+ *   call this function with is_linked = 0
  */
 int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
                        const char *callfunc, int line)
@@ -97,20 +104,18 @@ int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
    }
 #endif
 
-    /*
-       wait for all receivers to go away (in current implem, this is only 1, the
-       reader_thread
-       since we removed the hash entry, no new messages are added
+    if (rc)
+        return rc;
+
+    /* wait for all receivers to go away, in current implem this is only 1--the
+       reader_thread, since we removed the hash entry no new messages are added
      */
-    if (!rc) {
-        while (ATOMIC_LOAD32(sess->clients) > 0) {
-            poll(NULL, 0, 10);
-        }
-
-        _destroy_session(psess, 0);
+    while (ATOMIC_LOAD32(sess->clients) > 0) {
+        poll(NULL, 0, 10);
     }
+    _destroy_session(psess, 0);
 
-    return rc;
+    return 0;
 }
 
 static int free_selectv_genids(void *obj, void *arg)
@@ -172,11 +177,10 @@ int osql_sess_addclient(osql_sess_t *sess)
 }
 
 /**
- * Register client
- * Prevent temporary the session destruction
- *
+ * UnRegister client -- atomically decrement client count
+ * After this session may be destroyed
  */
-int osql_sess_remclient(osql_sess_t *sess)
+inline int osql_sess_remclient(osql_sess_t *sess)
 {
 #if 0
    uuidstr_t us;
@@ -188,10 +192,11 @@ int osql_sess_remclient(osql_sess_t *sess)
     int loc_clients = ATOMIC_ADD32(sess->clients, -1);
 
     if (loc_clients < 0) {
+        abort(); // remove this in future
         uuidstr_t us;
-        fprintf(stderr,
-                "%s: BUG ALERT, session %llu %s freed one too many times\n",
-                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
+        logmsg(LOGMSG_ERROR,
+               "%s: BUG ALERT, session %llu %s freed one too many times\n",
+               __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
     }
 
     return 0;
@@ -693,8 +698,11 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 {
     int rc = 0;
     sess->terminate = OSQL_TERMINATE;
-    rc = osql_repository_rem(sess, 0, __func__, NULL,
-                             __LINE__); /* already have exclusive lock */
+    Pthread_mutex_unlock(&sess->completed_lock);
+    Pthread_mutex_unlock(&sess->mtx);
+
+    const int need_lock = 0; /* already have exclusive lock for osql hash */
+    rc = osql_repository_rem(sess, need_lock, __func__, NULL, __LINE__);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to remove session from repository rc=%d\n", __func__,
@@ -710,6 +718,8 @@ static int osql_sess_set_terminate(osql_sess_t *sess)
 
 /**
  * Terminate a session if the session is not yet completed/dispatched
+ * we come here from osql_repository_add() if already in osql hash map
+ * which can happen in case there is an early replay
  * Return 0 if session is successfully terminated,
  *        -1 for errors,
  *        1 otherwise (if session was already processed)

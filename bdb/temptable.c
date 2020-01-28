@@ -1972,9 +1972,6 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
 
 }
 
-/* Caller needs to free the key if return is not IX_FND
- * if IX_FND this function will free key [eventually not immediately]
- */
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
@@ -1984,6 +1981,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     DBT dkey, ddata;
     int exists = 0;
     arr_elem_t *elem;
+    void *keydup;
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_find_exact operation not supported for "
@@ -2036,22 +2034,22 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
 
     REOPEN_CURSOR(cur);
 
-    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
+    /* Make a copy of the user key */
+    if ((keydup = malloc(keylen)) == NULL)
+        return ENOMEM;
+
+    memcpy(keydup, key, keylen);
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
     dkey.flags = ddata.flags = DB_DBT_MALLOC;
-    dkey.data = key;
+    dkey.data = keydup;
     dkey.size = keylen;
 
     cur->valid = 0;
     rc = cur->cur->c_get(cur->cur, &dkey, &ddata, DB_SET);
-    /*
-    printf("Got data %p %d key %p %d\n",
-           ddata.data, ddata.size, dkey.data, dkey.size); */
 
     if (rc == DB_NOTFOUND) {
-        exists = 0;
         goto done;
     } else if (rc) {
         *bdberr = rc;
@@ -2086,7 +2084,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
 done:
     dbghexdump(3, key, keylen);
     dbgtrace(3, "temp_table_find(cursor %d) = %d", cur->curid, rc);
-    return (exists) ? IX_FND : IX_NOTFND;
+    return (exists) ? IX_FND : (free(keydup), IX_NOTFND);
 }
 
 static int key_memcmp(void *_, int key1len, const void *key1, int key2len,

@@ -101,16 +101,6 @@ function assert_sc_seed
 }
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 
 function insert_records
 {
@@ -362,7 +352,7 @@ cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'select * from t1 limit 1'
 assert_sc_status 0
 assert_vers t1 1
 assert_schema t1 t1_2.csc2
-do_verify
+do_verify t1
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 echo restart master to make sure when it comes up we are still at version 1
@@ -372,7 +362,7 @@ master=`getmaster`
 assert_sc_status 0
 assert_vers t1 1
 assert_schema t1 t1_2.csc2
-do_verify
+do_verify t1
 
 
 echo "TESTING KILLING MASTER WHILE PERFORMING REBUILD"
@@ -427,7 +417,7 @@ if ! diff allrows_pre.out allrows_post.out ; then
 fi
 
 assert_vers t1 1
-do_verify
+do_verify t1
 
 
 
@@ -489,7 +479,7 @@ fi
 
 echo "version should now be 2"
 assert_vers t1 2
-do_verify
+do_verify t1
 
 
 
@@ -501,7 +491,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
 
 echo "version should now be 3"
 assert_vers t1 3
-do_verify
+do_verify t1
 
 echo 'alter to t1_3 while interrupting by killing master node'
 
@@ -568,7 +558,7 @@ if [ $diff -gt 1 ] ; then
 fi
 
 assert_vers t1 4
-do_verify
+do_verify t1
 
 if [ ! -n "$CLUSTER" ] ; then
     echo "Success"
@@ -587,7 +577,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
 
 echo "version should now be 5"
 assert_vers t1 5
-do_verify
+do_verify t1
 
 sleep 5
 master=`getmaster`
@@ -632,7 +622,7 @@ wait_for_sc
 
 assert_vers t1 6
 assert_schema t1 t1_2.csc2
-do_verify
+do_verify t1
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > post.out 2>&1
 diff pre.out post.out > /dev/null

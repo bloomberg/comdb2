@@ -48,16 +48,6 @@ function checkfailexit
 }
 
 
-function do_verify
-{
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 function do_rebuild_track_pid
 {
     typeset loc_dbnm=$1
@@ -75,7 +65,7 @@ function do_rebuild_track_pid
         fi
 
         checkfailexit
-        do_verify $loc_dbnm $loc_tbl
+        do_verify $loc_tbl
         let scnt=scnt+1
         sleep $loc_sleeptm
     done
@@ -229,7 +219,7 @@ function run_test
 
     insert_records 0 
     assertcnt $tbl $nrecs "run_test"
-    do_verify
+    do_verify $tbl
 
 
     update_same_record &

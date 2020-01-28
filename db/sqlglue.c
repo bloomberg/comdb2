@@ -485,14 +485,14 @@ int authenticate_cursor(BtCursor *pCur, int how)
     return 0;
 }
 
-int peer_dropped_connection(struct sqlclntstate *clnt)
+inline int peer_dropped_connection_sb(SBUF2 *sb)
 {
-    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
+    if (!sb)
         return 0;
-    }
+
     int rc;
     struct pollfd fd = {0};
-    fd.fd = sbuf2fileno(clnt->sb);
+    fd.fd = sbuf2fileno(sb);
     fd.events = POLLIN;
     if ((rc = poll(&fd, 1, 0)) >= 0) {
         if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
@@ -503,6 +503,14 @@ int peer_dropped_connection(struct sqlclntstate *clnt)
         return 0;
     }
     return 1;
+}
+
+inline int peer_dropped_connection(struct sqlclntstate *clnt)
+{
+    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
+        return 0;
+    }
+    return peer_dropped_connection_sb(clnt->sb);
 }
 
 int throttle_num = 0;
@@ -9007,17 +9015,6 @@ void cancel_sql_statement_with_cnonce(const char *cnonce)
         logmsg(LOGMSG_USER, "Query with cnonce %s not found (finished?)\n", cnonce);
 }
 
-/* log binary cnonce in hex format 
- * ex. 1234 will become x'31323334' 
- */
-static void log_cnonce(const char * cnonce, int len)
-{
-    logmsg(LOGMSG_USER, " [");
-    for(int i = 0; i < len; i++) 
-        logmsg(LOGMSG_USER, "%2x", cnonce[i]);
-    logmsg(LOGMSG_USER, "] ");
-}
-
 void sql_dump_running_statements(void)
 {
     struct sql_thread *thd;
@@ -9041,12 +9038,9 @@ void sql_dump_running_statements(void)
             } else
                 rqid[0] = 0;
 
-            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s\n", thd->id,
+            logmsg(LOGMSG_USER, "id %d %02d/%02d/%02d %02d:%02d:%02d %s%s pid %d task %s ", thd->id,
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
-                   tm.tm_min, tm.tm_sec, rqid, thd->clnt->origin);
-            snap_uid_t snap;
-            get_cnonce(thd->clnt, &snap);
-            log_cnonce(snap.key, snap.keylen);
+                   tm.tm_min, tm.tm_sec, rqid, thd->clnt->origin, thd->clnt->conninfo.pid, thd->clnt->argv0 ? thd->clnt->argv0 : "???");
             logmsg(LOGMSG_USER, "%s\n", thd->clnt->sql);
 
             if (thd->bt) {

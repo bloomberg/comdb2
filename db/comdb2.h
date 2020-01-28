@@ -2945,6 +2945,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
 
 struct reqlogger *reqlog_alloc(void);
+int peer_dropped_connection_sb(SBUF2 *sb);
 int peer_dropped_connection(struct sqlclntstate *clnt);
 
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
@@ -3439,6 +3440,7 @@ int read_spfile(char *file);
 
 struct bdb_cursor_ifn;
 
+int recover_deadlock_simple(bdb_state_type *bdb_state);
 int recover_deadlock_flags(bdb_state_type *, struct sql_thread *,
                            struct bdb_cursor_ifn *, int sleepms,
                            const char *func, int line, uint32_t flags);

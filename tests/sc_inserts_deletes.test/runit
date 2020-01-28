@@ -24,16 +24,6 @@ nrecs=2000
 max_nusc=1000
 
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
-
 function do_rebuild_track_pid
 {
     typeset loc_dbnm=$1
@@ -52,7 +42,7 @@ function do_rebuild_track_pid
             exit 1
         fi
 
-        do_verify $loc_dbnm $loc_tbl
+        do_verify $loc_tbl
         let scnt=scnt+1
         sleep 1
     done
@@ -80,7 +70,7 @@ function do_rebuild
             return 1
         fi
         let scnt=scnt+1
-        do_verify
+        do_verify $tbl
     done
     assertcnt $tbl $nrecs
 
@@ -155,7 +145,7 @@ function run_test
     wait
 
     assertcnt $tbl $nrecs
-    do_verify
+    do_verify $tbl
 
     echo "deleting all records in background"
     delete_records &
