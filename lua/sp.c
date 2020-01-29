@@ -4005,8 +4005,8 @@ static int db_table_to_json(Lua L)
 static int db_abort_int(Lua L)
 {
     const char *msg = lua_tostring(L, -1);
-    bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 1);
     if (msg != NULL) logmsg(LOGMSG_FATAL, "%s", msg);
+    bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 1);
     lua_pushnil(L);
     return 0;
 }
