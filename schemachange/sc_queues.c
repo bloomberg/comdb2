@@ -30,7 +30,9 @@
 #define BDB_TRIGGER_MAYBE_UNPAUSE(a,b) do {                                   \
     if (((a) != NULL) && (b)) {                                               \
         int rc3 = bdb_trigger_unpause((a));                                   \
-        if (rc3 != 0) {                                                       \
+        if (rc3 == 0) {                                                       \
+            (b) = 0;                                                          \
+        } else {                                                              \
             logmsg(LOGMSG_ERROR, "%s: bdb_trigger_unpause rc = %d\n",         \
                    __func__, rc3);                                            \
         }                                                                     \
