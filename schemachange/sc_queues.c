@@ -549,6 +549,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
+        /*
+        ** NOTE: This call to bdb_get_file_version_qdb(), which ignores the
+        **       returned file version number itself, is (apparently) being
+        **       used to determine if the queuedb exists within llmeta.  In
+        **       that case, since the first file should always be present,
+        **       there should be no need to check for subsequent (optional)
+        **       files?
+        */
         unsigned long long ver = 0;
         if (bdb_get_file_version_qdb(db->handle, tran, 0, &ver, &bdberr) == 0) {
             sc_del_unused_files_tran(db, tran);
