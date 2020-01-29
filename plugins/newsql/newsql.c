@@ -24,7 +24,8 @@
 #include "sql.h"
 #include "comdb2_appsock.h"
 #include "comdb2_atomic.h"
-#include <str0.h>
+#include "str0.h"
+#include "sqloffload.h"
 
 #include <sqlquery.pb-c.h>
 #include <sqlresponse.pb-c.h>
@@ -45,7 +46,6 @@ void ssl_set_clnt_user(struct sqlclntstate *clnt);
 int disable_server_sql_timeouts(void);
 int tdef_to_tranlevel(int tdef);
 int check_active_appsock_connections(struct sqlclntstate *clnt);
-int osql_clean_sqlclntstate(struct sqlclntstate *clnt);
 int watcher_warning_function(void *arg, int timeout, int gap);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 int fdb_access_control_create(struct sqlclntstate *clnt, char *str);
