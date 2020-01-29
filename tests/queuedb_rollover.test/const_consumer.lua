@@ -8,9 +8,9 @@ local function main(i_must_have_value)
 	if (newi == tostring(i_must_have_value)) then
 		consumer:consume()
 	else
-		db:emit(
-			"FAILED: wanted " .. tostring(i_must_have_value) .. ", got " .. newi
-		)
-		db:abort()
+		local msg = "FAILED: wanted " .. tostring(i_must_have_value) ..
+		            ", got " .. newi
+		db:emit(msg)
+		db:abort(msg)
 	end
 end
