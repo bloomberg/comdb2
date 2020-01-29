@@ -1389,7 +1389,7 @@ __dbenv_trigger_subscribe(dbenv, fname, cond, lock, status)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
-	if (t->status == TRIGGER_SUBSCRIPTION_OPEN) {
+	if (t->status != TRIGGER_SUBSCRIPTION_CLOSED) {
 		++t->active;
 		*cond = &t->cond;
 		*lock = &t->lock;
@@ -1420,6 +1420,7 @@ __dbenv_trigger_open(dbenv, fname)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
+        DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_CLOSED);
 	t->status = TRIGGER_SUBSCRIPTION_OPEN;
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
@@ -1434,6 +1435,7 @@ __dbenv_trigger_close(dbenv, fname)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
+        DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_OPEN);
 	t->status = TRIGGER_SUBSCRIPTION_CLOSED;
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
@@ -1462,6 +1464,7 @@ __dbenv_trigger_pause(dbenv, fname)
 	struct __db_trigger_subscription *t;
 	t = __db_get_trigger_subscription(fname);
 	Pthread_mutex_lock(&t->lock);
+        DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_OPEN);
 	t->status = TRIGGER_SUBSCRIPTION_PAUSED;
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
