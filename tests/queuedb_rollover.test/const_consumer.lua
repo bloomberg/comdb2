@@ -11,5 +11,6 @@ local function main(i_must_have_value)
 		db:emit(
 			"FAILED: wanted " .. tostring(i_must_have_value) .. ", got " .. newi
 		)
+		db:abort()
 	end
 end

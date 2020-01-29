@@ -39,6 +39,7 @@
 
 extern int gbl_queuedb_read_locks;
 extern int gbl_waitalive_iterations;
+extern int gbl_allow_lua_abort;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;

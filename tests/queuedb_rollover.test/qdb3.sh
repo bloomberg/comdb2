@@ -12,7 +12,8 @@ for ((i=0;i<5;++i)); do
     ./qdb3_dml_cons.sh 1000 $i &
     ./qdb3_ddl_cons.sh 10 &
     ./qdb3_ddl_proc.sh 10 &
+    wait
 done
 wait
 
-cdb2sql $SP_OPTIONS "select (count(*) > 0) as hasRows from foraudit3;"
+cdb2sql $SP_OPTIONS "select count(*) as row_count from foraudit3;"

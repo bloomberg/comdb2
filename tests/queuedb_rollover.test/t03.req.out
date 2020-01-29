@@ -1,2 +1,2 @@
 (version='const_test')
-(hasRows=1)
+(row_count=5000)
