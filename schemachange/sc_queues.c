@@ -19,6 +19,24 @@
 #include "translistener.h"
 #include "logmsg.h"
 
+#define BDB_TRAN_MAYBE_ABORT_OR_FATAL(a,b,c) do {                             \
+    (c) = 0;                                                                  \
+    if (((b) != NULL) && bdb_tran_abort((a), (b), &(c)) != 0) {               \
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort err = %d\n", __func__, (c)); \
+        abort();                                                              \
+    }                                                                         \
+} while (0);
+
+#define BDB_TRIGGER_MAYBE_UNPAUSE(a,b) do {                                   \
+    if (((a) != NULL) && (b)) {                                               \
+        int rc3 = bdb_trigger_unpause((a));                                   \
+        if (rc3 != 0) {                                                       \
+            logmsg(LOGMSG_ERROR, "%s: bdb_trigger_unpause rc = %d\n",         \
+                   __func__, rc3);                                            \
+        }                                                                     \
+    }                                                                         \
+} while (0);
+
 extern int dbqueue_add_consumer(struct dbtable *db, int consumern,
                                 const char *method, int noremove);
 
@@ -638,16 +656,16 @@ int reopen_qdb(const char *queue_name, unsigned long long qdb_file_ver,
                queue_name);
         return -1;
     }
-    int rc, rc2;
+    int rc, paused = 0;
     rc = bdb_trigger_pause(db->handle);
-    if (rc != 0) return rc; /* not paused?  don't unpause. */
+    if (rc != 0) goto done;
+    paused = 1;
     rc = close_qdb(db, tran);
     if (rc != 0) goto done;
     rc = open_qdb(db, qdb_file_ver, tran);
     if (rc != 0) goto done;
 done:
-    rc2 = bdb_trigger_unpause(db->handle);
-    if (rc == 0) rc = rc2;
+    BDB_TRIGGER_MAYBE_UNPAUSE(db->handle, paused);
     return rc;
 }
 
@@ -776,7 +794,7 @@ int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc, bdberr;
+    int rc, paused = 0, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
@@ -786,32 +804,34 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
                __func__, rc);
-        return rc;
+        goto done;
     }
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
-        bdberr = 0;
-        if (bdb_tran_abort(s->db->handle, sc_logical_tran, &bdberr) != 0)
-            abort();
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
                __func__);
-        return rc;
+        goto done;
     }
     rc = bdb_lock_table_write(s->db->handle, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
+    rc = bdb_trigger_pause(s->db->handle);
+    if (rc != 0) {
+        goto done;
+    }
+    paused = 1;
     rc = close_qdb(s->db, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
     rc = add_qdb_file(s, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
     rc = open_qdb(s->db, s->qdb_file_ver, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
     bdberr = 0;
     rc = bdb_llog_scdone_tran(s->db->handle, add_queue_file, sc_phys_tran,
@@ -819,16 +839,19 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
                __func__, rc, bdberr);
-        return rc;
+        goto done;
     }
     rc = trans_commit(iq, sc_logical_tran, gbl_mynode);
+    sc_logical_tran = NULL;
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: could not commit trans %p\n",
-               __func__, sc_logical_tran);
-        return rc;
+        logmsg(LOGMSG_ERROR, "%s: could not commit trans\n", __func__);
+        goto done;
     }
     logmsg(LOGMSG_INFO, "%s SUCCESS\n", __func__);
-    return 0;
+done:
+    BDB_TRIGGER_MAYBE_UNPAUSE(s->db->handle, paused);
+    BDB_TRAN_MAYBE_ABORT_OR_FATAL(s->db->handle, sc_logical_tran, bdberr);
+    return rc;
 }
 
 int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
@@ -840,7 +863,7 @@ int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
-    int rc, bdberr;
+    int rc, paused = 0, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
@@ -850,32 +873,34 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
                __func__, rc);
-        return rc;
+        goto done;
     }
     bdb_ltran_get_schema_lock(sc_logical_tran);
     if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
-        bdberr = 0;
-        if (bdb_tran_abort(s->db->handle, sc_logical_tran, &bdberr) != 0)
-            abort();
         logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
                __func__);
-        return rc;
+        goto done;
     }
     rc = bdb_lock_table_write(s->db->handle, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
+    rc = bdb_trigger_pause(s->db->handle);
+    if (rc != 0) {
+        goto done;
+    }
+    paused = 1;
     rc = close_qdb(s->db, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
     rc = del_qdb_file(s, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
     rc = open_qdb(s->db, 0, sc_phys_tran);
     if (rc != 0) {
-        return rc;
+        goto done;
     }
     bdberr = 0;
     rc = bdb_llog_scdone_tran(s->db->handle, del_queue_file, sc_phys_tran,
@@ -883,14 +908,17 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
                __func__, rc, bdberr);
-        return rc;
+        goto done;
     }
     rc = trans_commit(iq, sc_logical_tran, gbl_mynode);
+    sc_logical_tran = NULL;
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: could not commit trans %p\n",
-               __func__, sc_logical_tran);
-        return rc;
+        logmsg(LOGMSG_ERROR, "%s: could not commit trans\n", __func__);
+        goto done;
     }
     logmsg(LOGMSG_INFO, "%s SUCCESS\n", __func__);
-    return 0;
+done:
+    BDB_TRIGGER_MAYBE_UNPAUSE(s->db->handle, paused);
+    BDB_TRAN_MAYBE_ABORT_OR_FATAL(s->db->handle, sc_logical_tran, bdberr);
+    return rc;
 }
