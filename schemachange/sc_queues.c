@@ -639,12 +639,15 @@ int reopen_qdb(const char *queue_name, unsigned long long qdb_file_ver,
         return -1;
     }
     int rc = bdb_trigger_pause(db->handle);
-    if (rc != 0) return rc;
+    if (rc != 0) return rc; /* not paused?  don't unpause. */
     rc = close_qdb(db, tran);
-    if (rc != 0) return rc;
+    if (rc != 0) goto done;
     rc = open_qdb(db, qdb_file_ver, tran);
-    if (rc != 0) return rc;
-    return bdb_trigger_unpause(db->handle);
+    if (rc != 0) goto done;
+done:
+    int rc2 = bdb_trigger_unpause(db->handle);
+    if (rc == 0) rc = rc2;
+    return rc;
 }
 
 static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
