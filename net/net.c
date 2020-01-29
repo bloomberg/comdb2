@@ -1465,8 +1465,8 @@ int write_hello_reply(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
-    rc = write_message_nohello(netinfo_ptr, host_node_ptr,
-                               WIRE_HEADER_HELLO_REPLY, data, datasz);
+    rc = write_message(netinfo_ptr, host_node_ptr, WIRE_HEADER_HELLO_REPLY,
+                       data, datasz);
 
     free(data);
 
