@@ -1269,8 +1269,9 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
                 sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                         SQLENG_FNSH_STATE);
             }
+            clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
+            clnt->dbtran.trans_has_sp = 0;
             clnt->in_client_trans = 0;
-            clnt->trans_has_sp = 0;
         }
     } else if (!strncasecmp(clnt->sql, "rollback", 8)) {
         clnt->snapshot = 0;
@@ -1286,8 +1287,9 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
         } else {
             sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                     SQLENG_FNSH_RBK_STATE);
+            clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
+            clnt->dbtran.trans_has_sp = 0;
             clnt->in_client_trans = 0;
-            clnt->trans_has_sp = 0;
         }
     }
 }
@@ -1309,10 +1311,12 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                     int sendresponse)
+                     enum trans_clntcomm sideeffects)
 {
     Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->ready_for_heartbeats = 0;
+    /* if this is a new chunk, do not stop the hearbeats */
+    if (sideeffects != TRANS_CLNTCOMM_CHUNK)
+        clnt->ready_for_heartbeats = 0;
 
     reqlog_new_sql_request(thd->logger, clnt->sql);
     log_queue_time(thd->logger, clnt);
@@ -1327,7 +1331,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (clnt->osql.replay)
         goto done;
 
-    if (sendresponse) {
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL) {
         write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
     }
 
@@ -1411,7 +1415,7 @@ int replicant_can_retry(struct sqlclntstate *clnt)
 {
     return clnt->dbtran.mode != TRANLEVEL_SNAPISOL &&
            clnt->dbtran.mode != TRANLEVEL_SERIAL && !clnt->verifyretry_off &&
-           !clnt->has_recording && !clnt->trans_has_sp;
+           !clnt->has_recording && !clnt->dbtran.trans_has_sp;
 }
 
 static int free_clnt_ddl_context(void *obj, void *arg)
@@ -1486,52 +1490,9 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt)
         abort_dbtran(clnt);
 }
 
-/* In a transaction, whenever a non-COMMIT/ROLLBACK command fails, we set
- * clnt->had_errors and report error to the client. Once set, we must not
- * send anything to the client (per the wire protocol?) unless intransresults
- * is set.
- */
-static int do_send_commitrollback_response(struct sqlclntstate *clnt,
-                                           int sendresponse)
+static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    if (sendresponse && (send_intrans_response(clnt) || !clnt->had_errors))
-        return 1;
-    return 0;
-}
-
-int handle_sql_commitrollback(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt, int sendresponse)
-{
-    int bdberr = 0;
-    int rc = 0;
-    int irc = 0;
-    int outrc = 0;
-
-    reqlog_new_sql_request(thd->logger, clnt->sql);
-    log_queue_time(thd->logger, clnt);
-
-    int64_t rows = clnt->log_effects.num_updated +
-                   clnt->log_effects.num_deleted +
-                   clnt->log_effects.num_inserted;
-
-    reqlog_set_cost(thd->logger, 0);
-    reqlog_set_rows(thd->logger, rows);
-
-    if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
-        abort_dbtran(clnt);
-        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
-        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_NORMAL_PROCESS);
-        outrc = CDB2ERR_VERIFY_ERROR;
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
-        if (do_send_commitrollback_response(clnt, sendresponse)) {
-            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
-        }
-        goto done;
-    }
+    int irc = 0, rc = 0, bdberr = 0;
 
     if (!clnt->intrans) {
         reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" ignore (no transaction)\n",
@@ -1817,6 +1778,58 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
     }
 
+    return rc;
+}
+
+/* In a transaction, whenever a non-COMMIT/ROLLBACK command fails, we set
+ * clnt->had_errors and report error to the client. Once set, we must not
+ * send anything to the client (per the wire protocol?) unless intransresults
+ * is set.
+ */
+static int do_send_commitrollback_response(struct sqlclntstate *clnt,
+                                           int sideeffects)
+{
+    if (sideeffects == TRANS_CLNTCOMM_NORMAL &&
+        (send_intrans_response(clnt) || !clnt->had_errors))
+        return 1;
+    return 0;
+}
+
+int handle_sql_commitrollback(struct sqlthdstate *thd,
+                              struct sqlclntstate *clnt,
+                              enum trans_clntcomm sideeffects)
+{
+    int rc = 0;
+    int outrc = 0;
+
+    reqlog_new_sql_request(thd->logger, clnt->sql);
+    log_queue_time(thd->logger, clnt);
+
+    int64_t rows = clnt->log_effects.num_updated +
+                   clnt->log_effects.num_deleted +
+                   clnt->log_effects.num_inserted;
+
+    reqlog_set_cost(thd->logger, 0);
+    reqlog_set_rows(thd->logger, rows);
+
+    if (rows > 0 && gbl_forbid_incoherent_writes && !clnt->had_lease_at_begin) {
+        abort_dbtran(clnt);
+        errstat_cat_str(&clnt->osql.xerr, "failed write from incoherent node");
+        clnt->osql.xerr.errval = ERR_BLOCK_FAILED + ERR_VERIFY;
+        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
+                                SQLENG_NORMAL_PROCESS);
+        outrc = CDB2ERR_VERIFY_ERROR;
+        Pthread_mutex_lock(&clnt->wait_mutex);
+        clnt->ready_for_heartbeats = 0;
+        Pthread_mutex_unlock(&clnt->wait_mutex);
+        if (do_send_commitrollback_response(clnt, sideeffects)) {
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
+        }
+        goto done;
+    }
+
+    rc = do_commitrollback(thd, clnt);
+
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
 
@@ -1857,9 +1870,11 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         write_response(clnt, RESPONSE_EFFECTS, 0, 0);
 
         Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
+        /* do not turn heartbeats if this is a chunked transaction */
+        if (sideeffects != TRANS_CLNTCOMM_CHUNK)
+            clnt->ready_for_heartbeats = 0;
 
-        if (do_send_commitrollback_response(clnt, sendresponse)) {
+        if (do_send_commitrollback_response(clnt, sideeffects)) {
             /* This is a commit, so we'll have something to send here even on a
              * retry.  Don't trigger code in fsql_write_response that's there
              * to catch bugs when we send back responses on a retry.
@@ -1877,7 +1892,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done sendresp=%d\n",
-                        (clnt->sql) ? clnt->sql : "(???.)", sendresponse);
+                        (clnt->sql) ? clnt->sql : "(???.)", sideeffects);
         }
     } else {
         /* error */
@@ -1905,15 +1920,16 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
             (clnt->osql.replay == OSQL_RETRY_LAST || clnt->verifyretry_off)) {
             reqlog_logf(thd->logger, REQL_QUERY,
                         "\"%s\" SOCKSL retried done (hit last) sendresp=%d\n",
-                        (clnt->sql) ? clnt->sql : "(???.)", sendresponse);
+                        (clnt->sql) ? clnt->sql : "(???.)", sideeffects);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
         /* if this is still an error, but not verify, pass it back to client */
         else if (rc != CDB2ERR_VERIFY_ERROR) {
-            reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
-                                                 "(non verify error rc=%d) "
-                                                 "sendresp=%d\n",
-                        (clnt->sql) ? clnt->sql : "(???.)", rc, sendresponse);
+            reqlog_logf(thd->logger, REQL_QUERY,
+                        "\"%s\" SOCKSL retried done "
+                        "(non verify error rc=%d) "
+                        "sendresp=%d\n",
+                        (clnt->sql) ? clnt->sql : "(???.)", rc, sideeffects);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
 
@@ -1931,10 +1947,13 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
         outrc = rc;
 
-        if (do_send_commitrollback_response(clnt, sendresponse)) {
-            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, rc);
+        if (do_send_commitrollback_response(clnt, sideeffects)) {
+            write_response(clnt, RESPONSE_ERROR, clnt->osql.xerr.errstr, outrc);
         }
     }
+
+    if (sideeffects == TRANS_CLNTCOMM_CHUNK)
+        return outrc;
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
@@ -1944,7 +1963,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     }
 
 done:
-
     reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
@@ -2896,8 +2914,9 @@ static void _prepare_error(struct sqlthdstate *thd,
     if (rc == SQLITE_SCHEMA_DOHSQL)
         return;
 
-    if (clnt->in_client_trans && (rec->status & CACHE_HAS_HINT ||
-                                  has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
+    if (in_client_trans(clnt) &&
+        (rec->status & CACHE_HAS_HINT ||
+         has_sqlcache_hint(clnt->sql, NULL, NULL)) &&
         !(rec->status & CACHE_FOUND_STR) &&
         (clnt->osql.replay == OSQL_RETRY_NONE)) {
 
@@ -3345,7 +3364,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     switch (clnt->ctrl_sqlengine) {
 
     case SQLENG_PRE_STRT_STATE:
-        *outrc = handle_sql_begin(thd, clnt, 1);
+        *outrc = handle_sql_begin(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
     case SQLENG_WRONG_STATE:
@@ -3354,7 +3373,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
-        *outrc = handle_sql_commitrollback(thd, clnt, 1);
+        *outrc = handle_sql_commitrollback(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
     case SQLENG_NORMAL_PROCESS:
@@ -3404,7 +3423,7 @@ static int skip_response_int(struct sqlclntstate *clnt, int from_error)
         return 1;
     if (clnt->isselect || is_with_statement(clnt->sql))
         return 0;
-    if (clnt->in_client_trans) {
+    if (in_client_trans(clnt)) {
         if (from_error && !clnt->had_errors) /* send on first error */
             return 0;
         if (send_intrans_response(clnt)) {
@@ -3724,7 +3743,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     char *errstr = NULL;
     query_stats_setup(thd, clnt);
     reqlog_set_event(thd->logger, "sp");
-    clnt->trans_has_sp = 1;
+    clnt->dbtran.trans_has_sp = 1;
     int rc = exec_procedure(thd, clnt, &errstr);
     if (rc) {
         if (!errstr) {
@@ -3738,8 +3757,8 @@ static void handle_stored_proc(struct sqlthdstate *thd,
         write_response(clnt, RESPONSE_ERROR, errstr, rc);
         free(errstr);
     }
-    if (!clnt->in_client_trans)
-        clnt->trans_has_sp = 0;
+    if (!in_client_trans(clnt))
+        clnt->dbtran.trans_has_sp = 0;
     test_no_btcursors(thd);
     sqlite_done(thd, clnt, &rec, 0);
 }
@@ -4054,7 +4073,7 @@ int check_active_appsock_connections(struct sqlclntstate *clnt)
         struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
         listc_abl(&clntlist, lru_clnt);
         while (lru_clnt != clnt) {
-            if (lru_clnt->done && !lru_clnt->in_client_trans) {
+            if (lru_clnt->done && !in_client_trans(lru_clnt)) {
                 lru_clnt->statement_timedout = 1; /* disallow any new query */
                 break;
             }
@@ -4568,7 +4587,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sqlcpy, flags)) != 0) {
-        if ((clnt->in_client_trans || clnt->osql.replay == OSQL_RETRY_DO) &&
+        if ((in_client_trans(clnt) || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool,
@@ -4610,7 +4629,7 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     }
 
     if (clnt->heartbeat) {
-        if (clnt->osql.replay != OSQL_RETRY_NONE || clnt->in_client_trans) {
+        if (clnt->osql.replay != OSQL_RETRY_NONE || in_client_trans(clnt)) {
             send_heartbeat(clnt);
         }
         struct timespec mshb;
@@ -4933,6 +4952,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     if (initial)
         clnt->origin = intern(get_origin_mach_by_buf(sb));
 
+    clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
     clnt->statement_timedout = 0;

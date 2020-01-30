@@ -216,6 +216,12 @@ enum ctrl_sqleng {
     SQLENG_WRONG_STATE,
 };
 
+enum trans_clntcomm {
+    TRANS_CLNTCOMM_NOREPLY = 0,
+    TRANS_CLNTCOMM_NORMAL = 1,
+    TRANS_CLNTCOMM_CHUNK = 2
+};
+
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate);
 
@@ -235,6 +241,9 @@ typedef struct {
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
                                         remote tables */
     int nLockedRemTables; /* number of pointers in lockedRemTablesRootp */
+    int trans_has_sp;     /* running a stored procedure */
+    int maxchunksize;     /* multi-transaction bulk mode */
+    int crtchunksize;     /* how many rows are processed already */
 } dbtran_type;
 typedef dbtran_type trans_t;
 
@@ -516,6 +525,8 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+#define in_client_trans(clnt) ((clnt)->in_client_trans)
+
 /* Client specific sql state */
 struct sqlclntstate {
     /* appsock plugin specific data */
@@ -584,7 +595,6 @@ struct sqlclntstate {
     int deadlock_recovered;
 
     /* lua stored procedure */
-    int trans_has_sp;
     struct stored_proc *sp;
     int exec_lua_thread;
     int want_stored_procedure_trace;
@@ -632,8 +642,8 @@ struct sqlclntstate {
                        need to pend the first error until a commit is issued.
                        any statements
                        past the first error are ignored. */
-    int in_client_trans; /* clnt is in a client transaction (ie: client ran
-                            "begin" but not yet commit or abort) */
+    int in_client_trans; /* clnt is in a client transaction (ie. client ran
+                            "begin" but not yet commit or rollback */
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
 
@@ -1052,9 +1062,10 @@ void osql_log_time_done(struct sqlclntstate *clnt);
 int dispatch_sql_query(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                     int sendresponse);
+                     enum trans_clntcomm sideeffects);
 int handle_sql_commitrollback(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt, int sendresponse);
+                              struct sqlclntstate *clnt,
+                              enum trans_clntcomm sideeffects);
 
 int replicant_can_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);

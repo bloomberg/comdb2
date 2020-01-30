@@ -1082,7 +1082,7 @@ retry:
                     osql->xerr.errval == 999) {
                     if (bdb_attr_get(thedb->bdb_attr,
                                      BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-                        !clnt->in_client_trans && osql->running_ddl) {
+                        !in_client_trans(clnt) && osql->running_ddl) {
                         clnt->osql.xerr.errval = ERR_SC;
                         errstat_cat_str(&(clnt->osql.xerr),
                                         "Master node downgrading - new "
@@ -1499,7 +1499,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     extern int gbl_always_send_cnonce;
     int send_cnonce = gbl_always_send_cnonce ? 1 : has_high_availability(clnt);
     if (osql->rqid == OSQL_RQID_USE_UUID && send_cnonce &&
-        get_cnonce(clnt, &snap_info) == 0 && !clnt->trans_has_sp) {
+        get_cnonce(clnt, &snap_info) == 0 && !clnt->dbtran.trans_has_sp) {
 
         /* pass to master the state of verify retry.
          * if verify retry is on and error is retryable, don't write to
@@ -1836,7 +1836,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     }
 
     if (!bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) ||
-        clnt->in_client_trans) {
+        in_client_trans(clnt)) {
         sc->rqid = osql->rqid;
         comdb2uuidcpy(sc->uuid, osql->uuid);
     }
