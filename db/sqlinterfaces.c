@@ -1925,9 +1925,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
         }
         /* if this is still an error, but not verify, pass it back to client */
         else if (rc != CDB2ERR_VERIFY_ERROR) {
-            reqlog_logf(thd->logger, REQL_QUERY, "\"%s\" SOCKSL retried done "
-                                                 "(non verify error rc=%d) "
-                                                 "sendresp=%d\n",
+            reqlog_logf(thd->logger, REQL_QUERY,
+                        "\"%s\" SOCKSL retried done "
+                        "(non verify error rc=%d) "
+                        "sendresp=%d\n",
                         (clnt->sql) ? clnt->sql : "(???.)", rc, sideeffects);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
         }
