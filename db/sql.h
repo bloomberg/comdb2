@@ -1266,8 +1266,8 @@ struct query_count {
 };
 
 void add_fingerprint_to_rawstats(struct rawnodestats *stats,
-                                 unsigned char *fingerprint, int cost,
-                                 int rows, int timems);
+                                 unsigned char *fingerprint, int cost, int rows,
+                                 int timems);
 const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                                int index);
 #endif /* _SQL_H_ */
