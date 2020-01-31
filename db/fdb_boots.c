@@ -94,7 +94,7 @@ static int _fdb_refresh_location(const char *dbname, fdb_location_t *loc)
 
     /* cache the nodes locally */
     if (loc->nnodes != nnodes) {
-        loc->nodes = (char **)realloc(loc->nodes, sizeof(char*) * nnodes);
+        loc->nodes = (char **)realloc(loc->nodes, sizeof(char *) * nnodes);
         if (!loc->nodes) {
             return FDB_ERR_MALLOC;
         }
@@ -125,7 +125,7 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
 {
     fdb_location_t *loc = *ploc;
     int rc = 0;
-   
+
     Pthread_mutex_lock(mtx);
     if (!loc || refresh) {
         if (!loc) {
@@ -143,7 +143,7 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
             if (loc->nodes) {
                 bzero(loc->nodes, sizeof(loc->nnodes));
                 int i;
-                for(i=0;i<loc->nnodes;i++)
+                for (i = 0; i < loc->nnodes; i++)
                     loc->lcl[i] = false;
             }
             loc->nnodes = 0;
@@ -163,33 +163,30 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
     return rc;
 }
 
-static char* _get_node_initial(int nnodes, char **nodes, bool *lcl, enum fdb_location_op op,
-        int *lcl_nnodes, int *rescpu_nnodes)
+static char *_get_node_initial(int nnodes, char **nodes, bool *lcl,
+                               enum fdb_location_op op, int *lcl_nnodes,
+                               int *rescpu_nnodes)
 {
-    char* lcl_nodes[MY_CLUSTER_MAX];
-    char* rescpu_nodes[MY_CLUSTER_MAX];
-    char* node = NULL;
+    char *lcl_nodes[MY_CLUSTER_MAX];
+    char *rescpu_nodes[MY_CLUSTER_MAX];
+    char *node = NULL;
     int i;
 
     /* routing; ignoring down nodes */
     *lcl_nnodes = 0;
     *rescpu_nnodes = 0;
-    for (i=0; i<nnodes; i++)
-    {
-        if (!machine_is_up(nodes[i]))
-        {
+    for (i = 0; i < nnodes; i++) {
+        if (!machine_is_up(nodes[i])) {
             continue;
         }
 
         /* prefer local node if available */
-        if (nodes[i] == gbl_mynode)
-        {
-            node = nodes[i];  
+        if (nodes[i] == gbl_mynode) {
+            node = nodes[i];
         }
 
         /* prefer same datacenter if available */
-        if (!(op&FDB_LOCATION_IGNORE_LCL) && lcl[i])
-        {
+        if (!(op & FDB_LOCATION_IGNORE_LCL) && lcl[i]) {
             lcl_nodes[(*lcl_nnodes)++] = nodes[i];
         }
 
@@ -197,21 +194,18 @@ static char* _get_node_initial(int nnodes, char **nodes, bool *lcl, enum fdb_loc
         rescpu_nodes[(*rescpu_nnodes)++] = nodes[i];
     }
 
-    if (!node)
-    {
+    if (!node) {
         /* if local node is not part of remote cluster, randomly picked a
            node, prefering the local dc */
-        if (*rescpu_nnodes <=0)
+        if (*rescpu_nnodes <= 0)
             return NULL;
 
         /* random selection out of same datacenter */
-        if (*lcl_nnodes>0)
-        {
+        if (*lcl_nnodes > 0) {
             node = lcl_nodes[random() % *lcl_nnodes];
         }
         /* no same datacenter, get a random one */
-        else
-        {
+        else {
             node = rescpu_nodes[random() % *rescpu_nnodes];
         }
     }
@@ -220,8 +214,9 @@ static char* _get_node_initial(int nnodes, char **nodes, bool *lcl, enum fdb_loc
     return node;
 }
 
-static char* _get_node_next(int nnodes, char **nodes, bool *lcl, char* arg,
-        enum fdb_location_op op, int *lcl_nnodes, int *rescpu_nnodes)
+static char *_get_node_next(int nnodes, char **nodes, bool *lcl, char *arg,
+                            enum fdb_location_op op, int *lcl_nnodes,
+                            int *rescpu_nnodes)
 {
     int arg_idx;
     int prefer_local;
@@ -237,59 +232,48 @@ static char* _get_node_next(int nnodes, char **nodes, bool *lcl, char* arg,
 
     /* look for current node */
     arg_idx = 0; /* if node dissapear, stick with first node */
-    for (i=0; i<nnodes; i++)
-    {
-        if(nodes[i] == arg)
-        {
+    for (i = 0; i < nnodes; i++) {
+        if (nodes[i] == arg) {
             arg_idx = i;
             break;
         }
-    } 
-
+    }
 
     /* try to find a local node following the one I am trying and
        grab any rescpu one that is local, if any */
     prefer_local = !(op & FDB_LOCATION_IGNORE_LCL);
-    do
-    {
+    do {
         i = arg_idx;
         *rescpu_nnodes = 0;
         *lcl_nnodes = 0;
-        do
-        {
-            i = (i+1)%nnodes;
+        do {
+            i = (i + 1) % nnodes;
 
             if (i == arg_idx)
                 break;
 
             /* ignore rtcpu */
-            if (!machine_is_up(nodes[i]))
-            {
+            if (!machine_is_up(nodes[i])) {
                 continue;
             }
 
             (*rescpu_nnodes)++;
-            if(lcl[i])
+            if (lcl[i])
                 (*lcl_nnodes)++;
 
-            if(node == NULL)
-            {
+            if (node == NULL) {
                 /* ignore non locals first run */
-                if (prefer_local && lcl[i])
-                {
+                if (prefer_local && lcl[i]) {
                     node = nodes[i];
-                }
-                else if(!prefer_local)
-                {
+                } else if (!prefer_local) {
                     /* we want ANY node */
                     node = nodes[i];
                 }
             }
-        } while(i != arg_idx);
+        } while (i != arg_idx);
 
         /* found our rescpu local? */
-        if(node)
-        {
+        if (node) {
             break;
         }
 
@@ -300,12 +284,10 @@ static char* _get_node_next(int nnodes, char **nodes, bool *lcl, char* arg,
 
         /* try to look into other datacenters */
         prefer_local = 0;
-    }
-    while(1);
+    } while (1);
 
     return node;
 }
-
 
 /**
  * Routing algo
@@ -350,7 +332,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
     assert(loc != NULL);
 
     if (op & FDB_LOCATION_REFRESH) {
-retry:
+    retry:
         rc = fdb_locate(loc->dbname, loc->class, 1, ploc, mtx);
         if (rc) {
             goto done;
@@ -367,7 +349,7 @@ retry:
     my_nodes = realloc(my_nodes, loc->nnodes * sizeof(loc->nodes[0]));
     my_lcl = realloc(my_lcl, loc->nnodes * sizeof(loc->lcl[0]));
     memcpy(my_nodes, loc->nodes, my_nnodes * sizeof(loc->nodes[0]));
-    memcpy(my_lcl, loc->lcl, my_nnodes *sizeof(loc->lcl[0]));
+    memcpy(my_lcl, loc->lcl, my_nnodes * sizeof(loc->lcl[0]));
     if (my_nnodes == 0) {
         Pthread_mutex_unlock(mtx);
         goto retry;
@@ -375,15 +357,15 @@ retry:
     Pthread_mutex_unlock(mtx);
 
     switch (masked_op) {
-        case FDB_LOCATION_INITIAL:
-            host = _get_node_initial(my_nnodes, my_nodes, my_lcl, op, &lcl_nnodes, 
-                    &rescpu_nnodes);
-            break;
+    case FDB_LOCATION_INITIAL:
+        host = _get_node_initial(my_nnodes, my_nodes, my_lcl, op, &lcl_nnodes,
+                                 &rescpu_nnodes);
+        break;
 
-        case FDB_LOCATION_NEXT:
-            host = _get_node_next(my_nnodes, my_nodes, my_lcl, arg, op, &lcl_nnodes,
-                    &rescpu_nnodes);
-            break;
+    case FDB_LOCATION_NEXT:
+        host = _get_node_next(my_nnodes, my_nodes, my_lcl, arg, op, &lcl_nnodes,
+                              &rescpu_nnodes);
+        break;
     }
 
     if (host == NULL) {
@@ -487,10 +469,9 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
                 assert(cdb2_column_type(db, 1) == CDB2_CSTRING);
                 if (strncasecmp(cdb2_column_value(db, 1), "ORG", 3) == 0) {
                     room[*nnodes] = 6;
-                } 
-                else if (strncasecmp(cdb2_column_value(db, 1), "NJ", 2) == 0)
-                {
-                    room [*nnodes] = 2;
+                } else if (strncasecmp(cdb2_column_value(db, 1), "NJ", 2) ==
+                           0) {
+                    room[*nnodes] = 2;
                 } else {
                     room[*nnodes] = 1;
                 }
