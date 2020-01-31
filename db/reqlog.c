@@ -2128,7 +2128,7 @@ static LISTC_T(struct nodestats) clntlru;
 pthread_rwlock_t clientstats_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t clntlru_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-int gbl_max_clientstats_cache = 0;
+int gbl_max_clientstats_cache = 10000;
 
 void init_clientstats_table()
 {
