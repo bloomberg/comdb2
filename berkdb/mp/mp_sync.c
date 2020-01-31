@@ -651,8 +651,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 			i = 0;
 			++pass;
 			sgio = 0;
-			if (!gbl_ref_sync_wait_txnlist)
-				(void)__os_sleep(dbenv, 1, 0);
+			(void)__os_sleep(dbenv, 1, 0);
 		}
 		if ((hp = bharray[i].track_hp) == NULL)
 			continue;
