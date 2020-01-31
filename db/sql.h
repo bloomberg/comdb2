@@ -1104,6 +1104,7 @@ struct connection_info {
     cdb2_client_datetime_t last_reset_time;
     char *state;
     char *sql;
+    char *fingerprint;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
