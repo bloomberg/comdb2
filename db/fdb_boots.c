@@ -141,7 +141,7 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
         } else if (loc && refresh) {
             /* free location */
             if (loc->nodes) {
-                bzero(loc->nodes, sizeof(loc->nnodes));
+                bzero(loc->nodes, loc->nnodes*sizeof(loc->nodes[0]));
                 int i;
                 for (i = 0; i < loc->nnodes; i++)
                     loc->lcl[i] = false;
