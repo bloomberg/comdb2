@@ -69,7 +69,7 @@ find_cores() {
     # for all machines in cluster 
     local LCLDBNM=$1
     local LCLDBDIR=$2
-    local COREAGE=60
+    local COREAGE=${FINDCOREAGE:-60}
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'

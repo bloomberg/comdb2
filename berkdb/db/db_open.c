@@ -37,6 +37,10 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
 
 #include <string.h>
 
+#if defined (STACK_AT_DB_OPEN_CLOSE)
+#include <tohex.h>
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 /*
  * __db_open --
  *	DB->open method.
@@ -58,6 +62,7 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
  * PUBLIC: int __db_open __P((DB *, DB_TXN *,
  * PUBLIC:     const char *, const char *, DBTYPE, u_int32_t, int, db_pgno_t));
  */
+#include "cheapstack.h"
 int
 __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	DB *dbp;
@@ -238,6 +243,12 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	} else
 		dbp->offset_bias = 1;
 
+#if defined (STACK_AT_DB_OPEN_CLOSE)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld opened %s %s at %p txn=0x%x:",
+			pthread_self(), fname, fid_str, dbp, txn ? txn->txnid : 0);
+#endif
 	// printf(">>>> %s pagesize %d bias %d\n", fname, dbp->pgsize, dbp->offset_bias);
 
 	/*
@@ -302,6 +313,22 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 DB_TEST_RECOVERY_LABEL
 err:
 	return (ret);
+}
+
+/*
+ * __db_get_fileid --
+ *  Accessor for fileid
+ *
+ * PUBLIC: int __db_get_fileid __P((DB *, u_int8_t *));
+ */
+
+int
+__db_get_fileid(dbp, fileid)
+	DB *dbp;
+	u_int8_t *fileid;
+{
+	memcpy(fileid, dbp->fileid, DB_FILE_ID_LEN);
+	return 0;
 }
 
 /*
