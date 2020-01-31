@@ -551,6 +551,7 @@ struct sqlclntstate {
      * the i/o thread's buf */
     char *sql;
     char *zNormSql;
+    char aFingerprint[FINGERPRINTSZ*2+1];
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -1039,6 +1040,7 @@ struct connection_info {
     cdb2_client_datetime_t last_reset_time;
     char *state;
     char *sql;
+    char *fingerprint;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
@@ -1219,9 +1221,9 @@ int get_query_stats(struct query_stats *stats);
 int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *,
-                     const char *, int64_t, int64_t, int64_t,
-                     struct reqlogger *, unsigned char *fingerprint_out);
+void add_fingerprint(sqlite3_stmt *, const char *, const char *, int64_t,
+                     int64_t, int64_t, struct reqlogger *logger,
+                     unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
