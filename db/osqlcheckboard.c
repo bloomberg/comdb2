@@ -85,7 +85,8 @@ int osql_checkboard_init(void)
         abort();
     }
 
-    tmp->rqs = hash_init(sizeof(unsigned long long));
+    tmp->rqs = hash_init_o(offsetof(osql_sqlthr_t, rqid),
+                           sizeof(unsigned long long));
     if (!tmp->rqs) {
         free(tmp);
         logmsg(LOGMSG_ERROR, "%s: error init hash\n", __func__);
