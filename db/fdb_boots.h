@@ -35,7 +35,7 @@ typedef struct fdb_affinity fdb_affitnity_t;
  * NOTE: fdb is dbcon_mtx locked here
  */
 int fdb_locate(const char *dbname, enum mach_class class, int refresh,
-               fdb_location_t **ploc);
+               fdb_location_t **ploc, pthread_mutex_t *mtx);
 
 /**
  * Routing algo
@@ -51,7 +51,7 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
  *
  */
 char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
-                      int *avail_nodes, int *p_lcl_nodes);
+                      int *avail_nodes, int *p_lcl_nodes, pthread_mutex_t *mtx);
 
 /**
  * Get the number of available/rescpu nodes

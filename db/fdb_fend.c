@@ -1302,9 +1302,7 @@ retry_fdb_creation:
     }
 
     if (!local) {
-        Pthread_mutex_lock(&fdb->dbcon_mtx);
-        rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
-        Pthread_mutex_unlock(&fdb->dbcon_mtx);
+        rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc, &fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
             switch (rc) {
             case FDB_ERR_CLASS_UNKNOWN:
@@ -2168,7 +2166,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         op = FDB_LOCATION_INITIAL;
 
     refresh:
-        host = fdb_select_node(&fdb->loc, op, 0, &avail_nodes, &lcl_nodes);
+        host = fdb_select_node(&fdb->loc, op, 0, &avail_nodes, &lcl_nodes,
+                               &fdb->dbcon_mtx);
 
         if (avail_nodes <= 0) {
             clnt->fdb_state.preserve_err = 1;
@@ -2182,7 +2181,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     } else if (was_bad) {
         /* we failed earlier on this one, we need the next node */
         op = FDB_LOCATION_NEXT;
-        host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
+        host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes,
+                               &fdb->dbcon_mtx);
     }
     if (host == NULL) {
         clnt->fdb_state.preserve_err = 1;
@@ -2269,21 +2269,10 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         /* FAIL on current node, NEED to get the next node */
         if (!tried_nodes && op == FDB_LOCATION_REFRESH) {
             op = FDB_LOCATION_INITIAL;
-            host =
-                fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
+            host = fdb_select_node(&fdb->loc, op, host, &avail_nodes,
+                                   &lcl_nodes, &fdb->dbcon_mtx);
             continue; /* try again with the selected node, can be the same */
         }
-#if 0
-
-      host = fdb_select_node(&fdb->loc, op, host, NULL, NULL);
-      if (host == NULL)
-      {
-         /* we need to retrieve the location information if
-            the first try was using the cached node */
-         host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
-         continue;   /* try again with the selected node, can be the same */
-      }
-#endif
         else {
             /* either this is the first node, and
                   have location info (avail_nodes, lcl_nodes),
@@ -2306,7 +2295,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 op |= FDB_LOCATION_IGNORE_LCL;
             }
 
-            host = fdb_select_node(&fdb->loc, op, host, NULL, NULL);
+            host = fdb_select_node(&fdb->loc, op, host, NULL, NULL,
+                                   &fdb->dbcon_mtx);
             if (host == NULL) {
                 break;
             }
