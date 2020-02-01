@@ -1033,20 +1033,10 @@ void set_odh_options_tran(struct dbtable *db, tran_type *tran)
     int blob_compr = 0;
     int datacopy_odh = 0;
 
-    int odh = 0;
-    get_db_odh_tran(db, &odh, tran);
-    db->odh = odh;
-
-    int instant_schema_change = 0;
-    get_db_instant_schema_change_tran(db, &instant_schema_change, tran);
-    db->instant_schema_change = instant_schema_change;
-
-    int inplace_updates = 0;
-    get_db_inplace_updates_tran(db, &inplace_updates, tran);
-    db->inplace_updates = inplace_updates;
-
+    get_db_odh_tran(db, &db->odh, tran);
+    get_db_instant_schema_change_tran(db, &db->instant_schema_change, tran);
     get_db_datacopy_odh_tran(db, &datacopy_odh, tran);
-
+    get_db_inplace_updates_tran(db, &db->inplace_updates, tran);
     get_db_compress_tran(db, &compr, tran);
     get_db_compress_blobs_tran(db, &blob_compr, tran);
     db->schema_version = get_csc2_version_tran(db->tablename, tran);

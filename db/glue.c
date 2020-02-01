@@ -3830,10 +3830,7 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
 static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
                            int *datacopy_odh, tran_type *tran)
 {
-    int odh = 0;
-    int rc = get_db_odh_tran(d, &odh, tran);
-    d->odh = odh;
-    if (rc != 0 || d->odh == 0) {
+    if (get_db_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
         // couldn't find odh in llmeta or odh off
         *compr = 0;
         *compr_blobs = 0;
@@ -3843,14 +3840,11 @@ static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
         *datacopy_odh = 0;
         return 0;
     }
+
     get_db_compress_tran(d, compr, tran);
     get_db_compress_blobs_tran(d, compr_blobs, tran);
-    int instant_schema_change = 0;
-    get_db_instant_schema_change_tran(d, &instant_schema_change, tran);
-    d->instant_schema_change = instant_schema_change;
-    int inplace_updates = 0;
-    get_db_inplace_updates_tran(d, &inplace_updates, tran);
-    d->inplace_updates = inplace_updates;
+    get_db_instant_schema_change_tran(d, &d->instant_schema_change, tran);
+    get_db_inplace_updates_tran(d, &d->inplace_updates, tran);
     get_db_datacopy_odh_tran(d, datacopy_odh, tran);
 
     return 0;
