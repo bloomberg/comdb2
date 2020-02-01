@@ -23,9 +23,13 @@
 #include <inttypes.h>
 #include <flibc.h>
 #include <strings.h>
-#include <paulbitchk.h>
+//#include <paulbitchk.h>
 #include <types.h>
 #include <util.h>
+
+int paulbitchk(int a, int b) {
+  return 0;
+}
 
 #ifdef SQLITE_DEBUG
 /*
