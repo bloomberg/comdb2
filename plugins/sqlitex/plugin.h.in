@@ -1,0 +1,15 @@
+struct comdb2_plugin @PLUGIN_SYM@[] =
+{
+    {
+         "sqlitex",                    /* Plugin identifier */
+         "sqlite 3.8.9",               /* Plugin description */
+         COMDB2_PLUGIN_QUERY_PREPARER, /* Plugin type */
+         1,                            /* Plugin version */
+         1,                            /* Plugin interface version */
+         0,                            /* Plugin flags */
+         sqlitex_init,                 /* Initialization function */
+         sqlitex_destroy,              /* Destroy function */
+         &sqlitex_plugin               /* Plugin-specific data */
+   },
+   {0, 0, 0, 0, 0, 0, 0, 0, 0}
+};

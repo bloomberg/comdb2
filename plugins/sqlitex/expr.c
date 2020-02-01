@@ -1,0 +1,5188 @@
+/*
+** 2001 September 15
+**
+** The author disclaims copyright to this source code.  In place of
+** a legal notice, here is a blessing:
+**
+**    May you do good and not evil.
+**    May you find forgiveness for yourself and forgive others.
+**    May you share freely, never taking more than you give.
+**
+*************************************************************************
+** This file contains routines used for analyzing expressions and
+** for generating VDBE code that evaluates expressions in SQLite.
+*/
+#include <alloca.h>
+#include "sqliteInt.h"
+
+/*
+** Return the 'affinity' of the expression pExpr if any.
+**
+** If pExpr is a column, a reference to a column via an 'AS' alias,
+** or a sub-select with a column as the return value, then the 
+** affinity of that column is returned. Otherwise, 0x00 is returned,
+** indicating no affinity for the expression.
+**
+** i.e. the WHERE clause expressions in the following statements all
+** have an affinity:
+**
+** CREATE TABLE t1(a);
+** SELECT * FROM t1 WHERE a;
+** SELECT a AS b FROM t1 WHERE b;
+** SELECT * FROM t1 WHERE (select a from t1);
+*/
+char sqlitexExprAffinity(Expr *pExpr){
+  int op;
+  pExpr = sqlitexExprSkipCollate(pExpr);
+  /* COMDB2 MODIFICATION: breaks affinity
+  if( pExpr->flags & EP_Generic ) return 0;
+  */
+  op = pExpr->op;
+  /* COMDB2 MODIFICATION */
+  if( op==TK_SELECT || op==TK_SELECTV ){
+    assert( pExpr->flags&EP_xIsSelect );
+    return sqlitexExprAffinity(pExpr->x.pSelect->pEList->a[0].pExpr);
+  }
+#ifndef SQLITE_OMIT_CAST
+  if( op==TK_CAST ){
+    assert( !ExprHasProperty(pExpr, EP_IntValue) );
+    return sqlitexAffinityType(pExpr->u.zToken, 0);
+  }
+#endif
+  if( (op==TK_AGG_COLUMN || op==TK_COLUMN || op==TK_REGISTER) 
+   && pExpr->pTab!=0
+  ){
+    /* op==TK_REGISTER && pExpr->pTab!=0 happens when pExpr was originally
+    ** a TK_COLUMN but was previously evaluated and cached in a register */
+    int j = pExpr->iColumn;
+    if( j<0 ) return SQLITE_AFF_INTEGER;
+    assert( pExpr->pTab && j<pExpr->pTab->nCol );
+    return pExpr->pTab->aCol[j].affinity;
+  }
+  return pExpr->affinity;
+}
+
+/*
+** Set the collating sequence for expression pExpr to be the collating
+** sequence named by pToken.   Return a pointer to a new Expr node that
+** implements the COLLATE operator.
+**
+** If a memory allocation error occurs, that fact is recorded in pParse->db
+** and the pExpr parameter is returned unchanged.
+*/
+Expr *sqlitexExprAddCollateToken(
+  Parse *pParse,           /* Parsing context */
+  Expr *pExpr,             /* Add the "COLLATE" clause to this expression */
+  const Token *pCollName,  /* Name of collating sequence */
+  int dequote              /* True to dequote pCollName */
+){
+  if( pCollName->n>0 ){
+    Expr *pNew = sqlitexExprAlloc(pParse->db, TK_COLLATE, pCollName, dequote);
+    if( pNew ){
+      pNew->pLeft = pExpr;
+      pNew->flags |= EP_Collate|EP_Skip;
+      pExpr = pNew;
+    }
+  }
+  return pExpr;
+}
+Expr *sqlitexExprAddCollateString(Parse *pParse, Expr *pExpr, const char *zC){
+  Token s;
+  assert( zC!=0 );
+  s.z = zC;
+  s.n = sqlitexStrlen30(s.z);
+  return sqlitexExprAddCollateToken(pParse, pExpr, &s, 0);
+}
+
+/*
+** Skip over any TK_COLLATE or TK_AS operators and any unlikely()
+** or likelihood() function at the root of an expression.
+*/
+Expr *sqlitexExprSkipCollate(Expr *pExpr){
+  while( pExpr && ExprHasProperty(pExpr, EP_Skip) ){
+    if( ExprHasProperty(pExpr, EP_Unlikely) ){
+      assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
+      assert( pExpr->x.pList->nExpr>0 );
+      assert( pExpr->op==TK_FUNCTION );
+      pExpr = pExpr->x.pList->a[0].pExpr;
+    }else{
+      assert( pExpr->op==TK_COLLATE || pExpr->op==TK_AS );
+      pExpr = pExpr->pLeft;
+    }
+  }   
+  return pExpr;
+}
+
+/*
+** Return the collation sequence for the expression pExpr. If
+** there is no defined collating sequence, return NULL.
+**
+** The collating sequence might be determined by a COLLATE operator
+** or by the presence of a column with a defined collating sequence.
+** COLLATE operators take first precedence.  Left operands take
+** precedence over right operands.
+*/
+CollSeq *sqlitexExprCollSeq(Parse *pParse, Expr *pExpr){
+  sqlitex *db = pParse->db;
+  CollSeq *pColl = 0;
+  Expr *p = pExpr;
+  while( p ){
+    int op = p->op;
+    if( p->flags & EP_Generic ) break;
+    if( op==TK_CAST || op==TK_UPLUS ){
+      p = p->pLeft;
+      continue;
+    }
+    if( op==TK_COLLATE || (op==TK_REGISTER && p->op2==TK_COLLATE) ){
+      pColl = sqlitexGetCollSeq(pParse, ENC(db), 0, p->u.zToken);
+      break;
+    }
+    if( (op==TK_AGG_COLUMN || op==TK_COLUMN
+          || op==TK_REGISTER || op==TK_TRIGGER)
+     && p->pTab!=0
+    ){
+      /* op==TK_REGISTER && p->pTab!=0 happens when pExpr was originally
+      ** a TK_COLUMN but was previously evaluated and cached in a register */
+      int j = p->iColumn;
+      if( j>=0 ){
+        const char *zColl = p->pTab->aCol[j].zColl;
+        pColl = sqlitexFindCollSeq(db, ENC(db), zColl, 0);
+      }
+      break;
+    }
+    if( p->flags & EP_Collate ){
+      if( p->pLeft && (p->pLeft->flags & EP_Collate)!=0 ){
+        p = p->pLeft;
+      }else{
+        Expr *pNext  = p->pRight;
+        /* The Expr.x union is never used at the same time as Expr.pRight */
+        assert( p->x.pList==0 || p->pRight==0 );
+        /* p->flags holds EP_Collate and p->pLeft->flags does not.  And
+        ** p->x.pSelect cannot.  So if p->x.pLeft exists, it must hold at
+        ** least one EP_Collate. Thus the following two ALWAYS. */
+        if( p->x.pList!=0 && ALWAYS(!ExprHasProperty(p, EP_xIsSelect)) ){
+          int i;
+          for(i=0; ALWAYS(i<p->x.pList->nExpr); i++){
+            if( ExprHasProperty(p->x.pList->a[i].pExpr, EP_Collate) ){
+              pNext = p->x.pList->a[i].pExpr;
+              break;
+            }
+          }
+        }
+        p = pNext;
+      }
+    }else{
+      break;
+    }
+  }
+  if( sqlitexCheckCollSeq(pParse, pColl) ){ 
+    pColl = 0;
+  }
+  return pColl;
+}
+
+/*
+** pExpr is an operand of a comparison operator.  aff2 is the
+** type affinity of the other operand.  This routine returns the
+** type affinity that should be used for the comparison operator.
+*/
+char sqlitexCompareAffinity(Expr *pExpr, char aff2){
+  char aff1 = sqlitexExprAffinity(pExpr);
+  if( aff1 && aff2 ){
+    /* Both sides of the comparison are columns. If one has numeric
+    ** affinity, use that. Otherwise use no affinity.
+    */
+    if( sqlitexIsNumericAffinity(aff1) || sqlitexIsNumericAffinity(aff2) ){
+      return SQLITE_AFF_NUMERIC;
+    }else{
+      return SQLITE_AFF_NONE;
+    }
+  }else if( !aff1 && !aff2 ){
+    /* Neither side of the comparison is a column.  Compare the
+    ** results directly.
+    */
+    return SQLITE_AFF_NONE;
+  }else{
+    /* One side is a column, the other is not. Use the columns affinity. */
+    assert( aff1==0 || aff2==0 );
+    return (aff1 + aff2);
+  }
+}
+
+/*
+** pExpr is a comparison operator.  Return the type affinity that should
+** be applied to both operands prior to doing the comparison.
+*/
+static char comparisonAffinity(Expr *pExpr){
+  char aff;
+  assert( pExpr->op==TK_EQ || pExpr->op==TK_IN || pExpr->op==TK_LT ||
+          pExpr->op==TK_GT || pExpr->op==TK_GE || pExpr->op==TK_LE ||
+          pExpr->op==TK_NE || pExpr->op==TK_IS || pExpr->op==TK_ISNOT );
+  assert( pExpr->pLeft );
+  aff = sqlitexExprAffinity(pExpr->pLeft);
+  if( pExpr->pRight ){
+    aff = sqlitexCompareAffinity(pExpr->pRight, aff);
+  }else if( ExprHasProperty(pExpr, EP_xIsSelect) ){
+    aff = sqlitexCompareAffinity(pExpr->x.pSelect->pEList->a[0].pExpr, aff);
+  }else if( !aff ){
+    aff = SQLITE_AFF_NONE;
+  }
+  return aff;
+}
+
+/*
+** pExpr is a comparison expression, eg. '=', '<', IN(...) etc.
+** idx_affinity is the affinity of an indexed column. Return true
+** if the index with affinity idx_affinity may be used to implement
+** the comparison in pExpr.
+*/
+int sqlitexIndexAffinityOk(Expr *pExpr, char idx_affinity){
+  char aff = comparisonAffinity(pExpr);
+  switch( aff ){
+    case SQLITE_AFF_NONE:
+      return 1;
+    case SQLITE_AFF_TEXT:
+      return idx_affinity==SQLITE_AFF_TEXT;
+    default:
+      /* COMDB2 MODIFICATION */
+      if (aff < SQLITE_AFF_NUMERIC)
+          return aff == idx_affinity;
+      else
+          return sqlitexIsNumericAffinity(idx_affinity);
+  }
+}
+
+/*
+** Return the P5 value that should be used for a binary comparison
+** opcode (OP_Eq, OP_Ge etc.) used to compare pExpr1 and pExpr2.
+*/
+static u8 binaryCompareP5(Expr *pExpr1, Expr *pExpr2, int jumpIfNull){
+  u8 aff = (char)sqlitexExprAffinity(pExpr2);
+  aff = (u8)sqlitexCompareAffinity(pExpr1, aff) | (u8)jumpIfNull;
+  return aff;
+}
+
+/*
+** Return a pointer to the collation sequence that should be used by
+** a binary comparison operator comparing pLeft and pRight.
+**
+** If the left hand expression has a collating sequence type, then it is
+** used. Otherwise the collation sequence for the right hand expression
+** is used, or the default (BINARY) if neither expression has a collating
+** type.
+**
+** Argument pRight (but not pLeft) may be a null pointer. In this case,
+** it is not considered.
+*/
+CollSeq *sqlitexBinaryCompareCollSeq(
+  Parse *pParse, 
+  Expr *pLeft, 
+  Expr *pRight
+){
+  CollSeq *pColl;
+  assert( pLeft );
+  if( pLeft->flags & EP_Collate ){
+    pColl = sqlitexExprCollSeq(pParse, pLeft);
+  }else if( pRight && (pRight->flags & EP_Collate)!=0 ){
+    pColl = sqlitexExprCollSeq(pParse, pRight);
+  }else{
+    pColl = sqlitexExprCollSeq(pParse, pLeft);
+    if( !pColl ){
+      pColl = sqlitexExprCollSeq(pParse, pRight);
+    }
+  }
+  return pColl;
+}
+
+/*
+** Generate code for a comparison operator.
+*/
+static int codeCompare(
+  Parse *pParse,    /* The parsing (and code generating) context */
+  Expr *pLeft,      /* The left operand */
+  Expr *pRight,     /* The right operand */
+  int opcode,       /* The comparison opcode */
+  int in1, int in2, /* Register holding operands */
+  int dest,         /* Jump here if true.  */
+  int jumpIfNull    /* If true, jump if either operand is NULL */
+){
+  int p5;
+  int addr;
+  CollSeq *p4;
+
+  p4 = sqlitexBinaryCompareCollSeq(pParse, pLeft, pRight);
+  p5 = binaryCompareP5(pLeft, pRight, jumpIfNull);
+  addr = sqlitexVdbeAddOp4(pParse->pVdbe, opcode, in2, dest, in1,
+                           (void*)p4, P4_COLLSEQ);
+  sqlitexVdbeChangeP5(pParse->pVdbe, (u8)p5);
+  return addr;
+}
+
+#if SQLITE_MAX_EXPR_DEPTH>0
+/*
+** Check that argument nHeight is less than or equal to the maximum
+** expression depth allowed. If it is not, leave an error message in
+** pParse.
+*/
+int sqlitexExprCheckHeight(Parse *pParse, int nHeight){
+  int rc = SQLITE_OK;
+  int mxHeight = pParse->db->aLimit[SQLITE_LIMIT_EXPR_DEPTH];
+  if( nHeight>mxHeight ){
+    sqlitexErrorMsg(pParse, 
+       "Expression tree is too large (maximum depth %d)", mxHeight
+    );
+    rc = SQLITE_ERROR;
+  }
+  return rc;
+}
+
+/* The following three functions, heightOfExpr(), heightOfExprList()
+** and heightOfSelect(), are used to determine the maximum height
+** of any expression tree referenced by the structure passed as the
+** first argument.
+**
+** If this maximum height is greater than the current value pointed
+** to by pnHeight, the second parameter, then set *pnHeight to that
+** value.
+*/
+static void heightOfExpr(Expr *p, int *pnHeight){
+  if( p ){
+    if( p->nHeight>*pnHeight ){
+      *pnHeight = p->nHeight;
+    }
+  }
+}
+static void heightOfExprList(ExprList *p, int *pnHeight){
+  if( p ){
+    int i;
+    for(i=0; i<p->nExpr; i++){
+      heightOfExpr(p->a[i].pExpr, pnHeight);
+    }
+  }
+}
+static void heightOfSelect(Select *p, int *pnHeight){
+  if( p ){
+    heightOfExpr(p->pWhere, pnHeight);
+    heightOfExpr(p->pHaving, pnHeight);
+    heightOfExpr(p->pLimit, pnHeight);
+    heightOfExpr(p->pOffset, pnHeight);
+    heightOfExprList(p->pEList, pnHeight);
+    heightOfExprList(p->pGroupBy, pnHeight);
+    heightOfExprList(p->pOrderBy, pnHeight);
+    heightOfSelect(p->pPrior, pnHeight);
+  }
+}
+
+/*
+** Set the Expr.nHeight variable in the structure passed as an 
+** argument. An expression with no children, Expr.pList or 
+** Expr.pSelect member has a height of 1. Any other expression
+** has a height equal to the maximum height of any other 
+** referenced Expr plus one.
+**
+** Also propagate EP_Propagate flags up from Expr.x.pList to Expr.flags,
+** if appropriate.
+*/
+static void exprSetHeight(Expr *p){
+  int nHeight = 0;
+  heightOfExpr(p->pLeft, &nHeight);
+  heightOfExpr(p->pRight, &nHeight);
+  if( ExprHasProperty(p, EP_xIsSelect) ){
+    heightOfSelect(p->x.pSelect, &nHeight);
+  }else if( p->x.pList ){
+    heightOfExprList(p->x.pList, &nHeight);
+    p->flags |= EP_Propagate & sqlitexExprListFlags(p->x.pList);
+  }
+  p->nHeight = nHeight + 1;
+}
+
+/*
+** Set the Expr.nHeight variable using the exprSetHeight() function. If
+** the height is greater than the maximum allowed expression depth,
+** leave an error in pParse.
+**
+** Also propagate all EP_Propagate flags from the Expr.x.pList into
+** Expr.flags. 
+*/
+void sqlitexExprSetHeightAndFlags(Parse *pParse, Expr *p){
+  if( pParse->nErr ) return;
+  exprSetHeight(p);
+  sqlitexExprCheckHeight(pParse, p->nHeight);
+}
+
+/*
+** Return the maximum height of any expression tree referenced
+** by the select statement passed as an argument.
+*/
+int sqlitexSelectExprHeight(Select *p){
+  int nHeight = 0;
+  heightOfSelect(p, &nHeight);
+  return nHeight;
+}
+#else /* ABOVE:  Height enforcement enabled.  BELOW: Height enforcement off */
+/*
+** Propagate all EP_Propagate flags from the Expr.x.pList into
+** Expr.flags. 
+*/
+void sqlitexExprSetHeightAndFlags(Parse *pParse, Expr *p){
+  if( p && p->x.pList && !ExprHasProperty(p, EP_xIsSelect) ){
+    p->flags |= EP_Propagate & sqlitexExprListFlags(p->x.pList);
+  }
+}
+#define exprSetHeight(y)
+#endif /* SQLITE_MAX_EXPR_DEPTH>0 */
+
+/*
+** This routine is the core allocator for Expr nodes.
+**
+** Construct a new expression node and return a pointer to it.  Memory
+** for this node and for the pToken argument is a single allocation
+** obtained from sqlitexDbMalloc().  The calling function
+** is responsible for making sure the node eventually gets freed.
+**
+** If dequote is true, then the token (if it exists) is dequoted.
+** If dequote is false, no dequoting is performance.  The deQuote
+** parameter is ignored if pToken is NULL or if the token does not
+** appear to be quoted.  If the quotes were of the form "..." (double-quotes)
+** then the EP_DblQuoted flag is set on the expression node.
+**
+** Special case:  If op==TK_INTEGER and pToken points to a string that
+** can be translated into a 32-bit integer, then the token is not
+** stored in u.zToken.  Instead, the integer values is written
+** into u.iValue and the EP_IntValue flag is set.  No extra storage
+** is allocated to hold the integer text and the dequote flag is ignored.
+*/
+Expr *sqlitexExprAlloc(
+  sqlitex *db,            /* Handle for sqlitexDbMallocZero() (may be null) */
+  int op,                 /* Expression opcode */
+  const Token *pToken,    /* Token argument.  Might be NULL */
+  int dequote             /* True to dequote */
+){
+  Expr *pNew;
+  int nExtra = 0;
+  int iValue = 0;
+
+  if( pToken ){
+    if( op!=TK_INTEGER || pToken->z==0
+          || sqlitexGetInt32(pToken->z, &iValue)==0 ){
+      nExtra = pToken->n+1;
+      assert( iValue>=0 );
+    }
+  }
+  pNew = sqlitexDbMallocZero(db, sizeof(Expr)+nExtra);
+  if( pNew ){
+    pNew->op = (u8)op;
+    pNew->iAgg = -1;
+    if( pToken ){
+      if( nExtra==0 ){
+        pNew->flags |= EP_IntValue;
+        pNew->u.iValue = iValue;
+      }else{
+        int c;
+        pNew->u.zToken = (char*)&pNew[1];
+        assert( pToken->z!=0 || pToken->n==0 );
+        if( pToken->n ) memcpy(pNew->u.zToken, pToken->z, pToken->n);
+        pNew->u.zToken[pToken->n] = 0;
+        if( dequote && nExtra>=3 
+             && ((c = pToken->z[0])=='\'' || c=='"' || c=='[' || c=='`') ){
+          sqlitexDequote(pNew->u.zToken);
+          if( c=='"' ) pNew->flags |= EP_DblQuoted;
+        }
+      }
+    }
+#if SQLITE_MAX_EXPR_DEPTH>0
+    pNew->nHeight = 1;
+#endif  
+  }
+  pNew->visited = 0;
+  return pNew;
+}
+
+/*
+** Allocate a new expression node from a zero-terminated token that has
+** already been dequoted.
+*/
+Expr *sqlitexExpr(
+  sqlitex *db,            /* Handle for sqlitexDbMallocZero() (may be null) */
+  int op,                 /* Expression opcode */
+  const char *zToken      /* Token argument.  Might be NULL */
+){
+  Token x;
+  x.z = zToken;
+  x.n = zToken ? sqlitexStrlen30(zToken) : 0;
+  return sqlitexExprAlloc(db, op, &x, 0);
+}
+
+/*
+** Attach subtrees pLeft and pRight to the Expr node pRoot.
+**
+** If pRoot==NULL that means that a memory allocation error has occurred.
+** In that case, delete the subtrees pLeft and pRight.
+*/
+void sqlitexExprAttachSubtrees(
+  sqlitex *db,
+  Expr *pRoot,
+  Expr *pLeft,
+  Expr *pRight
+){
+  if( pRoot==0 ){
+    assert( db->mallocFailed );
+    sqlitexExprDelete(db, pLeft);
+    sqlitexExprDelete(db, pRight);
+  }else{
+    if( pRight ){
+      pRoot->pRight = pRight;
+      pRoot->flags |= EP_Propagate & pRight->flags;
+    }
+    if( pLeft ){
+      pRoot->pLeft = pLeft;
+      pRoot->flags |= EP_Propagate & pLeft->flags;
+    }
+    exprSetHeight(pRoot);
+  }
+}
+
+/*
+** Allocate an Expr node which joins as many as two subtrees.
+**
+** One or both of the subtrees can be NULL.  Return a pointer to the new
+** Expr node.  Or, if an OOM error occurs, set pParse->db->mallocFailed,
+** free the subtrees and return NULL.
+*/
+Expr *sqlitexPExpr(
+  Parse *pParse,          /* Parsing context */
+  int op,                 /* Expression opcode */
+  Expr *pLeft,            /* Left operand */
+  Expr *pRight,           /* Right operand */
+  const Token *pToken     /* Argument token */
+){
+  Expr *p;
+  if( op==TK_AND && pLeft && pRight && pParse->nErr==0 ){
+    /* Take advantage of short-circuit false optimization for AND */
+    p = sqlitexExprAnd(pParse->db, pLeft, pRight);
+  }else{
+    p = sqlitexExprAlloc(pParse->db, op, pToken, 1);
+    sqlitexExprAttachSubtrees(pParse->db, p, pLeft, pRight);
+  }
+  if( p ) {
+    sqlitexExprCheckHeight(pParse, p->nHeight);
+  }
+  return p;
+}
+
+/*
+** If the expression is always either TRUE or FALSE (respectively),
+** then return 1.  If one cannot determine the truth value of the
+** expression at compile-time return 0.
+**
+** This is an optimization.  If is OK to return 0 here even if
+** the expression really is always false or false (a false negative).
+** But it is a bug to return 1 if the expression might have different
+** boolean values in different circumstances (a false positive.)
+**
+** Note that if the expression is part of conditional for a
+** LEFT JOIN, then we cannot determine at compile-time whether or not
+** is it true or false, so always return 0.
+*/
+static int exprAlwaysTrue(Expr *p){
+  int v = 0;
+  if( ExprHasProperty(p, EP_FromJoin) ) return 0;
+  if( !sqlitexExprIsInteger(p, &v) ) return 0;
+  return v!=0;
+}
+static int exprAlwaysFalse(Expr *p){
+  int v = 0;
+  if( ExprHasProperty(p, EP_FromJoin) ) return 0;
+  if( !sqlitexExprIsInteger(p, &v) ) return 0;
+  return v==0;
+}
+
+/*
+** Join two expressions using an AND operator.  If either expression is
+** NULL, then just return the other expression.
+**
+** If one side or the other of the AND is known to be false, then instead
+** of returning an AND expression, just return a constant expression with
+** a value of false.
+*/
+Expr *sqlitexExprAnd(sqlitex *db, Expr *pLeft, Expr *pRight){
+  if( pLeft==0 ){
+    return pRight;
+  }else if( pRight==0 ){
+    return pLeft;
+  }else if( exprAlwaysFalse(pLeft) || exprAlwaysFalse(pRight) ){
+    sqlitexExprDelete(db, pLeft);
+    sqlitexExprDelete(db, pRight);
+    return sqlitexExprAlloc(db, TK_INTEGER, &sqlitexIntTokens[0], 0);
+  }else{
+    Expr *pNew = sqlitexExprAlloc(db, TK_AND, 0, 0);
+    sqlitexExprAttachSubtrees(db, pNew, pLeft, pRight);
+    return pNew;
+  }
+}
+
+/*
+** Construct a new expression node for a function with multiple
+** arguments.
+*/
+Expr *sqlitexExprFunction(Parse *pParse, ExprList *pList, Token *pToken){
+  Expr *pNew;
+  sqlitex *db = pParse->db;
+  assert( pToken );
+  pNew = sqlitexExprAlloc(db, TK_FUNCTION, pToken, 1);
+  if( pNew==0 ){
+    sqlitexExprListDelete(db, pList); /* Avoid memory leak when malloc fails */
+    return 0;
+  }
+  pNew->x.pList = pList;
+  assert( !ExprHasProperty(pNew, EP_xIsSelect) );
+  sqlitexExprSetHeightAndFlags(pParse, pNew);
+  return pNew;
+}
+
+/*
+** Assign a variable number to an expression that encodes a wildcard
+** in the original SQL statement.  
+**
+** Wildcards consisting of a single "?" are assigned the next sequential
+** variable number.
+**
+** Wildcards of the form "?nnn" are assigned the number "nnn".  We make
+** sure "nnn" is not too be to avoid a denial of service attack when
+** the SQL statement comes from an external source.
+**
+** Wildcards of the form ":aaa", "@aaa", or "$aaa" are assigned the same number
+** as the previous instance of the same wildcard.  Or if this is the first
+** instance of the wildcard, the next sequential variable number is
+** assigned.
+*/
+void sqlitexExprAssignVarNumber(Parse *pParse, Expr *pExpr){
+  sqlitex *db = pParse->db;
+  const char *z;
+
+  if( pExpr==0 ) return;
+  assert( !ExprHasProperty(pExpr, EP_IntValue|EP_Reduced|EP_TokenOnly) );
+  z = pExpr->u.zToken;
+  assert( z!=0 );
+  assert( z[0]!=0 );
+  if( z[1]==0 ){
+    /* Wildcard of the form "?".  Assign the next variable number */
+    assert( z[0]=='?' );
+    pExpr->iColumn = (ynVar)(++pParse->nVar);
+  }else{
+    ynVar x = 0;
+    u32 n = sqlitexStrlen30(z);
+    if( z[0]=='?' ){
+      /* Wildcard of the form "?nnn".  Convert "nnn" to an integer and
+      ** use it as the variable number */
+      i64 i;
+      int bOk = 0==sqlitexAtoi64(&z[1], &i, n-1, SQLITE_UTF8);
+      pExpr->iColumn = x = (ynVar)i;
+      testcase( i==0 );
+      testcase( i==1 );
+      testcase( i==db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER]-1 );
+      testcase( i==db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER] );
+      if( bOk==0 || i<1 || i>db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER] ){
+        sqlitexErrorMsg(pParse, "variable number must be between ?1 and ?%d",
+            db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER]);
+        x = 0;
+      }
+      if( i>pParse->nVar ){
+        pParse->nVar = (int)i;
+      }
+    }else{
+      /* Wildcards like ":aaa", "$aaa" or "@aaa".  Reuse the same variable
+      ** number as the prior appearance of the same name, or if the name
+      ** has never appeared before, reuse the same variable number
+      */
+      ynVar i;
+      for(i=0; i<pParse->nzVar; i++){
+        if( pParse->azVar[i] && strcmp(pParse->azVar[i],z)==0 ){
+          pExpr->iColumn = x = (ynVar)i+1;
+          break;
+        }
+      }
+      if( x==0 ) x = pExpr->iColumn = (ynVar)(++pParse->nVar);
+    }
+    if( x>0 ){
+      if( x>pParse->nzVar ){
+        char **a;
+        a = sqlitexDbRealloc(db, pParse->azVar, x*sizeof(a[0]));
+        if( a==0 ) return;  /* Error reported through db->mallocFailed */
+        pParse->azVar = a;
+        memset(&a[pParse->nzVar], 0, (x-pParse->nzVar)*sizeof(a[0]));
+        pParse->nzVar = x;
+      }
+      if( z[0]!='?' || pParse->azVar[x-1]==0 ){
+        sqlitexDbFree(db, pParse->azVar[x-1]);
+        pParse->azVar[x-1] = sqlitexDbStrNDup(db, z, n);
+      }
+    }
+  } 
+  if( !pParse->nErr && pParse->nVar>db->aLimit[SQLITE_LIMIT_VARIABLE_NUMBER] ){
+    sqlitexErrorMsg(pParse, "too many SQL variables");
+  }
+}
+
+/*
+** Recursively delete an expression tree.
+*/
+void sqlitexExprDelete(sqlitex *db, Expr *p){
+  if( p==0 ) return;
+  /* Sanity check: Assert that the IntValue is non-negative if it exists */
+  assert( !ExprHasProperty(p, EP_IntValue) || p->u.iValue>=0 );
+  if( !ExprHasProperty(p, EP_TokenOnly) ){
+    /* The Expr.x union is never used at the same time as Expr.pRight */
+    assert( p->x.pList==0 || p->pRight==0 );
+    sqlitexExprDelete(db, p->pLeft);
+    sqlitexExprDelete(db, p->pRight);
+    if( ExprHasProperty(p, EP_MemToken) ) sqlitexDbFree(db, p->u.zToken);
+    if( ExprHasProperty(p, EP_xIsSelect) ){
+      sqlitexSelectDelete(db, p->x.pSelect);
+    }else{
+      sqlitexExprListDelete(db, p->x.pList);
+    }
+  }
+  if( !ExprHasProperty(p, EP_Static) ){
+    sqlitexDbFree(db, p);
+  }
+}
+
+/*
+** Return the number of bytes allocated for the expression structure 
+** passed as the first argument. This is always one of EXPR_FULLSIZE,
+** EXPR_REDUCEDSIZE or EXPR_TOKENONLYSIZE.
+*/
+static int exprStructSize(Expr *p){
+  if( ExprHasProperty(p, EP_TokenOnly) ) return EXPR_TOKENONLYSIZE;
+  if( ExprHasProperty(p, EP_Reduced) ) return EXPR_REDUCEDSIZE;
+  return EXPR_FULLSIZE;
+}
+
+/*
+** The dupedExpr*Size() routines each return the number of bytes required
+** to store a copy of an expression or expression tree.  They differ in
+** how much of the tree is measured.
+**
+**     dupedExprStructSize()     Size of only the Expr structure 
+**     dupedExprNodeSize()       Size of Expr + space for token
+**     dupedExprSize()           Expr + token + subtree components
+**
+***************************************************************************
+**
+** The dupedExprStructSize() function returns two values OR-ed together:  
+** (1) the space required for a copy of the Expr structure only and 
+** (2) the EP_xxx flags that indicate what the structure size should be.
+** The return values is always one of:
+**
+**      EXPR_FULLSIZE
+**      EXPR_REDUCEDSIZE   | EP_Reduced
+**      EXPR_TOKENONLYSIZE | EP_TokenOnly
+**
+** The size of the structure can be found by masking the return value
+** of this routine with 0xfff.  The flags can be found by masking the
+** return value with EP_Reduced|EP_TokenOnly.
+**
+** Note that with flags==EXPRDUP_REDUCE, this routines works on full-size
+** (unreduced) Expr objects as they or originally constructed by the parser.
+** During expression analysis, extra information is computed and moved into
+** later parts of teh Expr object and that extra information might get chopped
+** off if the expression is reduced.  Note also that it does not work to
+** make an EXPRDUP_REDUCE copy of a reduced expression.  It is only legal
+** to reduce a pristine expression tree from the parser.  The implementation
+** of dupedExprStructSize() contain multiple assert() statements that attempt
+** to enforce this constraint.
+*/
+static int dupedExprStructSize(Expr *p, int flags){
+  int nSize;
+  assert( flags==EXPRDUP_REDUCE || flags==0 ); /* Only one flag value allowed */
+  assert( EXPR_FULLSIZE<=0xfff );
+  assert( (0xfff & (EP_Reduced|EP_TokenOnly))==0 );
+  if( 0==(flags&EXPRDUP_REDUCE) ){
+    nSize = EXPR_FULLSIZE;
+  }else{
+    assert( !ExprHasProperty(p, EP_TokenOnly|EP_Reduced) );
+    assert( !ExprHasProperty(p, EP_FromJoin) ); 
+    assert( !ExprHasProperty(p, EP_MemToken) );
+    assert( !ExprHasProperty(p, EP_NoReduce) );
+    if( p->pLeft || p->x.pList ){
+      nSize = EXPR_REDUCEDSIZE | EP_Reduced;
+    }else{
+      assert( p->pRight==0 );
+      nSize = EXPR_TOKENONLYSIZE | EP_TokenOnly;
+    }
+  }
+  return nSize;
+}
+
+/*
+** This function returns the space in bytes required to store the copy 
+** of the Expr structure and a copy of the Expr.u.zToken string (if that
+** string is defined.)
+*/
+static int dupedExprNodeSize(Expr *p, int flags){
+  int nByte = dupedExprStructSize(p, flags) & 0xfff;
+  if( !ExprHasProperty(p, EP_IntValue) && p->u.zToken ){
+    nByte += sqlitexStrlen30(p->u.zToken)+1;
+  }
+  return ROUND8(nByte);
+}
+
+/*
+** Return the number of bytes required to create a duplicate of the 
+** expression passed as the first argument. The second argument is a
+** mask containing EXPRDUP_XXX flags.
+**
+** The value returned includes space to create a copy of the Expr struct
+** itself and the buffer referred to by Expr.u.zToken, if any.
+**
+** If the EXPRDUP_REDUCE flag is set, then the return value includes 
+** space to duplicate all Expr nodes in the tree formed by Expr.pLeft 
+** and Expr.pRight variables (but not for any structures pointed to or 
+** descended from the Expr.x.pList or Expr.x.pSelect variables).
+*/
+static int dupedExprSize(Expr *p, int flags){
+  int nByte = 0;
+  if( p ){
+    nByte = dupedExprNodeSize(p, flags);
+    if( flags&EXPRDUP_REDUCE ){
+      nByte += dupedExprSize(p->pLeft, flags) + dupedExprSize(p->pRight, flags);
+    }
+  }
+  return nByte;
+}
+
+/*
+** This function is similar to sqlitexExprDup(), except that if pzBuffer 
+** is not NULL then *pzBuffer is assumed to point to a buffer large enough 
+** to store the copy of expression p, the copies of p->u.zToken
+** (if applicable), and the copies of the p->pLeft and p->pRight expressions,
+** if any. Before returning, *pzBuffer is set to the first byte past the
+** portion of the buffer copied into by this function.
+*/
+static Expr *exprDup(sqlitex *db, Expr *p, int flags, u8 **pzBuffer){
+  Expr *pNew = 0;                      /* Value to return */
+  if( p ){
+    const int isReduced = (flags&EXPRDUP_REDUCE);
+    u8 *zAlloc;
+    u32 staticFlag = 0;
+
+    assert( pzBuffer==0 || isReduced );
+
+    /* Figure out where to write the new Expr structure. */
+    if( pzBuffer ){
+      zAlloc = *pzBuffer;
+      staticFlag = EP_Static;
+    }else{
+      zAlloc = sqlitexDbMallocRaw(db, dupedExprSize(p, flags));
+    }
+    pNew = (Expr *)zAlloc;
+
+    if( pNew ){
+      /* Set nNewSize to the size allocated for the structure pointed to
+      ** by pNew. This is either EXPR_FULLSIZE, EXPR_REDUCEDSIZE or
+      ** EXPR_TOKENONLYSIZE. nToken is set to the number of bytes consumed
+      ** by the copy of the p->u.zToken string (if any).
+      */
+      const unsigned nStructSize = dupedExprStructSize(p, flags);
+      const int nNewSize = nStructSize & 0xfff;
+      int nToken;
+      if( !ExprHasProperty(p, EP_IntValue) && p->u.zToken ){
+        nToken = sqlitexStrlen30(p->u.zToken) + 1;
+      }else{
+        nToken = 0;
+      }
+      if( isReduced ){
+        assert( ExprHasProperty(p, EP_Reduced)==0 );
+        memcpy(zAlloc, p, nNewSize);
+      }else{
+        int nSize = exprStructSize(p);
+        memcpy(zAlloc, p, nSize);
+        memset(&zAlloc[nSize], 0, EXPR_FULLSIZE-nSize);
+      }
+
+      /* Set the EP_Reduced, EP_TokenOnly, and EP_Static flags appropriately. */
+      pNew->flags &= ~(EP_Reduced|EP_TokenOnly|EP_Static|EP_MemToken);
+      pNew->flags |= nStructSize & (EP_Reduced|EP_TokenOnly);
+      pNew->flags |= staticFlag;
+
+      /* Copy the p->u.zToken string, if any. */
+      if( nToken ){
+        char *zToken = pNew->u.zToken = (char*)&zAlloc[nNewSize];
+        memcpy(zToken, p->u.zToken, nToken);
+      }
+
+      if( 0==((p->flags|pNew->flags) & EP_TokenOnly) ){
+        /* Fill in the pNew->x.pSelect or pNew->x.pList member. */
+        if( ExprHasProperty(p, EP_xIsSelect) ){
+          pNew->x.pSelect = sqlitexSelectDup(db, p->x.pSelect, isReduced);
+        }else{
+          pNew->x.pList = sqlitexExprListDup(db, p->x.pList, isReduced);
+        }
+      }
+
+      /* Fill in pNew->pLeft and pNew->pRight. */
+      if( ExprHasProperty(pNew, EP_Reduced|EP_TokenOnly) ){
+        zAlloc += dupedExprNodeSize(p, flags);
+        if( ExprHasProperty(pNew, EP_Reduced) ){
+          pNew->pLeft = exprDup(db, p->pLeft, EXPRDUP_REDUCE, &zAlloc);
+          pNew->pRight = exprDup(db, p->pRight, EXPRDUP_REDUCE, &zAlloc);
+        }
+        if( pzBuffer ){
+          *pzBuffer = zAlloc;
+        }
+      }else{
+        if( !ExprHasProperty(p, EP_TokenOnly) ){
+          pNew->pLeft = sqlitexExprDup(db, p->pLeft, 0);
+          pNew->pRight = sqlitexExprDup(db, p->pRight, 0);
+        }
+      }
+
+    }
+  }
+  return pNew;
+}
+
+/*
+** Create and return a deep copy of the object passed as the second 
+** argument. If an OOM condition is encountered, NULL is returned
+** and the db->mallocFailed flag set.
+*/
+#ifndef SQLITE_OMIT_CTE
+static With *withDup(sqlitex *db, With *p){
+  With *pRet = 0;
+  if( p ){
+    int nByte = sizeof(*p) + sizeof(p->a[0]) * (p->nCte-1);
+    pRet = sqlitexDbMallocZero(db, nByte);
+    if( pRet ){
+      int i;
+      pRet->nCte = p->nCte;
+      for(i=0; i<p->nCte; i++){
+        pRet->a[i].pSelect = sqlitexSelectDup(db, p->a[i].pSelect, 0);
+        pRet->a[i].pCols = sqlitexExprListDup(db, p->a[i].pCols, 0);
+        pRet->a[i].zName = sqlitexDbStrDup(db, p->a[i].zName);
+      }
+    }
+  }
+  return pRet;
+}
+#else
+# define withDup(x,y) 0
+#endif
+
+/*
+** The following group of routines make deep copies of expressions,
+** expression lists, ID lists, and select statements.  The copies can
+** be deleted (by being passed to their respective ...Delete() routines)
+** without effecting the originals.
+**
+** The expression list, ID, and source lists return by sqlitexExprListDup(),
+** sqlitexIdListDup(), and sqlitexSrcListDup() can not be further expanded 
+** by subsequent calls to sqlite*ListAppend() routines.
+**
+** Any tables that the SrcList might point to are not duplicated.
+**
+** The flags parameter contains a combination of the EXPRDUP_XXX flags.
+** If the EXPRDUP_REDUCE flag is set, then the structure returned is a
+** truncated version of the usual Expr structure that will be stored as
+** part of the in-memory representation of the database schema.
+*/
+Expr *sqlitexExprDup(sqlitex *db, Expr *p, int flags){
+  return exprDup(db, p, flags, 0);
+}
+ExprList *sqlitexExprListDup(sqlitex *db, ExprList *p, int flags){
+  ExprList *pNew;
+  struct ExprList_item *pItem, *pOldItem;
+  int i;
+  if( p==0 ) return 0;
+  pNew = sqlitexDbMallocRaw(db, sizeof(*pNew) );
+  if( pNew==0 ) return 0;
+  pNew->nExpr = i = p->nExpr;
+  if( (flags & EXPRDUP_REDUCE)==0 ) for(i=1; i<p->nExpr; i+=i){}
+  pNew->a = pItem = sqlitexDbMallocRaw(db,  i*sizeof(p->a[0]) );
+  if( pItem==0 ){
+    sqlitexDbFree(db, pNew);
+    return 0;
+  } 
+  pOldItem = p->a;
+  for(i=0; i<p->nExpr; i++, pItem++, pOldItem++){
+    Expr *pOldExpr = pOldItem->pExpr;
+    pItem->pExpr = sqlitexExprDup(db, pOldExpr, flags);
+    pItem->zName = sqlitexDbStrDup(db, pOldItem->zName);
+    pItem->zSpan = sqlitexDbStrDup(db, pOldItem->zSpan);
+    pItem->sortOrder = pOldItem->sortOrder;
+    pItem->done = 0;
+    pItem->bSpanIsTab = pOldItem->bSpanIsTab;
+    pItem->u = pOldItem->u;
+  }
+  return pNew;
+}
+
+/*
+** If cursors, triggers, views and subqueries are all omitted from
+** the build, then none of the following routines, except for 
+** sqlitexSelectDup(), can be called. sqlitexSelectDup() is sometimes
+** called with a NULL argument.
+*/
+#if !defined(SQLITE_OMIT_VIEW) || !defined(SQLITE_OMIT_TRIGGER) \
+ || !defined(SQLITE_OMIT_SUBQUERY)
+SrcList *sqlitexSrcListDup(sqlitex *db, SrcList *p, int flags){
+  SrcList *pNew;
+  int i;
+  int nByte;
+  if( p==0 ) return 0;
+  nByte = sizeof(*p) + (p->nSrc>0 ? sizeof(p->a[0]) * (p->nSrc-1) : 0);
+  pNew = sqlitexDbMallocRaw(db, nByte );
+  if( pNew==0 ) return 0;
+  pNew->nSrc = pNew->nAlloc = p->nSrc;
+  for(i=0; i<p->nSrc; i++){
+    struct SrcList_item *pNewItem = &pNew->a[i];
+    struct SrcList_item *pOldItem = &p->a[i];
+    Table *pTab;
+    pNewItem->pSchema = pOldItem->pSchema;
+    pNewItem->zDatabase = sqlitexDbStrDup(db, pOldItem->zDatabase);
+    pNewItem->zName = sqlitexDbStrDup(db, pOldItem->zName);
+    pNewItem->zAlias = sqlitexDbStrDup(db, pOldItem->zAlias);
+    pNewItem->fg = pOldItem->fg;
+    pNewItem->iCursor = pOldItem->iCursor;
+    pNewItem->addrFillSub = pOldItem->addrFillSub;
+    pNewItem->regReturn = pOldItem->regReturn;
+    if( pNewItem->fg.isIndexedBy ){
+      pNewItem->u1.zIndexedBy = sqlitexDbStrDup(db, pOldItem->u1.zIndexedBy);
+    }
+    pNewItem->pIBIndex = pOldItem->pIBIndex;
+    if( pNewItem->fg.isTabFunc ){
+      pNewItem->u1.pFuncArg = 
+          sqlitexExprListDup(db, pOldItem->u1.pFuncArg, flags);
+    }
+    pTab = pNewItem->pTab = pOldItem->pTab;
+    if( pTab ){
+      pTab->nRef++;
+    }
+    pNewItem->pSelect = sqlitexSelectDup(db, pOldItem->pSelect, flags);
+    pNewItem->pOn = sqlitexExprDup(db, pOldItem->pOn, flags);
+    pNewItem->pUsing = sqlitexIdListDup(db, pOldItem->pUsing);
+    pNewItem->colUsed = pOldItem->colUsed;
+  }
+  return pNew;
+}
+IdList *sqlitexIdListDup(sqlitex *db, IdList *p){
+  IdList *pNew;
+  int i;
+  if( p==0 ) return 0;
+  pNew = sqlitexDbMallocRaw(db, sizeof(*pNew) );
+  if( pNew==0 ) return 0;
+  pNew->nId = p->nId;
+  pNew->a = sqlitexDbMallocRaw(db, p->nId*sizeof(p->a[0]) );
+  if( pNew->a==0 ){
+    sqlitexDbFree(db, pNew);
+    return 0;
+  }
+  /* Note that because the size of the allocation for p->a[] is not
+  ** necessarily a power of two, sqlitexIdListAppend() may not be called
+  ** on the duplicate created by this function. */
+  for(i=0; i<p->nId; i++){
+    struct IdList_item *pNewItem = &pNew->a[i];
+    struct IdList_item *pOldItem = &p->a[i];
+    pNewItem->zName = sqlitexDbStrDup(db, pOldItem->zName);
+    pNewItem->idx = pOldItem->idx;
+  }
+  return pNew;
+}
+Select *sqlitexSelectDup(sqlitex *db, Select *p, int flags){
+  Select *pNew, *pPrior;
+  if( p==0 ) return 0;
+  pNew = sqlitexDbMallocRaw(db, sizeof(*p) );
+  if( pNew==0 ) return 0;
+  pNew->pEList = sqlitexExprListDup(db, p->pEList, flags);
+  pNew->pSrc = sqlitexSrcListDup(db, p->pSrc, flags);
+  pNew->pWhere = sqlitexExprDup(db, p->pWhere, flags);
+  pNew->pGroupBy = sqlitexExprListDup(db, p->pGroupBy, flags);
+  pNew->pHaving = sqlitexExprDup(db, p->pHaving, flags);
+  pNew->pOrderBy = sqlitexExprListDup(db, p->pOrderBy, flags);
+  pNew->op = p->op;
+  pNew->pPrior = pPrior = sqlitexSelectDup(db, p->pPrior, flags);
+  if( pPrior ) pPrior->pNext = pNew;
+  pNew->pNext = 0;
+  pNew->pLimit = sqlitexExprDup(db, p->pLimit, flags);
+  pNew->pOffset = sqlitexExprDup(db, p->pOffset, flags);
+  pNew->iLimit = 0;
+  pNew->iOffset = 0;
+  pNew->selFlags = p->selFlags & ~SF_UsesEphemeral;
+  pNew->addrOpenEphm[0] = -1;
+  pNew->addrOpenEphm[1] = -1;
+  pNew->nSelectRow = p->nSelectRow;
+  pNew->pWith = withDup(db, p->pWith);
+  pNew->recording = p->recording;
+  sqlitexSelectSetName(pNew, p->zSelName);
+  return pNew;
+}
+#else
+Select *sqlitexSelectDup(sqlitex *db, Select *p, int flags){
+  assert( p==0 );
+  return 0;
+}
+#endif
+
+
+/*
+** Add a new element to the end of an expression list.  If pList is
+** initially NULL, then create a new expression list.
+**
+** If a memory allocation error occurs, the entire list is freed and
+** NULL is returned.  If non-NULL is returned, then it is guaranteed
+** that the new entry was successfully appended.
+*/
+ExprList *sqlitexExprListAppend(
+  Parse *pParse,          /* Parsing context */
+  ExprList *pList,        /* List to which to append. Might be NULL */
+  Expr *pExpr             /* Expression to be appended. Might be NULL */
+){
+  sqlitex *db = pParse->db;
+  if( pList==0 ){
+    pList = sqlitexDbMallocZero(db, sizeof(ExprList) );
+    if( pList==0 ){
+      goto no_mem;
+    }
+    pList->a = sqlitexDbMallocRaw(db, sizeof(pList->a[0]));
+    if( pList->a==0 ) goto no_mem;
+  }else if( (pList->nExpr & (pList->nExpr-1))==0 ){
+    struct ExprList_item *a;
+    assert( pList->nExpr>0 );
+    a = sqlitexDbRealloc(db, pList->a, pList->nExpr*2*sizeof(pList->a[0]));
+    if( a==0 ){
+      goto no_mem;
+    }
+    pList->a = a;
+  }
+  assert( pList->a!=0 );
+  if( 1 ){
+    struct ExprList_item *pItem = &pList->a[pList->nExpr++];
+    memset(pItem, 0, sizeof(*pItem));
+    pItem->pExpr = pExpr;
+  }
+  return pList;
+
+no_mem:     
+  /* Avoid leaking memory if malloc has failed. */
+  sqlitexExprDelete(db, pExpr);
+  sqlitexExprListDelete(db, pList);
+  return 0;
+}
+
+/*
+** Set the ExprList.a[].zName element of the most recently added item
+** on the expression list.
+**
+** pList might be NULL following an OOM error.  But pName should never be
+** NULL.  If a memory allocation fails, the pParse->db->mallocFailed flag
+** is set.
+*/
+void sqlitexExprListSetName(
+  Parse *pParse,          /* Parsing context */
+  ExprList *pList,        /* List to which to add the span. */
+  Token *pName,           /* Name to be added */
+  int dequote             /* True to cause the name to be dequoted */
+){
+  assert( pList!=0 || pParse->db->mallocFailed!=0 );
+  if( pList ){
+    struct ExprList_item *pItem;
+    assert( pList->nExpr>0 );
+    pItem = &pList->a[pList->nExpr-1];
+    assert( pItem->zName==0 );
+    pItem->zName = sqlitexDbStrNDup(pParse->db, pName->z, pName->n);
+    if( dequote && pItem->zName ) sqlitexDequote(pItem->zName);
+  }
+}
+
+/*
+** Set the ExprList.a[].zSpan element of the most recently added item
+** on the expression list.
+**
+** pList might be NULL following an OOM error.  But pSpan should never be
+** NULL.  If a memory allocation fails, the pParse->db->mallocFailed flag
+** is set.
+*/
+void sqlitexExprListSetSpan(
+  Parse *pParse,          /* Parsing context */
+  ExprList *pList,        /* List to which to add the span. */
+  ExprSpan *pSpan         /* The span to be added */
+){
+  sqlitex *db = pParse->db;
+  assert( pList!=0 || db->mallocFailed!=0 );
+  if( pList ){
+    struct ExprList_item *pItem = &pList->a[pList->nExpr-1];
+    assert( pList->nExpr>0 );
+    assert( db->mallocFailed || pItem->pExpr==pSpan->pExpr );
+    sqlitexDbFree(db, pItem->zSpan);
+    pItem->zSpan = sqlitexDbStrNDup(db, (char*)pSpan->zStart,
+                                    (int)(pSpan->zEnd - pSpan->zStart));
+  }
+}
+
+/*
+** If the expression list pEList contains more than iLimit elements,
+** leave an error message in pParse.
+*/
+void sqlitexExprListCheckLength(
+  Parse *pParse,
+  ExprList *pEList,
+  const char *zObject
+){
+  int mx = pParse->db->aLimit[SQLITE_LIMIT_COLUMN];
+  testcase( pEList && pEList->nExpr==mx );
+  testcase( pEList && pEList->nExpr==mx+1 );
+  if( pEList && pEList->nExpr>mx ){
+    sqlitexErrorMsg(pParse, "too many columns in %s", zObject);
+  }
+}
+
+/*
+** Delete an entire expression list.
+*/
+void sqlitexExprListDelete(sqlitex *db, ExprList *pList){
+  int i;
+  struct ExprList_item *pItem;
+  if( pList==0 ) return;
+  assert( pList->a!=0 || pList->nExpr==0 );
+  for(pItem=pList->a, i=0; i<pList->nExpr; i++, pItem++){
+    sqlitexExprDelete(db, pItem->pExpr);
+    sqlitexDbFree(db, pItem->zName);
+    sqlitexDbFree(db, pItem->zSpan);
+  }
+  sqlitexDbFree(db, pList->a);
+  sqlitexDbFree(db, pList);
+}
+
+/*
+** Return the bitwise-OR of all Expr.flags fields in the given
+** ExprList.
+*/
+u32 sqlitexExprListFlags(const ExprList *pList){
+  int i;
+  u32 m = 0;
+  if( pList ){
+    for(i=0; i<pList->nExpr; i++){
+       m |= pList->a[i].pExpr->flags;
+    }
+  }
+  return m;
+}
+
+/*
+** These routines are Walker callbacks used to check expressions to
+** see if they are "constant" for some definition of constant.  The
+** Walker.eCode value determines the type of "constant" we are looking
+** for.
+**
+** These callback routines are used to implement the following:
+**
+**     sqlitexExprIsConstant()                  pWalker->eCode==1
+**     sqlitexExprIsConstantNotJoin()           pWalker->eCode==2
+**     sqlitexExprRefOneTableOnly()             pWalker->eCode==3
+**     sqlitexExprIsConstantOrFunction()        pWalker->eCode==4 or 5
+**
+** In all cases, the callbacks set Walker.eCode=0 and abort if the expression
+** is found to not be a constant.
+**
+** The sqlitexExprIsConstantOrFunction() is used for evaluating expressions
+** in a CREATE TABLE statement.  The Walker.eCode value is 5 when parsing
+** an existing schema and 4 when processing a new statement.  A bound
+** parameter raises an error for new statements, but is silently converted
+** to NULL for existing schemas.  This allows sqlite_master tables that 
+** contain a bound parameter because they were generated by older versions
+** of SQLite to be parsed by newer versions of SQLite without raising a
+** malformed schema error.
+*/
+static int exprNodeIsConstant(Walker *pWalker, Expr *pExpr){
+
+  /* If pWalker->eCode is 2 then any term of the expression that comes from
+  ** the ON or USING clauses of a left join disqualifies the expression
+  ** from being considered constant. */
+  if( pWalker->eCode==2 && ExprHasProperty(pExpr, EP_FromJoin) ){
+    pWalker->eCode = 0;
+    return WRC_Abort;
+  }
+
+  switch( pExpr->op ){
+    /* Consider functions to be constant if all their arguments are constant
+    ** and either pWalker->eCode==4 or 5 or the function has the
+    ** SQLITE_FUNC_CONST flag. */
+    case TK_FUNCTION:
+      if( pWalker->eCode>=4 || ExprHasProperty(pExpr,EP_ConstFunc) ){
+        return WRC_Continue;
+      }else{
+        pWalker->eCode = 0;
+        return WRC_Abort;
+      }
+    case TK_ID:
+    case TK_COLUMN:
+    case TK_AGG_FUNCTION:
+    case TK_AGG_COLUMN:
+      testcase( pExpr->op==TK_ID );
+      testcase( pExpr->op==TK_COLUMN );
+      testcase( pExpr->op==TK_AGG_FUNCTION );
+      testcase( pExpr->op==TK_AGG_COLUMN );
+      if( pWalker->eCode==3 && pExpr->iTable==pWalker->u.iCur ){
+        return WRC_Continue;
+      }else{
+        pWalker->eCode = 0;
+        return WRC_Abort;
+      }
+    case TK_VARIABLE:
+      if( pWalker->eCode==5 ){
+        /* Silently convert bound parameters that appear inside of CREATE
+        ** statements into a NULL when parsing the CREATE statement text out
+        ** of the sqlite_master table */
+        pExpr->op = TK_NULL;
+      }else if( pWalker->eCode==4 ){
+        /* A bound parameter in a CREATE statement that originates from
+        ** sqlitex_prepare() causes an error */
+        pWalker->eCode = 0;
+        return WRC_Abort;
+      }
+      /* Fall through */
+    default:
+      testcase( pExpr->op==TK_SELECT ); /* selectNodeIsConstant will disallow */
+      testcase( pExpr->op==TK_EXISTS ); /* selectNodeIsConstant will disallow */
+      /* COMDB2 MODIFICATION */
+      testcase( pExpr->op==TK_SELECTV ); /* selectNodeIsConstant will disallow */
+      return WRC_Continue;
+  }
+}
+static int selectNodeIsConstant(Walker *pWalker, Select *NotUsed){
+  UNUSED_PARAMETER(NotUsed);
+  pWalker->eCode = 0;
+  return WRC_Abort;
+}
+static int exprIsConst(Expr *p, int initFlag, int iCur){
+  Walker w;
+  memset(&w, 0, sizeof(w));
+  w.eCode = initFlag;
+  w.xExprCallback = exprNodeIsConstant;
+  w.xSelectCallback = selectNodeIsConstant;
+  w.u.iCur = iCur;
+  sqlitexWalkExpr(&w, p);
+  return w.eCode;
+}
+
+/*
+** Walk an expression tree.  Return non-zero if the expression is constant
+** and 0 if it involves variables or function calls.
+**
+** For the purposes of this function, a double-quoted string (ex: "abc")
+** is considered a variable but a single-quoted string (ex: 'abc') is
+** a constant.
+*/
+int sqlitexExprIsConstant(Expr *p){
+  return exprIsConst(p, 1, 0);
+}
+
+/*
+** Walk an expression tree.  Return non-zero if the expression is constant
+** that does no originate from the ON or USING clauses of a join.
+** Return 0 if it involves variables or function calls or terms from
+** an ON or USING clause.
+*/
+int sqlitexExprIsConstantNotJoin(Expr *p){
+  return exprIsConst(p, 2, 0);
+}
+
+/*
+** Walk an expression tree.  Return non-zero if the expression constant
+** for any single row of the table with cursor iCur.  In other words, the
+** expression must not refer to any non-deterministic function nor any
+** table other than iCur.
+*/
+int sqlitexExprIsTableConstant(Expr *p, int iCur){
+  return exprIsConst(p, 3, iCur);
+}
+
+/*
+** Walk an expression tree.  Return non-zero if the expression is constant
+** or a function call with constant arguments.  Return and 0 if there
+** are any variables.
+**
+** For the purposes of this function, a double-quoted string (ex: "abc")
+** is considered a variable but a single-quoted string (ex: 'abc') is
+** a constant.
+*/
+int sqlitexExprIsConstantOrFunction(Expr *p, u8 isInit){
+  assert( isInit==0 || isInit==1 );
+  return exprIsConst(p, 4+isInit, 0);
+}
+
+#ifdef SQLITE_ENABLE_CURSOR_HINTS
+/*
+** Walk an expression tree.  Return 1 if the expression contains a
+** subquery of some kind.  Return 0 if there are no subqueries.
+*/
+int sqlitexExprContainsSubquery(Expr *p){
+  Walker w;
+  memset(&w, 0, sizeof(w));
+  w.eCode = 1;
+  w.xExprCallback = sqlitexExprWalkNoop;
+  w.xSelectCallback = selectNodeIsConstant;
+  sqlitexWalkExpr(&w, p);
+  return w.eCode==0;
+}
+#endif
+
+/*
+** If the expression p codes a constant integer that is small enough
+** to fit in a 32-bit integer, return 1 and put the value of the integer
+** in *pValue.  If the expression is not an integer or if it is too big
+** to fit in a signed 32-bit integer, return 0 and leave *pValue unchanged.
+*/
+int sqlitexExprIsInteger(Expr *p, int *pValue){
+  int rc = 0;
+
+  /* If an expression is an integer literal that fits in a signed 32-bit
+  ** integer, then the EP_IntValue flag will have already been set */
+  assert( p->op!=TK_INTEGER || (p->flags & EP_IntValue)!=0
+           || sqlitexGetInt32(p->u.zToken, &rc)==0 );
+
+  if( p->flags & EP_IntValue ){
+    *pValue = p->u.iValue;
+    return 1;
+  }
+  switch( p->op ){
+    case TK_UPLUS: {
+      rc = sqlitexExprIsInteger(p->pLeft, pValue);
+      break;
+    }
+    case TK_UMINUS: {
+      int v;
+      if( sqlitexExprIsInteger(p->pLeft, &v) ){
+        assert( v!=(-2147483647-1) );
+        *pValue = -v;
+        rc = 1;
+      }
+      break;
+    }
+    default: break;
+  }
+  return rc;
+}
+
+/*
+** Return FALSE if there is no chance that the expression can be NULL.
+**
+** If the expression might be NULL or if the expression is too complex
+** to tell return TRUE.  
+**
+** This routine is used as an optimization, to skip OP_IsNull opcodes
+** when we know that a value cannot be NULL.  Hence, a false positive
+** (returning TRUE when in fact the expression can never be NULL) might
+** be a small performance hit but is otherwise harmless.  On the other
+** hand, a false negative (returning FALSE when the result could be NULL)
+** will likely result in an incorrect answer.  So when in doubt, return
+** TRUE.
+*/
+int sqlitexExprCanBeNull(const Expr *p){
+  u8 op;
+  while( p->op==TK_UPLUS || p->op==TK_UMINUS ){ p = p->pLeft; }
+  op = p->op;
+  if( op==TK_REGISTER ) op = p->op2;
+  switch( op ){
+    case TK_INTEGER:
+    case TK_STRING:
+    case TK_FLOAT:
+    case TK_BLOB:
+      return 0;
+    case TK_COLUMN:
+      assert( p->pTab!=0 );
+      return ExprHasProperty(p, EP_CanBeNull) ||
+             (p->iColumn>=0 && p->pTab->aCol[p->iColumn].notNull==0);
+    default:
+      return 1;
+  }
+}
+
+/*
+** Return TRUE if the given expression is a constant which would be
+** unchanged by OP_Affinity with the affinity given in the second
+** argument.
+**
+** This routine is used to determine if the OP_Affinity operation
+** can be omitted.  When in doubt return FALSE.  A false negative
+** is harmless.  A false positive, however, can result in the wrong
+** answer.
+*/
+int sqlitexExprNeedsNoAffinityChange(const Expr *p, char aff){
+  u8 op;
+  if( aff==SQLITE_AFF_NONE ) return 1;
+  while( p->op==TK_UPLUS || p->op==TK_UMINUS ){ p = p->pLeft; }
+  op = p->op;
+  if( op==TK_REGISTER ) op = p->op2;
+  switch( op ){
+    case TK_INTEGER: {
+      return aff==SQLITE_AFF_INTEGER || aff==SQLITE_AFF_NUMERIC;
+    }
+    case TK_FLOAT: {
+      return aff==SQLITE_AFF_REAL || aff==SQLITE_AFF_NUMERIC;
+    }
+    case TK_STRING: {
+      return aff==SQLITE_AFF_TEXT;
+    }
+    case TK_BLOB: {
+      return 1;
+    }
+    case TK_COLUMN: {
+      assert( p->iTable>=0 );  /* p cannot be part of a CHECK constraint */
+      return p->iColumn<0
+          && (aff==SQLITE_AFF_INTEGER || aff==SQLITE_AFF_NUMERIC);
+    }
+    default: {
+      return 0;
+    }
+  }
+}
+
+/*
+** Return TRUE if the given string is a row-id column name.
+*/
+int sqlitexIsRowid(const char *z){
+  if( sqlitexStrICmp(z, "_ROWID_")==0 ) return 1;
+  if( sqlitexStrICmp(z, "ROWID")==0 ) return 1;
+  if( sqlitexStrICmp(z, "OID")==0 ) return 1;
+  return 0;
+}
+
+/* COMDB2 MODIFICATION */
+int sqlitexIsComdb2Rowid(const char *z) {
+  return (sqlitexStrICmp(z, "COMDB2_ROWID") == 0);
+}
+
+
+/* COMDB2 MODIFICATION */
+int sqlitexIsComdb2RowTimestamp(const char *z) {
+  extern int comdb2genidcontainstimeX(void);
+  if (comdb2genidcontainstimeX()) {
+      return 
+          (sqlitexStrICmp(z, "COMDB2_ROW_TIMESTAMP") == 0 ||
+           sqlitexStrICmp(z, "COMDB2_ROWTIMESTAMP") == 0);
+  }
+  return 0;
+}
+
+/*
+** Return true if we are able to the IN operator optimization on a
+** query of the form
+**
+**       x IN (SELECT ...)
+**
+** Where the SELECT... clause is as specified by the parameter to this
+** routine.
+**
+** The Select object passed in has already been preprocessed and no
+** errors have been found.
+*/
+#ifndef SQLITE_OMIT_SUBQUERY
+static int isCandidateForInOpt(Select *p){
+  SrcList *pSrc;
+  ExprList *pEList;
+  Table *pTab;
+  if( p==0 ) return 0;                   /* right-hand side of IN is SELECT */
+  if( p->pPrior ) return 0;              /* Not a compound SELECT */
+  if( p->selFlags & (SF_Distinct|SF_Aggregate) ){
+    testcase( (p->selFlags & (SF_Distinct|SF_Aggregate))==SF_Distinct );
+    testcase( (p->selFlags & (SF_Distinct|SF_Aggregate))==SF_Aggregate );
+    return 0; /* No DISTINCT keyword and no aggregate functions */
+  }
+  assert( p->pGroupBy==0 );              /* Has no GROUP BY clause */
+  if( p->pLimit ) return 0;              /* Has no LIMIT clause */
+  assert( p->pOffset==0 );               /* No LIMIT means no OFFSET */
+  if( p->pWhere ) return 0;              /* Has no WHERE clause */
+  pSrc = p->pSrc;
+  assert( pSrc!=0 );
+  if( pSrc->nSrc!=1 ) return 0;          /* Single term in FROM clause */
+  if( pSrc->a[0].pSelect ) return 0;     /* FROM is not a subquery or view */
+  pTab = pSrc->a[0].pTab;
+  if( NEVER(pTab==0) ) return 0;
+  assert( pTab->pSelect==0 );            /* FROM clause is not a view */
+  if( IsVirtual(pTab) ) return 0;        /* FROM clause not a virtual table */
+  pEList = p->pEList;
+  if( pEList->nExpr!=1 ) return 0;       /* One column in the result set */
+  if( pEList->a[0].pExpr->op!=TK_COLUMN ) return 0; /* Result is a column */
+  return 1;
+}
+#endif /* SQLITE_OMIT_SUBQUERY */
+
+/*
+** Code an OP_Once instruction and allocate space for its flag. Return the 
+** address of the new instruction.
+*/
+int sqlitexCodeOnce(Parse *pParse){
+  Vdbe *v = sqlitexGetVdbe(pParse);      /* Virtual machine being coded */
+  return sqlitexVdbeAddOp1(v, OP_Once, pParse->nOnce++);
+}
+
+/*
+** Generate code that checks the left-most column of index table iCur to see if
+** it contains any NULL entries.  Cause the register at regHasNull to be set
+** to a non-NULL value if iCur contains no NULLs.  Cause register regHasNull
+** to be set to NULL if iCur contains one or more NULL values.
+*/
+static void sqlitexSetHasNullFlag(Vdbe *v, int iCur, int regHasNull){
+  int j1;
+  sqlitexVdbeAddOp2(v, OP_Integer, 0, regHasNull);
+  j1 = sqlitexVdbeAddOp1(v, OP_Rewind, iCur); VdbeCoverage(v);
+  sqlitexVdbeAddOp3(v, OP_Column, iCur, 0, regHasNull);
+  sqlitexVdbeChangeP5(v, OPFLAG_TYPEOFARG);
+  VdbeComment((v, "first_entry_in(%d)", iCur));
+  sqlitexVdbeJumpHere(v, j1);
+}
+
+
+#ifndef SQLITE_OMIT_SUBQUERY
+/*
+** The argument is an IN operator with a list (not a subquery) on the 
+** right-hand side.  Return TRUE if that list is constant.
+*/
+static int sqlitexInRhsIsConstant(Expr *pIn){
+  Expr *pLHS;
+  int res;
+  assert( !ExprHasProperty(pIn, EP_xIsSelect) );
+  pLHS = pIn->pLeft;
+  pIn->pLeft = 0;
+  res = sqlitexExprIsConstant(pIn);
+  pIn->pLeft = pLHS;
+  return res;
+}
+#endif
+
+/*
+** This function is used by the implementation of the IN (...) operator.
+** The pX parameter is the expression on the RHS of the IN operator, which
+** might be either a list of expressions or a subquery.
+**
+** The job of this routine is to find or create a b-tree object that can
+** be used either to test for membership in the RHS set or to iterate through
+** all members of the RHS set, skipping duplicates.
+**
+** A cursor is opened on the b-tree object that is the RHS of the IN operator
+** and pX->iTable is set to the index of that cursor.
+**
+** The returned value of this function indicates the b-tree type, as follows:
+**
+**   IN_INDEX_ROWID      - The cursor was opened on a database table.
+**   IN_INDEX_INDEX_ASC  - The cursor was opened on an ascending index.
+**   IN_INDEX_INDEX_DESC - The cursor was opened on a descending index.
+**   IN_INDEX_EPH        - The cursor was opened on a specially created and
+**                         populated epheremal table.
+**   IN_INDEX_NOOP       - No cursor was allocated.  The IN operator must be
+**                         implemented as a sequence of comparisons.
+**
+** An existing b-tree might be used if the RHS expression pX is a simple
+** subquery such as:
+**
+**     SELECT <column> FROM <table>
+**
+** If the RHS of the IN operator is a list or a more complex subquery, then
+** an ephemeral table might need to be generated from the RHS and then
+** pX->iTable made to point to the ephemeral table instead of an
+** existing table.
+**
+** The inFlags parameter must contain exactly one of the bits
+** IN_INDEX_MEMBERSHIP or IN_INDEX_LOOP.  If inFlags contains
+** IN_INDEX_MEMBERSHIP, then the generated table will be used for a
+** fast membership test.  When the IN_INDEX_LOOP bit is set, the
+** IN index will be used to loop over all values of the RHS of the
+** IN operator.
+**
+** When IN_INDEX_LOOP is used (and the b-tree will be used to iterate
+** through the set members) then the b-tree must not contain duplicates.
+** An epheremal table must be used unless the selected <column> is guaranteed
+** to be unique - either because it is an INTEGER PRIMARY KEY or it
+** has a UNIQUE constraint or UNIQUE index.
+**
+** When IN_INDEX_MEMBERSHIP is used (and the b-tree will be used 
+** for fast set membership tests) then an epheremal table must 
+** be used unless <column> is an INTEGER PRIMARY KEY or an index can 
+** be found with <column> as its left-most column.
+**
+** If the IN_INDEX_NOOP_OK and IN_INDEX_MEMBERSHIP are both set and
+** if the RHS of the IN operator is a list (not a subquery) then this
+** routine might decide that creating an ephemeral b-tree for membership
+** testing is too expensive and return IN_INDEX_NOOP.  In that case, the
+** calling routine should implement the IN operator using a sequence
+** of Eq or Ne comparison operations.
+**
+** When the b-tree is being used for membership tests, the calling function
+** might need to know whether or not the RHS side of the IN operator
+** contains a NULL.  If prRhsHasNull is not a NULL pointer and 
+** if there is any chance that the (...) might contain a NULL value at
+** runtime, then a register is allocated and the register number written
+** to *prRhsHasNull. If there is no chance that the (...) contains a
+** NULL value, then *prRhsHasNull is left unchanged.
+**
+** If a register is allocated and its location stored in *prRhsHasNull, then
+** the value in that register will be NULL if the b-tree contains one or more
+** NULL values, and it will be some non-NULL value if the b-tree contains no
+** NULL values.
+*/
+#ifndef SQLITE_OMIT_SUBQUERY
+int sqlitexFindInIndex(Parse *pParse, Expr *pX, u32 inFlags, int *prRhsHasNull){
+  Select *p;                            /* SELECT to the right of IN operator */
+  int eType = 0;                        /* Type of RHS table. IN_INDEX_* */
+  int iTab = pParse->nTab++;            /* Cursor of the RHS table */
+  int mustBeUnique;                     /* True if RHS must be unique */
+  Vdbe *v = sqlitexGetVdbe(pParse);     /* Virtual machine being coded */
+
+  assert( pX->op==TK_IN );
+  mustBeUnique = (inFlags & IN_INDEX_LOOP)!=0;
+
+  /* Check to see if an existing table or index can be used to
+  ** satisfy the query.  This is preferable to generating a new 
+  ** ephemeral table.
+  */
+  p = (ExprHasProperty(pX, EP_xIsSelect) ? pX->x.pSelect : 0);
+  if( ALWAYS(pParse->nErr==0) && isCandidateForInOpt(p) ){
+    sqlitex *db = pParse->db;              /* Database connection */
+    Table *pTab;                           /* Table <table>. */
+    Expr *pExpr;                           /* Expression <column> */
+    i16 iCol;                              /* Index of column <column> */
+    i16 iDb;                               /* Database idx for pTab */
+
+    assert( p );                        /* Because of isCandidateForInOpt(p) */
+    assert( p->pEList!=0 );             /* Because of isCandidateForInOpt(p) */
+    assert( p->pEList->a[0].pExpr!=0 ); /* Because of isCandidateForInOpt(p) */
+    assert( p->pSrc!=0 );               /* Because of isCandidateForInOpt(p) */
+    pTab = p->pSrc->a[0].pTab;
+    pExpr = p->pEList->a[0].pExpr;
+    iCol = (i16)pExpr->iColumn;
+   
+    /* Code an OP_Transaction and OP_TableLock for <table>. */
+    iDb = sqlitexSchemaToIndex(db, pTab->pSchema);
+    sqlitexCodeVerifySchema(pParse, iDb);
+    sqlitexTableLock(pParse, iDb, pTab->tnum, 0, pTab->zName);
+
+    /* This function is only called from two places. In both cases the vdbe
+    ** has already been allocated. So assume sqlitexGetVdbe() is always
+    ** successful here.
+    */
+    assert(v);
+    if( iCol<0 ){
+      int iAddr = sqlitexCodeOnce(pParse);
+      VdbeCoverage(v);
+
+      sqlitexOpenTable(pParse, iTab, iDb, pTab, OP_OpenRead);
+      eType = IN_INDEX_ROWID;
+
+      sqlitexVdbeJumpHere(v, iAddr);
+    }else{
+      Index *pIdx;                         /* Iterator variable */
+
+      /* The collation sequence used by the comparison. If an index is to
+      ** be used in place of a temp-table, it must be ordered according
+      ** to this collation sequence.  */
+      CollSeq *pReq = sqlitexBinaryCompareCollSeq(pParse, pX->pLeft, pExpr);
+
+      /* Check that the affinity that will be used to perform the 
+      ** comparison is the same as the affinity of the column. If
+      ** it is not, it is not possible to use any index.
+      */
+      int affinity_ok = sqlitexIndexAffinityOk(pX, pTab->aCol[iCol].affinity);
+
+      for(pIdx=pTab->pIndex; pIdx && eType==0 && affinity_ok; pIdx=pIdx->pNext){
+        if( (pIdx->aiColumn[0]==iCol)
+         && sqlitexFindCollSeq(db, ENC(db), pIdx->azColl[0], 0)==pReq
+         && (!mustBeUnique || (pIdx->nKeyCol==1 && IsUniqueIndex(pIdx)))
+        ){
+          int iAddr = sqlitexCodeOnce(pParse); VdbeCoverage(v);
+          sqlitexVdbeAddOp3(v, OP_OpenRead, iTab, pIdx->tnum, iDb);
+          sqlitexVdbeSetP4KeyInfo(pParse, pIdx);
+
+          /* in COMDB2 TODO:AZ: and not in 3.7.2  */
+          if (iDb != 1)
+              sqlitexVdbeAddTable(v,pTab);
+
+          VdbeComment((v, "%s", pIdx->zName));
+          assert( IN_INDEX_INDEX_DESC == IN_INDEX_INDEX_ASC+1 );
+          eType = IN_INDEX_INDEX_ASC + pIdx->aSortOrder[0];
+
+          if( prRhsHasNull && !pTab->aCol[iCol].notNull ){
+#ifdef SQLITE_ENABLE_COLUMN_USED_MASK
+            const i64 sOne = 1;
+            sqlitexVdbeAddOp4Dup8(v, OP_ColumnsUsed, 
+                iTab, 0, 0, (u8*)&sOne, P4_INT64);
+#endif
+            *prRhsHasNull = ++pParse->nMem;
+            sqlitexSetHasNullFlag(v, iTab, *prRhsHasNull);
+          }
+          sqlitexVdbeJumpHere(v, iAddr);
+        }
+      }
+    }
+  }
+
+  /* If no preexisting index is available for the IN clause
+  ** and IN_INDEX_NOOP is an allowed reply
+  ** and the RHS of the IN operator is a list, not a subquery
+  ** and the RHS is not contant or has two or fewer terms,
+  ** then it is not worth creating an ephemeral table to evaluate
+  ** the IN operator so return IN_INDEX_NOOP.
+  */
+  if( eType==0
+   && (inFlags & IN_INDEX_NOOP_OK)
+   && !ExprHasProperty(pX, EP_xIsSelect)
+   && (!sqlitexInRhsIsConstant(pX) || pX->x.pList->nExpr<=2)
+  ){
+    eType = IN_INDEX_NOOP;
+  }
+     
+
+  if( eType==0 ){
+    /* Could not find an existing table or index to use as the RHS b-tree.
+    ** We will have to generate an ephemeral table to do the job.
+    */
+    u32 savedNQueryLoop = pParse->nQueryLoop;
+    int rMayHaveNull = 0;
+    eType = IN_INDEX_EPH;
+    if( inFlags & IN_INDEX_LOOP ){
+      pParse->nQueryLoop = 0;
+      if( pX->pLeft->iColumn<0 && !ExprHasProperty(pX, EP_xIsSelect) ){
+        eType = IN_INDEX_ROWID;
+      }
+    }else if( prRhsHasNull ){
+      *prRhsHasNull = rMayHaveNull = ++pParse->nMem;
+    }
+    sqlitexCodeSubselect(pParse, pX, rMayHaveNull, eType==IN_INDEX_ROWID);
+    pParse->nQueryLoop = savedNQueryLoop;
+  }else{
+    pX->iTable = iTab;
+  }
+  return eType;
+}
+#endif
+
+/*
+** Generate code for scalar subqueries used as a subquery expression, EXISTS,
+** or IN operators.  Examples:
+**
+**     (SELECT a FROM b)          -- subquery
+**     EXISTS (SELECT a FROM b)   -- EXISTS subquery
+**     x IN (4,5,11)              -- IN operator with list on right-hand side
+**     x IN (SELECT a FROM b)     -- IN operator with subquery on the right
+**
+** The pExpr parameter describes the expression that contains the IN
+** operator or subquery.
+**
+** If parameter isRowid is non-zero, then expression pExpr is guaranteed
+** to be of the form "<rowid> IN (?, ?, ?)", where <rowid> is a reference
+** to some integer key column of a table B-Tree. In this case, use an
+** intkey B-Tree to store the set of IN(...) values instead of the usual
+** (slower) variable length keys B-Tree.
+**
+** If rMayHaveNull is non-zero, that means that the operation is an IN
+** (not a SELECT or EXISTS) and that the RHS might contains NULLs.
+** All this routine does is initialize the register given by rMayHaveNull
+** to NULL.  Calling routines will take care of changing this register
+** value to non-NULL if the RHS is NULL-free.
+**
+** For a SELECT or EXISTS operator, return the register that holds the
+** result.  For IN operators or if an error occurs, the return value is 0.
+*/
+#ifndef SQLITE_OMIT_SUBQUERY
+int sqlitexCodeSubselect(
+  Parse *pParse,          /* Parsing context */
+  Expr *pExpr,            /* The IN, SELECT, or EXISTS operator */
+  int rHasNullFlag,       /* Register that records whether NULLs exist in RHS */
+  int isRowid             /* If true, LHS of IN operator is a rowid */
+){
+  int jmpIfDynamic = -1;                      /* One-time test address */
+  int rReg = 0;                           /* Register storing resulting */
+  Vdbe *v = sqlitexGetVdbe(pParse);
+  if( NEVER(v==0) ) return 0;
+  sqlitexExprCachePush(pParse);
+
+  /* This code must be run in its entirety every time it is encountered
+  ** if any of the following is true:
+  **
+  **    *  The right-hand side is a correlated subquery
+  **    *  The right-hand side is an expression list containing variables
+  **    *  We are inside a trigger
+  **
+  ** If all of the above are false, then we can run this code just once
+  ** save the results, and reuse the same result on subsequent invocations.
+  */
+  if( !ExprHasProperty(pExpr, EP_VarSelect) ){
+    jmpIfDynamic = sqlitexCodeOnce(pParse); VdbeCoverage(v);
+  }
+
+#ifndef SQLITE_OMIT_EXPLAIN
+  if( pParse->explain==2 ){
+    char *zMsg = sqlitexMPrintf(
+        pParse->db, "EXECUTE %s%s SUBQUERY %d", jmpIfDynamic>=0?"":"CORRELATED ",
+        pExpr->op==TK_IN?"LIST":"SCALAR", pParse->iNextSelectId
+    );
+    sqlitexVdbeAddOp4(v, OP_Explain, pParse->iSelectId, 0, 0, zMsg, P4_DYNAMIC);
+  }
+#endif
+
+  switch( pExpr->op ){
+    case TK_IN: {
+      char affinity;              /* Affinity of the LHS of the IN */
+      int addr;                   /* Address of OP_OpenEphemeral instruction */
+      Expr *pLeft = pExpr->pLeft; /* the LHS of the IN operator */
+      KeyInfo *pKeyInfo = 0;      /* Key information */
+
+      affinity = sqlitexExprAffinity(pLeft);
+
+      /* Whether this is an 'x IN(SELECT...)' or an 'x IN(<exprlist>)'
+      ** expression it is handled the same way.  An ephemeral table is 
+      ** filled with single-field index keys representing the results
+      ** from the SELECT or the <exprlist>.
+      **
+      ** If the 'x' expression is a column value, or the SELECT...
+      ** statement returns a column value, then the affinity of that
+      ** column is used to build the index keys. If both 'x' and the
+      ** SELECT... statement are columns, then numeric affinity is used
+      ** if either column has NUMERIC or INTEGER affinity. If neither
+      ** 'x' nor the SELECT... statement are columns, then numeric affinity
+      ** is used.
+      */
+      pExpr->iTable = pParse->nTab++;
+      addr = sqlitexVdbeAddOp2(v, OP_OpenEphemeral, pExpr->iTable, !isRowid);
+      /* COMDB2 ISSUE -- TODO: this should not be set like this here */
+      /* if( rMayHaveNull==0 ) sqlitexVdbeChangeP5(v, BTREE_UNORDERED); */
+      pKeyInfo = isRowid ? 0 : sqlitexKeyInfoAlloc(pParse->db, 1, 1);
+
+      if( ExprHasProperty(pExpr, EP_xIsSelect) ){
+        /* Case 1:     expr IN (SELECT ...)
+        **
+        ** Generate code to write the results of the select into the temporary
+        ** table allocated and opened above.
+        */
+        Select *pSelect = pExpr->x.pSelect;
+        SelectDest dest;
+        ExprList *pEList;
+
+        assert( !isRowid );
+        sqlitexSelectDestInit(&dest, SRT_Set, pExpr->iTable);
+        dest.affSdst = (u8)affinity;
+        assert( (pExpr->iTable&0x0000FFFF)==pExpr->iTable );
+        pSelect->iLimit = 0;
+        testcase( pSelect->selFlags & SF_Distinct );
+        testcase( pKeyInfo==0 ); /* Caused by OOM in sqlitexKeyInfoAlloc() */
+        if( sqlitexSelect(pParse, pSelect, &dest) ){
+          sqlitexKeyInfoUnref(pKeyInfo);
+          return 0;
+        }
+        pEList = pSelect->pEList;
+        assert( pKeyInfo!=0 ); /* OOM will cause exit after sqlitexSelect() */
+        assert( pEList!=0 );
+        assert( pEList->nExpr>0 );
+        assert( sqlitexKeyInfoIsWriteable(pKeyInfo) );
+        pKeyInfo->aColl[0] = sqlitexBinaryCompareCollSeq(pParse, pExpr->pLeft,
+                                                         pEList->a[0].pExpr);
+      }else if( ALWAYS(pExpr->x.pList!=0) ){
+        /* Case 2:     expr IN (exprlist)
+        **
+        ** For each expression, build an index key from the evaluation and
+        ** store it in the temporary table. If <expr> is a column, then use
+        ** that columns affinity when building index keys. If <expr> is not
+        ** a column, use numeric affinity.
+        */
+        int i;
+        ExprList *pList = pExpr->x.pList;
+        struct ExprList_item *pItem;
+        int r1, r2, r3;
+
+        if( !affinity ){
+          affinity = SQLITE_AFF_NONE;
+        }
+        if( pKeyInfo ){
+          assert( sqlitexKeyInfoIsWriteable(pKeyInfo) );
+          pKeyInfo->aColl[0] = sqlitexExprCollSeq(pParse, pExpr->pLeft);
+        }
+
+        /* Loop through each expression in <exprlist>. */
+        r1 = sqlitexGetTempReg(pParse);
+        r2 = sqlitexGetTempReg(pParse);
+        if( isRowid ) sqlitexVdbeAddOp2(v, OP_Null, 0, r2);
+        for(i=pList->nExpr, pItem=pList->a; i>0; i--, pItem++){
+          Expr *pE2 = pItem->pExpr;
+          int iValToIns;
+
+          /* If the expression is not constant then we will need to
+          ** disable the test that was generated above that makes sure
+          ** this code only executes once.  Because for a non-constant
+          ** expression we need to rerun this code each time.
+          */
+          if( jmpIfDynamic>=0 && !sqlitexExprIsConstant(pE2) ){
+            sqlitexVdbeChangeToNoop(v, jmpIfDynamic);
+            jmpIfDynamic = -1;
+          }
+
+          /* Evaluate the expression and insert it into the temp table */
+          if( isRowid && sqlitexExprIsInteger(pE2, &iValToIns) ){
+            sqlitexVdbeAddOp3(v, OP_InsertInt, pExpr->iTable, r2, iValToIns);
+          }else{
+            r3 = sqlitexExprCodeTarget(pParse, pE2, r1);
+            if( isRowid ){
+              sqlitexVdbeAddOp2(v, OP_MustBeInt, r3,
+                                sqlitexVdbeCurrentAddr(v)+2);
+              VdbeCoverage(v);
+              sqlitexVdbeAddOp3(v, OP_Insert, pExpr->iTable, r2, r3);
+            }else{
+              sqlitexVdbeAddOp4(v, OP_MakeRecord, r3, 1, r2, &affinity, 1);
+              sqlitexExprCacheAffinityChange(pParse, r3, 1);
+              sqlitexVdbeAddOp2(v, OP_IdxInsert, pExpr->iTable, r2);
+            }
+          }
+        }
+        sqlitexReleaseTempReg(pParse, r1);
+        sqlitexReleaseTempReg(pParse, r2);
+      }
+      if( pKeyInfo ){
+        sqlitexVdbeChangeP4(v, addr, (void *)pKeyInfo, P4_KEYINFO);
+      }
+      break;
+    }
+
+    case TK_EXISTS:
+    case TK_SELECT:
+    /* COMDB2 MODIFICATION */
+    case TK_SELECTV:
+    default: {
+      /* If this has to be a scalar SELECT.  Generate code to put the
+      ** value of this select in a memory cell and record the number
+      ** of the memory cell in iColumn.  If this is an EXISTS, write
+      ** an integer 0 (not exists) or 1 (exists) into a memory cell
+      ** and record that memory cell in iColumn.
+      */
+      Select *pSel;                         /* SELECT statement to encode */
+      SelectDest dest;                      /* How to deal with SELECt result */
+
+      testcase( pExpr->op==TK_EXISTS );
+      testcase( pExpr->op==TK_SELECT );
+      /* COMDB2 MODIFICATION */
+      testcase( pExpr->op==TK_SELECTV );
+      assert( pExpr->op==TK_EXISTS || pExpr->op==TK_SELECT
+        || pExpr->op==TK_SELECTV);
+
+      assert( ExprHasProperty(pExpr, EP_xIsSelect) );
+      pSel = pExpr->x.pSelect;
+      sqlitexSelectDestInit(&dest, 0, ++pParse->nMem);
+      /* COMDB2 MODIFICATION */
+      if( pExpr->op==TK_SELECT || pExpr->op==TK_SELECTV){
+        dest.eDest = SRT_Mem;
+        dest.iSdst = dest.iSDParm;
+        sqlitexVdbeAddOp2(v, OP_Null, 0, dest.iSDParm);
+        VdbeComment((v, "Init subquery result"));
+      }else{
+        dest.eDest = SRT_Exists;
+        sqlitexVdbeAddOp2(v, OP_Integer, 0, dest.iSDParm);
+        VdbeComment((v, "Init EXISTS result"));
+      }
+      sqlitexExprDelete(pParse->db, pSel->pLimit);
+      pSel->pLimit = sqlitexPExpr(pParse, TK_INTEGER, 0, 0,
+                                  &sqlitexIntTokens[1]);
+      pSel->iLimit = 0;
+      if( sqlitexSelect(pParse, pSel, &dest) ){
+        return 0;
+      }
+      rReg = dest.iSDParm;
+      ExprSetVVAProperty(pExpr, EP_NoReduce);
+      break;
+    }
+  }
+
+  if( rHasNullFlag ){
+    sqlitexSetHasNullFlag(v, pExpr->iTable, rHasNullFlag);
+  }
+
+  if( jmpIfDynamic>=0 ){
+    sqlitexVdbeJumpHere(v, jmpIfDynamic);
+  }
+  sqlitexExprCachePop(pParse);
+
+  return rReg;
+}
+#endif /* SQLITE_OMIT_SUBQUERY */
+
+#ifndef SQLITE_OMIT_SUBQUERY
+/*
+** Generate code for an IN expression.
+**
+**      x IN (SELECT ...)
+**      x IN (value, value, ...)
+**
+** The left-hand side (LHS) is a scalar expression.  The right-hand side (RHS)
+** is an array of zero or more values.  The expression is true if the LHS is
+** contained within the RHS.  The value of the expression is unknown (NULL)
+** if the LHS is NULL or if the LHS is not contained within the RHS and the
+** RHS contains one or more NULL values.
+**
+** This routine generates code that jumps to destIfFalse if the LHS is not 
+** contained within the RHS.  If due to NULLs we cannot determine if the LHS
+** is contained in the RHS then jump to destIfNull.  If the LHS is contained
+** within the RHS then fall through.
+*/
+static void sqlitexExprCodeIN(
+  Parse *pParse,        /* Parsing and code generating context */
+  Expr *pExpr,          /* The IN expression */
+  int destIfFalse,      /* Jump here if LHS is not contained in the RHS */
+  int destIfNull        /* Jump here if the results are unknown due to NULLs */
+){
+  int rRhsHasNull = 0;  /* Register that is true if RHS contains NULL values */
+  char affinity;        /* Comparison affinity to use */
+  int eType;            /* Type of the RHS */
+  int r1;               /* Temporary use register */
+  Vdbe *v;              /* Statement under construction */
+
+  /* Compute the RHS.   After this step, the table with cursor
+  ** pExpr->iTable will contains the values that make up the RHS.
+  */
+  v = pParse->pVdbe;
+  assert( v!=0 );       /* OOM detected prior to this routine */
+  VdbeNoopComment((v, "begin IN expr"));
+  eType = sqlitexFindInIndex(pParse, pExpr,
+                             IN_INDEX_MEMBERSHIP | IN_INDEX_NOOP_OK,
+                             destIfFalse==destIfNull ? 0 : &rRhsHasNull);
+
+  /* Figure out the affinity to use to create a key from the results
+  ** of the expression. affinityStr stores a static string suitable for
+  ** P4 of OP_MakeRecord.
+  */
+  affinity = comparisonAffinity(pExpr);
+
+  /* Code the LHS, the <expr> from "<expr> IN (...)".
+  */
+  sqlitexExprCachePush(pParse);
+  r1 = sqlitexGetTempReg(pParse);
+  sqlitexExprCode(pParse, pExpr->pLeft, r1);
+
+  /* If sqlitexFindInIndex() did not find or create an index that is
+  ** suitable for evaluating the IN operator, then evaluate using a
+  ** sequence of comparisons.
+  */
+  if( eType==IN_INDEX_NOOP ){
+    ExprList *pList = pExpr->x.pList;
+    CollSeq *pColl = sqlitexExprCollSeq(pParse, pExpr->pLeft);
+    int labelOk = sqlitexVdbeMakeLabel(v);
+    int r2, regToFree;
+    int regCkNull = 0;
+    int ii;
+    assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
+    if( destIfNull!=destIfFalse ){
+      regCkNull = sqlitexGetTempReg(pParse);
+      sqlitexVdbeAddOp3(v, OP_BitAnd, r1, r1, regCkNull);
+    }
+    for(ii=0; ii<pList->nExpr; ii++){
+      r2 = sqlitexExprCodeTemp(pParse, pList->a[ii].pExpr, &regToFree);
+      if( regCkNull && sqlitexExprCanBeNull(pList->a[ii].pExpr) ){
+        sqlitexVdbeAddOp3(v, OP_BitAnd, regCkNull, r2, regCkNull);
+      }
+      if( ii<pList->nExpr-1 || destIfNull!=destIfFalse ){
+        sqlitexVdbeAddOp4(v, OP_Eq, r1, labelOk, r2,
+                          (void*)pColl, P4_COLLSEQ);
+        VdbeCoverageIf(v, ii<pList->nExpr-1);
+        VdbeCoverageIf(v, ii==pList->nExpr-1);
+        sqlitexVdbeChangeP5(v, affinity);
+      }else{
+        assert( destIfNull==destIfFalse );
+        sqlitexVdbeAddOp4(v, OP_Ne, r1, destIfFalse, r2,
+                          (void*)pColl, P4_COLLSEQ); VdbeCoverage(v);
+        sqlitexVdbeChangeP5(v, affinity | SQLITE_JUMPIFNULL);
+      }
+      sqlitexReleaseTempReg(pParse, regToFree);
+    }
+    if( regCkNull ){
+      sqlitexVdbeAddOp2(v, OP_IsNull, regCkNull, destIfNull); VdbeCoverage(v);
+      sqlitexVdbeAddOp2(v, OP_Goto, 0, destIfFalse);
+    }
+    sqlitexVdbeResolveLabel(v, labelOk);
+    sqlitexReleaseTempReg(pParse, regCkNull);
+  }else{
+  
+    /* If the LHS is NULL, then the result is either false or NULL depending
+    ** on whether the RHS is empty or not, respectively.
+    */
+    if( sqlitexExprCanBeNull(pExpr->pLeft) ){
+      if( destIfNull==destIfFalse ){
+        /* Shortcut for the common case where the false and NULL outcomes are
+        ** the same. */
+        sqlitexVdbeAddOp2(v, OP_IsNull, r1, destIfNull); VdbeCoverage(v);
+      }else{
+        int addr1 = sqlitexVdbeAddOp1(v, OP_NotNull, r1); VdbeCoverage(v);
+        sqlitexVdbeAddOp2(v, OP_Rewind, pExpr->iTable, destIfFalse);
+        VdbeCoverage(v);
+        sqlitexVdbeAddOp2(v, OP_Goto, 0, destIfNull);
+        sqlitexVdbeJumpHere(v, addr1);
+      }
+    }
+  
+    if( eType==IN_INDEX_ROWID ){
+      /* In this case, the RHS is the ROWID of table b-tree
+      */
+      sqlitexVdbeAddOp2(v, OP_MustBeInt, r1, destIfFalse); VdbeCoverage(v);
+      sqlitexVdbeAddOp3(v, OP_NotExists, pExpr->iTable, destIfFalse, r1);
+      VdbeCoverage(v);
+    }else{
+      /* In this case, the RHS is an index b-tree.
+      */
+      sqlitexVdbeAddOp4(v, OP_Affinity, r1, 1, 0, &affinity, 1);
+  
+      /* If the set membership test fails, then the result of the 
+      ** "x IN (...)" expression must be either 0 or NULL. If the set
+      ** contains no NULL values, then the result is 0. If the set 
+      ** contains one or more NULL values, then the result of the
+      ** expression is also NULL.
+      */
+      assert( destIfFalse!=destIfNull || rRhsHasNull==0 );
+      if( rRhsHasNull==0 ){
+        /* This branch runs if it is known at compile time that the RHS
+        ** cannot contain NULL values. This happens as the result
+        ** of a "NOT NULL" constraint in the database schema.
+        **
+        ** Also run this branch if NULL is equivalent to FALSE
+        ** for this particular IN operator.
+        */
+        sqlitexVdbeAddOp4Int(v, OP_NotFound, pExpr->iTable, destIfFalse, r1, 1);
+        VdbeCoverage(v);
+      }else{
+        /* In this branch, the RHS of the IN might contain a NULL and
+        ** the presence of a NULL on the RHS makes a difference in the
+        ** outcome.
+        */
+        int j1;
+  
+        /* First check to see if the LHS is contained in the RHS.  If so,
+        ** then the answer is TRUE the presence of NULLs in the RHS does
+        ** not matter.  If the LHS is not contained in the RHS, then the
+        ** answer is NULL if the RHS contains NULLs and the answer is
+        ** FALSE if the RHS is NULL-free.
+        */
+        j1 = sqlitexVdbeAddOp4Int(v, OP_Found, pExpr->iTable, 0, r1, 1);
+        VdbeCoverage(v);
+        sqlitexVdbeAddOp2(v, OP_IsNull, rRhsHasNull, destIfNull);
+        VdbeCoverage(v);
+        sqlitexVdbeAddOp2(v, OP_Goto, 0, destIfFalse);
+        sqlitexVdbeJumpHere(v, j1);
+      }
+    }
+  }
+  sqlitexReleaseTempReg(pParse, r1);
+  sqlitexExprCachePop(pParse);
+  VdbeComment((v, "end IN expr"));
+}
+#endif /* SQLITE_OMIT_SUBQUERY */
+
+
+#ifndef SQLITE_OMIT_FLOATING_POINT
+/*
+** Generate an instruction that will put the floating point
+** value described by z[0..n-1] into register iMem.
+**
+** The z[] string will probably not be zero-terminated.  But the 
+** z[n] character is guaranteed to be something that does not look
+** like the continuation of the number.
+*/
+static void codeReal(Vdbe *v, const char *z, int negateFlag, int iMem){
+  if( ALWAYS(z!=0) ){
+    double value;
+    sqlitexAtoF(z, &value, sqlitexStrlen30(z), SQLITE_UTF8);
+    assert( !sqlitexIsNaN(value) ); /* The new AtoF never returns NaN */
+    if( negateFlag ) value = -value;
+    sqlitexVdbeAddOp4Dup8(v, OP_Real, 0, iMem, 0, (u8*)&value, P4_REAL);
+  }
+}
+#endif
+
+
+/*
+** Generate an instruction that will put the integer describe by
+** text z[0..n-1] into register iMem.
+**
+** Expr.u.zToken is always UTF8 and zero-terminated.
+*/
+static void codeInteger(Parse *pParse, Expr *pExpr, int negFlag, int iMem){
+  Vdbe *v = pParse->pVdbe;
+  if( pExpr->flags & EP_IntValue ){
+    int i = pExpr->u.iValue;
+    assert( i>=0 );
+    if( negFlag ) i = -i;
+    sqlitexVdbeAddOp2(v, OP_Integer, i, iMem);
+  }else{
+    int c;
+    i64 value;
+    const char *z = pExpr->u.zToken;
+    assert( z!=0 );
+    c = sqlitexDecOrHexToI64(z, &value);
+    if( c==0 || (c==2 && negFlag) ){
+      if( negFlag ){ value = c==2 ? SMALLEST_INT64 : -value; }
+      sqlitexVdbeAddOp4Dup8(v, OP_Int64, 0, iMem, 0, (u8*)&value, P4_INT64);
+    }else{
+#ifdef SQLITE_OMIT_FLOATING_POINT
+      sqlitexErrorMsg(pParse, "oversized integer: %s%s", negFlag ? "-" : "", z);
+#else
+#ifndef SQLITE_OMIT_HEX_INTEGER
+      if( sqlitex_strnicmp(z,"0x",2)==0 ){
+        sqlitexErrorMsg(pParse, "hex literal too big: %s", z);
+      }else
+#endif
+      {
+        codeReal(v, z, negFlag, iMem);
+      }
+#endif
+    }
+  }
+}
+
+/*
+** Clear a cache entry.
+*/
+static void cacheEntryClear(Parse *pParse, struct yColCache *p){
+  if( p->tempReg ){
+    if( pParse->nTempReg<ArraySize(pParse->aTempReg) ){
+      pParse->aTempReg[pParse->nTempReg++] = p->iReg;
+    }
+    p->tempReg = 0;
+  }
+}
+
+
+/*
+** Record in the column cache that a particular column from a
+** particular table is stored in a particular register.
+*/
+void sqlitexExprCacheStore(Parse *pParse, int iTab, int iCol, int iReg){
+  int i;
+  int minLru;
+  int idxLru;
+  struct yColCache *p;
+
+  /* Unless an error has occurred, register numbers are always positive. */
+  assert( iReg>0 || pParse->nErr || pParse->db->mallocFailed );
+  /* COMDB2 MODIFICATION : our columns start at -3 
+   * -3 comdb2_rowtimestamp, 
+   * -2 comdb2_rowid 
+   * -1 rowid
+   */
+  assert( iCol>=-3 && iCol<32768 );  /* Finite column numbers */
+
+  /* The SQLITE_ColumnCache flag disables the column cache.  This is used
+  ** for testing only - to verify that SQLite always gets the same answer
+  ** with and without the column cache.
+  */
+  if( OptimizationDisabled(pParse->db, SQLITE_ColumnCache) ) return;
+
+  /* First replace any existing entry.
+  **
+  ** Actually, the way the column cache is currently used, we are guaranteed
+  ** that the object will never already be in cache.  Verify this guarantee.
+  */
+#ifndef NDEBUG
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    assert( p->iReg==0 || p->iTable!=iTab || p->iColumn!=iCol );
+  }
+#endif
+
+  /* Find an empty slot and replace it */
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    if( p->iReg==0 ){
+      p->iLevel = pParse->iCacheLevel;
+      p->iTable = iTab;
+      p->iColumn = iCol;
+      p->iReg = iReg;
+      p->tempReg = 0;
+      p->lru = pParse->iCacheCnt++;
+      return;
+    }
+  }
+
+  /* Replace the last recently used */
+  minLru = 0x7fffffff;
+  idxLru = -1;
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    if( p->lru<minLru ){
+      idxLru = i;
+      minLru = p->lru;
+    }
+  }
+  if( ALWAYS(idxLru>=0) ){
+    p = &pParse->aColCache[idxLru];
+    p->iLevel = pParse->iCacheLevel;
+    p->iTable = iTab;
+    p->iColumn = iCol;
+    p->iReg = iReg;
+    p->tempReg = 0;
+    p->lru = pParse->iCacheCnt++;
+    return;
+  }
+}
+
+/*
+** Indicate that registers between iReg..iReg+nReg-1 are being overwritten.
+** Purge the range of registers from the column cache.
+*/
+void sqlitexExprCacheRemove(Parse *pParse, int iReg, int nReg){
+  int i;
+  int iLast = iReg + nReg - 1;
+  struct yColCache *p;
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    int r = p->iReg;
+    if( r>=iReg && r<=iLast ){
+      cacheEntryClear(pParse, p);
+      p->iReg = 0;
+    }
+  }
+}
+
+/*
+** Remember the current column cache context.  Any new entries added
+** added to the column cache after this call are removed when the
+** corresponding pop occurs.
+*/
+void sqlitexExprCachePush(Parse *pParse){
+  pParse->iCacheLevel++;
+#ifdef SQLITE_DEBUG
+  if( pParse->db->flags & SQLITE_VdbeAddopTrace ){
+    printf("PUSH to %d\n", pParse->iCacheLevel);
+  }
+#endif
+}
+
+/*
+** Remove from the column cache any entries that were added since the
+** the previous sqlitexExprCachePush operation.  In other words, restore
+** the cache to the state it was in prior the most recent Push.
+*/
+void sqlitexExprCachePop(Parse *pParse){
+  int i;
+  struct yColCache *p;
+  assert( pParse->iCacheLevel>=1 );
+  pParse->iCacheLevel--;
+#ifdef SQLITE_DEBUG
+  if( pParse->db->flags & SQLITE_VdbeAddopTrace ){
+    printf("POP  to %d\n", pParse->iCacheLevel);
+  }
+#endif
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    if( p->iReg && p->iLevel>pParse->iCacheLevel ){
+      cacheEntryClear(pParse, p);
+      p->iReg = 0;
+    }
+  }
+}
+
+/*
+** When a cached column is reused, make sure that its register is
+** no longer available as a temp register.  ticket #3879:  that same
+** register might be in the cache in multiple places, so be sure to
+** get them all.
+*/
+static void sqlitexExprCachePinRegister(Parse *pParse, int iReg){
+  int i;
+  struct yColCache *p;
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    if( p->iReg==iReg ){
+      p->tempReg = 0;
+    }
+  }
+}
+
+/*
+** Generate code to extract the value of the iCol-th column of a table.
+*/
+void sqlitexExprCodeGetColumnOfTable(
+  Vdbe *v,        /* The VDBE under construction */
+  Table *pTab,    /* The table containing the value */
+  int iTabCur,    /* The table cursor.  Or the PK cursor for WITHOUT ROWID */
+  int iCol,       /* Index of the column to extract */
+  int regOut      /* Extract the value into this register */
+){
+  if( iCol<0 || iCol==pTab->iPKey ){
+    /* COMDB2 MODIFICATION */
+    /* add the OP_Rowid with P2=1 to get the proper backend code to
+       be run by the vm.
+    */
+    if( iCol == -1 ){
+      sqlitexVdbeAddOp2(v, OP_Rowid, iTabCur, regOut);
+    }else if( iCol == -2 ){
+      sqlitexVdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 1);
+    }else if( iCol == -3 ){
+      sqlitexVdbeAddOp3(v, OP_Rowid, iTabCur, regOut, 2);
+    }else{
+      sqlitexVdbeAddOp2(v, OP_Rowid, iTabCur, regOut);
+    }
+  }else{
+    int op = IsVirtual(pTab) ? OP_VColumn : OP_Column;
+    int x = iCol;
+    if( !HasRowid(pTab) ){
+      x = sqlitexColumnOfIndex(sqlitexPrimaryKeyIndex(pTab), iCol);
+    }
+    sqlitexVdbeAddOp3(v, op, iTabCur, x, regOut);
+  }
+  if( iCol>=0 ){
+    /* COMDB2 MODIFICATION */
+    /* register -1 will make it ignore affinity */
+    sqlitexColumnDefault(v, pTab, iCol, -1); 
+  }
+}
+
+/*
+** Generate code that will extract the iColumn-th column from
+** table pTab and store the column value in a register.  An effort
+** is made to store the column value in register iReg, but this is
+** not guaranteed.  The location of the column value is returned.
+**
+** There must be an open cursor to pTab in iTable when this routine
+** is called.  If iColumn<0 then code is generated that extracts the rowid.
+*/
+int sqlitexExprCodeGetColumn(
+  Parse *pParse,   /* Parsing and code generating context */
+  Table *pTab,     /* Description of the table we are reading from */
+  int iColumn,     /* Index of the table column */
+  int iTable,      /* The cursor pointing to the table */
+  int iReg,        /* Store results here */
+  u8 p5            /* P5 value for OP_Column */
+){
+  Vdbe *v = pParse->pVdbe;
+  int i;
+  struct yColCache *p;
+
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    if( p->iReg>0 && p->iTable==iTable && p->iColumn==iColumn ){
+      p->lru = pParse->iCacheCnt++;
+      sqlitexExprCachePinRegister(pParse, p->iReg);
+      return p->iReg;
+    }
+  }  
+  assert( v!=0 );
+  sqlitexExprCodeGetColumnOfTable(v, pTab, iTable, iColumn, iReg);
+  if( p5 ){
+    sqlitexVdbeChangeP5(v, p5);
+  }else{   
+    sqlitexExprCacheStore(pParse, iTable, iColumn, iReg);
+  }
+  return iReg;
+}
+
+/*
+** Clear all column cache entries.
+*/
+void sqlitexExprCacheClear(Parse *pParse){
+  int i;
+  struct yColCache *p;
+
+#if SQLITE_DEBUG
+  if( pParse->db->flags & SQLITE_VdbeAddopTrace ){
+    printf("CLEAR\n");
+  }
+#endif
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    if( p->iReg ){
+      cacheEntryClear(pParse, p);
+      p->iReg = 0;
+    }
+  }
+}
+
+/*
+** Record the fact that an affinity change has occurred on iCount
+** registers starting with iStart.
+*/
+void sqlitexExprCacheAffinityChange(Parse *pParse, int iStart, int iCount){
+  sqlitexExprCacheRemove(pParse, iStart, iCount);
+}
+
+/*
+** Generate code to move content from registers iFrom...iFrom+nReg-1
+** over to iTo..iTo+nReg-1. Keep the column cache up-to-date.
+*/
+void sqlitexExprCodeMove(Parse *pParse, int iFrom, int iTo, int nReg){
+  assert( iFrom>=iTo+nReg || iFrom+nReg<=iTo );
+  sqlitexVdbeAddOp3(pParse->pVdbe, OP_Move, iFrom, iTo, nReg);
+  sqlitexExprCacheRemove(pParse, iFrom, nReg);
+}
+
+#if defined(SQLITE_DEBUG) || defined(SQLITE_COVERAGE_TEST)
+/*
+** Return true if any register in the range iFrom..iTo (inclusive)
+** is used as part of the column cache.
+**
+** This routine is used within assert() and testcase() macros only
+** and does not appear in a normal build.
+*/
+static int usedAsColumnCache(Parse *pParse, int iFrom, int iTo){
+  int i;
+  struct yColCache *p;
+  for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+    int r = p->iReg;
+    if( r>=iFrom && r<=iTo ) return 1;    /*NO_TEST*/
+  }
+  return 0;
+}
+#endif /* SQLITE_DEBUG || SQLITE_COVERAGE_TEST */
+
+/*
+** Convert an expression node to a TK_REGISTER
+*/
+static void exprToRegister(Expr *p, int iReg){
+  p->op2 = p->op;
+  p->op = TK_REGISTER;
+  p->iTable = iReg;
+  ExprClearProperty(p, EP_Skip);
+}
+
+/*
+** Generate code into the current Vdbe to evaluate the given
+** expression.  Attempt to store the results in register "target".
+** Return the register where results are stored.
+**
+** With this routine, there is no guarantee that results will
+** be stored in target.  The result might be stored in some other
+** register if it is convenient to do so.  The calling function
+** must check the return code and move the results to the desired
+** register.
+*/
+int sqlitexExprCodeTarget(Parse *pParse, Expr *pExpr, int target){
+  Vdbe *v = pParse->pVdbe;  /* The VM under construction */
+  int op;                   /* The opcode being coded */
+  int inReg = target;       /* Results stored in register inReg */
+  int regFree1 = 0;         /* If non-zero free this temporary register */
+  int regFree2 = 0;         /* If non-zero free this temporary register */
+  int r1, r2, r3, r4;       /* Various register numbers */
+  sqlitex *db = pParse->db; /* The database connection */
+  Expr tempX;               /* Temporary expression node */
+
+  assert( target>0 && target<=pParse->nMem );
+  if( v==0 ){
+    assert( pParse->db->mallocFailed );
+    return 0;
+  }
+
+  if( pExpr==0 ){
+    op = TK_NULL;
+  }else{
+    op = pExpr->op;
+  }
+  switch( op ){
+    case TK_AGG_COLUMN: {
+      AggInfo *pAggInfo = pExpr->pAggInfo;
+      struct AggInfo_col *pCol = &pAggInfo->aCol[pExpr->iAgg];
+      if( !pAggInfo->directMode ){
+        assert( pCol->iMem>0 );
+        inReg = pCol->iMem;
+        break;
+      }else if( pAggInfo->useSortingIdx ){
+        sqlitexVdbeAddOp3(v, OP_Column, pAggInfo->sortingIdxPTab,
+                              pCol->iSorterColumn, target);
+        break;
+      }
+      /* Otherwise, fall thru into the TK_COLUMN case */
+    }
+    case TK_COLUMN: {
+      int iTab = pExpr->iTable;
+      if( iTab<0 ){
+        if( pParse->ckBase>0 ){
+          /* Generating CHECK constraints or inserting into partial index */
+          inReg = pExpr->iColumn + pParse->ckBase;
+          break;
+        }else{
+          /* Deleting from a partial index */
+          iTab = pParse->iPartIdxTab;
+        }
+      }
+      inReg = sqlitexExprCodeGetColumn(pParse, pExpr->pTab,
+                               pExpr->iColumn, iTab, target,
+                               pExpr->op2);
+      break;
+    }
+    case TK_INTEGER: {
+      codeInteger(pParse, pExpr, 0, target);
+      break;
+    }
+#ifndef SQLITE_OMIT_FLOATING_POINT
+    case TK_FLOAT: {
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      codeReal(v, pExpr->u.zToken, 0, target);
+      break;
+    }
+#endif
+    case TK_STRING: {
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      sqlitexVdbeAddOp4(v, OP_String8, 0, target, 0, pExpr->u.zToken, 0);
+      break;
+    }
+    case TK_NULL: {
+      sqlitexVdbeAddOp2(v, OP_Null, 0, target);
+      break;
+    }
+#ifndef SQLITE_OMIT_BLOB_LITERAL
+    case TK_BLOB: {
+      int n;
+      const char *z;
+      char *zBlob;
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      assert( pExpr->u.zToken[0]=='x' || pExpr->u.zToken[0]=='X' );
+      assert( pExpr->u.zToken[1]=='\'' );
+      z = &pExpr->u.zToken[2];
+      n = sqlitexStrlen30(z) - 1;
+      assert( z[n]=='\'' );
+      zBlob = sqlitexHexToBlob(sqlitexVdbeDb(v), z, n);
+      sqlitexVdbeAddOp4(v, OP_Blob, n/2, target, 0, zBlob, P4_DYNAMIC);
+      break;
+    }
+#endif
+    case TK_VARIABLE: {
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      assert( pExpr->u.zToken!=0 );
+      assert( pExpr->u.zToken[0]!=0 );
+      sqlitexVdbeAddOp2(v, OP_Variable, pExpr->iColumn, target);
+      if( pExpr->u.zToken[1]!=0 ){
+        assert( pExpr->u.zToken[0]=='?' 
+             || strcmp(pExpr->u.zToken, pParse->azVar[pExpr->iColumn-1])==0 );
+        sqlitexVdbeChangeP4(v, -1, pParse->azVar[pExpr->iColumn-1], P4_STATIC);
+      }
+      break;
+    }
+    case TK_REGISTER: {
+      inReg = pExpr->iTable;
+      break;
+    }
+    case TK_AS: {
+      inReg = sqlitexExprCodeTarget(pParse, pExpr->pLeft, target);
+      break;
+    }
+#ifndef SQLITE_OMIT_CAST
+    case TK_CAST: {
+      /* Expressions of the form:   CAST(pLeft AS token) */
+      inReg = sqlitexExprCodeTarget(pParse, pExpr->pLeft, target);
+      if( inReg!=target ){
+        sqlitexVdbeAddOp2(v, OP_SCopy, inReg, target);
+        inReg = target;
+      }
+      sqlitexVdbeAddOp2(v, OP_Cast, target,
+                        sqlitexAffinityType(pExpr->u.zToken, 0));
+      testcase( usedAsColumnCache(pParse, inReg, inReg) );
+      sqlitexExprCacheAffinityChange(pParse, inReg, 1);
+      break;
+    }
+#endif /* SQLITE_OMIT_CAST */
+    case TK_LT:
+    case TK_LE:
+    case TK_GT:
+    case TK_GE:
+    case TK_NE:
+    case TK_EQ: {
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      codeCompare(pParse, pExpr->pLeft, pExpr->pRight, op,
+                  r1, r2, inReg, SQLITE_STOREP2);
+      assert(TK_LT==OP_Lt); testcase(op==OP_Lt); VdbeCoverageIf(v,op==OP_Lt);
+      assert(TK_LE==OP_Le); testcase(op==OP_Le); VdbeCoverageIf(v,op==OP_Le);
+      assert(TK_GT==OP_Gt); testcase(op==OP_Gt); VdbeCoverageIf(v,op==OP_Gt);
+      assert(TK_GE==OP_Ge); testcase(op==OP_Ge); VdbeCoverageIf(v,op==OP_Ge);
+      assert(TK_EQ==OP_Eq); testcase(op==OP_Eq); VdbeCoverageIf(v,op==OP_Eq);
+      assert(TK_NE==OP_Ne); testcase(op==OP_Ne); VdbeCoverageIf(v,op==OP_Ne);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_IS:
+    case TK_ISNOT: {
+      testcase( op==TK_IS );
+      testcase( op==TK_ISNOT );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      op = (op==TK_IS) ? TK_EQ : TK_NE;
+      codeCompare(pParse, pExpr->pLeft, pExpr->pRight, op,
+                  r1, r2, inReg, SQLITE_STOREP2 | SQLITE_NULLEQ);
+      VdbeCoverageIf(v, op==TK_EQ);
+      VdbeCoverageIf(v, op==TK_NE);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_AND:
+    case TK_OR:
+    case TK_PLUS:
+    case TK_STAR:
+    case TK_MINUS:
+    case TK_REM:
+    case TK_BITAND:
+    case TK_BITOR:
+    case TK_SLASH:
+    case TK_LSHIFT:
+    case TK_RSHIFT: 
+    case TK_CONCAT: {
+      assert( TK_AND==OP_And );            testcase( op==TK_AND );
+      assert( TK_OR==OP_Or );              testcase( op==TK_OR );
+      assert( TK_PLUS==OP_Add );           testcase( op==TK_PLUS );
+      assert( TK_MINUS==OP_Subtract );     testcase( op==TK_MINUS );
+      assert( TK_REM==OP_Remainder );      testcase( op==TK_REM );
+      assert( TK_BITAND==OP_BitAnd );      testcase( op==TK_BITAND );
+      assert( TK_BITOR==OP_BitOr );        testcase( op==TK_BITOR );
+      assert( TK_SLASH==OP_Divide );       testcase( op==TK_SLASH );
+      assert( TK_LSHIFT==OP_ShiftLeft );   testcase( op==TK_LSHIFT );
+      assert( TK_RSHIFT==OP_ShiftRight );  testcase( op==TK_RSHIFT );
+      assert( TK_CONCAT==OP_Concat );      testcase( op==TK_CONCAT );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      sqlitexVdbeAddOp3(v, op, r2, r1, target);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_UMINUS: {
+      Expr *pLeft = pExpr->pLeft;
+      assert( pLeft );
+      if( pLeft->op==TK_INTEGER ){
+        codeInteger(pParse, pLeft, 1, target);
+#ifndef SQLITE_OMIT_FLOATING_POINT
+      }else if( pLeft->op==TK_FLOAT ){
+        assert( !ExprHasProperty(pExpr, EP_IntValue) );
+        codeReal(v, pLeft->u.zToken, 1, target);
+#endif
+      }else{
+        tempX.op = TK_INTEGER;
+        tempX.flags = EP_IntValue|EP_TokenOnly;
+        tempX.u.iValue = 0;
+        r1 = sqlitexExprCodeTemp(pParse, &tempX, &regFree1);
+        r2 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree2);
+        sqlitexVdbeAddOp3(v, OP_Subtract, r2, r1, target);
+        testcase( regFree2==0 );
+      }
+      inReg = target;
+      break;
+    }
+    case TK_BITNOT:
+    case TK_NOT: {
+      assert( TK_BITNOT==OP_BitNot );   testcase( op==TK_BITNOT );
+      assert( TK_NOT==OP_Not );         testcase( op==TK_NOT );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      testcase( regFree1==0 );
+      inReg = target;
+      sqlitexVdbeAddOp2(v, op, r1, inReg);
+      break;
+    }
+    case TK_ISNULL:
+    case TK_NOTNULL: {
+      int addr;
+      assert( TK_ISNULL==OP_IsNull );   testcase( op==TK_ISNULL );
+      assert( TK_NOTNULL==OP_NotNull ); testcase( op==TK_NOTNULL );
+      sqlitexVdbeAddOp2(v, OP_Integer, 1, target);
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      testcase( regFree1==0 );
+      addr = sqlitexVdbeAddOp1(v, op, r1);
+      VdbeCoverageIf(v, op==TK_ISNULL);
+      VdbeCoverageIf(v, op==TK_NOTNULL);
+      sqlitexVdbeAddOp2(v, OP_Integer, 0, target);
+      sqlitexVdbeJumpHere(v, addr);
+      break;
+    }
+    case TK_AGG_FUNCTION: {
+      AggInfo *pInfo = pExpr->pAggInfo;
+      if( pInfo==0 ){
+        assert( !ExprHasProperty(pExpr, EP_IntValue) );
+        sqlitexErrorMsg(pParse, "misuse of aggregate: %s()", pExpr->u.zToken);
+      }else{
+        inReg = pInfo->aFunc[pExpr->iAgg].iMem;
+      }
+      break;
+    }
+    case TK_FUNCTION: {
+      ExprList *pFarg;       /* List of function arguments */
+      int nFarg;             /* Number of function arguments */
+      FuncDef *pDef;         /* The function definition object */
+      int nId;               /* Length of the function name in bytes */
+      const char *zId;       /* The function name */
+      u32 constMask = 0;     /* Mask of function arguments that are constant */
+      int i;                 /* Loop counter */
+      u8 enc = ENC(db);      /* The text encoding used by this database */
+      CollSeq *pColl = 0;    /* A collating sequence */
+
+      assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
+      if( ExprHasProperty(pExpr, EP_TokenOnly) ){
+        pFarg = 0;
+      }else{
+        pFarg = pExpr->x.pList;
+      }
+      nFarg = pFarg ? pFarg->nExpr : 0;
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      zId = pExpr->u.zToken;
+      nId = sqlitexStrlen30(zId);
+      pDef = sqlitexFindFunction(db, zId, nId, nFarg, enc, 0);
+      if( pDef==0 || pDef->xFunc==0 ){
+        sqlitexErrorMsg(pParse, "unknown function: %.*s()", nId, zId);
+        break;
+      }
+
+      /* Attempt a direct implementation of the built-in COALESCE() and
+      ** IFNULL() functions.  This avoids unnecessary evaluation of
+      ** arguments past the first non-NULL argument.
+      */
+      if( pDef->funcFlags & SQLITE_FUNC_COALESCE ){
+        int endCoalesce = sqlitexVdbeMakeLabel(v);
+        assert( nFarg>=2 );
+        sqlitexExprCode(pParse, pFarg->a[0].pExpr, target);
+        for(i=1; i<nFarg; i++){
+          sqlitexVdbeAddOp2(v, OP_NotNull, target, endCoalesce);
+          VdbeCoverage(v);
+          sqlitexExprCacheRemove(pParse, target, 1);
+          sqlitexExprCachePush(pParse);
+          sqlitexExprCode(pParse, pFarg->a[i].pExpr, target);
+          sqlitexExprCachePop(pParse);
+        }
+        sqlitexVdbeResolveLabel(v, endCoalesce);
+        break;
+      }
+
+      /* The UNLIKELY() function is a no-op.  The result is the value
+      ** of the first argument.
+      */
+      if( pDef->funcFlags & SQLITE_FUNC_UNLIKELY ){
+        assert( nFarg>=1 );
+        sqlitexExprCode(pParse, pFarg->a[0].pExpr, target);
+        break;
+      }
+
+      for(i=0; i<nFarg; i++){
+        if( i<32 && sqlitexExprIsConstant(pFarg->a[i].pExpr) ){
+          testcase( i==31 );
+          constMask |= MASKBIT32(i);
+        }
+        if( (pDef->funcFlags & SQLITE_FUNC_NEEDCOLL)!=0 && !pColl ){
+          pColl = sqlitexExprCollSeq(pParse, pFarg->a[i].pExpr);
+        }
+      }
+      if( pFarg ){
+        if( constMask ){
+          r1 = pParse->nMem+1;
+          pParse->nMem += nFarg;
+        }else{
+          r1 = sqlitexGetTempRange(pParse, nFarg);
+        }
+
+        /* For length() and typeof() functions with a column argument,
+        ** set the P5 parameter to the OP_Column opcode to OPFLAG_LENGTHARG
+        ** or OPFLAG_TYPEOFARG respectively, to avoid unnecessary data
+        ** loading.
+        */
+        if( (pDef->funcFlags & (SQLITE_FUNC_LENGTH|SQLITE_FUNC_TYPEOF))!=0 ){
+          u8 exprOp;
+          assert( nFarg==1 );
+          assert( pFarg->a[0].pExpr!=0 );
+          exprOp = pFarg->a[0].pExpr->op;
+          if( exprOp==TK_COLUMN || exprOp==TK_AGG_COLUMN ){
+            assert( SQLITE_FUNC_LENGTH==OPFLAG_LENGTHARG );
+            assert( SQLITE_FUNC_TYPEOF==OPFLAG_TYPEOFARG );
+            testcase( pDef->funcFlags & OPFLAG_LENGTHARG );
+            pFarg->a[0].pExpr->op2 = 
+                  pDef->funcFlags & (OPFLAG_LENGTHARG|OPFLAG_TYPEOFARG);
+          }
+        }
+
+        sqlitexExprCachePush(pParse);     /* Ticket 2ea2425d34be */
+        sqlitexExprCodeExprList(pParse, pFarg, r1,
+                                SQLITE_ECEL_DUP|SQLITE_ECEL_FACTOR);
+        sqlitexExprCachePop(pParse);      /* Ticket 2ea2425d34be */
+      }else{
+        r1 = 0;
+      }
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+      /* Possibly overload the function if the first argument is
+      ** a virtual table column.
+      **
+      ** For infix functions (LIKE, GLOB, REGEXP, and MATCH) use the
+      ** second argument, not the first, as the argument to test to
+      ** see if it is a column in a virtual table.  This is done because
+      ** the left operand of infix functions (the operand we want to
+      ** control overloading) ends up as the second argument to the
+      ** function.  The expression "A glob B" is equivalent to 
+      ** "glob(B,A).  We want to use the A in "A glob B" to test
+      ** for function overloading.  But we use the B term in "glob(B,A)".
+      */
+      if( nFarg>=2 && (pExpr->flags & EP_InfixFunc) ){
+        pDef = sqlitexVtabOverloadFunction(db, pDef, nFarg, pFarg->a[1].pExpr);
+      }else if( nFarg>0 ){
+        pDef = sqlitexVtabOverloadFunction(db, pDef, nFarg, pFarg->a[0].pExpr);
+      }
+#endif
+      if( pDef->funcFlags & SQLITE_FUNC_NEEDCOLL ){
+        if( !pColl ) pColl = db->pDfltColl; 
+        sqlitexVdbeAddOp4(v, OP_CollSeq, 0, 0, 0, (char *)pColl, P4_COLLSEQ);
+      }
+      sqlitexVdbeAddOp4(v, OP_Function, constMask, r1, target,
+                        (char*)pDef, P4_FUNCDEF);
+      sqlitexVdbeChangeP5(v, (u8)nFarg);
+      if( nFarg && constMask==0 ){
+        sqlitexReleaseTempRange(pParse, r1, nFarg);
+      }
+      break;
+    }
+#ifndef SQLITE_OMIT_SUBQUERY
+    case TK_EXISTS:
+    case TK_SELECT:
+    /* COMDB2 MODIFICATION */
+    case TK_SELECTV: {
+      testcase( op==TK_EXISTS );
+      testcase( op==TK_SELECT );
+      /* COMDB2 MODIFICATION */
+      testcase( op==TK_SELECTV );
+      inReg = sqlitexCodeSubselect(pParse, pExpr, 0, 0);
+      break;
+    }
+    case TK_IN: {
+      int destIfFalse = sqlitexVdbeMakeLabel(v);
+      int destIfNull = sqlitexVdbeMakeLabel(v);
+      sqlitexVdbeAddOp2(v, OP_Null, 0, target);
+      sqlitexExprCodeIN(pParse, pExpr, destIfFalse, destIfNull);
+      sqlitexVdbeAddOp2(v, OP_Integer, 1, target);
+      sqlitexVdbeResolveLabel(v, destIfFalse);
+      sqlitexVdbeAddOp2(v, OP_AddImm, target, 0);
+      sqlitexVdbeResolveLabel(v, destIfNull);
+      break;
+    }
+#endif /* SQLITE_OMIT_SUBQUERY */
+
+
+    /*
+    **    x BETWEEN y AND z
+    **
+    ** This is equivalent to
+    **
+    **    x>=y AND x<=z
+    **
+    ** X is stored in pExpr->pLeft.
+    ** Y is stored in pExpr->pList->a[0].pExpr.
+    ** Z is stored in pExpr->pList->a[1].pExpr.
+    */
+    case TK_BETWEEN: {
+      Expr *pLeft = pExpr->pLeft;
+      struct ExprList_item *pLItem = pExpr->x.pList->a;
+      Expr *pRight = pLItem->pExpr;
+
+      r1 = sqlitexExprCodeTemp(pParse, pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pRight, &regFree2);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      r3 = sqlitexGetTempReg(pParse);
+      r4 = sqlitexGetTempReg(pParse);
+      codeCompare(pParse, pLeft, pRight, OP_Ge,
+                  r1, r2, r3, SQLITE_STOREP2);  VdbeCoverage(v);
+      pLItem++;
+      pRight = pLItem->pExpr;
+      sqlitexReleaseTempReg(pParse, regFree2);
+      r2 = sqlitexExprCodeTemp(pParse, pRight, &regFree2);
+      testcase( regFree2==0 );
+      codeCompare(pParse, pLeft, pRight, OP_Le, r1, r2, r4, SQLITE_STOREP2);
+      VdbeCoverage(v);
+      sqlitexVdbeAddOp3(v, OP_And, r3, r4, target);
+      sqlitexReleaseTempReg(pParse, r3);
+      sqlitexReleaseTempReg(pParse, r4);
+      break;
+    }
+    case TK_COLLATE: 
+    case TK_UPLUS: {
+      inReg = sqlitexExprCodeTarget(pParse, pExpr->pLeft, target);
+      break;
+    }
+
+    case TK_TRIGGER: {
+      /* If the opcode is TK_TRIGGER, then the expression is a reference
+      ** to a column in the new.* or old.* pseudo-tables available to
+      ** trigger programs. In this case Expr.iTable is set to 1 for the
+      ** new.* pseudo-table, or 0 for the old.* pseudo-table. Expr.iColumn
+      ** is set to the column of the pseudo-table to read, or to -1 to
+      ** read the rowid field.
+      **
+      ** The expression is implemented using an OP_Param opcode. The p1
+      ** parameter is set to 0 for an old.rowid reference, or to (i+1)
+      ** to reference another column of the old.* pseudo-table, where 
+      ** i is the index of the column. For a new.rowid reference, p1 is
+      ** set to (n+1), where n is the number of columns in each pseudo-table.
+      ** For a reference to any other column in the new.* pseudo-table, p1
+      ** is set to (n+2+i), where n and i are as defined previously. For
+      ** example, if the table on which triggers are being fired is
+      ** declared as:
+      **
+      **   CREATE TABLE t1(a, b);
+      **
+      ** Then p1 is interpreted as follows:
+      **
+      **   p1==0   ->    old.rowid     p1==3   ->    new.rowid
+      **   p1==1   ->    old.a         p1==4   ->    new.a
+      **   p1==2   ->    old.b         p1==5   ->    new.b       
+      */
+      Table *pTab = pExpr->pTab;
+      int p1 = pExpr->iTable * (pTab->nCol+1) + 1 + pExpr->iColumn;
+
+      assert( pExpr->iTable==0 || pExpr->iTable==1 );
+      assert( pExpr->iColumn>=-1 && pExpr->iColumn<pTab->nCol );
+      assert( pTab->iPKey<0 || pExpr->iColumn!=pTab->iPKey );
+      assert( p1>=0 && p1<(pTab->nCol*2+2) );
+
+      sqlitexVdbeAddOp2(v, OP_Param, p1, target);
+      VdbeComment((v, "%s.%s -> $%d",
+        (pExpr->iTable ? "new" : "old"),
+        (pExpr->iColumn<0 ? "rowid" : pExpr->pTab->aCol[pExpr->iColumn].zName),
+        target
+      ));
+
+#ifndef SQLITE_OMIT_FLOATING_POINT
+      /* If the column has REAL affinity, it may currently be stored as an
+      ** integer. Use OP_RealAffinity to make sure it is really real.
+      **
+      ** EVIDENCE-OF: R-60985-57662 SQLite will convert the value back to
+      ** floating point when extracting it from the record.  */
+      if( pExpr->iColumn>=0 
+       && pTab->aCol[pExpr->iColumn].affinity==SQLITE_AFF_REAL
+      ){
+        sqlitexVdbeAddOp1(v, OP_RealAffinity, target);
+      }
+#endif
+      break;
+    }
+
+
+    /*
+    ** Form A:
+    **   CASE x WHEN e1 THEN r1 WHEN e2 THEN r2 ... WHEN eN THEN rN ELSE y END
+    **
+    ** Form B:
+    **   CASE WHEN e1 THEN r1 WHEN e2 THEN r2 ... WHEN eN THEN rN ELSE y END
+    **
+    ** Form A is can be transformed into the equivalent form B as follows:
+    **   CASE WHEN x=e1 THEN r1 WHEN x=e2 THEN r2 ...
+    **        WHEN x=eN THEN rN ELSE y END
+    **
+    ** X (if it exists) is in pExpr->pLeft.
+    ** Y is in the last element of pExpr->x.pList if pExpr->x.pList->nExpr is
+    ** odd.  The Y is also optional.  If the number of elements in x.pList
+    ** is even, then Y is omitted and the "otherwise" result is NULL.
+    ** Ei is in pExpr->pList->a[i*2] and Ri is pExpr->pList->a[i*2+1].
+    **
+    ** The result of the expression is the Ri for the first matching Ei,
+    ** or if there is no matching Ei, the ELSE term Y, or if there is
+    ** no ELSE term, NULL.
+    */
+    default: assert( op==TK_CASE ); {
+      int endLabel;                     /* GOTO label for end of CASE stmt */
+      int nextCase;                     /* GOTO label for next WHEN clause */
+      int nExpr;                        /* 2x number of WHEN terms */
+      int i;                            /* Loop counter */
+      ExprList *pEList;                 /* List of WHEN terms */
+      struct ExprList_item *aListelem;  /* Array of WHEN terms */
+      Expr opCompare;                   /* The X==Ei expression */
+      Expr *pX;                         /* The X expression */
+      Expr *pTest = 0;                  /* X==Ei (form A) or just Ei (form B) */
+      VVA_ONLY( int iCacheLevel = pParse->iCacheLevel; )
+
+      assert( !ExprHasProperty(pExpr, EP_xIsSelect) && pExpr->x.pList );
+      assert(pExpr->x.pList->nExpr > 0);
+      pEList = pExpr->x.pList;
+      aListelem = pEList->a;
+      nExpr = pEList->nExpr;
+      endLabel = sqlitexVdbeMakeLabel(v);
+      if( (pX = pExpr->pLeft)!=0 ){
+        tempX = *pX;
+        testcase( pX->op==TK_COLUMN );
+        exprToRegister(&tempX, sqlitexExprCodeTemp(pParse, pX, &regFree1));
+        testcase( regFree1==0 );
+        opCompare.op = TK_EQ;
+        opCompare.pLeft = &tempX;
+        pTest = &opCompare;
+        /* Ticket b351d95f9cd5ef17e9d9dbae18f5ca8611190001:
+        ** The value in regFree1 might get SCopy-ed into the file result.
+        ** So make sure that the regFree1 register is not reused for other
+        ** purposes and possibly overwritten.  */
+        regFree1 = 0;
+      }
+      for(i=0; i<nExpr-1; i=i+2){
+        sqlitexExprCachePush(pParse);
+        if( pX ){
+          assert( pTest!=0 );
+          opCompare.pRight = aListelem[i].pExpr;
+        }else{
+          pTest = aListelem[i].pExpr;
+        }
+        nextCase = sqlitexVdbeMakeLabel(v);
+        testcase( pTest->op==TK_COLUMN );
+        sqlitexExprIfFalse(pParse, pTest, nextCase, SQLITE_JUMPIFNULL);
+        testcase( aListelem[i+1].pExpr->op==TK_COLUMN );
+        sqlitexExprCode(pParse, aListelem[i+1].pExpr, target);
+        sqlitexVdbeAddOp2(v, OP_Goto, 0, endLabel);
+        sqlitexExprCachePop(pParse);
+        sqlitexVdbeResolveLabel(v, nextCase);
+      }
+      if( (nExpr&1)!=0 ){
+        sqlitexExprCachePush(pParse);
+        sqlitexExprCode(pParse, pEList->a[nExpr-1].pExpr, target);
+        sqlitexExprCachePop(pParse);
+      }else{
+        sqlitexVdbeAddOp2(v, OP_Null, 0, target);
+      }
+      assert( db->mallocFailed || pParse->nErr>0 
+           || pParse->iCacheLevel==iCacheLevel );
+      sqlitexVdbeResolveLabel(v, endLabel);
+      break;
+    }
+#ifndef SQLITE_OMIT_TRIGGER
+    case TK_RAISE: {
+      assert( pExpr->affinity==OE_Rollback 
+           || pExpr->affinity==OE_Abort
+           || pExpr->affinity==OE_Fail
+           || pExpr->affinity==OE_Ignore
+      );
+      if( !pParse->pTriggerTab ){
+        sqlitexErrorMsg(pParse,
+                       "RAISE() may only be used within a trigger-program");
+        return 0;
+      }
+      if( pExpr->affinity==OE_Abort ){
+        sqlitexMayAbort(pParse);
+      }
+      assert( !ExprHasProperty(pExpr, EP_IntValue) );
+      if( pExpr->affinity==OE_Ignore ){
+        sqlitexVdbeAddOp4(
+            v, OP_Halt, SQLITE_OK, OE_Ignore, 0, pExpr->u.zToken,0);
+        VdbeCoverage(v);
+      }else{
+        sqlitexHaltConstraint(pParse, SQLITE_CONSTRAINT_TRIGGER,
+                              pExpr->affinity, pExpr->u.zToken, 0, 0);
+      }
+
+      break;
+    }
+#endif
+  }
+  sqlitexReleaseTempReg(pParse, regFree1);
+  sqlitexReleaseTempReg(pParse, regFree2);
+  return inReg;
+}
+
+/*
+** Factor out the code of the given expression to initialization time.
+*/
+void sqlitexExprCodeAtInit(
+  Parse *pParse,    /* Parsing context */
+  Expr *pExpr,      /* The expression to code when the VDBE initializes */
+  int regDest,      /* Store the value in this register */
+  u8 reusable       /* True if this expression is reusable */
+){
+  ExprList *p;
+  assert( ConstFactorOk(pParse) );
+  p = pParse->pConstExpr;
+  pExpr = sqlitexExprDup(pParse->db, pExpr, 0);
+  p = sqlitexExprListAppend(pParse, p, pExpr);
+  if( p ){
+     struct ExprList_item *pItem = &p->a[p->nExpr-1];
+     pItem->u.iConstExprReg = regDest;
+     pItem->reusable = reusable;
+  }
+  pParse->pConstExpr = p;
+}
+
+/*
+** Generate code to evaluate an expression and store the results
+** into a register.  Return the register number where the results
+** are stored.
+**
+** If the register is a temporary register that can be deallocated,
+** then write its number into *pReg.  If the result register is not
+** a temporary, then set *pReg to zero.
+**
+** If pExpr is a constant, then this routine might generate this
+** code to fill the register in the initialization section of the
+** VDBE program, in order to factor it out of the evaluation loop.
+*/
+int sqlitexExprCodeTemp(Parse *pParse, Expr *pExpr, int *pReg){
+  int r2;
+  pExpr = sqlitexExprSkipCollate(pExpr);
+  if( ConstFactorOk(pParse)
+   && pExpr->op!=TK_REGISTER
+   && sqlitexExprIsConstantNotJoin(pExpr)
+  ){
+    ExprList *p = pParse->pConstExpr;
+    int i;
+    *pReg  = 0;
+    if( p ){
+      struct ExprList_item *pItem;
+      for(pItem=p->a, i=p->nExpr; i>0; pItem++, i--){
+        if( pItem->reusable && sqlitexExprCompare(pItem->pExpr,pExpr,-1)==0 ){
+          return pItem->u.iConstExprReg;
+        }
+      }
+    }
+    r2 = ++pParse->nMem;
+    sqlitexExprCodeAtInit(pParse, pExpr, r2, 1);
+  }else{
+    int r1 = sqlitexGetTempReg(pParse);
+    r2 = sqlitexExprCodeTarget(pParse, pExpr, r1);
+    if( r2==r1 ){
+      *pReg = r1;
+    }else{
+      sqlitexReleaseTempReg(pParse, r1);
+      *pReg = 0;
+    }
+  }
+  return r2;
+}
+
+/*
+** Generate code that will evaluate expression pExpr and store the
+** results in register target.  The results are guaranteed to appear
+** in register target.
+*/
+void sqlitexExprCode(Parse *pParse, Expr *pExpr, int target){
+  int inReg;
+
+  assert( target>0 && target<=pParse->nMem );
+  if( pExpr && pExpr->op==TK_REGISTER ){
+    sqlitexVdbeAddOp2(pParse->pVdbe, OP_Copy, pExpr->iTable, target);
+  }else{
+    inReg = sqlitexExprCodeTarget(pParse, pExpr, target);
+    assert( pParse->pVdbe || pParse->db->mallocFailed );
+    if( inReg!=target && pParse->pVdbe ){
+      sqlitexVdbeAddOp2(pParse->pVdbe, OP_SCopy, inReg, target);
+    }
+  }
+}
+
+/*
+** Generate code that will evaluate expression pExpr and store the
+** results in register target.  The results are guaranteed to appear
+** in register target.  If the expression is constant, then this routine
+** might choose to code the expression at initialization time.
+*/
+void sqlitexExprCodeFactorable(Parse *pParse, Expr *pExpr, int target){
+  if( pParse->okConstFactor && sqlitexExprIsConstant(pExpr) ){
+    sqlitexExprCodeAtInit(pParse, pExpr, target, 0);
+  }else{
+    sqlitexExprCode(pParse, pExpr, target);
+  }
+}
+
+/*
+** Generate code that evaluates the given expression and puts the result
+** in register target.
+**
+** Also make a copy of the expression results into another "cache" register
+** and modify the expression so that the next time it is evaluated,
+** the result is a copy of the cache register.
+**
+** This routine is used for expressions that are used multiple 
+** times.  They are evaluated once and the results of the expression
+** are reused.
+*/
+void sqlitexExprCodeAndCache(Parse *pParse, Expr *pExpr, int target){
+  Vdbe *v = pParse->pVdbe;
+  int iMem;
+
+  assert( target>0 );
+  assert( pExpr->op!=TK_REGISTER );
+  sqlitexExprCode(pParse, pExpr, target);
+  iMem = ++pParse->nMem;
+  sqlitexVdbeAddOp2(v, OP_Copy, target, iMem);
+  exprToRegister(pExpr, iMem);
+}
+
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+/*
+** Generate a human-readable explanation of an expression tree.
+*/
+void sqlitexTreeViewExpr(TreeView *pView, const Expr *pExpr, u8 moreToFollow){
+  const char *zBinOp = 0;   /* Binary operator */
+  const char *zUniOp = 0;   /* Unary operator */
+  pView = sqlitexTreeViewPush(pView, moreToFollow);
+  if( pExpr==0 ){
+    sqlitexTreeViewLine(pView, "nil");
+    sqlitexTreeViewPop(pView);
+    return;
+  }
+  switch( pExpr->op ){
+    case TK_AGG_COLUMN: {
+      sqlitexTreeViewLine(pView, "AGG{%d:%d}",
+            pExpr->iTable, pExpr->iColumn);
+      break;
+    }
+    case TK_COLUMN: {
+      if( pExpr->iTable<0 ){
+        /* This only happens when coding check constraints */
+        sqlitexTreeViewLine(pView, "COLUMN(%d)", pExpr->iColumn);
+      }else{
+        sqlitexTreeViewLine(pView, "{%d:%d}",
+                             pExpr->iTable, pExpr->iColumn);
+      }
+      break;
+    }
+    case TK_INTEGER: {
+      if( pExpr->flags & EP_IntValue ){
+        sqlitexTreeViewLine(pView, "%d", pExpr->u.iValue);
+      }else{
+        sqlitexTreeViewLine(pView, "%s", pExpr->u.zToken);
+      }
+      break;
+    }
+#ifndef SQLITE_OMIT_FLOATING_POINT
+    case TK_FLOAT: {
+      sqlitexTreeViewLine(pView,"%s", pExpr->u.zToken);
+      break;
+    }
+#endif
+    case TK_STRING: {
+      sqlitexTreeViewLine(pView,"%Q", pExpr->u.zToken);
+      break;
+    }
+    case TK_NULL: {
+      sqlitexTreeViewLine(pView,"NULL");
+      break;
+    }
+#ifndef SQLITE_OMIT_BLOB_LITERAL
+    case TK_BLOB: {
+      sqlitexTreeViewLine(pView,"%s", pExpr->u.zToken);
+      break;
+    }
+#endif
+    case TK_VARIABLE: {
+      sqlitexTreeViewLine(pView,"VARIABLE(%s,%d)",
+                          pExpr->u.zToken, pExpr->iColumn);
+      break;
+    }
+    case TK_REGISTER: {
+      sqlitexTreeViewLine(pView,"REGISTER(%d)", pExpr->iTable);
+      break;
+    }
+    case TK_AS: {
+      sqlitexTreeViewLine(pView,"AS %Q", pExpr->u.zToken);
+      sqlitexTreeViewExpr(pView, pExpr->pLeft, 0);
+      break;
+    }
+    case TK_ID: {
+      sqlitexTreeViewLine(pView,"ID %Q", pExpr->u.zToken);
+      break;
+    }
+#ifndef SQLITE_OMIT_CAST
+    case TK_CAST: {
+      /* Expressions of the form:   CAST(pLeft AS token) */
+      sqlitexTreeViewLine(pView,"CAST %Q", pExpr->u.zToken);
+      sqlitexTreeViewExpr(pView, pExpr->pLeft, 0);
+      break;
+    }
+#endif /* SQLITE_OMIT_CAST */
+    case TK_LT:      zBinOp = "LT";     break;
+    case TK_LE:      zBinOp = "LE";     break;
+    case TK_GT:      zBinOp = "GT";     break;
+    case TK_GE:      zBinOp = "GE";     break;
+    case TK_NE:      zBinOp = "NE";     break;
+    case TK_EQ:      zBinOp = "EQ";     break;
+    case TK_IS:      zBinOp = "IS";     break;
+    case TK_ISNOT:   zBinOp = "ISNOT";  break;
+    case TK_AND:     zBinOp = "AND";    break;
+    case TK_OR:      zBinOp = "OR";     break;
+    case TK_PLUS:    zBinOp = "ADD";    break;
+    case TK_STAR:    zBinOp = "MUL";    break;
+    case TK_MINUS:   zBinOp = "SUB";    break;
+    case TK_REM:     zBinOp = "REM";    break;
+    case TK_BITAND:  zBinOp = "BITAND"; break;
+    case TK_BITOR:   zBinOp = "BITOR";  break;
+    case TK_SLASH:   zBinOp = "DIV";    break;
+    case TK_LSHIFT:  zBinOp = "LSHIFT"; break;
+    case TK_RSHIFT:  zBinOp = "RSHIFT"; break;
+    case TK_CONCAT:  zBinOp = "CONCAT"; break;
+    case TK_DOT:     zBinOp = "DOT";    break;
+
+    case TK_UMINUS:  zUniOp = "UMINUS"; break;
+    case TK_UPLUS:   zUniOp = "UPLUS";  break;
+    case TK_BITNOT:  zUniOp = "BITNOT"; break;
+    case TK_NOT:     zUniOp = "NOT";    break;
+    case TK_ISNULL:  zUniOp = "ISNULL"; break;
+    case TK_NOTNULL: zUniOp = "NOTNULL"; break;
+
+    case TK_COLLATE: {
+      sqlitexTreeViewLine(pView, "COLLATE %Q", pExpr->u.zToken);
+      sqlitexTreeViewExpr(pView, pExpr->pLeft, 0);
+      break;
+    }
+
+    case TK_AGG_FUNCTION:
+    case TK_FUNCTION: {
+      ExprList *pFarg;       /* List of function arguments */
+      if( ExprHasProperty(pExpr, EP_TokenOnly) ){
+        pFarg = 0;
+      }else{
+        pFarg = pExpr->x.pList;
+      }
+      if( pExpr->op==TK_AGG_FUNCTION ){
+        sqlitexTreeViewLine(pView, "AGG_FUNCTION%d %Q",
+                             pExpr->op2, pExpr->u.zToken);
+      }else{
+        sqlitexTreeViewLine(pView, "FUNCTION %Q", pExpr->u.zToken);
+      }
+      if( pFarg ){
+        sqlitexTreeViewExprList(pView, pFarg, 0, 0);
+      }
+      break;
+    }
+#ifndef SQLITE_OMIT_SUBQUERY
+    case TK_EXISTS: {
+      sqlitexTreeViewLine(pView, "EXISTS-expr");
+      sqlitexTreeViewSelect(pView, pExpr->x.pSelect, 0);
+      break;
+    }
+    case TK_SELECT: {
+      sqlitexTreeViewLine(pView, "SELECT-expr");
+      sqlitexTreeViewSelect(pView, pExpr->x.pSelect, 0);
+      break;
+    }
+    case TK_IN: {
+      sqlitexTreeViewLine(pView, "IN");
+      sqlitexTreeViewExpr(pView, pExpr->pLeft, 1);
+      if( ExprHasProperty(pExpr, EP_xIsSelect) ){
+        sqlitexTreeViewSelect(pView, pExpr->x.pSelect, 0);
+      }else{
+        sqlitexTreeViewExprList(pView, pExpr->x.pList, 0, 0);
+      }
+      break;
+    }
+#endif /* SQLITE_OMIT_SUBQUERY */
+
+    /*
+    **    x BETWEEN y AND z
+    **
+    ** This is equivalent to
+    **
+    **    x>=y AND x<=z
+    **
+    ** X is stored in pExpr->pLeft.
+    ** Y is stored in pExpr->pList->a[0].pExpr.
+    ** Z is stored in pExpr->pList->a[1].pExpr.
+    */
+    case TK_BETWEEN: {
+      Expr *pX = pExpr->pLeft;
+      Expr *pY = pExpr->x.pList->a[0].pExpr;
+      Expr *pZ = pExpr->x.pList->a[1].pExpr;
+      sqlitexTreeViewLine(pView, "BETWEEN");
+      sqlitexTreeViewExpr(pView, pX, 1);
+      sqlitexTreeViewExpr(pView, pY, 1);
+      sqlitexTreeViewExpr(pView, pZ, 0);
+      break;
+    }
+    case TK_TRIGGER: {
+      /* If the opcode is TK_TRIGGER, then the expression is a reference
+      ** to a column in the new.* or old.* pseudo-tables available to
+      ** trigger programs. In this case Expr.iTable is set to 1 for the
+      ** new.* pseudo-table, or 0 for the old.* pseudo-table. Expr.iColumn
+      ** is set to the column of the pseudo-table to read, or to -1 to
+      ** read the rowid field.
+      */
+      sqlitexTreeViewLine(pView, "%s(%d)", 
+          pExpr->iTable ? "NEW" : "OLD", pExpr->iColumn);
+      break;
+    }
+    case TK_CASE: {
+      sqlitexTreeViewLine(pView, "CASE");
+      sqlitexTreeViewExpr(pView, pExpr->pLeft, 1);
+      sqlitexTreeViewExprList(pView, pExpr->x.pList, 0, 0);
+      break;
+    }
+#ifndef SQLITE_OMIT_TRIGGER
+    case TK_RAISE: {
+      const char *zType = "unk";
+      switch( pExpr->affinity ){
+        case OE_Rollback:   zType = "rollback";  break;
+        case OE_Abort:      zType = "abort";     break;
+        case OE_Fail:       zType = "fail";      break;
+        case OE_Ignore:     zType = "ignore";    break;
+      }
+      sqlitexTreeViewLine(pView, "RAISE %s(%Q)", zType, pExpr->u.zToken);
+      break;
+    }
+#endif
+    default: {
+      sqlitexTreeViewLine(pView, "op=%d", pExpr->op);
+      break;
+    }
+  }
+  if( zBinOp ){
+    sqlitexTreeViewLine(pView, "%s", zBinOp);
+    sqlitexTreeViewExpr(pView, pExpr->pLeft, 1);
+    sqlitexTreeViewExpr(pView, pExpr->pRight, 0);
+  }else if( zUniOp ){
+    sqlitexTreeViewLine(pView, "%s", zUniOp);
+    sqlitexTreeViewExpr(pView, pExpr->pLeft, 0);
+  }
+  sqlitexTreeViewPop(pView);
+}
+
+/*
+** Generate a human-readable explanation of an expression list.
+*/
+void sqlitexTreeViewExprList(
+  TreeView *pView,
+  const ExprList *pList,
+  u8 moreToFollow,
+  const char *zLabel
+){
+  int i;
+  pView = sqlitexTreeViewPush(pView, moreToFollow);
+  if( zLabel==0 || zLabel[0]==0 ) zLabel = "LIST";
+  if( pList==0 ){
+    sqlitexTreeViewLine(pView, "%s (empty)", zLabel);
+  }else{
+    sqlitexTreeViewLine(pView, "%s", zLabel);
+    for(i=0; i<pList->nExpr; i++){
+      sqlitexTreeViewExpr(pView, pList->a[i].pExpr, i<pList->nExpr-1);
+#if 0
+     if( pList->a[i].zName ){
+        sqlitexExplainPrintf(pOut, " AS %s", pList->a[i].zName);
+      }
+      if( pList->a[i].bSpanIsTab ){
+        sqlitexExplainPrintf(pOut, " (%s)", pList->a[i].zSpan);
+      }
+#endif
+    }
+  }
+  sqlitexTreeViewPop(pView);
+}
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+
+/*
+** Generate code that pushes the value of every element of the given
+** expression list into a sequence of registers beginning at target.
+**
+** Return the number of elements evaluated.
+**
+** The SQLITE_ECEL_DUP flag prevents the arguments from being
+** filled using OP_SCopy.  OP_Copy must be used instead.
+**
+** The SQLITE_ECEL_FACTOR argument allows constant arguments to be
+** factored out into initialization code.
+*/
+int sqlitexExprCodeExprList(
+  Parse *pParse,     /* Parsing context */
+  ExprList *pList,   /* The expression list to be coded */
+  int target,        /* Where to write results */
+  u8 flags           /* SQLITE_ECEL_* flags */
+){
+  struct ExprList_item *pItem;
+  int i, n;
+  u8 copyOp = (flags & SQLITE_ECEL_DUP) ? OP_Copy : OP_SCopy;
+  assert( pList!=0 );
+  assert( target>0 );
+  assert( pParse->pVdbe!=0 );  /* Never gets this far otherwise */
+  n = pList->nExpr;
+  if( !ConstFactorOk(pParse) ) flags &= ~SQLITE_ECEL_FACTOR;
+  for(pItem=pList->a, i=0; i<n; i++, pItem++){
+    Expr *pExpr = pItem->pExpr;
+    if( (flags & SQLITE_ECEL_FACTOR)!=0 && sqlitexExprIsConstant(pExpr) ){
+      sqlitexExprCodeAtInit(pParse, pExpr, target+i, 0);
+    }else{
+      int inReg = sqlitexExprCodeTarget(pParse, pExpr, target+i);
+      if( inReg!=target+i ){
+        VdbeOp *pOp;
+        Vdbe *v = pParse->pVdbe;
+        if( copyOp==OP_Copy
+         && (pOp=sqlitexVdbeGetOp(v, -1))->opcode==OP_Copy
+         && pOp->p1+pOp->p3+1==inReg
+         && pOp->p2+pOp->p3+1==target+i
+        ){
+          pOp->p3++;
+        }else{
+          sqlitexVdbeAddOp2(v, copyOp, inReg, target+i);
+        }
+      }
+    }
+  }
+  return n;
+}
+
+/*
+** Generate code for a BETWEEN operator.
+**
+**    x BETWEEN y AND z
+**
+** The above is equivalent to 
+**
+**    x>=y AND x<=z
+**
+** Code it as such, taking care to do the common subexpression
+** elimination of x.
+*/
+static void exprCodeBetween(
+  Parse *pParse,    /* Parsing and code generating context */
+  Expr *pExpr,      /* The BETWEEN expression */
+  int dest,         /* Jump here if the jump is taken */
+  int jumpIfTrue,   /* Take the jump if the BETWEEN is true */
+  int jumpIfNull    /* Take the jump if the BETWEEN is NULL */
+){
+  Expr exprAnd;     /* The AND operator in  x>=y AND x<=z  */
+  Expr compLeft;    /* The  x>=y  term */
+  Expr compRight;   /* The  x<=z  term */
+  Expr exprX;       /* The  x  subexpression */
+  int regFree1 = 0; /* Temporary use register */
+
+  assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
+  exprX = *pExpr->pLeft;
+  exprAnd.op = TK_AND;
+  exprAnd.pLeft = &compLeft;
+  exprAnd.pRight = &compRight;
+  compLeft.op = TK_GE;
+  compLeft.pLeft = &exprX;
+  compLeft.pRight = pExpr->x.pList->a[0].pExpr;
+  compRight.op = TK_LE;
+  compRight.pLeft = &exprX;
+  compRight.pRight = pExpr->x.pList->a[1].pExpr;
+  exprToRegister(&exprX, sqlitexExprCodeTemp(pParse, &exprX, &regFree1));
+  if( jumpIfTrue ){
+    sqlitexExprIfTrue(pParse, &exprAnd, dest, jumpIfNull);
+  }else{
+    sqlitexExprIfFalse(pParse, &exprAnd, dest, jumpIfNull);
+  }
+  sqlitexReleaseTempReg(pParse, regFree1);
+
+  /* Ensure adequate test coverage */
+  testcase( jumpIfTrue==0 && jumpIfNull==0 && regFree1==0 );
+  testcase( jumpIfTrue==0 && jumpIfNull==0 && regFree1!=0 );
+  testcase( jumpIfTrue==0 && jumpIfNull!=0 && regFree1==0 );
+  testcase( jumpIfTrue==0 && jumpIfNull!=0 && regFree1!=0 );
+  testcase( jumpIfTrue!=0 && jumpIfNull==0 && regFree1==0 );
+  testcase( jumpIfTrue!=0 && jumpIfNull==0 && regFree1!=0 );
+  testcase( jumpIfTrue!=0 && jumpIfNull!=0 && regFree1==0 );
+  testcase( jumpIfTrue!=0 && jumpIfNull!=0 && regFree1!=0 );
+}
+
+/*
+** Generate code for a boolean expression such that a jump is made
+** to the label "dest" if the expression is true but execution
+** continues straight thru if the expression is false.
+**
+** If the expression evaluates to NULL (neither true nor false), then
+** take the jump if the jumpIfNull flag is SQLITE_JUMPIFNULL.
+**
+** This code depends on the fact that certain token values (ex: TK_EQ)
+** are the same as opcode values (ex: OP_Eq) that implement the corresponding
+** operation.  Special comments in vdbe.c and the mkopcodeh.awk script in
+** the make process cause these values to align.  Assert()s in the code
+** below verify that the numbers are aligned correctly.
+*/
+void sqlitexExprIfTrue(Parse *pParse, Expr *pExpr, int dest, int jumpIfNull){
+  Vdbe *v = pParse->pVdbe;
+  int op = 0;
+  int regFree1 = 0;
+  int regFree2 = 0;
+  int r1, r2;
+
+  assert( jumpIfNull==SQLITE_JUMPIFNULL || jumpIfNull==0 );
+  if( NEVER(v==0) )     return;  /* Existence of VDBE checked by caller */
+  if( NEVER(pExpr==0) ) return;  /* No way this can happen */
+  op = pExpr->op;
+  switch( op ){
+    case TK_AND: {
+      int d2 = sqlitexVdbeMakeLabel(v);
+      testcase( jumpIfNull==0 );
+      sqlitexExprIfFalse(pParse, pExpr->pLeft, d2,jumpIfNull^SQLITE_JUMPIFNULL);
+      sqlitexExprCachePush(pParse);
+      sqlitexExprIfTrue(pParse, pExpr->pRight, dest, jumpIfNull);
+      sqlitexVdbeResolveLabel(v, d2);
+      sqlitexExprCachePop(pParse);
+      break;
+    }
+    case TK_OR: {
+      testcase( jumpIfNull==0 );
+      sqlitexExprIfTrue(pParse, pExpr->pLeft, dest, jumpIfNull);
+      sqlitexExprCachePush(pParse);
+      sqlitexExprIfTrue(pParse, pExpr->pRight, dest, jumpIfNull);
+      sqlitexExprCachePop(pParse);
+      break;
+    }
+    case TK_NOT: {
+      testcase( jumpIfNull==0 );
+      sqlitexExprIfFalse(pParse, pExpr->pLeft, dest, jumpIfNull);
+      break;
+    }
+    case TK_LT:
+    case TK_LE:
+    case TK_GT:
+    case TK_GE:
+    case TK_NE:
+    case TK_EQ: {
+      testcase( jumpIfNull==0 );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      codeCompare(pParse, pExpr->pLeft, pExpr->pRight, op,
+                  r1, r2, dest, jumpIfNull);
+      assert(TK_LT==OP_Lt); testcase(op==OP_Lt); VdbeCoverageIf(v,op==OP_Lt);
+      assert(TK_LE==OP_Le); testcase(op==OP_Le); VdbeCoverageIf(v,op==OP_Le);
+      assert(TK_GT==OP_Gt); testcase(op==OP_Gt); VdbeCoverageIf(v,op==OP_Gt);
+      assert(TK_GE==OP_Ge); testcase(op==OP_Ge); VdbeCoverageIf(v,op==OP_Ge);
+      assert(TK_EQ==OP_Eq); testcase(op==OP_Eq); VdbeCoverageIf(v,op==OP_Eq);
+      assert(TK_NE==OP_Ne); testcase(op==OP_Ne); VdbeCoverageIf(v,op==OP_Ne);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_IS:
+    case TK_ISNOT: {
+      testcase( op==TK_IS );
+      testcase( op==TK_ISNOT );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      op = (op==TK_IS) ? TK_EQ : TK_NE;
+      codeCompare(pParse, pExpr->pLeft, pExpr->pRight, op,
+                  r1, r2, dest, SQLITE_NULLEQ);
+      VdbeCoverageIf(v, op==TK_EQ);
+      VdbeCoverageIf(v, op==TK_NE);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_ISNULL:
+    case TK_NOTNULL: {
+      assert( TK_ISNULL==OP_IsNull );   testcase( op==TK_ISNULL );
+      assert( TK_NOTNULL==OP_NotNull ); testcase( op==TK_NOTNULL );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      sqlitexVdbeAddOp2(v, op, r1, dest);
+      VdbeCoverageIf(v, op==TK_ISNULL);
+      VdbeCoverageIf(v, op==TK_NOTNULL);
+      testcase( regFree1==0 );
+      break;
+    }
+    case TK_BETWEEN: {
+      testcase( jumpIfNull==0 );
+      exprCodeBetween(pParse, pExpr, dest, 1, jumpIfNull);
+      break;
+    }
+#ifndef SQLITE_OMIT_SUBQUERY
+    case TK_IN: {
+      int destIfFalse = sqlitexVdbeMakeLabel(v);
+      int destIfNull = jumpIfNull ? dest : destIfFalse;
+      sqlitexExprCodeIN(pParse, pExpr, destIfFalse, destIfNull);
+      sqlitexVdbeAddOp2(v, OP_Goto, 0, dest);
+      sqlitexVdbeResolveLabel(v, destIfFalse);
+      break;
+    }
+#endif
+    default: {
+      if( exprAlwaysTrue(pExpr) ){
+        sqlitexVdbeAddOp2(v, OP_Goto, 0, dest);
+      }else if( exprAlwaysFalse(pExpr) ){
+        /* No-op */
+      }else{
+        r1 = sqlitexExprCodeTemp(pParse, pExpr, &regFree1);
+        sqlitexVdbeAddOp3(v, OP_If, r1, dest, jumpIfNull!=0);
+        VdbeCoverage(v);
+        testcase( regFree1==0 );
+        testcase( jumpIfNull==0 );
+      }
+      break;
+    }
+  }
+  sqlitexReleaseTempReg(pParse, regFree1);
+  sqlitexReleaseTempReg(pParse, regFree2);  
+}
+
+/*
+** Generate code for a boolean expression such that a jump is made
+** to the label "dest" if the expression is false but execution
+** continues straight thru if the expression is true.
+**
+** If the expression evaluates to NULL (neither true nor false) then
+** jump if jumpIfNull is SQLITE_JUMPIFNULL or fall through if jumpIfNull
+** is 0.
+*/
+void sqlitexExprIfFalse(Parse *pParse, Expr *pExpr, int dest, int jumpIfNull){
+  Vdbe *v = pParse->pVdbe;
+  int op = 0;
+  int regFree1 = 0;
+  int regFree2 = 0;
+  int r1, r2;
+
+  assert( jumpIfNull==SQLITE_JUMPIFNULL || jumpIfNull==0 );
+  if( NEVER(v==0) ) return; /* Existence of VDBE checked by caller */
+  if( pExpr==0 )    return;
+
+  /* The value of pExpr->op and op are related as follows:
+  **
+  **       pExpr->op            op
+  **       ---------          ----------
+  **       TK_ISNULL          OP_NotNull
+  **       TK_NOTNULL         OP_IsNull
+  **       TK_NE              OP_Eq
+  **       TK_EQ              OP_Ne
+  **       TK_GT              OP_Le
+  **       TK_LE              OP_Gt
+  **       TK_GE              OP_Lt
+  **       TK_LT              OP_Ge
+  **
+  ** For other values of pExpr->op, op is undefined and unused.
+  ** The value of TK_ and OP_ constants are arranged such that we
+  ** can compute the mapping above using the following expression.
+  ** Assert()s verify that the computation is correct.
+  */
+  op = ((pExpr->op+(TK_ISNULL&1))^1)-(TK_ISNULL&1);
+
+  /* Verify correct alignment of TK_ and OP_ constants
+  */
+  assert( pExpr->op!=TK_ISNULL || op==OP_NotNull );
+  assert( pExpr->op!=TK_NOTNULL || op==OP_IsNull );
+  assert( pExpr->op!=TK_NE || op==OP_Eq );
+  assert( pExpr->op!=TK_EQ || op==OP_Ne );
+  assert( pExpr->op!=TK_LT || op==OP_Ge );
+  assert( pExpr->op!=TK_LE || op==OP_Gt );
+  assert( pExpr->op!=TK_GT || op==OP_Le );
+  assert( pExpr->op!=TK_GE || op==OP_Lt );
+
+  switch( pExpr->op ){
+    case TK_AND: {
+      testcase( jumpIfNull==0 );
+      sqlitexExprIfFalse(pParse, pExpr->pLeft, dest, jumpIfNull);
+      sqlitexExprCachePush(pParse);
+      sqlitexExprIfFalse(pParse, pExpr->pRight, dest, jumpIfNull);
+      sqlitexExprCachePop(pParse);
+      break;
+    }
+    case TK_OR: {
+      int d2 = sqlitexVdbeMakeLabel(v);
+      testcase( jumpIfNull==0 );
+      sqlitexExprIfTrue(pParse, pExpr->pLeft, d2, jumpIfNull^SQLITE_JUMPIFNULL);
+      sqlitexExprCachePush(pParse);
+      sqlitexExprIfFalse(pParse, pExpr->pRight, dest, jumpIfNull);
+      sqlitexVdbeResolveLabel(v, d2);
+      sqlitexExprCachePop(pParse);
+      break;
+    }
+    case TK_NOT: {
+      testcase( jumpIfNull==0 );
+      sqlitexExprIfTrue(pParse, pExpr->pLeft, dest, jumpIfNull);
+      break;
+    }
+    case TK_LT:
+    case TK_LE:
+    case TK_GT:
+    case TK_GE:
+    case TK_NE:
+    case TK_EQ: {
+      testcase( jumpIfNull==0 );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      codeCompare(pParse, pExpr->pLeft, pExpr->pRight, op,
+                  r1, r2, dest, jumpIfNull);
+      assert(TK_LT==OP_Lt); testcase(op==OP_Lt); VdbeCoverageIf(v,op==OP_Lt);
+      assert(TK_LE==OP_Le); testcase(op==OP_Le); VdbeCoverageIf(v,op==OP_Le);
+      assert(TK_GT==OP_Gt); testcase(op==OP_Gt); VdbeCoverageIf(v,op==OP_Gt);
+      assert(TK_GE==OP_Ge); testcase(op==OP_Ge); VdbeCoverageIf(v,op==OP_Ge);
+      assert(TK_EQ==OP_Eq); testcase(op==OP_Eq); VdbeCoverageIf(v,op==OP_Eq);
+      assert(TK_NE==OP_Ne); testcase(op==OP_Ne); VdbeCoverageIf(v,op==OP_Ne);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_IS:
+    case TK_ISNOT: {
+      testcase( pExpr->op==TK_IS );
+      testcase( pExpr->op==TK_ISNOT );
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      r2 = sqlitexExprCodeTemp(pParse, pExpr->pRight, &regFree2);
+      op = (pExpr->op==TK_IS) ? TK_NE : TK_EQ;
+      codeCompare(pParse, pExpr->pLeft, pExpr->pRight, op,
+                  r1, r2, dest, SQLITE_NULLEQ);
+      VdbeCoverageIf(v, op==TK_EQ);
+      VdbeCoverageIf(v, op==TK_NE);
+      testcase( regFree1==0 );
+      testcase( regFree2==0 );
+      break;
+    }
+    case TK_ISNULL:
+    case TK_NOTNULL: {
+      r1 = sqlitexExprCodeTemp(pParse, pExpr->pLeft, &regFree1);
+      sqlitexVdbeAddOp2(v, op, r1, dest);
+      testcase( op==TK_ISNULL );   VdbeCoverageIf(v, op==TK_ISNULL);
+      testcase( op==TK_NOTNULL );  VdbeCoverageIf(v, op==TK_NOTNULL);
+      testcase( regFree1==0 );
+      break;
+    }
+    case TK_BETWEEN: {
+      testcase( jumpIfNull==0 );
+      exprCodeBetween(pParse, pExpr, dest, 0, jumpIfNull);
+      break;
+    }
+#ifndef SQLITE_OMIT_SUBQUERY
+    case TK_IN: {
+      if( jumpIfNull ){
+        sqlitexExprCodeIN(pParse, pExpr, dest, dest);
+      }else{
+        int destIfNull = sqlitexVdbeMakeLabel(v);
+        sqlitexExprCodeIN(pParse, pExpr, dest, destIfNull);
+        sqlitexVdbeResolveLabel(v, destIfNull);
+      }
+      break;
+    }
+#endif
+    default: {
+      if( exprAlwaysFalse(pExpr) ){
+        sqlitexVdbeAddOp2(v, OP_Goto, 0, dest);
+      }else if( exprAlwaysTrue(pExpr) ){
+        /* no-op */
+      }else{
+        r1 = sqlitexExprCodeTemp(pParse, pExpr, &regFree1);
+        sqlitexVdbeAddOp3(v, OP_IfNot, r1, dest, jumpIfNull!=0);
+        VdbeCoverage(v);
+        testcase( regFree1==0 );
+        testcase( jumpIfNull==0 );
+      }
+      break;
+    }
+  }
+  sqlitexReleaseTempReg(pParse, regFree1);
+  sqlitexReleaseTempReg(pParse, regFree2);
+}
+
+/*
+** Do a deep comparison of two expression trees.  Return 0 if the two
+** expressions are completely identical.  Return 1 if they differ only
+** by a COLLATE operator at the top level.  Return 2 if there are differences
+** other than the top-level COLLATE operator.
+**
+** If any subelement of pB has Expr.iTable==(-1) then it is allowed
+** to compare equal to an equivalent element in pA with Expr.iTable==iTab.
+**
+** The pA side might be using TK_REGISTER.  If that is the case and pB is
+** not using TK_REGISTER but is otherwise equivalent, then still return 0.
+**
+** Sometimes this routine will return 2 even if the two expressions
+** really are equivalent.  If we cannot prove that the expressions are
+** identical, we return 2 just to be safe.  So if this routine
+** returns 2, then you do not really know for certain if the two
+** expressions are the same.  But if you get a 0 or 1 return, then you
+** can be sure the expressions are the same.  In the places where
+** this routine is used, it does not hurt to get an extra 2 - that
+** just might result in some slightly slower code.  But returning
+** an incorrect 0 or 1 could lead to a malfunction.
+*/
+int sqlitexExprCompare(Expr *pA, Expr *pB, int iTab){
+  u32 combinedFlags;
+  if( pA==0 || pB==0 ){
+    return pB==pA ? 0 : 2;
+  }
+  combinedFlags = pA->flags | pB->flags;
+  if( combinedFlags & EP_IntValue ){
+    if( (pA->flags&pB->flags&EP_IntValue)!=0 && pA->u.iValue==pB->u.iValue ){
+      return 0;
+    }
+    return 2;
+  }
+  if( pA->op!=pB->op ){
+    if( pA->op==TK_COLLATE && sqlitexExprCompare(pA->pLeft, pB, iTab)<2 ){
+      return 1;
+    }
+    if( pB->op==TK_COLLATE && sqlitexExprCompare(pA, pB->pLeft, iTab)<2 ){
+      return 1;
+    }
+    return 2;
+  }
+  if( pA->op!=TK_COLUMN && ALWAYS(pA->op!=TK_AGG_COLUMN) && pA->u.zToken ){
+    if( strcmp(pA->u.zToken,pB->u.zToken)!=0 ){
+      return pA->op==TK_COLLATE ? 1 : 2;
+    }
+  }
+  if( (pA->flags & EP_Distinct)!=(pB->flags & EP_Distinct) ) return 2;
+  if( ALWAYS((combinedFlags & EP_TokenOnly)==0) ){
+    if( combinedFlags & EP_xIsSelect ) return 2;
+    if( sqlitexExprCompare(pA->pLeft, pB->pLeft, iTab) ) return 2;
+    if( sqlitexExprCompare(pA->pRight, pB->pRight, iTab) ) return 2;
+    if( sqlitexExprListCompare(pA->x.pList, pB->x.pList, iTab) ) return 2;
+    if( ALWAYS((combinedFlags & EP_Reduced)==0) ){
+      if( pA->iColumn!=pB->iColumn ) return 2;
+      if( pA->iTable!=pB->iTable 
+       && (pA->iTable!=iTab || NEVER(pB->iTable>=0)) ) return 2;
+    }
+  }
+  return 0;
+}
+
+/*
+** Compare two ExprList objects.  Return 0 if they are identical and 
+** non-zero if they differ in any way.
+**
+** If any subelement of pB has Expr.iTable==(-1) then it is allowed
+** to compare equal to an equivalent element in pA with Expr.iTable==iTab.
+**
+** This routine might return non-zero for equivalent ExprLists.  The
+** only consequence will be disabled optimizations.  But this routine
+** must never return 0 if the two ExprList objects are different, or
+** a malfunction will result.
+**
+** Two NULL pointers are considered to be the same.  But a NULL pointer
+** always differs from a non-NULL pointer.
+*/
+int sqlitexExprListCompare(ExprList *pA, ExprList *pB, int iTab){
+  int i;
+  if( pA==0 && pB==0 ) return 0;
+  if( pA==0 || pB==0 ) return 1;
+  if( pA->nExpr!=pB->nExpr ) return 1;
+  for(i=0; i<pA->nExpr; i++){
+    Expr *pExprA = pA->a[i].pExpr;
+    Expr *pExprB = pB->a[i].pExpr;
+    if( pA->a[i].sortOrder!=pB->a[i].sortOrder ) return 1;
+    if( sqlitexExprCompare(pExprA, pExprB, iTab) ) return 1;
+  }
+  return 0;
+}
+
+/*
+** Return true if we can prove the pE2 will always be true if pE1 is
+** true.  Return false if we cannot complete the proof or if pE2 might
+** be false.  Examples:
+**
+**     pE1: x==5       pE2: x==5             Result: true
+**     pE1: x>0        pE2: x==5             Result: false
+**     pE1: x=21       pE2: x=21 OR y=43     Result: true
+**     pE1: x!=123     pE2: x IS NOT NULL    Result: true
+**     pE1: x!=?1      pE2: x IS NOT NULL    Result: true
+**     pE1: x IS NULL  pE2: x IS NOT NULL    Result: false
+**     pE1: x IS ?2    pE2: x IS NOT NULL    Reuslt: false
+**
+** When comparing TK_COLUMN nodes between pE1 and pE2, if pE2 has
+** Expr.iTable<0 then assume a table number given by iTab.
+**
+** When in doubt, return false.  Returning true might give a performance
+** improvement.  Returning false might cause a performance reduction, but
+** it will always give the correct answer and is hence always safe.
+*/
+int sqlitexExprImpliesExpr(Expr *pE1, Expr *pE2, int iTab){
+  if( sqlitexExprCompare(pE1, pE2, iTab)==0 ){
+    return 1;
+  }
+  if( pE2->op==TK_OR
+   && (sqlitexExprImpliesExpr(pE1, pE2->pLeft, iTab)
+             || sqlitexExprImpliesExpr(pE1, pE2->pRight, iTab) )
+  ){
+    return 1;
+  }
+  if( pE2->op==TK_NOTNULL
+   && sqlitexExprCompare(pE1->pLeft, pE2->pLeft, iTab)==0
+   && (pE1->op!=TK_ISNULL && pE1->op!=TK_IS)
+  ){
+    return 1;
+  }
+  return 0;
+}
+
+/*
+** An instance of the following structure is used by the tree walker
+** to count references to table columns in the arguments of an 
+** aggregate function, in order to implement the
+** sqlitexFunctionThisSrc() routine.
+*/
+struct SrcCount {
+  SrcList *pSrc;   /* One particular FROM clause in a nested query */
+  int nThis;       /* Number of references to columns in pSrcList */
+  int nOther;      /* Number of references to columns in other FROM clauses */
+};
+
+/*
+** Count the number of references to columns.
+*/
+static int exprSrcCount(Walker *pWalker, Expr *pExpr){
+  /* The NEVER() on the second term is because sqlitexFunctionUsesThisSrc()
+  ** is always called before sqlitexExprAnalyzeAggregates() and so the
+  ** TK_COLUMNs have not yet been converted into TK_AGG_COLUMN.  If
+  ** sqlitexFunctionUsesThisSrc() is used differently in the future, the
+  ** NEVER() will need to be removed. */
+  if( pExpr->op==TK_COLUMN || NEVER(pExpr->op==TK_AGG_COLUMN) ){
+    int i;
+    struct SrcCount *p = pWalker->u.pSrcCount;
+    SrcList *pSrc = p->pSrc;
+    int nSrc = pSrc ? pSrc->nSrc : 0;
+    for(i=0; i<nSrc; i++){
+      if( pExpr->iTable==pSrc->a[i].iCursor ) break;
+    }
+    if( i<nSrc ){
+      p->nThis++;
+    }else{
+      p->nOther++;
+    }
+  }
+  return WRC_Continue;
+}
+
+/*
+** Determine if any of the arguments to the pExpr Function reference
+** pSrcList.  Return true if they do.  Also return true if the function
+** has no arguments or has only constant arguments.  Return false if pExpr
+** references columns but not columns of tables found in pSrcList.
+*/
+int sqlitexFunctionUsesThisSrc(Expr *pExpr, SrcList *pSrcList){
+  Walker w;
+  struct SrcCount cnt;
+  assert( pExpr->op==TK_AGG_FUNCTION );
+  memset(&w, 0, sizeof(w));
+  w.xExprCallback = exprSrcCount;
+  w.u.pSrcCount = &cnt;
+  cnt.pSrc = pSrcList;
+  cnt.nThis = 0;
+  cnt.nOther = 0;
+  sqlitexWalkExprList(&w, pExpr->x.pList);
+  return cnt.nThis>0 || cnt.nOther==0;
+}
+
+/*
+** Add a new element to the pAggInfo->aCol[] array.  Return the index of
+** the new element.  Return a negative number if malloc fails.
+*/
+static int addAggInfoColumn(sqlitex *db, AggInfo *pInfo){
+  int i;
+  pInfo->aCol = sqlitexArrayAllocate(
+       db,
+       pInfo->aCol,
+       sizeof(pInfo->aCol[0]),
+       &pInfo->nColumn,
+       &i
+  );
+  return i;
+}    
+
+/*
+** Add a new element to the pAggInfo->aFunc[] array.  Return the index of
+** the new element.  Return a negative number if malloc fails.
+*/
+static int addAggInfoFunc(sqlitex *db, AggInfo *pInfo){
+  int i;
+  pInfo->aFunc = sqlitexArrayAllocate(
+       db, 
+       pInfo->aFunc,
+       sizeof(pInfo->aFunc[0]),
+       &pInfo->nFunc,
+       &i
+  );
+  return i;
+}    
+
+/*
+** This is the xExprCallback for a tree walker.  It is used to
+** implement sqlitexExprAnalyzeAggregates().  See sqlitexExprAnalyzeAggregates
+** for additional information.
+*/
+static int analyzeAggregate(Walker *pWalker, Expr *pExpr){
+  int i;
+  NameContext *pNC = pWalker->u.pNC;
+  Parse *pParse = pNC->pParse;
+  SrcList *pSrcList = pNC->pSrcList;
+  AggInfo *pAggInfo = pNC->pAggInfo;
+
+  switch( pExpr->op ){
+    case TK_AGG_COLUMN:
+    case TK_COLUMN: {
+      testcase( pExpr->op==TK_AGG_COLUMN );
+      testcase( pExpr->op==TK_COLUMN );
+      /* Check to see if the column is in one of the tables in the FROM
+      ** clause of the aggregate query */
+      if( ALWAYS(pSrcList!=0) ){
+        struct SrcList_item *pItem = pSrcList->a;
+        for(i=0; i<pSrcList->nSrc; i++, pItem++){
+          struct AggInfo_col *pCol;
+          assert( !ExprHasProperty(pExpr, EP_TokenOnly|EP_Reduced) );
+          if( pExpr->iTable==pItem->iCursor ){
+            /* If we reach this point, it means that pExpr refers to a table
+            ** that is in the FROM clause of the aggregate query.  
+            **
+            ** Make an entry for the column in pAggInfo->aCol[] if there
+            ** is not an entry there already.
+            */
+            int k;
+            pCol = pAggInfo->aCol;
+            for(k=0; k<pAggInfo->nColumn; k++, pCol++){
+              if( pCol->iTable==pExpr->iTable &&
+                  pCol->iColumn==pExpr->iColumn ){
+                break;
+              }
+            }
+            if( (k>=pAggInfo->nColumn)
+             && (k = addAggInfoColumn(pParse->db, pAggInfo))>=0 
+            ){
+              pCol = &pAggInfo->aCol[k];
+              pCol->pTab = pExpr->pTab;
+              pCol->iTable = pExpr->iTable;
+              pCol->iColumn = pExpr->iColumn;
+              pCol->iMem = ++pParse->nMem;
+              pCol->iSorterColumn = -1;
+              pCol->pExpr = pExpr;
+              if( pAggInfo->pGroupBy ){
+                int j, n;
+                ExprList *pGB = pAggInfo->pGroupBy;
+                struct ExprList_item *pTerm = pGB->a;
+                n = pGB->nExpr;
+                for(j=0; j<n; j++, pTerm++){
+                  Expr *pE = pTerm->pExpr;
+                  if( pE->op==TK_COLUMN && pE->iTable==pExpr->iTable &&
+                      pE->iColumn==pExpr->iColumn ){
+                    pCol->iSorterColumn = j;
+                    break;
+                  }
+                }
+              }
+              if( pCol->iSorterColumn<0 ){
+                pCol->iSorterColumn = pAggInfo->nSortingColumn++;
+              }
+            }
+            /* There is now an entry for pExpr in pAggInfo->aCol[] (either
+            ** because it was there before or because we just created it).
+            ** Convert the pExpr to be a TK_AGG_COLUMN referring to that
+            ** pAggInfo->aCol[] entry.
+            */
+            ExprSetVVAProperty(pExpr, EP_NoReduce);
+            pExpr->pAggInfo = pAggInfo;
+            pExpr->op = TK_AGG_COLUMN;
+            pExpr->iAgg = (i16)k;
+            break;
+          } /* endif pExpr->iTable==pItem->iCursor */
+        } /* end loop over pSrcList */
+      }
+      return WRC_Prune;
+    }
+    case TK_AGG_FUNCTION: {
+      if( (pNC->ncFlags & NC_InAggFunc)==0
+       && pWalker->walkerDepth==pExpr->op2
+      ){
+        /* Check to see if pExpr is a duplicate of another aggregate 
+        ** function that is already in the pAggInfo structure
+        */
+        struct AggInfo_func *pItem = pAggInfo->aFunc;
+        for(i=0; i<pAggInfo->nFunc; i++, pItem++){
+          if( sqlitexExprCompare(pItem->pExpr, pExpr, -1)==0 ){
+            break;
+          }
+        }
+        if( i>=pAggInfo->nFunc ){
+          /* pExpr is original.  Make a new entry in pAggInfo->aFunc[]
+          */
+          u8 enc = ENC(pParse->db);
+          i = addAggInfoFunc(pParse->db, pAggInfo);
+          if( i>=0 ){
+            assert( !ExprHasProperty(pExpr, EP_xIsSelect) );
+            pItem = &pAggInfo->aFunc[i];
+            pItem->pExpr = pExpr;
+            pItem->iMem = ++pParse->nMem;
+            assert( !ExprHasProperty(pExpr, EP_IntValue) );
+            pItem->pFunc = sqlitexFindFunction(pParse->db,
+                   pExpr->u.zToken, sqlitexStrlen30(pExpr->u.zToken),
+                   pExpr->x.pList ? pExpr->x.pList->nExpr : 0, enc, 0);
+            if( pExpr->flags & EP_Distinct ){
+              pItem->iDistinct = pParse->nTab++;
+            }else{
+              pItem->iDistinct = -1;
+            }
+          }
+        }
+        /* Make pExpr point to the appropriate pAggInfo->aFunc[] entry
+        */
+        assert( !ExprHasProperty(pExpr, EP_TokenOnly|EP_Reduced) );
+        ExprSetVVAProperty(pExpr, EP_NoReduce);
+        pExpr->iAgg = (i16)i;
+        pExpr->pAggInfo = pAggInfo;
+        return WRC_Prune;
+      }else{
+        return WRC_Continue;
+      }
+    }
+  }
+  return WRC_Continue;
+}
+static int analyzeAggregatesInSelect(Walker *pWalker, Select *pSelect){
+  UNUSED_PARAMETER(pWalker);
+  UNUSED_PARAMETER(pSelect);
+  return WRC_Continue;
+}
+
+/*
+** Analyze the pExpr expression looking for aggregate functions and
+** for variables that need to be added to AggInfo object that pNC->pAggInfo
+** points to.  Additional entries are made on the AggInfo object as
+** necessary.
+**
+** This routine should only be called after the expression has been
+** analyzed by sqlitexResolveExprNames().
+*/
+void sqlitexExprAnalyzeAggregates(NameContext *pNC, Expr *pExpr){
+  Walker w;
+  memset(&w, 0, sizeof(w));
+  w.xExprCallback = analyzeAggregate;
+  w.xSelectCallback = analyzeAggregatesInSelect;
+  w.u.pNC = pNC;
+  assert( pNC->pSrcList!=0 );
+  sqlitexWalkExpr(&w, pExpr);
+}
+
+/*
+** Call sqlitexExprAnalyzeAggregates() for every expression in an
+** expression list.  Return the number of errors.
+**
+** If an error is found, the analysis is cut short.
+*/
+void sqlitexExprAnalyzeAggList(NameContext *pNC, ExprList *pList){
+  struct ExprList_item *pItem;
+  int i;
+  if( pList ){
+    for(pItem=pList->a, i=0; i<pList->nExpr; i++, pItem++){
+      sqlitexExprAnalyzeAggregates(pNC, pItem->pExpr);
+    }
+  }
+}
+
+/*
+** Allocate a single new register for use to hold some intermediate result.
+*/
+int sqlitexGetTempReg(Parse *pParse){
+  if( pParse->nTempReg==0 ){
+    return ++pParse->nMem;
+  }
+  return pParse->aTempReg[--pParse->nTempReg];
+}
+
+/*
+** Deallocate a register, making available for reuse for some other
+** purpose.
+**
+** If a register is currently being used by the column cache, then
+** the deallocation is deferred until the column cache line that uses
+** the register becomes stale.
+*/
+void sqlitexReleaseTempReg(Parse *pParse, int iReg){
+  if( iReg && pParse->nTempReg<ArraySize(pParse->aTempReg) ){
+    int i;
+    struct yColCache *p;
+    for(i=0, p=pParse->aColCache; i<SQLITE_N_COLCACHE; i++, p++){
+      if( p->iReg==iReg ){
+        p->tempReg = 1;
+        return;
+      }
+    }
+    pParse->aTempReg[pParse->nTempReg++] = iReg;
+  }
+}
+
+/*
+** Allocate or deallocate a block of nReg consecutive registers
+*/
+int sqlitexGetTempRange(Parse *pParse, int nReg){
+  int i, n;
+  i = pParse->iRangeReg;
+  n = pParse->nRangeReg;
+  if( nReg<=n ){
+    assert( !usedAsColumnCache(pParse, i, i+n-1) );
+    pParse->iRangeReg += nReg;
+    pParse->nRangeReg -= nReg;
+  }else{
+    i = pParse->nMem+1;
+    pParse->nMem += nReg;
+  }
+  return i;
+}
+void sqlitexReleaseTempRange(Parse *pParse, int iReg, int nReg){
+  sqlitexExprCacheRemove(pParse, iReg, nReg);
+  if( nReg>pParse->nRangeReg ){
+    pParse->nRangeReg = nReg;
+    pParse->iRangeReg = iReg;
+  }
+}
+
+/*
+** Mark all temporary registers as being unavailable for reuse.
+*/
+void sqlitexClearTempRegCache(Parse *pParse){
+  pParse->nTempReg = 0;
+  pParse->nRangeReg = 0;
+}
+
+/* COMDB2 MODIFICATION */
+#include "vdbeInt.h"
+
+/* COMDB2 MODIFICATION */
+extern char* fdb_table_name(int iTable);
+static char *print_mem(Mem *m)
+{
+   int flg = m->flags & MEM_TypeMask;
+   char *hex = "0123456789ABCDEF";
+
+   switch (flg) {
+      case MEM_Null:
+         return sqlitex_mprintf("null");
+      case MEM_Str: 
+         return sqlitex_mprintf("'%.*q'", m->n, m->z);
+      case MEM_Int:
+         return  sqlitex_mprintf("%lld", m->u.i);
+      case MEM_Real:
+         return sqlitex_mprintf("%f", m->u.r);
+      case MEM_Blob:
+      {
+         char * key = alloca(2*m->n+1);
+         int  i;
+
+         for(i=0;i<m->n;i++)
+         {
+            key[2*i] = hex[((unsigned char)m->z[i])/16];
+            key[2*i+1] = hex[((unsigned char)m->z[i])%16];
+         }
+         key[2*m->n] = '\0';
+
+         return sqlitex_mprintf("x'%q'", key);
+      }
+      case MEM_Datetime:
+      {
+         char tmp[256];
+         int ltmp;
+         if (dttz_to_str(&m->du.dt, tmp, sizeof(tmp), &ltmp, "UTC"))
+            return sqlitex_mprintf("???");
+
+         return sqlitex_mprintf("'%q'", tmp);
+      }
+   }
+   /** TODO: should I return NULL here? */
+   return sqlitex_mprintf("???");
+}
+
+char * binary_opX( int op)
+{
+   switch(op)
+   {
+      case TK_SEMI : break; 
+      case TK_EXPLAIN : break; 
+      case TK_QUERY : break; 
+      case TK_PLAN : break; 
+      case TK_BEGIN : break; 
+      case TK_TRANSACTION : break; 
+      case TK_DEFERRED : break; 
+      case TK_IMMEDIATE : break; 
+      case TK_EXCLUSIVE : break; 
+      case TK_COMMIT : break; 
+      case TK_END : break; 
+      case TK_ROLLBACK : break; 
+      case TK_SAVEPOINT : break; 
+      case TK_RELEASE : break; 
+      case TK_TO : break; 
+      case TK_TABLE : break; 
+      case TK_CREATE : break; 
+      case TK_IF : break; 
+      case TK_NOT : break; 
+      case TK_EXISTS : break; 
+      case TK_TEMP : break; 
+      case TK_LP : break; 
+      case TK_RP : break; 
+      case TK_AS : break; 
+      case TK_COMMA : break; 
+      case TK_ID : break; 
+      case TK_INDEXED : break; 
+      case TK_ABORT : break; 
+      case TK_ACTION : break; 
+      case TK_AFTER : break; 
+      case TK_ANALYZE : break; 
+      case TK_ASC : break; 
+      case TK_ATTACH : break; 
+      case TK_BEFORE : break; 
+      case TK_BY : break; 
+      case TK_CASCADE : break; 
+      case TK_CAST : break; 
+      case TK_COLUMNKW : break; 
+      case TK_CONFLICT : break; 
+      case TK_DATABASE : break; 
+      case TK_DESC : break; 
+      case TK_DETACH : break; 
+      case TK_EACH : break; 
+      case TK_FAIL : break; 
+      case TK_FOR : break; 
+      case TK_IGNORE : break; 
+      case TK_INITIALLY : break; 
+      case TK_INSTEAD : break; 
+      case TK_LIKE_KW : break; 
+      case TK_MATCH : break; 
+      case TK_NO : break; 
+      case TK_KEY : break; 
+      case TK_OF : break; 
+      case TK_OFFSET : break; 
+      case TK_PRAGMA : break; 
+      case TK_RAISE : break; 
+      case TK_REPLACE : break; 
+      case TK_RESTRICT : break; 
+      case TK_ROW : break; 
+      case TK_TRIGGER : break; 
+      case TK_VACUUM : break; 
+      case TK_VIEW : break; 
+      case TK_VIRTUAL : break; 
+      case TK_REINDEX : break; 
+      case TK_RENAME : break; 
+      case TK_CTIME_KW : break; 
+      case TK_ANY : break; 
+      case TK_OR : 
+         return "OR";
+      case TK_AND : 
+         return "AND";
+      case TK_IS :
+         return "IS";
+      case TK_BETWEEN : break; 
+      case TK_IN : break; 
+      case TK_ISNULL : break;
+      case TK_NOTNULL : break;
+      case TK_NE :
+         return "!=";
+      case TK_EQ:
+         return "=";
+      case TK_GT : 
+         return ">";
+      case TK_LE :
+         return "<=";
+      case TK_LT :
+         return "<";
+      case TK_GE :
+         return ">=";
+      case TK_ESCAPE : break; 
+      case TK_BITAND :
+         return "&";
+      case TK_BITOR :
+         return "|";
+      case TK_LSHIFT : break; 
+      case TK_RSHIFT : break; 
+      case TK_PLUS : 
+         return "+";
+      case TK_MINUS :
+         return "-";
+      case TK_STAR :
+         return "*";
+      case TK_SLASH :
+         return "/";
+      case TK_REM : 
+         return "%";
+      case TK_CONCAT : break; 
+      case TK_COLLATE : break; 
+      case TK_BITNOT : break; 
+      case TK_STRING : break; 
+      case TK_JOIN_KW : break; 
+      case TK_CONSTRAINT : break; 
+      case TK_DEFAULT : break; 
+      case TK_NULL : break; 
+      case TK_PRIMARY : break; 
+      case TK_UNIQUE : break; 
+      case TK_CHECK : break; 
+      case TK_REFERENCES : break; 
+      case TK_AUTOINCR : break; 
+      case TK_ON : break; 
+      case TK_INSERT : break; 
+      case TK_DELETE : break; 
+      case TK_UPDATE : break; 
+      case TK_SET : break; 
+      case TK_DEFERRABLE : break; 
+      case TK_FOREIGN : break; 
+      case TK_DROP : break; 
+      case TK_UNION : break; 
+      case TK_ALL : break; 
+      case TK_EXCEPT : break; 
+      case TK_INTERSECT : break; 
+      case TK_SELECT : break; 
+      case TK_SELECTV : break; 
+      case TK_DISTINCT : break; 
+      case TK_DOT : break; 
+      case TK_FROM : break; 
+      case TK_JOIN : break; 
+      case TK_USING : break; 
+      case TK_ORDER : break; 
+      case TK_GROUP : break; 
+      case TK_HAVING : break; 
+      case TK_LIMIT : break; 
+      case TK_WHERE : break; 
+      case TK_INTO : break; 
+      case TK_VALUES : break; 
+      case TK_INTEGER: break;
+      case TK_FLOAT : break; 
+      case TK_BLOB : break; 
+      case TK_REGISTER: break;
+      case TK_VARIABLE : break; 
+      case TK_CASE : break; 
+      case TK_WHEN : break; 
+      case TK_THEN : break; 
+      case TK_ELSE : break; 
+      case TK_INDEX : break; 
+      case TK_TO_TEXT : break; 
+      case TK_TO_DATETIME : break; 
+      case TK_TO_INTERVAL_YE : break; 
+      case TK_TO_INTERVAL_MO : break; 
+      case TK_TO_INTERVAL_DY : break; 
+      case TK_TO_INTERVAL_HO : break; 
+      case TK_TO_INTERVAL_MI : break; 
+      case TK_TO_INTERVAL_SE : break; 
+      case TK_TO_BLOB : break; 
+      case TK_TO_NUMERIC : break; 
+      case TK_TO_INT : break; 
+      case TK_TO_REAL : break; 
+      case TK_TO_DECIMAL : break; 
+      case TK_ISNOT : break; 
+      case TK_END_OF_FILE : break; 
+      case TK_ILLEGAL : break; 
+      case TK_SPACE : break; 
+      case TK_UNCLOSED_STRING : break; 
+      case TK_FUNCTION : break; 
+      case TK_COLUMN : break;
+      case TK_AGG_FUNCTION : break; 
+      case TK_AGG_COLUMN : break; 
+      case TK_UMINUS : break; 
+      case TK_UPLUS : break; 
+   }
+
+   return "???????";
+}
+
+/* COMDB2 MODIFICATION */
+extern const char* comdb2_get_sql(void);
+
+static char* sqlitexExprDescribe_inner(Vdbe *v, const Expr *pExpr, int atRuntime)
+{
+   switch(pExpr->op)
+   {
+      case TK_SEMI : break; 
+      case TK_EXPLAIN : break; 
+      case TK_QUERY : break; 
+      case TK_PLAN : break; 
+      case TK_BEGIN : break; 
+      case TK_TRANSACTION : break; 
+      case TK_DEFERRED : break; 
+      case TK_IMMEDIATE : break; 
+      case TK_EXCLUSIVE : break; 
+      case TK_COMMIT : break; 
+      case TK_END : break; 
+      case TK_ROLLBACK : break; 
+      case TK_SAVEPOINT : break; 
+      case TK_RELEASE : break; 
+      case TK_TO : break; 
+      case TK_TABLE : break; 
+      case TK_CREATE : break; 
+      case TK_IF : break; 
+      case TK_NOT :
+      {
+         char *expr = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!expr)
+            return NULL;
+
+         char *ret = sqlitex_mprintf("NOT %s", expr);
+
+         sqlitexDbFree(v->db, expr);
+
+         return ret;
+      }
+      case TK_EXISTS : break; 
+      case TK_TEMP : break; 
+      case TK_LP : break; 
+      case TK_RP : break; 
+      case TK_AS : break; 
+      case TK_COMMA : break; 
+      case TK_ID : break; 
+      case TK_INDEXED : break; 
+      case TK_ABORT : break; 
+      case TK_ACTION : break; 
+      case TK_AFTER : break; 
+      case TK_ANALYZE : break; 
+      case TK_ASC : break; 
+      case TK_ATTACH : break; 
+      case TK_BEFORE : break; 
+      case TK_BY : break; 
+      case TK_CASCADE : break; 
+      case TK_CAST : 
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+
+         char *ret = sqlitex_mprintf("cast(%s as %s)", left, pExpr->u.zToken);
+        
+         sqlitexDbFree(v->db, left);
+
+         return ret;
+      }
+
+        break;
+      case TK_COLUMNKW : break; 
+      case TK_CONFLICT : break; 
+      case TK_DATABASE : break; 
+      case TK_DESC : break; 
+      case TK_DETACH : break; 
+      case TK_EACH : break; 
+      case TK_FAIL : break; 
+      case TK_FOR : break; 
+      case TK_IGNORE : break; 
+      case TK_INITIALLY : break; 
+      case TK_INSTEAD : break; 
+      case TK_LIKE_KW : break; 
+      case TK_MATCH : break; 
+      case TK_NO : break; 
+      case TK_KEY : break; 
+      case TK_OF : break; 
+      case TK_OFFSET : break; 
+      case TK_PRAGMA : break; 
+      case TK_RAISE : break; 
+      case TK_REPLACE : break; 
+      case TK_RESTRICT : break; 
+      case TK_ROW : break; 
+      case TK_TRIGGER : break; 
+      case TK_VACUUM : break; 
+      case TK_VIEW : break; 
+      case TK_VIRTUAL : break; 
+      case TK_REINDEX : break; 
+      case TK_RENAME : break; 
+      case TK_CTIME_KW : break; 
+      case TK_ANY : break; 
+      case TK_OR : 
+      case TK_AND :
+      case TK_IS :
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *right = sqlitexExprDescribe_inner(v, pExpr->pRight, atRuntime);
+         if (!right)
+         {
+            sqlitexDbFree(v->db, left);
+            return NULL;
+         }
+
+         char *ret = sqlitex_mprintf("( %s %s %s )", left, binary_opX(pExpr->op), right);
+        
+         sqlitexDbFree(v->db, left);
+         sqlitexDbFree(v->db, right);
+
+         return ret;
+      }
+      case TK_BETWEEN : break; 
+      case TK_IN :
+      {
+         int  i;
+         char *left, *ret2, *ret = NULL;
+
+         if (pExpr->x.pList->nExpr == 0)
+         {
+            break;
+         }
+
+         left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+         {
+            return NULL;
+         }
+         ret = sqlitex_mprintf(" %s IN ", left);
+
+         sqlitexDbFree(v->db, left);
+
+         for(i =0; i< pExpr->x.pList->nExpr; i++)
+         {
+            left = sqlitexExprDescribe_inner(v, pExpr->x.pList->a[i].pExpr, atRuntime);
+            if (!left)
+            {
+               sqlitexDbFree(v->db, ret);
+               return NULL;
+            }
+            ret2 = sqlitex_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left, (i==pExpr->x.pList->nExpr-1)?" )":"");
+            sqlitexDbFree(v->db, ret);
+            sqlitexDbFree(v->db, left);
+            ret = ret2;
+         }
+
+         return ret;
+      }
+      case TK_ISNULL :
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *ret = sqlitex_mprintf("( %s IS NULL )", left);
+
+         sqlitexDbFree(v->db, left);
+
+         return ret;
+      }
+      case TK_NOTNULL : 
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *ret = sqlitex_mprintf("( %s NOT NULL )", left);
+
+         sqlitexDbFree(v->db, left);
+
+         return ret;
+      }
+      case TK_NE :
+      case TK_EQ:
+      case TK_GT : 
+      case TK_LE :
+      case TK_LT :
+      case TK_GE :
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *right = sqlitexExprDescribe_inner(v, pExpr->pRight, atRuntime);
+         if (!right)
+         {
+            sqlitexDbFree(v->db, left);
+            return NULL;
+         }
+         char *ret = sqlitex_mprintf("( %s %s %s )", left, binary_opX(pExpr->op), right);
+        
+         sqlitexDbFree(v->db, left);
+         sqlitexDbFree(v->db, right);
+
+         return ret;
+      }
+      case TK_ESCAPE : break; 
+      case TK_BITAND : 
+      case TK_BITOR : 
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *right = sqlitexExprDescribe_inner(v, pExpr->pRight, atRuntime);
+         if (!right)
+         {
+            sqlitexDbFree(v->db, left);
+            return NULL;
+         }
+
+         char *ret = sqlitex_mprintf("( %s %s %s )", left, binary_opX(pExpr->op), right);
+
+         sqlitexDbFree(v->db, left);
+         sqlitexDbFree(v->db, right);
+
+         return ret;
+      }
+      case TK_LSHIFT : break; 
+      case TK_RSHIFT : break; 
+      case TK_PLUS : 
+      case TK_MINUS :
+      case TK_STAR : 
+      case TK_SLASH :
+      case TK_REM :
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *right = sqlitexExprDescribe_inner(v, pExpr->pRight, atRuntime);
+         if (!right)
+         {
+            sqlitexDbFree(v->db, left);
+            return NULL;
+         }
+         char *ret = sqlitex_mprintf("( %s %s %s )", left, binary_opX(pExpr->op), right);
+
+         sqlitexDbFree(v->db, left);
+         sqlitexDbFree(v->db, right);
+
+         return ret;
+      }
+      case TK_CONCAT : break; 
+      case TK_COLLATE : break; 
+      case TK_BITNOT : 
+      {
+         char *left = sqlitexExprDescribe_inner(v, pExpr->pLeft, atRuntime);
+         if (!left)
+            return NULL;
+         char *ret = sqlitex_mprintf("( ~ %s )", left);
+         
+         sqlitexDbFree(v->db, left);
+
+         return ret;
+      }
+      case TK_STRING :
+      {
+         return sqlitex_mprintf("'%q'", pExpr->u.zToken);
+      }
+      case TK_JOIN_KW : break; 
+      case TK_CONSTRAINT : break; 
+      case TK_DEFAULT : break; 
+      case TK_NULL : 
+      {
+         return sqlitex_mprintf("NULL");
+      }
+      case TK_PRIMARY : break; 
+      case TK_UNIQUE : break; 
+      case TK_CHECK : break; 
+      case TK_REFERENCES : break; 
+      case TK_AUTOINCR : break; 
+      case TK_ON : break; 
+      case TK_INSERT : break; 
+      case TK_DELETE : break; 
+      case TK_UPDATE : break; 
+      case TK_SET : break; 
+      case TK_DEFERRABLE : break; 
+      case TK_FOREIGN : break; 
+      case TK_DROP : break; 
+      case TK_UNION : break; 
+      case TK_ALL : break; 
+      case TK_EXCEPT : break; 
+      case TK_INTERSECT : break; 
+      case TK_SELECT : break; 
+      case TK_SELECTV : break; 
+      case TK_DISTINCT : break; 
+      case TK_DOT : break; 
+      case TK_FROM : break; 
+      case TK_JOIN : break; 
+      case TK_USING : break; 
+      case TK_ORDER : break; 
+      case TK_GROUP : 
+      {
+      #if 0
+         char *expr = sqlitexExprDescribe(v, pExpr->x.pEList);
+
+         return sqlitex_mprintf(" GROUP BY %s", expr);
+         #endif
+
+         break;
+      }
+      case TK_HAVING : break; 
+      case TK_LIMIT : break; 
+      case TK_WHERE : break; 
+      case TK_INTO : break; 
+      case TK_VALUES : break; 
+      case TK_INTEGER:
+      {
+         if (pExpr->flags & EP_IntValue)
+         {
+            /* get pExpr->u.iValue */
+            return sqlitex_mprintf("%d", pExpr->u.iValue);
+         } else {
+            /* get pExpr->u.zToken */
+            return sqlitex_mprintf("%s", pExpr->u.zToken);
+         }
+         break;
+      }
+      case TK_FLOAT : break; 
+      case TK_BLOB : 
+      {
+         return sqlitex_mprintf("%s", pExpr->u.zToken); 
+      }
+      case TK_REGISTER:
+      {
+         if (atRuntime)
+         {
+            /* look into register pExpr->iTable */
+            Mem *m;
+            m = &v->aMem[pExpr->iTable];
+
+            return print_mem(m);
+         }
+         else
+         {
+            /* probably an explain request */
+            return sqlitex_mprintf("R%d", pExpr->iTable);
+         }
+      }
+      case TK_VARIABLE : 
+      {
+         int iBindVar = pExpr->iColumn;
+
+         Mem *m = &v->aVar[iBindVar-1];
+
+         return print_mem(m);
+      }
+      case TK_CASE : break; 
+      case TK_WHEN : break; 
+      case TK_THEN : break; 
+      case TK_ELSE : break; 
+      case TK_INDEX : break; 
+      case TK_TO_TEXT : break; 
+      case TK_TO_DATETIME : break; 
+      case TK_TO_INTERVAL_YE : break; 
+      case TK_TO_INTERVAL_MO : break; 
+      case TK_TO_INTERVAL_DY : break; 
+      case TK_TO_INTERVAL_HO : break; 
+      case TK_TO_INTERVAL_MI : break; 
+      case TK_TO_INTERVAL_SE : break; 
+      case TK_TO_BLOB : break; 
+      case TK_TO_NUMERIC : break; 
+      case TK_TO_INT : break; 
+      case TK_TO_REAL : break; 
+      case TK_TO_DECIMAL : break; 
+      case TK_ISNOT : break; 
+      case TK_END_OF_FILE : break; 
+      case TK_ILLEGAL : break; 
+      case TK_SPACE : break; 
+      case TK_UNCLOSED_STRING : break; 
+      case TK_FUNCTION :
+      {
+         if (strncmp(pExpr->u.zToken, "like", 5) == 0)
+         {
+            assert(pExpr->x.pList->nExpr == 2);
+            char *left = sqlitexExprDescribe_inner(v, pExpr->x.pList->a[1].pExpr, atRuntime);
+            if (!left)
+               return NULL;
+            char *rite = sqlitexExprDescribe_inner(v, pExpr->x.pList->a[0].pExpr, atRuntime);
+            if (!rite)
+            {
+               sqlitexDbFree(v->db, left);
+               return NULL;
+            }
+
+            char *ret = sqlitex_mprintf(" LIKE ( %s, %s) ", rite, left);
+
+            sqlitexDbFree(v->db, left);
+            sqlitexDbFree(v->db, rite);
+
+            return ret;
+         }
+         else if(strncmp(pExpr->u.zToken, "now", 3) == 0)
+         { 
+            dttz_t dt;
+            int prec;
+
+            prec = v->dtprec;
+            if(pExpr->x.pList && pExpr->x.pList->nExpr == 1) {
+                if(pExpr->x.pList->a[0].pExpr->op == TK_STRING) {
+                    DTTZ_TEXT_TO_PREC(pExpr->x.pList->a[0].pExpr->u.zToken,
+                            prec, 0, break);
+                } else if(pExpr->x.pList->a[0].pExpr->op == TK_INTEGER ) {
+                    prec = pExpr->x.pList->a[0].pExpr->u.iValue;
+                    if(prec != DTTZ_PREC_MSEC && prec != DTTZ_PREC_USEC) {
+                       prec = v->dtprec;
+                    }
+                }
+            }
+
+            timespec_to_dttz(&v->tspec, &dt, prec);
+
+            return sqlitex_mprintf("cast(%lld.%*.*u as datetime)",  
+                dt.dttz_sec, prec, prec, dt.dttz_frac);
+         }
+         break;
+      }
+      case TK_COLUMN : 
+      {
+         return sqlitex_mprintf("\"%w\"",  pExpr->u.zToken);
+      }
+      case TK_AGG_FUNCTION : break; 
+      case TK_AGG_COLUMN : break; 
+      case TK_UMINUS : break; 
+      case TK_UPLUS : break; 
+   }
+   {
+      static int last;
+
+      if(last != pExpr->op)
+      {
+         const char *sql;
+
+         sql = comdb2_get_sql();
+
+         /* we only need one trace */
+         fprintf(stderr, "Unsupported expression for remote cursors, pls msg Dorin H of 592 for support!\n");
+         fprintf(stderr, "%s; pExpr->op=%d\n", __func__, pExpr->op);
+         fprintf(stderr, "query:'%s'\n", (sql)?sql:"unavailable");
+
+         last = pExpr->op;
+      }
+   }
+   return NULL;
+}
+
+/* COMDB2 MODIFICATION */
+char* sqlitexExprDescribe(Vdbe *v, const Expr *pExpr)
+{
+   return sqlitexExprDescribe_inner(v, pExpr, 0);
+}
+
+/* COMDB2 MODIFICATION */
+char *sqlitexExprDescribeAtRuntime(Vdbe *v, const Expr *pExpr)
+{
+   return sqlitexExprDescribe_inner(v, pExpr, 1);
+}

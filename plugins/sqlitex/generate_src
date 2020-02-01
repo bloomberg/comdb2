@@ -1,0 +1,18 @@
+#!/bin/bash
+
+# NC: cmake showed some issues with redirection, so moved the logic here.
+# http://cmake.3232098.n2.nabble.com/Does-the-echo-command-use-the-system-shell-td5349899.html
+
+# Generate serialget.c
+echo "/* This file, serialget.c, is automatically generated from vdbeaux.c. See CMakeLists.txt. */" > serialget.c
+sed -n "/START_INLINE_SERIALGET/,/END_INLINE_SERIALGET/p" vdbeaux.c >> serialget.c
+
+# Generate memcompare.c
+echo "/* This file, memcompare.c, is automatically generated from vdbeaux.c.  See CMakeLists.txt. */" > memcompare.c
+echo "#include \"serialget.c\"" >> memcompare.c
+sed -n "/START_INLINE_MEMCOMPARE/,/END_INLINE_MEMCOMPARE/p" vdbeaux.c >> memcompare.c
+
+# Generate vdbecompare.c
+echo "/* This file, vdbecompare.c, is automatically generated from vdbeaux.c. See CMakeLists.txt. */" > vdbecompare.c
+echo "#include \"memcompare.c\"" >> vdbecompare.c
+sed -n "/START_INLINE_VDBECOMPARE/,/END_INLINE_VDBECOMPARE/p" vdbeaux.c >> vdbecompare.c
