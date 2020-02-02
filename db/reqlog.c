@@ -2139,22 +2139,22 @@ void init_clientstats_table()
 }
 
 #define UNKNOWN_NAME "Unknown"
-#define GET_NAME_AND_LEN(s, s_len) \
-do {\
-    if (!s || (s_len = strlen(s) + 1) < 1) { \
-        s = UNKNOWN_NAME; \
-        s_len = sizeof(UNKNOWN_NAME); \
-    } \
-} while(0); 
+#define GET_NAME_AND_LEN(s, s_len)                                             \
+    do {                                                                       \
+        if (!s || (s_len = strlen(s) + 1) < 1) {                               \
+            s = UNKNOWN_NAME;                                                  \
+            s_len = sizeof(UNKNOWN_NAME);                                      \
+        }                                                                      \
+    } while (0);
 
 static int hash_free_element(void *elem, void *unused) {
     free(elem);
     return 0;
 }
 
-static nodestats_t *add_clientstats(
-        unsigned checksum, const char *task_and_stack, int task_len, 
-        int stack_len, int node, int fd)
+static nodestats_t *add_clientstats(unsigned checksum,
+                                    const char *task_and_stack, int task_len,
+                                    int stack_len, int node, int fd)
 {
     int nclntstats;
     nodestats_t *old_entry = NULL;
@@ -2215,7 +2215,7 @@ static nodestats_t *add_clientstats(
             Pthread_mutex_lock(&clntlru_mtx);
             while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
                    gbl_max_clientstats_cache) {
-                old_entry = listc_rtl(&clntlru); //get+remove oldest from list
+                old_entry = listc_rtl(&clntlru); // get+remove oldest from list
                 if (old_entry) {
                     hash_del(clientstats, old_entry);
                     Pthread_mutex_destroy(&old_entry->mtx);
@@ -2343,7 +2343,8 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
     memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
     if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
-        nodestats = add_clientstats(checksum, tmp, task_len, stack_len, node, fd);
+        nodestats =
+            add_clientstats(checksum, tmp, task_len, stack_len, node, fd);
         if (nodestats == NULL) {
             logmsg(
                 LOGMSG_ERROR,
