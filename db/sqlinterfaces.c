@@ -3935,6 +3935,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                "Fail to add query to transaction replay session\n");
 
     /* Get first row to figure out column structure */
+    clnt->last_sent_row_sec = time(NULL);
     int steprc = next_row(clnt, stmt);
     if (steprc == SQLITE_SCHEMA_REMOTE) {
         /* remote schema changed;
@@ -3969,6 +3970,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     do {
+        clnt->last_sent_row_sec = time(NULL);
+
         /* replication contention reduction */
         rc = release_locks_on_emit_row(thd, clnt);
         if (rc) {
