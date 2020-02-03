@@ -901,7 +901,7 @@ void sqlitexPragma(
       Pager *pPager = sqlite3BtreePager(pDb->pBt);
       char *proxy_file_path = NULL;
       sqlitex_file *pFile = sqlite3PagerFile(pPager);
-      sqlitexOsFileControlHint(pFile, SQLITE_GET_LOCKPROXYFILE, 
+      sqlitexOsFileControlHint(pFile, SQLITE_GET_LOCKPROXYFILEX, 
                            &proxy_file_path);
       
       if( proxy_file_path ){
@@ -916,10 +916,10 @@ void sqlitexPragma(
       sqlitex_file *pFile = sqlite3PagerFile(pPager);
       int res;
       if( zRight[0] ){
-        res=sqlitexOsFileControl(pFile, SQLITE_SET_LOCKPROXYFILE, 
+        res=sqlitexOsFileControl(pFile, SQLITE_SET_LOCKPROXYFILEX, 
                                      zRight);
       } else {
-        res=sqlitexOsFileControl(pFile, SQLITE_SET_LOCKPROXYFILE, 
+        res=sqlitexOsFileControl(pFile, SQLITE_SET_LOCKPROXYFILEX, 
                                      NULL);
       }
       if( res!=SQLITE_OK ){

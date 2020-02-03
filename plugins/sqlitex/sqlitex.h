@@ -30,8 +30,8 @@
 ** the version number) and changes its name to "sqlitex.h" as
 ** part of the build process.
 */
-#ifndef _SQLITE3_H_
-#define _SQLITE3_H_
+#ifndef _SQLITEX_H_
+#define _SQLITEX_H_
 #include <stdarg.h>     /* Needed for the definition of va_list */
 
 /*
@@ -1006,9 +1006,9 @@ struct sqlitex_io_methods {
 #define SQLITE_FCNTL_WAL_BLOCK              24
 
 /* deprecated names */
-#define SQLITE_GET_LOCKPROXYFILE      SQLITE_FCNTL_GET_LOCKPROXYFILE
-#define SQLITE_SET_LOCKPROXYFILE      SQLITE_FCNTL_SET_LOCKPROXYFILE
-#define SQLITE_LAST_ERRNO             SQLITE_FCNTL_LAST_ERRNO
+#define SQLITE_GET_LOCKPROXYFILEX      SQLITE_FCNTL_GET_LOCKPROXYFILE
+#define SQLITE_SET_LOCKPROXYFILEX      SQLITE_FCNTL_SET_LOCKPROXYFILE
+#define SQLITE_LAST_ERRNOX             SQLITE_FCNTL_LAST_ERRNO
 
 
 /*
@@ -7710,7 +7710,7 @@ SQLITE_API SQLITE_EXPERIMENTAL void sqlitex_stmt_scanstatus_reset(sqlitex_stmt*)
 #ifdef __cplusplus
 }  /* End of the 'extern "C"' block */
 #endif
-#endif /* _SQLITE3_H_ */
+#endif /* _SQLITEX_H_ */
 
 /*
 ** 2010 August 30
