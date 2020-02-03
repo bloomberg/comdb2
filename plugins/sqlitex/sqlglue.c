@@ -130,7 +130,7 @@ void addVbdeSorterCost(const VdbeSorter *pSorter)
     if (thd == NULL)
         return;
 
-    struct query_path_component fnd={0}, *qc;
+    struct query_path_component fnd={{0}}, *qc;
 
     if(NULL == (qc = hash_find(thd->query_hash, &fnd)))
     {

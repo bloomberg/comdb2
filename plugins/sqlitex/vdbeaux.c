@@ -4471,7 +4471,7 @@ static inline int vdbeRecordCompareWithSkip(
   Mem *pRhs = pPKey2->aMem;       /* Next field of pPKey2 to compare */
   KeyInfo *pKeyInfo = pPKey2->pKeyInfo;
   const unsigned char *aKey1 = (const unsigned char *)pKey1;
-  Mem mem1 = {0};
+  Mem mem1 = {{0}};
 
   /* If bSkip is true, then the caller has already determined that the first
   ** two elements in the keys are equal. Fix the various stack variables so
