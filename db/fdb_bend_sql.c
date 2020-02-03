@@ -56,6 +56,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
     clnt->fdb_state.version = version;
     clnt->fdb_state.flags = flags;
     clnt->osql.timings.query_received = osql_log_time();
+    clnt->queue_me = 1;
 
     /*
        dispatch the sql
