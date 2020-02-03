@@ -21,7 +21,7 @@ struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
 
-int comdb2LocateSP(Parse *p, char *sp)
+int comdb2LocateSPX(Parse *p, char *sp)
 {
 	char *ver = NULL;
 	int bdberr;
@@ -81,7 +81,7 @@ static void add_watched_cols(int type, Table *table, Cdb2TrigEvent *event,
 	}
 }
 
-Cdb2TrigEvents *comdb2AddTriggerEvent(Parse *pParse, Cdb2TrigEvents *A, Cdb2TrigEvent *B)
+Cdb2TrigEvents *comdb2AddTriggerEventX(Parse *pParse, Cdb2TrigEvents *A, Cdb2TrigEvent *B)
 {
 	if (A == NULL) {
 		A = sqlitexDbMallocZero(pParse->db, sizeof(Cdb2TrigEvents));
@@ -110,7 +110,7 @@ Cdb2TrigEvents *comdb2AddTriggerEvent(Parse *pParse, Cdb2TrigEvents *A, Cdb2Trig
 	return A;
 }
 
-Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
+Cdb2TrigTables *comdb2AddTriggerTableX(Parse *parse, Cdb2TrigTables *tables,
 				      SrcList *tbl, Cdb2TrigEvents *events)
 {
 	Table *table;
@@ -142,7 +142,7 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 }
 
 // dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables *tbl)
+void comdb2CreateTriggerX(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables *tbl)
 {
 	TokenStr(spname, proc);
 	Q4SP(qname, spname);
@@ -152,7 +152,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables 
 		return;
 	}
 
-	if (comdb2LocateSP(parse, spname) != 0) {
+	if (comdb2LocateSPX(parse, spname) != 0) {
 		return;
 	}
 
@@ -210,7 +210,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc, Cdb2TrigTables 
 			    (vdbeFuncArgFree)&free_schema_change_type);
 }
 
-void comdb2DropTrigger(Parse *parse, Token *proc)
+void comdb2DropTriggerX(Parse *parse, Token *proc)
 {
 	TokenStr(spname, proc);
 	Q4SP(qname, spname);
@@ -232,7 +232,7 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 	do {                                                                   \
 		int bdberr = 0;                                                \
 		TokenStr(spname, proc);                                        \
-		if (comdb2LocateSP(parse, spname) != 0) {                      \
+		if (comdb2LocateSPX(parse, spname) != 0) {                      \
 			return;                                                \
 		}                                                              \
 		if (find_lua_##pfx##func(spname)) {                            \
@@ -251,12 +251,12 @@ void comdb2DropTrigger(Parse *parse, Token *proc)
 		    (vdbeFuncArgFree)&free_schema_change_type);                \
 	} while (0)
 
-void comdb2CreateScalarFunc(Parse *parse, Token *proc)
+void comdb2CreateScalarFuncX(Parse *parse, Token *proc)
 {
 	comdb2CreateFunc(parse, proc, s, scalar);
 }
 
-void comdb2CreateAggFunc(Parse *parse, Token *proc)
+void comdb2CreateAggFuncX(Parse *parse, Token *proc)
 {
 	comdb2CreateFunc(parse, proc, a, aggregate);
 }
@@ -280,12 +280,12 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
 		    (vdbeFuncArgFree)&free_schema_change_type);                \
 	} while (0)
 
-void comdb2DropScalarFunc(Parse *parse, Token *proc)
+void comdb2DropScalarFuncX(Parse *parse, Token *proc)
 {
 	comdb2DropFunc(parse, proc, s, scalar);
 }
 
-void comdb2DropAggFunc(Parse *parse, Token *proc)
+void comdb2DropAggFuncX(Parse *parse, Token *proc)
 {
 	comdb2DropFunc(parse, proc, a, aggregate);
 }

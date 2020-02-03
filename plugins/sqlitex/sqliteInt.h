@@ -4059,15 +4059,15 @@ struct Cdb2TrigTables {
   Cdb2TrigEvents *events;
   Cdb2TrigTables *next;
 };
-Cdb2TrigEvents *comdb2AddTriggerEvent(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
-void comdb2DropTrigger(Parse*,Token*);
-Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
-void comdb2CreateTrigger(Parse*,int dynamic,Token*,Cdb2TrigTables*);
+Cdb2TrigEvents *comdb2AddTriggerEventX(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
+void comdb2DropTriggerX(Parse*,Token*);
+Cdb2TrigTables *comdb2AddTriggerTableX(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
+void comdb2CreateTriggerX(Parse*,int dynamic,Token*,Cdb2TrigTables*);
 
-void comdb2CreateScalarFunc(Parse *, Token *);
-void comdb2DropScalarFunc(Parse *, Token *);
-void comdb2CreateAggFunc(Parse *, Token *);
-void comdb2DropAggFunc(Parse *, Token *);
+void comdb2CreateScalarFuncX(Parse *, Token *);
+void comdb2DropScalarFuncX(Parse *, Token *);
+void comdb2CreateAggFuncX(Parse *, Token *);
+void comdb2DropAggFuncX(Parse *, Token *);
 
 /* Query fingerprints. */ 
 void sqlitexFingerprintSelect(sqlitex_stmt *stmt, Select *p);

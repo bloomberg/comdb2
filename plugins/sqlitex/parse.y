@@ -1750,27 +1750,27 @@ cmd ::= DROP TRIGGER ifexists(NOERR) fullname(X). {
 
 ////////////////////// CREATE LUA commands ////////////////////
 cmd ::= createkw LUA SCALAR FUNCTION nm(Q). {
-	comdb2CreateScalarFunc(pParse, &Q);
+	comdb2CreateScalarFuncX(pParse, &Q);
 }
 
 cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
-	comdb2CreateAggFunc(pParse, &Q);
+	comdb2CreateAggFuncX(pParse, &Q);
 }
 
 cmd ::= createkw LUA TRIGGER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,&Q,T);
+  comdb2CreateTriggerX(pParse,0,&Q,T);
 }
 
 cmd ::= createkw LUA CONSUMER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,&Q,T);
+  comdb2CreateTriggerX(pParse,1,&Q,T);
 }
 
 table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
-  A = comdb2AddTriggerTable(pParse,B,T,C);
+  A = comdb2AddTriggerTableX(pParse,B,T,C);
 }
 
 table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
-  A = comdb2AddTriggerTable(pParse,0,T,B);
+  A = comdb2AddTriggerTableX(pParse,0,T,B);
 }
 
 %type table_trigger_event {Cdb2TrigTables*}
@@ -1783,10 +1783,10 @@ table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
 %destructor trigger_events {sqlitexDbFree(pParse->db, $$);}
 
 trigger_events(A) ::= trigger_events(B) AND cdb2_trigger_event(C). {
-  A = comdb2AddTriggerEvent(pParse,B,&C);
+  A = comdb2AddTriggerEventX(pParse,B,&C);
 }
 trigger_events(A) ::= cdb2_trigger_event(B). {
-  A = comdb2AddTriggerEvent(pParse,0,&B);
+  A = comdb2AddTriggerEventX(pParse,0,&B);
 }
 cdb2_trigger_event(A) ::= DELETE. {
   A.op = TK_DELETE;
@@ -1815,16 +1815,16 @@ cdb2_trigger_event(A) ::= UPDATE OF idlist(X). {
 
 ///////////////////////// DROP LUA commands /////////////////////////
 cmd ::= DROP LUA SCALAR FUNCTION nm(A). {
-  comdb2DropScalarFunc(pParse,&A);
+  comdb2DropScalarFuncX(pParse,&A);
 }
 cmd ::= DROP LUA AGGREGATE FUNCTION nm(A). {
-  comdb2DropAggFunc(pParse,&A);
+  comdb2DropAggFuncX(pParse,&A);
 }
 cmd ::= DROP LUA TRIGGER nm(A). {
-  comdb2DropTrigger(pParse,&A);
+  comdb2DropTriggerX(pParse,&A);
 }
 cmd ::= DROP LUA CONSUMER nm(A). {
-  comdb2DropTrigger(pParse,&A);
+  comdb2DropTriggerX(pParse,&A);
 }
 
 //////////////////////// ATTACH DATABASE file AS name /////////////////////////

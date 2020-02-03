@@ -3119,7 +3119,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
-        if (gbl_old_column_names && query_preparer_plugin &&
+        if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
             query_preparer_plugin->do_prepare &&
             is_select_or_with_stmt((char *)rec->sql)) {
             rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql);
