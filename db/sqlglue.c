@@ -103,7 +103,6 @@
 
 int gbl_delay_sql_lock_release_sec = 5;
 
-
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
                                int *bdberr);
@@ -622,7 +621,8 @@ static int sql_tick(struct sql_thread *thd)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) &&
+    if (((gbl_epoch_time - clnt->last_sent_row_sec) >=
+         gbl_delay_sql_lock_release_sec) &&
         bdb_lock_desired(thedb->bdb_env)) {
         int sleepms;
 

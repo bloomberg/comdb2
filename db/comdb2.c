@@ -5276,7 +5276,9 @@ static void register_all_int_switches()
                         "Send ODH'd blobs to master. (Default: ON)",
                         &gbl_osql_odh_blob);
     register_int_switch("delay_sql_lock_release",
-                        "Delay release locks in cursor move if bdb lock desired but client sends rows back", &gbl_delay_sql_lock_release_sec);
+                        "Delay release locks in cursor move if bdb lock "
+                        "desired but client sends rows back",
+                        &gbl_delay_sql_lock_release_sec);
 }
 
 static void getmyid(void)

@@ -462,7 +462,9 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
-                logmsg(LOGMSG_WARN, "%s: releasing locks while updating shadows\n", __func__);
+                logmsg(LOGMSG_WARN,
+                       "%s: releasing locks while updating shadows\n",
+                       __func__);
                 rc = release_locks_int("update shadows", __func__, __LINE__);
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
