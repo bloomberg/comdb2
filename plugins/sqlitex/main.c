@@ -35,7 +35,7 @@
 #endif
 
 /* COMDB2 MODIFICATION */
-#include <paulbitchk.h>
+//#include <paulbitchk.h>
 
 #ifndef SQLITE_AMALGAMATION
 /* IMPLEMENTATION-OF: R-46656-45156 The sqlitex_version[] string constant

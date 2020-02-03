@@ -26,8 +26,8 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <strings.h>
-#include <dbutil.h>
-#include <paulbitchk.h>
+//#include <dbutil.h>
+//#include <paulbitchk.h>
 
 /* COMDB2 MODIFICATION */
 #include "sql.h"

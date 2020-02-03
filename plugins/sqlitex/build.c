@@ -27,16 +27,12 @@
 #include "comdb2Int.h"
 
 /* COMDB2 MODIFICATION */
-#include <paulbitchk.h>
+//#include <paulbitchk.h>
 int is_comdb2_index_unique(const char *dbname, char *idx);
 const char* fdb_parse_comdb2_remote_dbname(const char *zDatabase, const char **fqDbname);
 char *fdb_get_alias(const char **p_tablename);
 
-#ifndef SQLITE_BUILDING_FOR_COMDB2
 #define paulbitchk(word, bit) (1)
-#endif
-
-
 
 /*
 ** This routine is called when a new SQL statement is beginning to
