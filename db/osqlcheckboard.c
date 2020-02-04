@@ -263,7 +263,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
  * of its sql peer
  *
  */
-int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
+inline int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 {
     return _osql_register_sqlthr(clnt, type, 0);
 }
@@ -272,11 +272,11 @@ int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
  * TODO: This is unused? If so cleanup.
  * Register a remote transaction, part of a distributed transaction
  *
- */
 int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
 {
     return _osql_register_sqlthr(clnt, type, 1);
 }
+ */
 
 /**
  * Unregister an osql thread from the checkboard

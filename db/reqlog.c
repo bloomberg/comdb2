@@ -2142,7 +2142,7 @@ void init_clientstats_table()
 #define UNKNOWN_NAME "Unknown"
 #define GET_NAME_AND_LEN(s, s_len)                                             \
     do {                                                                       \
-        if (!s || (s_len = strlen(s) + 1) < 1) {                               \
+        if (!s || (s_len = strlen(s) + 1) <= 1) {                              \
             s = UNKNOWN_NAME;                                                  \
             s_len = sizeof(UNKNOWN_NAME);                                      \
         }                                                                      \
@@ -2666,6 +2666,7 @@ done:
     *nodes_cnt = max_clients;
     return summaries;
 }
+
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host)
 {
