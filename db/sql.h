@@ -848,6 +848,8 @@ struct sqlclntstate {
     int8_t sent_data_to_client;
     int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
+    int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
+                              desired */
 };
 
 /* Query stats. */
