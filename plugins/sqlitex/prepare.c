@@ -422,7 +422,7 @@ int sqlitexInitTable(sqlitex *db, char **pzErrMsg, const char *zName)
   int i, rc;
   int commit_internal = !(db->flags&SQLITE_InternChanges);
   char *tmp;
-  char dbname[32];   /* ok, this needs to ship! */
+  char dbname[60];   /* ok, this needs to ship! */
 
   assert( sqlitex_mutex_held(db->mutex) );
   assert( sqlite3BtreeHoldsMutex(db->aDb[0].pBt) );
@@ -435,7 +435,8 @@ int sqlitexInitTable(sqlitex *db, char **pzErrMsg, const char *zName)
     db->init.zTblName = strdup(zName);
     tmp = strchr(db->init.zTblName, '.');
     if( tmp ){
-      memcpy(dbname, db->init.zTblName, tmp-db->init.zTblName);
+      memcpy(dbname, db->init.zTblName, MIN(tmp-db->init.zTblName,
+                                            sizeof(dbname)-1));
       dbname[tmp-db->init.zTblName+1] = '\0';
       memmove(db->init.zTblName, tmp+1, strlen(tmp));
     }else{
