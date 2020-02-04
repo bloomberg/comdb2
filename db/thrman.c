@@ -48,6 +48,7 @@
 #include "thread_util.h"
 #include "osqlrepository.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "str0.h"
 
 struct thr_handle {

@@ -95,6 +95,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "locks.h"
 #include "eventlog.h"
 
