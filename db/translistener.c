@@ -823,7 +823,7 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
     byte_buffer_append_zero(&bytes, 4);
 
     /* post it to queue */
-    struct dbtable *qdb = = getqueuebyname(p->qname);
+    struct dbtable *qdb = getqueuebyname(p->qname);
     if (qdb != NULL) { /* NULL means dropped?  Ok, ignore it. */
         usedb = javasp_trans_handle->iq->usedb;
         javasp_trans_handle->iq->usedb = qdb;
