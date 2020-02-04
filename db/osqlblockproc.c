@@ -69,15 +69,13 @@
 #include "ctrace.h"
 #include "intern_strings.h"
 
+
 int gbl_osql_check_replicant_numops = 1;
 extern int gbl_blocksql_grace;
 extern int gbl_reorder_idx_writes;
 
 
 struct blocksql_tran {
-    osql_sess_t *sess; /* pointer to the osql session */
-    /* NOTE: we keep only block processor thread operating on this, so we don't
-     * need a lock */
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
     struct dbtable *last_db;
     struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
@@ -86,8 +84,23 @@ struct blocksql_tran {
     pthread_mutex_t mtx; /* mutex and cond for notifying when any session
                            has completed */
     pthread_cond_t cond;
+
+    int seq; /* counting ops saved */
     int delayed;
-    int rows;
+    bool is_uuid;
+   
+    /* selectv caches */
+    bool is_selectv_wl_upd;
+    int tableversion;
+    char *tablename; /* remember tablename in saveop for reordering */
+    hash_t *selectv_genids;
+    uint16_t tbl_idx;
+    unsigned long long last_genid; /* remember updrec/insrec genid for qblobs */
+    unsigned long long ins_seq; /* remember key seq for inserts into ins tmptbl */
+    bool last_is_ins; /* 1 if processing INSERT, 0 for any other oql type */
+
+    /* reorder */
+    bool is_reorder_on;
 };
 
 typedef struct oplog_key {
@@ -98,6 +111,16 @@ typedef struct oplog_key {
     uint32_t seq;   // record and blob will share the same seq
 } oplog_key_t;
 
+typedef struct {
+    char *tablename;
+    unsigned long long genid;
+    int tableversion;
+    bool get_writelock;
+} selectv_genid_t;
+
+int gbl_selectv_writelock_on_update = 1;
+
+
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                          int *nops, struct block_err *err, SBUF2 *logsb,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
@@ -105,8 +128,8 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *, SBUF2 *));
 static int req2blockop(int reqtype);
-extern const char *get_tablename_from_rpl(unsigned long long rqid,
-                                          const char *rpl, int *tableversion);
+extern const char *get_tablename_from_rpl(bool is_uuid, const char *rpl,
+        int *tableversion);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -185,33 +208,20 @@ static int osql_bplog_instbl_key_cmp(void *usermem, int key1len,
  * Returns 0 if success.
  *
  */
-int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
+blocksql_tran_t* osql_bplog_create(bool is_reorder, bool is_selectv_wl_upd)
 {
 
     blocksql_tran_t *tran = NULL;
     int bdberr = 0;
 
-    /*
-       this stuff is LOCKLESS, since we have only block
-       processor calling this
-
-       if we need to have like "send ... thr" print these
-       info, we'll need a lock around alloc/dealloc
-     */
-
-    if (iq->blocksql_tran)
-        abort();
-
     tran = calloc(sizeof(blocksql_tran_t), 1);
     if (!tran) {
         logmsg(LOGMSG_ERROR, "%s: error allocating %zu bytes\n", __func__,
                sizeof(blocksql_tran_t));
-        return -1;
+        return NULL;
     }
 
     Pthread_mutex_init(&tran->store_mtx, NULL);
-
-    iq->blocksql_tran = tran; /* now blockproc knows about it */
 
     /* init temporary table and cursor */
     tran->db = bdb_temp_array_create(thedb->bdb_env, &bdberr);
@@ -219,12 +229,12 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
         logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
                __func__, bdberr);
         free(tran);
-        return -1;
+        return NULL;
     }
 
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
 
-    if (sess->is_reorder_on) {
+    if (is_reorder) {
         tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
         if (!tran->db_ins) {
             // We can stll work without a INS table
@@ -236,12 +246,15 @@ int osql_bplog_start(struct ireq *iq, osql_sess_t *sess)
                                         osql_bplog_instbl_key_cmp);
     }
 
-    iq->timings.req_received = osql_log_time();
-    iq->tranddl = 0;
-    /*printf("Set req_received=%llu\n", iq->timings.req_received);*/
+    tran->is_selectv_wl_upd = gbl_selectv_writelock_on_update;
+    if (tran->is_selectv_wl_upd)
+        tran->selectv_genids =
+            hash_init(offsetof(selectv_genid_t, get_writelock));
 
-    tran->sess = sess;
-    return 0;
+
+    tran->is_reorder_on = is_reorder;
+    
+    return tran;
 }
 
 
@@ -386,6 +399,37 @@ static int pselectv_callback(void *arg, const char *tablename, int tableversion,
     return 0;
 }
 
+
+typedef struct {
+    int (*wr_sv)(void *, const char *tablename, int tableversion,
+                 unsigned long long genid);
+    void *arg;
+} sv_hf_args;
+
+static int process_selectv(void *obj, void *arg)
+{
+    sv_hf_args *hf_args = (sv_hf_args *)arg;
+    selectv_genid_t *sgenid = (selectv_genid_t *)obj;
+    if (sgenid->get_writelock) {
+        return (*hf_args->wr_sv)(hf_args->arg, sgenid->tablename,
+                                 sgenid->tableversion, sgenid->genid);
+    }
+    return 0;
+}
+
+static int osql_process_selectv(blocksql_tran_t *tran, 
+                         int (*wr_sv)(void *arg, const char *tablename,
+                                      int tableversion,
+                                      unsigned long long genid),
+                         void *wr_selv_arg)
+{
+    sv_hf_args hf_args = {.wr_sv = wr_sv, .arg = wr_selv_arg};
+    if (!tran->is_selectv_wl_upd)
+        return 0;
+    return hash_for(tran->selectv_genids, process_selectv, &hf_args);
+}
+
+
 /**
  * Wait for all pending osql sessions of this transaction to finish
  * Once all finished ok, we apply all the changes
@@ -393,14 +437,14 @@ static int pselectv_callback(void *arg, const char *tablename, int tableversion,
 int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err)
 {
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
+    blocksql_tran_t *tran = iq->sorese->tran;
     ckgenid_state_t cgstate = {.iq = iq, .trans = iq_trans, .err = err};
     int rc;
 
     /* Pre-process selectv's, getting a writelock on rows that are later updated
      */
-    if ((rc = osql_process_selectv(((blocksql_tran_t *)iq->blocksql_tran)->sess,
-                                   pselectv_callback, &cgstate)) != 0) {
+    if ((rc = osql_process_selectv(tran, pselectv_callback, &cgstate))
+            != 0) {
         iq->timings.req_applied = osql_log_time();
         return rc;
     }
@@ -439,63 +483,47 @@ char *osql_sorese_type_to_str(int stype)
     return rtn;
 }
 
-/**
- * Free all the sessions and free the bplog
- * HACKY: since we want to catch and report long requests in block
- * process, call this function only after reqlog_end_request is called
- * (sltdbt.c)
- */
-static pthread_mutex_t kludgelk = PTHREAD_MUTEX_INITIALIZER;
-void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
-                     const char *callfunc, int line)
+static int free_selectv_genids(void *obj, void *arg)
 {
+    free(obj);
+    return 0;
+}
+
+/**
+ * Free the bplog
+ */
+void osql_bplog_free(blocksql_tran_t **ptran)
+{
+    blocksql_tran_t *tran = *ptran;
     int rc = 0;
     int bdberr = 0;
-    Pthread_mutex_lock(&kludgelk);
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    iq->blocksql_tran = NULL;
-    Pthread_mutex_unlock(&kludgelk);
 
-    if (!tran)
-        return;
-
-    /* null this here, since the clients of sessions could still use
-       sess->iq->blockproc to update the transaction bplog
-       osql_close_session ensures there are no further clients
-       of sess before removing it from the lookup hash
-     */
-
-    /* remove the sessions from repository (if linked) and free them */
-    osql_close_session(&tran->sess, are_sessions_linked, func, callfunc, line);
-    iq->sorese = NULL;
-
-    if (iq->p_buf_orig) {
-        free(iq->p_buf_orig);
-        iq->p_buf_orig = NULL;
-        iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-        iq->p_buf_in_end = iq->p_buf_in = NULL;
+    /* code ensures that only one thread will run this code 
+    (reader 1, terminator 2, or blockproc 3)*/
+    if (tran->is_selectv_wl_upd) {
+        hash_for(tran->selectv_genids, free_selectv_genids, NULL);
+        hash_clear(tran->selectv_genids);
+        hash_free(tran->selectv_genids);
     }
 
-    /* destroy transaction */
     Pthread_mutex_destroy(&tran->store_mtx);
 
     rc = bdb_temp_table_close(thedb->bdb_env, tran->db, &bdberr);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed close table rc=%d bdberr=%d\n",
                __func__, rc, bdberr);
-    } else {
-        tran->db = NULL;
-    }
+    } 
 
     if (tran->db_ins) {
         rc = bdb_temp_table_close(thedb->bdb_env, tran->db_ins, &bdberr);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s: failed close table rc=%d bdberr=%d\n",
+            logmsg(LOGMSG_ERROR, "%s: failed close ins table rc=%d bdberr=%d\n",
                    __func__, rc, bdberr);
         }
     }
 
     free(tran);
+    *ptran = NULL;
 }
 
 
@@ -539,18 +567,20 @@ const char *osql_reqtype_str(int type)
 void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
                        char *rpl, oplog_key_t *key)
 {
+    char *tablename = tran->tablename;
+
     key->tbl_idx = USHRT_MAX;
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        if (sess->tablename &&
-            !is_tablename_queue(sess->tablename, strlen(sess->tablename))) {
-            sess->tbl_idx = get_dbtable_idx_by_name(sess->tablename) + 1;
-            key->tbl_idx = sess->tbl_idx;
+        if (tablename &&
+            !is_tablename_queue(tablename, strlen(tablename))) {
+            tran->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
+            key->tbl_idx = tran->tbl_idx;
 
 #if DEBUG_REORDER
             logmsg(LOGMSG_DEBUG, "REORDER: tablename='%s' idx=%d\n",
-                   sess->tablename, sess->tbl_idx);
+                   sess->tablename, tran->tbl_idx);
 #endif
         }
         break;
@@ -565,7 +595,7 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
         enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
         unsigned long long genid = 0;
         if (type == OSQL_INSERT || type == OSQL_INSREC) {
-            genid = ++sess->ins_seq;
+            genid = ++tran->ins_seq;
 #if DEBUG_REORDER
             logmsg(LOGMSG_DEBUG, "REORDER: INS genid (seq) 0x%llx\n", genid);
 #endif
@@ -576,15 +606,15 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
             logmsg(LOGMSG_DEBUG, "REORDER: Received genid 0x%llx\n", genid);
 #endif
         }
-        sess->last_genid = genid;
+        tran->last_genid = genid;
         key->is_rec = 1;
     } /* FALL THROUGH TO NEXT CASE */
     case OSQL_QBLOB:
     case OSQL_DELIDX:
     case OSQL_INSIDX:
     case OSQL_UPDCOLS: {
-        key->tbl_idx = sess->tbl_idx;
-        key->genid = sess->last_genid;
+        key->tbl_idx = tran->tbl_idx;
+        key->genid = tran->last_genid;
         /* NB: this stripe is only used for ordering, NOT for inserting */
         key->stripe = get_dtafile_from_genid(key->genid);
         assert(key->stripe >= 0);
@@ -612,16 +642,16 @@ void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
     case OSQL_DELETE:
     case OSQL_UPDREC:
     case OSQL_DELREC:
-        sess->last_is_ins = 0;
+        tran->last_is_ins = 0;
         sess->tran_rows++;
         break;
     case OSQL_INSERT:
     case OSQL_INSREC:
-        sess->last_is_ins = 1;
+        tran->last_is_ins = 1;
         sess->tran_rows++;
         break;
     default:
-        sess->last_is_ins = 0;
+        tran->last_is_ins = 0;
         break;
     }
 }
@@ -641,6 +671,36 @@ static void send_error_to_replicant(osql_sess_t *sess, int errval,
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
 }
+
+
+static void osql_cache_selectv(blocksql_tran_t *tran, bool is_uuid,
+        char *rpl, int type);
+
+static void _pre_process_saveop(blocksql_tran_t *tran, char *rpl, int rplen, int type)
+{
+    switch (type)
+    {
+    case OSQL_SCHEMACHANGE:    
+        sess->iq->tranddl++;
+        break;
+    case OSQL_DONE_SNAP:
+        osql_extract_snap_info(sess->iq, rpl, rplen, is_uuid);
+        break;
+    case OSQL_USEDB:
+        if (tran->is_selectv_wl_upd || tran->is_reorder_on) {
+            int tableversion = 0;
+            const char *tblname = get_tablename_from_rpl(tran->is_uuid, rpl, &tableversion);
+            assert(tblname); // table or queue name
+            tran->tablename = intern(tblname);
+            tran->tableversion = tableversion;
+        }
+        break;
+    }
+
+    if (tran->is_selectv_wl_upd)
+        osql_cache_selectv(tran, is_uuid, rpl, type);
+}
+
 
 #if DEBUG_REORDER
 #define DEBUG_PRINT_TMPBL_SAVING()                                             \
@@ -667,13 +727,11 @@ static void send_error_to_replicant(osql_sess_t *sess, int errval,
  * Returns 0 if success
  *
  */
-int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
-                      unsigned long long rqid, uuid_t uuid, int type)
+int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type)
 {
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
 #endif
-    blocksql_tran_t *tran = (blocksql_tran_t *)osql_sess_getbptran(sess);
     if (!tran || !tran->db) {
         /* something has gone wrong dispatching the socksql request, ignoring
            when the bplog creation failed, the caller is responsible for
@@ -686,42 +744,24 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     oplog_key_t key = {0};
     int bdberr;
 
-    assert(sess->rqid == rqid);
-    key.seq = sess->seq;
+    _pre_process_saveop(tran, rpl, rplen, type);
+
+    key.seq = tran->seq;
+
 #if DEBUG_REORDER
     uuidstr_t us;
-    comdb2uuidstr(uuid, us);
+    comdb2uuidstr(sess->uuid, us);
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", us, type,
-             osql_reqtype_str(type), sess->seq);
+             osql_reqtype_str(type), tran->seq);
 #endif
 
     /* add the op into the temporary table */
     Pthread_mutex_lock(&tran->store_mtx);
 
-    /* make sure that the temp table is empty since commit
-     * retries will use same rqid */
-    if (sess->seq == 0 && tran->rows > 0) {
-        logmsg(LOGMSG_FATAL,
-               "Malformed transaction, received duplicated first row");
-        abort();
-    }
-
-    if (type == OSQL_USEDB &&
-        (sess->selectv_writelock_on_update || sess->is_reorder_on)) {
-        int tableversion = 0;
-        const char *tblname = get_tablename_from_rpl(rqid, rpl, &tableversion);
-        assert(tblname); // table or queue name
-        sess->tablename = intern(tblname);
-        sess->tableversion = tableversion;
-    }
-
-    if (sess->selectv_writelock_on_update)
-        osql_cache_selectv(type, sess, rqid, rpl);
-
     struct temp_table *tmptbl = tran->db;
-    if (sess->is_reorder_on) {
-        setup_reorder_key(type, sess, rqid, rpl, &key);
-        if (sess->last_is_ins && tran->db_ins) { // insert into ins temp table
+    if (tran->is_reorder_on) {
+        setup_reorder_key(type, sess, sess->rqid, rpl, &key);
+        if (tran->last_is_ins && tran->db_ins) { // insert into ins temp table
             tmptbl = tran->db_ins;
         }
     }
@@ -735,13 +775,11 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
-               __func__, sess->seq, rc, bdberr);
+               __func__, tran->seq, rc, bdberr);
     } else if (gbl_osqlpfault_threads) {
         osql_page_prefault(rpl, rplen, &(tran->last_db),
-                           &sess->iq->osql_step_ix, rqid, uuid, sess->seq);
+                           &sess->iq->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
     }
-
-    tran->rows++;
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
@@ -750,35 +788,29 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
 
     struct errstat *xerr;
     /* check if type is done */
-    rc = osql_comm_is_done(sess, type, rpl, rplen, rqid == OSQL_RQID_USE_UUID,
+    rc = osql_comm_is_done(sess, type, rpl, rplen, sess->rqid == OSQL_RQID_USE_UUID,
                            &xerr);
     if (rc == 0)
         return 0;
 
-    /* if error from sqlite, just cancel the transaction */
-    if (type == OSQL_XERR) {
-        sql_cancelled_transaction(sess->iq);
-        return xerr->errval;
-    }
-
     /* only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS here */
-    int numops = osql_get_replicant_numops(rpl, rqid == OSQL_RQID_USE_UUID);
+    int numops = osql_get_replicant_numops(rpl, sess->rqid == OSQL_RQID_USE_UUID);
 #ifndef NDEBUG
     uuidstr_t us;
-    comdb2uuidstr(uuid, us);
+    comdb2uuidstr(sess->uuid, us);
     DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,
-             osql_reqtype_str(type), numops, sess->seq,
-             (numops != sess->seq + 1 ? "NO match" : ""));
+             osql_reqtype_str(type), numops, tran->seq,
+             (numops != tran->seq + 1 ? "NO match" : ""));
 #endif
 
-    if (gbl_osql_check_replicant_numops && numops != sess->seq + 1) {
+    if (gbl_osql_check_replicant_numops && numops != tran->seq + 1) {
         send_error_to_replicant(
             sess, RC_INTERNAL_RETRY,
             "Master received inconsistent number of opcodes");
 
         logmsg(LOGMSG_ERROR,
                "%s: Replicant sent %d opcodes, master received %lld\n",
-               __func__, numops, sess->seq + 1);
+               __func__, numops, tran->seq + 1);
 
         sql_cancelled_transaction(sess->iq);
         return -1;
@@ -1361,7 +1393,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
     listc_init(&iq->bpfunc_lst, offsetof(bpfunc_lstnode_t, linkct));
 
     /* go through the complete list and apply all the changes */
-    out_rc = process_this_session(iq, iq_tran, tran->sess, &bdberr, nops, err,
+    out_rc = process_this_session(iq, iq_tran, iq->sorese, &bdberr, nops, err,
                                   logsb, dbc, dbc_ins, func);
 
     Pthread_mutex_unlock(&tran->store_mtx);
@@ -1437,16 +1469,7 @@ void osql_bplog_time_done(osql_bp_timings_t *tms)
 void sql_cancelled_transaction(struct ireq *iq)
 {
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_bplog_free(iq, 1, __func__, NULL, 0);
-
-    if (iq->p_buf_orig) {
-        /* nothing changed this siince init_ireq */
-        free(iq->p_buf_orig);
-        iq->p_buf_orig = NULL;
-        iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-        iq->p_buf_in_end = iq->p_buf_in = NULL;
-    }
-
+    osql_close_session(iq->sorese, 1, __func__, NULL, __LINE__);
     destroy_ireq(thedb, iq);
 }
 
@@ -1579,3 +1602,47 @@ abort_sc:
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
     return NULL;
 }
+
+static void osql_cache_selectv(blocksql_tran_t *tran, bool is_uuid,
+        char *rpl, int type)
+{
+    char *p_buf;
+    selectv_genid_t *sgenid, fnd = {0};
+    enum {
+        OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16,
+        OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8
+    };
+    switch (type) {
+    case OSQL_UPDATE:
+    case OSQL_DELETE:
+    case OSQL_UPDREC:
+    case OSQL_DELREC:
+        p_buf = rpl + (is_uuid ? OSQLCOMM_UUID_RPL_TYPE_LEN
+                : OSQLCOMM_RPL_TYPE_LEN);
+        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
+                       p_buf + sizeof(fnd.genid));
+        assert(tran->tablename);
+        fnd.tablename = tran->tablename;
+        fnd.tableversion = tran->tableversion;
+        if ((sgenid = hash_find(tran->selectv_genids, &fnd)) != NULL)
+            sgenid->get_writelock = 1;
+        break;
+    case OSQL_RECGENID:
+        p_buf = rpl + (is_uuid ? OSQLCOMM_UUID_RPL_TYPE_LEN
+                : OSQLCOMM_RPL_TYPE_LEN);
+        buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
+                       p_buf + sizeof(fnd.genid));
+        assert(tran->tablename);
+        fnd.tablename = tran->tablename;
+        if (hash_find(tran->selectv_genids, &fnd) == NULL) {
+            sgenid = (selectv_genid_t *)calloc(sizeof(*sgenid), 1);
+            sgenid->genid = fnd.genid;
+            sgenid->tablename = tran->tablename;
+            sgenid->tableversion = tran->tableversion;
+            sgenid->get_writelock = 0;
+            hash_add(tran->selectv_genids, sgenid);
+        }
+        break;
+    }
+}
+

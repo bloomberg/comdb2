@@ -115,7 +115,7 @@ static int collect_bplog_session(void *obj, void *arg)
         o->id = malloc(20);
         snprintf(o->id, 20, "%llx", sess->rqid);
     }
-    o->nops = sess->seq;
+    o->nops = sess->nops;
     o->start_time = U2M(sess->startus);
     o->commit_time = U2M(sess->endus);
     o->nretries = iq?iq->retries:0;

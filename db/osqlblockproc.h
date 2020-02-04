@@ -64,7 +64,7 @@ extern int gbl_time_osql;
  * Returns 0 if success.
  *
  */
-int osql_bplog_start(struct ireq *iq, osql_sess_t *sess);
+blocksql_tran_t* osql_bplog_create(bool is_reorder);
 
 /**
  * Apply all schema changes
@@ -78,13 +78,9 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err);
 
 /**
- * Free all the sessions and free the bplog
- * HACKY: since we want to catch and report long requests in block
- * process, call this function only after reqlog_end_request is called
- * (sltdbt.c)
+ * Free the bplog
  */
-void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
-                     const char *callfunc, int line);
+void osql_bplog_free(blocksql_tran_t **ptran);
 
 /**
  * Inserts the op in the iq oplog
@@ -94,8 +90,7 @@ void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
  * Returns 0 if success
  *
  */
-int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
-                      unsigned long long rqid, uuid_t uuid, int type);
+int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type);
 
 /**
  * Construct a blockprocessor transaction buffer containing

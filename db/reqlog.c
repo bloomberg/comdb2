@@ -2070,11 +2070,12 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
         norm_reqs++;
     }
 
-    if (logger->iq && logger->iq->blocksql_tran) {
+    if (logger->iq && logger->iq->sorese) {
         if (gbl_time_osql)
             osql_bplog_time_done(&logger->iq->timings);
 
-        osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
+        osql_close_session(logger->iq->sorese, 1, __func__, callfunc, line);
+        logger->iq->sorese = NULL;
     }
 out:
     reqlog_reset_logger(logger); //will reset which bzeros much of logger

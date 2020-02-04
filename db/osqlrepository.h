@@ -34,17 +34,16 @@ int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const cha
 
 /**
  * Retrieves a session based on rqid
- * Increments the users to prevent premature
- * deletion
+ * Increments the users to prevent premature deletion
+ *
  */
-osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid,
-                                 int keep_repository_lock);
+osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid);
 
 /**
  * Decrements the number of users
  * Returns 0 if success
  */
-int osql_repository_put(osql_sess_t *sess, int release_repository_lock);
+int osql_repository_put(osql_sess_t *sess, bool *terminated);
 
 /**
  * Init repository
@@ -75,12 +74,6 @@ int osql_repository_cancelled(void);
  *
  */
 int osql_repository_terminatenode(char *host);
-
-/**
- * Enable/disable osql sessions
- *
- */
-void osql_set_cancelall(int enable);
 
 /**
  * Print info about pending osql sessions

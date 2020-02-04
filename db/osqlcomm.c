@@ -5419,8 +5419,7 @@ static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *host)
     int rc = 0;
 
     /* this is mainly for master, but we might not be a master anymore at
-       this point
-    */
+       this point */
     rc = osql_repository_terminatenode(host);
 
     /* if only offload net drops, we might lose packets from connection but
@@ -6278,12 +6277,12 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
 /* get the table name part of the rpl request
  */
-const char *get_tablename_from_rpl(unsigned long long rqid, const uint8_t *rpl,
+const char *get_tablename_from_rpl(bool is_uuid, const uint8_t *rpl,
                                    int *tableversion)
 {
     osql_usedb_t dt;
     const uint8_t *p_buf =
-        rpl + (rqid == OSQL_RQID_USE_UUID ? sizeof(osql_uuid_rpl_t)
+        rpl + (is_uuid ? sizeof(osql_uuid_rpl_t)
                                           : sizeof(osql_rpl_t));
     const uint8_t *p_buf_end = p_buf + sizeof(osql_usedb_t);
     const char *tablename;
@@ -7228,6 +7227,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int debug = 0;
     uuid_t uuid;
     int replaced = 0;
+    const char *errmsg;
 
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
@@ -7255,35 +7255,34 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     if (!p_buf) {
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %d bytes\n", __func__,
                 OSQL_BP_MAXLEN);
-        rc = -1;
+        errmsg = "unable to request buffer";
+        rc = -1; 
         goto done;
     }
 
     if (osql_repository_cancelled()) {
-        logmsg(LOGMSG_ERROR, 
-               "sorese request cancelled (schema change or exiting database)\n");
-        rc = -2;
+        errmsg = "repository cancelled";
+        rc = -1;
         goto done;
     }
-#if 0
-   printf( "Creating bplog %llu\n", osql_log_time());
-#endif
 
     /* construct a block transaction */
     if (osql_bplog_build_sorese_req(p_buf, &p_buf_end, sql, req.sqlqlen,
                                     req.tzname, type, &sqlret, &sqllenret,
                                     req.rqid, uuid)) {
-        logmsg(LOGMSG_ERROR, "%s: bug bug bug\n", __func__);
-        rc = -3;
+        logmsg(LOGMSG_ERROR, "bug in code %s:%d", __func__, __LINE__);
+        errmsg = "bug in code";
+        rc = -1; 
         goto done;
     }
 
     /* create the request */
     sess = osql_sess_create(sqlret, sqllenret, req.tzname, type, req.rqid, uuid,
-                            fromhost, is_reorder_on);
+                            fromhost, malcd, is_reorder_on);
     if (!sess) {
-        logmsg(LOGMSG_ERROR, "%s Unable to create new session\n", __func__);
-        rc = -4;
+        logmsg(LOGMSG_ERROR, "%s unable to create new session\n", __func__);
+        errmsg = "ynable to create new session";
+        rc = -1;
         goto done;
     }
 
@@ -7291,36 +7290,24 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     iq = create_sorese_ireq(thedb, p_buf, p_buf_end, debug, fromhost, sess);
     if (iq == NULL) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new ireq\n", __func__);
-        rc = -5;
+        errmsg = "unable to create new ireq";
+        rc = -1;
         goto done;
     }
+
+    sess->iq = iq;
 
     /* make this visible to the world */
-    sess->iq = iq;
-    /* how about we start the bplog before making this available to the world?
-     */
-    rc = osql_bplog_start(iq, sess);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s Unable to create new bplog\n", __func__);
-        rc = -6;
-        goto done;
-    }
-
     rc = osql_repository_add(sess, &replaced);
     if (rc || replaced) {
-        rc = -7;
+        rc = -1;
         goto done;
     }
-    sess->last_row = time(NULL);
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG,
            "REORDER: created sess %p, with sess->is_reorder_on %d\n", sess,
            sess->is_reorder_on);
-#endif
-
-#if 0
-   printf( "Starting block processor %llu\n", osql_log_time());
 #endif
 
     debug = debug_this_request(gbl_debug_until);
@@ -7342,51 +7329,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
-    if (rc) {
-        int rc2;
-
-        if (malcd)
-            free(malcd);
-
-        if (iq)
-            destroy_ireq(thedb, iq);
-
-        /* notify the sql thread there will be no response! */
-        struct errstat generr = {0};
-
-        generr.errval = ERR_TRAN_FAILED;
-        if (rc == -4) {
-            strncpy0(generr.errstr, "fail to create block processor log",
-                     sizeof(generr.errstr));
-        } else {
-            strncpy0(generr.errstr, "failed to create transaction",
-                     sizeof(generr.errstr));
-        }
-
-        int onstack = 0;
-        if (!sess) {
-            onstack = 1; /* used to avoid debugging confusion */
-            sess = alloca(sizeof(osql_sess_t));
-            sess->host = fromhost;
-            sess->rqid = req.rqid;
-            comdb2uuidcpy(sess->uuid, uuid);
-            sess->nops = 0;
-        }
-
-        rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
-        if (rc2) {
-            uuidstr_t us;
-            comdb2uuidstr(uuid, us);
-            logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
-                            "error to create bplog\n",
-                    __func__, req.rqid, us, fromhost);
-        }
-        if (onstack)
-            sess = NULL;
-        else
-            osql_close_session(&sess, 0, __func__, NULL, __LINE__);
-
-    } else {
+    if (!rc) {
         /*
            successful, let the session loose
            It is possible that we are clearing sessions due to
@@ -7394,52 +7337,30 @@ done:
            clients to disappear before it will wipe out the session
          */
 
-        osql_sess_remclient(sess);
+        rc = osql_repository_put(sess, 0 /* bplog not complete */);
+        if (!rc)
+            return 0;
+        /* if put noticed a termination flag, fall-through */
     }
-
-    if (malcd)
-        free(malcd);
-
-    if (iq)
-        destroy_ireq(thedb, iq);
 
     /* notify the sql thread there will be no response! */
     struct errstat generr = {0};
-
-    generr.errval = ERR_TRAN_FAILED;
-    if (rc == -4) {
-        strncpy0(generr.errstr, "fail to create block processor log",
-                 sizeof(generr.errstr));
-    } else {
-        strncpy0(generr.errstr, "failed to create transaction",
-                 sizeof(generr.errstr));
-    }
-
-    int onstack = 0;
-    if (!sess) {
-        onstack = 1; /* used to avoid debugging confusion */
-        sess = alloca(sizeof(osql_sess_t));
-        sess->host = fromhost;
-        sess->rqid = req.rqid;
-        comdb2uuidcpy(sess->uuid, uuid);
-        sess->nops = 0;
-    } else {
-        osql_sess_remclient(sess);
-    }
-
-    int rc2 = osql_comm_signal_sqlthr_rc(sess, &generr, RC_INTERNAL_RETRY);
+    errstat_set_rcstrf(&generr, ERR_TRAN_FAILED, errmsg);
+    int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, &generr, RC_INTERNAL_RETRY);
     if (rc2) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR,
-               "%s: failed to signaled rqid=[%llx %s] host=%s of "
-               "error to create bplog\n",
-               __func__, req.rqid, us, fromhost);
+        logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
+                "error to create bplog\n",
+                __func__, req.rqid, us, fromhost);
     }
-    if (onstack)
-        sess = NULL;
-    else
+    if (iq) {
+        destroy_ireq(thedb, iq);
+    }
+    if (sess) {
         osql_close_session(&sess, 0, __func__, NULL, __LINE__);
+    } else if (malcd)
+        free(malcd);
 
     return rc;
 }

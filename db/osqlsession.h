@@ -40,9 +40,10 @@ int osql_close_session(osql_sess_t **sess, int is_linked, const char *func,
 /**
  * Register client
  * Prevent temporary the session destruction
+ * Returns -1 if the session is dispatched
  *
  */
-void osql_sess_addclient(osql_sess_t *sess);
+int osql_sess_addclient(osql_sess_t *sess);
 
 /**
  * Unregister client
@@ -63,12 +64,6 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
  */
 #define OSQL_SESS_INFO_LEN 256
 char* osql_sess_info(osql_sess_t * sess);
-
-/**
- * Returns associated blockproc transaction
- *
- */
-void *osql_sess_getbptran(osql_sess_t *sess);
 
 /**
  * Handles a new op received for session "rqid"
@@ -95,17 +90,10 @@ int osql_session_testterminate(void *obj, void *arg);
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, bool is_reorder_on);
+                              const char *host, uint8_t *p_buf,
+                              bool is_reorder_on);
 
 int osql_sess_queryid(osql_sess_t *sess);
-
-int osql_cache_selectv(int type, osql_sess_t *sess, unsigned long long,
-                       char *rpl);
-int osql_process_selectv(osql_sess_t *sess,
-                         int (*wr_sv)(void *arg, const char *tablename,
-                                      int tableversion,
-                                      unsigned long long genid),
-                         void *wr_arg);
 
 /**
  * Terminate a session if the session is not yet completed/dispatched
@@ -114,4 +102,5 @@ int osql_process_selectv(osql_sess_t *sess,
  *        1 otherwise (if session was already processed)
  */
 int osql_sess_try_terminate(osql_sess_t *sess);
+
 #endif

@@ -1225,6 +1225,9 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
         }
     }
 
+    iq->timings.req_received = osql_log_time();
+    iq->tranddl = 0;
+
     return iq;
 }
 
