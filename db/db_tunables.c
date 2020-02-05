@@ -250,6 +250,8 @@ extern int gbl_client_running_slow_seconds;
 extern int gbl_client_abort_on_slow;
 extern int gbl_max_trigger_threads;
 extern int gbl_alternate_normalize;
+extern int gbl_dump_threads_seconds;
+extern int gbl_abort_on_pstack_fail;
 
 extern long long sampling_threshold;
 
