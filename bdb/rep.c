@@ -5197,6 +5197,7 @@ int request_delaymore(void *bdb_state_in)
 }
 
 int gbl_rep_wait_core_ms = 0;
+int gbl_abort_on_pstack_fail = 0;
 
 void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
                                       int fatal)
@@ -5217,6 +5218,7 @@ void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: system(\"%s\") rc = %d\n",
                __func__, buf, rc);
+        if (gbl_abort_on_pstack_fail) abort();
     }
     if (fatal) abort();
 }
