@@ -7260,12 +7260,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         goto done;
     }
 
-    if (osql_repository_cancelled()) {
-        errmsg = "repository cancelled";
-        rc = -1;
-        goto done;
-    }
-
     /* construct a block transaction */
     if (osql_bplog_build_sorese_req(p_buf, &p_buf_end, sql, req.sqlqlen,
                                     req.tzname, type, &sqlret, &sqllenret,

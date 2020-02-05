@@ -58,14 +58,6 @@ int osql_repository_init(void);
 void osql_repository_destroy(void);
 
 /**
- * Returns true if all requests are being
- * cancelled (this is usually done because
- * of a schema change)
- *
- */
-int osql_repository_cancelled(void);
-
-/**
  * Go through all the sessions executing on node
  * "node" and mark them "terminate", which cancel
  * them.

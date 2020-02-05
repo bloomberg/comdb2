@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -36,15 +36,16 @@
 #include "reqlog.h"
 
 struct sess_impl {
-    int clients; /* number of clients; prevents freeing rq while
+    int clients; /* number of clients;
                     reader_thread gets a new packet for it */
-
-    pthread_mutex_t completed_lock;
 
     bool dispatched : 1; /* Set when session is dispatched to handle_buf */
     bool terminate : 1;  /* Set when this session is about to be terminated */
 
     uint8_t *buf; /* toblock request buffer */
+    
+    pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
+
 };
 
 static void _destroy_session(osql_sess_t **psess);
@@ -76,7 +77,7 @@ int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
         rc = osql_repository_rem(sess, 1, func, callfunc, line);
     }
 
-    while (ATOMIC_LOAD32(sess->clients) > 0) {
+    while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
         poll(NULL, 0, 10);
     }
     _destroy_session(psess, 0);
@@ -90,9 +91,7 @@ static void _destroy_session(osql_sess_t **psess)
 
     if (sess->impl->buf)
         free(sess->impl->buf);
-    Pthread_cond_destroy(&sess->cond);
     Pthread_mutex_destroy(&sess->mtx);
-    Pthread_mutex_destroy(&sess->impl->completed_lock);
     free(sess);
 
     *psess = NULL;
@@ -107,10 +106,15 @@ static void _destroy_session(osql_sess_t **psess)
  */
 int osql_sess_addclient(osql_sess_t *sess)
 {
-    if (sess->impl->dispatched)
-        return -1;
-    ATOMIC_ADD32(sess->impl->clients, 1);
-    return 0;
+    int rc = 0;
+    Pthread_mutex_lock(&sess->mtx);
+    if (sess->impl->dispatched) {
+        rc = -1;
+    } else
+        ATOMIC_ADD32(sess->impl->clients, 1);
+    Pthread_mutex_unlock(&sess->mtx);
+
+    return rc;
 }
 
 /**
@@ -129,20 +133,19 @@ int osql_sess_remclient(osql_sess_t *sess, int bplog_complete)
 {
     int loc_clients = ATOMIC_ADD32(sess->impl->clients, -1);
 
-    if (loc_clients < 0) {
-        abort(); // remove this in future
-        uuidstr_t us;
-        logmsg(LOGMSG_ERROR,
-               "%s: BUG ALERT, session %llu %s freed one too many times\n",
-               __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
-    }
+    Pthread_mutex_lock(&sess->mtx);
+
+    assert(loc_clients >=0);
 
     if (sess->terminate) {
+        Pthread_mutex_unlock(&sess->mtx);
         return 1;
     }
   
     if (bplog_complete)
         sess->dispatched = true;
+
+    Pthread_mutex_unlock(&sess->mtx);
 
     return 0;
 }
@@ -204,36 +207,31 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                                     rqid == OSQL_RQID_USE_UUID, &perr);
 
     /* get the session; dispatched sessions are ignored */
-    osql_sess_t *sess = osql_repository_get(, uuid);
+    osql_sess_t *sess = osql_repository_get(rqid, uuid);
     if (!sess) {
         /* in the current implementation we tolerate redundant ops from session
          * that have been already terminated--discard the packet in that case */
         *found = 0;
         return 0;
     }
+
+    /* at this point the session exists AND is NOT dispatched */
     impl = sess->impl;
 
-    /* we have received an OSQL_XERR; replicant is wants to abort the transaction;
-       we are simply discarding this session */
+    /* we have received an OSQL_XERR; replicant wants to abort the transaction;
+       discard the session and be done */
     if (is_msg_done && perr) {
-        /* release the session */
-        if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__,
-                   rc);
-        }
-
-        /* sqlite aborted the transaction, skip all the work here
-           master not needed */
-        sql_cancelled_transaction(sess->iq);
-
-        /* done here */
-        return perr->errval;
+        goto failed_stream;
     }
 
     *found = 1;
 
     /* save op */
-    int irc = osql_bplog_saveop(sess, sess->tran, data, datalen, type);
+    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type);
+    if (rc) {
+        /* failed to save into bplog; discard and be done */
+        goto failed_stream;
+    }
 
     /* release the session */
     if ((rc = osql_repository_put(sess)) < 0) {
@@ -243,12 +241,21 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         TODO: if not dispatched, need to clear it
     }
 
-    if (irc) {
-        osql_sess_try_terminate(sess);
-        return irc;
+    /* HERE IS THE DISPATCH */
+    return handle_buf_sorese(sess);
+
+failed_stream:
+    /* release the session */
+    if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__,
+                rc);
     }
 
-    return 0;
+    /* sqlite aborted the transaction, skip all the work here
+       master not needed */
+    sql_cancelled_transaction(sess->iq);
+
+    return perr->errval;
 }
 
 /**
@@ -316,9 +323,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
 #endif
 
     /* init sync fields */
-    Pthread_mutex_init(&impl->completed_lock, NULL);
     Pthread_mutex_init(&sess->mtx, NULL);
-    Pthread_cond_init(&sess->cond, NULL);
 
     sess->rqid = rqid;
     comdb2uuidcpy(sess->uuid, uuid);
@@ -362,23 +367,22 @@ int osql_sess_try_terminate(osql_sess_t *sess)
     int rc;
 
     Pthread_mutex_lock(&sess->mtx);
-    Pthread_mutex_lock(&impl->completed_lock);
     
     if (impl->dispatched) {
-        Pthread_mutex_unlock(&impl->completed_lock);
         Pthread_mutex_unlock(&sess->mtx);
         return 1;
     }
 
     sess->terminate = true;
 
+    Pthread_mutex_unlock(&sess->mtx);
 
     if (!reader_thread) {
         /* no one will work on this; need to clear it */
         osql_close_session(sess, 0, __func__, NULL, __LINE__);
     }
 
-    return (ATOMIC_LOAD32(sess->clients) <= 0)?0:;
+    return (ATOMIC_LOAD32(sess->impl->clients) <= 0)?0:;
 }
 
 int handle_buf_sorese(osql_sess_t *sess)
@@ -393,10 +397,8 @@ int handle_buf_sorese(osql_sess_t *sess)
     }
 
     Pthread_mutex_lock(&sess->mtx);
-    Pthread_mutex_lock(&impl->completed_lock);
 
     if (impl->dispatched || impl->terminate) {
-        Pthread_mutex_unlock(&impl->completed_lock);
         Pthread_mutex_unlock(&sess->mtx);
         return 0;
     }
@@ -407,7 +409,6 @@ int handle_buf_sorese(osql_sess_t *sess)
     rc = handle_buf_main(thedb, sess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
                          NULL, REQ_OFFLOAD, NULL, 0, 0);
 
-    Pthread_mutex_unlock(&impl->completed_lock);
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;

@@ -37,7 +37,6 @@ typedef struct osql_repository {
     hash_t *rqsuuid;
     pthread_mutex_t hshlck; /* protect the hash */
     struct dbenv *dbenv;    /* dbenv */
-    int cancelall; /* set this if we want to prevent new blocksqls */
 
 } osql_repository_t;
 
@@ -52,28 +51,23 @@ int osql_repository_init(void)
     osql_repository_t *tmp = NULL;
 
     tmp = (osql_repository_t *)calloc(sizeof(osql_repository_t), 1);
-    if (!tmp) {
-        logmsg(LOGMSG_ERROR, "%s: cannot allocate %zu bytes\n", __func__,
-               sizeof(osql_repository_t));
-        return -1;
-    }
+    if (!tmp)
+        goto error;
 
     Pthread_mutex_init(&tmp->hshlck, NULL);
-
-    /* init the client hash */
     tmp->rqs = hash_init(sizeof(unsigned long long)); /* indexed after rqid */
     tmp->rqsuuid = hash_init_o(offsetof(osql_sess_t, uuid), sizeof(uuid_t));
 
-    if (!tmp->rqs) {
-        logmsg(LOGMSG_ERROR, "%s: unable to create hash\n", __func__);
-        Pthread_mutex_destroy(&tmp->hshlck);
-        free(tmp);
-        return -1;
-    }
+    if (!tmp->rqs || !tmp->rqsuuid) 
+        goto error;
 
     theosql = tmp;
-
     return 0;
+
+error:
+    /* no cleanup, this is a server exit */
+    logmsg(LOGMSG_ERROR, "Failed to initialize repository\n");
+    return -1;
 }
 
 /**
@@ -82,6 +76,7 @@ int osql_repository_init(void)
  */
 void osql_repository_destroy(void)
 {
+    /* TODO: review this for clean exit */
     theosql = NULL;
 }
 
@@ -100,6 +95,19 @@ static char hex(unsigned char a)
     return 'a' + (a - 10);
 }
 
+/* there is no lock protection here */
+static osql_sess_t * _get_sess(unsigned long long rqid, uuid_t uuid)
+{
+    osql_sess_t *sess = NULL;
+
+    if (rqid == OSQL_RQID_USE_UUID)
+        sess = hash_find_readonly(theosql->rqsuuid, &uuid);
+    else {
+        sess = hash_find_readonly(theosql->rqs, &rqid);
+    }
+    
+    return sess;
+}
 
 /**
  * Adds an osql session to the repository
@@ -116,30 +124,9 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     /* insert it into the hash table */
     Pthread_mutex_lock(&theosql->hshlck);
 
-    /*
-    Must check the cancelled flag under hshlck:
-
-    schema-change code sets the cancelall flag which is intended to short-
-    circuit incoming requests in block2_sql code.  It then grabs hshlck, &
-    sets the "terminate" flag for all existing osql sessions.  The race occurs
-    if the block2_sql flag is set after a session checks this in osql, and
-    the terminate flag is set before that session is added.
-    */
-
-    if (osql_repository_cancelled()) {
-        logmsg(LOGMSG_WARN, "%s: osql session cancelled due to schema change\n",
-                __func__);
-        Pthread_mutex_unlock(&theosql->hshlck);
-        return RC_INTERNAL_RETRY; /* POSITIVE */
-    }
-
     /* how about we check if this session is added again due to an early replay
      */
-    if (sess->rqid == OSQL_RQID_USE_UUID)
-        sess_chk = hash_find_readonly(theosql->rqsuuid, &sess->uuid);
-    else {
-        sess_chk = hash_find_readonly(theosql->rqs, &sess->rqid);
-    }
+    sess_chk = _get_sess(sess->rqid, sess->uuid); 
     if (sess_chk) {
         char *p = (char *)alloca(64);
         p = util_tohex(p, (char *)sess->uuid, 16);
@@ -282,9 +269,11 @@ int osql_repository_rem(osql_sess_t *sess, const int lock, const char *func,
 }
 
 /**
- * Retrieves a session based on rqid
+ * Retrieves a session based on rqid/uuid
  * Increments the users to prevent premature
  * deletion
+ * NOTE: if the session is dispatched, addclient
+ * fails and this return NULL
  */
 osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
 {
@@ -295,12 +284,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
 
     Pthread_rwlock_rdlock(&theosql->hshlck);
 
-    if (rqid == OSQL_RQID_USE_UUID)
-        /* hash_find can modify the ordering of the hash chains, so is not
-         * threadsafe; use hash_find_readonly() */
-        sess = hash_find_readonly(theosql->rqsuuid, uuid);
-    else
-        sess = hash_find_readonly(theosql->rqs, &rqid);
+    sess = _get_sess(rqid, uuid);
 
     /* register the new receiver; osql_close_req will wait for to finish storing
      * the message */
@@ -428,22 +412,6 @@ inline int osql_repository_cancelall(void)
 }
 
 /**
- * Returns true if all requests are being
- * cancelled (this is usually done because
- * of a schema change)
- *
- */
-int osql_repository_cancelled(void)
-{
-    /* Becomes null when the db is exiting. */
-    if (!theosql)
-        return 1;
-
-    int cancelall = ATOMIC_LOAD32(theosql->cancelall);
-    return cancelall;
-}
-
-/**
  * Returns 1 if the session exists
  * used by socksql poking
  *
@@ -458,12 +426,7 @@ bool osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 
     Pthread_mutex_lock(&theosql->hshlck);
 
-    if (rqid == OSQL_RQID_USE_UUID)
-        /* hash_find can modify the ordering of the hash chains, so is not
-         * threadsafe; use hash_find_readonly() */
-        sess = hash_find_readonly(theosql->rqsuuid, uuid);
-    else
-        sess = hash_find_readonly(theosql->rqs, &rqid);
+    sess = _get_sess(rqid, uuid);
 
     /* register the new receiver; osql_close_req will wait for to finish storing
      * the message */

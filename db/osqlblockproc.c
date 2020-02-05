@@ -729,31 +729,22 @@ static void _pre_process_saveop(blocksql_tran_t *tran, char *rpl, int rplen, int
  */
 int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type)
 {
-#if DEBUG_REORDER
-    logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
-#endif
-    if (!tran || !tran->db) {
-        /* something has gone wrong dispatching the socksql request, ignoring
-           when the bplog creation failed, the caller is responsible for
-           notifying the source that the session has gone awry
-         */
-        return 0;
-    }
-
     int rc = 0;
     oplog_key_t key = {0};
     int bdberr;
 
-    _pre_process_saveop(tran, rpl, rplen, type);
-
-    key.seq = tran->seq;
-
 #if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
     uuidstr_t us;
     comdb2uuidstr(sess->uuid, us);
     DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", us, type,
              osql_reqtype_str(type), tran->seq);
 #endif
+
+    _pre_process_saveop(tran, rpl, rplen, type);
+
+    key.seq = tran->seq;
+
 
     /* add the op into the temporary table */
     Pthread_mutex_lock(&tran->store_mtx);
@@ -783,40 +774,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int r
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
-    if (rc)
-        return rc;
-
-    struct errstat *xerr;
-    /* check if type is done */
-    rc = osql_comm_is_done(sess, type, rpl, rplen, sess->rqid == OSQL_RQID_USE_UUID,
-                           &xerr);
-    if (rc == 0)
-        return 0;
-
-    /* only OSQL_DONE_SNAP, OSQL_DONE, OSQL_DONE_STATS here */
-    int numops = osql_get_replicant_numops(rpl, sess->rqid == OSQL_RQID_USE_UUID);
-#ifndef NDEBUG
-    uuidstr_t us;
-    comdb2uuidstr(sess->uuid, us);
-    DEBUGMSG("uuid=%s type %s numops=%d, seq=%lld %s\n", us,
-             osql_reqtype_str(type), numops, tran->seq,
-             (numops != tran->seq + 1 ? "NO match" : ""));
-#endif
-
-    if (gbl_osql_check_replicant_numops && numops != tran->seq + 1) {
-        send_error_to_replicant(
-            sess, RC_INTERNAL_RETRY,
-            "Master received inconsistent number of opcodes");
-
-        logmsg(LOGMSG_ERROR,
-               "%s: Replicant sent %d opcodes, master received %lld\n",
-               __func__, numops, tran->seq + 1);
-
-        sql_cancelled_transaction(sess->iq);
-        return -1;
-    }
-
-    return handle_buf_sorese(sess);
+    return rc;
 }
 
 

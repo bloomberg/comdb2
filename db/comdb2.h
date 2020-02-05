@@ -1240,22 +1240,13 @@ struct osql_sess {
 
     sess_impl_t *impl;
 
-    pthread_mutex_t mtx; /* mutex and cond for thread sync */
-    pthread_cond_t cond;
-
     struct ireq *iq; /* iq used by block processor thread */
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */
 
-    int clients; /* number of clients;
-                    prevents freeing rq while reader_thread gets a new reply for
-                    it
-                  */
-
     enum OSQL_REQ_TYPE type; /* session version */
 
-    struct errstat
-        xerr;        /* error info(zeroed if ok), meaningful if completed=1 */
+    struct errstat xerr; /* error set when OSQL_XERR arrives */
 
     const char *sql; /* if set, pointer to sql string (part of req) */
 
