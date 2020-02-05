@@ -1,0 +1,3 @@
+setattr PRIVATE_BLKSEQ_MAXAGE 30
+setattr MIN_KEEP_LOGS 1
+logmsg level info
