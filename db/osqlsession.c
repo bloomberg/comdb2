@@ -392,14 +392,13 @@ int handle_buf_sorese(osql_sess_t *psess)
     }
 
     Pthread_mutex_lock(&sess->mtx);
+    /* NOTE: the session here is dispatched, so it cannot be terminated
+    since terminate ignores dispatched sessions, and terminated sessions
+    cannot be dispatched */
 
-    if (sess->dispatched || sess->terminate) {
-        Pthread_mutex_unlock(&sess->mtx);
-        return 0;
-    }
+    assert(sess->dispatched);
 
     psess->endus = comdb2_time_epochus();
-    sess->dispatched = true;
     bzero(&psess->xerr, sizeof(psess->xerr));
     rc = handle_buf_main(thedb, psess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
                          NULL, REQ_OFFLOAD, NULL, 0, 0);

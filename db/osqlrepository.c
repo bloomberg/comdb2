@@ -93,7 +93,7 @@ static osql_sess_t *_get_sess(unsigned long long rqid, uuid_t uuid)
     osql_sess_t *sess = NULL;
 
     if (rqid == OSQL_RQID_USE_UUID)
-        sess = hash_find_readonly(theosql->rqsuuid, &uuid);
+        sess = hash_find_readonly(theosql->rqsuuid, uuid);
     else {
         sess = hash_find_readonly(theosql->rqs, &rqid);
     }
