@@ -19,6 +19,7 @@ int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
 extern int gbl_berkdb_track_locks;
+extern int gbl_delay_sql_lock_release_sec;
 
 void __berkdb_set_num_read_ios(long long *n);
 void __berkdb_set_num_write_ios(long long *n);
@@ -54,7 +55,6 @@ void berk_memp_sync_alarm_ms(int);
 
 #include <mem_uncategorized.h>
 
-#include <logmsg.h>
 #include <epochlib.h>
 #include <segstr.h>
 #include "thread_stats.h"
@@ -76,6 +76,8 @@ void berk_memp_sync_alarm_ms(int);
 
 #include "comdb2.h"
 #include "sql.h"
+#include "logmsg.h"
+#include "reqlog.h"
 
 #include "comdb2_trn_intrl.h"
 #include "history.h"
@@ -5274,6 +5276,10 @@ static void register_all_int_switches()
     register_int_switch("osql_odh_blob",
                         "Send ODH'd blobs to master. (Default: ON)",
                         &gbl_osql_odh_blob);
+    register_int_switch("delay_sql_lock_release",
+                        "Delay release locks in cursor move if bdb lock "
+                        "desired but client sends rows back",
+                        &gbl_delay_sql_lock_release_sec);
 }
 
 static void getmyid(void)

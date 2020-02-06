@@ -754,6 +754,8 @@ struct sqlclntstate {
     time_t last_reset_time;
     int state_start_time;
     int last_pid;
+    int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
+                              desired */
     enum connection_state state;
     /* The node doesn't change.  The pid does as connections get donated.  We
      * latch both values here since conninfo is lost when connections are reset. */

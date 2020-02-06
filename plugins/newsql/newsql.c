@@ -22,6 +22,7 @@
 #include "pb_alloc.h"
 #include "sp.h"
 #include "sql.h"
+#include "reqlog.h"
 #include "comdb2_appsock.h"
 #include "comdb2_atomic.h"
 #include "str0.h"

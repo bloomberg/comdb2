@@ -95,16 +95,16 @@
 #include "fdb_access.h"
 #include "sqllog.h"
 #include <quantize.h>
-#include <intern_strings.h>
+#include <str0.h>
 
 #include "debug_switches.h"
-
+#include "intern_strings.h"
 #include "views.h"
 #include "mem.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
-#include <str0.h>
-#include <eventlog.h>
+#include "reqlog.h"
+#include "eventlog.h"
 #include "perf.h"
 #include "tohex.h"
 
@@ -3934,6 +3934,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                "Fail to add query to transaction replay session\n");
 
     /* Get first row to figure out column structure */
+    clnt->last_sent_row_sec = time(NULL);
     int steprc = next_row(clnt, stmt);
     if (steprc == SQLITE_SCHEMA_REMOTE) {
         /* remote schema changed;
@@ -3968,6 +3969,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     do {
+        clnt->last_sent_row_sec = time(NULL);
+
         /* replication contention reduction */
         rc = release_locks_on_emit_row(thd, clnt);
         if (rc) {
@@ -4074,7 +4077,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct sql_state rec = {0};
     char *errstr = NULL;
     query_stats_setup(thd, clnt);
-    reqlog_set_event(thd->logger, "sp");
+    reqlog_set_event(thd->logger, EV_SP);
     clnt->dbtran.trans_has_sp = 1;
 
     /*
@@ -4110,7 +4113,7 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
                                    struct sqlclntstate *clnt,
                                    struct sql_state *rec)
 {
-    reqlog_set_event(thd->logger, "sql");
+    reqlog_set_event(thd->logger, EV_SQL);
     log_queue_time(thd->logger, clnt);
     if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);

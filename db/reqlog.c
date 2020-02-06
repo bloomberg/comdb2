@@ -66,6 +66,7 @@
 #include "util.h"
 #include "tohex.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2uuid.h"
 #include "strbuf.h"
 #include "roll_file.h"
@@ -2139,25 +2140,27 @@ void init_clientstats_table()
 }
 
 #define UNKNOWN_NAME "Unknown"
-#define NAME(s) ((s && strlen(s) > 0) ? s : UNKNOWN_NAME)
+#define GET_NAME_AND_LEN(s, s_len)                                             \
+    do {                                                                       \
+        if (!s || (s_len = strlen(s) + 1) <= 1) {                              \
+            s = UNKNOWN_NAME;                                                  \
+            s_len = sizeof(UNKNOWN_NAME);                                      \
+        }                                                                      \
+    } while (0);
 
 static int hash_free_element(void *elem, void *unused) {
     free(elem);
     return 0;
 }
 
-static nodestats_t *add_clientstats(const char *task, const char *stack,
-                                    int node, int fd)
+static nodestats_t *add_clientstats(unsigned checksum,
+                                    const char *task_and_stack, int task_len,
+                                    int stack_len, int node, int fd)
 {
-    int task_len, stack_len, nclntstats;
+    int nclntstats;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
     nodestats_t *entry_chk = NULL;
-
-    task = NAME(task);
-    stack = NAME(stack);
-    task_len = strlen(task) + 1;
-    stack_len = strlen(stack) + 1;
 
     entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
     if (entry == NULL) {
@@ -2165,10 +2168,9 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         return NULL;
     }
 
-    /* Construct our hashtable key: crc32c(task + stack) + nodeix. */
-    memcpy(entry->mem, task, task_len);
-    memcpy(entry->mem + task_len, stack, stack_len);
-    entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
+    /* hashtable key is the checksum: crc32c(task + stack) + nodeix. */
+    memcpy(entry->mem, task_and_stack, task_len + stack_len);
+    entry->checksum = checksum;
     entry->node = node;
     Pthread_mutex_init(&entry->rawtotals.lk, NULL);
 
@@ -2214,7 +2216,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
             Pthread_mutex_lock(&clntlru_mtx);
             while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
                    gbl_max_clientstats_cache) {
-                old_entry = listc_rtl(&clntlru);
+                old_entry = listc_rtl(&clntlru); // get+remove oldest from list
                 if (old_entry) {
                     hash_del(clientstats, old_entry);
                     Pthread_mutex_destroy(&old_entry->mtx);
@@ -2326,8 +2328,9 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
 
     host = intern(host);
     node = nodeix(host);
-    task_len = strlen(NAME(task)) + 1;
-    stack_len = strlen(NAME(stack)) + 1;
+    GET_NAME_AND_LEN(task, task_len);
+    GET_NAME_AND_LEN(stack, stack_len);
+
     namelen = task_len + stack_len;
     if (namelen < 1024)
         tmp = alloca(namelen);
@@ -2337,16 +2340,17 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return NULL;
     }
-    memcpy(tmp, NAME(task), task_len);
-    memcpy(tmp + task_len, NAME(stack), stack_len);
+    memcpy(tmp, task, task_len);
+    memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
     if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
-        nodestats = add_clientstats(task, stack, node, fd);
+        nodestats =
+            add_clientstats(checksum, tmp, task_len, stack_len, node, fd);
         if (nodestats == NULL) {
             logmsg(
                 LOGMSG_ERROR,
                 "%s: failed to add client stats, task %s, stack %s, node %d\n",
-                __func__, NAME(task), NAME(stack), node);
+                __func__, task, stack, node);
         }
     }
 
@@ -2363,8 +2367,9 @@ int release_node_stats(const char *task, const char *stack, char *host)
     char *tmp;
 
     host = intern(host);
-    task_len = strlen(NAME(task)) + 1;
-    stack_len = strlen(NAME(stack)) + 1;
+    GET_NAME_AND_LEN(task, task_len);
+    GET_NAME_AND_LEN(stack, stack_len);
+
     namelen = task_len + stack_len;
     if (namelen < 1024)
         tmp = alloca(namelen);
@@ -2372,13 +2377,13 @@ int release_node_stats(const char *task, const char *stack, char *host)
         tmp = malloc(namelen);
     if (!tmp)
         return -1;
-    memcpy(tmp, NAME(task), task_len);
-    memcpy(tmp + task_len, NAME(stack), stack_len);
+    memcpy(tmp, task, task_len);
+    memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
     if (release_clientstats(checksum, nodeix(host)) != 0) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to release host=%s, node=%d, task=%s, stack=%s\n",
-               __func__, host, nodeix(host), NAME(task), NAME(stack));
+               __func__, host, nodeix(host), task, stack);
         cheap_stack_trace();
     }
 
@@ -2661,6 +2666,7 @@ done:
     *nodes_cnt = max_clients;
     return summaries;
 }
+
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host)
 {
@@ -2842,9 +2848,9 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
     logger->have_fingerprint = 1;
 }
 
-inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
+inline void reqlog_set_event(struct reqlogger *logger, evtype_t ev)
 {
-    logger->event_type = evtype;
+    logger->event_type = ev;
 }
 
 void reqlog_add_table(struct reqlogger *logger, const char *table)

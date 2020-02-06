@@ -81,6 +81,7 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
 

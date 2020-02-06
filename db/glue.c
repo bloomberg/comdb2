@@ -76,19 +76,18 @@
 #include <cdb2_constants.h>
 #include <autoanalyze.h>
 #include "util.h"
-#include <schemachange/sc_global.h>
+#include "sc_global.h"
 
 #include "rtcpu.h"
 
-#include <intern_strings.h>
+#include "intern_strings.h"
 #include "debug_switches.h"
-#include <trigger.h>
+#include "trigger.h"
 
-#include "views.h"
-#include <sc_callbacks.h>
-
+#include "sc_callbacks.h"
 #include "views.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;

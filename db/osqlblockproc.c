@@ -64,8 +64,9 @@
 #include "comdb2uuid.h"
 #include "bpfunc.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "time_accounting.h"
-#include <ctrace.h>
+#include "ctrace.h"
 #include "intern_strings.h"
 
 int gbl_osql_check_replicant_numops = 1;
@@ -1242,7 +1243,7 @@ static int process_this_session(
         reqlog_set_rqid(iq->reqlogger, &rqid, sizeof(unsigned long long));
     else
         reqlog_set_rqid(iq->reqlogger, uuid, sizeof(uuid));
-    reqlog_set_event(iq->reqlogger, "txn");
+    reqlog_set_event(iq->reqlogger, EV_TXN);
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "OSQL ");
