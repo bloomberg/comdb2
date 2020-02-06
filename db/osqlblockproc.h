@@ -64,7 +64,7 @@ extern int gbl_time_osql;
  * Returns 0 if success.
  *
  */
-blocksql_tran_t* osql_bplog_create(bool is_reorder);
+blocksql_tran_t* osql_bplog_create(bool is_uuid, bool is_reorder);
 
 /**
  * Apply all schema changes
@@ -80,7 +80,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
 /**
  * Free the bplog
  */
-void osql_bplog_free(blocksql_tran_t **ptran);
+void osql_bplog_close(blocksql_tran_t **ptran);
 
 /**
  * Inserts the op in the iq oplog

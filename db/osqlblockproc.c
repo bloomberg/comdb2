@@ -61,25 +61,23 @@ struct blocksql_tran {
     struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
     struct temp_table *db;     /* keeps the list of all OTHER ops */
 
-    pthread_mutex_t mtx; /* mutex and cond for notifying when any session
-                           has completed */
-    pthread_cond_t cond;
+    pthread_mutex_t mtx; 
 
     int seq; /* counting ops saved */
     bool is_uuid;
    
     /* selectv caches */
     bool is_selectv_wl_upd;
-    int tableversion;
-    char *tablename; /* remember tablename in saveop for reordering */
     hash_t *selectv_genids;
+    int tableversion;
+
+    /* reorder */
+    bool is_reorder_on;
+    char *tablename; /* remember tablename in saveop for reordering */
     uint16_t tbl_idx;
     unsigned long long last_genid; /* remember updrec/insrec genid for qblobs */
     unsigned long long ins_seq; /* remember key seq for inserts into ins tmptbl */
     bool last_is_ins; /* 1 if processing INSERT, 0 for any other oql type */
-
-    /* reorder */
-    bool is_reorder_on;
 
     /* prefetch */
     struct dbtable *last_db;
@@ -190,7 +188,7 @@ static int osql_bplog_instbl_key_cmp(void *usermem, int key1len,
  * Returns 0 if success.
  *
  */
-blocksql_tran_t* osql_bplog_create(bool is_reorder, bool is_selectv_wl_upd)
+blocksql_tran_t* osql_bplog_create(bool is_uuid, bool is_reorder)
 {
 
     blocksql_tran_t *tran = NULL;
@@ -203,6 +201,7 @@ blocksql_tran_t* osql_bplog_create(bool is_reorder, bool is_selectv_wl_upd)
         return NULL;
     }
 
+    tran->is_uuid = is_uuid;
     Pthread_mutex_init(&tran->store_mtx, NULL);
 
     /* init temporary table and cursor */
@@ -216,7 +215,8 @@ blocksql_tran_t* osql_bplog_create(bool is_reorder, bool is_selectv_wl_upd)
 
     bdb_temp_table_set_cmp_func(tran->db, osql_bplog_key_cmp);
 
-    if (is_reorder) {
+    tran->is_reorder_on = is_reorder;
+    if (tran->is_reorder_on) {
         tran->db_ins = bdb_temp_array_create(thedb->bdb_env, &bdberr);
         if (!tran->db_ins) {
             // We can stll work without a INS table
@@ -234,95 +234,8 @@ blocksql_tran_t* osql_bplog_create(bool is_reorder, bool is_selectv_wl_upd)
             hash_init(offsetof(selectv_genid_t, get_writelock));
 
 
-    tran->is_reorder_on = is_reorder;
     
     return tran;
-}
-
-
-int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time);
-void sc_set_downgrading(struct schema_change_type *s);
-
-/**
- * Apply all schema changes and wait for them to finish
- */
-int osql_bplog_schemachange(struct ireq *iq)
-{
-    blocksql_tran_t *tran = (blocksql_tran_t *)iq->blocksql_tran;
-    int rc = 0;
-    int nops = 0;
-    struct block_err err;
-    struct schema_change_type *sc;
-
-    iq->sc_pending = NULL;
-    iq->sc_seed = 0;
-    iq->sc_host = 0;
-    iq->sc_locked = 0;
-    iq->sc_should_abort = 0;
-
-    rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese->osqllog,
-                       osql_process_schemachange);
-
-    if (rc)
-        logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
-
-    /* wait for all schema changes to finish */
-    iq->sc = sc = iq->sc_pending;
-    iq->sc_pending = NULL;
-    while (sc != NULL) {
-        Pthread_mutex_lock(&sc->mtx);
-        sc->nothrevent = 1;
-        Pthread_mutex_unlock(&sc->mtx);
-        iq->sc = sc->sc_next;
-        if (sc->sc_rc == SC_COMMIT_PENDING) {
-            sc->sc_next = iq->sc_pending;
-            iq->sc_pending = sc;
-        } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
-            free_schema_change_type(sc);
-            rc = ERR_NOMASTER;
-        } else if (sc->sc_rc == SC_PAUSED) {
-            Pthread_mutex_lock(&sc->mtx);
-            sc->sc_rc = SC_DETACHED;
-            Pthread_mutex_unlock(&sc->mtx);
-        } else if (sc->sc_rc == SC_PREEMPTED) {
-            Pthread_mutex_lock(&sc->mtx);
-            sc->sc_rc = SC_DETACHED;
-            Pthread_mutex_unlock(&sc->mtx);
-            rc = ERR_SC;
-        } else if (sc->sc_rc != SC_DETACHED) {
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
-            if (sc->sc_rc)
-                rc = ERR_SC;
-            free_schema_change_type(sc);
-        }
-        sc = iq->sc;
-    }
-    if (rc)
-        csc2_free_all();
-    if (rc == ERR_NOMASTER) {
-        /* free schema changes that have finished without marking schema change
-         * over in llmeta so new master can resume properly */
-        struct schema_change_type *next;
-        sc = iq->sc_pending;
-        while (sc != NULL) {
-            next = sc->sc_next;
-            if (sc->newdb && sc->newdb->handle) {
-                int bdberr = 0;
-                sc_set_downgrading(sc);
-                bdb_close_only(sc->newdb->handle, &bdberr);
-                freedb(sc->newdb);
-                sc->newdb = NULL;
-            }
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
-            free_schema_change_type(sc);
-            sc = next;
-        }
-        iq->sc_pending = NULL;
-    }
-    logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
-    return rc;
 }
 
 typedef struct {
@@ -474,11 +387,13 @@ static int free_selectv_genids(void *obj, void *arg)
 /**
  * Free the bplog
  */
-void osql_bplog_free(blocksql_tran_t **ptran)
+void osql_bplog_close(blocksql_tran_t **ptran)
 {
     blocksql_tran_t *tran = *ptran;
     int rc = 0;
     int bdberr = 0;
+
+    *ptran = NULL;
 
     /* code ensures that only one thread will run this code 
     (reader 1, terminator 2, or blockproc 3)*/
@@ -505,7 +420,6 @@ void osql_bplog_free(blocksql_tran_t **ptran)
     }
 
     free(tran);
-    *ptran = NULL;
 }
 
 
@@ -546,7 +460,7 @@ const char *osql_reqtype_str(int type)
     return typestr[type];
 }
 
-void setup_reorder_key(int type, osql_sess_t *sess, unsigned long long rqid,
+static void setup_reorder_key(blocksql_tran_t *tran, int type, osql_sess_t *sess, unsigned long long rqid,
                        char *rpl, oplog_key_t *key)
 {
     char *tablename = tran->tablename;
@@ -655,10 +569,9 @@ static void send_error_to_replicant(osql_sess_t *sess, int errval,
 }
 
 
-static void osql_cache_selectv(blocksql_tran_t *tran, bool is_uuid,
-        char *rpl, int type);
+static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type);
 
-static void _pre_process_saveop(blocksql_tran_t *tran, char *rpl, int rplen, int type)
+static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type)
 {
     switch (type)
     {
@@ -666,7 +579,7 @@ static void _pre_process_saveop(blocksql_tran_t *tran, char *rpl, int rplen, int
         sess->iq->tranddl++;
         break;
     case OSQL_DONE_SNAP:
-        osql_extract_snap_info(sess->iq, rpl, rplen, is_uuid);
+        osql_extract_snap_info(sess->iq, rpl, rplen, tran->is_uuid);
         break;
     case OSQL_USEDB:
         if (tran->is_selectv_wl_upd || tran->is_reorder_on) {
@@ -680,7 +593,7 @@ static void _pre_process_saveop(blocksql_tran_t *tran, char *rpl, int rplen, int
     }
 
     if (tran->is_selectv_wl_upd)
-        osql_cache_selectv(tran, is_uuid, rpl, type);
+        osql_cache_selectv(tran, rpl, type);
 }
 
 
@@ -723,7 +636,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int r
              osql_reqtype_str(type), tran->seq);
 #endif
 
-    _pre_process_saveop(tran, rpl, rplen, type);
+    _pre_process_saveop(sess, tran, rpl, rplen, type);
 
     key.seq = tran->seq;
 
@@ -733,7 +646,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int r
 
     struct temp_table *tmptbl = tran->db;
     if (tran->is_reorder_on) {
-        setup_reorder_key(type, sess, sess->rqid, rpl, &key);
+        setup_reorder_key(tran, type, sess, sess->rqid, rpl, &key);
         if (tran->last_is_ins && tran->db_ins) { // insert into ins temp table
             tmptbl = tran->db_ins;
         }
@@ -747,13 +660,16 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int r
                                               &bdberr););
 
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%llu rc=%d bdberr=%d\n",
+        logmsg(LOGMSG_ERROR, "%s: fail to put oplog seq=%u rc=%d bdberr=%d\n",
                __func__, tran->seq, rc, bdberr);
-    } else if (gbl_osqlpfault_threads) {
-        osql_page_prefault(rpl, rplen, &(tran->last_db),
-                           &sess->iq->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
+    } else {
+        tran->seq++;
+        if (gbl_osqlpfault_threads) {
+            osql_page_prefault(rpl, rplen, &(tran->last_db),
+                    &sess->iq->osql_step_ix, sess->rqid, sess->uuid, tran->seq);
+        }
     }
-
+    
     Pthread_mutex_unlock(&tran->store_mtx);
 
     return rc;
@@ -1007,8 +923,7 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     return 0;
 }
 
-/************************* INTERNALS
- * ***************************************************/
+/************************* INTERNALS ****************************************/
 
 
 /* initialize the ins tmp table pointer to the first item if any
@@ -1406,138 +1321,7 @@ void osql_bplog_time_done(osql_bp_timings_t *tms)
    logmsg(LOGMSG_USER, "%s]\n", msg);
 }
 
-int backout_schema_changes(struct ireq *iq, tran_type *tran);
-void *osql_commit_timepart_resuming_sc(void *p)
-{
-    struct ireq iq;
-    struct schema_change_type *sc_pending = (struct schema_change_type *)p;
-    struct schema_change_type *sc;
-    tran_type *parent_trans = NULL;
-    int error = 0;
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
-    init_fake_ireq(thedb, &iq);
-    iq.tranddl = 1;
-    iq.sc = sc = sc_pending;
-    sc_pending = NULL;
-    while (sc != NULL) {
-        Pthread_mutex_lock(&sc->mtx);
-        sc->nothrevent = 1;
-        Pthread_mutex_unlock(&sc->mtx);
-        iq.sc = sc->sc_next;
-        if (sc->sc_rc == SC_COMMIT_PENDING) {
-            sc->sc_next = sc_pending;
-            sc_pending = sc;
-        } else {
-            logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
-                   sc->tablename, sc->sc_rc);
-            sc_set_running(sc->tablename, 0, 0, NULL, 0);
-            free_schema_change_type(sc);
-            error = 1;
-        }
-        sc = iq.sc;
-    }
-    iq.sc_pending = sc_pending;
-    iq.sc_locked = 0;
-    iq.osql_flags |= OSQL_FLAGS_SCDONE;
-    iq.sc_tran = NULL;
-    iq.sc_logical_tran = NULL;
-
-    if (error) {
-        logmsg(LOGMSG_ERROR, "%s: Aborting schema change because of errors\n",
-               __func__);
-        goto abort_sc;
-    }
-
-    if (trans_start_logical_sc(&iq, &(iq.sc_logical_tran))) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               __LINE__);
-        goto abort_sc;
-    }
-
-    if ((parent_trans = bdb_get_physical_tran(iq.sc_logical_tran)) == NULL) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               __LINE__);
-        goto abort_sc;
-    }
-
-    if (trans_start(&iq, parent_trans, &(iq.sc_tran))) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d failed to start schema change transaction\n", __func__,
-               __LINE__);
-        goto abort_sc;
-    }
-
-    iq.sc = iq.sc_pending;
-    while (iq.sc != NULL) {
-        if (!iq.sc_locked) {
-            /* Lock schema from now on before we finalize any schema changes
-             * and hold on to the lock until the transaction commits/aborts.
-             */
-            wrlock_schema_lk();
-            iq.sc_locked = 1;
-        }
-        if (iq.sc->db)
-            iq.usedb = iq.sc->db;
-        if (finalize_schema_change(&iq, iq.sc_tran)) {
-            logmsg(LOGMSG_ERROR, "%s: failed to finalize '%s'\n", __func__,
-                   iq.sc->tablename);
-            goto abort_sc;
-        }
-        iq.usedb = NULL;
-        iq.sc = iq.sc->sc_next;
-    }
-
-    if (iq.sc_pending) {
-        create_sqlmaster_records(iq.sc_tran);
-        create_sqlite_master();
-    }
-
-    if (trans_commit(&iq, iq.sc_tran, gbl_mynode)) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
-               __LINE__);
-        abort();
-    }
-
-    unlock_schema_lk();
-
-    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_mynode, 0, 1, NULL, 0,
-                             NULL, 0)) {
-        logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
-               __LINE__);
-        abort();
-    }
-    iq.sc_logical_tran = NULL;
-
-    osql_postcommit_handle(&iq);
-
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-
-    return NULL;
-
-abort_sc:
-    logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
-    if (iq.sc_tran)
-        trans_abort(&iq, iq.sc_tran);
-    backout_schema_changes(&iq, parent_trans);
-    if (iq.sc_locked) {
-        unlock_schema_lk();
-        iq.sc_locked = 0;
-    }
-    if (parent_trans)
-        trans_abort(&iq, parent_trans);
-    if (iq.sc_logical_tran) {
-        trans_abort_logical(&iq, iq.sc_logical_tran, NULL, 0, NULL, 0);
-        iq.sc_logical_tran = NULL;
-    }
-    osql_postabort_handle(&iq);
-    bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
-    return NULL;
-}
-
-static void osql_cache_selectv(blocksql_tran_t *tran, bool is_uuid,
-        char *rpl, int type)
+static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
 {
     char *p_buf;
     selectv_genid_t *sgenid, fnd = {0};
@@ -1550,7 +1334,7 @@ static void osql_cache_selectv(blocksql_tran_t *tran, bool is_uuid,
     case OSQL_DELETE:
     case OSQL_UPDREC:
     case OSQL_DELREC:
-        p_buf = rpl + (is_uuid ? OSQLCOMM_UUID_RPL_TYPE_LEN
+        p_buf = rpl + (tran->is_uuid ? OSQLCOMM_UUID_RPL_TYPE_LEN
                 : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));
@@ -1561,7 +1345,7 @@ static void osql_cache_selectv(blocksql_tran_t *tran, bool is_uuid,
             sgenid->get_writelock = 1;
         break;
     case OSQL_RECGENID:
-        p_buf = rpl + (is_uuid ? OSQLCOMM_UUID_RPL_TYPE_LEN
+        p_buf = rpl + (tran->is_uuid ? OSQLCOMM_UUID_RPL_TYPE_LEN
                 : OSQLCOMM_RPL_TYPE_LEN);
         buf_no_net_get(&fnd.genid, sizeof(fnd.genid), p_buf,
                        p_buf + sizeof(fnd.genid));

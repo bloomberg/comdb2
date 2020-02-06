@@ -4690,7 +4690,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
-            iirc = osql_bplog_schemachange(iq);
+            iirc = bplog_schemachange(iq, iq->sorese->tran, &err);
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;

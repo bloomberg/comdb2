@@ -64,7 +64,7 @@ static void _destroy_session(osql_sess_t **psess);
  * - if caller has already removed sess from osql repository, they should
  *   call this function with is_linked = 0
  */
-int osql_close_session(osql_sess_t **psess, int is_linked)
+int osql_sess_close(osql_sess_t **psess, int is_linked)
 {
     osql_sess_t *sess = *psess;
 
@@ -76,6 +76,9 @@ int osql_close_session(osql_sess_t **psess, int is_linked)
     while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
         poll(NULL, 0, 10);
     }
+
+    if (sess->tran)
+        osql_bplog_close(&sess->tran);
     
     if ((*psess)->iq)
         destroy_ireq(thedb, (*psess)->iq);
@@ -240,7 +243,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     if (!is_msg_done) {
         if (rc == 1) {
             /* session was marked terminated and not finished*/
-            osql_close_session(&sess, 1);
+            osql_sess_close(&sess, 1);
         } 
         return 0;
     }
@@ -254,7 +257,7 @@ failed_stream:
     osql_repository_put(sess, is_msg_done);
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_close_session(&sess, 1);
+    osql_sess_close(&sess, 1);
 
     return perr->errval;
 }
@@ -327,7 +330,8 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
     sess->impl->buf = buf;
 
     /* create bplog so we can collect ops from sql thread */
-    sess->tran = osql_bplog_create(sess->is_reorder_on);
+    sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID,
+            sess->is_reorder_on);
     if (!sess->tran) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new bplog\n", __func__);
         _destroy_session(&sess);
@@ -373,7 +377,7 @@ int osql_sess_try_terminate(osql_sess_t *psess)
     Pthread_mutex_unlock(&sess->mtx);
 
     if (free_sess) {
-        osql_close_session(&psess, 1);
+        osql_sess_close(&psess, 1);
     }
 
     return 0;

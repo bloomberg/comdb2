@@ -25,6 +25,17 @@
 typedef struct osql_req osql_req_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
 
+
+/**
+ * Creates an sock osql session and add it to the repository
+ * Returns created object if success, NULL otherwise
+ *
+ */
+osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
+                              int type, unsigned long long rqid, uuid_t uuid,
+                              const char *host, uint8_t *p_buf,
+                              bool is_reorder_on);
+
 /**
  * Terminates an in-use osql session (for which we could potentially
  * receive message from sql thread).
@@ -33,7 +44,7 @@ typedef struct osql_uuid_req osql_uuid_req_t;
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_close_session(osql_sess_t **sess, int is_linked);
+int osql_sess_close(osql_sess_t **sess, int is_linked);
 
 /**
  * Register client
@@ -80,16 +91,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
  *
  */
 int osql_session_testterminate(void *obj, void *arg);
-
-/**
- * Creates an sock osql session and add it to the repository
- * Returns created object if success, NULL otherwise
- *
- */
-osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
-                              int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, uint8_t *p_buf,
-                              bool is_reorder_on);
 
 int osql_sess_queryid(osql_sess_t *sess);
 
