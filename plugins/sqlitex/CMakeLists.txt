@@ -130,6 +130,8 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
 endif()
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(trigger.c status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-but-set-variable -Wno-unused-const-variable")
+  set_source_files_properties(comdb2build.c PROPERTIES COMPILE_FLAGS "-Wno-format-truncation")
+  set_source_files_properties(vdbeapi.c PROPERTIES COMPILE_FLAGS "-Wno-sizeof-pointer-div -Wno-sizeof-array-argument -Wno-unused-value -Wno-missing-braces")
 elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
   set_source_files_properties(trigger.c status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable")
 endif()
