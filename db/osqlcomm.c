@@ -5072,7 +5072,8 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  *
  */
 int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
-        uuid_t uuid, int nops, struct errstat *xerr, int rc)
+                               uuid_t uuid, int nops, struct errstat *xerr,
+                               int rc)
 {
     uuidstr_t us;
     int msglen = 0;
@@ -5094,8 +5095,7 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
     /* if error, lets send the error string */
     if (!host) {
         /* local */
-        return osql_chkboard_sqlsession_rc(rqid, uuid,
-                                           nops, NULL, xerr);
+        return osql_chkboard_sqlsession_rc(rqid, uuid, nops, NULL, xerr);
     }
 
     /* remote */
@@ -5129,8 +5129,8 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
-               __func__, __LINE__, host,
-               comdb2uuidstr(uuid, us), rc, xerr->errval);
+               __func__, __LINE__, host, comdb2uuidstr(uuid, us), rc,
+               xerr->errval);
     } else {
         osql_done_xerr_t rpl_xerr = {{0}};
         osql_done_rpl_t rpl_ok = {{0}};
@@ -5169,8 +5169,7 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
     int irc = offload_net_send(host, type, buf, msglen, 1);
     if (irc) {
         irc = -1;
-        logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__,
-               host);
+        logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__, host);
     }
 
     return irc;
@@ -6281,8 +6280,7 @@ const char *get_tablename_from_rpl(bool is_uuid, const uint8_t *rpl,
 {
     osql_usedb_t dt;
     const uint8_t *p_buf =
-        rpl + (is_uuid ? sizeof(osql_uuid_rpl_t)
-                                          : sizeof(osql_rpl_t));
+        rpl + (is_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
     const uint8_t *p_buf_end = p_buf + sizeof(osql_usedb_t);
     const char *tablename;
 
@@ -7250,7 +7248,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         logmsg(LOGMSG_ERROR, "%s:unable to allocate %d bytes\n", __func__,
                 OSQL_BP_MAXLEN);
         errmsg = "unable to request buffer";
-        rc = -1; 
+        rc = -1;
         goto done;
     }
 
@@ -7260,7 +7258,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                                     req.rqid, uuid)) {
         logmsg(LOGMSG_ERROR, "bug in code %s:%d", __func__, __LINE__);
         errmsg = "bug in code";
-        rc = -1; 
+        rc = -1;
         goto done;
     }
 
@@ -7289,7 +7287,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     rc = osql_repository_add(sess);
     if (rc) {
         /* NOTE: possible here to detect if session is already
-        running, and wait for it to finish; retrying through the 
+        running, and wait for it to finish; retrying through the
         replicant does the same */
         goto done;
     }
@@ -7336,13 +7334,15 @@ done:
     /* notify the sql thread there will be no response! */
     struct errstat generr = {0};
     errstat_set_rcstrf(&generr, ERR_TRAN_FAILED, errmsg);
-    int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, 0, &generr, RC_INTERNAL_RETRY);
+    int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, 0, &generr,
+                                         RC_INTERNAL_RETRY);
     if (rc2) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR, "%s: failed to signaled rqid=[%llx %s] host=%s of "
-                "error to create bplog\n",
-                __func__, req.rqid, us, fromhost);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to signaled rqid=[%llx %s] host=%s of "
+               "error to create bplog\n",
+               __func__, req.rqid, us, fromhost);
     }
     if (sess) {
         osql_sess_close(&sess, 0);

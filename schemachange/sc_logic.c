@@ -1487,7 +1487,3 @@ int scdone_abort_cleanup(struct ireq *iq)
     }
     return 0;
 }
-
-
-
-

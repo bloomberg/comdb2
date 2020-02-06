@@ -58,7 +58,7 @@ int osql_repository_init(void)
     tmp->rqs = hash_init(sizeof(unsigned long long)); /* indexed after rqid */
     tmp->rqsuuid = hash_init_o(offsetof(osql_sess_t, uuid), sizeof(uuid_t));
 
-    if (!tmp->rqs || !tmp->rqsuuid) 
+    if (!tmp->rqs || !tmp->rqsuuid)
         goto error;
 
     theosql = tmp;
@@ -88,7 +88,7 @@ static char hex(unsigned char a)
 }
 
 /* there is no lock protection here */
-static osql_sess_t * _get_sess(unsigned long long rqid, uuid_t uuid)
+static osql_sess_t *_get_sess(unsigned long long rqid, uuid_t uuid)
 {
     osql_sess_t *sess = NULL;
 
@@ -97,7 +97,7 @@ static osql_sess_t * _get_sess(unsigned long long rqid, uuid_t uuid)
     else {
         sess = hash_find_readonly(theosql->rqs, &rqid);
     }
-    
+
     return sess;
 }
 
@@ -121,7 +121,7 @@ int osql_repository_add(osql_sess_t *sess)
 
     /* how about we check if this session is added again due to an early replay
      */
-    sess_chk = _get_sess(sess->rqid, sess->uuid); 
+    sess_chk = _get_sess(sess->rqid, sess->uuid);
     if (sess_chk) {
         uuidstr_t us;
 
@@ -131,11 +131,10 @@ int osql_repository_add(osql_sess_t *sess)
                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
 
         rc = osql_sess_try_terminate(sess_chk);
-        assert(rc==1 || rc ==0);
-        logmsg(LOGMSG_INFO,
-                "%s: rqid=%llx, uuid=%s was %s\n",
-                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us),
-                rc?"already dispatched":"cancelled, adding a new one");
+        assert(rc == 1 || rc == 0);
+        logmsg(LOGMSG_INFO, "%s: rqid=%llx, uuid=%s was %s\n", __func__,
+               sess->rqid, comdb2uuidstr(sess->uuid, us),
+               rc ? "already dispatched" : "cancelled, adding a new one");
         if (rc) {
             Pthread_mutex_unlock(&theosql->hshlck);
             return -2;
@@ -176,7 +175,7 @@ void osql_repository_rem(osql_sess_t *sess)
     } else {
         rc = hash_del(theosql->rqs, sess);
     }
-    assert (!rc);
+    assert(!rc);
 
     Pthread_mutex_unlock(&theosql->hshlck);
 }
@@ -197,7 +196,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
     Pthread_mutex_lock(&theosql->hshlck);
     sess = _get_sess(rqid, uuid);
     if (sess) {
-        if(osql_sess_addclient(sess)) {
+        if (osql_sess_addclient(sess)) {
             /* session dispatched, ignore */
             sess = NULL;
         }
@@ -209,19 +208,19 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
 
 /**
  * The reader thread is done with the session
- * 
- * Returns 
+ *
+ * Returns
  *   0 if success
  *   1 if session is marked terminated
  */
 int osql_repository_put(osql_sess_t *sess, bool bplog_complete)
-{ 
+{
     int rc;
 
     Pthread_mutex_lock(&theosql->hshlck);
 
     rc = osql_sess_remclient(sess, bplog_complete);
-    
+
     Pthread_mutex_unlock(&theosql->hshlck);
 
     return rc;
@@ -231,7 +230,7 @@ static int _getcrtinfo(void *obj, void *arg)
 {
     char *str = osql_sess_info((osql_sess_t *)obj);
 
-    logmsg(LOGMSG_USER, "   %s\n", str?str:"unknown");
+    logmsg(LOGMSG_USER, "   %s\n", str ? str : "unknown");
 
     if (str)
         free(str);

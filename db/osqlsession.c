@@ -42,9 +42,8 @@ struct sess_impl {
     bool terminate : 1;  /* Set when this session is about to be terminated */
 
     uint8_t *buf; /* toblock request buffer */
-    
-    pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
 
+    pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
 };
 
 static void _destroy_session(osql_sess_t **psess);
@@ -79,7 +78,7 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
 
     if (sess->tran)
         osql_bplog_close(&sess->tran);
-    
+
     if ((*psess)->iq)
         destroy_ireq(thedb, (*psess)->iq);
     _destroy_session(psess);
@@ -102,13 +101,13 @@ static void _destroy_session(osql_sess_t **psess)
 /**
  * Mark that the reader thread is working on this session
  *
- * Return error if session is dispatched; it is silently 
+ * Return error if session is dispatched; it is silently
  * ignored in implementations when redundant packets can
  * arrive
  */
 int osql_sess_addclient(osql_sess_t *psess)
 {
-    sess_impl_t *sess = psess->impl;    
+    sess_impl_t *sess = psess->impl;
     int rc = 0;
     Pthread_mutex_lock(&sess->mtx);
     if (sess->dispatched) {
@@ -124,17 +123,17 @@ int osql_sess_addclient(osql_sess_t *psess)
  * The reader_thread is done with updating the bplog
  * Return:
  *   0 if no emergency action needs to be taken
- *   1 if the session is marked terminated / caller might have to free 
+ *   1 if the session is marked terminated / caller might have to free
  *     the session
  *
  * NOTE: CALLING THIS UNDER REPOSITORY LOCK
- * 
+ *
  * Since no termination can race (because of the lock), we can
  * check if the session is terminated.  If the session is terminated
  * the terminating thread skipped the session (since reader was working
  * on it).  The reader thread needs to free this session
  * If the session is not terminated, it can be dispatched if all bplog
- * was received, so we lit the flag (this will prevent any terminating 
+ * was received, so we lit the flag (this will prevent any terminating
  * thread from touching it).
  *
  */
@@ -145,13 +144,13 @@ int osql_sess_remclient(osql_sess_t *psess, bool bplog_complete)
 
     Pthread_mutex_lock(&sess->mtx);
 
-    assert(loc_clients >=0);
+    assert(loc_clients >= 0);
 
     if (sess->terminate) {
         Pthread_mutex_unlock(&sess->mtx);
         return 1;
     }
-  
+
     if (bplog_complete)
         sess->dispatched = true;
 
@@ -165,17 +164,17 @@ int osql_sess_remclient(osql_sess_t *psess, bool bplog_complete)
  * sess_type rqid uuid local/remote host
  *
  */
-char* osql_sess_info(osql_sess_t * sess)
+char *osql_sess_info(osql_sess_t *sess)
 {
     uuidstr_t us;
     char *ret = malloc(OSQL_SESS_INFO_LEN);
 
     if (ret) {
-        snprintf(ret, OSQL_SESS_INFO_LEN, "%s, %llx %s %s%s", 
-                osql_sorese_type_to_str(sess->type),
-                sess->rqid, comdb2uuidstr(sess->uuid, us),
-                sess->host ? "REMOTE " : "LOCAL ",
-                sess->host ? sess->host : "");
+        snprintf(ret, OSQL_SESS_INFO_LEN, "%s, %llx %s %s%s",
+                 osql_sorese_type_to_str(sess->type), sess->rqid,
+                 comdb2uuidstr(sess->uuid, us),
+                 sess->host ? "REMOTE " : "LOCAL ",
+                 sess->host ? sess->host : "");
     }
     return ret;
 }
@@ -187,13 +186,11 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
     char *info = osql_sess_info(sess);
     reqlog_logf(reqlog, REQL_INFO,
-                "%s time %" PRId64 "ms queuetime=%" PRId64
-                "ms \"%s\"\n",
-                (info)?info:"unknown",
-                U2M(sess->endus - sess->startus),
+                "%s time %" PRId64 "ms queuetime=%" PRId64 "ms \"%s\"\n",
+                (info) ? info : "unknown", U2M(sess->endus - sess->startus),
                 U2M(reqlog_get_queue_time(reqlog)),
                 sess->sql ? sess->sql : "()");
-    if(info)
+    if (info)
         free(info);
 }
 
@@ -244,11 +241,11 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         if (rc == 1) {
             /* session was marked terminated and not finished*/
             osql_sess_close(&sess, 1);
-        } 
+        }
         return 0;
     }
 
-    /* IT WAS A DONE MESSAGE 
+    /* IT WAS A DONE MESSAGE
        HERE IS THE DISPATCH */
     return handle_buf_sorese(sess);
 
@@ -331,7 +328,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
 
     /* create bplog so we can collect ops from sql thread */
     sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID,
-            sess->is_reorder_on);
+                                   sess->is_reorder_on);
     if (!sess->tran) {
         logmsg(LOGMSG_ERROR, "%s Unable to create new bplog\n", __func__);
         _destroy_session(&sess);
@@ -351,16 +348,16 @@ int osql_sess_queryid(osql_sess_t *sess)
  * which can happen in case there is an early replay
  * Return 0 if session is successfully terminated,
  *        1 otherwise (if session was already processed)
- * 
+ *
  * NOTE: only call this for sessions in repository
  */
 int osql_sess_try_terminate(osql_sess_t *psess)
 {
-    sess_impl_t *sess= psess->impl;
+    sess_impl_t *sess = psess->impl;
     bool free_sess = false;
 
     Pthread_mutex_lock(&sess->mtx);
-    
+
     if (sess->dispatched) {
         Pthread_mutex_unlock(&sess->mtx);
         return 1;
@@ -368,12 +365,12 @@ int osql_sess_try_terminate(osql_sess_t *psess)
 
     sess->terminate = true;
 
-    /* NOTE: if there is at least a client, it will check the status 
+    /* NOTE: if there is at least a client, it will check the status
     before taking decrementing the client, and if "terminate" is lit
-    it will free the session safely; otherwise, we have to free the 
+    it will free the session safely; otherwise, we have to free the
     session here, since there is no-one to free it afterwards */
-    free_sess =  (sess->clients<=0);
-        
+    free_sess = (sess->clients <= 0);
+
     Pthread_mutex_unlock(&sess->mtx);
 
     if (free_sess) {
@@ -410,4 +407,4 @@ int handle_buf_sorese(osql_sess_t *psess)
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
-} 
+}

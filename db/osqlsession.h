@@ -25,7 +25,6 @@
 typedef struct osql_req osql_req_t;
 typedef struct osql_uuid_req osql_uuid_req_t;
 
-
 /**
  * Creates an sock osql session and add it to the repository
  * Returns created object if success, NULL otherwise
@@ -66,13 +65,13 @@ int osql_sess_remclient(osql_sess_t *sess, bool bplog_complete);
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog);
 
 /**
- * Session information 
+ * Session information
  * Return malloc-ed string:
  * sess_type rqid uuid local/remote host
  *
  */
 #define OSQL_SESS_INFO_LEN 256
-char* osql_sess_info(osql_sess_t * sess);
+char *osql_sess_info(osql_sess_t *sess);
 
 /**
  * Handles a new op received for session "rqid"

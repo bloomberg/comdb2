@@ -64,7 +64,7 @@ extern int gbl_time_osql;
  * Returns 0 if success.
  *
  */
-blocksql_tran_t* osql_bplog_create(bool is_uuid, bool is_reorder);
+blocksql_tran_t *osql_bplog_create(bool is_uuid, bool is_reorder);
 
 /**
  * Apply all schema changes
@@ -90,7 +90,8 @@ void osql_bplog_close(blocksql_tran_t **ptran);
  * Returns 0 if success
  *
  */
-int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type);
+int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
+                      int rplen, int type);
 
 /**
  * Construct a blockprocessor transaction buffer containing
