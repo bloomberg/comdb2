@@ -36,8 +36,7 @@
 #include "reqlog.h"
 
 struct sess_impl {
-    int clients; /* number of clients;
-                    reader_thread gets a new packet for it */
+    int clients; /* number of threads using the session */
 
     bool dispatched : 1; /* Set when session is dispatched to handle_buf */
     bool terminate : 1;  /* Set when this session is about to be terminated */
@@ -65,21 +64,21 @@ static void _destroy_session(osql_sess_t **psess);
  * - if caller has already removed sess from osql repository, they should
  *   call this function with is_linked = 0
  */
-int osql_close_session(osql_sess_t **psess, int is_linked, const char *func,
-                       const char *callfunc, int line)
+int osql_close_session(osql_sess_t **psess, int is_linked)
 {
-
     osql_sess_t *sess = *psess;
-    int rc = 0;
 
     if (is_linked) {
         /* unlink the request so no more messages are received */
-        rc = osql_repository_rem(sess, 1, func, callfunc, line);
+        osql_repository_rem(sess);
     }
 
     while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
         poll(NULL, 0, 10);
     }
+    
+    if ((*psess)->iq)
+        destroy_ireq((*psess)->iq);
     _destroy_session(psess, 0);
 
     return 0;
@@ -119,7 +118,13 @@ int osql_sess_addclient(osql_sess_t *sess)
 
 /**
  * The reader_thread is done with updating the bplog
- * CALLING THIS UNDER REPOSITORY LOCK
+ * Return:
+ *   0 if no emergency action needs to be taken
+ *   1 if the session is marked terminated / caller might have to free 
+ *     the session
+ *
+ * NOTE: CALLING THIS UNDER REPOSITORY LOCK
+ * 
  * Since no termination can race (because of the lock), we can
  * check if the session is terminated.  If the session is terminated
  * the terminating thread skipped the session (since reader was working
@@ -187,7 +192,6 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
         free(info);
 }
 
-
 /**
  * Handles a new op received for session "rqid"
  * It saves the packet in the local bplog
@@ -234,26 +238,25 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     /* release the session */
-    if ((rc = osql_repository_put(sess)) < 0) {
-        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__, rc);
-    } else if (rc == 1) {
-        /* session was marked terminated already */
-        TODO: if not dispatched, need to clear it
+    rc = osql_repository_put(sess, is_msg_done);
+    if (!is_msg_done) {
+        if (rc == 1) {
+            /* session was marked terminated and not finished*/
+            osql_close_session(&sess, 1);
+        } 
+        return 0;
     }
 
-    /* HERE IS THE DISPATCH */
+    /* IT WAS A DONE MESSAGE 
+       HERE IS THE DISPATCH */
     return handle_buf_sorese(sess);
 
 failed_stream:
     /* release the session */
-    if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__,
-                rc);
-    }
+    osql_repository_put(sess, is_msg_done);
 
-    /* sqlite aborted the transaction, skip all the work here
-       master not needed */
-    sql_cancelled_transaction(sess->iq);
+    logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
+    osql_close_session(&sess, 1);
 
     return perr->errval;
 }
@@ -268,22 +271,10 @@ int osql_session_testterminate(void *obj, void *arg)
 {
     osql_sess_t *sess = (osql_sess_t *)obj;
     char *node = arg;
-    int rc;
 
-    if (node && sess->host != node) {
-        /* if this is for a different node, ignore */
-        return 0;
+    if (!(node && sess->host != node)) {
+        osql_sess_try_terminate(sess);
     }
-
-    rc = osql_sess_try_terminate(sess);
-    if (rc < 0)
-        return rc;
-
-    if (rc == 1) {
-        /* session is not dispatched */
-        
-    }
-
     return 0;
 }
 
@@ -358,12 +349,14 @@ int osql_sess_queryid(osql_sess_t *sess)
  * we come here from osql_repository_add() if already in osql hash map
  * which can happen in case there is an early replay
  * Return 0 if session is successfully terminated,
- *        -1 for errors,
  *        1 otherwise (if session was already processed)
+ * 
+ * NOTE: only call this for sessions in repository
  */
 int osql_sess_try_terminate(osql_sess_t *sess)
 {
     sess_impl_t *impl = sess->impl;
+    bool free_sess = false;
     int rc;
 
     Pthread_mutex_lock(&sess->mtx);
@@ -375,14 +368,19 @@ int osql_sess_try_terminate(osql_sess_t *sess)
 
     sess->terminate = true;
 
+    /* NOTE: if there is at least a client, it will check the status 
+    before taking decrementing the client, and if "terminate" is lit
+    it will free the session safely; otherwise, we have to free the 
+    session here, since there is no-one to free it afterwards */
+    free_sess =  (sess->impl->clients<=0);
+        
     Pthread_mutex_unlock(&sess->mtx);
 
-    if (!reader_thread) {
-        /* no one will work on this; need to clear it */
-        osql_close_session(sess, 0, __func__, NULL, __LINE__);
+    if (free_sess) {
+        osql_close_session(&sess, 1);
     }
 
-    return (ATOMIC_LOAD32(sess->impl->clients) <= 0)?0:;
+    return 0;
 }
 
 int handle_buf_sorese(osql_sess_t *sess)

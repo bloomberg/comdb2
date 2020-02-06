@@ -113,10 +113,4 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
  */
 void osql_bplog_time_done(osql_bp_timings_t *tms);
 
-/**
- * Free the bplog, in case it does not need to run
- *
- */
-void sql_cancelled_transaction(struct ireq *iq);
-
 #endif

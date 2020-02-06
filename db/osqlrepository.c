@@ -80,7 +80,6 @@ void osql_repository_destroy(void)
     theosql = NULL;
 }
 
-#ifdef TRACK_OSQL_SESSIONS
 #define MAX_UUID_LIST 1000000
 static uuid_t add_uuid_list[MAX_UUID_LIST];
 static unsigned long long add_uuid_order[MAX_UUID_LIST];
@@ -111,9 +110,12 @@ static osql_sess_t * _get_sess(unsigned long long rqid, uuid_t uuid)
 
 /**
  * Adds an osql session to the repository
- * Returns 0 on success
+ * Returns:
+ *   0 on success,
+ *   -1 generic error
+ *   -2 old session with same rqid already running
  */
-int osql_repository_add(osql_sess_t *sess, int *replaced)
+int osql_repository_add(osql_sess_t *sess)
 {
     osql_sess_t *sess_chk;
     int rc = 0;
@@ -128,34 +130,23 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
      */
     sess_chk = _get_sess(sess->rqid, sess->uuid); 
     if (sess_chk) {
-        char *p = (char *)alloca(64);
-        p = util_tohex(p, (char *)sess->uuid, 16);
+        uuidstr_t us;
 
         logmsg(LOGMSG_ERROR,
                "%s: trying to add another session with the same rqid, "
                "rqid=%llx uuid=%s\n",
-               __func__, sess->rqid, p);
+               __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
 
         rc = osql_sess_try_terminate(sess_chk);
-        if (rc < 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d osql_sess_try_terminate rc %d\n",
-                   __func__, __LINE__, rc);
-            Pthread_mutex_unlock(&theosql->hshlck);
-            return -1;
-        }
-        if (rc) {
-            /* old request was already processed, ignore new ones */
-            Pthread_mutex_unlock(&theosql->hshlck);
-            *replaced = 1;
-            logmsg(LOGMSG_INFO,
-                   "%s: rqid=%llx, uuid=%s was completed/dispatched\n",
-                   __func__, sess->rqid, p);
-            return 0;
-        }
-        /* old request was terminated successfully, let's add the new one */
+        assert(rc==1 || rc ==0);
         logmsg(LOGMSG_INFO,
-               "%s: cancelled old request for rqid=%llx, uuid=%s\n", __func__,
-               sess->rqid, p);
+                "%s: rqid=%llx, uuid=%s was %s\n",
+                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us),
+                rc?"already dispatched":"cancelled, adding a new one");
+        if (rc) {
+            Pthread_mutex_unlock(&theosql->hshlck);
+            return -2;
+        }
     }
 
     if (sess->rqid == OSQL_RQID_USE_UUID)
@@ -166,114 +157,42 @@ int osql_repository_add(osql_sess_t *sess, int *replaced)
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: Unable to hash_add the new request\n",
                __func__);
-        rc = -2;
+        rc = -1;
     }
-#ifdef TRACK_OSQL_SESSIONS
-    else {
-        memcpy(add_uuid_list[add_current_uuid], sess->uuid,
-               sizeof(add_uuid_list[0]));
-        add_uuid_order[add_current_uuid] = total_ordering++;
-        add_current_uuid = ((add_current_uuid + 1) % MAX_UUID_LIST);
-    }
-#endif
 
     Pthread_mutex_unlock(&theosql->hshlck);
 
     return rc;
 }
 
-int gbl_abort_on_missing_osql_session = 0;
-
 /**
  * Remove an osql session from the repository
  * return 0 on success
  */
-int osql_repository_rem(osql_sess_t *sess, const int lock, const char *func,
-                        const char *callfunc, int line)
+void osql_repository_rem(osql_sess_t *sess)
 {
     int rc = 0;
 
     if (!theosql)
         return -1;
 
-    if (lock) {
-        Pthread_rwlock_wrlock(&theosql->hshlck);
-    }
+    Pthread_mutex_lock(&theosql->hshlck);
 
     if (sess->rqid == OSQL_RQID_USE_UUID) {
         rc = hash_del(theosql->rqsuuid, sess);
     } else {
         rc = hash_del(theosql->rqs, sess);
     }
+    assert (!rc);
 
-    if (lock)
-        Pthread_mutex_unlock(&theosql->hshlck);
-
-#ifdef TRACK_OSQL_SESSIONS
-    static uuid_t uuid_list[MAX_UUID_LIST];
-    static const char *uuid_func[MAX_UUID_LIST];
-    static const char *uuid_callfunc[MAX_UUID_LIST];
-    static int uuid_callfunc_line[MAX_UUID_LIST];
-    static unsigned long long uuid_order[MAX_UUID_LIST];
-    static int current_uuid = 0;
-    int found_uuid = 0;
-#endif
-
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: Unable to hash_del the new request\n",
-               __func__);
-#ifdef TRACK_OSQL_SESSIONS
-        char *p = alloca(64);
-        p = (char *)util_tohex(p, (char *)sess->uuid, 16);
-        for (int i=0; i<MAX_UUID_LIST;i++) {
-
-            if (!memcmp(sess->uuid, add_uuid_list[i], sizeof(add_uuid_list[0]))) {
-                logmsg(LOGMSG_ERROR, "uuid %s was added to the repository (index %d) total_order=%llu\n", p, i, 
-                        add_uuid_order[i]);
-                found_uuid++;
-            }
-
-            if (!memcmp(sess->uuid, uuid_list[i], sizeof(uuid_list[0]))) {
-                logmsg(LOGMSG_ERROR, "uuid %s was removed from repository %s (index %d) callfunc %s line %d total_order=%llu\n", 
-                        p, uuid_func[i], i, uuid_callfunc[i]==NULL?"(none)":uuid_callfunc[i], uuid_callfunc_line[i], 
-                        uuid_order[i]);
-                found_uuid++;
-            }
-        }
-
-        if (!found_uuid) {
-            logmsg(LOGMSG_ERROR, "%s unable to find previous uuid %s\n", __func__, p);
-        }
-        else {
-            logmsg(LOGMSG_ERROR, "%s found %s %d times in tracking array\n",
-                   __func__, p, found_uuid);
-        }
-#endif
-
-        /* This can happen legitimately on master swing */
-        if (gbl_abort_on_missing_osql_session)
-            abort();
-    }
-#ifdef TRACK_OSQL_SESSIONS
-    else {
-        memcpy(uuid_list[current_uuid], sess->uuid, sizeof(uuid_list[0]));
-        uuid_func[current_uuid] = func;
-        uuid_callfunc[current_uuid] = callfunc;
-        uuid_callfunc_line[current_uuid] = line;
-        uuid_order[current_uuid] = total_ordering++;
-        current_uuid = ((current_uuid + 1) % MAX_UUID_LIST);
-    }
-#endif
-
-    return 0;
+    Pthread_mutex_unlock(&theosql->hshlck);
 }
 
 /**
  * Retrieves a session based on rqid/uuid
- * Increments the users to prevent premature
- * deletion
- * NOTE: if the session is dispatched, addclient
- * fails and this return NULL
+ * Increments the users to prevent premature deletion
+ *
+ * NOTE: if the session is dispatched, addclient * return NULL
  */
 osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
 {
@@ -282,20 +201,15 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
     if (!theosql)
         return NULL;
 
-    Pthread_rwlock_rdlock(&theosql->hshlck);
-
+    Pthread_mutex_lock(&theosql->hshlck);
     sess = _get_sess(rqid, uuid);
-
-    /* register the new receiver; osql_close_req will wait for to finish storing
-     * the message */
     if (sess) {
         if(osql_sess_addclient(sess)) {
             /* session dispatched, ignore */
             sess = NULL;
         }
     }
-
-    Pthread_rwlock_unlock(&theosql->hshlck);
+    Pthread_mutex_unlock(&theosql->hshlck);
 
     return sess;
 }
@@ -303,25 +217,19 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
 /**
  * The reader thread is done with the session
  * 
- * Returns 0 if success
+ * Returns 
+ *   0 if success
+ *   1 if session is marked terminated
  */
 int osql_repository_put(osql_sess_t *sess, int bplog_complete)
 { 
     int rc;
 
-    if (!theosql)
-        return -1;
-
-    Pthread_rwlock_rdlock(&theosql->hshlck);
+    Pthread_mutex_lock(&theosql->hshlck);
 
     rc = osql_sess_remclient(sess, bplog_complete);
     
-    Pthread_rwlock_unlock(&theosql->hshlck);
-
-    if (rc == 1) {
-        /* session is marked terminated, release it */
-        osql_repository_rem(sess, 1, __func__, NULL, __LINE__);
-    }
+    Pthread_mutex_unlock(&theosql->hshlck);
 
     return rc;
 }
@@ -384,7 +292,6 @@ int osql_repository_terminatenode(char *host)
 
     /* insert it into the hash table */
     Pthread_mutex_lock(&theosql->hshlck);
-
     if ((rc = hash_for(theosql->rqs, osql_session_testterminate, host))) {
         logmsg(LOGMSG_ERROR, "hash_for failed with rc = %d\n", rc);
         Pthread_mutex_unlock(&theosql->hshlck);
@@ -395,7 +302,6 @@ int osql_repository_terminatenode(char *host)
         Pthread_mutex_unlock(&theosql->hshlck);
         return -1;
     }
-
     Pthread_mutex_unlock(&theosql->hshlck);
 
     return 0;
@@ -406,7 +312,7 @@ int osql_repository_terminatenode(char *host)
  * transactions
  *
  */
-inline int osql_repository_cancelall(void)
+int osql_repository_cancelall(void)
 { 
     return osql_repository_terminatenode(0);
 }

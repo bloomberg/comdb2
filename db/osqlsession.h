@@ -28,14 +28,12 @@ typedef struct osql_uuid_req osql_uuid_req_t;
 /**
  * Terminates an in-use osql session (for which we could potentially
  * receive message from sql thread).
- * It calls osql_remove_session.
  * Returns 0 if success
  *
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_close_session(osql_sess_t **sess, int is_linked, const char *func,
-                       const char *callfunc, int line);
+int osql_close_session(osql_sess_t **sess, int is_linked);
 
 /**
  * Register client
@@ -97,9 +95,9 @@ int osql_sess_queryid(osql_sess_t *sess);
 
 /**
  * Terminate a session if the session is not yet completed/dispatched
- * Return 0 if session is successfully terminated,
- *        -1 for errors,
- *        1 otherwise (if session was already processed)
+ * Return
+ *    0 if session is successfully terminated,
+ *    1 otherwise (if session was already processed)
  */
 int osql_sess_try_terminate(osql_sess_t *sess);
 

@@ -7208,8 +7208,8 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
-    int rc = 0;
     struct ireq *iq = NULL;
+    int rc = 0;
     uint8_t *malcd = malloc(OSQL_BP_MAXLEN);
     if (!malcd)
         goto done;
@@ -7226,7 +7226,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int sqllenret = 0;
     int debug = 0;
     uuid_t uuid;
-    int replaced = 0;
     const char *errmsg;
 
     /* grab the request */
@@ -7243,10 +7242,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         memcpy(req.tzname, uuid_req.tzname, sizeof(uuid_req.tzname));
         comdb2uuidcpy(uuid, uuid_req.uuid);
         is_reorder_on = ((uuid_req.flags & OSQL_FLAGS_REORDER_ON) != 0);
-
-#if DEBUG_REORDER
-        logmsg(LOGMSG_DEBUG, "REORDER: req.flags %x\n", uuid_req.flags);
-#endif
     } else {
         sql = (char *)osqlcomm_req_type_get(&req, p_req_buf, p_req_buf_end);
         comdb2uuid_clear(uuid);
@@ -7292,9 +7287,11 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     sess->iq = iq;
 
     /* make this visible to the world */
-    rc = osql_repository_add(sess, &replaced);
-    if (rc || replaced) {
-        rc = -1;
+    rc = osql_repository_add(sess);
+    if (rc) {
+        /* NOTE: possible here to detect if session is already
+        running, and wait for it to finish; retrying through the 
+        replicant does the same */
         goto done;
     }
 
@@ -7348,13 +7345,16 @@ done:
                 "error to create bplog\n",
                 __func__, req.rqid, us, fromhost);
     }
-    if (iq) {
-        destroy_ireq(thedb, iq);
-    }
     if (sess) {
-        osql_close_session(&sess, 0, __func__, NULL, __LINE__);
-    } else if (malcd)
-        free(malcd);
+        osql_close_session(&sess, 0);
+    } else {
+        /* free a la carte */
+        if (iq) {
+            destroy_ireq(thedb, iq);
+        }
+        if (malcd)
+            free(malcd);
+    }
 
     return rc;
 }

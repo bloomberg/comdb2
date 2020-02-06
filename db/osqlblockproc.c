@@ -18,27 +18,10 @@
  *
  * Osql Interface with Block Processor
  *
- * Each block processor used for osql keeps a local log of operations (bplog)
- * of the current transaction. The operations are sent by the sqlthread.
- *
- * In blocksql mode, the bp opens an osql session for each query part of the
- *current
- * transaction.
- * In socksql/recom/snapisol/serial mode, the bp has only one session.
- *
- * Block processor waits until all pending sessions are completed.  If any of
- *the sessions
- * completes with an error that could be masked (like deadlocks), the block
- *processor
- * will re-issue it.
- *
- * If all the sessions complete successfully, the bp scans through the log and
- *applies all the
- * changes by calling record.c functions.
- *
- * At the end, the return code is provided to the client (in the case of
- *blocksql)
- * or the remote socksql/recom/snapisol/serial thread.
+ * Each sql transaction creates a logical list of writes, a.k.a. bplog,
+ * that is send and accumulated on the master in a session
+ * Once the last bplog message is received, the bplog can be passed to 
+ * a block processor that runs the actual transaction
  *
  */
 #include <stdio.h>
@@ -70,14 +53,11 @@
 #include "intern_strings.h"
 
 
-int gbl_osql_check_replicant_numops = 1;
-extern int gbl_blocksql_grace;
 extern int gbl_reorder_idx_writes;
 
 
 struct blocksql_tran {
     pthread_mutex_t store_mtx; /* mutex for db access - those are non-env dbs */
-    struct dbtable *last_db;
     struct temp_table *db_ins; /* keeps the list of INSERT ops for a session */
     struct temp_table *db;     /* keeps the list of all OTHER ops */
 
@@ -101,6 +81,9 @@ struct blocksql_tran {
 
     /* reorder */
     bool is_reorder_on;
+
+    /* prefetch */
+    struct dbtable *last_db;
 };
 
 typedef struct oplog_key {
@@ -1422,13 +1405,6 @@ void osql_bplog_time_done(osql_bp_timings_t *tms)
             tms->replication_start, /* time to replicate */
             tms->retries - 1);          /* how many time bplog was retried */
    logmsg(LOGMSG_USER, "%s]\n", msg);
-}
-
-void sql_cancelled_transaction(struct ireq *iq)
-{
-    logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_close_session(iq->sorese, 1, __func__, NULL, __LINE__);
-    destroy_ireq(thedb, iq);
 }
 
 int backout_schema_changes(struct ireq *iq, tran_type *tran);

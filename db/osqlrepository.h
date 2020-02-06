@@ -22,15 +22,19 @@
 
 /**
  * Adds an osql session to the repository
- * Returns 0 on success
+ * Returns:
+ *   0 on success,
+ *   -1 generic error
+ *   -2 old session with same rqid already running
+ *
  */
-int osql_repository_add(osql_sess_t *sess, int *replaced);
+int osql_repository_add(osql_sess_t *sess);
 
 /**
  * Removes an osql session from the repository
  * Returns 0 on success
  */
-int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const char *callfunc, int line);
+void osql_repository_rem(osql_sess_t *sess);
 
 /**
  * Retrieves a session based on rqid

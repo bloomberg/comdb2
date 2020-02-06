@@ -84,11 +84,6 @@ REGISTER_TUNABLE("blobmem_sz_thresh_kb",
                  NULL, blobmem_sz_thresh_kb_update, NULL);
 REGISTER_TUNABLE("blobstripe", NULL, TUNABLE_BOOLEAN, &gbl_blobstripe,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("blocksql_grace",
-                 "Let block transactions run this long if db is exiting before "
-                 "being killed (and returning an error). (Default: 10sec)",
-                 TUNABLE_INTEGER, &gbl_blocksql_grace, 0, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("broken_max_rec_sz", NULL, TUNABLE_INTEGER,
                  &gbl_broken_max_rec_sz, READONLY, NULL, NULL,
                  broken_max_rec_sz_update, NULL);
@@ -1621,11 +1616,6 @@ REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("osql_check_replicant_numops",
-                 "Check replicant nops sent in osql stream. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("osql_snap_info_hashcheck",
                  "Enable snapinfo to be stored and checked in a hash in "
                  "toblock on master. (Default: on)",
@@ -1724,12 +1714,6 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  "Skip initial catchup logic.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
-
-REGISTER_TUNABLE("abort_on_missing_osql_session",
-                 "Abort if we can't find an osql session in the repository.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",

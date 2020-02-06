@@ -2074,8 +2074,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
         if (gbl_time_osql)
             osql_bplog_time_done(&logger->iq->timings);
 
-        osql_close_session(logger->iq->sorese, 1, __func__, callfunc, line);
-        logger->iq->sorese = NULL;
+        /* here, closing the session doesn't destroy iq*/
+        logger->iq->sorese->iq = NULL;
+        osql_close_session(&logger->iq->sorese, 1);
     }
 out:
     reqlog_reset_logger(logger); //will reset which bzeros much of logger
