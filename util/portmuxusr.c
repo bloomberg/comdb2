@@ -545,7 +545,7 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
                __func__, __LINE__);
         return -1;
     } else {
-        strncpy(addr.sun_path, gbl_portmux_unix_socket, uslen);
+        strncpy(addr.sun_path, gbl_portmux_unix_socket, sizeof(addr.sun_path));
     }
 
     len = offsetof(struct sockaddr_un, sun_path) + uslen;
