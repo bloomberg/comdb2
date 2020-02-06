@@ -7071,7 +7071,7 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
 {
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
 
-    char filename[PATH_MAX];
+    char filename[255]; // 255 = max allowed filename length
     form_queuedb_name(bdb_state, NULL, 0, filename, sizeof(filename));
 
     char fullpath[PATH_MAX];
