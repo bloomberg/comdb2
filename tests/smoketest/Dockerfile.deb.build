@@ -40,6 +40,6 @@ COPY . /comdb2/
 
 WORKDIR /comdb2/smoketestbuild
 
-RUN cmake .. && make package && dpkg -i comdb2*.deb
+RUN cmake .. && make -j package && dpkg -i comdb2*.deb
 
 ENV PATH="/opt/bb/bin:${PATH}"
