@@ -80,13 +80,6 @@ void osql_repository_destroy(void)
     theosql = NULL;
 }
 
-#define MAX_UUID_LIST 1000000
-static uuid_t add_uuid_list[MAX_UUID_LIST];
-static unsigned long long add_uuid_order[MAX_UUID_LIST];
-static unsigned long long total_ordering = 0;
-static int add_current_uuid = 0;
-#endif
-
 static char hex(unsigned char a)
 {
     if (a < 10)
@@ -174,7 +167,7 @@ void osql_repository_rem(osql_sess_t *sess)
     int rc = 0;
 
     if (!theosql)
-        return -1;
+        return;
 
     Pthread_mutex_lock(&theosql->hshlck);
 
@@ -221,7 +214,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
  *   0 if success
  *   1 if session is marked terminated
  */
-int osql_repository_put(osql_sess_t *sess, int bplog_complete)
+int osql_repository_put(osql_sess_t *sess, bool bplog_complete)
 { 
     int rc;
 
@@ -261,7 +254,7 @@ int osql_repository_printcrtsessions(void)
     maxops = get_osql_maxtransfer();
     logmsg(LOGMSG_USER, "Maximum transaction size: %d bplog entries\n", maxops);
 
-    Pthread_rwlock_rdlock(&theosql->hshlck);
+    Pthread_mutex_lock(&theosql->hshlck);
 
     logmsg(LOGMSG_USER, "Begin osql session info:\n");
     if ((rc = hash_for(theosql->rqs, _getcrtinfo, NULL))) {
@@ -270,7 +263,7 @@ int osql_repository_printcrtsessions(void)
     } else
         logmsg(LOGMSG_USER, "Done osql info.\n");
 
-    Pthread_rwlock_unlock(&theosql->hshlck);
+    Pthread_mutex_unlock(&theosql->hshlck);
 
     return rc;
 }

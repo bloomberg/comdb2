@@ -66,7 +66,6 @@ struct blocksql_tran {
     pthread_cond_t cond;
 
     int seq; /* counting ops saved */
-    int delayed;
     bool is_uuid;
    
     /* selectv caches */

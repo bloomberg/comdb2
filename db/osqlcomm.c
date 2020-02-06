@@ -7328,7 +7328,7 @@ done:
            clients to disappear before it will wipe out the session
          */
 
-        rc = osql_repository_put(sess, 0 /* bplog not complete */);
+        rc = osql_repository_put(sess, false /* bplog not complete */);
         if (!rc)
             return 0;
         /* if put noticed a termination flag, fall-through */
