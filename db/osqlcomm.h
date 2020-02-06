@@ -260,8 +260,8 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
-                               int rc);
+int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid, uuid_t uuid, int nops,
+        struct errstat *xerr, int rc);
 
 /**
  * Report on the traffic noticed

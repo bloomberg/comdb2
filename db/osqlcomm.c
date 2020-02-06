@@ -5071,11 +5071,11 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
-                               int rc)
+int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
+        uuid_t uuid, int nops, struct errstat *xerr, int rc)
 {
+    uuidstr_t us;
     int msglen = 0;
-    char uuid[37];
     int type;
     union {
         char a[OSQLCOMM_DONE_XERR_UUID_RPL_LEN];
@@ -5092,14 +5092,14 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
         return 0;
 
     /* if error, lets send the error string */
-    if (!sorese->host) {
+    if (!host) {
         /* local */
-        return osql_chkboard_sqlsession_rc(sorese->rqid, sorese->uuid,
-                                           sorese->nops, NULL, xerr);
+        return osql_chkboard_sqlsession_rc(rqid, uuid,
+                                           nops, NULL, xerr);
     }
 
     /* remote */
-    if (sorese->rqid == OSQL_RQID_USE_UUID) {
+    if (rqid == OSQL_RQID_USE_UUID) {
         osql_done_xerr_uuid_t rpl_xerr = {{0}};
         osql_done_uuid_rpl_t rpl_ok = {{0}};
 
@@ -5108,7 +5108,7 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
             rpl_xerr.hd.type = OSQL_XERR;
-            comdb2uuidcpy(rpl_xerr.hd.uuid, sorese->uuid);
+            comdb2uuidcpy(rpl_xerr.hd.uuid, uuid);
             rpl_xerr.dt = *xerr;
 
             osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
@@ -5119,9 +5119,9 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
             uint8_t *p_buf_end = buf + msglen;
 
             rpl_ok.hd.type = OSQL_DONE;
-            comdb2uuidcpy(rpl_ok.hd.uuid, sorese->uuid);
+            comdb2uuidcpy(rpl_ok.hd.uuid, uuid);
             rpl_ok.dt.rc = 0;
-            rpl_ok.dt.nops = sorese->nops;
+            rpl_ok.dt.nops = nops;
 
             osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
         }
@@ -5129,8 +5129,8 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
-               __func__, __LINE__, sorese->host,
-               comdb2uuidstr(sorese->uuid, uuid), rc, xerr->errval);
+               __func__, __LINE__, host,
+               comdb2uuidstr(uuid, us), rc, xerr->errval);
     } else {
         osql_done_xerr_t rpl_xerr = {{0}};
         osql_done_rpl_t rpl_ok = {{0}};
@@ -5140,7 +5140,7 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
             rpl_xerr.hd.type = OSQL_XERR;
-            rpl_xerr.hd.sid = sorese->rqid;
+            rpl_xerr.hd.sid = rqid;
             rpl_xerr.dt = *xerr;
 
             osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
@@ -5150,9 +5150,9 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
             uint8_t *p_buf_end = buf + msglen;
 
             rpl_ok.hd.type = OSQL_DONE;
-            rpl_ok.hd.sid = sorese->rqid;
+            rpl_ok.hd.sid = rqid;
             rpl_ok.dt.rc = 0;
-            rpl_ok.dt.nops = sorese->nops;
+            rpl_ok.dt.nops = nops;
 
             osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
         }
@@ -5160,18 +5160,17 @@ int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
         type = NET_OSQL_SIGNAL;
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s rqid %llu with rc=%d xerr=%d\n",
-               __func__, __LINE__, sorese->host, sorese->rqid, rc,
-               xerr->errval);
+               __func__, __LINE__, host, rqid, rc, xerr->errval);
     }
 #if 0
-  printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, sorese->rqid, osql_log_time());
+  printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, rqid, osql_log_time());
 #endif
     /* lazy again, works just because node!=0 */
-    int irc = offload_net_send(sorese->host, type, buf, msglen, 1);
+    int irc = offload_net_send(host, type, buf, msglen, 1);
     if (irc) {
         irc = -1;
         logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__,
-               sorese->host);
+               host);
     }
 
     return irc;
@@ -7337,7 +7336,7 @@ done:
     /* notify the sql thread there will be no response! */
     struct errstat generr = {0};
     errstat_set_rcstrf(&generr, ERR_TRAN_FAILED, errmsg);
-    int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, &generr, RC_INTERNAL_RETRY);
+    int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, 0, &generr, RC_INTERNAL_RETRY);
     if (rc2) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
