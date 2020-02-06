@@ -15,6 +15,6 @@ COPY . /comdb2/
 
 WORKDIR /comdb2/smoketestbuild
 
-RUN cmake3 .. && make install
+RUN cmake3 .. && make -j install
 
 ENV PATH="/opt/bb/bin:${PATH}"
