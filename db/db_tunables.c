@@ -147,6 +147,7 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
 extern int gbl_apply_queue_memory;
+extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
 extern int gbl_net_writer_thread_poll_ms;

@@ -596,7 +596,8 @@ __rep_client_dbinit(dbenv, startup)
 	sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
 	    db_rep->repdbcnt++);
 
-	if ((ret = __db_open(dbp, NULL,
+    extern int gbl_inmem_repdb;
+	if (!gbl_inmem_repdb && (ret = __db_open(dbp, NULL,
 		    repdbname, NULL, DB_BTREE, flags, 0, PGNO_BASE_MD)) != 0)
 		 goto err;
 
