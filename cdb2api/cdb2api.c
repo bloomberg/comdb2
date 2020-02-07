@@ -1112,7 +1112,6 @@ void cdb2_set_comdb2db_config(const char *cfg_file)
 
 void cdb2_set_comdb2db_info(const char *cfg_info)
 {
-    int len;
     pthread_mutex_lock(&cdb2_cfg_lock);
     pthread_once(&init_once, do_init_once);
     if (log_calls)
@@ -1128,9 +1127,7 @@ void cdb2_set_comdb2db_info(const char *cfg_info)
         return;
     }
     cdb2cfg_override = 1;
-    len = strlen(cfg_info) + 1;
-    CDB2DBCONFIG_BUF = malloc(len);
-    strncpy(CDB2DBCONFIG_BUF, cfg_info, len);
+    CDB2DBCONFIG_BUF = strdup(cfg_info);
     pthread_mutex_unlock(&cdb2_cfg_lock);
 }
 

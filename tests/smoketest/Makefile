@@ -44,7 +44,7 @@ build-inst-java: build-inst-pre
 	-docker kill jinsttest
 	-docker rm jinsttest
 
-build-inst: build-inst-c build-inst-java
+build-inst: build-inst-c
 
 build-nossl:
 	-docker rm -f nossltest

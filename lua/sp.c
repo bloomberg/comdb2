@@ -4275,8 +4275,8 @@ static int db_consumer(Lua L)
     if (sp->parent->have_consumer) {
         return 0;
     }
-    char spname[strlen(sp->spname) + 1];
-    strncpy(spname, sp->spname, strlen(sp->spname) + 1);
+    char spname[MAX_SPNAME];
+    strncpy(spname, sp->spname, MAX_SPNAME);
     Q4SP(qname, spname);
 
     struct dbtable *db = getqueuebyname(qname);
