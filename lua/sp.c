@@ -1134,6 +1134,12 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     if (rc == SQLITE_DONE) {
         return 0;
     } else {
+        logmsg(LOGMSG_ERROR, "%s: FAILED ddl={%s}, rc=%d\n",
+                __func__, ddl, rc);
+
+        Pthread_mutex_destroy(*lk);
+        free(*lk);
+        *lk = NULL;
         luabb_error(lua, sp, sqlite3ErrStr(rc));
     }
 out:
