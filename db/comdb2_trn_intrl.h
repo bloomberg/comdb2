@@ -35,10 +35,10 @@ typedef struct longblk_trn {
 } longblk_trans_type;
 
 struct long_trn_stat {
+    double ltrn_avgpurge;
     int ltrn_fulltrans;
     int ltrn_npurges;
     int ltrn_npurged;
-    double ltrn_avgpurge;
     int ltrn_maxnseg;
     int ltrn_avgnseg;
     int ltrn_minnseg;

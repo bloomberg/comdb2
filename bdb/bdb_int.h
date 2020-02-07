@@ -288,8 +288,8 @@ struct checkpoint_list {
 
 struct tran_tag {
     tranclass_type tranclass;
-    DB_TXN *tid;
     u_int32_t logical_lid;
+    DB_TXN *tid;
 
     void *usrptr;
     DB_LSN savelsn;
@@ -298,13 +298,6 @@ struct tran_tag {
     DB_LSN startlsn;  /* where log was when we
                          started */
 
-    /*
-       snapshot bdb_state->numchildren
-       we don't care that much if DB-s are flipping,
-       but we don't want to see transient tailing DB-s
-       created by schema change or fastinit
-     */
-    int numchildren;
     /*
        this is index by dbnum;
        right now 0, 1 are meta, among them is also fstblk
@@ -337,16 +330,16 @@ struct tran_tag {
     /* Birth lsn of oldest outstanding logical txn at start time */
     DB_LSN oldest_txn_at_start;
 
-    /* List of outstanding logical txns at start */
-    uint64_t *bkfill_txn_list;
-
-    /* Number of outstanding logical txns at start */
-    int bkfill_txn_count;
-
     /* tran obj was created as of we were at a lsn*/
     DB_LSN asof_lsn;
     /* oldest logical ref point of a begin-as-of tran*/
     DB_LSN asof_ref_lsn;
+
+    /* Number of outstanding logical txns at start */
+    int bkfill_txn_count;
+
+    /* List of outstanding logical txns at start */
+    uint64_t *bkfill_txn_list;
 
     /* hash table for pglogs */
     hash_t *pglogs_hashtbl;
@@ -382,8 +375,6 @@ struct tran_tag {
      */
     unsigned long long startgenid;
 
-    unsigned int trigger_epoch;
-
     /* For logical transactions: a logical transaction may have a (one and
        only one) physical transaction in flight.  Latch it here for debugging
        and sanity checking */
@@ -394,65 +385,32 @@ struct tran_tag {
     /* snapshot/serializable support */
     struct bdb_osql_trn *osql;
 
-    /* this is tested in rep.c to see if net needs to flush/wait */
-    signed char is_about_to_commit;
-
-    signed char aborted;
-
-    signed char rep_handle_dead; /* must reopen all  db cursors after abort */
-
-    /* set if we are a top level transaction (ie, not a child) */
-    signed char master;
-
-    /* Set if we were created from the replication stream */
-    signed char reptxn;
-
-    signed char wrote_begin_record;
-    signed char committed_begin_record;
-    signed char get_schema_lock;
-    signed char single_physical_transaction;
-
-    /* log support */
-    signed char trak; /* set this to enable tracking */
-
-    signed char is_rowlocks_trans;
-
-    /* if the txn intends to write, this tells us to get write
-       locks when we read */
-    signed char write_intent;
+    unsigned int trigger_epoch;
 
     /* Open cursors under this transaction. */
     LISTC_T(bdb_cursor_ifn_t) open_cursors;
 
-    /* Committed the child transaction. */
-    signed char committed_child;
-
     /* total shadow rows */
     int shadow_rows;
 
-    /* Set to 1 if we got the bdb lock */
-    int got_bdb_lock;
-
-    /* Set to 1 if this is a schema change txn */
-    int schema_change_txn;
     struct tran_tag *sc_parent_tran;
 
-    /* Set to 1 if this txn touches a logical live sc table */
-    int force_logical_commit;
     /* Tables that this tran touches (for logical redo sc) */
     hash_t *dirty_table_hash;
 
-    /* cache the versions of dta files to catch schema changes and fastinits */
-    int table_version_cache_sz;
-    unsigned long long *table_version_cache;
     bdb_state_type *parent_state;
+    /* cache the versions of dta files to catch schema changes and fastinits */
+    unsigned long long *table_version_cache;
+    int table_version_cache_sz;
 
-    /* Send the master periodic 'acks' after this many physical commits */
-    int request_ack;
 
-    int check_shadows;
-
-    int micro_commit;
+    /*
+       snapshot bdb_state->numchildren
+       we don't care that much if DB-s are flipping,
+       but we don't want to see transient tailing DB-s
+       created by schema change or fastinit
+     */
+    int numchildren;
 
     /* Rowlocks commit support */
     pool_t *rc_pool;
@@ -464,6 +422,44 @@ struct tran_tag {
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
     u_int32_t flags;
+
+    /* this is tested in rep.c to see if net needs to flush/wait */
+    unsigned is_about_to_commit:1;
+    unsigned aborted:1;
+    unsigned rep_handle_dead:1; /* must reopen all  db cursors after abort */
+
+    /* set if we are a top level transaction (ie, not a child) */
+    unsigned master:1;
+
+
+    /* Set if we were created from the replication stream */
+    unsigned reptxn:1;
+
+    unsigned wrote_begin_record:1;
+    unsigned committed_begin_record:1;
+    unsigned get_schema_lock:1;
+    unsigned single_physical_transaction:1;
+    unsigned trak:1; /* set this to enable tracking */
+
+    unsigned is_rowlocks_trans:1;
+
+    /* Committed the child transaction. */
+    unsigned committed_child:1;
+
+    /* Send the master periodic 'acks' after this many physical commits */
+    unsigned request_ack:1;
+
+    /* Set to 1 if this is a schema change txn */
+    unsigned schema_change_txn:1;
+
+    /* Set to 1 if we got the bdb lock */
+    unsigned got_bdb_lock:1;
+
+    /* Set to 1 if this txn touches a logical live sc table */
+    unsigned force_logical_commit:1;
+    unsigned check_shadows:1;
+    unsigned micro_commit:1;
+
 };
 
 struct seqnum_t {

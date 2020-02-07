@@ -1873,9 +1873,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "off", 3) == 0) {
-                    clnt->admin = 0;
+                    clnt->isadmin = 0;
                 } else {
-                    clnt->admin = 1;
+                    clnt->isadmin = 1;
                 }
             } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
                 rc = handle_set_querylimits(sqlstr, clnt);
@@ -2213,11 +2213,11 @@ retry_read:
 }
 
 extern int gbl_allow_incoherent_sql;
-static inline int incoh_reject(int admin, bdb_state_type *bdb_state)
+static inline int incoh_reject(bool isadmin, bdb_state_type *bdb_state)
 {
     /* If this isn't from an admin session and the node isn't coherent
        and we disallow running queries on an incoherent node, reject */
-    return (!admin && !bdb_am_i_coherent(bdb_state) &&
+    return (!isadmin && !bdb_am_i_coherent(bdb_state) &&
             !gbl_allow_incoherent_sql);
 }
 
@@ -2298,9 +2298,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     get_newsql_appdata(&clnt, 32);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
-    clnt.admin = arg->admin;
+    clnt.isadmin = arg->admin;
 
-    if (incoh_reject(clnt.admin, thedb->bdb_env)) {
+    if (incoh_reject(clnt.isadmin, thedb->bdb_env)) {
         logmsg(LOGMSG_ERROR,
                "%s:%d td %u new query on incoherent node, dropping socket\n",
                __func__, __LINE__, (uint32_t)pthread_self());
@@ -2313,7 +2313,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         goto done;
     }
 
-    if (!clnt.admin && check_active_appsock_connections(&clnt)) {
+    if (!clnt.isadmin && check_active_appsock_connections(&clnt)) {
         static time_t pr = 0;
         time_t now;
 
@@ -2343,7 +2343,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
-    if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
+    if (!clnt.isadmin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 
     if (sql_query->client_info) {
@@ -2473,7 +2473,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
         /* avoid new accepting new queries/transaction on opened connections
            if we are incoherent (and not in a transaction). */
-        if (incoh_reject(clnt.admin, thedb->bdb_env) &&
+        if (incoh_reject(clnt.isadmin, thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
                    "%s line %d td %u new query on incoherent node, "

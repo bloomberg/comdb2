@@ -2097,19 +2097,6 @@ struct __db_env {
 	int (*build_mintruncate_list) __P((DB_ENV *));
 	int (*mintruncate_delete_log) __P((DB_ENV *, int lowfile));
 
-	/*
-	 * Currently, the verbose list is a bit field with room for 32
-	 * entries.  There's no reason that it needs to be limited, if
-	 * there are ever more than 32 entries, convert to a bit array.
-	 */
-#define	DB_VERB_CHKPOINT	0x0001	/* List checkpoints. */
-#define	DB_VERB_DEADLOCK	0x0002	/* Deadlock detection information. */
-#define	DB_VERB_RECOVERY	0x0004	/* Recovery information. */
-#define	DB_VERB_REPLICATION	0x0008	/* Replication information. */
-#define	DB_VERB_WAITSFOR	0x0010	/* Dump waits-for table. */
-#define DB_RECV_EXTENSION   ".recovery_pages" /* Recovery pages extention. */
-	u_int32_t	 verbose;	/* Verbose output. */
-
 	void		*app_private;	/* Application-private handle. */
 
 	int (*app_dispatch)		/* User-specified recovery dispatch. */
@@ -2134,12 +2121,25 @@ struct __db_env {
 	u_int32_t	 mp_gbytes;	/* Cachesize: GB. */
 	u_int32_t	 mp_bytes;	/* Cachesize: Bytes. */
 	size_t		 mp_size;	/* DEPRECATED: Cachesize: bytes. */
-	int		 mp_ncache;	/* Number of cache regions. */
 	size_t		 mp_mmapsize;	/* Maximum file size for mmap. */
+	double		 mp_multiple;	/* Multiplier for hash buckets. */
+	int		 mp_ncache;	/* Number of cache regions. */
 	int		 mp_maxwrite;	/* Maximum buffers to write. */
 	int				/* Sleep after writing max buffers. */
 			 mp_maxwrite_sleep;
-	double		 mp_multiple;	/* Multiplier for hash buckets. */
+	/*
+	 * Currently, the verbose list is a bit field with room for 32
+	 * entries.  There's no reason that it needs to be limited, if
+	 * there are ever more than 32 entries, convert to a bit array.
+	 */
+#define	DB_VERB_CHKPOINT	0x0001	/* List checkpoints. */
+#define	DB_VERB_DEADLOCK	0x0002	/* Deadlock detection information. */
+#define	DB_VERB_RECOVERY	0x0004	/* Recovery information. */
+#define	DB_VERB_REPLICATION	0x0008	/* Replication information. */
+#define	DB_VERB_WAITSFOR	0x0010	/* Dump waits-for table. */
+#define DB_RECV_EXTENSION   ".recovery_pages" /* Recovery pages extention. */
+	u_int32_t	 verbose;	/* Verbose output. */
+
 
 	/* Number of recovery pages for each backing DB_MPOOLFILE. */
 	int		 mp_recovery_pages;
@@ -2161,10 +2161,10 @@ struct __db_env {
 	pthread_mutex_t locked_lsn_lk;
 
 	/* Transactions. */
-	u_int32_t	 tx_max;	/* Maximum number of transactions. */
 	time_t		 tx_timestamp;	/* Recover to specific timestamp. */
+	u_int32_t	 tx_max;	/* Maximum number of transactions. */
 	db_timeout_t	 tx_timeout;	/* Timeout for transactions. */
-	int		 tx_perfect_ckp;	/* 1: Use perfect ckp. 0: Don't */
+	unsigned		 tx_perfect_ckp:1;	/* 1: Use perfect ckp. 0: Don't */
 
 	/*******************************************************
 	 * Private: owned by DB.
@@ -2194,8 +2194,8 @@ struct __db_env {
 
 	int		 db_ref;	/* DB reference count. */
 
-	long		 shm_key;	/* shmget(2) key. */
 	u_int32_t	 tas_spins;	/* test-and-set spins. */
+	long		 shm_key;	/* shmget(2) key. */
 
 	/*
 	 * List of open DB handles for this DB_ENV, used for cursor
@@ -2455,9 +2455,9 @@ struct __db_env {
 	u_int32_t close_flags;
 
 	LISTC_T(DB) *dbs;
-	int maxdb;
 
 	LISTC_T(HEAP) regions;
+	int maxdb;
 	int bulk_stops_on_page;
 
 	void (*lsn_undone_callback)(DB_ENV *env, DB_LSN*);
@@ -2521,6 +2521,7 @@ struct __db_env {
 
 	/* These fields are for changes to recovery code. */ 
 	struct fileid_track fileid_track;
+	db_recops recovery_pass;
 	pthread_mutex_t mintruncate_lk;
 	int mintruncate_state;
 	DB_LSN mintruncate_first;
@@ -2528,7 +2529,6 @@ struct __db_env {
 	DB_LSN last_mintruncate_dbreg_start;
 	DB_LSN last_mintruncate_ckp;
 	DB_LSN last_mintruncate_ckplsn;
-	db_recops recovery_pass;
 	pthread_rwlock_t dbreglk;
 	pthread_rwlock_t recoverlk;
 	DB_LSN recovery_start_lsn;
@@ -2547,10 +2547,10 @@ struct __db_env {
 
 	LC_CACHE lc_cache;
 
-	int is_tmp_tbl;
 	int  (*set_is_tmp_tbl) __P((DB_ENV *, int));
+	unsigned is_tmp_tbl:1;
 
-	int use_sys_malloc;
+	unsigned use_sys_malloc:1;
 	int  (*set_use_sys_malloc) __P((DB_ENV *, int));
 
 	/* keep a copy here to enhance locality */

@@ -634,22 +634,19 @@ typedef struct dbtable {
     char *lrlfname;
     char *tablename;
     struct ireq *iq; /* iq used at sc time */
+    shard_limits_t *sharding;
 
     int dbnum; /* zero unless setup as comdbg table */
     int lrl; /*dat len in bytes*/
+
     /*index*/
     unsigned short nix; /*number of indices*/
-
     unsigned short ix_keylen[MAXINDEX]; /*key len in bytes*/
     signed char ix_dupes[MAXINDEX];
     signed char ix_recnums[MAXINDEX];
     signed char ix_datacopy[MAXINDEX];
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
-
-    shard_limits_t *sharding;
-
-    int numblobs;
 
     /* we do not necessarily have as many sql indexes as there are comdb2
      * indexes - only indexes free of <DESCEND> can be advertised to sqlite.
@@ -660,6 +657,7 @@ typedef struct dbtable {
     char *sql;
     char **ixsql;
     int nsqlix;
+    int numblobs;
 
     /*backend db engine handle*/
     bdb_state_type *handle;
@@ -683,42 +681,22 @@ typedef struct dbtable {
     /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
-    unsigned aa_saved_counter; // zeroed out at autoanalyze
-    time_t aa_lastepoch;
-    unsigned aa_counter_upd;   // counter which includes updates
-    unsigned aa_counter_noupd; // does not include updates
 
+    struct consumer *consumers[MAXCONSUMERS];
     /* Foreign key constraints */
     constraint_t constraints[MAXCONSTRAINTS];
-    int n_constraints;
     /* Pointers to other table constraints that are directed at this table. */
     constraint_t *rev_constraints[MAXCONSTRAINTS];
-    int n_rev_constraints;
-
     /* CHECK constraints */
     check_constraint_t check_constraints[MAXCONSTRAINTS];
-    int n_check_constraints;
     char *check_constraint_query[MAXCONSTRAINTS];
+
+    int n_constraints; /* number of Foreign key constraints */
+    int n_rev_constraints; /* number of reverse Foreign key constraints */
+    int n_check_constraints; /* number of CHECK constraints */
 
     /* One of the DBTYPE_ constants. */
     int dbtype;
-
-    struct consumer *consumers[MAXCONSUMERS];
-
-    /* Expected average size of a queue item in bytes. */
-    int avgitemsz;
-    int queue_pagesize_override;
-
-    /* some queue stats */
-    unsigned int num_goose_adds;
-    unsigned int num_goose_consumes;
-
-    /* used by the queue goosing sub system */
-    int goose_consume_cnt;
-    int goose_add_cnt;
-
-    /* needed for foreign table support */
-    int dtastripe;
 
     /* when we were blobstriped */
     unsigned long long blobstripe_genid;
@@ -728,7 +706,6 @@ typedef struct dbtable {
     uint64_t dtasize;
     uint64_t blobsizes[MAXBLOBS];
     uint64_t totalsize;
-    unsigned numextents;
 
     /* index stats */
     unsigned long long *ixuse;
@@ -744,43 +721,12 @@ typedef struct dbtable {
      * This probably doesn't work that great with constraints (yet).
      */
     struct scplan *plan;
-    int dbs_idx; /* index of us in dbenv->dbs[] */
 
     struct dbtable *sc_from; /* point to the source db, replace global sc_from */
     struct dbtable *sc_to; /* point to the new db, replace global sc_to */
 
-    int sc_live_logical;
     unsigned long long *sc_genids; /* schemachange stripe pointers */
-
-    /* All writer threads have to grab the lock in read/write mode.  If a live
-     * schema change is in progress then they have to do extra stuff. */
-    pthread_rwlock_t sc_live_lk;
-
-    /* count the number of updates and deletes done by schemachange
-     * when behind the cursor.  This helps us know how many
-     * records we've really done (since every update behind the cursor
-     * effectively means we have to go back and do that record again). */
-    uint32_t sc_adds;
-    uint32_t sc_deletes;
-    uint32_t sc_updates;
-
-    uint64_t sc_nrecs;
-    uint64_t sc_prev_nrecs;
-    unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
-    unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
-
-    char *csc2_schema;
-    int csc2_schema_len;
-
     struct dbstore dbstore[MAXCOLUMNS];
-    int odh;
-    /* csc2 schema version increased on instantaneous schemachange */
-    int schema_version;
-    int instant_schema_change;
-    int inplace_updates;
-    /* tableversion is an ever increasing counter which is incremented for
-     * every schema change (add, alter, drop, etc.) but not for fastinit */
-    unsigned long long tableversion;
 
     /* map of tag fields for schema version to curr schema */
     unsigned int * versmap[MAXVER + 1];
@@ -790,21 +736,74 @@ typedef struct dbtable {
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
 
-    bool has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
-    bool ix_partial : 1;      /* set to 1 if we have partial indexes */
-    bool ix_expr : 1;         /* set to 1 if we have indexes on expressions */
-    bool ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
+    /* All writer threads have to grab the lock in read/write mode.  If a live
+     * schema change is in progress then they have to do extra stuff. */
+    pthread_rwlock_t sc_live_lk;
+    char *csc2_schema;
 
-    bool sc_abort : 1;
-    bool sc_downgrading : 1;
+    /* count the number of updates and deletes done by schemachange
+     * when behind the cursor.  This helps us know how many
+     * records we've really done (since every update behind the cursor
+     * effectively means we have to go back and do that record again). */
+    uint64_t sc_nrecs;
+    uint64_t sc_prev_nrecs;
+
+    time_t aa_lastepoch;
+    unsigned aa_saved_counter; // zeroed out at autoanalyze
+    unsigned aa_counter_upd;   // counter which includes updates
+    unsigned aa_counter_noupd; // does not include updates
+
+    /* Expected average size of a queue item in bytes. */
+    int avgitemsz;
+    int queue_pagesize_override;
+
+    /* some queue stats */
+    unsigned int num_goose_adds;
+    unsigned int num_goose_consumes;
+
+    /* used by the queue goosing sub system */
+    int goose_consume_cnt;
+    int goose_add_cnt;
+
+    /* needed for foreign table support */
+    int dtastripe;
+    unsigned numextents;
+    int dbs_idx; /* index of us in dbenv->dbs[] */
+
+
+    uint32_t sc_adds;
+    uint32_t sc_deletes;
+    uint32_t sc_updates;
+
+    unsigned int sqlcur_ix;  /* count how many cursors where open in ix mode */
+    unsigned int sqlcur_cur; /* count how many cursors where open in cur mode */
+
+    int csc2_schema_len; /* length of csc2_schema */
+    int odh;
+    /* csc2 schema version increased on instantaneous schemachange */
+    int schema_version;
+    int instant_schema_change;
+    int inplace_updates;
+    /* tableversion is an ever increasing counter which is incremented for
+     * every schema change (add, alter, drop, etc.) but not for fastinit */
+    unsigned long long tableversion;
+
+    unsigned sc_live_logical:1;
+    unsigned has_datacopy_ix:1; /* set to 1 if we have datacopy indexes */
+    unsigned ix_partial:1;      /* set to 1 if we have partial indexes */
+    unsigned ix_expr:1;         /* set to 1 if we have indexes on expressions */
+    unsigned ix_blob:1;         /* set to 1 if blobs are involved in indexes */
+
+    unsigned sc_abort:1;
+    unsigned sc_downgrading:1;
 
     /* boolean value set to nonzero if table rebuild is in progress */
-    bool doing_conversion : 1;
+    unsigned doing_conversion:1;
     /* boolean value set to nonzero if table upgrade is in progress */
-    bool doing_upgrade : 1;
+    unsigned doing_upgrade:1;
 
-    bool disableskipscan : 1;
-    bool do_local_replication : 1;
+    unsigned disableskipscan:1;
+    unsigned do_local_replication:1;
 } dbtable;
 
 struct dbview {
@@ -840,20 +839,15 @@ struct message_handler {
 struct dbenv {
     char *basedir;
     char *envname;
-    int dbnum;
 
     /*backend db engine handle*/
     void *bdb_attr;     /*engine attributes*/
     void *bdb_callback; /*engine callbacks */
 
     char *master; /*current master node, from callback*/
-    int gen;      /*election generation for current master node*/
+    pthread_mutex_t log_delete_counter_mutex;
 
-    int cacheszkb;
-    int cacheszkbmin;
-    int cacheszkbmax;
-    int override_cacheszkb;
-
+    int dbnum;
     /*sibling info*/
     int nsiblings;
     char *sibling_hostname[MAXSIBLINGS];
@@ -865,6 +859,13 @@ struct dbenv {
     void *handle_sibling;
     void *handle_sibling_offload;
 
+    int gen;      /*election generation for current master node*/
+
+    int cacheszkb;
+    int cacheszkbmin;
+    int cacheszkbmax;
+    int override_cacheszkb;
+
     /*replication sync mode */
     int rep_sync;
 
@@ -875,7 +876,6 @@ struct dbenv {
     /*log deletion is now sort of reference counted to allow socket
      *applications to keep it held turned off during a backup. */
     int log_delete;
-    pthread_mutex_t log_delete_counter_mutex;
     /* the log delete age is the epoch time after which log files can't
      * be deleted.  if this is <=0 then we will always delete archiveable
      * log files if log deletion is on. */
@@ -896,14 +896,17 @@ struct dbenv {
     /* bdb_environment */
     bdb_state_type *bdb_env;
 
-    /* Tables */
     int num_dbs;
+    int num_qdbs;
+    int num_lua_sfuncs;
+    int num_lua_afuncs;
+
+    /* Tables */
     dbtable **dbs;
     dbtable static_table;
     hash_t *db_hash;
 
     /* Queues */
-    int num_qdbs;
     struct dbtable **qdbs;
     hash_t *qdb_hash;
 
@@ -911,37 +914,20 @@ struct dbenv {
     hash_t *view_hash;
 
     /* Special SPs */
-    int num_lua_sfuncs;
     char **lua_sfuncs;
-    int num_lua_afuncs;
     char **lua_afuncs;
-
-    /* is sql mode enabled? */
-    int sql;
-
-    /* enable client side retrys for N seconds */
-    int retry;
-
-    int rep_always_wait;
 
     pthread_t purge_old_blkseq_tid;
     pthread_t purge_old_files_tid;
-
-    /* stupid - is the purge_old_blkseq thread running? */
-    int purge_old_blkseq_is_running;
-    int purge_old_files_is_running;
-    int stopped; /* set when exiting -- if set, drop requests */
-    int no_more_sql_connections;
 
     LISTC_T(struct sql_thread) sql_threads;
     LISTC_T(struct sql_hist) sqlhist;
 
     hash_t *long_trn_table; /* h-table of long transactions--fast lookup */
-    struct long_trn_stat long_trn_stats;
     pthread_mutex_t long_trn_mtx;
-
     /* the per database meta table */
     void *meta;
+    struct long_trn_stat long_trn_stats;
 
     /* Replication stats (these are updated locklessly so may display
      * gibberish).  We only count successful commits. */
@@ -952,13 +938,6 @@ struct dbenv {
     int total_timeouts_ms;
     int max_reptime_ms;
     int total_reptime_ms;
-
-    /* gathered at startup time and processed */
-    char **allow_lines;
-    int num_allow_lines;
-    int max_allow_lines;
-    int errstaton;
-
     sqlpool_t sqlthdpool;
 
     prefaultiopool_type prefaultiopool;
@@ -967,20 +946,57 @@ struct dbenv {
 
     prefault_stats_type prefault_stats;
 
-    int lowdiskpercent; /* % full at which disk space considered dangerous */
-
     void *dl_cache_heap;
     mspace dl_cache_mspace;
 
     LISTC_T(struct managed_component) managed_participants;
     LISTC_T(struct managed_component) managed_coordinators;
     pthread_mutex_t incoherent_lk;
+
+    timepart_views_t *timepart_views;
+    pthread_t watchdog_tid;
+    pthread_t watchdog_watcher_tid;
+
+
+    struct time_metric *service_time;
+    struct time_metric *queue_depth;
+    struct time_metric *concurrent_queries;
+    struct time_metric *connections;
+    struct time_metric *sql_queue_time;
+    struct time_metric *handle_buf_queue_time;
+    LISTC_T(struct lrlfile) lrl_files;
+    LISTC_T(struct lrl_handler) lrl_handlers;
+    LISTC_T(struct message_handler) message_handlers;
+
+    comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
+
+    /* is sql mode enabled? */
+    int sql;
+
+    /* enable client side retrys for N seconds */
+    int retry;
+
+    int rep_always_wait;
+
+
+    /* stupid - is the purge_old_blkseq thread running? */
+    int purge_old_blkseq_is_running;
+    int purge_old_files_is_running;
+    int stopped; /* set when exiting -- if set, drop requests */
+    int no_more_sql_connections;
+
+
+    /* gathered at startup time and processed */
+    int num_allow_lines;
+    int max_allow_lines;
+    int errstaton;
+    char **allow_lines;
+
+
+    int lowdiskpercent; /* % full at which disk space considered dangerous */
     int num_incoherent;
     int fallen_offline;
     int manager_dbnum;
-
-    pthread_t watchdog_tid;
-    pthread_t watchdog_watcher_tid;
 
     unsigned txns_committed;
     unsigned txns_aborted;
@@ -988,22 +1004,10 @@ struct dbenv {
     unsigned prev_txns_aborted;
     int wait_for_N_nodes;
 
-    LISTC_T(struct lrlfile) lrl_files;
 
     int incoh_notcoherent;
-    uint32_t incoh_file, incoh_offset;
-    timepart_views_t *timepart_views;
-
-    struct time_metric* service_time;
-    struct time_metric* queue_depth;
-    struct time_metric* concurrent_queries;
-    struct time_metric* connections;
-    struct time_metric *sql_queue_time;
-    struct time_metric *handle_buf_queue_time;
-    LISTC_T(struct lrl_handler) lrl_handlers;
-    LISTC_T(struct message_handler) message_handlers;
-
-    comdb2_queue_consumer_t *queue_consumer_handlers[CONSUMER_TYPE_LAST];
+    uint32_t incoh_file;
+    uint32_t incoh_offset;
 };
 
 extern struct dbenv *thedb;
@@ -1278,10 +1282,6 @@ struct osql_sess {
     hash_t *selectv_genids;
     unsigned long long last_genid; // remember updrec/insrec genid for qblobs
     unsigned long long ins_seq; // remember key seq for inserts into ins tmptbl
-    uint16_t tbl_idx;
-    bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
-    bool is_reorder_on : 1;
-    bool selectv_writelock_on_update : 1;
 
     /* from sorese */
     const char *host; /* sql machine, 0 is local */
@@ -1290,7 +1290,11 @@ struct osql_sess {
     int rcout;        /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool is_delayed;
+    uint16_t tbl_idx;
+    unsigned last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
+    unsigned is_reorder_on : 1;
+    unsigned selectv_writelock_on_update : 1;
+    unsigned is_delayed : 1;
 };
 typedef struct osql_sess osql_sess_t;
 
@@ -1331,6 +1335,7 @@ struct ireq {
     uint8_t *p_buf_out_start;     /* pointer to start of output buf */
     const uint8_t *p_buf_out_end; /* pointer to just past end of output buf */
     unsigned long long fwd_tag_rqid;
+    snap_uid_t snap_info;
     int frompid;
     int debug;
     int opcode;
@@ -1341,18 +1346,22 @@ struct ireq {
     /************/
     /* REGION 2 */
     /************/
+    union {
     uint8_t region2; /* used for offsetof */
     char corigin[80];
+    };
     char debug_buf[256];
     char tzname[DB_MAX_TZNAMEDB];
     char sqlhistory[1024];
-    snap_uid_t snap_info;
 
     /************/
     /* REGION 3 */
     /************/
+    union {
     uint8_t region3; /* used for offsetof */
-
+    uint32_t sc_host;
+    };
+    uint64_t sc_seed;
     uint64_t startus; /* thread handling; start time stamp */
     /* for waking up socket thread. */
     void *request_data;
@@ -1417,8 +1426,6 @@ struct ireq {
     tran_type *sc_tran;
     struct schema_change_type *sc_pending;
     double cost;
-    uint64_t sc_seed;
-    uint32_t sc_host;
 
     uint64_t txnsize;
     unsigned long long last_genid;
@@ -1448,25 +1455,25 @@ struct ireq {
     int sqlhistory_len;
     int tranddl;
 
-    /* Client endian flags. */
-    uint8_t client_endian;
-
-    bool have_client_endian : 1;
-    bool is_fake : 1;
-    bool is_dumpresponse : 1;
-    bool is_fromsocket : 1;
-    bool is_socketrequest : 1;
-    bool is_block2positionmode : 1;
-
-    bool errstrused : 1;
-    bool vfy_genid_track : 1;
-    bool have_blkseq : 1;
-
-    bool sc_locked : 1;
-    bool have_snap_info : 1;
-    bool sc_should_abort : 1;
-
     int written_row_count;
+
+    /* Client endian flags. */
+    unsigned client_endian:2; // currently can be 1|2
+
+    unsigned have_client_endian:1;
+    unsigned is_fake:1;
+    unsigned is_dumpresponse:1;
+    unsigned is_fromsocket:1;
+    unsigned is_socketrequest:1;
+    unsigned is_block2positionmode:1;
+
+    unsigned errstrused:1;
+    unsigned vfy_genid_track:1;
+    unsigned have_blkseq:1;
+
+    unsigned sc_locked:1;
+    unsigned have_snap_info:1;
+    unsigned sc_should_abort:1;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 

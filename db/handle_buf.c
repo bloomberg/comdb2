@@ -839,8 +839,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         iq->request_data = data_hndl;
     }
 
-    iq->sb = NULL;
-
     if (qtype == REQ_SOCKET || qtype == REQ_SOCKREQUEST) {
         iq->sb = sb;
         iq->is_fromsocket = 1;

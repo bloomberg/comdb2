@@ -130,10 +130,10 @@ typedef enum convert_errcode {
 } convert_errcode;
 
 struct convert_failure {
-    convert_errcode reason; /* the reason conversion failed */
     const struct schema *source_schema;
     int source_field_idx; /* index of source tag that we failed to convert stuff
                              from */
+    convert_errcode reason; /* the reason conversion failed */
     const struct schema *target_schema;
     int target_field_idx; /* index of target tag that we failed to convert stuff
                              to */

@@ -94,7 +94,6 @@
 #include "fdb_bend_sql.h"
 #include "fdb_access.h"
 #include "sqllog.h"
-#include <stdbool.h>
 #include <quantize.h>
 #include <str0.h>
 
@@ -1378,7 +1377,7 @@ static int retrieve_snapshot_info(char *sql, char *tzname)
     return 0;
 }
 
-static inline void set_asof_snapshot(struct sqlclntstate *clnt, int val,
+static inline void set_asof_snapshot(struct sqlclntstate *clnt, uint8_t val,
                                      const char *func, int line)
 {
     clnt->is_asof_snapshot = val;
@@ -1408,7 +1407,7 @@ static int snapshot_as_of(struct sqlclntstate *clnt)
     return 0;
 }
 
-void set_sent_data_to_client(struct sqlclntstate *clnt, int val,
+void set_sent_data_to_client(struct sqlclntstate *clnt, unsigned val,
                              const char *func, int line)
 {
     clnt->sent_data_to_client = val;
@@ -5128,7 +5127,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 
     sqlcpy = strdup(msg);
     assert(clnt->dbtran.pStmt == NULL);
-    uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
+    uint32_t flags = (clnt->isadmin ? THDPOOL_FORCE_DISPATCH : 0);
     if (gbl_thdpool_queue_only) {
         flags |= THDPOOL_QUEUE_ONLY;
     }
@@ -5276,7 +5275,7 @@ static int verify_dispatch_sql_query(
 {
     memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
 
-    if (!clnt->admin && gbl_prioritize_queries && (gbl_ruleset != NULL)) {
+    if (!clnt->isadmin && gbl_prioritize_queries && (gbl_ruleset != NULL)) {
         if (gbl_fingerprint_queries &&
             comdb2_ruleset_fingerprints_allowed()) {
             /* IGNORED */
@@ -5570,11 +5569,11 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->prepare_only = 0;
     clnt->is_readonly = 0;
-    clnt->admin = 0;
+    clnt->isadmin = 0;
 
     /* reset page-order. */
-    clnt->pageordertablescan =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PAGE_ORDER_TABLESCAN);
+    clnt->pageordertablescan = bdb_attr_get(thedb->bdb_attr,
+                                            BDB_ATTR_PAGE_ORDER_TABLESCAN);
 
     /* let's reset osql structure as well */
     osql_clean_sqlclntstate(clnt);

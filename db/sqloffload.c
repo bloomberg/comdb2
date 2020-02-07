@@ -415,11 +415,11 @@ static int rese_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
 
 goback:
 
-    /* if this is read committed and we just got a verify error,
-       don't close the shadow tables since this will get retried */
     if (clnt->osql.xerr.errval == ERR_VERIFY &&
         clnt->dbtran.mode == TRANLEVEL_RECOM &&
         clnt->osql.replay != OSQL_RETRY_LAST) {
+        /* if this is read committed and we just got a verify error,
+           don't close the shadow tables since this will get retried */
     } else {
         /* CLOSE the temporary tables */
         osql_shadtbl_close(clnt);

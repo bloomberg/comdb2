@@ -190,10 +190,10 @@ typedef struct osqlstate {
                             (i.e. already translated */
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
-    bool is_reorder_on : 1;
+    unsigned is_reorder_on:1;
 
     /* set to 1 if we have already called osql_sock_start in socksql mode */
-    bool sock_started : 1;
+    unsigned sock_started:1;
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -572,6 +572,7 @@ struct sql_hist_cost {
 
 /* Client specific sql state */
 struct sqlclntstate {
+    LINKC_T(struct sqlclntstate) lnk;
     uint64_t seqNo;            /* Monotonically increasing sequence number
                                 * assigned during dispatch.  This value is
                                 * not allowed to be zero.  Further, it must
@@ -605,7 +606,6 @@ struct sqlclntstate {
                                   for races betweem sql thread created and
                                   other readers, like appsock */
     SBUF2 *sb;
-    int must_close_sb;
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
@@ -615,196 +615,119 @@ struct sqlclntstate {
     char tzname[CDB2_MAX_TZNAME];
     int dtprec;
     struct conninfo conninfo;
+    int query_rc;
 
     /* For SQL engine dispatch. */
-    int inited_mutex;
     pthread_mutex_t wait_mutex;
     pthread_cond_t wait_cond;
     pthread_mutex_t write_lock;
     pthread_cond_t write_cond;
-    int query_rc;
+    struct thr_handle *thr_self;
+    /* read-set validation */
+    CurRangeArr *arr;
+    CurRangeArr *selectv_arr;
+    char *prev_cost_string;
+    struct sql_hist_cost spcost;
 
     struct rawnodestats *rawnodestats;
+    struct client_query_stats *query_stats;
+
+    SBUF2 *dbglog;
+    unsigned long long dbglog_cookie;
+    unsigned long long master_dbglog_cookie;
+
+
+    int64_t nsteps;
+    struct query_effects effects;
+    struct query_effects log_effects;
+    struct query_limits limits;
+    /* remote settings, used in run_sql */
+    sqlclntstate_fdb_t fdb_state;
+    uint64_t enque_timeus;
+    uint64_t deque_timeus;
+    void *schema_mems;
+    int *hinted_cursors;
+    char *origin;
+    char *saved_errstr;  /* if had_errors, save the error string */
+    char *sqlite_errstr; /* sqlite error string, static, never allocated */
+
+    /* partial indexes */
+    unsigned long long ins_keys;
+    unsigned long long del_keys;
+
+    /* indexes on expressions */
+    uint8_t **idxInsert;
+    uint8_t **idxDelete;
+
+    hash_t *ddl_tables;
+    hash_t *dml_tables;
+    hash_t *ddl_contexts;
+
+    char *argv0;
+    char *stack;
+
 
     osqlstate_t osql;                /* offload sql state is kept here */
-    enum ctrl_sqleng ctrl_sqlengine; /* use to mark a begin/end out of state,
-                                        see enum ctrl_sqleng
-                                     */
-    int intrans; /* THIS FIELD IS USED BY sqlglue.c TO RECORD THE ENTRANCE (=1)
-                   AND THE EXIT(=0) in a sql transaction marked by a succesfull
-                   call to BeginTrans, and Commit/Rollback respectively
-                   THIS DOES NOT MATCH THE CLIENT TRANSACTION EXCERPT FOR
-                   SINGULAR STATEMENTS;
-                   STATE OF A CLIENT TRANSACTION IS KEPT HERE
-                 */
     struct convert_failure fail_reason; /* detailed error */
     int early_retry;
 
     /* analyze variables */
     int n_cmp_idx;
     sampled_idx_t *sampled_idx_tbl;
-
-    int debug_sqlclntstate;
-    int last_check_time;
-    int query_timeout;
-    int stop_this_statement;
-    int statement_timedout;
     struct conninfo conn;
-
-    uint8_t heartbeat;
-    uint8_t ready_for_heartbeats;
-    uint8_t no_more_heartbeats;
-    uint8_t done;
     unsigned long long sqltick, sqltick_last_seen;
-
-    int using_case_insensitive_like;
-    int deadlock_recovered;
 
     /* lua stored procedure */
     struct stored_proc *sp;
-    int exec_lua_thread;
-    int want_stored_procedure_trace;
-    int want_stored_procedure_debug;
-    char spname[MAX_SPNAME + 1];
     struct spversion_t spversion;
 
+    int debug_sqlclntstate; // set to pthread_self()
+    int last_check_time;
+    int query_timeout;
+    int statement_timedout;
+
+    enum ctrl_sqleng ctrl_sqlengine; /* use to mark a begin/end out of state,
+                                        see enum ctrl_sqleng */
     unsigned int bdb_osql_trak; /* 32 debug bits interpreted by bdb for your
                                    "set debug bdb"*/
-    struct client_query_stats *query_stats;
-
-    SBUF2 *dbglog;
     int queryid;
-    unsigned long long dbglog_cookie;
-    unsigned long long master_dbglog_cookie;
-
-    int have_query_limits;
-    struct query_limits limits;
-
-    struct query_effects effects;
-    struct query_effects log_effects;
-    int64_t nsteps;
-
-    int have_user;
-    char user[MAX_USERNAME_LEN];
-    int is_x509_user; /* True if the user is retrieved
-                         from a client certificate. */
-
-    int have_password;
-    char password[MAX_PASSWORD_LEN];
-
-    int authgen;
-
-    int no_transaction;
-
-    int have_extended_tm;
-    int extended_tm;
-
-    char *origin;
-    char origin_space[255];
-    uint8_t dirty[256]; /* We can track upto 2048 tables */
-
-    int had_errors; /* to remain compatible with blocksql: if a user starts a
-                       transaction, we
-                       need to pend the first error until a commit is issued.
-                       any statements
-                       past the first error are ignored. */
-    int in_client_trans; /* clnt is in a client transaction (ie. client ran
-                            "begin" but not yet commit or rollback */
-    char *saved_errstr;  /* if had_errors, save the error string */
+    arch_tid appsock_id;
     int saved_rc;        /* if had_errors, save the return code */
-    char *sqlite_errstr; /* sqlite error string, static, never allocated */
+
+    int deadlock_recovered;
+    int authgen;
 
     int prep_rc;    /* last value returned from sqlite3_prepare_v3() */
     int step_rc;    /* last value returned from sqlite3_step() */
-    int isselect;   /* track if the query is a select query.*/
-    int isUnlocked;
     int writeTransaction;
-    int prepare_only;
     int verify_retries; /* how many verify retries we've borne */
-    int verifyretry_off;
-    int pageordertablescan;
     int snapshot; /* snapshot epoch placeholder */
     int snapshot_file;
     int snapshot_offset;
-    int is_hasql_retry;
-    int is_readonly;
-    int is_expert;
-    int added_to_hist;
 
-    struct thr_handle *thr_self;
-    arch_tid appsock_id;
-    int holding_pagelocks_flag; /* Rowlocks optimization */
-
-    int *hinted_cursors;
     int hinted_cursors_alloc;
     int hinted_cursors_used;
-
-    /* remote settings, used in run_sql */
-    sqlclntstate_fdb_t fdb_state;
-
+    int holding_pagelocks_flag; /* Rowlocks optimization */
     int nrows;
-    struct sql_hist_cost spcost;
 
     int planner_effort;
     int osql_max_trans;
     int group_concat_mem_limit;
-    /* read-set validation */
-    CurRangeArr *arr;
-    CurRangeArr *selectv_arr;
-    char *prev_cost_string;
 
-    int num_retry;
     unsigned int file;
     unsigned int offset;
-
-    uint64_t enque_timeus;
-    uint64_t deque_timeus;
 
     /* due to some sqlite vagaries, cursor is closed
        and I lose the side row; cache it here! */
     unsigned long long keyDdl;
-    int nDataDdl;
     char *dataDdl;
+    int nDataDdl;
+    int num_retry;
 
-    /* partial indexes */
-    unsigned long long ins_keys;
-    unsigned long long del_keys;
-    int has_sqliterow;
-    int verify_indexes;
-    void *schema_mems;
-
-    /* indexes on expressions */
-    uint8_t **idxInsert;
-    uint8_t **idxDelete;
-
-    int8_t wrong_db;
-    int8_t is_lua_sql_thread;
-
-    int8_t high_availability_flag;
-    int8_t hasql_on;
-
-    int8_t has_recording;
-    int8_t is_retry;
-    int8_t get_cost;
-    int8_t is_explain;
-    uint8_t is_analyze;
-    uint8_t is_overlapping;
     uint32_t init_gen;
-    int8_t gen_changed;
-    uint8_t skip_peer_chk;
-    uint8_t queue_me;
-    uint8_t fail_dispatch;
-
     int ncontext;
     char **context;
-
-    hash_t *ddl_tables;
-    hash_t *dml_tables;
-    hash_t *ddl_contexts;
-
-    int statement_query_effects;
-
-    int verify_remote_schemas;
+    char* origin_host;
 
     /* sharding scheme */
     dohsql_t *conns;
@@ -812,17 +735,8 @@ struct sqlclntstate {
     int conns_idx;
     int shard_slice;
 
-    char *argv0;
-    char *stack;
-
-    int translevel_changed;
-    int admin;
-
     uint32_t start_gen;
-    int emitting_flag;
-    int need_recover_deadlock;
     int recover_deadlock_rcode;
-    int heartbeat_lock;
 #ifdef INSTRUMENT_RECOVER_DEADLOCK_FAILURE
     const char *recover_deadlock_func;
     int recover_deadlock_line;
@@ -830,8 +744,8 @@ struct sqlclntstate {
     char recover_deadlock_stack[RECOVER_DEADLOCK_MAX_STACK];
 #endif
     struct sqlthdstate *thd;
-    int had_lease_at_begin;
 
+    pthread_mutex_t state_lk;
     int64_t connid;
     int64_t total_sql;
     int64_t sql_since_reset;
@@ -839,17 +753,85 @@ struct sqlclntstate {
     time_t connect_time;
     time_t last_reset_time;
     int state_start_time;
-    enum connection_state state;
-    pthread_mutex_t state_lk;
-    /* The node doesn't change.  The pid does as connections get donated.  We
-     * latch both values here since conninfo is lost when connections are reset. */
     int last_pid;
-    char* origin_host;
-    int8_t sent_data_to_client;
-    int8_t is_asof_snapshot;
-    LINKC_T(struct sqlclntstate) lnk;
     int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
                               desired */
+    enum connection_state state;
+    /* The node doesn't change.  The pid does as connections get donated.  We
+     * latch both values here since conninfo is lost when connections are reset. */
+    char password[MAX_PASSWORD_LEN];
+    /* UNUSED? char origin_space[255]; */
+    uint8_t dirty[256]; /* We can track upto 2048 tables */
+    char spname[MAX_SPNAME + 1];
+    char user[MAX_USERNAME_LEN];
+    char origin_space[255];
+
+    int8_t has_recording;
+    unsigned is_retry:2; // 0|1|-1
+    unsigned is_explain:2; // 0|1|2
+    unsigned verify_remote_schemas:2; // 0|1|2
+
+    unsigned heartbeat_lock:1;
+    unsigned heartbeat:1;
+    unsigned ready_for_heartbeats:1;
+    unsigned no_more_heartbeats:1;
+    unsigned done:1;
+    unsigned using_case_insensitive_like:1; // looks like it is never set
+    unsigned want_stored_procedure_trace:1; // sp related
+    unsigned want_stored_procedure_debug:1; // sp related
+
+    unsigned must_close_sb:1;
+    /* THIS FIELD IS USED BY sqlglue.c TO RECORD THE ENTRANCE (=1) AND THE
+     * EXIT(=0) in a sql transaction marked by a succesfull call to BeginTrans,
+     * and Commit/Rollback respectively THIS DOES NOT MATCH THE CLIENT
+     * TRANSACTION EXCERPT FOR SINGULAR STATEMENTS; STATE OF A CLIENT
+     * TRANSACTION IS KEPT HERE */
+    unsigned intrans:1; 
+
+    unsigned stop_this_statement:1;
+    unsigned exec_lua_thread:1;
+    unsigned have_user:1;
+    unsigned have_password:1;
+    unsigned is_x509_user:1; /* True if the user is retrieved
+                               from a client certificate. */
+    /* to remain compatible with blocksql: if a user starts a transaction, we
+     * need to pend the first error until a commit is issued.  any statements
+     * past the first error are ignored. */
+    unsigned had_errors:1;
+    unsigned no_transaction:1;
+    unsigned in_client_trans:1; /* clnt is in a client transaction (ie. client ran
+                            "begin" but not yet commit or rollback */
+    unsigned pageordertablescan:1;
+    unsigned verifyretry_off:1;
+    unsigned prepare_only:1;
+    unsigned isUnlocked:1;
+    unsigned isselect:1;   /* track if the query is a select query.*/
+    unsigned added_to_hist:1;
+    unsigned is_readonly:1;
+    unsigned is_hasql_retry:1;
+    unsigned statement_query_effects:1;
+    unsigned isadmin:1;
+    unsigned is_expert:1;
+    unsigned translevel_changed:1;
+    unsigned need_recover_deadlock:1;
+    unsigned emitting_flag:1;
+    unsigned verify_indexes:1;
+    unsigned has_sqliterow:1;
+    unsigned get_cost:1;
+    unsigned high_availability_flag:1;
+    unsigned hasql_on:1;
+    unsigned is_analyze:1;
+    unsigned is_overlapping:1;
+    unsigned gen_changed:1;
+    unsigned skip_peer_chk:1;
+    unsigned queue_me:1;
+    unsigned fail_dispatch:1;
+    unsigned sent_data_to_client:1;
+    unsigned is_asof_snapshot:1;
+    unsigned had_lease_at_begin:1;
+    unsigned have_extended_tm:1; // used in bbplugins
+    unsigned extended_tm:1; // used in bbplugins
+    unsigned wrong_db:1; // used in bbplugins
 };
 
 /* Query stats. */
@@ -874,17 +856,17 @@ struct temptable {
 };
 
 struct Btree {
-    /* for debugging */
-    int btreeid;
     struct reqlogger *reqlogger;
 
     bdb_temp_hash *genid_hash; /* rrn hash for non dtastripe support */
 
     LISTC_T(BtCursor) cursors;
+    /* for debugging */
+    int btreeid;
 
-    unsigned is_temporary : 1;
-    unsigned is_hashtable : 1;
-    unsigned is_remote : 1;
+    unsigned is_temporary:1;
+    unsigned is_hashtable:1;
+    unsigned is_remote:1;
 
     hash_t *temp_tables;
     int num_temp_tables;
@@ -917,10 +899,7 @@ struct BtCursor {
     Btree *bt;
     struct dbtable *db;
 
-    int rootpage;
-
     /* various buffers: */
-    uint8_t writeTransaction; /* save tran type during cursor open */
     void *ondisk_buf;         /* ondisk data */
     void *ondisk_key; /* ondisk key. this is effectively also the pointer into
                          the index */
@@ -937,8 +916,10 @@ struct BtCursor {
     /* these are sqlite format buffers */
     void *dtabuf;
     int dtabuflen;
-    void *keybuf;
     int keybuflen;
+    void *keybuf;
+
+    int rootpage;
 
     int dtabuf_alloc;
     int keybuf_alloc;
@@ -950,12 +931,11 @@ struct BtCursor {
 
     int cursorid; /* for debugging */
     struct reqlogger *reqlogger;
+    unsigned long long genid;
+    struct KeyInfo *pKeyInfo;
     int rrn; /* record number */
     char sqlrrn[5];
     int sqlrrnlen;
-    unsigned long long genid;
-
-    struct KeyInfo *pKeyInfo;
 
     /* special case for master table: the table is fake,
        just keep track of which entry we are pointing to */
@@ -1018,9 +998,11 @@ struct BtCursor {
     uint8_t is_btree_count;
 
     uint8_t on_list;
-
+    uint8_t writeTransaction; /* save tran type during cursor open */
+    unsigned char is_equality; /* sqlite will "hint" back if a SeekGE is
+                                  actually a SeekEQ */
+    uint8_t have_blob_descriptor;
     blob_status_t blob_descriptor;
-    int have_blob_descriptor;
 
     unsigned long long last_cached_genid;
 
@@ -1029,9 +1011,6 @@ struct BtCursor {
 
     /* cursor access range */
     CurRange *range;
-    unsigned char is_equality; /* sqlite will "hint" back if a SeekGE is
-                                  actually a SeekEQ */
-
     unsigned long long col_mask; /* tracking first 63 columns, if bit is set,
                                     column is needed */
 

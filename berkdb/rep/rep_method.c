@@ -273,9 +273,7 @@ __rep_start(dbenv, dbt, gen, flags)
 	 * changing roles.  If we are not changing roles, then we
 	 * only need to coordinate with msg_th.
 	 */
-	if (role_chg) {
-	}
-	else {
+	if (!role_chg) {
 		pid_t pid;
 		char cmd[32];
 
