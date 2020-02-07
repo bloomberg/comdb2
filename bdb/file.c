@@ -7075,7 +7075,7 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
     form_queuedb_name(bdb_state, NULL, 0, filename, sizeof(filename));
 
     char fullpath[PATH_MAX];
-    snprintf(fullpath, sizeof(fullpath), "%s/%s", bdb_state->dir, filename);
+    bdb_trans(filename, fullpath);
 
     struct stat st;
     int rc = stat(fullpath, &st);
