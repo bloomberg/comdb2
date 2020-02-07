@@ -67,6 +67,7 @@ static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
 static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t, u_int32_t));
 
 extern int gbl_is_physical_replicant;
+extern int gbl_inmem_repdb;
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
@@ -571,6 +572,9 @@ __rep_client_dbinit(dbenv, startup)
 		namesp = NULL;
 	}
 
+	if(gbl_inmem_repdb)
+		goto done;
+
 	if ((ret = db_create(&dbp, dbenv, DB_REP_CREATE)) != 0)
 		goto err;
 	if ((ret = __bam_set_bt_compare(dbp, __rep_bt_cmp)) != 0)
@@ -596,8 +600,7 @@ __rep_client_dbinit(dbenv, startup)
 	sprintf(repdbname, "%s.%ld.%d", REPDBBASE, time(NULL),
 	    db_rep->repdbcnt++);
 
-    extern int gbl_inmem_repdb;
-	if (!gbl_inmem_repdb && (ret = __db_open(dbp, NULL,
+	if ((ret = __db_open(dbp, NULL,
 		    repdbname, NULL, DB_BTREE, flags, 0, PGNO_BASE_MD)) != 0)
 		 goto err;
 
@@ -615,6 +618,7 @@ err:		if (dbp != NULL &&
 			__os_free(dbenv, repdbname);
 	}
 
+done:
 	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
 	return (ret);
