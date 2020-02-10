@@ -9,8 +9,6 @@ local function main()
 	if event.new ~= nil then
 		newi = tostring(event.new.i)
 	end
-	db:exec("SELECT comdb2_test_log(\'"
-		.. event.type .. ", " .. oldi .. ", " .. newi ..
-	"\n\')"):emit()
+	db:print(event.type .. ", " .. oldi .. ", " .. newi .. "\n")
 	consumer:consume()
 end
