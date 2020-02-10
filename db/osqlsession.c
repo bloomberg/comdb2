@@ -208,9 +208,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     bool is_msg_done = false;
     struct errstat *perr;
 
-    is_msg_done = osql_comm_is_done(NULL, type, data, datalen,
-                                    rqid == OSQL_RQID_USE_UUID, &perr) != 0;
-
     /* get the session; dispatched sessions are ignored */
     osql_sess_t *sess = osql_repository_get(rqid, uuid);
     if (!sess) {
@@ -219,6 +216,9 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         *found = 0;
         return 0;
     }
+
+    is_msg_done = osql_comm_is_done(sess, type, data, datalen,
+                                    rqid == OSQL_RQID_USE_UUID, &perr) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
