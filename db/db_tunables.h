@@ -812,6 +812,11 @@ REGISTER_TUNABLE("num_record_converts",
                  "transaction. (Default: 100)",
                  TUNABLE_INTEGER, &gbl_num_record_converts, READONLY | NOZERO,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "old_column_names",
+    "Generate and use column names from sqlite version 3.8.9 (Default: on)",
+    TUNABLE_BOOLEAN, &gbl_old_column_names, EXPERIMENTAL | INTERNAL, NULL,
+    NULL, NULL, NULL);
 /* Backwards compatibility: This tunable DOES expect an argument. */
 REGISTER_TUNABLE("oldrangexlim", NULL, TUNABLE_BOOLEAN,
                  &gbl_honor_rangextunit_for_old_apis, READONLY, NULL, NULL,

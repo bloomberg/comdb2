@@ -500,7 +500,7 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        const char *name = sqlite3_column_name(stmt, i);
+        const char *name = comdb2_column_name(clnt, stmt, i);
         size_t len = strlen(name) + 1;
         ADJUST_LONG_COL_NAME(name, len);
         cols[i].value.data = (uint8_t *)name;
@@ -784,7 +784,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                 char *e =
                     "failed to convert sqlite to client datetime for field";
                 errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s \"%s\"", e,
-                                   sqlite3_column_name(stmt, i));
+                                   comdb2_column_name(clnt, stmt, i));
                 return -1;
             }
             if (flip) {
