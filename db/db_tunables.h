@@ -1901,10 +1901,4 @@ REGISTER_TUNABLE("queuedb_read_locks",
                  "Grab table read locks when dealing with a queuedb from Lua."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_queuedb_read_locks,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
-REGISTER_TUNABLE("test_log_file",
-                 "Dedicated log file for use by the test suite only.  "
-                 "(Default: off)", TUNABLE_STRING, &gbl_test_log_file,
-                 EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL,
-                 test_log_file_update, NULL);
 #endif /* _DB_TUNABLES_H */

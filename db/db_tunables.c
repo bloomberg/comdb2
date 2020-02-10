@@ -293,9 +293,6 @@ extern int max_replication_trans_retries;
 /* net/net.c */
 extern int explicit_flush_trace;
 
-/* bdb/file.c */
-extern char *bdb_trans(const char infile[], char outfile[]);
-
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
@@ -871,16 +868,6 @@ static int page_order_table_scan_update(void *context, void *value)
                  gbl_page_order_table_scan);
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
-    return 0;
-}
-
-static int test_log_file_update(void *context, void *value)
-{
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
-    char newValue[PATH_MAX];
-    bdb_trans((char *)value, newValue);
-    free(*(char **)tunable->var);
-    *(char **)tunable->var = strdup(newValue);
     return 0;
 }
 
