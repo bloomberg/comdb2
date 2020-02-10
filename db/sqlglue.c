@@ -1960,19 +1960,6 @@ char *sqltype(struct field *f, char *buf, int len)
     return NULL;
 }
 
-char comdb2_maxkey[MAXKEYLEN];
-
-/* Called once from comdb2. Do all static intialization here */
-void sqlinit(void)
-{
-    memset(comdb2_maxkey, 0xff, sizeof(comdb2_maxkey));
-    Pthread_mutex_init(&gbl_sql_lock, NULL);
-    sql_dlmalloc_init();
-    /* initialize global structures in sqlite */
-    if (sqlite3_initialize())
-        abort();
-}
-
 /* Calculate space needed to store a sqlite version of a record for
    a given schema */
 int schema_var_size(struct schema *sc)
@@ -3071,8 +3058,6 @@ static int sqlite_unpacked_to_ondisk(BtCursor *pCur, UnpackedRecord *rec,
 
     return clen;
 }
-
-extern char comdb2_maxkey[MAXKEYLEN];
 
 void xdump(void *b, int len)
 {

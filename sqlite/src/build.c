@@ -736,12 +736,9 @@ Table *sqlite3LocateTableItem(
         return 0;
     }
     return sqlite3LocateTable(pParse, flags, tblName, zDb);
-  }else{
-    return sqlite3LocateTable(pParse, flags, p->zName, zDb);
   }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 }
 
 /*
