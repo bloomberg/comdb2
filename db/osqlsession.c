@@ -400,10 +400,10 @@ int handle_buf_sorese(osql_sess_t *psess)
 
     psess->endus = comdb2_time_epochus();
     bzero(&psess->xerr, sizeof(psess->xerr));
+    Pthread_mutex_unlock(&sess->mtx);
     rc = handle_buf_main(thedb, psess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
                          NULL, REQ_OFFLOAD, NULL, 0, 0);
 
-    Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
 }
