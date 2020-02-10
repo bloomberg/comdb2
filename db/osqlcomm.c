@@ -7223,7 +7223,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int sqllenret = 0;
     int debug = 0;
     uuid_t uuid;
-    const char *errmsg;
+    const char *errmsg = "";
 
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {

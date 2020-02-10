@@ -113,7 +113,7 @@ int osql_sess_addclient(osql_sess_t *psess)
     if (sess->dispatched) {
         rc = -1;
     } else
-        ATOMIC_ADD32(sess->clients, 1);
+        sess->clients += 1;
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
@@ -140,11 +140,10 @@ int osql_sess_addclient(osql_sess_t *psess)
 int osql_sess_remclient(osql_sess_t *psess, bool bplog_complete)
 {
     sess_impl_t *sess = psess->impl;
-    int loc_clients = ATOMIC_ADD32(sess->clients, -1);
 
     Pthread_mutex_lock(&sess->mtx);
 
-    assert(loc_clients >= 0);
+    sess->clients -= 1;
 
     if (sess->terminate) {
         Pthread_mutex_unlock(&sess->mtx);
@@ -403,7 +402,6 @@ int handle_buf_sorese(osql_sess_t *psess)
     Pthread_mutex_unlock(&sess->mtx);
     rc = handle_buf_main(thedb, psess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
                          NULL, REQ_OFFLOAD, NULL, 0, 0);
-
 
     return rc;
 }
