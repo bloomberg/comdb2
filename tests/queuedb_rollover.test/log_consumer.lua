@@ -9,6 +9,6 @@ local function main()
 	if event.new ~= nil then
 		newi = tostring(event.new.i)
 	end
-	db:print(event.type .. ", " .. oldi .. ", " .. newi .. "\n")
+	print(event.type .. ", " .. oldi .. ", " .. newi .. "\n")
 	consumer:consume()
 end
