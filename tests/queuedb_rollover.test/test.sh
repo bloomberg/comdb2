@@ -53,7 +53,7 @@ for testcase in $files ; do
     else
 
         # Be verbose
-        cmd="cdb2sql --host $SP_HOST -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
+        cmd="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default - < $testcase > $output 2>&1"
         echo $cmd
 
         # run command
