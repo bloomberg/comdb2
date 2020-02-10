@@ -81,7 +81,6 @@ extern int gbl_lua_version;
 extern int gbl_break_lua;
 extern int gbl_notimeouts;
 extern int gbl_epoch_time;
-extern int gbl_allow_lua_abort;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int comdb2_sql_tick();
@@ -3038,13 +3037,6 @@ static void remove_tran_funcs(Lua L)
     lua_pop(L, 1);
 }
 
-static void remove_abort(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "abort");
-}
-
 static void remove_create_thread(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
@@ -4002,22 +3994,6 @@ static int db_table_to_json(Lua L)
     return 2;
 }
 
-static int db_abort_int(Lua L)
-{
-    const char *msg = lua_tostring(L, -1);
-    if (msg != NULL) logmsg(LOGMSG_FATAL, "%s", msg);
-    bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 1);
-    lua_pushnil(L);
-    return 0;
-}
-
-static int db_abort(Lua L)
-{
-    luaL_checkudata(L, 1, dbtypes.db);
-    lua_remove(L, 1);
-    return db_abort_int(L);
-}
-
 static int db_emit_int(Lua L)
 {
     if (luabb_istype(L, 1, DBTYPES_DBTABLE)) {
@@ -4719,7 +4695,6 @@ static int db_bootstrap(Lua L)
 }
 
 static const luaL_Reg db_funcs[] = {
-    {"abort", db_abort},
     {"exec", db_exec},
     {"prepare", db_prepare},
     {"table", db_table},
@@ -4920,9 +4895,6 @@ static int create_sp_int(SP sp, char **err)
             return -1;
         }
     }
-
-    if (!gbl_allow_lua_abort)
-        remove_abort(lua);
 
     if(!gbl_allow_lua_dynamic_libs)
         disable_global_variables(lua);

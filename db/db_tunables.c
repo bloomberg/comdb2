@@ -39,7 +39,6 @@
 
 extern int gbl_queuedb_read_locks;
 extern int gbl_waitalive_iterations;
-extern int gbl_allow_lua_abort;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
@@ -254,7 +253,6 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
-extern char *gbl_test_log_file;
 extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;

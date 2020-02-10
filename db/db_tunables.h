@@ -27,11 +27,6 @@ REGISTER_TUNABLE("abort_on_in_use_rqid", NULL, TUNABLE_BOOLEAN,
 REGISTER_TUNABLE("accept_osql_mismatch", NULL, TUNABLE_BOOLEAN,
                  &gbl_reject_osql_mismatch, READONLY | INVERSE_VALUE | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("allow_lua_abort", "Enable to allow stored "
-                                    "procedures to cause the database "
-                                    "process to abort. (Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_allow_lua_abort, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
 REGISTER_TUNABLE("allow_lua_print", "Enable to allow stored "
                                     "procedures to print trace on "
                                     "DB's stdout. (Default: off)",
