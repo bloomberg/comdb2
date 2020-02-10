@@ -4436,7 +4436,7 @@ static int db_print(Lua lua)
     if (trace == NULL) return 0;
 
     struct sqlclntstate *clnt = sp->clnt;
-    int rc  = write_response(clnt, RESPONSE_DEBUG, (void*)trace, 0);
+    int rc  = write_response(clnt, RESPONSE_TRACE, (void*)trace, 0);
     if (rc)
         return luabb_error(lua, sp, "%s: couldn't send results back", __func__);
 
