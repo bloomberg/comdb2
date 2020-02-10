@@ -2415,17 +2415,6 @@ static int is_with_statement(char *sql)
     return 0;
 }
 
-static int is_select_or_with_stmt(char *sql)
-{
-    if (!sql)
-        return 0;
-    sql = skipws(sql);
-    if ((strncasecmp(sql, "select", 6) == 0) ||
-        (strncasecmp(sql, "with", 4) == 0))
-        return 1;
-    return 0;
-}
-
 static void compare_estimate_cost(sqlite3_stmt *stmt)
 {
     int showScanStat =
@@ -3121,7 +3110,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
         if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
             query_preparer_plugin->do_prepare &&
-            is_select_or_with_stmt((char *)rec->sql)) {
+            sqlite3_stmt_readonly(rec->stmt)) {
             rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql);
             if (rc)
                 return rc;
