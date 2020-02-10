@@ -163,7 +163,6 @@ int osql_repository_add(osql_sess_t *sess)
  */
 void osql_repository_rem(osql_sess_t *sess)
 {
-    int rc = 0;
 
     if (!theosql)
         return;
@@ -171,11 +170,10 @@ void osql_repository_rem(osql_sess_t *sess)
     Pthread_mutex_lock(&theosql->hshlck);
 
     if (sess->rqid == OSQL_RQID_USE_UUID) {
-        rc = hash_del(theosql->rqsuuid, sess);
+        hash_del(theosql->rqsuuid, sess);
     } else {
-        rc = hash_del(theosql->rqs, sess);
+        hash_del(theosql->rqs, sess);
     }
-    assert(!rc);
 
     Pthread_mutex_unlock(&theosql->hshlck);
 }
