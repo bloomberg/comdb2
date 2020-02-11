@@ -2374,7 +2374,8 @@ static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seq
         return 1;
     }
 
-    if (seqnum->generation < last_seqnum->generation) {
+    if (bdb_state->attr->enable_seqnum_generations && seqnum->generation <
+            last_seqnum->generation) {
         if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER,
                    "seqnum-generation %d < last_generation %d, not"
