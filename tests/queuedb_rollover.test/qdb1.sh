@@ -24,7 +24,7 @@ done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
 if [ $SP_HOST == `hostname` ]; then
     cp ${TESTDIR}/logs/${DBNAME}.db qdb1-log1.log
 else
-    scp ${SP_HOST}:${TESTDIR}/logs/${DBNAME}.db qdb1-log1.log
+    cp ${TESTDIR}/logs/${DBNAME}.${SP_HOST}.db qdb1-log1.log
 fi
 
 cdb2sql $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"
