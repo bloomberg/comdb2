@@ -63,13 +63,13 @@ static void _destroy_session(osql_sess_t **psess);
  * - if caller has already removed sess from osql repository, they should
  *   call this function with is_linked = 0
  */
-int osql_sess_close(osql_sess_t **psess, int is_linked)
+int osql_sess_close(osql_sess_t **psess, bool is_linked, bool is_locked)
 {
     osql_sess_t *sess = *psess;
 
     if (is_linked) {
         /* unlink the request so no more messages are received */
-        osql_repository_rem(sess);
+        osql_repository_rem(sess, is_locked);
     }
 
     while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
@@ -239,7 +239,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     if (!is_msg_done) {
         if (rc == 1) {
             /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, 1);
+            osql_sess_close(&sess, true, false);
         }
         return 0;
     }
@@ -253,27 +253,11 @@ failed_stream:
     osql_repository_put(sess, is_msg_done);
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_sess_close(&sess, 1);
+    osql_sess_close(&sess, true, false);
 
     return perr->errval;
 }
 
-/**
- * Mark the session terminated if the node "arg"
- * machine the provided session "obj",
- * If "*arg: is 0, "obj" is marked terminated anyway
- *
- */
-int osql_session_testterminate(void *obj, void *arg)
-{
-    osql_sess_t *sess = (osql_sess_t *)obj;
-    char *node = arg;
-
-    if (!(node && sess->host != node)) {
-        osql_sess_try_terminate(sess);
-    }
-    return 0;
-}
 
 /**
  * Creates an sock osql session
@@ -348,7 +332,7 @@ int osql_sess_queryid(osql_sess_t *sess)
  * Return 0 if session is successfully terminated,
  *        1 otherwise (if session was already processed)
  *
- * NOTE: only call this for sessions in repository
+ * NOTE: only call this for sessions in repository; repository is locked
  */
 int osql_sess_try_terminate(osql_sess_t *psess)
 {
@@ -372,8 +356,10 @@ int osql_sess_try_terminate(osql_sess_t *psess)
 
     Pthread_mutex_unlock(&sess->mtx);
 
+    /* we are safe here since we have to repository lock and no-one
+       can get this session */
     if (free_sess) {
-        osql_sess_close(&psess, 1);
+        osql_sess_close(&psess, true, true);
     }
 
     return 0;

@@ -7345,7 +7345,7 @@ done:
                __func__, req.rqid, us, fromhost);
     }
     if (sess) {
-        osql_sess_close(&sess, 0);
+        osql_sess_close(&sess, false, false);
     } else {
         /* free a la carte */
         if (iq) {

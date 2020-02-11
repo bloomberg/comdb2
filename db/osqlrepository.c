@@ -161,13 +161,14 @@ int osql_repository_add(osql_sess_t *sess)
  * Remove an osql session from the repository
  * return 0 on success
  */
-void osql_repository_rem(osql_sess_t *sess)
+void osql_repository_rem(osql_sess_t *sess, bool is_locked)
 {
 
     if (!theosql)
         return;
 
-    Pthread_mutex_lock(&theosql->hshlck);
+    if (!is_locked)
+        Pthread_mutex_lock(&theosql->hshlck);
 
     if (sess->rqid == OSQL_RQID_USE_UUID) {
         hash_del(theosql->rqsuuid, sess);
@@ -175,7 +176,8 @@ void osql_repository_rem(osql_sess_t *sess)
         hash_del(theosql->rqs, sess);
     }
 
-    Pthread_mutex_unlock(&theosql->hshlck);
+    if (!is_locked)
+        Pthread_mutex_unlock(&theosql->hshlck);
 }
 
 /**
@@ -263,6 +265,22 @@ int osql_repository_printcrtsessions(void)
     Pthread_mutex_unlock(&theosql->hshlck);
 
     return rc;
+}
+
+/**
+ * Filter sessions that needs to be considered for
+ * termination (matching a machine name, if any)
+ *
+ */
+static int osql_session_testterminate(void *obj, void *arg)
+{
+    osql_sess_t *sess = (osql_sess_t *)obj;
+    char *node = arg;
+
+    if (!(node && sess->host != node)) {
+        osql_sess_try_terminate(sess);
+    }
+    return 0;
 }
 
 /**

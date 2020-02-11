@@ -43,7 +43,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_sess_close(osql_sess_t **sess, int is_linked);
+int osql_sess_close(osql_sess_t **sess, bool is_linked, bool is_locked);
 
 /**
  * Register client
@@ -82,14 +82,6 @@ char *osql_sess_info(osql_sess_t *sess);
  */
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found);
-
-/**
- * If the node "arg" machine the provided session
- * "obj", mark the session terminated
- * If "*arg: is 0, "obj" is marked terminated anyway
- *
- */
-int osql_session_testterminate(void *obj, void *arg);
 
 int osql_sess_queryid(osql_sess_t *sess);
 
