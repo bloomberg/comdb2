@@ -466,6 +466,10 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
             dbt_key.data = lastitem;
             dbt_key.size = sizeof(struct queuedb_key);
             rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
+
+            /* TODO: It seems the BDB_QUEUE_WALK_RESTART flag should only be
+             *       honored on the first get operation? */
+            flags &= ~BDB_QUEUE_WALK_RESTART;
         } else {
             rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET_RANGE);
         }
