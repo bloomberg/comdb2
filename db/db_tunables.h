@@ -1461,6 +1461,10 @@ REGISTER_TUNABLE("net_writer_poll_ms",
                  "Poll time for net writer thread.  (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb",
+                 "Use in memory structure for repdb (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_inmem_repdb,
+                 EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog",
                  "Maximum records for in-memory replist.  "
                  "(Default: 10000)",
