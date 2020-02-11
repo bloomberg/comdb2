@@ -22,9 +22,11 @@
 #include "pb_alloc.h"
 #include "sp.h"
 #include "sql.h"
+#include "reqlog.h"
 #include "comdb2_appsock.h"
 #include "comdb2_atomic.h"
-#include <str0.h>
+#include "str0.h"
+#include "sqloffload.h"
 
 #include <sqlquery.pb-c.h>
 #include <sqlresponse.pb-c.h>
@@ -45,7 +47,6 @@ void ssl_set_clnt_user(struct sqlclntstate *clnt);
 int disable_server_sql_timeouts(void);
 int tdef_to_tranlevel(int tdef);
 int check_active_appsock_connections(struct sqlclntstate *clnt);
-int osql_clean_sqlclntstate(struct sqlclntstate *clnt);
 int watcher_warning_function(void *arg, int timeout, int gap);
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 int fdb_access_control_create(struct sqlclntstate *clnt, char *str);
@@ -511,7 +512,7 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        const char *name = sqlite3_column_name(stmt, i);
+        const char *name = comdb2_column_name(clnt, stmt, i);
         size_t len = strlen(name) + 1;
         ADJUST_LONG_COL_NAME(name, len);
         cols[i].value.data = (uint8_t *)name;
@@ -795,7 +796,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                 char *e =
                     "failed to convert sqlite to client datetime for field";
                 errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s \"%s\"", e,
-                                   sqlite3_column_name(stmt, i));
+                                   comdb2_column_name(clnt, stmt, i));
                 return -1;
             }
             if (flip) {
@@ -2004,9 +2005,13 @@ retry_read:
            send back an error to the client. */
         if (ssl_able == 'Y' &&
             sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname,
-                         gbl_nid_dbname, NULL, 0, 0) != 1) {
+                         gbl_nid_dbname, 0) != 1) {
             newsql_error(clnt, "Client certificate authentication failed.",
                          CDB2ERR_CONNECT_ERROR);
+            /* Print the error message in the sbuf2. */
+            char err[256];
+            sbuf2lasterror(sb, err, sizeof(err));
+            logmsg(LOGMSG_ERROR, "%s\n", err);
             return NULL;
         }
 

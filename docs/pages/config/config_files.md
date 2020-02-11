@@ -903,6 +903,7 @@ These options are toggle-able at runtime.
 |logmsg   |  | Controls the database logging level - accepts [logging commands](op.html#logging-commands).
 | pbkdf2_iterations | 4096 | Number of PBKDF2 iterations. PBKDF2 is used for password hashing. The higher the value, the more secure and the more computationally expensive. The mininum number of iterations is 4096.
 |clean_exit_on_sigterm | 1 | When enabled, SIGTERM will cause database to do an orderly shutdown.  When disabled follows system SIGTERM default (terminate, no core) 
+|delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
 
 <!-- TODO
 |enable_datetime_truncation | |

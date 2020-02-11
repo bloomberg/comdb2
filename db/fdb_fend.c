@@ -1302,9 +1302,7 @@ retry_fdb_creation:
     }
 
     if (!local) {
-        Pthread_mutex_lock(&fdb->dbcon_mtx);
-        rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
-        Pthread_mutex_unlock(&fdb->dbcon_mtx);
+        rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc, &fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
             switch (rc) {
             case FDB_ERR_CLASS_UNKNOWN:
@@ -2168,7 +2166,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         op = FDB_LOCATION_INITIAL;
 
     refresh:
-        host = fdb_select_node(&fdb->loc, op, 0, &avail_nodes, &lcl_nodes);
+        host = fdb_select_node(&fdb->loc, op, 0, &avail_nodes, &lcl_nodes,
+                               &fdb->dbcon_mtx);
 
         if (avail_nodes <= 0) {
             clnt->fdb_state.preserve_err = 1;
@@ -2182,7 +2181,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
     } else if (was_bad) {
         /* we failed earlier on this one, we need the next node */
         op = FDB_LOCATION_NEXT;
-        host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
+        host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes,
+                               &fdb->dbcon_mtx);
     }
     if (host == NULL) {
         clnt->fdb_state.preserve_err = 1;
@@ -2243,7 +2243,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 /*fprintf(stderr, "READ Y\n");*/
 
                 if (sslio_connect(*psb, gbl_ssl_ctx, fdb->ssl, NULL,
-                                  gbl_nid_dbname, NULL, 0, 1) != 1) {
+                                  gbl_nid_dbname, 1) != 1) {
                 failed:
                     sbuf2close(*psb);
                     *psb = NULL;
@@ -2269,21 +2269,10 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         /* FAIL on current node, NEED to get the next node */
         if (!tried_nodes && op == FDB_LOCATION_REFRESH) {
             op = FDB_LOCATION_INITIAL;
-            host =
-                fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
+            host = fdb_select_node(&fdb->loc, op, host, &avail_nodes,
+                                   &lcl_nodes, &fdb->dbcon_mtx);
             continue; /* try again with the selected node, can be the same */
         }
-#if 0
-
-      host = fdb_select_node(&fdb->loc, op, host, NULL, NULL);
-      if (host == NULL)
-      {
-         /* we need to retrieve the location information if
-            the first try was using the cached node */
-         host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
-         continue;   /* try again with the selected node, can be the same */
-      }
-#endif
         else {
             /* either this is the first node, and
                   have location info (avail_nodes, lcl_nodes),
@@ -2306,7 +2295,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 op |= FDB_LOCATION_IGNORE_LCL;
             }
 
-            host = fdb_select_node(&fdb->loc, op, host, NULL, NULL);
+            host = fdb_select_node(&fdb->loc, op, host, NULL, NULL,
+                                   &fdb->dbcon_mtx);
             if (host == NULL) {
                 break;
             }
@@ -3472,31 +3462,32 @@ static fdb_tbl_ent_t *fdb_cursor_table_entry(BtCursor *pCur)
 const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
                                            const char **fqDbname)
 {
-    const char *dbName = NULL;
+    const char *dbName;
     const char *temp_dbname = "temp";
     const char *local_dbname = "main";
 
+    if (!zDatabase) {
+        *fqDbname = NULL;
+        return NULL;
+    }
+
     dbName = zDatabase;
 
-    if (zDatabase) {
-        if ((strcasecmp(zDatabase, temp_dbname) == 0)) {
-            dbName = temp_dbname;
-        }
-        /* extract location hint, if any */
-        else if ((*fqDbname = strchr(dbName, '_')) != NULL) {
-            dbName = (++(*fqDbname));
-            *fqDbname = zDatabase;
-        } else {
-            *fqDbname = zDatabase;
-        }
-
-        /* NOTE: _ notation is invalidated if dbname is the saem as local */
-        if (strcasecmp(thedb->envname, dbName) == 0) /* local name */
-        {
-            dbName = local_dbname;
-            *fqDbname = NULL;
-        }
+    if ((strcasecmp(zDatabase, temp_dbname) == 0)) {
+        dbName = temp_dbname;
+    }
+    /* extract location hint, if any */
+    else if ((*fqDbname = strchr(dbName, '_')) != NULL) {
+        dbName = (++(*fqDbname));
+        *fqDbname = zDatabase;
     } else {
+        *fqDbname = zDatabase;
+    }
+
+    /* NOTE: _ notation is invalidated if dbname is the same as local */
+    if (strcasecmp(thedb->envname, dbName) == 0) /* local name */
+    {
+        dbName = local_dbname;
         *fqDbname = NULL;
     }
 
@@ -4051,6 +4042,8 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage)
     fdb_tbl_ent_t *ent;
 
     ent = get_fdb_tbl_ent_by_rootpage_from_fdb(fdb, rootpage);
+    if (!ent)
+        return 1;
 
     return strncasecmp(ent->tbl->name, "sqlite_stat", strlen("sqlite_stat")) ==
            0;

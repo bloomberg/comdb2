@@ -43,7 +43,8 @@
 #include "cron.h"
 #include <bpfunc.h>
 #include <strbuf.h>
-#include <logmsg.h>
+#include "logmsg.h"
+#include "reqlog.h"
 #include "views.h"
 #include "str0.h"
 #include "sc_struct.h"

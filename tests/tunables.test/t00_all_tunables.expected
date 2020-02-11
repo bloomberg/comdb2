@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=936)
+(TUNABLES_COUNT=937)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -170,6 +170,7 @@
 (name='delay_after_saveop_done', description='', type='INTEGER', value='0', read_only='N')
 (name='delay_after_saveop_usedb', description='', type='INTEGER', value='0', read_only='N')
 (name='delay_file_open', description='', type='INTEGER', value='0', read_only='N')
+(name='delay_sql_lock_release', description='Delay release locks in cursor move if bdb lock desired but client sends rows back', type='BOOLEAN', value='ON', read_only='N')
 (name='delay_writes_in_record_c', description='', type='INTEGER', value='0', read_only='N')
 (name='delayed_oldfile_cleanup', description='If set, don't delete unused data/index files in the critical path of schema change; schedule them for deletion later.', type='BOOLEAN', value='ON', read_only='N')
 (name='dflt_livesc', description='Use live schema change by default', type='BOOLEAN', value='ON', read_only='N')
