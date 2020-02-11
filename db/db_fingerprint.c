@@ -150,7 +150,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
             logmsg(LOGMSG_USER,
                    "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
                    "column names stable, fp:%s "
-                   "(https://www.sqlite.org/c3ref/column_name.html)",
+                   "(https://www.sqlite.org/c3ref/column_name.html)\n",
                    fp);
         }
     } else {

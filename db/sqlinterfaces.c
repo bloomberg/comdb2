@@ -3110,7 +3110,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
         if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
             query_preparer_plugin->do_prepare &&
-            sqlite3_stmt_readonly(rec->stmt)) {
+            sqlite3_stmt_readonly(rec->stmt) &&
+            !sqlite3_stmt_isexplain(rec->stmt)) {
             rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql);
             if (rc)
                 return rc;
