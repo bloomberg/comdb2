@@ -61,15 +61,17 @@ static void _destroy_session(osql_sess_t **psess);
  *   which starts by unlinking the session first, and freeing bplog afterwards
  *
  * - if caller has already removed sess from osql repository, they should
- *   call this function with is_linked = 0
+ *   call this function with is_linked = 0; THIS IS DONE IF THE CALLER OWNS
+ *   THE REPO LOCK ALREADY, TO PREVENT REPO_REM FROM LOCKING
+ *
  */
-int osql_sess_close(osql_sess_t **psess, bool is_linked, bool is_locked)
+int osql_sess_close(osql_sess_t **psess, bool is_linked)
 {
     osql_sess_t *sess = *psess;
 
     if (is_linked) {
         /* unlink the request so no more messages are received */
-        osql_repository_rem(sess, is_locked);
+        osql_repository_rem(sess);
     }
 
     while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
@@ -239,7 +241,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     if (!is_msg_done) {
         if (rc == 1) {
             /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, true, false);
+            osql_sess_close(&sess, true);
         }
         return 0;
     }
@@ -253,15 +255,14 @@ failed_stream:
     osql_repository_put(sess, is_msg_done);
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_sess_close(&sess, true, false);
+    osql_sess_close(&sess, true);
 
     return perr->errval;
 }
 
-
 /**
  * Creates an sock osql session
- * Runs on master node when an initial sorese message is received
+ * Runs on master host when an initial sorese message is received
  * Returns created object if success, NULL otherwise
  *
  */
@@ -327,17 +328,19 @@ int osql_sess_queryid(osql_sess_t *sess)
 
 /**
  * Terminate a session if the session is not yet completed/dispatched
- * we come here from osql_repository_add() if already in osql hash map
- * which can happen in case there is an early replay
- * Return 0 if session is successfully terminated,
- *        1 otherwise (if session was already processed)
+ * Return
+ *    0 if session can be terminated by caller
+ *    1 otherwise (if session was already dispatched)
  *
- * NOTE: only call this for sessions in repository; repository is locked
+ * NOTE: this should be called under osql repository lock
  */
-int osql_sess_try_terminate(osql_sess_t *psess)
+int osql_sess_try_terminate(osql_sess_t *psess, const char *host)
 {
     sess_impl_t *sess = psess->impl;
     bool free_sess = false;
+
+    if (host && host != psess->host)
+        return 1;
 
     Pthread_mutex_lock(&sess->mtx);
 
@@ -356,13 +359,7 @@ int osql_sess_try_terminate(osql_sess_t *psess)
 
     Pthread_mutex_unlock(&sess->mtx);
 
-    /* we are safe here since we have to repository lock and no-one
-       can get this session */
-    if (free_sess) {
-        osql_sess_close(&psess, true, true);
-    }
-
-    return 0;
+    return free_sess;
 }
 
 int handle_buf_sorese(osql_sess_t *psess)

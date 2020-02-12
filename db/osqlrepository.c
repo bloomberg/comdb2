@@ -42,6 +42,8 @@ typedef struct osql_repository {
 
 static osql_repository_t *theosql = NULL;
 
+static void osql_repository_rem_unlocked(osql_sess_t *sess);
+
 /**
  * Init repository
  * Returns 0 if success
@@ -130,12 +132,15 @@ int osql_repository_add(osql_sess_t *sess)
                "rqid=%llx uuid=%s\n",
                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
 
-        rc = osql_sess_try_terminate(sess_chk);
+        rc = osql_sess_try_terminate(sess_chk, NULL);
         assert(rc == 1 || rc == 0);
         logmsg(LOGMSG_INFO, "%s: rqid=%llx, uuid=%s was %s\n", __func__,
                sess->rqid, comdb2uuidstr(sess->uuid, us),
                rc ? "already dispatched" : "cancelled, adding a new one");
-        if (rc) {
+        if (!rc) {
+            osql_repository_rem_unlocked(sess_chk);
+            osql_sess_close(&sess_chk, false);
+        } else {
             Pthread_mutex_unlock(&theosql->hshlck);
             return -2;
         }
@@ -157,27 +162,27 @@ int osql_repository_add(osql_sess_t *sess)
     return rc;
 }
 
-/**
- * Remove an osql session from the repository
- * return 0 on success
- */
-void osql_repository_rem(osql_sess_t *sess, bool is_locked)
+static void osql_repository_rem_unlocked(osql_sess_t *sess)
 {
-
-    if (!theosql)
-        return;
-
-    if (!is_locked)
-        Pthread_mutex_lock(&theosql->hshlck);
-
     if (sess->rqid == OSQL_RQID_USE_UUID) {
         hash_del(theosql->rqsuuid, sess);
     } else {
         hash_del(theosql->rqs, sess);
     }
+}
 
-    if (!is_locked)
-        Pthread_mutex_unlock(&theosql->hshlck);
+/**
+ * Remove an osql session from the repository
+ * return 0 on success
+ */
+void osql_repository_rem(osql_sess_t *sess)
+{
+    if (!theosql)
+        return;
+
+    Pthread_mutex_lock(&theosql->hshlck);
+    osql_repository_rem_unlocked(sess);
+    Pthread_mutex_unlock(&theosql->hshlck);
 }
 
 /**
@@ -275,20 +280,21 @@ int osql_repository_printcrtsessions(void)
 static int osql_session_testterminate(void *obj, void *arg)
 {
     osql_sess_t *sess = (osql_sess_t *)obj;
-    char *node = arg;
+    char *host = arg;
 
-    if (!(node && sess->host != node)) {
-        osql_sess_try_terminate(sess);
+    if (osql_sess_try_terminate(sess, host)) {
+        osql_repository_rem_unlocked(sess);
+        osql_sess_close(&sess, false);
     }
     return 0;
 }
 
 /**
- * Go through all the sessions executing on node
- * "node" and mark them "terminate", which cancel
+ * Go through all the sessions executing on host
+ * "host" and mark them "terminate", which cancel
  * them.
- * Used when a node is down.
- * If "node" is 0, all sessions are terminated.
+ * Used when a host is down.
+ * If "host" is NULL, all sessions are terminated.
  *
  */
 int osql_repository_terminatenode(char *host)

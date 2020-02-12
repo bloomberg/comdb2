@@ -43,7 +43,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_sess_close(osql_sess_t **sess, bool is_linked, bool is_locked);
+int osql_sess_close(osql_sess_t **sess, bool is_linked);
 
 /**
  * Register client
@@ -87,10 +87,13 @@ int osql_sess_queryid(osql_sess_t *sess);
 
 /**
  * Terminate a session if the session is not yet completed/dispatched
+ * and the node matches the session source;
  * Return
- *    0 if session is successfully terminated,
- *    1 otherwise (if session was already processed)
+ *    0 if session can be terminated by caller
+ *    1 otherwise (if session was already dispatched, node mismatch)
+ *
+ * NOTE: this should be called under osql repository lock
  */
-int osql_sess_try_terminate(osql_sess_t *sess);
+int osql_sess_try_terminate(osql_sess_t *psess, const char *node);
 
 #endif

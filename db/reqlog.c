@@ -2077,7 +2077,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
         /* here, closing the session doesn't destroy iq*/
         logger->iq->sorese->iq = NULL;
-        osql_sess_close(&logger->iq->sorese, true, false);
+        osql_sess_close(&logger->iq->sorese, true);
     }
 out:
     reqlog_reset_logger(logger); //will reset which bzeros much of logger
