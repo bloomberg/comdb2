@@ -7333,9 +7333,9 @@ done:
 
     /* notify the sql thread there will be no response! */
     struct errstat generr = {0};
-    errstat_set_rcstrf(&generr, ERR_TRAN_FAILED, errmsg);
+    errstat_set_rcstrf(&generr, ERR_NOMASTER, errmsg);
     int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, 0, &generr,
-                                         RC_INTERNAL_RETRY);
+                                         ERR_NOMASTER);
     if (rc2) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
