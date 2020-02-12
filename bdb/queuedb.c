@@ -956,3 +956,9 @@ int bdb_trigger_unpause(bdb_state_type *bdb_state)
     DB_ENV *dbenv = bdb_state->dbenv;
     return dbenv->trigger_unpause(dbenv, bdb_state->name);
 }
+
+int bdb_trigger_version(bdb_state_type *bdb_state)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    return dbenv->trigger_version(dbenv, bdb_state->name);
+}

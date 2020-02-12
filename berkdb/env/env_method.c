@@ -48,6 +48,7 @@ static const char revid[] =
 #include "logmsg.h"
 #include "locks_wrap.h"
 #include "trigger_sub_status.h"
+#include "comdb2_atomic.h"
 
 static int __dbenv_init __P((DB_ENV *));
 static void __dbenv_err __P((const DB_ENV *, int, const char *, ...));
@@ -97,6 +98,7 @@ static int __dbenv_trigger_close __P((DB_ENV *, const char *));
 static int __dbenv_trigger_ispaused __P((DB_ENV *, const char *));
 static int __dbenv_trigger_pause __P((DB_ENV *, const char *));
 static int __dbenv_trigger_unpause __P((DB_ENV *, const char *));
+static int __dbenv_trigger_version __P((DB_ENV *, const char *));
 int __dbenv_apply_log __P((DB_ENV *, unsigned int, unsigned int, int64_t,
             void*, int));
 size_t __dbenv_get_log_header_size __P((DB_ENV*)); 
@@ -343,6 +345,7 @@ __dbenv_init(dbenv)
 	dbenv->trigger_ispaused = __dbenv_trigger_ispaused;
 	dbenv->trigger_pause = __dbenv_trigger_pause;
 	dbenv->trigger_unpause = __dbenv_trigger_unpause;
+	dbenv->trigger_version = __dbenv_trigger_version;
 
 	return (0);
 }
@@ -1422,6 +1425,7 @@ __dbenv_trigger_open(dbenv, fname)
 	Pthread_mutex_lock(&t->lock);
 	DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_CLOSED);
 	t->status = TRIGGER_SUBSCRIPTION_OPEN;
+	ATOMIC_ADD32(t->version, 1);
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
@@ -1437,6 +1441,7 @@ __dbenv_trigger_close(dbenv, fname)
 	Pthread_mutex_lock(&t->lock);
 	DB_ASSERT(t->status == TRIGGER_SUBSCRIPTION_OPEN);
 	t->status = TRIGGER_SUBSCRIPTION_CLOSED;
+	ATOMIC_ADD32(t->version, 1);
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
@@ -1484,4 +1489,14 @@ __dbenv_trigger_unpause(dbenv, fname)
 	Pthread_cond_signal(&t->cond);
 	Pthread_mutex_unlock(&t->lock);
 	return 0;
+}
+
+static int
+__dbenv_trigger_version(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	struct __db_trigger_subscription *t;
+	t = __db_get_trigger_subscription(fname);
+	return ATOMIC_LOAD32(t->version);
 }
