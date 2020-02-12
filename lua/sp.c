@@ -790,7 +790,7 @@ again:  status = *q->status;
             // was woken up -- try getting from queue
             goto again;
         }
-        int wasOpen = *q->open;
+        int wasOpen = (*q->status != TRIGGER_SUBSCRIPTION_CLOSED);
         Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
         if (delay < 0) {
