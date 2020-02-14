@@ -47,6 +47,7 @@ struct sess_impl {
 };
 
 static void _destroy_session(osql_sess_t **psess);
+static int handle_buf_sorese(osql_sess_t *psess);
 
 /**
  * Terminates an in-use osql session (for which we could potentially
@@ -237,8 +238,8 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     /* release the session */
-    rc = osql_repository_put(sess, is_msg_done);
     if (!is_msg_done) {
+        rc = osql_repository_put(sess, is_msg_done);
         if (rc == 1) {
             /* session was marked terminated and not finished*/
             osql_sess_close(&sess, true);
@@ -362,7 +363,22 @@ int osql_sess_try_terminate(osql_sess_t *psess, const char *host)
     return free_sess;
 }
 
-int handle_buf_sorese(osql_sess_t *psess)
+/**
+ * Dispatch the query
+ * At this point the session has one client (this running reader_thread)
+ * and it is unlocked; it cannot be closed.  
+ * Any thread trying to close this session will wait for client counter to
+ * go to zero. Here we are locking the session and mark it dispatched, 
+ * before decrementing the client counter.  This way, any thread trying to close
+ * it will get out of the busy loop, but skip the session because it is marked
+ * dispatched
+ *
+ * Note:  
+ *   If the sesssion dispatch fails (queue full?), we need to send back retry 
+ *   error code to the source replicant
+ * 
+ */
+static int handle_buf_sorese(osql_sess_t *psess)
 {
     sess_impl_t *sess = psess->impl;
     int debug;
@@ -383,8 +399,19 @@ int handle_buf_sorese(osql_sess_t *psess)
     psess->endus = comdb2_time_epochus();
     bzero(&psess->xerr, sizeof(psess->xerr));
     Pthread_mutex_unlock(&sess->mtx);
+
+    /* session marked dispatched, any potential closer waiting on the client
+    counter to go to zero will skip it;  we need to decrement client counter
+    here so that block processor can close the session */
+
+    osql_repository_put(psess, 1);
+
     rc = handle_buf_main(thedb, psess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
                          NULL, REQ_OFFLOAD, NULL, 0, 0);
 
+    if (rc) {
+        signal_replicant_error(psess->host, psess->rqid, psess->uuid, ERR_NOMASTER, 
+            "failed tp dispatch, queue full");
+    }
     return rc;
 }

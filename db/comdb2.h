@@ -1878,7 +1878,6 @@ int handle_buf_main(
     int luxref, unsigned long long rqid);
 int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
                int debug, char *frommach); /* 040307dh: 64bits */
-int handle_buf_sorese(osql_sess_t *sess);
 int handle_socket_long_transaction(struct dbenv *dbenv, SBUF2 *sb,
                                    uint8_t *p_buf, const uint8_t *p_buf_end,
                                    int debug, char *frommach, int frompid,

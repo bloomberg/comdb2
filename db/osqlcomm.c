@@ -7200,6 +7200,25 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     return 0;
 }
 
+
+void signal_replicant_error(const char *host, unsigned long long rqid,
+        uuid_t uuid,
+        int rc, const char *msg)
+{
+    struct errstat generr = {0};
+    errstat_set_rcstrf(&generr, rc, msg);
+    int rc2 = osql_comm_signal_sqlthr_rc(host, rqid, uuid, 0, &generr,
+            rc);
+    if (rc2) {
+        uuidstr_t us;
+        comdb2uuidstr(uuid, us);
+        logmsg(LOGMSG_ERROR,
+                "%s: failed to signaled rqid=[%llx %s] host=%s of "
+                "error to create bplog\n",
+                __func__, rqid, us, host);
+    }
+}
+
 #define OSQL_BP_MAXLEN (32 * 1024)
 
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
@@ -7224,6 +7243,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int debug = 0;
     uuid_t uuid;
     const char *errmsg = "";
+    int send_rc = 1;
 
     /* grab the request */
     if (osql_nettype_is_uuid(nettype)) {
@@ -7286,9 +7306,11 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     /* make this visible to the world */
     rc = osql_repository_add(sess);
     if (rc) {
-        /* NOTE: possible here to detect if session is already
-        running, and wait for it to finish; retrying through the
-        replicant does the same */
+        /* if the session is dispatched, don't send 
+        back a retry return code, since the block processor
+        thread will send one */
+        if (rc == -2)
+            send_rc = 0;
         goto done;
     }
 
@@ -7332,19 +7354,12 @@ done:
     }
 
     /* notify the sql thread there will be no response! */
-    struct errstat generr = {0};
-    errstat_set_rcstrf(&generr, ERR_NOMASTER, errmsg);
-    int rc2 = osql_comm_signal_sqlthr_rc(fromhost, req.rqid, uuid, 0, &generr,
-                                         ERR_NOMASTER);
-    if (rc2) {
-        uuidstr_t us;
-        comdb2uuidstr(uuid, us);
-        logmsg(LOGMSG_ERROR,
-               "%s: failed to signaled rqid=[%llx %s] host=%s of "
-               "error to create bplog\n",
-               __func__, req.rqid, us, fromhost);
+    if (send_rc) {
+        signal_replicant_error(fromhost, req.rqid, uuid, ERR_NOMASTER, errmsg);
     }
     if (sess) {
+        /* session start with 1 client, this reader thread */
+        osql_sess_remclient(sess, false);
         osql_sess_close(&sess, false);
     } else {
         /* free a la carte */
