@@ -35,6 +35,7 @@
 #include "cron_systable.h"
 #include "timepart_systable.h"
 #include "logical_cron.h"
+#include "sc_util.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -982,7 +983,9 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 done:
     if (run) {
         Pthread_rwlock_unlock(&views_lk);
-        unlock_schema_lk();
+        /* commit_adaptive unlocks the schema-lk */
+        if (rc != VIEW_NOERR)
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -1221,7 +1224,8 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
         }
 
         Pthread_rwlock_unlock(&views_lk);
-        unlock_schema_lk();
+        if (rc != VIEW_NOERR)
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -1917,7 +1921,7 @@ int views_cron_restart(timepart_views_t *views)
        if this is the case, abort the schema change */
     rc = pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
-        if (gbl_schema_change_in_progress) {
+        if (get_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "
                                  "partition: aborting\n");
             gbl_sc_abort = 1;

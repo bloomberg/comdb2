@@ -730,7 +730,7 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey,
-                            int blkkeylen)
+                            int blkkeylen, int release_schema_lk)
 {
     int rc;
     db_seqnum_type ss;
@@ -751,6 +751,11 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
         cnonce[cn_len] = '\0';
         logmsg(LOGMSG_USER, "%s %s line %d: trans_commit returns %d\n", cnonce,
                __func__, __LINE__, rc);
+    }
+
+    if (release_schema_lk && iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 
     if (rc != 0) {
@@ -775,25 +780,27 @@ int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
                          void *blkkey, int blkkeylen)
 {
     return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1,
-                            blkseq, blklen, blkkey, blkkeylen);
+                            blkseq, blklen, blkkey, blkkeylen, 0);
 }
 
 /* XXX i made this be the same as trans_commit_adaptive */
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
+                            0);
 }
 
 int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host,
                          int timeoutms)
 {
     return trans_commit_int(iq, trans, source_host, timeoutms, 0, 0, NULL, 0,
-                            NULL, 0);
+                            NULL, 0, 0);
 }
 
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
+                            1);
 }
 
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
@@ -2884,7 +2891,8 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
 }
 
 /* callback to report new master */
-static int new_master_callback(void *bdb_handle, char *host)
+static int new_master_callback(void *bdb_handle, char *host,
+                               int assert_sc_clear)
 {
     ++gbl_master_changes;
     struct dbenv *dbenv;
@@ -2896,6 +2904,12 @@ static int new_master_callback(void *bdb_handle, char *host)
     oldgen = dbenv->gen;
     dbenv->master = host;
 
+    if (assert_sc_clear) {
+        bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
+        if (oldmaster == gbl_mynode && host != gbl_mynode)
+            sc_assert_clear(__func__, __LINE__);
+    }
+
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
@@ -2905,7 +2919,9 @@ static int new_master_callback(void *bdb_handle, char *host)
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
     if (host == gbl_mynode) {
+
         trigger_clear_hash();
+
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2931,8 +2947,7 @@ static int new_master_callback(void *bdb_handle, char *host)
         if (oldmaster != host && !gbl_create_mode) {
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
-        /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
-        sc_set_running(NULL, 0, 0, NULL, 0);
+
         osql_repository_cancelall();
     }
 
@@ -3137,30 +3152,37 @@ struct net_sc_msg {
 static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp)
 {
-    int rc;
     struct net_sc_msg *sc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    if (!bdb_state)
+        return;
 
     sc = (struct net_sc_msg *)dtap;
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
     sc->time = flibc_ntohll(sc->time);
 
-    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time);
-    net_ack_message(hndl, rc == 0 ? 0 : 1);
+    BDB_READLOCK("start_sc");
+    net_ack_message(hndl, 0);
+    BDB_RELLOCK();
 }
 
 static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                         void *dtap, int dtalen, uint8_t is_tcp)
 {
-    int rc;
     struct net_sc_msg *sc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    if (!bdb_state)
+        return;
+
     sc = (struct net_sc_msg *)dtap;
 
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
 
-    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0);
-    net_ack_message(hndl, rc == 0 ? 0 : 1);
+    BDB_READLOCK("stop_sc");
+    net_ack_message(hndl, 0);
+    BDB_RELLOCK();
 }
 
 static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,

@@ -114,6 +114,11 @@ extern int __rep_check_applied_lsns(DB_ENV *dbenv, LSN_COLLECTION * lc,
 extern int dumptxn(DB_ENV *, DB_LSN *);
 extern void fsnapf(FILE * fil, const void *buf, int len);
 
+/* Track transactions open by a single td (should remain small) */
+#define TXN_TD_MAX 10
+static __thread int txncnt = 0;
+static __thread DB_TXN *td_txn[TXN_TD_MAX];
+
 #define	SET_LOG_FLAGS_ROWLOCKS(dbenv, txnp, ltranflags, lflags) \
 	do {								\
 		lflags = DB_LOG_COMMIT;			\
@@ -227,6 +232,23 @@ __txn_begin_pp(dbenv, parent, txnpp, flags)
 	u_int32_t flags;
 {
 	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, 0);
+}
+
+static void remove_td_txn(DB_TXN *txn)
+{
+	int found = 0;
+	for (int i = 0; i < txncnt; i++) {
+		if (td_txn[i] == txn) {
+			found = 1;
+			td_txn[i] = td_txn[--txncnt];
+			break;
+		}
+	}
+	if (!found) {
+		logmsg(LOGMSG_FATAL, "%s unable to locate td txn %p\n", __func__,
+				txn);
+		abort();
+	}
 }
 
 int
@@ -437,6 +459,36 @@ __txn_compensate_begin(dbenv, txnpp)
 	return (__txn_begin_int(txn, DB_TXN_INTERNAL));
 }
 
+/* Abort if this thread has an open transaction */
+static void __txn_assert_notran(dbenv)
+	DB_ENV *dbenv;
+{
+	if (txncnt > 0) {
+		logmsg(LOGMSG_FATAL, "%s td has open txns\n", __func__);
+        abort();
+	}
+}
+
+/*
+ * __txn_assert_notran_pp --
+ *	Abort if this thread has an open transaction.
+ */
+int __txn_assert_notran_pp(dbenv)
+	DB_ENV *dbenv;
+{
+	int rep_check, ret;
+	PANIC_CHECK(dbenv);
+	if (IS_REP_CLIENT(dbenv))
+		return (0);
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	__txn_assert_notran(dbenv);
+	if (rep_check)
+		__env_rep_exit(dbenv);
+    return 0;
+}
+
 /*
  * __txn_begin_int --
  *	Normal DB version of txn_begin.
@@ -572,6 +624,7 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	td->status = TXN_RUNNING;
 	td->flags = 0;
 	td->xa_status = 0;
+    td->tid = pthread_self();
 
 	off = R_OFFSET(&mgr->reginfo, td);
 	R_UNLOCK(dbenv, &mgr->reginfo);
@@ -600,6 +653,14 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 		if ((ret = __lock_addfamilylocker_set_retries(dbenv,
 				txn->parent->txnid, txn->txnid, retries)) != 0)
 			return (ret);
+
+	if (txncnt >= TXN_TD_MAX) {
+		logmsg(LOGMSG_FATAL, "%s insane number of open txns for this td\n",
+				__func__);
+		abort();
+	}
+
+	td_txn[txncnt++] = txn;
 
 	if (F_ISSET(txn, TXN_MALLOC)) {
 		MUTEX_THREAD_LOCK(dbenv, mgr->mutexp);
@@ -898,7 +959,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DB_LOCKREQ request;
 	DB_TXN *kid;
 	LTDESC *lt = NULL;
-	TXN_DETAIL *td = NULL;
+	TXN_DETAIL *td = NULL, *ptd = NULL;
 	u_int32_t lflags, ltranflags = 0;
 	int32_t timestamp;
 	uint32_t gen;
@@ -1196,6 +1257,17 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 				goto err;
 			}
 
+            ptd = (TXN_DETAIL *)R_ADDR(&txnp->mgrp->reginfo, txnp->parent->off);
+
+            R_LOCK(dbenv, &txnp->mgrp->reginfo);
+			if (log_compare(&td->begin_lsn, &ptd->begin_lsn) < 0) {
+				logmsg(LOGMSG_INFO, "Reset parent begin-lsn from [%d:%d] to "
+						"[%d:%d]\n", ptd->begin_lsn.file,
+						ptd->begin_lsn.offset, td->begin_lsn.file,
+						td->begin_lsn.offset);
+				ptd->begin_lsn = td->begin_lsn;
+			}
+            R_UNLOCK(dbenv, &txnp->mgrp->reginfo);
 
 			if (__lock_set_parent_has_pglk_lsn(dbenv,
 				txnp->parent->txnid, txnp->txnid) != 0)
@@ -1264,6 +1336,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		Pthread_rwlock_unlock(&dbenv->recoverlk);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
+
+    remove_td_txn(txnp);
 
 	/* This is OK because __txn_end can only fail with a panic. */
 	return (__txn_end(txnp, 1));
@@ -1488,6 +1562,8 @@ __txn_abort(txnp)
 		Pthread_rwlock_unlock(&dbenv->recoverlk);
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
+
+	remove_td_txn(txnp);
 
 	/* __txn_end always panics if it errors, so pass the return along. */
 	return (__txn_end(txnp, 0));
@@ -2396,8 +2472,7 @@ do_ckp:
 		timestamp = (int32_t)time(NULL);
 
 		if ((ret = __dbreg_open_files_checkpoint(dbenv)) != 0 ||
-			(ret = __txn_ckp_log(dbenv, NULL,
-				&ckp_lsn,
+			(ret = __txn_ckp_log(dbenv, NULL, &ckp_lsn,
 				DB_FLUSH |DB_LOG_PERM |DB_LOG_CHKPNT |
 				DB_LOG_DONT_LOCK, &ckp_lsn, &last_ckp, timestamp,
 				gen)) != 0) {

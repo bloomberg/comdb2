@@ -83,6 +83,48 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
+option(STACK_TAG_SCHEMA "Stack at add or remove a tag-schema" OFF)
+mark_as_advanced(STACK_TAG_SCHEMA)
+if(STACK_TAG_SCHEMA)
+    add_definitions(-DSTACK_TAG_SCHEMA)
+endif()
+
+option(STACK_AT_DB_OPEN_CLOSE "Save a cheap-stack at every db_open" OFF)
+mark_as_advanced(STACK_AT_DB_OPEN_CLOSE)
+if(STACK_AT_DB_OPEN_CLOSE)
+    add_definitions(-DSTACK_AT_DB_OPEN_CLOSE)
+endif()
+
+option(STACK_AT_DBREG_RECOVER "Print a cheapstack at dbreg recover operations" OFF)
+mark_as_advanced(STACK_AT_DBREG_RECOVER)
+if(STACK_AT_DBREG_RECOVER)
+    add_definitions(-DSTACK_AT_DBREG_RECOVER)
+endif()
+
+option(STACK_AT_DBREG_LOG "Print a cheapstack at dbreg log operations" OFF)
+mark_as_advanced(STACK_AT_DBREG_LOG)
+if(STACK_AT_DBREG_LOG)
+    add_definitions(-DSTACK_AT_DBREG_LOG)
+endif()
+
+option(ABORT_ON_RECINTRO_FAILURE "Abort if recintro fails" OFF)
+mark_as_advanced(ABORT_ON_RECINTRO_FAILURE)
+if(ABORT_ON_RECINTRO_FAILURE)
+    add_definitions(-DABORT_ON_RECINTRO_FAILURE)
+endif()
+
+option(DEBUG_SC "Enable schema-change debug trace" OFF)
+mark_as_advanced(DEBUG_SC)
+if(DEBUG_SC)
+    add_definitions(-DDEBUG_SC)
+endif()
+
+option(ABORT_ON_RECOVER_FAILURE "Abort task on recovery failure" OFF)
+mark_as_advanced(ABORT_ON_RECOVER_FAILURE)
+if(ABORT_ON_RECOVER_FAILURE)
+    add_definitions(-DABORT_ON_RECOVER_FAILURE)
+endif()
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)

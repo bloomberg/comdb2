@@ -34,7 +34,11 @@
 #define PUT_PFX_FLG(opcode, flg) ((opcode) | ((flg) << 24))
 #define IS_REM_OPCODE(x) (GET_ADDREM_OPCODE(x) == DB_REM_DUP || GET_ADDREM_OPCODE(x) == DB_REM_COMPR)
 
-
+#if defined (ABORT_ON_RECINTRO_FAILURE)
+#define CHECK_ABORT abort();
+#else
+#define CHECK_ABORT 
+#endif
 /*
  * Standard initialization and shutdown macros for all recovery functions.
  */
@@ -43,18 +47,23 @@
 	dbc = NULL;							\
 	file_dbp = NULL;						\
 	mpf = NULL;							\
-	if ((ret = func(dbenv, dbtp->data, &argp)) != 0)		\
+	if ((ret = func(dbenv, dbtp->data, &argp)) != 0) {		\
+        CHECK_ABORT \
 		goto out;						\
+	} \
 	if ((ret = __dbreg_id_to_db(dbenv, argp->txnid,			\
 	    &file_dbp, argp->fileid, inc_count, lsnp, 0)) != 0) { 		\
 		if (ret	== DB_DELETED) {				\
 			ret = 0;					\
 			goto done;					\
 		}							\
+        CHECK_ABORT                 \
 		goto out;						\
 	}								\
-	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0)		\
+	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0){		\
+        CHECK_ABORT \
 		goto out;						\
+	}										   \
 	F_SET(dbc, DBC_RECOVER);					\
 	mpf = file_dbp->mpf;						\
 } while (0)
