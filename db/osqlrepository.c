@@ -133,10 +133,6 @@ int osql_repository_add(osql_sess_t *sess)
                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
 
         rc = osql_sess_try_terminate(sess_chk, NULL);
-        assert(rc == 1 || rc == 0);
-        logmsg(LOGMSG_INFO, "%s: rqid=%llx, uuid=%s was %s\n", __func__,
-               sess->rqid, comdb2uuidstr(sess->uuid, us),
-               rc ? "already dispatched" : "cancelled, adding a new one");
         if (!rc) {
             osql_repository_rem_unlocked(sess_chk);
             osql_sess_close(&sess_chk, false);
@@ -282,7 +278,7 @@ static int osql_session_testterminate(void *obj, void *arg)
     osql_sess_t *sess = (osql_sess_t *)obj;
     char *host = arg;
 
-    if (osql_sess_try_terminate(sess, host)) {
+    if (!osql_sess_try_terminate(sess, host)) {
         osql_repository_rem_unlocked(sess);
         osql_sess_close(&sess, false);
     }

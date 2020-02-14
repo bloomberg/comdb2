@@ -7200,22 +7200,19 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     return 0;
 }
 
-
 void signal_replicant_error(const char *host, unsigned long long rqid,
-        uuid_t uuid,
-        int rc, const char *msg)
+                            uuid_t uuid, int rc, const char *msg)
 {
     struct errstat generr = {0};
     errstat_set_rcstrf(&generr, rc, msg);
-    int rc2 = osql_comm_signal_sqlthr_rc(host, rqid, uuid, 0, &generr,
-            rc);
+    int rc2 = osql_comm_signal_sqlthr_rc(host, rqid, uuid, 0, &generr, rc);
     if (rc2) {
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
         logmsg(LOGMSG_ERROR,
-                "%s: failed to signaled rqid=[%llx %s] host=%s of "
-                "error to create bplog\n",
-                __func__, rqid, us, host);
+               "%s: failed to signaled rqid=[%llx %s] host=%s of "
+               "error to create bplog\n",
+               __func__, rqid, us, host);
     }
 }
 
@@ -7306,7 +7303,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     /* make this visible to the world */
     rc = osql_repository_add(sess);
     if (rc) {
-        /* if the session is dispatched, don't send 
+        /* if the session is dispatched, don't send
         back a retry return code, since the block processor
         thread will send one */
         if (rc == -2)

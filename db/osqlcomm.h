@@ -423,6 +423,6 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
 void osql_extract_snap_info(struct ireq *iq, void *data, int datalen,
                             int hasuuid);
 
-void signal_replicant_error(const char *host,  unsigned long long rqid,
-        uuid_t uuid, int rc, const char *msg);
+void signal_replicant_error(const char *host, unsigned long long rqid,
+                            uuid_t uuid, int rc, const char *msg);
 #endif
