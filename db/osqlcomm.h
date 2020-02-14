@@ -260,7 +260,8 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
+int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
+                               uuid_t uuid, int nops, struct errstat *xerr,
                                int rc);
 
 /**
@@ -422,4 +423,6 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
 void osql_extract_snap_info(struct ireq *iq, void *data, int datalen,
                             int hasuuid);
 
+void signal_replicant_error(const char *host, unsigned long long rqid,
+                            uuid_t uuid, int rc, const char *msg);
 #endif
