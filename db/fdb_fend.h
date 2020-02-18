@@ -135,6 +135,8 @@ enum fdb_errors {
     FDB_ERR_SSL = -25 /* SSL configuration error */
     ,
     FDB_ERR_ACCESS = -26 /* Access error */
+    ,
+    FDB_ERR_TRANSIENT_IO = -27 /* Temporary IO failure */
 };
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
