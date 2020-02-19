@@ -3056,9 +3056,12 @@ retry:
                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
 #endif
-                } else if (rc == FDB_ERR_READ_IO) {
+                } else if (rc == FDB_ERR_READ_IO &&
+                           (how == CFIRST || how == CLAST) &&
+                           !pCur->clnt->intrans) {
                     /* I/O error. Let's retry the query on some other node by
-                     * temporarily blacklisting this node. */
+                     * temporarily blacklisting this node (only when we haven't
+                     * read any rows and not in a transaction). */
                     fdbc->streaming = FDB_CUR_ERROR;
                     _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb,
                                            fdbc->node, FDB_ERR_TRANSIENT_IO);
