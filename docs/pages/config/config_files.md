@@ -747,7 +747,6 @@ These options are toggle-able at runtime.
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
-|blocksql_grace                   |10 sec      | Let block transactions run this long if db is exiting before being killed (and returning an error).
 |gbl_exit_on_pthread_create_fail  |0           | If set, database will exit if thread pools aren't able to create threads.
 |enable_sql_stmt_caching | not set | Enable caching of query plans.  If followed by "all" will cache all queries, including those without parameters.
 |max_sqlcache_per_thread | 10 | Max number of plans to cache per sql thread (statement cache is per-thread, but see hints below)

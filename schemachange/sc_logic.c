@@ -770,7 +770,7 @@ struct timepart_sc_resuming {
     int nshards;
 };
 
-void *osql_commit_timepart_resuming_sc(void *p);
+void *bplog_commit_timepart_resuming_sc(void *p);
 static int process_tpt_sc_hash(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
@@ -778,7 +778,7 @@ static int process_tpt_sc_hash(void *obj, void *arg)
     logmsg(LOGMSG_INFO, "%s: processing view '%s'\n", __func__,
            tpt_sc->viewname);
     pthread_create(&tid, &gbl_pthread_attr_detached,
-                   osql_commit_timepart_resuming_sc, tpt_sc->s);
+                   bplog_commit_timepart_resuming_sc, tpt_sc->s);
     free(tpt_sc);
     return 0;
 }
@@ -816,7 +816,7 @@ static int verify_sc_resumed_for_shard(const char *shardname,
     if (rc != SC_ASYNC && rc != SC_COMMIT_PENDING) {
         logmsg(LOGMSG_ERROR, "%s: failed to restart shard '%s', rc %d\n",
                __func__, shardname, rc);
-        /* osql_commit_timepart_resuming_sc will check rc */
+        /* bplog_commit_timepart_resuming_sc will check rc */
         new_sc->sc_rc = rc;
     }
     return 0;
