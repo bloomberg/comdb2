@@ -118,7 +118,7 @@ static int _fdb_refresh_location(const char *dbname, fdb_location_t *loc)
 /**
  * Locate a certain database
  *
- * Retrieve the nodes from codmb2db
+ * Retrieve the nodes from comdb2db
  */
 int fdb_locate(const char *dbname, enum mach_class class, int refresh,
                fdb_location_t **ploc, pthread_mutex_t *mtx)
