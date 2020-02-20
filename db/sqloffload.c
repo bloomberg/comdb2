@@ -245,7 +245,10 @@ char *osql_breq2a(int op)
         return "OSQL_INSIDX";
     case OSQL_DBQ_CONSUME_UUID:
         return "OSQL_DBQ_CONSUME_UUID";
+    case OSQL_STARTGEN:
+        return "OSQL_STARTGEN";
     default:
+        assert(0);
         return "UNKNOWN";
     }
 }

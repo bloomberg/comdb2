@@ -238,18 +238,18 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     /* release the session */
-    if (!is_msg_done) {
-        rc = osql_repository_put(sess, is_msg_done);
-        if (rc == 1) {
-            /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, true);
-        }
+    rc = osql_repository_put(sess, is_msg_done);
+    if (rc == 1) {
+        /* session was marked terminated and not finished*/
+        osql_sess_close(&sess, true);
         return 0;
     }
 
-    /* IT WAS A DONE MESSAGE
-       HERE IS THE DISPATCH */
-    return handle_buf_sorese(sess);
+    /* It was a DONE message, let's dispatch it */
+    if (is_msg_done)
+        rc = handle_buf_sorese(sess);
+
+    return rc;
 
 failed_stream:
     /* release the session */
