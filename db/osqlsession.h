@@ -57,7 +57,7 @@ int osql_sess_addclient(osql_sess_t *sess);
  * Unregister client
  *
  */
-int osql_sess_remclient(osql_sess_t *sess, bool bplog_complete);
+int osql_sess_remclient(osql_sess_t *sess);
 
 /**
  * Log query to the reqlog

@@ -214,13 +214,13 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
  *   0 if success
  *   1 if session is marked terminated
  */
-int osql_repository_put(osql_sess_t *sess, bool bplog_complete)
+int osql_repository_put(osql_sess_t *sess)
 {
     int rc;
 
     Pthread_mutex_lock(&theosql->hshlck);
 
-    rc = osql_sess_remclient(sess, bplog_complete);
+    rc = osql_sess_remclient(sess);
 
     Pthread_mutex_unlock(&theosql->hshlck);
 
