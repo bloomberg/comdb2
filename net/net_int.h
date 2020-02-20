@@ -205,6 +205,7 @@ struct host_node_tag {
     int interval_max_queue_bytes;
     void *qstat;
     struct time_metric *metric_queue_size;
+    int64_t banished_until;
 };
 
 /* Cut down data structure used for storing the sanc list. */

@@ -4777,6 +4777,10 @@ static void *connect_thread(void *arg)
     int check = 1;
     Pthread_mutex_lock(&(host_node_ptr->lock));
     while (!host_node_ptr->decom_flag && !netinfo_ptr->exiting) {
+        /* Don't connect to banished nodes */
+        if (host_node_ptr->banished_until > comdb2_time_epochms())
+            goto again;
+
         if (host_node_ptr->fd != -1) { /* already have connection */
             check = 1;
             goto again;
@@ -5092,6 +5096,7 @@ static int connect_to_host(netinfo_type *netinfo_ptr,
         return 1;
 
     Pthread_mutex_lock(&(host_node_ptr->lock));
+
     if (host_node_ptr->have_connect_thread == 0) {
         if (gbl_verbose_net) {
             if (sponsor_host) {
@@ -5234,7 +5239,8 @@ static void accept_handle_new_host(netinfo_type *netinfo_ptr,
     int cnt = 0;
     Pthread_mutex_lock(&(host_node_ptr->lock));
     while (1) {
-        if (netinfo_ptr->exiting || host_node_ptr->decom_flag) {
+        int now = comdb2_time_epochms();
+        if (netinfo_ptr->exiting || host_node_ptr->decom_flag || host_node_ptr->banished_until > now) {
             sbuf2close(sb);
             close(new_fd);
             Pthread_mutex_unlock(&(host_node_ptr->lock));
@@ -6776,5 +6782,24 @@ int net_get_host_stats(netinfo_type *netinfo_ptr, const char *host, struct net_h
     }
     Pthread_rwlock_unlock(&(netinfo_ptr->lock));
 
+    return 0;
+}
+
+int net_banish_node(netinfo_type *netinfo_ptr, const char *host, int timems) {
+#ifndef NDEBUG
+    if (!isinterned(host))
+        abort();
+#endif
+    struct host_node_tag *ptr;
+
+    Pthread_rwlock_rdlock(&netinfo_ptr->lock);
+    for (ptr = netinfo_ptr->head; ptr != NULL; ptr = ptr->next) {
+        if (host == ptr->host) {
+            ptr->banished_until = timems;
+            close_hostnode(ptr);
+            break;
+        }
+    }
+    Pthread_rwlock_unlock(&netinfo_ptr->lock);
     return 0;
 }
