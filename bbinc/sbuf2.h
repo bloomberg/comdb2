@@ -17,6 +17,8 @@
 #ifndef INCLUDED_SBUF2
 #define INCLUDED_SBUF2
 
+#include <stddef.h> /* for size_t */
+
 /* sbuf2.h -  simple buffering for stream. stupid fopen can't handle fd>255 */
 
 /* Server sbuf2 uses dlmalloc. Client does not. The simplest approach
@@ -211,6 +213,17 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *);
 
 void SBUF2_FUNC(cleanup_peer_hash)();
 #define cleanup_peer_hash SBUF2_FUNC(cleanup_peer_hash)
+
+/* Returns the error of a preceding call to sbuf2flush(), sbuf2putc(),
+   sbuf2puts(), sbuf2write(), sbuf2fwrite(), sbuf2getc(), sbuf2gets(),
+   sbuf2fread(), sbuf2unbufferedread() or sbuf2unbufferedwrite().
+
+   When compiled with SSL, the function returns non-zero if the last error
+   is an SSL protocol error, and 0 otherwise. The caller should not attempt
+   to retry on a non-zero return code; When not compiled with SSL, the
+   function always returns 0. */
+int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n);
+#define sbuf2lasterror SBUF2_FUNC(sbuf2lasterror)
 
 #ifndef WITH_SSL
 #  define WITH_SSL 1

@@ -20,6 +20,7 @@
 #include "shard_range.h"
 #include "sqliteInt.h"
 #include "queue.h"
+#include "reqlog.h"
 #include "dohsql.h"
 #include "sqlinterfaces.h"
 #include "memcompare.c"

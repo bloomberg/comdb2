@@ -95,11 +95,14 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "locks.h"
 #include "eventlog.h"
 
 #include "str0.h"
 #include "comdb2_atomic.h"
+
+int gbl_delay_sql_lock_release_sec = 5;
 
 unsigned long long get_id(bdb_state_type *);
 static void unlock_bdb_cursors(struct sql_thread *thd, bdb_cursor_ifn_t *bdbcur,
@@ -619,7 +622,9 @@ static int sql_tick(struct sql_thread *thd)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (bdb_lock_desired(thedb->bdb_env)) {
+    if (((gbl_epoch_time - clnt->last_sent_row_sec) >=
+         gbl_delay_sql_lock_release_sec) &&
+        bdb_lock_desired(thedb->bdb_env)) {
         int sleepms;
 
         logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
@@ -1977,19 +1982,6 @@ char *sqltype(struct field *f, char *buf, int len)
     return NULL;
 }
 
-char comdb2_maxkey[MAXKEYLEN];
-
-/* Called once from comdb2. Do all static intialization here */
-void sqlinit(void)
-{
-    memset(comdb2_maxkey, 0xff, sizeof(comdb2_maxkey));
-    Pthread_mutex_init(&gbl_sql_lock, NULL);
-    sql_dlmalloc_init();
-    /* initialize global structures in sqlite */
-    if (sqlite3_initialize())
-        abort();
-}
-
 /* Calculate space needed to store a sqlite version of a record for
    a given schema */
 int schema_var_size(struct schema *sc)
@@ -3098,8 +3090,6 @@ static int sqlite_unpacked_to_ondisk(BtCursor *pCur, UnpackedRecord *rec,
 
     return clen;
 }
-
-extern char comdb2_maxkey[MAXKEYLEN];
 
 void xdump(void *b, int len)
 {

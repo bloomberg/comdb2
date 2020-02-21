@@ -29,6 +29,7 @@
 #include "osqlblockproc.h"
 #include "osqlblkseq.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "plhash.h"
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
@@ -339,24 +340,12 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->sorese->rqid == 0)
                 abort();
-            osql_comm_signal_sqlthr_rc(iq->sorese, &iq->errstat, sorese_rc);
+            osql_comm_signal_sqlthr_rc(iq->sorese->host, iq->sorese->rqid,
+                                       iq->sorese->uuid, iq->sorese->nops,
+                                       &iq->errstat, sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();
 
-#if 0
-            /*
-                I don't wanna do this here, reloq_end_request() needs sql
-                details that are in the buffer; I am not gonna remalloc and copy
-                just to preserve code symmetry.
-                free the buffer, that was created by sorese_rcvreq()
-            */
-            if(iq->p_buf_out_start)
-            {
-                free(iq->p_buf_out_start);
-                iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-                iq->p_buf_in_end = iq->p_buf_in = NULL;
-            }
-#endif
         } else if (iq->is_dumpresponse) {
             signal_buflock(iq->request_data);
             if (rc != 0) {
@@ -422,8 +411,8 @@ int handle_ireq(struct ireq *iq)
     }
 
     /* Finish off logging. */
-    if (iq->blocksql_tran) {
-        osql_bplog_reqlog_queries(iq);
+    if (iq->sorese) {
+        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     release_node_stats(NULL, NULL, iq->frommach);

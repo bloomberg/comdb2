@@ -1036,9 +1036,13 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
         }
 
         rc = sslio_accept(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
-                          gbl_nid_dbname, NULL, 0, 1);
-        if (rc != 1)
+                          gbl_nid_dbname, 1);
+        if (rc != 1) {
+            char err[256];
+            sbuf2lasterror(sb, err, sizeof(err));
+            logmsg(LOGMSG_ERROR, "%s\n", err);
             return -1;
+        }
     } else if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
         /* Reject if I require SSL. */
         logmsg(LOGMSG_WARN,
@@ -1169,8 +1173,12 @@ static int write_connect_message(netinfo_type *netinfo_ptr,
     if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
         sbuf2flush(sb);
         if (sslio_connect(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
-                          gbl_nid_dbname, NULL, 0, 1) != 1)
+                          gbl_nid_dbname, 1) != 1) {
+            char err[256];
+            sbuf2lasterror(sb, err, sizeof(err));
+            logmsg(LOGMSG_ERROR, "%s\n", err);
             return 1;
+        }
     }
 #endif
 

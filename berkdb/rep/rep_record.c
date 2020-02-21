@@ -74,6 +74,7 @@ extern int gbl_is_physical_replicant;
 extern int gbl_dumptxn_at_commit;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
+int gbl_inmem_repdb = 1;
 int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
@@ -618,7 +619,7 @@ static void *apply_thread(void *arg)
 
 			if (ret != 0 && ret != DB_REP_ISPERM && ret != DB_REP_NOTPERM)
 				abort();
-			/* If this is null, we've stuck both in inmem_repdb */
+			/* If this is null, we've stuck both in gbl_inmem_repdb */
 			if (rec.data) {
 				free(q->data);
 				free(q->rp);
@@ -710,12 +711,6 @@ static void *apply_thread(void *arg)
 		}
 
 		if (log_more_count || log_compare(&master_lsn, &my_lsn) <= 0) {
-			bdb_relthelock(__func__, __LINE__);
-			Pthread_mutex_lock(&rep_queue_lock);
-			continue;
-		}
-
-		if (rep->in_recovery || F_ISSET(rep, REP_F_READY | REP_F_RECOVER)) {
 			bdb_relthelock(__func__, __LINE__);
 			Pthread_mutex_lock(&rep_queue_lock);
 			continue;
@@ -2915,7 +2910,6 @@ __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int cmp, do_req, gap, ret, t_ret, rc;
 	int num_retries;
 	int disabled_minwrite_noread = 0;
-	int inmem_repdb = gbl_decoupled_logputs;
 	char *eid;
 
 	db_rep = dbenv->rep_handle;
@@ -3099,7 +3093,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			ZERO_LSN(lp->max_wait_lsn);
 
 			/* In-memory drop in replacement */
-			if (inmem_repdb) {
+			if (gbl_inmem_repdb) {
 				repdb_dequeue(&control_dbt, &rec_dbt);
 				rp = (REP_CONTROL *)control_dbt.data;
 				assert(!IS_ZERO_LSN(rp->lsn));
@@ -3165,7 +3159,7 @@ gap_check:		max_lsn_dbtp = NULL;
 				rectype = 0;
 			}
 
-			if (!inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
+			if (!gbl_inmem_repdb && (ret = __db_c_del(dbc, 0)) != 0) {
 				abort();
 				goto err;
 			}
@@ -3195,7 +3189,7 @@ gap_check:		max_lsn_dbtp = NULL;
 			 * interested in its contents, just in its LSN.
 			 * Optimize by doing a partial get of the data item.
 			 */
-			if (inmem_repdb) {
+			if (gbl_inmem_repdb) {
 				struct repdb_rec *r = LISTC_TOP(&repdb_queue);
 				ret = 0;
 				if (!r) {
@@ -3403,7 +3397,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		}
 #endif
 		/* Only add less than the oldest */
-		if (inmem_repdb) {
+		if (gbl_inmem_repdb) {
 			repdb_enqueue(rp, rec, decoupled);
 			ret = 0;
 		} else {
@@ -3671,7 +3665,7 @@ gap_check:		max_lsn_dbtp = NULL;
 		goto err;
 	}
 
-	if (inmem_repdb) {
+	if (gbl_inmem_repdb) {
 		if (control_dbt.data) 
 			free(control_dbt.data);
 

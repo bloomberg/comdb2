@@ -739,6 +739,9 @@ struct sqlclntstate {
     int hinted_cursors_alloc;
     int hinted_cursors_used;
 
+    int old_columns_count;
+    char **old_columns;
+
     /* remote settings, used in run_sql */
     sqlclntstate_fdb_t fdb_state;
 
@@ -848,6 +851,8 @@ struct sqlclntstate {
     int8_t sent_data_to_client;
     int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
+    int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
+                              desired */
 };
 
 /* Query stats. */
@@ -1259,8 +1264,9 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *, unsigned char *fingerprint_out);
+void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *,
+                     const char *, int64_t, int64_t, int64_t, int64_t,
+                     struct reqlogger *, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1307,6 +1313,9 @@ struct query_count {
     int64_t last_timems;
 };
 
-void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
-
-#endif
+void add_fingerprint_to_rawstats(struct rawnodestats *stats,
+                                 unsigned char *fingerprint, int cost,
+                                 int rows, int timems);
+const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                               int index);
+#endif /* _SQL_H_ */

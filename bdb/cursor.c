@@ -4440,7 +4440,7 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
         if (rc < 0)
             return rc;
 
-#ifdef MERGE_DEBUG
+#if MERGE_DEBUG
         logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
                (int)pthread_self(), __FILE__, __LINE__, rc,
                *(unsigned long long *)key);
