@@ -2100,7 +2100,7 @@ done:
     if (got_curtran && put_curtran(thedb->bdb_env, &clnt))
         logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
     if (hndl)
-        sqlite3_close(hndl);
+        sqlite3_close_serial(&hndl);
 
     cleanup_clnt(&clnt);
     done_sql_thread();
@@ -11163,19 +11163,26 @@ static int printf_logmsg_wrap(const char *fmt, ...) {
 
 void stat4dump(int more, char *table, int istrace)
 {
+#ifndef PER_THREAD_MALLOC
+    void *thread_oldm;
+#endif
+    void *sql_oldm;
     int rc;
     sqlite3 *db = NULL;
 
-    thread_memcreate_notrace(128 * 1024);
-    sql_mem_init(NULL);
+    thread_memcreate_with_save(128 * 1024, &thread_oldm);
+    sql_mem_init_with_save(NULL, &sql_oldm);
+
+    struct sql_thread *old_thd = pthread_getspecific(query_info_key);
+    struct sql_thread *thd = start_sql_thread();
+    Pthread_setspecific(query_info_key, thd);
 
     struct sqlclntstate clnt;
     reset_clnt(&clnt, NULL, 1);
     clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
-
-    struct sql_thread *thd = start_sql_thread();
-    get_copy_rootpages(thd);
     thd->clnt = &clnt;
+
+    get_copy_rootpages(thd);
     sql_get_query_id(thd);
     if ((rc = get_curtran(thedb->bdb_env, &clnt)) != 0) {
         goto out;
@@ -11271,14 +11278,15 @@ void stat4dump(int more, char *table, int istrace)
         ctrace("\n");
 
 close:
-    sqlite3_close(db);
+    sqlite3_close_serial(&db);
 put:
     put_curtran(thedb->bdb_env, &clnt);
 out:
     thd->clnt = NULL;
     done_sql_thread();
-    sql_mem_shutdown(NULL);
-    thread_memdestroy();
+    Pthread_setspecific(query_info_key, old_thd);
+    sql_mem_shutdown_and_restore(NULL, &sql_oldm);
+    thread_memdestroy_and_restore(&thread_oldm);
 }
 
 void clone_temp_table(sqlite3_stmt *stmt, struct temptable *tbl)
@@ -12430,7 +12438,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
     }
     thd->clnt = NULL;
 
-    if ((crc = sqlite3_close(sqldb)) != 0)
+    if ((crc = sqlite3_close_serial(&sqldb)) != 0)
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
 
 cleanup:

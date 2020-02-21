@@ -611,12 +611,8 @@ static LISTC_T(struct sqlclntstate) clntlist;
 static int64_t connid = 0;
 
 static __thread comdb2ma sql_mspace = NULL;
-int sql_mem_init(void *arg)
+static void sql_mem_create()
 {
-    if (unlikely(sql_mspace)) {
-        return 0;
-    }
-
     /* We used to start with 1MB - this isn't quite necessary
        as comdb2_malloc pre-allocation is much smarter now.
        We also name it "SQLITE" (uppercase) to differentiate it
@@ -628,7 +624,21 @@ int sql_mem_init(void *arg)
         logmsg(LOGMSG_FATAL, "%s: comdb2a_create failed\n", __func__);
         exit(1);
     }
+}
 
+int sql_mem_init(void *arg)
+{
+    if (unlikely(sql_mspace)) {
+        return 0;
+    }
+    sql_mem_create();
+    return 0;
+}
+
+int sql_mem_init_with_save(void *arg, void **poldm)
+{
+    *poldm = sql_mspace;
+    sql_mem_create();
     return 0;
 }
 
@@ -638,6 +648,12 @@ void sql_mem_shutdown(void *arg)
         comdb2ma_destroy(sql_mspace);
         sql_mspace = NULL;
     }
+}
+
+void sql_mem_shutdown_and_restore(void *arg, void **poldm)
+{
+    sql_mem_shutdown(arg);
+    sql_mspace = *poldm; *poldm = NULL;
 }
 
 static void *sql_mem_malloc(int size)
