@@ -1982,6 +1982,9 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
     /* get a pointer back to our bdb_state */
     bdb_state = net_get_usrptr(netinfo_ptr);
 
+    if (bdb_state->exiting)
+        return 0;
+
     /* I don't think you need the bdb lock here */
     /*BDB_READLOCK("hostdown_rtn");*/
     master_host = bdb_state->repinfo->master_host;
@@ -2023,9 +2026,6 @@ int net_hostdown_rtn(netinfo_type *netinfo_ptr, char *host)
 
         call_for_election(bdb_state, __func__, __LINE__);
     }
-
-    if (bdb_state->exiting)
-        return 0;
 
     /* wake up anyone who might be waiting for a seqnum so that
      * they can stop waiting from this node - it ain't gonna happen! */
