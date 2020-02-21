@@ -455,13 +455,15 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
     cson_value_free(newval);
 }
 
+static const char *ev_str[] = { "unset", "txn", "sql", "sp" };
+
 static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 {
     cson_object_set(obj, "time", cson_new_int(logger->startus));
-    if (logger->event_type)
-        cson_object_set(obj, "type",
-                        cson_value_new_string(logger->event_type,
-                                              strlen(logger->event_type)));
+    if (logger->event_type != EV_UNSET) {
+        const char *str = ev_str[logger->event_type];
+        cson_object_set(obj, "type", cson_value_new_string(str, strlen(str)));
+    }
 
     if (logger->stmt && eventlog_detailed) {
         cson_object_set(obj, "sql", cson_value_new_string(
@@ -536,10 +538,10 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 
 static inline void add_to_fingerprints(const struct reqlogger *logger)
 {
-    bool isSql = logger->event_type && (strcmp(logger->event_type, "sql") == 0);
     bool isSqlErr = logger->error && logger->stmt;
 
-    if ((isSql || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
+    if ((EV_SQL == logger->event_type || isSqlErr) && 
+        !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(logger);
     }
 }

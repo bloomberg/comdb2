@@ -45,7 +45,6 @@ extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
 extern int gbl_test_badwrite_intvl;
-extern int gbl_blocksql_grace;
 extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
@@ -147,6 +146,7 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
 extern int gbl_apply_queue_memory;
+extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
 extern int gbl_net_writer_thread_poll_ms;
@@ -309,17 +309,10 @@ extern int gbl_queuedb_timeout_sec;
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
-extern int gbl_osql_check_replicant_numops;
-extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
-
-int gbl_debug_tmptbl_corrupt_mem;
-int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
-                                   sqlite's limit */
-
 extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
@@ -328,7 +321,11 @@ extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int eventlog_nkeep;
 
-int gbl_page_order_table_scan = 0;
+int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
+                                   sqlite's limit */
+int gbl_page_order_table_scan;
+int gbl_old_column_names = 1;
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
 /*
