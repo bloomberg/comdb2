@@ -140,25 +140,22 @@ int osql_sess_addclient(osql_sess_t *psess)
  * thread from touching it).
  *
  */
-int osql_sess_remclient(osql_sess_t *psess, bool bplog_complete)
+int osql_sess_remclient(osql_sess_t *psess)
 {
     sess_impl_t *sess = psess->impl;
+    int rc = 0;
 
     Pthread_mutex_lock(&sess->mtx);
 
     sess->clients -= 1;
 
     if (sess->terminate) {
-        Pthread_mutex_unlock(&sess->mtx);
-        return 1;
+        rc = 1;
     }
-
-    if (bplog_complete)
-        sess->dispatched = true;
 
     Pthread_mutex_unlock(&sess->mtx);
 
-    return 0;
+    return rc;
 }
 
 /**
@@ -239,7 +236,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
     /* release the session */
     if (!is_msg_done) {
-        rc = osql_repository_put(sess, is_msg_done);
+        rc = osql_repository_put(sess);
         if (rc == 1) {
             /* session was marked terminated and not finished*/
             osql_sess_close(&sess, true);
@@ -253,7 +250,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
 failed_stream:
     /* release the session */
-    osql_repository_put(sess, is_msg_done);
+    osql_repository_put(sess);
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     osql_sess_close(&sess, true);
@@ -395,12 +392,9 @@ static int handle_buf_sorese(osql_sess_t *psess)
     }
 
     Pthread_mutex_lock(&sess->mtx);
-    /* NOTE: the session here is dispatched, so it cannot be terminated
-    since terminate ignores dispatched sessions, and terminated sessions
-    cannot be dispatched */
-
-    assert(sess->dispatched);
-
+    /* NOTE: the session here has one client at least, so it will not be
+    close; it might be terminanted but we allow to dispatch */
+    sess->dispatched = true;
     psess->endus = comdb2_time_epochus();
     bzero(&psess->xerr, sizeof(psess->xerr));
     Pthread_mutex_unlock(&sess->mtx);
@@ -409,7 +403,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
     counter to go to zero will skip it;  we need to decrement client counter
     here so that block processor can close the session */
 
-    osql_repository_put(psess, 1);
+    osql_repository_put(psess);
 
     rc = handle_buf_main(thedb, psess->iq, NULL, NULL, NULL, debug, 0, 0, NULL,
                          NULL, REQ_OFFLOAD, NULL, 0, 0);
@@ -417,6 +411,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
     if (rc) {
         signal_replicant_error(psess->host, psess->rqid, psess->uuid,
                                ERR_NOMASTER, "failed tp dispatch, queue full");
+        osql_sess_close(&psess, true);
     }
     return rc;
 }

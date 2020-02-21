@@ -47,7 +47,7 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid);
  * Decrements the number of users
  * Returns 0 if success
  */
-int osql_repository_put(osql_sess_t *sess, bool bplog_complete);
+int osql_repository_put(osql_sess_t *sess);
 
 /**
  * Init repository

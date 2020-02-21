@@ -7344,10 +7344,11 @@ done:
            clients to disappear before it will wipe out the session
          */
 
-        rc = osql_repository_put(sess, false /* bplog not complete */);
+        rc = osql_repository_put(sess);
         if (!rc)
             return 0;
         /* if put noticed a termination flag, fall-through */
+        send_rc = 1;
     }
 
     /* notify the sql thread there will be no response! */
@@ -7356,7 +7357,7 @@ done:
     }
     if (sess) {
         /* session start with 1 client, this reader thread */
-        osql_sess_remclient(sess, false);
+        osql_sess_remclient(sess);
         osql_sess_close(&sess, false);
     } else {
         /* free a la carte */
