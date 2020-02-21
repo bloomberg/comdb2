@@ -85,7 +85,8 @@ int osql_checkboard_init(void)
         abort();
     }
 
-    tmp->rqs = hash_init(sizeof(unsigned long long));
+    tmp->rqs = hash_init_o(offsetof(osql_sqlthr_t, rqid),
+                           sizeof(unsigned long long));
     if (!tmp->rqs) {
         free(tmp);
         logmsg(LOGMSG_ERROR, "%s: error init hash\n", __func__);
@@ -262,7 +263,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
  * of its sql peer
  *
  */
-int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
+inline int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 {
     return _osql_register_sqlthr(clnt, type, 0);
 }
@@ -271,11 +272,11 @@ int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
  * TODO: This is unused? If so cleanup.
  * Register a remote transaction, part of a distributed transaction
  *
- */
 int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
 {
     return _osql_register_sqlthr(clnt, type, 1);
 }
+ */
 
 /**
  * Unregister an osql thread from the checkboard

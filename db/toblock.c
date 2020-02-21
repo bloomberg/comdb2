@@ -74,6 +74,7 @@
 #include "bpfunc.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2_atomic.h"
 
 #if 0
@@ -94,7 +95,6 @@ extern int n_commit_time;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
-extern int gbl_reorder_idx_writes;
 extern int gbl_print_blockp_stats;
 extern int gbl_dump_blkseq;
 extern __thread int send_prefault_udp;
@@ -4690,7 +4690,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
-            iirc = osql_bplog_schemachange(iq);
+            iirc = bplog_schemachange(iq, iq->sorese->tran, &err);
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;

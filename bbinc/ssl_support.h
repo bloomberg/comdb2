@@ -149,7 +149,12 @@ const static struct ssl_protocol {
                         {-1.0, SSL_OP_NO_SSLv3, "SSLv3"},
                         {1.0, SSL_OP_NO_TLSv1, "TLSv1"},
                         {1.1, SSL_OP_NO_TLSv1_1, "TLSv1.1"},
-                        {1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2"}};
+                        {1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2"}
+#ifdef SSL_OP_NO_TLSv1_3
+                        ,
+                        {1.3, SSL_OP_NO_TLSv1_3, "TLSv1.3"}
+#endif
+};
 
 /*
  * Initialize SSL library.

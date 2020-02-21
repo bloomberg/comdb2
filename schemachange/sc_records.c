@@ -32,6 +32,7 @@
 #include "bdb_osql_log_rec.h"
 
 #include "comdb2_atomic.h"
+#include "reqlog.h"
 #include "logmsg.h"
 
 int gbl_logical_live_sc = 0;

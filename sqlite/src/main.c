@@ -3458,15 +3458,15 @@ opendb_out:
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock(&mutex);
+  /* these modify global structures */
   if( thd!=NULL ){
-    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&mutex);
-    /* these modify global structures */
     register_lua_sfuncs(db, thd);
     register_lua_afuncs(db, thd);
-    register_date_functions(db); 
-    pthread_mutex_unlock(&mutex);
   }
+  register_date_functions(db);
+  pthread_mutex_unlock(&mutex);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ) sqlite3CodecQueryParameters(db, 0, zOpen);

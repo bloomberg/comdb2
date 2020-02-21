@@ -51,6 +51,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "util.h"
 #include "tohex.h"
 #include "str0.h"

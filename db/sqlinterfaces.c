@@ -96,20 +96,21 @@
 #include "sqllog.h"
 #include <stdbool.h>
 #include <quantize.h>
-#include <intern_strings.h>
+#include <str0.h>
 
 #include "debug_switches.h"
-
+#include "intern_strings.h"
 #include "views.h"
 #include "mem.h"
 #include "comdb2_atomic.h"
 #include "logmsg.h"
-#include <str0.h>
-#include <eventlog.h>
+#include "reqlog.h"
+#include "eventlog.h"
 #include "perf.h"
 #include "tohex.h"
 
 #include "dohsql.h"
+#include "comdb2_query_preparer.h"
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -138,12 +139,11 @@ extern int gbl_allow_pragma;
 extern int gbl_use_appsock_as_sqlthread;
 extern int g_osql_max_trans;
 extern int gbl_fdb_track;
-extern int gbl_return_long_column_names;
 extern int gbl_stable_rootpages_test;
 extern int gbl_verbose_normalized_queries;
 extern int gbl_group_concat_mem_limit;
-
 extern int gbl_expressions_indexes;
+extern int gbl_old_column_names;
 
 /* Once and for all:
 
@@ -192,6 +192,8 @@ int gbl_debug_force_thdpool_priority = (int)PRIORITY_T_HIGHEST;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 
+comdb2_query_preparer_t *query_preparer_plugin;
+
 void rcache_init(size_t, size_t);
 void rcache_destroy(void);
 void sql_reset_sqlthread(struct sql_thread *thd);
@@ -204,7 +206,6 @@ static char *get_query_cost_as_string(struct sql_thread *thd,
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 
-void comdb2_set_sqlite_vdbe_tzname(Vdbe *p);
 void comdb2_set_sqlite_vdbe_dtprec(Vdbe *p);
 static int execute_sql_query_offload(struct sqlthdstate *,
                                      struct sqlclntstate *);
@@ -679,6 +680,16 @@ void sql_dlmalloc_init(void)
     sqlite3_config(SQLITE_CONFIG_MALLOC, &m);
 }
 
+/* Called once from comdb2. Do all static intialization here */
+void sqlinit(void)
+{
+    Pthread_mutex_init(&gbl_sql_lock, NULL);
+    sql_dlmalloc_init();
+    /* initialize global structures in sqlite */
+    if (sqlite3_initialize())
+        abort();
+}
+
 static int comdb2_authorizer_for_sqlite(
   void *pArg,        /* IN: NOT USED */
   int code,          /* IN: NOT USED */
@@ -835,7 +846,8 @@ int sqlite3_can_get_column_type_and_data(
   return 0;
 }
 
-static pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
+pthread_mutex_t open_serial_lock = PTHREAD_MUTEX_INITIALIZER;
+
 int sqlite3_open_serial(const char *filename, sqlite3 **ppDb,
                         struct sqlthdstate *thd)
 {
@@ -1070,7 +1082,8 @@ static tsql_meta_command_t is_transaction_meta(struct sqlclntstate *clnt)
 /* Save copy of sql statement and performance data.  If any other code
    should run after a sql statement is completed it should end up here. */
 static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
-                               struct sqlclntstate *clnt, int stmt_rc)
+                               struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                               int stmt_rc)
 {
     struct rawnodestats *rawnodestats;
 
@@ -1147,12 +1160,14 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(h->sql, clnt->work.zOrigNormSql, cost, time,
-                                prepTime, rows, logger, fingerprint);
+                add_fingerprint(clnt, stmt, h->sql, clnt->work.zOrigNormSql,
+                                cost, time, prepTime, rows, logger,
+                                fingerprint);
                 have_fingerprint = 1;
-            } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(h->sql, clnt->work.zNormSql, cost, time,
-                                prepTime, rows, logger, fingerprint);
+            } else if (clnt->work.zNormSql &&
+                       sqlite3_is_success(clnt->prep_rc)) {
+                add_fingerprint(clnt, stmt, h->sql, clnt->work.zNormSql, cost,
+                                time, prepTime, rows, logger, fingerprint);
                 have_fingerprint = 1;
             } else {
                 reqlog_reset_fingerprint(logger, FINGERPRINTSZ);
@@ -1199,7 +1214,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         rawnodestats->sql_steps += get_sql_steps(thd);
         time_metric_add(rawnodestats->svc_time, h->cost.time);
         if (have_fingerprint)
-            add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost, rows, time);
+            add_fingerprint_to_rawstats(clnt->rawnodestats, fingerprint, cost,
+                                        rows, time);
     }
 
     reset_sql_steps(thd);
@@ -1238,6 +1254,11 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
 
     clear_cost(thd);
+
+    if (gbl_old_column_names && query_preparer_plugin &&
+        query_preparer_plugin->do_cleanup) {
+        query_preparer_plugin->do_cleanup(clnt);
+    }
 }
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -3360,6 +3381,21 @@ static void normalize_stmt_and_store(
   }
 }
 
+const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                               int index)
+{
+    if (gbl_old_column_names == 0 || clnt->old_columns_count == 0) {
+        return sqlite3_column_name(stmt, index);
+    }
+
+    if (index > (clnt->old_columns_count - 1)) {
+        logmsg(LOGMSG_ERROR, "%s:%d bad column index %d\n", __func__, __LINE__,
+               index);
+        return 0;
+    }
+    return clnt->old_columns[index];
+}
+
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3406,8 +3442,20 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         thd->authState.flags = flags;
         thd->authState.numDdls = 0;
         rec->prepFlags = flags;
+
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
+
+        if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
+            query_preparer_plugin->do_prepare &&
+            sqlite3_stmt_readonly(rec->stmt) &&
+            !sqlite3_stmt_isexplain(rec->stmt) &&
+            (thd->authState.numDdls == 0)) {
+            rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql);
+            if (rc)
+                return rc;
+        }
+
         thd->authState.flags = 0;
         clnt->no_transaction = 0;
         if (rc == SQLITE_OK) {
@@ -3935,6 +3983,7 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                "Fail to add query to transaction replay session\n");
 
     /* Get first row to figure out column structure */
+    clnt->last_sent_row_sec = time(NULL);
     int steprc = next_row(clnt, stmt);
     if (steprc == SQLITE_SCHEMA_REMOTE) {
         /* remote schema changed;
@@ -3969,6 +4018,8 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     do {
+        clnt->last_sent_row_sec = time(NULL);
+
         /* replication contention reduction */
         rc = release_locks_on_emit_row(thd, clnt);
         if (rc) {
@@ -4049,7 +4100,7 @@ static void sqlite_done(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         distributed = 1;
     }
 
-    sql_statement_done(thd->sqlthd, thd->logger, clnt, outrc);
+    sql_statement_done(thd->sqlthd, thd->logger, clnt, stmt, outrc);
 
     if (stmt && !((Vdbe *)stmt)->explain && ((Vdbe *)stmt)->nScan > 1 &&
         (BDB_ATTR_GET(thedb->bdb_attr, PLANNER_WARN_ON_DISCREPANCY) == 1 ||
@@ -4075,7 +4126,7 @@ static void handle_stored_proc(struct sqlthdstate *thd,
     struct sql_state rec = {0};
     char *errstr = NULL;
     query_stats_setup(thd, clnt);
-    reqlog_set_event(thd->logger, "sp");
+    reqlog_set_event(thd->logger, EV_SP);
     clnt->dbtran.trans_has_sp = 1;
 
     /*
@@ -4111,7 +4162,7 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
                                    struct sqlclntstate *clnt,
                                    struct sql_state *rec)
 {
-    reqlog_set_event(thd->logger, "sql");
+    reqlog_set_event(thd->logger, EV_SQL);
     log_queue_time(thd->logger, clnt);
     if (rec->sql)
         reqlog_set_sql(thd->logger, rec->sql);
@@ -7082,3 +7133,4 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     cleanup_clnt(clnt);
 }
+
