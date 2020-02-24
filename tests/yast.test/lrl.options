@@ -6,3 +6,4 @@ ssl_client_mode OPTIONAL
 REP_WORKERS 0
 REP_PROCESSORS 0
 early 0
+exec_sql_on_new_connect PRAGMA automatic_index = 0;
