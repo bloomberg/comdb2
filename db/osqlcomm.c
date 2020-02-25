@@ -287,7 +287,7 @@ struct osql_req {
     int padding;
     unsigned long long rqid; /* fastseed */
     char tzname[DB_MAX_TZNAMEDB];
-    unsigned char ntails;
+    unsigned char unused;
     unsigned char flags;
     char pad[1];
     char sqlq[1];
@@ -295,14 +295,6 @@ struct osql_req {
 enum { OSQLCOMM_REQ_TYPE_LEN = 8 + 4 + 4 + 8 + DB_MAX_TZNAMEDB + 3 + 1 };
 BB_COMPILE_TIME_ASSERT(osqlcomm_req_type_len,
                        sizeof(struct osql_req) == OSQLCOMM_REQ_TYPE_LEN);
-
-struct osql_req_tail {
-    int type;
-    int len;
-};
-enum { OSQL_REQ_TAIL_LEN = 4 + 4 };
-BB_COMPILE_TIME_ASSERT(osql_req_tail_len,
-                       sizeof(struct osql_req_tail) == OSQL_REQ_TAIL_LEN);
 
 static uint8_t *osqlcomm_req_type_put(const struct osql_req *p_osql_req,
                                       uint8_t *p_buf, const uint8_t *p_buf_end)
@@ -327,7 +319,7 @@ static uint8_t *osqlcomm_req_type_put(const struct osql_req *p_osql_req,
         buf_put(&p_osql_req->rqid, sizeof(p_osql_req->rqid), p_buf, p_buf_end);
     p_buf = buf_put(&p_osql_req->tzname, sizeof(p_osql_req->tzname), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&p_osql_req->ntails, sizeof(p_osql_req->ntails), p_buf,
+    p_buf = buf_put(&p_osql_req->unused, sizeof(p_osql_req->unused), p_buf,
                     p_buf_end);
     p_buf = buf_put(&p_osql_req->flags, sizeof(p_osql_req->flags), p_buf,
                     p_buf_end);
@@ -356,7 +348,7 @@ static const uint8_t *osqlcomm_req_type_get(struct osql_req *p_osql_req,
         buf_get(&p_osql_req->rqid, sizeof(p_osql_req->rqid), p_buf, p_buf_end);
     p_buf = buf_get(&p_osql_req->tzname, sizeof(p_osql_req->tzname), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&p_osql_req->ntails, sizeof(p_osql_req->ntails), p_buf,
+    p_buf = buf_get(&p_osql_req->unused, sizeof(p_osql_req->unused), p_buf,
                     p_buf_end);
     p_buf = buf_get(&p_osql_req->flags, sizeof(p_osql_req->flags), p_buf,
                     p_buf_end);
@@ -373,7 +365,7 @@ struct osql_uuid_req {
     int flags;
     uuid_t uuid;
     char tzname[DB_MAX_TZNAMEDB];
-    unsigned char ntails;
+    unsigned char unused;
     char pad[2];
     char sqlq[1];
 };
@@ -400,7 +392,7 @@ osqlcomm_req_uuid_type_put(const struct osql_uuid_req *p_osql_req,
                            p_buf_end);
     p_buf = buf_put(&p_osql_req->tzname, sizeof(p_osql_req->tzname), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&p_osql_req->ntails, sizeof(p_osql_req->ntails), p_buf,
+    p_buf = buf_put(&p_osql_req->unused, sizeof(p_osql_req->unused), p_buf,
                     p_buf_end);
     p_buf =
         buf_put(&p_osql_req->pad, sizeof(p_osql_req->pad), p_buf, p_buf_end);
@@ -427,7 +419,7 @@ osqlcomm_req_uuid_type_get(struct osql_uuid_req *p_osql_req,
         buf_get(&p_osql_req->uuid, sizeof(p_osql_req->uuid), p_buf, p_buf_end);
     p_buf = buf_get(&p_osql_req->tzname, sizeof(p_osql_req->tzname), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&p_osql_req->ntails, sizeof(p_osql_req->ntails), p_buf,
+    p_buf = buf_get(&p_osql_req->unused, sizeof(p_osql_req->unused), p_buf,
                     p_buf_end);
     p_buf =
         buf_get(&p_osql_req->pad, sizeof(p_osql_req->pad), p_buf, p_buf_end);
@@ -2904,9 +2896,6 @@ static int offload_net_send(const char *tohost, int usertype, void *data,
 static int offload_net_send_tail(const char *tohost, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen);
-static int offload_net_send_tails(const char *host, int usertype, void *data,
-                                  int datalen, int nodelay, int ntails,
-                                  void **tails, int *tailens);
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype);
 static int netrpl2req(int netrpltype);
@@ -4793,46 +4782,6 @@ int osql_process_message_decom(char *host)
     return 0;
 }
 
-/* We seem to be adding more and more things to be passed through osql requests.
-   This
-   packs multiple things into a request.  Note: buf must be a properly packed
-   buffer (ie: network order) */
-int osql_add_to_request(osql_req_t **reqp, int type, void *buf, int len)
-{
-    void *rqbuf;
-    int rqsz;
-    struct osql_req_tail *tail;
-    osql_req_t *req;
-
-    req = *reqp;
-
-    /* TODO: re-endianize */
-
-    if (req->ntails == 255) {
-        logmsg(LOGMSG_ERROR, "Too many tails\n");
-        return -1;
-    }
-
-    req->ntails++;
-    rqsz = req->rqlen + sizeof(struct osql_req_tail) + len;
-    rqbuf = realloc(req, rqsz);
-    if (rqbuf == NULL) {
-        logmsg(LOGMSG_ERROR, "Failed to add tail to osql request, tail len %d\n",
-                len);
-        return -1;
-    }
-    req = rqbuf;
-    tail = (struct osql_req_tail *)((char *)req + req->rqlen);
-    tail->type = type;
-    tail->len = len;
-    memcpy(((char *)tail) + sizeof(struct osql_req_tail), buf, len);
-    req->rqlen += sizeof(struct osql_req_tail) + len;
-
-    *reqp = req;
-
-    return 0;
-}
-
 /**
  * Constructs a reusable osql request
  *
@@ -4887,7 +4836,6 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 
         req_uuid.type = type;
         req_uuid.flags = flags;
-        req_uuid.ntails = 0;
         comdb2uuidcpy(req_uuid.uuid, uuid);
         req_uuid.rqlen = rqlen;
         req_uuid.sqlqlen = sqlen;
@@ -4916,7 +4864,6 @@ void *osql_create_request(const char *sql, int sqlen, int type,
         req.type = type;
         req.flags = flags;
         req.padding = 0;
-        req.ntails = 0;
         req.rqid = rqid;
         req.rqlen = rqlen;
         req.sqlqlen = sqlen;
@@ -5498,9 +5445,8 @@ static int net_local_route_packet(int usertype, void *data, int datalen)
 /* this function routes the packet in the case of local communication
    include in this function only "usertype"-s that can have a tail
  */
-static int net_local_route_packet_tails(int usertype, void *data, int datalen,
-                                        int numtails, void **tails,
-                                        int *taillens)
+static int net_local_route_packet_tail(int usertype, void *data, int datalen,
+                                       void *tail, int taillen)
 {
     switch (usertype) {
     case NET_OSQL_SOCK_RPL:
@@ -5511,8 +5457,8 @@ static int net_local_route_packet_tails(int usertype, void *data, int datalen,
     case NET_OSQL_RECOM_RPL_UUID:
     case NET_OSQL_SNAPISOL_RPL_UUID:
     case NET_OSQL_SERIAL_RPL_UUID:
-        return net_osql_rpl_tail(NULL, NULL, 0, usertype, data, datalen,
-                                 tails[0], taillens[0]);
+        return net_osql_rpl_tail(NULL, NULL, 0, usertype, data, datalen, tail,
+                                 taillen);
     default:
         logmsg(LOGMSG_ERROR, "%s: unknown packet type routed locally, %d\n",
                 __func__, usertype);
@@ -5677,14 +5623,6 @@ static int offload_net_send_tail(const char *host, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen)
 {
-    return offload_net_send_tails(host, usertype, data, datalen, nodelay, 1,
-                                  &tail, &tailen);
-}
-
-static int offload_net_send_tails(const char *host, int usertype, void *data,
-                                  int datalen, int nodelay, int ntails,
-                                  void **tails, int *tailens)
-{
     osql_comm_t *comm = get_thecomm();
     if (!comm)
         return -1;
@@ -5700,12 +5638,12 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
 
         if (host) {
             /* remote send */
-            rc = net_send_tails(netinfo_ptr, host, usertype, data, datalen,
-                                nodelay, ntails, tails, tailens);
+            rc = net_send_tail(netinfo_ptr, host, usertype, data, datalen,
+                               nodelay, tail, tailen);
         } else {
             /* local save */
-            rc = net_local_route_packet_tails(usertype, data, datalen, ntails,
-                                              tails, tailens);
+            rc = net_local_route_packet_tail(usertype, data, datalen, tail,
+                                             tailen);
         }
 
         if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
@@ -5754,12 +5692,6 @@ static int offload_net_send_tails(const char *host, int usertype, void *data,
 
     return rc;
 }
-
-/* Replicant callback.  Note: this is a bit kludgy.
-   If we get called remotely for a parametrized request
-   the ntails/tails/taillens parameters are invalid and
-   must be parsed from the buffer.
- */
 
 static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp)
@@ -7251,7 +7183,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         req.rqlen = uuid_req.rqlen;
         req.sqlqlen = uuid_req.sqlqlen;
         req.rqid = OSQL_RQID_USE_UUID;
-        req.ntails = uuid_req.ntails;
         req.flags = uuid_req.flags; // NB: we will loose the 0x80 and up flags
         memcpy(req.tzname, uuid_req.tzname, sizeof(uuid_req.tzname));
         comdb2uuidcpy(uuid, uuid_req.uuid);
