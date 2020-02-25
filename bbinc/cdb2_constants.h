@@ -56,7 +56,7 @@
 /* Primary data file + 15 blobs files */
 #define MAXDTAFILES 16
 #define MAXDTASTRIPE 16
-#define MAX_USERNAME_LEN 17
+#define MAX_USERNAME_LEN 16
 #define MAX_PASSWORD_LEN 19
 
 /*
