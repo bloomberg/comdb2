@@ -1871,6 +1871,18 @@ REGISTER_TUNABLE("ref_sync_wait_txnlist",
                  TUNABLE_BOOLEAN, &gbl_ref_sync_wait_txnlist,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_pause_at_end",
+                 "Pause schema-change after converters have completed.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_pause_at_end, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sc_is_at_end",
+                 "Schema-change has converted all records.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_is_at_end, EXPERIMENTAL, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "Maximum size in bytes of the output buffer of an appsock "
                  "thread.  (Default: 8 MiB)",

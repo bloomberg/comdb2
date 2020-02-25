@@ -1261,6 +1261,9 @@ static void stop_sc_redo_wait(bdb_state_type *bdb_state,
     Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
 }
 
+int gbl_sc_pause_at_end = 0;
+int gbl_sc_is_at_end = 0;
+
 int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
                         struct schema_change_type *s)
@@ -1541,6 +1544,16 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     print_final_sc_stat(&data);
 
     convert_record_data_cleanup(&data);
+
+    gbl_sc_is_at_end = 1;
+
+    while (gbl_sc_pause_at_end) {
+        logmsg(LOGMSG_USER, "%s pausing after converted all threads\n",
+               __func__);
+        sleep(1);
+    }
+
+    gbl_sc_is_at_end = 0;
 
     if (data.cmembers) {
         free(data.cmembers);
@@ -3072,7 +3085,7 @@ static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
 
     Pthread_mutex_lock(mtx);
 
-    if (s->sc_convert_done[MAXDTASTRIPE]) {
+    if (!s->sc_convert_done || s->sc_convert_done[MAXDTASTRIPE]) {
         /* all converter threads have finished */
         wait = 0;
     }

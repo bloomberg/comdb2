@@ -93,6 +93,7 @@ function pull_and_recompile
 
 while :; do 
     let i=i+1 
+    export TESTLOG=~/testlog.$i.txt
     print_status
     if [[ ! -z $TESTLOOPCOMPILE ]]; then
         pull_and_recompile
