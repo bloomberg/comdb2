@@ -9,7 +9,7 @@
 #include "comdb2.h"
 #include <mem.h>
 #include<errstat.h>
-
+//#define PRINT_TRACES_ASYNC_DIST_COMMIT
 /* 
  * WORK QUEUE 
  * work_queue -> A queue abstraction encapsulating lists and locks used
@@ -27,7 +27,6 @@ extern pool_t *p_reqs;
 extern int last_slow_node_check_time;
 void *queue_processor(void *);  
 extern int gbl_async_dist_commit_max_outstanding_trans;
-
 int bdb_track_replication_time(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host);
 
 void bdb_slow_replicant_check(bdb_state_type *bdb_state,
@@ -84,7 +83,89 @@ int seqnum_wait_gbl_mem_init(){
     seqnum_wait_queue_pool = pool_setalloc_init(sizeof(struct seqnum_wait), 0, malloc, free);
     return 0;
 }
+static int remove_from_list(bdb_state_type *bdb_state, seqnum_type *seqnum, const char *host){
+	int node_is_rtcpu = 0;
+	int i, coherent_state;
+	int node_ix = nodeix(host);
+    if (bdb_state->callback->nodeup_rtn)
+        if (!(bdb_state->callback->nodeup_rtn(bdb_state, host)))
+            node_is_rtcpu = 1;
+    /* dont wait if it's in a skipped state */
+    Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+    if ((coherent_state = bdb_state->coherent_state[node_ix]) ==
+        STATE_INCOHERENT) {
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER, PR_LSN "+++ %s is incoherent, not waiting\n",
+                   PARM_LSN(seqnum->lsn), host);
+#endif
+        return 1;
+    }
+    Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
 
+    /* node is rtcpued off:  we may need to make the node incoherent */
+    if (node_is_rtcpu) {
+        Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
+        if (bdb_state->coherent_state[node_ix] == STATE_COHERENT ||
+            bdb_state->coherent_state[node_ix] == STATE_INCOHERENT_WAIT) {
+            if (bdb_state->coherent_state[node_ix] == STATE_COHERENT)
+                defer_commits(bdb_state, host, __func__);
+            bdb_state->last_downgrade_time[node_ix] = gettimeofday_ms();
+            set_coherent_state(bdb_state, host, STATE_INCOHERENT, __func__,
+                               __LINE__);
+            bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
+        }
+
+        Pthread_mutex_unlock(&(bdb_state->coherent_state_lock));
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER, PR_LSN "+++ %s became incoherent, not waiting\n",
+                   PARM_LSN(seqnum->lsn), host);
+#endif
+        return 1;
+    }
+
+    Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
+
+    if (gbl_udp)
+        bdb_state->seqnum_info->expected_udp_count[node_ix]++;
+    
+    if (bdb_state->seqnum_info->seqnums[node_ix].lsn.file == INT_MAX ||
+        bdb_lock_desired(bdb_state)) {
+        /* add 1 ms of latency if we have someone catching up */
+        poll(NULL, 0, 1);
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER, PR_LSN "+++ %s is catching up, not waiting\n",
+                   PARM_LSN(seqnum->lsn), host);
+#endif
+        return 1;
+    }
+    /* this node may have been decommissioned, in which case we
+     * get woken up.  Check that this node still exists. */
+    if (!bdb_state->attr->repalwayswait) {
+        const char *nodes[REPMAX];
+        int count;
+        count = net_get_all_nodes_connected(bdb_state->repinfo->netinfo, nodes);
+        for (i = 0; i < count; i++)
+            if (nodes[i] == host)
+                break;
+        if (i == count) {
+            /* no longer connected to this node */
+            Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+            trigger_unregister_node(host);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                logmsg(LOGMSG_USER,
+                       PR_LSN "+++ err waiting for seqnum: host %s no "
+                              "longer connected\n",
+                       PARM_LSN(seqnum->lsn), host);
+#endif
+		return 1;
+	}
+    }
+        Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+    return 0;
+}
 int ts_compare(int ts1, int ts2){
     if(ts1 < ts2) return -1;
     else if(ts1 > ts2) return 1;
@@ -94,30 +175,30 @@ int ts_compare(int ts1, int ts2){
 //assumes work_queue->mutex lock is held
 void print_lists(){
     struct seqnum_wait *cur = NULL;
-    //printf("locking at %d: \n",__LINE__);
-    //pthread_mutex_lock(&(work_queue->mutex));
+    logmsg(LOGMSG_USER,"locking at %d: \n",__LINE__);
     LISTC_FOR_EACH(&work_queue->lsn_list,cur,lsn_lnk)
     {
-        printf("{LSN: %d|%d}",cur->seqnum.lsn.file,cur->seqnum.lsn.offset);
-        printf("->"); 
+        logmsg(LOGMSG_USER,"{LSN: %d|%d}",cur->seqnum.lsn.file,cur->seqnum.lsn.offset);
+        logmsg(LOGMSG_USER,"->"); 
     }
-    printf("\n");
+    logmsg(LOGMSG_USER,"\n");
     cur = NULL;
     LISTC_FOR_EACH(&work_queue->absolute_ts_list,cur, absolute_ts_lnk)
     {
-        printf("{TS: %d|%d|%d}",cur->seqnum.lsn.file,cur->seqnum.lsn.offset,cur->next_ts);
-        printf("->"); 
+        logmsg(LOGMSG_USER,"{TS: %d|%d|%d}",cur->seqnum.lsn.file,cur->seqnum.lsn.offset,cur->next_ts);
+        logmsg(LOGMSG_USER,"->"); 
     }
-    printf("\n");
-    //printf("unlocking at %d: \n",__LINE__);
-    //pthread_mutex_unlock(&(work_queue->mutex));
+    logmsg(LOGMSG_USER,"\n");
+    logmsg(LOGMSG_USER,"unlocking at %d: \n",__LINE__);
 }
 
 // Assumes that we already have lock on work_queue->mutex
 void add_to_lsn_list(struct seqnum_wait *item){
     struct seqnum_wait *add_before_lsn = NULL;
     struct seqnum_wait *temp = NULL;
-    //logmsg(LOGMSG_DEBUG, "+++Adding item %d:%d to lsn_list\n", item->seqnum.lsn.file, item->seqnum.lsn.offset);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+    logmsg(LOGMSG_DEBUG, "+++Adding item %d:%d to lsn_list\n", item->seqnum.lsn.file, item->seqnum.lsn.offset);
+#endif
     LISTC_FOR_EACH_SAFE(&work_queue->lsn_list,add_before_lsn,temp,lsn_lnk)
     {
         if(log_compare(&(item->seqnum.lsn), &(add_before_lsn->seqnum.lsn)) < 0){
@@ -134,7 +215,9 @@ void add_to_lsn_list(struct seqnum_wait *item){
 void add_to_absolute_ts_list(struct seqnum_wait *item){
     struct seqnum_wait *add_before_ts = NULL;
     struct seqnum_wait *temp = NULL;
-    //logmsg(LOGMSG_DEBUG, "+++Adding item %d:%d to absolute_ts_list with next time stamp %d\n", item->seqnum.lsn.file, item->seqnum.lsn.offset, item->next_ts);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+    logmsg(LOGMSG_DEBUG, "+++Adding item %d:%d to absolute_ts_list with next time stamp %d\n", item->seqnum.lsn.file, item->seqnum.lsn.offset, item->next_ts);
+#endif
     LISTC_FOR_EACH_SAFE(&work_queue->absolute_ts_list,add_before_ts,temp,absolute_ts_lnk)
     {
         if(item->next_ts <= add_before_ts->next_ts){
@@ -230,7 +313,9 @@ void process_work_item(struct seqnum_wait *item){
                 item->cur_state = COMMIT;
                 goto commit_label;
             }*/
-            //logmsg(LOGMSG_DEBUG, "+++%s waiting for %s\n", __func__, lsn_to_str(item->str, &(item->seqnum.lsn)));
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER, "+++%s waiting for %s\n", __func__, lsn_to_str(item->str, &(item->seqnum.lsn)));
+#endif
             item->start_time = comdb2_time_epochms();
             if(item->bdb_state->attr->durable_lsns){
                 item->total_connected = net_get_sanctioned_replicants(item->bdb_state->repinfo->netinfo, REPMAX, item->connlist);
@@ -272,6 +357,9 @@ void process_work_item(struct seqnum_wait *item){
             item->cur_state = FIRST_ACK;
         case FIRST_ACK:
             item->cur_state = FIRST_ACK;
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+	    logmsg(LOGMSG_USER, "+++++now:%d, item->start_time:%d, item->bdb_state->attr->rep_timeout_maxms:%d\n", comdb2_time_epochms(), item->start_time, item->bdb_state->attr->rep_timeout_maxms);
+#endif
             if(((comdb2_time_epochms() - item->start_time) < item->bdb_state->attr->rep_timeout_maxms) &&
                     !(item->lock_desired = bdb_lock_desired(item->bdb_state))){
                 item->numnodes = 0;
@@ -280,8 +368,14 @@ void process_work_item(struct seqnum_wait *item){
 
                 if(item->bdb_state->attr->durable_lsns){
                     item->total_connected = net_get_sanctioned_replicants(item->bdb_state->repinfo->netinfo, REPMAX, item->connlist);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+		   logmsg(LOGMSG_USER, "+++++%s:%d got total sanctioned to be: %d\n", __func__, __LINE__, item->total_connected); 
+#endif
                 } else {
-                    item->total_connected = net_get_all_commissioned_nodes(item->bdb_state->repinfo->netinfo, item->connlist); 
+                    item->total_connected = net_get_all_commissioned_nodes(item->bdb_state->repinfo->netinfo, item->connlist);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+		   logmsg(LOGMSG_USER, "++++%s:%d got total commisioned to be: %d\n", __func__, __LINE__, item->total_connected); 
+#endif
                 }
                 if (item->total_connected == 0){
                     /* nobody is there to wait for! */
@@ -306,8 +400,10 @@ void process_work_item(struct seqnum_wait *item){
                     item->cur_state = DONE_WAIT;
                     goto done_wait_label;
                 }
-                
-                for (int i = 0; i < item->numnodes; i++) {
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+	       logmsg(LOGMSG_USER, "++++item->numnodes: %d, item->numskip: %d, item->numwait: %d, item->num_incoh: %d\n", item->numnodes, item->numskip, item->numwait, item->num_incoh);	
+#endif
+                for (int i = 0; i < item->numnodes;i++) {
                     if (item->bdb_state->rep_trace){
                         /*logmsg(LOGMSG_DEBUG,
                                "+++checking for initial NEWSEQ from node %s of >= <%s>\n",
@@ -320,18 +416,37 @@ void process_work_item(struct seqnum_wait *item){
                         item->end_time = comdb2_time_epochms();
                         item->we_used = item->end_time - item->start_time;
                         item->waitms = (item->we_used * item->bdb_state->attr->rep_timeout_lag) / 100;
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+		        logmsg(LOGMSG_USER, "+++first node responded. waitms is: %d\n", item->waitms);
+#endif
                         if (item->waitms < item->bdb_state->attr->rep_timeout_minms){
                             // If the first node responded really fast, we don't want to impose too harsh a timeout on the remaining nodes
                             item->waitms = item->bdb_state->attr->rep_timeout_minms;
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+			    logmsg(LOGMSG_USER, "+++first node responded too fast. Modified waitms is: %d\n", item->waitms);
+#endif
                         }
                         if (item->bdb_state->rep_trace)
-                            /*logmsg(LOGMSG_DEBUG, "+++fastest node to <%s> was %dms, will wait "
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                            logmsg(LOGMSG_USER, "+++fastest node to <%s> was %dms, will wait "
                                             "another %dms for remainder\n",
-                                    lsn_to_str(item->str, &(item->seqnum.lsn)), item->we_used, item->waitms);*/
+                                    lsn_to_str(item->str, &(item->seqnum.lsn)), item->we_used, item->waitms);
+#endif
                         // WE got first ack.. move to next state.. 
                         item->cur_state = GOT_FIRST_ACK;
                         goto got_first_ack_label;
-                    }
+                    }else{
+			    if(remove_from_list(item->bdb_state, &item->seqnum, item->nodelist[i])){
+				    logmsg(LOGMSG_USER,"+++removing %s from list\n",item->nodelist[i]);
+				    item->nodelist[i] = item->nodelist[item->numnodes-1];
+				    item->numnodes--;
+				    if(item->numnodes<=0){
+					    item->cur_state=DONE_WAIT;
+					    goto done_wait_label;
+				    }
+				    i--;
+			    }
+		    }
                 }
                 // If we get here, then none of the replicants have caught up yet, AND we are still within rep_timeout_maxms 
                 // Let's wait for one second and check again.
@@ -346,20 +461,25 @@ void process_work_item(struct seqnum_wait *item){
            else{
                // Either we timed out, or someone else is asking for bdb lock i.e master swing
                if(item->lock_desired){
-                   //logmsg(LOGMSG_DEBUG,"+++lock desired, not waiting for initial replication of <%s>\n", lsn_to_str(item->str, &(item->seqnum.lsn)));
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                   logmsg(LOGMSG_USER,"+++lock desired, not waiting for initial replication of <%s>\n", lsn_to_str(item->str, &(item->seqnum.lsn)));
+#endif
                    // Not gonna wait for anymore acks...Set rcode and go to DONE_WAIT;
                    if(item->bdb_state->attr->durable_lsns){
                        item->outrc = BDBERR_NOT_DURABLE;
                    }
                    else{
+			logmsg(LOGMSG_USER, "lock desired .. setting outrc to -1 from %s:%d\n", __func__, __LINE__);
                        item->outrc = -1;
                    }
                    item->cur_state = COMMIT;
                    goto commit_label;
                }
                // we timed out i.e exceeded bdb->attr->rep_timeout_maxms
-               /*logmsg(LOGMSG_DEBUG, "+++timed out waiting for initial replication of <%s>\n",
-                       lsn_to_str(item->str, &(item->seqnum.lsn)));*/
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+               logmsg(LOGMSG_USER, "+++timed out waiting for initial replication of <%s>\n",
+                       lsn_to_str(item->str, &(item->seqnum.lsn)));
+#endif
                item->end_time = comdb2_time_epochms(); 
                item->we_used = item->end_time - item->start_time;
                item->waitms = 0; // We've already exceeded max timeout... Not gonna wait anymore
@@ -368,11 +488,16 @@ void process_work_item(struct seqnum_wait *item){
         case GOT_FIRST_ACK: got_first_ack_label:
            // First check if someone else wants bdb_lock a.k.a master swing
            if(bdb_lock_desired(item->bdb_state)){
-               //logmsg(LOGMSG_DEBUG,"+++%s line %d early exit because lock-is-desired\n",__func__,__LINE__);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+               logmsg(LOGMSG_USER,"+++%s line %d early exit because lock-is-desired\n",__func__,__LINE__);
+#endif
                if(item->bdb_state->attr->durable_lsns){
                    item->outrc = BDBERR_NOT_DURABLE;
                }
                else{
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+			logmsg(LOGMSG_USER, "+++lock desired .. setting outrc to -1 from %s:%d\n", __func__, __LINE__);
+#endif
                    item->outrc = -1;
                }
                item->cur_state = COMMIT;
@@ -391,22 +516,36 @@ void process_work_item(struct seqnum_wait *item){
                 }
                 int rc = bdb_wait_for_seqnum_from_node_nowait_int(item->bdb_state, &item->seqnum, item->nodelist[i]);
                 if (bdb_lock_desired(item->bdb_state)) {
-                    /*logmsg(LOGMSG_DEBUG,
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                    logmsg(LOGMSG_USER,
                            "+++%s line %d early exit because lock-is-desired\n", __func__,
-                           __LINE__);*/
+                           __LINE__);
+#endif
                     if(item->bdb_state->attr->durable_lsns){
                        item->outrc = BDBERR_NOT_DURABLE;
                     }
                     else{
+			logmsg(LOGMSG_USER, "lock desired .. setting outrc to -1 from %s:%d\n", __func__, __LINE__);
                        item->outrc = -1;
                     }
                     item->cur_state = COMMIT;
                     goto commit_label;
                 }
                 if (rc == -999){
-                    /*logmsg(LOGMSG_DEBUG, "+++node %s hasn't caught up yet, base node "
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                    logmsg(LOGMSG_USER, "+++node %s hasn't caught up yet, base node "
                                     "was %s",
-                            item->nodelist[i],item->base_node);*/
+                            item->nodelist[i],item->base_node);
+#endif
+			    if(remove_from_list(item->bdb_state, &item->seqnum, item->nodelist[i])){
+				    logmsg(LOGMSG_USER,"+++removing %s from list\n",item->nodelist[i]);
+				    item->nodelist[i] = item->nodelist[item->numnodes-1];
+				    item->numnodes--;
+				    if(item->numnodes<=0){
+					    item->cur_state=DONE_WAIT;
+					    goto done_wait_label;
+				    }				    
+			    }
                     item->numfailed++;
                     // If even one replicant hasn't caught up, we come out of the loop and wait
                     // No point in checking the others as we will have to wait anyways
@@ -450,28 +589,36 @@ void process_work_item(struct seqnum_wait *item){
                         }
                         int rc = bdb_wait_for_seqnum_from_node_nowait_int(item->bdb_state, &item->seqnum, item->nodelist[i]);
                         if (bdb_lock_desired(item->bdb_state)) {
-                            /*logmsg(LOGMSG_DEBUG,
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                            logmsg(LOGMSG_USER,
                                    "+++%s line %d early exit because lock-is-desired\n", __func__,
-                                   __LINE__);*/
+                                   __LINE__);
+#endif
                             if(item->bdb_state->attr->durable_lsns){
                                item->outrc = BDBERR_NOT_DURABLE;
                             }
                             else{
+			logmsg(LOGMSG_USER, "lock desired .. setting outrc to -1 from %s:%d\n", __func__, __LINE__);
                                item->outrc = -1;
                             }
                             item->cur_state = COMMIT;
                             goto commit_label;
                         }
                         if (rc == -999){
-                            /*logmsg(LOGMSG_DEBUG, "+++node %s hasn't caught up yet, base node "
-                                            "was %s",
-                                    item->nodelist[i],item->base_node);*/
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                            logmsg(LOGMSG_USER, "+++node %s hasn't caught up yet, base node "
+                                            "was %s\n",
+                                    item->nodelist[i],item->base_node);
+#endif
                             item->numfailed++;
                             // Extract seqnum
                             Pthread_mutex_lock(&(item->bdb_state->seqnum_info->lock));
                             item->nodegen = item->bdb_state->seqnum_info->seqnums[nodeix(item->nodelist[i])].generation;
                             item->nodelsn = item->bdb_state->seqnum_info->seqnums[nodeix(item->nodelist[i])].lsn;
                             Pthread_mutex_unlock(&(item->bdb_state->seqnum_info->lock));
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+			    logmsg(LOGMSG_USER,"+++item->nodegen: %d, item->nodelsn: %d:%d \n",item->nodegen, item->nodelsn.file, item->nodelsn.offset);
+#endif
                             // We now mark the node incoherent
                             Pthread_mutex_lock(&(item->bdb_state->coherent_state_lock));
                             if(item->bdb_state->coherent_state[nodeix(item->nodelist[i])] == STATE_COHERENT){
@@ -488,6 +635,9 @@ void process_work_item(struct seqnum_wait *item){
                                 // change next_commit_timestamp for the work queue, if new value of coherency_commit_timestamp is larger,
                                 //  than current value of coherency_commit_timestamp 
                                 work_queue->next_commit_timestamp = (work_queue->next_commit_timestamp < coherency_commit_timestamp)?coherency_commit_timestamp:work_queue->next_commit_timestamp;
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+				logmsg(LOGMSG_USER," work_queue->next_commit_timestamp: %ld, coherency_commit_timestamp: %ld\n", work_queue->next_commit_timestamp, coherency_commit_timestamp);
+#endif
                                 item->bdb_state->last_downgrade_time[nodeix(item->nodelist[i])] = gettimeofday_ms();
                                 item->bdb_state->repinfo->skipsinceepoch = comdb2_time_epoch();
                             }
@@ -506,17 +656,18 @@ void process_work_item(struct seqnum_wait *item){
             if (!item->numfailed && !item->numskip && !item->numwait &&
                 item->bdb_state->attr->remove_commitdelay_on_coherent_cluster &&
                 item->bdb_state->attr->commitdelay) {
-                /*logmsg(LOGMSG_DEBUG, "+++Cluster is in sync, removing commitdelay\n");*/
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                logmsg(LOGMSG_USER, "+++Cluster is in sync, removing commitdelay\n");
+#endif
                 item->bdb_state->attr->commitdelay = 0;
             }
-
-            /*if (item->numfailed) {
+	    /*
+            if (item->numfailed) {
                 item->outrc = -1;
             }*/
 
-            int now = comdb2_time_epochms();
             Pthread_mutex_lock(&(work_queue->mutex));
-            if(now > work_queue->next_commit_timestamp){
+            if(comdb2_time_epochms() > work_queue->next_commit_timestamp){
                 Pthread_mutex_unlock(&(work_queue->mutex));
                 // We're safe to commit and return control to client
                 item->cur_state = COMMIT;
@@ -545,7 +696,7 @@ void process_work_item(struct seqnum_wait *item){
 
                 if (item->sorese.rqid == 0)
                     abort();
-                /*logmsg(LOGMSG_USER, "Calling osql_comm_signal_sqlthr_rc from %s:%d with sorese_rc: %d\n", __func__, __LINE__, sorese_rc);*/
+                logmsg(LOGMSG_USER, "Calling osql_comm_signal_sqlthr_rc from %s:%d with sorese_rc: %d\n", __func__, __LINE__, sorese_rc);
                 osql_comm_signal_sqlthr_rc(&item->sorese, &item->errstat, sorese_rc);
             item->cur_state = FREE; 
             break;
@@ -557,53 +708,66 @@ void *queue_processor(void *arg){
     struct seqnum_wait *next_item = NULL;
     struct timespec waittime;
     int wait_rc = 0;
-    int now = 0;
     extern uint64_t new_lsns;
     extern bdb_state_type *gbl_bdb_state;
     int local_new_lsns = 0;
     Pthread_mutex_lock(&gbl_bdb_state->seqnum_info->lock);
     local_new_lsns = new_lsns;
-    //logmsg(LOGMSG_USER,"+++captured value of local_new_lsns:%d\n", local_new_lsns);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+    logmsg(LOGMSG_USER,"+++captured value of local_new_lsns:%d\n", local_new_lsns);
+#endif
     Pthread_mutex_unlock(&gbl_bdb_state->seqnum_info->lock);
-
-    //logmsg(LOGMSG_DEBUG,"+++Starting seqnum_wait worker thread\n");
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+    logmsg(LOGMSG_DEBUG,"+++Starting seqnum_wait worker thread\n");
+#endif
     while(1){
         Pthread_mutex_lock(&(work_queue->mutex));
         while(listc_size(&(work_queue->lsn_list))==0){
-            //logmsg(LOGMSG_DEBUG,"+++LSN list is empty.... Waiting for work item\n");
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER,"+++LSN list is empty.... Waiting for work item\n");
+#endif
             Pthread_cond_wait(&(work_queue->cond),&(work_queue->mutex));
         }
         Pthread_mutex_unlock(&(work_queue->mutex));
-        //logmsg(LOGMSG_DEBUG,"+++Finally! got a work item\n");
-
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+	logmsg(LOGMSG_USER,"+++waitrc = %d\n", wait_rc);
+#endif
         // if timed_wait below resulted in a timeout, we need to go over absolute_ts_list
         if(wait_rc == ETIMEDOUT){
-            //logmsg(LOGMSG_DEBUG,"+++Timed out on conditional wait.. Going over absolute ts list\n");
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER,"+++Timed out on conditional wait.. Going over absolute ts list\n");
+#endif
             Pthread_mutex_lock(&(work_queue->mutex));
             item = LISTC_TOP(&(work_queue->absolute_ts_list));
             Pthread_mutex_unlock(&(work_queue->mutex));
-            now = comdb2_time_epochms();
-            while(item!=NULL && (item->next_ts <= now)){
-                if(item->cur_state == FREE){
-                    //logmsg(LOGMSG_DEBUG, "+++Done processing work item: %d:%d... Freeing it\n",item->seqnum.lsn.file, item->seqnum.lsn.offset);
+            while(item!=NULL && (item->next_ts <= comdb2_time_epochms())){
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                logmsg(LOGMSG_USER, "+++Processing work item: %d:%d, in state: %d\n",item->seqnum.lsn.file, item->seqnum.lsn.offset,item->cur_state);
+#endif
+                process_work_item(item);
+		if(item->cur_state == FREE){
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                    logmsg(LOGMSG_USER, "+++Done processing work item: %d:%d... Freeing it\n",item->seqnum.lsn.file, item->seqnum.lsn.offset);
+#endif
                     Pthread_mutex_lock(&(work_queue->mutex));
-                    next_item = item->lsn_lnk.next;
+                    next_item = item->absolute_ts_lnk.next;
                     Pthread_mutex_unlock(&(work_queue->mutex));
                     free_work_item(item);
                     item = next_item;
-                    continue;
-                }
-                //logmsg(LOGMSG_DEBUG, "+++Processing work item: %d:%d, in state: %d\n",item->seqnum.lsn.file, item->seqnum.lsn.offset,item->cur_state);
-                process_work_item(item);
-                Pthread_mutex_lock(&(work_queue->mutex));
-                item = item->absolute_ts_lnk.next;
-                Pthread_mutex_unlock(&(work_queue->mutex));
+		}
+		else{
+			Pthread_mutex_lock(&(work_queue->mutex));
+			item = item->absolute_ts_lnk.next;
+			Pthread_mutex_unlock(&(work_queue->mutex));
+		}
             }
         }
         else{
             // wait_rc == 0, which means either this is the first run of infinite while loop , or..
             // the timed_wait below was signalled...i.e... we got new seqnum -> we iterate over lsn_list upto max_lsn_seen 
-            //logmsg(LOGMSG_DEBUG, "+++Either got new seqnum or going through lsn list for the first time\n");
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+            logmsg(LOGMSG_USER, "+++Either got new seqnum or going through lsn list for the first time\n");
+#endif
             Pthread_mutex_lock(&(work_queue->mutex));
             item = LISTC_TOP(&(work_queue->lsn_list));
             Pthread_mutex_unlock(&(work_queue->mutex));
@@ -611,25 +775,32 @@ void *queue_processor(void *arg){
                 Pthread_mutex_lock(&max_lsn_so_far_lk);
                 if(log_compare(&item->seqnum.lsn, &max_lsn_so_far) > 0){
                     // We don't need to go down the lsn list any more as the remaining work_items are for Larger LSNs
-                    //logmsg(LOGMSG_USER, "Current item LSN larger than max_so_far.. Quit processing LSN list\n");
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                    logmsg(LOGMSG_USER, "+++Current item LSN larger than max_so_far.. Quit processing LSN list\n");
+#endif
                     Pthread_mutex_unlock(&max_lsn_so_far_lk);
                     break;
                 }
                 Pthread_mutex_unlock(&max_lsn_so_far_lk);
-                if(item->cur_state == FREE){
-                    //logmsg(LOGMSG_DEBUG, "+++Done processing work item: %d:%d... Freeing it\n",item->seqnum.lsn.file, item->seqnum.lsn.offset);
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                logmsg(LOGMSG_USER, "+++Processing work item: %d:%d, in state: %d\n",item->seqnum.lsn.file, item->seqnum.lsn.offset,item->cur_state);
+#endif
+                process_work_item(item);
+		if(item->cur_state == FREE){
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                    logmsg(LOGMSG_USER, "+++Done processing work item: %d:%d... Freeing it\n",item->seqnum.lsn.file, item->seqnum.lsn.offset);
+#endif
                     Pthread_mutex_lock(&(work_queue->mutex));
                     next_item = item->lsn_lnk.next;
                     Pthread_mutex_unlock(&(work_queue->mutex));
                     free_work_item(item);
                     item = next_item;
-                    continue;
-                }
-                //logmsg(LOGMSG_DEBUG, "+++Processing work item: %d:%d, in state: %d\n",item->seqnum.lsn.file, item->seqnum.lsn.offset,item->cur_state);
-                process_work_item(item);
-                Pthread_mutex_lock(&(work_queue->mutex));
-                item = item->lsn_lnk.next;
-                Pthread_mutex_unlock(&(work_queue->mutex));
+		}
+		else{
+			Pthread_mutex_lock(&(work_queue->mutex));
+			item = item->lsn_lnk.next;
+			Pthread_mutex_unlock(&(work_queue->mutex));
+		}
             }
         }
         // Check first item on absolute_ts_list 
@@ -637,22 +808,25 @@ void *queue_processor(void *arg){
         item = LISTC_TOP(&(work_queue->absolute_ts_list));
         Pthread_mutex_unlock(&(work_queue->mutex));
         if(item!=NULL){
-            int now = comdb2_time_epochms();
-            if(now <  item->next_ts){
+            if(comdb2_time_epochms() <  item->next_ts){
                 // we are early, wait till the earliest time that a node has to be checked
                 // Or, till we get signalled by got_new_seqnum_from_node
                 Pthread_mutex_lock(&(item->bdb_state->seqnum_info->lock));
                 //Before going into a timed wait check if we've got new lsns in the meanwhile.. In this case, we shouldn't go into a timed wait... we should rather go over the lsn list
                 if(local_new_lsns != new_lsns){
                     //We got new lsns in the meanwhile... Go over LSN list.
-                    //logmsg(LOGMSG_USER,"Not going into timed wait as we got new lsns\n");
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                    logmsg(LOGMSG_USER,"+++Not going into timed wait as we got new lsns\n");
+#endif
                     local_new_lsns = new_lsns;
                     Pthread_mutex_unlock(&item->bdb_state->seqnum_info->lock);
                     wait_rc = 0;
                     continue;
                 }
-                setup_waittime(&waittime, item->next_ts-now);
-                //logmsg(LOGMSG_DEBUG, "+++Current time :%d before earliest time a work item has to be checked:%d ... going into timedcondwait\n",now,item->next_ts);
+                setup_waittime(&waittime, item->next_ts-comdb2_time_epochms());
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+                logmsg(LOGMSG_USER, "+++Current time :%d before earliest time a work item has to be checked:%d ... going into timedcondwait\n",comdb2_time_epochms(),item->next_ts);
+#endif
                 wait_rc = pthread_cond_timedwait(&(item->bdb_state->seqnum_info->cond),
                                             &(item->bdb_state->seqnum_info->lock), &waittime); 
                 local_new_lsns = new_lsns;
@@ -666,6 +840,9 @@ void *queue_processor(void *arg){
         }
         else{
             //Nothing on the lists... reset wait_rc
+#ifdef PRINT_TRACES_ASYNC_DIST_COMMIT
+	    logmsg(LOGMSG_USER, "+++List is empty... nothing to do\n");
+#endif
             wait_rc = 0;
         }
     }
