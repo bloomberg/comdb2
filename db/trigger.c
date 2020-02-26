@@ -153,8 +153,9 @@ int trigger_register(trigger_reg_t *t)
 
 static int trigger_unregister_int(trigger_reg_t *t)
 {
-    if (trigger_hash == NULL)
-        return 0;
+    if (trigger_hash == NULL) {
+        return CDB2_TRIG_REQ_SUCCESS;
+    }
     GET_BDB_STATE(bdb_state);
     uint8_t buf[TRIGGER_REG_MAX];
     t = trigger_recv(t, buf);
