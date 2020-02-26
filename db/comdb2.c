@@ -1274,7 +1274,6 @@ static void *purge_old_files_thread(void *arg)
         }
 
         init_fake_ireq(thedb, &iq);
-        iq.use_handle = thedb->bdb_env;
 
         /* ok, get to work now */
         retries = 0;

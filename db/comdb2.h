@@ -1332,7 +1332,6 @@ struct ireq {
     /* for waking up socket thread. */
     void *request_data;
     char *tag;
-    void *use_handle; /* for fake ireqs, so I can start a transaction */
 
     errstat_t errstat;
     struct javasp_trans_state *jsph;

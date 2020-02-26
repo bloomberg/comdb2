@@ -804,7 +804,6 @@ int local_replicant_write_clear(struct ireq *in_iq, void *in_trans,
     }
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
 
     iq.blkstate = &blkstate;
 again:
