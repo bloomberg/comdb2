@@ -1260,7 +1260,6 @@ struct osql_sess {
 
     /* from sorese */
     const char *host; /* sql machine, 0 is local */
-    SBUF2 *osqllog;   /* used to track sorese requests */
     int nops;         /* if no error, how many updated rows were performed */
     int rcout;        /* store here the block proc main error */
 

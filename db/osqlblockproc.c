@@ -102,11 +102,11 @@ typedef struct {
 int gbl_selectv_writelock_on_update = 1;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int *nops, struct block_err *err,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char **, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *));
+                                     struct block_err *, int *));
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(bool is_uuid, const char *rpl,
                                           int *tableversion);
@@ -340,8 +340,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     }
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese->osqllog,
-                       osql_process_packet);
+    rc = apply_changes(iq, tran, iq_trans, nops, err, osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
 
@@ -1029,11 +1028,10 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
 
 static int process_this_session(
     struct ireq *iq, void *iq_tran, osql_sess_t *sess, int *bdberr, int *nops,
-    struct block_err *err, SBUF2 *logsb, struct temp_cursor *dbc,
-    struct temp_cursor *dbc_ins,
+    struct block_err *err, struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
     int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char **, int,
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
-                struct block_err *, int *, SBUF2 *))
+                struct block_err *, int *))
 {
     int countops = 0;
     int lastrcv = 0;
@@ -1122,7 +1120,7 @@ static int process_this_session(
         /* This call locks pages:
          * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, sess->rqid, sess->uuid, iq_tran, &data, datalen,
-                      &flags, &updCols, blobs, step, err, &receivedrows, logsb);
+                      &flags, &updCols, blobs, step, err, &receivedrows);
         free(data);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
@@ -1170,11 +1168,11 @@ static int process_this_session(
 }
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int *nops, struct block_err *err,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char **, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *))
+                                     struct block_err *, int *))
 {
 
     int rc = 0;
@@ -1227,7 +1225,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     /* go through the complete list and apply all the changes */
     out_rc = process_this_session(iq, iq_tran, iq->sorese, &bdberr, nops, err,
-                                  logsb, dbc, dbc_ins, func);
+                                  dbc, dbc_ins, func);
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
@@ -1357,8 +1355,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     iq->sc_locked = 0;
     iq->sc_should_abort = 0;
 
-    rc = apply_changes(iq, tran, NULL, &nops, err, iq->sorese->osqllog,
-                       osql_process_schemachange);
+    rc = apply_changes(iq, tran, NULL, &nops, err, osql_process_schemachange);
 
     if (rc)
         logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);

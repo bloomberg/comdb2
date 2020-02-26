@@ -144,8 +144,6 @@ typedef struct osqlstate {
     int replicant_numops; /* total num of ops sent by replicant to master which
                              includes USEDB, BLOB, etc. */
 
-    SBUF2 *logsb; /* help debugging */
-
     /* == sqlclntstate == */
 
     int count_changes;   /* enable pragma count_changes=1, for rr, sosql, recom,
