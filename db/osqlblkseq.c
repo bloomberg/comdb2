@@ -76,6 +76,7 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
         logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n",
                IQ_SNAPINFO(iq)->keylen - 3, IQ_SNAPINFO(iq)->key);
     }
+#endif
 
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
@@ -186,7 +187,6 @@ int osql_blkseq_unregister(struct ireq *iq)
         return 0;
 
     assert(hiqs != NULL);
-    int rc = 0;
 
     Pthread_mutex_lock(&hmtx);
 
