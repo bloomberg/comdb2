@@ -697,7 +697,7 @@ void process_work_item(struct seqnum_wait *item){
                 if (item->sorese.rqid == 0)
                     abort();
                 logmsg(LOGMSG_USER, "Calling osql_comm_signal_sqlthr_rc from %s:%d with sorese_rc: %d\n", __func__, __LINE__, sorese_rc);
-                osql_comm_signal_sqlthr_rc(&item->sorese, &item->errstat, sorese_rc);
+                osql_comm_signal_sqlthr_rc(item->sorese.host, item->sorese.rqid, item->sorese.uuid, item->sorese.nops,&item->errstat, sorese_rc);
             item->cur_state = FREE; 
             break;
     }// End of Switch

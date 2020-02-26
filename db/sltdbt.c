@@ -471,7 +471,6 @@ cleanup:
                     dbqueuedb_wake_all_consumers(iq->queues_hit[ii], 0);
             }
         }
-    }
 
     /* Finish off logging. */
     if (iq->sorese) {
@@ -481,23 +480,6 @@ cleanup:
     release_node_stats(NULL, NULL, iq->frommach);
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
-
-        /* Finish off logging. */
-        if (iq->blocksql_tran) {
-            osql_bplog_reqlog_queries(iq);
-        }
-        reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
-        release_node_stats(NULL, NULL, iq->frommach);
-            if (gbl_print_deadlock_cycles)
-                osql_snap_info = NULL;
-
-            if (iq->sorese) {
-                if (iq->p_buf_out_start) {
-                    free(iq->p_buf_out_start);
-                    iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-                    iq->p_buf_in_end = iq->p_buf_in = NULL;
-                }
-            }
 
     /* Make sure we do not leak locks */
     bdb_checklock(thedb->bdb_env); 
