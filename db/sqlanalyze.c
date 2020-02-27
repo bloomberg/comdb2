@@ -537,7 +537,6 @@ static int local_replicate_write_analyze(char *table)
         return 0;
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
 
     iq.blkstate = &blkstate;
 again:

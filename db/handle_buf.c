@@ -1196,7 +1196,6 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
     }
 
     iq->sorese = sorese;
-    iq->use_handle = thedb->bdb_env;
 
 #if 0
     printf("Mapping sorese %llu\n", osql_log_time());
