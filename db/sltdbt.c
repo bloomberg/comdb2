@@ -342,6 +342,7 @@ int handle_ireq(struct ireq *iq)
 
     if (rc == RC_INTERNAL_FORWARD) {
         rc = 0;
+	goto cleanup;
     } 
         /* SNDBAK RESPONSE */
         if (iq->debug) {
