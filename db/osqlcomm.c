@@ -6861,7 +6861,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     } break;
     case OSQL_DELIDX:
     case OSQL_INSIDX: {
-        osql_index_t dt;
+        osql_index_t dt = {0};
         unsigned char *pData = NULL;
         int isDelete = (type == OSQL_DELIDX);
         const uint8_t *p_buf_end;
