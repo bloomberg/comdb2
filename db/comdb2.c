@@ -5005,10 +5005,9 @@ static void register_all_int_switches()
     register_int_switch("repverifyrecs",
                         "Verify every berkeley log record received",
                         &gbl_verify_rep_log_records);
-    register_int_switch(
-        "enable_osql_logging",
-        "Log every osql packet received in a special file, per iq",
-        &gbl_enable_osql_logging);
+    register_int_switch("enable_osql_logging",
+                        "Log every osql packet and operation",
+                        &gbl_enable_osql_logging);
     register_int_switch("enable_osql_longreq_logging",
                         "Log untruncated osql strings",
                         &gbl_enable_osql_longreq_logging);
