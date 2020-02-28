@@ -19,8 +19,8 @@ ${TESTSBUILDDIR}/comdb2_blobtest $dbname 6 100000
 ${TESTSBUILDDIR}/comdb2_blobtest $dbname 7 1000000
 ${TESTSBUILDDIR}/comdb2_blobtest $dbname 8 10000000
 ${TESTSBUILDDIR}/comdb2_blobtest $dbname 9  100000000
-${TESTSBUILDDIR}/comdb2_blobtest $dbname 10 267386880
-${TESTSBUILDDIR}/comdb2_blobtest $dbname 11 267386881
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 10 268435455
+${TESTSBUILDDIR}/comdb2_blobtest $dbname 11 268435456
 ${TESTSBUILDDIR}/comdb2_blobtest $dbname 12 300000000
 ) > out.txt 2>&1
 cdb2sql -s $testreq ${CDB2_OPTIONS} $dbname default "select a, length(b) from t order by a" >> out.txt

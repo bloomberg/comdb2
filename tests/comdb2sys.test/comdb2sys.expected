@@ -302,7 +302,7 @@
 (name='ZLIB', reserved='N')
 [SELECT * FROM comdb2_keywords WHERE reserved = 'N' ORDER BY name] rc 0
 (name='max_blob_fields', description='Maximum number of blob/vutf8 fields per table', value=15)
-(name='max_blob_length', description='Maximum blob length', value=267386880)
+(name='max_blob_length', description='Maximum blob length', value=268435455)
 (name='max_bounded_parameters', description='Maximum number of bounded parameters per prepared statement', value=2048)
 (name='max_column_name_length', description='Maximum column name length', value=99)
 (name='max_columns', description='Maximum columns per table', value=1024)
