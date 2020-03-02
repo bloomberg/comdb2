@@ -472,8 +472,8 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     }
 
     snap_uid_t snap, *p = NULL;
-    if (logger->iq && logger->iq->have_snap_info) /* for txn type */
-        p = &logger->iq->snap_info;
+    if (logger->iq && IQ_HAS_SNAPINFO(logger->iq)) /* for txn type */
+        p = IQ_SNAPINFO(logger->iq);
     else if (logger->clnt && get_cnonce(logger->clnt, &snap) == 0)
         p = &snap;
     if (p) {

@@ -103,10 +103,10 @@ static int collect_bplog_session(void *obj, void *arg)
     o->type = bplogtype;
     o->origin = sess->host? strdup(sess->host) : NULL;
     o->where = iq && iq->where ? strdup(iq->where) : NULL;
-    if (iq && iq->have_snap_info) {
-        o->cnonce = malloc(iq->snap_info.keylen + 1);
-        memcpy(o->cnonce, iq->snap_info.key, iq->snap_info.keylen);
-        o->cnonce[iq->snap_info.keylen] = '\0';
+    if (iq && IQ_HAS_SNAPINFO(iq)) {
+        o->cnonce = malloc(IQ_SNAPINFO(iq)->keylen + 1);
+        memcpy(o->cnonce, IQ_SNAPINFO(iq)->key, IQ_SNAPINFO(iq)->keylen);
+        o->cnonce[IQ_SNAPINFO(iq)->keylen] = '\0';
     }
     if (sess->rqid == 1) {
         comdb2uuidstr(sess->uuid, us);

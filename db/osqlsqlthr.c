@@ -137,7 +137,8 @@ inline int get_osql_maxthrottle_sec(void)
 
 int gbl_osql_random_restart = 0;
 
-static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
+static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
+                                      int keep_rqid)
 {
     if (rc == OSQL_SEND_ERROR_WRONGMASTER &&
         (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
@@ -150,9 +151,10 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
         snap_uid_t snap = {{0}};
         get_cnonce(clnt, &snap);
         logmsg(LOGMSG_USER,
-               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d\n",
+               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d "
+               "keep_rqid=%d\n",
                comdb2uuidstr(clnt->osql.uuid, us), snap.keylen, snap.key,
-               clnt->osql.replicant_numops);
+               clnt->osql.replicant_numops, keep_rqid);
         return 1;
     }
 
@@ -162,7 +164,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
 #define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
     do {                                                                       \
         restarted = 0;                                                         \
-        if (osql_should_restart(clnt, rc)) {                                   \
+        if (osql_should_restart(clnt, rc, keep_rqid)) {                        \
             rc = osql_sock_restart(clnt, gbl_survive_n_master_swings,          \
                                    keep_rqid);                                 \
             if (rc) {                                                          \
@@ -199,8 +201,11 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
                     rc = SQLITE_CLIENT_CHANGENODE;                             \
                 return rc;                                                     \
             }                                                                  \
+            uuidstr_t us;                                                      \
             sql_debug_logf(clnt, __func__, __LINE__,                           \
-                           "osql_sock_start returns %d\n", rc);                \
+                           "osql_sock_start returns rqid %llu uuid %s\n",      \
+                           clnt->osql.rqid,                                    \
+                           comdb2uuidstr(clnt->osql.uuid, us), rc);            \
         }                                                                      \
     } while (0)
 

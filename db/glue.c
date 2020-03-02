@@ -719,10 +719,10 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
 
-    if (gbl_extended_sql_debug_trace && iq->have_snap_info) {
-        cn_len = iq->snap_info.keylen;
+    if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO(iq)) {
+        cn_len = IQ_SNAPINFO(iq)->keylen;
         cnonce = alloca(cn_len + 1);
-        memcpy(cnonce, iq->snap_info.key, cn_len);
+        memcpy(cnonce, IQ_SNAPINFO(iq)->key, cn_len);
         cnonce[cn_len] = '\0';
         logmsg(LOGMSG_USER, "%s %s line %d: trans_commit returns %d\n", cnonce,
                __func__, __LINE__, rc);
