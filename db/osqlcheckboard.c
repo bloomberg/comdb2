@@ -234,26 +234,6 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
         cleanup_entry(entry);
     }
 
-    if (gbl_enable_osql_logging && !clnt->osql.logsb) {
-        int fd = 0;
-        char filename[256];
-
-        snprintf(filename, sizeof(filename), "m_%s_%u_%llu_%s.log",
-                 clnt->osql.host, type, clnt->osql.rqid,
-                 comdb2uuidstr(clnt->osql.uuid, us));
-        fd = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-        if (!fd) {
-            logmsg(LOGMSG_ERROR, "Error opening log file %s\n", filename);
-        } else {
-            clnt->osql.logsb = sbuf2open(fd, 0);
-            if (!clnt->osql.logsb) {
-                logmsg(LOGMSG_ERROR, "Error opening sbuf2 for file %s, fd %d\n",
-                        filename, fd);
-                close(fd);
-            }
-        }
-    }
-
     return rc;
 }
 
@@ -308,11 +288,6 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
 
     /*reset rqid */
     clnt->osql.rqid = 0;
-
-    if (clnt->osql.logsb) {
-        sbuf2close(clnt->osql.logsb);
-        clnt->osql.logsb = NULL;
-    }
 
     cleanup_entry(entry);
     return rc;

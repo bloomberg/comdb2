@@ -5133,7 +5133,12 @@ restart:
   for( k=sqliteHashFirst(&pDb->pSchema->tblHash);  k; k=sqliteHashNext(k) ){
     pTab = (Table*)sqliteHashData(k);
     if( pTab->pSelect ){  
-      /* this is a view */
+      /* Ignore 'user' views */
+      if ((get_view_by_name(pTab->zName))) {
+        continue;
+      }
+
+      /* This is a time partition view */
       if( (*predicated_delete)(pTab->zName, db, arg) ){
 
         /* NOTE: we need to delete also the trigggers, and that require 

@@ -57,7 +57,6 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
     assert(count >= 0 && tcount >= 0);
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
     rep_reset_send_callcount();
     rep_reset_send_bytecount();
     net_reset_num_flushes();
@@ -160,7 +159,6 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
     assert(count >= 1 && phys_txns_per_logical >= 1);
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
 
     rep_reset_send_callcount();
     rep_reset_send_bytecount();

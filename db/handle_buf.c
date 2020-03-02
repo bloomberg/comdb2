@@ -534,10 +534,6 @@ static void *thd_req(void *vthd)
                 pool_free(thd->iq->vfy_genid_pool);
                 thd->iq->vfy_genid_pool = NULL;
             }
-            if (thd->iq->sorese && thd->iq->sorese->osqllog) {
-                sbuf2close(thd->iq->sorese->osqllog);
-                thd->iq->sorese->osqllog = NULL;
-            }
             thd->iq->vfy_genid_track = 0;
 #if 0
             fprintf(stderr, "%s:%d: THD=%d relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
@@ -669,11 +665,6 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                     } else {
                         sndbak_socket(iq->sb, NULL, 0, ERR_INTERNAL);
                         iq->sb = NULL;
-                    }
-                } else if (iq->sorese) {
-                    if (iq->sorese->osqllog) {
-                        sbuf2close(iq->sorese->osqllog);
-                        iq->sorese->osqllog = NULL;
                     }
                 }
                 pool_relablk(p_reqs, iq);
@@ -1196,7 +1187,6 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
     }
 
     iq->sorese = sorese;
-    iq->use_handle = thedb->bdb_env;
 
 #if 0
     printf("Mapping sorese %llu\n", osql_log_time());
@@ -1205,25 +1195,6 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
     snprintf(iq->corigin, sizeof(iq->corigin), "SORESE# %15s %s RQST %llx",
              iq->sorese->host, osql_sorese_type_to_str(iq->sorese->type),
              iq->sorese->rqid);
-
-    /* enable logging, if any */
-    if (gbl_enable_osql_logging) {
-        int ffile = 0;
-        char filename[128];
-        static unsigned long long fcounter = 0;
-
-        snprintf(filename, sizeof(filename), "osql_%llu.log", fcounter++);
-
-        ffile = open(filename, O_WRONLY | O_CREAT | O_TRUNC, 0666);
-        if (ffile == -1) {
-            logmsg(LOGMSG_ERROR, "Failed to open osql log file %s\n", filename);
-        } else {
-            iq->sorese->osqllog = sbuf2open(ffile, 0);
-            if (!iq->sorese->osqllog) {
-                close(ffile);
-            }
-        }
-    }
 
     iq->timings.req_received = osql_log_time();
     iq->tranddl = 0;
