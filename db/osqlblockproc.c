@@ -553,10 +553,7 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
 {
     switch (type) {
     case OSQL_SCHEMACHANGE:
-        sess->iq->tranddl++;
-        break;
-    case OSQL_DONE_SNAP:
-        osql_extract_snap_info(sess->iq, rpl, rplen, tran->is_uuid);
+        sess->is_tranddl++;
         break;
     case OSQL_USEDB:
         if (tran->is_selectv_wl_upd || tran->is_reorder_on) {
@@ -653,6 +650,30 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     return rc;
 }
 
+/**
+ * Set proper blkseq from session to iq
+ * NOTE: We don't need to create buffers _SEQ, _SEQV2 for it
+ *
+ */
+void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq)
+{
+    iq->have_blkseq = true;
+    if (sess->rqid == OSQL_RQID_USE_UUID) {
+        memcpy(iq->seq, sess->uuid, sizeof(uuid_t));
+        iq->seqlen = sizeof(uuid_t);
+    } else {
+        struct packedreq_seq seq;
+        int *p_rqid = (int *)&sess->rqid;
+        int seed;
+        seq.seq1 = p_rqid[0];
+        seq.seq2 = p_rqid[1];
+        seed = seq.seq1 ^ seq.seq2;
+        seq.seq3 = rand_r((unsigned int *)&seed);
+
+        memcpy(iq->seq, &seq, 3 * sizeof(int));
+        iq->seqlen = 3 * sizeof(int);
+    }
+}
 
 /**
  * Construct a blockprocessor transaction buffer containing
@@ -662,25 +683,15 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
  *       This will allow let us point directly to the buffer
  *
  */
-static int wordoff(int byteoff) { return (byteoff + 3) / 4; }
-int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
+int osql_bplog_build_sorese_req(uint8_t **pp_buf_start,
                                 const uint8_t **pp_buf_end, const char *sqlq,
                                 int sqlqlen, const char *tzname, int reqtype,
-                                char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid)
 {
-    struct dbtable *db;
-
     struct req_hdr req_hdr;
     struct block_req req;
     struct packedreq_hdr op_hdr;
-    struct packedreq_usekl usekl;
-    struct packedreq_tzset tzset;
     struct packedreq_sql sql;
-    struct packedreq_seq seq;
-    struct packedreq_seq2 seq2;
-    int *p_rqid = (int *)&rqid;
-    int seed;
 
     uint8_t *p_buf;
 
@@ -690,10 +701,22 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     uint8_t *p_buf_op_hdr_start;
     const uint8_t *p_buf_op_hdr_end;
 
-    p_buf = p_buf_start;
+    /* FORMAT:
+       op_block + req_flags + block2_sorese */
+    int buflen = REQ_HDR_LEN /* op_block */ + BLOCK_REQ_LEN +
+                 3 /* req flags */ + PACKEDREQ_HDR_LEN + 3 + PACKEDREQ_SQL_LEN +
+                 sqlqlen + 3;
+
+    *pp_buf_start = calloc(1, buflen);
+    if (!(*pp_buf_start))
+        return -1;
+    p_buf = *pp_buf_start;
+    *pp_buf_end = (*pp_buf_start) + buflen;
 
     /*
      * req hdr (prccom hdr)
+     * we need this to dispatch to mark this as a write transaction
+     * and to arrive in toblock()
      */
 
     /* build prccom header */
@@ -707,91 +730,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /*
      * req
      */
-
-    /* save room in the buffer for req, we need to write it last after we know
-     * the proper overall offset */
+    /* save room in the buffer for req, until we have the overall offset */
     if (BLOCK_REQ_LEN > (*pp_buf_end - p_buf))
         return -1;
     p_buf_req_start = p_buf;
     p_buf += BLOCK_REQ_LEN;
     p_buf_req_end = p_buf;
-
-    req.num_reqs = 0; /* will be incremented as we go */
-
-    /*
-     * usekl
-     */
-
-    /* save room for usekl op header */
-    if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    p_buf_op_hdr_end = p_buf;
-
-    /* provide db[0], it doesn't matter anyway */
-    db = &thedb->static_table;
-    usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
-
-    /* pack usekl */
-    if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, *pp_buf_end)))
-        return -1;
-    if (!(p_buf =
-              buf_no_net_put(db->tablename, usekl.taglen, p_buf, *pp_buf_end)))
-        return -1;
-
-    /* build usekl op hdr */
-    ++req.num_reqs;
-    op_hdr.opcode = BLOCK2_USE;
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    /* pad to the next word */
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, *pp_buf_end)))
-        return -1;
-
-    /* pack usekl op hdr in the space we saved */
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return -1;
-
-    /*
-     * tzset
-     */
-
-    /* save room for tzset op header */
-    if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    p_buf_op_hdr_end = p_buf;
-
-    /* build tzset */
-    tzset.tznamelen = strlen(tzname) + 1 /*NUL byte*/;
-
-    /* pack tzset */
-    if (!(p_buf = packedreq_tzset_put(&tzset, p_buf, *pp_buf_end)))
-        return -1;
-    if (!(p_buf = buf_no_net_put(tzname, tzset.tznamelen, p_buf, *pp_buf_end)))
-        return -1;
-
-    /* build tzset op hdr */
-    ++req.num_reqs;
-    op_hdr.opcode = BLOCK2_TZ;
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    /* pad to the next word */
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, *pp_buf_end)))
-        return -1;
-
-    /* pack usekl op hdr in the space we saved */
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return -1;
 
     /*
      * sql
@@ -814,21 +758,16 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /* pack sql */
     if (!(p_buf = packedreq_sql_put(&sql, p_buf, *pp_buf_end)))
         return -1;
-    *sqlqret =
-        (char *)p_buf; /* save location of the sql string in the buffer */
-    *sqlqlenret = sql.sqlqlen;
     if (!(p_buf = buf_no_net_put(sqlq, sql.sqlqlen, p_buf, *pp_buf_end)))
         return -1;
 
     /* build sql op hdr */
-    ++req.num_reqs;
     op_hdr.opcode = req2blockop(reqtype);
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
+    op_hdr.nxt = one_based_word_offset_from_ptr(*pp_buf_start, p_buf);
 
-    /* TODO NUL terminate sql here if it was truncated earlier */
     /* pad to the next word */
     if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
+              ptr_from_one_based_word_offset(*pp_buf_start, op_hdr.nxt) - p_buf,
               p_buf, *pp_buf_end)))
         return -1;
 
@@ -838,59 +777,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
         return -1;
 
     /*
-     * blkseq
-     */
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    if (rqid == OSQL_RQID_USE_UUID) {
-        if (PACKEDREQ_SEQ2_LEN > (*pp_buf_end - p_buf))
-            return -1;
-    } else {
-        if (PACKEDREQ_SEQ_LEN > (*pp_buf_end - p_buf))
-            return -1;
-    }
-    p_buf_op_hdr_end = p_buf;
-
-    ++req.num_reqs;
-    if (rqid == OSQL_RQID_USE_UUID) {
-        comdb2uuidcpy(seq2.seq, uuid);
-
-        if (!(p_buf = packedreq_seq2_put(&seq2, p_buf, *pp_buf_end)))
-            return -1;
-
-        op_hdr.opcode = BLOCK2_SEQV2;
-    } else {
-        seq.seq1 = p_rqid[0];
-        seq.seq2 = p_rqid[1];
-        seed = seq.seq1 ^ seq.seq2;
-        seq.seq3 = rand_r((unsigned int *)&seed);
-
-        if (!(p_buf = packedreq_seq_put(&seq, p_buf, *pp_buf_end)))
-            return -1;
-
-        op_hdr.opcode = BLOCK_SEQ;
-    }
-
-    /* blkseq header */
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    /* pad to the next word */
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, *pp_buf_end)))
-        return -1;
-
-    /* pack seq op hdr in the space we saved */
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return -1;
-
-    /*
-     * req
+     * req, written in the original saved space (after OP_BLOCK header)
      */
 
     /* build req */
     req.flags = BLKF_ERRSTAT; /* we want error stat */
+    req.num_reqs = 1;
     req.offset = op_hdr.nxt;  /* overall offset = next offset of last op */
 
     /* pack req in the space we saved at the start */
