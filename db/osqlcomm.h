@@ -93,8 +93,7 @@ int osql_comm_send_poke(char *tonode, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, SBUF2 *logsb,
-                    unsigned long long version);
+                    char *tablename, int type, unsigned long long version);
 
 /**
  * Send INDEX op
@@ -102,8 +101,8 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
-        unsigned long long genid, int isDelete, int ixnum,
-        char *pData, int nData, int type, SBUF2 *logsb);
+                    unsigned long long genid, int isDelete, int ixnum,
+                    char *pData, int nData, int type);
 
 /**
  * Send QBLOB op
@@ -112,7 +111,7 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
                     int blobid, unsigned long long seq, int type, char *data,
-                    int datalen, SBUF2 *logsb);
+                    int datalen);
 
 /**
  * Send UPDCOLS op
@@ -120,8 +119,8 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
-                      unsigned long long seq, int type, int *colList, int ncols,
-                      SBUF2 *logsb);
+                      unsigned long long seq, int type, int *colList,
+                      int ncols);
 
 /**
  * Send UPDREC op
@@ -131,7 +130,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long ins_keys,
                      unsigned long long del_keys, char *pData, int nData,
-                     int type, SBUF2 *logsb);
+                     int type);
 
 /**
  * Send INSREC op
@@ -140,8 +139,7 @@ int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     char *pData, int nData, int type, SBUF2 *logsb,
-                     int upsert_flags);
+                     char *pData, int nData, int type, int upsert_flags);
 
 /**
  * Send DELREC op
@@ -150,7 +148,7 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long dirty_keys,
-                     int type, SBUF2 *logsb);
+                     int type);
 
 /**
  * Send SCHEMACHANGE op
@@ -158,8 +156,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
-                           struct schema_change_type *sc, int type,
-                           SBUF2 *logsb);
+                           struct schema_change_type *sc, int type);
 
 /**
  * Send BPFUNC op
@@ -167,7 +164,7 @@ int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
-                     BpfuncArg *msg, int type, SBUF2 *logsb);
+                     BpfuncArg *msg, int type);
 
 /**
  * Send SERIAL op
@@ -175,7 +172,7 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
  */
 int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
                      CurRangeArr *arr, unsigned int file, unsigned int offset,
-                     int type, SBUF2 *logsb);
+                     int type);
 
 /**
  * Send DONE or DONE_XERR op
@@ -183,16 +180,16 @@ int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
  *
  */
 int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
-                     int nops, struct errstat *xerr, int type, SBUF2 *logsb,
+                     int nops, struct errstat *xerr, int type,
                      struct client_query_stats *query_stats,
                      snap_uid_t *snap_info);
 
 int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
-                             struct errstat *xerr, int type, SBUF2 *logsb,
+                             struct errstat *xerr, int type,
                              struct client_query_stats *query_stats,
                              snap_uid_t *snap_info);
 int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
-                       uint32_t start_gen, int type, SBUF2 *logsb);
+                       uint32_t start_gen, int type);
 
 /**
  * Send decomission for osql net
@@ -201,17 +198,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
 int osql_process_message_decom(char *host);
 
 int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t,
-                          genid_t, int type, SBUF2 *);
-
-/**
- * Constructs a reusable osql request
- *
- */
-void *osql_create_request(const char *sql, int sqlen, int type,
-                          unsigned long long rqid, uuid_t uuid, char *tzname,
-                          int *prqlen, char *tag, void *tagbuf, int tagbuflen,
-                          void *nullbits, int numnullbits, blob_buffer_t *blobs,
-                          int numblobs, int queryid, int flags);
+                          genid_t, int type);
 
 /**
  * Handles each packet and calls record.c functions
@@ -221,7 +208,7 @@ void *osql_create_request(const char *sql, int sqlen, int type,
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                        struct block_err *err, int *receivedrows, SBUF2 *logsb);
+                        struct block_err *err, int *receivedrows);
 
 /**
  * Handles each packet and start schema change
@@ -231,8 +218,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               uuid_t uuid, void *trans, char **pmsg, int msglen,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
-                              struct block_err *err, int *receivedrows,
-                              SBUF2 *logsb);
+                              struct block_err *err, int *receivedrows);
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *
@@ -260,7 +246,8 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(osql_sess_t *sorese, struct errstat *xerr,
+int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
+                               uuid_t uuid, int nops, struct errstat *xerr,
                                int rc);
 
 /**
@@ -328,25 +315,12 @@ int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long dbglog_cookie, int queryid, int type);
 
 /**
- * Interprets each packet and log info
- * about it
- *
- */
-int osql_log_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
-                    void *trans, char *msg, int msglen, int *flags,
-                    int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
-                    struct block_err *err, int *receivedrows, SBUF2 *logsb);
-
-/* Append a tail to an osql request */
-int osql_add_to_request(osql_req_t **req, int type, void *buf, int len);
-
-/**
  * Send RECGENID
  * It handles remote/local connectivity
  *
  */
 int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
-                          unsigned long long genid, int type, SBUF2 *logsb);
+                          unsigned long long genid, int type);
 
 /**
  * Enable a netinfo-test for the osqlcomm netinfo_ptr
@@ -368,7 +342,7 @@ int osql_comm_check_bdb_lock(const char *func, int line);
 
 int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                       unsigned long long seq, char *pData, int nData, int nStat,
-                      int type, SBUF2 *logsb);
+                      int type);
 
 netinfo_type *osql_get_netinfo(void);
 
@@ -419,7 +393,6 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid);
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err);
 
-void osql_extract_snap_info(struct ireq *iq, void *data, int datalen,
-                            int hasuuid);
-
+void signal_replicant_error(const char *host, unsigned long long rqid,
+                            uuid_t uuid, int rc, const char *msg);
 #endif

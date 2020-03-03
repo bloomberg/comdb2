@@ -2179,10 +2179,20 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
             return clnt->fdb_state.xerr.errval;
         }
     } else if (was_bad) {
+        char *bad_host = host;
+
         /* we failed earlier on this one, we need the next node */
         op = FDB_LOCATION_NEXT;
         host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes,
                                &fdb->dbcon_mtx);
+
+        /* Also, whitelist the node - assuming it's back healthy again. */
+        if (was_bad == FDB_ERR_TRANSIENT_IO) {
+            if (gbl_fdb_track)
+                logmsg(LOGMSG_USER, "%s:%d whitelisting %s\n", __func__,
+                       __LINE__, bad_host);
+            _fdb_set_affinity_node(clnt, fdb, bad_host, FDB_NOERR);
+        }
     }
     if (host == NULL) {
         clnt->fdb_state.preserve_err = 1;
@@ -2943,6 +2953,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     unsigned long long end_rpc;
 
     if (fdbc) {
+retry:
         start_rpc = osql_log_time();
 
         /* this is a rewind, lets make sure the pipe is clean */
@@ -3047,6 +3058,20 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
 #endif
+                } else if (rc == FDB_ERR_READ_IO &&
+                           (how == CFIRST || how == CLAST) &&
+                           !pCur->clnt->intrans) {
+                    /* I/O error. Let's retry the query on some other node by
+                     * temporarily blacklisting this node (only when we haven't
+                     * read any rows and not in a transaction). */
+                    fdbc->streaming = FDB_CUR_ERROR;
+                    _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb,
+                                           fdbc->node, FDB_ERR_TRANSIENT_IO);
+                    if (gbl_fdb_track)
+                        logmsg(LOGMSG_USER,
+                               "%s:%d blacklisting %s, retrying..\n", __func__,
+                               __LINE__, fdbc->node);
+                    goto retry;
                 } else {
                     if (rc != FDB_ERR_SSL) {
                         if (state) {

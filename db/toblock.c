@@ -76,6 +76,7 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "comdb2_atomic.h"
+#include "str0.h"
 
 #if 0
 #define TEST_OSQL
@@ -95,7 +96,6 @@ extern int n_commit_time;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
-extern int gbl_reorder_idx_writes;
 extern int gbl_print_blockp_stats;
 extern int gbl_dump_blkseq;
 extern __thread int send_prefault_udp;
@@ -811,7 +811,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     if (!replay_data) {
 
-        if (!iq->have_snap_info) {
+        if (!IQ_HAS_SNAPINFO(iq)) {
             assert( (seqlen == (sizeof(fstblkseq_t))) || 
                     (seqlen == (sizeof(uuid_t))));
         }
@@ -1081,7 +1081,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
     /* Snapinfo is ascii text */
     if (snapinfo) {
-        assert(iq->have_snap_info);
+        assert(IQ_HAS_SNAPINFO(iq));
         printkey = (char *)malloc(seqlen + 1);
         memcpy(printkey, fstseqnum, seqlen);
         printkey[seqlen]='\0';
@@ -1093,10 +1093,10 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     }
 
     char *cnonce = NULL;
-    if (iq->have_snap_info) {
-        cnonce = alloca(iq->snap_info.keylen + 1);
-        memcpy(cnonce, iq->snap_info.key, iq->snap_info.keylen);
-        cnonce[iq->snap_info.keylen] = '\0';
+    if (IQ_HAS_SNAPINFO(iq)) {
+        cnonce = alloca(IQ_SNAPINFO(iq)->keylen + 1);
+        memcpy(cnonce, IQ_SNAPINFO(iq)->key, IQ_SNAPINFO(iq)->keylen);
+        cnonce[IQ_SNAPINFO(iq)->keylen] = '\0';
     }
 
     logmsg(LOGMSG_WARN,
@@ -1109,7 +1109,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
      * the cluster is incoherent */
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
             !bdb_latest_commit_is_durable(thedb->bdb_env)) {
-        if (iq->have_snap_info) {
+        if (IQ_HAS_SNAPINFO(iq)) {
             logmsg(LOGMSG_ERROR,
                    "%u replay rc changed from %d to NOT_DURABLE "
                    "for blkseq '%s'\n",
@@ -1118,7 +1118,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         outrc = ERR_NOT_DURABLE;
     }
 
-    if (gbl_dump_blkseq && iq->have_snap_info) {
+    if (gbl_dump_blkseq && IQ_HAS_SNAPINFO(iq)) {
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
@@ -2349,11 +2349,6 @@ static int extract_blkseq2(struct ireq *iq, block_state_t *p_blkstate,
             return ERR_BADREQ;
         }
 
-        /* The old proxy only sent an 8 byte sequence number.
-         * The new proxy sends 12 bytes, but for compatibility
-         * with older comdb2 builds the first 4 bytes of what
-         * is logically the sequence number are sent last.
-         * Thus we have to reorder the data. */
         memcpy(iq->seq, seq.seq, sizeof(uuid_t));
         iq->seqlen = sizeof(uuid_t);
 
@@ -2677,7 +2672,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (iq->retries == 0) {
         const uint8_t *p_buf_in_saved;
         int got_blockseq = 0;
-        int got_blockseq2 = 0;
         int got_osql = 0;
 
         /* this is a pre-loop, we want to jump back to the begining after it's
@@ -2729,7 +2723,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                         GOTOBACKOUT;
                     }
                     if (have_blkseq) {
-                        got_blockseq2 = 1;
                         /* We don't do the pre-scan again if it's a retry, so
                          * save whether we had a blkseq */
                         iq->have_blkseq =
@@ -2737,15 +2730,21 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                                   blkseq */
                     }
                 }
-
             case BLOCK2_SOCK_SQL:
             case BLOCK2_RECOM:
                 got_osql = 1;
+                /* fall-through */
+            case BLOCK2_SNAPISOL:
+            case BLOCK2_SERIAL:
+                if (gbl_use_blkseq) {
+                    have_blkseq = 1;
+                    osql_bplog_set_blkseq(iq->sorese, iq);
+                }
                 break;
             }
         }
 
-        if (got_osql && iq->have_snap_info) {
+        if (got_osql && IQ_HAS_SNAPINFO(iq)) {
             if (gbl_osql_snap_info_hashcheck) {
                 // the goal here is to stall until the original transaction
                 // has finished that way we can retrieve the outcome from blkseq
@@ -2763,14 +2762,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 goto cleanup;
             }
             int found;
-            found = bdb_blkseq_find(thedb->bdb_env, parent_trans,
-                                    iq->snap_info.key, iq->snap_info.keylen,
-                                    &replay_data, &replay_len);
+            found = bdb_blkseq_find(
+                thedb->bdb_env, parent_trans, IQ_SNAPINFO(iq)->key,
+                IQ_SNAPINFO(iq)->keylen, &replay_data, &replay_len);
             if (!found) {
                 logmsg(LOGMSG_WARN,
                        "early snapinfo blocksql replay detected\n");
-                outrc = do_replay_case(iq, iq->snap_info.key,
-                                       iq->snap_info.keylen, num_reqs, 0,
+                outrc = do_replay_case(iq, IQ_SNAPINFO(iq)->key,
+                                       IQ_SNAPINFO(iq)->keylen, num_reqs, 0,
                                        replay_data, replay_len, __LINE__);
                 bdb_rellock(thedb->bdb_env, __func__, __LINE__);
 #if DEBUG_DID_REPLAY
@@ -2782,7 +2781,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             bdb_rellock(thedb->bdb_env, __func__, __LINE__);
         }
 
-        if ((got_blockseq || got_blockseq2) && got_osql && !iq->have_snap_info) {
+        if (got_blockseq && got_osql && !IQ_HAS_SNAPINFO(iq)) {
             /* register this blockseq early to detect expensive replays
                of the same blocksql transactions */
             bdb_get_readlock(thedb->bdb_env, "early_replay", __func__,
@@ -4421,6 +4420,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             struct packedreq_sql sql;
             const uint8_t *p_buf_sqlq;
 
+            /* synthetic block2_use */
+            iq->usedb = get_dbtable_by_name(thedb->static_table.tablename);
+
+            /* synthetic block2_tz */
+            strncpy0(iq->tzname, iq->sorese->tzname, sizeof(iq->tzname));
+
             ++delayed;
             is_block2sqlmode = 1;
             have_keyless_requests = 1;
@@ -4691,7 +4696,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
-            iirc = osql_bplog_schemachange(iq);
+            iirc = bplog_schemachange(iq, iq->sorese->tran, &err);
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;
@@ -5448,7 +5453,8 @@ add_blkseq:
             struct fstblk_header fstblk_header;
             struct fstblk_pre_rspkl fstblk_pre_rspkl;
 
-            fstblk_header.type = (short)(iq->have_snap_info ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
+            fstblk_header.type =
+                (short)(IQ_HAS_SNAPINFO(iq) ? FSTBLK_SNAP_INFO : FSTBLK_RSPKL);
             fstblk_pre_rspkl.fluff = (short)0;
 
             if (!(p_buf_fstblk = fstblk_header_put(&fstblk_header, p_buf_fstblk,
@@ -5463,7 +5469,7 @@ add_blkseq:
                 return ERR_INTERNAL;
             }
 
-            if (iq->have_snap_info) {
+            if (IQ_HAS_SNAPINFO(iq)) {
                 if (!(p_buf_fstblk = buf_put(&(outrc), sizeof(outrc), p_buf_fstblk, 
                                 p_buf_fstblk_end))) {
                             return ERR_INTERNAL;
@@ -5491,9 +5497,9 @@ add_blkseq:
         void *bskey;
         int bskeylen;
         /* Snap_info is our blkseq key */
-        if (iq->have_snap_info) {
-            bskey = iq->snap_info.key;
-            bskeylen = iq->snap_info.keylen;
+        if (IQ_HAS_SNAPINFO(iq)) {
+            bskey = IQ_SNAPINFO(iq)->key;
+            bskeylen = IQ_SNAPINFO(iq)->keylen;
         } else {
             bskey = iq->seq;
             bskeylen = iq->seqlen;
@@ -5505,8 +5511,8 @@ add_blkseq:
             // if VERIFY-ERROR && replicant_is_able_to_retry don't add to blkseq
             if ((outrc == ERR_NOTSERIAL ||
                  (outrc == ERR_BLOCK_FAILED && err.errcode == ERR_VERIFY)) &&
-                (iq->have_snap_info &&
-                 iq->snap_info.replicant_is_able_to_retry)) {
+                (IQ_HAS_SNAPINFO(iq) &&
+                 IQ_SNAPINFO(iq)->replicant_is_able_to_retry)) {
                 /* do nothing */
             } else {
                 rc = bdb_blkseq_insert(thedb->bdb_env, parent_trans, bskey,
@@ -5567,10 +5573,11 @@ add_blkseq:
                     Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
-                if (gbl_dump_blkseq && iq->have_snap_info) {
-                    char *bskey = alloca(iq->snap_info.keylen + 1);
-                    memcpy(bskey, iq->snap_info.key, iq->snap_info.keylen);
-                    bskey[iq->snap_info.keylen] = '\0';
+                if (gbl_dump_blkseq && IQ_HAS_SNAPINFO(iq)) {
+                    char *bskey = alloca(IQ_SNAPINFO(iq)->keylen + 1);
+                    memcpy(bskey, IQ_SNAPINFO(iq)->key,
+                           IQ_SNAPINFO(iq)->keylen);
+                    bskey[IQ_SNAPINFO(iq)->keylen] = '\0';
                     logmsg(LOGMSG_USER,
                            "blkseq add '%s', outrc=%d errval=%d "
                            "errstr='%s', rcout=%d commit-rc=%d\n",
@@ -5855,8 +5862,8 @@ add_blkseq:
     fromline = __LINE__;
 cleanup:
 #if DEBUG_DID_REPLAY
-    logmsg(LOGMSG_DEBUG, "%s cleanup did_replay:%d fromline:%d\n", __func__,
-           did_replay, fromline);
+    logmsg(LOGMSG_DEBUG, "%s cleanup rc %d did_replay:%d fromline:%d\n",
+           __func__, outrc, did_replay, fromline);
 #endif
     bdb_checklock(thedb->bdb_env);
 

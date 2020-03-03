@@ -332,7 +332,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     rc = _next_shard_exists(view, next_existing_shard,
                             sizeof(next_existing_shard));
     if (rc == VIEW_ERR_EXIST) {
-        errstat_set_strf(err, "Next shard %s verlaps existing table for %s",
+        errstat_set_strf(err, "Next shard %s overlaps existing table for %s",
                          next_existing_shard, view->name);
         errstat_set_rc(err, rc);
         goto done;

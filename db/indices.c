@@ -23,7 +23,6 @@
 #include "sqloffload.h"
 
 extern int gbl_partial_indexes;
-extern int gbl_reorder_idx_writes;
 static __thread void *defered_index_tbl = NULL;
 static __thread void *defered_index_tbl_cursor = NULL;
 

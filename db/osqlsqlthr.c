@@ -137,7 +137,8 @@ inline int get_osql_maxthrottle_sec(void)
 
 int gbl_osql_random_restart = 0;
 
-static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
+static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
+                                      int keep_rqid)
 {
     if (rc == OSQL_SEND_ERROR_WRONGMASTER &&
         (clnt->dbtran.mode == TRANLEVEL_SOSQL ||
@@ -150,9 +151,10 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
         snap_uid_t snap = {{0}};
         get_cnonce(clnt, &snap);
         logmsg(LOGMSG_USER,
-               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d\n",
+               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d "
+               "keep_rqid=%d\n",
                comdb2uuidstr(clnt->osql.uuid, us), snap.keylen, snap.key,
-               clnt->osql.replicant_numops);
+               clnt->osql.replicant_numops, keep_rqid);
         return 1;
     }
 
@@ -162,7 +164,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
 #define RESTART_SOCKSQL_KEEP_RQID(keep_rqid)                                   \
     do {                                                                       \
         restarted = 0;                                                         \
-        if (osql_should_restart(clnt, rc)) {                                   \
+        if (osql_should_restart(clnt, rc, keep_rqid)) {                        \
             rc = osql_sock_restart(clnt, gbl_survive_n_master_swings,          \
                                    keep_rqid);                                 \
             if (rc) {                                                          \
@@ -199,8 +201,11 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc)
                     rc = SQLITE_CLIENT_CHANGENODE;                             \
                 return rc;                                                     \
             }                                                                  \
+            uuidstr_t us;                                                      \
             sql_debug_logf(clnt, __func__, __LINE__,                           \
-                           "osql_sock_start returns %d\n", rc);                \
+                           "osql_sock_start returns rqid %llu uuid %s\n",      \
+                           clnt->osql.rqid,                                    \
+                           comdb2uuidstr(clnt->osql.uuid, us), rc);            \
         }                                                                      \
     } while (0)
 
@@ -229,7 +234,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
                               (gbl_partial_indexes && pCur->db->ix_partial)
                                   ? clnt->del_keys
                                   : -1ULL,
-                              NET_OSQL_SOCK_RPL, osql->logsb);
+                              NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -253,7 +258,7 @@ static int osql_send_del_logic(struct BtCursor *pCur, struct sql_thread *thd)
                               (gbl_partial_indexes && pCur->db->ix_partial)
                                   ? clnt->del_keys
                                   : -1ULL,
-                              NET_OSQL_SOCK_RPL, osql->logsb);
+                              NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -337,11 +342,11 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
         return rc;
 
     if (osql->is_reorder_on) {
-        rc = osql_send_insrec(
-            osql->host, osql->rqid, osql->uuid, pCur->genid,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
-                                                          : -1ULL,
-            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
+        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                              (gbl_partial_indexes && pCur->db->ix_partial)
+                                  ? thd->clnt->ins_keys
+                                  : -1ULL,
+                              pData, nData, NET_OSQL_SOCK_RPL, flags);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -369,11 +374,11 @@ static int osql_send_ins_logic(struct BtCursor *pCur, struct sql_thread *thd,
     }
 
     if (!osql->is_reorder_on) {
-        rc = osql_send_insrec(
-            osql->host, osql->rqid, osql->uuid, pCur->genid,
-            (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->ins_keys
-                                                          : -1ULL,
-            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb, flags);
+        rc = osql_send_insrec(osql->host, osql->rqid, osql->uuid, pCur->genid,
+                              (gbl_partial_indexes && pCur->db->ix_partial)
+                                  ? thd->clnt->ins_keys
+                                  : -1ULL,
+                              pData, nData, NET_OSQL_SOCK_RPL, flags);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -456,7 +461,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                                           : -1ULL,
             (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
                                                           : -1ULL,
-            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
+            pData, nData, NET_OSQL_SOCK_RPL);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -493,8 +498,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
 
     if (updCols) {
         rc = osql_send_updcols(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                               NET_OSQL_SOCK_RPL, &updCols[1], updCols[0],
-                               osql->logsb);
+                               NET_OSQL_SOCK_RPL, &updCols[1], updCols[0]);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s:%d %s - failed to send socksql row rc=%d\n", __FILE__,
@@ -512,7 +516,7 @@ static int osql_send_upd_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                                           : -1ULL,
             (gbl_partial_indexes && pCur->db->ix_partial) ? thd->clnt->del_keys
                                                           : -1ULL,
-            pData, nData, NET_OSQL_SOCK_RPL, osql->logsb);
+            pData, nData, NET_OSQL_SOCK_RPL);
 
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -635,7 +639,7 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
         arr_ptr = clnt->selectv_arr;
 
     rc = osql_send_serial(osql->host, osql->rqid, osql->uuid, arr_ptr,
-                          arr_ptr->file, arr_ptr->offset, nettype, osql->logsb);
+                          arr_ptr->file, arr_ptr->offset, nettype);
     osql->replicant_numops++;
     DEBUG_PRINT_NUMOPS();
     return rc;
@@ -1311,8 +1315,7 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
 
     do {
         rc = osql_send_usedb(osql->host, osql->rqid, osql->uuid, tablename,
-                             nettype, osql->logsb,
-                             comdb2_table_version(tablename));
+                             nettype, comdb2_table_version(tablename));
         RESTART_SOCKSQL;
     } while (restarted);
 
@@ -1347,7 +1350,7 @@ inline int osql_send_updstat_logic(struct BtCursor *pCur,
     START_SOCKSQL;
     do {
         rc = osql_send_updstat(osql->host, osql->rqid, osql->uuid, pCur->genid,
-                               pData, nData, nStat, nettype, osql->logsb);
+                               pData, nData, nStat, nettype);
         RESTART_SOCKSQL;
     } while (restarted);
     osql->replicant_numops++;
@@ -1376,7 +1379,7 @@ static int osql_send_insidx_logic(struct BtCursor *pCur,
             continue;
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 0,
                              i, (char *)clnt->idxInsert[i],
-                             getkeysize(pCur->db, i), nettype, osql->logsb);
+                             getkeysize(pCur->db, i), nettype);
         if (rc)
             break;
         osql->replicant_numops++;
@@ -1406,7 +1409,7 @@ static int osql_send_delidx_logic(struct BtCursor *pCur,
 
         rc = osql_send_index(osql->host, osql->rqid, osql->uuid, pCur->genid, 1,
                              i, (char *)clnt->idxDelete[i],
-                             getkeysize(pCur->db, i), nettype, osql->logsb);
+                             getkeysize(pCur->db, i), nettype);
         if (rc)
             break;
         osql->replicant_numops++;
@@ -1441,8 +1444,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
                 /* Put a token on the network if this isn't going to be used */
                 rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid, i,
-                                     pCur->genid, nettype, NULL, -2,
-                                     osql->logsb);
+                                     pCur->genid, nettype, NULL, -2);
                 if (rc)
                     break; /* break out from while loop so we can return rc */
                 osql->replicant_numops++;
@@ -1456,7 +1458,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
 
         rc = osql_send_qblob(osql->host, osql->rqid, osql->uuid,
                              blobs[i].odhind, pCur->genid, nettype,
-                             blobs[i].data, blobs[i].length, osql->logsb);
+                             blobs[i].data, blobs[i].length);
         if (rc)
             break;
         osql->replicant_numops++;
@@ -1504,7 +1506,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
         if (gbl_osql_send_startgen && clnt->start_gen > 0) {
             osql->replicant_numops++;
             rc = osql_send_startgen(osql->host, osql->rqid, osql->uuid,
-                                    clnt->start_gen, nettype, osql->logsb);
+                                    clnt->start_gen, nettype);
         }
 
         if (rc == 0) {
@@ -1512,11 +1514,11 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
             if (osql->rqid == OSQL_RQID_USE_UUID) {
                 rc = osql_send_commit_by_uuid(
                     osql->host, osql->uuid, osql->replicant_numops, &osql->xerr,
-                    nettype, osql->logsb, clnt->query_stats, snap_info_p);
+                    nettype, clnt->query_stats, snap_info_p);
             } else {
-                rc = osql_send_commit(
-                    osql->host, osql->rqid, osql->uuid, osql->replicant_numops,
-                    &osql->xerr, nettype, osql->logsb, clnt->query_stats, NULL);
+                rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
+                                      osql->replicant_numops, &osql->xerr,
+                                      nettype, clnt->query_stats, NULL);
             }
         }
         RESTART_SOCKSQL_KEEP_RQID(is_retry);
@@ -1548,11 +1550,11 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
     if (osql->rqid == OSQL_RQID_USE_UUID)
         rc = osql_send_commit_by_uuid(osql->host, osql->uuid,
                                       osql->replicant_numops, &xerr, nettype,
-                                      osql->logsb, clnt->query_stats, NULL);
+                                      clnt->query_stats, NULL);
     else
         rc = osql_send_commit(osql->host, osql->rqid, osql->uuid,
                               osql->replicant_numops, &xerr, nettype,
-                              osql->logsb, clnt->query_stats, NULL);
+                              clnt->query_stats, NULL);
     /* no need to restart an abort, master will drop the transaction anyway
     RESTART_SOCKSQL; */
     osql->replicant_numops = 0;
@@ -1661,7 +1663,7 @@ static int osql_send_recordgenid_logic(struct BtCursor *pCur,
                 nettype = NET_OSQL_SOCK_RPL_UUID;
 
             rc = osql_send_recordgenid(osql->host, osql->rqid, osql->uuid,
-                                       genid, nettype, osql->logsb);
+                                       genid, nettype);
             if (gbl_master_swing_sock_restart_sleep) {
                 usleep(gbl_master_swing_sock_restart_sleep * 1000);
             }
@@ -1681,7 +1683,7 @@ int osql_dbq_consume(struct sqlclntstate *clnt, const char *spname,
     if (rc != SQLITE_OK)
         return rc;
     return osql_send_dbq_consume(osql->host, osql->rqid, osql->uuid, genid,
-                                 NET_OSQL_SOCK_RPL, osql->logsb);
+                                 NET_OSQL_SOCK_RPL);
 }
 
 int osql_dbq_consume_logic(struct sqlclntstate *clnt, const char *spname,
@@ -1846,7 +1848,7 @@ int osql_schemachange_logic(struct schema_change_type *sc,
         do {
             rc = osql_send_schemachange(osql->host, osql->rqid,
                                         thd->clnt->osql.uuid, sc,
-                                        NET_OSQL_SOCK_RPL, osql->logsb);
+                                        NET_OSQL_SOCK_RPL);
             RESTART_SOCKSQL;
         } while (restarted);
         if (rc) {
@@ -1887,7 +1889,7 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
         START_SOCKSQL;
         do {
             rc = osql_send_bpfunc(osql->host, osql->rqid, thd->clnt->osql.uuid,
-                                  arg, NET_OSQL_SOCK_RPL, osql->logsb);
+                                  arg, NET_OSQL_SOCK_RPL);
             RESTART_SOCKSQL;
         } while (restarted);
         if (rc) {

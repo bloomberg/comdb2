@@ -1672,8 +1672,9 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     sqlite3Dequote(sqlstr);
                     if (strlen(sqlstr) >= sizeof(clnt->password)) {
                         snprintf(err, sizeof(err),
-                                 "set password: '%s' exceeds %zu characters",
-                                 sqlstr, sizeof(clnt->password) - 1);
+                                 "set password: password length exceeds %lu "
+                                 "characters",
+                                 sizeof(clnt->password) - 1);
                         rc = ii + 1;
                     } else {
                         clnt->have_password = 1;

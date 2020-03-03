@@ -211,8 +211,6 @@ int gbl_move_deadlk_max_attempt = 500;
 
 int gbl_uses_password;
 int gbl_uses_accesscontrol_tableXnode;
-int gbl_blocksql_grace =
-    10; /* how many seconds we wait for a blocksql during downgrade */
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
 int gbl_watchdog_watch_threshold = 60;
@@ -1278,7 +1276,6 @@ static void *purge_old_files_thread(void *arg)
         }
 
         init_fake_ireq(thedb, &iq);
-        iq.use_handle = thedb->bdb_env;
 
         /* ok, get to work now */
         retries = 0;
@@ -5010,10 +5007,9 @@ static void register_all_int_switches()
     register_int_switch("repverifyrecs",
                         "Verify every berkeley log record received",
                         &gbl_verify_rep_log_records);
-    register_int_switch(
-        "enable_osql_logging",
-        "Log every osql packet received in a special file, per iq",
-        &gbl_enable_osql_logging);
+    register_int_switch("enable_osql_logging",
+                        "Log every osql packet and operation",
+                        &gbl_enable_osql_logging);
     register_int_switch("enable_osql_longreq_logging",
                         "Log untruncated osql strings",
                         &gbl_enable_osql_longreq_logging);
