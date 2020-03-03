@@ -218,7 +218,7 @@ static const char *HELP_STAT[] = {
     "stat signals               - signal handling setup",
     "stat csc2vers <table>      - get current schema version for table",
     "stat dumpcsc2 <table> #    - dump version # of schema for given table",
-    "stat rmtpol #              - remote policy for given machine number",
+    "stat rmtpol #              - remote policy for the given hostname",
     "stat thr                   - dump all registered threads",
     "stat dumpsql               - running sql statements",
     "stat size                  - database ondisk size info",
