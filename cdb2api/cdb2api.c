@@ -112,6 +112,9 @@ static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 #define CDB2CFG_OVERRIDE_DEFAULT 0
 static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 
+#define CDB2_CONNECT_HOST_ON_REJECT 0
+static int cdb2_connect_host_on_reject = CDB2_CONNECT_HOST_ON_REJECT;
+
 #ifndef WITH_SSL
 #  define WITH_SSL 1
 #endif
@@ -942,12 +945,13 @@ typedef struct cnonce {
 #define DBNAME_LEN 64
 #define TYPE_LEN 64
 #define POLICY_LEN 24
+#define HOST_LEN 64
 
 struct cdb2_hndl {
     char dbname[DBNAME_LEN];
     char cluster[64];
     char type[TYPE_LEN];
-    char hosts[MAX_NODES][64];
+    char hosts[MAX_NODES][HOST_LEN];
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
     int hosts_connected[MAX_NODES];
@@ -989,6 +993,7 @@ struct cdb2_hndl {
     int num_set_commands;
     int num_set_commands_sent;
     int is_read;
+    int is_rejected;
     unsigned long long rows_read;
     int read_intrans_results;
     int first_record_read;
@@ -1206,6 +1211,19 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 
 static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
 
+static int value_on_off(const char *value) {
+    if (strcasecmp("on", value) == 0) {
+        return 1;
+    } else if (strcasecmp("off", value) == 0) {
+        return 0;
+    } else if (strcasecmp("no", value) == 0) {
+        return 0;
+    } else if (strcasecmp("yes", value) == 0) {
+        return 1;
+    }
+    return atoi(value);
+}
+
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                               const char *comdb2db_name, const char *buf,
                               char comdb2db_hosts[][64], int *num_hosts,
@@ -1245,6 +1263,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
                 (*num_db_hosts)++;
             }
+        } else if (strcasecmp("comdb2_feature",tok) == 0) {
+             tok = strtok_r(NULL, " =:,", &last);
+             if (strcasecmp("connect_host_on_reject",tok) == 0) {
+                 tok = strtok_r(NULL, " =:,", &last);
+                 cdb2_connect_host_on_reject = value_on_off(tok);
+             }
         } else if (strcasecmp("comdb2_config", tok) == 0) {
             tok = strtok_r(NULL, " =:,", &last);
             if (tok == NULL) continue;
@@ -2280,19 +2304,25 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx, int myport,
                    hndl->dbname, hndl->type, hndl->policy,
                    hndl->newsql_typestr);
     }
-
-    while (!hndl->is_admin &&
-           (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
-                                      NULL)) > 0) {
-        if ((sb = sbuf2open(fd, 0)) == 0) {
-            close(fd);
-            return -1;
+    if (hndl->is_rejected &&  cdb2_connect_host_on_reject) {
+        char host_typestr[DBNAME_LEN + HOST_LEN + POLICY_LEN + 16];
+        snprintf(host_typestr, sizeof(host_typestr), "comdb2/%s/%s/newsql/%s",hndl->dbname,
+                 host, hndl->policy);
+        fd = cdb2_socket_pool_get(host_typestr, hndl->dbnum, NULL);
+    } else {
+        while (!hndl->is_admin &&
+               (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
+                                          NULL)) > 0) {
+            if ((sb = sbuf2open(fd, 0)) == 0) {
+                close(fd);
+                return -1;
+            }
+            if (send_reset(sb) == 0) {
+                get_host_from_fd(hndl, fd);
+                break;      // connection is ready
+            }
+            sbuf2close(sb); // retry newsql connect;
         }
-        if (send_reset(sb) == 0) {
-            get_host_from_fd(hndl, fd);
-            break;      // connection is ready
-        }
-        sbuf2close(sb); // retry newsql connect;
     }
 
     if (fd < 0) {
@@ -2927,7 +2957,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
              hndl->connected_host)) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC;
         }
-        if (retries_done >= hndl->num_hosts) {
+        if (retries_done > hndl->num_hosts + 1) {
             features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_QUEUING;
         }
 
@@ -4211,7 +4241,7 @@ retry_queries:
 
     int tmsec = 0;
 
-    if (!hndl->sb && (retries_done > hndl->num_hosts)) {
+    if (!hndl->sb && (retries_done > hndl->num_hosts + 1)) {
         tmsec = (retries_done - hndl->num_hosts) * 100;
     }
 #if WITH_SSL
@@ -4454,6 +4484,7 @@ read_record:
                     commit_file = 0;
                 }
                 debugprint("goto retry_queries err_val=%d\n", err_val);
+                hndl->is_rejected = 1;
                 goto retry_queries;
             } else {
                 if (is_commit) {
@@ -4465,6 +4496,8 @@ read_record:
                 PRINT_AND_RETURN(err_val);
             }
         }
+
+        hndl->is_rejected = 0;
 
         if (!is_commit || hndl->snapshot_file) {
             newsql_disconnect(hndl, hndl->sb, __LINE__);

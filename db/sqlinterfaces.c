@@ -3775,6 +3775,8 @@ static int skip_response_error(struct sqlclntstate *clnt)
 
 static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 {
+    if (clnt->get_new_cost)
+        return 0;
     if (clnt->osql.sent_column_data || skip_response(clnt))
         return 0;
     clnt->osql.sent_column_data = 1;
@@ -3784,6 +3786,8 @@ static int send_columns(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt)
 static int send_row(struct sqlclntstate *clnt, struct sqlite3_stmt *stmt,
                     uint64_t row_id, int postpone, struct errstat *err)
 {
+    if (clnt->get_new_cost)
+        return 0;
     if (skip_row(clnt, row_id))
         return 0;
     struct response_data arg = {0};
@@ -5605,6 +5609,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->is_explain = 0;
     clnt->get_cost = 0;
+    clnt->get_new_cost = 1;
     clnt->snapshot = 0;
     clnt->num_retry = 0;
     clnt->early_retry = 0;

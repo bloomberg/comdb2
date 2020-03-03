@@ -788,6 +788,7 @@ struct sqlclntstate {
     int8_t has_recording;
     int8_t is_retry;
     int8_t get_cost;
+    int8_t get_new_cost;
     int8_t is_explain;
     uint8_t is_analyze;
     uint8_t is_overlapping;
