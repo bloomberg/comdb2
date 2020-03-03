@@ -48,6 +48,5 @@ int bdb_trigger_subscribe(bdb_state_type *, pthread_cond_t **,
 int bdb_trigger_unsubscribe(bdb_state_type *);
 int bdb_trigger_open(bdb_state_type *);
 int bdb_trigger_close(bdb_state_type *);
-int bdb_trigger_version(bdb_state_type *);
 
 #endif
