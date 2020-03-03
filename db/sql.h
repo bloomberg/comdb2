@@ -1224,6 +1224,8 @@ void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
+struct sqlclntstate *get_sql_clnt(void);
+
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);
 
