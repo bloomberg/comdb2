@@ -824,11 +824,14 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
     byte_buffer_append_zero(&bytes, 4);
 
     /* post it to queue */
-    usedb = javasp_trans_handle->iq->usedb;
-    javasp_trans_handle->iq->usedb = getqueuebyname(p->qname);
-    rc = dbq_add(javasp_trans_handle->iq, javasp_trans_handle->trans,
-                 bytes.bytes, bytes.used);
-    javasp_trans_handle->iq->usedb = usedb;
+    struct dbtable *qdb = getqueuebyname(p->qname);
+    if (qdb != NULL) {
+        usedb = javasp_trans_handle->iq->usedb;
+        javasp_trans_handle->iq->usedb = qdb;
+        rc = dbq_add(javasp_trans_handle->iq, javasp_trans_handle->trans,
+                     bytes.bytes, bytes.used);
+        javasp_trans_handle->iq->usedb = usedb;
+    }
 
 done:
     byte_buffer_free(&bytes);

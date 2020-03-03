@@ -703,7 +703,19 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     return -1;
 }
 
-static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
+static int dbq_can_poll(dbconsumer_t *q, int version)
+{
+    if (!*q->open) return 0;
+    int new_version = bdb_trigger_version(q->iq.usedb->handle);
+    if (new_version != version) {
+        logmsg(LOGMSG_ERROR, "%s: trigger %s version mismatch, %d vs %d\n",
+               __func__, q->info.spname, new_version, version);
+        return 0;
+    }
+    return 1;
+}
+
+static int dbq_poll(Lua L, dbconsumer_t *q, int delay, int version)
 {
     SP sp = getsp(L);
     while (1) {
@@ -712,7 +724,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
         }
         int rc;
         Pthread_mutex_lock(q->lock);
-again:  if (*q->open) {
+again:  if (dbq_can_poll(q, version)) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else {
             Pthread_mutex_unlock(q->lock);
@@ -733,19 +745,31 @@ again:  if (*q->open) {
             // was woken up -- try getting from queue
             goto again;
         }
+        int wasOpen = *q->open;
         Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
         if (delay < 0) {
+            if (check_retry_conditions(L, 0) != 0)
+                return -1;
+
+            if (!wasOpen) {
+                logmsg(LOGMSG_ERROR, "%s: queue %s no longer open after wait\n",
+                       __func__, q->info.spname);
+                rc = -2;
+                luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
+                return rc;
+            }
+
             return 0;
         }
     }
 }
 
 // this call will block until queue item available
-static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
+static int dbconsumer_get_int(Lua L, dbconsumer_t *q, int version)
 {
     int rc;
-    while ((rc = dbq_poll(L, q, dbq_delay)) == 0)
+    while ((rc = dbq_poll(L, q, dbq_delay, version)) == 0)
         ;
     return rc;
 }
@@ -781,7 +805,7 @@ static int dbconsumer_get(Lua L)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     int rc;
-    if ((rc = dbconsumer_get_int(L, q)) > 0) return rc;
+    if ((rc = dbconsumer_get_int(L, q, bdb_trigger_version(q->iq.usedb->handle))) > 0) return rc;
     return luaL_error(L, getsp(L)->error);
 }
 
@@ -792,7 +816,7 @@ static int dbconsumer_poll(Lua L)
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
     delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
-    int rc = dbq_poll(L, q, delay);
+    int rc = dbq_poll(L, q, delay, bdb_trigger_version(q->iq.usedb->handle));
     if (rc >= 0) {
         return rc;
     }
@@ -6726,7 +6750,7 @@ void *exec_trigger(trigger_reg_t *reg)
         }
         SP sp = clnt.sp;
         L = sp->lua;
-        if ((args = dbconsumer_get_int(L, q)) < 0) {
+        if ((args = dbconsumer_get_int(L, q, bdb_trigger_version(q->iq.usedb->handle))) < 0) {
             err = strdup(sp->error);
             goto bad;
         }
