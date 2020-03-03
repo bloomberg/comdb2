@@ -1468,12 +1468,12 @@ int javasp_lock_table_queues(bdb_state_type *bdb_state, const char *tblname,
     struct stored_proc *sp;
     struct sp_table *t;
     SP_READLOCK();
-    LISTC_FOR_EACH(&stored_procs, p, lnk)
+    LISTC_FOR_EACH(&stored_procs, sp, lnk)
     {
-        LISTC_FOR_EACH(&p->tables, t, lnk)
+        LISTC_FOR_EACH(&sp->tables, t, lnk)
         {
             if (strcasecmp(t->name, tblname) == 0) {
-                rc = bdb_lock_tablename_read(bdb_state, p->qname, tran);
+                int rc = bdb_lock_tablename_read(bdb_state, sp->qname, tran);
                 if (rc == 0) break;
                 return rc;
             }
