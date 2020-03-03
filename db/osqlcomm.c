@@ -50,6 +50,7 @@
 #include "sc_struct.h"
 #include <compat.h>
 #include <unistd.h>
+#include "translistener.h"
 
 #define MAX_CLUSTER 16
 
@@ -6405,6 +6406,17 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         tablename =
             (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+
+        rc = javasp_lock_table_queues(thedb->bdb_env, tablename, trans);
+        if (rc == BDBERR_DEADLOCK) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK QUEUE READ DEADLOCK");
+            return RC_INTERNAL_RETRY;
+        } else if (rc) {
+            if (iq->debug)
+                reqprintf(iq, "LOCK QUEUE READ ERROR: %d", rc);
+            return ERR_INTERNAL;
+        }
 
         // get table lock
         rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);

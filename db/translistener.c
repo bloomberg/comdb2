@@ -39,6 +39,7 @@
 #include <unistd.h>
 #include <logmsg.h>
 #include "str0.h"
+#include <bdb_api.h>
 
 struct javasp_trans_state {
     /* Which events we are subscribed for. */
@@ -1459,4 +1460,25 @@ void get_trigger_info(const char *name, trigger_info *info)
     SP_READLOCK();
     get_trigger_info_int(name, info);
     SP_RELLOCK();
+}
+
+int javasp_lock_table_queues(bdb_state_type *bdb_state, const char *tblname,
+                             tran_type *tran)
+{
+    struct stored_proc *sp;
+    struct sp_table *t;
+    SP_READLOCK();
+    LISTC_FOR_EACH(&stored_procs, p, lnk)
+    {
+        LISTC_FOR_EACH(&p->tables, t, lnk)
+        {
+            if (strcasecmp(t->name, tblname) == 0) {
+                rc = bdb_lock_tablename_read(bdb_state, p->qname, tran);
+                if (rc == 0) break;
+                return rc;
+            }
+        }
+    }
+    SP_RELLOCK();
+    return 0;
 }

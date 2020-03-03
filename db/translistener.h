@@ -207,4 +207,6 @@ typedef struct {
     LISTC_T(trigger_tbl_info) tbls;
 } trigger_info;
 void get_trigger_info(const char *, trigger_info *);
+
+int javasp_lock_table_queues(bdb_state_type *, const char *, tran_type *);
 #endif
