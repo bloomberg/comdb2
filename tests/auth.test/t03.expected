@@ -1,2 +1,5 @@
+[select comdb2_user()] failed with rc -106 access denied
+(comdb2_user()='user2')
 ('user2'='user2')
+(comdb2_user()='user2')
 [put authentication off] failed with rc -3 User does not have OP credentials
