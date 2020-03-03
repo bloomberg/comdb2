@@ -13,7 +13,7 @@
 (out='stat signals               - signal handling setup')
 (out='stat csc2vers <table>      - get current schema version for table')
 (out='stat dumpcsc2 <table> #    - dump version # of schema for given table')
-(out='stat rmtpol #              - remote policy for given machine number')
+(out='stat rmtpol #              - remote policy for the given hostname')
 (out='stat thr                   - dump all registered threads')
 (out='stat dumpsql               - running sql statements')
 (out='stat size                  - database ondisk size info')
