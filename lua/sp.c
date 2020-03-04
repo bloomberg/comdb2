@@ -737,15 +737,18 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     return -1;
 }
 
-static int dbq_can_poll(dbconsumer_t *q, uint8_t status, int version)
+static int dbq_can_poll(dbconsumer_t *q, uint8_t status, int version,
+                        int *mismatch)
 {
-    if (status != TRIGGER_SUBSCRIPTION_OPEN) return 0;
     int new_version = bdb_trigger_version(q->iq.usedb->handle);
     if (new_version != version) {
         logmsg(LOGMSG_ERROR, "%s: trigger %s version mismatch, %d vs %d\n",
                __func__, q->info.spname, new_version, version);
+        *mismatch = 1;
         return 0;
     }
+    *mismatch = 0;
+    if (status != TRIGGER_SUBSCRIPTION_OPEN) return 0;
     return 1;
 }
 
@@ -758,11 +761,15 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay, int version)
         }
         int rc;
         uint8_t status;
+        int mismatch;
         struct timespec ts;
         Pthread_mutex_lock(q->lock);
 again:  status = *q->status;
-        if (dbq_can_poll(q, status, version)) {
+        if (dbq_can_poll(q, status, version, &mismatch)) {
             rc = dbq_poll_int(L, q); // call will release q->lock
+        } else if (mismatch) {
+            Pthread_mutex_unlock(q->lock);
+            rc = -1;
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
             setup_dbq_ts(ts);
             pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
