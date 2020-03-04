@@ -877,7 +877,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
         {
             uuidstr_t us;
-            logmsg(LOGMSG_ERROR, "%lu %s rqid %llu uuid %s got_cnonce %d\n",
+            logmsg(LOGMSG_DEBUG, "%lu %s rqid %llu uuid %s got_cnonce %d\n",
                    pthread_self(), __func__, iq->sorese->rqid,
                    comdb2uuidstr(iq->sorese->uuid, us), IQ_HAS_SNAPINFO(iq));
         }
