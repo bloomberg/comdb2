@@ -57,7 +57,7 @@ enum mach_class get_my_mach_class(void)
 {
     if (gbl_machine_class)
         return mach_class_name2class(gbl_machine_class);
-    return get_mach_class(gbl_mynode);
+    return machine_my_class();
 }
 
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
@@ -103,7 +103,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_my_mach_class())
+        if (get_mach_class(host) >= get_mach_class(gbl_mynode))
             rc = 1;
         else
             rc = 0;
@@ -118,7 +118,7 @@ int allow_cluster_from_remote(const char *host)
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
-        if (get_mach_class(host) == get_my_mach_class())
+        if (get_mach_class(host) == get_mach_class(gbl_mynode))
             rc = 1;
         else
             rc = 0;
@@ -132,7 +132,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_my_mach_class())
+        if (get_mach_class(host) <= get_mach_class(gbl_mynode))
             rc = 1;
         else
             rc = 0;
