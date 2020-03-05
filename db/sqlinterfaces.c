@@ -283,6 +283,12 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
 int gbl_client_heartbeat_ms = 100;
 int gbl_fail_client_write_lock = 0;
 
+struct sqlclntstate *get_sql_clnt(void){
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  if (thd == NULL) return NULL;
+  return thd->clnt;
+}
+
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -2677,6 +2683,15 @@ static inline int check_user_password(struct sqlclntstate *clnt)
         return 1;
     }
     return 0;
+}
+
+/* Return current authenticated user for the session */
+char *get_current_user(struct sqlclntstate *clnt)
+{
+    if (clnt && !clnt->is_x509_user && clnt->have_user) {
+        return clnt->user;
+    }
+    return NULL;
 }
 
 void thr_set_current_sql(const char *sql)

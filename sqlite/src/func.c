@@ -926,6 +926,17 @@ static void comdb2StartTimeFunc(
   dttz_t dt = {gbl_starttime, 0};
   sqlite3_result_datetime(context, &dt, NULL);
 }
+
+static void comdb2UserFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+
+  sqlite3_result_text(context, get_current_user(get_sql_clnt()), -1,
+                      SQLITE_STATIC);
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2555,6 +2566,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_dbname,         0, 0, 0, comdb2DbnameFunc),
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
+    FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),
