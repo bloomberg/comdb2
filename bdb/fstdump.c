@@ -392,12 +392,12 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
 
         if (db_is_stopped()) {
             logmsg(LOGMSG_ERROR, "fstdump_thread: "
-                            "aborting due to stop_threads\n");
+                            "aborting due to stop_all_threads\n");
             Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
-                          "aborted because database stop_threads");
+                          "aborted because database stop_all_threads");
             }
             Pthread_mutex_unlock(&common->lock);
             dbcp->c_close(dbcp);
@@ -534,12 +534,12 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
 
         if (db_is_stopped()) {
             logmsg(LOGMSG_ERROR, "fstdump_thread: "
-                            "aborting due to stop_threads\n");
+                            "aborting due to stop_all_threads\n");
             Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
                 snprintf0(common->errmsg, sizeof(common->errmsg),
-                          "aborted because database stop_threads");
+                          "aborted because database stop_all_threads");
             }
             Pthread_mutex_unlock(&common->lock);
             return -1;

@@ -5302,7 +5302,6 @@ extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
                             int truncate);
 extern int db_is_stopped();
-extern int db_is_exiting();
 
 int request_delaymore(void *bdb_state_in)
 {

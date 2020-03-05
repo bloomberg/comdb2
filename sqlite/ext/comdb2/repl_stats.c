@@ -95,7 +95,7 @@ static int systblReplStatsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     }
     memset(cur, 0, sizeof(*cur));
 
-    if (db_is_stopped())
+    if (db_is_stopped() || db_requests_are_stopped())
         return SQLITE_INTERNAL;
 
     cur->stats = bdb_get_repl_wait_and_net_stats(thedb->bdb_env, &cur->cluster_size);

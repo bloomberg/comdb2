@@ -1045,7 +1045,7 @@ int javasp_unload_procedure(const char *name)
     if (rc)
         goto done;
     /* Stop everything */
-    stop_threads(thedb);
+    stop_request_threads(thedb);
     broadcast_quiesce_threads();
 
     if (rc == 0) {
@@ -1072,7 +1072,7 @@ int javasp_reload_procedure(const char *name, const char *jarfile,
 
     rc = javasp_load_procedure_int(name, param, NULL);
 
-    stop_threads(thedb);
+    stop_request_threads(thedb);
     broadcast_quiesce_threads();
 
     if (rc == 0) {

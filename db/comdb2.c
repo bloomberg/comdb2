@@ -1005,6 +1005,11 @@ int db_is_stopped(void)
     return thedb->stopped;
 }
 
+int db_requests_are_stopped(void)
+{
+    return thedb->requests_stopped;
+}
+
 void print_dbsize(void);
 
 static void init_q_vars()
@@ -1102,8 +1107,7 @@ static void *purge_old_blkseq_thread(void *arg)
     loop = 0;
     sleep(1);
 
-    while (!db_is_stopped()) {
-
+    while (!db_is_stopped() && !db_requests_are_stopped()) {
         /* Check del unused files progress about twice per threshold  */
         if (!(loop % (gbl_sc_del_unused_files_threshold_ms /
                       (2 * 1000 /*ms per sec*/))))
@@ -1482,7 +1486,7 @@ void clean_exit(void)
        node. */
     bdb_exiting(thedb->static_table.handle);
 
-    stop_threads(thedb);
+    stop_all_threads(thedb);
     flush_db();
 
 #   if 0

@@ -34,7 +34,7 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     }
 
     /* Stop everything */
-    stop_threads(thedb);
+    stop_request_threads(thedb);
     broadcast_quiesce_threads();
 
     /* Do the change.  If it works locally then assume that it will work
@@ -130,7 +130,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
     /* why?  er... not sure.  this is copied off the pattern below, but we
      * don't have much to do.   think this is still good as we'll get a
      * memory sync in there. */
-    stop_threads(thedb);
+    stop_request_threads(thedb);
     resume_threads(thedb);
 
     if (newdb->dbenv->master == gbl_mynode) {

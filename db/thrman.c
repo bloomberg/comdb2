@@ -471,7 +471,7 @@ static int thrman_check_threads_stopped_ll(void *context)
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */
-    if (db_is_stopped() && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
+    if (db_requests_are_stopped() && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
         all_gone = 0;
 
     if (self)
@@ -529,9 +529,7 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
     Pthread_mutex_unlock(&mutex);
 }
 
-/* Stop all database threads.  Different thread types get stopped in different
- * ways. */
-void stop_threads(struct dbenv *dbenv)
+void stop_request_threads(struct dbenv *dbenv)
 {
     /* watchdog makes sure we don't get stuck trying to stop threads */
     LOCK(&stop_thds_time_lk)
@@ -540,8 +538,8 @@ void stop_threads(struct dbenv *dbenv)
     }
     UNLOCK(&stop_thds_time_lk);
 
-    dbenv->stopped = 1;
     dbenv->no_more_sql_connections = 1;
+    dbenv->requests_stopped = 1;
 
     if (gbl_appsock_thdpool)
         thdpool_stop(gbl_appsock_thdpool);
@@ -570,7 +568,15 @@ void stop_threads(struct dbenv *dbenv)
     LOCK(&stop_thds_time_lk) { gbl_stop_thds_time = 0; }
     UNLOCK(&stop_thds_time_lk);
     /*watchdog_disable();*/ /* watchdog will fail when trying to run a sql query
-                         * bc sql thds are stopped */
+                             * bc sql thds are stopped */
+}
+
+/* Stop all database threads.  Different thread types get stopped in different
+ * ways. */
+void stop_all_threads(struct dbenv *dbenv)
+{
+    dbenv->stopped = 1;
+    stop_request_threads(dbenv);
 }
 
 void resume_threads(struct dbenv *dbenv)
@@ -582,6 +588,7 @@ void resume_threads(struct dbenv *dbenv)
     if (gbl_osqlpfault_thdpool)
         thdpool_resume(gbl_osqlpfault_thdpool);
     dbenv->stopped = 0;
+    dbenv->requests_stopped = 0;
     dbenv->no_more_sql_connections = 0;
     MEMORY_SYNC;
     if (!dbenv->purge_old_blkseq_is_running ||

@@ -3081,7 +3081,7 @@ void backend_update_sync(struct dbenv *dbenv)
 void net_quiesce_threads(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dta, int dtalen, uint8_t is_tcp)
 {
-    stop_threads(thedb);
+    stop_request_threads(thedb);
     net_ack_message(hndl, 0);
 }
 

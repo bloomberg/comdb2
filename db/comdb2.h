@@ -931,6 +931,7 @@ struct dbenv {
     int purge_old_blkseq_is_running;
     int purge_old_files_is_running;
     int stopped; /* set when exiting -- if set, drop requests */
+    int requests_stopped;  /* set when we want to stop/block requests, but will resume them later */
     int no_more_sql_connections;
 
     LISTC_T(struct sql_thread) sql_threads;
@@ -2364,7 +2365,8 @@ struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pages
                   int isqueuedb);
 int init_check_constraints(struct dbtable *tbl);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
-void stop_threads(struct dbenv *env);
+void stop_all_threads(struct dbenv *env);
+void stop_request_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int add_db(struct dbtable *db);
@@ -3559,6 +3561,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
+int db_requests_are_stopped(void);
 
 /**
  * check if a tablename is a queue
