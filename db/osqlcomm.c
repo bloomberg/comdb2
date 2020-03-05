@@ -8678,7 +8678,7 @@ static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
 
     {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "%lu %s rqid %llu uuid %s got_cnonce %d\n",
+        logmsg(LOGMSG_DEBUG, "%lu %s rqid %llu uuid %s got_cnonce %d\n",
                pthread_self(), __func__, sess->rqid,
                comdb2uuidstr(sess->uuid, us), sess->snap_info != 0);
     }
