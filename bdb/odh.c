@@ -767,7 +767,7 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
         fsnapf(stdout, odh.recptr, odh.length);
         */
         if (buf) {
-            if (data->flags & DB_DBT_MALLOC) {
+            if (data->flags & (DB_DBT_MALLOC | DB_DBT_REALLOC)) {
                 free(data->data);
                 data->data = odh.recptr;
             } else if (data->flags & DB_DBT_USERMEM) {
@@ -1280,6 +1280,15 @@ int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
     }
 
     return rc;
+}
+
+void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
+                               int compression)
+{
+    print(bdb_state, "BDB queue options set: ODH %d compression %d\n", odh,
+          compression);
+    bdb_state->ondisk_header = odh;
+    bdb_state->compress = compression;
 }
 
 void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,

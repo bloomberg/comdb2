@@ -6705,6 +6705,12 @@ void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
     bdb_set_key_compression(handle);
 }
 
+void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr)
+{
+    bdb_state_type *handle = tbl->handle;
+    bdb_set_queue_odh_options(handle, odh, compr);
+}
+
 /* Compute map of dbstores used in vtag_to_ondisk */
 void update_dbstore(dbtable *db)
 {
