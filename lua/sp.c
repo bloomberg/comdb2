@@ -756,7 +756,7 @@ static int dbq_poll(Lua L, dbconsumer_t *q, int delay, int version)
 {
     SP sp = getsp(L);
     while (1) {
-        if (stop_waiting(L, q)) {
+paused: if (stop_waiting(L, q)) {
             return -1;
         }
         int rc;
@@ -774,11 +774,7 @@ again:  status = *q->status;
             setup_dbq_ts(ts);
             pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
             Pthread_mutex_unlock(q->lock);
-            if (stop_waiting(L, q)) {
-                return -1;
-            }
-            Pthread_mutex_lock(q->lock);
-            goto again;
+            goto paused;
         } else {
             assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
             Pthread_mutex_unlock(q->lock);
@@ -801,8 +797,11 @@ again:  status = *q->status;
         Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
         if (delay < 0) {
-            if (check_retry_conditions(L, 0) != 0)
+            if (check_retry_conditions(L, 0) != 0) {
+                logmsg(LOGMSG_ERROR, "%s: cannot retry %s after wait\n",
+                       __func__, q->info.spname);
                 return -1;
+            }
 
             if (!wasOpen) {
                 logmsg(LOGMSG_ERROR, "%s: queue %s no longer open after wait\n",
