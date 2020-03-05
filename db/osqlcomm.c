@@ -8675,13 +8675,6 @@ static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
     if (gbl_disable_cnonce_blkseq)
         return;
 
-    {
-        uuidstr_t us;
-        logmsg(LOGMSG_DEBUG, "%lu %s rqid %llu uuid %s got_cnonce %d\n",
-               pthread_self(), __func__, sess->rqid,
-               comdb2uuidstr(sess->uuid, us), sess->snap_info != 0);
-    }
-
     snap_uid_t *snap_info = calloc(1, sizeof(snap_uid_t));
     if (!snap_info) {
         logmsg(LOGMSG_ERROR, "%s malloc failure, no cnonce\n", __func__);
