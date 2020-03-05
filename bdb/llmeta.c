@@ -8663,8 +8663,8 @@ int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
     return rc;
 }
 
-int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
-                         int *bdberr)
+int bdb_llmeta_get_queue(tran_type *trans, char *qname, char **config,
+                         int *ndests, char ***dests, int *bdberr)
 {
     struct queue_key qk = {0};
     struct queue_data *qd = NULL;
@@ -8689,8 +8689,8 @@ int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
         goto done;
     }
 
-    rc = bdb_lite_exact_fetch_alloc(llmeta_bdb_state, key, &dta, &foundlen,
-                                    bdberr);
+    rc = bdb_lite_exact_fetch_alloc_tran(llmeta_bdb_state, trans, key, &dta,
+                                         &foundlen, bdberr);
     if (rc) {
         *bdberr = BDBERR_FETCH_DTA;
         goto done;

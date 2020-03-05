@@ -821,6 +821,9 @@ int bdb_lite_exact_fetch(bdb_state_type *bdb_handle, void *key, void *fnddta,
                          int maxlen, int *fndlen, int *bdberr);
 int bdb_lite_exact_fetch_alloc(bdb_state_type *bdb_handle, void *key,
                                void **fnddta, int *fndlen, int *bdberr);
+int bdb_lite_exact_fetch_alloc_tran(bdb_state_type *bdb_handle, tran_type *tran,
+                                    void *key, void **fnddta, int *fndlen,
+                                    int *bdberr);
 int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                               void *key, void *fnddta, int maxlen, int *fndlen,
                               int *bdberr);
@@ -902,8 +905,18 @@ enum {
     BDB_QUEUE_WALK_FIRST_ONLY = 2,
     BDB_QUEUE_WALK_RESTART = 4
 };
+
+typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
+                                          unsigned int epoch,
+                                          unsigned int depth, void *userptr);
+
+int bdb_queuedb_stats(bdb_state_type *bdb_state,
+                      bdb_queue_stats_callback_t callback, void *userptr,
+                      int *bdberr);
+
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
+
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
                    bdb_queue_walk_callback_t callback, void *userptr,
                    int *bdberr);
@@ -1088,6 +1101,9 @@ void bdb_set_blobstripe_genid(bdb_state_type *bdb_state,
 /* set various options for the ondisk header. */
 void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,
                          int blob_compression);
+
+void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
+                               int compression);
 
 void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
                          int *blob_compr);
@@ -2002,8 +2018,8 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);
 int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
                           int *fnd_queues, int *bdberr);
 /* get info for a queue */
-int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
-                         int *bdberr);
+int bdb_llmeta_get_queue(tran_type *tran, char *qname, char **config,
+                         int *ndests, char ***dests, int *bdberr);
 
 /* manipulate queues */
 int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
