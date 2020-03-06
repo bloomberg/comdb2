@@ -84,6 +84,7 @@ extern int __berkdb_read_alarm_ms;
 #include "reqlog.h"
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
+#include "osqluprec.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
