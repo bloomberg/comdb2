@@ -28,6 +28,7 @@
 #include <poll.h>
 #include <flibc.h>
 #include <inttypes.h>
+#include "osqluprec.h"
 
 #include <str0.h>
 #include <epochlib.h>
@@ -82,9 +83,6 @@ hash_t *gbl_tag_hash;
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
-
-extern int offload_comm_send_upgrade_records(const dbtable *,
-                                             unsigned long long);
 
 static inline void lock_taglock_read(void)
 {
