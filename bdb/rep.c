@@ -2315,6 +2315,17 @@ int verify_master_leases_int(bdb_state_type *bdb_state, const char **comlist,
     uint64_t ctime = gettimeofday_ms();
     static uint64_t bad_count = 0;
 
+    if (!bdb_state->attr->enable_seqnum_generations) {
+        if (verify_trace && (now = time(NULL)) != lastpr) {
+            logmsg(LOGMSG_USER,
+                   "%s master-lease return good because "
+                   "seqnum-generations is disabled\n",
+                   __func__);
+            lastpr = now;
+        }
+        return 1;
+    }
+
     Pthread_mutex_lock(&(bdb_state->master_lease_lk));
     for (i = 0; i < comcount; i++) {
         if (ctime < bdb_state->master_lease[nodeix(comlist[i])])
@@ -2500,7 +2511,20 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
             }
         }
 
-        change_coherency = (seqnum->commit_generation == mygen);
+        change_coherency = 1;
+        int elect_highest = 0;
+        char *unused;
+
+        rc = bdb_berkdb_get_attr(bdb_state, "elect_highest_committed_gen",
+                                 &unused, &elect_highest);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "Error getting elect_highest_committed_gen, "
+                   "%d\n",
+                   rc);
+        } else if (elect_highest > 0) {
+            change_coherency = (seqnum->commit_generation == mygen);
+        }
     } else
         change_coherency = 1;
 
