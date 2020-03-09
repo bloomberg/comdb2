@@ -354,7 +354,7 @@ care in Comdb2. The expression *must* be casted to a fixed-sized type.
 ```sql
 CREATE TABLE t1(`json` VUTF8(128),
                 UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
-                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))
 ```
 
 The list of allowed types that the expression in an index be casted to as well
