@@ -2316,13 +2316,13 @@ static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seq
 
     if (bdb_state->attr->enable_seqnum_generations &&
         seqnum->generation < last_seqnum->generation) {
-        //if (trace && (now = time(NULL)) > lastpr) {
+        if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER,
                    "seqnum-generation %d < last_generation %d, not"
                    " copying\n",
                    seqnum->generation, last_seqnum->generation);
             lastpr = now;
-        //}
+        }
         return 0;
     }
 
@@ -2330,15 +2330,15 @@ static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seq
         return 1;
     }
 
-    if (log_compare(&last_seqnum->lsn, &seqnum->lsn) >= 0) {
-       // if (trace && (now = time(NULL)) > lastpr) {
+    if (log_compare(&last_seqnum->lsn, &seqnum->lsn) > 0) {
+        if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER,
-                   "seqnum-lsn [%d][%d] <= last_lsn [%d][%d], not "
+                   "seqnum-lsn [%d][%d] < last_lsn [%d][%d], not "
                    "copying\n",
                    seqnum->lsn.file, seqnum->lsn.offset, last_seqnum->lsn.file,
                    last_seqnum->lsn.offset);
             lastpr = now;
-       // }
+        }
         return 0;
     }
 
@@ -2534,12 +2534,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
                 &bdb_state->seqnum_info->seqnums[node_ix])) {
         memcpy(&(bdb_state->seqnum_info->seqnums[node_ix]), seqnum,
                sizeof(seqnum_type));
-logmsg(LOGMSG_USER, "succesfully copied %d:%d from host %s\n", seqnum->lsn.file, seqnum->lsn.offset, host);
     }
-else{
-
-logmsg(LOGMSG_USER, "DID NOT COPY %d:%d from host %s\n", seqnum->lsn.file, seqnum->lsn.offset, host);
-}
 
     if (gbl_set_seqnum_trace) {
         logmsg(LOGMSG_USER, "%s line %d set %s seqnum to %d:%d\n", __func__,
