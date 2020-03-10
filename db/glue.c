@@ -732,7 +732,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     ss = (db_seqnum_type *)malloc(sizeof(db_seqnum_type));
     //memset(&ss, -1, sizeof(ss));
     memset(ss, -1, sizeof(db_seqnum_type));
-    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
+    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
 
     if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO(iq)) {
