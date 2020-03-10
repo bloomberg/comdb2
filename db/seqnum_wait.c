@@ -9,7 +9,7 @@
 #include "comdb2.h"
 #include <mem.h>
 #include<errstat.h>
-#define PRINT_TRACES_ASYNC_DIST_COMMIT
+//#define PRINT_TRACES_ASYNC_DIST_COMMIT
 /* 
  * WORK QUEUE 
  * work_queue -> A queue abstraction encapsulating lists and locks used
