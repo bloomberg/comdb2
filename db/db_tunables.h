@@ -1901,4 +1901,8 @@ REGISTER_TUNABLE("queuedb_read_locks",
                  "Grab table read locks when dealing with a queuedb from Lua."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_queuedb_read_locks,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("queuedb_debug",
+                 "Enable extra diagnostic messages for the queuedb subsystem."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_debug_queuedb,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
