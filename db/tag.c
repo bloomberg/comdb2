@@ -154,11 +154,19 @@ int schema_init(void)
     return 0;
 }
 
-void add_tag_schema(const char *table, struct schema *schema)
+#if defined DEBUG_STACK_TAG_SCHEMA
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+#else
+#define backtrace(A, B) 1
+#endif
+#endif
+
+static void add_tag_schema_lk(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
-
-    lock_taglock();
+    struct schema *fnd;
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -175,47 +183,72 @@ void add_tag_schema(const char *table, struct schema *schema)
         hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
+    if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
+        listc_rfl(&tag->taglist, fnd);
+        hash_del(tag->tags, fnd);
+        free(fnd);
+    }
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          schema->tag);
+    schema->frames = backtrace(schema->buf, MAX_TAG_STACK_FRAMES);
+    schema->tid = pthread_self();
+#endif
+}
 
+void add_tag_schema(const char *table, struct schema *schema)
+{
+    lock_taglock();
+    add_tag_schema_lk(table, schema);
     unlock_taglock();
 }
 
-void del_tag_schema(const char *table, const char *tagname)
+static void del_tag_schema_lk(const char *table, const char *tagname)
 {
-    lock_taglock();
-
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (tag == NULL) {
-        unlock_taglock();
-        return; /* doesn't exist */
-    }
+    if (tag == NULL)
+        return;
+
     struct schema *sc = hash_find(tag->tags, &tagname);
+
     if (sc) {
         hash_del(tag->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+        comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                              table, tagname);
+#endif
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
             free(sc->datacopy);
             sc->datacopy = NULL;
         }
     }
-    /* doesn't exist? */
+}
+
+void del_tag_schema(const char *table, const char *tagname)
+{
+    lock_taglock();
+    del_tag_schema_lk(table, tagname);
     unlock_taglock();
+}
+
+static struct schema *find_tag_schema_lk(const char *table, const char *tagname)
+{
+    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
+    if (unlikely(tag == NULL))
+        return NULL;
+    struct schema *s = hash_find_readonly(tag->tags, &tagname);
+    return s;
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
+    struct schema *s;
     lock_taglock_read();
-
-    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (unlikely(tag == NULL)) {
-        unlock_taglock();
-        return NULL;
-    }
-    struct schema *s = hash_find_readonly(tag->tags, &tagname);
-
+    s = find_tag_schema_lk(table, tagname);
     unlock_taglock();
-
     return s;
 }
 
@@ -1420,6 +1453,12 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     }
 
     hash_add(tag->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          name);
+    sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+    sc->tid = pthread_self();
+#endif
     unlock_taglock();
 }
 
@@ -1432,9 +1471,12 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
     struct field *from_field, *to_field;
     int rc;
 
-    from = find_tag_schema(table, fromtag);
-    if (from == NULL)
+    lock_taglock();
+    from = find_tag_schema_lk(table, fromtag);
+    if (from == NULL) {
+        unlock_taglock();
         return -1;
+    }
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
@@ -1473,6 +1515,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
             }
             free(to->tag);
             free(to);
+            unlock_taglock();
             return -1;
         }
         to->member[field].offset = offset;
@@ -1483,7 +1526,11 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
-    add_tag_schema(table, to);
+
+    del_tag_schema_lk(table, newtag);
+    add_tag_schema_lk(table, to);
+
+    unlock_taglock();
     return 0;
 }
 
@@ -6297,13 +6344,6 @@ void commit_schemas(const char *tblname)
     }
 
     sc = dbt->taglist.top;
-    while (sc != NULL) {
-        tmp = sc->lnk.next;
-        /* printf("]]]]]] %p %s\n", sc, sc->tag); */
-        sc = tmp;
-    }
-
-    sc = dbt->taglist.top;
     hash_clear(dbt->tags);
     while (sc != NULL) {
         tmp = sc->lnk.next;
@@ -6381,6 +6421,12 @@ void commit_schemas(const char *tblname)
             sc = NULL;
         } else {
             hash_add(dbt->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+            comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                                  tblname, sc->tag);
+            sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+            sc->tid = pthread_self();
+#endif
         }
         sc = tmp;
     }
@@ -6393,11 +6439,13 @@ void commit_schemas(const char *tblname)
         int i = 0;
         int count = to_be_freed.count;
 
-        s = malloc(sizeof(struct schema *) * count);
+        s = calloc(sizeof(struct schema *), count);
         sc = listc_rtl(&to_be_freed);
         while (sc) {
             if (db->schema != sc)
                 s[i++] = sc;
+            else
+                count--;
             sc = listc_rtl(&to_be_freed);
         }
 
@@ -6786,6 +6834,10 @@ void delete_schema(const char *tblname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &tblname);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s", __func__, __LINE__, tblname);
+#endif
+    assert(dbt != NULL);
     hash_del(gbl_tag_hash, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
@@ -6809,6 +6861,10 @@ void rename_schema(const char *oldname, char *newname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &oldname);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d rename %s to %s\n", __func__, __LINE__,
+                          oldname, newname);
+#endif
     hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);
     dbt->tblname = newname;
@@ -7075,12 +7131,15 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
-    /* reopen db no tran - i.e. auto commit */
-    newdb->handle = bdb_open_more(
+    extern int gbl_rowlocks;
+    tran_type *arg_tran = gbl_rowlocks ? NULL : tran;
+
+    /* Must use tran or this can cause deadlocks */
+    newdb->handle = bdb_open_more_tran(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, &bdberr);
+        newdb->numblobs + 1, thedb->bdb_env, arg_tran, 0, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",

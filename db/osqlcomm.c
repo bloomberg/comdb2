@@ -6111,6 +6111,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     iq->sc = sc;
     sc->iq = iq;
+    sc->is_osql = 1;
     if (sc->db == NULL) {
         sc->db = get_dbtable_by_name(sc->tablename);
     }
@@ -6227,6 +6228,9 @@ int gbl_selectv_writelock = 0;
  * to apply to received row updates
  *
  */
+
+#include <schemachange/sc_global.h>
+
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
@@ -6320,6 +6324,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             if (iq->sc->db)
                 iq->usedb = iq->sc->db;
+            assert(iq->sc->nothrevent);
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {
@@ -6327,6 +6332,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             if (iq->sc->fastinit && gbl_replicate_local)
                 local_replicant_write_clear(iq, trans, iq->sc->db);
+            iq->sc = iq->sc->sc_next;
+        }
+
+        /* Success: reset the table counters */
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            sc_set_running(iq, iq->sc, iq->sc->tablename, 0, NULL, 0, 0,
+                           __func__, __LINE__);
             iq->sc = iq->sc->sc_next;
         }
 

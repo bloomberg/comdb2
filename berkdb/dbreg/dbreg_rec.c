@@ -46,6 +46,7 @@ static const char revid[] = "$Id: dbreg_rec.c,v 11.120 2003/10/27 15:54:31 sue E
 #include <stddef.h>
 #endif
 
+#include "logmsg.h"
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
@@ -62,6 +63,10 @@ static int __dbreg_open_file __P((DB_ENV *,
 
 int
 __dbreg_register_print(DB_ENV *dbenv, DBT *dbtp, DB_LSN *lsnp, db_recops notused2, void *notused3);
+
+#if defined (DEBUG_STACK_AT_DBREG_RECOVER)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 
 
 /*
@@ -205,7 +210,10 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 			     ret, argp->fileid);
 			 */
 		}
-
+#if defined (DEBUG_STACK_AT_DBREG_RECOVER)
+		comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d [%d:%d] ret=%d: ", pthread_self(), "open",
+				argp->id, lsnp->file, lsnp->offset, ret);
+#endif
 
 		if (ret == ENOENT || ret == EINVAL) {
 
@@ -247,6 +255,11 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		 */
 		do_rem = 0;
 		MUTEX_THREAD_LOCK(dbenv, dblp->mutexp);
+#if defined (DEBUG_STACK_AT_DBREG_RECOVER)
+		comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d [%d:%d] ret=(not-here): ", pthread_self(), "close",
+				argp->id, lsnp->file, lsnp->offset);
+#endif
+
 		if (argp->fileid < dblp->dbentry_cnt) {
 			/*
 			 * Typically, closes should match an open which means

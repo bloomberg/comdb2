@@ -1389,6 +1389,7 @@ struct ireq {
 
     tran_type *sc_logical_tran;
     tran_type *sc_tran;
+    tran_type *sc_close_tran;
     struct schema_change_type *sc_pending;
     double cost;
     uint64_t sc_seed;
@@ -1437,8 +1438,10 @@ struct ireq {
 
     bool sc_locked : 1;
     bool sc_should_abort : 1;
+    bool sc_closed_files : 1;
 
     int written_row_count;
+    int sc_running;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -1680,7 +1683,6 @@ extern int gbl_tranmode;
 extern volatile int gbl_dbopen_gen;
 extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
-extern volatile int gbl_schema_change_in_progress;
 extern int gbl_sc_report_freq;
 extern int gbl_thrman_trace;
 extern int gbl_move_deadlk_max_attempt;

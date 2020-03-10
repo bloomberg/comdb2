@@ -3239,8 +3239,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int i, j, now, cntbytes;
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
-    int durable_lsns = bdb_state->attr->durable_lsns;
-    int catchup_window = bdb_state->attr->catchup_window;
+    int durable_lsns;
+    int catchup_window;
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
     int numnodes;
@@ -3264,8 +3264,13 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int lock_desired = 0;
 
     /* if we were passed a child, find his parent */
+    assert(!bdb_state->parent);
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
+
+    /* Dereference from parent */
+    durable_lsns = bdb_state->attr->durable_lsns;
+    catchup_window = bdb_state->attr->catchup_window;
 
     /* short ciruit if we are waiting on lsn 0:0  */
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))

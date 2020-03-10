@@ -201,6 +201,7 @@ __db_init(dbp, flags)
 
 	dbp->associate = __db_associate_pp;
 	dbp->close = __db_close_pp;
+	dbp->closetxn = __db_closetxn_pp;
 	dbp->cursor = __db_cursor_pp;
 
 	dbp->paired_cursor = __db_cursor_pp_paired;
@@ -218,6 +219,7 @@ __db_init(dbp, flags)
 	dbp->get_dbname = __db_get_dbname;
 	dbp->get_env = __db_get_env;
 	dbp->get_open_flags = __db_get_open_flags;
+	dbp->get_fileid = __db_get_fileid;
 	dbp->get_transactional = __db_get_transactional;
 	dbp->get_type = __db_get_type;
 	dbp->join = __db_join_pp;
