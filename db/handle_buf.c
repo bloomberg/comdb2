@@ -93,13 +93,6 @@ static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
 
-int handle_buf_main(
-    struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
-    const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
-    char *fromtask, osql_sess_t *sorese, int qtype,
-    void *data_hndl, // handle to data that can be used according to request
-                     // type
-    int luxref, unsigned long long rqid);
 //removing static, to be used in seqnum_wait.c
 static pthread_mutex_t lock;
 pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
