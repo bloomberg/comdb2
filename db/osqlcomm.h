@@ -201,16 +201,6 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t,
                           genid_t, int type);
 
 /**
- * Constructs a reusable osql request
- *
- */
-void *osql_create_request(const char *sql, int sqlen, int type,
-                          unsigned long long rqid, uuid_t uuid, char *tzname,
-                          int *prqlen, char *tag, void *tagbuf, int tagbuflen,
-                          void *nullbits, int numnullbits, blob_buffer_t *blobs,
-                          int numblobs, int queryid, int flags);
-
-/**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
  *
@@ -402,9 +392,6 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid);
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err);
-
-void osql_extract_snap_info(struct ireq *iq, void *data, int datalen,
-                            int hasuuid);
 
 void signal_replicant_error(const char *host, unsigned long long rqid,
                             uuid_t uuid, int rc, const char *msg);

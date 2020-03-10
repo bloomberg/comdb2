@@ -1227,6 +1227,10 @@ enum OSQL_REQ_TYPE {
     OSQL_MAX_REQ = 9,
 };
 
+#define IQ_HAS_SNAPINFO(iq) ((iq)->sorese && (iq)->sorese->snap_info)
+
+#define IQ_SNAPINFO(iq) ((iq)->sorese->snap_info)
+
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
 typedef struct blocksql_tran blocksql_tran_t;
@@ -1237,6 +1241,7 @@ struct osql_sess {
     /* request part */
     unsigned long long rqid; /* identifies the client request session */
     uuid_t uuid;
+    snap_uid_t *snap_info;
 
     sess_impl_t *impl;
 
@@ -1257,6 +1262,7 @@ struct osql_sess {
 
     int queryid;
     bool is_reorder_on : 1;
+    bool is_delayed : 1;
 
     /* from sorese */
     const char *host; /* sql machine, 0 is local */
@@ -1264,8 +1270,8 @@ struct osql_sess {
     int rcout;        /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool is_delayed;
     blocksql_tran_t *tran;
+    int is_tranddl;
 };
 typedef struct osql_sess osql_sess_t;
 
@@ -1320,7 +1326,6 @@ struct ireq {
     char corigin[80];
     char debug_buf[256];
     char tzname[DB_MAX_TZNAMEDB];
-    snap_uid_t snap_info;
 
     /************/
     /* REGION 3 */
@@ -1431,7 +1436,6 @@ struct ireq {
     bool have_blkseq : 1;
 
     bool sc_locked : 1;
-    bool have_snap_info : 1;
     bool sc_should_abort : 1;
 
     int written_row_count;
@@ -1868,7 +1872,7 @@ enum comdb2_queue_types {
 };
 
 int handle_buf_main(
-    struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb, const uint8_t *p_buf,
+    struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
     const uint8_t *p_buf_end, int debug, char *frommach, int frompid,
     char *fromtask, osql_sess_t *sorese, int qtype,
     void *data_hndl, // handle to data that can be used according to request
@@ -3322,11 +3326,6 @@ uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
                               uint8_t *p_buf, const uint8_t *p_buf_end);
 
 extern int gbl_log_fstsnd_triggers;
-
-struct ireq *create_sorese_ireq(struct dbenv *dbenv, uint8_t *p_buf,
-                                const uint8_t *p_buf_end, int debug,
-                                char *frommach, osql_sess_t *sorese);
-void destroy_ireq(struct dbenv *dbenv, struct ireq *iq);
 
 void create_watchdog_thread(struct dbenv *);
 
