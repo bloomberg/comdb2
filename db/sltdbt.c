@@ -36,8 +36,8 @@
 #include "comdb2_opcode.h"
 #include "sc_util.h"
 
-#include <bdb_int.h>
-void pack_tail(struct ireq *iq);
+#include<bdb_int.h>
+static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
 extern int sorese_send_commitrc(struct ireq *iq, int rc);
 
@@ -160,16 +160,14 @@ static int handle_op_block(struct ireq *iq)
         return rc;
     }
     if (iq->frommach && !allow_write_from_remote(iq->frommach)) {
-        rc = ERR_READONLY;
-        return rc;
+        return ERR_READONLY;
     }
 
     iq->where = "toblock";
 
-    retries = 0;
-    totpen = 0;
-
-    gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
+    int retries = 0;
+    int totpen = 0;
+    double lcl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
 
 retry:
     startus = comdb2_time_epochus();
@@ -202,23 +200,7 @@ retry:
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                Pthread_mutex_lock(&delay_lock);
-
-                penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
-                             (gbl_penaltyincpercent_d / iq->retries);
-
-                if (penaltyinc <= 0) {
-                    /* at least one less writer */
-                    penaltyinc = 1;
-                }
-
-                if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
-                    penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
-
-                gbl_maxwthreadpenalty += penaltyinc;
-                totpen += penaltyinc;
-
-                Pthread_mutex_unlock(&delay_lock);
+		adjust_maxwthreadpenalty(&totpen, lcl_penaltyincpercent_d, iq->retries);
             }
 
             iq->usedb = iq->origdb;
@@ -489,7 +471,7 @@ cleanup:
 }
 
 // making function non-static to be used in seqnum_wait.c
-void pack_tail(struct ireq *iq)
+static void pack_tail(struct ireq *iq)
 {
     struct slt_cur_t *cur = NULL;
 
