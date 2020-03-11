@@ -213,13 +213,6 @@ static void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
     return bdb_handle;
 }
 
-static bdb_state_type *bdb_handle_from_ireq(const struct ireq *iq)
-{
-    if (iq->usedb)
-        return iq->usedb->handle;
-    return thedb->bdb_env;
-}
-
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
 {
     memset(iq, 0, sizeof(struct ireq));
@@ -250,7 +243,7 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 
 int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     return bdb_set_tran_lowpri(bdb_handle, tran);
 }
 
@@ -262,7 +255,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                int retries)
 {
     int bdberr;
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     int rc = 0;
     tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
@@ -369,7 +362,7 @@ int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
 
 tran_type *trans_start_socksql(struct ireq *iq, int trak)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
@@ -389,7 +382,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
 tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
@@ -411,7 +404,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
                                 int offset, int *error, int is_ha_retry)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
 
     *error = 0;
@@ -438,7 +431,7 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
                                     int file, int offset, int *error,
                                     int is_ha_retry)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
@@ -545,7 +538,7 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
 int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     return trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, seqnum, 0,
                                    NULL, 0, NULL, 0);
 }
@@ -676,7 +669,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
                           db_seqnum_type *ss)
 {
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     return trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, -1,
                                      0 /*adaptive*/, ss);
 }
@@ -685,7 +678,7 @@ int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 {
     db_seqnum_type seqnum;
     int rc = -1;
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
 
     if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
         rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, -1,
@@ -782,7 +775,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
     int bdberr, rc = 0;
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     db_seqnum_type ss;
 
     iq->gluewhere = "bdb_tran_abort";
@@ -811,7 +804,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
 int trans_abort_int(struct ireq *iq, void *trans, int *priority)
 {
     int bdberr;
-    bdb_state_type *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     iq->gluewhere = "bdb_tran_abort";
     bdb_tran_abort_priority(bdb_handle, trans, &bdberr, priority);
     iq->gluewhere = "bdb_tran_abort done";
