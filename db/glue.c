@@ -5383,9 +5383,10 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
-            void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
-            struct dbq_cursor *fndcursor, unsigned int *epoch)
+int dbq_get(struct ireq *iq, int consumer,
+            const struct bdb_queue_cursor *prevcursor, void **fnddta,
+            size_t *fnddtalen, size_t *fnddtaoff,
+            struct bdb_queue_cursor *fndcursor, unsigned int *epoch)
 {
     int bdberr;
     void *bdb_handle;
@@ -5397,10 +5398,8 @@ int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
 
 retry:
     iq->gluewhere = "bdb_queue_get";
-    rc = bdb_queue_get(bdb_handle, consumer,
-                       (const struct bdb_queue_cursor *)prevcursor, fnddta,
-                       fnddtalen, fnddtaoff,
-                       (struct bdb_queue_cursor *)fndcursor, epoch, &bdberr);
+    rc = bdb_queue_get(bdb_handle, consumer, prevcursor, fnddta, fnddtalen,
+                       fnddtaoff, fndcursor, epoch, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
