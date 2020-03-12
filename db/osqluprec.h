@@ -1,5 +1,5 @@
 /*
-   Copyright 2018 Bloomberg Finance L.P.
+   Copyright 2015 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,14 +14,19 @@
    limitations under the License.
  */
 
-#ifndef __TOHEX_H__
-#define __TOHEX_H__
-#include <logmsg.h>
-#include <build/db_dbt.h>
-char *util_tohex(char *out, const char *in, size_t len);
-void hexdumpbuf(const char *key, int keylen, char **buf);
-void hexdump(loglvl lvl, const char *key, int keylen);
-void hexdumpdbt(DBT *dbt);
-void hexdumpfp(FILE *fp, const unsigned char *key, int keylen);
-void fileid_str(u_int8_t *fileid, char *str);
+#ifndef _OSQL_UPREC_H_
+#define _OSQL_UPREC_H_
+
+#include "comdb2.h"
+
+/* Offload record upgrade statistics */
+void upgrade_records_stats(void);
+
+/* Offload upgrade record request. */
+int offload_comm_send_upgrade_records(const dbtable *db,
+                                      unsigned long long genid);
+
+/* Offload upgrade record request. */
+int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
+
 #endif

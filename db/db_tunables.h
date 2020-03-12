@@ -1879,6 +1879,18 @@ REGISTER_TUNABLE("ref_sync_wait_txnlist",
                  TUNABLE_BOOLEAN, &gbl_ref_sync_wait_txnlist,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_close_txn",
+                 "Use separate close txn in schemachange.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sc_close_txn, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("abort_on_illegal_log_put",
+                 "Abort if replicant log_puts.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_illegal_log_put,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("sc_pause_at_end",
                  "Pause schema-change after converters have completed.  "
                  "(Default: off)",

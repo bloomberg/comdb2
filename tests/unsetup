@@ -145,6 +145,11 @@ unsetup_db() {
         exit 0
     fi
 
+    if [[ "$NOKILL_ON_FAILURE" -eq 1 && "$successful" -ne "1" ]]; then
+        echo "Not killing on failed test"
+        exit 0
+    fi
+
     if [[ "$DUMPLOCK_ON_TIMEOUT" -eq "1" && "$successful" -eq "-1" ]]; then
         dumplock_all_nodes
     fi

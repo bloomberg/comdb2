@@ -170,6 +170,7 @@ struct schema_change_type {
     pthread_mutex_t mtx; /* mutex for thread sync */
     pthread_mutex_t mtxStart; /* mutex for thread start */
     pthread_cond_t condStart; /* condition var for thread sync */
+    int started;
     int sc_rc;
 
     struct ireq *iq;
@@ -218,6 +219,8 @@ struct schema_change_type {
     size_t packed_len;
 
     bool views_locked : 1;
+    bool is_osql : 1;
+    bool set_running : 1;
 };
 
 struct ireq;
@@ -225,6 +228,7 @@ typedef struct {
     tran_type *trans;
     struct ireq *iq;
     struct schema_change_type *sc;
+    int started;
 } sc_arg_t;
 
 struct scinfo {

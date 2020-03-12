@@ -48,21 +48,9 @@ int osql_comm_init(struct dbenv *dbenv);
  */
 void osql_comm_destroy(void);
 
-/* Offload upgrade record request. */
-int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid);
-
-/* Offload upgrade record request. */
-int offload_comm_send_upgrade_records(const dbtable *db,
-                                      unsigned long long genid);
-
-/* Offload record upgrade statistics */
-void upgrade_records_stats(void);
-
-/* Offload the internal block request.
-   And wait on a fake for reply inline. */
-int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen);
-
-/* Offload the block request.
+/* This is used for:
+    - forward-to-master block requests over socket
+    - upgrade records
    And wait for reply inline. */
 int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen);
 
@@ -127,7 +115,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
  * It handles remote/local connectivity
  *
  */
-int osql_send_updrec(char *tonode, unsigned long long rqid, uuid_t uuid,
+int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long genid, unsigned long long ins_keys,
                      unsigned long long del_keys, char *pData, int nData,
                      int type);
@@ -155,7 +143,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
  * It handles remote/local connectivity
  *
  */
-int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
+int osql_send_schemachange(char *tohost, unsigned long long rqid, uuid_t uuid,
                            struct schema_change_type *sc, int type);
 
 /**
@@ -163,7 +151,7 @@ int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
  * It handles remote/local connectivity
  *
  */
-int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
+int osql_send_bpfunc(char *tohost, unsigned long long rqid, uuid_t uuid,
                      BpfuncArg *msg, int type);
 
 /**
@@ -246,7 +234,7 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  * client
  *
  */
-int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
+int osql_comm_signal_sqlthr_rc(const char *tohost, unsigned long long rqid,
                                uuid_t uuid, int nops, struct errstat *xerr,
                                int rc);
 
@@ -385,10 +373,6 @@ enum osqlpfrq_type {
 int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
                        int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
                        unsigned long long seq);
-
-int osql_close_connection(char *host);
-
-int osql_get_replicant_numops(const char *rpl, int has_uuid);
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err);

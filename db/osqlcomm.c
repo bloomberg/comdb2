@@ -2895,8 +2895,6 @@ static void signal_rtoff(void);
 
 static int check_master(const char *tohost);
 static int offload_net_send(const char *tohost, int usertype, void *data,
-                            int datalen, int nodelay);
-static int offload_net_send_tail(const char *tohost, int usertype, void *data,
                                  int datalen, int nodelay, void *tail,
                                  int tailen);
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
@@ -3104,52 +3102,6 @@ void osql_comm_destroy(void)
     thecomm_obj = NULL;
 }
 
-int offload_comm_send_sync_blockreq(char *node, void *buf, int buflen)
-{
-    int rc;
-    int nwakeups;
-    struct timespec ts;
-    struct buf_lock_t *p_slock;
-
-    // create a fake buf_lock
-    p_slock = malloc(sizeof(struct buf_lock_t));
-
-    if (p_slock == NULL)
-        return ENOMEM;
-
-    p_slock->reply_state = REPLY_STATE_NA;
-    p_slock->sb = NULL;
-
-    // initialize lock and cond
-    Pthread_mutex_init(&(p_slock->req_lock), 0);
-    Pthread_cond_init(&(p_slock->wait_cond), NULL);
-
-    {
-        Pthread_mutex_lock(&(p_slock->req_lock));
-        rc = offload_comm_send_blockreq(node, p_slock, buf, buflen);
-        if (rc == 0) {
-            nwakeups = 0;
-            while (p_slock->reply_state != REPLY_STATE_DONE) {
-                clock_gettime(CLOCK_REALTIME, &ts);
-                ts.tv_sec += 1;
-                rc = pthread_cond_timedwait(&(p_slock->wait_cond),
-                                            &(p_slock->req_lock), &ts);
-                ++nwakeups;
-
-                if (nwakeups == 1000)
-                    break;
-            }
-        }
-        Pthread_mutex_unlock(&(p_slock->req_lock));
-    }
-
-    // clean up
-    Pthread_cond_destroy(&(p_slock->wait_cond));
-    Pthread_mutex_destroy(&(p_slock->req_lock));
-    free(p_slock);
-    return rc;
-}
-
 typedef struct net_block_msg {
     unsigned long long rqid; /* fastseed */
     int datalen;
@@ -3165,7 +3117,7 @@ int offload_comm_send_blockreq(char *host, void *rqid, void *buf, int buflen)
     net_msg->rqid = (unsigned long long)rqid;
     net_msg->datalen = buflen;
     memcpy(net_msg->data, buf, buflen);
-    rc = offload_net_send(host, NET_BLOCK_REQ, net_msg, len, 1);
+    rc = offload_net_send(host, NET_BLOCK_REQ, net_msg, len, 1, NULL, 0);
     free(net_msg);
     return rc;
 }
@@ -3190,7 +3142,7 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
     net_msg->rc = return_code;
     net_msg->datalen = buflen;
     memcpy(net_msg->data, buf, buflen);
-    rc = offload_net_send(host, NET_BLOCK_REPLY, net_msg, len, 1);
+    rc = offload_net_send(host, NET_BLOCK_REPLY, net_msg, len, 1, NULL, 0);
     free(net_msg);
     return rc;
 }
@@ -3257,7 +3209,7 @@ static void net_snap_uid_req(void *hndl, void *uptr, char *fromhost,
     }
 
     offload_net_send(fromhost, NET_OSQL_SNAP_UID_RPL, p_buf_start,
-                     sizeof(snap_uid_t), 1);
+                     sizeof(snap_uid_t), 1, NULL, 0);
 }
 
 void log_snap_info_key(snap_uid_t *snap_info)
@@ -3351,7 +3303,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
 
         type = osql_net_type_to_net_uuid_type(type);
-        rc = offload_net_send(tohost, type, &buf, sizeof(buf), 1);
+        rc = offload_net_send(tohost, type, &buf, sizeof(buf), 1, NULL, 0);
     } else {
         osql_poke_t poke = {0};
         uint8_t buf[OSQLCOMM_POKE_TYPE_LEN],
@@ -3368,7 +3320,7 @@ int osql_comm_send_poke(char *tohost, unsigned long long rqid, uuid_t uuid,
                     "osqlcomm_poke_type_put");
             return -1;
         }
-        rc = offload_net_send(tohost, type, &buf, sizeof(buf), 1);
+        rc = offload_net_send(tohost, type, &buf, sizeof(buf), 1, NULL, 0);
     }
 
     return rc;
@@ -3467,7 +3419,7 @@ int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
                comdb2uuidstr(uuid, us), start_gen);
     }
 
-    rc = offload_net_send(tohost, type, &buf, msglen, 0);
+    rc = offload_net_send(tohost, type, &buf, msglen, 0, NULL, 0);
 
     if (rc)
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
@@ -3552,12 +3504,9 @@ int osql_send_usedb(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 
     /* tablename field is not null-terminated -- send rest of tablename */
-    if (tablenamelen > sent) {
-        rc = offload_net_send_tail(tohost, type, &buf, msglen, 0,
-                                   tablename + sent, tablenamelen - sent);
-    } else {
-        rc = offload_net_send(tohost, type, &buf, msglen, 0);
-    }
+    rc = offload_net_send(tohost, type, &buf, msglen, 0,
+                          (tablenamelen > sent) ? tablename + sent : NULL,
+                          (tablenamelen > sent) ? tablenamelen - sent : 0);
 
     if (rc)
         logmsg(LOGMSG_ERROR, "%s offload_net_send returns rc=%d\n", __func__,
@@ -3652,7 +3601,7 @@ int osql_send_updcols(char *tohost, unsigned long long rqid, uuid_t uuid,
         logmsg(LOGMSG_DEBUG, "[%llu] send OSQL_UPDCOLS %d\n", rqid, ncols);
     }
 
-    rc = offload_net_send(tohost, type, buf, totlen, 0);
+    rc = offload_net_send(tohost, type, buf, totlen, 0, NULL, 0);
 
     if (didmalloc)
         free(buf);
@@ -3730,9 +3679,8 @@ int osql_send_index(char *tohost, unsigned long long rqid, uuid_t uuid,
                isDelete ? "OSQL_DELIDX" : "OSQL_INSIDX", lclgenid, lclgenid);
     }
 
-    rc = (nData > 0)
-             ? offload_net_send_tail(tohost, type, buf, msglen, 0, pData, nData)
-             : offload_net_send(tohost, type, buf, msglen, 0);
+    rc = offload_net_send(tohost, type, buf, msglen, 0,
+                          (nData > 0) ? pData : NULL, (nData > 0) ? nData : 0);
 
     return rc;
 }
@@ -3838,11 +3786,9 @@ int osql_send_qblob(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
 #endif
 
-    if (datalen > sent)
-        rc = offload_net_send_tail(tohost, type, buf, msgsz, 0, data + sent,
-                                   datalen - sent);
-    else
-        rc = offload_net_send(tohost, type, buf, msgsz, 0);
+    rc = offload_net_send(tohost, type, buf, msgsz, 0,
+                          (datalen > sent) ? data + sent : NULL,
+                          (datalen > sent) ? datalen - sent : 0);
 
     return rc;
 }
@@ -3945,9 +3891,9 @@ int osql_send_updrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                lclgenid, lclgenid);
     }
 
-    rc = (nData > sent) ? offload_net_send_tail(tohost, type, &buf, msgsz, 0,
-                                                pData + sent, nData - sent)
-                        : offload_net_send(tohost, type, &buf, msgsz, 0);
+    rc = offload_net_send(tohost, type, &buf, msgsz, 0,
+                          (nData > sent) ? pData + sent : NULL,
+                          (nData > sent) ? nData - sent : 0);
 
     return rc;
 }
@@ -3995,15 +3941,6 @@ void osql_cleanup_netinfo(void)
     net_cleanup_netinfo(netinfo_ptr);
 }
 
-int osql_close_connection(char *host)
-{
-    osql_comm_t *comm = get_thecomm();
-    if (comm)
-        return net_close_connection(comm->handle_sibling, host);
-    else
-        return 0;
-}
-
 /* Send dbglog op */
 int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
                      unsigned long long dbglog_cookie, int queryid, int type)
@@ -4028,8 +3965,8 @@ int osql_send_dbglog(char *tohost, unsigned long long rqid, uuid_t uuid,
         return -1;
     }
 
-    rc = offload_net_send_tail(tohost, type, &buf, sizeof(osql_dbglog_t), 0,
-                               NULL, 0);
+    rc =
+        offload_net_send(tohost, type, &buf, sizeof(osql_dbglog_t), 0, NULL, 0);
     return rc;
 }
 
@@ -4103,10 +4040,9 @@ int osql_send_updstat(char *tohost, unsigned long long rqid, uuid_t uuid,
                rqid, comdb2uuidstr(uuid, us), seq, seq);
     }
 
-    rc = (nData > sent) ? offload_net_send_tail(tohost, type, buf, msglen, 0,
-                                                pData + sent, nData - sent)
-                        : offload_net_send(tohost, type, buf, msglen, 0);
-
+    rc = offload_net_send(tohost, type, buf, msglen, 0,
+                          (nData > sent) ? pData + sent : NULL,
+                          (nData > sent) ? nData - sent : 0);
     return rc;
 }
 
@@ -4219,9 +4155,9 @@ int osql_send_insrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                lclgenid, lclgenid);
     }
 
-    rc = (nData > sent) ? offload_net_send_tail(tohost, type, buf, msglen, 0,
-                                                pData + sent, nData - sent)
-                        : offload_net_send(tohost, type, buf, msglen, 0);
+    rc = offload_net_send(tohost, type, buf, msglen, 0,
+                          (nData > sent) ? pData + sent : NULL,
+                          (nData > sent) ? nData - sent : 0);
 
     return rc;
 }
@@ -4255,7 +4191,7 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
         rpl.rqid.genid = genid;
         sz = sizeof(rpl.rqid);
     }
-    return offload_net_send(tohost, type, &rpl, sz, 0);
+    return offload_net_send(tohost, type, &rpl, sz, 0, NULL, 0);
 }
 
 
@@ -4338,7 +4274,7 @@ int osql_send_delrec(char *tohost, unsigned long long rqid, uuid_t uuid,
                lclgenid, lclgenid);
     }
 
-    rc = offload_net_send(tohost, type, &buf, msgsz, 0);
+    rc = offload_net_send(tohost, type, &buf, msgsz, 0, NULL, 0);
 
     return rc;
 }
@@ -4478,7 +4414,7 @@ int osql_send_serial(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
     }
 
-    rc = offload_net_send(tohost, type, buf, b_sz, 1);
+    rc = offload_net_send(tohost, type, buf, b_sz, 1, NULL, 0);
 
     return rc;
 }
@@ -4585,7 +4521,7 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
                 return -1;
             }
         }
-        rc = offload_net_send(tohost, type, buf, b_sz, 1);
+        rc = offload_net_send(tohost, type, buf, b_sz, 1, NULL, 0);
 
     } else {
 
@@ -4601,7 +4537,7 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
                 free(buf);
             return -1;
         }
-        rc = offload_net_send(tohost, type, buf, sizeof(rpl_xerr), 1);
+        rc = offload_net_send(tohost, type, buf, sizeof(rpl_xerr), 1, NULL, 0);
     }
     if (used_malloc)
         free(buf);
@@ -4722,7 +4658,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                 return -1;
             }
         }
-        rc = offload_net_send(tohost, type, buf, b_sz, 1);
+        rc = offload_net_send(tohost, type, buf, b_sz, 1, NULL, 0);
 
     } else {
 
@@ -4744,7 +4680,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
                 free(buf);
             return -1;
         }
-        rc = offload_net_send(tohost, type, buf, sizeof(rpl_xerr), 1);
+        rc = offload_net_send(tohost, type, buf, sizeof(rpl_xerr), 1, NULL, 0);
     }
     if (used_malloc)
         free(buf);
@@ -4950,7 +4886,7 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
         }
     }
 
-    rc = offload_net_send(tohost, net_type, req, reqlen, 1);
+    rc = offload_net_send(tohost, net_type, req, reqlen, 1, NULL, 0);
 
     if (rc)
         stats[type].snd_failed++;
@@ -5061,7 +4997,7 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
   printf("Send %d rqid=%llu tmp=%llu\n",  NET_OSQL_SIGNAL, rqid, osql_log_time());
 #endif
     /* lazy again, works just because node!=0 */
-    int irc = offload_net_send(host, type, buf, msglen, 1);
+    int irc = offload_net_send(host, type, buf, msglen, 1, NULL, 0);
     if (irc) {
         irc = -1;
         logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__, host);
@@ -5219,7 +5155,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             reply_type = NET_OSQL_MASTER_CHECKED_UUID;
 
             if ((rc = offload_net_send(fromhost, reply_type, bufuuid,
-                                       sizeof(bufuuid), 1))) {
+                                       sizeof(bufuuid), 1, NULL, 0))) {
                 logmsg(LOGMSG_ERROR, "%s: error writting record to master in "
                                 "offload mode rc=%d!\n",
                         __func__, rc);
@@ -5242,7 +5178,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
             reply_type = NET_OSQL_MASTER_CHECKED;
 
             if ((rc = offload_net_send(fromhost, reply_type, buf, sizeof(buf),
-                                       1))) {
+                                       1, NULL, 0))) {
                 logmsg(LOGMSG_ERROR, "%s: error writting record to master in "
                                 "offload mode rc=%d!\n",
                         __func__, rc);
@@ -5338,8 +5274,11 @@ static void signal_rtoff(void)
     }
 }
 
-/* this function routes the packet in the case of local communication */
-static int net_local_route_packet(int usertype, void *data, int datalen)
+/* this function routes the packet in the case of local communication
+   include in this function only "usertype"-s that can have a tail
+ */
+static int net_local_route_packet_tail(int usertype, void *data, int datalen,
+                                       void *tail, int taillen)
 {
     switch (usertype) {
     case NET_OSQL_SOCK_REQ:
@@ -5348,33 +5287,17 @@ static int net_local_route_packet(int usertype, void *data, int datalen)
     case NET_OSQL_SOCK_REQ_COST_UUID:
         net_sosql_req(NULL, NULL, 0, usertype, data, datalen, 0);
         break;
-    case NET_OSQL_SOCK_RPL:
-    case NET_OSQL_SOCK_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
-        break;
     case NET_OSQL_RECOM_REQ:
     case NET_OSQL_RECOM_REQ_UUID:
         net_recom_req(NULL, NULL, 0, usertype, data, datalen, 0);
-        break;
-    case NET_OSQL_RECOM_RPL:
-    case NET_OSQL_RECOM_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
         break;
     case NET_OSQL_SNAPISOL_REQ:
     case NET_OSQL_SNAPISOL_REQ_UUID:
         net_snapisol_req(NULL, NULL, 0, usertype, data, datalen, 0);
         break;
-    case NET_OSQL_SNAPISOL_RPL:
-    case NET_OSQL_SNAPISOL_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
-        break;
     case NET_OSQL_SERIAL_REQ:
     case NET_OSQL_SERIAL_REQ_UUID:
         net_serial_req(NULL, NULL, 0, usertype, data, datalen, 0);
-        break;
-    case NET_OSQL_SERIAL_RPL:
-    case NET_OSQL_SERIAL_RPL_UUID:
-        net_osql_rpl(NULL, NULL, 0, usertype, data, datalen, 0);
         break;
     case NET_BLOCK_REQ:
         net_block_req(NULL, NULL, 0, usertype, data, datalen, 0);
@@ -5382,21 +5305,6 @@ static int net_local_route_packet(int usertype, void *data, int datalen)
     case NET_BLOCK_REPLY:
         net_block_reply(NULL, NULL, 0, usertype, data, datalen, 0);
         break;
-    default:
-        logmsg(LOGMSG_ERROR, "%s: unknown packet type routed locally, %d\n",
-                __func__, usertype);
-        return -1;
-    }
-    return 0;
-}
-
-/* this function routes the packet in the case of local communication
-   include in this function only "usertype"-s that can have a tail
- */
-static int net_local_route_packet_tail(int usertype, void *data, int datalen,
-                                       void *tail, int taillen)
-{
-    switch (usertype) {
     case NET_OSQL_SOCK_RPL:
     case NET_OSQL_RECOM_RPL:
     case NET_OSQL_SNAPISOL_RPL:
@@ -5466,16 +5374,26 @@ out:
     return rc;
 }
 
-/* this wrapper tries to provide a reliable net_send that will prevent loosing
-   packets
+/* this wrapper tries to provide a reliable net_send_tail that will prevent
+   loosing packets
    due to queue being full */
 static int offload_net_send(const char *host, int usertype, void *data,
-                            int datalen, int nodelay)
+                            int datalen, int nodelay, void *tail, int tailen)
 {
-    if (debug_switch_osql_simulate_send_error()) {
+    osql_comm_t *comm = get_thecomm();
+    if (!comm)
+        return -1;
+
+    netinfo_type *netinfo_ptr = comm->handle_sibling;
+    int backoff = gbl_osql_bkoff_netsend;
+    int total_wait = backoff;
+    int unknownerror_retry = 0;
+    int rc = -1;
+
+    if (!tail && debug_switch_osql_simulate_send_error()) {
         if (rand() % 4 == 0) /*25% chance of failure*/
         {
-            logmsg(LOGMSG_ERROR, "Punting offload_net_send with error -1\n");
+            logmsg(LOGMSG_ERROR, "Punting %s with error -1\n", __func__);
             return -1;
         }
     }
@@ -5484,115 +5402,19 @@ static int offload_net_send(const char *host, int usertype, void *data,
         host = NULL;
 
     if (!host) {
-        /* local save, this is calling sorese_rvprpl_master */
-        net_local_route_packet(usertype, data, datalen);
-        return 0;
+        /* local save */
+        rc = net_local_route_packet_tail(usertype, data, datalen, tail, tailen);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to route locally!\n", __func__);
+        }
+        return rc;
     }
 
-    osql_comm_t *comm = get_thecomm();
-    if (!comm)
-        return -1;
-    netinfo_type *netinfo_ptr = comm->handle_sibling;
-    int backoff = gbl_osql_bkoff_netsend;
-    int total_wait = backoff;
-    int unknownerror_retry = 0;
-    int rc = -1;
-    int count = 0;
-
-    /* remote send */
     while (rc) {
-#if 0
-     printf("NET SEND %d tmp=%llu\n", usertype, osql_log_time());
-#endif
-        rc = net_send(netinfo_ptr, host, usertype, data, datalen, nodelay);
-        count++;
 
-        if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
-            NET_SEND_FAIL_NOSOCK == rc) {
-
-            if (total_wait > gbl_osql_bkoff_netsend_lmt) {
-                logmsg(
-                    LOGMSG_ERROR,
-                    "%s:%d giving up sending to %s, rc = %d, total wait = %d\n",
-                    __FILE__, __LINE__, host, rc, total_wait);
-                return rc;
-            }
-
-            if (osql_comm_check_bdb_lock(__func__, __LINE__) != 0) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to check bdb lock, giving up sending to "
-                       "%s, rc = %d\n",
-                       __FILE__, __LINE__, host, rc);
-                return rc;
-            }
-
-            if (rc == NET_SEND_FAIL_NOSOCK && check_master(host)) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d giving up sending to %s on master-swing\n",
-                       __FILE__, __LINE__, host);
-                return OSQL_SEND_ERROR_WRONGMASTER;
-            }
-
-            logmsg(LOGMSG_DEBUG,
-                   "%s line %d polling for %d on rc %d host is %s master is"
-                   " %s\n",
-                   __func__, __LINE__, backoff, rc, host, thedb->master);
-            poll(NULL, 0, backoff);
-            /*backoff *= 2; */
-            total_wait += backoff;
-        } else if (NET_SEND_FAIL_CLOSED == rc) {
-            /* on closed sockets, we simply return; a callback
-               will trigger on the other side signalling we've
-               lost the comm party */
-            logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                   __LINE__, host);
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d socket is closed, return wrong master\n", __FILE__,
-                   __LINE__);
-            return OSQL_SEND_ERROR_WRONGMASTER;
-        } else if (rc) {
-            unknownerror_retry++;
-            if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
-                logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host);
-                comdb2_linux_cheap_stack_trace();
-                return -1;
-            }
-        }
-    }
-    return rc;
-}
-
-
-/* this wrapper tries to provide a reliable net_send_tail that will prevent
-   loosing packets
-   due to queue being full */
-static int offload_net_send_tail(const char *host, int usertype, void *data,
-                                 int datalen, int nodelay, void *tail,
-                                 int tailen)
-{
-    osql_comm_t *comm = get_thecomm();
-    if (!comm)
-        return -1;
-    netinfo_type *netinfo_ptr = comm->handle_sibling;
-    int backoff = gbl_osql_bkoff_netsend;
-    int total_wait = backoff;
-    int unknownerror_retry = 0;
-    int rc = -1;
-
-    while (rc) {
-        if (host == gbl_mynode)
-            host = NULL;
-
-        if (host) {
-            /* remote send */
-            rc = net_send_tail(netinfo_ptr, host, usertype, data, datalen,
-                               nodelay, tail, tailen);
-        } else {
-            /* local save */
-            rc = net_local_route_packet_tail(usertype, data, datalen, tail,
-                                             tailen);
-        }
+        /* remote send */
+        rc = net_send_tail(netinfo_ptr, host, usertype, data, datalen, nodelay,
+                           tail, tailen);
 
         if (NET_SEND_FAIL_QUEUE_FULL == rc || NET_SEND_FAIL_MALLOC_FAIL == rc ||
             NET_SEND_FAIL_NOSOCK == rc) {
@@ -5726,25 +5548,30 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
 {
     void *dup;
 
-    if (dtalen + tailen > gbl_blob_sz_thresh_bytes)
-        dup = comdb2_bmalloc(blobmem, dtalen + tailen);
-    else
-        dup = malloc(dtalen + tailen);
+    if (tail && tailen > 0) {
+        if (dtalen + tailen > gbl_blob_sz_thresh_bytes)
+            dup = comdb2_bmalloc(blobmem, dtalen + tailen);
+        else
+            dup = malloc(dtalen + tailen);
 
-    if (!dup) {
-        logmsg(LOGMSG_FATAL,
-               "%s: master running out of memory! unable to alloc %d bytes\n",
-               __func__, dtalen + tailen);
-        abort(); /* rc = NET_SEND_FAIL_MALLOC_FAIL;*/
-    }
+        if (!dup) {
+            logmsg(
+                LOGMSG_FATAL,
+                "%s: master running out of memory! unable to alloc %d bytes\n",
+                __func__, dtalen + tailen);
+            abort(); /* rc = NET_SEND_FAIL_MALLOC_FAIL;*/
+        }
 
 #ifdef TEST_OSQL
-    fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n", __func__,
-            netrpl2req(usertype), ((osql_rpl_t *)dtap)->sid);
+        fprintf(stdout, "%s: calling sorese_rcvrpl type=%d sid=%llu\n",
+                __func__, netrpl2req(usertype), ((osql_rpl_t *)dtap)->sid);
 #endif
 
-    memmove(dup, dtap, dtalen);
-    memmove((char *)dup + dtalen, tail, tailen);
+        memmove(dup, dtap, dtalen);
+        memmove((char *)dup + dtalen, tail, tailen);
+    } else {
+        dup = dtap;
+    }
 
     int rc = 0;
     int found = 0;
@@ -5785,7 +5612,8 @@ static int net_osql_rpl_tail(void *hndl, void *uptr, char *fromhost,
     if (!rc)
         rc = osql_sess_rcvop(rqid, uuid, type, dup, dtalen + tailen, &found);
 
-    free(dup);
+    if (dup != dtap)
+        free(dup);
 
     if (rc)
         stats[netrpl2req(usertype)].rcv_failed++;
@@ -6111,6 +5939,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     iq->sc = sc;
     sc->iq = iq;
+    sc->is_osql = 1;
     if (sc->db == NULL) {
         sc->db = get_dbtable_by_name(sc->tablename);
     }
@@ -6159,19 +5988,6 @@ const char *get_tablename_from_rpl(bool is_uuid, const uint8_t *rpl,
     if (tableversion && tablename)
         *tableversion = dt.tableversion;
     return tablename;
-}
-
-/* get the number of blockops sent in the osql_done packet
- */
-int osql_get_replicant_numops(const char *rpl, int has_uuid)
-{
-    const uint8_t *p_buf =
-        (const uint8_t *)rpl +
-        (has_uuid ? sizeof(osql_uuid_rpl_t) : sizeof(osql_rpl_t));
-    osql_done_t dt = {0};
-    const uint8_t *p_buf_end = p_buf + sizeof(osql_done_t);
-    osqlcomm_done_type_get(&dt, p_buf, p_buf_end);
-    return dt.nops;
 }
 
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
@@ -6227,6 +6043,9 @@ int gbl_selectv_writelock = 0;
  * to apply to received row updates
  *
  */
+
+#include <schemachange/sc_global.h>
+
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,
@@ -6320,6 +6139,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             if (iq->sc->db)
                 iq->usedb = iq->sc->db;
+            assert(iq->sc->nothrevent);
             rc = finalize_schema_change(iq, iq->sc_tran);
             iq->usedb = NULL;
             if (rc != SC_OK) {
@@ -6327,6 +6147,14 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
             if (iq->sc->fastinit && gbl_replicate_local)
                 local_replicant_write_clear(iq, trans, iq->sc->db);
+            iq->sc = iq->sc->sc_next;
+        }
+
+        /* Success: reset the table counters */
+        iq->sc = iq->sc_pending;
+        while (iq->sc != NULL) {
+            sc_set_running(iq, iq->sc, iq->sc->tablename, 0, NULL, 0, 0,
+                           __func__, __LINE__);
             iq->sc = iq->sc->sc_next;
         }
 
@@ -7053,8 +6881,6 @@ void signal_replicant_error(const char *host, unsigned long long rqid,
     }
 }
 
-#define OSQL_BP_MAXLEN (32 * 1024)
-
 static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
@@ -7270,7 +7096,8 @@ static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
         return;
     }
 
-    rc = offload_net_send(fromhost, NET_OSQL_ECHO_PONG, dtap, dtalen, 1);
+    rc = offload_net_send(fromhost, NET_OSQL_ECHO_PONG, dtap, dtalen, 1, NULL,
+                          0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failure to pong!\n");
         return;
@@ -7353,7 +7180,7 @@ int osql_comm_echo(char *tohost, int stream, unsigned long long *sent,
         /*TODO: validate destination node to be valid!*/
         /* ping */
         rc = offload_net_send(tohost, NET_OSQL_ECHO_PING, (char *)buf,
-                              sizeof(osql_echo_t), 1);
+                              sizeof(osql_echo_t), 1, NULL, 0);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: failed to send ping rc=%d\n", __func__, rc);
             return -1;
@@ -7432,7 +7259,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
         }
 
         type = osql_net_type_to_net_uuid_type(type);
-        offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0);
+        offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0, NULL, 0);
     } else {
         osql_recgenid_rpl_t recgenid_rpl = {{0}};
         uint8_t buf[OSQLCOMM_RECGENID_RPL_TYPE_LEN];
@@ -7455,7 +7282,7 @@ int osql_send_recordgenid(char *tohost, unsigned long long rqid, uuid_t uuid,
                    rqid, comdb2uuidstr(uuid, us), genid, genid);
         }
 
-        offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0);
+        offload_net_send(tohost, type, buf, sizeof(recgenid_rpl), 0, NULL, 0);
     }
 
     return rc;
@@ -8222,353 +8049,10 @@ int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
                comdb2uuidstr(uuid, us), sc->tablename);
     }
 
-    rc = offload_net_send(tonode, type, buf, osql_rpl_size, 0);
+    rc = offload_net_send(tonode, type, buf, osql_rpl_size, 0, NULL, 0);
 
     return rc;
 }
-
-/* { REPLICANT SIDE UPGRADE RECORD LOGIC */
-int gbl_num_record_upgrades = 0; /* default off */
-// Dorin's cron scheduler
-cron_sched_t *uprec_sched;
-
-// structure
-static struct uprec_tag {
-    pthread_mutex_t *lk;    /* one big mutex, rule them all */
-    const struct dbtable *owner; /* who can put elements in the array */
-    const struct dbtable *touch; /* which db master will be touching */
-    struct buf_lock_t slock;
-    size_t thre; /* slow start threshold */
-    size_t intv; /* interval */
-    uint8_t buffer[OSQL_BP_MAXLEN];
-    uint8_t buf_end;
-    unsigned long long genid;
-    /* nreqs should == nbads + ngoods + ntimeouts */
-    size_t nreqs;     /* number of upgrade requests sent to master */
-    size_t nbads;     /* number of bad responses recv'd from master */
-    size_t ngoods;    /* number of good responses recv'd from master */
-    size_t ntimeouts; /* number of timeouts */
-} * uprec;
-
-static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
-                                             unsigned long long genid,
-                                             unsigned int recs_ahead,
-                                             uint8_t *p_buf_start,
-                                             const uint8_t *p_buf_end)
-{
-    uint8_t *p_buf;
-    uint8_t *p_buf_req_start;
-    const uint8_t *p_buf_req_end;
-    uint8_t *p_buf_op_hdr_start;
-    const uint8_t *p_buf_op_hdr_end;
-
-    struct req_hdr req_hdr;
-    struct block_req req = {0};
-    struct packedreq_hdr op_hdr;
-    struct packedreq_usekl usekl;
-    struct packedreq_uptbl uptbl;
-
-    p_buf = p_buf_start;
-
-    // req_hdr
-    req_hdr.opcode = OP_BLOCK;
-    if (!(p_buf = req_hdr_put(&req_hdr, p_buf, p_buf_end)))
-        return NULL;
-
-    // save room for block req
-    if (BLOCK_REQ_LEN > (p_buf_end - p_buf))
-        return NULL;
-    p_buf_req_start = p_buf;
-    p_buf += BLOCK_REQ_LEN;
-    p_buf_req_end = p_buf;
-
-    /** use **/
-
-    // save room for uprec header
-    if (PACKEDREQ_HDR_LEN > (p_buf_end - p_buf))
-        return NULL;
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    p_buf_op_hdr_end = p_buf;
-
-    usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
-    if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, p_buf_end)))
-        return NULL;
-    if (!(p_buf =
-              buf_no_net_put(db->tablename, usekl.taglen, p_buf, p_buf_end)))
-        return NULL;
-
-    op_hdr.opcode = BLOCK2_USE;
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, p_buf_end)))
-        return NULL;
-
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return NULL;
-
-    /** uptbl **/
-
-    // save room for uprec header
-    if (PACKEDREQ_HDR_LEN > (p_buf_end - p_buf))
-        return NULL;
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    p_buf_op_hdr_end = p_buf;
-
-    uptbl.nrecs = recs_ahead;
-    uptbl.genid = uprec->genid;
-    if (!(p_buf = packedreq_uptbl_put(&uptbl, p_buf, p_buf_end)))
-        return NULL;
-
-    if (!(p_buf = buf_put(&uprec->genid, sizeof(unsigned long long), p_buf,
-                          p_buf_end)))
-        return NULL;
-
-    op_hdr.opcode = BLOCK2_UPTBL;
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, p_buf_end)))
-        return NULL;
-
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return NULL;
-
-    /* build req */
-    req.num_reqs = 2;
-    req.flags = BLKF_ERRSTAT; /* we want error stat */
-    req.offset = op_hdr.nxt;  /* overall offset = next offset of last op */
-
-    /* pack req in the space we saved at the start */
-    if (block_req_put(&req, p_buf_req_start, p_buf_req_end) != p_buf_req_end)
-        return NULL;
-    p_buf_end = p_buf;
-
-    return p_buf_end;
-}
-
-static void *uprec_cron_kickoff(struct cron_event *_, struct errstat *err)
-{
-    logmsg(LOGMSG_INFO, "Starting upgrade record cron job\n");
-    return NULL;
-}
-
-static void *uprec_cron_event(struct cron_event *_, struct errstat *err)
-{
-    int rc, nwakeups;
-    struct buf_lock_t *p_slock;
-    struct timespec ts;
-    const uint8_t *buf_end;
-
-    {
-        Pthread_mutex_lock(uprec->lk);
-        /* construct buffer */
-        buf_end = construct_uptbl_buffer(uprec->touch, uprec->genid,
-                                         gbl_num_record_upgrades, uprec->buffer,
-                                         &uprec->buf_end);
-        if (buf_end == NULL)
-            goto done;
-
-        /* send and then wait */
-        p_slock = &uprec->slock;
-        rc = offload_comm_send_blockreq(
-            thedb->master == gbl_mynode ? 0 : thedb->master, p_slock,
-            uprec->buffer, (buf_end - uprec->buffer));
-        if (rc != 0)
-            goto done;
-
-        ++uprec->nreqs;
-        nwakeups = 0;
-        while (p_slock->reply_state != REPLY_STATE_DONE) {
-            clock_gettime(CLOCK_REALTIME, &ts);
-            ts.tv_sec += 1;
-            rc = pthread_cond_timedwait(&p_slock->wait_cond, &p_slock->req_lock,
-                                        &ts);
-            ++nwakeups;
-
-            if (nwakeups == uprec->thre) { // timedout #1
-                logmsg(LOGMSG_WARN, "no response from master within %d seconds\n", 
-                        nwakeups);
-                break;
-            }
-        }
-
-        if (p_slock->reply_state != REPLY_STATE_DONE) {
-            // timedout from #1
-            // intv = 0.75 * intv + 0.25 * T(this time)
-            uprec->intv += (uprec->intv << 1) + nwakeups;
-            uprec->intv >>= 2;
-            ++uprec->ntimeouts;
-        } else if (p_slock->rc) {
-            // something unexpected happened. double the interval.
-            if (uprec->intv >= uprec->thre)
-                ++uprec->intv;
-            else {
-                uprec->intv <<= 1;
-                if (uprec->intv >= uprec->thre)
-                    uprec->intv = uprec->thre;
-            }
-            ++uprec->nbads;
-        } else {
-            // all good. reset interval
-            uprec->intv = 1;
-            ++uprec->ngoods;
-        }
-
-    done:
-        // allow the array to take new requests
-        uprec->genid = 0;
-        uprec->owner = NULL;
-
-        Pthread_mutex_unlock(uprec->lk);
-    }
-
-    return NULL;
-}
-
-// Upgrade a single record.
-int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid)
-{
-    int rc;
-    uint8_t *buffer;
-    const uint8_t *buffer_end;
-
-    buffer = alloca(OSQL_BP_MAXLEN);
-
-    buffer_end =
-        construct_uptbl_buffer(get_dbtable_by_name(tbl), genid, 1, buffer,
-                               (const uint8_t *)(buffer + OSQL_BP_MAXLEN));
-
-    if (buffer_end == NULL)
-        rc = EINVAL;
-    else
-        // send block request and free buffer
-        rc = offload_comm_send_sync_blockreq(
-            thedb->master == gbl_mynode ? 0 : thedb->master, buffer,
-            buffer_end - buffer);
-
-    return rc;
-}
-
-// initialize sender queues once
-static pthread_once_t uprec_sender_array_once = PTHREAD_ONCE_INIT;
-static void uprec_sender_array_init(void)
-{
-    size_t mallocsz;
-    struct errstat xerr;
-
-    mallocsz = sizeof(struct uprec_tag) +
-               (gbl_dtastripe - 1) * sizeof(unsigned long long);
-
-    // malloc a big chunk
-    uprec = malloc(mallocsz);
-    if (uprec == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: out of memory.\n", __func__);
-        abort();
-    }
-
-    // initialize the big structure
-    uprec->owner = NULL;
-    uprec->thre = 900; // 15 minutes
-    uprec->intv = 1;
-    uprec->nreqs = 0;
-    uprec->nbads = 0;
-    uprec->ngoods = 0;
-    uprec->ntimeouts = 0;
-
-    // initialize slock
-    Pthread_mutex_init(&(uprec->slock.req_lock), NULL);
-    Pthread_cond_init(&(uprec->slock.wait_cond), NULL);
-
-    uprec->lk = &uprec->slock.req_lock;
-    uprec->slock.reply_state = REPLY_STATE_NA;
-    uprec->slock.sb = 0;
-
-    // kick off upgradetable cron
-    uprec_sched =
-        cron_add_event(NULL, "uprec_cron", INT_MIN, uprec_cron_kickoff, NULL,
-                       NULL, NULL, NULL, NULL, &xerr, NULL);
-
-    if (uprec_sched == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: failed to create uprec cron scheduler.\n",
-                __func__);
-        abort();
-    }
-
-    logmsg(LOGMSG_INFO, "upgraderecord sender array initialized\n");
-}
-
-int offload_comm_send_upgrade_records(const dbtable *db,
-                                      unsigned long long genid)
-{
-    int rc = 0;
-    struct errstat xerr;
-
-    if (genid == 0)
-        return EINVAL;
-
-    /* if i am master of a cluster, return. */
-    if (thedb->master == gbl_mynode && net_count_nodes(osql_get_netinfo()) > 1)
-        return 0;
-
-    (void)pthread_once(&uprec_sender_array_once, uprec_sender_array_init);
-
-    if (uprec->owner == NULL) {
-        Pthread_mutex_lock(uprec->lk);
-        if (uprec->owner == NULL)
-            uprec->owner = db;
-        Pthread_mutex_unlock(uprec->lk);
-    }
-
-    if (db == uprec->owner) {
-        rc = pthread_mutex_trylock(uprec->lk);
-        if (rc == 0) {
-            if (db == uprec->owner) {
-                // can't pass db and genid to cron scheduler because
-                // scheduler will free all arguments after job is done.
-                // instead make a global copy here
-                uprec->genid = genid;
-                uprec->touch = uprec->owner;
-                uprec_sched = cron_add_event(
-                    uprec_sched, NULL, comdb2_time_epoch() + uprec->intv,
-                    uprec_cron_event, NULL, NULL, NULL, NULL, NULL, &xerr,
-                    NULL);
-
-                if (uprec_sched == NULL)
-                    logmsg(LOGMSG_ERROR, "%s: failed to schedule uprec cron job.\n",
-                            __func__);
-
-                // zap owner
-                uprec->owner = (void *)~(uintptr_t)0;
-            }
-        }
-        Pthread_mutex_unlock(uprec->lk);
-    }
-
-    return rc;
-}
-
-void upgrade_records_stats(void)
-{
-    if (uprec == NULL)
-        return;
-
-    logmsg(LOGMSG_USER, "# %-24s %d recs/req\n", "upgrade ahead records",
-           gbl_num_record_upgrades);
-    logmsg(LOGMSG_USER, "# %-24s %zu\n", "total requests", uprec->nreqs);
-    logmsg(LOGMSG_USER, "# %-24s %zu\n", "bad responses", uprec->nbads);
-    logmsg(LOGMSG_USER, "# %-24s %zu\n", "good responses", uprec->ngoods);
-    logmsg(LOGMSG_USER, "# %-24s %zu\n", "timeouts", uprec->ntimeouts);
-    logmsg(LOGMSG_USER, "%-26s %zu s\n", "cron event interval", uprec->intv);
-}
-/* END OF REPLICANT SIDE UPGRADE RECORD LOGIC } */
 
 int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
                      BpfuncArg *arg, int type)
@@ -8642,7 +8126,7 @@ int osql_send_bpfunc(char *tonode, unsigned long long rqid, uuid_t uuid,
                comdb2uuidstr(uuid, us), arg->type);
     }
 
-    rc = offload_net_send(tonode, type, p_buf, osql_rpl_size, 0);
+    rc = offload_net_send(tonode, type, p_buf, osql_rpl_size, 0, NULL, 0);
 
 freemem:
     if (dt)
