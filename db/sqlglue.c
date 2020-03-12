@@ -102,6 +102,7 @@
 #include "str0.h"
 #include "comdb2_atomic.h"
 #include "sc_util.h"
+#include "comdb2_query_preparer.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -8034,11 +8035,18 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
 void init_cursor(BtCursor *cur, Vdbe *vdbe, Btree *bt)
 {
     cur->thd = pthread_getspecific(query_info_key);
+    assert(cur->thd);
     cur->clnt = cur->thd->clnt;
     cur->vdbe = vdbe;
-    cur->sqlite = vdbe ? vdbe->db : NULL;
+    if (gbl_old_column_names && cur->clnt->thd &&
+        cur->clnt->thd->query_preparer_running) {
+        assert(query_preparer_plugin);
+        /* sqlitex */
+        cur->query_preparer_data = vdbe ? vdbe->db : NULL;
+    } else {
+        cur->sqlite = vdbe ? vdbe->db : NULL;
+    }
     cur->bt = bt;
-    assert(cur->thd);
     assert(cur->clnt);
 }
 
