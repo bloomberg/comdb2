@@ -671,12 +671,14 @@ static const int dbq_delay = 1000; // ms
 // If IX_FND will push Lua table on stack.
 static int dbq_poll_int(Lua L, dbconsumer_t *q)
 {
+    struct bdb_queue_cursor c;
     struct qfound f = {0};
-    int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
+    int rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, &c, NULL);
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
     getsp(L)->num_instructions = 0;
     if (rc == 0) {
+        memcpy(&q->genid, &c, sizeof(genid_t));
         return dbq_pushargs(L, q, &f);
     }
     if (rc == IX_NOTFND) {
@@ -5851,7 +5853,6 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
 {
     uint8_t *payload = ((uint8_t *)f->item) + f->dtaoff;
     size_t len = f->len - f->dtaoff;
-    q->genid = f->item->genid;
     /*
     char header[] = "CDB2_UPD";
     if (memcmp(payload, header, sizeof(header)) != 0) {

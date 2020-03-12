@@ -1504,10 +1504,6 @@ enum convert_scan_mode {
     SCAN_PAGEORDER = 5 /* 1 thread per stripe in page-order */
 };
 
-struct dbq_cursor {
-    bbuint32_t cursordata[4];
-};
-
 typedef struct {
     unsigned long long rqid;
     unsigned step;
@@ -2478,9 +2474,10 @@ int lite_get_keys_auxdb(int auxdb, struct ireq *iq, void *firstkey,
 int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen);
 int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd);
 int dbq_consume_genid(struct ireq *, void *trans, int consumer, const genid_t);
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
+struct bdb_queue_cursor;
+int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prev,
             void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
-            struct dbq_cursor *fndcursor, unsigned int *epoch);
+            struct bdb_queue_cursor *fnd, unsigned int *epoch);
 void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen);
 unsigned long long dbq_item_genid(const void *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
