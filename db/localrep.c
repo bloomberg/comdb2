@@ -92,7 +92,7 @@ int local_replicant_log_add(struct ireq *iq, void *trans, void *od_dta,
        some intermediary machine (gsrv) from where it goes out via rmque. */
     rc = stag_to_ctag_buf_tz(
         iq->usedb->tablename, ".ONDISK", od_dta, -1, ".ONDISK_CLIENT",
-        client_buf, (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
+        client_buf, (unsigned char *)nulls, CONVERT_IGNORE_BLOBS, NULL, NULL, "US/Eastern");
 
     /* We send down an array of comdb2_field_types.  The offset field is the
        field in the
@@ -448,7 +448,7 @@ int local_replicant_log_add_for_update(struct ireq *iq, void *trans, int rrn,
        some intermediary machine (gsrv) from where it goes out via rmque. */
     rc = stag_to_ctag_buf_tz(
         iq->usedb->tablename, ".ONDISK", server_buf, -1, ".ONDISK_CLIENT",
-        client_buf, (unsigned char *)nulls, 0, NULL, NULL, "US/Eastern");
+        client_buf, (unsigned char *)nulls, CONVERT_IGNORE_BLOBS, NULL, NULL, "US/Eastern");
 
     /* We send down an array of comdb2_field_types.  The offset field is the
        field in the
