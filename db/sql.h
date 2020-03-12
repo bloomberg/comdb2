@@ -102,6 +102,11 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+
+    /* A flag to tell us whether we are inside the query preparer plugin. This
+     * is especially needed to differentiate between fdb cursors opened by core
+     * versus query preparer plugin. */
+    bool query_preparer_running;
 };
 
 typedef struct osqltimings {
@@ -974,6 +979,8 @@ struct BtCursor {
     int open_flags; /* flags used to open it */
 
     int tableversion;
+
+    void *query_preparer_data;
 };
 
 struct sql_hist {
