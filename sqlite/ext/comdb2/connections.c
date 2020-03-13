@@ -56,13 +56,7 @@ int get_connections(void **data, int *num_points) {
 }
 
 void free_connections(void *data, int num_points) {
-    struct connection_info *info = (struct connection_info*) data;
-    for (int i = 0; i < num_points; i++) {
-        if (info[i].sql)
-            free(info[i].sql);
-        /* state is static, don't free */
-    }
-    free(data);
+    free_connection_info((struct connection_info *)data, num_points);
 }
 
 int systblConnectionsInit(sqlite3 *db) {
@@ -71,7 +65,7 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_CSTRING, "host", -1, offsetof(struct connection_info, host),
             CDB2_INTEGER, "connection_id", -1, offsetof(struct connection_info, connection_id),
             CDB2_DATETIME, "connect_time", -1, offsetof(struct connection_info, connect_time),
-            CDB2_DATETIME, "last_reset_time", -1, offsetof(struct connection_info, connect_time),
+            CDB2_DATETIME, "last_reset_time", -1, offsetof(struct connection_info, last_reset_time),
             CDB2_INTEGER, "pid", -1, offsetof(struct connection_info, pid),
             CDB2_INTEGER, "total_sql", -1, offsetof(struct connection_info, total_sql),
             CDB2_INTEGER, "sql_since_reset", -1, offsetof(struct connection_info, sql_since_reset),

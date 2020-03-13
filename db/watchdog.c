@@ -82,6 +82,10 @@
 #include "views.h"
 #include <logmsg.h>
 
+int gbl_client_queued_slow_seconds = 0;
+int gbl_client_running_slow_seconds = 0;
+int gbl_client_abort_on_slow = 0;
+
 extern int gbl_watcher_thread_ran;
 
 static void *watchdog_thread(void *arg);
@@ -352,6 +356,59 @@ static void *watchdog_thread(void *arg)
                     logmsg(LOGMSG_WARN, "Failed to restart timepartitions rc=%d!\n",
                             rc);
                 }
+            }
+        }
+
+        if ((gbl_client_queued_slow_seconds > 0) ||
+            (gbl_client_running_slow_seconds > 0)) {
+            struct connection_info *conn_infos = NULL;
+            int conn_count = 0;
+            if (gather_connection_info(&conn_infos, &conn_count) == 0) {
+                int slow_count = 0;
+                int conn_time_now = comdb2_time_epochms();
+                int slow_seconds = 0;
+                for (int cid = 0; cid < conn_count; cid++) {
+                    struct connection_info *conn_info = &conn_infos[cid];
+                    const char *zState = NULL;
+                    switch (conn_info[cid].state_int) {
+                        case CONNECTION_QUEUED:
+                            zState = "QUEUED";
+                            slow_seconds = gbl_client_queued_slow_seconds;
+                            break;
+                        case CONNECTION_RUNNING:
+                            zState = "RUNNING";
+                            slow_seconds = gbl_client_running_slow_seconds;
+                            break;
+                    }
+                    if ((zState != NULL) && (slow_seconds > 0)) {
+                        int state_time = conn_info[cid].time_in_state_int;
+                        int diff_seconds = conn_time_now - state_time;
+                        if ((diff_seconds < 0) || (diff_seconds > slow_seconds)) {
+                            logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
+                                           LOGMSG_FATAL : LOGMSG_ERROR,
+                                   "%s: client #%d has been in state %s for "
+                                   "~%d seconds (>%d): pid %d, connect_time "
+                                   "~%0.2f seconds, raw_time_in_state %d, "
+                                   "host {%s}, pid %lld, sql {%s}\n", __func__,
+                                   conn_info[cid].connection_id, zState,
+                                   diff_seconds, slow_seconds, conn_info[cid].pid,
+                                   difftime(conn_info[cid].connect_time_int, (time_t)0),
+                                   conn_info[cid].time_in_state_int,
+                                   conn_info[cid].host, conn_info[cid].pid,
+                                   conn_info[cid].sql);
+                             /* NOTE: Do not count negative seconds here... */
+                             if (diff_seconds > 0) slow_count++;
+                        }
+                    }
+                }
+                free_connection_info(conn_info, conn_count);
+                if (slow_count > 0) {
+                    bdb_dump_threads_and_maybe_abort(
+                        thedb->bdb_env, gbl_client_abort_on_slow);
+                }
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: gather_connection_info rc=%d\n",
+                       __func__, rc);
             }
         }
 

@@ -6945,6 +6945,10 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
    Pthread_mutex_lock(&clnt_lk);
    *num_connections = listc_size(&clntlist);
    c = malloc(*num_connections * sizeof(struct connection_info));
+   if (c == NULL) {
+       Pthread_mutex_unlock(&clnt_lk);
+       return -1;
+   }
    struct sqlclntstate *clnt;
    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
        c[cid].connection_id = clnt->connid;
@@ -6971,6 +6975,16 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
    Pthread_mutex_unlock(&clnt_lk);
    *info = c;
    return 0;
+}
+
+void free_connection_info(struct connection_info *info, int num_connections)
+{
+    if (info == NULL) return;
+    for (int i = 0; i < num_connections; i++) {
+        if (info[i].sql) free(info[i].sql);
+        /* state is static, don't free */
+    }
+    free(info);
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)

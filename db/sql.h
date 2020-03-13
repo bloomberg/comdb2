@@ -1272,6 +1272,7 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
 
 /* Connection tracking */
 int gather_connection_info(struct connection_info **info, int *num_connections);
+void free_connection_info(struct connection_info *info, int num_connections);
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
