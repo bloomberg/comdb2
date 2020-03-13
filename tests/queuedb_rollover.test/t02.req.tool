@@ -1,1 +1,1 @@
-./qdb2b.sh
+./qdb2.sh
