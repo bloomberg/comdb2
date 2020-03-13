@@ -26,6 +26,9 @@ int get_connections(void **data, int *num_points) {
         d = (dttz_t) { .dttz_sec = info[i].connect_time_int, .dttz_frac = 0, .dttz_frac = DTTZ_PREC_MSEC };
         dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].connect_time);
 
+        d = (dttz_t) { .dttz_sec = info[i].last_reset_time_int, .dttz_frac = 0, .dttz_frac = DTTZ_PREC_MSEC };
+        dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].last_reset_time);
+
         info[i].time_in_state.sign = 1;
         int ms = now - info[i].time_in_state_int;
         info[i].time_in_state.days = ms / 86400000; ms %= 86400000;
