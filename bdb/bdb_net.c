@@ -875,8 +875,10 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
             time_t now;
             if (gbl_verbose_send_coherency_lease &&
                 (now = time(NULL)) - lastpr) {
-                logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
-                       hostlist[i]);
+                logmsg(LOGMSG_ERROR,
+                       "%s: not sending to %s: "
+                       "master_is_coherent=%d\n",
+                       __func__, hostlist[i], master_is_coherent);
                 lastpr = now;
             }
         }

@@ -881,6 +881,14 @@ void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff)
     bdb_state->dbenv->setattr(bdb_state->dbenv, "iomap", NULL, onoff);
 }
 
+int bdb_berkdb_get_attr(bdb_state_type *bdb_state, char *attr, char **value,
+                        int *ivalue)
+{
+    int rc;
+    rc = bdb_state->dbenv->getattr(bdb_state->dbenv, attr, value, ivalue);
+    return rc;
+}
+
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,
                         int ivalue)
 {

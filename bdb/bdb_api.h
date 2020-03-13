@@ -1839,6 +1839,9 @@ int bdb_master_should_reject(bdb_state_type *bdb_state);
 
 void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff);
 
+int bdb_berkdb_get_attr(bdb_state_type *bdb_state, char *attr, char **value,
+                        int *ivalue);
+
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,
                         int ivalue);
 int bdb_berkdb_set_attr_after_open(bdb_attr_type *bdb_attr, char *attr,
