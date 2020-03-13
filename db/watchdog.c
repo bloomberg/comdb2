@@ -382,7 +382,7 @@ static void *watchdog_thread(void *arg)
                     }
                     if ((zState != NULL) && (slow_seconds > 0)) {
                         int state_time = conn_info[cid].time_in_state_int;
-                        int diff_seconds = conn_time_now - state_time;
+                        int diff_seconds = (conn_time_now - state_time) / 1000;
                         if ((diff_seconds < 0) || (diff_seconds > slow_seconds)) {
                             logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
                                            LOGMSG_FATAL : LOGMSG_ERROR,
