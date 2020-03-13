@@ -387,11 +387,11 @@ static void *watchdog_thread(void *arg)
                             logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
                                            LOGMSG_FATAL : LOGMSG_ERROR,
                                    "%s: client #%d has been in state %s for "
-                                   "~%d seconds (>%d): pid %d, connect_time "
-                                   "~%0.2f seconds, raw_time_in_state %d, "
-                                   "host {%s}, pid %lld, sql {%s}\n", __func__,
+                                   "%d seconds (>%d): connect_time %0.2f "
+                                   "seconds, raw_time_in_state %d, host {%s}, "
+                                   "pid %lld, sql {%s}\n", __func__,
                                    conn_info[cid].connection_id, zState,
-                                   diff_seconds, slow_seconds, conn_info[cid].pid,
+                                   diff_seconds, slow_seconds,
                                    difftime(conn_info[cid].connect_time_int, (time_t)0),
                                    conn_info[cid].time_in_state_int,
                                    conn_info[cid].host, conn_info[cid].pid,
@@ -401,7 +401,7 @@ static void *watchdog_thread(void *arg)
                         }
                     }
                 }
-                free_connection_info(conn_info, conn_count);
+                free_connection_info(conn_infos, conn_count);
                 if (slow_count > 0) {
                     bdb_dump_threads_and_maybe_abort(
                         thedb->bdb_env, gbl_client_abort_on_slow);
