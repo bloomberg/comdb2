@@ -370,7 +370,7 @@ static void *watchdog_thread(void *arg)
                 for (int cid = 0; cid < conn_count; cid++) {
                     struct connection_info *conn_info = &conn_infos[cid];
                     const char *zState = NULL;
-                    switch (conn_info[cid].state_int) {
+                    switch (conn_info->state_int) {
                         case CONNECTION_QUEUED:
                             zState = "QUEUED";
                             slow_seconds = gbl_client_queued_slow_seconds;
@@ -381,7 +381,7 @@ static void *watchdog_thread(void *arg)
                             break;
                     }
                     if ((zState != NULL) && (slow_seconds > 0)) {
-                        int state_time = conn_info[cid].time_in_state_int;
+                        int state_time = conn_info->time_in_state_int;
                         int diff_seconds = (conn_time_now - state_time) / 1000;
                         if ((diff_seconds < 0) || (diff_seconds > slow_seconds)) {
                             logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
@@ -390,13 +390,11 @@ static void *watchdog_thread(void *arg)
                                    "%d seconds (>%d): connect_time %0.2f "
                                    "seconds, raw_time_in_state %d, host {%s}, "
                                    "pid %lld, sql {%s}\n", __func__,
-                                   (long long int)conn_info[cid].connection_id,
+                                   (long long int)conn_info->connection_id,
                                    zState, diff_seconds, slow_seconds,
-                                   difftime(conn_info[cid].connect_time_int, (time_t)0),
-                                   conn_info[cid].time_in_state_int,
-                                   conn_info[cid].host,
-                                   (long long int)conn_info[cid].pid,
-                                   conn_info[cid].sql);
+                                   difftime(conn_info->connect_time_int, (time_t)0),
+                                   conn_info->time_in_state_int, conn_info->host,
+                                   (long long int)conn_info->pid, conn_info->sql);
                              /* NOTE: Do not count negative seconds here... */
                              if (diff_seconds > 0) slow_count++;
                         }
