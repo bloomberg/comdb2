@@ -691,31 +691,10 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
 #endif
 
 retry:
-    if (thd && bdb_lock_desired(thedb->bdb_env)) {
-        int sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 1000)
-            sleepms = 1000;
-
-        if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
-                    __func__, __LINE__, sleepms);
-
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-            return SQLITE_BUSY;
-        }
-
-        if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%s recovered deadlock\n", __func__);
-        clnt->deadlock_recovered++;
-        if (clnt->deadlock_recovered > 100) {
-            sql_debug_logf(clnt, __func__, __LINE__,
-                           "deadlock_recovered is %d, returning SQLITE_BUSY\n",
-                           clnt->deadlock_recovered);
-            return SQLITE_BUSY;
-        }
+    rc = clnt_check_bdb_lock_desired(clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
+        return SQLITE_BUSY;
     }
 
     /* register the session */
@@ -834,32 +813,11 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
 
         /* we need to check if we need bdb write lock here to prevent a master
            upgrade blockade */
-        if (thd && bdb_lock_desired(thedb->bdb_env)) {
-            int sleepms = 100 * clnt->deadlock_recovered;
-            if (sleepms > 1000)
-                sleepms = 1000;
-
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
-                   __func__, __LINE__, sleepms);
-
-            rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-                osql_unregister_sqlthr(clnt);
-                return rc;
-            }
-
-            clnt->deadlock_recovered++;
-            logmsg(LOGMSG_DEBUG, "%s recovered deadlock (count %d)\n", __func__,
-                   clnt->deadlock_recovered);
-
-            int max_dead_rec = bdb_attr_get(
-                thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
-            if (clnt->deadlock_recovered > max_dead_rec) {
-                osql_unregister_sqlthr(clnt);
-                return ERR_RECOVER_DEADLOCK;
-            }
+        rc = clnt_check_bdb_lock_desired(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
+            osql_unregister_sqlthr(clnt);
+            return ERR_RECOVER_DEADLOCK;
         }
 
         if (osql->tablename) {
