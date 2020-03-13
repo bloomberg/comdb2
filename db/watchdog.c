@@ -386,12 +386,12 @@ static void *watchdog_thread(void *arg)
                         if ((diff_seconds < 0) || (diff_seconds > slow_seconds)) {
                             logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
                                            LOGMSG_FATAL : LOGMSG_ERROR,
-                                   "%s: client #%d has been in state %s for "
+                                   "%s: client #%lld has been in state %s for "
                                    "%d seconds (>%d): connect_time %0.2f "
                                    "seconds, raw_time_in_state %d, host {%s}, "
-                                   "pid %lld, sql {%s}\n", __func__,
-                                   conn_info[cid].connection_id, zState,
-                                   diff_seconds, slow_seconds,
+                                   "pid %lld, sql {%s}\n",
+                                   __func__, conn_info[cid].connection_id,
+                                   zState, diff_seconds, slow_seconds,
                                    difftime(conn_info[cid].connect_time_int, (time_t)0),
                                    conn_info[cid].time_in_state_int,
                                    conn_info[cid].host, conn_info[cid].pid,
