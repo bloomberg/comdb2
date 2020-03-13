@@ -389,12 +389,13 @@ static void *watchdog_thread(void *arg)
                                    "%s: client #%lld has been in state %s for "
                                    "%d seconds (>%d): connect_time %0.2f "
                                    "seconds, raw_time_in_state %d, host {%s}, "
-                                   "pid %lld, sql {%s}\n",
-                                   __func__, conn_info[cid].connection_id,
+                                   "pid %lld, sql {%s}\n", __func__,
+                                   (long long int)conn_info[cid].connection_id,
                                    zState, diff_seconds, slow_seconds,
                                    difftime(conn_info[cid].connect_time_int, (time_t)0),
                                    conn_info[cid].time_in_state_int,
-                                   conn_info[cid].host, conn_info[cid].pid,
+                                   conn_info[cid].host,
+                                   (long long int)conn_info[cid].pid,
                                    conn_info[cid].sql);
                              /* NOTE: Do not count negative seconds here... */
                              if (diff_seconds > 0) slow_count++;
