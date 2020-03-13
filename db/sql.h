@@ -1316,4 +1316,12 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  int rows, int timems);
 const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                                int index);
+
+/**
+ * If bdb_lock_desired, run recovery (releasing locks)
+ * and pause proportionally with the number of retries
+ *
+ */
+int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
+
 #endif /* _SQL_H_ */

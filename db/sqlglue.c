@@ -622,26 +622,11 @@ static int sql_tick(struct sql_thread *thd)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (((gbl_epoch_time - clnt->last_sent_row_sec) >=
-         gbl_delay_sql_lock_release_sec) &&
-        bdb_lock_desired(thedb->bdb_env)) {
-        int sleepms;
+    if ((gbl_epoch_time - clnt->last_sent_row_sec) >=
+        gbl_delay_sql_lock_release_sec) {
 
-        logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
+        rc = clnt_check_bdb_lock_desired(clnt);
 
-        /* scale by number of times we try, cap at 10 seconds */
-        sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 10000)
-            sleepms = 10000;
-
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-
-        if ((rc = check_recover_deadlock(clnt)))
-            return rc;
-
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-
-        clnt->deadlock_recovered++;
     } else if (gbl_sql_random_release_interval &&
                !(rand() % gbl_sql_random_release_interval)) {
 
@@ -12550,4 +12535,52 @@ done:
     if (m)
         free(m);
     return rc;
+}
+
+/**
+ * If bdb_lock_desired, run recovery (releasing locks)
+ * and pause proportionally with the number of retries
+ *
+ */
+int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    int rc;
+
+    if (!thd || !bdb_lock_desired(thedb->bdb_env))
+        return 0;
+
+    logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
+
+    /* scale by number of times we try, cap at 10 seconds */
+    int sleepms = 100 * clnt->deadlock_recovered;
+    if (sleepms > 10000)
+        sleepms = 10000;
+
+    if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
+               __func__, __LINE__, sleepms);
+
+    rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
+    if (rc)
+        return rc;
+
+    if ((rc = check_recover_deadlock(clnt)))
+        return rc;
+
+    if (gbl_master_swing_osql_verbose)
+        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+
+    clnt->deadlock_recovered++;
+
+    int max_dead_rec =
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
+    if (clnt->deadlock_recovered > max_dead_rec) {
+        logmsg(LOGMSG_ERROR, "%s called recover_deadlock too many times %d\n",
+               __func__, clnt->deadlock_recovered);
+        return -1;
+    }
+
+    return 0;
 }

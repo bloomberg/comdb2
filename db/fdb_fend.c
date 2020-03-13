@@ -1444,7 +1444,6 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 static int __lock_wrlock_exclusive(char *dbname)
 {
     fdb_t *fdb = NULL;
-    struct sql_thread *thd;
     int rc = FDB_NOERR;
     int idx = -1;
     int len = strlen(dbname) + 1;
@@ -1475,19 +1474,16 @@ static int __lock_wrlock_exclusive(char *dbname)
             /* if we loop, make sure this is not a live lock
                deadlocking with another sqlite engine that waits
                for a bdb write lock to be processed */
-            if (bdb_lock_desired(thedb->bdb_env)) {
-                thd = pthread_getspecific(query_info_key);
-                if (thd) {
-                    rc = recover_deadlock(
-                        thedb->bdb_env, thd, NULL,
-                        100 * thd->clnt->deadlock_recovered++);
-                    if (rc) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s:%d recover_deadlock returned %d\n", __func__,
-                               __LINE__, rc);
-                        return FDB_ERR_GENERIC;
-                    }
-                }
+
+            struct sql_thread *thd = pthread_getspecific(query_info_key);
+            if (!thd)
+                continue;
+
+            rc = clnt_check_bdb_lock_desired(thd->clnt);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d recover_deadlock returned %d\n",
+                       __func__, __LINE__, rc);
+                return FDB_ERR_GENERIC;
             }
 
             continue;
@@ -3376,19 +3372,11 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 #       endif
         if (rc) {
             if (rc == ETIMEDOUT) {
-                if (thd && bdb_lock_desired(thedb->bdb_env)) {
-                    int irc;
-
-                    int sleepms = 100 * ((clnt) ? clnt->deadlock_recovered : 1);
-                    if (sleepms > 10000)
-                        sleepms = 10000;
-
-                    irc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-                    if (irc) {
-                        logmsg(LOGMSG_ERROR, "%s: recover_deadlock returned %d\n",
-                                __func__, irc);
-                        return NULL;
-                    }
+                int irc = clnt_check_bdb_lock_desired(clnt);
+                if (irc) {
+                    logmsg(LOGMSG_ERROR, "%s: recover_deadlock returned %d\n",
+                           __func__, irc);
+                    return NULL;
                 }
                 continue;
             }

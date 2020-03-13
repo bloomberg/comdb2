@@ -5332,41 +5332,15 @@ int osql_comm_check_bdb_lock(const char *func, int line)
     /* check here if we need to wait for the lock, so we don't prevent this from
      * happening */
     start = time(NULL);
-    if (bdb_lock_desired(thedb->bdb_env)) {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-        if (!thd) return 0;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd)
+        return 0;
 
-        struct sqlclntstate *clnt = thd->clnt;
-        int sleepms;
-
-        logmsg(LOGMSG_DEBUG, "%s bdb_lock_desired so calling recover_deadlock\n",
-                __func__);
-
-        /* scale by number of times we try, cap at 10 seconds */
-        sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 10000)
-            sleepms = 10000;
-
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s recover_deadlock returned %d\n",
-                    __func__, rc);
-            rc = -1;
-            goto out;
-        }
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-
-        clnt->deadlock_recovered++;
-
-        if (clnt->deadlock_recovered > 100) {
-            logmsg(LOGMSG_ERROR, "%s called recover_deadlock 100 times\n",
-                   __func__);
-            rc = -1;
-            goto out;
-        }
+    rc = clnt_check_bdb_lock_desired(thd->clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s recover_deadlock returned %d\n", __func__, rc);
+        rc = -1;
     }
-out:
     if ((end = time(NULL)) - start > 2) {
         logmsg(LOGMSG_DEBUG, "%s line %d: %s took %d seconds\n", func, line,
                __func__, end - start);
