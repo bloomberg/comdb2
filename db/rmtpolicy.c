@@ -60,6 +60,11 @@ enum mach_class get_my_mach_class(void)
     return machine_my_class();
 }
 
+const char *get_my_mach_class_str()
+{
+    return mach_class_class2name(get_my_mach_class());
+}
+
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
 
 const char *get_mach_class_str(char *host)
