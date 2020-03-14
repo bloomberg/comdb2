@@ -2567,6 +2567,7 @@ void hash_set_cmpfunc(hash_t *h, cmpfunc_t cmpfunc);
 
 enum mach_class get_my_mach_class(void);
 enum mach_class get_mach_class(const char *host);
+const char *get_my_mach_class_str(void);
 const char *get_mach_class_str(char *host);
 int allow_write_from_remote(const char *host);
 int allow_cluster_from_remote(const char *host);

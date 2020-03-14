@@ -1741,7 +1741,7 @@ clipper_usage:
             free(dbname);
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
             logmsg(LOGMSG_USER, "I am running on a %s machine\n",
-                   get_mach_class_str(gbl_mynode));
+                   get_my_mach_class_str());
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
