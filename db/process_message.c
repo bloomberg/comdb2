@@ -3619,7 +3619,7 @@ clipper_usage:
         }
 
         if (ltok == 0) {
-            bdb_get_rep_stats(dbenv->dbs[0]->handle, &msgs_processed,
+            bdb_get_rep_stats(dbenv->static_table.handle, &msgs_processed,
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
             logmsg(LOGMSG_USER, "Retries: %lld, max %d, limit %d\n", rep_retry, max_retries,
@@ -4102,9 +4102,9 @@ clipper_usage:
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "usage: ping <all|node #>\n");
         } else if (tokcmp(tok, ltok, "all") == 0) {
-            ping_all(dbenv->dbs[0]->handle);
+            ping_all(dbenv->static_table.handle);
         } else {
-            ping_node(dbenv->dbs[0]->handle, internn(tok, ltok));
+            ping_node(dbenv->static_table.handle, internn(tok, ltok));
         }
     } else if (tokcmp(tok, ltok, "tcp") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -4113,9 +4113,9 @@ clipper_usage:
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "usage: tcp ping <all|node #>\n");
             } else if (tokcmp(tok, ltok, "all") == 0) {
-                tcp_ping_all(dbenv->dbs[0]->handle);
+                tcp_ping_all(dbenv->static_table.handle);
             } else {
-                tcp_ping(dbenv->dbs[0]->handle, internn(tok, ltok));
+                tcp_ping(dbenv->static_table.handle, internn(tok, ltok));
             }
         }
     } else if (tokcmp(tok, ltok, "udp") == 0) {
@@ -4151,13 +4151,13 @@ clipper_usage:
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "usage: udp ping <all|ip:port|node #>\n");
             } else if (tokcmp(tok, ltok, "all") == 0) {
-                udp_ping_all(dbenv->dbs[0]->handle);
+                udp_ping_all(thedb->static_table.handle);
             } else {
                 char *ip = tokdup(tok, ltok);
                 if (strstr(ip, ":") != NULL) {
-                    udp_ping_ip(dbenv->dbs[0]->handle, ip);
+                    udp_ping_ip(dbenv->static_table.handle, ip);
                 } else {
-                    udp_ping(dbenv->dbs[0]->handle, internn(tok, ltok));
+                    udp_ping(dbenv->static_table.handle, internn(tok, ltok));
                 }
                 free(ip);
             }
