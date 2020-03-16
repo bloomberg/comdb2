@@ -346,6 +346,8 @@ int gbl_schedule = 0;
 int gbl_init_with_rowlocks = 0;
 int gbl_init_with_genid48 = 1;
 int gbl_init_with_odh = 1;
+int gbl_init_with_queue_odh = 1;
+int gbl_init_with_queue_compr = BDB_COMPRESS_LZ4;
 int gbl_init_with_ipu = 1;
 int gbl_init_with_instant_sc = 1;
 int gbl_init_with_compr = BDB_COMPRESS_CRLE;
@@ -2013,7 +2015,8 @@ static int llmeta_load_queues(struct dbenv *dbenv)
         /* Add queue the hash. */
         hash_add(dbenv->qdb_hash, tbl);
 
-        rc = bdb_llmeta_get_queue(qnames[i], &config, &ndests, &dests, &bdberr);
+        rc = bdb_llmeta_get_queue(NULL, qnames[i], &config, &ndests, &dests,
+                                  &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "can't get information for queue \"%s\"\n",
                     qnames[i]);
@@ -2626,7 +2629,8 @@ static int dump_queuedbs(char *dir)
         int bdberr;
         char *name = thedb->qdbs[i]->tablename;
         int rc;
-        rc = bdb_llmeta_get_queue(name, &config, &ndests, &dests, &bdberr);
+        rc =
+            bdb_llmeta_get_queue(NULL, name, &config, &ndests, &dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Can't get data for %s: bdberr %d\n",
                    thedb->qdbs[i]->tablename, bdberr);

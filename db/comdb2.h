@@ -461,7 +461,9 @@ enum DB_METADATA {
     META_INSTANT_SCHEMA_CHANGE = -10,
     META_DATACOPY_ODH = -11,
     META_INPLACE_UPDATES = -12,
-    META_BTHASH = -13
+    META_BTHASH = -13,
+    META_QUEUE_ODH = -14,
+    META_QUEUE_COMPRESS = -15
 };
 
 enum CONSTRAINT_FLAGS {
@@ -1680,9 +1682,11 @@ extern int gbl_selectv_rangechk;
 extern int gbl_init_with_rowlocks;
 extern int gbl_init_with_genid48;
 extern int gbl_init_with_odh;
+extern int gbl_init_with_queue_odh;
 extern int gbl_init_with_ipu;
 extern int gbl_init_with_instant_sc;
 extern int gbl_init_with_compr;
+extern int gbl_init_with_queue_compr;
 extern int gbl_init_with_compr_blobs;
 extern int gbl_init_with_bthash;
 
@@ -2350,6 +2354,12 @@ int put_schema_version(const char *table, void *tran, int version);
 int put_db_odh(struct dbtable *db, tran_type *, int odh);
 int get_db_odh(struct dbtable *db, int *odh);
 int get_db_odh_tran(struct dbtable *, int *odh, tran_type *);
+int put_db_queue_odh(struct dbtable *db, tran_type *, int odh);
+int get_db_queue_odh(struct dbtable *db, int *odh);
+int get_db_queue_odh_tran(struct dbtable *, int *odh, tran_type *);
+int put_db_queue_compress(struct dbtable *db, tran_type *, int odh);
+int get_db_queue_compress(struct dbtable *db, int *odh);
+int get_db_queue_compress_tran(struct dbtable *, int *odh, tran_type *);
 int put_db_compress(struct dbtable *db, tran_type *, int compress);
 int get_db_compress(struct dbtable *db, int *compress);
 int get_db_compress_tran(struct dbtable *, int *compress, tran_type *);
@@ -2482,8 +2492,14 @@ void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen);
 unsigned long long dbq_item_genid(const void *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
+typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
+                                    unsigned int epoch, unsigned int depth,
+                                    void *userptr);
+
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
              void *userptr);
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
+                  void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
 int dbq_add_goose(struct ireq *iq, void *trans);
@@ -3457,6 +3473,8 @@ extern int gbl_debug_sql_opcodes;
 
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh);
+
+void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr);
 
 extern int gbl_debug_temptables;
 

@@ -576,6 +576,17 @@ inline int check_option_coherency(struct schema_change_type *s, struct dbtable *
     return SC_OK;
 }
 
+inline int check_option_queue_coherency(struct schema_change_type *s,
+                                        struct dbtable *db)
+{
+    if (s->ip_updates || s->instant_sc || s->compress_blobs) {
+        sc_errf(s, "unsupported option for queues.\n");
+        return SC_INVALID_OPTIONS;
+    }
+
+    return check_option_coherency(s, db, NULL);
+}
+
 int sc_request_disallowed(SBUF2 *sb)
 {
     char *from = intern(get_origin_mach_by_buf(sb));
