@@ -907,7 +907,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      iq->frommach, frompid);
     }
 
-    if (luxref < 0 || luxref >= dbenv->num_dbs) {
+    if (dbenv->num_dbs > 0 && (luxref < 0 || luxref >= dbenv->num_dbs)) {
         errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
                luxref, dbenv->num_dbs);
@@ -915,7 +915,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
-    if (iq->origdb == NULL)
+    if (dbenv->num_dbs == 0 || iq->origdb == NULL)
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
     if (db_is_stopped()) {
