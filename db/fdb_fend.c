@@ -53,10 +53,10 @@
 #include "ssl_support.h"
 #include "ssl_io.h"
 #include "ssl_bend.h"
+#include "comdb2_query_preparer.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
-
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
@@ -999,7 +999,7 @@ run:
         switch (rc) {
         case FDB_ERR_SSL:
 #if WITH_SSL
-            /* remote needs sql */
+            /* remote needs ssl */
             fdb_cursor_close_on_open(cur, 0);
             if (gbl_client_ssl_mode >= SSL_ALLOW) {
                 logmsg(LOGMSG_ERROR, "remote required SSl, switching to SSL\n");
@@ -1900,8 +1900,20 @@ void *fdb_get_sqlite_master_entry(fdb_t *fdb, fdb_tbl_ent_t *ent)
 
 int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
 {
-    sqlite3 *sqlite = pCur->sqlite;
-    const char *zTblName = sqlite->init.zTblName;
+    const char *zTblName;
+
+    if (gbl_old_column_names && pCur->clnt->thd &&
+        pCur->clnt->thd->query_preparer_running) {
+        /* We must have a query_preparer_plugin installed. */
+        assert(pCur->query_preparer_data != 0);
+        assert(query_preparer_plugin &&
+               query_preparer_plugin->sqlitex_table_name);
+        zTblName = query_preparer_plugin->sqlitex_table_name(
+            pCur->query_preparer_data);
+    } else {
+        sqlite3 *sqlite = pCur->sqlite;
+        zTblName = sqlite->init.zTblName;
+    }
     fdb_t *fdb = pCur->bt->fdb;
     fdb_tbl_t *tbl = NULL;
     int step = 0;
@@ -4177,6 +4189,18 @@ int fdb_master_is_local(BtCursor *pCur)
         return 1;
     /* this is looking at a remote pBt; check if this is schema initializing
        or a remote lookup */
+    if (gbl_old_column_names && pCur->clnt->thd &&
+        pCur->clnt->thd->query_preparer_running) {
+        /* We must have a query_preparer_plugin installed. */
+        assert(pCur->query_preparer_data != 0);
+        /* Since query_preparer plugin only prepares the query, the 'init.busy'
+         * flag must be set at this point. */
+        assert(query_preparer_plugin &&
+               query_preparer_plugin->sqlitex_is_initializing &&
+               query_preparer_plugin->sqlitex_is_initializing(
+                   pCur->query_preparer_data));
+        return 1;
+    }
     return pCur->sqlite && pCur->sqlite->init.busy == 1;
 }
 
