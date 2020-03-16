@@ -224,6 +224,7 @@
 (candidate='comdb2_cron_events')
 (candidate='comdb2_cron_schedulers')
 (candidate='comdb2_fingerprints')
+(candidate='comdb2_index_usage')
 (candidate='comdb2_keycomponents')
 (candidate='comdb2_keys')
 (candidate='comdb2_keywords')
