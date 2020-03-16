@@ -189,6 +189,64 @@ uint8_t *queue_found_put(const struct bdb_queue_found *p_queue_found,
     return p_buf;
 }
 
+enum { QUEUE_FOUND_SEQ_LEN = 8 + 4 + 4 + 4 + 4 + 4 + 4 };
+
+BB_COMPILE_TIME_ASSERT(bdb_queue_found_seq_len,
+                       sizeof(struct bdb_queue_found_seq) ==
+                           QUEUE_FOUND_SEQ_LEN);
+
+const uint8_t *
+queue_found_seq_get(struct bdb_queue_found_seq *p_queue_found_seq,
+                    const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || QUEUE_FOUND_SEQ_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_get(&(p_queue_found_seq->genid),
+                    sizeof(p_queue_found_seq->genid), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->data_len),
+                    sizeof(p_queue_found_seq->data_len), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->data_offset),
+                    sizeof(p_queue_found_seq->data_offset), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->trans.num_fragments),
+                    sizeof(p_queue_found_seq->trans.num_fragments), p_buf,
+                    p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->epoch),
+                    sizeof(p_queue_found_seq->epoch), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->seq), sizeof(p_queue_found_seq->seq),
+                    p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->unused),
+                    sizeof(p_queue_found_seq->unused), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+uint8_t *
+queue_found_seq_put(const struct bdb_queue_found_seq *p_queue_found_seq,
+                    uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || QUEUE_FOUND_SEQ_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_put(&(p_queue_found_seq->genid),
+                    sizeof(p_queue_found_seq->genid), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->data_len),
+                    sizeof(p_queue_found_seq->data_len), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->data_offset),
+                    sizeof(p_queue_found_seq->data_offset), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->trans.num_fragments),
+                    sizeof(p_queue_found_seq->trans.num_fragments), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->epoch),
+                    sizeof(p_queue_found_seq->epoch), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->seq), sizeof(p_queue_found_seq->seq),
+                    p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->unused),
+                    sizeof(p_queue_found_seq->unused), p_buf, p_buf_end);
+
+    return p_buf;
+}
+
 struct bdb_queue_priv {
     struct bdb_queue_stats stats;
 

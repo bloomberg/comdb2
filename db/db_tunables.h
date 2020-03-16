@@ -283,6 +283,10 @@ REGISTER_TUNABLE("dont_init_with_ondisk_header",
                  "Disables 'dont_init_with_ondisk_header'", TUNABLE_BOOLEAN,
                  &gbl_init_with_odh, INVERSE_VALUE | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_with_queue_ondisk_header",
+                 "Disables 'dont_init_with_queue_ondisk_header'",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_odh,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_optimize_repdb_truncate",
                  "Disable 'optimize_repdb_truncate'", TUNABLE_BOOLEAN,
                  &gbl_optimize_truncate_repdb,
@@ -497,6 +501,9 @@ REGISTER_TUNABLE("init_with_bthash", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("init_with_compr", NULL, TUNABLE_ENUM, &gbl_init_with_compr,
                  READONLY, init_with_compr_value, NULL, init_with_compr_update,
                  NULL);
+REGISTER_TUNABLE("init_with_queue_compr", NULL, TUNABLE_ENUM,
+                 &gbl_init_with_queue_compr, READONLY, init_with_compr_value,
+                 NULL, init_with_queue_compr_update, NULL);
 REGISTER_TUNABLE("init_with_compr_blobs", NULL, TUNABLE_ENUM,
                  &gbl_init_with_compr_blobs, READONLY, init_with_compr_value,
                  NULL, init_with_compr_blobs_update, NULL);
@@ -516,6 +523,10 @@ REGISTER_TUNABLE("init_with_ondisk_header",
                  "Initialize tables with on-disk header. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("init_with_queue_ondisk_header",
+                 "Initialize tables with on-disk header. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_odh, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_rowlocks",
                  "Enables row-locks for the database. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_init_with_rowlocks, READONLY | NOARG,
@@ -1792,4 +1803,11 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "thread.  (Default: 8 MiB)",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_queuedb",
+                 "Enable debug-trace for queuedb.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
+                 NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

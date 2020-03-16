@@ -163,11 +163,23 @@ int bdb_lite_exact_fetch_alloc(bdb_state_type *bdb_state, void *key,
 {
     int rc;
 
-    BDB_READLOCK("bdb_lite_exact_fetch");
+    BDB_READLOCK("bdb_lite_exact_fetch_alloc");
     rc = bdb_lite_exact_fetch_alloc_int(bdb_state, NULL /*tran*/, key, fnddta,
                                         fndlen, bdberr);
     BDB_RELLOCK();
 
+    return rc;
+}
+
+int bdb_lite_exact_fetch_alloc_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                    void *key, void **fnddta, int *fndlen,
+                                    int *bdberr)
+{
+    int rc;
+    BDB_READLOCK("bdb_lite_exact_fetch_alloc_tran");
+    rc = bdb_lite_exact_fetch_alloc_int(bdb_state, tran, key, fnddta, fndlen,
+                                        bdberr);
+    BDB_RELLOCK();
     return rc;
 }
 

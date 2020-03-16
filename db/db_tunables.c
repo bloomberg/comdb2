@@ -346,6 +346,14 @@ static int init_with_compr_blobs_update(void *context, void *algo)
     return 0;
 }
 
+static int init_with_queue_compr_update(void *context, void *algo)
+{
+    gbl_init_with_queue_compr = bdb_compr2algo((char *)algo);
+    logmsg(LOGMSG_INFO, "New queues will be compressed: %s\n",
+           bdb_algo2compr(gbl_init_with_queue_compr));
+    return 0;
+}
+
 static int init_with_rowlocks_update(void *context, void *unused)
 {
     gbl_init_with_rowlocks = 1;

@@ -503,6 +503,25 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
+static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
+                             unsigned int depth, void *userptr)
+{
+    struct consumer_stat *stats = userptr;
+
+    if (consumern < 0 || consumern >= MAXCONSUMERS) {
+        logmsg(LOGMSG_USER, "%s: consumern=%d length=%u epoch=%u\n", __func__,
+               consumern, (unsigned)length, epoch);
+    } else {
+        assert(!stats[consumern].has_stuff);
+        stats[consumern].has_stuff = 1;
+        stats[consumern].first_item_length = length;
+        stats[consumern].epoch = epoch;
+        stats[consumern].has_stuff = 1;
+        stats[consumern].depth = depth;
+    }
+    return BDB_QUEUE_WALK_CONTINUE;
+}
+
 static int stat_callback(int consumern, size_t length,
                                  unsigned int epoch, void *userptr)
 {
@@ -545,7 +564,10 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        dbq_walk(&iq, flags, stat_callback, stats);
+        if (db->odh)
+            dbq_odh_stats(&iq, stat_odh_callback, stats);
+        else
+            dbq_walk(&iq, flags, stat_callback, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
@@ -881,11 +903,16 @@ static int get_name(struct dbtable *db, char **spname) {
 
 static int get_stats(struct dbtable *db, struct consumer_stat *st) {
     struct ireq iq;
+    int rc;
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
-    int rc = dbq_walk(&iq, 0, stat_callback, st);
+    if (db->odh) {
+        rc = dbq_odh_stats(&iq, stat_odh_callback, st);
+    } else {
+        rc = dbq_walk(&iq, 0, stat_callback, st);
+    }
     if (rc)
         return rc;
     return 0;

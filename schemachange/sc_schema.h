@@ -33,6 +33,9 @@ int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
 int check_option_coherency(struct schema_change_type *s, struct dbtable *db,
                            struct scinfo *scinfo);
 
+int check_option_queue_coherency(struct schema_change_type *s,
+                                 struct dbtable *db);
+
 int sc_request_disallowed(SBUF2 *sb);
 
 int sc_cmp_fileids(unsigned long long a, unsigned long long b);

@@ -3455,7 +3455,6 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
 
-    /* just to make sure */
     msg->name[sizeof(msg->name) - 1] = '\0';
     rc = add_queue_to_environment(msg->name, msg->avgitemsz, 0);
     net_ack_message(hndl, rc);
@@ -4085,6 +4084,31 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
     return 0;
 }
 
+static int init_queue_odh_lrl(struct dbtable *d, int *compr)
+{
+    if (gbl_init_with_queue_odh == 0)
+        gbl_init_with_queue_compr = 0;
+    if (put_db_queue_odh(d, NULL, gbl_init_with_queue_odh) != 0)
+        return -1;
+    if (put_db_queue_compress(d, NULL, gbl_init_with_queue_compr) != 0)
+        return -1;
+    d->odh = gbl_init_with_queue_odh;
+    *compr = gbl_init_with_queue_compr;
+    return 0;
+}
+
+static int init_queue_odh_llmeta(struct dbtable *d, int *compr, tran_type *tran)
+{
+    if (get_db_queue_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
+        d->odh = 0;
+        *compr = 0;
+        return 0;
+    }
+
+    get_db_queue_compress_tran(d, compr, tran);
+    return 0;
+}
+
 static int init_odh_llmeta(struct dbtable *d, int *compr, int *compr_blobs,
                            int *datacopy_odh, tran_type *tran)
 {
@@ -4255,6 +4279,25 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     /* now that meta is open, get the blobstripe conversion genids for each
      * table so that we can find pre-blobstripe blobs */
     fix_blobstripe_genids(tran);
+
+    /* read queue odh and compression information */
+    for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+        struct dbtable *queue = dbenv->qdbs[ii];
+        int compress;
+        if (gbl_create_mode) {
+            if (init_queue_odh_lrl(queue, &compress) != 0) {
+                logmsg(LOGMSG_ERROR, "save queue odh to llmeta failed\n");
+                return -1;
+            }
+        } else {
+            if (init_queue_odh_llmeta(queue, &compress, tran) != 0) {
+                logmsg(LOGMSG_ERROR, "fetch queue odh from llmeta failed\n");
+                return -1;
+            }
+        }
+
+        set_bdb_queue_option_flags(queue, queue->odh, compress);
+    }
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
@@ -4676,14 +4719,16 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
 
 get_put_db(odh, META_ONDISK_HEADER_RRN) get_put_db(inplace_updates,
                                                    META_INPLACE_UPDATES)
-    get_put_db(compress, META_COMPRESS_RRN)
-        get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
-            get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
-                get_put_db(datacopy_odh, META_DATACOPY_ODH)
-                    get_put_db(bthash, META_BTHASH)
+get_put_db(compress, META_COMPRESS_RRN)
+get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
+get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
+get_put_db(datacopy_odh, META_DATACOPY_ODH)
+get_put_db(bthash, META_BTHASH)
+get_put_db(queue_odh, META_QUEUE_ODH)
+get_put_db(queue_compress, META_QUEUE_COMPRESS)
 
-                        static int put_meta_int(const char *table, void *tran,
-                                                int rrn, int key, int value)
+static int put_meta_int(const char *table, void *tran,
+        int rrn, int key, int value)
 {
     struct metahdr hdr;
     struct dbtable *db;
@@ -5456,6 +5501,35 @@ int dbq_dump(struct dbtable *db, FILE *out)
     if (rc != 0)
         return ERR_INTERNAL;
     return 0;
+}
+
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
+{
+    int bdberr, rc;
+    void *bdb_handle;
+    int retries = 0;
+    bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+
+retry:
+    iq->gluewhere = "bdb_queuedb_stats";
+    rc = bdb_queuedb_stats(bdb_handle, callback, userptr, &bdberr);
+    iq->gluewhere = "bdb_queuedb_stats done";
+    if (rc != 0) {
+        if (bdberr == BDBERR_DEADLOCK) {
+            iq->retries++;
+            if (++retries < gbl_maxretries) {
+                n_retries++;
+                goto retry;
+            }
+            logmsg(LOGMSG_ERROR,
+                   "*ERROR* bdb_queue_stats too much contention "
+                   "%d count %d\n",
+                   bdberr, retries);
+            return ERR_INTERNAL;
+        }
+        return map_unhandled_bdb_rcode("bdb_queue_stats", bdberr, 0);
+    }
+    return rc;
 }
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
