@@ -11452,7 +11452,7 @@ unsigned long long comdb2_table_version(const char *tablename)
 {
     struct dbtable *db;
 
-    if (is_tablename_queue(tablename, strlen(tablename)))
+    if (is_tablename_queue(tablename))
         return 0;
 
     db = get_dbtable_by_name(tablename);

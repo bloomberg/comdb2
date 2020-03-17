@@ -6046,7 +6046,7 @@ int table_version_set(tran_type *tran, const char *tablename,
     int rc;
     int bdberr = 0;
 
-    if (is_tablename_queue(tablename, strlen(tablename)))
+    if (is_tablename_queue(tablename))
         return 0;
 
     db = get_dbtable_by_name(tablename);
