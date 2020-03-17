@@ -660,7 +660,8 @@ char *sp_column_name(struct response_data *arg, int col)
     if (parent->clntname[col] == NULL) {
         sqlite3_stmt *stmt = arg->stmt;
         if (stmt) {
-            parent->clntname[col] = strdup(sqlite3_column_name(stmt, col));
+            parent->clntname[col] = strdup(comdb2_column_name(arg->sp->clnt,
+                                                              stmt, col));
         } else {
             size_t n = snprintf(NULL, 0, "$%d", col);
             char *name = malloc(n + 1);
@@ -1396,9 +1397,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         }
         default:
             return luaL_error(lua, "unknown field type:%d for col:%s",
-                              type, sqlite3_column_name(stmt, col));
+                              type, comdb2_column_name(clnt, stmt, col));
         }
-        lua_setfield(lua, -2, sqlite3_column_name(stmt, col));
+        lua_setfield(lua, -2, comdb2_column_name(clnt, stmt, col));
     }
     return rc;
 }
@@ -3439,8 +3440,9 @@ static int dbstmt_column_count(Lua L)
 
 static int dbstmt_column_name(Lua L)
 {
+    SP sp = getsp(L);
     GET_STMT_AND_COL();
-    lua_pushstring(L, sqlite3_column_name(stmt, col));
+    lua_pushstring(L, comdb2_column_name(sp->clnt, stmt, col));
     return 1;
 }
 
