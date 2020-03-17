@@ -275,8 +275,8 @@ static const uint8_t *net_connect_message_get(connect_message_type *msg_ptr,
     return p_buf;
 }
 
-static uint8_t *net_wire_header_put(const wire_header_type *header_ptr,
-                                    uint8_t *p_buf, const uint8_t *p_buf_end)
+uint8_t *net_wire_header_put(const wire_header_type *header_ptr, uint8_t *p_buf,
+                             const uint8_t *p_buf_end)
 {
     int node = 0;
     if (p_buf_end < p_buf || NET_WIRE_HEADER_TYPE_LEN > (p_buf_end - p_buf))
@@ -298,9 +298,9 @@ static uint8_t *net_wire_header_put(const wire_header_type *header_ptr,
     return p_buf;
 }
 
-static const uint8_t *net_wire_header_get(wire_header_type *header_ptr,
-                                          const uint8_t *p_buf,
-                                          const uint8_t *p_buf_end)
+const uint8_t *net_wire_header_get(wire_header_type *header_ptr,
+                                   const uint8_t *p_buf,
+                                   const uint8_t *p_buf_end)
 {
     int node = 0;
     if (p_buf_end < p_buf || NET_WIRE_HEADER_TYPE_LEN > (p_buf_end - p_buf))
@@ -322,19 +322,6 @@ static const uint8_t *net_wire_header_get(wire_header_type *header_ptr,
     return p_buf;
 }
 
-typedef struct net_send_message_header {
-    int usertype;
-    int seqnum;
-    int waitforack;
-    int datalen;
-} net_send_message_header;
-
-enum { NET_SEND_MESSAGE_HEADER_LEN = 4 + 4 + 4 + 4 };
-
-BB_COMPILE_TIME_ASSERT(net_send_message_header,
-                       sizeof(net_send_message_header) ==
-                           NET_SEND_MESSAGE_HEADER_LEN);
-
 static const uint8_t *
 net_send_message_header_put(const net_send_message_header *header_ptr,
                             uint8_t *p_buf, const uint8_t *p_buf_end)
@@ -354,9 +341,9 @@ net_send_message_header_put(const net_send_message_header *header_ptr,
     return p_buf;
 }
 
-static const uint8_t *
-net_send_message_header_get(net_send_message_header *header_ptr,
-                            const uint8_t *p_buf, const uint8_t *p_buf_end)
+const uint8_t *net_send_message_header_get(net_send_message_header *header_ptr,
+                                           const uint8_t *p_buf,
+                                           const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || NET_SEND_MESSAGE_HEADER_LEN > (p_buf_end - p_buf))
         return NULL;
@@ -372,19 +359,6 @@ net_send_message_header_get(net_send_message_header *header_ptr,
 
     return p_buf;
 }
-
-typedef struct net_ack_message_payload_type {
-    int seqnum;
-    int outrc;
-    int paylen;
-    char payload[4];
-} net_ack_message_payload_type;
-
-enum { NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN = 4 + 4 + 4 + 4 };
-
-BB_COMPILE_TIME_ASSERT(net_ack_message_payload_type,
-                       sizeof(net_ack_message_payload_type) ==
-                           NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN);
 
 static uint8_t *net_ack_message_payload_type_put(
     const net_ack_message_payload_type *payload_type_ptr, uint8_t *p_buf,
@@ -406,7 +380,7 @@ static uint8_t *net_ack_message_payload_type_put(
 }
 
 
-static const uint8_t *
+const uint8_t *
 net_ack_message_payload_type_get(net_ack_message_payload_type *payload_type_ptr,
                                  const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
@@ -424,17 +398,6 @@ net_ack_message_payload_type_get(net_ack_message_payload_type *payload_type_ptr,
     return p_buf;
 }
 
-
-typedef struct net_ack_message_type {
-    int seqnum;
-    int outrc;
-} net_ack_message_type;
-
-enum { NET_ACK_MESSAGE_TYPE_LEN = 4 + 4 };
-
-BB_COMPILE_TIME_ASSERT(net_ack_message_type, sizeof(net_ack_message_type) ==
-                                                 NET_ACK_MESSAGE_TYPE_LEN);
-
 static const uint8_t *
 net_ack_message_type_put(const net_ack_message_type *p_net_ack_message_type,
                          uint8_t *p_buf, const uint8_t *p_buf_end)
@@ -450,7 +413,7 @@ net_ack_message_type_put(const net_ack_message_type *p_net_ack_message_type,
     return p_buf;
 }
 
-static const uint8_t *
+const uint8_t *
 net_ack_message_type_get(net_ack_message_type *p_net_ack_message_type,
                          const uint8_t *p_buf, const uint8_t *p_buf_end)
 {
@@ -1082,8 +1045,8 @@ static int empty_write_list(host_node_type *host_node_ptr)
     return 0;
 }
 
-static int write_connect_message(netinfo_type *netinfo_ptr,
-                                 host_node_type *host_node_ptr, SBUF2 *sb)
+int write_connect_message(netinfo_type *netinfo_ptr,
+                          host_node_type *host_node_ptr, SBUF2 *sb)
 {
     connect_message_type connect_message;
     uint8_t conndata[NET_CONNECT_MESSAGE_TYPE_LEN] = {0}, *p_buf, *p_buf_end;
@@ -1316,8 +1279,7 @@ static int read_message_header(netinfo_type *netinfo_ptr,
     return 0;
 }
 
-static int write_heartbeat(netinfo_type *netinfo_ptr,
-                           host_node_type *host_node_ptr)
+int write_heartbeat(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
     /* heartbeats always jump to the head */
     return write_message_int(netinfo_ptr, host_node_ptr, WIRE_HEADER_HEARTBEAT,
@@ -1331,7 +1293,7 @@ static int write_heartbeat(netinfo_type *netinfo_ptr,
   they know about so that eventually (quickly) every node know about
   every other nodes
 */
-static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
+int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
     int rc;
     int numhosts;
@@ -1421,8 +1383,7 @@ static int write_hello(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
     return rc;
 }
 
-static int write_hello_reply(netinfo_type *netinfo_ptr,
-                             host_node_type *host_node_ptr)
+int write_hello_reply(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
     int rc;
     int numhosts;
@@ -4636,7 +4597,7 @@ void net_cleanup_subnets()
  * When trying to connect, if the subnet is down
  * we will try to connect to the next one until we succeed.
  */
-static int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *addr)
+int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *addr)
 {
     static unsigned int counter = 0xffff;
     uint8_t ii = 0; // do the loop no more that max subnets

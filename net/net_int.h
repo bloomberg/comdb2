@@ -124,6 +124,34 @@ typedef struct {
     unsigned long long reorders;
 } stats_type;
 
+typedef struct net_send_message_header {
+    int usertype;
+    int seqnum;
+    int waitforack;
+    int datalen;
+} net_send_message_header;
+enum { NET_SEND_MESSAGE_HEADER_LEN = 4 + 4 + 4 + 4 };
+BB_COMPILE_TIME_ASSERT(net_send_message_header,
+        sizeof(net_send_message_header) == NET_SEND_MESSAGE_HEADER_LEN);
+
+typedef struct net_ack_message_type {
+    int seqnum;
+    int outrc;
+} net_ack_message_type;
+enum { NET_ACK_MESSAGE_TYPE_LEN = 4 + 4 };
+BB_COMPILE_TIME_ASSERT(net_ack_message_type,
+        sizeof(net_ack_message_type) == NET_ACK_MESSAGE_TYPE_LEN);
+
+typedef struct net_ack_message_payload_type {
+    int seqnum;
+    int outrc;
+    int paylen;
+    char payload[4];
+} net_ack_message_payload_type;
+enum { NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN = 4 + 4 + 4 + 4 };
+BB_COMPILE_TIME_ASSERT(net_ack_message_payload_type,
+        sizeof(net_ack_message_payload_type) == NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN);
+
 struct host_node_tag {
     int fd;
     SBUF2 *sb;
@@ -365,4 +393,16 @@ void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, 
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_nid_dbname;
 #endif
+
+int get_dedicated_conhost(host_node_type *, struct in_addr *);
+const uint8_t *net_ack_message_payload_type_get(net_ack_message_payload_type *, const uint8_t *, const uint8_t *);
+const uint8_t *net_ack_message_type_get(net_ack_message_type *, const uint8_t *, const uint8_t *);
+const uint8_t *net_send_message_header_get(net_send_message_header *, const uint8_t *, const uint8_t *);
+const uint8_t *net_wire_header_get(wire_header_type *, const uint8_t *, const uint8_t *);
+uint8_t *net_wire_header_put(const wire_header_type *, uint8_t *, const uint8_t *);
+int write_connect_message(netinfo_type *, host_node_type *, SBUF2 *);
+int write_heartbeat(netinfo_type *, host_node_type *);
+int write_hello(netinfo_type *, host_node_type *);
+int write_hello_reply(netinfo_type *, host_node_type *);
+
 #endif /* INCLUDED__NET_INT_H */
