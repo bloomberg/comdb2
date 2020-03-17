@@ -5439,6 +5439,65 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 
 int gbl_forbid_remote_admin = 1;
 
+void do_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *cliaddr,
+                SBUF2 *sb, uint8_t firstbyte)
+{
+    watchlist_node_type *watchlist_node;
+    int new_fd = sbuf2fileno(sb);
+    char paddr[64];
+
+    int admin = 0;
+    APPSOCKFP *rtn = NULL;
+
+    if (firstbyte == '@') {
+        findpeer(new_fd, paddr, sizeof(paddr));
+        if (!gbl_forbid_remote_admin ||
+            (cliaddr->sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
+            logmsg(LOGMSG_INFO, "Accepting admin user from %s\n", paddr);
+            admin = 1;
+        } else {
+            logmsg(LOGMSG_INFO, "Rejecting non-local admin user from %s\n",
+                   paddr);
+            sbuf2close(sb);
+            return;
+        }
+    } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
+        logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__, __LINE__);
+        sbuf2close(sb);
+        return;
+    }
+
+    /* call user specified app routine */
+    if (admin && netinfo_ptr->admin_appsock_rtn) {
+        rtn = netinfo_ptr->admin_appsock_rtn;
+    } else if (netinfo_ptr->appsock_rtn) {
+        rtn = netinfo_ptr->appsock_rtn;
+    }
+
+    if (rtn) {
+        /* set up the watchlist system for this node */
+        watchlist_node = calloc(1, sizeof(watchlist_node_type));
+        if (!watchlist_node) {
+            logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n",
+                   __func__);
+            sbuf2close(sb);
+            return;
+        }
+        memcpy(watchlist_node->magic, "WLST", 4);
+        watchlist_node->in_watchlist = 0;
+        watchlist_node->netinfo_ptr = netinfo_ptr;
+        watchlist_node->sb = sb;
+        watchlist_node->readfn = sbuf2getr(sb);
+        watchlist_node->writefn = sbuf2getw(sb);
+        watchlist_node->addr = *cliaddr;
+        sbuf2setrw(sb, net_reads, net_writes);
+        sbuf2setuserptr(sb, watchlist_node);
+
+        /* this doesn't read- it just farms this off to a thread */
+        (rtn)(netinfo_ptr, sb);
+    }
+}
+
 static void *accept_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
@@ -5458,7 +5517,6 @@ static void *accept_thread(void *arg)
     int flag = 1;
     SBUF2 *sb;
     portmux_fd_t *portmux_fds = NULL;
-    watchlist_node_type *watchlist_node;
     unsigned int last_stat_dump_time = comdb2_time_epochms();
 
     thread_started("net accept");
@@ -5692,59 +5750,7 @@ static void *accept_thread(void *arg)
 
         /* appsock reqs have a non-0 first byte */
         if (firstbyte > 0) {
-            int admin = 0;
-            APPSOCKFP *rtn = NULL;
-
-            if (firstbyte == '@') {
-                findpeer(new_fd, paddr, sizeof(paddr));
-                if (!gbl_forbid_remote_admin ||
-                    (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
-                    logmsg(LOGMSG_INFO, "Accepting admin user from %s\n",
-                           paddr);
-                    admin = 1;
-                } else {
-                    logmsg(LOGMSG_INFO,
-                           "Rejecting non-local admin user from %s\n", paddr);
-                    sbuf2close(sb);
-                    continue;
-                }
-            } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
-                logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__,
-                        __LINE__);
-                sbuf2close(sb);
-                continue;
-            }
-
-            /* call user specified app routine */
-            if (admin && netinfo_ptr->admin_appsock_rtn) {
-                rtn = netinfo_ptr->admin_appsock_rtn;
-            } else if (netinfo_ptr->appsock_rtn) {
-                rtn = netinfo_ptr->appsock_rtn;
-            }
-
-            if (rtn) {
-                /* set up the watchlist system for this node */
-                watchlist_node = calloc(1, sizeof(watchlist_node_type));
-                if (!watchlist_node) {
-                    logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n",
-                            __func__);
-                    sbuf2close(sb);
-                    continue;
-                }
-                memcpy(watchlist_node->magic, "WLST", 4);
-                watchlist_node->in_watchlist = 0;
-                watchlist_node->netinfo_ptr = netinfo_ptr;
-                watchlist_node->sb = sb;
-                watchlist_node->readfn = sbuf2getr(sb);
-                watchlist_node->writefn = sbuf2getw(sb);
-                watchlist_node->addr = cliaddr;
-                sbuf2setrw(sb, net_reads, net_writes);
-                sbuf2setuserptr(sb, watchlist_node);
-
-                /* this doesn't read- it just farms this off to a thread */
-                (rtn)(netinfo_ptr, sb);
-            }
-
+            do_appsock(netinfo_ptr, &cliaddr, sb, firstbyte);
             continue;
         }
 
