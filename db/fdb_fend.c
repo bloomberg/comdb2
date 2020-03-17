@@ -5001,3 +5001,8 @@ int fdb_validate_existing_table(const char *zDatabase)
     Pthread_rwlock_unlock(&fdbs.arr_lock);
     return rc;
 }
+
+int useless(void) 
+{
+    return 0;
+}
