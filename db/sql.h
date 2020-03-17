@@ -157,7 +157,9 @@ typedef struct osqlstate {
     /* storage for shadow tables created by offloading */
     LISTC_T(struct shad_tbl) shadtbls;
 
-    shadbq_t shadbq; /* storage for dbq's shadtbl */
+    /* storage for dbq's shadtbl */
+    shadbq_t shadbq;
+    hash_t *dbq_hash;
 
     /* storage for verify, common for all transaction */
     struct temp_table * verify_tbl;

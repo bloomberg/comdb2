@@ -33,13 +33,14 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
 int bdb_queuedb_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);
 
 int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
-                    const struct bdb_queue_cursor *prevcursor, void **fnd,
+                    const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnd,
                     size_t *fnddtalen, size_t *fnddtaoff,
                     struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
                     int *bdberr);
-
+struct bdb_queue_found;
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
-                        int consumer, const void *prevfnd, int *bdberr);
+                        int consumer, const struct bdb_queue_found *prevfnd,
+                        int *bdberr);
 
 const struct bdb_queue_stats *bdb_queuedb_get_stats(bdb_state_type *bdb_state);
 

@@ -6185,9 +6185,10 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                    comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
         }
 
-        if ((rc = osql_set_usedb(iq, tablename, dt.tableversion, step, err)) !=
-            0)
+        rc = osql_set_usedb(iq, tablename, dt.tableversion, step, err);
+        if (rc) {
             return rc;
+        }
     } break;
     case OSQL_DBQ_CONSUME: {
         genid_t *genid = (genid_t *)p_buf;
@@ -6254,8 +6255,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         int locflags = RECFLAGS_DONT_LOCK_TBL;
 
-        rc = del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode,
-                        &err->ixnum, BLOCK2_DELKL, locflags);
+        rc = is_tablename_queue(iq->usedb->tablename)
+            ? dbq_consume_genid(iq, trans, 0, dt.genid)
+            : del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode, &err->ixnum, BLOCK2_DELKL, locflags);
 
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
