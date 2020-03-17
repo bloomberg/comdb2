@@ -36,6 +36,8 @@
 #define MAXCONSUMERS 32
 
 extern void fsnapf(FILE *, void *, int);
+int put_queue_sequence(const char *name, tran_type *, long long seq);
+int get_queue_sequence_tran(const char *name, long long *seq, tran_type *);
 
 struct bdb_queue_priv {
     uint64_t genid;
@@ -106,7 +108,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     uint8_t key[QUEUEDB_KEY_LEN];
     uint8_t *p_buf, *p_buf_end;
     struct bdb_queue_found qfnd;
-    struct bdb_queue_found_seq qfnd_seq, qfnd_fnd;
+    struct bdb_queue_found_seq qfnd_odh, prev_seq;
     void *databuf = NULL;
     void *freeme = NULL;
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
@@ -170,23 +172,22 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
 
     /* DB_RMW holds a writelock on rightmost btree page */
     if (bdb_state->ondisk_header) {
-        genid = qfnd_seq.genid = get_genid(bdb_state, 0);
-        qfnd_seq.data_len = dtalen;
-        qfnd_seq.data_offset = sizeof(struct bdb_queue_found_seq);
-        qfnd_seq.trans.tid = tran->tid->txnid;
-        qfnd_seq.unused = 0;
+        genid = qfnd_odh.genid = get_genid(bdb_state, 0);
+        qfnd_odh.data_len = dtalen;
+        qfnd_odh.data_offset = sizeof(struct bdb_queue_found_seq);
+        qfnd_odh.trans.tid = tran->tid->txnid;
         if (tran->trigger_epoch) {
-            qfnd_seq.epoch = tran->trigger_epoch;
+            qfnd_odh.epoch = tran->trigger_epoch;
         } else {
-            qfnd_seq.epoch = tran->trigger_epoch = comdb2_time_epoch();
+            qfnd_odh.epoch = tran->trigger_epoch = comdb2_time_epoch();
         }
 
-        qfnd_seq.seq = 0;
+        prev_seq.seq = 0;
 
         if (rc == 0) {
             p_buf = dbt_data.data;
             p_buf_end = p_buf + dbt_data.size;
-            p_buf = (uint8_t *)queue_found_seq_get(&qfnd_fnd, p_buf, p_buf_end);
+            p_buf = (uint8_t *)queue_found_seq_get(&prev_seq, p_buf, p_buf_end);
             if (p_buf == NULL) {
                 logmsg(LOGMSG_ERROR, "%s failed to decode prev seq for %s\n",
                        __func__, bdb_state->name);
@@ -194,15 +195,17 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
                 rc = -1;
                 goto done;
             }
+        } else if (bdb_state->persistent_seq) {
+            get_queue_sequence_tran(bdb_state->name, &prev_seq.seq, tran);
         }
-        qfnd_seq.seq = (qfnd_fnd.seq + 1);
+        qfnd_odh.seq = (prev_seq.seq + 1);
 
         dbt_key.flags = dbt_data.flags = 0;
         dbt_key.ulen = dbt_data.ulen = 0;
 
         p_buf = databuf;
         p_buf_end = p_buf + dtalen + sizeof(struct bdb_queue_found_seq);
-        p_buf = queue_found_seq_put(&qfnd_seq, p_buf, p_buf_end);
+        p_buf = queue_found_seq_put(&qfnd_odh, p_buf, p_buf_end);
     } else {
         genid = qfnd.genid = get_genid(bdb_state, 0);
         qfnd.data_len = dtalen;
@@ -322,7 +325,7 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     uint8_t ver = 0;
     size_t item_length = 0;
     unsigned int epoch = 0, first_seq = 0, last_seq = 0;
-    struct bdb_queue_found_seq qfnd_seq;
+    struct bdb_queue_found_seq qfnd_odh;
     uint8_t *p_buf, *p_buf_end;
     int rc, consumern = 0;
 
@@ -361,9 +364,9 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
 
     p_buf = dbt_data.data;
     p_buf_end = p_buf + dbt_data.size;
-    p_buf = (uint8_t *)queue_found_seq_get(&qfnd_seq, p_buf, p_buf_end);
-    first_seq = qfnd_seq.seq;
-    epoch = qfnd_seq.epoch;
+    p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+    first_seq = qfnd_odh.seq;
+    epoch = qfnd_odh.epoch;
     item_length = dbt_data.size;
 
     rc = bdb_cget_unpack(bdb_state, dbcp, &dbt_key, &dbt_data, &ver, DB_LAST);
@@ -387,8 +390,8 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
 
     p_buf = dbt_data.data;
     p_buf_end = p_buf + dbt_data.size;
-    p_buf = (uint8_t *)queue_found_seq_get(&qfnd_seq, p_buf, p_buf_end);
-    last_seq = qfnd_seq.seq;
+    p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+    last_seq = qfnd_odh.seq;
 
     if (last_seq >= first_seq)
         callback(consumern, item_length, epoch, (last_seq - first_seq) + 1,
@@ -451,7 +454,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     }
     while (rc == 0) {
         struct bdb_queue_found qfnd;
-        struct bdb_queue_found_seq qfnd_seq;
+        struct bdb_queue_found_seq qfnd_odh;
         unsigned int epoch;
         int consumern = 0;
         uint8_t *p_buf, *p_buf_end;
@@ -462,8 +465,8 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
         p_buf_end = p_buf + dbt_data.size;
 
         if (bdb_state->ondisk_header) {
-            p_buf = (uint8_t *)queue_found_seq_get(&qfnd_seq, p_buf, p_buf_end);
-            epoch = qfnd_seq.epoch;
+            p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+            epoch = qfnd_odh.epoch;
         } else {
             p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
             epoch = qfnd.epoch;
@@ -530,10 +533,10 @@ int bdb_queuedb_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr)
 }
 
 int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
-                    const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnd,
-                    size_t *fnddtalen, size_t *fnddtaoff,
-                    struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
-                    int *bdberr)
+                    const struct bdb_queue_cursor *prevcursor,
+                    struct bdb_queue_found **fnd, size_t *fnddtalen,
+                    size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                    long long *seq, unsigned int *epoch, int *bdberr)
 {
 
     if (bdb_state->dbp_data[0][0] == NULL) { // trigger dropped?
@@ -547,8 +550,10 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     uint8_t ver = 0;
     size_t data_offset;
     int rc;
+    long long sequence = 0;
+    unsigned int found_epoch = 0;
     struct bdb_queue_found qfnd;
-    struct bdb_queue_found_seq qfnd_seq;
+    struct bdb_queue_found_seq qfnd_odh;
     uint8_t *p_buf, *p_buf_end;
     uint8_t key[QUEUEDB_KEY_LEN] = {0};
     struct queuedb_key fndk;
@@ -711,10 +716,13 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     }
 
     if (bdb_state->ondisk_header) {
-        p_buf = (uint8_t *)queue_found_seq_get(&qfnd_seq, p_buf, p_buf_end);
-        data_offset = qfnd_seq.data_offset;
+        p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+        sequence = qfnd_odh.seq;
+        found_epoch = qfnd_odh.epoch;
+        data_offset = qfnd_odh.data_offset;
     } else {
         p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
+        found_epoch = qfnd.epoch;
         data_offset = qfnd.data_offset;
     }
     if (p_buf == NULL) {
@@ -732,6 +740,10 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, int consumer,
     if (fnddtaoff)
         *fnddtaoff =
             data_offset; /* This length will be used to check version. */
+    if (seq)
+        *seq = sequence;
+    if (epoch)
+        *epoch = found_epoch;
     if (fndcursor) {
         memcpy(&fndcursor->genid, &fndk.genid, sizeof(fndk.genid));
         fndcursor->recno = 0;
@@ -771,6 +783,7 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         .consumer = consumer,
         .genid = fnd->genid
     };
+    uint8_t ver = 0;
     uint8_t search[QUEUEDB_KEY_LEN];
     queuedb_key_put(&k, search, search + sizeof(search));
 
@@ -780,7 +793,11 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
     key.size = sizeof(search);
 
     DBT val = {0};
-    val.flags = DB_DBT_PARTIAL;
+    if (bdb_state->persistent_seq) {
+        val.flags = DB_DBT_MALLOC;
+    } else {
+        val.flags = DB_DBT_PARTIAL;
+    }
 
     DBC *dbcp = NULL;
     DB *db = bdb_state->dbp_data[0][0];
@@ -790,7 +807,10 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
 
-    rc = dbcp->c_get(dbcp, &key, &val, DB_SET);
+    if (bdb_state->persistent_seq)
+        rc = bdb_cget_unpack(bdb_state, dbcp, &key, &val, &ver, DB_SET);
+    else
+        rc = dbcp->c_get(dbcp, &key, &val, DB_SET);
     if (rc == DB_NOTFOUND) {
         *bdberr = BDBERR_DELNOTFOUND;
         rc = -1;
@@ -818,13 +838,55 @@ int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
         } else if (rc) {
             logmsg(LOGMSG_ERROR, "%s: del queue %s consumer %d berk rc %d\n",
                     __func__, bdb_state->name, consumer, rc);
+            *bdberr = BDBERR_MISC;
+            rc = -1;
+            goto done;
+        }
+    }
+
+    if (bdb_state->persistent_seq) {
+        DBT next_key = {0}, next_data = {0};
+        next_key.flags = next_data.flags = DB_DBT_PARTIAL;
+
+        /* Probe for another record */
+        rc = dbcp->c_get(dbcp, &next_key, &next_data, DB_NEXT);
+
+        /* If none add this sequence to meta */
+        if (rc == DB_NOTFOUND) {
+            struct bdb_queue_found_seq qfnd;
+            uint8_t *p_buf = (uint8_t *)val.data;
+            uint8_t *p_buf_end = p_buf + sizeof(struct bdb_queue_found_seq);
+            p_buf = (uint8_t *)queue_found_seq_get(&qfnd, p_buf, p_buf_end);
+            rc = put_queue_sequence(bdb_state->name, tran, qfnd.seq);
+            if (rc == DB_LOCK_DEADLOCK) {
+                *bdberr = BDBERR_DEADLOCK;
+                rc = -1;
+                goto done;
+            } else if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: del queue %s put-seq %lld berk rc "
+                       "%d\n",
+                       __func__, bdb_state->name, qfnd.seq, rc);
+                *bdberr = BDBERR_MISC;
+                rc = -1;
+                goto done;
+            }
+        } else if (rc == DB_LOCK_DEADLOCK) {
             *bdberr = BDBERR_DEADLOCK;
+            rc = -1;
+            goto done;
+        } else if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: del queue %s probe rc %d\n", __func__,
+                   bdb_state->name, rc);
+            *bdberr = BDBERR_MISC;
             rc = -1;
             goto done;
         }
     }
 
 done:
+    if (bdb_state->persistent_seq && val.data)
+        free(val.data);
     if (dbcp) {
         int crc;
         crc = dbcp->c_close(dbcp);

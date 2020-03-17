@@ -155,6 +155,8 @@ struct dbconsumer_t {
     struct consumer *consumer;
     genid_t genid;
     int push_tid;
+    int push_seq;
+    int push_epoch;
     int register_timeoutms;
     time_t registration_time;
 
@@ -167,6 +169,8 @@ struct dbconsumer_t {
 
 struct qfound {
     struct bdb_queue_found *item;
+    long long seq;
+    unsigned int epoch;
     size_t len;
     size_t dtaoff;
 };
@@ -680,7 +684,8 @@ static const int dbq_delay = 1000; // ms
 static int dbq_poll_int(Lua L, dbconsumer_t *q)
 {
     struct qfound f = {0};
-    int rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd, NULL);
+    int rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
+            &f.seq, &f.epoch);
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
     getsp(L)->num_instructions = 0;
@@ -748,7 +753,8 @@ static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
     return rc;
 }
 
-static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
+static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms,
+        int *push_seq, int *push_epoch)
 {
     if (lua_gettop(L) != 1) return;
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -762,6 +768,14 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
             if (strcasecmp(key, "with_tid") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
                     *push_tid = lua_toboolean(L, -1);
+                }
+            } else if (strcasecmp(key, "with_sequence") == 0) {
+                if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                    *push_seq = lua_toboolean(L, -1);
+                }
+            } else if (strcasecmp(key, "with_epoch") == 0) {
+                if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                    *push_epoch = lua_toboolean(L, -1);
                 }
             } else if (strcasecmp(key, "register_timeout") == 0) {
                 long long timeoutms = 0;
@@ -4546,8 +4560,9 @@ static int db_consumer(Lua L)
     luaL_checkudata(L, 1, dbtypes.db);
     lua_remove(L, 1);
 
-    int push_tid = 0, register_timeoutms = 0;
-    dbconsumer_getargs(L, &push_tid, &register_timeoutms);
+    int push_tid = 0, register_timeoutms = 0, push_seq = 0, push_epoch = 0;
+    dbconsumer_getargs(L, &push_tid, &register_timeoutms, &push_seq,
+            &push_epoch);
 
     SP sp = getsp(L);
     if (sp->parent != sp) {
@@ -4607,6 +4622,8 @@ static int db_consumer(Lua L)
         return 1;
     }
     q->push_tid = push_tid;
+    q->push_seq = push_seq;
+    q->push_epoch = push_epoch;
     q->register_timeoutms = register_timeoutms;
     sp->consumer = q;
     return 1;
@@ -6178,7 +6195,14 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         luabb_pushinteger(L, f->item->trans.tid);
         lua_setfield (L, -2, "tid");
     }
-
+    if (q->push_seq) {
+        luabb_pushinteger(L, f->seq);
+        lua_setfield (L, -2, "sequence");
+    }
+    if (q->push_epoch) {
+        luabb_pushinteger(L, f->epoch);
+        lua_setfield (L, -2, "epoch");
+    }
     if (flags & TYPE_TAGGED_ADD) {
         lua_newtable(L);
         lua_setfield(L, -2, "new");

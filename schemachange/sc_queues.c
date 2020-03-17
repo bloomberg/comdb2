@@ -172,6 +172,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     char *config;
     int ndests;
     int compr;
+    int persist;
     char **dests;
     uint32_t lid = 0;
     extern uint32_t gbl_rep_lockid;
@@ -324,14 +325,15 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         goto done;
     }
 
-    compr = 0;
+    compr = persist = 0;
     if (type != llmeta_queue_drop) {
         if (get_db_queue_odh_tran(db, &db->odh, tran) != 0 || db->odh == 0) {
             db->odh = 0;
         } else {
             get_db_queue_compress_tran(db, &compr, tran);
+            get_db_queue_persistent_seq_tran(db, &persist, tran);
         }
-        bdb_set_queue_odh_options(db->handle, db->odh, compr);
+        bdb_set_queue_odh_options(db->handle, db->odh, compr, persist);
     }
 
 done:
@@ -355,6 +357,8 @@ static inline void set_empty_queue_options(struct schema_change_type *s)
         s->headers = gbl_init_with_queue_odh;
     if (s->compress == -1)
         s->compress = gbl_init_with_queue_compr;
+    if (s->persistent_seq == -1)
+        s->persistent_seq = gbl_init_with_queue_persistent_seq;
     if (s->compress_blobs == -1)
         s->compress_blobs = 0;
     if (s->ip_updates == -1)
@@ -541,8 +545,22 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
+        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) !=
+            0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-persistent seq, rc %d\n",
+                   rc);
+            goto done;
+        }
+
+        if (sc->persistent_seq &&
+            (rc = put_db_queue_sequence(db, tran, 0)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-sequence, rc %d\n", rc);
+            goto done;
+        }
+
         db->odh = sc->headers;
-        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress);
+        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
+                                  sc->persistent_seq);
 
         thedb->qdbs =
             realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
@@ -587,8 +605,23 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
+        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) !=
+            0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-persistent seq, rc %d\n",
+                   rc);
+            goto done;
+        }
+
+        /* Zero sequence */
+        if (sc->persistent_seq &&
+            (rc = put_db_queue_sequence(db, tran, 0)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-sequence, rc %d\n", rc);
+            goto done;
+        }
+
         db->odh = sc->headers;
-        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress);
+        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
+                                  sc->persistent_seq);
 
         scdone_type = llmeta_queue_alter;
 

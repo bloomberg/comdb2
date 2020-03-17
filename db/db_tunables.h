@@ -272,12 +272,16 @@ REGISTER_TUNABLE("dont_init_with_instant_schema_change",
                  &gbl_init_with_instant_sc, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_init_with_ondisk_header",
-                 "Disables 'dont_init_with_ondisk_header'", TUNABLE_BOOLEAN,
+                 "Disables 'init_with_ondisk_header'", TUNABLE_BOOLEAN,
                  &gbl_init_with_odh, INVERSE_VALUE | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("dont_init_with_queue_ondisk_header",
+REGISTER_TUNABLE("dont_init_queue_with_persistent_sequence",
+                 "Disables 'init_queue_with_persistent_sequence'",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_with_queue_persistent_sequence",
                  "Disables 'dont_init_with_queue_ondisk_header'",
-                 TUNABLE_BOOLEAN, &gbl_init_with_queue_odh,
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_optimize_repdb_truncate",
                  "Disable 'optimize_repdb_truncate'", TUNABLE_BOOLEAN,
@@ -522,9 +526,14 @@ REGISTER_TUNABLE("init_with_ondisk_header",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_queue_ondisk_header",
-                 "Initialize tables with on-disk header. (Default: on)",
+                 "Initialize queues with on-disk header. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_init_with_queue_odh, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("init_with_queue_persistent_sequence",
+                 "Initialize queues with persistent sequence numbers. "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_rowlocks",
                  "Enables row-locks for the database. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_init_with_rowlocks, READONLY | NOARG,

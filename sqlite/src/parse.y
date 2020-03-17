@@ -2424,12 +2424,12 @@ cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= createkw LUA TRIGGER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,&Q,T);
+cmd ::= createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,0,S,&Q,T);
 }
 
-cmd ::= createkw LUA CONSUMER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,&Q,T);
+cmd ::= createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,1,S,&Q,T);
 }
 
 table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
@@ -2439,6 +2439,11 @@ table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR
 table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
   A = comdb2AddTriggerTable(pParse,0,T,B);
 }
+
+%type withsequence {int}
+withsequence(A) ::= .                   { A = -1; }
+withsequence(A) ::= WITHOUT SEQUENCE.   { A = 0; }
+withsequence(A) ::= WITH SEQUENCE.      { A = 1; }
 
 %type table_trigger_event {Cdb2TrigTables*}
 %destructor table_trigger_event {sqlite3DbFree(pParse->db, $$);}

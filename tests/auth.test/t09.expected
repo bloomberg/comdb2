@@ -175,6 +175,7 @@
 (candidate='SCHEMACHANGE')
 (candidate='SELECT')
 (candidate='SELECTV')
+(candidate='SEQUENCE')
 (candidate='SET')
 (candidate='SKIPSCAN')
 (candidate='START')
