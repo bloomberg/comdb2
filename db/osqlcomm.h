@@ -379,4 +379,6 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
 
 void signal_replicant_error(const char *host, unsigned long long rqid,
                             uuid_t uuid, int rc, const char *msg);
+
+int osql_send_del_qdb_logic(struct sqlclntstate *, char *, genid_t);
 #endif

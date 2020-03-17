@@ -561,7 +561,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     return 0;
 }
 
-unsigned long long bdb_queue_item_genid(const void *dta)
+unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta)
 {
     if (dta) {
         uint8_t *p_buf = (uint8_t *)dta;
@@ -1372,7 +1372,7 @@ lookagain:
          * is silly because its last fragment may come after the first fragment
          * of what is logically the next item queued (if they were added at the
          * same time then their fragments may interleave). */
-        memcpy(&lastgenid, prevcursor->genid, 8);
+        memcpy(&lastgenid, &prevcursor->genid, 8);
         if (lastgenid == 0) {
             prevcursor = NULL;
             getop = DB_FIRST;
@@ -1707,7 +1707,7 @@ lookagain:
 
     /* Success - found all fragments and stitched them up! */
     if (fndcursor) {
-        memcpy(fndcursor->genid, &item.genid, 8);
+        memcpy(&fndcursor->genid, &item.genid, 8);
         fndcursor->recno = ntohl(recnos[0]);
         fndcursor->reserved = 0;
     }
@@ -1729,7 +1729,7 @@ lookagain:
  * key (pass in a zero key to get the first unconsumed item).  the caller is
  * responsible for freeing *fnddta. */
 int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
-                  const struct bdb_queue_cursor *prevcursor, void **fnd,
+                  const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnd,
                   size_t *fnddtalen, size_t *fnddtaoff,
                   struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
                   int *bdberr)
@@ -1741,7 +1741,7 @@ int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
         rc = bdb_queuedb_get(bdb_state, consumer, prevcursor, fnd, fnddtalen,
                              fnddtaoff, fndcursor, epoch, bdberr);
     else
-        rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, fnd, fnddtalen,
+        rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, (void **)fnd, fnddtalen,
                                fnddtaoff, fndcursor, epoch, bdberr);
     BDB_RELLOCK();
 
@@ -2100,7 +2100,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
 
 /* consume a queue item previously found by bdb_queue_get. */
 int bdb_queue_consume(bdb_state_type *bdb_state, tran_type *tran, int consumer,
-                      const void *prevfnd, int *bdberr)
+                      const struct bdb_queue_found *prevfnd, int *bdberr)
 {
     int rc;
     *bdberr = BDBERR_NOERROR;

@@ -39,6 +39,8 @@
 
 #include <assert.h>
 
+#include <compile_time_assert.h>
+
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
@@ -856,10 +858,12 @@ enum { BDBQUEUE_MAX_CONSUMERS = 32 };
 
 /* 16 byte pointer to an item in an ondisk queue. */
 struct bdb_queue_cursor {
-    bbuint32_t genid[2]; /* genid of item */
-    bbuint32_t recno;    /* recno of first fragment of item */
-    bbuint32_t reserved; /* must be zero */
+    uint64_t genid;    /* genid of item */
+    uint32_t recno;    /* recno of first fragment of item */
+    uint32_t reserved; /* must be zero */
 };
+
+BB_COMPILE_TIME_ASSERT(queue_cursor_size, sizeof(struct bdb_queue_cursor) == 16);
 
 /* mark a consumer as active or inactive.  this grabs the bdb write lock. */
 int bdb_queue_consumer(bdb_state_type *bdb_state, int consumer, int active,
@@ -882,14 +886,15 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
  * found result (passed in through prevfnd).  On a successful find *fnd will
  * be set to point to memory that the caller must free.  The actual item data
  * will be at ((const char *)*fnd) + *fnddtaoff). */
+struct bdb_queue_found;
 int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
-                  const struct bdb_queue_cursor *prevcursor, void **fnd,
-                  size_t *fnddtalen, size_t *fnddtaoff,
-                  struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
-                  int *bdberr);
+                  const struct bdb_queue_cursor *prevcursor,
+                  struct bdb_queue_found **fnd, size_t *fnddtalen,
+                  size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                  unsigned int *epoch, int *bdberr);
 
 /* Get the genid of a queue item that was retrieved by bdb_queue_get() */
-unsigned long long bdb_queue_item_genid(const void *dta);
+unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta);
 
 /* Call a callback function for each item on the queue.  The parameters to the
  * callback are: consumer number, item length, epoch time it was added,
@@ -925,8 +930,9 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);
 
 /* consume a queue item previously found by bdb_queue_get. */
+struct bdb_queue_found;
 int bdb_queue_consume(bdb_state_type *bdb_state, tran_type *tran, int consumer,
-                      const void *prevfnd, int *bdberr);
+                      const struct bdb_queue_found *prevfnd, int *bdberr);
 
 /* work out the best page size to use for the given average item size */
 int bdb_queue_best_pagesize(int avg_item_sz);

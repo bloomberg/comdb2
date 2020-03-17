@@ -1506,10 +1506,6 @@ enum convert_scan_mode {
     SCAN_PAGEORDER = 5 /* 1 thread per stripe in page-order */
 };
 
-struct dbq_cursor {
-    bbuint32_t cursordata[4];
-};
-
 typedef struct {
     unsigned long long rqid;
     unsigned step;
@@ -2495,14 +2491,18 @@ int lite_get_keys_auxdb(int auxdb, struct ireq *iq, void *firstkey,
                         void *fndkeys, int maxfnd, int *numfnd);
 
 /* queue databases */
+struct bdb_queue_found;
+struct bdb_queue_cursor;
 int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen);
-int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd);
+int dbq_consume(struct ireq *iq, void *trans, int consumer,
+                const struct bdb_queue_found *fnd);
 int dbq_consume_genid(struct ireq *, void *trans, int consumer, const genid_t);
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
-            void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
-            struct dbq_cursor *fndcursor, unsigned int *epoch);
-void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen);
-unsigned long long dbq_item_genid(const void *dta);
+int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prev,
+            struct bdb_queue_found **fnddta, size_t *fnddtalen,
+            size_t *fnddtaoff, struct bdb_queue_cursor *fnd,
+            unsigned int *epoch);
+void dbq_get_item_info(const struct bdb_queue_found *fnd, size_t *dtaoff, size_t *dtalen);
+unsigned long long dbq_item_genid(const struct bdb_queue_found *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
 typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
