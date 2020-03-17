@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <poll.h>
 #include <list.h>
 #include "comdb2.h"
 #include "sql.h"
@@ -253,6 +254,12 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
 
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
+
+        if (clnt->verify_retries % 10 == 0) {
+            // whoah slow down there pal
+            int ms = clnt->verify_retries / 10;
+            poll(NULL, 0, 10 * ms);
+        }
 
         /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM) {
