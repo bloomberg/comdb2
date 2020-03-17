@@ -65,7 +65,9 @@ copy_files_to_node() {
         ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
     fi
     set +e
-    scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
+    if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
+        scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
+    fi
     echo start pmux on $node if not running
     ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$TESTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
     ssh $SSH_OPT $SSH_MSTR -O exit $node #close master ssh session
