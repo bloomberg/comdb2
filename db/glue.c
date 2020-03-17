@@ -5062,6 +5062,10 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     iq->gluewhere = "bdb_queue_add done";
 
     if (bdberr == 0) {
+        struct dbtable *qdb = iq->usedb;
+        if (qdb->dbtype == DBTYPE_QUEUEDB) {
+            return 0;
+        }
         /* remember that this queue was updated so the consumer can
          * be woken after we commit. */
         if (iq->num_queues_hit <= MAX_QUEUE_HITS_PER_TRANS) {
