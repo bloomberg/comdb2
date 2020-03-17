@@ -47,7 +47,6 @@
 #include <str0.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
-#include <segstring.h>
 
 #include <bdb_api.h>
 #include <sbuf2.h>
