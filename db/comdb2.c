@@ -2618,10 +2618,6 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     dbenv->envname = strdup(dbname);
 
-    listc_init(&dbenv->managed_participants,
-               offsetof(struct managed_component, lnk));
-    listc_init(&dbenv->managed_coordinators,
-               offsetof(struct managed_component, lnk));
     Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
     /* Initialize the table/queue hashes. */

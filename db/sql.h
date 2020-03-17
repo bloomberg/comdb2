@@ -154,21 +154,21 @@ typedef struct osqlstate {
     int count_changes;   /* enable pragma count_changes=1, for rr, sosql, recom,
                             snapisol, serial */
 
-    /* the phantom menace */
-    LISTC_T(struct shad_tbl)
-        shadtbls;    /* storage for shadow tables created by offloading */
+    /* storage for shadow tables created by offloading */
+    LISTC_T(struct shad_tbl) shadtbls;
+
     shadbq_t shadbq; /* storage for dbq's shadtbl */
 
-    struct temp_table *
-        verify_tbl; /* storage for verify, common for all transaction */
+    /* storage for verify, common for all transaction */
+    struct temp_table * verify_tbl;
     struct temp_cursor *verify_cur; /* verify cursor */
 
-    struct temp_table
-        *sc_tbl; /* storage for schemachange, common for all transaction */
+    /* storage for schemachange, common for all transaction */
+    struct temp_table *sc_tbl;
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
-    struct temp_table
-        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    /* storage for bpfunc, common for all transaction */
+    struct temp_table *bpfunc_tbl;
     struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
     int bpfunc_seq;
 
@@ -179,8 +179,8 @@ typedef struct osqlstate {
     fdbtimings_t fdbtimes; /* measure remote access */
 
     /* verify handling */
-    srs_tran_t *
-        history; /* keep the log of sql strings for the current transaction */
+    /* keep the log of sql strings for the current transaction */
+    srs_tran_t * history;
     int replay;  /* set this when a session is replayed, used by sorese */
     int sent_column_data; /* set this if we've already sent the column data */
 
