@@ -878,54 +878,49 @@ void deserialise_database(
         if (chmod(fullpath.c_str(), modes)==-1)
 		perror(fullpath.c_str());
 
-        if(is_manifest) {
+        if (is_manifest) {
             process_manifest(text, manifest_map, run_full_recovery, origlrlname, options);
-
-        } else if(is_lrl) {
-
-            std::string outfilename;
-            // If the lrl was renames, restore the orginal name
-            if (origlrlname != "")
-               outfilename = (lrldestdir + "/" + origlrlname);
-            else
-               outfilename = (lrldestdir + "/" + filename);
-
-            // Parse the lrl file and then write it out
-            of_ptr = output_file(outfilename, true, false);
-            if(main_lrl_file.empty()) {
-                main_lrl_file = outfilename;
-            }
-
-            process_lrl(
-                    *of_ptr,
-                    filename,
-                    text,
-                    strip_cluster_info,
-                    strip_consumer_info,
-                    datadestdir,
-                    lrldestdir,
-                    dbname,
-                    table_set);
-
-            extracted_files.insert(outfilename);
-
-            if (!datadestdir.empty())
+        } else if (is_lrl) {
+            std::ostringstream lrldata;
+            process_lrl(lrldata, filename, text, strip_cluster_info,
+                        strip_consumer_info, datadestdir, lrldestdir, dbname,
+                        table_set);
+            if (!datadestdir.empty()) {
                 make_dirs(datadestdir);
-            if (!datadestdir.empty() && check_dest_dir(datadestdir)) {
-                /* Remove old log files.  This used to remove all files in the directory,
-                   which can be problematic if hi. */
-                if (!legacy_mode) {
-                   // remove files in the txn directory
-                   std::string dbtxndir(datadestdir + "/" + dbname + ".txn");
-                   make_dirs( dbtxndir );
-                   if (!incr_mode)
-                       remove_all_old_files( dbtxndir );
-                   dbtxndir = datadestdir + "/" + "logs";
-                   make_dirs( dbtxndir );
-                   if (!incr_mode)
-                       remove_all_old_files( dbtxndir );
+                if (empty_dir(datadestdir)) {
+                    std::string dbtxndir(datadestdir + "/" + dbname + ".txn");
+                    make_dirs(dbtxndir);
+                    dbtxndir = datadestdir + "/" + "logs";
+                    make_dirs(dbtxndir);
+                } else if (check_dest_dir(datadestdir)) {
+                    /* Remove old log files.  This used to remove all files in
+                       the directory, which can be problematic if hi. */
+                    if (!legacy_mode) {
+                        // remove files in the txn directory
+                        std::string dbtxndir(datadestdir + "/" + dbname +
+                                             ".txn");
+                        make_dirs(dbtxndir);
+                        if (!incr_mode)
+                            remove_all_old_files(dbtxndir);
+                        dbtxndir = datadestdir + "/" + "logs";
+                        make_dirs(dbtxndir);
+                        if (!incr_mode)
+                            remove_all_old_files(dbtxndir);
+                    }
                 }
             }
+            // If the lrl was renames, restore the orginal name
+            std::string outfilename;
+            if (origlrlname != "")
+                outfilename = (lrldestdir + "/" + origlrlname);
+            else
+                outfilename = (lrldestdir + "/" + filename);
+            of_ptr = output_file(outfilename, true, false);
+            *of_ptr << lrldata.str();
+            if (main_lrl_file.empty()) {
+                main_lrl_file = outfilename;
+            }
+            extracted_files.insert(outfilename);
         }
     }
 
