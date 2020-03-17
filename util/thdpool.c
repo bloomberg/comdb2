@@ -654,10 +654,10 @@ static void *thdpool_thd(void *voidarg)
     struct thdpool *pool = thd->pool;
 
     ATOMIC_ADD32(pool->nactthd, 1);
-
+#   ifndef NDEBUG
     logmsg(LOGMSG_DEBUG, "%s(%s): thread going active: %u active\n",
            __func__, pool->name, ATOMIC_LOAD32(pool->nactthd));
-
+#   endif
     int check_exit = 0;
     void *thddata = NULL;
 
@@ -832,9 +832,10 @@ thread_exit:
 
     free(thd);
 
+#   ifndef NDEBUG
     logmsg(LOGMSG_DEBUG, "%s(%s): thread going inactive: %u active\n",
            __func__, pool->name, ATOMIC_LOAD32(pool->nactthd));
-
+#   endif
     ATOMIC_ADD32(pool->nactthd, -1);
     return NULL;
 }
