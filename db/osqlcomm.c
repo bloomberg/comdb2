@@ -3356,14 +3356,10 @@ static int osql_net_type_to_net_uuid_type(int type)
     }
 }
 
-/**
- * check if a tablename is a queue
- */
-int is_tablename_queue(const char * tablename, int len)
+int is_tablename_queue(const char *name)
 {
     /* See also, __db_open @ /berkdb/db/db_open.c for register_qdb */
-    return (len > 3 && tablename[0] == '_' &&
-            tablename[1] == '_' && tablename[2] == 'q');
+    return strncmp(name, "__q", 3) == 0;
 }
 
 int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
@@ -5982,7 +5978,7 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                                      tablename, 0);
         }
     } else {
-        if (is_tablename_queue(tablename, strlen(tablename))) {
+        if (is_tablename_queue(tablename)) {
             iq->usedb = getqueuebyname(tablename);
         } else {
             iq->usedb = get_dbtable_by_name(tablename);

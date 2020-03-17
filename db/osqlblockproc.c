@@ -471,7 +471,7 @@ static void setup_reorder_key(blocksql_tran_t *tran, int type,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
+        if (tablename && !is_tablename_queue(tablename)) {
             tran->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = tran->tbl_idx;
 
