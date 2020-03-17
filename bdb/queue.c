@@ -215,8 +215,6 @@ queue_found_seq_get(struct bdb_queue_found_seq *p_queue_found_seq,
                     sizeof(p_queue_found_seq->epoch), p_buf, p_buf_end);
     p_buf = buf_get(&(p_queue_found_seq->seq), sizeof(p_queue_found_seq->seq),
                     p_buf, p_buf_end);
-    p_buf = buf_get(&(p_queue_found_seq->unused),
-                    sizeof(p_queue_found_seq->unused), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -241,8 +239,6 @@ queue_found_seq_put(const struct bdb_queue_found_seq *p_queue_found_seq,
                     sizeof(p_queue_found_seq->epoch), p_buf, p_buf_end);
     p_buf = buf_put(&(p_queue_found_seq->seq), sizeof(p_queue_found_seq->seq),
                     p_buf, p_buf_end);
-    p_buf = buf_put(&(p_queue_found_seq->unused),
-                    sizeof(p_queue_found_seq->unused), p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -1729,17 +1725,17 @@ lookagain:
  * key (pass in a zero key to get the first unconsumed item).  the caller is
  * responsible for freeing *fnddta. */
 int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
-                  const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnd,
-                  size_t *fnddtalen, size_t *fnddtaoff,
-                  struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
-                  int *bdberr)
+                  const struct bdb_queue_cursor *prevcursor,
+                  struct bdb_queue_found **fnd, size_t *fnddtalen,
+                  size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                  long long *seq, unsigned int *epoch, int *bdberr)
 {
     int rc;
 
     BDB_READLOCK("bdb_queue_get");
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
         rc = bdb_queuedb_get(bdb_state, consumer, prevcursor, fnd, fnddtalen,
-                             fnddtaoff, fndcursor, epoch, bdberr);
+                             fnddtaoff, fndcursor, seq, epoch, bdberr);
     else
         rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, (void **)fnd, fnddtalen,
                                fnddtaoff, fndcursor, epoch, bdberr);

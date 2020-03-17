@@ -967,6 +967,7 @@ struct bdb_state_tag {
     signed char ondisk_header; /* boolean: give each record an ondisk header? */
     signed char compress;      /* boolean: compress data? */
     signed char compress_blobs; /*boolean: compress blobs? */
+    signed char persistent_seq; /* boolean: persistent seq for queue? */
 
     signed char got_gblcontext;
     signed char need_to_upgrade;

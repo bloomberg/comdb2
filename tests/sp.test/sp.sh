@@ -724,6 +724,7 @@ create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
 create procedure cons0 version 'sptest' {$(cat cons.lua)}\$\$
 create procedure cons1 version 'sptest' {$(cat cons.lua)}\$\$
 create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
+create procedure cons_with_sequence_epoch version 'sptest' {$(cat cons_with_sequence_epoch.lua)}\$\$
 create lua trigger audit on (table foraudit for insert and update and delete)
 create lua consumer cons0 on (table foraudit for insert and update and delete)
 create lua consumer cons1 on (table foraudit for insert and update and delete)

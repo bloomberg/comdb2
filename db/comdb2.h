@@ -457,7 +457,9 @@ enum DB_METADATA {
     META_INPLACE_UPDATES = -12,
     META_BTHASH = -13,
     META_QUEUE_ODH = -14,
-    META_QUEUE_COMPRESS = -15
+    META_QUEUE_COMPRESS = -15,
+    META_QUEUE_PERSISTENT_SEQ = -16,
+    META_QUEUE_SEQ = -17
 };
 
 enum CONSTRAINT_FLAGS {
@@ -1677,6 +1679,7 @@ extern int gbl_init_with_rowlocks;
 extern int gbl_init_with_genid48;
 extern int gbl_init_with_odh;
 extern int gbl_init_with_queue_odh;
+extern int gbl_init_with_queue_persistent_seq;
 extern int gbl_init_with_ipu;
 extern int gbl_init_with_instant_sc;
 extern int gbl_init_with_compr;
@@ -2362,6 +2365,13 @@ int get_db_queue_odh_tran(struct dbtable *, int *odh, tran_type *);
 int put_db_queue_compress(struct dbtable *db, tran_type *, int odh);
 int get_db_queue_compress(struct dbtable *db, int *odh);
 int get_db_queue_compress_tran(struct dbtable *, int *odh, tran_type *);
+int put_db_queue_persistent_seq(struct dbtable *db, tran_type *, int persist);
+int get_db_queue_persistent_seq(struct dbtable *db, int *persist);
+int get_db_queue_persistent_seq_tran(struct dbtable *, int *persist,
+                                     tran_type *);
+int put_db_queue_sequence(struct dbtable *db, tran_type *, long long seq);
+int get_db_queue_sequence(struct dbtable *db, long long *seq);
+int get_db_queue_sequence_tran(struct dbtable *, long long *seq, tran_type *);
 int put_db_compress(struct dbtable *db, tran_type *, int compress);
 int get_db_compress(struct dbtable *db, int *compress);
 int get_db_compress_tran(struct dbtable *, int *compress, tran_type *);
@@ -2495,7 +2505,7 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer,
 int dbq_consume_genid(struct ireq *, void *trans, int consumer, const genid_t);
 int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prev,
             struct bdb_queue_found **fnddta, size_t *fnddtalen,
-            size_t *fnddtaoff, struct bdb_queue_cursor *fnd,
+            size_t *fnddtaoff, struct bdb_queue_cursor *fnd, long long *seq,
             unsigned int *epoch);
 void dbq_get_item_info(const struct bdb_queue_found *fnd, size_t *dtaoff, size_t *dtalen);
 unsigned long long dbq_item_genid(const struct bdb_queue_found *dta);
@@ -3395,7 +3405,8 @@ extern int gbl_debug_sql_opcodes;
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh);
 
-void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr);
+void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr,
+                                int persist);
 
 extern int gbl_debug_temptables;
 

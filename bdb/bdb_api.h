@@ -891,7 +891,7 @@ int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
                   const struct bdb_queue_cursor *prevcursor,
                   struct bdb_queue_found **fnd, size_t *fnddtalen,
                   size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-                  unsigned int *epoch, int *bdberr);
+                  long long *seq, unsigned int *epoch, int *bdberr);
 
 /* Get the genid of a queue item that was retrieved by bdb_queue_get() */
 unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta);
@@ -1109,7 +1109,7 @@ void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,
                          int blob_compression);
 
 void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
-                               int compression);
+                               int compression, int persistseq);
 
 void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
                          int *blob_compr);

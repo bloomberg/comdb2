@@ -54,13 +54,8 @@ struct bdb_queue_found_seq {
     /* when this was enqueued */
     unsigned int epoch;
 
-    /* array of num_fragments record numbers giving the location of
-     * each fragment in order. */
-    unsigned int seq;
-
-    /* unused */
-    unsigned int unused;
-    /*db_recno_t recnos[1];*/
+    /* sequence number */
+    long long seq;
 };
 
 const uint8_t *queue_found_seq_get(struct bdb_queue_found_seq *p_queue_found,
