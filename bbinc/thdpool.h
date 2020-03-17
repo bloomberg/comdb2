@@ -85,7 +85,7 @@ void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn);
 void thdpool_set_dque_fn(struct thdpool *pool, thdpool_thddque_fn dque_fn);
 void thdpool_set_linger(struct thdpool *pool, unsigned lingersecs);
 void thdpool_set_minthds(struct thdpool *pool, unsigned minnthd);
-void thdpool_set_maxthds(struct thdpool *pool, unsigned minnthd);
+void thdpool_set_maxthds(struct thdpool *pool, unsigned maxnthd);
 void thdpool_set_maxqueue(struct thdpool *pool, unsigned maxqueue);
 void thdpool_set_longwaitms(struct thdpool *pool, unsigned longwaitms);
 void thdpool_set_maxqueueagems(struct thdpool *pool, unsigned maxqueueagems);

@@ -180,6 +180,7 @@ extern "C" {
 #undef TAILQ_NEXT
 #undef TAILQ_PREV
 #undef TAILQ_REMOVE
+#undef TAILQ_CUT
 #undef TRACEBUF
 #undef TRASHIT
 
@@ -574,6 +575,15 @@ struct {								\
 	TRASHIT((elm)->field.tqe_next);					\
 	TRASHIT((elm)->field.tqe_prev);					\
 	QMD_TRACE_ELEM(&(elm)->field);					\
+} while (0)
+
+#define TAILQ_CUT(head1, head2, elm, field) do {			\
+	(head1)->tqh_first = (head2)->tqh_first;			\
+	(head2)->tqh_first = TAILQ_NEXT((elm), field);			\
+	(head2)->tqh_first->field.tqe_prev = &(head2)->tqh_first;	\
+	(head1)->tqh_first->field.tqe_prev = &(head1)->tqh_first;	\
+	(head1)->tqh_last = &TAILQ_NEXT((elm), field);			\
+	*(head1)->tqh_last = NULL;					\
 } while (0)
 
 #if defined(__cplusplus)

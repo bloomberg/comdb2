@@ -1037,60 +1037,13 @@ struct bdb_state_tag {
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
 
-    int hellofd;
-
     int logical_live_sc;
     pthread_mutex_t sc_redo_lk;
     pthread_cond_t sc_redo_wait;
     LISTC_T(struct sc_redo_lsn) sc_redo_list;
 };
 
-/* define our net user types */
-enum {
-    USER_TYPE_BERKDB_REP = 1,
-    USER_TYPE_BERKDB_NEWSEQ = 2,
-    USER_TYPE_BERKDB_FILENUM = 3,
-    USER_TYPE_TEST = 4,
-    USER_TYPE_ADD = 5,
-    USER_TYPE_DEL = 6,
-    USER_TYPE_DECOM_DEPRECATED = 7,
-    USER_TYPE_ADD_DUMMY = 8,
-    USER_TYPE_REPTRC = 9,
-    USER_TYPE_RECONNECT = 10,
-    USER_TYPE_LSNCMP = 11,
-    USER_TYPE_RESYNC = 12,
-    USER_TYPE_DOWNGRADEANDLOSE = 13,
-    USER_TYPE_INPROCMSG = 14,
-    USER_TYPE_COMMITDELAYMORE = 15,
-    USER_TYPE_COMMITDELAYNONE = 16,
-    USER_TYPE_MASTERCMPCONTEXTLIST = 18,
-    USER_TYPE_GETCONTEXT = 19,
-    USER_TYPE_HEREISCONTEXT = 20,
-    USER_TYPE_TRANSFERMASTER = 21,
-    USER_TYPE_GBLCONTEXT = 22,
-    USER_TYPE_YOUARENOTCOHERENT = 23,
-    USER_TYPE_YOUARECOHERENT = 24,
-    USER_TYPE_UDP_ACK,
-    USER_TYPE_UDP_PING,
-    USER_TYPE_UDP_TIMESTAMP,
-    USER_TYPE_UDP_TIMESTAMP_ACK,
-    USER_TYPE_UDP_PREFAULT,
-    USER_TYPE_TCP_TIMESTAMP,
-    USER_TYPE_TCP_TIMESTAMP_ACK,
-    USER_TYPE_PING_TIMESTAMP,
-    USER_TYPE_PING_TIMESTAMP_ACK,
-    USER_TYPE_ANALYZED_TBL,
-    USER_TYPE_COHERENCY_LEASE,
-    USER_TYPE_PAGE_COMPACT,
-
-    /* by hostname messages */
-    USER_TYPE_DECOM_NAME_DEPRECATED,
-    USER_TYPE_ADD_NAME,
-    USER_TYPE_DEL_NAME,
-    USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_REQ_START_LSN,
-    USER_TYPE_TRUNCATE_LOG
-};
+#include <net_types.h>
 
 void print(bdb_state_type *bdb_state, char *format, ...);
 
@@ -1791,6 +1744,8 @@ typedef struct udppf_rq {
 
 void start_udp_reader(bdb_state_type *bdb_state);
 void *udpbackup_and_autoanalyze_thd(void *arg);
+void udp_backup(int, short, void *);
+void auto_analyze(int, short, void *);
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,

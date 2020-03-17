@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 set -e
-set -x
 
 failexit() {
     echo $1
@@ -251,7 +250,7 @@ setup_db() {
         echo "!$TESTCASE: starting single node"
         ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
         dbpid=$!
-
+        sleep 2
         set +e
 
         if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
@@ -269,9 +268,9 @@ setup_db() {
         # wait until we can query it
         echo "!$TESTCASE: waiting until ready"
         while [[ "$out" != "1" ]]; do
-            sleep 1
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
             $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
+            sleep 1
         done
     else
         echo "!$TESTCASE: copying to cluster"

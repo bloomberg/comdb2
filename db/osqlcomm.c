@@ -70,15 +70,13 @@ pthread_mutex_t osqlpf_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 extern __thread int send_prefault_udp;
 extern int gbl_prefault_udp;
-
 extern int g_osql_ready;
 extern int gbl_goslow;
-
 extern int gbl_partial_indexes;
 
 extern int db_is_stopped();
-int gbl_toblock_random_deadlock_trans;
 
+int gbl_toblock_random_deadlock_trans;
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
                                    int is_uuid);
@@ -183,51 +181,6 @@ static const uint8_t *osqlcomm_poke_uuid_type_get(osql_poke_uuid_t *p_poke_type,
     p_buf = buf_no_net_get(p_poke_type->uuid, sizeof(p_poke_type->uuid), p_buf,
                            p_buf_end);
     p_buf = buf_get(&(p_poke_type->tstamp), sizeof(p_poke_type->tstamp), p_buf,
-                    p_buf_end);
-
-    return p_buf;
-}
-
-typedef struct hbeat {
-    int dst;
-    int src;
-    int time;
-} hbeat_t;
-
-enum { OSQLCOMM_HBEAT_TYPE_LEN = 4 + 4 + 4 };
-
-BB_COMPILE_TIME_ASSERT(osqlcomm_hbeat_type_len,
-                       sizeof(hbeat_t) == OSQLCOMM_HBEAT_TYPE_LEN);
-
-static uint8_t *osqlcomm_hbeat_type_put(const hbeat_t *p_hbeat_type,
-                                        uint8_t *p_buf,
-                                        const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || OSQLCOMM_HBEAT_TYPE_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_put(&(p_hbeat_type->dst), sizeof(p_hbeat_type->dst), p_buf,
-                    p_buf_end);
-    p_buf = buf_put(&(p_hbeat_type->src), sizeof(p_hbeat_type->src), p_buf,
-                    p_buf_end);
-    p_buf = buf_put(&(p_hbeat_type->time), sizeof(p_hbeat_type->time), p_buf,
-                    p_buf_end);
-
-    return p_buf;
-}
-
-static const uint8_t *osqlcomm_hbeat_type_get(hbeat_t *p_hbeat_type,
-                                              const uint8_t *p_buf,
-                                              const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || OSQLCOMM_HBEAT_TYPE_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_get(&(p_hbeat_type->dst), sizeof(p_hbeat_type->dst), p_buf,
-                    p_buf_end);
-    p_buf = buf_get(&(p_hbeat_type->src), sizeof(p_hbeat_type->src), p_buf,
-                    p_buf_end);
-    p_buf = buf_get(&(p_hbeat_type->time), sizeof(p_hbeat_type->time), p_buf,
                     p_buf_end);
 
     return p_buf;
@@ -2930,7 +2883,6 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
  */
 int osql_comm_init(struct dbenv *dbenv)
 {
-
     osql_comm_t *tmp = NULL;
     int ii = 0;
     void *rcv = NULL;
@@ -4929,7 +4881,6 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_done_xerr_uuid_t rpl_xerr = {{0}};
         osql_done_uuid_rpl_t rpl_ok = {{0}};
-
         if (rc) {
             msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
             uint8_t *p_buf = buf;
@@ -4937,22 +4888,17 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
             rpl_xerr.hd.type = OSQL_XERR;
             comdb2uuidcpy(rpl_xerr.hd.uuid, uuid);
             rpl_xerr.dt = *xerr;
-
             osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
-
         } else {
             msglen = OSQLCOMM_DONE_UUID_RPL_LEN;
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
-
             rpl_ok.hd.type = OSQL_DONE;
             comdb2uuidcpy(rpl_ok.hd.uuid, uuid);
             rpl_ok.dt.rc = 0;
             rpl_ok.dt.nops = nops;
-
             osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
         }
-
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
@@ -4961,7 +4907,6 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
     } else {
         osql_done_xerr_t rpl_xerr = {{0}};
         osql_done_rpl_t rpl_ok = {{0}};
-
         if (rc) {
             msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
             uint8_t *p_buf = buf;
@@ -4969,21 +4914,17 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
             rpl_xerr.hd.type = OSQL_XERR;
             rpl_xerr.hd.sid = rqid;
             rpl_xerr.dt = *xerr;
-
             osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
         } else {
             msglen = OSQLCOMM_DONE_RPL_LEN;
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
-
             rpl_ok.hd.type = OSQL_DONE;
             rpl_ok.hd.sid = rqid;
             rpl_ok.dt.rc = 0;
             rpl_ok.dt.nops = nops;
-
             osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
         }
-
         type = NET_OSQL_SIGNAL;
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s rqid %llu with rc=%d xerr=%d\n",
@@ -4998,7 +4939,6 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
         irc = -1;
         logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__, host);
     }
-
     return irc;
 }
 
@@ -5344,9 +5284,8 @@ int osql_comm_check_bdb_lock(const char *func, int line)
     return rc;
 }
 
-/* this wrapper tries to provide a reliable net_send_tail that will prevent
-   loosing packets
-   due to queue being full */
+/* This wrapper tries to provide a reliable net_send_tail that will prevent
+ * loosing packets due to queue being full */
 static int offload_net_send(const char *host, int usertype, void *data,
                             int datalen, int nodelay, void *tail, int tailen)
 {
