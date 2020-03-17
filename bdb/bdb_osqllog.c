@@ -25,7 +25,7 @@
 #include <strings.h>
 
 #include <list.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 #include <bdb_osqllog.h>
 #include <bdb_osqltrn.h>
 #include <bdb_int.h>

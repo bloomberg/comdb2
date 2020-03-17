@@ -77,7 +77,7 @@ as long as there was a successful move in the past
 #include <netinet/in.h>
 
 #include <build/db.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 #include <ctrace.h>
 
 #include "net.h"
