@@ -181,7 +181,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
             qfnd_seq.epoch = tran->trigger_epoch = comdb2_time_epoch();
         }
 
-        qfnd_seq.seq = 0;
+        qfnd_fnd.seq = 0;
 
         if (rc == 0) {
             p_buf = dbt_data.data;
