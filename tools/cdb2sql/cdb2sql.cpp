@@ -1193,7 +1193,7 @@ int Result_buffer::print_result() {
 
 int process_bind(const char *sql)
 {
-    if (!strncasecmp(sql, "@bind", 5) == 0)
+    if (strncasecmp(sql, "@bind", 5) != 0)
         return process_escape(sql);
 
     const char *copy_sql = sql;

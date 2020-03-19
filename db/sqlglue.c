@@ -6114,7 +6114,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
 {
     int rc = SQLITE_OK;
     int cursorid;
-    int bdberr;
+    int bdberr = 0;
     /* Not sure about this. Can pCur->thd be different from thread-specific */
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     /* If we are using sqldb of other thread, then the other thread will close
