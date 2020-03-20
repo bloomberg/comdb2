@@ -681,10 +681,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         tran = NULL;
     }
 
-    if (sc->addonly || sc->alteronly) {
-        dbqueuedb_admin(thedb);
-    }
-
     /* log for replicants to do the same */
     if (!same_tran) {
         rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);
@@ -749,6 +745,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
         tran = NULL;
         ltran = NULL;
+    }
+
+    if (sc->addonly || sc->alteronly) {
+        dbqueuedb_admin(thedb);
     }
 
 done:
