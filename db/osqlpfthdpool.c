@@ -601,7 +601,7 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
 
     switch (rpl_op.type) {
     case OSQL_USEDB: {
-        osql_usedb_t dt;
+        osql_usedb_t dt = {0};
         p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
         const char *tablename;
         struct dbtable *db;
