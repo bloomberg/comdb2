@@ -73,7 +73,7 @@
 #include "logmsg.h"
 #include "analyze.h"
 
-extern int get_schema_change_in_progress(const char *func, int line);
+extern volatile int gbl_schema_change_in_progress;
 static double analyze_headroom = 6;
 
 void analyze_set_headroom(uint64_t headroom)
@@ -331,10 +331,8 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             }
         }
 
-        int inprogress;
-        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
-            get_analyze_abort_requested()) {
-            if (inprogress)
+        if (gbl_schema_change_in_progress || get_analyze_abort_requested()) {
+            if (gbl_schema_change_in_progress) 
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "schema_change_in_progress\n", __func__);
             if (get_analyze_abort_requested())

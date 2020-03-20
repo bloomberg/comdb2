@@ -129,10 +129,6 @@ __ufid_sanity_check(dbenv, fnp)
 	}
 }
 
-#if defined (STACK_AT_DBREG_LOG)
-void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
-#include <tohex.h>
-#endif
 
 /*
  * __dbreg_open_files --
@@ -146,7 +142,7 @@ __dbreg_open_files_int(dbenv, flags)
 	u_int32_t flags;
 {
 	DB_LOG *dblp;
-	DB_LSN rlsn;
+	DB_LSN r_unused;
 	DBT *dbtp, fid_dbt, t;
 	FNAME *fnp;
 	LOG *lp;
@@ -192,20 +188,12 @@ __dbreg_open_files_int(dbenv, flags)
 		 * closed on the forward pass.
 		 */
 		if ((ret = __dbreg_register_log(dbenv,
-			    NULL, &rlsn, oflags,
+			    NULL, &r_unused, oflags,
 			    F_ISSET(dblp,
 				DBLOG_RECOVER) ? DBREG_RCLOSE : DBREG_CHKPNT,
 			    dbtp, &fid_dbt, fnp->id, fnp->s_type,
 			    fnp->meta_pgno, TXN_INVALID)) != 0)
 			 break;
-
-#if defined (STACK_AT_DBREG_LOG)
-        char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
-        char *op = (F_ISSET(dblp, DBLOG_RECOVER)) ? "rclose" : "ckpt";
-        fileid_str(fnp->ufid, fid_str);
-        comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), op,
-                fnp->id, fid_str, rlsn.file, rlsn.offset);
-#endif
 	}
 
 	if (!LF_ISSET(DB_REG_HAVE_FQLOCK))

@@ -23,5 +23,4 @@ void hexdumpbuf(const char *key, int keylen, char **buf);
 void hexdump(loglvl lvl, const char *key, int keylen);
 void hexdumpdbt(DBT *dbt);
 void hexdumpfp(FILE *fp, const unsigned char *key, int keylen);
-void fileid_str(u_int8_t *fileid, char *str);
 #endif

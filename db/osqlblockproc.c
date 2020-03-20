@@ -53,7 +53,6 @@
 #include <epochlib.h>
 #include <plhash.h>
 #include <assert.h>
-#include <unistd.h>
 
 #include "comdb2.h"
 #include "osqlblockproc.h"
@@ -325,10 +324,8 @@ int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err)
     return 0;
 }
 
-int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
-                   int running, const char *host, time_t time, int fromnet,
-                   const char *func, int line);
-
+int sc_set_running(char *table, int running, uint64_t seed, const char *host,
+                   time_t time);
 void sc_set_downgrading(struct schema_change_type *s);
 
 /**
@@ -351,9 +348,8 @@ int osql_bplog_schemachange(struct ireq *iq)
     rc = apply_changes(iq, tran, NULL, &nops, &err, iq->sorese.osqllog,
                        osql_process_schemachange);
 
-    if (rc) {
+    if (rc)
         logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
-    }
 
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
@@ -367,8 +363,8 @@ int osql_bplog_schemachange(struct ireq *iq)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            sc->sc_next = iq->sc_pending;
-            iq->sc_pending = sc;
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            free_schema_change_type(sc);
             rc = ERR_NOMASTER;
         } else if (sc->sc_rc == SC_PAUSED) {
             Pthread_mutex_lock(&sc->mtx);
@@ -380,18 +376,16 @@ int osql_bplog_schemachange(struct ireq *iq)
             Pthread_mutex_unlock(&sc->mtx);
             rc = ERR_SC;
         } else if (sc->sc_rc != SC_DETACHED) {
-            sc->sc_next = iq->sc_pending;
-            iq->sc_pending = sc;
-            if (sc->sc_rc) {
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            if (sc->sc_rc)
                 rc = ERR_SC;
-            }
+            free_schema_change_type(sc);
         }
         sc = iq->sc;
     }
     if (rc)
         csc2_free_all();
-
-    if (rc) {
+    if (rc == ERR_NOMASTER) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
         struct schema_change_type *next;
@@ -399,24 +393,13 @@ int osql_bplog_schemachange(struct ireq *iq)
         while (sc != NULL) {
             next = sc->sc_next;
             if (sc->newdb && sc->newdb->handle) {
-                void live_sc_off(struct dbtable * db);
                 int bdberr = 0;
-                live_sc_off(sc->db);
-                while (sc->logical_livesc) {
-                    usleep(200);
-                }
-                if (sc->db->sc_live_logical) {
-                    bdb_clear_logical_live_sc(sc->db->handle, 1);
-                    sc->db->sc_live_logical = 0;
-                }
-                if (rc == ERR_NOMASTER)
-                    sc_set_downgrading(sc);
+                sc_set_downgrading(sc);
                 bdb_close_only(sc->newdb->handle, &bdberr);
                 freedb(sc->newdb);
                 sc->newdb = NULL;
             }
-            sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
-                           __LINE__);
+            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
             free_schema_change_type(sc);
             sc = next;
         }
@@ -1698,14 +1681,6 @@ void *osql_commit_timepart_resuming_sc(void *p)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     init_fake_ireq(thedb, &iq);
     iq.tranddl = 1;
-
-    /* iq sc_running count */
-    sc = sc_pending;
-    while (sc != NULL) {
-        if (sc->set_running)
-            iq.sc_running++;
-        sc = sc->sc_next;
-    }
     iq.sc = sc = sc_pending;
     sc_pending = NULL;
     while (sc != NULL) {
@@ -1719,8 +1694,7 @@ void *osql_commit_timepart_resuming_sc(void *p)
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
-            sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
-                           __LINE__);
+            sc_set_running(sc->tablename, 0, 0, NULL, 0);
             free_schema_change_type(sc);
             error = 1;
         }

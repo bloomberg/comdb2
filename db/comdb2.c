@@ -1300,10 +1300,7 @@ static void *purge_old_files_thread(void *arg)
                     retries++;
                     goto retry;
                 }
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed to commit purged file, "
-                       "rc=%d\n",
-                       __func__, rc);
+                logmsg(LOGMSG_ERROR, "%s: failed to commit purged file\n", __func__);
                 sleep(empty_pause);
                 continue;
             }
@@ -1465,7 +1462,7 @@ void clean_exit(void)
     no_new_requests(thedb);
 
     print_all_time_accounting();
-    wait_for_sc_to_stop("exit", __func__, __LINE__);
+    wait_for_sc_to_stop("exit");
 
     /* let the lower level start advertising high lsns to go non-coherent
        - dont hang the master waiting for sync replication to an exiting
@@ -3679,8 +3676,6 @@ static int init(int argc, char **argv)
     if (gbl_init_with_genid48 && gbl_create_mode)
         bdb_genid_set_format(thedb->bdb_env, LLMETA_GENID_48BIT);
 
-    wrlock_schema_lk();
-
     /* open the table */
     if (llmeta_open()) {
         return -1;
@@ -3740,6 +3735,7 @@ static int init(int argc, char **argv)
         /* we would like to open the files under schema lock, so that
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
+        wrlock_schema_lk();
 
         if (llmeta_load_tables(thedb, dbname, NULL)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
@@ -3753,23 +3749,21 @@ static int init(int argc, char **argv)
             unlock_schema_lk();
             return -1;
         }
+        unlock_schema_lk();
 
         if (llmeta_load_queues(thedb)) {
             logmsg(LOGMSG_FATAL, "could not load queues from the low level meta "
                             "table\n");
-            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_lua_sfuncs()) {
             logmsg(LOGMSG_FATAL, "could not load lua funcs from llmeta\n");
-            unlock_schema_lk();
             return -1;
         }
 
         if (llmeta_load_lua_afuncs()) {
             logmsg(LOGMSG_FATAL, "could not load lua aggs from llmeta\n");
-            unlock_schema_lk();
             return -1;
         }
 
@@ -3786,7 +3780,6 @@ static int init(int argc, char **argv)
 
             /* quit successfully */
             logmsg(LOGMSG_INFO, "-exiting.\n");
-            unlock_schema_lk();
             clean_exit();
         }
     }
@@ -3795,7 +3788,6 @@ static int init(int argc, char **argv)
     if (gbl_repoplrl_fname) {
         logmsg(LOGMSG_FATAL, "Repopulate .lrl mode failed. Possible causes: db not "
                         "using llmeta or .lrl file already had table defs\n");
-        unlock_schema_lk();
         return -1;
     }
 
@@ -3809,7 +3801,6 @@ static int init(int argc, char **argv)
         if (!have_all_schemas()) {
             logmsg(LOGMSG_ERROR,
                   "Server-side keyforming not supported - missing schemas\n");
-            unlock_schema_lk();
             return -1;
         }
 
@@ -3825,7 +3816,6 @@ static int init(int argc, char **argv)
             reqhist->wholereq = 1;
         if (rc) {
             logmsg(LOGMSG_FATAL, "History init failed\n");
-            unlock_schema_lk();
             return -1;
         }
     }
@@ -3836,6 +3826,8 @@ static int init(int argc, char **argv)
 
     /* open db engine */
     logmsg(LOGMSG_INFO, "starting backend db engine\n");
+
+    wrlock_schema_lk();
 
     if (backend_open(thedb) != 0) {
         logmsg(LOGMSG_FATAL, "failed to open '%s'\n", dbname);
@@ -4146,7 +4138,7 @@ int throttle_lim = 10000;
 int cpu_throttle_threshold = 100000;
 
 double gbl_cpupercent;
-#include <sc_util.h>
+
 
 void *statthd(void *p)
 {
@@ -4354,7 +4346,7 @@ void *statthd(void *p)
         if (count % 5 == 0)
             update_metrics();
 
-        if (!get_schema_change_in_progress(__func__, __LINE__)) {
+        if (!gbl_schema_change_in_progress) {
             thresh = reqlog_diffstat_thresh();
             if ((thresh > 0) && (count >= thresh)) { /* every thresh-seconds */
                 strbuf *logstr = strbuf_new();
@@ -5634,7 +5626,6 @@ int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
     int rc;
-    assert(*file >= 0 && *offset >= 0);
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d] as %s\n", __func__, *file,
            *offset, is_master ? "MASTER" : "REPLICANT");
     rc = truncate_asof_pglogs(thedb->bdb_env, *file, *offset);

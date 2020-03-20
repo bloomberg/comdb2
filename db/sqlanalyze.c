@@ -37,7 +37,6 @@
 #include <ctrace.h>
 #include <logmsg.h>
 #include "str0.h"
-#include "sc_util.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -1049,7 +1048,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     if (check_stat1(sb))
         return -1;
 
-    if (get_schema_change_in_progress(__func__, __LINE__)) {
+    if (gbl_schema_change_in_progress) {
         logmsg(LOGMSG_ERROR, 
                 "%s: Aborting Analyze because schema_change_in_progress\n",
                 __func__);

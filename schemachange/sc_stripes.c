@@ -83,10 +83,10 @@ int do_alter_stripes_int(struct schema_change_type *s)
         }
     }
 
-    if (close_all_dbs() != 0) {
-        unlock_schema_lk();
+    unlock_schema_lk();
+
+    if (close_all_dbs() != 0)
         exit(1);
-    }
 
     /* RENAME BLOB FILES */
     if (newblobstripe && !gbl_blobstripe) {
@@ -101,7 +101,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                        "'%s' bdberr %d\n",
                        db->tablename, bdberr);
                 bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
-                unlock_schema_lk();
                 return SC_BDB_ERROR;
             }
 
@@ -113,7 +112,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                        "morestripe: couldn't record genid for table '%s'\n",
                        db->tablename);
                 bdb_tran_abort(thedb->bdb_env, sc_logical_tran, &bdberr);
-                unlock_schema_lk();
                 resume_threads(thedb);
                 return SC_INTERNAL_ERROR;
             }
@@ -139,7 +137,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
                 LOGMSG_ERROR,
                 "morestripe: failed making extra stripes for table '%s': %d\n",
                 db->tablename, bdberr);
-            unlock_schema_lk();
             return SC_BDB_ERROR;
         }
     }
@@ -150,8 +147,6 @@ int do_alter_stripes_int(struct schema_change_type *s)
 
     if (open_all_dbs_tran(phys_tran) != 0)
         exit(1);
-
-    unlock_schema_lk();
 
     if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran,
                                    NULL, &bdberr)) != 0) {

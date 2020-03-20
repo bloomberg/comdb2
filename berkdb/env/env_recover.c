@@ -1655,10 +1655,6 @@ done:
 msgerr:	__db_err(dbenv,
 			"Recovery function for LSN %lu %lu failed on %s pass",
 			(u_long) lsn.file, (u_long) lsn.offset, pass);
-#if defined (ABORT_ON_RECOVERY_FAILURE)
-		__log_flush(dbenv, NULL);
-		abort();
-#endif
 	}
 
 err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
@@ -2015,12 +2011,9 @@ __env_openfiles(dbenv, logc, txninfo,
 			txninfo);
 		if (ret != 0 && ret != DB_TXN_CKP) {
 			__db_err(dbenv,
-				"Recovery function for LSN %lu %lu failed, ret=%d",
-				(u_long) lsn.file, (u_long) lsn.offset, ret);
-#if defined (ABORT_ON_RECOVERY_FAILURE)
-			__log_flush(dbenv, NULL);
-			abort();
-#endif
+				"Recovery function for LSN %lu %lu failed",
+				(u_long) lsn.file, (u_long) lsn.offset);
+
 			break;
 		}
 		if ((ret = __log_c_get(logc, &lsn, data, DB_NEXT)) != 0) {

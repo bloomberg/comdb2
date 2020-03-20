@@ -11,7 +11,6 @@
 #define	_TXN_H_
 
 #include "dbinc/xa.h"
-#include <pthread.h>
 
 /* Operation parameters to the delayed commit processing code. */
 typedef enum {
@@ -69,7 +68,6 @@ typedef struct __txn_detail {
 	u_int32_t bqual;		/* bqual_length from XID */
 	u_int32_t gtrid;		/* gtrid_length from XID */
 	int32_t format;			/* XA format */
-	pthread_t tid;
 } TXN_DETAIL;
 
 /*

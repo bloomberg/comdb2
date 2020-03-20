@@ -46,7 +46,6 @@
 #include <comdb2rle.h>
 #include <lz4.h>
 #include <logmsg.h>
-#include "sc_util.h"
 
 #if LZ4_VERSION_NUMBER < 10701
 #define LZ4_compress_default LZ4_compress_limitedOutput
@@ -403,18 +402,20 @@ static void *handle_comptest_thd(void *_arg)
     return NULL;
 }
 
+void set_schema_change_in_progress(const char *func, int line, int val);
 void handle_testcompr(SBUF2 *sb, const char *table)
 {
     CompArg arg;
     pthread_t t;
     void *rc;
 
-    if (get_schema_change_in_progress(__func__, __LINE__)) {
+    if (gbl_schema_change_in_progress) {
         sbuf2printf(sb, ">Schema change already running\n");
         sbuf2printf(sb, "FAILED\n");
         return;
     }
 
+    set_schema_change_in_progress(__func__, __LINE__, 1);
     gbl_sc_abort = 0;
 
     arg.sb = sb;
@@ -422,6 +423,7 @@ void handle_testcompr(SBUF2 *sb, const char *table)
     arg.rc = 0;
     pthread_create(&t, NULL, handle_comptest_thd, &arg);
     pthread_join(t, &rc);
+    set_schema_change_in_progress(__func__, __LINE__, 0);
 
     if (arg.rc == 0) {
         sbuf2printf(sb, "SUCCESS\n");
