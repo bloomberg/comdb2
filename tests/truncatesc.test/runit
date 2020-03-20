@@ -163,9 +163,6 @@ function get_current_lsn
     typeset func="get_current_lsn"
     typeset tries=$total_tries
     repeat_command "exec procedure sys.cmd.send(\"flush\")" "flush" "tabs" >/dev/null
-    sleep $sleeptime
-    repeat_command "exec procedure sys.cmd.send(\"flush\")" "flush" "tabs" >/dev/null
-    sleep $sleeptime
     repeat_command "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1" "get_current_lsn" "tabs"
 }
 
@@ -698,19 +695,7 @@ function assert_select_t1
     typeset curr_rn=$(select_t1)
     while [[ "$prev_rn" != "$curr_rn" ]] ; do 
         let tries=tries-1
-        if [[ "$tries" == 0 ]] ; then
-            echo "return_number changed:"
-            echo "$prev_rn"
-            echo "$curr_rn"
-            if [[ -n "$CLUSTER" ]]; then
-                for node in $CLUSTER ; do
-                    echo "Node $node:"
-                    $CDB2SQL_EXE $DBNAME --host $node "exec procedure select_t1()"
-                    echo " "
-                done
-            fi
-            failexit $func "return_number sp changed"
-        fi
+        [[ "$tries" == 0 ]] && failexit $func "return_number sp changed"
         sleep 1
         curr_rn=$(select_t1)
     done

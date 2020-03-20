@@ -56,9 +56,9 @@
 //#define VERBOSE
 
 #ifdef VERBOSE
-#define debug_log(...) syslog(LOG_DEBUG, __VA_ARGS__)
+#   define debug_log(...) syslog(LOG_DEBUG, __VA_ARGS__)
 #else
-#define debug_log(...)
+#   define debug_log(...)
 #endif
 
 struct connection;
@@ -193,41 +193,34 @@ struct connection {
     int is_unix;
     std::string svc;
     connection(int f)
-        : fd{f}, is_unix{1}, addr{0}, rdbuf{evbuffer_new()}, wrbuf{
-                                                                 evbuffer_new()}
+        : fd{f}, is_unix{1}, addr{0}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}
     {
         enable_read();
     }
     connection(int f, uint32_t a)
-        : fd{f}, is_unix{0}, addr{a}, rdbuf{evbuffer_new()}, wrbuf{
-                                                                 evbuffer_new()}
+        : fd{f}, is_unix{0}, addr{a}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}
     {
         enable_read();
     }
     ~connection()
     {
         debug_log("%s fd:%d\n", __func__, fd);
-        const auto &c = connection_map.find(svc);
+        const auto& c = connection_map.find(svc);
         if (c != connection_map.end() && c->second == this) {
-            debug_log("%s removing from active connections:%s fd:%d\n",
-                      __func__, svc.c_str(), fd);
+            debug_log("%s removing from active connections:%s fd:%d\n", __func__, svc.c_str(), fd);
             connection_map.erase(c);
         }
         event_del(&ev);
-        if (rdbuf)
-            evbuffer_free(rdbuf);
-        if (wrbuf)
-            evbuffer_free(wrbuf);
+        if (rdbuf) evbuffer_free(rdbuf);
+        if (wrbuf) evbuffer_free(wrbuf);
         rdbuf = wrbuf = nullptr;
         close(fd);
     }
     int is_remote()
     {
-        if (is_unix)
-            return 0;
+        if (is_unix) return 0;
         for (auto &l : local_addresses) {
-            if (l == addr)
-                return 0;
+            if (l == addr) return 0;
         }
         return 1;
     }
@@ -255,8 +248,7 @@ struct connection {
     int active()
     {
         ssize_t rc = read(fd, NULL, 0);
-        if (rc != 0)
-            return 0;
+        if (rc != 0) return 0;
         return write(fd, NULL, 0) == 0;
     }
     int readbuf()
@@ -283,7 +275,7 @@ struct connection {
     {
         va_list args;
         va_start(args, fmt);
-#ifdef VERBOSE
+#       ifdef VERBOSE
         evbuffer *logbuf = evbuffer_new();
         evbuffer_add_printf(logbuf, "%s fd:%d %s", __func__, fd, fmt);
         char *logfmt = (char *)evbuffer_pullup(logbuf, -1);
@@ -292,7 +284,7 @@ struct connection {
         vsyslog(LOG_DEBUG, logfmt, log_args);
         va_end(log_args);
         evbuffer_free(logbuf);
-#endif
+#       endif
         evbuffer_add_vprintf(wrbuf, fmt, args);
         va_end(args);
         evbuffer_write(wrbuf, fd);
@@ -515,22 +507,19 @@ static int run_cmd(char *cmd, connection *c)
             c->reply("%d:%d\n", range.first, range.second);
         }
     } else if (strcmp(cmd, "help") == 0) {
-        c->reply(
-            "active              : list active connections\n"
-            "del service         : forget port assignment for service\n"
-            "exit                : shutdown pmux (may be restarted by system)\n"
-            "get [/echo] service : discover port for service\n"
-            "help                : this help message\n"
-            "range               : print port range which this pmux can "
-            "assign\n"
-            "reg service         : obtain/discover port for new service\n"
-            "rte                 : get route to instance service/port\n"
-            "stat                : dump some stats\n"
-            "use service port    : set specific port registration for service\n"
-            "used (or list)      : dump active port assignments\n");
+        c->reply("active              : list active connections\n"
+                 "del service         : forget port assignment for service\n"
+                 "exit                : shutdown pmux (may be restarted by system)\n"
+                 "get [/echo] service : discover port for service\n"
+                 "help                : this help message\n"
+                 "range               : print port range which this pmux can assign\n"
+                 "reg service         : obtain/discover port for new service\n"
+                 "rte                 : get route to instance service/port\n"
+                 "stat                : dump some stats\n"
+                 "use service port    : set specific port registration for service\n"
+                 "used (or list)      : dump active port assignments\n");
     } else {
-        c->reply(
-            "-1 unknown command, type 'help' for a brief usage description\n");
+        c->reply("-1 unknown command, type 'help' for a brief usage description\n");
     }
     return 0;
 }
@@ -541,8 +530,7 @@ static void readcb(int fd, short what, void *arg)
     connection *c = (connection *)(arg);
     int rc = c->readbuf();
     if (rc <= 0) {
-        debug_log("read fd:%d rc:%d errno:%d-%s\n", fd, rc, errno,
-                  strerror(errno));
+        debug_log("read fd:%d rc:%d errno:%d-%s\n", fd, rc, errno, strerror(errno));
         delete c;
         return;
     }
@@ -550,8 +538,7 @@ static void readcb(int fd, short what, void *arg)
     while (c->readln(&res) == 0 && res != NULL) {
         int rc = run_cmd(res, c);
         free(res);
-        if (rc)
-            break;
+        if (rc) break;
     }
     debug_log("%s fd:%d done", __func__, fd);
 }
@@ -617,8 +604,8 @@ static int usage(FILE *out, int rc)
 static bool init_router_mode(std::string &unix_bind_path)
 {
     if (unlink(unix_bind_path.c_str()) == -1 && errno != ENOENT) {
-        syslog(LOG_CRIT, "error unlinking path:%s rc:%d [%s]\n",
-               unix_bind_path.c_str(), errno, strerror(errno));
+        syslog(LOG_CRIT, "error unlinking path:%s rc:%d [%s]\n", unix_bind_path.c_str(),
+               errno, strerror(errno));
         return false;
     }
     return true;
@@ -636,22 +623,22 @@ static int init_local_names()
         hints.ai_family = AF_INET;
         hints.ai_socktype = SOCK_STREAM;
         if (getaddrinfo(n.c_str(), NULL, &hints, &res) == 0) {
-            for (r = res; r != NULL; r = r->ai_next) {
-                in_addr &addr = ((sockaddr_in *)r->ai_addr)->sin_addr;
-                in_addr_t in = addr.s_addr;
-                if (local_addresses.size()) {
-                    /* cheap dedup prev addr */
-                    if (in == local_addresses[local_addresses.size() - 1]) {
-                        continue;
-                    }
-                }
-                local_addresses.emplace_back(in);
-                debug_log("local addr: %s\n", inet_ntoa(addr));
-            }
-            freeaddrinfo(res);
+           for (r = res; r != NULL; r = r->ai_next) {
+               in_addr &addr = ((sockaddr_in *)r->ai_addr)->sin_addr;
+               in_addr_t in = addr.s_addr;
+               if (local_addresses.size()) {
+                   /* cheap dedup prev addr */
+                   if (in == local_addresses[local_addresses.size() - 1]) {
+                       continue;
+                   }
+               }
+               local_addresses.emplace_back(in);
+               debug_log("local addr: %s\n", inet_ntoa(addr));
+           }
+           freeaddrinfo(res);
         }
     }
-    return local_addresses.size() > 0;
+   return local_addresses.size() > 0;
 }
 
 static bool init(const std::vector<std::pair<int, int>> &pranges)
@@ -663,7 +650,7 @@ static bool init(const std::vector<std::pair<int, int>> &pranges)
     }
     for (auto &range : pranges) {
         debug_log("%s free port range %d - %d\n", __func__, range.first,
-                  range.second);
+                    range.second);
         for (int s = range.first; s <= range.second; ++s) {
             free_ports.insert(s);
         }
@@ -803,8 +790,8 @@ int main(int argc, char **argv)
 
     sighold(SIGPIPE);
     base = event_base_new();
-    debug_log("Using Libevent %s with backend method %s\n", event_get_version(),
-              event_base_get_method(base));
+    debug_log("Using Libevent %s with backend method %s\n",
+                event_get_version(), event_base_get_method(base));
     std::vector<evconnlistener *> listeners;
     evconnlistener *listener;
     for (auto port : listen_ports) {
@@ -819,7 +806,7 @@ int main(int argc, char **argv)
             evconnlistener_set_error_cb(listener, accept_errorcb);
             listeners.push_back(listener);
             debug_log("accept on port:%d fd:%d\n", port,
-                      evconnlistener_get_fd(listener));
+                   evconnlistener_get_fd(listener));
             pmux_store->sav_port("pmux", port);
         } else {
             syslog(LOG_CRIT, "failed to listen on port:%d\n", port);
@@ -831,25 +818,24 @@ int main(int argc, char **argv)
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, unix_bind_path.c_str());
     socklen_t len = sizeof(addr);
-    listener =
-        evconnlistener_new_bind(base, unix_cb, NULL, LEV_OPT_CLOSE_ON_FREE,
-                                SOMAXCONN, (sockaddr *)&addr, len);
+    listener = evconnlistener_new_bind(
+            base, unix_cb, NULL, LEV_OPT_CLOSE_ON_FREE, SOMAXCONN,
+            (sockaddr *)&addr, len);
     if (listener) {
         evconnlistener_set_error_cb(listener, accept_errorcb);
         listeners.push_back(listener);
         debug_log("accept on path:%s fd:%d\n", unix_bind_path.c_str(),
-                  evconnlistener_get_fd(listener));
+                evconnlistener_get_fd(listener));
     } else {
-        syslog(LOG_CRIT, "failed to listen on unix path:%s\n",
-               unix_bind_path.c_str());
+        syslog(LOG_CRIT, "failed to listen on unix path:%s\n", unix_bind_path.c_str());
         return EXIT_FAILURE;
     }
     syslog(LOG_INFO, "READY\n");
     event_base_dispatch(base);
-    for (const auto &l : listeners) {
+    for (const auto& l : listeners) {
         evconnlistener_free(l);
     }
-    for (const auto &c : connection_map) {
+    for (const auto& c : connection_map) {
         connection *conn = c.second;
         delete conn;
     }

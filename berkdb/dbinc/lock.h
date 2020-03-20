@@ -312,6 +312,10 @@ typedef struct __db_locktab {
 
 #define	OBJ_LINKS_VALID(O, L) ((O)->L.tqe_prev != (void *)-1)
 
+#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#define MAX_FRAMES 64
+#endif
+
 struct __db_lockobj_lsn {
 	__DB_DBT_INTERNAL
 
@@ -348,9 +352,9 @@ struct __db_lock {
 	SH_LIST_HEAD(_lsns, __db_lock_lsn) lsns;	/* logical lsns that hold this lock. */
 	u_int32_t nlsns;
 
-#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
-	int			frames;
-	void		*buf[MAX_BERK_STACK_FRAMES];
+#ifdef STACK_AT_LOCK_GEN_INCREMENT
+	int             frames;
+	void		*buf[MAX_FRAMES];
 	int 		stack_gen;
 	DB_LOCK		*lock;
 	pthread_t	tid;

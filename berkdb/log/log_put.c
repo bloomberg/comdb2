@@ -84,7 +84,6 @@ pthread_mutex_t gbl_logput_lk = PTHREAD_MUTEX_INITIALIZER;
 
 /* TODO: Delete once finished with testing on local reps */
 extern int gbl_is_physical_replicant;
-int gbl_abort_on_illegal_log_put = 0;
 
 /*
  * __log_put_pp --
@@ -119,8 +118,6 @@ __log_put_pp(dbenv, lsnp, udbt, flags)
 	if (IS_REP_CLIENT(dbenv)) {
 		__db_err(dbenv,
 		    "DB_ENV->log_put is illegal on replication clients");
-		if (gbl_abort_on_illegal_log_put)
-			abort();
 		return (EINVAL);
 	}
 

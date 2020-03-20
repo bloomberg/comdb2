@@ -1637,11 +1637,10 @@ static void print_blob(const char *data, int len, char *s, int n)
     }
 }
 
-static void print_ym(const intv_t *tv, char *s, int n)
+static void print_ym(const intv_t *tv,  char *s, int n)
 {
     const intv_ym_t *ym = &tv->u.ym;
-    snprintf(s, n, "%s%u-%2.2u", tv->sign == -1 ? "-" : "", ym->years,
-             ym->months);
+    snprintf(s, n, "%s%u-%2.2u", tv->sign == -1 ? "-" : "", ym->years, ym->months);
 }
 
 static void print_ds(const intv_t *tv, char *s, int n)
@@ -1651,12 +1650,12 @@ static void print_ds(const intv_t *tv, char *s, int n)
              ds->days, ds->hours, ds->mins, ds->sec, ds->prec, ds->frac);
 }
 
+
 static void log_params(struct reqlogger *logger)
 {
     struct sqlclntstate *clnt = logger->clnt;
     int n = param_count(clnt);
-    if (n <= 0)
-        return;
+    if (n <= 0) return;
     reqlog_logf(logger, REQL_INFO, "params=%d\n", n);
     struct param_data p = {0};
     for (int i = 0; i < n; ++i) {
@@ -1669,41 +1668,40 @@ static void log_params(struct reqlogger *logger)
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             snprintf(value, sizeof(value), "null");
         } else
-            switch (p.type) {
-            case CLIENT_UINT:
-            case CLIENT_INT:
-                snprintf(value, sizeof(value), "%" PRId64, p.u.i);
-                break;
-            case CLIENT_REAL:
-                snprintf(value, sizeof(value), "%f", p.u.r);
-                break;
-            case CLIENT_CSTR:
-            case CLIENT_PSTR:
-            case CLIENT_PSTR2:
-            case CLIENT_VUTF8:
-                print_str(p.u.p, p.len, value, sizeof(value));
-                break;
-            case CLIENT_BYTEARRAY:
-            case CLIENT_BLOB:
-            case CLIENT_BLOB2:
-                print_blob(p.u.p, p.len, value, sizeof(value));
-                break;
-            case CLIENT_DATETIME:
-            case CLIENT_DATETIMEUS: {
-                dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
-                break;
-            }
-            case CLIENT_INTVYM:
-                print_ym(&p.u.tv, value, sizeof(value));
-                break;
-            case CLIENT_INTVDS:
-            case CLIENT_INTVDSUS:
-                print_ds(&p.u.tv, value, sizeof(value));
-                break;
-            default:
-                value[0] = 0;
-                break;
-            }
+        switch (p.type) {
+        case CLIENT_UINT:
+        case CLIENT_INT:
+            snprintf(value, sizeof(value), "%"PRId64, p.u.i);
+            break;
+        case CLIENT_REAL:
+            snprintf(value, sizeof(value), "%f", p.u.r);
+            break;
+        case CLIENT_CSTR:
+        case CLIENT_PSTR:
+        case CLIENT_PSTR2:
+        case CLIENT_VUTF8:
+            print_str(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_BYTEARRAY:
+        case CLIENT_BLOB:
+        case CLIENT_BLOB2:
+            print_blob(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_DATETIME:
+        case CLIENT_DATETIMEUS: {
+            dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
+            break; }
+        case CLIENT_INTVYM:
+            print_ym(&p.u.tv, value, sizeof(value));
+            break;
+        case CLIENT_INTVDS:
+        case CLIENT_INTVDSUS:
+            print_ds(&p.u.tv, value, sizeof(value));
+            break;
+        default:
+            value[0] = 0;
+            break;
+        }
         if (p.pos)
             reqlog_logf(logger, REQL_INFO,
                         "param%-3d type=%-12s len=%-3zu indx=%-16d value=%s", i,

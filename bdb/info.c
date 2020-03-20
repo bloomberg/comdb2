@@ -1214,9 +1214,8 @@ void bdb_dump_freepage_info_all(bdb_state_type *bdb_state)
     logmsg(LOGMSG_USER, "total free pages: %lu\n", npages);
 }
 
-static const char *find_host_in_list(bdb_state_type *bdb_state,
-                                     const char *host, const char **hostlist,
-                                     int nhosts)
+static const char *find_host_in_list(bdb_state_type *bdb_state, const char *host,
+                                     const char **hostlist, int nhosts) 
 {
     size_t hlen = strlen(host);
     const char *fnd = NULL;

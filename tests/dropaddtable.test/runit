@@ -6,7 +6,6 @@ dbnm=$1
 
 iter=100
 i=1
-drop=1
 
 #coprocess what was in ksh achieved by |&
 coproc stdbuf -oL cdb2sql -s ${CDB2_OPTIONS} $dbnm default - 
@@ -35,7 +34,7 @@ while [[ $i -lt $iter ]]; do
         exit 1
     fi
 
-    [[ $drop == 1 ]] && cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t${i}"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table t${i}"
     let i=i+1
 
 done

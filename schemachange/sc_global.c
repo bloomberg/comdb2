@@ -24,7 +24,6 @@
 #include "bbinc/cheapstack.h"
 #include "crc32c.h"
 #include "comdb2_atomic.h"
-#include <assert.h>
 
 #include <plhash.h>
 
@@ -32,12 +31,12 @@ pthread_mutex_t schema_change_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t fastinit_in_progress_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t schema_change_sbuf2_lock = PTHREAD_MUTEX_INITIALIZER;
 pthread_mutex_t csc2_subsystem_mtx = PTHREAD_MUTEX_INITIALIZER;
-static int gbl_schema_change_in_progress = 0;
+volatile int gbl_schema_change_in_progress = 0;
 volatile int gbl_lua_version = 0;
 int gbl_default_livesc = 1;
 int gbl_default_plannedsc = 1;
 int gbl_default_sc_scanmode = SCAN_PARALLEL;
-static hash_t *sc_tables = NULL;
+hash_t *sc_tables = NULL;
 
 pthread_mutex_t ongoing_alter_mtx = PTHREAD_MUTEX_INITIALIZER;
 hash_t *ongoing_alters = NULL;
@@ -78,7 +77,7 @@ int rep_sync_save;
 int log_sync_save;
 int log_sync_time_save;
 
-static int stopsc = 0; /* stop schemachange, so it can resume */
+int stopsc = 0; /* stop schemachange, so it can resume */
 
 inline int is_dta_being_rebuilt(struct scplan *plan)
 {
@@ -90,81 +89,23 @@ inline int is_dta_being_rebuilt(struct scplan *plan)
 }
 
 int gbl_verbose_set_sc_in_progress = 0;
-static pthread_mutex_t gbl_sc_progress_lk = PTHREAD_MUTEX_INITIALIZER;
-
-int get_stopsc(const char *func, int line)
-{
-    int ret;
-    Pthread_mutex_lock(&gbl_sc_progress_lk);
-    ret = stopsc;
-    Pthread_mutex_unlock(&gbl_sc_progress_lk);
-    if (gbl_verbose_set_sc_in_progress) {
-        logmsg(LOGMSG_USER, "%s line %d %s returning %d\n", func, line,
-               __func__, ret);
-    }
-    return ret;
-}
-
-void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
-static int increment_schema_change_in_progress(const char *func, int line)
-{
-    int val = 0, didit = 0;
-    Pthread_mutex_lock(&gbl_sc_progress_lk);
-    if (stopsc) {
-        logmsg(LOGMSG_ERROR, "%s line %d ignoring in-progress\n", func, line);
-    } else {
-        val = (++gbl_schema_change_in_progress);
-        didit = 1;
-    }
-    Pthread_mutex_unlock(&gbl_sc_progress_lk);
-    if (gbl_verbose_set_sc_in_progress) {
-        if (didit) {
-            comdb2_cheapstack_sym(stderr, "Incrementing sc");
-            logmsg(LOGMSG_USER, "%s line %d %s incremented to %d\n", func, line,
-                   __func__, val);
-        } else {
-            logmsg(LOGMSG_USER, "%s line %d %s stopsc ignored increment (%d)\n",
-                   func, line, __func__, val);
-        }
-    }
-    return (didit == 0);
-}
-
-static int decrement_schema_change_in_progress(const char *func, int line)
-{
-    int val;
-    Pthread_mutex_lock(&gbl_sc_progress_lk);
-    val = (--gbl_schema_change_in_progress);
-    if (gbl_schema_change_in_progress < 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d gbl_sc_ip is %d\n", func, line,
-               gbl_schema_change_in_progress);
-        abort();
-    }
-    Pthread_mutex_unlock(&gbl_sc_progress_lk);
-    if (gbl_verbose_set_sc_in_progress) {
-        comdb2_cheapstack_sym(stderr, "Decremented sc");
-        logmsg(LOGMSG_USER, "%s line %d %s decremented to %d\n", func, line,
-               __func__, val);
-    }
-    return 0;
-}
 
 int get_schema_change_in_progress(const char *func, int line)
 {
-    int val, stopped = 0;
-    Pthread_mutex_lock(&gbl_sc_progress_lk);
-    stopped = stopsc;
-    val = gbl_schema_change_in_progress;
-    if (gbl_schema_change_in_progress < 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d negative sc_in_progress\n", func, line);
-        abort();
-    }
-    Pthread_mutex_unlock(&gbl_sc_progress_lk);
     if (gbl_verbose_set_sc_in_progress) {
-        logmsg(LOGMSG_USER, "%s line %d %s returning %d stopsc is %d\n", func,
-               line, __func__, val, stopped);
+        logmsg(LOGMSG_USER, "%s line %d get schema_change_in_progress rtn %d\n",
+               func, line, gbl_schema_change_in_progress);
     }
-    return val;
+    return gbl_schema_change_in_progress;
+}
+
+void set_schema_change_in_progress(const char *func, int line, int val)
+{
+    if (gbl_verbose_set_sc_in_progress) {
+        logmsg(LOGMSG_USER, "%s line %d set schema_change_in_progress to %d\n",
+               func, line, val);
+    }
+    gbl_schema_change_in_progress = val;
 }
 
 const char *get_sc_to_name(const char *name)
@@ -179,44 +120,36 @@ const char *get_sc_to_name(const char *name)
         preflen = strlen(pref);
     }
 
-    if (get_schema_change_in_progress(__func__, __LINE__)) {
+    if (gbl_schema_change_in_progress) {
         if (strncasecmp(name, pref, preflen) == 0) return name + preflen;
     }
     return NULL;
 }
 
-void wait_for_sc_to_stop(const char *operation, const char *func, int line)
+void wait_for_sc_to_stop(const char *operation)
 {
-    Pthread_mutex_lock(&gbl_sc_progress_lk);
-    if (stopsc) {
-        logmsg(LOGMSG_INFO, "%s:%d stopsc already set for %s\n", func, line,
-               operation);
-    } else {
-        logmsg(LOGMSG_INFO, "%s:%d set stopsc for %s\n", func, line, operation);
-        stopsc = 1;
-    }
-    Pthread_mutex_unlock(&gbl_sc_progress_lk);
+    stopsc = 1;
     logmsg(LOGMSG_INFO, "%s: set stopsc for %s\n", __func__, operation);
-    int waited = 0;
-    while (get_schema_change_in_progress(func, line)) {
-        if (waited == 0) {
-            logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
+    if (gbl_schema_change_in_progress) {
+        logmsg(LOGMSG_INFO, "giving schemachange time to stop\n");
+        int waited = 0;
+        while (gbl_schema_change_in_progress) {
+            sleep(1);
+            waited++;
+            if (waited > 10)
+                logmsg(LOGMSG_ERROR,
+                       "%s: waiting schema changes to stop for: %ds\n",
+                       operation, waited);
+            if (waited > 60) {
+                logmsg(LOGMSG_FATAL,
+                       "schema changes take too long to stop, waited %ds\n",
+                       waited);
+                abort();
+            }
         }
-        sleep(1);
-        waited++;
-        if (waited > 10)
-            logmsg(LOGMSG_ERROR,
-                   "%s: waiting schema changes to stop for: %ds\n", operation,
-                   waited);
-        if (waited > 60) {
-            logmsg(LOGMSG_FATAL,
-                   "schema changes take too long to stop, waited %ds\n",
-                   waited);
-            abort();
-        }
+        logmsg(LOGMSG_INFO, "proceeding with %s (waited for: %ds)\n", operation,
+               waited);
     }
-    logmsg(LOGMSG_INFO, "proceeding with %s (waited for: %ds)\n", operation,
-           waited);
     extern int gbl_test_sc_resume_race;
     if (gbl_test_sc_resume_race) {
         logmsg(LOGMSG_INFO, "%s: sleeping 5s to test\n", __func__);
@@ -239,13 +172,6 @@ typedef struct {
     char mem[1];
 } sc_table_t;
 
-static int freesc(void *obj, void *arg)
-{
-    sc_table_t *sctbl = (sc_table_t *)obj;
-    free(sctbl);
-    return 0;
-}
-
 /* Atomically set the schema change running status, and mark it in glm for
  * the schema change in progress dbdwn alarm.
  *
@@ -259,21 +185,14 @@ static int freesc(void *obj, void *arg)
  * If we are using the low level meta table then this isn't called on the
  * replicants at all when doing a schema change, its still called for queue or
  * dtastripe changes. */
-int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
-                   int running, const char *host, time_t time, int replicant,
-                   const char *func, int line)
+int sc_set_running(char *table, int running, uint64_t seed, const char *host,
+                   time_t time)
 {
     sc_table_t *sctbl = NULL;
 #ifdef DEBUG_SC
-    printf("%s: table %s : %d from %s:%d\n", __func__, table, running, func,
-           line);
+    printf("%s: %d\n", __func__, running);
     comdb2_linux_cheap_stack_trace();
 #endif
-    int rc = 0;
-
-    assert(running >= 0);
-    assert(table);
-
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
         sc_tables =
@@ -282,83 +201,76 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
     }
     assert(sc_tables);
 
-    if (running && (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
-        logmsg(LOGMSG_ERROR, "%s sc already running against table %s\n",
-               __func__, table);
-        rc = -1;
-        goto done;
+    if (thedb->master == gbl_mynode) {
+        if (running && table &&
+            (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
+            sctbl->seed != seed) {
+            if (running > 1) /* preempted mode */
+                sctbl->seed = seed;
+            else {
+                Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+                logmsg(LOGMSG_INFO,
+                       "schema change for table %s already in progress\n",
+                       table);
+                return -1;
+            }
+        } else if (!running && table &&
+                   (sctbl = hash_find_readonly(sc_tables, &table)) != NULL &&
+                   seed && sctbl->seed != seed) {
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            logmsg(LOGMSG_ERROR,
+                   "cannot stop schema change for table %s: wrong seed given\n",
+                   table);
+            return -1;
+        }
     }
     if (running) {
-        /* We are master and already found it. */
-        assert(!sctbl);
-
-        /* These two (increment and add to hash) should stay in lockstep */
-        if (increment_schema_change_in_progress(func, line)) {
-            logmsg(LOGMSG_INFO, "%s:%d aborting sc because stopsc is set\n",
-                   __func__, __LINE__);
-            rc = -1;
-            goto done;
+        /* this is an osql replay of a resuming schema change */
+        if (sctbl) {
+            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+            return 0;
         }
-        sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
-        assert(sctbl);
-        strcpy(sctbl->mem, table);
-        sctbl->tablename = sctbl->mem;
+        if (table) {
+            sctbl = calloc(1, offsetof(sc_table_t, mem) + strlen(table) + 1);
+            assert(sctbl);
+            strcpy(sctbl->mem, table);
+            sctbl->tablename = sctbl->mem;
 
-        sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
-        sctbl->time = time;
-        hash_add(sc_tables, sctbl);
-        if (iq)
-            iq->sc_running++;
-        if (s) {
-            assert(s->set_running == 0);
-            s->set_running = 1;
+            sctbl->seed = seed;
+            sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
+            sctbl->time = time;
+            hash_add(sc_tables, sctbl);
         }
+        set_schema_change_in_progress(__func__, __LINE__,
+                                      gbl_schema_change_in_progress + 1);
     } else { /* not running */
-        if ((sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
+        if (table && (sctbl = hash_find_readonly(sc_tables, &table)) != NULL) {
             hash_del(sc_tables, sctbl);
             free(sctbl);
-            decrement_schema_change_in_progress(func, line);
-            if (iq) {
-                iq->sc_running--;
-                assert(iq->sc_running >= 0);
-            }
-            if (s) {
-                assert(s->set_running == 1);
-                s->set_running = 0;
-            }
-        } else {
-            logmsg(LOGMSG_FATAL, "%s:%d unfound table %s\n", func, line, table);
-            abort();
+            if (gbl_schema_change_in_progress > 0)
+                set_schema_change_in_progress(
+                    __func__, __LINE__, gbl_schema_change_in_progress - 1);
+        } else if (!table && gbl_schema_change_in_progress) {
+            if (gbl_schema_change_in_progress > 0)
+                set_schema_change_in_progress(
+                    __func__, __LINE__, gbl_schema_change_in_progress - 1);
+        }
+
+        if (gbl_schema_change_in_progress <= 0 || (!table && !seed)) {
+            gbl_sc_resume_start = 0;
+            set_schema_change_in_progress(__func__, __LINE__, 0);
+            sc_async_threads = 0;
+            hash_clear(sc_tables);
+            hash_free(sc_tables);
+            sc_tables = NULL;
         }
     }
-    rc = 0;
-
-done:
-    ctrace("sc_set_running(table=%s running=%d): "
-           "gbl_schema_change_in_progress %d from %s:%d rc=%d\n",
-           table, running, get_schema_change_in_progress(__func__, __LINE__),
-           func, line, rc);
-
-    /* I think there's a place that decrements this without waiting for
-     * the async sc thread to complete (which is wrong) */
-    logmsg(LOGMSG_INFO,
-           "sc_set_running(table=%s running=%d): from "
-           "%s:%d rc=%d\n",
-           table, running, func, line, rc);
-
+    ctrace("sc_set_running(table=%s running=%d seed=0x%llx): "
+           "gbl_schema_change_in_progress %d\n",
+           table ? table : "", running, (unsigned long long)seed,
+           gbl_schema_change_in_progress);
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-    return rc;
-}
-
-void sc_assert_clear(const char *func, int line)
-{
-    Pthread_mutex_lock(&schema_change_in_progress_mutex);
-    if (gbl_schema_change_in_progress != 0) {
-        logmsg(LOGMSG_FATAL, "%s:%d downgrading with outstanding sc\n", func,
-               line);
-        abort();
-    }
-    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return 0;
 }
 
 void sc_status(struct dbenv *dbenv)

@@ -226,18 +226,11 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         return SC_TABLE_ALREADY_EXIST;
     }
 
-    int local_lock = 0;
-    if (!iq->sc_locked) {
-        wrlock_schema_lk();
-        local_lock = 1;
-    }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
-        if (local_lock)
-            unlock_schema_lk();
         return rc;
     }
 
@@ -246,8 +239,6 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
     db->schema_version = 1;
-    if (local_lock)
-        unlock_schema_lk();
 
     /* compression algorithms set to 0 for new table - this
        will have to be changed manually by the operator */

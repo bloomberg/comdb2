@@ -806,20 +806,8 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 }
             }
             broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
-            if (iq->sc->db) {
-                int rc;
-                tran_type *lock_trans = NULL;
-                if ((rc = trans_start(iq, NULL, &lock_trans)) == 0) {
-                    bdb_lock_tablename_read(thedb->bdb_env, iq->sc->tablename,
-                                            lock_trans);
-                    sc_del_unused_files(iq->sc->db);
-                    trans_abort(iq, lock_trans);
-                } else {
-                    logmsg(LOGMSG_ERROR,
-                           "%s failed to start lock_trans, rc=%d\n", __func__,
-                           rc);
-                }
-            }
+            if (iq->sc->db)
+                sc_del_unused_files(iq->sc->db);
             if (iq->sc->fastinit && !iq->sc->drop_table)
                 autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);
