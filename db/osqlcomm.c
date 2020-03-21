@@ -6082,7 +6082,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                           request */
     }
     case OSQL_USEDB: {
-        osql_usedb_t dt;
+        osql_usedb_t dt = {0};
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
         const char *tablename;
 
@@ -6111,7 +6111,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (gbl_enable_osql_logging) {
-            uuidstr_t us;
+            uuidstr_t us = {0};
             logmsg(LOGMSG_DEBUG, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
                    comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
         }

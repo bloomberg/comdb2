@@ -198,6 +198,7 @@ typedef struct __db_lockobj {
 	u_int32_t partition;
 	u_int32_t index;
 	u_int32_t generation;
+    u_int8_t priority;
 } DB_LOCKOBJ;
 
 typedef struct __db_ilock_latch

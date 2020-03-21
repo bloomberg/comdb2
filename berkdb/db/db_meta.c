@@ -907,6 +907,9 @@ __db_lget(dbc, action, pgno, mode, lkflags, lockp)
 	if (DB_NONBLOCK(dbc))
 		lkflags |= DB_LOCK_NOWAIT;
 
+	if (dbp->isindex)
+		lkflags |= DB_LOCK_PRIORITY;
+
 	if (F_ISSET(dbc, DBC_DIRTY_READ) && mode == DB_LOCK_READ)
 		mode = DB_LOCK_DIRTY;
 
