@@ -4438,8 +4438,9 @@ deadlock_again:
             }
 
             /* Give indicies a 50% priority boost in the bufferpool. */
+            idx_flags = DB_INDEX_CREATE;
             if (bdb_state->attr->index_priority_boost)
-                idx_flags = DB_INDEX_CREATE;
+                idx_flags |= DB_INDEX_PRIORITY;
 
             rc =
                 db_create(&(bdb_state->dbp_ix[i]), bdb_state->dbenv, idx_flags);

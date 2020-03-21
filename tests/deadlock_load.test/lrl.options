@@ -13,6 +13,8 @@ ack_trace
 
 reorder_socksql_no_deadlock on
 reorder_idx_writes on
+log_index_locks_first on
 
 #reorder_socksql_no_deadlock off
 #reorder_idx_writes off
+#log_index_locks_first off

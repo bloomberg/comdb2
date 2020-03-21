@@ -1420,8 +1420,9 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 
 			upgrade = 0;
 			writes = 1;
-			if (list[i].op == DB_LOCK_PUT_READ)
+			if (list[i].op == DB_LOCK_PUT_READ) {
 				writes = 0;
+			} 
 			else if (list[i].op == DB_LOCK_UPGRADE_WRITE) {
 				assert(!F_ISSET(sh_locker, DB_LOCKER_DIRTY));
 				if (F_ISSET(sh_locker, DB_LOCKER_DIRTY))
@@ -1490,7 +1491,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 			if (sh_locker)
 				F_SET(sh_locker, DB_LOCKER_DELETED);
 
-			/* Now traverse the locks, releasing each one. */
+
 			lp = sh_locker ? SH_LIST_FIRST(&sh_locker->heldby, __db_lock) : NULL;
 			for ( ; lp != NULL; lp = next_lock) {
 				sh_obj = lp->lockobj;
@@ -1534,6 +1535,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 						SH_LIST_INIT(&lklsnp->lsns);
 						Pthread_mutex_lock(&lp->
 						    lsns_mtx);
+						lklsnp->dlen = sh_obj->priority;
 						lklsnp->nlsns = lp->nlsns;
 						SH_LIST_FIRST(&(lklsnp->lsns),
 						    __db_lock_lsn) =
@@ -1553,6 +1555,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 						DB_ASSERT((char *)np <
 						    (char *)objlist->data +
 						    objlist->size);
+						np->dlen = sh_obj->priority;
 						np->data = sh_obj->lockobj.data;
 						np->size = sh_obj->lockobj.size;
 						np++;
@@ -2862,8 +2865,16 @@ expired:			obj_ndx = sh_obj->index;
 
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
-	if (IS_WRITELOCK(newl->mode))
+
+	if (IS_WRITELOCK(newl->mode)) {
 		sh_locker->nwrites++;
+        if (LF_ISSET(DB_LOCK_PRIORITY))
+            sh_obj->priority = 1;
+        else
+            sh_obj->priority = 0;
+    } else {
+        sh_obj->priority = 0;
+    }
 	if (is_pagelock(sh_obj) && IS_WRITELOCK(lock->mode) &&
 	    F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
 		if (sh_locker->ntrackedlocks + 1 > sh_locker->maxtrackedlocks) {
@@ -5911,6 +5922,8 @@ __rowlock_sort_cmp(a, b)
 	return memcmp(fi1, fi2, DB_FILE_ID_LEN);
 }
 
+int gbl_log_index_locks_first = 0;
+
 static int
 __lock_sort_cmp(a, b)
 	const void *a, *b;
@@ -5934,6 +5947,9 @@ __lock_sort_cmp(a, b)
 	l2 = d2->data;
 	if (l1->type != l2->type)
 		return (l1->type - l2->type);
+	if (gbl_log_index_locks_first && (d2->dlen - d1->dlen)) {
+		return (d2->dlen - d1->dlen);
+	}
 	return (memcmp(l1->fileid, l2->fileid, DB_FILE_ID_LEN));
 }
 
@@ -5960,6 +5976,9 @@ __locklsn_sort_cmp(a, b)
 	l2 = d2->data;
 	if (l1->type != l2->type)
 		return (l1->type - l2->type);
+	if (gbl_log_index_locks_first && (d2->dlen - d1->dlen)) {
+		return (d2->dlen - d1->dlen);
+	}
 	return (memcmp(l1->fileid, l2->fileid, DB_FILE_ID_LEN));
 }
 
