@@ -247,6 +247,16 @@ verify_db_at_finish() {
     done
 }
 
+stop_if_more_than_n_failed () {
+    N=10   # if more that N failures in test.log stop running
+    F=`grep failed ${TESTDIR}/test.log | wc -l`
+    if [ "$F" -ge "$N" ] ; then 
+        exit 1; 
+    fi
+}
+
+stop_if_more_than_n_failed
+
 
 # start the testing: setup, runit, check cores, unsetup
 
