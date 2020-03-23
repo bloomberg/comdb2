@@ -162,6 +162,10 @@ __db_addrem_recover(dbenv, dbtp, lsnp, op, info)
 
 	if ((ret = __memp_fget(mpf, &argp->pgno, 0, &pagep)) != 0) {
 		if (DB_UNDO(op)) {
+#if defined (UFID_HASH_DEBUG)
+			logmsg(LOGMSG_USER, "%s ignoring failed memp_fget because undo\n",
+					__func__);
+#endif
 			/*
 			 * We are undoing and the page doesn't exist.  That
 			 * is equivalent to having a pagelsn of 0, so we
@@ -185,6 +189,12 @@ __db_addrem_recover(dbenv, dbtp, lsnp, op, info)
 	CHECK_LSN(op, cmp_p, &LSN(pagep), &argp->pagelsn, lsnp, argp->fileid,
 	    argp->pgno);
 	change = 0;
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s (%s) lsn [%d:%d] pagelsn [%d:%d] op %d\n", __func__,
+			DB_REDO(op) ? "REDO" : "UNDO", lsnp->file, lsnp->offset,
+			LSN(pagep).file, LSN(pagep).offset, op);
+#endif
+
 	if ((cmp_p == 0 && DB_REDO(op) && argp->opcode == DB_ADD_DUP) ||
 	    (cmp_n == 0 && DB_UNDO(op) && IS_REM_OPCODE(argp->opcode))) {
 		BINTERNAL *bi = argp->hdr.data;
@@ -784,6 +794,13 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 		created = modified = 1;
 	}
 
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s [%d:%d] %s dbp %p pagelsn [%d:%d]\n", __func__,
+			lsnp->file, lsnp->offset, DB_REDO(op) ? "REDO" : "UNDO",
+			file_dbp, pagep ? LSN(pagep).file : -1,
+			pagep ? LSN(pagep).offset : -1);
+#endif
+
 	/* Fix up the allocated page. */
 	cmp_n = log_compare(lsnp, &LSN(pagep));
 	cmp_p = log_compare(&LSN(pagep), &argp->page_lsn);
@@ -837,6 +854,11 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 		pagep->lsn = argp->page_lsn;
 		modified = 1;
 	}
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s [%d:%d] %s dbp %p set pagelsn to [%d:%d]\n",
+            __func__, lsnp->file, lsnp->offset, DB_REDO(op) ? "REDO" : "UNDO",
+			file_dbp, LSN(pagep).file, LSN(pagep).offset);
+#endif
 
 	/*
 	 * If the page was newly created, put it on the limbo list.
@@ -844,8 +866,15 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 	if (IS_ZERO_LSN(LSN(pagep)) &&
 	    IS_ZERO_LSN(argp->page_lsn) && DB_UNDO(op)) {
 		/* Put the page in limbo.*/
-		if ((ret = __db_add_limbo(dbenv,
-		    info, argp->fileid, argp->pgno, 1)) != 0)
+		if (argp->type > 1000) {
+			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
+					argp->pgno, 1);
+		} else {
+			ret = __db_add_limbo(dbenv,
+					info, argp->fileid, argp->pgno, 1);
+		}
+
+		if (ret != 0)
 			goto out;
 	}
 
@@ -1079,9 +1108,15 @@ __db_pg_new_recover(dbenv, dbtp, lsnp, op, info)
 	REC_INTRO(__db_pg_free_read, 1);
 	COMPQUIET(op, 0);
 
-	if ((ret =
-	    __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1)) == 0)
-		*lsnp = argp->prev_lsn;
+	if (argp->type > 1000) {
+		if ((ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid,
+						argp->pgno, 1)) == 0)
+			*lsnp = argp->prev_lsn;
+	} else {
+		if ((ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno,
+						1)) == 0)
+			*lsnp = argp->prev_lsn;
+	}
 
 done:
 out:
@@ -1215,9 +1250,13 @@ __db_pg_prepare_recover(dbenv, dbtp, lsnp, op, info)
 		P_INIT(pagep, file_dbp->pgsize,
 		    argp->pgno, PGNO_INVALID, PGNO_INVALID, 0, P_INVALID);
 		ZERO_LSN(pagep->lsn);
-		ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);
+		if (argp->type > 1000) {
+			ret = __db_add_limbo_fid(dbenv, info, argp->ufid_fileid, argp->pgno, 1);
+		} else {
+			ret = __db_add_limbo(dbenv, info, argp->fileid, argp->pgno, 1);
+		}
 		if ((t_ret =
-		    __memp_fput(mpf, pagep, DB_MPOOL_DIRTY)) != 0 && ret == 0)
+			__memp_fput(mpf, pagep, DB_MPOOL_DIRTY)) != 0 && ret == 0)
 			ret = t_ret;
 	}
 

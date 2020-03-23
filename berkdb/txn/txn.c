@@ -103,6 +103,9 @@ extern int gbl_is_physical_replicant;
 
 #endif
 
+#if defined (UFID_HASH_DEBUG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 
 static int __txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
 	DB_LSN *we_start_at_this_lsn, u_int32_t flags);
@@ -2046,6 +2049,10 @@ __txn_dispatch_undo(dbenv, txnp, rdbt, key_lsn, txnlist)
 {
 	int ret;
 
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s undoing [%d:%d]", __func__,
+			key_lsn->file, key_lsn->offset);
+#endif
 	ret = __db_dispatch(dbenv, dbenv->recover_dtab,
 		dbenv->recover_dtab_size, rdbt, key_lsn, DB_TXN_ABORT, txnlist);
 	if (F_ISSET(txnp, TXN_CHILDCOMMIT))

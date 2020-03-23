@@ -241,6 +241,9 @@ extern int gbl_memp_dump_cache_threshold;
 extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
+extern int gbl_log_index_locks_first;
+extern int gbl_ufid_log;
+extern int gbl_omit_dbreg;
 
 extern long long sampling_threshold;
 

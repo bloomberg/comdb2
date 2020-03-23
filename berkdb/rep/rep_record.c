@@ -3900,6 +3900,7 @@ worker_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			__db_err(dbenv, "transaction failed at %lu:%lu rc=%d",
 				(u_long)rr->lsn.file, (u_long)rr->lsn.offset, rc);
 			/* and now? */
+            __log_flush(dbenv, NULL);
 			abort();
 		}
 
@@ -3992,15 +3993,33 @@ logical_record_file_affinity(int rectype)
 
 int gbl_processor_thd_poll;
 
+#include <plhash.h>
+
+struct fuid_integer {
+	u_int8_t fuid[DB_FILE_ID_LEN];
+	int fileid;
+};
+
+static int
+fuid_hash_free(void *obj, void *unused)
+{
+	free(obj);
+	return 0;
+}
+
 static void
 processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 {
 	struct __recovery_processor *rp;
 	struct __recovery_queue *rq;
 	struct __recovery_record *rr;
+    hash_t *fuid_hash = NULL;
+    u_int8_t fuid[DB_FILE_ID_LEN] = {0};
+    u_int8_t last_fuid[DB_FILE_ID_LEN] = {0};
 	DBT data_dbt, lock_prev_lsn_dbt;
 	DB_LOCK prev_lsn_lk;
 	int i;
+    int is_fuid;
 	int inline_worker;
 	int polltm;
 	DB_LOGC *logc = NULL;
@@ -4095,12 +4114,15 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 	/* First, bucket records per queue. */
 	data_dbt.flags = DB_DBT_REALLOC;
 
+	int fileid = 0;
+	int max_fileid = 0;
+
 	for (i = 0; i < rp->lc.nlsns; i++) {
-		int fileid;
 		u_int32_t rectype;
 
 		lsnp = &rp->lc.array[i].lsn;
 
+		is_fuid = 0;
 		if (rp->lc.array[i].rec.data == NULL) {
 			assert(!rp->lc.filled_from_cache);
 			if ((ret =
@@ -4114,12 +4136,24 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 			LOGCOPY_32(&rectype, data_dbt.data);
 			fileid =
 				(int)file_id_for_recovery_record(dbenv, NULL,
-				rectype, &data_dbt);
+				rectype, fuid, &is_fuid, &data_dbt);
 		} else {
 			LOGCOPY_32(&rectype, rp->lc.array[i].rec.data);
 			fileid =
 				(int)file_id_for_recovery_record(dbenv, NULL,
-				rectype, &rp->lc.array[i].rec);
+				rectype, fuid, &is_fuid, &rp->lc.array[i].rec);
+		}
+		if (is_fuid) {
+			if (!fuid_hash)
+				fuid_hash = hash_init(DB_FILE_ID_LEN);
+			struct fuid_integer *fint = hash_find(fuid_hash, fuid);
+			if (!fint) {
+				fint = malloc(sizeof(*fint));
+				memcpy(fint->fuid, fuid, DB_FILE_ID_LEN);
+				fint->fileid = (max_fileid + 1);
+				hash_add(fuid_hash, fint);
+			}
+			fileid = fint->fileid;
 		}
 
 		if (fileid >= 0) {
@@ -4129,6 +4163,9 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		if (fileid == -1 && logical_record_file_affinity(rectype)) {
 			fileid = last_fileid;
 		}
+
+		if (fileid > max_fileid)
+			max_fileid = fileid;
 
 		/* If there is no fileid, or if this is a start or commit put in fileid 0  */
 		if (-1 == fileid || logical_start_commit(rectype)) {
@@ -4168,6 +4205,13 @@ processor_thd(struct thdpool *pool, void *work, void *thddata, int op)
 		rr->fileid = fileid;
 
 		listc_abl(&rp->recovery_queues[fileid]->records, rr);
+	}
+
+	if (fuid_hash) {
+		hash_for(fuid_hash, fuid_hash_free, NULL);
+		hash_clear(fuid_hash);
+		hash_free(fuid_hash);
+		fuid_hash = NULL;
 	}
 
 	if ((dbenv->flags & DB_ENV_ROWLOCKS) && listc_size(&queues) > 1) {
