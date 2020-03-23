@@ -2363,6 +2363,7 @@ static void unix_reg_reply(int fd, short what, void *data)
     int rc;
     size_t len;
     char *res = NULL;
+    errno = 0;
     while ((rc = evbuffer_read(buf, fd, 1)) == 1) {
         if ((res = evbuffer_readln(buf, &len, EVBUFFER_EOL_ANY)) != NULL)
             break;
