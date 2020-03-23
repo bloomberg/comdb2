@@ -2,3 +2,4 @@
 (version='logtest')
 (queuename='__qlog1', depth=0)
 (queuename='__qnop0', depth=0)
+(queuename='__qnopZ', depth=0)

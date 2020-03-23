@@ -160,7 +160,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
         return NULL; 
     }
-    rdlock_schema_lk();
+    wrlock_schema_lk();
     for (int i = 0; i < dbenv->num_qdbs; i++) {
         dbtable *tbl = dbenv->qdbs[i];
         if (tbl == NULL) continue;
