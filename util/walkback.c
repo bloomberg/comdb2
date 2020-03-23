@@ -910,9 +910,11 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern char **backtrace_symbols(void *const *, int);
+void backtrace_symbols_fd(void*const*,int,int);
 #else
 #define backtrace(A, B) 0
 #define backtrace_symbols(A, B) NULL
+#define backtrace_symbols_fd(A, B, C)
 #endif
 
 static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)

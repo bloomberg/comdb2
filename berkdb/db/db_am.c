@@ -799,9 +799,15 @@ __db_sync(dbp)
 
 	if (dbp->type == DB_QUEUE)
 		ret = __qam_sync(dbp);
-	else if ((t_ret = __memp_fsync(dbp->mpf)) != 0 && ret == 0) {
-		/* Flush any dirty pages from the cache to the backing file. */
-		ret = t_ret;
+	else {
+#if defined (UFID_HASH_DEBUG)
+			logmsg(LOGMSG_USER, "%s syncing %s mpf %p\n", __func__, dbp->fname ?
+					dbp->fname : "(noname)", dbp->mpf);
+#endif
+			if ((t_ret = __memp_fsync(dbp->mpf)) != 0 && ret == 0) {
+			/* Flush any dirty pages from the cache to the backing file. */
+			ret = t_ret;
+		}
 	}
 
 	return (ret);

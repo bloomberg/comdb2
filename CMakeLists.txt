@@ -132,6 +132,12 @@ if(DEBUG_SC)
     add_definitions(-DDEBUG_SC)
 endif()
 
+option(UFID_HASH_DEBUG "Enable ufid-hash debug trace" OFF)
+mark_as_advanced(UFID_HASH_DEBUG)
+if(UFID_HASH_DEBUG)
+  add_definitions(-DUFID_HASH_DEBUG)
+endif()
+
 option(COMDB2_PER_THREAD_MALLOC "Turn OFF to run under Valgrind" ON)
 if(COMDB2_PER_THREAD_MALLOC)
   add_definitions(-DPER_THREAD_MALLOC)

@@ -110,8 +110,10 @@ __db_pgerr(dbp, pgno, errval)
 	 * Death, taxes, and lost data.
 	 * Guess which has occurred.
 	 */
+	__log_flush(dbp->dbenv, NULL);
 	__db_err(dbp->dbenv,
 	    "unable to create/retrieve page %lu", (u_long)pgno);
+    abort();
 	return (__db_panic(dbp->dbenv, errval));
 }
 
@@ -190,6 +192,7 @@ __db_panic(dbenv, errval)
 		PANIC_SET(dbenv, 1);
 
 		__db_err(dbenv, "PANIC: %s", db_strerror(errval));
+        abort();
 
 		if (dbenv->db_paniccall != NULL)
 			dbenv->db_paniccall(dbenv, errval);

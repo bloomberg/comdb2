@@ -58,6 +58,9 @@ __fop_create(dbenv, txn, fhpp, name, appname, mode, flags)
 
 	real_name = NULL;
 
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s creating %s\n", __func__, name);
+#endif
 	if ((ret =
 	    __db_appname(dbenv, appname, name, 0, NULL, &real_name)) != 0)
 		return (ret);
@@ -262,11 +265,11 @@ __fop_rename(dbenv, txn, oldname, newname, fid, appname, flags)
 		fiddbt.data = fid;
 		fiddbt.size = DB_FILE_ID_LEN;
 		if ((ret = __fop_rename_log(dbenv, txn, &lsn, flags | DB_FLUSH,
-		    &old, &new, &fiddbt, (u_int32_t)appname)) != 0)
+			&old, &new, &fiddbt, (u_int32_t)appname)) != 0)
 			goto err;
 	}
-
-	ret = __memp_nameop(dbenv, fid, newname, o, n);
+   	ret = __memp_nameop(dbenv, fid, newname, o, n);
+	__ufid_rename(dbenv, oldname, newname, fid);
 
 err:	if (o != oldname)
 		__os_free(dbenv, o);

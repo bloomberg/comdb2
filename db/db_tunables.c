@@ -241,6 +241,9 @@ extern int gbl_memp_dump_cache_threshold;
 extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
+extern int gbl_log_index_locks_first;
+extern int gbl_ufid_log;
+extern int gbl_omit_dbreg;
 
 extern long long sampling_threshold;
 
@@ -324,6 +327,7 @@ extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int eventlog_nkeep;
+extern int gbl_disable_limbo_recover;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,

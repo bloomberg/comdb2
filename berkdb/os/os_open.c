@@ -109,13 +109,22 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	oflags |= O_BINARY;
 #endif
 
+#if defined (UFID_HASH_DEBUG)
+	if (!strstr(name, "logs/log")) {
+		logmsg(LOGMSG_USER, "%s opening %s\n", __func__, name);
+	}
+#endif
 	/*
 	 * DB requires the POSIX 1003.1 semantic that two files opened at the
 	 * same time with DB_OSO_CREATE/O_CREAT and DB_OSO_EXCL/O_EXCL flags
 	 * set return an EEXIST failure in at least one.
 	 */
-	if (LF_ISSET(DB_OSO_CREATE))
+	if (LF_ISSET(DB_OSO_CREATE)) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s set create flag for %s\n", __func__, name);
+#endif
 		 oflags |= O_CREAT;
+	}
 
 	if (LF_ISSET(DB_OSO_EXCL))
 		 oflags |= O_EXCL;
@@ -137,8 +146,12 @@ ___os_open_extend(dbenv, name, log_size, page_size, flags, mode, fhpp)
 	else
 		oflags |= O_RDWR;
 
-	if (LF_ISSET(DB_OSO_TRUNC))
+	if (LF_ISSET(DB_OSO_TRUNC)) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s truncating %s\n", __func__, name);
+#endif
 		 oflags |= O_TRUNC;
+	}
 
 
 	/*

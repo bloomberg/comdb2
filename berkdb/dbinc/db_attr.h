@@ -60,6 +60,7 @@ BERK_DEF_ATTR(latch_timed_mutex, "Use a timed mutex", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(log_cursor_cache, "Cache log cursors", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(recovery_processor_poll_interval_us, "Recovery processor wakes this often to check workers", BERK_ATTR_TYPE_INTEGER, 1000)
 BERK_DEF_ATTR(lsnerr_logflush, "Flush log on lsn error", BERK_ATTR_TYPE_BOOLEAN, 1)
+BERK_DEF_ATTR(lsnerr_mempsync, "Flush the bufferpool on lsn error", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(tracked_locklist_init, "Initial allocation count for tracked locks", BERK_ATTR_TYPE_INTEGER, 10)
 /* This is a placeholder for now */
 BERK_DEF_ATTR(transient_page_reallocation, "Orphaned pages are maintained locally", BERK_ATTR_TYPE_BOOLEAN, 0)

@@ -43,6 +43,7 @@
  * Standard initialization and shutdown macros for all recovery functions.
  */
 #define	REC_INTRO(func, inc_count) do {					\
+	extern int __log_flush(DB_ENV *dbenv, const DB_LSN *); \
 	argp = NULL;							\
 	dbc = NULL;							\
 	file_dbp = NULL;						\
@@ -50,18 +51,32 @@
 	if ((ret = func(dbenv, dbtp->data, &argp)) != 0) {		\
         CHECK_ABORT \
 		goto out;						\
+    }                                   \
+	if (argp->type > 1000) { \
+		if ((ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, \
+						argp->ufid_fileid, lsnp)) != 0) { \
+			if (ret	== DB_DELETED) { \
+				ret = 0; \
+				goto done; \
+			} \
+			__ufid_dump(dbenv); \
+			fflush(stderr); \
+            CHECK_ABORT                 \
+            goto out;						\
+		} \
+	} else { \
+		if ((ret = __dbreg_id_to_db(dbenv, argp->txnid,			\
+			&file_dbp, argp->fileid, inc_count, lsnp, 0)) != 0) { 		\
+			if (ret	== DB_DELETED) {\
+				ret = 0;\
+				goto done;\
+			}\
+            CHECK_ABORT                 \
+			goto out;\
+		} \
 	} \
-	if ((ret = __dbreg_id_to_db(dbenv, argp->txnid,			\
-	    &file_dbp, argp->fileid, inc_count, lsnp, 0)) != 0) { 		\
-		if (ret	== DB_DELETED) {				\
-			ret = 0;					\
-			goto done;					\
-		}							\
-        CHECK_ABORT                 \
-		goto out;						\
-	}								\
-	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0){		\
-        CHECK_ABORT \
+	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0) {	\
+        CHECK_ABORT                     \
 		goto out;						\
 	}										   \
 	F_SET(dbc, DBC_RECOVER);					\
@@ -72,31 +87,46 @@
 extern void __bb_dbreg_print_dblist_stdout(DB_ENV *dbenv);
 
 
-     /* panic the db if we are told to process an op related to a
-      * deleted file, and we are not in the middle of recovery */
+	 /* panic the db if we are told to process an op related to a
+	  * deleted file, and we are not in the middle of recovery */
 
+int __log_flush(DB_ENV *dbenv, const DB_LSN *);
 #define	REC_INTRO_PANIC(func, inc_count) do {				\
-	argp = NULL;							                     \
-	dbc = NULL;							                        \
-	file_dbp = NULL;						                     \
-	mpf = NULL;							                        \
-	if ((ret = func(dbenv, dbtp->data, &argp)) != 0)		\
-		goto out;						                        \
-	if ((ret = __dbreg_id_to_db(dbenv, argp->txnid,			\
-	    &file_dbp, argp->fileid, inc_count, lsnp, 0)) != 0) {		\
-		if (ret	== DB_DELETED) {				               \
-			if (!(IS_RECOVERING(dbenv)))                    \
-         {                                               \
-            __bb_dbreg_print_dblist_stdout(dbenv);       \
-            __db_panic(dbenv, DB_RUNRECOVERY) ;          \
-         }                                               \
-         ret = 0;					                           \
-			goto done;					                        \
-		}							                              \
-		goto out;						                        \
-	}								                              \
-	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0)		\
-		goto out;						\
+	argp = NULL;												 \
+	dbc = NULL;													\
+	file_dbp = NULL;											 \
+	mpf = NULL;													\
+	if ((ret = func(dbenv, dbtp->data, &argp)) != 0){		\
+		__log_flush(dbenv, NULL); \
+		abort(); \
+	} \
+	if (argp->type > 1000) { \
+		if ((ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, \
+						argp->ufid_fileid, lsnp)) != 0) { \
+			__ufid_dump(dbenv); \
+			__log_flush(dbenv, NULL); \
+			abort(); \
+		} \
+	} else { \
+		if ((ret = __dbreg_id_to_db(dbenv, argp->txnid,			\
+			&file_dbp, argp->fileid, inc_count, lsnp, 0)) != 0) {		\
+			if (ret	== DB_DELETED) {							   \
+				if (!(IS_RECOVERING(dbenv)))					\
+				{											   \
+					__bb_dbreg_print_dblist_stdout(dbenv);	   \
+					__db_panic(dbenv, DB_RUNRECOVERY) ;		  \
+				}											   \
+				ret = 0;											   \
+				goto done;											\
+			}														  \
+			__log_flush(dbenv, NULL); \
+			abort(); \
+		}															  \
+	} \
+	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0){		\
+		__log_flush(dbenv, NULL); \
+		abort(); \
+	} \
 	F_SET(dbc, DBC_RECOVER);					\
 	mpf = file_dbp->mpf;						\
 } while (0)
