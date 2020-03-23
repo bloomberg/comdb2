@@ -2403,6 +2403,7 @@ static void unix_reg(int fd, short what, void *data)
         reopen_unix(fd, n);
         return;
     }
+    errno = 0;
     struct evbuffer *buf = n->unix_buf;
     int rc = evbuffer_write(buf, fd);
     if (rc <= 0) {

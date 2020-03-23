@@ -252,6 +252,7 @@ struct connection {
     }
     int readbuf()
     {
+        errno = 0;
         return evbuffer_read(rdbuf, fd, 256);
     }
     void writebuf()
