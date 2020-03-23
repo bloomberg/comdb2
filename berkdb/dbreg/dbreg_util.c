@@ -28,6 +28,8 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "printformats.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "locks_wrap.h"
+#include <fsnapf.h>
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -134,6 +136,13 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #include <tohex.h>
 #endif
 
+extern int gbl_ufid_log;
+extern int gbl_omit_dbreg;
+
+#if defined (UFID_HASH_DEBUG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
+
 /*
  * __dbreg_open_files --
  *	Put a DBREG_CHKPNT log record for each open database.
@@ -146,7 +155,7 @@ __dbreg_open_files_int(dbenv, flags)
 	u_int32_t flags;
 {
 	DB_LOG *dblp;
-	DB_LSN rlsn;
+	DB_LSN lsn;
 	DBT *dbtp, fid_dbt, t;
 	FNAME *fnp;
 	LOG *lp;
@@ -191,15 +200,24 @@ __dbreg_open_files_int(dbenv, flags)
 		 * For this we output DBREG_RCLOSE records so the files will be
 		 * closed on the forward pass.
 		 */
-		if ((ret = __dbreg_register_log(dbenv,
-			    NULL, &rlsn, oflags,
-			    F_ISSET(dblp,
-				DBLOG_RECOVER) ? DBREG_RCLOSE : DBREG_CHKPNT,
-			    dbtp, &fid_dbt, fnp->id, fnp->s_type,
-			    fnp->meta_pgno, TXN_INVALID)) != 0)
-			 break;
+
+		if (!gbl_ufid_log || !gbl_omit_dbreg) {
+			if ((ret = __dbreg_register_log(dbenv,
+							NULL, &lsn, oflags,
+							F_ISSET(dblp,
+								DBLOG_RECOVER) ? DBREG_RCLOSE : DBREG_CHKPNT,
+							dbtp, &fid_dbt, fnp->id, fnp->s_type,
+							fnp->meta_pgno, TXN_INVALID)) != 0)
+				break;
+#if defined (UFID_HASH_DEBUG)
+			comdb2_cheapstack_sym(stderr, "%s [%d:%d]:", F_ISSET(dblp,
+						DBLOG_RECOVER) ? "DBREG_RCLOSE" : "DBREG_CHKPNT",
+						lsn.file, lsn.offset);
+#endif
+		}
 
 #if defined (DEBUG_STACK_AT_DBREG_LOG)
+        DB_LSN rlsn;
         char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
         char *op = (F_ISSET(dblp, DBLOG_RECOVER)) ? "rclose" : "ckpt";
         fileid_str(fnp->ufid, fid_str);
@@ -261,6 +279,8 @@ __dbreg_recovery_pages(dbenv)
 	return 0;
 }
 
+static int __ufid_close_files(DB_ENV *dbenv);
+
 /*
  * __dbreg_close_files --
  *	Remove the id's of open files and actually close those
@@ -284,6 +304,7 @@ __dbreg_close_files(dbenv)
 	if (!LOGGING_ON(dbenv))
 		return (0);
 
+	__ufid_close_files(dbenv);
 	dblp = dbenv->lg_handle;
 	ret = 0;
 	MUTEX_THREAD_LOCK(dbenv, dblp->mutexp);
@@ -328,6 +349,341 @@ __dbreg_close_files(dbenv)
 	return (ret);
 }
 
+static int close_ufid(void *obj, void *arg)
+{
+	struct __ufid_to_db_t *ufid = (struct __ufid_to_db_t *)obj;
+	DB_ENV *dbenv = (DB_ENV *)arg;
+	int ret = 0;
+	if (ufid->dbp) {
+#if defined (UFID_HASH_DEBUG)
+		if (F_ISSET(ufid->dbp, DB_AM_RECOVER))
+			logmsg(LOGMSG_USER, "%s closing %s\n", __func__, ufid->fname ?
+					ufid->fname : "(nil)");
+#endif
+		ufid->dbp->added_to_ufid = 0;
+		if (F_ISSET(ufid->dbp, DB_AM_RECOVER))
+			ret = __db_close(ufid->dbp, NULL, ufid->dbp->mpf == NULL ?
+					DB_NOSYNC : 0);
+		ufid->dbp = NULL;
+	}
+	return ret;
+}
+
+static int
+__ufid_close_files(dbenv)
+	DB_ENV *dbenv;
+{
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	hash_for(dbenv->ufid_to_db_hash, close_ufid, dbenv);
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return 0;
+}
+
+// PUBLIC: int __ufid_rename __P(( DB_ENV *, const char *, const char *, u_int8_t *));
+int
+__ufid_rename(dbenv, oldname, newname, inufid)
+	DB_ENV *dbenv;
+	const char *oldname;
+	const char *newname;
+	u_int8_t *inufid;
+{
+	struct __ufid_to_db_t *ufid;
+	DB *close_dbp = NULL;
+	int ret = 0;
+	int close = 0;
+
+	if (!newname || strstr(newname, ".recovery_pages"))
+		return 0;
+
+	if (!strncmp(oldname, "__db", 4) || !strncmp(newname, "__db", 4))
+		close = 1;
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) == NULL) {
+		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
+			abort();
+		}
+		memcpy(ufid->ufid, inufid, DB_FILE_ID_LEN);
+		ufid->fname = strdup(newname);
+		ufid->dbp = NULL;
+		hash_add(dbenv->ufid_to_db_hash, ufid);
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s adding %s\n", __func__, newname);
+#endif
+	} else {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s renaming %s to %s dbp %p\n", __func__,
+				ufid->fname, newname, ufid->dbp);
+#endif
+		free(ufid->fname);
+		ufid->fname = strdup(newname);
+		if (close && ufid->dbp) {
+			close_dbp = ufid->dbp;
+			ufid->dbp = NULL;
+		}
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+
+	if (close_dbp) {
+		close_dbp->added_to_ufid = 0;
+		if (close_dbp->mpf)
+			__memp_fsync(close_dbp->mpf);
+		F_SET(close_dbp, DB_AM_DISCARD);
+		if (F_ISSET(close_dbp, DB_AM_RECOVER))
+			ret = __db_close(close_dbp, NULL, close_dbp->mpf == NULL ?
+					DB_NOSYNC : 0);
+		else {
+			ret = __db_refresh(close_dbp, NULL, DB_NOSYNC, NULL);
+		}
+	}
+
+	return ret;
+}
+
+/* Only called during readdir at beginning of process. */
+static int
+__ufid_open(dbenv, fname)
+	DB_ENV *dbenv;
+	const char *fname;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = -1;
+	DB *dbp = NULL;
+
+	if (!fname || strstr(fname, ".recovery_pages"))
+		return 0;
+
+	if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
+		logmsg(LOGMSG_ERROR, "%s error creating dbp for %s: %d\n", __func__,
+				fname, ret);
+		return ret;
+	}
+	dbp->added_to_ufid = 0;
+
+	u_int32_t flags = DB_ODDFILESIZE|DB_DATAFILE|DB_AM_RECOVER;
+	F_SET(dbp, DB_AM_RECOVER);
+	if ((ret = __db_open(dbp, NULL, fname, NULL, DB_UNKNOWN, flags,
+					__db_omode("rw----"), 0)) != 0) {
+		__db_close(dbp, NULL, dbp->mpf == NULL ? DB_NOSYNC : 0);
+		return ret;
+	}
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid)) == NULL) {
+		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
+			abort();
+		}
+		memcpy(ufid->ufid, dbp->fileid, DB_FILE_ID_LEN);
+		ufid->fname = strdup(fname);
+		ufid->dbp = NULL;
+		hash_add(dbenv->ufid_to_db_hash, ufid);
+	} else if ((strcmp(ufid->fname, fname)) != 0) {
+		logmsg(LOGMSG_FATAL, "%s multiple files with fileid: %s vs %s\n",
+				__func__, ufid->fname, fname);
+		fsnapf(stderr, dbp->fileid, DB_FILE_ID_LEN);
+		fflush(stderr);
+		abort();
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	F_SET(dbp, DB_AM_DISCARD);
+	__db_close(dbp, NULL, dbp->mpf == NULL ? DB_NOSYNC : 0);
+	return 0;
+}
+
+// PUBLIC: int __ufid_close __P(( DB_ENV *, DB_TXN *, u_int8_t *));
+int
+__ufid_close(dbenv, txn, inufid)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	u_int8_t *inufid;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = -1;
+	DB *close_dbp = NULL;
+#if defined (UFID_HASH_DEBUG)
+	char fname[PATH_MAX] = {0};
+#endif
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+		ret = 0;
+		/* Close but leave in hash */
+		if (ufid->dbp) {
+			close_dbp = ufid->dbp;
+		}
+		ufid->dbp = NULL;
+#if defined (UFID_HASH_DEBUG)
+		strncpy(fname, ufid->fname, sizeof(fname));
+#endif
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	if (close_dbp) { 
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s closing %s\n", __func__, fname);
+#endif
+		close_dbp->added_to_ufid = 0;
+		if (F_ISSET(close_dbp, DB_AM_RECOVER))
+			ret = __db_close(close_dbp, NULL, close_dbp->mpf == NULL ?
+					DB_NOSYNC : 0);
+	}
+	return ret;
+}
+
+static int dump_ufid(void *obj, void *arg)
+{
+	struct __ufid_to_db_t *ufid = (struct __ufid_to_db_t *)obj;
+	FILE *f = (FILE *)arg;
+	fsnapf(f, ufid, DB_FILE_ID_LEN);
+	fprintf(f, "%s\n-\n", ufid->fname);
+	return 0;
+}
+
+// PUBLIC: void __ufid_dump __P(( DB_ENV *));
+void
+__ufid_dump(dbenv)
+	DB_ENV *dbenv;
+{
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	hash_for(dbenv->ufid_to_db_hash, dump_ufid, stderr);
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+}
+
+// PUBLIC: int __ufid_add_dbp __P(( DB_ENV *, DB *));
+int
+__ufid_add_dbp(dbenv, dbp)
+	DB_ENV *dbenv;
+	DB *dbp;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = 0;
+	DB *close_dbp = NULL;
+
+	if (F_ISSET(dbp, DB_AM_RECOVER))
+		abort();
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
+		if (ufid->dbp != NULL) {
+			ufid->dbp->added_to_ufid = 0;
+			close_dbp = ufid->dbp;
+		}
+	} else {
+		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
+			abort();
+		}
+		memcpy(ufid->ufid, dbp->fileid, DB_FILE_ID_LEN);
+		if (dbp->fname)
+			ufid->fname = strdup(dbp->fname);
+		else
+			ufid->fname = NULL;
+		hash_add(dbenv->ufid_to_db_hash, ufid);
+	}
+
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s adding %p, closing %p\n", __func__,
+			dbp, close_dbp);
+#endif
+
+	ufid->dbp = dbp;
+	ufid->dbp->added_to_ufid = 1;
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	if (close_dbp) {
+		if (F_ISSET(close_dbp, DB_AM_RECOVER))
+			ret = __db_close(close_dbp, NULL, close_dbp->mpf == NULL ?
+					DB_NOSYNC : 0);
+	}
+	return ret;
+}
+
+// PUBLIC: int __ufid_to_db __P(( DB_ENV *, DB_TXN *, DB **, u_int8_t *, DB_LSN *));
+int
+__ufid_to_db(dbenv, txn, dbpp, inufid, lsnp)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB **dbpp;
+	u_int8_t *inufid;
+	DB_LSN *lsnp;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = -1;
+	DB *dbp = NULL;
+	(*dbpp) = NULL;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+		ret = 0;
+		if (ufid->dbp == NULL) {
+			ret = db_create(&dbp, dbenv, 0);
+			if (ret) {
+				logmsg(LOGMSG_FATAL, "%s error creating: %d\n", __func__,
+						ret);
+				abort();
+			}
+			F_SET(dbp, DB_AM_RECOVER);
+			ret = __db_open(dbp, txn, ufid->fname, NULL, DB_UNKNOWN,
+					DB_ODDFILESIZE, __db_omode("rw----"), 0);
+			if (ret) {
+				__db_close(dbp, txn, 0);
+				if (ret == ENOENT) {
+					ret = DB_DELETED;
+				} else {
+					__log_flush(dbenv, NULL);
+					abort();
+				}
+			} else {
+				dbp->added_to_ufid = 1;
+#if defined (UFID_HASH_DEBUG)
+				logmsg(LOGMSG_USER, "%s opening %s\n", __func__, ufid->fname);
+#endif
+				ufid->dbp = dbp;
+			}
+		}
+		(*dbpp) = ufid->dbp;
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return ret;
+}
+
+#include <dirent.h>
+
+int
+__ufid_readdir(dbenv)
+	DB_ENV *dbenv;
+{
+	DIR *d;
+	char fname[PATH_MAX];
+	struct dirent *ent;
+	d = opendir(dbenv->comdb2_dirs.data_dir);
+	if (d == NULL) {
+		__db_err(dbenv, "Can't open data directory");
+		abort();
+	}
+	ent = readdir(d);
+	while (ent) {
+		snprintf(fname, sizeof(fname), "XXX.%s", ent->d_name);
+		__ufid_open(dbenv, fname);
+		ent = readdir(d);
+	}
+	closedir(d);
+	return 0;
+}
+
+// PUBLIC: int __ufid_to_fname __P(( DB_ENV *, char **, u_int8_t *));
+int
+__ufid_to_fname(dbenv, fname, inufid)
+	DB_ENV *dbenv;
+	char **fname;
+	u_int8_t *inufid;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = -1;
+	(*fname) = NULL;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+		(*fname) = ufid->fname;
+		ret = 0;
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return ret;
+}
 
 // PUBLIC: int __dbreg_id_to_db __P(( DB_ENV *, DB_TXN *, DB **, int32_t, int, DB_LSN *, int));
 int

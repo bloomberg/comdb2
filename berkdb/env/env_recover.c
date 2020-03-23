@@ -85,6 +85,7 @@ static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
 static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
+int gbl_ufid_log = 0;
 
 /* Get the recovery LSN. */
 int
@@ -1168,7 +1169,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	first_lsn = ckp_lsn;
 	have_rec = 1;
 
-	start_recovery_at_dbregs = dbenv->attr.start_recovery_at_dbregs;
+	extern int gbl_omit_dbreg;
+	start_recovery_at_dbregs = (!gbl_omit_dbreg && dbenv->attr.start_recovery_at_dbregs);
 	if (!LF_ISSET(DB_RECOVER_FATAL)) {
 		ret = 0;
 		/* if we saved a checkpoint in the checkpoint file,

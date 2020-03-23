@@ -140,6 +140,7 @@
 (name='RIGHT', reserved='Y')
 (name='SELECT', reserved='Y')
 (name='SELECTV', reserved='Y')
+(name='SEQUENCE', reserved='Y')
 (name='SET', reserved='Y')
 (name='TABLE', reserved='Y')
 (name='THEN', reserved='Y')

@@ -446,6 +446,10 @@ fsop:
 			__os_unlink(dbenv, recp_old_path);
 	} else {
 		ret = __os_rename(dbenv, fullold, fullnew, 1);
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s renamed %s to %s\n", __func__, fullold,
+				fullnew);
+#endif
 		if (recp_old_path && recp_new_path)
 			__os_rename(dbenv, recp_old_path, recp_new_path, 1);
 	}
