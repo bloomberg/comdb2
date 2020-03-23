@@ -187,6 +187,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 sc->nothrevent = 1;
                 sc->finalize = 1;
                 sc->already_locked = 1;
+                sc->keep_locked = 1;
                 sc->db = tbl;
                 rc = start_schema_change(sc);
                 if ((rc != SC_OK) && (rc != SC_ASYNC)) {
@@ -218,6 +219,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             sc->nothrevent = 1;
             sc->finalize = 1;
             sc->already_locked = 1;
+            sc->keep_locked = 1;
             sc->db = tbl;
             rc = start_schema_change(sc);
             if ((rc != SC_OK) && (rc != SC_ASYNC)) {

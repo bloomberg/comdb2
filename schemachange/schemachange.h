@@ -150,6 +150,7 @@ struct schema_change_type {
     int onstack; /* if 1 don't free */
     int nothrevent;
     int already_locked; /* already holding schema lock */
+    int keep_locked; /* don't release schema lock upon commit */
     int pagesize; /* pagesize override to use */
     int showsp;
     SBUF2 *sb; /* socket to sponsoring program */
