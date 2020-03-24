@@ -98,8 +98,8 @@ enum policy {
 };
 
 static int dedicated_timer = 0;
-static enum policy akq_policy = POLICY_PER_NET;
-static enum policy reader_policy = POLICY_SINGLE;
+static enum policy akq_policy = POLICY_PER_HOST;
+static enum policy reader_policy = POLICY_PER_NET;
 static enum policy writer_policy = POLICY_PER_HOST;
 
 struct policy_info {
@@ -1592,7 +1592,8 @@ static void readcb(int fd, short what, void *data)
             if (e->rdbuf) {
                 free(e->rdbuf);
             }
-            e->rdbuf_sz = e->need;
+#           define MIN_RDBUF 1024
+            e->rdbuf_sz = e->need > MIN_RDBUF ? e->need : MIN_RDBUF;
             e->rdbuf = malloc(e->rdbuf_sz);
             if (!e->rdbuf) {
                 abort();
