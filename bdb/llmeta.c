@@ -2757,8 +2757,8 @@ retry:
 
     if (rc == 0 && wait_for_seqnum) {
         int timeoutms;
-        rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(llmeta_bdb_state, &ss,
-                                                          0, &timeoutms);
+        rc = bdb_wait_for_seqnum_from_all_adaptive_newcoh(
+                llmeta_bdb_state->parent, &ss, 0, &timeoutms);
     }
     // rc = bdb_tran_commit(llmeta_bdb_state, tran, &bdberr);
     if (rc && bdberr != BDBERR_NOERROR) {

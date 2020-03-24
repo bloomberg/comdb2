@@ -788,6 +788,8 @@ void replay_stat(void)
            blkseq_replay_error_count);
 }
 
+void flush_db(void);
+
 static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                           int num_reqs, int check_long_trn, void *replay_data,
                           int replay_data_len, unsigned int line)
@@ -799,6 +801,15 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                        (BLOCK_ERR_LEN * MAXBLOCKOPS)];
     uint8_t *p_fstblk_buf = buf_fstblk,
             *p_fstblk_buf_end = buf_fstblk + sizeof(buf_fstblk);
+
+    struct fstblk_pre_rspkl fstblk_pre_rspkl;
+    struct fstblk_rspkl fstblk_rspkl;
+    struct block_rspkl rspkl;
+    struct fstblk_rspok fstblk_rspok;
+    struct fstblk_header fstblk_header;
+    struct fstblk_rsperr fstblk_rsperr;
+    struct block_rsp rsp;
+    struct block_err err;
 
     int blkseq_line = 0;
     int datalen = replay_data_len - 4;
@@ -850,7 +861,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         blkseq_line = __LINE__;
         goto replay_error;
     } else {
-        struct fstblk_header fstblk_header;
         p_fstblk_buf_end = buf_fstblk + datalen;
 
         if (replay_data_len > sizeof(buf_fstblk))
@@ -872,9 +882,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
         switch (fstblk_header.type) {
         case FSTBLK_RSPOK: {
-            struct fstblk_rspok fstblk_rspok;
-            struct block_rsp rsp;
-
             rsp.num_completed = num_reqs;
             if (!(iq->p_buf_out =
                       block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end))) {
@@ -909,8 +916,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         }
 
         case FSTBLK_RSPERR: {
-            struct fstblk_rsperr fstblk_rsperr;
-            struct block_rsp rsp; 
             if (!(p_fstblk_buf = (uint8_t *)fstblk_rsperr_get(
                       &fstblk_rsperr, p_fstblk_buf, p_fstblk_buf_end))) {
                 blkseq_line = __LINE__;
@@ -953,10 +958,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
         case FSTBLK_RSPKL: 
         {
-            struct fstblk_pre_rspkl fstblk_pre_rspkl;
-            struct fstblk_rspkl fstblk_rspkl;
-            struct block_rspkl rspkl;
-
             /* fluff */
             if (!(p_fstblk_buf = (uint8_t *)fstblk_pre_rspkl_get(
                       &fstblk_pre_rspkl, p_fstblk_buf, p_fstblk_buf_end))) {
@@ -967,10 +968,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
             if (snapinfo) {
                 if (!(p_fstblk_buf = (uint8_t *)buf_get(&(snapinfo_outrc), sizeof(snapinfo_outrc), 
                         p_fstblk_buf, p_fstblk_buf_end)))  {
+                    flush_db();
                     abort();
                 }
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
+                    flush_db();
                     abort();
                 }
             }
@@ -991,7 +994,6 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
             }
 
             if (fstblk_rspkl.numerrs > 0) {
-                struct block_err err;
 
                 if (!(p_fstblk_buf = (uint8_t *)block_err_get(
                           &err, p_fstblk_buf, p_fstblk_buf_end))) {
@@ -1119,6 +1121,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
 replay_error:
     logmsg(LOGMSG_FATAL, "%s:%d in REPLAY ERROR\n", __func__, blkseq_line);
+    flush_db();
     abort();
 #if 0 /* never reached */
     if (check_long_trn) {
@@ -1947,11 +1950,8 @@ int toblock(struct ireq *iq)
 
         if (mstr != gbl_mynode) {
             if (iq->is_sorese) {
-
                 /* Ask the replicant to retry against the new master. */
-                if (iq->is_sorese) {
-                    iq->sorese.rcout = ERR_NOMASTER;
-                }
+                iq->sorese.rcout = ERR_NOMASTER;
                 return ERR_REJECTED;
             }
             if (iq->is_socketrequest &&
@@ -2009,10 +2009,13 @@ static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
     return irc;
 }
 
+int gbl_sc_close_txn = 1;
+
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, tran_type **trans,
-                        tran_type **parent_trans, int *osql_needtransaction)
+                        tran_type **parent_trans, int *osql_needtransaction,
+                        int line)
 {
     int rc = 0;
     int irc = 0;
@@ -2028,10 +2031,15 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             iq->sc_logical_tran = NULL; // use trans in rowlocks
             if (sc_parent == NULL) {
                 irc = -1;
-                logmsg(LOGMSG_ERROR, "%s:%d failed to get physical tran\n",
-                       __func__, __LINE__);
-            } else
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d/%d td %ld failed to get physical "
+                       "tran\n",
+                       __func__, __LINE__, line, pthread_self());
+            } else {
                 irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
+                if (irc == 0 && gbl_sc_close_txn)
+                    irc = trans_start_sc(iq, sc_parent, &(iq->sc_close_tran));
+            }
         } else if (irc == 0) { // pagelock
             if (parent_trans) {
                 *parent_trans = bdb_get_physical_tran(iq->sc_logical_tran);
@@ -2041,10 +2049,17 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                     /* start another child tran for schema changes */
                     irc = create_child_transaction(iq, *parent_trans,
                                                    &(iq->sc_tran));
+                    /* Another for close-old files */
+                    if (irc == 0 && gbl_sc_close_txn)
+                        irc = create_child_transaction(iq, *parent_trans,
+                                                       &(iq->sc_close_tran));
                 }
             } else {
                 *trans = bdb_get_physical_tran(iq->sc_logical_tran);
                 irc = create_child_transaction(iq, *trans, &(iq->sc_tran));
+                if (irc == 0 && gbl_sc_close_txn)
+                    irc = create_child_transaction(iq, *parent_trans,
+                                                   &(iq->sc_close_tran));
             }
         }
     } else if (!gbl_rowlocks) {
@@ -2405,6 +2420,18 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         }
         parent = bdb_get_sc_parent_tran(parent);
     }
+    if (iq->sc_close_tran) {
+        if (iq->sc_closed_files)
+            rc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+        else
+            rc = trans_abort(iq, iq->sc_close_tran);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d\n", __func__,
+                   __LINE__, iq->sc_closed_files ? "COMMIT" : "ABORT", rc);
+            comdb2_die(0);
+        }
+        iq->sc_close_tran = NULL;
+    }
     if (iq->sc_tran) {
         assert(parent);
         rc = trans_abort(iq, iq->sc_tran);
@@ -2424,8 +2451,8 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
                                   NULL, 0, NULL, 0);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
-                   __LINE__, rc);
+            logmsg(LOGMSG_ERROR, "%s:%d TD %ld TRANS_ABORT FAILED RC %d\n",
+                   __func__, __LINE__, pthread_self(), rc);
         }
     }
     iq->sc_logical_tran = NULL;
@@ -3034,10 +3061,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3113,10 +3140,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3232,10 +3259,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3310,10 +3337,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     assert(is_block2sqlmode != 0);
                     logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3369,10 +3396,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3507,10 +3534,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3611,10 +3638,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3708,10 +3735,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     assert(is_block2sqlmode != 0);
                     logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3814,10 +3841,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     assert(is_block2sqlmode != 0);
                     logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -3978,10 +4005,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -4251,10 +4278,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     logmsg(LOGMSG_ERROR, 
                             "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -4345,10 +4372,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     assert(is_block2sqlmode != 0);
                     logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
                             __FILE__, __LINE__);
-                    rc = osql_create_transaction(javasp_trans_handle, iq,
-                                                 have_blkseq ? &parent_trans
-                                                             : NULL,
-                                                 &trans, &osql_needtransaction);
+                    rc = osql_create_transaction(
+                        javasp_trans_handle, iq,
+                        have_blkseq ? &parent_trans : NULL, &trans,
+                        &osql_needtransaction, __LINE__);
                     if (rc) {
                         numerrs = 1;
                         GOTOBACKOUT;
@@ -4684,6 +4711,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
+            /* Don't get the bdb-lock here: if this is "inline", then you end
+             * up holding it for the duration of schema-change */
             iirc = osql_bplog_schemachange(iq);
             if (iirc) {
                 rc = iirc;
@@ -4693,9 +4722,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         /* recreate a transaction here */
         if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-            int iirc = osql_create_transaction(
-                javasp_trans_handle, iq, &trans,
-                have_blkseq ? &parent_trans : NULL, &osql_needtransaction);
+            int iirc =
+                osql_create_transaction(javasp_trans_handle, iq, &trans,
+                                        have_blkseq ? &parent_trans : NULL,
+                                        &osql_needtransaction, __LINE__);
             if (iirc) {
                 if (!rc)
                     rc = iirc;
@@ -5145,6 +5175,19 @@ backout:
             int priority = 0;
 
             if (iq->tranddl) {
+                if (iq->sc_close_tran) {
+                    if (iq->sc_closed_files)
+                        irc = trans_commit(iq, iq->sc_close_tran, gbl_mynode);
+                    else
+                        irc = trans_abort(iq, iq->sc_close_tran);
+                    if (irc != 0) {
+                        logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d\n",
+                               __func__, __LINE__,
+                               iq->sc_closed_files ? "COMMIT" : "ABORT", irc);
+                        comdb2_die(0);
+                    }
+                    iq->sc_close_tran = NULL;
+                }
                 if (iq->sc_tran) {
                     irc = trans_abort(iq, iq->sc_tran);
                     if (irc != 0) {
@@ -5539,6 +5582,24 @@ add_blkseq:
                         assert(trans != NULL);
                         trans_commit(iq, trans, source_host);
                         trans = NULL;
+
+                        if (iq->sc_close_tran) {
+                            if (iq->sc_closed_files)
+                                irc = trans_commit(iq, iq->sc_close_tran,
+                                                   source_host);
+                            else
+                                irc = trans_abort(iq, iq->sc_close_tran);
+                            if (irc != 0) {
+                                logmsg(LOGMSG_FATAL,
+                                       "%s:%d TRANS_%s FAILED RC %d\n",
+                                       __func__, __LINE__,
+                                       iq->sc_closed_files ? "COMMIT" : "ABORT",
+                                       irc);
+                                comdb2_die(0);
+                            }
+                            iq->sc_close_tran = NULL;
+                        }
+
                         irc = trans_commit(iq, iq->sc_tran, source_host);
                         if (irc != 0) { /* this shouldnt happen */
                             logmsg(LOGMSG_FATAL,
@@ -5552,10 +5613,12 @@ add_blkseq:
                         unlock_schema_lk();
                         iq->sc_locked = 0;
                     }
-                    if (iq->sc_logical_tran)
+                    if (iq->sc_logical_tran) {
                         irc = trans_commit_logical(iq, iq->sc_logical_tran,
                                                    gbl_mynode, 0, 1, NULL, 0,
                                                    NULL, 0);
+                    }
+                    assert(outrc || iq->sc_running == 0);
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
@@ -5660,6 +5723,22 @@ add_blkseq:
             if (!backed_out) {
                 /*fprintf(stderr, "trans_commit_logical\n");*/
                 if (iq->tranddl) {
+                    if (iq->sc_close_tran) {
+                        if (iq->sc_closed_files)
+                            irc = trans_commit(iq, iq->sc_close_tran,
+                                               source_host);
+                        else
+                            irc = trans_abort(iq, iq->sc_close_tran);
+                        if (irc != 0) {
+                            logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d",
+                                   __func__, __LINE__,
+                                   iq->sc_closed_files ? "COMMIT" : "ABORT",
+                                   irc);
+                            comdb2_die(0);
+                        }
+                        iq->sc_close_tran = NULL;
+                    }
+
                     irc = trans_commit(iq, iq->sc_tran, source_host);
                     if (irc != 0) { /* this shouldnt happen */
                         logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d",
@@ -5929,6 +6008,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
     rc = toblock_main_int(javasp_trans_handle, iq, p_blkstate);
     end = gettimeofday_ms();
 
+    bdb_assert_notran(thedb->bdb_env);
+
     if (rc == 0) {
         osql_postcommit_handle(iq);
         handle_postcommit_bpfunc(iq);
@@ -5936,6 +6017,8 @@ static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
         osql_postabort_handle(iq);
         handle_postabort_bpfunc(iq);
     }
+
+    assert(iq->sc_running == 0);
 
     Pthread_mutex_lock(&blklk);
     blkcnt--;

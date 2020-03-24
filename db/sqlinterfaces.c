@@ -6356,4 +6356,3 @@ void end_internal_sql_clnt(struct sqlclntstate *clnt)
     clnt->dbtran.mode = TRANLEVEL_INVALID;
     cleanup_clnt(clnt);
 }
-

@@ -2298,7 +2298,7 @@ clipper_usage:
         MEMORY_SYNC;
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
-        sc_set_running(NULL, 0, 0, NULL, 0);
+        wait_for_sc_to_stop("forceabort", __func__, __LINE__);
     } else if (tokcmp(tok, ltok, "get_db_dir")==0) {
         logmsg(LOGMSG_USER, "Database Base Directory: %s\n", thedb->basedir);
     } else if (tokcmp(tok, ltok, "debug") == 0) {

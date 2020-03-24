@@ -52,6 +52,10 @@ struct field {
     int blob_index; /* index of this blob, -1 for non blobs */
 };
 
+#if defined STACK_TAG_SCHEMA
+#define MAX_TAG_STACK_FRAMES 64
+#endif
+
 /* A schema for a tag or index.  The schema for the .ONDISK tag will have
  * an array of ondisk index schemas too. */
 struct schema {
@@ -71,6 +75,11 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
+#if defined STACK_TAG_SCHEMA
+    int frames;
+    void *buf[MAX_TAG_STACK_FRAMES];
+    pthread_t tid;
+#endif
     LINKC_T(struct schema) lnk;
 };
 

@@ -2381,8 +2381,8 @@ static inline int should_copy_seqnum(bdb_state_type *bdb_state,
         return 1;
     }
 
-    if (bdb_state->attr->enable_seqnum_generations && seqnum->generation <
-            last_seqnum->generation) {
+    if (bdb_state->attr->enable_seqnum_generations &&
+        seqnum->generation < last_seqnum->generation) {
         if (trace && (now = time(NULL)) > lastpr) {
             logmsg(LOGMSG_USER,
                    "seqnum-generation %d < last_generation %d, not"
@@ -3234,8 +3234,8 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int i, j, now, cntbytes;
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
-    int durable_lsns = bdb_state->attr->durable_lsns;
-    int catchup_window = bdb_state->attr->catchup_window;
+    int durable_lsns;
+    int catchup_window;
     int do_slow_node_check = 0;
     DB_LSN *masterlsn;
     int numnodes;
@@ -3261,6 +3261,10 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
+
+    /* Dereference from parent */
+    durable_lsns = bdb_state->attr->durable_lsns;
+    catchup_window = bdb_state->attr->catchup_window;
 
     /* short ciruit if we are waiting on lsn 0:0  */
     if ((seqnum->lsn.file == 0) && (seqnum->lsn.offset == 0))
