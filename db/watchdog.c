@@ -363,7 +363,7 @@ static void *watchdog_thread(void *arg)
             (gbl_client_running_slow_seconds > 0)) {
             struct connection_info *conn_infos = NULL;
             int conn_count = 0;
-            if (gather_connection_info(&conn_infos, &conn_count) == 0) {
+            if ((rc = gather_connection_info(&conn_infos, &conn_count)) == 0) {
                 int slow_count = 0;
                 int conn_time_now = comdb2_time_epochms();
                 int slow_seconds = 0;
