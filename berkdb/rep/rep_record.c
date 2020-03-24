@@ -127,7 +127,7 @@ static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
 extern void bdb_set_seqnum(void *);
 extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
-extern void wait_for_sc_to_stop(const char *operation);
+extern void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 extern void allow_sc_to_run(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
@@ -1301,10 +1301,11 @@ skip:				/*
 						__FILE__, __LINE__, lsn.file,
 						lsn.offset);
 #endif
-
-					(void)__rep_send_message(dbenv, *eidp,
-						REP_VERIFY_REQ,
-						&lsn, NULL, 0, NULL);
+					if (lsn.file > 0) {
+						(void)__rep_send_message(dbenv, *eidp,
+								REP_VERIFY_REQ,
+								&lsn, NULL, 0, NULL);
+					}
 				}
 			}
 			fromline = __LINE__;
@@ -1676,6 +1677,9 @@ more:
 							"Unable to get prev of [%lu][%lu]",
 							(u_long)lsn.file,
 							(u_long)lsn.offset);
+                    /* This behavior might be wrong */
+                    logmsg(LOGMSG_INFO, "%s:%d sending DB_REP_OUTDATED\n",
+                            __func__, __LINE__);
 					ret = DB_REP_OUTDATED;
 					/* Tell the replicant he's outdated. */
 					if (gbl_verbose_fills) {
@@ -1683,6 +1687,9 @@ more:
 								"for LSN %d:%d\n", __func__, __LINE__, 
 								lsn.file, lsn.offset);
 					}
+                    logmsg(LOGMSG_INFO, "%s:%d log_c_get failed to find [%d:%d]"
+                            " and [%d:%d]: REP_VERIFY_FAIL\n", __func__, __LINE__,
+                            lsn.file, lsn.offset,endlsn.file, endlsn.offset);
 					if ((resp_rc = __rep_time_send_message(dbenv, *eidp,
 								REP_VERIFY_FAIL, &lsn, NULL, 0,
 								NULL, &sendtime)) != 0 && gbl_verbose_fills) {
@@ -1997,6 +2004,7 @@ more:
 				verify_req_print = now;
 			}
 
+            assert(lsn.file > 0);
 			(void)__rep_send_message(dbenv,
 				*eidp, REP_VERIFY_REQ, &lsn, NULL, 0, NULL);
 
@@ -2032,6 +2040,7 @@ notfound:
 						verify_req_print = now;
 					}
 
+                    assert(lsn.file > 0);
 					(void)__rep_send_message(dbenv,
 						*eidp, REP_VERIFY_REQ, &lsn, NULL,
 						0, NULL);
@@ -2061,6 +2070,9 @@ notfound:
 			 * the same environment and we'll say so.
 			 */
 			ret = DB_REP_OUTDATED;
+            logmsg(LOGMSG_INFO, "%s:%d returning DB_REP_OUTDATED\n",
+                    __func__, __LINE__);
+
 			if (rp->lsn.file != 1)
 				__db_err(dbenv,
 					"Too few log files to sync with master");
@@ -2089,6 +2101,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 	case REP_VERIFY_FAIL:
 		rep->stat.st_outdated++;
 		ret = DB_REP_OUTDATED;
+        logmsg(LOGMSG_INFO, "%s:%d returning DB_REP_OUTDATED\n",
+                __func__, __LINE__);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_VERIFY_REQ:
@@ -2117,8 +2131,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 */
 		if (ret == DB_NOTFOUND &&
 			__log_is_outdated(dbenv, rp->lsn.file, &old) == 0 &&
-			old != 0)
+			old != 0) {
+            logmsg(LOGMSG_INFO, "%s rep_verify_req returning REP_VERIFY_FAIL "
+                    "for [%d:%d]\n", __func__, rp->lsn.file, rp->lsn.offset);
 			type = REP_VERIFY_FAIL;
+        }
 
 		if (ret != 0)
 			d = NULL;
@@ -6411,7 +6428,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online)
 	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	if (i_am_master) {
-		wait_for_sc_to_stop("log-truncate");
+		wait_for_sc_to_stop("log-truncate", __func__, __LINE__);
 	}
 
 	Pthread_rwlock_wrlock(&dbenv->recoverlk);
