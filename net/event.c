@@ -161,7 +161,6 @@ static struct event_base *timer_base;
 #define wr_thd ({ get_wr_policy()->wrthd; })
 #define wr_base ({ get_wr_policy()->wrbase; })
 
-#define SKIP_CHECK_THD
 #undef SKIP_CHECK_THD
 
 #ifdef SKIP_CHECK_THD
@@ -2511,10 +2510,7 @@ static void init_base(pthread_t *t, struct event_base **bb,
 {
     struct net_dispatch_info *info;
     info = calloc(1, sizeof(struct net_dispatch_info));
-    struct event_config *cfg = event_config_new();
-    event_config_set_flag(cfg, EVENT_BASE_FLAG_EPOLL_USE_CHANGELIST);
-    *bb = event_base_new_with_config(cfg);
-    event_config_free(cfg);
+    *bb = event_base_new();
     info->who = who;
     info->base = *bb;
     Pthread_create(t, NULL, f, info);
