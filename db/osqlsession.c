@@ -35,6 +35,7 @@
 #include "str0.h"
 #include "reqlog.h"
 #include "osqlsqlnet.h"
+#include "osqlbundled.h"
 
 struct sess_impl {
     int clients; /* number of threads using the session */
@@ -149,8 +150,8 @@ static void _destroy_session(osql_sess_t **psess)
 {
     osql_sess_t *sess = *psess;
 
-    if (sess->snap_info)
-        free(sess->snap_info);
+    free(sess->snap_info);
+    free(sess->finalop);
 
     Pthread_mutex_destroy(&sess->impl->mtx);
     if (!sess->impl->embedded_sql)
@@ -264,6 +265,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 {
     int rc = 0;
     int is_msg_done = 0;
+    int preprocess_only;
     struct errstat *perr = NULL;
 
     /* get the session; dispatched sessions are ignored */
@@ -276,8 +278,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     }
 
     is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, rqid == OSQL_RQID_USE_UUID,
-                          &perr, NULL) != 0;
+        osql_comm_is_done(sess, type, data, datalen, rqid == OSQL_RQID_USE_UUID, &perr, NULL, &preprocess_only) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
@@ -296,7 +297,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     *found = 1;
 
     /* save op */
-    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type);
+    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type, preprocess_only);
     if (rc) {
         /* failed to save into bplog; discard and be done */
         goto failed_stream;
@@ -310,6 +311,18 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
             osql_sess_close(&sess, 1);
         }
         return 0;
+    }
+
+    if (preprocess_only) {
+        /* Store the final packet in memory. */
+        sess->finalop = malloc(datalen);
+        if (sess->finalop == NULL) {
+            logmsgperror("malloc");
+            rc = ENOMEM;
+            goto failed_stream;
+        }
+        sess->finalopsz = datalen;
+        memcpy(sess->finalop, data, datalen);
     }
 
     /* IT WAS A DONE MESSAGE
@@ -339,10 +352,10 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
                            int *is_msg_done)
 {
     int rc = 0;
+    int preprocess_only;
     struct errstat *perr = NULL;
 
-    *is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, 1, &perr, NULL) != 0;
+    *is_msg_done = osql_comm_is_done(sess, type, data, datalen, 1, &perr, NULL, &preprocess_only) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
@@ -355,7 +368,7 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
     }
 
     /* save op */
-    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type);
+    rc = osql_bplog_saveop(sess, sess->tran, data, datalen, type, preprocess_only);
     if (rc) {
         /* failed to save into bplog; discard and be done */
         return rc;
@@ -365,6 +378,14 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
     if (!*is_msg_done) {
         return 0;
     }
+
+    sess->finalop = malloc(datalen);
+    if (sess->finalop == NULL) {
+        logmsgperror("malloc");
+        return ENOMEM;
+    }
+    sess->finalopsz = datalen;
+    memcpy(sess->finalop, data, datalen);
 
     if (gbl_sockbplog_debug)
         logmsg(LOGMSG_ERROR, "%p Dispatching transaction\n", (void *)pthread_self());
@@ -514,8 +535,8 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
 
     sess->impl->clients = 1;
-    /* defaults to net */
     init_bplog_net(&sess->target);
+    init_bplog_bundled(&sess->target);
 
     /* create bplog so we can collect ops from sql thread */
     sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID,

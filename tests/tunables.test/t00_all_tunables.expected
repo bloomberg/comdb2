@@ -580,6 +580,7 @@
 (name='osql_force_local', description='osql_force_local', type='BOOLEAN', value='OFF', read_only='N')
 (name='osql_heartbeat_alert_time', description='', type='INTEGER', value='7', read_only='Y')
 (name='osql_heartbeat_send_time', description='', type='INTEGER', value='5', read_only='Y')
+(name='osql_max_bundled_bytes', description='Maximum bplog bundle size, set to <=0 to turn off bundling (Default: 4 MiB)', type='INTEGER', value='4194304', read_only='N')
 (name='osql_max_queue', description='', type='INTEGER', value='10000', read_only='Y')
 (name='osql_net_poll', description='Like net_sql, but for the offload network (used by write transactions on replicants to send work to the master) (Default: 100ms)', type='INTEGER', value='100', read_only='Y')
 (name='osql_net_portmux_register_interval', description='', type='INTEGER', value='600', read_only='Y')

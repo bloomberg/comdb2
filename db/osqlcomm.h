@@ -28,6 +28,28 @@
 #define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 
+/* common osql structures */
+typedef struct osql_rpl {
+    /* keep this header aligned head and tail! */
+    enum OSQL_RPL_TYPE type;
+    int padding;
+    unsigned long long sid; /* concurrent access */
+} osql_rpl_t;
+enum { OSQLCOMM_RPL_TYPE_LEN = 4 + 4 + 8 };
+uint8_t *osqlcomm_rpl_type_put(const osql_rpl_t *p_osql_rpl, uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *osqlcomm_rpl_type_get(osql_rpl_t *p_osql_rpl, const uint8_t *p_buf, const uint8_t *p_buf_end);
+
+typedef struct osql_rpl_uuid {
+    enum OSQL_RPL_TYPE type;
+    int padding;
+    uuid_t uuid;
+} osql_uuid_rpl_t;
+enum { OSQLCOMM_UUID_RPL_TYPE_LEN = 4 + 4 + 16 };
+uint8_t *osqlcomm_uuid_rpl_type_put(const osql_uuid_rpl_t *p_osql_rpl, uint8_t *p_buf, const uint8_t *p_buf_end);
+const uint8_t *osqlcomm_uuid_rpl_type_get(osql_uuid_rpl_t *p_osql_rpl, const uint8_t *p_buf, const uint8_t *p_buf_end);
+
+int osql_net_type_to_net_uuid_type(int type);
+
 enum { OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION = 0x00000001, };
 
 /**
@@ -50,63 +72,51 @@ void osql_comm_destroy(void);
  * Sql is the first update part of this transaction
  *
  */
-int osql_comm_send_socksqlreq(osql_target_t *target, const char *sql, int sqlen,
-                              unsigned long long rqid, uuid_t uuid,
-                              char *tzname, int type, int flags);
+int osql_comm_send_socksqlreq(osqlstate_t *osql, const char *sql, int sqlen, char *tzname, int type, int flags);
 
 /**
  * Send USEDB op
  * It handles remote/local connectivity
  *
  */
-int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                    char *tablename, int type, unsigned long long version);
+int osql_send_usedb(osqlstate_t *osql, char *tablename, int type, unsigned long long version);
 
 /**
  * Send INDEX op
  * It handles remote/local connectivity
  *
  */
-int osql_send_index(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                    unsigned long long genid, int isDelete, int ixnum,
-                    char *pData, int nData, int type);
+int osql_send_index(osqlstate_t *osql, unsigned long long genid, int isDelete, int ixnum, char *pData, int nData,
+                    int type);
 
 /**
  * Send QBLOB op
  * It handles remote/local connectivity
  *
  */
-int osql_send_qblob(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
-                    int blobid, unsigned long long seq, int type, char *data,
-                    int datalen);
+int osql_send_qblob(osqlstate_t *osql, int blobid, unsigned long long seq, int type, char *data, int datalen);
 
 /**
  * Send UPDCOLS op
  * It handles remote/local connectivity
  *
  */
-int osql_send_updcols(osql_target_t *target, unsigned long long rqid,
-                      uuid_t uuid, unsigned long long seq, int type,
-                      int *colList, int ncols);
+int osql_send_updcols(osqlstate_t *osql, unsigned long long seq, int type, int *colList, int ncols);
 
 /**
  * Send UPDREC op
  * It handles remote/local connectivity
  *
  */
-int osql_send_updrec(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, unsigned long long genid,
-                     unsigned long long ins_keys, unsigned long long del_keys,
-                     char *pData, int nData, int type);
+int osql_send_updrec(osqlstate_t *osql, unsigned long long genid, unsigned long long ins_keys,
+                     unsigned long long del_keys, char *pData, int nData, int type);
 
 /**
  * Send INSREC op
  * It handles remote/local connectivity
  *
  */
-int osql_send_insrec(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, unsigned long long genid,
-                     unsigned long long dirty_keys, char *pData, int nData,
+int osql_send_insrec(osqlstate_t *osql, unsigned long long genid, unsigned long long dirty_keys, char *pData, int nData,
                      int type, int upsert_flags);
 
 /**
@@ -114,62 +124,50 @@ int osql_send_insrec(osql_target_t *target, unsigned long long rqid,
  * It handles remote/local connectivity
  *
  */
-int osql_send_delrec(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, unsigned long long genid,
-                     unsigned long long dirty_keys, int type);
+int osql_send_delrec(osqlstate_t *osql, unsigned long long genid, unsigned long long dirty_keys, int type);
 
 /**
  * Send SCHEMACHANGE op
  * It handles remote/local connectivity
  *
  */
-int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
-                           uuid_t uuid, struct schema_change_type *sc,
-                           int type);
+int osql_send_schemachange(osqlstate_t *osql, struct schema_change_type *sc, int type);
 
 /**
  * Send BPFUNC op
  * It handles remote/local connectivity
  *
  */
-int osql_send_bpfunc(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, BpfuncArg *msg, int type);
+int osql_send_bpfunc(osqlstate_t *osql, BpfuncArg *msg, int type);
 
 /**
  * Send SERIAL op
  *
  */
-int osql_send_serial(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, CurRangeArr *arr, unsigned int file,
-                     unsigned int offset, int type);
+int osql_send_serial(osqlstate_t *osql, CurRangeArr *arr, unsigned int file, unsigned int offset, int type);
 
 /**
  * Send DONE or DONE_XERR op
  * It handles remote/local connectivity
  *
  */
-int osql_send_commit(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, int nops, struct errstat *xerr, int type,
-                     struct client_query_stats *query_stats,
+int osql_send_commit(osqlstate_t *osql, struct errstat *xerr, int type, struct client_query_stats *query_stats,
                      snap_uid_t *snap_info);
-int osql_send_commit_by_uuid(osql_target_t *target, uuid_t uuid, int nops,
-                             struct errstat *xerr, int type,
-                             struct client_query_stats *query_stats,
+
+int osql_send_commit_by_uuid(osqlstate_t *osql, struct errstat *xerr, int type, struct client_query_stats *query_stats,
                              snap_uid_t *snap_info);
 
 /**
  * Extra commit info
  *
  */
-int osql_send_startgen(osql_target_t *target, unsigned long long rqid,
-                       uuid_t uuid, uint32_t start_gen, int type);
+int osql_send_startgen(osqlstate_t *osql, uint32_t start_gen, int type);
 
 /**
  * Consume
  *
  */
-int osql_send_dbq_consume(osql_target_t *target, unsigned long long rqid,
-                          uuid_t, genid_t, int type);
+int osql_send_dbq_consume(osqlstate_t *osql, genid_t, int type);
 
 /**
  * Request that a remote sql engine start recording it's query stats to a
@@ -177,25 +175,20 @@ int osql_send_dbq_consume(osql_target_t *target, unsigned long long rqid,
  * FSQL_GRAB_DBGLOG request.
  *
  */
-int osql_send_dbglog(osql_target_t *target, unsigned long long rqid,
-                     uuid_t uuid, unsigned long long dbglog_cookie, int queryid,
-                     int type);
+int osql_send_dbglog(osqlstate_t *osql, unsigned long long dbglog_cookie, int queryid, int type);
 
 /**
  * Send RECGENID
  * It handles remote/local connectivity
  *
  */
-int osql_send_recordgenid(osql_target_t *target, unsigned long long rqid,
-                          uuid_t uuid, unsigned long long genid, int type);
+int osql_send_recordgenid(osqlstate_t *osql, unsigned long long genid, int type);
 
 /**
  * Update stats
  *
  */
-int osql_send_updstat(osql_target_t *target, unsigned long long rqid,
-                      uuid_t uuid, unsigned long long seq, char *pData,
-                      int nData, int nStat, int type);
+int osql_send_updstat(osqlstate_t *osql, unsigned long long seq, char *pData, int nData, int nStat, int type);
 
 /**
  * Sends the result of block processor transaction commit
@@ -221,9 +214,8 @@ void signal_replicant_error(osql_target_t *target, unsigned long long rqid,
  * or -1 otherwise
  *
  */
-int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
-                      int hasuuid, struct errstat **xerr,
-                      struct query_effects *effects);
+int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen, int hasuuid, struct errstat **xerr,
+                      struct query_effects *effects, int *preprocess_only);
 
 /**
  * Handles each packet and calls record.c functions
@@ -244,6 +236,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
                               int *flags, int **updCols,
                               blob_buffer_t blobs[MAXBLOBS], int step,
                               struct block_err *err, int *receivedrows);
+
 /**
  * Sends a user command to offload net (used by "osqlnet")
  *
@@ -332,7 +325,6 @@ int osql_disable_net_test(void);
  *
  */
 int osql_comm_check_bdb_lock(const char *func, int line);
-
 
 netinfo_type *osql_get_netinfo(void);
 

@@ -632,6 +632,8 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
             abort();
     }
 
+    free(osql->target.bundled.hdr);
+    free(osql->target.bundled.buf);
     bzero(osql, sizeof(*osql));
     listc_init(&osql->shadtbls, offsetof(struct shad_tbl, linkv));
 

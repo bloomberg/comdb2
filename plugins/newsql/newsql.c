@@ -28,6 +28,7 @@
 #include "str0.h"
 #include "sqloffload.h"
 #include "osqlsqlsocket.h"
+#include "osqlbundled.h"
 #include "sqlquery.pb-c.h"
 #include "sqlresponse.pb-c.h"
 

@@ -105,12 +105,6 @@ int osql_get_shadowdata(struct BtCursor *pCur, unsigned long long genid,
                         void **buf, int *buflen, int *bdberr);
 
 /**
- * Scan the shadow tables for the current transaction
- * and send to the master the ops
- */
-int osql_process_shadtbl(struct sqlclntstate *clnt, int *nops, int *bdberr);
-
-/**
  * Clear the rows from the shadow tables at the end of a transaction
  *
  */

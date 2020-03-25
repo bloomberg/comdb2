@@ -2117,4 +2117,7 @@ REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",
                  TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("osql_max_bundled_bytes",
+                 "Maximum bplog bundle size, set to <=0 to turn off bundling (Default: 4 MiB)", TUNABLE_INTEGER,
+                 &gbl_osql_max_bundled_bytes, 0, NULL, NULL, osql_max_bundled_bytes_update, NULL);
 #endif /* _DB_TUNABLES_H */

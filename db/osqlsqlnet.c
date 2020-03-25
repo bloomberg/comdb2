@@ -26,9 +26,10 @@
 #include "sql.h"
 #include "osqlcheckboard.h"
 #include "osqlcomm.h"
+#include "osqlbundled.h"
 
-static int _send(osql_target_t *target, int usertype, void *data, int datalen,
-                 int nodelay, void *tail, int tailen);
+static int _send(osql_target_t *target, int usertype, void *data, int datalen, int nodelay, void *tail, int tailen,
+                 int unused1, int unused2);
 
 /**
  * Init bplog over net master side
@@ -55,6 +56,8 @@ int osql_begin_net(struct sqlclntstate *clnt, int type, int keep_rqid)
     osql->target.host = thedb->master;
     osql->target.send = _send;
     assert(osql->target.sb == NULL);
+
+    init_bplog_bundled(&osql->target);
 
     /* protect against no master */
     if (osql->target.host == NULL || osql->target.host == db_eid_invalid)
@@ -87,9 +90,11 @@ int osql_end_net(struct sqlclntstate *clnt)
     return osql_unregister_sqlthr(clnt);
 }
 
-static int _send(osql_target_t *target, int usertype, void *data, int datalen,
-                 int nodelay, void *tail, int tailen)
+static int _send(osql_target_t *target, int usertype, void *data, int datalen, int nodelay, void *tail, int tailen,
+                 int unused1, int unused2)
 {
+    (void)unused1;
+    (void)unused2;
     return offload_net_send(target->host, usertype, data, datalen, nodelay,
                             tail, tailen);
 }

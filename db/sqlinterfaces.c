@@ -110,6 +110,7 @@
 #include "string_ref.h"
 
 #include "osqlsqlsocket.h"
+#include "osqlbundled.h"
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -5226,6 +5227,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->flat_col_vals = 0;
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
+        init_bplog_bundled(&clnt->osql.target);
     }
 }
 
