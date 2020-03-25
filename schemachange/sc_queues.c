@@ -584,9 +584,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         add_to_qdbs(db);
 
-        /* Add queue to the hash. */
-        hash_add(thedb->qdb_hash, db);
-
         /* create a consumer for this guy */
         /* TODO: needs locking */
         rc = dbqueuedb_add_consumer(
