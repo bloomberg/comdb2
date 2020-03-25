@@ -243,8 +243,6 @@ char *osql_breq2a(int op)
         return "OSQL_DELIDX";
     case OSQL_INSIDX:
         return "OSQL_INSIDX";
-    case OSQL_DBQ_CONSUME_UUID:
-        return "OSQL_DBQ_CONSUME_UUID";
     default:
         return "UNKNOWN";
     }

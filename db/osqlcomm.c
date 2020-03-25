@@ -581,20 +581,12 @@ static const uint8_t *osqlcomm_del_type_get(osql_del_t *p_osql_del,
 typedef struct {
     osql_uuid_rpl_t hd;
     genid_t genid;
-} osql_uuid_dbq_consume_t;
+} osql_dbq_consume_uuid_t;
 
 typedef struct {
     osql_rpl_t hd;
     genid_t genid;
 } osql_dbq_consume_t;
-
-
-typedef struct {
-	osql_uuid_rpl_t hd;
-	genid_t genid;
-} osql_dbq_consume_uuid_t;
-
-//TODO FIXME XXX -- compile time assert to check sizeof
 
 typedef struct osql_del_rpl {
     osql_rpl_t hd;
@@ -4341,7 +4333,7 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
                           genid_t genid, int type, SBUF2 *logsb)
 {
     union {
-        osql_uuid_dbq_consume_t uuid;
+        osql_dbq_consume_uuid_t uuid;
         osql_dbq_consume_t rqid;
     } rpl = {{{0}}};
     if (check_master(tohost))
@@ -4355,7 +4347,7 @@ int osql_send_dbq_consume(char *tohost, unsigned long long rqid, uuid_t uuid,
     }
     size_t sz;
     if (rqid == OSQL_RQID_USE_UUID) {
-        rpl.uuid.hd.type = htonl(OSQL_DBQ_CONSUME_UUID);
+        rpl.uuid.hd.type = htonl(OSQL_DBQ_CONSUME);
         comdb2uuidcpy(rpl.uuid.hd.uuid, uuid);
         rpl.uuid.genid = genid;
         sz = sizeof(rpl.uuid);
@@ -6512,7 +6504,6 @@ static inline int is_write_request(int type)
 {
     switch (type) {
     case OSQL_DBQ_CONSUME:
-    case OSQL_DBQ_CONSUME_UUID:
     case OSQL_DELREC:
     case OSQL_DELETE:
     case OSQL_UPDSTAT:
@@ -6944,16 +6935,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
         break;
     }
-
-    case OSQL_DBQ_CONSUME_UUID: {
-        osql_dbq_consume_uuid_t *dt = (osql_dbq_consume_uuid_t *)msg;
-        if ((rc = dbq_consume_genid(iq, trans, 0, dt->genid)) != 0) {
-            logmsg(LOGMSG_ERROR, "%s: dbq_consume rc:%d\n", __func__, rc);
-            return rc;
-        }
-        break;
-    }
-
     case OSQL_DELREC:
     case OSQL_DELETE: {
         osql_del_t dt;

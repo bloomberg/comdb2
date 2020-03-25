@@ -353,7 +353,6 @@ enum OSQL_RPL_TYPE {
     OSQL_UPDATE = 23, /* new osql type to support partial indexes */
     OSQL_DELIDX = 24, /* new osql type to support indexes on expressions */
     OSQL_INSIDX = 25, /* new osql type to support indexes on expressions */
-    OSQL_DBQ_CONSUME_UUID = 26,
     OSQL_STARTGEN = 27,
     MAX_OSQL_TYPES = 28
 };
