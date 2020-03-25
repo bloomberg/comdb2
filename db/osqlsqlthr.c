@@ -51,6 +51,7 @@
 #include <trigger.h>
 #include <logmsg.h>
 #include "views.h"
+#include <dbinc/queue.h>
 
 /* don't retry commits, fail transactions during master swings !
    we need blockseq */
@@ -651,13 +652,18 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype)
  * Returns ok if the packet is sent successful to the master
  * If keep_rqid, this is a retry and we want to keep the same rqid
  */
-int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
+enum {
+    OSQL_START_KEEP_RQID = 1,
+    OSQL_START_NO_REORDER = 2,
+};
+static int osql_sock_start_int(struct sqlclntstate *clnt, int type, int start_flags)
 {
     osqlstate_t *osql = &clnt->osql;
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int rc = 0;
     int retries = 0;
     int flags = 0;
+    int keep_rqid = start_flags & OSQL_START_KEEP_RQID;
 
     if (!thd) {
         logmsg(LOGMSG_ERROR, "%s:%d Bug, not sql thread !\n", __func__, __LINE__);
@@ -676,7 +682,9 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
         }
     }
 
-    osql->is_reorder_on = gbl_reorder_socksql_no_deadlock;
+    osql->is_reorder_on = start_flags & OSQL_START_NO_REORDER
+                              ? 0
+                              : gbl_reorder_socksql_no_deadlock;
 
     /* lets reset error, this could be a retry */
     osql->xerr.errval = 0;
@@ -691,31 +699,10 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
 #endif
 
 retry:
-    if (thd && bdb_lock_desired(thedb->bdb_env)) {
-        int sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 1000)
-            sleepms = 1000;
-
-        if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_ERROR, 
-                    "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
-                    __func__, __LINE__, sleepms);
-
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-            return SQLITE_BUSY;
-        }
-
-        if (gbl_master_swing_osql_verbose)
-            logmsg(LOGMSG_USER, "%s recovered deadlock\n", __func__);
-        clnt->deadlock_recovered++;
-        if (clnt->deadlock_recovered > 100) {
-            sql_debug_logf(clnt, __func__, __LINE__,
-                           "deadlock_recovered is %d, returning SQLITE_BUSY\n",
-                           clnt->deadlock_recovered);
-            return SQLITE_BUSY;
-        }
+    rc = clnt_check_bdb_lock_desired(clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
+        return SQLITE_BUSY;
     }
 
     /* register the session */
@@ -802,6 +789,19 @@ retry:
     return rc;
 }
 
+int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
+{
+    int flags = keep_rqid ? OSQL_START_KEEP_RQID : 0;
+    return osql_sock_start_int(clnt, type, flags);
+}
+
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_rqid)
+{
+    int flags = OSQL_START_NO_REORDER;
+    flags |= keep_rqid ? OSQL_START_KEEP_RQID : 0;
+    return osql_sock_start_int(clnt, type, flags);
+}
+
 int gbl_master_swing_sock_restart_sleep = 0;
 /**
  * Restart a broken socksql connection by opening a new blockproc on the
@@ -834,32 +834,11 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
 
         /* we need to check if we need bdb write lock here to prevent a master
            upgrade blockade */
-        if (thd && bdb_lock_desired(thedb->bdb_env)) {
-            int sleepms = 100 * clnt->deadlock_recovered;
-            if (sleepms > 1000)
-                sleepms = 1000;
-
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d bdb lock desired, recover deadlock with sleepms=%d\n",
-                   __func__, __LINE__, sleepms);
-
-            rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
-                osql_unregister_sqlthr(clnt);
-                return rc;
-            }
-
-            clnt->deadlock_recovered++;
-            logmsg(LOGMSG_DEBUG, "%s recovered deadlock (count %d)\n", __func__,
-                   clnt->deadlock_recovered);
-
-            int max_dead_rec = bdb_attr_get(
-                thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_DEADLOCK_RECOVERED);
-            if (clnt->deadlock_recovered > max_dead_rec) {
-                osql_unregister_sqlthr(clnt);
-                return ERR_RECOVER_DEADLOCK;
-            }
+        rc = clnt_check_bdb_lock_desired(clnt);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
+            osql_unregister_sqlthr(clnt);
+            return ERR_RECOVER_DEADLOCK;
         }
 
         if (osql->tablename) {
@@ -1562,10 +1541,9 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
     return rc;
 }
 
-static int check_osql_capacity(struct sql_thread *thd)
+static int check_osql_capacity_int(struct sqlclntstate *clnt)
 {
-    struct sqlclntstate *clnt = thd->clnt;
-    osqlstate_t *osql = &thd->clnt->osql;
+    osqlstate_t *osql = &clnt->osql;
 
     osql->sentops++;
     osql->tran_ops++;
@@ -1576,9 +1554,7 @@ static int check_osql_capacity(struct sql_thread *thd)
         logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
                         "(limit is %d) [\"%s\"]\n",
                 osql->tran_ops, clnt->osql_max_trans,
-                (thd->clnt && thd->clnt->sql)
-                    ? thd->clnt->sql
-                    : "not_set");
+                clnt->sql ? clnt->sql : "not_set");
 
         errstat_set_rc(&osql->xerr, SQLITE_TOOBIG);
         errstat_set_str(&osql->xerr, "transaction too big\n");
@@ -1587,6 +1563,11 @@ static int check_osql_capacity(struct sql_thread *thd)
     }
 
     return SQLITE_OK;
+}
+
+static int check_osql_capacity(struct sql_thread *thd)
+{
+    return check_osql_capacity_int(thd->clnt);
 }
 
 int osql_query_dbglog(struct sql_thread *thd, int queryid)
@@ -1910,4 +1891,43 @@ int osql_bpfunc_logic(struct sql_thread *thd, BpfuncArg *arg)
         return rc;
     }
     return rc;
+}
+
+int osql_send_del_qdb_logic(struct sqlclntstate *clnt, char *tablename, genid_t id)
+{
+    osqlstate_t *osql = &clnt->osql;
+    int rc = osql_send_usedb_logic_int(tablename, clnt, NET_OSQL_SOCK_RPL);
+    if (rc) {
+        return rc;
+    }
+    return osql_send_delrec(osql->host, osql->rqid, osql->uuid, id, -1, NET_OSQL_SOCK_RPL);
+
+}
+
+int osql_delrec_qdb(struct sqlclntstate *clnt, char *qname, genid_t id)
+{
+    osqlstate_t *osql = &clnt->osql;
+    if (osql->is_reorder_on) {
+        logmsg(LOGMSG_ERROR, "%s - reorder is unsupportd\n", __func__);
+        return -1;
+    }
+    int rc = check_osql_capacity_int(clnt);
+    if (rc) {
+        return rc;
+    }
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        START_SOCKSQL;
+        int restarted;
+        do {
+            rc = osql_send_del_qdb_logic(clnt, qname, id);
+            RESTART_SOCKSQL;
+        } while (restarted);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:%d %s - failed to send socksql delrec_qdb rc=%d\n", __FILE__,
+                   __LINE__, __func__, rc);
+            return rc;
+        }
+    }
+    return osql_save_delrec_qdb(clnt, qname, id);
 }

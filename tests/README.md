@@ -372,7 +372,7 @@ of comdb2 servers in those containers.
 
     You will also want to install inside the containers the required packages for comdb2 to run:
     ```sh
-      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0
+      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0 libevent-core-2.1 libevent-pthreads-2.1
     ```
 
 4.  At this time you will want to make copies of this container:

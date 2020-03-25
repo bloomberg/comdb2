@@ -17,6 +17,7 @@
 #include "schemachange.h"
 #include "sc_queues.h"
 #include "translistener.h"
+#include "sc_schema.h"
 #include "logmsg.h"
 
 #define BDB_TRAN_MAYBE_ABORT_OR_FATAL(a,b,c) do {                             \
@@ -190,19 +191,36 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
  * perform_trigger_update()? */
 int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 {
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     int rc;
+    void *tran = NULL;
     char *config;
     int ndests;
+    int compr;
+    int persist;
     char **dests;
+    uint32_t lid = 0;
+    extern uint32_t gbl_rep_lockid;
     int bdberr;
 
     /* Queue information should already be in llmeta. Fetch it and create
-     * queue/consumer handles. */
+     * queue/consumer handles.  Use a transaction with gbl_rep_lockid to
+     * querry (see comment in scdone_callback). */
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,
+               __LINE__, bdberr);
+        rc = bdberr;
+        goto done;
+    }
 
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    /* TODO: assert we are holding the write-lock on the queue */
     if (type != llmeta_queue_drop) {
-        rc = bdb_llmeta_get_queue((char *)queue_name, &config, &ndests, &dests,
-                                  &bdberr);
+        rc = bdb_llmeta_get_queue(tran, (char *)queue_name, &config, &ndests,
+                                  &dests, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_queue %s rc %d bdberr %d\n",
                    queue_name, rc, bdberr);
@@ -235,7 +253,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         }
         db->handle =
             bdb_open_more_queue(queue_name, thedb->basedir, 65536, 65536,
-                                thedb->bdb_env, 1, NULL, &bdberr);
+                                thedb->bdb_env, 1, tran, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -327,13 +345,57 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         goto done;
     }
 
+    compr = persist = 0;
+    if (type != llmeta_queue_drop) {
+        if (get_db_queue_odh_tran(db, &db->odh, tran) != 0 || db->odh == 0) {
+            db->odh = 0;
+        } else {
+            get_db_queue_compress_tran(db, &compr, tran);
+            get_db_queue_persistent_seq_tran(db, &persist, tran);
+        }
+        bdb_set_queue_odh_options(db->handle, db->odh, compr, persist);
+    }
+
 done:
+    if (tran) {
+        bdb_set_tran_lockerid(tran, lid);
+        rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
+                   __FILE__, __LINE__);
+            exit(1);
+        }
+    }
     return rc;
 }
+
+static inline void set_empty_queue_options(struct schema_change_type *s)
+{
+    if (gbl_init_with_queue_odh == 0)
+        gbl_init_with_queue_compr = 0;
+    if (s->headers == -1)
+        s->headers = gbl_init_with_queue_odh;
+    if (s->compress == -1)
+        s->compress = gbl_init_with_queue_compr;
+    if (s->persistent_seq == -1)
+        s->persistent_seq = gbl_init_with_queue_persistent_seq;
+    if (s->compress_blobs == -1)
+        s->compress_blobs = 0;
+    if (s->ip_updates == -1)
+        s->ip_updates = 0;
+    if (s->instant_sc == -1)
+        s->instant_sc = 0;
+}
+
+extern int get_physical_transaction(bdb_state_type *bdb_state,
+        tran_type *logical_tran, tran_type **outtran, int force_commit);
 
 static int perform_trigger_update_int(struct schema_change_type *sc)
 {
     char *config = sc->newcsc2;
+    int same_tran = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN);
+    
+
     /* we are on on master
      * 1) write config/destinations to llmeta
      * 2) create table in thedb->dbs
@@ -341,12 +403,51 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * 4) send scdone, like any other sc
      */
     struct dbtable *db;
-    void *tran = NULL;
+    tran_type *tran = NULL, *ltran = NULL;
     int rc = 0;
     int bdberr = 0;
     struct ireq iq;
     scdone_t scdone_type = llmeta_queue_add;
     SBUF2 *sb = sc->sb;
+
+    set_empty_queue_options(sc);
+
+    init_fake_ireq(thedb, &iq);
+    iq.usedb = &thedb->static_table;
+
+    if (same_tran) {
+        rc = trans_start_logical_sc(&iq, &ltran);
+        if (rc) {
+            sbuf2printf(sb, "!Error %d creating logical transaction for %s.\n",
+                    rc, sc->tablename);
+            sbuf2printf(sb, "FAILED\n");
+            goto done;
+        }
+        bdb_ltran_get_schema_lock(ltran);
+        rc = get_physical_transaction(thedb->bdb_env, ltran, &tran, 0);
+        if (rc != 0 || tran == NULL) {
+            sbuf2printf(sb, "!Error %d creating physical transaction for %s.\n",
+                    rc, sc->tablename);
+            sbuf2printf(sb, "FAILED\n");
+            goto done;
+        }
+    } else {
+        rc = trans_start(&iq, NULL, (void *)&tran);
+        if (rc) {
+            sbuf2printf(sb, "!Error %d creating a transaction for %s.\n", rc,
+                    sc->tablename);
+            sbuf2printf(sb, "FAILED\n");
+            goto done;
+        }
+    }
+
+    rc = bdb_lock_tablename_write(thedb->bdb_env, sc->tablename, tran);
+    if (rc) {
+        sbuf2printf(sb, "!Error %d getting tablelock for %s.\n", rc,
+                    sc->tablename);
+        sbuf2printf(sb, "FAILED\n");
+        goto done;
+    }
 
     db = get_dbtable_by_name(sc->tablename);
     if (db) {
@@ -377,16 +478,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    /* TODO: other checks: procedure with this name must not exist either */
-
-    init_fake_ireq(thedb, &iq);
-    iq.usedb = &thedb->static_table;
-
-    rc = trans_start(&iq, NULL, (void *)&tran);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+    if ((rc = check_option_queue_coherency(sc, db)))
         goto done;
-    }
+
+    /* TODO: other checks: procedure with this name must not exist either */
 
     char **dests;
 
@@ -458,7 +553,39 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    thedb->basedir, db->tablename, bdberr);
             goto done;
         }
+
+        if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
+            goto done;
+        }
+
+        if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-compression, rcode %d\n",
+                   rc);
+            goto done;
+        }
+
+        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) !=
+            0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-persistent seq, rc %d\n",
+                   rc);
+            goto done;
+        }
+
+        if (sc->persistent_seq &&
+            (rc = put_db_queue_sequence(db, tran, 0)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-sequence, rc %d\n", rc);
+            goto done;
+        }
+
+        db->odh = sc->headers;
+        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
+                                  sc->persistent_seq);
+
         add_to_qdbs(db);
+
+        /* Add queue to the hash. */
+        hash_add(thedb->qdb_hash, db);
 
         /* create a consumer for this guy */
         /* TODO: needs locking */
@@ -484,6 +611,35 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    __func__, rc);
             goto done;
         }
+
+        if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
+            goto done;
+        }
+
+        if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-compress, rcode %d\n",
+                   rc);
+            goto done;
+        }
+
+        if ((rc = put_db_queue_persistent_seq(db, tran, sc->persistent_seq)) !=
+            0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-persistent seq, rc %d\n",
+                   rc);
+            goto done;
+        }
+
+        /* Zero sequence */
+        if (sc->persistent_seq &&
+            (rc = put_db_queue_sequence(db, tran, 0)) != 0) {
+            logmsg(LOGMSG_ERROR, "failed to set queue-sequence, rc %d\n", rc);
+            goto done;
+        }
+
+        db->odh = sc->headers;
+        bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
+                                  sc->persistent_seq);
 
         scdone_type = llmeta_queue_alter;
 
@@ -534,26 +690,27 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    rc = trans_commit(&iq, tran, gbl_mynode);
-    if (rc) {
-        sbuf2printf(sb, "!Failed to commit transaction\n");
-        goto done;
-    }
-    tran = NULL;
-
-    if (sc->addonly || sc->alteronly) {
-        dbqueuedb_admin(thedb);
+    if (!same_tran) {
+        rc = trans_commit(&iq, tran, gbl_mynode);
+        if (rc) {
+            sbuf2printf(sb, "!Failed to commit transaction\n");
+            goto done;
+        }
+        tran = NULL;
     }
 
     /* log for replicants to do the same */
-    rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);
-    if (rc) {
-        sbuf2printf(sb, "!Failed to broadcast queue %s\n",
-                    sc->drop_table ? "drop" : "add");
-        logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
-               sc->drop_table ? "drop" : "add");
-        /* shouldn't be possible -- yeah right */
-        goto done;
+    if (!same_tran) {
+        rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);
+
+        if (rc) {
+            sbuf2printf(sb, "!Failed to broadcast queue %s\n",
+                        sc->drop_table ? "drop" : "add");
+            logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
+                   sc->drop_table ? "drop" : "add");
+            /* shouldn't be possible -- yeah right */
+            goto done;
+        }
     }
 
     /* TODO: This is fragile - all the actions for the queue should be in one
@@ -562,11 +719,12 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * file handle is stil open on the
      * replicant until the scdone, and we can't delete it until it's closed. */
     if (sc->drop_table) {
-        assert(tran == NULL);
-        rc = trans_start(&iq, NULL, (void *)&tran);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
-            goto done;
+        if (!same_tran) {
+            rc = trans_start(&iq, NULL, (void *)&tran);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+                goto done;
+            }
         }
 
         /*
@@ -589,16 +747,39 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        if (!same_tran) {
+            rc = trans_commit(&iq, tran, gbl_mynode);
+            if (rc) {
+                sbuf2printf(sb, "!Failed to commit transaction\n");
+                goto done;
+            }
+            tran = NULL;
+        }
+    }
+
+    if (same_tran) {
+        rc = bdb_llog_scdone_tran(db->handle, scdone_type, tran, sc->tablename,
+                                  &bdberr);
         if (rc) {
-            sbuf2printf(sb, "!Failed to commit transaction\n");
+            sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
+            goto done;
+        }
+        rc = trans_commit(&iq, ltran, gbl_mynode);
+        if (rc || bdberr != BDBERR_NOERROR) {
+            sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
             goto done;
         }
         tran = NULL;
+        ltran = NULL;
+    }
+
+    if (sc->addonly || sc->alteronly) {
+        dbqueuedb_admin(thedb);
     }
 
 done:
-    if (tran) trans_abort(&iq, tran);
+    if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (ltran) bdb_tran_abort(thedb->bdb_env, ltran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);

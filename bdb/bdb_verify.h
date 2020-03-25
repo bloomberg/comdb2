@@ -34,11 +34,11 @@ typedef enum {
 typedef struct {
     SBUF2 *sb;
     bdb_state_type *bdb_state;
-    dbtable *db_table;
+    struct dbtable *db_table;
     const char *tablename;
-    int (*formkey_callback)(const dbtable *tbl, void *dta, void *blob_parm,
+    int (*formkey_callback)(const struct dbtable *tbl, void *dta, void *blob_parm,
                             int ix, void *keyout, int *keysz);
-    int (*get_blob_sizes_callback)(const dbtable *tbl, void *dta, int blobs[16],
+    int (*get_blob_sizes_callback)(const struct dbtable *tbl, void *dta, int blobs[16],
                                    int bloboffs[16], int *nblobs);
     int (*vtag_callback)(void *parm, void *dta, int *dtasz, uint8_t ver);
     int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz,

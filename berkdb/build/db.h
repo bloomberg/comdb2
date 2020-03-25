@@ -240,7 +240,8 @@ struct __db_trigger_subscription;
  */
 #define	DB_REP_CREATE	      0x0000001	/* Open of an internal rep database. */
 #define	DB_XA_CREATE	      0x0000002	/* Open in an XA environment. */
-#define DB_INDEX_CREATE       0x0000004 /* Create with index priority. */
+#define DB_INDEX_CREATE       0x0000004 /* Tell berkly this is an index.  */
+#define DB_INDEX_PRIORITY     0x0000008 /* Prioritize this in bufferpool. */
 
 /*
  * Flags private to DB_ENV->open.
@@ -414,6 +415,8 @@ struct __db_trigger_subscription;
 					 * is holding a pagelock */
 #define	DB_LOCK_ONELOCK		0x100   /* lockerid will acquire only this
 					 * lock */
+#define DB_LOCK_PRIORITY    0x200   /* Internal: this is a lock against
+                                       an index. */
 
 /* Flag values for lock_id_flags(). */
 #define DB_LOCK_ID_LOWPRI   0x001	/* Choose this as a deadlock victim */
@@ -1700,6 +1703,7 @@ struct __db {
 	int offset_bias;
 	uint8_t olcompact;
 	struct __db_trigger_subscription *trigger_subscription;
+    uint8_t isindex;
 };
 
 /*

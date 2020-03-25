@@ -77,7 +77,7 @@ as long as there was a successful move in the past
 #include <netinet/in.h>
 
 #include <build/db.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 #include <ctrace.h>
 
 #include "net.h"
@@ -97,7 +97,8 @@ as long as there was a successful move in the past
 #include "thrman.h"
 
 #include "genid.h"
-#define MERGE_DEBUG (0)
+
+//#define MERGE_DEBUG 1
 
 struct datacopy_info {
     void *datacopy;
@@ -176,8 +177,6 @@ extern DB_LSN bdb_asof_current_lsn;
 extern DB_LSN bdb_latest_commit_lsn;
 extern uint32_t bdb_latest_commit_gen;
 extern pthread_cond_t bdb_asof_current_lsn_cond;
-
-extern int db_is_stopped(void);
 
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
 static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
@@ -4459,8 +4458,8 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
     if (rc < 0)
         return rc;
 #if MERGE_DEBUG
-    logmsg(LOGMSG_DEBUG, "%d %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
-           pthread_self(), __FILE__, __LINE__, rc);
+    logmsg(LOGMSG_DEBUG, "%p %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
+           (void*)pthread_self(), __FILE__, __LINE__, rc);
 #endif
 
     /* now update the out-of-order flag */
@@ -4517,8 +4516,8 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                 return rc;
 
 #if MERGE_DEBUG
-            logmsg(LOGMSG_DEBUG, "%d %s:%d berkdb->move rc=%d\n",
-                   pthread_self(), __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_DEBUG, "%p %s:%d berkdb->move rc=%d\n",
+                   (void*)pthread_self(), __FILE__, __LINE__, rc);
 #endif
         } else {
             /* Move the cursor for the next iteration. */
@@ -4630,8 +4629,8 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
 
         rc = berkdb->find(berkdb, key, keylen, howcrt, bdberr);
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d find() how=%d returned rc=%d\n",
-               pthread_self(), __FILE__, __LINE__, how, rc);
+        logmsg(LOGMSG_DEBUG, "%p %s:%d find() how=%d returned rc=%d\n",
+               (void*)pthread_self(), __FILE__, __LINE__, how, rc);
 #endif
         if (rc < 0)
             return rc;
@@ -4862,9 +4861,8 @@ step1:
                                       bdberr);
 
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
-               __FILE__, __LINE__, rc, cur->used_rl, how);
-
+        logmsg(LOGMSG_DEBUG, "%p %s:%d rc=%d used_rl=%d [%d]\n",
+               (void *)pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
         print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
 
@@ -5426,8 +5424,8 @@ step1:
     /* STEP 1 */
     if (cur->rl) {
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d used_rl=%d cur->genid=%llx [%d]\n",
-               pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
+        logmsg(LOGMSG_DEBUG, "%p %s:%d used_rl=%d cur->genid=%llx [%d]\n",
+               (void*)pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
                how);
 #endif
         if ((how != DB_NEXT && how != DB_PREV) || cur->used_rl) {
@@ -5438,8 +5436,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n",
-                   pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
+            logmsg(LOGMSG_DEBUG, "%p %s:%d rc=%d used_rl=%d [%d]\n",
+                   (void*)pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
 
             print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
@@ -5853,8 +5851,8 @@ step1:
 
     if (cur->sd && cur->shadow_tran->check_shadows) {
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d used_sd=%d cur->genid=%llx [%d]\n",
-               pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
+        logmsg(LOGMSG_DEBUG, "%p %s:%d used_sd=%d cur->genid=%llx [%d]\n",
+               (void*)pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
                how);
         print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
@@ -5866,8 +5864,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_sd=%d [%d]\n",
-                   pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, how);
+            logmsg(LOGMSG_DEBUG, "%p %s:%d rc=%d used_sd=%d [%d]\n",
+                   (void*)pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, how);
 
             print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
@@ -8407,8 +8405,8 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                                       1 /* keylen incremented */, 1, bdberr);
 #if MERGE_DEBUG
         logmsg(LOGMSG_DEBUG,
-               "%d %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
-               pthread_self(), __FILE__, __LINE__, rc, cur->used_sd,
+               "%p %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
+               (void*)pthread_self(), __FILE__, __LINE__, rc, cur->used_sd,
                cur->used_rl, cur->genid, how);
 #endif
 
@@ -8422,13 +8420,13 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
 #if MERGE_DEBUG
                 logmsg(
                     LOGMSG_DEBUG,
-                    "%d %s:%d we used this value so for PREV need"
+                    "%p %s:%d we used this value so for PREV need"
                     "to \nreturn rc=%d, berkdb is %s, used_sd=%d, used_rl=%d, "
-                    "sd_eof=%d, rl_eof=%d, key=%x [%d]\n",
-                    pthread_self(), __FILE__, __LINE__, rc,
+                    "sd_eof=%d, rl_eof=%d, how:%d\n",
+                    (void*)pthread_self(), __FILE__, __LINE__, rc,
                     (cur->rl == berkdb ? "RL" : "SD"), cur->used_sd,
                     cur->used_rl, cur->sd->is_at_eof(cur->sd),
-                    cur->rl->is_at_eof(cur->rl), key, how);
+                    cur->rl->is_at_eof(cur->rl), how);
 #endif
                 break;
             }

@@ -198,6 +198,7 @@ extern int gbl_elect_priority_bias;
 extern int gbl_abort_on_reconstruct_failure;
 extern int gbl_rand_elect_timeout;
 extern int gbl_rand_elect_min_ms;
+extern int gbl_libevent;
 extern int gbl_rand_elect_max_ms;
 extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
@@ -241,6 +242,7 @@ extern int gbl_memp_dump_cache_threshold;
 extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
+extern int gbl_log_index_locks_first;
 extern int gbl_client_queued_slow_seconds;
 extern int gbl_client_running_slow_seconds;
 extern int gbl_client_abort_on_slow;
@@ -258,7 +260,6 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
-extern char *gbl_portmux_unix_socket;
 extern char *gbl_machine_class;
 extern int gbl_ref_sync_pollms;
 extern int gbl_ref_sync_wait_txnlist;
@@ -364,6 +365,14 @@ static int init_with_compr_blobs_update(void *context, void *algo)
     gbl_init_with_compr_blobs = bdb_compr2algo((char *)algo);
     logmsg(LOGMSG_INFO, "Blobs in new tables will be compressed: %s\n",
            bdb_algo2compr(gbl_init_with_compr_blobs));
+    return 0;
+}
+
+static int init_with_queue_compr_update(void *context, void *algo)
+{
+    gbl_init_with_queue_compr = bdb_compr2algo((char *)algo);
+    logmsg(LOGMSG_INFO, "New queues will be compressed: %s\n",
+           bdb_algo2compr(gbl_init_with_queue_compr));
     return 0;
 }
 
@@ -871,6 +880,16 @@ static int page_order_table_scan_update(void *context, void *value)
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
     return 0;
+}
+
+static void *portmux_bind_path_get(void *dum)
+{
+    return get_portmux_bind_path();
+}
+
+static int portmux_bind_path_set(void *dum, void *path)
+{
+    return set_portmux_bind_path(path);
 }
 
 /* Routines for the tunable system itself - tunable-specific

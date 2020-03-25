@@ -36,7 +36,7 @@
 #include <netinet/in.h>
 #include <plbitlib.h>
 #include <segstr.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <netinet/in.h>
 #include "util.h"
@@ -6703,6 +6703,12 @@ void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
     bdb_set_csc2_version(handle, ver);
     bdb_set_datacopy_odh(handle, datacopy_odh);
     bdb_set_key_compression(handle);
+}
+
+void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)
+{
+    bdb_state_type *handle = tbl->handle;
+    bdb_set_queue_odh_options(handle, odh, compr, persist);
 }
 
 /* Compute map of dbstores used in vtag_to_ondisk */

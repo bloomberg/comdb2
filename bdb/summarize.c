@@ -121,7 +121,7 @@ static DB *dbp_from_meta(DB *dbp, DBMETA *meta)
     return dbp;
 }
 
-typedef struct sampler {
+struct sampler {
     DB db;                      /* our DB handle */
     bdb_state_type *bdb_state;  /* our bdb_state */
     struct temp_table *tmptbl;  /* temptable to store sampled pages */
@@ -129,7 +129,7 @@ typedef struct sampler {
     int pos;                    /* to keep track of the index in the page */
     void *data;                 /* payload of the entry at `pos' */
     int len;                    /* length of the payload */
-} sampler_t;
+};
 
 int sampler_first(sampler_t *sampler)
 {

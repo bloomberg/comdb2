@@ -739,6 +739,12 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         rc = bdberr;
         goto done;
     }
+
+    /* This code runs on the replicant to handle an SC_DONE message.  The
+     * transaction will have updated (and hold locks for) records in llmeta
+     * which we need to look at in order to set up our data structures
+     * correctly.  This replaces the tran's lid with replication's lid so that
+     * we can query this information without self-deadlocking. */
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
@@ -908,7 +914,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
 done:
     if (tran) {
         bdb_set_tran_lockerid(tran, lid);
-        /* TODO: (NC) Why abort? */
+        /* Replace this lid with the original lid so we don't leak it.  Because
+         * we haven't done any work with the original tran, just abort it. */
         rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",

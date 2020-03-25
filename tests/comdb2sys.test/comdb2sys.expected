@@ -81,11 +81,11 @@
 (tablename='t3', bytes=73728)
 (tablename='t4', bytes=73728)
 [select * from comdb2_tablesizes order by tablename] rc 0
-(KEYWORDS_COUNT=212)
+(KEYWORDS_COUNT=213)
 [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
 (RESERVED_KW=65)
 [SELECT COUNT(*) AS RESERVED_KW FROM comdb2_keywords WHERE reserved = 'Y'] rc 0
-(NONRESERVED_KW=147)
+(NONRESERVED_KW=148)
 [SELECT COUNT(*) AS NONRESERVED_KW FROM comdb2_keywords WHERE reserved = 'N'] rc 0
 (name='ALL', reserved='Y')
 (name='ALTER', reserved='Y')
@@ -277,6 +277,7 @@
 (name='SAVEPOINT', reserved='N')
 (name='SCALAR', reserved='N')
 (name='SCHEMACHANGE', reserved='N')
+(name='SEQUENCE', reserved='N')
 (name='SKIPSCAN', reserved='N')
 (name='START', reserved='N')
 (name='SUMMARIZE', reserved='N')
@@ -315,7 +316,7 @@
 (name='max_indexes', description='Maximum number of indexes per table', value=50)
 (name='max_key_length', description='Maximum key length', value=512)
 (name='max_key_name_length', description='Maximum key name length', value=53)
-(name='max_networks', description='Maximum number of networks', value=3)
+(name='max_networks', description='Maximum number of networks', value=2)
 (name='max_nodes', description='Maximum number of nodes', value=32)
 (name='max_operation_name_length', description='Maximum length of a custom operation name', value=32)
 (name='max_pattern_length', description='Maximum length of the pattern in a LIKE or GLOB operator', value=50000)
@@ -356,6 +357,7 @@
 (name='comdb2_cron_events')
 (name='comdb2_cron_schedulers')
 (name='comdb2_fingerprints')
+(name='comdb2_index_usage')
 (name='comdb2_keycomponents')
 (name='comdb2_keys')
 (name='comdb2_keywords')

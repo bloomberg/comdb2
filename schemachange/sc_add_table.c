@@ -222,7 +222,14 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db;
     set_empty_options(s);
 
-    if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
+    if ((rc = check_option_coherency(s, NULL, NULL))) {
+        return rc;
+    }
+    if (is_tablename_queue(s->tablename)) {
+        sc_errf(s, "bad tablename:%s\n", s->tablename);
+        logmsg(LOGMSG_ERROR, "bad tablename:%s\n", s->tablename);
+        return SC_INVALID_OPTIONS;
+    }
 
     if ((db = get_dbtable_by_name(s->tablename))) {
         sc_errf(s, "Table %s already exists\n", s->tablename);

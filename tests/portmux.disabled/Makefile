@@ -1,4 +1,5 @@
-COMDB2_UNITTEST=1
+export SKIPSSL=1
+export COMDB2_UNITTEST=1
 ifeq ($(TESTSROOTDIR),)
 	include ../testcase.mk
 else

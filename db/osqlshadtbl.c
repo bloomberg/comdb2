@@ -33,6 +33,8 @@
 #include "logmsg.h"
 #include "str0.h"
 
+#include <dbinc/queue.h>
+
 extern int g_osql_max_trans;
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -98,7 +100,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr);
 static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr);
 static int process_local_shadtbl_dbq(struct sqlclntstate *, int *bdberr,
                                      int *crt_nops);
-
+static int process_local_delrec_dbq(struct sqlclntstate *, int *, int *);
 static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
                                  int64_t nKey, int *bdberr);
 static int delete_record_indexes(BtCursor *pCur, char *dta, int dtasize,
@@ -1533,12 +1535,20 @@ int osql_shadtbl_process(struct sqlclntstate *clnt, int *nops, int *bdberr,
         *nops += tbl->nops;
     }
 
-    rc = process_local_shadtbl_dbq(clnt, bdberr, nops);
-    if (rc == SQLITE_TOOBIG) {
-        return rc;
+    if ((rc = process_local_shadtbl_dbq(clnt, bdberr, nops)) != 0) {
+        if (rc == SQLITE_TOOBIG) {
+            return rc;
+        }
+        if (rc)
+            return -1;
     }
-    if (rc)
-        return -1;
+    if ((rc = process_local_delrec_dbq(clnt, bdberr, nops)) != 0) {
+        if (rc == SQLITE_TOOBIG) {
+            return rc;
+        }
+        if (rc)
+            return -1;
+    }
 
     return rc;
 }
@@ -2346,6 +2356,8 @@ static inline void osql_destroy_dbq(osqlstate_t *osql)
     osql->shadbq.genid = 0;
 }
 
+static void osql_destroy_dbq_hash(osqlstate_t *);
+
 /**
  * Frees shadow tables used by this sql client
  *
@@ -2358,6 +2370,8 @@ void osql_shadtbl_close(struct sqlclntstate *clnt)
     osql->dirty = 0;
     osql_destroy_verify_temptbl(thedb->bdb_env, clnt);
     osql_destroy_dbq(osql);
+    osql_destroy_dbq_hash(osql);
+
     osql_destroy_schemachange_temptbl(thedb->bdb_env, clnt);
     osql_destroy_bpfunc_temptbl(thedb->bdb_env, clnt);
 
@@ -3293,4 +3307,116 @@ int osql_shadtbl_usedb_only(struct sqlclntstate *clnt)
             return 0;
     }
     return 1;
+}
+
+struct genid_entry {
+    genid_t id;
+    SLIST_ENTRY(genid_entry) entry;
+};
+SLIST_HEAD(genid_list, genid_entry);
+
+struct dbq_genid_list {
+    char qname[MAXTABLELEN];
+    struct genid_list genids;
+    int count;
+};
+
+static struct dbq_genid_list *dbq_genid_list_new(const char *qname)
+{
+    struct dbq_genid_list *l = calloc(1, sizeof(struct dbq_genid_list));
+    strcpy(l->qname, qname);
+    SLIST_INIT(&l->genids);
+    return l;
+}
+
+static int dbq_genid_list_free(void *obj, void *arg)
+{
+    struct dbq_genid_list *dbq_list = obj;
+    struct genid_list *l = &dbq_list->genids;
+    struct genid_entry *e;
+    while ((e = SLIST_FIRST(l)) != NULL) {
+        SLIST_REMOVE_HEAD(l, entry);
+        free(e);
+    }
+    free(dbq_list);
+    return 0;
+}
+
+static void osql_destroy_dbq_hash(osqlstate_t *osql)
+{
+    hash_t *h = osql->dbq_hash;
+    if (!h) {
+        return;
+    }
+    hash_for(h, dbq_genid_list_free, NULL);
+    hash_free(h);
+    osql->dbq_hash = NULL;
+}
+
+static int resend_delreq_dbq(void *obj, void *arg)
+{
+    struct dbq_genid_list *l = obj;
+    struct sqlclntstate *clnt = arg;
+    struct genid_entry *e;
+    char *qname = l->qname;
+    SLIST_FOREACH(e, &l->genids, entry) {
+        int rc = osql_send_del_qdb_logic(clnt, qname, e->id);
+        if (rc) {
+            return rc;
+        }
+    }
+    return 0;
+}
+
+static int process_local_delrec_dbq(struct sqlclntstate *clnt, int *bdberr, int *nops)
+{
+    osqlstate_t *osql = &clnt->osql;
+    hash_t *h = osql->dbq_hash;
+    if (!h) {
+        return 0;
+    }
+    int n = 0;
+    void *ent;
+    unsigned int bkt;
+    struct dbq_genid_list *l = hash_first(h, &ent, &bkt);
+    while (l) {
+        n += l->count;
+        l = hash_next(h, &ent, &bkt);
+    }
+    *nops += n;
+    if (clnt->osql_max_trans && clnt->osql_max_trans < *nops) {
+        return SQLITE_TOOBIG;
+    }
+    return hash_for(h, resend_delreq_dbq, clnt);
+}
+
+int osql_save_delrec_qdb(struct sqlclntstate *clnt, char *qname, genid_t id)
+{
+    osqlstate_t *osql = &clnt->osql;
+    if (!osql->dbq_hash) {
+        if ((osql->dbq_hash = hash_init_str(0)) == NULL) {
+            return -1;
+        }
+    }
+    hash_t *h = osql->dbq_hash;
+    struct dbq_genid_list *l = hash_find(h, qname);
+    if (!l) {
+        if ((l = dbq_genid_list_new(qname)) == NULL) {
+            return -1;
+        }
+        hash_add(h, l);
+    }
+    struct genid_list *genids = &l->genids;
+    struct genid_entry *g = SLIST_FIRST(genids);
+    if (g && g->id == id) {
+        return -1;
+    }
+    g = calloc(1, sizeof(struct genid_entry));
+    if (!g) {
+        return -1;
+    }
+    ++l->count;
+    g->id = id;
+    SLIST_INSERT_HEAD(genids, g, entry);
+    return 0;
 }

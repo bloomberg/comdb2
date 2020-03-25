@@ -148,12 +148,16 @@ typedef struct {
     dbthread_type *thd;
 }dbthread_t;
 
-typedef struct {
+struct dbconsumer_t {
     DBTYPES_COMMON;
     struct ireq iq;
+    struct bdb_queue_cursor last;
+    struct bdb_queue_cursor fnd;
     struct consumer *consumer;
     genid_t genid;
     int push_tid;
+    int push_seq;
+    int push_epoch;
     int register_timeoutms;
     time_t registration_time;
 
@@ -162,10 +166,12 @@ typedef struct {
     pthread_cond_t *cond;
     const uint8_t *status;
     trigger_reg_t info; // must be last in struct
-} dbconsumer_t;
+};
 
 struct qfound {
     struct bdb_queue_found *item;
+    long long seq;
+    unsigned int epoch;
     size_t len;
     size_t dtaoff;
 };
@@ -665,7 +671,8 @@ char *sp_column_name(struct response_data *arg, int col)
     if (parent->clntname[col] == NULL) {
         sqlite3_stmt *stmt = arg->stmt;
         if (stmt) {
-            parent->clntname[col] = strdup(sqlite3_column_name(stmt, col));
+            parent->clntname[col] = strdup(comdb2_column_name(arg->sp->clnt,
+                                                              stmt, col));
         } else {
             size_t n = snprintf(NULL, 0, "$%d", col);
             char *name = malloc(n + 1);
@@ -674,19 +681,6 @@ char *sp_column_name(struct response_data *arg, int col)
         }
     }
     return parent->clntname[col];
-}
-
-static int dbq_pushargs(Lua L, dbconsumer_t *q, struct qfound *f)
-{
-    char *err;
-    int rc = push_trigger_args_int(L, q, f, &err);
-    free(f->item);
-    if (rc != 1) {
-        SP sp = getsp(L);
-        luabb_error(L, sp, err);
-        free(err);
-    }
-    return rc;
 }
 
 static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
@@ -724,12 +718,21 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
         Pthread_mutex_unlock(q->lock);
         return rc == -2 ? 0 : -1;
     }
-    rc = dbq_get(&q->iq, 0, NULL, (void**)&f.item, &f.len, &f.dtaoff, NULL, NULL);
+    rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
+                 &f.seq, &f.epoch);
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
     sp->num_instructions = 0;
     if (rc == 0) {
-        return dbq_pushargs(L, q, &f);
+        char *err;
+        rc = push_trigger_args_int(L, q, &f, &err);
+        free(f.item);
+        if (rc != 1) {
+            SP sp = getsp(L);
+            luabb_error(L, sp, err);
+            free(err);
+        }
+        return rc;
     }
     if (rc == IX_NOTFND) {
         return 0;
@@ -780,7 +783,7 @@ again:  status = *q->status;
         }
         Pthread_mutex_unlock(q->lock);
         delay -= dbq_delay;
-        if (delay < 0) {
+        if (delay <= 0) {
             return 0;
         }
     }
@@ -795,7 +798,8 @@ static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
     return rc;
 }
 
-static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
+static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms,
+        int *push_seq, int *push_epoch)
 {
     if (lua_gettop(L) != 1) return;
     luaL_checktype(L, 1, LUA_TTABLE);
@@ -809,6 +813,14 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms)
             if (strcasecmp(key, "with_tid") == 0) {
                 if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
                     *push_tid = lua_toboolean(L, -1);
+                }
+            } else if (strcasecmp(key, "with_sequence") == 0) {
+                if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                    *push_seq = lua_toboolean(L, -1);
+                }
+            } else if (strcasecmp(key, "with_epoch") == 0) {
+                if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                    *push_epoch = lua_toboolean(L, -1);
                 }
             } else if (strcasecmp(key, "register_timeout") == 0) {
                 long long timeoutms = 0;
@@ -836,7 +848,14 @@ static int dbconsumer_poll(Lua L)
     lua_Number arg = luaL_checknumber(L, 2);
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
-    delay += (dbq_delay - delay % dbq_delay); // multiple of dbq_delay
+    if (delay) {
+        // we poll in multiples of dbq_delay
+        if (delay > dbq_delay) {
+            delay += dbq_delay - (delay % dbq_delay);
+        } else {
+            delay = dbq_delay;
+        }
+    }
     int rc = dbq_poll(L, q, delay);
     if (rc >= 0) {
         return rc;
@@ -892,7 +911,7 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
     struct sqlclntstate *clnt = sp->clnt;
     if (start || clnt->intrans == 0) {
         if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) != 0) {
-            luaL_error(L, "%s osql_sock_start rc:%d\n", __func__, rc);
+            luaL_error(L, "%s osql_sock_start rc:%d", __func__, rc);
         }
         clnt->intrans = 1;
     }
@@ -901,19 +920,27 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
             clnt->intrans = 0;
         }
-        luaL_error(L, "%s osql_dbq_consume_logic rc:%d\n", __func__, rc);
+        luaL_error(L, "%s osql_dbq_consume_logic rc:%d", __func__, rc);
     }
     if (start) {
         rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
         clnt->intrans = 0;
         if (rc) {
-            luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
+            luaL_error(L, "%s osql_sock_commit rc:%d", __func__, rc);
         }
     } else {
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_INTRANS_STATE);
     }
     return rc;
+}
+
+static void reset_consumer_cursor(struct dbconsumer_t *q)
+{
+    if (!q) return;
+    q->genid = 0;
+    memset(&q->fnd, 0, sizeof(q->fnd));
+    memset(&q->last, 0, sizeof(q->last));
 }
 
 static int dbconsumer_consume_int(Lua L, dbconsumer_t *q)
@@ -924,7 +951,7 @@ static int dbconsumer_consume_int(Lua L, dbconsumer_t *q)
     enum consumer_t type = dbqueue_consumer_type(q->consumer);
     int rc = (type == CONSUMER_TYPE_LUA) ? lua_trigger_impl(L, q)
                                          : lua_consumer_impl(L, q);
-    q->genid = 0;
+    reset_consumer_cursor(q);
     return rc;
 }
 
@@ -932,6 +959,36 @@ static int dbconsumer_consume(Lua L)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     return push_and_return(L, dbconsumer_consume_int(L, q));
+}
+
+static int dbconsumer_next(Lua L)
+{
+    dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
+    if (q->genid == 0) {
+        return 0;
+    }
+    SP sp = getsp(L);
+    if (in_parent_trans(sp)) {
+        /* We require explicit transaction */
+        return luaL_error(L, "missing transaction for consumenext");
+    }
+    int rc;
+    struct sqlclntstate *clnt = sp->clnt;
+    if (!clnt->intrans) {
+        /* First write done by this txn */
+        rc = osql_sock_start_no_reorder(clnt, OSQL_SOCK_REQ, 0);
+        if (rc) {
+            luaL_error(L, "%s osql_sock_start rc:%d", __func__, rc);
+        }
+        clnt->intrans = 1;
+    }
+    Q4SP(qname, q->info.spname);
+    rc = osql_delrec_qdb(clnt, qname, q->genid);
+    if (rc) {
+        return luaL_error(L, "%s osql_delrec_qdb rc:%d", __func__, rc);
+    }
+    q->last = q->fnd;
+    return push_and_return(L, 0);
 }
 
 static int db_emit_int(Lua);
@@ -1403,9 +1460,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         }
         default:
             return luaL_error(lua, "unknown field type:%d for col:%s",
-                              type, sqlite3_column_name(stmt, col));
+                              type, comdb2_column_name(clnt, stmt, col));
         }
-        lua_setfield(lua, -2, sqlite3_column_name(stmt, col));
+        lua_setfield(lua, -2, comdb2_column_name(clnt, stmt, col));
     }
     return rc;
 }
@@ -2611,6 +2668,7 @@ static int db_commit(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
     SP sp = getsp(L);
+    reset_consumer_cursor(sp->consumer);
     if (sp->in_parent_trans) { // explicit commit w/o begin
         return luaL_error(L, no_transaction());
     }
@@ -2624,6 +2682,7 @@ static int db_rollback(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
     SP sp = getsp(L);
+    reset_consumer_cursor(sp->consumer);
     if (sp->in_parent_trans) { // explicit commit w/o begin
         return luaL_error(L, no_transaction());
     }
@@ -2691,8 +2750,7 @@ static const char *db_rollback_int(Lua L, int *rc)
         return no_transaction();
     }
     reset_stmts(sp);
-    sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                            SQLENG_FNSH_RBK_STATE);
+    sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_FNSH_RBK_STATE);
     reqlog_set_event(sp->thd->logger, EV_SP);
     *rc = handle_sql_commitrollback(sp->thd, sp->clnt, TRANS_CLNTCOMM_NOREPLY);
     sp->clnt->ready_for_heartbeats = 1;
@@ -3119,7 +3177,7 @@ static void reset_sp(SP sp)
         free(sp->error);
         sp->error = NULL;
     }
-    sp->have_consumer = 0;
+    sp->consumer = NULL;
     sp->pingpong = 0;
     sp->ntypes = 0;
     sp->bufsz = 0;
@@ -3445,8 +3503,9 @@ static int dbstmt_column_count(Lua L)
 
 static int dbstmt_column_name(Lua L)
 {
+    SP sp = getsp(L);
     GET_STMT_AND_COL();
-    lua_pushstring(L, sqlite3_column_name(stmt, col));
+    lua_pushstring(L, comdb2_column_name(sp->clnt, stmt, col));
     return 1;
 }
 
@@ -4583,15 +4642,19 @@ static int db_consumer(Lua L)
     luaL_checkudata(L, 1, dbtypes.db);
     lua_remove(L, 1);
 
-    int push_tid = 0, register_timeoutms = 0;
-    dbconsumer_getargs(L, &push_tid, &register_timeoutms);
+    int push_tid = 0, register_timeoutms = 0, push_seq = 0, push_epoch = 0;
+    dbconsumer_getargs(L, &push_tid, &register_timeoutms, &push_seq,
+            &push_epoch);
 
     SP sp = getsp(L);
+    if (sp->parent != sp) {
+        return luaL_error(L, "attempt to run consumer in child thread");
+    }
     struct sqlclntstate *clnt = sp->clnt;
     if (clnt->dbtran.mode != TRANLEVEL_SOSQL)
         return luaL_error(L, "trigger/consumer is only supported under default transaction mode");
 
-    if (sp->parent->have_consumer) {
+    if (sp->consumer) {
         return 0;
     }
     struct dbtable *db = NULL;
@@ -4639,8 +4702,10 @@ static int db_consumer(Lua L)
         return 1;
     }
     q->push_tid = push_tid;
+    q->push_seq = push_seq;
+    q->push_epoch = push_epoch;
     q->register_timeoutms = register_timeoutms;
-    sp->parent->have_consumer = 1;
+    sp->consumer = q;
     return 1;
 }
 
@@ -4843,6 +4908,7 @@ static const struct luaL_Reg dbconsumer_funcs[] = {
     {"get", dbconsumer_get},
     {"poll", dbconsumer_poll},
     {"consume", dbconsumer_consume},
+    {"next", dbconsumer_next},
     {"emit", dbconsumer_emit},
     {NULL, NULL}
 };
@@ -6169,7 +6235,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
 {
     uint8_t *payload = ((uint8_t *)f->item) + f->dtaoff;
     size_t len = f->len - f->dtaoff;
-    q->genid = f->item->genid;
+    memcpy(&q->genid, &q->fnd.genid, sizeof(genid_t));
     /*
     char header[] = "CDB2_UPD";
     if (memcmp(payload, header, sizeof(header)) != 0) {
@@ -6201,7 +6267,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
     lua_pushstring(L, tbl);
     lua_setfield(L, -2, "name");
 
-    blob_t id = {.length = sizeof(genid_t), .data = &f->item->genid};
+    blob_t id = {.length = sizeof(genid_t), .data = &q->genid};
     luabb_pushblob(L, &id);
     lua_setfield(L, -2, "id");
 
@@ -6209,7 +6275,14 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         luabb_pushinteger(L, f->item->trans.tid);
         lua_setfield (L, -2, "tid");
     }
-
+    if (q->push_seq) {
+        luabb_pushinteger(L, f->seq);
+        lua_setfield (L, -2, "sequence");
+    }
+    if (q->push_epoch) {
+        luabb_pushinteger(L, f->epoch);
+        lua_setfield (L, -2, "epoch");
+    }
     if (flags & TYPE_TAGGED_ADD) {
         lua_newtable(L);
         lua_setfield(L, -2, "new");
@@ -6633,7 +6706,6 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     if (new_vm == 0) return 0;
 
-    sp->parent->have_consumer = 1;
     remove_tran_funcs(L);
     remove_consumer(L);
     remove_emit(L);
@@ -6805,6 +6877,7 @@ void *exec_trigger(trigger_reg_t *reg)
             goto bad;
         }
         SP sp = clnt.sp;
+        sp->consumer = q;
         L = sp->lua;
         if ((args = dbconsumer_get_int(L, q)) < 0) {
             err = strdup(sp->error);

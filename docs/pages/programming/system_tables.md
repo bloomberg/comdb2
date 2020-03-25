@@ -521,13 +521,14 @@ Lists all the transaction log records.
 
 Lists triggers in the database.
 
-    comdb2_triggers(name, type, tbl_name, event, col)
+    comdb2_triggers(name, type, tbl_name, event, col, seq)
 
 * `name` - Name of the trigger
 * `type` - Type of the trigger
 * `tbl_name` - Name of the table
 * `event` - Event to trigger on
 * `col` - Column to trigger on
+* `seq` - 'Y' if sequences are enabled, 'N' otherwise
 
 ## comdb2_tunables
 

@@ -116,7 +116,7 @@ static inline void *get_defered_index_tbl_cursor(int createIfNull)
         if (!createIfNull)
             return NULL;
 
-        defered_index_tbl = (void *)create_defered_index_table(NULL);
+        defered_index_tbl = (void *)create_defered_index_table();
     }
 
     defered_index_tbl_cursor = get_constraint_table_cursor(defered_index_tbl);

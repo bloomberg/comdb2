@@ -1,5 +1,5 @@
 /*
-   Copyright 2019 Bloomberg Finance L.P.
+   Copyright 2019, 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -21,8 +21,11 @@ struct comdb2_query_preparer {
     int (*do_prepare)(struct sqlthdstate *, struct sqlclntstate *,
                       const char *);
     int (*do_cleanup)(struct sqlclntstate *);
+    int (*sqlitex_is_initializing)(void *);
+    char *(*sqlitex_table_name)(void *);
 };
 typedef struct comdb2_query_preparer comdb2_query_preparer_t;
 
 extern comdb2_query_preparer_t *query_preparer_plugin;
+extern int gbl_old_column_names;
 #endif /* !__INCLUDED_QUERY_PREPARER_H */

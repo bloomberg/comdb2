@@ -3184,7 +3184,6 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
 
-    /* just to make sure */
     msg->name[sizeof(msg->name) - 1] = '\0';
     rc = add_queue_to_environment(msg->name, msg->avgitemsz, 0);
     net_ack_message(hndl, rc);
@@ -3650,23 +3649,24 @@ int open_bdb_env(struct dbenv *dbenv)
 
     if (dbenv->nsiblings > 0) {
         /*zero element is always me. */
-        dbenv->handle_sibling = (void *)create_netinfo(
+        dbenv->handle_sibling = create_netinfo(
             dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_REPLICATION],
             dbenv->listen_fds[NET_REPLICATION], "comdb2", "replication",
-            dbenv->envname, 0, !gbl_disable_etc_services_lookup);
+            dbenv->envname, 0, 0, 0, !gbl_disable_etc_services_lookup);
         if (dbenv->handle_sibling == NULL) {
-            logmsg(LOGMSG_ERROR, 
-                    "open_bdb_env:failed create_netinfo host %s port %d\n",
-                    dbenv->sibling_hostname[0],
-                    dbenv->sibling_port[0][NET_REPLICATION]);
+            logmsg(LOGMSG_ERROR,
+                   "open_bdb_env:failed create_netinfo host %s port %d\n",
+                   dbenv->sibling_hostname[0],
+                   dbenv->sibling_port[0][NET_REPLICATION]);
             return -1;
         }
 
-        dbenv->handle_sibling_offload = create_netinfo_offload(
+        dbenv->handle_sibling_offload = create_netinfo(
             dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SQL],
-            dbenv->listen_fds[NET_SQL], "comdb2", "offloadsql", dbenv->envname);
+            dbenv->listen_fds[NET_SQL], "comdb2", "offloadsql",
+            dbenv->envname, 0, 1, 1, !gbl_disable_etc_services_lookup);
         if (dbenv->handle_sibling_offload == NULL) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "open_bdb_env:failed create_netinfo host %s port %d\n",
                    dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SQL]);
             return -1;
@@ -3812,6 +3812,45 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
     *compr_blobs = gbl_init_with_compr_blobs;
     d->inplace_updates = gbl_init_with_ipu;
     d->instant_schema_change = gbl_init_with_instant_sc;
+    return 0;
+}
+
+static int init_queue_odh_lrl(struct dbtable *d, int *compr,
+                              int *persistent_seq)
+{
+    if (gbl_init_with_queue_odh == 0) {
+        gbl_init_with_queue_compr = 0;
+        gbl_init_with_queue_persistent_seq = 0;
+    }
+    if (put_db_queue_odh(d, NULL, gbl_init_with_queue_odh) != 0)
+        return -1;
+    if (put_db_queue_compress(d, NULL, gbl_init_with_queue_compr) != 0)
+        return -1;
+    if (put_db_queue_persistent_seq(d, NULL,
+                                    gbl_init_with_queue_persistent_seq) != 0)
+        return -1;
+    if (gbl_init_with_queue_persistent_seq &&
+        put_db_queue_sequence(d, NULL, 0) != 0) {
+        return -1;
+    }
+    d->odh = gbl_init_with_queue_odh;
+    *compr = gbl_init_with_queue_compr;
+    *persistent_seq = gbl_init_with_queue_persistent_seq;
+    return 0;
+}
+
+static int init_queue_odh_llmeta(struct dbtable *d, int *compr, int *persist,
+                                 tran_type *tran)
+{
+    if (get_db_queue_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
+        d->odh = 0;
+        *compr = 0;
+        *persist = 0;
+        return 0;
+    }
+
+    get_db_queue_compress_tran(d, compr, tran);
+    get_db_queue_persistent_seq_tran(d, persist, tran);
     return 0;
 }
 
@@ -3985,6 +4024,26 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     /* now that meta is open, get the blobstripe conversion genids for each
      * table so that we can find pre-blobstripe blobs */
     fix_blobstripe_genids(tran);
+
+    /* read queue odh and compression information */
+    for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+        struct dbtable *queue = dbenv->qdbs[ii];
+        int compress;
+        int persist;
+        if (gbl_create_mode) {
+            if (init_queue_odh_lrl(queue, &compress, &persist) != 0) {
+                logmsg(LOGMSG_ERROR, "save queue odh to llmeta failed\n");
+                return -1;
+            }
+        } else {
+            if (init_queue_odh_llmeta(queue, &compress, &persist, tran) != 0) {
+                logmsg(LOGMSG_ERROR, "fetch queue odh from llmeta failed\n");
+                return -1;
+            }
+        }
+
+        set_bdb_queue_option_flags(queue, queue->odh, compress, persist);
+    }
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
@@ -4382,33 +4441,74 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
     return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
-#define get_put_db(x, y)                                                       \
-    int put_db_##x(struct dbtable *db, tran_type *tran, int value)             \
-    {                                                                          \
-        struct metahdr hdr = {.rrn = y, .attr = 0};                            \
-        int tmp = htonl(value);                                                \
-        return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
-    }                                                                          \
-    int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)     \
-    {                                                                          \
-        struct metahdr hdr = {.rrn = y, .attr = 0};                            \
-        int tmp;                                                               \
-        int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
-        if (rc == 0)                                                           \
-            *value = ntohl(tmp);                                               \
-        else                                                                   \
-            *value = 0;                                                        \
-        return rc;                                                             \
-    }                                                                          \
-    int get_db_##x(struct dbtable *db, int *value)                             \
-    {                                                                          \
-        return get_db_##x##_tran(db, value, NULL);                             \
-    }
+// clang-format off
+#define get_put_db_ll(x, y)                                                \
+int put_db_##x(struct dbtable *db, tran_type *tran, long long value)       \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    long long tmp = flibc_htonll(value);                                   \
+    return meta_put(db, tran, &hdr, &tmp, sizeof(unsigned long long));     \
+}                                                                          \
+int put_##x(const char *name, tran_type *tran, long long value)            \
+{                                                                          \
+    struct dbtable *db = getqueuebyname(name);                             \
+    return put_db_##x(db, tran, value);                                    \
+}                                                                          \
+int get_db_##x##_tran(struct dbtable *db, long long *value,                \
+                      tran_type *tran)                                     \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    long long tmp;                                                         \
+    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(long long));       \
+    if (rc == 0)                                                           \
+        *value = flibc_ntohll(tmp);                                        \
+    else                                                                   \
+        *value = 0;                                                        \
+    return rc;                                                             \
+}                                                                          \
+int get_##x##_tran(const char *name, long long *value, tran_type *tran)    \
+{                                                                          \
+    struct dbtable *db = getqueuebyname(name);                             \
+    return get_db_##x##_tran(db, value, tran);                             \
+}                                                                          \
+int get_db_##x(struct dbtable *db, long long *value)                       \
+{                                                                          \
+    return get_db_##x##_tran(db, value, NULL);                             \
+}                                                                          \
+int get_##x(const char *name, long long *value)                            \
+{                                                                          \
+    struct dbtable *db = getqueuebyname(name);                             \
+    return get_db_##x(db, value);                                          \
+}
+
+#define get_put_db(x, y)                                                   \
+int put_db_##x(struct dbtable *db, tran_type *tran, int value)             \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    int tmp = htonl(value);                                                \
+    return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
+}                                                                          \
+int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)     \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    int tmp;                                                               \
+    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
+    if (rc == 0)                                                           \
+        *value = ntohl(tmp);                                               \
+    else                                                                   \
+        *value = 0;                                                        \
+    return rc;                                                             \
+}                                                                          \
+int get_db_##x(struct dbtable *db, int *value)                             \
+{                                                                          \
+    return get_db_##x##_tran(db, value, NULL);                             \
+}
 
 // get_db_odh, get_db_odh_tran, put_db_odh
 get_put_db(odh, META_ONDISK_HEADER_RRN)
 
-// get_db_inplace_updates, get_db_inplace_updates_tran, put_db_inplace_updates
+// get_db_inplace_updates, get_db_inplace_updates_tran,
+// put_db_inplace_updates
 get_put_db(inplace_updates, META_INPLACE_UPDATES)
 
 // get_db_compress, get_db_compress_tran, put_db_compress
@@ -4417,14 +4517,29 @@ get_put_db(compress, META_COMPRESS_RRN)
 // get_db_compress_blobs, get_db_compress_blobs_tran, put_db_compress_blobs
 get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
 
-// get_db_instant_schema_change, get_db_instant_schema_change_tran, put_db_instant_schema_change
+// get_db_instant_schema_change, get_db_instant_schema_change_tran,
+// put_db_instant_schema_change
 get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
 
 // get_db_datacopy_odh, get_db_datacopy_odh_tran, put_db_datacopy_odh
 get_put_db(datacopy_odh, META_DATACOPY_ODH)
 
+// get_db_queue_odh, get_db_queue_odh_tran, put_db_queue_odh
+get_put_db(queue_odh, META_QUEUE_ODH)
+
+// get_db_queue_compress, get_db_queue_compress_tran, put_db_queue_compress
+get_put_db(queue_compress, META_QUEUE_COMPRESS)
+
 // get_db_bthash, get_db_bthash_tran, put_db_bthash
 get_put_db(bthash, META_BTHASH)
+
+// get_db_queue_persistent_seq, get_db_queue_persistent_seq_tran,
+// put_db_queue_persistent_seq
+get_put_db(queue_persistent_seq, META_QUEUE_PERSISTENT_SEQ)
+
+// get_db_queue_sequence, get_db_queue_sequence_tran,
+// put_db_queue_sequence
+get_put_db_ll(queue_sequence, META_QUEUE_SEQ)
 
 static int put_meta_int(const char *table, void *tran, int rrn, int key,
                         int value)
@@ -4441,6 +4556,8 @@ static int put_meta_int(const char *table, void *tran, int rrn, int key,
     }
     return meta_put(db, tran, &hdr, &value, sizeof(int));
 }
+
+// clang-format on
 
 static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
                              int key)
@@ -5011,6 +5128,10 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     iq->gluewhere = "bdb_queue_add done";
 
     if (bdberr == 0) {
+        struct dbtable *qdb = iq->usedb;
+        if (qdb->dbtype == DBTYPE_QUEUEDB) {
+            return 0;
+        }
         /* remember that this queue was updated so the consumer can
          * be woken after we commit. */
         if (iq->num_queues_hit <= MAX_QUEUE_HITS_PER_TRANS) {
@@ -5039,7 +5160,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     return map_unhandled_bdb_wr_rcode("bdb_queue_add", bdberr);
 }
 
-int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd)
+int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_queue_found *fnd)
 {
     int bdberr;
     void *bdb_handle;
@@ -5147,9 +5268,11 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
-            void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
-            struct dbq_cursor *fndcursor, unsigned int *epoch)
+int dbq_get(struct ireq *iq, int consumer,
+            const struct bdb_queue_cursor *prevcursor,
+            struct bdb_queue_found **fnddta, size_t *fnddtalen,
+            size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+            long long *seq, unsigned int *epoch)
 {
     int bdberr;
     void *bdb_handle;
@@ -5161,10 +5284,8 @@ int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
 
 retry:
     iq->gluewhere = "bdb_queue_get";
-    rc = bdb_queue_get(bdb_handle, consumer,
-                       (const struct bdb_queue_cursor *)prevcursor, fnddta,
-                       fnddtalen, fnddtaoff,
-                       (struct bdb_queue_cursor *)fndcursor, epoch, &bdberr);
+    rc = bdb_queue_get(bdb_handle, consumer, prevcursor, fnddta, fnddtalen,
+                       fnddtaoff, fndcursor, seq, epoch, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5190,12 +5311,12 @@ retry:
     return rc;
 }
 
-unsigned long long dbq_item_genid(const void *dta)
+unsigned long long dbq_item_genid(const struct bdb_queue_found *dta)
 {
     return bdb_queue_item_genid(dta);
 }
 
-void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen)
+void dbq_get_item_info(const struct bdb_queue_found *fnd, size_t *dtaoff, size_t *dtalen)
 {
     bdb_queue_get_found_info(fnd, dtaoff, dtalen);
 }
@@ -5221,6 +5342,35 @@ int dbq_dump(struct dbtable *db, FILE *out)
     if (rc != 0)
         return ERR_INTERNAL;
     return 0;
+}
+
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
+{
+    int bdberr, rc;
+    void *bdb_handle;
+    int retries = 0;
+    bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+
+retry:
+    iq->gluewhere = "bdb_queuedb_stats";
+    rc = bdb_queuedb_stats(bdb_handle, callback, userptr, &bdberr);
+    iq->gluewhere = "bdb_queuedb_stats done";
+    if (rc != 0) {
+        if (bdberr == BDBERR_DEADLOCK) {
+            iq->retries++;
+            if (++retries < gbl_maxretries) {
+                n_retries++;
+                goto retry;
+            }
+            logmsg(LOGMSG_ERROR,
+                   "*ERROR* bdb_queue_stats too much contention "
+                   "%d count %d\n",
+                   bdberr, retries);
+            return ERR_INTERNAL;
+        }
+        return map_unhandled_bdb_rcode("bdb_queue_stats", bdberr, 0);
+    }
+    return rc;
 }
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
@@ -5962,7 +6112,7 @@ int table_version_set(tran_type *tran, const char *tablename,
     int rc;
     int bdberr = 0;
 
-    if (is_tablename_queue(tablename, strlen(tablename)))
+    if (is_tablename_queue(tablename))
         return 0;
 
     db = get_dbtable_by_name(tablename);
@@ -5980,7 +6130,10 @@ int table_version_set(tran_type *tran, const char *tablename,
     return rc;
 }
 
-void *get_bdb_env(void) { return thedb->bdb_env; }
+void *get_bdb_env(void)
+{
+    return thedb->bdb_env;
+}
 
 /* This function can be used as an iterator to jump to the next
  * base table, starting the table at the specified index in the

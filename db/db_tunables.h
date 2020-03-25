@@ -272,9 +272,17 @@ REGISTER_TUNABLE("dont_init_with_instant_schema_change",
                  &gbl_init_with_instant_sc, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_init_with_ondisk_header",
-                 "Disables 'dont_init_with_ondisk_header'", TUNABLE_BOOLEAN,
+                 "Disables 'init_with_ondisk_header'", TUNABLE_BOOLEAN,
                  &gbl_init_with_odh, INVERSE_VALUE | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_queue_with_persistent_sequence",
+                 "Disables 'init_queue_with_persistent_sequence'",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_with_queue_persistent_sequence",
+                 "Disables 'dont_init_with_queue_ondisk_header'",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_optimize_repdb_truncate",
                  "Disable 'optimize_repdb_truncate'", TUNABLE_BOOLEAN,
                  &gbl_optimize_truncate_repdb,
@@ -495,6 +503,9 @@ REGISTER_TUNABLE("init_with_bthash", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("init_with_compr", NULL, TUNABLE_ENUM, &gbl_init_with_compr,
                  READONLY, init_with_compr_value, NULL, init_with_compr_update,
                  NULL);
+REGISTER_TUNABLE("init_with_queue_compr", NULL, TUNABLE_ENUM,
+                 &gbl_init_with_queue_compr, READONLY, init_with_compr_value,
+                 NULL, init_with_queue_compr_update, NULL);
 REGISTER_TUNABLE("init_with_compr_blobs", NULL, TUNABLE_ENUM,
                  &gbl_init_with_compr_blobs, READONLY, init_with_compr_value,
                  NULL, init_with_compr_blobs_update, NULL);
@@ -514,6 +525,15 @@ REGISTER_TUNABLE("init_with_ondisk_header",
                  "Initialize tables with on-disk header. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("init_with_queue_ondisk_header",
+                 "Initialize queues with on-disk header. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_odh, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("init_with_queue_persistent_sequence",
+                 "Initialize queues with persistent sequence numbers. "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_rowlocks",
                  "Enables row-locks for the database. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_init_with_rowlocks, READONLY | NOARG,
@@ -895,8 +915,8 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
-                 &gbl_portmux_unix_socket, READONLY | READEARLY, NULL, NULL,
-                 NULL, NULL);
+                 NULL, READONLY | READEARLY, portmux_bind_path_get, NULL,
+                 portmux_bind_path_set, NULL);
 REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port,
                  READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
@@ -1457,7 +1477,7 @@ REGISTER_TUNABLE("net_writer_poll_ms",
                  TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb",
-                 "Use in memory structure for repdb (Default: on)",
+                 "Use in memory structure for repdb (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_inmem_repdb,
                  EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog",
@@ -1727,6 +1747,10 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("libevent",
+                 "Use libevent in net library. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_libevent, 0, 0, 0, 0, 0);
+
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_online_recovery, EXPERIMENTAL | INTERNAL,
@@ -1909,14 +1933,22 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("log_index_locks_first",
+                 "Emit locks for index locks before datafile locks.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_log_index_locks_first,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("queuedb_read_locks",
                  "Grab table read locks when dealing with a queuedb from Lua."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_queuedb_read_locks,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("queuedb_debug",
-                 "Enable extra diagnostic messages for the queuedb subsystem."
-                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_debug_queuedb,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_queuedb",
+                 "Enable debug-trace for queuedb.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
+                 NULL, NULL);
 
 REGISTER_TUNABLE("client_queued_slow_seconds",
                  "If a client connection remains \"queued\" longer than this "

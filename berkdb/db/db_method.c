@@ -89,6 +89,17 @@ db_create(dbpp, dbenv, flags)
 	DB *dbp;
 	int ret;
 	int idxpri = 0;
+    int isindex = 0;
+
+    if (LF_ISSET(DB_INDEX_PRIORITY)) {
+		LF_CLR(DB_INDEX_PRIORITY);
+		idxpri = 1;
+    }
+
+    if (LF_ISSET(DB_INDEX_CREATE)) {
+		LF_CLR(DB_INDEX_CREATE);
+        isindex = 1;
+    }
 
 	/* Check for invalid function flags. */
 	switch (flags) {
@@ -110,11 +121,6 @@ db_create(dbpp, dbenv, flags)
 		 */
 		dbenv = TAILQ_FIRST(&DB_GLOBAL(db_envq));
 		break;
-	case DB_INDEX_CREATE:
-		LF_CLR(DB_INDEX_CREATE);
-		idxpri = 1;
-		break;
-
 	default:
 		return (__db_ferr(dbenv, "db_create", 0));
 	}
@@ -162,6 +168,7 @@ db_create(dbpp, dbenv, flags)
 	dbp->pg_hash = NULL;
 
 	dbp->type = DB_UNKNOWN;
+    dbp->isindex = isindex;
 	*dbpp = dbp;
 	return (0);
 

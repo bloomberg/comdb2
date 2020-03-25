@@ -678,13 +678,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         /* Stack overflows with 128KiB stack size in Debug build.
            Slightly bump it up. */
         Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
-        pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-
-        int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
-        if (rc != 0) {
-            logmsgperror("create exit thread: pthread_create");
-            exit(1);
-        }
+        Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+        Pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         Pthread_attr_destroy(&thd_attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
@@ -1741,7 +1736,7 @@ clipper_usage:
             free(dbname);
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
             logmsg(LOGMSG_USER, "I am running on a %s machine\n",
-                   get_mach_class_str(gbl_mynode));
+                   get_my_mach_class_str());
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
@@ -3619,7 +3614,7 @@ clipper_usage:
         }
 
         if (ltok == 0) {
-            bdb_get_rep_stats(dbenv->dbs[0]->handle, &msgs_processed,
+            bdb_get_rep_stats(dbenv->static_table.handle, &msgs_processed,
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
             logmsg(LOGMSG_USER, "Retries: %lld, max %d, limit %d\n", rep_retry, max_retries,
@@ -4102,9 +4097,9 @@ clipper_usage:
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "usage: ping <all|node #>\n");
         } else if (tokcmp(tok, ltok, "all") == 0) {
-            ping_all(dbenv->dbs[0]->handle);
+            ping_all(dbenv->static_table.handle);
         } else {
-            ping_node(dbenv->dbs[0]->handle, internn(tok, ltok));
+            ping_node(dbenv->static_table.handle, internn(tok, ltok));
         }
     } else if (tokcmp(tok, ltok, "tcp") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -4113,9 +4108,9 @@ clipper_usage:
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "usage: tcp ping <all|node #>\n");
             } else if (tokcmp(tok, ltok, "all") == 0) {
-                tcp_ping_all(dbenv->dbs[0]->handle);
+                tcp_ping_all(dbenv->static_table.handle);
             } else {
-                tcp_ping(dbenv->dbs[0]->handle, internn(tok, ltok));
+                tcp_ping(dbenv->static_table.handle, internn(tok, ltok));
             }
         }
     } else if (tokcmp(tok, ltok, "udp") == 0) {
@@ -4151,13 +4146,13 @@ clipper_usage:
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "usage: udp ping <all|ip:port|node #>\n");
             } else if (tokcmp(tok, ltok, "all") == 0) {
-                udp_ping_all(dbenv->dbs[0]->handle);
+                udp_ping_all(thedb->static_table.handle);
             } else {
                 char *ip = tokdup(tok, ltok);
                 if (strstr(ip, ":") != NULL) {
-                    udp_ping_ip(dbenv->dbs[0]->handle, ip);
+                    udp_ping_ip(dbenv->static_table.handle, ip);
                 } else {
-                    udp_ping(dbenv->dbs[0]->handle, internn(tok, ltok));
+                    udp_ping(dbenv->static_table.handle, internn(tok, ltok));
                 }
                 free(ip);
             }

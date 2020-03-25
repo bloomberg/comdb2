@@ -20,6 +20,7 @@
 #include "comdb2systblInt.h"
 #include <schema_lk.h>
 #include <comdb2.h>
+#include <bdb/bdb_int.h>
 
 #include <translistener.h>
 #include "sql.h"
@@ -29,6 +30,7 @@ struct trigger {
   LINKC_T(trigger) lnk;
   char *name;
   int type;
+  int seq;
   trigger_info info;
 };
 typedef struct {
@@ -46,6 +48,7 @@ enum {
   TRIGGER_TABLE,
   TRIGGER_EVENT,
   TRIGGER_COL,
+  TRIGGER_SEQ,
 };
 
 static int triggerConnect(
@@ -58,7 +61,7 @@ static int triggerConnect(
 ){
   int rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_triggers("
                                     "\"name\",\"type\",\"tbl_name\","
-                                    "\"event\",\"col\")");
+                                    "\"event\",\"col\",\"seq\")");
   if( rc == SQLITE_OK ){
     if( (*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0)
       return SQLITE_NOMEM;
@@ -122,6 +125,9 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     t = sqlite3_malloc(sizeof(trigger));
     t->name = strdup(thedb->qdbs[i]->tablename);
     t->type = -1;
+    bdb_state_type *bdb_state = thedb->qdbs[i]->handle;
+    t->seq = (bdb_state && bdb_state->ondisk_header &&
+            bdb_state->persistent_seq);
     if(thedb->qdbs[i]->consumers[0] )
       t->type = dbqueue_consumer_type(thedb->qdbs[i]->consumers[0]);
     listc_abl(&cur->trgs, t);
@@ -257,6 +263,13 @@ static int triggerColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx, int i){
         sqlite3_result_text(ctx, c->name, -1, NULL);
       } else {
         sqlite3_result_null(ctx);
+      }
+      break;
+    case TRIGGER_SEQ:
+      if( trg && trg->seq) {
+        sqlite3_result_text(ctx, "Y", -1, NULL);
+      } else {
+        sqlite3_result_text(ctx, "N", -1, NULL);
       }
       break;
   }

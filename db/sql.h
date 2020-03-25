@@ -105,6 +105,11 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+
+    /* A flag to tell us whether we are inside the query preparer plugin. This
+     * is especially needed to differentiate between fdb cursors opened by core
+     * versus query preparer plugin. */
+    bool query_preparer_running;
 };
 
 typedef struct osqltimings {
@@ -149,21 +154,23 @@ typedef struct osqlstate {
     int count_changes;   /* enable pragma count_changes=1, for rr, sosql, recom,
                             snapisol, serial */
 
-    /* the phantom menace */
-    LISTC_T(struct shad_tbl)
-        shadtbls;    /* storage for shadow tables created by offloading */
-    shadbq_t shadbq; /* storage for dbq's shadtbl */
+    /* storage for shadow tables created by offloading */
+    LISTC_T(struct shad_tbl) shadtbls;
 
-    struct temp_table *
-        verify_tbl; /* storage for verify, common for all transaction */
+    /* storage for dbq's shadtbl */
+    shadbq_t shadbq;
+    hash_t *dbq_hash;
+
+    /* storage for verify, common for all transaction */
+    struct temp_table * verify_tbl;
     struct temp_cursor *verify_cur; /* verify cursor */
 
-    struct temp_table
-        *sc_tbl; /* storage for schemachange, common for all transaction */
+    /* storage for schemachange, common for all transaction */
+    struct temp_table *sc_tbl;
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
-    struct temp_table
-        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    /* storage for bpfunc, common for all transaction */
+    struct temp_table *bpfunc_tbl;
     struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
     int bpfunc_seq;
 
@@ -174,8 +181,8 @@ typedef struct osqlstate {
     fdbtimings_t fdbtimes; /* measure remote access */
 
     /* verify handling */
-    srs_tran_t *
-        history; /* keep the log of sql strings for the current transaction */
+    /* keep the log of sql strings for the current transaction */
+    srs_tran_t * history;
     int replay;  /* set this when a session is replayed, used by sorese */
     int sent_column_data; /* set this if we've already sent the column data */
 
@@ -1042,6 +1049,8 @@ struct BtCursor {
     int open_flags; /* flags used to open it */
 
     int tableversion;
+
+    void *query_preparer_data;
 };
 
 struct sql_hist {
@@ -1317,4 +1326,12 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  int rows, int timems);
 const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                                int index);
+
+/**
+ * If bdb_lock_desired, run recovery (releasing locks)
+ * and pause proportionally with the number of retries
+ *
+ */
+int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
+
 #endif /* _SQL_H_ */

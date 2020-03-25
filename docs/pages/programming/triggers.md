@@ -281,6 +281,18 @@ x.register_timeout = number (ms)
 Specify timeout (in milliseconds) to wait for registration with master. For example, `db:consumer({register_timeout = 5000})` will return `nil` if registration fails after 5 seconds.
 
 ```
+x.with_sequence = true | false (default)
+```
+
+When `with_sequence` is `true`, the Lua table returned by `dbconsumer:get/poll()` includes an additional property (`sequence`).  If the trigger was created with the `PERSISTENT_SEQUENCE` option enabled, then this sequence will be a monotonically increasing count of the items that have been enqueued.
+
+```
+x.with_epoch = true | false (default)
+```
+
+When `with_epoch` is `true`, the Lua table returned by `dbconsumer:get/poll()` includes an additional property (`epoch`) which contains the unix time-epoch (seconds since 00:00:00 January 1, 1970 UTC) at the time when this event was enqueued.
+
+```
 x.with_tid = true | false (default)
 ```
 

@@ -39,6 +39,8 @@
 
 #include <assert.h>
 
+#include <compile_time_assert.h>
+
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
@@ -832,6 +834,9 @@ int bdb_lite_exact_fetch(bdb_state_type *bdb_handle, void *key, void *fnddta,
                          int maxlen, int *fndlen, int *bdberr);
 int bdb_lite_exact_fetch_alloc(bdb_state_type *bdb_handle, void *key,
                                void **fnddta, int *fndlen, int *bdberr);
+int bdb_lite_exact_fetch_alloc_tran(bdb_state_type *bdb_handle, tran_type *tran,
+                                    void *key, void **fnddta, int *fndlen,
+                                    int *bdberr);
 int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                               void *key, void *fnddta, int maxlen, int *fndlen,
                               int *bdberr);
@@ -864,10 +869,12 @@ enum { BDBQUEUE_MAX_CONSUMERS = 32 };
 
 /* 16 byte pointer to an item in an ondisk queue. */
 struct bdb_queue_cursor {
-    bbuint32_t genid[2]; /* genid of item */
-    bbuint32_t recno;    /* recno of first fragment of item */
-    bbuint32_t reserved; /* must be zero */
+    uint64_t genid;    /* genid of item */
+    uint32_t recno;    /* recno of first fragment of item */
+    uint32_t reserved; /* must be zero */
 };
+
+BB_COMPILE_TIME_ASSERT(queue_cursor_size, sizeof(struct bdb_queue_cursor) == 16);
 
 /* mark a consumer as active or inactive.  this grabs the bdb write lock. */
 int bdb_queue_consumer(bdb_state_type *bdb_state, int consumer, int active,
@@ -890,14 +897,15 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
  * found result (passed in through prevfnd).  On a successful find *fnd will
  * be set to point to memory that the caller must free.  The actual item data
  * will be at ((const char *)*fnd) + *fnddtaoff). */
+struct bdb_queue_found;
 int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
-                  const struct bdb_queue_cursor *prevcursor, void **fnd,
-                  size_t *fnddtalen, size_t *fnddtaoff,
-                  struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
-                  int *bdberr);
+                  const struct bdb_queue_cursor *prevcursor,
+                  struct bdb_queue_found **fnd, size_t *fnddtalen,
+                  size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                  long long *seq, unsigned int *epoch, int *bdberr);
 
 /* Get the genid of a queue item that was retrieved by bdb_queue_get() */
-unsigned long long bdb_queue_item_genid(const void *dta);
+unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta);
 
 /* Call a callback function for each item on the queue.  The parameters to the
  * callback are: consumer number, item length, epoch time it was added,
@@ -913,8 +921,18 @@ enum {
     BDB_QUEUE_WALK_FIRST_ONLY = 2,
     BDB_QUEUE_WALK_RESTART = 4
 };
+
+typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
+                                          unsigned int epoch,
+                                          unsigned int depth, void *userptr);
+
+int bdb_queuedb_stats(bdb_state_type *bdb_state,
+                      bdb_queue_stats_callback_t callback, void *userptr,
+                      int *bdberr);
+
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
+
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
                    bdb_queue_walk_callback_t callback, void *userptr,
                    int *bdberr);
@@ -923,8 +941,9 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);
 
 /* consume a queue item previously found by bdb_queue_get. */
+struct bdb_queue_found;
 int bdb_queue_consume(bdb_state_type *bdb_state, tran_type *tran, int consumer,
-                      const void *prevfnd, int *bdberr);
+                      const struct bdb_queue_found *prevfnd, int *bdberr);
 
 /* work out the best page size to use for the given average item size */
 int bdb_queue_best_pagesize(int avg_item_sz);
@@ -1099,6 +1118,9 @@ void bdb_set_blobstripe_genid(bdb_state_type *bdb_state,
 /* set various options for the ondisk header. */
 void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,
                          int blob_compression);
+
+void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
+                               int compression, int persistseq);
 
 void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
                          int *blob_compr);
@@ -2020,8 +2042,8 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);
 int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
                           int *fnd_queues, int *bdberr);
 /* get info for a queue */
-int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
-                         int *bdberr);
+int bdb_llmeta_get_queue(tran_type *tran, char *qname, char **config,
+                         int *ndests, char ***dests, int *bdberr);
 
 /* manipulate queues */
 int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
@@ -2093,15 +2115,15 @@ void send_newmaster(bdb_state_type *bdb_state, int online);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
-typedef struct BtCursor BtCursor;
-typedef struct UnpackedRecord UnpackedRecord;
+struct BtCursor;
+struct UnpackedRecord;
 struct bias_info {
     int bias;
     int dirLeft;
     int truncated;
     bias_cmp_t cmp;
-    BtCursor *cur;
-    UnpackedRecord *unpacked;
+    struct BtCursor *cur;
+    struct UnpackedRecord *unpacked;
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
@@ -2128,9 +2150,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
 
 /* Return per-node replication wait and net usage. */
-#ifndef HOST_NAME_MAX
-#define HOST_NAME_MAX 64
-#endif
 typedef struct repl_wait_and_net_use {
     char host[HOST_NAME_MAX];
     unsigned long long bytes_written;

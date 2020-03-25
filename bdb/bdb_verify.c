@@ -28,8 +28,8 @@
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
-extern int get_numblobs(const dbtable *tbl);
-extern int ix_isnullk(const dbtable *db_table, void *key, int ixnum);
+extern int get_numblobs(const struct dbtable *tbl);
+extern int ix_isnullk(const struct dbtable *db_table, void *key, int ixnum);
 extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);

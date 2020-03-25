@@ -60,25 +60,15 @@
  * sqlthread and appsock threads before disabling g_osql_ready.
  *
  */
-struct thdpool *gbl_osqlpfault_thdpool = NULL;
-
-osqlpf_step *gbl_osqlpf_step = NULL;
-
-queue_type *gbl_osqlpf_stepq = NULL;
-
-pthread_mutex_t osqlpf_mutex = PTHREAD_MUTEX_INITIALIZER;
-
 extern __thread int send_prefault_udp;
 extern int gbl_prefault_udp;
-
 extern int g_osql_ready;
 extern int gbl_goslow;
-
 extern int gbl_partial_indexes;
 
 extern int db_is_stopped();
-int gbl_toblock_random_deadlock_trans;
 
+int gbl_toblock_random_deadlock_trans;
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
                                    int is_uuid);
@@ -183,51 +173,6 @@ static const uint8_t *osqlcomm_poke_uuid_type_get(osql_poke_uuid_t *p_poke_type,
     p_buf = buf_no_net_get(p_poke_type->uuid, sizeof(p_poke_type->uuid), p_buf,
                            p_buf_end);
     p_buf = buf_get(&(p_poke_type->tstamp), sizeof(p_poke_type->tstamp), p_buf,
-                    p_buf_end);
-
-    return p_buf;
-}
-
-typedef struct hbeat {
-    int dst;
-    int src;
-    int time;
-} hbeat_t;
-
-enum { OSQLCOMM_HBEAT_TYPE_LEN = 4 + 4 + 4 };
-
-BB_COMPILE_TIME_ASSERT(osqlcomm_hbeat_type_len,
-                       sizeof(hbeat_t) == OSQLCOMM_HBEAT_TYPE_LEN);
-
-static uint8_t *osqlcomm_hbeat_type_put(const hbeat_t *p_hbeat_type,
-                                        uint8_t *p_buf,
-                                        const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || OSQLCOMM_HBEAT_TYPE_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_put(&(p_hbeat_type->dst), sizeof(p_hbeat_type->dst), p_buf,
-                    p_buf_end);
-    p_buf = buf_put(&(p_hbeat_type->src), sizeof(p_hbeat_type->src), p_buf,
-                    p_buf_end);
-    p_buf = buf_put(&(p_hbeat_type->time), sizeof(p_hbeat_type->time), p_buf,
-                    p_buf_end);
-
-    return p_buf;
-}
-
-static const uint8_t *osqlcomm_hbeat_type_get(hbeat_t *p_hbeat_type,
-                                              const uint8_t *p_buf,
-                                              const uint8_t *p_buf_end)
-{
-    if (p_buf_end < p_buf || OSQLCOMM_HBEAT_TYPE_LEN > (p_buf_end - p_buf))
-        return NULL;
-
-    p_buf = buf_get(&(p_hbeat_type->dst), sizeof(p_hbeat_type->dst), p_buf,
-                    p_buf_end);
-    p_buf = buf_get(&(p_hbeat_type->src), sizeof(p_hbeat_type->src), p_buf,
-                    p_buf_end);
-    p_buf = buf_get(&(p_hbeat_type->time), sizeof(p_hbeat_type->time), p_buf,
                     p_buf_end);
 
     return p_buf;
@@ -2930,7 +2875,6 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
  */
 int osql_comm_init(struct dbenv *dbenv)
 {
-
     osql_comm_t *tmp = NULL;
     int ii = 0;
     void *rcv = NULL;
@@ -3356,14 +3300,10 @@ static int osql_net_type_to_net_uuid_type(int type)
     }
 }
 
-/**
- * check if a tablename is a queue
- */
-int is_tablename_queue(const char * tablename, int len)
+int is_tablename_queue(const char *name)
 {
     /* See also, __db_open @ /berkdb/db/db_open.c for register_qdb */
-    return (len > 3 && tablename[0] == '_' &&
-            tablename[1] == '_' && tablename[2] == 'q');
+    return strncmp(name, "__q", 3) == 0;
 }
 
 int osql_send_startgen(char *tohost, unsigned long long rqid, uuid_t uuid,
@@ -4933,7 +4873,6 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_done_xerr_uuid_t rpl_xerr = {{0}};
         osql_done_uuid_rpl_t rpl_ok = {{0}};
-
         if (rc) {
             msglen = OSQLCOMM_DONE_XERR_UUID_RPL_LEN;
             uint8_t *p_buf = buf;
@@ -4941,22 +4880,17 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
             rpl_xerr.hd.type = OSQL_XERR;
             comdb2uuidcpy(rpl_xerr.hd.uuid, uuid);
             rpl_xerr.dt = *xerr;
-
             osqlcomm_done_xerr_uuid_type_put(&(rpl_xerr), p_buf, p_buf_end);
-
         } else {
             msglen = OSQLCOMM_DONE_UUID_RPL_LEN;
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
-
             rpl_ok.hd.type = OSQL_DONE;
             comdb2uuidcpy(rpl_ok.hd.uuid, uuid);
             rpl_ok.dt.rc = 0;
             rpl_ok.dt.nops = nops;
-
             osqlcomm_done_uuid_rpl_put(&(rpl_ok), p_buf, p_buf_end);
         }
-
         type = osql_net_type_to_net_uuid_type(NET_OSQL_SIGNAL);
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s uuid %s with rc=%d xerr=%d\n",
@@ -4965,7 +4899,6 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
     } else {
         osql_done_xerr_t rpl_xerr = {{0}};
         osql_done_rpl_t rpl_ok = {{0}};
-
         if (rc) {
             msglen = OSQLCOMM_DONE_XERR_RPL_LEN;
             uint8_t *p_buf = buf;
@@ -4973,21 +4906,17 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
             rpl_xerr.hd.type = OSQL_XERR;
             rpl_xerr.hd.sid = rqid;
             rpl_xerr.dt = *xerr;
-
             osqlcomm_done_xerr_type_put(&(rpl_xerr), p_buf, p_buf_end);
         } else {
             msglen = OSQLCOMM_DONE_RPL_LEN;
             uint8_t *p_buf = buf;
             uint8_t *p_buf_end = buf + msglen;
-
             rpl_ok.hd.type = OSQL_DONE;
             rpl_ok.hd.sid = rqid;
             rpl_ok.dt.rc = 0;
             rpl_ok.dt.nops = nops;
-
             osqlcomm_done_rpl_put(&(rpl_ok), p_buf, p_buf_end);
         }
-
         type = NET_OSQL_SIGNAL;
         logmsg(LOGMSG_DEBUG,
                "%s:%d master signaling %s rqid %llu with rc=%d xerr=%d\n",
@@ -5002,7 +4931,6 @@ int osql_comm_signal_sqlthr_rc(const char *host, unsigned long long rqid,
         irc = -1;
         logmsg(LOGMSG_ERROR, "%s: error sending done to %s!\n", __func__, host);
     }
-
     return irc;
 }
 
@@ -5332,41 +5260,15 @@ int osql_comm_check_bdb_lock(const char *func, int line)
     /* check here if we need to wait for the lock, so we don't prevent this from
      * happening */
     start = time(NULL);
-    if (bdb_lock_desired(thedb->bdb_env)) {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
-        if (!thd) return 0;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd)
+        return 0;
 
-        struct sqlclntstate *clnt = thd->clnt;
-        int sleepms;
-
-        logmsg(LOGMSG_DEBUG, "%s bdb_lock_desired so calling recover_deadlock\n",
-                __func__);
-
-        /* scale by number of times we try, cap at 10 seconds */
-        sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 10000)
-            sleepms = 10000;
-
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s recover_deadlock returned %d\n",
-                    __func__, rc);
-            rc = -1;
-            goto out;
-        }
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
-
-        clnt->deadlock_recovered++;
-
-        if (clnt->deadlock_recovered > 100) {
-            logmsg(LOGMSG_ERROR, "%s called recover_deadlock 100 times\n",
-                   __func__);
-            rc = -1;
-            goto out;
-        }
+    rc = clnt_check_bdb_lock_desired(thd->clnt);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s recover_deadlock returned %d\n", __func__, rc);
+        rc = -1;
     }
-out:
     if ((end = time(NULL)) - start > 2) {
         logmsg(LOGMSG_DEBUG, "%s line %d: %s took %d seconds\n", func, line,
                __func__, end - start);
@@ -5374,9 +5276,8 @@ out:
     return rc;
 }
 
-/* this wrapper tries to provide a reliable net_send_tail that will prevent
-   loosing packets
-   due to queue being full */
+/* This wrapper tries to provide a reliable net_send_tail that will prevent
+ * loosing packets due to queue being full */
 static int offload_net_send(const char *host, int usertype, void *data,
                             int datalen, int nodelay, void *tail, int tailen)
 {
@@ -6008,7 +5909,7 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                                      tablename, 0);
         }
     } else {
-        if (is_tablename_queue(tablename, strlen(tablename))) {
+        if (is_tablename_queue(tablename)) {
             iq->usedb = getqueuebyname(tablename);
         } else {
             iq->usedb = get_dbtable_by_name(tablename);
@@ -6181,7 +6082,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                           request */
     }
     case OSQL_USEDB: {
-        osql_usedb_t dt;
+        osql_usedb_t dt = {0};
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
         const char *tablename;
 
@@ -6210,14 +6111,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (gbl_enable_osql_logging) {
-            uuidstr_t us;
+            uuidstr_t us = {0};
             logmsg(LOGMSG_DEBUG, "[%llu %s] OSQL_USEDB %*.s\n", rqid,
                    comdb2uuidstr(uuid, us), dt.tablenamelen, tablename);
         }
 
-        if ((rc = osql_set_usedb(iq, tablename, dt.tableversion, step, err)) !=
-            0)
+        rc = osql_set_usedb(iq, tablename, dt.tableversion, step, err);
+        if (rc) {
             return rc;
+        }
     } break;
     case OSQL_DBQ_CONSUME: {
         genid_t *genid = (genid_t *)p_buf;
@@ -6284,8 +6186,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         int locflags = RECFLAGS_DONT_LOCK_TBL;
 
-        rc = del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode,
-                        &err->ixnum, BLOCK2_DELKL, locflags);
+        rc = is_tablename_queue(iq->usedb->tablename)
+            ? dbq_consume_genid(iq, trans, 0, dt.genid)
+            : del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode, &err->ixnum, BLOCK2_DELKL, locflags);
 
         if (iq->idxInsert || iq->idxDelete) {
             free_cached_idx(iq->idxInsert);
@@ -7367,627 +7270,8 @@ netinfo_type *osql_get_netinfo(void)
     return (netinfo_type *)comm->handle_sibling;
 }
 
-int osqlpfthdpool_init(void)
-{
-    int i = 0;
-    gbl_osqlpfault_thdpool = thdpool_create("osqlpfaultpool", 0);
-
-    if (gbl_exit_on_pthread_create_fail)
-        thdpool_set_exit(gbl_osqlpfault_thdpool);
-
-    thdpool_set_minthds(gbl_osqlpfault_thdpool, 0);
-    thdpool_set_maxthds(gbl_osqlpfault_thdpool, gbl_osqlpfault_threads);
-    thdpool_set_maxqueue(gbl_osqlpfault_thdpool, 1000);
-    thdpool_set_linger(gbl_osqlpfault_thdpool, 10);
-    thdpool_set_longwaitms(gbl_osqlpfault_thdpool, 10000);
-
-    gbl_osqlpf_step = (osqlpf_step *)calloc(1000, sizeof(osqlpf_step));
-    if (gbl_osqlpf_step == NULL)
-        return 1;
-    gbl_osqlpf_stepq = queue_new();
-    if (gbl_osqlpf_stepq == NULL)
-        return 1;
-    for (i = 0; i < 1000; i++) {
-        int *ii = (int *)malloc(sizeof(int));
-        *ii = i;
-        gbl_osqlpf_step[i].rqid = 0;
-        gbl_osqlpf_step[i].step = 0;
-        queue_add(gbl_osqlpf_stepq, ii);
-    }
-    return 0;
-}
-
-typedef struct osqlpf_rq {
-    short type;
-    struct dbtable *db;
-    unsigned long long genid;
-    int index;
-    unsigned char key[MAXKEYLEN];
-    void *record;
-    unsigned short len; /* if its a key, the len of the key.  if its a dta rec,
-                           the len of the record */
-    int i;
-    unsigned long long rqid;
-    unsigned long long seq;
-    uuid_t uuid;
-} osqlpf_rq_t;
-
-/* osql request io prefault, code stolen from prefault.c */
-
-static int is_bad_rc(int rc)
-{
-    if (rc == 0)
-        return 0;
-    if (rc == 1)
-        return 0;
-
-    return 1;
-}
-
-static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
-                                  void *thddata, int op);
-
-/* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_oldkey(struct dbtable *db, void *key, int keylen, int ixnum,
-                            int i, unsigned long long rqid,
-                            unsigned long long seq)
-{
-    osqlpf_rq_t *qdata = NULL;
-    int rc;
-
-    qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
-
-    qdata->type = OSQLPFRQ_OLDKEY;
-    qdata->len = keylen;
-    qdata->index = ixnum;
-    qdata->db = db;
-    qdata->genid = -1;
-    qdata->i = i;
-    qdata->seq = seq;
-    qdata->rqid = rqid;
-
-    if ((keylen > 0) && (keylen < MAXKEYLEN))
-        memcpy(qdata->key, key, keylen);
-
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0, PRIORITY_T_DEFAULT);
-
-    if (rc != 0) {
-        free(qdata);
-    }
-    return rc;
-}
-
-/* given a table, key   : enqueue a fault for the a single ix record */
-int enque_osqlpfault_newkey(struct dbtable *db, void *key, int keylen, int ixnum,
-                            int i, unsigned long long rqid,
-                            unsigned long long seq)
-{
-    osqlpf_rq_t *qdata = NULL;
-    int rc;
-
-    qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
-
-    qdata->type = OSQLPFRQ_NEWKEY;
-    qdata->len = keylen;
-    qdata->index = ixnum;
-    qdata->db = db;
-    qdata->genid = -1;
-    qdata->i = i;
-    qdata->seq = seq;
-    qdata->rqid = rqid;
-
-    if ((keylen > 0) && (keylen < MAXKEYLEN))
-        memcpy(qdata->key, key, keylen);
-
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0, PRIORITY_T_DEFAULT);
-
-    if (rc != 0) {
-        free(qdata);
-    }
-    return rc;
-}
-
-/* given a table, genid   : enqueue an op that faults in the dta record by
-                            genid then forms all keys from that record and
-                            enqueues n ops to fault in each key.
-                            */
-int enque_osqlpfault_olddata_oldkeys(struct dbtable *db, unsigned long long genid,
-                                     int i, unsigned long long rqid,
-                                     uuid_t uuid, unsigned long long seq)
-{
-    osqlpf_rq_t *qdata = NULL;
-    int rc;
-
-    qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
-
-    qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS;
-    qdata->index = -1;
-    qdata->db = db;
-    qdata->genid = genid;
-    qdata->i = i;
-    qdata->seq = seq;
-    qdata->rqid = rqid;
-    comdb2uuidcpy(qdata->uuid, uuid);
-
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0, PRIORITY_T_DEFAULT);
-
-    if (rc != 0) {
-        free(qdata);
-    }
-    return rc;
-}
-
-/* given a table, record : enqueue an op that faults in the dta record by
-                            genid then forms all keys from that record and
-                            enqueues n ops to fault in each key.
-                            */
-int enque_osqlpfault_newdata_newkeys(struct dbtable *db, void *record, int reclen,
-                                     int i, unsigned long long rqid,
-                                     uuid_t uuid, unsigned long long seq)
-{
-    osqlpf_rq_t *qdata = NULL;
-    int rc;
-
-    qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
-
-    qdata->type = OSQLPFRQ_NEWDATA_NEWKEYS;
-    qdata->index = -1;
-    qdata->db = db;
-    qdata->genid = -1;
-    qdata->record = malloc(reclen);
-    memcpy(qdata->record, record, reclen);
-    qdata->len = reclen;
-    qdata->i = i;
-    qdata->seq = seq;
-    qdata->rqid = rqid;
-    comdb2uuidcpy(qdata->uuid, uuid);
-
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0, PRIORITY_T_DEFAULT);
-
-    if (rc != 0) {
-        free(qdata->record);
-        free(qdata);
-    }
-    return rc;
-}
-
-/* given a                      : enqueue a an op that
-     table,genid,                 1) faults in dta by tbl/genid
-     tag,record,reclen            2) forms all keys
-                                  3) enqueues n ops to fault in each key
-                                  4) forms new record by taking found record +
-                                     tag/record/reclen
-                                  5) forms all keys from new record.
-                                  6) enqueues n ops to fault in each key.
-                                  */
-int enque_osqlpfault_olddata_oldkeys_newkeys(
-    struct dbtable *db, unsigned long long genid, void *record, int reclen, int i,
-    unsigned long long rqid, uuid_t uuid, unsigned long long seq)
-{
-    osqlpf_rq_t *qdata = NULL;
-    int rc;
-
-    qdata = calloc(1, sizeof(osqlpf_rq_t));
-    if (qdata == NULL) {
-        logmsg(LOGMSG_FATAL, "failed to malloc osql prefault request\n");
-        exit(1);
-    }
-
-    qdata->type = OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS;
-    qdata->index = -1;
-    qdata->db = db;
-    qdata->genid = genid;
-    qdata->record = malloc(reclen);
-    memcpy(qdata->record, record, reclen);
-    qdata->len = reclen;
-    qdata->i = i;
-    qdata->seq = seq;
-    qdata->rqid = rqid;
-    comdb2uuidcpy(qdata->uuid, uuid);
-
-    rc = thdpool_enqueue(gbl_osqlpfault_thdpool, osqlpfault_do_work_pp, qdata,
-                         0, NULL, 0, PRIORITY_T_DEFAULT);
-
-    if (rc != 0) {
-        free(qdata->record);
-        free(qdata);
-    }
-    return rc;
-}
-
-static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
-{
-    int rc = 0;
-    struct ireq iq;
-    unsigned long long step;
-    osqlpf_rq_t *req = (osqlpf_rq_t *)work;
-    init_fake_ireq(thedb, &iq);
-    bdb_thread_event(thedb->bdb_env, 1);
-    if (gbl_prefault_udp)
-        send_prefault_udp = 2;
-
-    if (!gbl_osqlpfault_threads)
-        goto done;
-
-    if (req->rqid != gbl_osqlpf_step[req->i].rqid) {
-        goto done;
-    }
-    if (req->rqid == OSQL_RQID_USE_UUID &&
-        comdb2uuidcmp(req->uuid, gbl_osqlpf_step[req->i].uuid))
-        goto done;
-
-    step = req->seq << 7;
-
-    switch (req->type) {
-    case OSQLPFRQ_OLDDATA: {
-        int fndlen;
-        int od_len;
-        unsigned char *fnddta = malloc(32768 * sizeof(unsigned char));
-        iq.usedb = req->db;
-
-        step += 1;
-        if (step <= gbl_osqlpf_step[req->i].step) {
-            if (fnddta)
-                free(fnddta);
-            break;
-        }
-
-        od_len = getdatsize(iq.usedb);
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %u failed\n", od_len);
-            exit(1);
-        }
-        rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
-                                               &fndlen, od_len);
-        if (fnddta)
-            free(fnddta);
-    } break;
-    case OSQLPFRQ_OLDKEY: {
-        int fndrrn = 0;
-        char fndkey[MAXKEYLEN];
-        unsigned long long genid = 0;
-        if ((req->index < 0) || (req->index > 49)) {
-            logmsg(LOGMSG_ERROR, "PFRQ_OLDKEY ix %d out of bounds\n", req->index);
-            break;
-        }
-
-        step += ((1 + (unsigned long long)req->index) << 1);
-        if (step <= gbl_osqlpf_step[req->i].step) {
-            break;
-        }
-
-        iq.usedb = req->db;
-        rc = ix_find_prefault(&iq, req->index, req->key, req->len, fndkey,
-                              &fndrrn, &genid, NULL, NULL, 0);
-    } break;
-    case OSQLPFRQ_NEWKEY: {
-        int fndrrn = 0;
-        char fndkey[MAXKEYLEN];
-        unsigned long long genid = 0;
-
-        if ((req->index < 0) || (req->index > 49)) {
-            logmsg(LOGMSG_ERROR, "PFRQ_OLDKEY ix %d out of bounds\n", req->index);
-            break;
-        }
-
-        step += 1 + ((1 + (unsigned long long)req->index) << 1);
-        if (step <= gbl_osqlpf_step[req->i].step) {
-            break;
-        }
-
-        iq.usedb = req->db;
-        rc = ix_find_prefault(&iq, req->index, req->key, req->len, fndkey,
-                              &fndrrn, &genid, NULL, NULL, 0);
-    } break;
-    case OSQLPFRQ_OLDDATA_OLDKEYS: {
-        size_t od_len;
-        int od_len_int;
-        int fndlen = 0;
-        int ixnum = 0;
-        unsigned char *fnddta = malloc(32768 * sizeof(unsigned char));
-
-        iq.usedb = req->db;
-
-        od_len_int = getdatsize(iq.usedb);
-        if (od_len_int <= 0) {
-            if (fnddta)
-                free(fnddta);
-            break;
-        }
-        od_len = (size_t)od_len_int;
-
-        step += 1;
-        if (step <= gbl_osqlpf_step[req->i].step) {
-            if (fnddta)
-                free(fnddta);
-            break;
-        }
-
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %zu failed\n",
-                   od_len);
-            exit(1);
-        }
-
-        rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
-                                               &fndlen, od_len);
-
-        if ((is_bad_rc(rc)) || (od_len != fndlen)) {
-            if (fnddta)
-                free(fnddta);
-            break;
-        }
-
-        for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
-            char key[MAXKEYLEN];
-            int keysz = 0;
-            keysz = getkeysize(iq.usedb, ixnum);
-            if (keysz < 0) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                     " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
-                break;
-            }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)fnddta, keytag, key, NULL);
-            if (rc == -1) {
-                logmsg(LOGMSG_ERROR,
-                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                       " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
-                break;
-            }
-
-            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
-        }
-        if (fnddta)
-            free(fnddta);
-    } break;
-    case OSQLPFRQ_NEWDATA_NEWKEYS: {
-        int ixnum = 0;
-
-        iq.usedb = req->db;
-
-        /* enqueue faults for new keys */
-        for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
-            char key[MAXKEYLEN];
-            int keysz = 0;
-            keysz = getkeysize(iq.usedb, ixnum);
-            if (keysz < 0) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                     " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
-                continue;
-            }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)req->record, keytag, key, NULL);
-            if (rc == -1) {
-                logmsg(LOGMSG_ERROR,
-                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                       " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
-                continue;
-            }
-
-            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
-        }
-    } break;
-    case OSQLPFRQ_OLDDATA_OLDKEYS_NEWKEYS: {
-        size_t od_len = 0;
-        int od_len_int;
-        int fndlen = 0;
-        int ixnum = 0;
-        unsigned char *fnddta = malloc(32768 * sizeof(unsigned char));
-
-        if (fnddta == NULL) {
-            logmsg(LOGMSG_FATAL, "osqlpfault_do_work: malloc %zu failed\n",
-                   od_len);
-            exit(1);
-        }
-        iq.usedb = req->db;
-
-        od_len_int = getdatsize(iq.usedb);
-        if (od_len_int <= 0) {
-            free(fnddta);
-            break;
-        }
-        od_len = (size_t)od_len_int;
-
-        step += 1;
-        if (step <= gbl_osqlpf_step[req->i].step) {
-            free(fnddta);
-            break;
-        }
-
-
-        rc = ix_find_by_rrn_and_genid_prefault(&iq, 2, req->genid, fnddta,
-                                               &fndlen, od_len);
-
-        if ((is_bad_rc(rc)) || (od_len != fndlen)) {
-            free(fnddta);
-            break;
-        }
-
-        /* enqueue faults for old keys */
-        for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
-            char key[MAXKEYLEN];
-            int keysz = 0;
-            keysz = getkeysize(iq.usedb, ixnum);
-            if (keysz < 0) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                     " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
-                continue;
-            }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)fnddta, keytag, key, NULL);
-            if (rc == -1) {
-                logmsg(LOGMSG_ERROR,
-                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                       " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
-                continue;
-            }
-
-            rc = enque_osqlpfault_oldkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
-        }
-
-        free(fnddta);
-
-        /* enqueue faults for new keys */
-        for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
-            char key[MAXKEYLEN];
-            int keysz = 0;
-            keysz = getkeysize(iq.usedb, ixnum);
-            if (keysz < 0) {
-                logmsg(LOGMSG_ERROR, "osqlpfault_do_work:cannot get key size"
-                                     " tbl %s. idx %d\n",
-                       iq.usedb->tablename, ixnum);
-                continue;
-            }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)req->record, keytag, key, NULL);
-            if (rc == -1) {
-                logmsg(LOGMSG_ERROR,
-                       "osqlpfault_do_work:cannot convert .ONDISK to IDX"
-                       " %d of TBL %s\n",
-                       ixnum, iq.usedb->tablename);
-                continue;
-            }
-
-            rc = enque_osqlpfault_newkey(iq.usedb, key, keysz, ixnum, req->i,
-                                         req->rqid, req->seq);
-        }
-    } break;
-    }
-
-done:
-    bdb_thread_event(thedb->bdb_env, 0);
-    send_prefault_udp = 0;
-}
-
-static void osqlpfault_do_work_pp(struct thdpool *pool, void *work,
-                                  void *thddata, int op)
-{
-    osqlpf_rq_t *req = (osqlpf_rq_t *)work;
-    switch (op) {
-    case THD_RUN:
-        osqlpfault_do_work(pool, work, thddata);
-        break;
-    }
-    free(req->record);
-    free(req);
-}
-
-int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
-                       int **iq_step_ix, unsigned long long rqid, uuid_t uuid,
-                       unsigned long long seq)
-{
-    static int last_step_idex = 0;
-    int *ii;
-    osql_rpl_t rpl_op;
-    uint8_t *p_buf = (uint8_t *)rpl;
-    uint8_t *p_buf_end = p_buf + rplen;
-    osqlcomm_rpl_type_get(&rpl_op, p_buf, p_buf_end);
-
-    if (seq == 0) {
-        Pthread_mutex_lock(&osqlpf_mutex);
-        ii = queue_next(gbl_osqlpf_stepq);
-        Pthread_mutex_unlock(&osqlpf_mutex);
-        if (ii == NULL) {
-            logmsg(LOGMSG_ERROR, "osql io prefault got a BUG!\n");
-            exit(1);
-        }
-        last_step_idex = *ii;
-        *iq_step_ix = ii;
-        gbl_osqlpf_step[last_step_idex].rqid = rqid;
-        comdb2uuidcpy(gbl_osqlpf_step[last_step_idex].uuid, uuid);
-    }
-
-    switch (rpl_op.type) {
-    case OSQL_USEDB: {
-        osql_usedb_t dt;
-        p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
-        const char *tablename;
-        struct dbtable *db;
-
-        tablename =
-            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-
-        db = get_dbtable_by_name(tablename);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s\n",
-                    __func__, dt.tablenamelen, tablename);
-        } else {
-            *last_db = db;
-        }
-    } break;
-    case OSQL_DELREC:
-    case OSQL_DELETE: {
-        osql_del_t dt;
-        p_buf = (uint8_t *)&((osql_del_rpl_t *)rpl)->dt;
-        p_buf = (uint8_t *)osqlcomm_del_type_get(&dt, p_buf, p_buf_end,
-                                                 rpl_op.type == OSQL_DELETE);
-        enque_osqlpfault_olddata_oldkeys(*last_db, dt.genid, last_step_idex,
-                                         rqid, uuid, seq);
-    } break;
-    case OSQL_INSREC:
-    case OSQL_INSERT: {
-        osql_ins_t dt;
-        unsigned char *pData = NULL;
-        uint8_t *p_buf = (uint8_t *)&((osql_ins_rpl_t *)rpl)->dt;
-        pData = (uint8_t *)osqlcomm_ins_type_get(&dt, p_buf, p_buf_end,
-                                                 rpl_op.type == OSQL_INSREC);
-        enque_osqlpfault_newdata_newkeys(*last_db, pData, dt.nData,
-                                         last_step_idex, rqid, uuid, seq);
-    } break;
-    case OSQL_UPDREC:
-    case OSQL_UPDATE: {
-        osql_upd_t dt;
-        uint8_t *p_buf = (uint8_t *)&((osql_upd_rpl_t *)rpl)->dt;
-        unsigned char *pData;
-        pData = (uint8_t *)osqlcomm_upd_type_get(&dt, p_buf, p_buf_end,
-                                                 rpl_op.type == OSQL_UPDATE);
-        enque_osqlpfault_olddata_oldkeys_newkeys(*last_db, dt.genid, pData,
-                                                 dt.nData, last_step_idex, rqid,
-                                                 uuid, seq);
-    } break;
-    default:
-        return 0;
-    }
-    return 0;
-}
+/* prefault code */
+#include "osqlpfthdpool.c"
 
 /**
  * Send SCHEMACHANGE op

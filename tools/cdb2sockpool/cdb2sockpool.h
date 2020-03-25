@@ -21,7 +21,7 @@
 #define INC__SQLPROXY_H
 
 #include <plhash.h>
-#include <pool_c.h>
+#include <pool.h>
 
 #define BOOL_SETTING(var, dfl, descr) SETTING_MACRO(var, dfl, descr, BOOL)
 #define VALUE_SETTING(var, dfl, descr) SETTING_MACRO(var, dfl, descr, VALUE)

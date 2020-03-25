@@ -80,7 +80,7 @@
 #include <sqlite3expert.h>
 
 #include <alloca.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include "flibc.h"
 

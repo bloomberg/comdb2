@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-# set -x
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
@@ -75,6 +74,7 @@ find_cores() {
     local LCLDBDIR=$2
     local COREAGE=${FINDCOREAGE:-60}
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
+    [[ ${CPAT:0:1} == '|' ]] && return #TODO: handle cores controled by coredumpctl
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
         COREDIR=$LCLDBDIR
@@ -246,6 +246,16 @@ verify_db_at_finish() {
         fi
     done
 }
+
+stop_if_more_than_n_failed () {
+    N=10   # if more that N failures in test.log stop running
+    F=`grep failed ${TESTDIR}/test.log | wc -l`
+    if [ "$F" -ge "$N" ] ; then 
+        exit 1; 
+    fi
+}
+
+stop_if_more_than_n_failed
 
 
 # start the testing: setup, runit, check cores, unsetup

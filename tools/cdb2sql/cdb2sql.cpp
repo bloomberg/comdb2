@@ -1009,7 +1009,6 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
     std::string column;
     char buffer[512];
     void *val;
-    int len;
 
     val = cdb2_column_value(hndl, col);
 
@@ -1020,13 +1019,15 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
         case CDB2_INTEGER:
             column = std::to_string(*(long long *)val);
             break;
-        case CDB2_REAL:
-            len = snprintf(buffer, sizeof(buffer), doublefmt, *(double *)val);
+        case CDB2_REAL: {
+            int len =
+                snprintf(buffer, sizeof(buffer), doublefmt, *(double *)val);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
+        }
         case CDB2_CSTRING: {
-            char *c = (char *) val;
+            char *c = (char *)val;
             column += "'";
 
             while (*c) {
@@ -1043,7 +1044,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
             int len = cdb2_column_size(cdb2h, col);
 
             if (string_blobs) {
-                char *c = (char *) val;
+                char *c = (char *)val;
                 column += '\'';
                 while (len > 0) {
                     if (isprint(*c) || *c == '\n' || *c == '\t') {
@@ -1058,7 +1059,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
                 column += '\'';
             } else {
                 column += "x'";
-                for (int i = 0; i < len; i ++) {
+                for (int i = 0; i < len; i++) {
                     snprintf(buffer, sizeof(buffer), "%02x",
                              (unsigned int)((char *)val)[i]);
                     column += buffer;
@@ -1069,50 +1070,51 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
         }
         case CDB2_DATETIME: {
             cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
-            snprintf(buffer, sizeof(buffer),
-                     "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
-                     cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
-                     cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
-                     cdt->tm.tm_sec, cdt->msec, cdt->tzname);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
+                               cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
+                               cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
+                               cdt->tm.tm_sec, cdt->msec, cdt->tzname);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_DATETIMEUS: {
             cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
-            snprintf(buffer, sizeof(buffer),
-                     "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
-                     cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
-                     cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
-                     cdt->tm.tm_sec, cdt->usec, cdt->tzname);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
+                               cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
+                               cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
+                               cdt->tm.tm_sec, cdt->usec, cdt->tzname);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_INTERVALYM: {
             cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
-            len = snprintf(buffer, sizeof(buffer), "\"%s%u-%u\"",
-                           (ym->sign < 0) ? "- " : "", ym->years, ym->months);
+            int len =
+                snprintf(buffer, sizeof(buffer), "\"%s%u-%u\"",
+                         (ym->sign < 0) ? "- " : "", ym->years, ym->months);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_INTERVALDS: {
             cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
-            len = snprintf(buffer, sizeof(buffer),
-                           "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
-                           (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
-                           ds->mins, ds->sec, ds->msec);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
+                               (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
+                               ds->mins, ds->sec, ds->msec);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_INTERVALDSUS: {
             cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
-            len = snprintf(buffer, sizeof(buffer),
-                           "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
-                           (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
-                           ds->mins, ds->sec, ds->usec);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
+                               (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
+                               ds->mins, ds->sec, ds->usec);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
@@ -1191,7 +1193,7 @@ int Result_buffer::print_result() {
 
 int process_bind(const char *sql)
 {
-    if (!strncasecmp(sql, "@bind", 5) == 0)
+    if (strncasecmp(sql, "@bind", 5) != 0)
         return process_escape(sql);
 
     const char *copy_sql = sql;

@@ -876,14 +876,14 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         }
     }
 
-    if (luxref < 0 || luxref >= dbenv->num_dbs) {
+    if (dbenv->num_dbs > 0 && (luxref < 0 || luxref >= dbenv->num_dbs)) {
         logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
                luxref, dbenv->num_dbs);
         return ERR_REJECTED;
     }
 
     iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
-    if (iq->origdb == NULL)
+    if (dbenv->num_dbs == 0 || iq->origdb == NULL)
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;
 
