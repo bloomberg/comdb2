@@ -545,7 +545,8 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
                       int *bdberr)
 {
     DBT dbt_key = {0}, dbt_data = {0};
-    DBC *dbcp = NULL;
+    DBC *dbcp1 = NULL;
+    DBC *dbcp2 = NULL;
     uint8_t ver = 0;
     size_t item_length = 0;
     unsigned int epoch = 0, first_seq = 0, last_seq = 0;
@@ -559,15 +560,15 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = bdb_state->dbp_data[0][0]->cursor(bdb_state->dbp_data[0][0], NULL,
-                                           &dbcp, 0);
+    DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    rc = db1->cursor(db1, NULL, &dbcp1, 0);
 
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
-        return -1;
+        goto done;
     }
 
-    rc = bdb_cget_unpack(bdb_state, dbcp, &dbt_key, &dbt_data, &ver, DB_FIRST);
+    rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver, DB_FIRST);
 
     if (rc) {
         if (rc == DB_LOCK_DEADLOCK) {
@@ -586,6 +587,18 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
         }
     }
 
+    DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+    if (db2 != NULL) {
+        rc = db2->cursor(db2, NULL, &dbcp2, 0);
+
+        if (rc != 0) {
+            *bdberr = BDBERR_MISC;
+            goto done;
+        }
+    } else {
+        dbcp2 = dbcp1; /* no second file, use same cursor */
+    }
+
     p_buf = dbt_data.data;
     p_buf_end = p_buf + dbt_data.size;
     p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
@@ -593,7 +606,7 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     epoch = qfnd_odh.epoch;
     item_length = dbt_data.size;
 
-    rc = bdb_cget_unpack(bdb_state, dbcp, &dbt_key, &dbt_data, &ver, DB_LAST);
+    rc = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver, DB_LAST);
 
     if (rc) {
         if (rc == DB_LOCK_DEADLOCK) {
@@ -622,9 +635,22 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
                  userptr);
 
 done:
-    if (dbcp) {
+    if (dbcp2 && (dbcp2 != dbcp1)) {
         int crc;
-        crc = dbcp->c_close(dbcp);
+        crc = dbcp2->c_close(dbcp2);
+        if (crc == DB_LOCK_DEADLOCK) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+            *bdberr = BDBERR_DEADLOCK;
+            rc = -1;
+        } else if (crc) {
+            logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+            *bdberr = BDBERR_MISC;
+            rc = -1;
+        }
+    }
+    if (dbcp1) {
+        int crc;
+        crc = dbcp1->c_close(dbcp1);
         if (crc == DB_LOCK_DEADLOCK) {
             logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
             *bdberr = BDBERR_DEADLOCK;
