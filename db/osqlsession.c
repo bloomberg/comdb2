@@ -200,10 +200,9 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found)
 {
-    int client_abort = 0;
     int rc = 0;
     bool is_msg_done = false;
-    struct errstat *perr;
+    struct errstat *perr = NULL;
 
     /* get the session; dispatched sessions are ignored */
     osql_sess_t *sess = osql_repository_get(rqid, uuid);
@@ -220,7 +219,6 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
     if (is_msg_done && perr) {
-        client_abort = 1;
         goto failed_stream;
     }
 
@@ -254,7 +252,7 @@ failed_stream:
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
     osql_sess_close(&sess, true);
 
-    return (client_abort) ? 0 : perr->errval;
+    return rc;
 }
 
 /**

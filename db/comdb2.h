@@ -385,21 +385,20 @@ enum RCODES {
     ERR_NO_SUCH_TABLE = 310,  /* operation tried to use non-existant table */
     ERR_CALLBACK = 311,       /* operation failed due to errors in callback */
     ERR_TRAN_FAILED = 312,    /* could not start of finish transaction */
-    ERR_CONSTR =
-        313, /* could not complete the operation becouse of constraints in the
-                table */
-    ERR_SC_COMMIT =
-        314, /* schema change in its final stages; proxy should retry */
+    ERR_CONSTR = 313,         /* could not complete the operation because of
+                                 constraints in the table */
+    ERR_SC_COMMIT = 314,      /* schema change in its final stages;
+                                 proxy should retry */
     ERR_CONFIG_FAILED = 316,
     ERR_NO_RECORDS_FOUND = 317,
     ERR_NULL_CONSTRAINT = 318,
     ERR_VERIFY_PI = 319,
     ERR_CHECK_CONSTRAINT = 320,
-    ERR_UNCOMMITABLE_TXN =
-        404, /* txn is uncommitable, returns ERR_VERIFY rather than retry */
+    ERR_UNCOMMITABLE_TXN = 404, /* txn is uncommitable, returns ERR_VERIFY
+                                   rather than retry */
     ERR_QUERY_REJECTED = 451,
-    ERR_INCOHERENT =
-        996, /* prox2 understands it should retry another node for 996 */
+    ERR_INCOHERENT = 996, /* prox2 understands it should retry another
+                             node for 996 */
     ERR_SQL_PREPARE = 1003,
     ERR_NO_AUXDB = 2000,    /* requested auxiliary database not available */
     ERR_SQL_PREP = 2001,    /* block sql error in sqlite3_prepare */
@@ -439,15 +438,14 @@ enum DB_METADATA {
                                when a schema was loaded.  key is a schema
                                version number. */
 
-    META_BLOBSTRIPE_GENID_RRN =
-        -3, /* in this rrn we store the genid of the table
-               when it was converted to blobstripe */
+    META_BLOBSTRIPE_GENID_RRN = -3, /* in this rrn store the genid of table
+                                       when it was converted to blobstripe */
 
     META_STUFF_RRN = -4, /* used by pushlogs.c to do "stuff" to the database
                            until we get past a given lsn. */
-    META_ONDISK_HEADER_RRN = -5, /* do we have the new ondisk header? */
-    META_COMPRESS_RRN =
-        -6, /* which compression algorithm to use for new records (if any) */
+    META_ONDISK_HEADER_RRN = -5,  /* do we have the new ondisk header? */
+    META_COMPRESS_RRN = -6,       /* which compression algorithm to use for new
+                                     records (if any) */
     META_COMPRESS_BLOBS_RRN = -7, /* and which to use for blobs. */
     META_FILEVERS = -8,           /* 64 bit id for filenames */
     META_FILE_LWM = -9,           /* int - lower deleteable log file */
