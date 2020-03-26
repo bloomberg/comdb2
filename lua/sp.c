@@ -5701,10 +5701,12 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         intv_t in;
     } u;
     int32_t szstr;
+    dttz_t dt;
     lua_blob_t *blob;
     cdb2_client_intv_ym_t *ym;
     cdb2_client_intv_ds_t *ds;
     cdb2_client_intv_dsus_t *dsus;
+    struct sqlclntstate *clnt;
 
     lua_getfield(lua, -1, oldnew);
     switch (type) {
@@ -5748,23 +5750,29 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         break;
     case SP_FIELD_DATETIME:
 #ifdef _LINUX_SOURCE
-        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt,
-                                      1);
+        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt, 1);
 #else
-        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt,
-                                      0);
+        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt, 0);
 #endif
+        clnt = getsp(lua)->clnt;
+        if (strcmp(clnt->tzname, u.dt.tzname) != 0) {
+            datetime_t_to_dttz(&u.dt, &dt);
+            dttz_to_datetime_t(&dt, clnt->tzname, &u.dt);
+        }
         luabb_pushdatetime(lua, &u.dt);
         payload += sizeof(cdb2_client_datetime_t);
         break;
     case SP_FIELD_DATETIMEUS:
 #ifdef _LINUX_SOURCE
-        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload,
-                                        &u.dt, 1);
+        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload, &u.dt, 1);
 #else
-        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload,
-                                        &u.dt, 0);
+        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload, &u.dt, 0);
 #endif
+        clnt = getsp(lua)->clnt;
+        if (strcmp(clnt->tzname, u.dt.tzname) != 0) {
+            datetime_t_to_dttz(&u.dt, &dt);
+            dttz_to_datetime_t(&dt, clnt->tzname, &u.dt);
+        }
         luabb_pushdatetime(lua, &u.dt);
         payload += sizeof(cdb2_client_datetimeus_t);
         break;
