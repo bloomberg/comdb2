@@ -158,6 +158,7 @@ struct dbconsumer_t {
     int push_seq;
     int push_epoch;
     int register_timeoutms;
+    int emit_timeoutms;
     time_t registration_time;
 
     /* signaling from libdb on qdb insert */
@@ -190,6 +191,7 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     init_fake_ireq(thedb, &q->iq);
     int spname_len = info->spname_len;
     q->iq.usedb = qdb;
+    q->emit_timeoutms = 60000; /* emit times-out after 1 min */
     q->consumer = consumer;
     q->info = *info;
     // memcpy because variable size struct breaks fortify checks in strcpy.
@@ -501,8 +503,13 @@ static int stop_waiting(Lua L, dbconsumer_t *q)
     if (check_retry_conditions(L, 0) != 0)
         return 1;
     time_t now = time(NULL);
-    if (difftime(now, q->registration_time) < (gbl_queuedb_timeout_sec / 3))
+    if (difftime(now, q->registration_time)  <= 0) {
         return 0;
+    }
+    SP sp = getsp(L);
+    if (sp->pingpong == 2) {
+        return 0;
+    }
     if (luabb_trigger_register(L, &q->info, q->register_timeoutms) !=
         CDB2_TRIG_REQ_SUCCESS)
         return 1;
@@ -520,6 +527,10 @@ static void pong(Lua L, dbconsumer_t *q)
 {
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
+    int timeout = q->emit_timeoutms / 1000;
+    if (q->emit_timeoutms && timeout == 0) {
+        timeout = 1;
+    }
     while (1) {
         switch (read_response(clnt, RESPONSE_PING_PONG, NULL, 0)) {
         case  0: sp->pingpong = 0; return;
@@ -527,6 +538,16 @@ static void pong(Lua L, dbconsumer_t *q)
         case -2: luaL_error(L, "client disconnect");
         case -3: luaL_error(L, "client protocol error");
         default: luaL_error(L, "failed reading event ack from client");
+        }
+        if (q->emit_timeoutms) {
+           if (timeout) {
+               --timeout;
+           } else if (sp->pingpong == 1) {
+               logmsg(LOGMSG_USER,
+                      "consumer:%s suspending heartbeat timeout:%dms\n",
+                      q->info.spname, q->emit_timeoutms);
+               sp->pingpong = 2;
+           }
         }
     }
 }
@@ -802,13 +823,15 @@ static int dbconsumer_poll(Lua L)
     lua_Number arg = luaL_checknumber(L, 2);
     lua_Integer delay; // ms
     lua_number2integer(delay, arg);
-    if (delay) {
+    if (delay >= 0) {
         // we poll in multiples of dbq_delay
         if (delay > dbq_delay) {
             delay += dbq_delay - (delay % dbq_delay);
         } else {
             delay = dbq_delay;
         }
+    } else {
+        delay = 0;
     }
     int rc = dbq_poll(L, q, delay);
     if (rc >= 0) {
@@ -951,6 +974,18 @@ static int dbconsumer_emit(Lua L)
     int rc = db_emit_int(L);
     pong(L, q);
     return rc;
+}
+
+static int dbconsumer_emit_timeout(Lua L)
+{
+    dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
+    int rc = -1;
+    int timeoutms = luaL_checknumber(L, 2);
+    if (timeoutms >= 0) {
+        q->emit_timeoutms = timeoutms;
+        rc = 0;
+    }
+    return push_and_return(L, rc);
 }
 
 static int dbconsumer_free(Lua L)
@@ -4828,6 +4863,7 @@ static const struct luaL_Reg dbconsumer_funcs[] = {
     {"consume", dbconsumer_consume},
     {"next", dbconsumer_next},
     {"emit", dbconsumer_emit},
+    {"emit_timeout", dbconsumer_emit_timeout},
     {NULL, NULL}
 };
 

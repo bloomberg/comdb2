@@ -62,8 +62,6 @@ typedef struct trigger_reg {
     // hostname[]
 } trigger_reg_t;
 
-extern int gbl_queuedb_timeout_sec;
-
 struct consumer;
 enum consumer_t dbqueue_consumer_type(struct consumer *c);
 int trigger_register(trigger_reg_t *);
