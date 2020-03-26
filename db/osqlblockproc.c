@@ -237,12 +237,6 @@ blocksql_tran_t *osql_bplog_create(bool is_uuid, bool is_reorder)
     return tran;
 }
 
-int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
-                   int running, const char *host, time_t time, int fromnet,
-                   const char *func, int line);
-
-void sc_set_downgrading(struct schema_change_type *s);
-
 typedef struct {
     struct ireq *iq;
     void *trans;
@@ -1238,7 +1232,6 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
     }
 }
 
-void sc_set_downgrading(struct schema_change_type *s);
 /**
  * Apply all schema changes and wait for them to finish
  */

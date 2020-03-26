@@ -1933,12 +1933,6 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
 
-REGISTER_TUNABLE("log_index_locks_first",
-                 "Emit locks for index locks before datafile locks.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_log_index_locks_first,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("queuedb_read_locks",
                  "Grab table read locks when dealing with a queuedb from Lua."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_queuedb_read_locks,
