@@ -70,7 +70,12 @@ struct stored_proc {
     dbconsumer_t *consumer; // commit/rollback need to clear
 
     unsigned initial           : 1;
-    unsigned pingpong          : 1;
+    /*
+    pingpong = 0 -- not waiting to hear from client
+    pingpong = 1 -- waiting to hear from client, send heartbeat to master
+    pingpong = 2 -- timed-out waiting to hear from client, stop sending h/b
+    */
+    unsigned pingpong          : 2;
     unsigned in_parent_trans   : 1;
     unsigned make_parent_trans : 1;
 };

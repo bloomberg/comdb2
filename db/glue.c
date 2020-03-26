@@ -5163,8 +5163,7 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
 int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_queue_found *fnd)
 {
     int bdberr;
-    void *bdb_handle;
-    bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+    bdb_state_type *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_queue_consume";
@@ -5178,7 +5177,7 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_que
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
     if (bdberr == BDBERR_DELNOTFOUND)
-        return IX_NOTFND;
+        return  bdb_get_type(bdb_handle) == BDBTYPE_QUEUEDB ? ERR_UNCOMMITABLE_TXN: IX_NOTFND;
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume", bdberr);
 }
 
