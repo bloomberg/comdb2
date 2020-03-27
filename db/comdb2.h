@@ -1389,8 +1389,6 @@ struct ireq {
      * we'll have to wake up all queues on commit - oh well. */
     unsigned num_queues_hit;
 
-    struct temp_table *dbq_adds;
-
     /* Number of oplog operations logged as part of this transaction */
     int oplog_numops;
     int seqlen;
@@ -1418,9 +1416,6 @@ struct ireq {
     bool sc_should_abort : 1;
     bool sc_closed_files : 1;
 
-    bool deferred_dbq_adds : 1;
-
-    int dbq_deferred_add_count;
     int written_row_count;
     int sc_running;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
@@ -2501,9 +2496,6 @@ int lite_get_keys_auxdb(int auxdb, struct ireq *iq, void *firstkey,
 /* queue databases */
 struct bdb_queue_found;
 struct bdb_queue_cursor;
-int dbq_deferred_adds(struct ireq *iq, void *trans);
-int dbq_deferred_truncate(struct ireq *iq);
-int dbq_deferred_close(struct ireq *iq);
 int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen);
 int dbq_consume(struct ireq *iq, void *trans, int consumer,
                 const struct bdb_queue_found *fnd);

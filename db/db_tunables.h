@@ -1931,10 +1931,4 @@ REGISTER_TUNABLE("debug_queuedb",
                  TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("deferred_queuedb_adds",
-                 "Defer dbqueue operations until after osql processing.  "
-                 "(Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_deferred_dbq_adds, EXPERIMENTAL, NULL,
-                 NULL, NULL, NULL);
-
 #endif /* _DB_TUNABLES_H */

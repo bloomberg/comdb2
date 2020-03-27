@@ -5115,186 +5115,20 @@ int lite_del_auxdb(int auxdb, struct ireq *iq, void *trans, void *key)
 /*         QUEUE DATABASES           */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 
-struct deferred_queue_add_key {
-    int ix;
-    char name[1];
-};
-
-static int dbq_queue_key_cmp(void *usermem, int key1len, const void *key1,
-        int key2len, const void *key2)
-{
-    int cmp;
-    struct deferred_queue_add_key *k1 = (struct deferred_queue_add_key *)key1;
-    struct deferred_queue_add_key *k2 = (struct deferred_queue_add_key *)key2;
-    char *n1 = (char *)k1->name;
-    char *n2 = (char *)k2->name;
-    if ((cmp = strcmp(n1, n2)))
-        return cmp;
-    return (k2->ix - k1->ix);
-}
-
-static int dbq_save_add(struct ireq *iq, void *tran, const void *dta,
-        size_t dtalen)
-{
-    int rc = 0, bdberr = 0;
-    struct dbtable *qdb = iq->usedb;
-    void *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
-    struct deferred_queue_add_key *k;
-
-
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-
-    rc = bdb_lock_table_read(bdb_handle, tran);
-    if (rc == BDBERR_DEADLOCK)  {
-        logmsg(LOGMSG_ERROR, "%s deadlock locking %s\n", __func__,
-                qdb->tablename);
-        return RC_INTERNAL_RETRY;
-    }
-    else if (rc)
-        return map_unhandled_bdb_wr_rcode("dbq_save_add", rc);
-
-    if (iq->dbq_adds == NULL) {
-        iq->dbq_adds = bdb_temp_table_create(thedb->bdb_env, &bdberr);
-        if (!iq->dbq_adds) {
-            logmsg(LOGMSG_ERROR, "*ERROR* failed create dbq_adds table, %d\n",
-                    bdberr);
-            return map_unhandled_bdb_wr_rcode("dbq_save_add", bdberr);
-        }
-        bdb_temp_table_set_cmp_func(iq->dbq_adds, dbq_queue_key_cmp);
-    }
-
-    int klen = offsetof(struct deferred_queue_add_key, name) +
-        strlen(qdb->tablename) + 1;
-    k = alloca(klen);
-    k->ix = iq->dbq_deferred_add_count++;
-    strcpy(k->name, qdb->tablename);
-
-    rc = bdb_temp_table_put(thedb->bdb_env, iq->dbq_adds, k, klen, (void *)dta,
-            dtalen, NULL, &bdberr);
-
-    if (bdberr == 0)
-        return 0;
-
-    return map_unhandled_bdb_wr_rcode("dbq_save_add", bdberr);
-}
-
-int dbq_deferred_truncate(struct ireq *iq)
-{
-    int bdberr = 0, rc = 0;
-    if (!iq->deferred_dbq_adds || !iq->dbq_adds)
-        return 0;
-    rc = bdb_temp_table_truncate(thedb->bdb_env, iq->dbq_adds, &bdberr);
-    iq->dbq_deferred_add_count = 0;
-    if (bdberr || rc)
-        return (bdberr || rc);
-    return 0;
-}
-
-int dbq_deferred_close(struct ireq *iq)
-{
-    int bdberr = 0, rc = 0;
-    if (!iq->deferred_dbq_adds || !iq->dbq_adds)
-        return 0;
-    rc = bdb_temp_table_close(thedb->bdb_env, iq->dbq_adds, &bdberr);
-    iq->dbq_adds = NULL;
-    iq->dbq_deferred_add_count = 0;
-    if (bdberr || rc)
-        return (bdberr || rc);
-    return 0;
-}
-
-int dbq_deferred_adds(struct ireq *iq, void *trans)
-{
-    struct temp_cursor *cur;
-    struct dbtable *qdb = NULL;
-    void *bdb_handle;
-    int bdberr = 0, close_err = 0, rc;
-    unsigned long long unused;
-
-    if (!iq->deferred_dbq_adds || !iq->dbq_adds)
-        return 0;
-
-    cur = bdb_temp_table_cursor(thedb->bdb_env, iq->dbq_adds, NULL,
-            &bdberr);
-    if (cur == NULL) {
-        logmsg(LOGMSG_ERROR, "%s failed create temptable cursor, %d\n",
-                __func__, bdberr);
-        return map_unhandled_bdb_wr_rcode("dbq_deferred_adds", bdberr);
-    }
-
-    rc = bdb_temp_table_first(thedb->bdb_env, cur, &bdberr);
-    while (rc == 0) {
-        struct deferred_queue_add_key *k = bdb_temp_table_key(cur);
-        char *name = k->name;
-        void *dta = bdb_temp_table_data(cur);
-        size_t dtalen = bdb_temp_table_datasize(cur);
-
-        if (!qdb || strcmp(qdb->tablename, name))
-            qdb = getqueuebyname(name);
-
-        if (!qdb) {
-            logmsg(LOGMSG_ERROR, "%s failed to locate queuedb %s\n", __func__,
-                    name);
-            rc = bdb_temp_table_next(thedb->bdb_env, cur, &bdberr);
-            continue;
-        }
-
-        iq->usedb = qdb;
-        bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
-
-        if (!bdb_handle) {
-            logmsg(LOGMSG_ERROR, "%s failed acquire handle for %s\n", __func__,
-                    name);
-            rc = bdb_temp_table_next(thedb->bdb_env, cur, &bdberr);
-            continue;
-        }
-
-        iq->gluewhere = "bdb_queue_add";
-        bdb_queue_add(bdb_handle, trans, dta, dtalen, &bdberr, &unused);
-        iq->gluewhere = "bdb_queue_add done";
-
-        if (bdberr != 0) {
-            logmsg(LOGMSG_ERROR, "%s bdb_queue_add returns %d\n",
-                    __func__, bdberr);
-            break;
-        }
-
-        rc = bdb_temp_table_next(thedb->bdb_env, cur, &bdberr);
-    }
-
-    rc = bdb_temp_table_close_cursor(thedb->bdb_env, cur, &close_err);
-
-    if (!bdberr && (close_err || rc))
-        bdberr = (close_err || rc);
-    if (bdberr == 0)
-        return 0;
-    if (bdberr == BDBERR_DEADLOCK)
-        return RC_INTERNAL_RETRY;
-    if (bdberr == BDBERR_READONLY)
-        return ERR_NOMASTER;
-    if (bdberr == BDBERR_ADD_DUPE)
-        return IX_DUP;
-    return map_unhandled_bdb_wr_rcode("bdb_queue_add", bdberr);
-}
-
 int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
 {
     int bdberr;
     void *bdb_handle;
     unsigned long long genid;
-    struct dbtable *qdb = iq->usedb;
     bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
-    if (iq->deferred_dbq_adds && qdb->dbtype == DBTYPE_QUEUEDB) {
-        return dbq_save_add(iq, trans, dta, dtalen);
-    }
     iq->gluewhere = "bdb_queue_add";
     bdb_queue_add(bdb_handle, trans, dta, dtalen, &bdberr, &genid);
     iq->gluewhere = "bdb_queue_add done";
 
     if (bdberr == 0) {
+        struct dbtable *qdb = iq->usedb;
         if (qdb->dbtype == DBTYPE_QUEUEDB) {
             return 0;
         }
