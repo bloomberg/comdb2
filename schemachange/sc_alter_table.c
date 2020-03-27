@@ -420,6 +420,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (newdb == NULL) {
         sc_errf(s, "Internal error\n");
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        if (local_lock)
+            unlock_schema_lk();
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
@@ -443,6 +445,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         int ret = 0;
         ret = new_indexes_syntax_check(iq, newdb);
         if (ret) {
+            if (local_lock)
+                unlock_schema_lk();
             Pthread_mutex_unlock(&csc2_subsystem_mtx);
             sc_errf(s, "New indexes syntax error\n");
             backout(newdb);
