@@ -2688,8 +2688,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     if (lrc)
         return lrc;
 
-    dbq_deferred_truncate(iq);
-
     uint64_t strt = comdb2_time_epochus();
     reqlog_set_queue_time(iq->reqlogger, strt - iq->startus);
     reqlog_set_startprcs(iq->reqlogger, strt);
@@ -4897,18 +4895,6 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     } /* end delayed */
     else {
         ++gbl_delayed_skip;
-    }
-
-    if (iq->deferred_dbq_adds && iq->dbq_adds) {
-        rc = dbq_deferred_adds(iq, trans);
-        if (rc != 0) {
-            err.blockop_num = 0;
-            err.errcode = rc;
-            err.ixnum = -1;
-            numerrs = 1;
-            reqlog_set_error(iq->reqlogger, "Deferred queue add error", rc);
-            GOTOBACKOUT;
-        }
     }
 
     if (gbl_replicate_local && iq->oplog_numops > 0) {
