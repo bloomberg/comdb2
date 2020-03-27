@@ -98,8 +98,8 @@ enum policy {
 };
 
 static int dedicated_timer = 0;
-static enum policy akq_policy = POLICY_PER_HOST;
-static enum policy reader_policy = POLICY_PER_NET;
+static enum policy akq_policy = POLICY_PER_NET;
+static enum policy reader_policy = POLICY_PER_HOST;
 static enum policy writer_policy = POLICY_PER_HOST;
 
 struct policy_info {
