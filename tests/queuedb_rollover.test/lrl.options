@@ -4,6 +4,6 @@ queuedb_file_threshold 1
 queuedb_file_interval 5000
 logmsg level info
 allow_lua_print 1
-client_queued_slow_seconds 60
-client_running_slow_seconds 60
+client_queued_slow_seconds 600
+client_running_slow_seconds 600
 client_abort_on_slow 1
