@@ -4841,6 +4841,9 @@ SQLITE_API int sqlite3_reset(sqlite3_stmt *pStmt);
 SQLITE_API int sqlite3_resetclock(sqlite3_stmt *pStmt);
 char *stmt_tzname(sqlite3_stmt *);
 void stmt_set_dtprec(sqlite3_stmt *, int);
+
+void stmt_set_cached_columns(sqlite3_stmt *, char **, int);
+int stmt_do_column_names_match(sqlite3_stmt *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

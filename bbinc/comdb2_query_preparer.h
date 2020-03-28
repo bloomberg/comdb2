@@ -18,8 +18,8 @@
 #define __INCLUDED_QUERY_PREPARER_H
 
 struct comdb2_query_preparer {
-    int (*do_prepare)(struct sqlthdstate *, struct sqlclntstate *,
-                      const char *);
+    int (*do_prepare)(struct sqlthdstate *, struct sqlclntstate *, const char *,
+                      char ***, int *);
     int (*do_cleanup)(struct sqlclntstate *);
     int (*sqlitex_is_initializing)(void *);
     char *(*sqlitex_table_name)(void *);
