@@ -581,6 +581,8 @@ struct Vdbe {
   struct timespec tspec;  /* time of prepare, used for stable now() */
   u8 oeFlag;              /* ON CONFLICT action */
   u8 upsertIdx;           /* ON CONFLICT target */
+  char **oldColNames;     /* Column names returned by old-sqlite version */
+  int oldColCount;        /* Column count (refer: sqlitex)*/
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
