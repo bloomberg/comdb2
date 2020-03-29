@@ -590,7 +590,7 @@ again:
         logmsg(LOGMSG_ERROR, "analyze: add_oplog_entry(commit) rc %d\n", rc);
         goto done;
     }
-    rc = trans_commit(&iq, trans, gbl_mynode);
+    rc = trans_commit(&iq, trans, gbl_myhostname);
     if (rc) {
         logmsg(LOGMSG_ERROR, "analyze: commit rc %d\n", rc);
         goto done;
@@ -901,7 +901,7 @@ static void *table_thread(void *arg)
     /* mark the return */
     if (0 == rc) {
         td->table_state = TABLE_COMPLETE;
-        if (thedb->master == gbl_mynode) { // reset directly
+        if (thedb->master == gbl_myhostname) { // reset directly
             ctrace("analyze: Analyzed Table %s, reseting counter to 0\n", td->table);
             reset_aa_counter(td->table);
         } else {

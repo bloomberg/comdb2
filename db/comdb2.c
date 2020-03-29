@@ -299,10 +299,9 @@ int gbl_report = 0;           /* update rate to log */
 int gbl_report_last;
 long gbl_report_last_n;
 long gbl_report_last_r;
-char *gbl_mynode;     /* my hostname */
+char *gbl_myhostname;      /* my hostname */
 struct in_addr gbl_myaddr; /* my IPV4 address */
 int gbl_mynodeid = 0; /* node number, for backwards compatibility */
-char *gbl_myhostname; /* added for now to merge fdb source id */
 pid_t gbl_mypid;      /* my pid */
 char *gbl_myuri;      /* added for fdb uri for this db: dbname@hostname */
 int gbl_myroom;
@@ -1120,7 +1119,7 @@ static void *purge_old_blkseq_thread(void *arg)
             ++loop;
 
         if (debug_switch_check_for_hung_checkpoint_thread() &&
-            dbenv->master == gbl_mynode) {
+            dbenv->master == gbl_myhostname) {
             int chkpoint_time = bdb_get_checkpoint_time(dbenv->bdb_env);
             if (gbl_chkpoint_alarm_time > 0 &&
                 chkpoint_time > gbl_chkpoint_alarm_time) {
@@ -1143,7 +1142,7 @@ static void *purge_old_blkseq_thread(void *arg)
             }
         }
 
-        if (dbenv->master == gbl_mynode) {
+        if (dbenv->master == gbl_myhostname) {
             static int last_incoh_msg_time = 0;
             static int peak_online_count = 0;
             int num_incoh, since_epoch;
@@ -1259,7 +1258,7 @@ static void *purge_old_files_thread(void *arg)
     while (!db_is_stopped()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             sleep(empty_pause);
             continue;
         }
@@ -1298,7 +1297,7 @@ static void *purge_old_files_thread(void *arg)
         }
 
         if (rc == 0) {
-            rc = trans_commit(&iq, trans, gbl_mynode);
+            rc = trans_commit(&iq, trans, gbl_myhostname);
             if (rc) {
                 if (rc == RC_INTERNAL_RETRY && retries < 10) {
                     retries++;
@@ -1544,7 +1543,6 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
-    free(gbl_myhostname);
 
     cleanresources(); // list of lrls
     // TODO: would be nice but other threads need to exit first:
@@ -3478,7 +3476,7 @@ static int init(int argc, char **argv)
         cacheszkb = atoi(argv[optind]);
     }
 
-    gbl_mynodeid = machine_num(gbl_mynode);
+    gbl_mynodeid = machine_num(gbl_myhostname);
 
     Pthread_attr_init(&gbl_pthread_attr);
     Pthread_attr_setstacksize(&gbl_pthread_attr, DEFAULT_THD_STACKSZ);
@@ -3744,7 +3742,7 @@ static int init(int argc, char **argv)
     if (rc)
         return -1;
 
-    gbl_myroom = getroom_callback(NULL, gbl_mynode);
+    gbl_myroom = getroom_callback(NULL, gbl_myhostname);
 
     if (skip_clear_queue_extents) {
         logmsg(LOGMSG_INFO, "skipping clear_queue_extents()\n");
@@ -5291,16 +5289,15 @@ static void register_all_int_switches()
 static void getmyid(void)
 {
     char name[1024];
+    char *cname;
 
     if (gethostname(name, sizeof(name))) {
         logmsg(LOGMSG_ERROR, "%s: Failure to get local hostname!!!\n", __func__);
-        gbl_myhostname = "UNKNOWN";
-        gbl_mynode = "localhost";
+        gbl_myhostname = "localhost";
+    } else if ((cname = comdb2_getcanonicalname(name)) != NULL) {
+        gbl_myhostname = intern(cname);
     } else {
-        name[1023] = '\0'; /* paranoia, just in case of truncation */
-
-        gbl_myhostname = strdup(name);
-        gbl_mynode = intern(gbl_myhostname);
+        gbl_myhostname = intern(name);
     }
 
     getmyaddr();
@@ -5333,7 +5330,7 @@ static void handle_resume_sc()
      * table wasn't open yet so we couldn't check to see if a schema change was
      * in progress */
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
-        thedb->master == gbl_mynode) {
+        thedb->master == gbl_myhostname) {
         int irc = resume_schema_change();
         if (irc)
             logmsg(LOGMSG_ERROR, 

@@ -11323,14 +11323,14 @@ int bt_hash_table(char *table, int szkb)
         fprintf(stderr, "Failed to write bthash to meta table\n");
         return -1;
     }
-    trans_commit(&iq, metatran, gbl_mynode);
+    trans_commit(&iq, metatran, gbl_myhostname);
 
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
     logmsg(LOGMSG_WARN, "Building bthash for table %s, size %dkb per stripe\n",
            db->tablename, szkb);
     bdb_handle_dbp_add_hash(bdb_state, szkb);
-    trans_commit(&iq, tran, gbl_mynode);
+    trans_commit(&iq, tran, gbl_myhostname);
 
     // scdone log
     rc = bdb_llog_scdone(bdb_state, bthash, 1, &bdberr);
@@ -11377,13 +11377,13 @@ int del_bt_hash_table(char *table)
         logmsg(LOGMSG_ERROR, "Failed to write bthash to meta table\n");
         return -1;
     }
-    trans_commit(&iq, metatran, gbl_mynode);
+    trans_commit(&iq, metatran, gbl_myhostname);
 
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
     logmsg(LOGMSG_WARN, "Deleting bthash for table %s\n", db->tablename);
     bdb_handle_dbp_drop_hash(bdb_state);
-    trans_commit(&iq, tran, gbl_mynode);
+    trans_commit(&iq, tran, gbl_myhostname);
 
     // scdone log
     rc = bdb_llog_scdone(bdb_state, bthash, 1, &bdberr);

@@ -109,7 +109,7 @@ extern int gbl_keycompr;
 extern int gbl_early;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
-extern char *gbl_mynode;
+extern char *gbl_myhostname;
 extern size_t gbl_blobmem_cap;
 
 #define FILENAMELEN 100
@@ -1555,8 +1555,8 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         if (gbl_libevent) {
             stop_event_net();
         } else {
-            net_send_decom_all(netinfo_ptr, gbl_mynode);
-            osql_process_message_decom(gbl_mynode);
+            net_send_decom_all(netinfo_ptr, gbl_myhostname);
+            osql_process_message_decom(gbl_myhostname);
             sleep(2);
             net_exiting(netinfo_ptr);
             osql_net_exiting();
@@ -3214,7 +3214,7 @@ done2:
 
     /* send our real seqnum to the master now.  */
 
-    if (bdb_state->repinfo->master_host != gbl_mynode &&
+    if (bdb_state->repinfo->master_host != gbl_myhostname &&
         net_count_nodes(bdb_state->repinfo->netinfo) > 1) {
         rc = send_myseqnum_to_master(bdb_state, 1);
         if (rc != 0) {
@@ -5696,7 +5696,7 @@ static bdb_state_type *bdb_open_int(
         bzero(bdb_state->repinfo, sizeof(repinfo_type));
 
         /* record who we are */
-        bdb_state->repinfo->myhost = gbl_mynode;
+        bdb_state->repinfo->myhost = gbl_myhostname;
 
         /* we dont know who the master is yet */
         set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
@@ -5889,9 +5889,10 @@ static bdb_state_type *bdb_open_int(
             (bdb_state->callback->whoismaster_rtn)(
                 bdb_state, bdb_state->repinfo->master_host, 1);
 
-        logmsg(LOGMSG_INFO, "@LSN %u:%u\n",
-               bdb_state->seqnum_info->seqnums[nodeix(gbl_mynode)].lsn.file,
-               bdb_state->seqnum_info->seqnums[nodeix(gbl_mynode)].lsn.offset);
+        logmsg(
+            LOGMSG_INFO, "@LSN %u:%u\n",
+            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.file,
+            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.offset);
 
         BDB_RELLOCK();
     } else {

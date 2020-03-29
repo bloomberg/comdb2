@@ -1029,7 +1029,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         rc = mark_schemachange_over_tran(s->db->tablename, tran);
         if (rc != 0) continue;
 
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        rc = trans_commit(&iq, tran, gbl_myhostname);
     }
 
     return rc;

@@ -5109,7 +5109,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
         uuidstr_t us;
         logmsg(LOGMSG_ERROR,
                "Missing SORESE sql session %llx %s on %s from %d\n", poke.rqid,
-               comdb2uuidstr(uuid, us), gbl_mynode, poke.from);
+               comdb2uuidstr(uuid, us), gbl_myhostname, poke.from);
     }
 }
 
@@ -5187,7 +5187,7 @@ static int net_osql_nodedwn(netinfo_type *netinfo_ptr, char *host)
 static void signal_rtoff(void)
 {
 
-    if (g_osql_ready && thedb->master == gbl_mynode) {
+    if (g_osql_ready && thedb->master == gbl_myhostname) {
         logmsg(LOGMSG_INFO, "%s: canceling pending blocksql transactions\n",
                 __func__);
         osql_repository_cancelall();
@@ -5291,7 +5291,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
         }
     }
 
-    if (host == gbl_mynode)
+    if (host == gbl_myhostname)
         host = NULL;
 
     if (!host) {
@@ -5316,7 +5316,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 logmsg(
                     LOGMSG_ERROR,
                     "%s:%d giving up sending to %s, rc = %d, total wait = %d\n",
-                    __FILE__, __LINE__, host ? host : gbl_mynode, rc,
+                    __FILE__, __LINE__, host ? host : gbl_myhostname, rc,
                     total_wait);
                 return rc;
             }
@@ -5325,7 +5325,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
                 logmsg(LOGMSG_ERROR,
                        "%s:%d failed to check bdb lock, giving up sending to "
                        "%s, rc = %d\n",
-                       __FILE__, __LINE__, host ? host : gbl_mynode, rc);
+                       __FILE__, __LINE__, host ? host : gbl_myhostname, rc);
                 return rc;
             }
 
@@ -5337,7 +5337,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
                will trigger on the other side signalling we've
                lost the comm party */
             logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n", __FILE__,
-                   __LINE__, host ? host : gbl_mynode);
+                   __LINE__, host ? host : gbl_myhostname);
             logmsg(LOGMSG_ERROR,
                    "%s:%d socket is closed, return wrong master\n", __FILE__,
                    __LINE__);
@@ -5346,7 +5346,7 @@ static int offload_net_send(const char *host, int usertype, void *data,
             unknownerror_retry++;
             if (unknownerror_retry >= UNK_ERR_SEND_RETRY) {
                 logmsg(LOGMSG_ERROR, "%s:%d giving up sending to %s\n",
-                       __FILE__, __LINE__, host ? host : gbl_mynode);
+                       __FILE__, __LINE__, host ? host : gbl_myhostname);
                 comdb2_linux_cheap_stack_trace();
                 return -1;
             }
@@ -5420,7 +5420,7 @@ static void net_osql_rpl(void *hndl, void *uptr, char *fromnode, int usertype,
 static int check_master(const char *tohost)
 {
 
-    const char *destnode = (tohost == NULL) ? gbl_mynode : tohost;
+    const char *destnode = (tohost == NULL) ? gbl_myhostname : tohost;
     char *master = thedb->master;
 
     if (destnode != master) {
@@ -5826,7 +5826,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         sc->nothrevent = 1;
     sc->finalize = 0;
     if (sc->original_master_node[0] != 0 &&
-        strcmp(sc->original_master_node, gbl_mynode))
+        strcmp(sc->original_master_node, gbl_myhostname))
         sc->resume = 1;
 
     iq->sc = sc;
@@ -6019,7 +6019,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         // TODO (NC): Check why iq->sc_pending is not getting set for views
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
-            if (strcmp(iq->sc->original_master_node, gbl_mynode) != 0) {
+            if (strcmp(iq->sc->original_master_node, gbl_myhostname) != 0) {
                 return -1;
             }
             if (!iq->sc_locked) {
@@ -7280,7 +7280,7 @@ int osql_send_schemachange(char *tonode, unsigned long long rqid, uuid_t uuid,
     if (tonode)
         strcpy(sc->original_master_node, tonode);
     else
-        strcpy(sc->original_master_node, gbl_mynode);
+        strcpy(sc->original_master_node, gbl_myhostname);
 
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t hd_uuid = {0};

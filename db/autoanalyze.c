@@ -56,7 +56,7 @@ void reset_aa_counter(char *tblname)
     tbl->aa_saved_counter = 0;
     tbl->aa_lastepoch = time(NULL);
 
-    if (save_freq > 0 && thedb->master == gbl_mynode) {
+    if (save_freq > 0 && thedb->master == gbl_myhostname) {
         // save updated counter
         const char *str = "0";
         bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
@@ -248,7 +248,8 @@ out:
 // print autoanalyze stats
 void stat_auto_analyze(void)
 {
-    if (thedb->master != gbl_mynode) // refresh from saved if we are not master
+    // refresh from saved if we are not master
+    if (thedb->master != gbl_myhostname)
         load_auto_analyze_counters();
 
     logmsg(LOGMSG_USER, "AUTOANALYZE: %s\n",
@@ -350,7 +351,7 @@ void *auto_analyze_main(void *unused)
     rdlock_schema_lk();
     // for each table update the counters
     for (int i = 0; i < thedb->num_dbs; i++) {
-        if (thedb->master != gbl_mynode ||
+        if (thedb->master != gbl_myhostname ||
             get_schema_change_in_progress(__func__, __LINE__))
             break;
 

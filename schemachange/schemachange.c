@@ -54,7 +54,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     }
 
     /* if we're not the master node then we can't do schema change! */
-    if (thedb->master != gbl_mynode) {
+    if (thedb->master != gbl_myhostname) {
         sc_errf(s, "I am not master; master is %s\n", thedb->master);
         free_schema_change_type(s);
         return SC_NOT_MASTER;
@@ -216,9 +216,9 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
         }
     }
 
-    strcpy(s->original_master_node, gbl_mynode);
+    strcpy(s->original_master_node, gbl_myhostname);
     unsigned long long seed = 0;
-    const char *node = gbl_mynode;
+    const char *node = gbl_myhostname;
     if (s->tran == trans && iq->sc_seed) {
         seed = iq->sc_seed;
         logmsg(LOGMSG_INFO, "Starting schema change: "
@@ -291,7 +291,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     logmsg(LOGMSG_INFO, "sc_set_running schemachange [%llx %s]\n", s->rqid, us);
 
     iq->sc_host = node ? crc32c((uint8_t *)node, strlen(node)) : 0;
-    if (thedb->master == gbl_mynode && !s->resume && iq->sc_seed != seed) {
+    if (thedb->master == gbl_myhostname && !s->resume && iq->sc_seed != seed) {
         logmsg(LOGMSG_INFO, "Calling bdb_set_disable_plan_genid 0x%llx\n", seed);
         int bdberr;
         int rc = bdb_set_sc_seed(thedb->bdb_env, NULL, s->tablename, seed,
@@ -370,8 +370,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
             if (arg)
                 free(arg);
             if (!s->is_osql) {
-                sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL),
-                               0, __func__, __LINE__);
+                sc_set_running(iq, s, s->tablename, 0, gbl_myhostname,
+                               time(NULL), 0, __func__, __LINE__);
                 free_schema_change_type(s);
             }
             rc = SC_ASYNC_FAILED;
@@ -1164,15 +1164,15 @@ int sc_timepart_add_table(const char *existingTableName,
     if (db->instant_schema_change) sc.instant_sc = 1;
 
     /* still one schema change at a time */
-    if (thedb->master != gbl_mynode) {
+    if (thedb->master != gbl_myhostname) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "I am not master; master is %s\n", thedb->master);
         goto error;
     }
 
-    if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_mynode, time(NULL), 0,
-                       __func__, __LINE__) != 0) {
+    if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_myhostname, time(NULL),
+                       0, __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;
@@ -1225,15 +1225,15 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     }
 
     /* still one schema change at a time */
-    if (thedb->master != gbl_mynode) {
+    if (thedb->master != gbl_myhostname) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
                  "I am not master; master is %s\n", thedb->master);
         goto error;
     }
 
-    if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_mynode, time(NULL), 0,
-                       __func__, __LINE__) != 0) {
+    if (sc_set_running(NULL, &sc, sc.tablename, 1, gbl_myhostname, time(NULL),
+                       0, __func__, __LINE__) != 0) {
         xerr->errval = SC_VIEW_ERR_EXIST;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "schema change running");
         goto error;

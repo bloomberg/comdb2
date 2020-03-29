@@ -842,7 +842,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "synccluster") == 0) {
 
         int outrc = -1;
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_USER, "Not the master node. \n");
         } else {
             tok = segtok(line, lline, &st, &ltok);
@@ -1123,7 +1123,7 @@ clipper_usage:
             return -1;
         }
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "Can't delete files: I am not master\n");
             return -1;
         }
@@ -2116,7 +2116,7 @@ clipper_usage:
         char fname[128];
         char table[MAXTABLELEN];
         int odh = -1, compress = -1, compress_blobs = -1;
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2176,7 +2176,7 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "error with schema change thread\n");
         }
     } else if (tokcmp(tok, ltok, "morestripe") == 0) {
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2222,7 +2222,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "init_with_bthash") == 0) {
         int szkb;
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2238,7 +2238,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "bthash") == 0) {
         char table[MAXTABLELEN];
         int szkb;
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2270,7 +2270,7 @@ clipper_usage:
         int idb;
         struct dbtable *db;
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2290,7 +2290,7 @@ clipper_usage:
 
     } else if (tokcmp(tok, ltok, "delbthash") == 0) {
         char table[MAXTABLELEN];
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2314,7 +2314,7 @@ clipper_usage:
         struct dbtable *db;
         int idb;
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2361,7 +2361,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
                tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -4432,7 +4432,7 @@ clipper_usage:
             if (ltok > 0)
                 cnt = toknum(tok, ltok);
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (tcnt <= 0 || cnt <= 0) {
             logmsg(LOGMSG_ERROR,
@@ -4452,7 +4452,7 @@ clipper_usage:
             if (ltok > 0)
                 pcnt = toknum(tok, ltok);
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
@@ -4475,7 +4475,7 @@ clipper_usage:
                 pcnt = toknum(tok, ltok);
             }
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
@@ -4500,7 +4500,7 @@ clipper_usage:
                 pcnt = toknum(tok, ltok);
             }
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
