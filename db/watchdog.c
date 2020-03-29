@@ -236,7 +236,7 @@ static void *watchdog_thread(void *arg)
    disabling for now. */
 #if 0             
              if ((thedb->rep_sync != REP_SYNC_NONE
-                         || thedb->master == gbl_mynode)
+                         || thedb->master == gbl_myhostname)
                      && coherent)
              {
                  rc = sqltest(thedb->envname);
@@ -273,7 +273,7 @@ static void *watchdog_thread(void *arg)
                         }
                     }
 
-                    if (!coherent && master > 0 && master != gbl_mynode) {
+                    if (!coherent && master > 0 && master != gbl_myhostname) {
                         bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes,
                                             curlsn, sizeof(curlsn));
                         bdb_get_cur_lsn_str_node(
@@ -346,7 +346,7 @@ static void *watchdog_thread(void *arg)
         
         if (gbl_trigger_timepart) {
             gbl_trigger_timepart = 0;
-            if(thedb->master == gbl_mynode) {
+            if (thedb->master == gbl_myhostname) {
                 rc = views_cron_restart(thedb->timepart_views);
                 if (rc) {
                     logmsg(LOGMSG_WARN, "Failed to restart timepartitions rc=%d!\n",

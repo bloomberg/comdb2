@@ -41,7 +41,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         newdb->csc2_schema_len = strlen(newdb->csc2_schema);
     }
 
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_myhostname) {
         if ((rc = sql_syntax_check(iq, newdb)))
             return SC_CSC2_ERROR;
     }
@@ -52,7 +52,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
-    if (newdb->dbenv->master == gbl_mynode && !gbl_is_physical_replicant) {
+    if (newdb->dbenv->master == gbl_myhostname && !gbl_is_physical_replicant) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
@@ -171,7 +171,7 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
 
     /* must re add the dbs if you're a physical replicant */
-    if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
+    if (newdb->dbenv->master != gbl_myhostname || gbl_is_physical_replicant) {
         /* This is a replicant calling scdone_callback */
         add_db(newdb);
     }

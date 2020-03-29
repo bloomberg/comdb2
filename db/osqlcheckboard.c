@@ -199,12 +199,12 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
         }
     }
 
-    if (clnt->osql.host == gbl_mynode) {
+    if (clnt->osql.host == gbl_myhostname) {
         clnt->osql.host = 0;
     }
 
     if (entry->master == 0)
-        entry->master = gbl_mynode;
+        entry->master = gbl_myhostname;
 
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
@@ -373,7 +373,7 @@ int osql_checkboard_master_changed(void *obj, void *arg)
 {
     osql_sqlthr_t *rq = obj;
     Pthread_mutex_lock(&rq->mtx);
-    if (rq->master != arg && !(rq->master == 0 && gbl_mynode == arg)) {
+    if (rq->master != arg && !(rq->master == 0 && gbl_myhostname == arg)) {
         signal_master_change(rq, arg, __func__);
     }
     Pthread_mutex_unlock(&rq->mtx);
@@ -492,7 +492,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             entry->last_checked = now;
 
             /* try poke again */
-            if (entry->master == 0 || entry->master == gbl_mynode) {
+            if (entry->master == 0 || entry->master == gbl_myhostname) {
                 /* local checkup */
                 bool found =
                     osql_repository_session_exists(entry->rqid, entry->uuid);
@@ -668,7 +668,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     entry->done = 0;
     entry->master_changed = 0;
     entry->master =
-        master ? master : gbl_mynode; /* master changed, store it here */
+        master ? master : gbl_myhostname; /* master changed, store it here */
     bzero(&entry->err, sizeof(entry->err));
     Pthread_mutex_unlock(&entry->mtx);
 

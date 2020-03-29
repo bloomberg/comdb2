@@ -740,9 +740,10 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     cson_value *dd_list = cson_value_new_array();
     uint64_t startus = comdb2_time_epochus();
     cson_object_set(obj, "time", cson_new_int(startus));
-    extern char *gbl_mynode;
-    cson_object_set(obj, "host",
-                    cson_value_new_string(gbl_mynode, strlen(gbl_mynode)));
+    extern char *gbl_myhostname;
+    cson_object_set(
+        obj, "host",
+        cson_value_new_string(gbl_myhostname, strlen(gbl_myhostname)));
     cson_object_set(obj, "deadlock_cycle", dd_list);
     cson_array *arr = cson_value_get_array(dd_list);
     cson_array_reserve(arr, nlockers);

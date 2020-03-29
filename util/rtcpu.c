@@ -121,7 +121,7 @@ static int machine_status_init(void)
     return 0;
 }
 
-extern char *gbl_mynode;
+extern char *gbl_myhostname;
 
 /* pthread_once? */
 static int machine_class_default(const char *host)
@@ -155,8 +155,8 @@ static int machine_class_default(const char *host)
                        rc, cdb2_errstr(db));
                 goto done;
             }
-            rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_mynode,
-                                 strlen(gbl_mynode));
+            rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_myhostname,
+                                 strlen(gbl_myhostname));
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host,
                        rc, cdb2_errstr(db));
@@ -205,7 +205,7 @@ static int machine_class_default(const char *host)
 
 static int machine_my_class_default(void)
 {
-    return machine_class_default(gbl_mynode);
+    return machine_class_default(gbl_myhostname);
 }
 static int machine_dcs[MAXNODES];
 

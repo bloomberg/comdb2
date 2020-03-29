@@ -410,7 +410,7 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
 void getmyaddr()
 {
-    if (comdb2_gethostbyname(&gbl_mynode, &gbl_myaddr) != 0) {
+    if (comdb2_gethostbyname(&gbl_myhostname, &gbl_myaddr) != 0) {
         gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
@@ -781,10 +781,10 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 if (comdb2_gethostbyname(&name, &addr) == 0 &&
                     addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_mynode = intern(name);
-                    gbl_mynodeid = machine_num(gbl_mynode);
+                    gbl_myhostname = intern(name);
+                    gbl_mynodeid = machine_num(gbl_myhostname);
                 }
-                if (strcmp(gbl_mynode, name) == 0 &&
+                if (strcmp(gbl_myhostname, name) == 0 &&
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
@@ -812,7 +812,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     dbenv->nsiblings++;
                 }
             }
-            dbenv->sibling_hostname[0] = gbl_mynode;
+            dbenv->sibling_hostname[0] = gbl_myhostname;
         }
     } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
         int classval = 1;

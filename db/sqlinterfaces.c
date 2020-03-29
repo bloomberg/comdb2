@@ -2888,7 +2888,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
         return 0;
 
     /* We're emitting a row & have waiters */
-    if (!gbl_rep_wait_release_ms || thedb->master == gbl_mynode)
+    if (!gbl_rep_wait_release_ms || thedb->master == gbl_myhostname)
         return release_locks("release locks on emit-row");
 
     /* We're emitting a row and are blocking replication */
@@ -4990,13 +4990,14 @@ void sqlengine_work_appsock(void *thddata, void *work)
         (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
          (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
           clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS))) {
-        clnt->osql.host = (thedb->master == gbl_mynode) ? 0 : thedb->master;
+        clnt->osql.host = (thedb->master == gbl_myhostname) ? 0 : thedb->master;
     }
 
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
         clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        clnt->had_lease_at_begin =
-            (thedb->master == gbl_mynode) ? 1 : bdb_valid_lease(thedb->bdb_env);
+        clnt->had_lease_at_begin = (thedb->master == gbl_myhostname)
+                                       ? 1
+                                       : bdb_valid_lease(thedb->bdb_env);
     }
 
     /* assign this query a unique id */

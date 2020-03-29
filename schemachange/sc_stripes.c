@@ -159,7 +159,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
         return SC_INTERNAL_ERROR;
     }
 
-    rc = trans_commit(&iq, sc_logical_tran, gbl_mynode);
+    rc = trans_commit(&iq, sc_logical_tran, gbl_myhostname);
     if (rc) {
         logmsg(LOGMSG_ERROR, "morestripe: couldn't commit rename trans\n");
         return SC_FAILED_TRANSACTION;

@@ -445,7 +445,7 @@ static int dbqueuedb_admin_running = 0;
  * for each consumer. */
 static void admin(struct dbenv *dbenv, int type)
 {
-    int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
+    int iammaster = (dbenv->master == gbl_myhostname) ? 1 : 0;
 
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
@@ -711,7 +711,7 @@ static void queue_flush(struct dbtable *db, int consumern)
     logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n",
            db->tablename, consumern);
 
-    if (db->dbenv->master != gbl_mynode) {
+    if (db->dbenv->master != gbl_myhostname) {
         logmsg(LOGMSG_WARN, "... but I am not the master node, so I do nothing.\n");
         return;
     }

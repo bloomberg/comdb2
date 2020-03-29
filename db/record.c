@@ -2764,7 +2764,7 @@ void testrep(int niter, int recsz)
             logmsg(LOGMSG_ERROR, "bdb_add_rep_blob rc %d bdberr %d\n", rc, bdberr);
             goto done;
         }
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        rc = trans_commit(&iq, tran, gbl_myhostname);
         if (rc) {
             logmsg(LOGMSG_ERROR, "commit rc %d\n", rc);
             goto done;
