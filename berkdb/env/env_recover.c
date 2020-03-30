@@ -929,6 +929,7 @@ void log_recovery_progress(int stage, int progress)
 }
 
 
+int gbl_disable_limbo_recover = 1;
 
 
 /*
@@ -1467,10 +1468,16 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * Process any pages that were on the limbo list and move them to
 	 * the free list.  Do this before checkpointing the database.
 	 */
-	if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
-			dbenv->tx_timestamp !=
-			0 ? LIMBO_TIMESTAMP : LIMBO_RECOVER)) != 0)
-		 goto err;
+	if (gbl_disable_limbo_recover) {
+		if (dbenv->tx_timestamp != 0 && (ret = __db_do_the_limbo(dbenv, NULL, NULL,
+						txninfo, LIMBO_TIMESTAMP)) != 0)
+			goto err;
+	} else {
+		if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
+						dbenv->tx_timestamp !=
+						0 ? LIMBO_TIMESTAMP : LIMBO_RECOVER)) != 0)
+			goto err;
+	}
 
 	if (max_lsn == NULL)
 		region->last_txnid = ((DB_TXNHEAD *)txninfo)->maxid;
