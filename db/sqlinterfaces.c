@@ -3037,6 +3037,7 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
         param_count(clnt) == 0)
         return;
+    /* NC: Do we use this? */
     if (extract_sqlcache_hint(rec->sql, rec->cache_hint, HINT_LEN)) {
         rec->status = CACHE_HAS_HINT;
         if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
@@ -3381,21 +3382,6 @@ static void normalize_stmt_and_store(
   }
 }
 
-const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                               int index)
-{
-    if (gbl_old_column_names == 0 || clnt->old_columns_count == 0) {
-        return sqlite3_column_name(stmt, index);
-    }
-
-    if (index > (clnt->old_columns_count - 1)) {
-        logmsg(LOGMSG_ERROR, "%s:%d bad column index %d\n", __func__, __LINE__,
-               index);
-        return 0;
-    }
-    return clnt->old_columns[index];
-}
-
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3434,7 +3420,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     const char *tail = NULL;
 
-    /* if we did not get a cached stmt, need to prepare it in sql engine */
+    /* If we did not get a cached stmt, need to prepare it in sql engine */
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
@@ -3446,14 +3432,18 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
+        /* Prepare the query with the query_preparer plugin. */
         if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
-            query_preparer_plugin->do_prepare &&
-            sqlite3_stmt_readonly(rec->stmt) &&
-            !sqlite3_stmt_isexplain(rec->stmt) &&
-            (thd->authState.numDdls == 0)) {
-            rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql);
+            query_preparer_plugin->do_prepare && sqlite3_stmt_readonly(rec->stmt) &&
+            !sqlite3_stmt_isexplain(rec->stmt) && (thd->authState.numDdls == 0)) {
+            char **column_names;
+            int column_count;
+            rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql,
+                                                   &column_names, &column_count);
             if (rc)
                 return rc;
+            if (rec->stmt)
+                stmt_set_cached_columns(rec->stmt, column_names, column_count);
         }
 
         thd->authState.flags = 0;
@@ -3470,6 +3460,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         sql_remote_schema_changed(clnt, rec->stmt);
         update_schema_remotes(clnt, rec);
     }
+
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
         free_normalized_sql(clnt);

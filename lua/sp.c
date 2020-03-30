@@ -671,8 +671,7 @@ char *sp_column_name(struct response_data *arg, int col)
     if (parent->clntname[col] == NULL) {
         sqlite3_stmt *stmt = arg->stmt;
         if (stmt) {
-            parent->clntname[col] = strdup(comdb2_column_name(arg->sp->clnt,
-                                                              stmt, col));
+            parent->clntname[col] = strdup(sqlite3_column_name(stmt, col));
         } else {
             size_t n = snprintf(NULL, 0, "$%d", col);
             char *name = malloc(n + 1);
@@ -1460,9 +1459,9 @@ static int lua_sql_step(Lua lua, sqlite3_stmt *stmt)
         }
         default:
             return luaL_error(lua, "unknown field type:%d for col:%s",
-                              type, comdb2_column_name(clnt, stmt, col));
+                              type, sqlite3_column_name(stmt, col));
         }
-        lua_setfield(lua, -2, comdb2_column_name(clnt, stmt, col));
+        lua_setfield(lua, -2, sqlite3_column_name(stmt, col));
     }
     return rc;
 }
@@ -3503,9 +3502,8 @@ static int dbstmt_column_count(Lua L)
 
 static int dbstmt_column_name(Lua L)
 {
-    SP sp = getsp(L);
     GET_STMT_AND_COL();
-    lua_pushstring(L, comdb2_column_name(sp->clnt, stmt, col));
+    lua_pushstring(L, sqlite3_column_name(stmt, col));
     return 1;
 }
 
@@ -6082,11 +6080,13 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         datetime_t dt;
         intv_t in;
     } u;
+    dttz_t dt;
     int32_t szstr;
     lua_blob_t *blob;
     cdb2_client_intv_ym_t *ym;
     cdb2_client_intv_ds_t *ds;
     cdb2_client_intv_dsus_t *dsus;
+    struct sqlclntstate *clnt;
 
     lua_getfield(lua, -1, oldnew);
     switch (type) {
@@ -6130,23 +6130,29 @@ static uint8_t *push_trigger_field(Lua lua, char *oldnew, char *name,
         break;
     case SP_FIELD_DATETIME:
 #ifdef _LINUX_SOURCE
-        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt,
-                                      1);
+        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt, 1);
 #else
-        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt,
-                                      0);
+        client_datetime_to_datetime_t((cdb2_client_datetime_t *)payload, &u.dt, 0);
 #endif
+        clnt = getsp(lua)->clnt;
+        if (strcmp(clnt->tzname, u.dt.tzname) != 0) {
+            datetime_t_to_dttz(&u.dt, &dt);
+            dttz_to_datetime_t(&dt, clnt->tzname, &u.dt);
+        }
         luabb_pushdatetime(lua, &u.dt);
         payload += sizeof(cdb2_client_datetime_t);
         break;
     case SP_FIELD_DATETIMEUS:
 #ifdef _LINUX_SOURCE
-        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload,
-                                        &u.dt, 1);
+        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload, &u.dt, 1);
 #else
-        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload,
-                                        &u.dt, 0);
+        client_datetimeus_to_datetime_t((cdb2_client_datetimeus_t *)payload, &u.dt, 0);
 #endif
+        clnt = getsp(lua)->clnt;
+        if (strcmp(clnt->tzname, u.dt.tzname) != 0) {
+            datetime_t_to_dttz(&u.dt, &dt);
+            dttz_to_datetime_t(&dt, clnt->tzname, &u.dt);
+        }
         luabb_pushdatetime(lua, &u.dt);
         payload += sizeof(cdb2_client_datetimeus_t);
         break;

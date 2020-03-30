@@ -744,9 +744,6 @@ struct sqlclntstate {
     int hinted_cursors_alloc;
     int hinted_cursors_used;
 
-    int old_columns_count;
-    char **old_columns;
-
     /* remote settings, used in run_sql */
     sqlclntstate_fdb_t fdb_state;
 
@@ -1324,8 +1321,6 @@ struct query_count {
 void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  unsigned char *fingerprint, int cost,
                                  int rows, int timems);
-const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                               int index);
 
 /**
  * If bdb_lock_desired, run recovery (releasing locks)
