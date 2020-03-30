@@ -127,3 +127,21 @@
 (c1='aaa', c2=3)
 [INSERT INTO t1 VALUES('aaa', 3)] failed with rc 299 add key constraint duplicate key 'IDX' on table 't1' index 0
 (rows inserted=1)
+(test='---- UPSERT & DATACOPY ----')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		datacopy uniqnulls "idx1" = i + j 
+	}
+')
+(rows inserted=3)
+[INSERT INTO t1 VALUES(1,1,1)] failed with rc 299 add key constraint duplicate key 'IDX1' on table 't1' index 0
+(rows inserted=0)
+(i=1, j=1, k=2)
+(i=2, j=2, k=2)
+(i=3, j=3, k=3)
