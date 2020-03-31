@@ -6321,6 +6321,10 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     rec.sql = clnt->sql;
     if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr,
                                 PREPARE_NONE)) {
+        /* if prepare failed, and this is not a versioning issue,
+           report error */
+        if (clnt->fdb_state.xerr.errval != SQLITE_SCHEMA)
+            ret = ERR_SQL_PREP;
         goto done;
     }
     thrman_wheref(poolthd->thr_self, "%s", rec.sql);
