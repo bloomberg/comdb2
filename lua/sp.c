@@ -774,6 +774,9 @@ again:  status = *q->status;
             luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
             return rc;
         }
+        if (delay <= 0) {
+            return 0;
+        }
         setup_dbq_ts(ts);
         Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
