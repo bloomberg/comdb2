@@ -289,6 +289,8 @@ void trigger_reg_to_cpu(trigger_reg_t *t)
     t->trigger_cookie = flibc_ntohll(t->trigger_cookie);
 }
 
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+
 int trigger_stat()
 {
     GET_BDB_STATE(bdb_state);
@@ -314,6 +316,8 @@ int trigger_stat()
                    __func__, type, info->spname, info->host,
                    info->trigger_cookie, difftime(now, info->hbeat));
         } else {
+            comdb2_cheapstack_sym(stderr, "%s: %8s:%s UNASSIGNED",
+                                  __func__, type, spname);
             logmsg(LOGMSG_USER, "%s: %8s:%s UNASSIGNED\n", __func__, type,
                    spname);
         }
