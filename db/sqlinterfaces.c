@@ -3433,9 +3433,12 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
         /* Prepare the query with the query_preparer plugin. */
-        if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
-            query_preparer_plugin->do_prepare && sqlite3_stmt_readonly(rec->stmt) &&
-            !sqlite3_stmt_isexplain(rec->stmt) && (thd->authState.numDdls == 0)) {
+        if (rc == SQLITE_OK && gbl_old_column_names &&
+            !clnt->fdb_state.remote_sql_sb && query_preparer_plugin &&
+            query_preparer_plugin->do_prepare &&
+            sqlite3_stmt_readonly(rec->stmt) &&
+            !sqlite3_stmt_isexplain(rec->stmt) &&
+            (thd->authState.numDdls == 0)) {
             char **column_names;
             int column_count;
             rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql,
