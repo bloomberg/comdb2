@@ -1925,6 +1925,11 @@ REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
 
+REGISTER_TUNABLE("disable_curadj",
+                 "Disable curadj logic (comdb2 need it).  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_disable_curadj, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("debug_queuedb",
                  "Enable debug-trace for queuedb.  "
                  "(Default: off)",

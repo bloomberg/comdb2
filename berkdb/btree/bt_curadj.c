@@ -60,6 +60,8 @@ __bam_cprint(dbc)
 
 int __lock_dump_region __P((DB_ENV *, const char *, FILE *));
 
+int gbl_disable_curadj = 1;
+
 static inline int
 __bam_ca_delete_int(dbp, pgno, indx, delete, fromclose)
 	DB *dbp;
@@ -73,6 +75,9 @@ __bam_ca_delete_int(dbp, pgno, indx, delete, fromclose)
 	DB_ENV *dbenv;
 	DBC *dbc;
 	int count;		/* !!!: Has to contain max number of cursors. */
+
+	if (gbl_disable_curadj)
+		return 0;
 
 	dbenv = dbp->dbenv;
 

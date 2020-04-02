@@ -261,6 +261,7 @@ extern int gbl_ref_sync_wait_txnlist;
 extern int gbl_ref_sync_iterations;
 extern int gbl_sc_pause_at_end;
 extern int gbl_sc_is_at_end;
+extern int gbl_disable_curadj;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;
