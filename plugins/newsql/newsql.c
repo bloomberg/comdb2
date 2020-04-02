@@ -69,6 +69,17 @@ struct newsql_postponed_data {
     uint8_t *row;
 };
 
+struct pb_sbuf_writer {
+    ProtobufCBuffer base;
+    struct sbuf2 *sb;
+    int nbytes; /* bytes written */
+};
+
+#define PB_SBUF_WRITER_INIT(sb)                                                \
+    {                                                                          \
+        {.append = pb_sbuf_write}, (sb), 0                                     \
+    }
+
 /*                (SERVER)                                                */
 /*  Default --> (val: 1)                                                  */
 /*                  |                                                     */
@@ -116,10 +127,6 @@ struct newsql_appdata {
     CDB2QUERY *query;
     CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
-
-    /* row buf */
-    size_t packed_capacity;
-    void *packed_buf;
 
     /* columns */
     int count;
@@ -376,36 +383,33 @@ done:
     return rc;
 }
 
-#define NEWSQL_MAX_RESPONSE_ON_STACK (16 * 1024)
+static void pb_sbuf_write(ProtobufCBuffer *buffer, size_t len,
+                          const uint8_t *data)
+{
+    struct pb_sbuf_writer *writer = (struct pb_sbuf_writer *)buffer;
+    writer->nbytes += sbuf2write((char *)data, len, writer->sb);
+}
 
 static int newsql_response_int(struct sqlclntstate *clnt,
                                const CDB2SQLRESPONSE *r, int h, int flush)
 {
     size_t len = cdb2__sqlresponse__get_packed_size(r);
-    uint8_t *buf;
-    if (len < NEWSQL_MAX_RESPONSE_ON_STACK) {
-        buf = alloca(len);
-    } else {
-        struct newsql_appdata *appdata = clnt->appdata;
-        if (appdata->packed_capacity < len) {
-            appdata->packed_capacity = len + 1024;
-            appdata->packed_buf =
-                malloc_resize(appdata->packed_buf, appdata->packed_capacity);
-        }
-        buf = appdata->packed_buf;
-    }
-    cdb2__sqlresponse__pack(r, buf);
 
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
     hdr.length = ntohl(len);
 
+    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(clnt->sb);
+
     int rc;
     lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
-    if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
+    cdb2__sqlresponse__pack_to_buffer(r, (ProtobufCBuffer *)&writer);
+    if (writer.nbytes != len) {
+        rc = -1;
         goto done;
+    }
     if (flush && (rc = sbuf2flush(clnt->sb)) < 0)
         goto done;
     rc = 0;
@@ -475,7 +479,6 @@ static void free_newsql_appdata(struct sqlclntstate *clnt)
         free(appdata->postponed);
         appdata->postponed = NULL;
     }
-    free(appdata->packed_buf);
     free(appdata);
     clnt->appdata = NULL;
 }
@@ -1875,20 +1878,16 @@ static void send_dbinforesponse(struct dbenv *dbenv, SBUF2 *sb)
     cdb2__dbinforesponse__init(dbinfo_response);
     fill_dbinfo(dbinfo_response, dbenv->bdb_env);
     int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
-    uint8_t *buf, *malloc_buf = NULL;
-    if (len > NEWSQL_MAX_RESPONSE_ON_STACK) {
-        buf = malloc_buf = malloc(len);
-    } else {
-        buf = alloca(len);
-    }
-    cdb2__dbinforesponse__pack(dbinfo_response, buf);
+
+    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(sb);
+
     struct newsqlheader hdr = {0};
     hdr.type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
     hdr.length = htonl(len);
     sbuf2write((char *)&hdr, sizeof(hdr), sb);
-    sbuf2write((char *)buf, len, sb);
+    cdb2__dbinforesponse__pack_to_buffer(dbinfo_response,
+                                         (ProtobufCBuffer *)&writer);
     sbuf2flush(sb);
-    free(malloc_buf);
     cdb2__dbinforesponse__free_unpacked(dbinfo_response, &pb_alloc);
 }
 
@@ -2207,7 +2206,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct sbuf2 *sb;
     struct dbenv *dbenv;
     struct dbtable *tab;
-    extern size_t gbl_cached_output_buffer_max_bytes;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
@@ -2494,13 +2492,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (APPDATA->query) {
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
-        }
-
-        /* Keep a reasonable amount of memory in the clnt. */
-        if (APPDATA->packed_capacity > gbl_cached_output_buffer_max_bytes) {
-            APPDATA->packed_capacity = 0;
-            free(APPDATA->packed_buf);
-            APPDATA->packed_buf = NULL;
         }
 
         query = read_newsql_query(dbenv, &clnt, sb);
