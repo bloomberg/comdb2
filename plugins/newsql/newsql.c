@@ -366,7 +366,15 @@ static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int state)
     hdr.type = ntohl(h);
     hdr.state = ntohl(state);
     int rc;
-    lock_client_write_lock(clnt);
+
+    /* If we can't acquire the clnt's write lock for a heartbeat,
+       return immediately. It's okay not to send a heartbeat when
+       someone else is writing to the socket. */
+    if (h != RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT)
+        lock_client_write_lock(clnt);
+    else if (lock_client_write_trylock(clnt) != 0)
+        return 0;
+
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
     if ((rc = sbuf2flush(clnt->sb)) < 0)
