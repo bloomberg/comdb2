@@ -1871,7 +1871,11 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
             cur->ind = found;
         else if (lo < cur->tbl->num_mem_entries)
             cur->ind = lo;
-        else {
+        else if (lo == cur->tbl->num_mem_entries) {
+            /* If nothing can be found, return the
+               last element. See the btree code below. */
+            cur->ind = (lo - 1);
+        } else {
             cur->valid = 0;
             return IX_NOTFND;
         }

@@ -891,7 +891,7 @@ static tmpcursor_t *open_shadow_int(bdb_state_type *bdb_state,
 
         /* create a temporary table */
         (*pshadows)[file].tbls[stripe] =
-            bdb_temp_table_create(bdb_state, bdberr);
+            bdb_temp_array_create(bdb_state, bdberr);
         if (!(*pshadows)[file].tbls[stripe]) {
             logmsg(LOGMSG_ERROR, 
                     "%s: fail create shadow %d %d, rc = %d bdberr = %d\n",
