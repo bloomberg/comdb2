@@ -1481,7 +1481,7 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                __func__, rc);
     }
 
-    if (tbl->dbenv_temp != NULL) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) {
         Pthread_mutex_lock(&(bdb_state->temp_list_lock));
 
         if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
@@ -1578,7 +1578,7 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
     *last = 0;
 
-    if ((tbl->dbenv_temp != NULL) &&
+    if ((tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) &&
         (tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
                                     DB_STAT_CLEAR)) == 0) {
         bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
