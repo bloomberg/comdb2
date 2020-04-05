@@ -52,7 +52,7 @@ void *bdb_handle_from_ireq(const struct ireq *iq);
 struct dbenv *dbenv_from_ireq(const struct ireq *iq);
 /* HASH of all registered opcode handlers (one handler per opcode) */
 hash_t *gbl_opcode_hash;
-
+extern char* gbl_myhostname;
 /* this is dumb, but it doesn't need to be clever for now */
 int a2req(const char *s)
 {
@@ -346,7 +346,7 @@ int handle_ireq(struct ireq *iq)
                     goto cleanup;
                 }
                 // We didn't farm off distributed commit. So we do it here
-                rc = trans_wait_for_seqnum_int(bdb_handle,dbenv, iq,gbl_mynode,-1,1,iq->commit_seqnum);
+                rc = trans_wait_for_seqnum_int(bdb_handle,dbenv, iq,gbl_myhostname,-1,1,iq->commit_seqnum);
                //We can free commit_seqnum here as :
                //1.) We haven't farmed off for distributed commit.
                //2.) We have performed distributed commit in line , and no longer need the commit_seqnum.
