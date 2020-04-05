@@ -57,7 +57,8 @@ enum THD_EV { THD_EV_END = 0, THD_EV_START = 1 };
 
 /* request pool & queue */
 
-static pool_t *p_reqs; /* request pool */
+// making non-static, to be used in seqnum_wait.c
+pool_t *p_reqs; /* request pool */
 
 struct dbq_entry_t {
     LINKC_T(struct dbq_entry_t) qlnk;
@@ -92,6 +93,7 @@ static int write_thd_count = 0;
 
 static int is_req_write(int opcode);
 
+//removing static, to be used in seqnum_wait.c
 static pthread_mutex_t lock;
 pthread_mutex_t buf_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_attr_t attr;
@@ -496,10 +498,7 @@ static void *thd_req(void *vthd)
         thrman_origin(thr_self, NULL);
         thrman_where(thr_self, "idle");
         thd->iq->where = "done executing";
-
-        // before acquiring next request, yield
         comdb2bma_yield_all();
-
         /*NEXT REQUEST*/
         LOCK(&lock)
         {
@@ -509,7 +508,6 @@ static void *thd_req(void *vthd)
             if (iamwriter) {
                 write_thd_count--;
             }
-
             if (thd->iq->usedb && thd->iq->ixused >= 0 &&
                 thd->iq->ixused < thd->iq->usedb->nix &&
                 thd->iq->usedb->ixuse) {
@@ -573,6 +571,7 @@ static void *thd_req(void *vthd)
                         listc_rfl(&rq_reqs, nxtrq);
                     }
                     /* release the memory block of the link */
+                    logmsg(LOGMSG_DEBUG, "%s:%d releasing iq\n",__func__,__LINE__);
                     pool_relablk(pq_reqs, nxtrq);
                 }
                 if (newrqwriter && thd->iq != 0) {
@@ -593,42 +592,41 @@ static void *thd_req(void *vthd)
                     memset(&ts, 0, sizeof(ts)); /*force failure later*/
                 }
 
-                ts.tv_sec += gbl_thd_linger;
-                rc = 0;
-                do {
-                    /*waitft thread will deposit a request in thd->iq*/
-                    rc = pthread_cond_timedwait(&thd->wakeup, &lock, &ts);
-                } while (thd->iq == 0 && rc == 0);
-                if (rc != 0 && rc != ETIMEDOUT) {
-                    logmsg(LOGMSG_ERROR, "thd_req:pthread_cond_timedwait "
-                                    "failed:%s\n",
-                            strerror(rc));
-                    /* error'd out, so i still have lock: errLOCK(&lock);*/
-                }
-                if (thd->iq == 0) /*nothing to do. this thread retires.*/
-                {
-                    nretire++;
-                    listc_rfl(&idle, thd);
-                    Pthread_cond_destroy(&thd->wakeup);
-                    thd->tid =
-                        -2; /*returned. this is just for info & debugging*/
-                    pool_relablk(p_thds, thd); /*release this struct*/
-                    /**/
-                    retUNLOCK(&lock);
-                    /**/
-                    /*printf("ending handler %ld\n", pthread_self());*/
-                    delete_constraint_table(thdinfo->ct_add_table);
-                    delete_constraint_table(thdinfo->ct_del_table);
-                    delete_constraint_table(thdinfo->ct_add_index);
-                    delete_defered_index_tbl();
-                    backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
-                    return 0;
-                }
+            ts.tv_sec += gbl_thd_linger;
+            rc = 0;
+            do {
+                /*waitft thread will deposit a request in thd->iq*/
+                rc = pthread_cond_timedwait(&thd->wakeup, &lock, &ts);
+            } while (thd->iq == 0 && rc == 0);
+            if (rc != 0 && rc != ETIMEDOUT) {
+                logmsg(LOGMSG_ERROR, "thd_req:pthread_cond_timedwait "
+                                "failed:%s\n",
+                        strerror(rc));
+                /* error'd out, so i still have lock: errLOCK(&lock);*/
+            }
+            if (thd->iq == 0) /*nothing to do. this thread retires.*/
+            {
+                nretire++;
+                listc_rfl(&idle, thd);
+                Pthread_cond_destroy(&thd->wakeup);
+                thd->tid =
+                    -2; /*returned. this is just for info & debugging*/
+                pool_relablk(p_thds, thd); /*release this struct*/
+                /**/
+                retUNLOCK(&lock);
+                /**/
+                /*printf("ending handler %ld\n", pthread_self());*/
+                delete_constraint_table(thdinfo->ct_add_table);
+                delete_constraint_table(thdinfo->ct_del_table);
+                delete_constraint_table(thdinfo->ct_add_index);
+                delete_defered_index_tbl();
+                backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
+                return 0;
             }
             thd_coalesce_check_ll();
+            }
         }
         UNLOCK(&lock);
-
         /* Should not be done under lock - might be expensive */
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
@@ -851,6 +849,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
     iq->cost = 0;
     iq->luxref = luxref;
+    iq->should_enqueue = 0;
 
     if (iq->is_fromsocket) {
         if (iq->frommach == gbl_myhostname)

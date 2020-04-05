@@ -62,6 +62,7 @@ set(src
   rmtpolicy.c
   rowlocks_bench.c
   sigutil.c
+  seqnum_wait.c
   sltdbt.c
   socket_interfaces.c
   sqlanalyze.c

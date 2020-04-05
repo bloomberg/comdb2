@@ -93,6 +93,7 @@ extern int verbose_deadlocks;
 extern int gbl_goslow;
 extern int n_commits;
 extern int n_commit_time;
+extern pthread_mutex_t commit_stat_lk;
 extern pthread_mutex_t osqlpf_mutex;
 extern int gbl_prefault_udp;
 extern int gbl_reorder_socksql_no_deadlock;
@@ -1204,7 +1205,6 @@ static int tolongblock_fwd_pre_hdr_int(struct ireq *iq,
     return RC_OK;
 }
 
-/* this is used in bb-plugins */
 int tolongblock(struct ireq *iq)
 {
     unsigned long long tranid = 0LL;
@@ -5928,8 +5928,10 @@ add_blkseq:
 
     int diff_time_micros = (int)reqlog_current_us(iq->reqlogger);
 
-    ATOMIC_ADD64(n_commit_time, diff_time_micros);
-    ATOMIC_ADD32(n_commits, 1);
+    Pthread_mutex_lock(&commit_stat_lk);
+    n_commit_time += diff_time_micros;
+    n_commits++;
+    Pthread_mutex_unlock(&commit_stat_lk);
 
     if (outrc == 0) {
         if (iq->__limits.maxcost_warn &&

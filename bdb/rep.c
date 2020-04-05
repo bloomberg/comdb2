@@ -107,14 +107,17 @@ int gbl_net_lmt_upd_incoherent_nodes = 70;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
 
-static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
+// Made the below lock non-static, in order to use in seqnum_wait.c
+int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
                                                     seqnum_type *seqnum,
-                                                    char *host);
+                                                    const char *host);
 
 static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host);
 
-static int last_slow_node_check_time = 0;
-static pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
+//making below non-static to be used seqnum_wait.c
+int last_slow_node_check_time = 0;
+// Made the below lock non-static, in order to use in seqnum_wait.c
+pthread_mutex_t slow_node_check_lk = PTHREAD_MUTEX_INITIALIZER;
 
 struct rep_type_berkdb_rep_buf_hdr {
     int recbufsz;
@@ -126,7 +129,9 @@ enum { REP_TYPE_BERKDB_REP_BUF_HDR_LEN = 4 + 4 };
 BB_COMPILE_TIME_ASSERT(rep_type_berkdb_rep_buf_hdr,
                        sizeof(struct rep_type_berkdb_rep_buf_hdr) ==
                            REP_TYPE_BERKDB_REP_BUF_HDR_LEN);
-
+pthread_mutex_t max_lsn_so_far_lk = PTHREAD_MUTEX_INITIALIZER;
+DB_LSN max_lsn_so_far = { .file = 0, .offset = 0};
+uint64_t new_lsns = 0;
 static uint8_t *rep_type_berkdb_rep_buf_hdr_put(
     const struct rep_type_berkdb_rep_buf_hdr *p_rep_type_berkdb_rep_buf_hdr,
     uint8_t *p_buf, const uint8_t *p_buf_end)
@@ -467,7 +472,8 @@ char *coherent_state_to_str(int state)
 }
 
 /* You should have the lock */
-static inline void set_coherent_state(bdb_state_type *bdb_state,
+// making this function non-static, to be used in seqnum_wait.c
+void set_coherent_state(bdb_state_type *bdb_state,
                                       const char *hostname, int state,
                                       const char *func, int line)
 {
@@ -617,7 +623,7 @@ static void send_context_to_all(bdb_state_type *bdb_state)
     net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
 }
 
-static inline int is_incoherent_complete(bdb_state_type *bdb_state,
+int is_incoherent_complete(bdb_state_type *bdb_state,
                                          const char *host, int *incohwait)
 {
     int is_incoherent, state;
@@ -1746,7 +1752,7 @@ int gbl_dump_zero_coherency_timestamp;
 char coherency_master[128] = {0};
 
 /* Don't let anything commit on the master until after this */
-static uint64_t coherency_commit_timestamp = 0;
+uint64_t coherency_commit_timestamp = 0;
 
 uint64_t next_commit_timestamp(void)
 {
@@ -1756,7 +1762,7 @@ uint64_t next_commit_timestamp(void)
 /* Make sure that nothing commits before the timestamp set here.
  * This is called when a node changes to from STATE_COHERENT to
  * any other state.  The coherent_state_lock will be held. */
-static inline void defer_commits_int(bdb_state_type *bdb_state,
+void defer_commits_int(bdb_state_type *bdb_state,
                                      const char *host, const char *func,
                                      int forupgrade)
 {
@@ -1776,8 +1782,8 @@ static inline void defer_commits_int(bdb_state_type *bdb_state,
            "%s node %s deferred commits until %02d:%02d:%02d.%03ld\n", func,
            host ? host : "<all>", r.tm_hour, r.tm_min, r.tm_sec, coms);
 }
-
-static inline void defer_commits(bdb_state_type *bdb_state, const char *host,
+// making the function non-static, to be used in seqnum_wait.c
+void defer_commits(bdb_state_type *bdb_state, const char *host,
                                  const char *func)
 {
     defer_commits_int(bdb_state, host, func, 0);
@@ -2075,7 +2081,7 @@ void bdb_disable_replication_time_tracking(bdb_state_type *bdb_state)
 /* when packet is udp, increase counter
  * when it is tcp, do work to find udp loss rate
  */
-inline static void update_node_acks(bdb_state_type *bdb_state, char *host,
+inline static void update_node_acks(bdb_state_type *bdb_state, const char *host,
                                     int is_tcp)
 {
     int node_ix = nodeix(host);
@@ -2137,7 +2143,8 @@ void send_newmaster(bdb_state_type *bdb_state, int online)
  * NOTE: this will sometimes give a lsn which is less than the actual durable
  * lsn, but it will never return a value which is greater.
  */
-static void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
+// making function non-static to be used in seqnum_wait.c
+void calculate_durable_lsn(bdb_state_type *bdb_state, DB_LSN *dlsn,
                                   uint32_t *gen, uint32_t flags)
 {
     extern int gbl_durable_calc_trace;
@@ -2338,8 +2345,19 @@ static inline int should_copy_seqnum(bdb_state_type *bdb_state, seqnum_type *seq
     return 1;
 }
 
+// assumes max_lsn_so_far_lk is held
+void set_max_lsn(DB_LSN *cur_max, DB_LSN *candidate){
+    if(log_compare(candidate, cur_max) > 0){
+        logmsg(LOGMSG_USER, "Changing max_lsn\n");
+        cur_max->file = candidate->file;
+        cur_max->offset = candidate->offset;
+        return;
+    }
+    logmsg(LOGMSG_USER,"max_lsn unchanged\n");
+}
+
 static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
-                                     seqnum_type *seqnum, char *host,
+                                     seqnum_type *seqnum, const char *host,
                                      uint8_t is_tcp)
 {
     char str[100];
@@ -2577,6 +2595,18 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
     if (seqnum->lsn.file == INT_MAX)
         return;
 
+    // set the max_lsn_so_far
+    Pthread_mutex_lock(&max_lsn_so_far_lk);
+    //set_max_lsn(&max_lsn_so_far,&seqnum->lsn);
+    if(log_compare(&seqnum->lsn, &max_lsn_so_far) > 0){
+        //logmsg(LOGMSG_USER, "Changing max_lsn\n");
+        max_lsn_so_far.file = seqnum->lsn.file;
+        max_lsn_so_far.offset = seqnum->lsn.offset;
+    }
+    //logmsg(LOGMSG_USER,"max_lsn unchanged\n");
+    Pthread_mutex_unlock(&max_lsn_so_far_lk);
+    // increase new_lsns 
+    new_lsns += 1;
     /* wake up anyone who might be waiting to see this seqnum */
     Pthread_cond_broadcast(&(bdb_state->seqnum_info->cond));
 
@@ -2650,9 +2680,9 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
 }
 
 /* returns -999 on timeout */
-static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
+int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
                                                     seqnum_type *master_seqnum,
-                                                    char *host)
+                                                    const char *host)
 {
     seqnum_type *host_seqnum;
     Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
@@ -2704,8 +2734,8 @@ static void bdb_zap_lsn_waitlist(bdb_state_type *bdb_state, const char *host) {
 
     Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 }
-
-static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
+// making below function non-static , to use in seqnum_wait.c
+void bdb_slow_replicant_check(bdb_state_type *bdb_state,
                                      seqnum_type *seqnum)
 {
     double *proctime;
@@ -2851,7 +2881,8 @@ static void bdb_slow_replicant_check(bdb_state_type *bdb_state,
 }
 
 /* expects seqnum_info lock held */
-static int bdb_track_replication_time(bdb_state_type *bdb_state,
+// Making this non-static to be used in seqnum_wait
+int bdb_track_replication_time(bdb_state_type *bdb_state,
                                       seqnum_type *seqnum, const char *host)
 {
     if (!bdb_state->attr->track_replication_times)

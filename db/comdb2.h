@@ -1419,6 +1419,9 @@ struct ireq {
     int written_row_count;
     int sc_running;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
+    char *source_host;
+    db_seqnum_type *commit_seqnum;
+    int should_enqueue;
 };
 
 /* comdb array struct */
