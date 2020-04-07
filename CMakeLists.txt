@@ -84,6 +84,12 @@ add_definitions(
   -D_FILE_OFFSET_BITS=64
 )
 
+option(DEBUG_TXNLIST_PLHASH "Debug plhash txnlist implementation" OFF)
+mark_as_advanced(DEBUG_TXNLIST_PLHASH)
+if(DEBUG_TXNLIST_PLHASH)
+    add_definitions(-DDEBUG_TXNLIST_PLHASH)
+endif()
+
 option(DEBUG_STACK_TAG_SCHEMA "Stack at add or remove a tag-schema" OFF)
 mark_as_advanced(DEBUG_STACK_TAG_SCHEMA)
 if(DEBUG_STACK_TAG_SCHEMA)
