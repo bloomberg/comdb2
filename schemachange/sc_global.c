@@ -302,6 +302,7 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
         assert(sctbl);
         strcpy(sctbl->mem, table);
         sctbl->tablename = sctbl->mem;
+        sctbl->seed = s->seed;
 
         sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
         sctbl->time = time;
@@ -377,8 +378,8 @@ void sc_status(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "-------------------------\n");
         logmsg(LOGMSG_USER,
                "Schema change in progress for table %s "
-               "with seed 0x%" PRIx64 "\n",
-               sctbl->tablename, sctbl->seed);
+               "with seed %0#16" PRIx64 "\n",
+               sctbl->tablename, flibc_htonll(sctbl->seed));
         logmsg(LOGMSG_USER,
                "(Started on node %s at %04d-%02d-%02d %02d:%02d:%02d)\n",
                mach ? mach : "(unknown)", tm.tm_year + 1900, tm.tm_mon + 1,
@@ -554,6 +555,19 @@ unsigned int sc_get_logical_redo_lwm_table(char *table)
         lwm = sctbl->logical_lwm;
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return lwm;
+}
+
+uint64_t sc_get_seed_table(char *table)
+{
+    sc_table_t *sctbl = NULL;
+    uint64_t seed = 0;
+    Pthread_mutex_lock(&schema_change_in_progress_mutex);
+    assert(sc_tables);
+    sctbl = hash_find_readonly(sc_tables, &table);
+    if (sctbl)
+        seed = sctbl->seed;
+    Pthread_mutex_unlock(&schema_change_in_progress_mutex);
+    return seed;
 }
 
 void add_ongoing_alter(struct schema_change_type *sc)
