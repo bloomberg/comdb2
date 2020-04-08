@@ -69,6 +69,8 @@ struct fingerprint_track {
     int64_t rows;    /* Cumulative number of rows selected */
     char *zNormSql;  /* The normalized SQL query */
     size_t nNormSql; /* Length of normalized SQL query */
+    char ** cachedColNames; /* Cached column names from sqlitex */
+    int cachedColCount;     /* Cached column count from sqlitex */
 };
 
 typedef struct stmt_hash_entry {

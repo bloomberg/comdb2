@@ -126,6 +126,8 @@ extern int gbl_stable_rootpages_test;
 extern int gbl_verbose_normalized_queries;
 extern int gbl_expressions_indexes;
 extern int gbl_old_column_names;
+extern hash_t *gbl_fingerprint_hash;
+extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
 /* Once and for all:
 
@@ -3071,6 +3073,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int flags)
 {
+    bool normalize_sql_done = false;
     int recreate = (flags & PREPARE_RECREATE);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
@@ -3110,7 +3113,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
         /* Prepare the query with the query_preparer plugin. */
-        if (rc == SQLITE_OK && gbl_old_column_names &&
+        if (rc == SQLITE_OK && gbl_old_column_names && rec->stmt &&
             !clnt->fdb_state.remote_sql_sb && query_preparer_plugin &&
             query_preparer_plugin->do_prepare &&
             sqlite3_stmt_readonly(rec->stmt) &&
@@ -3118,10 +3121,57 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             (thd->authState.numDdls == 0)) {
             char **column_names;
             int column_count;
-            rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql,
-                                                   &column_names, &column_count);
-            if (rc)
-                return rc;
+            struct fingerprint_track *t = NULL;
+
+            if (gbl_fingerprint_queries) {
+                unsigned char fingerprint[FINGERPRINTSZ];
+                size_t unused;
+
+                /* Generate normalized sql */
+                normalize_stmt_and_store(clnt, rec);
+                sqlite3_resetclock(rec->stmt);
+                thr_set_current_sql(rec->sql);
+                normalize_sql_done = true;
+
+                /* Calculate fingerprint */
+                calc_fingerprint(clnt->zNormSql, &unused, fingerprint);
+
+                Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+                if (gbl_fingerprint_hash) {
+                    t = hash_find(gbl_fingerprint_hash, fingerprint);
+                    if (t) {
+                        /* Create a copy of cached column names and pass it to
+                         * stmt, to be later freed when the stmt finalizes. */
+                        column_count = t->cachedColCount;
+                        column_names =
+                            calloc(sizeof(char *), t->cachedColCount);
+                        if (column_names == NULL) {
+                            logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
+                                   __func__, __LINE__);
+                            column_count = 0;
+                        } else {
+                            for (int i = 0; i < t->cachedColCount; i++) {
+                                column_names[i] = strdup(t->cachedColNames[i]);
+                            }
+                        }
+                        logmsg(LOGMSG_DEBUG,
+                               "%s:%d: using cached column names from "
+                               "fingerprint\n",
+                               __func__, __LINE__);
+                    }
+                }
+                Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+            }
+
+            /* If there's no fingerprint for this query, let's take the longer
+             * route of repreparing the query. */
+            if (!t) {
+                rc = query_preparer_plugin->do_prepare(
+                    thd, clnt, rec->sql, &column_names, &column_count);
+                if (rc)
+                    return rc;
+            }
+
             if (rec->stmt)
                 stmt_set_cached_columns(rec->stmt, column_names, column_count);
         }
@@ -3142,9 +3192,12 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     }
 
     if (rec->stmt) {
-        normalize_stmt_and_store(clnt, rec);
-        sqlite3_resetclock(rec->stmt);
-        thr_set_current_sql(rec->sql);
+        if (!normalize_sql_done) {
+            normalize_stmt_and_store(clnt, rec);
+            sqlite3_resetclock(rec->stmt);
+            thr_set_current_sql(rec->sql);
+            normalize_sql_done = true;
+        }
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = ERR_SQL_PREPARE;
