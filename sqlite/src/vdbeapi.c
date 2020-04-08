@@ -94,7 +94,7 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_old_column_names;
 
-static char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
+char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   char **column_names;
   Vdbe *vdbe = (Vdbe *)pStmt;
 
@@ -106,7 +106,7 @@ static char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   return column_names[index];
 }
 
-static inline int stmt_cached_column_count(sqlite3_stmt *pStmt) {
+int stmt_cached_column_count(sqlite3_stmt *pStmt) {
   Vdbe *vdbe = (Vdbe *)pStmt;
   return (vdbe) ? vdbe->oldColCount : 0;
 }
