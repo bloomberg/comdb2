@@ -62,6 +62,7 @@ int debug_switch_fix_pinref(void);                       /* 1 - not debug */
 int debug_switch_verbose_cursor_deadlocks(void);         /* 0 */
 int debug_switch_check_multiple_lockers(void);           /* 1 */
 int debug_switch_dump_pool_on_full(void);                /* 1 */
+int debug_switch_scconvert_finish_delay(void);           /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */
