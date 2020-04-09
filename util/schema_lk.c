@@ -24,6 +24,11 @@ static pthread_rwlock_t schema_lk = PTHREAD_RWLOCK_INITIALIZER;
 __thread int have_readlock = 0;
 __thread int have_writelock = 0;
 
+inline int have_schema_lock(void)
+{
+    return (have_readlock || have_writelock);
+}
+
 /* We actually acquire the readlock recursively: change these asserts to
  * accommodate */
 inline void rdlock_schema_int(const char *file, const char *func, int line)
