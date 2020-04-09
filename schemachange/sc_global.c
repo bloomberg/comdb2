@@ -302,7 +302,7 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
         assert(sctbl);
         strcpy(sctbl->mem, table);
         sctbl->tablename = sctbl->mem;
-        sctbl->seed = s->seed;
+        sctbl->seed = s ? s->seed : 0;
 
         sctbl->host = host ? crc32c((uint8_t *)host, strlen(host)) : 0;
         sctbl->time = time;
