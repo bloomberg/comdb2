@@ -32,6 +32,7 @@
 #include "bdb_osql_log_rec.h"
 
 #include "comdb2_atomic.h"
+#include "debug_switches.h"
 #include "logmsg.h"
 
 int gbl_logical_live_sc = 0;
@@ -686,6 +687,11 @@ static int convert_record(struct convert_record_data *data)
             // AZ: determine what locks we hold at this time
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
+
+            if (debug_switch_scconvert_finish_delay()) {
+                logmsg(LOGMSG_WARN, "scgenid reset. sleeping 10 sec.\n");
+                sleep(10);
+            }
 
             int usellmeta = 0;
             if (!data->to->plan) {

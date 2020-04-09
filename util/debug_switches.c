@@ -69,6 +69,7 @@ static struct debug_switches {
     int check_multiple_lockers;
     int dump_pool_on_full;
     int net_delay;
+    int scconvert_finish_delay;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -117,6 +118,7 @@ int init_debug_switches(void)
     debug_switches.check_multiple_lockers = 1;
     debug_switches.dump_pool_on_full = 1;
     debug_switches.net_delay = 0;
+    debug_switches.scconvert_finish_delay = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -207,6 +209,11 @@ int init_debug_switches(void)
                         &debug_switches.check_multiple_lockers);
     register_int_switch("dump_pool_on_full", "dump_pool_on_full",
                         &debug_switches.dump_pool_on_full);
+    register_int_switch("scconvert_finish_delay",
+                        "Delay returning from convert_record when a stripe finishes. "
+                        "This would create a scenario where scgenids are on the right "
+                        "of any new genids to reproduce a vutf8 schema change bug. ",
+                        &debug_switches.scconvert_finish_delay);
 
     return 0;
 }
@@ -386,4 +393,8 @@ int debug_switch_dump_pool_on_full(void)
 int debug_switch_net_delay(void)
 {
     return debug_switches.net_delay;
+}
+int debug_switch_scconvert_finish_delay(void)
+{
+    return debug_switches.scconvert_finish_delay;
 }

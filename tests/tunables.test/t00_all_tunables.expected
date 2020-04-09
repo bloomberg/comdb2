@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=923)
+(TUNABLES_COUNT=924)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -744,6 +744,7 @@
 (name='sc_use_num_threads', description='Start up to this many threads for parallel rebuilding during schema change. 0 means use one per dtastripe. Setting is capped at dtastripe.', type='INTEGER', value='0', read_only='N')
 (name='sc_via_ddl_only', description='If set, we don't do checks needed for comdb2sc.', type='BOOLEAN', value='OFF', read_only='N')
 (name='scatterkeys', description='', type='BOOLEAN', value='OFF', read_only='N')
+(name='scconvert_finish_delay', description='Delay returning from convert_record when a stripe finishes. This would create a scenario where scgenids are on the right of any new genids to reproduce a vutf8 schema change bug. ', type='BOOLEAN', value='OFF', read_only='N')
 (name='schemachange_perms', description='Check if schema change allowed from source machines', type='BOOLEAN', value='ON', read_only='N')
 (name='scpushlogs', description='Push to next log after a schema changes', type='BOOLEAN', value='ON', read_only='N')
 (name='seqnum_wait_interval', description='Wake up to check the state of the world this often while waiting for replication ACKs.', type='INTEGER', value='500', read_only='N')
