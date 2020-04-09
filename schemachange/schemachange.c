@@ -679,25 +679,55 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
     return rc;
 }
 
+/* If the schema change is to 1) remove ODH, 2) change the compression
+   algorithm, 3) or alter a field from or to vutf8, unpack the blobs. */
 static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
                                 int maxblobs)
 {
-    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr;
+    int i, rc, oldodh, newodh, reccompr, oldcompr, newcompr, fromidx, blobidx;
+    struct schema *from, *to;
 
-    for (i = 0, rc = 0; i != maxblobs; ++i) {
-        bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
-                            &oldcompr);
-        bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
-                            &newcompr);
-        (void)reccompr;
+    bdb_get_compr_flags(iq->usedb->sc_from->handle, &oldodh, &reccompr,
+                        &oldcompr);
+    bdb_get_compr_flags(iq->usedb->sc_to->handle, &newodh, &reccompr,
+                        &newcompr);
+    (void)reccompr;
 
-        /* If we're removing the ODH, or changing the compression algorithm,
-           unpack the blobs. */
-        if ((oldodh && !newodh) || oldcompr != newcompr) {
+    /* If we're removing the ODH, or changing the compression algorithm,
+       unpack the blobs. */
+    if ((oldodh && !newodh) || oldcompr != newcompr) {
+        for (i = 0, rc = 0; i != maxblobs; ++i) {
             rc = unodhfy_blob_buffer(iq->usedb->sc_to, blobs + i, i);
             if (rc != 0)
-                break;
+                return rc;
         }
+    }
+
+    /* Check if we need to unpack vutf8. */
+    assert(iq->usedb->sc_from != NULL && iq->usedb->sc_to != NULL);
+
+    from = find_tag_schema(iq->usedb->sc_from->tablename, ".ONDISK");
+    to = find_tag_schema(iq->usedb->sc_to->tablename, ".NEW..ONDISK");
+
+    for (rc = 0, i = 0; i != to->nmembers; ++i) {
+        /* If the field in the new schema is new, do nothing. */
+        fromidx = find_field_idx_in_tag(from, to->member[i].name);
+        if (fromidx < 0)
+            continue;
+        /* We only care about vutf8. So if neither the old
+           nor new type is vutf8, continue. */
+        if (to->member[i].type != SERVER_VUTF8 &&
+            from->member[fromidx].type != SERVER_VUTF8)
+            continue;
+        /* Inline vutf8 data isn't preprocessed. Continue. */
+        blobidx = from->member[fromidx].blob_index;
+        if (blobidx < 0)
+            continue;
+        /* We have a preprocessed blob which is vutf8 or to be converted to
+           vutf8, unpack it as we need to validate the utf8 content. */
+        rc = unodhfy_blob_buffer(iq->usedb->sc_to, blobs + blobidx, blobidx);
+        if (rc)
+            break;
     }
 
     return rc;
