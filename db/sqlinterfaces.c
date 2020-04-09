@@ -3129,8 +3129,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
                 /* Generate normalized sql */
                 normalize_stmt_and_store(clnt, rec);
-                sqlite3_resetclock(rec->stmt);
-                thr_set_current_sql(rec->sql);
                 normalize_sql_done = true;
 
                 /* Calculate fingerprint */
@@ -3194,10 +3192,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->stmt) {
         if (!normalize_sql_done) {
             normalize_stmt_and_store(clnt, rec);
-            sqlite3_resetclock(rec->stmt);
-            thr_set_current_sql(rec->sql);
             normalize_sql_done = true;
         }
+        sqlite3_resetclock(rec->stmt);
+        thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
         // No stmt and no error -> Empty sql string or just comment.
         rc = ERR_SQL_PREPARE;
