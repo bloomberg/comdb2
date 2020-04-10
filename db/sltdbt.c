@@ -339,7 +339,8 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->sorese.rqid == 0)
                 abort();
-            osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, sorese_rc);
+            osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat,
+                                       &iq->snap_info, sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();
 
