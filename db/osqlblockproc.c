@@ -777,8 +777,8 @@ static void send_error_to_replicant(int rqid, const char *host, int errval,
     generr.errval = errval;
     strncpy0(generr.errstr, errstr, sizeof(generr.errstr));
 
-    int rc =
-        osql_comm_signal_sqlthr_rc(&sorese_info, &generr, RC_INTERNAL_RETRY);
+    int rc = osql_comm_signal_sqlthr_rc(&sorese_info, &generr, NULL,
+                                        RC_INTERNAL_RETRY);
     if (rc) {
         logmsg(LOGMSG_ERROR, "Failed to signal replicant rc=%d\n", rc);
     }
@@ -899,7 +899,7 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
     struct errstat *xerr;
     /* check if type is done */
     rc = osql_comm_is_done(type, rpl, rplen, rqid == OSQL_RQID_USE_UUID, &xerr,
-                           osql_session_get_ireq(sess));
+                           osql_session_get_ireq(sess), NULL);
     if (rc == 0)
         return 0;
 

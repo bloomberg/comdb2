@@ -229,7 +229,7 @@ extern int gbl_long_log_truncation_abort_thresh_sec;
 extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
-
+extern int gbl_master_sends_query_effects;
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;
