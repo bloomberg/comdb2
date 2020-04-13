@@ -665,7 +665,7 @@ static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
             logmsg(LOGMSG_DEBUG,
                 "%s: queuedb %s file %d version not found, stopping...\n",
                 __func__, bdb_state->name, file_num);
-            return 1; 
+            return 1;
         } else if (USE_GENID_IN_QUEUEDB_FILE_NAME()) {
             logmsg(LOGMSG_ERROR,
                 "%s: queuedb %s file %d version not found, error %d\n",
@@ -4377,6 +4377,7 @@ deadlock_again:
     }
     if (bdbtype == BDBTYPE_QUEUEDB) {
         int max_qdb_dtanum = create ? 1 : BDB_QUEUEDB_MAX_FILES;
+        assert(!create || (qdb_file_ver == 0));
         assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
         if ((max_qdb_dtanum < BDB_QUEUEDB_MAX_FILES) && (qdb_file_ver != 0)) {
             max_qdb_dtanum++;
