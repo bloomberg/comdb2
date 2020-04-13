@@ -24,7 +24,7 @@
 #include <locks_wrap.h>
 
 #define CHUNK_CAPACITY 10000
-#define CHUNK_MAX 100
+#define CHUNK_MAX 1000
 
 struct akq_work {
     TAILQ_ENTRY(akq_work) entry;

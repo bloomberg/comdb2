@@ -1419,7 +1419,7 @@ void *bplog_commit_timepart_resuming_sc(void *p)
         create_sqlite_master();
     }
 
-    if (trans_commit(&iq, iq.sc_tran, gbl_mynode)) {
+    if (trans_commit(&iq, iq.sc_tran, gbl_myhostname)) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
@@ -1427,8 +1427,8 @@ void *bplog_commit_timepart_resuming_sc(void *p)
 
     unlock_schema_lk();
 
-    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_mynode, 0, 1, NULL, 0,
-                             NULL, 0)) {
+    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_myhostname, 0, 1,
+                             NULL, 0, NULL, 0)) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();

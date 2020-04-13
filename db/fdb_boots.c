@@ -181,7 +181,7 @@ static char *_get_node_initial(int nnodes, char **nodes, bool *lcl,
         }
 
         /* prefer local node if available */
-        if (nodes[i] == gbl_mynode) {
+        if (nodes[i] == gbl_myhostname) {
             node = nodes[i];
         }
 
@@ -326,7 +326,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
             *p_lcl_nodes = 1;
         }
 
-        return gbl_mynode; /* local node */
+        return gbl_myhostname; /* local node */
     }
 
     assert(loc != NULL);

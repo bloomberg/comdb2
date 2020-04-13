@@ -144,6 +144,8 @@ extern int gbl_verbose_normalized_queries;
 extern int gbl_group_concat_mem_limit;
 extern int gbl_expressions_indexes;
 extern int gbl_old_column_names;
+extern hash_t *gbl_fingerprint_hash;
+extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
 /* Once and for all:
 
@@ -2888,7 +2890,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
         return 0;
 
     /* We're emitting a row & have waiters */
-    if (!gbl_rep_wait_release_ms || thedb->master == gbl_mynode)
+    if (!gbl_rep_wait_release_ms || thedb->master == gbl_myhostname)
         return release_locks("release locks on emit-row");
 
     /* We're emitting a row and are blocking replication */
@@ -3392,6 +3394,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int flags)
 {
+    bool normalize_sql_done = false;
     int recreate = (flags & PREPARE_RECREATE);
     int prepareOnly = (flags & PREPARE_ONLY);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
@@ -3433,15 +3436,69 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
         /* Prepare the query with the query_preparer plugin. */
-        if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
-            query_preparer_plugin->do_prepare && sqlite3_stmt_readonly(rec->stmt) &&
-            !sqlite3_stmt_isexplain(rec->stmt) && (thd->authState.numDdls == 0)) {
+        if (rc == SQLITE_OK && gbl_old_column_names && rec->stmt &&
+            !clnt->fdb_state.remote_sql_sb && query_preparer_plugin &&
+            query_preparer_plugin->do_prepare &&
+            sqlite3_stmt_readonly(rec->stmt) &&
+            !sqlite3_stmt_isexplain(rec->stmt) &&
+            (thd->authState.numDdls == 0)) {
             char **column_names;
             int column_count;
-            rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql,
-                                                   &column_names, &column_count);
-            if (rc)
-                return rc;
+            struct fingerprint_track *t = NULL;
+
+            if (gbl_fingerprint_queries) {
+                unsigned char fingerprint[FINGERPRINTSZ];
+                const char *zNormSql;
+                size_t unused;
+
+                /* Generate normalized sql */
+                if (!(flags & PREPARE_NO_NORMALIZE)) {
+                    normalize_stmt_and_store(clnt, rec, 0);
+                    zNormSql = clnt->work.zNormSql;
+                    normalize_sql_done = true;
+                } else {
+                    zNormSql = sqlite3_normalized_sql(rec->stmt);
+                }
+
+                /* Calculate fingerprint */
+                calc_fingerprint(zNormSql, &unused, fingerprint);
+
+                Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+                if (gbl_fingerprint_hash) {
+                    t = hash_find(gbl_fingerprint_hash, fingerprint);
+                    if (t) {
+                        /* Create a copy of cached column names and pass it to
+                         * stmt, to be later freed when the stmt finalizes. */
+                        column_count = t->cachedColCount;
+                        column_names =
+                            calloc(sizeof(char *), t->cachedColCount);
+                        if (column_names == NULL) {
+                            logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
+                                   __func__, __LINE__);
+                            column_count = 0;
+                        } else {
+                            for (int i = 0; i < t->cachedColCount; i++) {
+                                column_names[i] = strdup(t->cachedColNames[i]);
+                            }
+                        }
+                        logmsg(LOGMSG_DEBUG,
+                               "%s:%d: using cached column names from "
+                               "fingerprint\n",
+                               __func__, __LINE__);
+                    }
+                }
+                Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+            }
+
+            /* If there's no fingerprint for this query, let's take the longer
+             * route of repreparing the query. */
+            if (!t) {
+                rc = query_preparer_plugin->do_prepare(
+                    thd, clnt, rec->sql, &column_names, &column_count);
+                if (rc)
+                    return rc;
+            }
+
             if (rec->stmt)
                 stmt_set_cached_columns(rec->stmt, column_names, column_count);
         }
@@ -3464,7 +3521,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
         free_normalized_sql(clnt);
-        if (!(flags & PREPARE_NO_NORMALIZE)) {
+        if (!(flags & PREPARE_NO_NORMALIZE) && !normalize_sql_done) {
             normalize_stmt_and_store(clnt, rec, 0);
         }
         sqlite3_resetclock(rec->stmt);
@@ -4981,13 +5038,14 @@ void sqlengine_work_appsock(void *thddata, void *work)
         (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
          (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
           clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS))) {
-        clnt->osql.host = (thedb->master == gbl_mynode) ? 0 : thedb->master;
+        clnt->osql.host = (thedb->master == gbl_myhostname) ? 0 : thedb->master;
     }
 
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
         clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        clnt->had_lease_at_begin =
-            (thedb->master == gbl_mynode) ? 1 : bdb_valid_lease(thedb->bdb_env);
+        clnt->had_lease_at_begin = (thedb->master == gbl_myhostname)
+                                       ? 1
+                                       : bdb_valid_lease(thedb->bdb_env);
     }
 
     /* assign this query a unique id */
@@ -6321,6 +6379,10 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     rec.sql = clnt->sql;
     if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr,
                                 PREPARE_NONE)) {
+        /* if prepare failed, and this is not a versioning issue,
+           report error */
+        if (clnt->fdb_state.xerr.errval != SQLITE_SCHEMA)
+            ret = ERR_SQL_PREP;
         goto done;
     }
     thrman_wheref(poolthd->thr_self, "%s", rec.sql);

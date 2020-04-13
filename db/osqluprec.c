@@ -175,7 +175,7 @@ static void *uprec_cron_event(struct cron_event *_, struct errstat *err)
         /* send and then wait */
         p_slock = &uprec->slock;
         rc = offload_comm_send_blockreq(
-            thedb->master == gbl_mynode ? 0 : thedb->master, p_slock,
+            thedb->master == gbl_myhostname ? 0 : thedb->master, p_slock,
             uprec->buffer, (buf_end - uprec->buffer));
         if (rc != 0)
             goto done;
@@ -247,7 +247,7 @@ int offload_comm_send_upgrade_record(const char *tbl, unsigned long long genid)
     else
         // send block request and free buffer
         rc = offload_comm_send_sync_blockreq(
-            thedb->master == gbl_mynode ? 0 : thedb->master, buffer,
+            thedb->master == gbl_myhostname ? 0 : thedb->master, buffer,
             buffer_end - buffer);
 
     return rc;
@@ -311,7 +311,8 @@ int offload_comm_send_upgrade_records(const dbtable *db,
         return EINVAL;
 
     /* if i am master of a cluster, return. */
-    if (thedb->master == gbl_mynode && net_count_nodes(osql_get_netinfo()) > 1)
+    if (thedb->master == gbl_myhostname &&
+        net_count_nodes(osql_get_netinfo()) > 1)
         return 0;
 
     (void)pthread_once(&uprec_sender_array_once, uprec_sender_array_init);

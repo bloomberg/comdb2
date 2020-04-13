@@ -8896,12 +8896,23 @@ void *sqlite3BtreeSchema(Btree *pBt, int nBytes, void (*xFree)(void *))
         pBt->schema = calloc(1, nBytes);
         pBt->free_schema = xFree;
     } else {
-        /* I will cache the schema-s for foreign dbs.
-           Let this be the first step to share the schema
-           for all database connections */
+        /* I will cache the schema-s for foreign dbs. Let this be the first
+         * step to share the schema for all database connections */
         pBt->schema = fdb_sqlite_get_schema(pBt, nBytes);
-        /* we ignore Xfree since this is shared and not part of a sqlite engine
-           space */
+
+        /* We ignore Xfree since this is shared and not part of a sqlite engine
+         * space.
+         *
+         * However, if query_preparer plugin is loaded/enabled, as we do not
+         * cache its db (sqlitex) handle. Thus, we will have to set free_schema
+         * to avoid memory leaks. */
+        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        if (gbl_old_column_names && thd && thd->clnt && thd->clnt->thd &&
+            thd->clnt->thd->query_preparer_running) {
+            assert(query_preparer_plugin);
+            /* sqlitex */
+            pBt->free_schema = xFree;
+        }
     }
     return pBt->schema;
 }
@@ -11323,14 +11334,14 @@ int bt_hash_table(char *table, int szkb)
         fprintf(stderr, "Failed to write bthash to meta table\n");
         return -1;
     }
-    trans_commit(&iq, metatran, gbl_mynode);
+    trans_commit(&iq, metatran, gbl_myhostname);
 
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
     logmsg(LOGMSG_WARN, "Building bthash for table %s, size %dkb per stripe\n",
            db->tablename, szkb);
     bdb_handle_dbp_add_hash(bdb_state, szkb);
-    trans_commit(&iq, tran, gbl_mynode);
+    trans_commit(&iq, tran, gbl_myhostname);
 
     // scdone log
     rc = bdb_llog_scdone(bdb_state, bthash, 1, &bdberr);
@@ -11377,13 +11388,13 @@ int del_bt_hash_table(char *table)
         logmsg(LOGMSG_ERROR, "Failed to write bthash to meta table\n");
         return -1;
     }
-    trans_commit(&iq, metatran, gbl_mynode);
+    trans_commit(&iq, metatran, gbl_myhostname);
 
     trans_start(&iq, NULL, &tran);
     bdb_lock_table_write(bdb_state, tran);
     logmsg(LOGMSG_WARN, "Deleting bthash for table %s\n", db->tablename);
     bdb_handle_dbp_drop_hash(bdb_state);
-    trans_commit(&iq, tran, gbl_mynode);
+    trans_commit(&iq, tran, gbl_myhostname);
 
     // scdone log
     rc = bdb_llog_scdone(bdb_state, bthash, 1, &bdberr);

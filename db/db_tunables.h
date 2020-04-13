@@ -489,7 +489,7 @@ REGISTER_TUNABLE("heartbeat_send_time",
                  "Send heartbeats this often. (Default: 5secs)",
                  TUNABLE_INTEGER, &gbl_heartbeat_send, READONLY | NOZERO, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_mynode,
+REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_myhostname,
                  READONLY | READEARLY, NULL, NULL, hostname_update, NULL);
 REGISTER_TUNABLE("incoherent_alarm_time", NULL, TUNABLE_INTEGER,
                  &gbl_incoherent_alarm_time, READONLY, NULL, NULL, NULL, NULL);
@@ -1749,7 +1749,7 @@ REGISTER_TUNABLE("skip_catchup_logic",
 
 REGISTER_TUNABLE("libevent",
                  "Use libevent in net library. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_libevent, 0, 0, 0, 0, 0);
+                 TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",

@@ -372,7 +372,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
 
     /* wait for replication on what we just committed */
     if ((data->nrecs % data->num_records_per_trans) == 0) {
-        if ((rc = trans_wait_for_seqnum(&data->iq, gbl_mynode, ss)) != 0) {
+        if ((rc = trans_wait_for_seqnum(&data->iq, gbl_myhostname, ss)) != 0) {
             sc_errf(data->s, "delay_sc_if_needed: error waiting for "
                              "replication rcode %d\n",
                     rc);
@@ -1080,7 +1080,7 @@ err:
     if (data->live) {
         rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
     } else {
-        rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+        rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
     }
 
     data->trans = NULL;
@@ -1202,7 +1202,7 @@ void *convert_records_thd(struct convert_record_data *data)
         /* can only get here for non-live schema change, shouldn't ever get here
          * now since bulk transactions have been disabled in all schema changes
          */
-        rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+        rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
         data->trans = NULL;
         if (rc) {
             sc_errf(data->s, "convert_records_thd: trans_commit failed due "
@@ -1730,7 +1730,8 @@ static int upgrade_records(struct convert_record_data *data)
 
         // txn contains enough records, wait for replicants
         if ((data->nrecs % data->num_records_per_trans) == 0) {
-            if ((rc = trans_wait_for_seqnum(&data->iq, gbl_mynode, &ss)) != 0) {
+            if ((rc = trans_wait_for_seqnum(&data->iq, gbl_myhostname, &ss)) !=
+                0) {
                 sc_errf(data->s, "%s: error waiting for "
                                  "replication rcode %d\n",
                         __func__, rc);
@@ -3055,7 +3056,7 @@ done:
         } else if (data->live)
             rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
         else
-            rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+            rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
     }
 
     reqlog_end_request(data->iq.reqlogger, 0, __func__, __LINE__);

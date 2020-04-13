@@ -70,7 +70,7 @@ int open_all_dbs(void)
 int check_sc_ok(struct schema_change_type *s)
 {
     /* I must be rtcpu up */
-    if (!is_node_up(gbl_mynode)) {
+    if (!is_node_up(gbl_myhostname)) {
         sc_errf(s, "cannot perform schema change; I am rtcpu'd down\n");
         return -1;
     }

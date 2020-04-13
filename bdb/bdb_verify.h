@@ -49,16 +49,16 @@ typedef struct {
     int (*lua_callback)(void *, const char *);
     void *lua_params;
     char *header; // header string for printing for prog rep in default mode
-    unsigned long long items_processed;   // atomic inc: for progres report
-    unsigned long long records_processed; // progress report in default mode
-    unsigned long long saved_progress;    // previous progress counter
+    uint64_t items_processed;             // atomic inc: for progres report
+    uint64_t records_processed;           // progress report in default mode
+    uint64_t saved_progress;              // previous progress counter
     int nrecs_progress;                   // progress done in this time window
-    int last_connection_check;            // last reported time in ms
+    unsigned int last_connection_check;   // last reported time in ms
     int progress_report_seconds;          // freq of report in seconds
     int progress_report_counter;          // counter used to print progress
     int attempt_fix;
-    unsigned short threads_spawned;
-    unsigned short threads_completed; // atomic inc
+    unsigned int threads_spawned;
+    unsigned int threads_completed; // atomic inc
     verify_mode_t verify_mode;
     uint8_t client_dropped_connection;
     uint8_t verify_status; // 0 success, 1 failure

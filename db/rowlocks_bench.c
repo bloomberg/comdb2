@@ -82,7 +82,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
             }
         }
 
-        if ((rc = trans_commit_adaptive(&iq, trans, gbl_mynode)) != 0) {
+        if ((rc = trans_commit_adaptive(&iq, trans, gbl_myhostname)) != 0) {
             fprintf(stderr, "%s: trans_commit returns %d\n", __func__, rc);
             return;
         }
@@ -193,8 +193,8 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
         }
 
         /* This will wait for all nodes to respond */
-        if ((rc = trans_commit_logical(&iq, trans, gbl_mynode, 0, 1, NULL, 0,
-                                       iq.seq, iq.seqlen)) != 0) {
+        if ((rc = trans_commit_logical(&iq, trans, gbl_myhostname, 0, 1, NULL,
+                                       0, iq.seq, iq.seqlen)) != 0) {
             fprintf(stderr, "%s: trans_commit_logical returns %d\n", 
                     __func__, rc);
             return;

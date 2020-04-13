@@ -363,7 +363,7 @@ int main(int argc, char *argv[])
                     netnodes[ii].node);
             exit(1);
         }
-        if (netnodes[ii].node == gbl_mynode) {
+        if (netnodes[ii].node == gbl_myhostname) {
             if (mynetnode) {
                 fprintf(stderr, "I appear twice in node list!\n");
                 exit(1);

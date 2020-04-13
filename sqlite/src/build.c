@@ -5458,6 +5458,7 @@ char *sqlite3DescribeIndexOrder(
   }
 
   switch( op ){
+    case OP_IfNoHope:
     case OP_Found:
     case OP_NotFound: {
       isMovingLeft = 0; 
@@ -5518,6 +5519,9 @@ char *sqlite3DescribeIndexOrder(
         :">";
       break;
     }
+    default:
+        logmsg(LOGMSG_ERROR, "Unknown opcode, upgraded sqlite? op %d\n", op);
+        abort();
   }
 
   pTbl = pIdx->pTable;

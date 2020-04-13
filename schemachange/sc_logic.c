@@ -313,7 +313,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         if (s->keep_locked) {
             rc = trans_commit(iq, tran, gbl_mynode);
         } else {
-            rc = trans_commit_adaptive(iq, tran, gbl_mynode);
+            rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
         }
         if (rc) {
             sc_errf(s, "Failed to commit finalize transaction\n");
@@ -557,7 +557,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     if (!no_reset)
         oldtype = prepare_sc_thread(s);
 
-    if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_mynode) {
+    if (!bdb_iam_master(thedb->bdb_env) || thedb->master != gbl_myhostname) {
         logmsg(LOGMSG_INFO, "%s downgraded master\n", __func__);
         rc = SC_MASTER_DOWNGRADE;
         goto downgraded;
@@ -916,7 +916,7 @@ int resume_schema_change(void)
     if (gbl_is_physical_replicant) {
         return 0;
     }
-    if (thedb->master != gbl_mynode) {
+    if (thedb->master != gbl_myhostname) {
         logmsg(LOGMSG_WARN,
                "resume_schema_change: not the master, cannot resume a"
                " schema change\n");
@@ -1346,7 +1346,7 @@ int delete_temp_table(struct ireq *iq, struct dbtable *newdb)
         return -1;
     }
 
-    rc = trans_commit(iq, tran, gbl_mynode);
+    rc = trans_commit(iq, tran, gbl_myhostname);
     if (rc) {
         sc_errf(s, "%d: trans_commit rc %d\n", __LINE__, rc);
         iq->usedb = usedb_sav;
@@ -1377,7 +1377,7 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
     bdb_set_odh_options(db->handle, db->odh, ra, ba);
     if ((rc = put_db_compress(db, tran, ra)) != 0) goto out;
     if ((rc = put_db_compress_blobs(db, tran, ba)) != 0) goto out;
-    if ((rc = trans_commit(iq, tran, gbl_mynode)) == 0) {
+    if ((rc = trans_commit(iq, tran, gbl_myhostname)) == 0) {
         logmsg(LOGMSG_USER, "%s -- TABLE:%s  REC COMP:%s  BLOB COMP:%s\n",
                __func__, db->tablename, bdb_algo2compr(ra), bdb_algo2compr(ba));
     } else {
@@ -1532,7 +1532,7 @@ int scdone_abort_cleanup(struct ireq *iq)
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
     if (s->set_running)
-        sc_set_running(iq, s, s->tablename, 0, gbl_mynode, time(NULL), 0,
+        sc_set_running(iq, s, s->tablename, 0, gbl_myhostname, time(NULL), 0,
                        __func__, __LINE__);
     if (s->db && s->db->handle) {
         if (s->addonly) {

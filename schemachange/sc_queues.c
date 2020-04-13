@@ -164,7 +164,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
     stop_threads(thedb);
     resume_threads(thedb);
 
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_myhostname) {
         /* I am master: create new db */
         newdb->handle =
             bdb_create_queue(newdb->tablename, thedb->basedir, avgitemsz,
@@ -688,7 +688,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
     if (!same_tran) {
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        rc = trans_commit(&iq, tran, gbl_myhostname);
         if (rc) {
             sbuf2printf(sb, "!Failed to commit transaction\n");
             goto done;
@@ -745,7 +745,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
 
         if (!same_tran) {
-            rc = trans_commit(&iq, tran, gbl_mynode);
+            rc = trans_commit(&iq, tran, gbl_myhostname);
             if (rc) {
                 sbuf2printf(sb, "!Failed to commit transaction\n");
                 goto done;
@@ -761,7 +761,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
             goto done;
         }
-        rc = trans_commit(&iq, ltran, gbl_mynode);
+        rc = trans_commit(&iq, ltran, gbl_myhostname);
         if (rc || bdberr != BDBERR_NOERROR) {
             sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
             goto done;

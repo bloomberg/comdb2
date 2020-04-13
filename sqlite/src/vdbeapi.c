@@ -94,7 +94,7 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_old_column_names;
 
-static char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
+char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   char **column_names;
   Vdbe *vdbe = (Vdbe *)pStmt;
 
@@ -106,7 +106,7 @@ static char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   return column_names[index];
 }
 
-static inline int stmt_cached_column_count(sqlite3_stmt *pStmt) {
+int stmt_cached_column_count(sqlite3_stmt *pStmt) {
   Vdbe *vdbe = (Vdbe *)pStmt;
   return (vdbe) ? vdbe->oldColCount : 0;
 }
@@ -144,6 +144,7 @@ void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
 }
 
 int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
+  Vdbe *p;
   int cached_column_count;
   int i;
 
@@ -155,8 +156,9 @@ int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
   cached_column_count = stmt_cached_column_count(pStmt);
   assert(cached_column_count == sqlite3_column_count(pStmt));
 
+  p = (Vdbe *)pStmt;
   for(i=0; i<cached_column_count; i++){
-    if( (strcmp(sqlite3_column_name(pStmt, i),
+    if( (strcmp((const char *)sqlite3_value_text((sqlite3_value*)&p->aColName[i]),
                 stmt_cached_column_name(pStmt, i)))!=0 ) {
       return 0;
     }

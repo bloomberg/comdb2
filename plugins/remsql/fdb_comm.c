@@ -3686,7 +3686,7 @@ int handle_alias_request(comdb2_appsock_arg_t *arg)
     line = arg->cmdline;
     llen = strlen(line);
 
-    if (dbenv->master != gbl_mynode) {
+    if (dbenv->master != gbl_myhostname) {
         sbuf2printf(sb, "!master swinged, now on %s, please rerun\n",
                     thedb->master);
         sbuf2printf(sb, "FAILED\n");

@@ -108,7 +108,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_mach_class(gbl_mynode))
+        if (get_mach_class(host) >= get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -123,7 +123,7 @@ int allow_cluster_from_remote(const char *host)
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
-        if (get_mach_class(host) == get_mach_class(gbl_mynode))
+        if (get_mach_class(host) == get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -137,7 +137,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_mach_class(gbl_mynode))
+        if (get_mach_class(host) <= get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -257,7 +257,7 @@ int process_allow_command(char *line, int lline)
         if (parse_mach_or_group(tok, ltok, &if_mach, &if_cls) != 0)
             goto bad;
 
-        if (if_mach > 0 && if_mach != gbl_mynode)
+        if (if_mach > 0 && if_mach != gbl_myhostname)
             goto ignore;
         if (if_cls != CLASS_UNKNOWN && if_cls != get_my_mach_class())
             goto ignore;

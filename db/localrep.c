@@ -853,7 +853,7 @@ again:
         printf("toclear: add_oplog_entry(commit) rc %d\n", rc);
         goto done;
     }
-    rc = trans_commit(&iq, trans, gbl_mynode);
+    rc = trans_commit(&iq, trans, gbl_myhostname);
     if (rc) {
         printf("toclear: commit rc %d\n", rc);
         goto done;
