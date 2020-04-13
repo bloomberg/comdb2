@@ -7,7 +7,7 @@ create procedure nopZ version 'noptest' {$(cat nop_consumer.lua)}\$\$
 create lua consumer nopZ on (table foraudit0 for insert)
 EOF
 
-for ((i=0;i<50;++i)); do
+for ((i=0;i<2;++i)); do
     ./qdb0_adds.sh 9600 &
     ./qdb0_cons.sh 9600 &
     wait
