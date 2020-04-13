@@ -1021,7 +1021,7 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
                __func__, rc, bdberr);
         goto done;
     }
-    rc = trans_commit(iq, sc_logical_tran, gbl_mynode);
+    rc = trans_commit(iq, sc_logical_tran, gbl_myhostname);
     sc_logical_tran = NULL;
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: could not commit trans\n", __func__);
@@ -1090,7 +1090,7 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                __func__, rc, bdberr);
         goto done;
     }
-    rc = trans_commit(iq, sc_logical_tran, gbl_mynode);
+    rc = trans_commit(iq, sc_logical_tran, gbl_myhostname);
     sc_logical_tran = NULL;
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: could not commit trans\n", __func__);
