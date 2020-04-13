@@ -1944,20 +1944,4 @@ REGISTER_TUNABLE("debug_queuedb",
                  TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("client_queued_slow_seconds",
-                 "If a client connection remains \"queued\" longer than this "
-                 "period of time (in seconds), it is considered to be \"slow\", "
-                 "which may trigger an action by the watchdog.  (Default: off)",
-                 TUNABLE_INTEGER, &gbl_client_queued_slow_seconds,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("client_running_slow_seconds",
-                 "If a client connection remains \"running\" longer than this "
-                 "period of time (in seconds), it is considered to be \"slow\", "
-                 "which may trigger an action by the watchdog.  (Default: off)",
-                 TUNABLE_INTEGER, &gbl_client_running_slow_seconds,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("client_abort_on_slow",
-                 "Enable watchdog to abort if a \"slow\" client is detected."
-                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_client_abort_on_slow,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

@@ -25,9 +25,6 @@ int get_connections(void **data, int *num_points) {
         dttz_t d = {.dttz_sec = info[i].connect_time_int, .dttz_frac = 0, .dttz_prec = DTTZ_PREC_MSEC};
         dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].connect_time);
 
-        d = (dttz_t) { .dttz_sec = info[i].last_reset_time_int, .dttz_frac = 0, .dttz_frac = DTTZ_PREC_MSEC };
-        dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].last_reset_time);
-
         info[i].time_in_state.sign = 1;
         int ms = now - info[i].time_in_state_int;
         info[i].time_in_state.days = ms / 86400000; ms %= 86400000;
@@ -58,7 +55,13 @@ int get_connections(void **data, int *num_points) {
 }
 
 void free_connections(void *data, int num_points) {
-    free_connection_info((struct connection_info *)data, num_points);
+    struct connection_info *info = (struct connection_info*) data;
+    for (int i = 0; i < num_points; i++) {
+        if (info[i].sql)
+            free(info[i].sql);
+        /* state is static, don't free */
+    }
+    free(data);
 }
 
 int systblConnectionsInit(sqlite3 *db) {
@@ -67,7 +70,7 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_CSTRING, "host", -1, offsetof(struct connection_info, host),
             CDB2_INTEGER, "connection_id", -1, offsetof(struct connection_info, connection_id),
             CDB2_DATETIME, "connect_time", -1, offsetof(struct connection_info, connect_time),
-            CDB2_DATETIME, "last_reset_time", -1, offsetof(struct connection_info, last_reset_time),
+            CDB2_DATETIME, "last_reset_time", -1, offsetof(struct connection_info, connect_time),
             CDB2_INTEGER, "pid", -1, offsetof(struct connection_info, pid),
             CDB2_INTEGER, "total_sql", -1, offsetof(struct connection_info, total_sql),
             CDB2_INTEGER, "sql_since_reset", -1, offsetof(struct connection_info, sql_since_reset),

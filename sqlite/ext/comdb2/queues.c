@@ -22,7 +22,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <limits.h>
 
 #include "comdb2.h"
 #include "comdb2systbl.h"

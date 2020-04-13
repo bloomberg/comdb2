@@ -242,9 +242,6 @@ extern int gbl_memp_dump_cache_threshold;
 extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
-extern int gbl_client_queued_slow_seconds;
-extern int gbl_client_running_slow_seconds;
-extern int gbl_client_abort_on_slow;
 
 extern long long sampling_threshold;
 
