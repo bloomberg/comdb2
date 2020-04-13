@@ -2180,6 +2180,7 @@ static void do_read(int fd, short what, void *data)
     if (b) {
         make_socket_blocking(fd);
         SBUF2 *sb = sbuf2open(fd, 0);
+        sbuf2setbufsize(sb, a->netinfo_ptr->bufsz);
         do_appsock(a->netinfo_ptr, &a->ss, sb, b);
         a->fd = -1;
         accept_info_free(a);
