@@ -36,6 +36,7 @@ struct akq_chunk {
 TAILQ_HEAD(akq_chunk_list, akq_chunk);
 
 struct akq {
+    char *name;
     int chunks;
     int stop_work;
     size_t work_size;
@@ -66,6 +67,7 @@ static void akq_new_chunk(struct akq *q)
         buf += q->work_size;
     }
     ++q->chunks;
+    logmsg(LOGMSG_USER, "[%-19s%19s] total chunks:%d\n", q->name, __func__, q->chunks);
 }
 
 static void akq_worker_int(struct akq *q)
@@ -161,12 +163,15 @@ void akq_stop(struct akq *q)
     TAILQ_FOREACH_SAFE(c, &q->chunk_list, chunk_entry, tmp) {
         free(c);
     }
+    free(q->name);
     free(q);
 }
 
-struct akq *akq_new(size_t s, akq_callback func, akq_callback start, akq_callback stop)
+struct akq *akq_new(char *name, size_t s, akq_callback func, akq_callback start,
+                    akq_callback stop)
 {
     struct akq *q = (struct akq *)calloc(1, sizeof(struct akq));
+    q->name = strdup(name);
     q->work_size = s + sizeof(struct akq_work);
     q->work_offset = s;
     q->start = start;

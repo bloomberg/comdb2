@@ -197,7 +197,7 @@ static void flushcb(int, short, void *);
 static void do_open(int, short, void *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
-static struct akq *setup_akq(void);
+static struct akq *setup_akq(char *);
 static void unix_connect(int, short, void *);
 
 #define event_once(a, b, c)                                                    \
@@ -473,7 +473,7 @@ static struct host_info *host_info_new(char *host)
     LIST_INIT(&h->event_list);
     h->host = intern(host);
     if (akq_policy == POLICY_PER_HOST) {
-        h->per_host.akq = setup_akq();
+        h->per_host.akq = setup_akq(h->host);
     }
     if (reader_policy == POLICY_PER_HOST) {
         init_base(&h->per_host.rdthd, &h->per_host.rdbase, net_dispatch, h->host);
@@ -534,7 +534,7 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     n->port = netinfo_ptr->myport;
     n->rd_max = MB(512);
     if (akq_policy == POLICY_PER_NET) {
-        n->per_net.akq = setup_akq();
+        n->per_net.akq = setup_akq(n->service);
     }
     if (reader_policy == POLICY_PER_NET) {
         init_base(&n->per_net.rdthd, &n->per_net.rdbase, net_dispatch, n->service);
@@ -643,7 +643,7 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     hash_add(event_hash, entry);
     Pthread_mutex_unlock(&event_hash_lk);
     if (akq_policy == POLICY_PER_EVENT) {
-        e->per_event.akq = setup_akq();
+        e->per_event.akq = setup_akq(entry->key);
     }
     if (reader_policy == POLICY_PER_EVENT) {
         init_base(&e->per_event.rdthd, &e->per_event.rdbase, net_dispatch, entry->key);
@@ -1117,9 +1117,9 @@ static void akq_work_callback(void *work)
     akq_work_free(e, info);
 }
 
-static struct akq *setup_akq(void)
+static struct akq *setup_akq(char *name)
 {
-    return akq_new(sizeof(struct user_msg_info), akq_work_callback,
+    return akq_new(name, sizeof(struct user_msg_info), akq_work_callback,
                    akq_start_callback, akq_stop_callback);
 }
 
@@ -2679,7 +2679,7 @@ static void setup_base(void)
     }
 
     if (akq_policy == POLICY_SINGLE) {
-        single.akq = setup_akq();
+        single.akq = setup_akq("single");
     }
 
     logmsg(LOGMSG_USER, "Libevent %s with backend method %s\n",
