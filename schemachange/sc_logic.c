@@ -311,7 +311,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         // void all_locks(void*);
         // all_locks(thedb->bdb_env);
         if (s->keep_locked) {
-            rc = trans_commit(iq, tran, gbl_mynode);
+            rc = trans_commit(iq, tran, gbl_myhostname);
         } else {
             rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
         }
