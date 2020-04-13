@@ -161,7 +161,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
     bdb_state_type *bdb_state = dbenv->bdb_env;
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     BDB_READLOCK("queuedb cron thread");
-    if (dbenv->master != gbl_mynode) {
+    if (dbenv->master != gbl_myhostname) {
         BDB_RELLOCK();
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
         return NULL; 
