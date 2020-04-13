@@ -85,7 +85,7 @@ extern int gbl_fullrecovery;
 extern int gbl_netbufsz;
 extern int gbl_pmux_route_enabled;
 
-static double resume_lvl = 0.33;
+static double resume_lvl = 0.9;
 static struct timeval one_sec = {1, 0};
 static struct timeval connect_timeout = {1, 0};
 
@@ -532,7 +532,7 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     n->instance = strdup(netinfo_ptr->instance);
     n->app = strdup(netinfo_ptr->app);
     n->port = netinfo_ptr->myport;
-    n->rd_max = MB(128);
+    n->rd_max = MB(512);
     if (akq_policy == POLICY_PER_NET) {
         n->per_net.akq = setup_akq();
     }
