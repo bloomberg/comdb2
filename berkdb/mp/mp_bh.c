@@ -747,7 +747,7 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 	BH **bhps;
 	int numpages, wrrec;
 {
-	DB_LSN tmplsn, maxlsn;
+	DB_LSN maxlsn;
 	MPOOLFILE *mfp;
 	DB_MPOOL_HASH *hp;
 	BH *bhp = NULL;
@@ -845,10 +845,8 @@ __memp_pgwrite_multi(dbenv, dbmfp, hps, bhps, numpages, wrrec)
 			if (F_ISSET(bhp, BH_CALLPGIN))
 				continue;
 
-			memcpy(&tmplsn,
-			    bhp->buf + mfp->lsn_off, sizeof(DB_LSN));
-			if (log_compare(&tmplsn, &maxlsn) > 0)
-				memcpy(&maxlsn, &tmplsn, sizeof(DB_LSN));
+			if (log_compare(&LSN(bhp->buf), &maxlsn) > 0)
+				memcpy(&maxlsn, &LSN(bhp->buf), sizeof(DB_LSN));
 		}
 
 		if ((ret = __log_flush(dbenv, &maxlsn)) != 0)

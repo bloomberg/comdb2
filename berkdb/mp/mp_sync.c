@@ -40,6 +40,7 @@ typedef struct {
 	db_pgno_t track_pgno;		/* Page number. */
 	u_int32_t track_prio;		/* Priority. */
 	DB_LSN    track_tx_begin_lsn;	/* first dirty txn begin LSN. */
+	DB_LSN    lsn; /* Page LSN. */
 } BH_TRACK;
 
 static int __bhcmp __P((const void *, const void *));
@@ -1133,6 +1134,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	DB_LSN oldest_first_dirty_tx_begin_lsn;
 	int accum_sync, accum_skip;
 	BH_TRACK swap;
+	DB_LSN *log_flush_lsn;
 
 	/*
 	 *  Perfect checkpoints: If the first dirty LSN is to the right
@@ -1285,6 +1287,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				bharray[ar_cnt].track_mfp = bhp->mpf;
 				bharray[ar_cnt].track_prio = bhp->priority;
 				bharray[ar_cnt].track_tx_begin_lsn = bhp->first_dirty_tx_begin_lsn;
+				bharray[ar_cnt].lsn = LSN(bhp->buf);
 				ar_cnt++;
 
 				/*
@@ -1372,6 +1375,11 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	if (op == DB_SYNC_LRU)
 		qsort(bharray, ar_cnt, sizeof(BH_TRACK), __bhcmp);
 
+	log_flush_lsn = &bharray[0].lsn;
+	for (i = 1; i != ar_cnt; ++i)
+		if (log_compare(&bharray[i].lsn, log_flush_lsn) > 0)
+			log_flush_lsn = &bharray[i].lsn;
+
 	/*
 	 * Flush the log.  We have to ensure the log records reflecting the
 	 * changes on the database pages we're writing have already made it
@@ -1380,7 +1388,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	 * flushed the log), but in general this will at least avoid any I/O
 	 * on the log's part.
 	 */
-	if (LOGGING_ON(dbenv) && (ret = __log_flush(dbenv, NULL)) != 0)
+	if (LOGGING_ON(dbenv) && (ret = __log_flush(dbenv, log_flush_lsn)) != 0)
 		 goto err;
 
 
