@@ -563,25 +563,6 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
         goto done;
     }
 
-    rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver, DB_FIRST);
-
-    if (rc) {
-        if (rc == DB_LOCK_DEADLOCK) {
-            *bdberr = BDBERR_DEADLOCK;
-            rc = -1;
-            goto done;
-        } else if (rc == DB_NOTFOUND) {
-            /* EOF */
-            rc = 0;
-            goto done;
-        } else {
-            logmsg(LOGMSG_ERROR, "%s first berk rc %d\n", __func__, rc);
-            *bdberr = BDBERR_MISC;
-            assert(rc != 0);
-            goto done;
-        }
-    }
-
     DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
     if (db2 != NULL) {
         rc = db2->cursor(db2, NULL, &dbcp2, 0);
@@ -592,6 +573,30 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
         }
     } else {
         dbcp2 = dbcp1; /* no second file, use same cursor */
+    }
+
+    rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver, DB_FIRST);
+
+    if (rc) {
+        if (rc == DB_LOCK_DEADLOCK) {
+            *bdberr = BDBERR_DEADLOCK;
+            rc = -1;
+            goto done;
+        } else if (rc == DB_NOTFOUND) {
+            if (dbcp2 && (dbcp2 != dbcp1)) {
+                rc = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver,
+                                     DB_FIRST);
+            } else {
+                /* EOF */
+                rc = 0;
+                goto done;
+            }
+        } else {
+            logmsg(LOGMSG_ERROR, "%s first berk rc %d\n", __func__, rc);
+            *bdberr = BDBERR_MISC;
+            assert(rc != 0);
+            goto done;
+        }
     }
 
     p_buf = dbt_data.data;
@@ -609,9 +614,14 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
             rc = -1;
             goto done;
         } else if (rc == DB_NOTFOUND) {
-            /* EOF */
-            rc = 0;
-            goto done;
+            if (dbcp2 && (dbcp2 != dbcp1)) {
+                rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver,
+                                     DB_LAST);
+            } else {
+                /* EOF */
+                rc = 0;
+                goto done;
+            }
         } else {
             logmsg(LOGMSG_ERROR, "%s last berk rc %d\n", __func__, rc);
             *bdberr = BDBERR_MISC;
