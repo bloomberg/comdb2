@@ -195,7 +195,6 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                            "%s: failed to start schema change to delete "
                            "old file for queuedb '%s'\n",
                            __func__, sc->tablename);
-                    free_schema_change_type(sc);
                 }
             } else {
                 logmsg(LOGMSG_DEBUG,
@@ -227,7 +226,6 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                        "%s: failed to start schema change to add "
                        "new file for queuedb '%s'\n",
                            __func__, sc->tablename);
-                free_schema_change_type(sc);
             }
         } else {
             logmsg(LOGMSG_DEBUG,
