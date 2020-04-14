@@ -26,7 +26,7 @@ static const char revid[] = "$Id: fop_rec.c,v 1.27 2003/10/07 20:23:28 ubell Exp
 #include "dbinc/txn.h"
 
 extern int __ufid_rename(DB_ENV *, const char *oldname, const char *newname,
-		u_int8_t *inufid);
+		u_int8_t *inufid, int closeuser);
 
 /*
  * __fop_create_recover --
@@ -53,6 +53,11 @@ __fop_create_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__fop_create_print);
 	REC_NOOP_INTRO(__fop_create_read);
 
+#if defined (UFID_HASH_DEBUG)
+    int undo = DB_UNDO(op), redo = DB_REDO(op);
+	logmsg(LOGMSG_USER, "%s lsnp [%d][%d] op %d redo=%d undo=%d %s\n", __func__,
+			lsnp->file, lsnp->offset, op, redo, undo, (char *)argp->name.data);
+#endif
 	if ((ret = __db_appname(dbenv, (APPNAME)argp->appname,
 	    (const char *)argp->name.data, 0, NULL, &real_name)) != 0)
 		goto out;
@@ -224,12 +229,13 @@ __fop_rename_recover(dbenv, dbtp, lsnp, op, info)
 	if (DB_UNDO(op)) {
 		(void)__memp_nameop(dbenv, fileid,
 			(const char *)argp->oldname.data, real_new, real_old);
-		__ufid_rename(dbenv, real_new, real_old, argp->fileid.data);
+		__ufid_rename(dbenv, real_new, real_old, argp->fileid.data,
+                (op == DB_TXN_ABORT));
 	}
 	if (DB_REDO(op)) {
 		(void)__memp_nameop(dbenv, fileid,
 			(const char *)argp->newname.data, real_old, real_new);
-		__ufid_rename(dbenv, real_old, real_new, argp->fileid.data);
+		__ufid_rename(dbenv, real_old, real_new, argp->fileid.data, 0);
 	}
 
 done:	*lsnp = argp->prev_lsn;

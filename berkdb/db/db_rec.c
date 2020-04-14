@@ -751,8 +751,15 @@ __db_pg_alloc_recover(dbenv, dbtp, lsnp, op, info)
 
 	meta = NULL;
 	pagep = NULL;
+
+
 	REC_PRINT(__db_pg_alloc_print);
 	REC_INTRO(__db_pg_alloc_read, 0);
+
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s processing [%d][%d] dbp=%p mfp=%p\n", __func__,
+			lsnp->file, lsnp->offset, file_dbp, file_dbp->mpf->mfp);
+#endif
 
 	/*
 	 * Fix up the allocated page.  If we're redoing the operation, we have

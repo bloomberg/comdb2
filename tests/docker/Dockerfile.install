@@ -34,6 +34,7 @@ RUN apt-get update && \
     psmisc \
     socat \
     strace \
+    vim \
     tcl \
     tcl-dev \
     time \
@@ -48,7 +49,7 @@ RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake -DWITH_TCL=1 .. && \
+    cmake -DWITH_TCL=1 -DUFID_HASH_DEBUG=1 -DCMAKE_BUILD_TYPE="Debug" -DDEBUG_ABORT_ON_RECOVERY_FAILURE=1 .. && \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \

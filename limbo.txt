@@ -76,6 +76,10 @@ because the memp_fget code doesn't falloc in response to a DB_MPOOL_CREATE (we
 just do a pagewrite, and accept the fact that we can have "holes").  We already
 have the lsnerr_logflush berkley attribute.  I've added another which syncs
 the bufferpool, lsnerr_mempsync.
+
+Aside aside .. this was a disaster because addrem maintains a reference to the
+bufferpool while it does this .. so 'sync' (which waits for all outstanding 
+references to drop to 0) can never finish .. ha ha ha ..
 )
 
 

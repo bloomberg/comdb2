@@ -1363,7 +1363,12 @@ __memp_fclose(dbmfp, flags)
 	 */
 	deleted = 0;
 	MUTEX_LOCK(dbenv, &mfp->mutex);
-	if (--mfp->mpf_cnt == 0 || LF_ISSET(DB_MPOOL_DISCARD)) {
+    --mfp->mpf_cnt;
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s refs for mpool %p is %d\n", __func__, mfp,
+			mfp->mpf_cnt);
+#endif
+	if (mfp->mpf_cnt == 0 || LF_ISSET(DB_MPOOL_DISCARD)) {
 		if (LF_ISSET(DB_MPOOL_DISCARD) ||
 		    F_ISSET(mfp, MP_TEMP) || mfp->unlink_on_close) {
 #if defined (UFID_HASH_DEBUG)
@@ -1373,6 +1378,14 @@ __memp_fclose(dbmfp, flags)
 #endif
 			mfp->deadfile = 1;
 		}
+#if defined (UFID_HASH_DEBUG)
+		else {
+			logmsg(LOGMSG_USER, "%s did not set deadfile mpool %p file %s\n",
+					__func__, mfp, mfp && mfp->path_off ?
+					(char *)R_ADDR(dbmp->reginfo, mfp->path_off) : "(none)");
+		}
+#endif
+
 		if (mfp->unlink_on_close) {
 			if ((t_ret = __db_appname(dbmp->dbenv,
 				DB_APP_DATA, R_ADDR(dbmp->reginfo,
@@ -1391,13 +1404,24 @@ __memp_fclose(dbmfp, flags)
 				__os_free(dbenv, rpath);
 			}
 		}
-		if (mfp->block_cnt == 0) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s %p block_cnt is %d\n", __func__, mfp,
+				mfp->block_cnt);
+#endif
+	if (mfp->block_cnt == 0) {
 			if ((t_ret =
 				__memp_mf_discard(dbmp, mfp)) != 0 && ret == 0)
 				ret = t_ret;
 			deleted = 1;
 		}
 	}
+#if defined (UFID_HASH_DEBUG)
+	else {
+	logmsg(LOGMSG_USER, "%s refs for mpool %p is %d so didn't flush\n", __func__,
+			mfp, mfp->mpf_cnt);
+	}
+#endif
+
 	if (deleted == 0) {
 #if defined (UFID_HASH_DEBUG)
 		logmsg(LOGMSG_USER, "%s not discarding mpool %p file %s\n",

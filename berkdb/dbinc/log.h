@@ -292,8 +292,6 @@ struct __db_commit {
         void abort(void);                                                         \
         if (dbenv->attr.lsnerr_logflush)                                          \
             __log_flush(dbenv, NULL);                                             \
-        if (dbenv->attr.lsnerr_mempsync)                                          \
-            __memp_sync(dbenv, NULL);                                             \
         if (dbenv->attr.lsnerr_pgdump)                                            \
              __pgdump(dbenv, fileid, pgno);                                       \
         if (dbenv->attr.lsnerr_pgdump_all) {                                      \

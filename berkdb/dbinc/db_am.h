@@ -56,6 +56,8 @@
 		if ((ret = __ufid_to_db(dbenv, argp->txnid, &file_dbp, \
 						argp->ufid_fileid, lsnp)) != 0) { \
 			if (ret	== DB_DELETED) { \
+	            logmsg(LOGMSG_USER, "%s deleted ufid_to_db [%d][%d] dbp=%p\n", \
+                        __func__, lsnp->file, lsnp->offset, file_dbp); \
 				ret = 0; \
 				goto done; \
 			} \

@@ -269,7 +269,7 @@ __fop_rename(dbenv, txn, oldname, newname, fid, appname, flags)
 			goto err;
 	}
    	ret = __memp_nameop(dbenv, fid, newname, o, n);
-	__ufid_rename(dbenv, oldname, newname, fid);
+	__ufid_rename(dbenv, o, n, fid, 0);
 
 err:	if (o != oldname)
 		__os_free(dbenv, o);

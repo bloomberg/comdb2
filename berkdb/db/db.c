@@ -761,8 +761,7 @@ __db_close(dbp, txn, flags)
 
 	dbpflags = dbp->flags;
 
-	if (dbp->added_to_ufid)
-		__ufid_close(dbenv, txn, dbp->fileid);
+	__ufid_close(dbenv, dbp, txn, 0);
 
 	/* Refresh the structure and close any underlying resources. */
 	ret = __db_refresh(dbp, txn, flags, &deferred_close);
