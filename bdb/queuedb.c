@@ -94,22 +94,15 @@ static uint8_t *queuedb_key_put(struct queuedb_key *p_queuedb_key,
 static int bdb_queuedb_is_db_empty(DB *db, tran_type *tran)
 {
     int rc;
-    uint8_t key[QUEUEDB_KEY_LEN];
-    uint8_t val[QUEUEDB_KEY_LEN];
     DBC *dbcp = NULL;
-    DBT dbt_key = {0}, dbt_data = {0};
 
     rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
     if (rc != 0) {
         rc = 0; /* TODO: Safe failure choice here is non-empty? */
         goto done;
     }
-    dbt_key.flags = DB_DBT_USERMEM;
-    dbt_key.data = key;
-    dbt_key.size = sizeof(key);
-    dbt_data.flags = DB_DBT_USERMEM | DB_DBT_PARTIAL;
-    dbt_data.data = val;
-    dbt_data.size = sizeof(val);
+    DBT dbt_key = {0}, dbt_data = {0};
+    dbt_key.flags = dbt_data.flags = DB_DBT_PARTIAL;
     rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_FIRST);
     if (rc == DB_NOTFOUND) {
         rc = 1; /* NOTE: Confirmed empty. */
