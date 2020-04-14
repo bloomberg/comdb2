@@ -27,6 +27,6 @@ void akq_enqueue_work(struct akq *, void *); /* akq_work_new + akq_enqueue */
 void akq_truncate(struct akq *, akq_callback);
 void akq_truncate_if(struct akq *, akq_truncate_callback, void *);
 void akq_stop(struct akq *);
-struct akq *akq_new(size_t, akq_callback, akq_callback, akq_callback);
+struct akq *akq_new(char *, size_t, akq_callback, akq_callback, akq_callback);
 
 #endif /* AKQ_H */

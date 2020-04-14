@@ -24,7 +24,6 @@
 #include <locks_wrap.h>
 
 #define CHUNK_CAPACITY 10000
-#define CHUNK_MAX 1000
 
 struct akq_work {
     TAILQ_ENTRY(akq_work) entry;
@@ -37,8 +36,8 @@ struct akq_chunk {
 TAILQ_HEAD(akq_chunk_list, akq_chunk);
 
 struct akq {
+    char *name;
     int chunks;
-    int waiting;
     int stop_work;
     size_t work_size;
     size_t work_offset;
@@ -68,6 +67,7 @@ static void akq_new_chunk(struct akq *q)
         buf += q->work_size;
     }
     ++q->chunks;
+    logmsg(LOGMSG_USER, "[%-19s%19s] total chunks:%d\n", q->name, __func__, q->chunks);
 }
 
 static void akq_worker_int(struct akq *q)
@@ -77,10 +77,6 @@ static void akq_worker_int(struct akq *q)
     while (1) {
         Pthread_mutex_lock(&q->lock);
         TAILQ_CONCAT(&q->free_list, &work_list, entry);
-        if (q->waiting) {
-            q->waiting = 0;
-            Pthread_cond_signal(&q->cond);
-        }
         if (TAILQ_EMPTY(&q->work_list)) {
             Pthread_cond_wait(&q->cond, &q->lock);
         }
@@ -96,16 +92,6 @@ static void akq_worker_int(struct akq *q)
             ++i;
             void *work = WORK_PTR(q, w);
             q->func(work);
-            if (i >= CHUNK_CAPACITY &&
-                q->waiting &&
-                TAILQ_LAST(&work_list, akq_work_list) != w
-            ){
-                Pthread_mutex_lock(&q->lock);
-                TAILQ_CUT(&q->free_list, &work_list, w, entry);
-                q->waiting = 0;
-                Pthread_cond_signal(&q->cond);
-                Pthread_mutex_unlock(&q->lock);
-            }
         }
     }
 }
@@ -121,13 +107,8 @@ static void *akq_worker(void *arg)
 
 static struct akq_work *akq_work_new_int(struct akq *q)
 {
-    while (TAILQ_EMPTY(&q->free_list)) {
-        if (q->chunks == CHUNK_MAX) {
-            q->waiting = 1;
-            Pthread_cond_wait(&q->cond, &q->lock);
-        } else {
-            akq_new_chunk(q);
-        }
+    if (TAILQ_EMPTY(&q->free_list)) {
+        akq_new_chunk(q);
     }
     struct akq_work *w = TAILQ_FIRST(&q->free_list);
     TAILQ_REMOVE(&q->free_list, w, entry);
@@ -182,12 +163,15 @@ void akq_stop(struct akq *q)
     TAILQ_FOREACH_SAFE(c, &q->chunk_list, chunk_entry, tmp) {
         free(c);
     }
+    free(q->name);
     free(q);
 }
 
-struct akq *akq_new(size_t s, akq_callback func, akq_callback start, akq_callback stop)
+struct akq *akq_new(char *name, size_t s, akq_callback func, akq_callback start,
+                    akq_callback stop)
 {
     struct akq *q = (struct akq *)calloc(1, sizeof(struct akq));
+    q->name = strdup(name);
     q->work_size = s + sizeof(struct akq_work);
     q->work_offset = s;
     q->start = start;
