@@ -189,8 +189,8 @@ function kill_restart_node
     if [ -n "$CLUSTER" ] ; then
         kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
         mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
-        ssh -o StrictHostKeyChecking=no -tt $node "ls -lt $DBDIR/" > $TESTDIR/logs/${DBNAME}.${node}.$(date +%Y%m%d%H%M%S).db </dev/null
-        ssh -o StrictHostKeyChecking=no -tt $node "ls -lt $DBDIR/logs" >> $TESTDIR/logs/${DBNAME}.${node}.$(date +%Y%m%d%H%M%S).db </dev/null
+        ssh -o StrictHostKeyChecking=no -tt $node "ls -lt $DBDIR/" > $TESTDIR/logs/${DBNAME}.${node}.$(date +%Y%m%d%H%M%S).ls </dev/null
+        ssh -o StrictHostKeyChecking=no -tt $node "ls -lt $DBDIR/logs" >> $TESTDIR/logs/${DBNAME}.${node}.$(date +%Y%m%d%H%M%S).ls </dev/null
         sleep 1
         if [ $node != `hostname` ] ; then
             ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &

@@ -268,8 +268,8 @@ __fop_rename(dbenv, txn, oldname, newname, fid, appname, flags)
 			&old, &new, &fiddbt, (u_int32_t)appname)) != 0)
 			goto err;
 	}
-   	ret = __memp_nameop(dbenv, fid, newname, o, n);
 	__ufid_rename(dbenv, o, n, fid, 0);
+   	ret = __memp_nameop(dbenv, fid, newname, o, n);
 
 err:	if (o != oldname)
 		__os_free(dbenv, o);

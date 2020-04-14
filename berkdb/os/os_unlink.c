@@ -90,6 +90,11 @@ retry:	ret = DB_GLOBAL(j_unlink) != NULL ? DB_GLOBAL(j_unlink) (path) :
 #else
 	 unlink(path);
 #endif
+#if defined (UFID_HASH_DEBUG)
+	void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+	comdb2_cheapstack_sym(stderr, "%s unlinked %s\n", __func__, path);
+#endif
+
 	if (ret == -1) {
 		if (((ret = __os_get_errno()) == EINTR || ret == EBUSY) &&
 		    ++retries < DB_RETRY)

@@ -30,6 +30,7 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "comdb2_atomic.h"
 #include "locks_wrap.h"
 #include <fsnapf.h>
+#include <assert.h>
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -557,12 +558,12 @@ __ufid_open(dbenv, fname)
 	return 0;
 }
 
-// PUBLIC: int __ufid_close __P(( DB_ENV *, DB *, DB_TXN * , int));
+// PUBLIC: int __ufid_close __P(( DB_ENV *, DB *, u_int8_t * , int));
 int
-__ufid_close(dbenv, dbp, txn, closeuser)
+__ufid_close(dbenv, dbp, inufid, closeuser)
 	DB_ENV *dbenv;
 	DB *dbp;
-	DB_TXN *txn;
+	u_int8_t *inufid;
 	int closeuser;
 {
 	struct __ufid_to_db_t *ufid;
@@ -571,7 +572,10 @@ __ufid_close(dbenv, dbp, txn, closeuser)
 #if defined (UFID_HASH_DEBUG)
 	char fname[PATH_MAX] = {0};
 #endif
-	u_int8_t *inufid = dbp->fileid;
+	if (dbp)
+		inufid = dbp->fileid;
+	else 
+		assert(inufid != NULL);
 	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
 	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
 		ret = 0;

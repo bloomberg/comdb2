@@ -761,7 +761,7 @@ __db_close(dbp, txn, flags)
 
 	dbpflags = dbp->flags;
 
-	__ufid_close(dbenv, dbp, txn, 0);
+	__ufid_close(dbenv, dbp, NULL, 0);
 
 	/* Refresh the structure and close any underlying resources. */
 	ret = __db_refresh(dbp, txn, flags, &deferred_close);

@@ -66,6 +66,9 @@ oflags(int flags, char *o_flags)
 	return o_flags;
 }
 
+#if defined (UFID_HASH_DEBUG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 /*
  * __os_openhandle --
  *	Open a file, using POSIX 1003.1 open flags.
@@ -189,7 +192,10 @@ ___os_openhandle(dbenv, name, flags, mode, fhpp)
 #endif
 
 		if (fhp->fd != -1) {
-
+#if defined (UFID_HASH_DEBUG)
+			comdb2_cheapstack_sym(stderr, "%s opened %s fd %d\n", __func__,
+				name, fhp->fd);
+#endif
 			F_SET(fhp, DB_FH_OPENED);
 
 #if defined(HAVE_FCNTL_F_SETFD)
@@ -267,8 +273,17 @@ __os_closehandle(dbenv, fhp)
 		if (ret != 0)
 			__db_err(dbenv, "close: %s", strerror(ret));
 
+#if defined (UFID_HASH_DEBUG)
+		comdb2_cheapstack_sym(stderr, "%s closed %s fd %d\n", __func__,
+				fhp->name, fhp->fd);
+#endif
+
 		/* Unlink the file if we haven't already done so. */
 		if (F_ISSET(fhp, DB_FH_UNLINK)) {
+#if defined (UFID_HASH_DEBUG)
+			comdb2_cheapstack_sym(stderr, "%s unlinking %s fd %d\n", __func__,
+					fhp->name, fhp->fd);
+#endif
 			(void)__os_unlink(dbenv, fhp->name);
 			(void)__os_free(dbenv, fhp->name);
 		}
