@@ -128,6 +128,7 @@ static int bdb_queuedb_is_db_full(DB *db)
     char new[PATH_MAX];
     struct stat sb;
     if (stat(bdb_trans(db->fname, new), &sb) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: stat rc %d\n", __func__, errno);
         return 0; /* cannot detect, assume no? */
     }
     return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
