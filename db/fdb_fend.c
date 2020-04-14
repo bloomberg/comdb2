@@ -1207,6 +1207,14 @@ static int __check_sqlite_stat(sqlite3 *db, fdb_tbl_ent_t *ent, Table *tab)
 
 static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (gbl_old_column_names && thd && thd->clnt && thd->clnt->thd &&
+        thd->clnt->thd->query_preparer_running) {
+        /* We're preparing query in sqlitex; let's pretend that
+         * everything is fine */
+        return SQLITE_OK;
+    }
+
     fdb_tbl_ent_t *stat_ent;
     Table *stat_tab;
 
@@ -1225,7 +1233,7 @@ static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
     return SQLITE_OK;
 }
 
-static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
+static int _failed_AddAndLockTable(const char *dbname, int errcode,
                                    const char *prefix)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1271,15 +1279,16 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     lvl = get_fdb_class(&dbname, &local);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
         return _failed_AddAndLockTable(
-            db, dbname, (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN
-                                               : FDB_ERR_CLASS_DENIED,
+            dbname,
+            (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN
+                                   : FDB_ERR_CLASS_DENIED,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 retry_fdb_creation:
     fdb = new_fdb(dbname, &created, lvl, local);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
-        return _failed_AddAndLockTable(db, dbname, FDB_ERR_MALLOC,
+        return _failed_AddAndLockTable(dbname, FDB_ERR_MALLOC,
                                        "OOM allocating fdb object");
     }
     if (!created) {
@@ -1287,7 +1296,7 @@ retry_fdb_creation:
         rc = _validate_existing_table(fdb, lvl, local);
         if (rc != FDB_NOERR) {
             __fdb_rem_user(fdb, 1);
-            return _failed_AddAndLockTable(db, dbname, rc, "mismatching class");
+            return _failed_AddAndLockTable(dbname, rc, "mismatching class");
         }
     }
 
@@ -1386,7 +1395,7 @@ retry_fdb_creation:
             fdb = NULL;
         }
 
-        return _failed_AddAndLockTable(db, dbname, rc, perrstr);
+        return _failed_AddAndLockTable(dbname, rc, perrstr);
     }
 
     /* We have successfully created a shared fdb table on behalf of an sqlite3
@@ -4585,6 +4594,13 @@ void fdb_clear_sqlclntstate(struct sqlclntstate *clnt)
 void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
                             const char *tblname)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (gbl_old_column_names && thd && thd->clnt && thd->clnt->thd &&
+        thd->clnt->thd->query_preparer_running) {
+        /* No need to reset sqlitex stat tables */
+        return;
+    }
+
     /* clear the sqlite stored schemas */
     if (tblname)
         sqlite3ResetOneSchemaByName(sqldb, tblname, dbname);
