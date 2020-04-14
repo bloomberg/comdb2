@@ -1838,40 +1838,44 @@ clipper_usage:
         } else if (tokcmp(tok, ltok, "iopool") == 0) {
             berkdb_iopool_process_message("stat", 4, 0);
         } else if (tokcmp(tok, ltok, "reqrates") == 0) {
-            logmsg(LOGMSG_ERROR, "Service time rates:\n");
-            logmsg(LOGMSG_ERROR, "Non-sql requests this minute:\n");
+            logmsg(LOGMSG_USER, "Service time rates:\n");
+            logmsg(LOGMSG_USER, "Non-sql requests this minute:\n");
             quantize_dump(q_min, stdout);
-            logmsg(LOGMSG_ERROR, "Non-sql requests this hour:\n");
+            logmsg(LOGMSG_USER, "Non-sql requests this hour:\n");
             quantize_dump(q_hour, stdout);
-            logmsg(LOGMSG_ERROR, "Non-sql requests since startup:\n");
+            logmsg(LOGMSG_USER, "Non-sql requests since startup:\n");
             quantize_dump(q_all, stdout);
-            logmsg(LOGMSG_ERROR, "SQL requests this minute:\n");
+            logmsg(LOGMSG_USER, "SQL requests this minute:\n");
             quantize_dump(q_sql_min, stdout);
-            logmsg(LOGMSG_ERROR, "SQL requests this hour:\n");
+            logmsg(LOGMSG_USER, "SQL requests this hour:\n");
             quantize_dump(q_sql_hour, stdout);
-            logmsg(LOGMSG_ERROR, "SQL requests since startup:\n");
+            logmsg(LOGMSG_USER, "SQL requests since startup:\n");
             quantize_dump(q_sql_all, stdout);
-            logmsg(LOGMSG_ERROR, "SQL costs\n");
-            logmsg(LOGMSG_ERROR, "SQL steps/query this minute:\n");
+            logmsg(LOGMSG_USER, "SQL costs\n");
+            logmsg(LOGMSG_USER, "SQL steps/query this minute:\n");
             quantize_dump(q_sql_steps_min, stdout);
-            logmsg(LOGMSG_ERROR, "SQL steps/query this hour:\n");
+            logmsg(LOGMSG_USER, "SQL steps/query this hour:\n");
             quantize_dump(q_sql_steps_hour, stdout);
-            logmsg(LOGMSG_ERROR, "SQL steps/query since startup:\n");
+            logmsg(LOGMSG_USER, "SQL steps/query since startup:\n");
             quantize_dump(q_sql_steps_all, stdout);
         } else if (tokcmp(tok, ltok, "trigger") == 0) {
             trigger_stat();
         } else if (tokcmp(tok, ltok, "keycompr") == 0) {
             extern uint64_t num_compressed;
-            logmsg(LOGMSG_ERROR, "number of pages compressed: %" PRIu64 "\n", num_compressed);
+            logmsg(LOGMSG_USER, "number of pages compressed: %" PRIu64 "\n",
+                   num_compressed);
 
             extern uint64_t total_pgsz;
-            logmsg(LOGMSG_ERROR, "total page size processed: %" PRIu64 "\n", total_pgsz);
+            logmsg(LOGMSG_USER, "total page size processed: %" PRIu64 "\n",
+                   total_pgsz);
 
             extern uint64_t free_before_size;
-            logmsg(LOGMSG_ERROR, "total before free size: %" PRIu64 "\n", free_before_size);
+            logmsg(LOGMSG_USER, "total before free size: %" PRIu64 "\n",
+                   free_before_size);
 
             extern uint64_t free_after_size;
-            logmsg(LOGMSG_ERROR, "total after free size: %" PRIu64 "\n", free_after_size);
+            logmsg(LOGMSG_USER, "total after free size: %" PRIu64 "\n",
+                   free_after_size);
 
             int i;
             for (i = 0; i < thedb->num_dbs; ++i) {
@@ -1882,12 +1886,12 @@ clipper_usage:
         else if (tokcmp(tok, ltok, "rcache") == 0) {
             extern uint32_t rcache_hits, rcache_miss, rcache_savd,
                 rcache_invalid, rcache_collide;
-            logmsg(LOGMSG_ERROR, "rcache enabled:%s\n", YESNO(gbl_rcache));
-            logmsg(LOGMSG_ERROR, "cache hits: %u\n", rcache_hits);
-            logmsg(LOGMSG_ERROR, "cache miss: %u\n", rcache_miss);
-            logmsg(LOGMSG_ERROR, "cache save: %u\n", rcache_savd);
-            logmsg(LOGMSG_ERROR, "cache invd: %u\n", rcache_invalid);
-            logmsg(LOGMSG_ERROR, "cache coll: %u\n", rcache_collide);
+            logmsg(LOGMSG_USER, "rcache enabled:%s\n", YESNO(gbl_rcache));
+            logmsg(LOGMSG_USER, "cache hits: %u\n", rcache_hits);
+            logmsg(LOGMSG_USER, "cache miss: %u\n", rcache_miss);
+            logmsg(LOGMSG_USER, "cache save: %u\n", rcache_savd);
+            logmsg(LOGMSG_USER, "cache invd: %u\n", rcache_invalid);
+            logmsg(LOGMSG_USER, "cache coll: %u\n", rcache_collide);
         }
 #endif
         else if (tokcmp(tok, ltok, "autoanalyze") == 0) {

@@ -8294,13 +8294,14 @@ void bdb_print_compression_flags(bdb_state_type *bdb_state)
            YESNO(flags & DB_PFX_COMP), YESNO(flags & DB_SFX_COMP),
            YESNO(flags & DB_RLE_COMP));
     if (bdb_state->numix <= 0) {
-        logmsg(LOGMSG_ERROR, "\n");
+        logmsg(LOGMSG_USER, "\n");
         return;
     }
     db = bdb_state->dbp_ix[0];
     flags = db->get_compression_flags(db);
-    logmsg(LOGMSG_ERROR, "   keys-> pfx:%s sfx:%s rle:%s\n", YESNO(flags & DB_PFX_COMP),
-           YESNO(flags & DB_SFX_COMP), YESNO(flags & DB_RLE_COMP));
+    logmsg(LOGMSG_USER, "   keys-> pfx:%s sfx:%s rle:%s\n",
+           YESNO(flags & DB_PFX_COMP), YESNO(flags & DB_SFX_COMP),
+           YESNO(flags & DB_RLE_COMP));
 }
 
 int bdb_enable_page_scan_for_table(bdb_state_type *bdb_state)
