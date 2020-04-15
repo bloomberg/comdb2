@@ -430,6 +430,9 @@ int handle_ireq(struct ireq *iq)
         }
     }
 
+    /* Close deferred-queue temptable */
+    dbq_deferred_close(iq);
+
     /* Finish off logging. */
     if (iq->sorese) {
         osql_sess_reqlogquery(iq->sorese, iq->reqlogger);

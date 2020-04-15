@@ -1,0 +1,112 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+[[ $debug == "1" ]] && set -x
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+. ${TESTSROOTDIR}/tools/hrtime.sh
+
+export iterations=1000
+export threads=8
+export current=0
+export modval=10000
+declare -A rtxnsize
+declare -A results
+
+function create_tables
+{
+    [[ "$debug" == "1" ]] && set -x
+    drop_table_if_exists
+    create_table
+}
+
+function create_noop_procedure_trigger
+{
+    [[ "$debug" == "1" ]] && set -x
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "DROP LUA TRIGGER trigger_1" >/dev/null 2>&1
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "DROP PROCEDURE trigger_1 'trigger_1'" >/dev/null 2>&1
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default - << 'EOF'
+CREATE PROCEDURE trigger_1 VERSION 'trigger_1' {
+  local function main(event)
+    return 0
+  end
+}$$
+
+CREATE LUA TRIGGER trigger_1 ON (TABLE t1 FOR INSERT AND UPDATE AND DELETE)
+EOF
+}
+
+function random_insert
+{
+    [[ "$debug" == "1" ]] && set -x
+    typeset td=$1
+    typeset txsize=$2
+    fl=./insert.$td.$RANDOM.sql
+    echo "BEGIN" > $fl
+    for ((j=0;j<$txsize;j++)); do
+        echo "INSERT INTO t1 VALUES($((RANDOM % modval)))" >> $fl
+    done
+    echo "COMMIT" >> $fl
+    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default - < $fl >/dev/null
+}
+
+function run_thread
+{
+    [[ "$debug" == "1" ]] && set -x
+    typeset td=$1
+    typeset txsize=$2
+    for ((k=0;k<$iterations;k++)); do
+        random_insert $td $txsize
+        if (( k % 100 == 0 )); then
+            write_prompt "Td $td txnsz $txsize" "completed $k insert transactions"
+        fi
+    done
+}
+
+function run {
+    [[ "$debug" == "1" ]] && set -x
+    typeset txsize=$1
+    for ((i=0;i<$threads;i++)); do
+        run_thread $i $txsize &
+    done
+    wait
+}
+
+function run_test
+{
+    typeset txnsize=$1
+    start=$(timems)
+    run $txnsize
+    stop=$(timems)
+    results[$current]=$((stop - start))
+    rtxnsize[$current]=$txnsize
+    let current=current+1
+}
+
+function report
+{
+    for ((r=0;r<$current;r++)); do
+        echo "Txnsize ${rtxnsize[$r]} Tds $threads Iterations $iterations time ${results[$r]} ms"
+    done
+}
+
+function run_tests
+{
+    run_test 1
+    run_test 50
+    run_test 100
+    run_test 150
+    run_test 200
+}
+
+function create_run_test
+{
+    [[ "$debug" == "1" ]] && set -x
+    create_tables
+    create_noop_procedure_trigger
+    run_tests
+    report
+}
+
+create_run_test

@@ -774,6 +774,7 @@ int handle_buf(struct dbenv *dbenv, uint8_t *p_buf, const uint8_t *p_buf_end,
 int handled_queue;
 
 int q_reqs_len(void) { return q_reqs.count; }
+int gbl_deferred_dbq_adds = 0;
 
 static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                             uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
@@ -803,6 +804,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->debug_now = iq->nowus = nowus;
     iq->dbenv = dbenv;
     iq->fwd_tag_rqid = rqid;
+    iq->deferred_dbq_adds = gbl_deferred_dbq_adds;
 
     iq->p_buf_orig =
         p_buf; /* need this for optimized fast fail (skip blkstate) */
