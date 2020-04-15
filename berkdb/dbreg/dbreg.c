@@ -237,6 +237,8 @@ __dbreg_new_id(dbp, txn)
 }
 
 pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
+extern int gbl_ufid_log;
+int gbl_omit_dbreg = 1;
 
 /*
  * __dbreg_get_id --
@@ -246,6 +248,11 @@ pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
  *
  * PUBLIC: int __dbreg_get_id __P((DB *, DB_TXN *, int32_t *));
  */
+
+#if defined (UFID_HASH_DEBUG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
+
 int
 __dbreg_get_id(dbp, txn, idp)
 	DB *dbp;
@@ -255,7 +262,7 @@ __dbreg_get_id(dbp, txn, idp)
 	DBT fid_dbt, r_name;
 	DB_ENV *dbenv;
 	DB_LOG *dblp;
-	DB_LSN retlsn;
+	DB_LSN lsn;
 	FNAME *fnp;
 	LOG *lp;
 	int32_t id;
@@ -302,13 +309,19 @@ __dbreg_get_id(dbp, txn, idp)
 	fid_dbt.data = dbp->fileid;
 	fid_dbt.size = DB_FILE_ID_LEN;
 
-	if ((ret = __dbreg_register_log(dbenv, txn, &retlsn,
-					F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
-                    DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
-                    fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
-        goto err;
+	if (!gbl_ufid_log || !gbl_omit_dbreg) {
+		if ((ret = __dbreg_register_log(dbenv, txn, &lsn,
+						F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
+						DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
+						fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
+			goto err;
+#if defined (UFID_HASH_DEBUG)
+		comdb2_cheapstack_sym(stderr, "DBREG_OPEN [%d:%d]:", lsn.file, lsn.offset);
+#endif
+	}
 
 #if defined (DEBUG_STACK_AT_DBREG_LOG)
+	DB_LSN retlsn;
 	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
 	comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ",
 			pthread_self(), "open", id, fid_str, retlsn.file, retlsn.offset);
@@ -503,10 +516,10 @@ __dbreg_close_id(dbp, txn)
 	DBT fid_dbt, r_name, *dbtp;
 	DB_ENV *dbenv;
 	DB_LOG *dblp;
-	DB_LSN rlsn;
+	DB_LSN lsn;
 	FNAME *fnp;
 	LOG *lp;
-	int ret;
+	int ret = 0;
 
 	dbenv = dbp->dbenv;
 	dblp = dbenv->lg_handle;
@@ -533,20 +546,26 @@ __dbreg_close_id(dbp, txn)
 	fid_dbt.size = DB_FILE_ID_LEN;
 
 	Pthread_rwlock_wrlock(&gbl_dbreg_log_lock);
-	ret = __dbreg_register_log(dbenv, txn, &rlsn,
-		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
-		DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
-		fnp->s_type, fnp->meta_pgno, TXN_INVALID);
+	if (!gbl_ufid_log || !gbl_omit_dbreg) {
+		ret = __dbreg_register_log(dbenv, txn, &lsn,
+				F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
+				DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
+				fnp->s_type, fnp->meta_pgno, TXN_INVALID);
+#if defined (UFID_HASH_DEBUG)
+		comdb2_cheapstack_sym(stderr, "DBREG_CLOSE [%d:%d]:", lsn.file, lsn.offset);
+#endif
+	}
 
 #if defined (DEBUG_STACK_AT_DBREG_LOG)
 	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	DB_LSN rlsn;
 	fileid_str(fnp->ufid, fid_str);
 	comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "close",
 			fnp->id, fid_str, rlsn.file, rlsn.offset);
 #endif
 
 	Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
-    if (ret != 0)
+	if (ret != 0)
 		goto err;
 
 	ret = __dbreg_revoke_id(dbp, 1, DB_LOGFILEID_INVALID);

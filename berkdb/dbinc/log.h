@@ -287,6 +287,9 @@ struct __db_commit {
 		ret = EINVAL;						                                      \
         extern void __pgdump(DB_ENV *dbenv, int32_t _fileid, db_pgno_t _pgno);    \
         extern void __pgdumpall(DB_ENV *dbenv, int32_t _fileid, db_pgno_t _pgno); \
+        extern int __memp_sync(DB_ENV *dbenv, DB_LSN *x);                         \
+        extern int __log_flush(DB_ENV *dbenv, const DB_LSN *x);                   \
+        void abort(void);                                                         \
         if (dbenv->attr.lsnerr_logflush)                                          \
             __log_flush(dbenv, NULL);                                             \
         if (dbenv->attr.lsnerr_pgdump)                                            \
@@ -296,9 +299,6 @@ struct __db_commit {
              extern unsigned int sleep(unsigned int);                             \
             sleep(3); /* TODO: tunable? give time for replicated pgdumpall to make it everywhere */  \
         }                                                                         \
-        extern int __log_flush(DB_ENV *dbenv, const DB_LSN *x);                       \
-        __log_flush(dbenv, NULL);                                                 \
-        void abort(void);                                                         \
         abort();                                                                  \
 		goto out;						                                          \
 	}

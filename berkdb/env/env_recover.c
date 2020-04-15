@@ -85,6 +85,7 @@ static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
 static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
+int gbl_ufid_log = 1;
 
 /* Get the recovery LSN. */
 int
@@ -929,6 +930,7 @@ void log_recovery_progress(int stage, int progress)
 }
 
 
+int gbl_disable_limbo_recover = 1;
 
 
 /*
@@ -1169,7 +1171,8 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	first_lsn = ckp_lsn;
 	have_rec = 1;
 
-	start_recovery_at_dbregs = dbenv->attr.start_recovery_at_dbregs;
+	extern int gbl_omit_dbreg;
+	start_recovery_at_dbregs = (!gbl_omit_dbreg && dbenv->attr.start_recovery_at_dbregs);
 	if (!LF_ISSET(DB_RECOVER_FATAL)) {
 		ret = 0;
 		/* if we saved a checkpoint in the checkpoint file,
@@ -1467,10 +1470,16 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * Process any pages that were on the limbo list and move them to
 	 * the free list.  Do this before checkpointing the database.
 	 */
-	if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
-			dbenv->tx_timestamp !=
-			0 ? LIMBO_TIMESTAMP : LIMBO_RECOVER)) != 0)
-		 goto err;
+	if (gbl_disable_limbo_recover) {
+		if (dbenv->tx_timestamp != 0 && (ret = __db_do_the_limbo(dbenv, NULL, NULL,
+						txninfo, LIMBO_TIMESTAMP)) != 0)
+			goto err;
+	} else {
+		if ((ret = __db_do_the_limbo(dbenv, NULL, NULL, txninfo,
+						dbenv->tx_timestamp !=
+						0 ? LIMBO_TIMESTAMP : LIMBO_RECOVER)) != 0)
+			goto err;
+	}
 
 	if (max_lsn == NULL)
 		region->last_txnid = ((DB_TXNHEAD *)txninfo)->maxid;

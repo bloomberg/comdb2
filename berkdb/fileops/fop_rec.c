@@ -25,6 +25,9 @@ static const char revid[] = "$Id: fop_rec.c,v 1.27 2003/10/07 20:23:28 ubell Exp
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 
+extern int __ufid_rename(DB_ENV *, const char *oldname, const char *newname,
+		u_int8_t *inufid, int closeuser);
+
 /*
  * __fop_create_recover --
  *	Recovery function for create.
@@ -50,6 +53,11 @@ __fop_create_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__fop_create_print);
 	REC_NOOP_INTRO(__fop_create_read);
 
+#if defined (UFID_HASH_DEBUG)
+    int undo = DB_UNDO(op), redo = DB_REDO(op);
+	logmsg(LOGMSG_USER, "%s lsnp [%d][%d] op %d redo=%d undo=%d %s\n", __func__,
+			lsnp->file, lsnp->offset, op, redo, undo, (char *)argp->name.data);
+#endif
 	if ((ret = __db_appname(dbenv, (APPNAME)argp->appname,
 	    (const char *)argp->name.data, 0, NULL, &real_name)) != 0)
 		goto out;
@@ -57,6 +65,10 @@ __fop_create_recover(dbenv, dbtp, lsnp, op, info)
 	if (DB_UNDO(op))
 		(void)__os_unlink(dbenv, real_name);
 	else if (DB_REDO(op)) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s opening with create-flag %s\n", __func__,
+				(char *)argp->name.data);
+#endif
 		if ((ret = __os_open(dbenv, real_name,
 		    DB_OSO_CREATE | DB_OSO_EXCL, argp->mode, &fhp)) == 0)
 			(void)__os_closehandle(dbenv, fhp);
@@ -101,9 +113,10 @@ __fop_remove_recover(dbenv, dbtp, lsnp, op, info)
 		goto out;
 
 	/* Its ok if the file is not there. */
-	if (DB_REDO(op))
+	if (DB_REDO(op)) {
 		(void)__memp_nameop(dbenv,
-		    (u_int8_t *)argp->fid.data, NULL, real_name, NULL);
+			(u_int8_t *)argp->fid.data, NULL, real_name, NULL);
+	}
 
 	*lsnp = argp->prev_lsn;
 out:	if (real_name != NULL)
@@ -213,12 +226,17 @@ __fop_rename_recover(dbenv, dbtp, lsnp, op, info)
 		fhp = NULL;
 	}
 
-	if (DB_UNDO(op))
+	if (DB_UNDO(op)) {
 		(void)__memp_nameop(dbenv, fileid,
-		    (const char *)argp->oldname.data, real_new, real_old);
-	if (DB_REDO(op))
+			(const char *)argp->oldname.data, real_new, real_old);
+		__ufid_rename(dbenv, real_new, real_old, argp->fileid.data,
+                (op == DB_TXN_ABORT));
+	}
+	if (DB_REDO(op)) {
 		(void)__memp_nameop(dbenv, fileid,
-		    (const char *)argp->newname.data, real_old, real_new);
+			(const char *)argp->newname.data, real_old, real_new);
+		__ufid_rename(dbenv, real_old, real_new, argp->fileid.data, 0);
+	}
 
 done:	*lsnp = argp->prev_lsn;
 out:	if (real_new != NULL)
@@ -329,10 +347,11 @@ __fop_file_remove_recover(dbenv, dbtp, lsnp, op, info)
 		 * On the forward pass, check if someone recreated the
 		 * file while we weren't looking.
 		 */
-		if (cstat == TXN_COMMIT)
+		if (cstat == TXN_COMMIT) {
 			(void)__memp_nameop(dbenv,
 			    is_real ? argp->real_fid.data : argp->tmp_fid.data,
 			    NULL, real_name, NULL);
+		}
 	}
 
 done:	*lsnp = argp->prev_lsn;

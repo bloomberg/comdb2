@@ -70,6 +70,10 @@ ___os_unlink(dbenv, path)
 	int ret, retries;
 	int tmp_file = 0;
 
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s unlinking %s\n", __func__, path);
+#endif
+
 	if (dbenv->db_tmp_dir && *dbenv->db_tmp_dir)
 		if (memcmp(dbenv->db_tmp_dir, path,
 			strlen(dbenv->db_tmp_dir)) == 0)
@@ -86,6 +90,10 @@ retry:	ret = DB_GLOBAL(j_unlink) != NULL ? DB_GLOBAL(j_unlink) (path) :
 #else
 	 unlink(path);
 #endif
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s unlinked %s\n", __func__, path);
+#endif
+
 	if (ret == -1) {
 		if (((ret = __os_get_errno()) == EINTR || ret == EBUSY) &&
 		    ++retries < DB_RETRY)
