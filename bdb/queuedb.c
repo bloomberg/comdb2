@@ -578,14 +578,17 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver, DB_FIRST);
 
     if (rc) {
+        int did_dbcp2_first = 0;
+chk_db_first_rc:
         if (rc == DB_LOCK_DEADLOCK) {
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
             goto done;
         } else if (rc == DB_NOTFOUND) {
-            if (dbcp2 && (dbcp2 != dbcp1)) {
+            if (!did_dbcp2_first && (dbcp2 != dbcp1)) {
                 rc = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver,
                                      DB_FIRST);
+                did_dbcp2_first = 1; goto chk_db_first_rc;
             } else {
                 /* EOF */
                 rc = 0;
@@ -609,14 +612,17 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     rc = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver, DB_LAST);
 
     if (rc) {
+        int did_dbcp2_last = 0;
+chk_db_last_rc:
         if (rc == DB_LOCK_DEADLOCK) {
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
             goto done;
         } else if (rc == DB_NOTFOUND) {
-            if (dbcp2 && (dbcp2 != dbcp1)) {
+            if (!did_dbcp2_last && (dbcp2 != dbcp1)) {
                 rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver,
                                      DB_LAST);
+                did_dbcp2_last = 1; goto chk_db_last_rc;
             } else {
                 /* EOF */
                 rc = 0;
