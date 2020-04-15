@@ -1547,6 +1547,24 @@ __db_limbo_move(dbenv, ptxn, txn, elp)
  * compensating transaction.
  */
 
+char *limbo_char(db_limbo_state l)
+{
+	switch(l) {
+		case LIMBO_NORMAL:
+			return "LIMBO_NORMAL";
+		case LIMBO_PREPARE:
+			return "LIMBO_PREPARE";
+		case LIMBO_RECOVER:
+			return "LIMBO_RECOVER";
+		case LIMBO_TIMESTAMP:
+			return "LIMBO_TIMESTAMP";
+		case LIMBO_COMPENSATE:
+			return "LIMBO_COMPENSATE";
+		default:
+			return "LIMBO_UNKNOWN";
+	}
+}
+
 #define	T_RESTORED(txn)       ((txn) != NULL && F_ISSET(txn, TXN_RESTORED))
 static int
 __db_limbo_bucket(dbenv, txn, elp, state)
@@ -1829,6 +1847,8 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 					P_INIT(pagep, dbp->pgsize, pgno,
 					    PGNO_INVALID, *lastp, 0, P_INVALID);
 					/* Make the lsn non-zero but generic. */
+					logmsg(LOGMSG_DEBUG, "Adding PAGE %u directly to freelist "
+							"for %s\n", pgno, limbo_char(state));
 					INIT_LSN(LSN(pagep));
 					*lastp = pgno;
 				}

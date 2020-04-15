@@ -1931,4 +1931,10 @@ REGISTER_TUNABLE("debug_queuedb",
                  TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("disable_limbo_recover",
+                 "Limbo recover can cause corruption: disable it.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_disable_limbo_recover,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
