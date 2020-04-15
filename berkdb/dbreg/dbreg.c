@@ -238,7 +238,7 @@ __dbreg_new_id(dbp, txn)
 
 pthread_rwlock_t gbl_dbreg_log_lock = PTHREAD_RWLOCK_INITIALIZER;
 extern int gbl_ufid_log;
-int gbl_omit_dbreg = 0;
+int gbl_omit_dbreg = 1;
 
 /*
  * __dbreg_get_id --

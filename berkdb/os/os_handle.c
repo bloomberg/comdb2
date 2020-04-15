@@ -193,8 +193,7 @@ ___os_openhandle(dbenv, name, flags, mode, fhpp)
 
 		if (fhp->fd != -1) {
 #if defined (UFID_HASH_DEBUG)
-			comdb2_cheapstack_sym(stderr, "%s opened %s fd %d\n", __func__,
-				name, fhp->fd);
+			logmsg(LOGMSG_USER, "%s opened %s fd %d\n", __func__, name, fhp->fd);
 #endif
 			F_SET(fhp, DB_FH_OPENED);
 

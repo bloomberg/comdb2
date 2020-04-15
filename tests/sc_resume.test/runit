@@ -184,7 +184,7 @@ function kill_restart_node
 {
     node=$1
     pushd $DBDIR
-    cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
+    # cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
 
     if [ -n "$CLUSTER" ] ; then
         kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
