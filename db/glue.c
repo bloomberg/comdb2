@@ -3827,10 +3827,10 @@ static int init_queue_odh_lrl(struct dbtable *d, int *compr,
     if (put_db_queue_compress(d, NULL, gbl_init_with_queue_compr) != 0)
         return -1;
     if (put_db_queue_persistent_seq(d, NULL,
-                                    gbl_init_with_queue_persistent_seq) != 0)
+                gbl_init_with_queue_persistent_seq) != 0)
         return -1;
     if (gbl_init_with_queue_persistent_seq &&
-        put_db_queue_sequence(d, NULL, 0) != 0) {
+            put_db_queue_sequence(d, NULL, 0) != 0) {
         return -1;
     }
     d->odh = gbl_init_with_queue_odh;
@@ -4017,6 +4017,15 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
              * make this a fatal error. -- Sam J */
             if (rc) {
                 logmsg(LOGMSG_ERROR, "meta database not available\n");
+            }
+        }
+
+        for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+            struct dbtable *db = dbenv->qdbs[ii];
+            rc = open_auxdbs(db, 0);
+            if (rc) {
+                logmsg(LOGMSG_DEBUG ,"qmeta db for %s not available\n",
+                    db->tablename);
             }
         }
     }
