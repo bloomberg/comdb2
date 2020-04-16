@@ -139,11 +139,13 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         newdb->handle =
             bdb_create_queue(newdb->tablename, thedb->basedir, avgitemsz,
                              pagesize, thedb->bdb_env, 0, &bdberr);
+        open_auxdbs(newdb, 1);
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle =
             bdb_open_more_queue(newdb->tablename, thedb->basedir, avgitemsz,
                                 pagesize, thedb->bdb_env, 0, NULL, &bdberr);
+        open_auxdbs(newdb, 0);
     }
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
@@ -236,6 +238,8 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             rc = -1;
             goto done;
         }
+
+        open_auxdbs(db, 0);
         thedb->qdbs =
             realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
         thedb->qdbs[thedb->num_qdbs++] = db;
@@ -534,6 +538,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
+        open_auxdbs(db, 1);
         if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
             logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
             goto done;

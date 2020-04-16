@@ -744,6 +744,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             sc_next = iq->sc->sc_next;
             if (write_scdone) {
                 int rc = 0;
+                int quiet = 0;
                 struct schema_change_type *s = iq->sc;
                 bdb_state_type *bdb_state = 0;
                 scdone_t type = invalid;
@@ -751,6 +752,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
                     /* already sent scdone in finalize_schema_change_thd */
                     type = invalid;
+                    quiet = 1;
                 } else if (s->fastinit && s->drop_table)
                     type = drop;
                 else if (s->fastinit)
@@ -771,8 +773,12 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 }
 
                 if (type == invalid || bdb_state == NULL) {
-                    logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
-                           __func__, s->tablename);
+                    if (!quiet) {
+                        logmsg(LOGMSG_ERROR,
+                               "%s: Skipping scdone for table "
+                               "%s\n",
+                               __func__, s->tablename);
+                    }
                 } else {
                     rc = bdb_llog_scdone_origname(bdb_state, type, 1,
                                                   s->tablename, &bdberr);
