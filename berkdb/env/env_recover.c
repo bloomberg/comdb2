@@ -85,7 +85,7 @@ static int __log_find_latest_checkpoint_before_lsn(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *start_lsn);
 static int __log_find_latest_checkpoint_before_lsn_try_harder(DB_ENV *dbenv,
 	DB_LOGC *logc, DB_LSN *max_lsn, DB_LSN *foundlsn);
-int gbl_ufid_log = 1;
+int gbl_ufid_log = 0;
 
 /* Get the recovery LSN. */
 int
@@ -1518,7 +1518,6 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		}
 	} else if ((ret = __txn_checkpoint(dbenv, 0, 0, DB_FORCE)) != 0)
 		goto err;
-
 
 	/* Close all the db files that are open. */
 	if ((ret = __dbreg_close_files(dbenv)) != 0)

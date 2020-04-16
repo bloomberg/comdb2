@@ -62,6 +62,11 @@ fi
 docker build -t comdb2test:$prefix -f $src/tests/docker/Dockerfile.install $src
 
 echo $cluster >common/cluster
+echo > root/.vimrc <<EOF
+nowrapscan
+hlsearch
+colorscheme elflord"
+EOF
 export CLUSTER="$cluster"
 export SKIPSSL=1
 ssh-keygen -N "" -f common/id_rsa

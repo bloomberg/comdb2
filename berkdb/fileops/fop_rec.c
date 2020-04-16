@@ -25,8 +25,8 @@ static const char revid[] = "$Id: fop_rec.c,v 1.27 2003/10/07 20:23:28 ubell Exp
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 
-extern int __ufid_rename(DB_ENV *, const char *oldname, const char *newname,
-		u_int8_t *inufid, int closeuser);
+extern int __ufid_rename(DB_ENV *, DB_TXN *txn, const char *oldname,
+		const char *newname, u_int8_t *inufid);
 
 /*
  * __fop_create_recover --
@@ -229,13 +229,12 @@ __fop_rename_recover(dbenv, dbtp, lsnp, op, info)
 	if (DB_UNDO(op)) {
 		(void)__memp_nameop(dbenv, fileid,
 			(const char *)argp->oldname.data, real_new, real_old);
-		__ufid_rename(dbenv, real_new, real_old, argp->fileid.data,
-                (op == DB_TXN_ABORT));
+		__ufid_rename(dbenv, NULL, real_new, real_old, argp->fileid.data);
 	}
 	if (DB_REDO(op)) {
 		(void)__memp_nameop(dbenv, fileid,
 			(const char *)argp->newname.data, real_old, real_new);
-		__ufid_rename(dbenv, real_old, real_new, argp->fileid.data, 0);
+		__ufid_rename(dbenv, NULL, real_old, real_new, argp->fileid.data);
 	}
 
 done:	*lsnp = argp->prev_lsn;

@@ -305,9 +305,12 @@ __dbreg_close_files(dbenv)
 	if (!LOGGING_ON(dbenv))
 		return (0);
 
-	__ufid_close_files(dbenv);
 	dblp = dbenv->lg_handle;
 	ret = 0;
+
+	if ((ret = __ufid_close_files(dbenv)) != 0)
+		abort();
+
 	MUTEX_THREAD_LOCK(dbenv, dblp->mutexp);
 	for (i = 0; i < dblp->dbentry_cnt; i++) {
 		/*
@@ -406,26 +409,29 @@ __ufid_close_files(dbenv)
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 	for (n = l.head; n; n = nxt){
 		nxt = n->next;
-		if (F_ISSET(n->dbp, DB_AM_RECOVER) &&
-				(ret = __db_close(n->dbp, NULL, 0)) != 0) {
-			abort();
-		}
+		if (F_ISSET(n->dbp, DB_AM_RECOVER)) {
+			ret = __db_close(n->dbp, NULL, 0);
+		} 
+//        else {
+//			ret = __db_refresh(n->dbp, NULL, 0, NULL);
+//		}
+		assert(ret == 0);
 		free(n);
 	}
 	return 0;
 }
 
-// PUBLIC: int __ufid_rename __P(( DB_ENV *, const char *, const char *, u_int8_t *, int));
+// PUBLIC: int __ufid_rename __P(( DB_ENV *, DB_TXN *, const char *, const char *, u_int8_t *));
 int
-__ufid_rename(dbenv, oldname, newname, inufid, closeuser)
+__ufid_rename(dbenv, txn, oldname, newname, inufid)
 	DB_ENV *dbenv;
+	DB_TXN *txn;
 	const char *oldname;
 	const char *newname;
 	u_int8_t *inufid;
-	int closeuser;
 {
 	struct __ufid_to_db_t *ufid;
-	DB *close_dbp = NULL;
+	DB *found_dbp = NULL;
 	int ret = 0;
 	int close = 0;
 	int slen = strlen(oldname);
@@ -466,33 +472,32 @@ __ufid_rename(dbenv, oldname, newname, inufid, closeuser)
 		free(ufid->fname);
 		ufid->fname = strdup(newname);
 		if (close && ufid->dbp) {
-			close_dbp = ufid->dbp;
+			found_dbp = ufid->dbp;
 			ufid->dbp = NULL;
 		}
 	}
 	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
 
-	if (close_dbp) {
-		close_dbp->added_to_ufid = 0;
-		if (close_dbp->mpf)
-			__memp_fsync(close_dbp->mpf);
-		//F_SET(close_dbp, DB_AM_DISCARD);
-		if (F_ISSET(close_dbp, DB_AM_RECOVER)) {
+	if (found_dbp) {
+		found_dbp->added_to_ufid = 0;
+		if (found_dbp->mpf)
+			__memp_fsync(found_dbp->mpf);
+		F_SET(found_dbp, DB_AM_DISCARD);
+		if (F_ISSET(found_dbp, DB_AM_RECOVER)) {
 #if defined (UFID_HASH_DEBUG)
-			logmsg(LOGMSG_USER, "%s closing dbp %p\n", __func__, close_dbp);
+			logmsg(LOGMSG_USER, "%s closing dbp %p\n", __func__, found_dbp);
 #endif
-			ret = __db_close(close_dbp, NULL, 0);
+			ret = __db_close(found_dbp, txn, 0);
 		} else {
-			if (closeuser) {
-				ret = __db_refresh(close_dbp, NULL, 0, NULL);
+			ret = __db_refresh(found_dbp, txn, 0, NULL);
+			/* Reopen immediately */
+			assert(ret == 0);
+			ret = __db_open(found_dbp, txn, ufid->fname, NULL, DB_UNKNOWN,
+					DB_ODDFILESIZE, __db_omode("rw----"), 0);
 #if defined (UFID_HASH_DEBUG)
-				logmsg(LOGMSG_USER, "%s refreshing dbp %p on closeuser\n",
-						__func__, close_dbp);
-			} else {
-				logmsg(LOGMSG_USER, "%s NOT refreshing dbp %p (closeuser)\n",
-						__func__, close_dbp);
+			logmsg(LOGMSG_USER, "%s refreshing dbp %p on closeuser\n",
+					__func__, found_dbp);
 #endif
-			}
 		}
 	}
 
