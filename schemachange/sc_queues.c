@@ -530,15 +530,18 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
-            goto done;
-        }
+        if (sc->headers == 1) {
+            if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
+                logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n",
+                        rc);
+                goto done;
+            }
 
-        if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-compression, rcode %d\n",
-                   rc);
-            goto done;
+            if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
+                logmsg(LOGMSG_ERROR, "failed to set queue-compression, rcode "
+                        "%d\n", rc);
+                goto done;
+            }
         }
 
         db->odh = sc->headers;
@@ -576,15 +579,18 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n", rc);
-            goto done;
-        }
+        if (sc->headers == 1) {
+            if ((rc = put_db_queue_odh(db, tran, sc->headers)) != 0) {
+                logmsg(LOGMSG_ERROR, "failed to set odh for queue, rcode %d\n",
+                        rc);
+                goto done;
+            }
 
-        if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
-            logmsg(LOGMSG_ERROR, "failed to set queue-compress, rcode %d\n",
-                   rc);
-            goto done;
+            if ((rc = put_db_queue_compress(db, tran, sc->compress)) != 0) {
+                logmsg(LOGMSG_ERROR, "failed to set queue-compress, rcode %d\n",
+                        rc);
+                goto done;
+            }
         }
 
         db->odh = sc->headers;

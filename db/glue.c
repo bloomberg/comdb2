@@ -4277,6 +4277,11 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     }
 
     if (!dbenv->meta) {
+        gbl_init_with_queue_odh = 0;
+        gbl_init_with_queue_compr = 0;
+    }
+
+    if (!dbenv->meta) {
         for (ii = 0; ii < dbenv->num_dbs; ii++) {
             rc = open_auxdbs(dbenv->dbs[ii], 0);
             /* We still have production comdb2s that don't have meta, so we
@@ -4293,7 +4298,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     fix_blobstripe_genids(tran);
 
     /* read queue odh and compression information */
-    for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+    for (ii = 0; dbenv->meta && ii < dbenv->num_qdbs; ii++) {
         struct dbtable *queue = dbenv->qdbs[ii];
         int compress;
         if (gbl_create_mode) {
