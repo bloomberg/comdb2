@@ -2,7 +2,7 @@
 
 set -ex
 
-db=repopulatequeues${TESTID}
+db=$DBNAME
 
 rm -rf $DBDIR
 mkdir -p $DBDIR
