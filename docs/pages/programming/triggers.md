@@ -183,11 +183,11 @@ local function define_emit_columns()
 end
 
 local function main()
-	define_emit_columns()
-	-- get handle to consumer associated with stored procedure
-	local consumer = db:consumer()
-	while true do
-		local change = consumer:get() -- blocking call
+    define_emit_columns()
+    -- get handle to consumer associated with stored procedure
+    local consumer = db:consumer()
+    while true do
+        local change = consumer:get() -- blocking call
         local row
         if change.new ~= nil then
             row = change.new
@@ -202,9 +202,9 @@ local function main()
         end
         row.tbl = change.name
         row.type = change.type
-		consumer:emit(row) -- blocking call
-		consumer:consume()
-	end
+        consumer:emit(row) -- blocking call
+        consumer:consume()
+    end
 end
 }$$
 CREATE LUA CONSUMER watch ON (TABLE t FOR INSERT AND UPDATE AND DELETE)
