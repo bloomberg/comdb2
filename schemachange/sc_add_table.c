@@ -59,7 +59,6 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, 0, &bdberr, trans);
-        open_auxdbs(newdb, 1);
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle = bdb_open_more_tran(
@@ -67,7 +66,6 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
             (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
             newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
             newdb->numblobs + 1, thedb->bdb_env, trans, 0, &bdberr);
-        open_auxdbs(newdb, 0);
     }
 
     if (newdb->handle == NULL) {

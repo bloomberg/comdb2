@@ -762,8 +762,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     /* from this point on failures should goto either backout if recoverable
      * or failure if unrecoverable */
 
-    newdb->meta = db->meta;
-
     /* TODO: at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;
 

@@ -836,7 +836,6 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
         backout_schemas(table);
         return 1;
     }
-    newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
     changed = ondisk_schema_changed(table, newdb, NULL, NULL);

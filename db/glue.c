@@ -181,10 +181,7 @@ void *get_bdb_handle(struct dbtable *db, int auxdb)
         bdb_handle = db->handle;
         break;
     case AUXDB_META:
-        if (!db->meta && db->dbenv->meta)
-            bdb_handle = db->dbenv->meta;
-        else
-            bdb_handle = db->meta;
+        return db->dbenv->meta;
         break;
     default:
         logmsg(LOGMSG_ERROR, "get_bdb_handle: bad auxdb=%d\n", auxdb);
@@ -3500,75 +3497,6 @@ int net_allow_node(struct netinfo_struct *netinfo_ptr, const char *host)
         return 0;
 }
 
-int open_auxdbs(struct dbtable *db, int force_create)
-{
-    int numdtafiles;
-    int numix;
-    short ixlen[1];
-    signed char ixdups[1];
-    signed char ixrecnum[1];
-    signed char ixdta[1];
-    char name[100];
-    char litename[100];
-    int bdberr;
-
-    /* if we have a singlemeta then no need to open another meta. */
-    if (thedb->meta)
-        return 0;
-
-    /* meta information dbs.  we need to make sure that lite meta tables
-     * are named differently to heavy meta tables otherwise we can't tell
-     * them apart at startup.. */
-    if (gbl_nonames) {
-        snprintf(name, sizeof(name), "comdb2_meta");
-        snprintf(litename, sizeof(litename), "comdb2_metalite");
-    } else {
-        snprintf(name, sizeof(name), "%s.meta", db->tablename);
-        snprintf(litename, sizeof(litename), "%s.metalite", db->tablename);
-    }
-
-    ctrace("bdb_open_more: opening <%s>\n", name);
-    numdtafiles = 1;
-    numix = 1;
-    /* key = rrn + attribute
-       data = blob of data associated with attribute */
-    ixlen[0] = 8;
-    ixdups[0] = 0;
-    ixrecnum[0] = 0;
-    ixdta[0] = 0;
-
-    if (force_create) {
-        if (gbl_meta_lite)
-            db->meta =
-                bdb_create_more_lite(litename, db->dbenv->basedir, 0, ixlen[0],
-                                     0, db->dbenv->bdb_env, &bdberr);
-        else
-            db->meta = bdb_create(name, db->dbenv->basedir, 0, numix, ixlen,
-                                  ixdups, ixrecnum, ixdta, NULL, NULL,
-                                  numdtafiles, db->dbenv->bdb_env, 0, &bdberr);
-    } else {
-        /* see if we have a lite meta table - if so use that.  otherwise
-         * fallback on a heavy meta table. */
-        db->meta = bdb_open_more_lite(litename, db->dbenv->basedir, 0, ixlen[0],
-                                      0, db->dbenv->bdb_env, NULL, 0, &bdberr);
-        if (!db->meta) {
-            if (gbl_meta_lite)
-                ctrace("bdb_open_more(meta) cannot open lite meta %d\n",
-                       bdberr);
-            db->meta = bdb_open_more(name, db->dbenv->basedir, 0, numix, ixlen,
-                                     ixdups, ixrecnum, ixdta, NULL, NULL,
-                                     numdtafiles, db->dbenv->bdb_env, &bdberr);
-        }
-    }
-    if (db->meta == NULL) {
-        logmsg(LOGMSG_ERROR, "bdb_open_more(meta) bdberr %d\n", bdberr);
-    }
-    if (db->meta)
-        return 0;
-    else
-        return -1;
-}
-
 void comdb2_net_start_thread(void *opaque)
 {
     backend_thread_event((struct dbenv *)opaque, 1);
@@ -4010,15 +3938,8 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     }
 
     if (!dbenv->meta) {
-        for (ii = 0; ii < dbenv->num_dbs; ii++) {
-            rc = open_auxdbs(dbenv->dbs[ii], 0);
-            /* We still have production comdb2s that don't have meta, so we
-             * can't
-             * make this a fatal error. -- Sam J */
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "meta database not available\n");
-            }
-        }
+        logmsg(LOGMSG_FATAL, "7.0 and above require single-meta\n");
+        return -1;
     }
 
     /* now that meta is open, get the blobstripe conversion genids for each
@@ -4026,7 +3947,7 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
     fix_blobstripe_genids(tran);
 
     /* read queue odh and compression information */
-    for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+    for (ii = 0; dbenv->meta && ii < dbenv->num_qdbs; ii++) {
         struct dbtable *queue = dbenv->qdbs[ii];
         int compress;
         int persist;

@@ -658,12 +658,6 @@ typedef struct dbtable {
     /*backend db engine handle*/
     bdb_state_type *handle;
 
-    /* meta-data.  this may be a lite db.  it may be NULL, because older
-     * comdb2s didn't have meta dbs.  also it may be NULL if the dbenv
-     * meta handle is non-NULL - the new approach is one meta table per
-     * database a sthis scales much better as we add more tables. */
-    void *meta;
-
     /*counters*/
     unsigned typcnt[MAXTYPCNT + 1];
     unsigned blocktypcnt[BLOCK_MAXOPCODE];
@@ -1960,7 +1954,6 @@ void backend_get_iostats(int *n_reads, int *l_reads, int *n_writes,
                          int *l_writes);
 
 void *open_fstblk(struct dbenv *dbenv, int create_override);
-int open_auxdbs(struct dbtable *db, int force_create);
 void sb_printf(SBUF2 *sb, const char *fmt, ...);
 void sb_errf(SBUF2 *sb, const char *fmt, ...);
 
