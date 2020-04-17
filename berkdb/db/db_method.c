@@ -131,6 +131,10 @@ db_create(dbpp, dbenv, flags)
 	if (ret != 0)
 		goto err;
 
+    /* Use thread-local cursor queues for indexes. */
+	if (idxpri)
+		dbp->use_tlcq = 1;
+
 	/* If we don't have an environment yet, allocate a local one. */
 	if (dbenv == NULL) {
 		if ((ret = db_env_create(&dbenv, 0)) != 0)
@@ -174,6 +178,20 @@ err:	if (dbp->mpf != NULL)
 	return (ret);
 }
 
+pthread_key_t tlcq_key;
+DB_CQ_HASH_LIST gbl_all_cursors;
+static pthread_once_t tlcq_once = PTHREAD_ONCE_INIT;
+static void __db_tlcq_init_once(void)
+{
+    /* Create a pthread key for per-thread cursor queues.
+       On exit, destroy all free cursors. */
+    Pthread_key_create(&tlcq_key, __db_delete_cq);
+
+    /* Initialize the big mutex and list. */
+    Pthread_mutex_init(&gbl_all_cursors.lk, NULL);
+    TAILQ_INIT(&gbl_all_cursors);
+}
+
 /*
  * __db_init --
  *	Initialize a DB structure.
@@ -191,6 +209,7 @@ __db_init(dbp, flags)
 	dbp->lid = DB_LOCK_INVALIDID;
 	LOCK_INIT(dbp->handle_lock);
 
+	Pthread_once(&tlcq_once, __db_tlcq_init_once);
 	TAILQ_INIT(&dbp->free_queue);
 	TAILQ_INIT(&dbp->active_queue);
 	TAILQ_INIT(&dbp->join_queue);

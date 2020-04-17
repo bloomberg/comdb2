@@ -67,6 +67,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 	DBC *dbc, *adbc;
 	DBC_INTERNAL *cp;
 	DB_ENV *dbenv;
+	DB_CQ *cq;
 	int allocated, ret;
 
 	dbenv = dbp->dbenv;
@@ -80,15 +81,27 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 	 * right type.  With off page dups we may have different kinds
 	 * of cursors on the queue for a single database.
 	 */
-	MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
-	for (dbc = TAILQ_FIRST(&dbp->free_queue);
-	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
-		if (dbtype == dbc->dbtype) {
-			TAILQ_REMOVE(&dbp->free_queue, dbc, links);
-			F_CLR(dbc, ~DBC_OWN_LID);
-			break;
-		}
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
+	if (dbp->use_tlcq) {
+		cq = __db_acquire_cq(dbp);
+		for (dbc = (cq == NULL) ? NULL : TAILQ_FIRST(&cq->fq);
+			dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
+			if (dbtype == dbc->dbtype) {
+				TAILQ_REMOVE(&cq->fq, dbc, links);
+				F_CLR(dbc, ~DBC_OWN_LID);
+				break;
+			}
+		__db_release_cq(cq);
+	} else {
+		MUTEX_THREAD_LOCK(dbenv, dbp->free_mutexp);
+		for (dbc = TAILQ_FIRST(&dbp->free_queue);
+			dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
+			if (dbtype == dbc->dbtype) {
+				TAILQ_REMOVE(&dbp->free_queue, dbc, links);
+				F_CLR(dbc, ~DBC_OWN_LID);
+				break;
+			}
+		MUTEX_THREAD_UNLOCK(dbenv, dbp->free_mutexp);
+	}
 
 	if (dbc == NULL) {
 		if ((ret = __os_calloc(dbenv, 1, sizeof(DBC), &dbc)) != 0)
@@ -109,10 +122,17 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 			 * is running concurrently using this DB, so we can
 			 * take a peek at any cursors on the active queue.
 			 */
-			if (!DB_IS_THREADED(dbp) &&
-			    (adbc = TAILQ_FIRST(&dbp->active_queue)) != NULL)
-				dbc->lid = adbc->lid;
-			else {
+			if (!DB_IS_THREADED(dbp)) {
+				if (!dbp->use_tlcq)
+					adbc = TAILQ_FIRST(&dbp->active_queue);
+				else {
+					cq = __db_acquire_cq(dbp);
+					adbc = TAILQ_FIRST(&cq->aq);
+					__db_release_cq(cq);
+				}
+			    if (adbc != NULL)
+					dbc->lid = adbc->lid;
+			} else {
 				if ((ret = __lock_id(dbenv, &dbc->lid)) != 0) {
 					goto err;
 				}
@@ -328,10 +348,19 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 		goto err;
 	}
 
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
-	TAILQ_INSERT_TAIL(&dbp->active_queue, dbc, links);
-	F_SET(dbc, DBC_ACTIVE);
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	if (dbp->use_tlcq) {
+		cq = __db_acquire_cq(dbp);
+		if (cq == NULL)
+			cq = __db_new_cq(dbp);
+		TAILQ_INSERT_TAIL(&cq->aq, dbc, links);
+		F_SET(dbc, DBC_ACTIVE);
+		__db_release_cq(cq);
+	} else {
+		MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+		TAILQ_INSERT_TAIL(&dbp->active_queue, dbc, links);
+		F_SET(dbc, DBC_ACTIVE);
+		MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	}
 
 	*dbcp = dbc;
 	return (0);
@@ -473,13 +502,35 @@ __db_count_cursors(DB *dbp)
 {
 	DBC *dbc;
 	int ncur = 0;
+	DB_CQ *cq;
+	DB_CQ_HASH *h;
+	void *hashent;
+	unsigned int pos;
 
-	MUTEX_THREAD_LOCK(dbp->dbenv, dbp->mutexp);
-	/* fprintf(stderr, "Active queue:\n"); */
-	for (dbc = TAILQ_FIRST(&dbp->active_queue); dbc != NULL;
-	    dbc = TAILQ_NEXT(dbc, links))
-		ncur++;
-	MUTEX_THREAD_UNLOCK(dbp->dbenv, dbp->mutexp);
+	if (!dbp->use_tlcq) {
+		MUTEX_THREAD_LOCK(dbp->dbenv, dbp->mutexp);
+		for (dbc = TAILQ_FIRST(&dbp->active_queue); dbc != NULL;
+			dbc = TAILQ_NEXT(dbc, links))
+			ncur++;
+		MUTEX_THREAD_UNLOCK(dbp->dbenv, dbp->mutexp);
+	} else {
+		Pthread_mutex_lock(&gbl_all_cursors.lk);
+		TAILQ_FOREACH(h, &gbl_all_cursors, links) {
+			Pthread_mutex_lock(&h->lk);
+			for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
+					cq = hash_next(h->h, &hashent, &pos)) {
+				if (dbp != cq->db)
+					continue;
+
+				for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
+						dbc = TAILQ_NEXT(dbc, links))
+					ncur++;
+			}
+			Pthread_mutex_unlock(&h->lk);
+		}
+		Pthread_mutex_unlock(&gbl_all_cursors.lk);
+	}
+
 	return ncur;
 }
 
@@ -512,27 +563,38 @@ __db_cprint(dbp)
 {
 	DBC *dbc;
 	int ret, t_ret;
+	DB_CQ *cq;
+	DB_CQ_HASH *h;
+	void *hashent;
+	unsigned int pos;
 
 	ret = 0;
-	MUTEX_THREAD_LOCK(dbp->dbenv, dbp->mutexp);
-	/* fprintf(stderr, "Active queue:\n"); */
-	for (dbc = TAILQ_FIRST(&dbp->active_queue);
-	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
-		if ((t_ret = __db_cprint_item(dbc)) != 0 && ret == 0)
-			ret = t_ret;
-#if 0
-	fprintf(stderr, "Join queue:\n");
-	for (dbc = TAILQ_FIRST(&dbp->join_queue);
-	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
-		if ((t_ret = __db_cprint_item(dbc)) != 0 && ret == 0)
-			ret = t_ret;
-	fprintf(stderr, "Free queue:\n");
-	for (dbc = TAILQ_FIRST(&dbp->free_queue);
-	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
-		if ((t_ret = __db_cprint_item(dbc)) != 0 && ret == 0)
-			ret = t_ret;
-#endif
-	MUTEX_THREAD_UNLOCK(dbp->dbenv, dbp->mutexp);
+
+	if (!dbp->use_tlcq) {
+		MUTEX_THREAD_LOCK(dbp->dbenv, dbp->mutexp);
+		for (dbc = TAILQ_FIRST(&dbp->active_queue);
+			dbc != NULL; dbc = TAILQ_NEXT(dbc, links))
+			if ((t_ret = __db_cprint_item(dbc)) != 0 && ret == 0)
+				ret = t_ret;
+		MUTEX_THREAD_UNLOCK(dbp->dbenv, dbp->mutexp);
+	} else {
+		Pthread_mutex_lock(&gbl_all_cursors.lk);
+		TAILQ_FOREACH(h, &gbl_all_cursors, links) {
+			Pthread_mutex_lock(&h->lk);
+			for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
+					cq = hash_next(h->h, &hashent, &pos)) {
+				if (dbp != cq->db)
+					continue;
+
+				for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
+						dbc = TAILQ_NEXT(dbc, links))
+					if ((t_ret = __db_cprint_item(dbc)) != 0 && ret == 0)
+						ret = t_ret;
+			}
+			Pthread_mutex_unlock(&h->lk);
+		}
+		Pthread_mutex_unlock(&gbl_all_cursors.lk);
+	}
 
 	return (ret);
 }
@@ -1151,24 +1213,54 @@ __db_check_all_btree_cursors(dbp, pgno)
 {
 	DBC *dbc = NULL;
 	DB_ENV *dbenv = dbp->dbenv;
+	DB_CQ *cq;
+	DB_CQ_HASH *h;
+	void *hashent;
+	unsigned int pos;
 	db_pgno_t tmp_pgno = 0;
 
-	MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
-	for (dbc = TAILQ_FIRST(&dbp->active_queue);
-	    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
+	if (!dbp->use_tlcq) {
+		MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
+		for (dbc = TAILQ_FIRST(&dbp->active_queue);
+			dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
 
-		if (dbc->dbtype != DB_BTREE)
-			continue;
+			if (dbc->dbtype != DB_BTREE)
+				continue;
 
-		tmp_pgno = __bam_get_dbc_page(dbc);
-		if (tmp_pgno == pgno) {
-			fprintf(stderr,
-			    "Cursor %p locks the page %u [%u %u] txn=%p %d\n",
-			    dbc, pgno, dbc->lid, dbc->locker, dbc->txn,
-			    dbc->pp_allocated);
+			tmp_pgno = __bam_get_dbc_page(dbc);
+			if (tmp_pgno == pgno) {
+				logmsg(LOGMSG_ERROR,
+						"Cursor %p locks the page %u [%u %u] txn=%p %d\n",
+						dbc, pgno, dbc->lid, dbc->locker, dbc->txn,
+						dbc->pp_allocated);
+			}
 		}
+		MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+	} else {
+		Pthread_mutex_lock(&gbl_all_cursors.lk);
+		TAILQ_FOREACH(h, &gbl_all_cursors, links) {
+			Pthread_mutex_lock(&h->lk);
+			for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
+				cq = hash_next(h->h, &hashent, &pos)) {
+
+				for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
+					dbc = TAILQ_NEXT(dbc, links)) {
+					if (dbc->dbtype != DB_BTREE)
+						continue;
+
+					tmp_pgno = __bam_get_dbc_page(dbc);
+					if (tmp_pgno == pgno) {
+						logmsg(LOGMSG_ERROR,
+								"Cursor %p locks the page %u [%u %u] txn=%p %d\n",
+								dbc, pgno, dbc->lid, dbc->locker, dbc->txn,
+								dbc->pp_allocated);
+					}
+				}
+			}
+			Pthread_mutex_unlock(&h->lk);
+		}
+		Pthread_mutex_unlock(&gbl_all_cursors.lk);
 	}
-	MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
 
 	return 0;
 }

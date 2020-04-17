@@ -32,6 +32,7 @@
 #include <mem_berkdb.h>
 #include <sys/time.h>
 #include <sbuf2.h>
+#include <locks_wrap.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -1391,6 +1392,87 @@ struct fileid_adj_fileid
 	int adj_fileid;
 };
 
+/* Thread-local cursor queue definitions
+
+   +-------------------------------------------+
+   | gbl_all_cursors (linkedlist)              |
+   |                                           |
+   |        +----------------------------+     |
+   |        | Thread N                   |     |
+   |      +----------------------------+ |     |
+   |      | Thread (N - 1)             | |     |
+   |     //////////////////////////////| |     |
+   |    +----------------------------+/| |     |
+   |    | Thread 2                   |/| |     |
+   |  +----------------------------+ |/| |     |
+   |  | Thread 1                   | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB_CQ_HASH (hashtable)     | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | Key  | Value               | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB * | DB_CQ (linkedlist)  | |/| |     |
+   |  |      | DBC <-> ... <-> DBC | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB * | DB_CQ (linkedlist)  | |/| |     |
+   |  |      | DBC <-> ... <-> DBC | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  ~ .......................... ~ |/| |     |
+   |  ~ .......................... ~ |/| |     |
+   |  ~ .......................... ~ |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB * | DB_CQ (linkedlist)  | |/|-+     |
+   |  |      | DBC <-> ... <-> DBC | |/+       |
+   |  |----------------------------| |/        |
+   |  | DB * | DB_CQ (linkedlist)  |-+         |
+   |  |      | DBC <-> ... <-> DBC |           |
+   |  +----------------------------+           |
+   |                                           |
+   +-------------------------------------------+
+ */
+
+/* Cursor queue */
+typedef struct __db_cq {
+	/* The DB structure the cursors use. It's also the hash key. */
+	DB *db;
+	/* This points to DB_CQ_HASH.lk */
+	pthread_mutex_t *lk;
+	/* Active queue */
+	struct {
+		DBC *tqh_first;
+		DBC **tqh_last;
+	} aq;
+	/* Free queue */
+	struct {
+		DBC *tqh_first;
+		DBC **tqh_last;
+	} fq;
+} DB_CQ;
+
+/* Thread-local hashtable of cursor queues */
+typedef struct __db_cq_hash {
+	/* plhash */
+	hash_t *h;
+	/* Although the structure is mostly single-threaded, cursors may be
+	   modified by another thread of control (e.g., a schema change
+	   invalidates all free cursors). So guard the structure with a lock. */
+	pthread_mutex_t lk;
+	struct {
+		struct __db_cq_hash *tqe_next;
+		struct __db_cq_hash **tqe_prev;
+	} links;
+} DB_CQ_HASH;
+
+/* List of thread-local hashtables of cursor queues */
+typedef struct __db_cq_hash_list {
+	DB_CQ_HASH *tqh_first;
+	DB_CQ_HASH **tqh_last;
+	pthread_mutex_t lk;
+} DB_CQ_HASH_LIST;
+
+extern DB_CQ_HASH_LIST gbl_all_cursors;
+extern pthread_key_t tlcq_key;
+
 /* Database handle. */
 struct __db {
 	/*******************************************************
@@ -1471,6 +1553,9 @@ struct __db {
 		struct __db *le_next;
 		struct __db **le_prev;
 	} dblistlinks;
+
+	/* 1 if using thread-local cursor queues. */
+	int use_tlcq;
 
 	/*
 	 * Cursor queues.
