@@ -978,8 +978,6 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
 
-    iq->tranddl = 1;
-
     rc = trans_start_logical_sc(iq, &sc_logical_tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc rc %d\n",
@@ -1046,8 +1044,6 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
     int rc, paused = 0, bdberr;
     tran_type *sc_logical_tran = NULL;
     tran_type *sc_phys_tran = NULL;
-
-    iq->tranddl = 1;
 
     rc = trans_start_logical_sc(iq, &sc_logical_tran);
     if (rc) {
