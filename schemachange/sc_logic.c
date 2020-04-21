@@ -386,6 +386,15 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
     }
     if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
         goto end;
+
+    if (!s->resume && type == alter &&
+        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DETACHED)) {
+        sc_printf(s, "Starting Schema Change with seed 0x%llx\n",
+                  flibc_htonll(iq->sc_seed));
+        sbuf2printf(s->sb, "SUCCESS\n");
+        s->sc_rc = SC_DETACHED;
+    }
+
     broadcast_sc_start(s->tablename, iq->sc_seed, iq->sc_host,
                        time(NULL));                   // dont care rcode
     rc = pre(iq, s, NULL);                            // non-tran ??

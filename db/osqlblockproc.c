@@ -1255,6 +1255,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
+
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
