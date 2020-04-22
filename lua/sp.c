@@ -4651,14 +4651,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
                    struct dbtable **pDb, trigger_reg_t *reg, char **err)
 {
     Q4SP(qname, spname);
-    if (tryrdlock_schema_lk() != 0) {
-        if (err != NULL) {
-            *err = strdup("tryrdlock_schema_lk failed");
-            return -1;
-        } else {
-            return luaL_error(L, "tryrdlock_schema_lk failed for sp:%s", spname);
-        }
-    }
+    rdlock_schema_lk();
     struct dbtable *db = getqueuebyname(qname);
     if (db == NULL) {
         *pDb = NULL;
