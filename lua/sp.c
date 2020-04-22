@@ -947,6 +947,13 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
+    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0)) != 0) {
+        if (start) {
+            osql_sock_abort(clnt, OSQL_SOCK_REQ);
+            clnt->intrans = 0;
+        }
+        return luaL_error(L, "%s grab_qdb_table_read_lock rc:%d", __func__, rc);
+    }
     if ((rc = osql_dbq_consume_logic(clnt, q->info.spname, q->genid)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
