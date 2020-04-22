@@ -61,6 +61,10 @@
 #   define debug_log(...)
 #endif
 
+#ifdef __APPLE__
+#define HOST_NAME_MAX 255
+#endif
+
 struct connection;
 static event_base *base;
 static std::map<std::string, int> port_map;
