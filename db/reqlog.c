@@ -2650,12 +2650,15 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
 
             case BLOCK2_RECOM:
                 summaries[ii].recom += n;
+		break;
 
             case BLOCK2_SNAPISOL:
                 summaries[ii].snapisol += n;
+		break;
 
             case BLOCK2_SERIAL:
                 summaries[ii].serial += n;
+		break;
             }
         }
         ii++;
