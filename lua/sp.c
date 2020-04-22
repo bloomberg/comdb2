@@ -402,7 +402,8 @@ static char *csv_read_one_field(CSVReader *p)
     return p->z;
 }
 
-static int check_retry_conditions(Lua L, int skip_incoherent)
+static int check_retry_conditions(Lua L, trigger_reg_t *reg,
+                                  int skip_incoherent)
 {
     SP sp = getsp(L);
 
@@ -423,6 +424,8 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
             0) {
             luabb_error(L, sp, "recover deadlock failed");
             return -3;
+        } else if (reg != NULL) {
+            reg->qdb_locked = 0; /* table read lock is now gone. */
         }
     }
 
@@ -468,7 +471,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
             }
             --retry;
         }
-        if (check_retry_conditions(L, 1) != 0) {
+        if (check_retry_conditions(L, reg, 1) != 0) {
             rc = luabb_error(L, sp, sp->error);
             goto out;
         }
@@ -500,14 +503,14 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
         if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
             return;
         if (L)
-            check_retry_conditions(L, 1);
+            check_retry_conditions(L, &q->info, 1);
         sleep(1);
     }
 }
 
 static int stop_waiting(Lua L, dbconsumer_t *q)
 {
-    if (check_retry_conditions(L, 0) != 0)
+    if (check_retry_conditions(L, &q->info, 0) != 0)
         return 1;
     time_t now = time(NULL);
     if (difftime(now, q->registration_time)  <= 0) {
@@ -704,9 +707,13 @@ char *sp_column_name(struct response_data *arg, int col)
 }
 
 static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
-                                    struct dbtable *db, int have_schema_lock)
+                                    struct dbtable *db, trigger_reg_t *reg,
+                                    int have_schema_lock)
 {
     if (!gbl_queuedb_read_locks) return 0;
+    if ((reg != NULL) && reg->qdb_locked) {
+        return 0; /* we already have the table read lock */
+    }
     if (!have_schema_lock && (tryrdlock_schema_lk() != 0)) {
         logmsg(LOGMSG_WARN, "%s: tryrdlock_schema_lk failed\n", __func__);
         return -2;
@@ -716,6 +723,8 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lock_table_read_fromlid rc %d\n",
                __func__, rc);
+    } else if (reg != NULL) {
+        reg->qdb_locked = 1;
     }
     if (!have_schema_lock) unlock_schema_lk();
     return rc;
@@ -731,7 +740,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
     struct qfound f = {0};
-    int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, 0);
+    int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0);
     if (rc != 0) {
         // TODO: Temporary hack for testing.
         //       Transform -2 (schema lock fail) to 0 (success).
@@ -775,13 +784,11 @@ again:  status = *q->status;
         if (status == TRIGGER_SUBSCRIPTION_OPEN) {
             rc = dbq_poll_int(L, q); // call will release q->lock
         } else if (status == TRIGGER_SUBSCRIPTION_PAUSED) {
-            setup_dbq_ts(ts);
-            pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
-            Pthread_mutex_unlock(q->lock);
             if (stop_waiting(L, q)) {
                 return -1;
             }
-            Pthread_mutex_lock(q->lock);
+            setup_dbq_ts(ts);
+            pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
             goto again;
         } else {
             assert(status == TRIGGER_SUBSCRIPTION_CLOSED);
@@ -915,7 +922,7 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
     }
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_INTRANS_STATE);
-    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, 0);
+    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0);
     if (rc != 0) {
         return rc;
     }
@@ -3337,7 +3344,7 @@ static void dbthread_join_int(Lua L, dbthread_type *thd)
     Pthread_mutex_lock(mtx);
     while (thd->status == THREAD_STATUS_DISPATCH_WAITING ||
            thd->status == THREAD_STATUS_RUNNING) {
-        check_retry_conditions(L, 1);
+        check_retry_conditions(L, NULL, 1);
         struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_sec += 1;
@@ -3903,7 +3910,7 @@ static int db_sleep(Lua lua)
     while (secs > 0) {
         --secs;
         sleep(1);
-        if (check_retry_conditions(lua, 1) != 0) {
+        if (check_retry_conditions(lua, NULL, 1) != 0) {
             return luaL_error(lua, getsp(lua)->error);
         }
     }
@@ -4641,7 +4648,7 @@ void force_unregister(Lua L, trigger_reg_t *reg)
 }
 
 static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
-                   struct dbtable **pDb, char **err)
+                   struct dbtable **pDb, trigger_reg_t *reg, char **err)
 {
     Q4SP(qname, spname);
     if (tryrdlock_schema_lk() != 0) {
@@ -4663,7 +4670,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
             return luaL_error(L, "trigger not found for sp:%s", spname);
         }
     }
-    int rc = grab_qdb_table_read_lock(clnt, db, 1);
+    int rc = grab_qdb_table_read_lock(clnt, db, reg, 1);
     if (rc != 0) {
         *pDb = NULL;
         unlock_schema_lk();
@@ -4702,7 +4709,7 @@ static int db_consumer(Lua L)
     }
     struct dbtable *db = NULL;
 
-    int rc = get_qdb(L, clnt, sp->spname, &db, NULL);
+    int rc = get_qdb(L, clnt, sp->spname, &db, NULL, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -4715,7 +4722,7 @@ static int db_consumer(Lua L)
     enum consumer_t type = dbqueue_consumer_type(consumer);
     trigger_reg_t *t;
     if (type == CONSUMER_TYPE_DYNLUA) {
-        trigger_reg_init(t, sp->spname);
+        trigger_reg_init(t, sp->spname, gbl_queuedb_read_locks);
         ctrace("consumer:%s %016" PRIx64 " register req\n", t->spname, t->trigger_cookie);
         rc = luabb_trigger_register(L, t, register_timeoutms);
         if (rc != CDB2_TRIG_REQ_SUCCESS) {
@@ -6764,7 +6771,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 
     struct dbtable *db = NULL;
 
-    rc = get_qdb(L, clnt, reg->spname, &db, err);
+    rc = get_qdb(L, clnt, reg->spname, &db, reg, err);
     if (rc != 0) {
         return rc;
     }
