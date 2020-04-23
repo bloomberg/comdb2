@@ -1826,4 +1826,11 @@ REGISTER_TUNABLE("debug_queuedb",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("json_escape_control_characters",
+                 "db:table_to_json quotes control characters"
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_json_escape_control_chars, 0, NULL, NULL,
+                 NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

@@ -90,6 +90,8 @@ void *debug_clnt;
 pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
 
+int gbl_json_escape_control_chars = 1;
+
 struct tmptbl_info_t {
     struct temptable tbl;
     char *sql;
@@ -3626,6 +3628,7 @@ typedef struct {
 #define CONV_FLAG_UTF8_HEX 0x08
 #define CONV_FLAG_UTF8_MASK 0x0f
 #define CONV_FLAG_ANNOTATE 0x10
+#define CONV_FLAG_ESCAPE_CONTROLS 0x20
     unsigned flag;
 
 #define CONV_REASON_UTF8_FATAL 0x01
@@ -3670,6 +3673,19 @@ static int process_json_conv(Lua L, json_conv *conv)
                 return -3;
             }
         }
+        else if (strcmp(key, "escape_control_characters") == 0) {
+            if (luabb_type(L, -1) == DBTYPES_LBOOLEAN) {
+                if (lua_toboolean(L, -1)) {
+                    conv->flag |= CONV_FLAG_ESCAPE_CONTROLS;
+                }
+                else {
+                    conv->flag &= ~CONV_FLAG_ESCAPE_CONTROLS;
+                }
+            } else {
+                return -3;
+            }
+            return 0;
+        }
     }
     return -4;
 }
@@ -3680,6 +3696,8 @@ static int db_table_to_json(Lua L)
     luaL_checkudata(L, 1, dbtypes.db);
     luaL_checktype(L, 2, LUA_TTABLE);
     json_conv conv = {0};
+    if (gbl_json_escape_control_chars)
+        conv.flag |= CONV_FLAG_ESCAPE_CONTROLS;
     if (lua_gettop(L) == 3) {
         luaL_checktype(L, 3, LUA_TTABLE);
         lua_pushnil(L);
@@ -3705,7 +3723,10 @@ static int db_table_to_json(Lua L)
         lua_pushnil(L); // CONV_REASON_UTF8_NIL
     } else {
         cson_buffer buf = cson_buffer_empty;
-        cson_output_buffer(cson, &buf, NULL);
+        cson_output_opt fmt = cson_output_opt_empty_m;
+        if (conv.flag & CONV_FLAG_ESCAPE_CONTROLS)
+            fmt.escapeControlCharacters = 1;
+        cson_output_buffer(cson, &buf, &fmt);
         lua_pushstring(L, (char *)buf.mem);
         cson_buffer_reserve(&buf, 0);
         cson_free_value(cson);

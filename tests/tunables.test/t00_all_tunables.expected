@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=924)
+(TUNABLES_COUNT=925)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -363,6 +363,7 @@
 (name='iomap_enabled', description='Map file that tells comdb2ar to pause while we fsync', type='BOOLEAN', value='ON', read_only='N')
 (name='ioqueue', description='Maximum depth of the I/O prefaulting queue. (Default: 0)', type='INTEGER', value='0', read_only='Y')
 (name='iothreads', description='Number of threads to use for I/O prefaulting. (Default: 0)', type='INTEGER', value='0', read_only='Y')
+(name='json_escape_control_characters', description='db:table_to_json quotes control characters(Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='kafka_brokers', description='', type='STRING', value=NULL, read_only='Y')
 (name='kafka_topic', description='', type='STRING', value=NULL, read_only='Y')
 (name='keep_referenced_files', description='Don't remove any files that may still be referenced by the logs.', type='BOOLEAN', value='ON', read_only='N')
