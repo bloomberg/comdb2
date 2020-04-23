@@ -3795,7 +3795,7 @@ unsigned int cson_string_length_utf8( cson_string const * str )
    object.
 */
 static int cson_str_to_json( char const * str, unsigned int len,
-                             char escapeFwdSlash,
+                             char escapeFwdSlash, char escapeControlCharacters,
                              cson_data_dest_f f, void * state )
 {
     if( NULL == f ) return cson_rc.ArgError;
@@ -3810,7 +3810,7 @@ static int cson_str_to_json( char const * str, unsigned int len,
         unsigned char const * next = NULL;
         int ch;
         unsigned char clen = 0;
-        char escChar[3] = {'\\',0,0};
+        char escChar[7] = {'\\',0,0,0,0,0,0};
         enum { UBLen = 8 };
         char ubuf[UBLen];
         int rc = 0;
@@ -3824,6 +3824,8 @@ static int cson_str_to_json( char const * str, unsigned int len,
             assert( clen );
             if( 1 == clen )
             { /* ASCII */
+                escChar[1] = 0;
+
 #if defined(CSON_FOSSIL_MODE)
                 /* Workaround for fossil repo artifact
                    f460839cff85d4e4f1360b366bb2858cef1411ea,
@@ -3845,7 +3847,6 @@ static int cson_str_to_json( char const * str, unsigned int len,
                 }
 #endif
                 assert( (*pos == ch) && "Invalid UTF8" );
-                escChar[1] = 0;
                 switch(ch)
                 {
                   case '\t': escChar[1] = 't'; break;
@@ -3885,11 +3886,22 @@ static int cson_str_to_json( char const * str, unsigned int len,
                       break;
                   case '\\': escChar[1] = '\\'; break;
                   case '"': escChar[1] = '"'; break;
-                  default: break;
+                  default:  {
+                      if (ch <= 0x1f && escapeControlCharacters) {
+                          static const char *hexchars = "0123456789abcdef";
+                          escChar[1] = 'u';
+                          escChar[2] = '0';
+                          escChar[3] = '0';
+                          escChar[4] = hexchars[(ch & 0xf0) >> 4];
+                          escChar[5] = hexchars[ch & 0x0f];
+                      }
+                      else
+                          break;
+                  }
                 }
                 if( escChar[1])
                 {
-                    rc = f(state, escChar, 2);
+                    rc = f(state, escChar, strlen(escChar));
                 }
                 else
                 {
@@ -4025,7 +4037,7 @@ static int cson_output_double( cson_value const * src, cson_data_dest_f f, void 
     }
 }
 
-static int cson_output_string( cson_value const * src, char escapeFwdSlash, cson_data_dest_f f, void * state )
+static int cson_output_string( cson_value const * src, char escapeFwdSlash, char escapeControlCharacters, cson_data_dest_f f, void * state )
 {
     if( !f ) return cson_rc.ArgError;
     else if( ! cson_value_is_string(src) ) return cson_rc.TypeError;
@@ -4033,7 +4045,7 @@ static int cson_output_string( cson_value const * src, char escapeFwdSlash, cson
     {
         cson_string const * str = cson_value_get_string(src);
         assert( NULL != str );
-        return cson_str_to_json(cson_string_cstr(str), str->length, escapeFwdSlash, f, state);
+        return cson_str_to_json(cson_string_cstr(str), str->length, escapeFwdSlash, escapeControlCharacters, f, state);
     }
 }
 
@@ -4111,7 +4123,7 @@ static int cson_output_impl( cson_value const * src, cson_data_dest_f f, void * 
               rc = cson_output_double(src, f, state);
               break;
           case CSON_TYPE_STRING:
-              rc = cson_output_string(src, fmt->escapeForwardSlashes, f, state);
+              rc = cson_output_string(src, fmt->escapeForwardSlashes, fmt->escapeControlCharacters, f, state);
               break;
           case CSON_TYPE_ARRAY:
               rc = cson_output_array( src, f, state, fmt, level );
@@ -4222,7 +4234,7 @@ static int cson_output_object( cson_value const * src, cson_data_dest_f f, void 
                 cson_string const * sKey = cson_value_get_string(kvp->key);
                 char const * cKey = cson_string_cstr(sKey);
                 rc = cson_str_to_json(cKey, sKey->length,
-                                      fmt->escapeForwardSlashes, f, state);
+                                      fmt->escapeForwardSlashes, fmt->escapeControlCharacters, f, state);
                 if( 0 == rc )
                 {
                     rc = fmt->addSpaceAfterColon

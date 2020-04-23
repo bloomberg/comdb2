@@ -363,6 +363,7 @@ static char *legacy_options[] = {
     "init_with_queue_compr off",
     "init_with_queue_persistent_sequence off",
     "usenames",
+    "json_escape_control_characters off",
 };
 int gbl_legacy_defaults = 0;
 int pre_read_legacy_defaults(void *_, void *__)

@@ -570,6 +570,8 @@ struct cson_output_opt
        The default value is 0 (because it's just damned ugly).
     */
     char escapeForwardSlashes;
+
+    char escapeControlCharacters;
 };
 typedef struct cson_output_opt cson_output_opt;
 
