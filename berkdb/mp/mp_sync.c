@@ -60,6 +60,9 @@ int bdb_the_lock_desired(void);
 #define BDB_RELLOCK()           bdb_rellock(gbl_bdb_state, __func__, __LINE__)
 int bdb_the_lock_designed(void);
 
+#if defined (UFID_HASH_DEBUG)
+	void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 /*
  * __memp_sync_pp --
  *	DB_ENV->memp_sync pre/post processing.
@@ -392,6 +395,10 @@ __memp_sync_restartable(dbenv, lsnp, restartable, fixed)
 			*lsnp = mp->lsn;
 
 			R_UNLOCK(dbenv, dbmp->reginfo);
+#if defined (UFID_HASH_DEBUG)
+			comdb2_cheapstack_sym(stderr, "%s not syncing mp->lsn [%d:%d]",
+					__func__, mp->lsn.file, mp->lsn.offset);
+#endif
 			return (0);
 		}
 		R_UNLOCK(dbenv, dbmp->reginfo);
@@ -1133,6 +1140,12 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 	DB_LSN oldest_first_dirty_tx_begin_lsn;
 	int accum_sync, accum_skip;
 	BH_TRACK swap;
+
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s [%d:%d]", __func__,
+			ckp_lsnp ? ckp_lsnp->file : -1, ckp_lsnp ?
+			ckp_lsnp->offset : -1);
+#endif
 
 	/*
 	 *  Perfect checkpoints: If the first dirty LSN is to the right

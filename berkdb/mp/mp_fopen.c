@@ -621,6 +621,10 @@ __memp_fopen_pp(dbmfp, path, flags, mode, pagesize)
 	return (ret);
 }
 
+#if defined (UFID_HASH_DEBUG)
+	void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
+
 /*
  * __memp_fopen --
  *	DB_MPOOLFILE->open.
@@ -660,6 +664,10 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 	 */
 	if (path == NULL)
 		goto alloc;
+
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s opening on %p", __func__, mfp);
+#endif
 
 	/*
 	 * If our caller knows what mfp we're using, increment the ref count,
@@ -821,6 +829,10 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 		if (LF_ISSET(DB_TRUNCATE)) {
 			MUTEX_LOCK(dbenv, &mfp->mutex);
 			mfp->deadfile = 1;
+#if defined (UFID_HASH_DEBUG)
+			logmsg(LOGMSG_USER, "%s %s found %p and set deadfile\n",
+					__func__, path, mfp);
+#endif
 			MUTEX_UNLOCK(dbenv, &mfp->mutex);
 			continue;
 		}
@@ -868,6 +880,12 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 		}
 		++mfp->mpf_cnt;
 		refinc = 1;
+
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s %s found matching %p refcnt %d\n",
+				__func__, path, mfp, mfp->mpf_cnt);
+#endif
+
 		MUTEX_UNLOCK(dbenv, &mfp->mutex);
 
 		if (dbmfp->ftype != 0)
@@ -884,6 +902,10 @@ alloc:	/* Allocate and initialize a new MPOOLFILE. */
 	if ((ret = __memp_alloc(
 	    dbmp, dbmp->reginfo, NULL, sizeof(MPOOLFILE), NULL, &mfp)) != 0)
 		goto err;
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s %s allocated mpf %p\n",
+			__func__, path, mfp);
+#endif
 	memset(mfp, 0, sizeof(MPOOLFILE));
 	mfp->mpf_cnt = 1;
 	mfp->ftype = dbmfp->ftype;
@@ -1220,6 +1242,11 @@ __memp_fclose(dbmfp, flags)
 	dbmp = dbenv->mp_handle;
 	ret = 0;
 
+	mfp = dbmfp->mfp;
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s called on %p discard=%d", __func__, mfp,
+            LF_ISSET(DB_MPOOL_DISCARD));
+#endif
 	/*
 	 * Remove the DB_MPOOLFILE from the process' list.
 	 *
@@ -1229,8 +1256,12 @@ __memp_fclose(dbmfp, flags)
 	 * It's possible the DB_MPOOLFILE was never added to the DB_MPOOLFILE
 	 * file list, check the MP_OPEN_CALLED flag to be sure.
 	 */
-	if (dbmp == NULL)
+	if (dbmp == NULL) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s not closing %p\n", __func__, mfp);
+#endif
 		goto done;
+	}
 
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
 
@@ -1313,6 +1344,11 @@ __memp_fclose(dbmfp, flags)
 	 * be NULL and MP_OPEN_CALLED will not be set.
 	 */
 	mfp = dbmfp->mfp;
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s closing %p file %s\n",
+			__func__, mfp, mfp && mfp->path_off ?
+			(char *)R_ADDR(dbmp->reginfo, mfp->path_off) : "(none)");
+#endif
 	DB_ASSERT((F_ISSET(dbmfp, MP_OPEN_CALLED) && mfp != NULL) ||
 	    (!F_ISSET(dbmfp, MP_OPEN_CALLED) && mfp == NULL));
 	if (!F_ISSET(dbmfp, MP_OPEN_CALLED))
@@ -1329,29 +1365,47 @@ __memp_fclose(dbmfp, flags)
 	MUTEX_LOCK(dbenv, &mfp->mutex);
 	if (--mfp->mpf_cnt == 0 || LF_ISSET(DB_MPOOL_DISCARD)) {
 		if (LF_ISSET(DB_MPOOL_DISCARD) ||
-		    F_ISSET(mfp, MP_TEMP) || mfp->unlink_on_close)
+		    F_ISSET(mfp, MP_TEMP) || mfp->unlink_on_close) {
+#if defined (UFID_HASH_DEBUG)
+			logmsg(LOGMSG_USER, "%s set deadfile for mpool %p file %s\n",
+					__func__, mfp, mfp && mfp->path_off ?
+					(char *)R_ADDR(dbmp->reginfo, mfp->path_off) : "(none)");
+#endif
 			mfp->deadfile = 1;
+		}
 		if (mfp->unlink_on_close) {
 			if ((t_ret = __db_appname(dbmp->dbenv,
-			    DB_APP_DATA, R_ADDR(dbmp->reginfo,
-			    mfp->path_off), 0, NULL, &rpath)) != 0 && ret == 0)
+				DB_APP_DATA, R_ADDR(dbmp->reginfo,
+				mfp->path_off), 0, NULL, &rpath)) != 0 && ret == 0)
 				ret = t_ret;
 			if (t_ret == 0) {
+#if defined (UFID_HASH_DEBUG)
+				logmsg(LOGMSG_USER, "%s unlinking mpool %p file %s\n",
+						__func__, mfp, mfp && mfp->path_off ?
+						(char *)R_ADDR(dbmp->reginfo, mfp->path_off) :
+						"(none)");
+#endif
 				if ((t_ret = __os_unlink(
-				    dbmp->dbenv, rpath) != 0) && ret == 0)
+					dbmp->dbenv, rpath) != 0) && ret == 0)
 					ret = t_ret;
 				__os_free(dbenv, rpath);
 			}
 		}
 		if (mfp->block_cnt == 0) {
 			if ((t_ret =
-			    __memp_mf_discard(dbmp, mfp)) != 0 && ret == 0)
+				__memp_mf_discard(dbmp, mfp)) != 0 && ret == 0)
 				ret = t_ret;
 			deleted = 1;
 		}
 	}
-	if (deleted == 0)
+	if (deleted == 0) {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s not discarding mpool %p file %s\n",
+				__func__, mfp, mfp && mfp->path_off ?
+				(char *)R_ADDR(dbmp->reginfo, mfp->path_off) : "(none)");
+#endif
 		MUTEX_UNLOCK(dbenv, &mfp->mutex);
+	}
 
 done:	/* Discard the DB_MPOOLFILE structure. */
 	if (dbmfp->pgcookie != NULL) {

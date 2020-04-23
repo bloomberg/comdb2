@@ -7,3 +7,8 @@ endif
 ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=10m
 endif
+
+export CORE_ON_TIMEOUT=1
+export CORE_ON_FAILURE=1
+export NOKILL_ON_TIMEOUT=1
+export NOKILL_ON_FAILURE=1

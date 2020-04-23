@@ -66,6 +66,9 @@ static const char revid[] = "$Id: db_meta.c,v 11.77 2003/09/09 16:42:06 ubell Ex
 #include <stdlib.h>
 #include <logmsg.h>
 
+#if defined (UFID_HASH_DEBUG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 
 /* definition in malloc.h clashes with dlmalloc */
 extern void *memalign(size_t boundary, size_t size);
@@ -102,8 +105,15 @@ __db_init_meta(dbp, p, pgno, pgtype)
 int gbl_core_on_sparse_file = 0;
 int gbl_check_sparse_files = 0;
 
-/* We already have the metapage locked. */
+#define CHECK_ALLOC_PAGE_LSN(x) do { \
+	if (x.file == 0 && x.offset == 1) { \
+		logmsg(LOGMSG_USER, "Invalid page lsn for pgalloc\n"); \
+		__log_flush(dbc->dbp->dbenv, NULL); \
+		abort(); \
+	} \
+} while(0);
 
+/* We already have the metapage locked. */
 static int
 __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 {
@@ -148,6 +158,7 @@ __db_new_from_freelist(DBC *dbc, DBMETA *meta, u_int32_t type, PAGE **pagepp)
 	 * mpool to extend the file.
 	 */
 	if (DBC_LOGGING(dbc)) {
+		CHECK_ALLOC_PAGE_LSN(lsn);
 		if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
 		    &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
 		    (u_int32_t)type, newnext)) != 0)
@@ -377,7 +388,9 @@ __db_new(dbc, type, pagepp)
 				DB_LSN pglsn;
 
 				ZERO_LSN(pglsn);
+
 				/* Log the page creation. */
+				CHECK_ALLOC_PAGE_LSN(pglsn);
 				ret =
 				    __db_pg_alloc_log(dbc->dbp, t, &LSN(meta),
 				    0, &LSN(meta), PGNO_BASE_MD, &pglsn, pgno,
@@ -631,6 +644,7 @@ __db_new_original(dbc, type, pagepp)
 	 * mpool to extend the file.
 	 */
 	if (DBC_LOGGING(dbc)) {
+		CHECK_ALLOC_PAGE_LSN(lsn);
 		if ((ret = __db_pg_alloc_log(dbp, dbc->txn, &LSN(meta), 0,
 			    &LSN(meta), PGNO_BASE_MD, &lsn, pgno,
 			    (u_int32_t)type, newnext)) != 0)
@@ -782,9 +796,23 @@ log:			ret = __db_pg_free_log(dbp,
 			(void)__TLPUT(dbc, metalock);
 			goto err;
 		}
-	} else
+	} else {
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "logging not set for cursor, metalsn [%d:%d]\n",
+				LSN(meta).file, LSN(meta).offset);
+		logmsg(LOGMSG_USER, "logging-on=%d recover=%d rep-client=%d\n",
+				LOGGING_ON((dbc)->dbp->dbenv), F_ISSET((dbc), DBC_RECOVER),
+				IS_REP_CLIENT((dbc)->dbp->dbenv));
+#endif
 		LSN_NOT_LOGGED(LSN(meta));
+	}
 	LSN(h) = LSN(meta);
+#if defined (UFID_HASH_DEBUG)
+	if (IS_NOT_LOGGED_LSN(LSN(h))) {
+		comdb2_cheapstack_sym(stderr, "%s setting not-logged for pg %d",
+				__func__, h->pgno);
+	}
+#endif
 
 	P_INIT(h, dbp->pgsize, h->pgno, PGNO_INVALID, meta->free, 0, P_INVALID);
 #ifdef DIAGNOSTIC

@@ -72,6 +72,10 @@ static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $"
 static int __db_dbenv_mpool __P((DB *, const char *, u_int32_t));
 static int __db_disassociate __P((DB *));
 
+#if defined (UFID_HASH_DEBUG)
+	void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
+
 #if CONFIG_TEST
 static void __db_makecopy __P((DB_ENV *, const char *, const char *));
 static int  __db_testdocopy __P((DB_ENV *, const char *));
@@ -741,6 +745,10 @@ __db_close(dbp, txn, flags)
 
 	dbenv->close_flags = flags;
 
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s called on %p flags=0x%x:", __func__,
+			dbp, flags);
+#endif
 	/*
 	 * Validate arguments, but as a DB handle destructor, we can't fail.
 	 *
@@ -752,6 +760,10 @@ __db_close(dbp, txn, flags)
 		(void)__db_check_txn(dbp, txn, DB_LOCK_INVALIDID, 0);
 
 	dbpflags = dbp->flags;
+
+	if (dbp->added_to_ufid)
+		__ufid_close(dbenv, txn, dbp->fileid);
+
 	/* Refresh the structure and close any underlying resources. */
 	ret = __db_refresh(dbp, txn, flags, &deferred_close);
 

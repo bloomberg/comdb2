@@ -1402,6 +1402,7 @@ struct __db {
 
 #define	DB_LOGFILEID_INVALID	-1
 	FNAME *log_filename;		/* File's naming info for logging. */
+	int added_to_ufid;
 
 	db_pgno_t meta_pgno;		/* Meta page number */
 	u_int32_t lid;			/* Locker id for handle locking. */
@@ -2067,6 +2068,12 @@ struct __lc_cache {
 	pthread_mutex_t lk;
 };
 
+struct __ufid_to_db_t {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	char *fname;
+	DB *dbp;
+};
+
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype);
@@ -2490,6 +2497,10 @@ struct __db_env {
 	pthread_mutex_t ltrans_hash_lk;
 	pthread_mutex_t ltrans_inactive_lk;
 	pthread_mutex_t ltrans_active_lk;
+
+	/* ufid to dbp hash */
+	hash_t *ufid_to_db_hash;
+	pthread_mutex_t ufid_to_db_lk;
 
 	/* Parallel recovery.  These are only valid on replicants. */
 	DB_LSN prev_commit_lsn;
@@ -2921,7 +2932,7 @@ int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	int check_checkpoint);
 
 u_int32_t file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
-	int rectype, DBT *dbt);
+	int rectype, u_int8_t *ufid, int *is_ufid, DBT *dbt);
 
 int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);

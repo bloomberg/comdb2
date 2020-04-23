@@ -373,6 +373,8 @@ __dbenv_open(dbenv, db_home, flags, mode)
 		Pthread_mutex_init(&dbenv->ltrans_active_lk, NULL);
 		Pthread_mutex_init(&dbenv->locked_lsn_lk, NULL);
 	}
+    dbenv->ufid_to_db_hash = hash_init(DB_FILE_ID_LEN);
+    Pthread_mutex_init(&dbenv->ufid_to_db_lk, NULL);
 	dbenv->mintruncate_state = MINTRUNCATE_START;
 	ZERO_LSN(dbenv->mintruncate_first);
 	ZERO_LSN(dbenv->last_mintruncate_dbreg_start);
@@ -438,6 +440,12 @@ __dbenv_open(dbenv, db_home, flags, mode)
 		if ((ret = __txn_init_getallpgnos(dbenv, &dbenv->pgnos_dtab,
 		    &dbenv->pgnos_dtab_size)) != 0)
 			goto err;
+
+		if (dbenv->comdb2_dirs.data_dir) {
+			int __ufid_readdir(DB_ENV *dbenv);
+			logmsg(LOGMSG_INFO, "%s reading files into ufid hash\n", __func__);
+			__ufid_readdir(dbenv);
+		}
 
 		/* Open (or create) the checkpoint file, place handle in dbenv. */
 		if ((ret = __checkpoint_open(dbenv, db_home)) != 0)
@@ -880,6 +888,11 @@ __dbenv_close(dbenv, rep_check)
 	if (dbenv->ltrans_hash != NULL) {
         hash_clear(dbenv->ltrans_hash);
         hash_free(dbenv->ltrans_hash);
+    }
+
+    if (dbenv->ufid_to_db_hash != NULL) {
+        hash_clear(dbenv->ufid_to_db_hash);
+        hash_free(dbenv->ufid_to_db_hash);
     }
 
 	/* Release DB list */

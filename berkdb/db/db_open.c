@@ -37,10 +37,11 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
 
 #include <string.h>
 
-#if defined (DEBUG_STACK_AT_DB_OPEN_CLOSE)
+#if defined (DEBUG_STACK_AT_DB_OPEN_CLOSE) || defined(UFID_HASH_DEBUG)
 #include <tohex.h>
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
+
 /*
  * __db_open --
  *	DB->open method.
@@ -257,7 +258,7 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	 * files.
 	 */
 	if (!F_ISSET(dbp, DB_AM_RECOVER) &&
-	    fname != NULL && LOCK_ISSET(dbp->handle_lock)) {
+		fname != NULL && LOCK_ISSET(dbp->handle_lock)) {
 		if (txn != NULL) {
 			ret = __txn_lockevent(dbenv,
 			    txn, dbp, &dbp->handle_lock, dbp->lid);
@@ -266,6 +267,7 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 			ret = __lock_downgrade(dbenv,
 			    &dbp->handle_lock, DB_LOCK_READ, 0);
 	}
+
 	if (type == DB_BTREE && fname) {
 		size_t s = strlen(fname);
 		if (s > 7 && strncmp(fname, "XXX.__q", 7) == 0) {
@@ -312,6 +314,10 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 
 DB_TEST_RECOVERY_LABEL
 err:
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s called on %s flags=0x%x dbp %p ret %d:",
+            __func__, fname ? fname : "(nil)", flags, dbp, ret);
+#endif
 	return (ret);
 }
 
