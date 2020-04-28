@@ -2235,6 +2235,26 @@ int bdb_is_standalone(void *dbenv, void *in_bdb_state)
 extern int gbl_commit_delay_trace;
 int gbl_skip_catchup_logic = 0;
 
+void create_watcher_thread(bdb_state_type *bdb_state)
+{
+    int rc;
+    pthread_attr_t attr;
+    Pthread_attr_init(&attr);
+    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+    Pthread_attr_setstacksize(&attr, 1024 * 1024);
+
+    /* create the watcher thread */
+    logmsg(LOGMSG_DEBUG, "creating the watcher thread\n");
+    rc = Pthread_create(&(bdb_state->watcher_thread), &attr, watcher_thread,
+                        bdb_state);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "couldnt create watcher thread\n");
+        abort();
+    }
+
+    Pthread_attr_destroy(&attr);
+}
+
 static DB_ENV *dbenv_open(bdb_state_type *bdb_state)
 {
     DB_ENV *dbenv;
@@ -2887,21 +2907,7 @@ if (!is_real_netinfo(bdb_state->repinfo->netinfo))
       rep_start\n\n\n");
     */
 
-    pthread_attr_t attr;
-    Pthread_attr_init(&attr);
-    Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
-    Pthread_attr_setstacksize(&attr, 1024 * 1024);
-
-    /* create the watcher thread */
-    logmsg(LOGMSG_DEBUG, "creating the watcher thread\n");
-    rc = pthread_create(&(bdb_state->watcher_thread), &attr, watcher_thread,
-                        bdb_state);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "couldnt create watcher thread\n");
-        return NULL;
-    }
-
-    Pthread_attr_destroy(&attr);
+    create_watcher_thread(bdb_state);
 
     if (0) {
         pthread_t lwm_printer_tid;

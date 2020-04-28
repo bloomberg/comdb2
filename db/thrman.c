@@ -573,6 +573,7 @@ void stop_threads(struct dbenv *dbenv)
                          * bc sql thds are stopped */
 }
 
+void create_watcher_thread(bdb_state_type *bdb_state);
 void resume_threads(struct dbenv *dbenv)
 {
     if (gbl_appsock_thdpool)
@@ -587,6 +588,7 @@ void resume_threads(struct dbenv *dbenv)
     if (!dbenv->purge_old_blkseq_is_running ||
         !dbenv->purge_old_files_is_running)
         create_old_blkseq_thread(dbenv);
+    create_watcher_thread(dbenv->bdb_env);
     /*watchdog_enable();*/
 }
 
