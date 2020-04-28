@@ -66,7 +66,8 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
  *
  */
 int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
-                      int hasuuid, struct errstat **xerr);
+                      int hasuuid, struct errstat **xerr,
+                      struct query_effects *effects);
 
 /**
  * Send a "POKE" message to "tonode" inquering about session "rqid"
@@ -236,7 +237,7 @@ int osql_comm_send_socksqlreq(char *tohost, const char *sql, int sqlen,
  */
 int osql_comm_signal_sqlthr_rc(const char *tohost, unsigned long long rqid,
                                uuid_t uuid, int nops, struct errstat *xerr,
-                               int rc);
+                               snap_uid_t *snap, int rc);
 
 /**
  * Report on the traffic noticed
