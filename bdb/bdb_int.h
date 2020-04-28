@@ -848,7 +848,7 @@ struct bdb_state_tag {
 
     struct bdb_state_tag *parent; /* pointer to our parent */
     short numchildren;
-    struct bdb_state_tag *children[MAXTABLES];
+    struct bdb_state_tag *children[MAX_CHILDREN];
     pthread_rwlock_t *bdb_lock;   /* we need this to do safe upgrades.  fetch
                                      operations get a read lock, upgrade requires
                                      a write lock - this way we can close and

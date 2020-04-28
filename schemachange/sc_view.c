@@ -19,6 +19,7 @@
 #include "comdb2.h"
 
 int add_view(struct dbview *view);
+int count_views(void);
 void delete_view(char *view_name);
 
 int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
@@ -31,6 +32,12 @@ int finalize_add_view(struct ireq *iq, struct schema_change_type *s,
     if (view == NULL) {
         sc_errf(s, "Failed to alloc memory (%s:%d)\n", __func__, __LINE__);
         return -1;
+    }
+
+    if ((rc = count_views()) >= MAX_NUM_VIEWS) {
+        sc_errf(s, "Failed too many views (%s:%d)\n", __func__, __LINE__);
+        rc = -1;
+        goto err;
     }
 
     view->view_name = strdup(s->tablename);

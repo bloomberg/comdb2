@@ -68,8 +68,10 @@ struct limit_t {
      MAX_SPVERSION_LEN},
     {"max_sql_length", "Maximum query length", SQLITE_MAX_SQL_LENGTH},
     {"max_table_name_length", "Maximum table name length", MAXTABLELEN - 1},
-    {"max_tables", "Maximum number of tables", MAXTABLES},
+    {"max_tables", "Maximum number of tables", MAX_NUM_TABLES},
     {"max_tag_name_length", "Maximum tag name length", MAXTAGLEN},
+    {"max_queues", "Maximum number of queues", MAX_NUM_QUEUES},
+    {"max_views", "Maximum number of views", MAX_NUM_VIEWS},
 };
 
 /*
