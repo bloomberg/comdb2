@@ -360,9 +360,9 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->sorese->rqid == 0)
                 abort();
-            osql_comm_signal_sqlthr_rc(iq->sorese->host, iq->sorese->rqid,
-                                       iq->sorese->uuid, iq->sorese->nops,
-                                       &iq->errstat, sorese_rc);
+            osql_comm_signal_sqlthr_rc(
+                iq->sorese->host, iq->sorese->rqid, iq->sorese->uuid,
+                iq->sorese->nops, &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();
 

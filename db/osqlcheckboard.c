@@ -306,7 +306,8 @@ bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat)
+                                void *data, struct errstat *errstat,
+                                struct query_effects *effects)
 {
     if (!checkboard)
         return 0;
@@ -341,11 +342,14 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
 
+    if (effects) {
+        memcpy(&entry->clnt->effects, effects, sizeof(struct query_effects));
+    }
+
     if (entry->type == OSQL_SNAP_UID_REQ && data != NULL) {
         snap_uid_t *snap_info = (snap_uid_t *)data;
         if (snap_info->rqtype == OSQL_NET_SNAP_FOUND_UID) {
             entry->clnt->is_retry = 1;
-            entry->clnt->effects = snap_info->effects;
         } else if (snap_info->rqtype == OSQL_NET_SNAP_NOT_FOUND_UID) {
             entry->clnt->is_retry = 0;
         } else {
