@@ -577,9 +577,9 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
 
     rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver, DB_FIRST);
 
+    int did_dbcp2_first = 0;
 chk_db_first_rc:
     if (rc) {
-        int did_dbcp2_first = 0;
         if (rc == DB_LOCK_DEADLOCK) {
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
@@ -611,9 +611,9 @@ chk_db_first_rc:
 
     rc = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver, DB_LAST);
 
+    int did_dbcp2_last = 0;
 chk_db_last_rc:
     if (rc) {
-        int did_dbcp2_last = 0;
         if (rc == DB_LOCK_DEADLOCK) {
             *bdberr = BDBERR_DEADLOCK;
             rc = -1;
