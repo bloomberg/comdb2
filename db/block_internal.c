@@ -19,13 +19,10 @@
 #include <endian_core.h>
 
 #include "block_internal.h"
+#include "osqlcomm.h"
 #include <flibc.h>
 
 #define BYTES_PER_WORD 4
-
-extern const uint8_t *osqlcomm_errstat_type_get(errstat_t *p_errstat_type,
-                                                const uint8_t *p_buf,
-                                                const uint8_t *p_buf_end);
 
 uint8_t *block_req_put(const struct block_req *p_block_req, uint8_t *p_buf,
                        const uint8_t *p_buf_end)
@@ -1899,9 +1896,7 @@ client_endian_pragma_req_get(struct client_endian_pragma_req *req,
 int blkseq_get_rcode(void *data, int datalen)
 {
     int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
-    uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
-                       BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
-                       (BLOCK_ERR_LEN * MAXBLOCKOPS)];
+    uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
     uint8_t *p_fstblk_buf = buf_fstblk,
             *p_fstblk_buf_end = buf_fstblk + sizeof(buf_fstblk);
     int blkseq_line = 0;
@@ -1960,6 +1955,12 @@ int blkseq_get_rcode(void *data, int datalen)
             }
             if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(
                       &errstat, p_fstblk_buf, p_fstblk_buf_end))) {
+                blkseq_line = __LINE__;
+                goto error;
+            }
+            struct query_effects unused;
+            if (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                      &unused, p_fstblk_buf, p_fstblk_buf_end))) {
                 blkseq_line = __LINE__;
                 goto error;
             }

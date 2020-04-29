@@ -796,9 +796,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 {
     int rc = 0;
     int outrc = 0, snapinfo_outrc = 0, snapinfo = 0;
-    uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
-                       BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN +
-                       (BLOCK_ERR_LEN * MAXBLOCKOPS)];
+    uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
     uint8_t *p_fstblk_buf = buf_fstblk,
             *p_fstblk_buf_end = buf_fstblk + sizeof(buf_fstblk);
 
@@ -973,6 +971,13 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                 }
                 if (!(p_fstblk_buf = (uint8_t *)osqlcomm_errstat_type_get(&(iq->errstat), 
                         p_fstblk_buf, p_fstblk_buf_end))) {
+                    flush_db();
+                    abort();
+                }
+                // retrieve the effects
+                if (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                          &(iq->snap_info.effects), p_fstblk_buf,
+                          p_fstblk_buf_end))) {
                     flush_db();
                     abort();
                 }
@@ -5397,16 +5402,7 @@ add_blkseq:
 
     iq->timings.replication_start = osql_log_time();
     if (have_blkseq) {
-        /* this buffer must always be able to hold a fstblk header and the max
-         * number of block err's.  it will also have to hold one of the
-         * following: fstblk pre rspkl + rspkl, fstblk rsperr, or fstblk rspok.
-         * since I don't want to bother figuring out which of those lenghts is
-         * the longest, just add them all together */
-        uint8_t buf_fstblk[FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN +
-                           BLOCK_RSPKL_LEN + FSTBLK_RSPERR_LEN +
-                           FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) +
-                           sizeof(int) + ERRSTAT_LEN + sizeof(int) + sizeof(int)];
-
+        uint8_t buf_fstblk[FSTBLK_MAX_BUF_LEN];
         uint8_t *p_buf_fstblk = buf_fstblk;
         const uint8_t *p_buf_fstblk_end = buf_fstblk + sizeof(buf_fstblk);
 
@@ -5526,6 +5522,11 @@ add_blkseq:
                 if (!(p_buf_fstblk = osqlcomm_errstat_type_put(&(iq->errstat),
                             p_buf_fstblk, p_buf_fstblk_end))) {
                             return ERR_INTERNAL;
+                }
+                if (!(p_buf_fstblk = osqlcomm_query_effects_put(
+                          &(iq->snap_info.effects), p_buf_fstblk,
+                          p_buf_fstblk_end))) {
+                    return ERR_INTERNAL;
                 }
             }
 

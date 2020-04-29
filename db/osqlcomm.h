@@ -298,6 +298,11 @@ uint8_t *osqlcomm_errstat_type_put(const errstat_t *p_errstat_type,
                                           uint8_t *p_buf,
                                           const uint8_t *p_buf_end);
 
+const uint8_t *osqlcomm_query_effects_get(struct query_effects *effects,
+                                          const uint8_t *p_buf,
+                                          const uint8_t *p_buf_end);
+uint8_t *osqlcomm_query_effects_put(const struct query_effects *effects,
+                                    uint8_t *p_buf, const uint8_t *p_buf_end);
 
 /**
  * Copy and pack the host-ordered client_query_stats type into big-endian
