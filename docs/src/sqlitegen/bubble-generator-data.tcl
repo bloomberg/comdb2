@@ -359,8 +359,8 @@ set all_graphs {
       {line IPU OFF}
       {line ISC OFF}
       {line REBUILD}
-      {line REC {or CRLE LZ4 RLE ZLIB}}
-      {line BLOBFIELD {or LZ4 RLE ZLIB}}
+      {line REC {or NONE CRLE LZ4 RLE ZLIB}}
+      {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
     } ,} 
   }
 
