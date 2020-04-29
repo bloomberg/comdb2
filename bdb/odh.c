@@ -166,6 +166,8 @@ int bdb_compr2algo(const char *a)
         return BDB_COMPRESS_CRLE;
     if (strncasecmp(a, "lz4", 3) == 0)
         return BDB_COMPRESS_LZ4;
+    if (strncasecmp(a, "none", 4) == 0)
+        return BDB_COMPRESS_NONE;
     return BDB_COMPRESS_NONE;
 }
 

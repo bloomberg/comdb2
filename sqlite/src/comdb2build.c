@@ -3653,7 +3653,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= REC_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= REC_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= REC_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= REC_NONE; break;
     default: assert(0);
     }
 
@@ -3662,7 +3662,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= BLOB_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= BLOB_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= BLOB_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= BLOB_NONE; break;
     default: assert(0);
     }
 
