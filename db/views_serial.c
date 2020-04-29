@@ -51,7 +51,7 @@
 #include <uuid/uuid.h>
 
 #include "comdb2.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "views.h"
 #include "comdb2uuid.h"
 

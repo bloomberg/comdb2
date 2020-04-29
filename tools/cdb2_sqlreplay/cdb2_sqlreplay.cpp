@@ -38,7 +38,7 @@
 
 #include "assert.h"
 #include "cdb2api.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 
 static cdb2_hndl_tp *cdb2h = nullptr;
 std::map<std::string, std::string> sqltrack;
