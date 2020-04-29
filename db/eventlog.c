@@ -40,7 +40,7 @@
 #include "thread_stats.h"
 #include "dbinc/locker_info.h"
 
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "comdb2_atomic.h"
 
 extern int64_t comdb2_time_epochus(void);
@@ -252,15 +252,14 @@ static void eventlog_bind_blob_int(cson_array *arr, const char *name,
     if (!bobj)
         return;
     int datalen = min(dlen, 1024);         /* cap the datalen logged */
-    const int exp_len = (2 * datalen) + 4; /* x' ... '/0  */
-    char *expanded_buf = malloc(exp_len);
+    const int exp_len = (2 * datalen) + 3; /* x' ... ' */
+    char *expanded_buf = malloc(exp_len + 1);
     expanded_buf[0] = 'x';
     expanded_buf[1] = '\'';
     util_tohex(&expanded_buf[2], val, datalen);
-    expanded_buf[2 + datalen * 2] = '\'';
-    expanded_buf[3 + datalen * 2] = '\0';
-    cson_object_set(bobj, "value",
-                    cson_value_new_string(expanded_buf, exp_len));
+    expanded_buf[exp_len - 1] = '\'';
+    expanded_buf[exp_len] = '\0';
+    cson_object_set(bobj, "value", cson_value_new_string(expanded_buf, exp_len));
     free(expanded_buf);
 }
 
@@ -364,7 +363,7 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
 
 int write_json(void *state, const void *src, unsigned int n)
 {
-    int rc = gzwrite((gzFile)state, src, n);
+    int rc = gzprintf((gzFile)state, "%.*s\n", n, src);
     bytes_written += rc;
     return rc != n;
 }
@@ -440,7 +439,7 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
 
     cson_object_set(newobj, "time", cson_new_int(logger->startus));
     cson_object_set(newobj, "type",
-            cson_value_new_string("newsql", sizeof("newsql")));
+            cson_value_new_string("newsql", strlen("newsql")));
     cson_object_set(newobj, "sql", cson_value_new_string(
                 logger->stmt, strlen(logger->stmt)));
 
@@ -479,11 +478,11 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     else if (logger->clnt && get_cnonce(logger->clnt, &snap) == 0)
         p = &snap;
     if (p) {
-        char cnonce[2 * MAX_SNAP_KEY_LEN + 1];
+        char cnonce[2 * p->keylen + 1];
         /* util_tohex() takes care of null-terminating the resulting string. */
         util_tohex(cnonce, p->key, p->keylen);
         cson_object_set(obj, "cnonce",
-                        cson_value_new_string(cnonce, sizeof(cnonce)));
+                        cson_value_new_string(cnonce, p->keylen * 2));
     }
 
     if (logger->have_id)
