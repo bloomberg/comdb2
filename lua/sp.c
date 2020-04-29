@@ -48,7 +48,7 @@
 #include <bdb_queue.h>
 #include <strbuf.h>
 
-#include <cson_amalgamation_core.h>
+#include <cson.h>
 #include <translistener.h>
 #include <net_types.h>
 #include <locks.h>
@@ -4938,9 +4938,7 @@ static SP create_sp(char **err)
 static int cson_to_table(Lua, cson_value *);
 static int cson_push_value(Lua lua, cson_value *v)
 {
-    if (cson_value_is_undef(v)) {
-        lua_pushnil(lua); // TODO: this just disappers in lua
-    } else if (cson_value_is_null(v)) {
+    if (cson_value_is_null(v)) {
         luabb_pushnull(lua, DBTYPES_INTEGER);
     } else if (cson_value_is_bool(v)) {
         lua_pushboolean(lua, cson_value_get_bool(v));
@@ -5325,8 +5323,8 @@ static cson_value *table_to_cson(Lua L, int lvl, json_conv *conv)
                     conv->error = "invalid utf-8 cstring in 'table_to_json'";
                     conv->reason |= CONV_REASON_UTF8_HEX;
                     size_t slen = strlen(s) + 1; // include terminating null
-                    size_t hexlen = slen * 2 + 1;
-                    hexstr = malloc(hexlen);
+                    size_t hexlen = slen * 2;
+                    hexstr = malloc(hexlen + 1);
                     util_tohex(hexstr, s, slen);
                     type = "hexstring";
                     s = hexstr;

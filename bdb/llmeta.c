@@ -8459,7 +8459,7 @@ int bdb_del_table_csonparameters(void *parent_tran, const char *table)
     return llmeta_del_blob(parent_tran, LLMETA_TABLE_PARAMETERS, table);
 }
 
-#include <cson_amalgamation_core.h>
+#include <cson.h>
 
 /* return parameter for tbl into value
  * NB: caller needs to free that memory area
