@@ -689,3 +689,10 @@ keys
 		dup "idx3" = (cstring[10])"( \"v\" || '\"aaa\"' )" 
 	}
 ')
+(SLEEP(5)=5)
+(out='COMPRESSION FLAGS')
+(out='These apply to new records only!')
+(out='[sqlite_stat1    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes')
+(out='[sqlite_stat4    ] ODH: yes Compress: crle     Blob compress: lz4       in-place updates: yes  instant schema change: yes')
+(out='[t1              ] ODH: yes Compress: none     Blob compress: none      in-place updates: yes  instant schema change: yes')
+(out='[t2              ] ODH: yes Compress: zlib     Blob compress: zlib      in-place updates: yes  instant schema change: yes')
