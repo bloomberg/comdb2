@@ -3468,7 +3468,9 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
     }
 
     msg->name[sizeof(msg->name) - 1] = '\0';
+    wrlock_schema_lk();
     rc = add_queue_to_environment(msg->name, msg->avgitemsz, 0);
+    unlock_schema_lk();
     net_ack_message(hndl, rc);
 }
 

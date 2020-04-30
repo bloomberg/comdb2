@@ -1790,7 +1790,6 @@ size_t gbl_lkr_parts = 23;
 size_t gbl_lk_hash = 32;
 size_t gbl_lkr_hash = 16;
 
-char **qdbs = NULL;
 char **sfuncs = NULL;
 char **afuncs = NULL;
 
@@ -3070,16 +3069,6 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int llmeta_set_qdbs(void)
-{
-    int rc = 0;
-    for (int i = 0; i != thedb->num_qdbs; ++i) {
-        if ((rc = llmeta_set_qdb(qdbs[i])) != 0)
-            break;
-    }
-    return rc;
-}
-
 static int init_sqlite_table(struct dbenv *dbenv, char *table)
 {
     int rc;
@@ -3910,11 +3899,6 @@ static int init(int argc, char **argv)
                 logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
                 return -1;
             }
-        }
-
-        if (llmeta_set_qdbs() != 0) {
-            logmsg(LOGMSG_FATAL, "failed to add queuedbs to llmeta\n");
-            return -1;
         }
 
         llmeta_set_lua_funcs(s);
