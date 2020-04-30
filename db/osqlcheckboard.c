@@ -336,18 +336,12 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         rc = -1;
 
     } else {
+        Pthread_mutex_lock(&entry->mtx);
 
         if (errstat)
             entry->err = *errstat;
         else
             bzero(&entry->err, sizeof(entry->err));
-
-        if (effects) {
-            memcpy(&entry->clnt->effects, effects,
-                   sizeof(struct query_effects));
-        }
-
-        Pthread_mutex_lock(&entry->mtx);
 
         entry->done = 1; /* mem sync? */
         entry->nops = nops;
@@ -356,6 +350,10 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
             snap_uid_t *snap_info = (snap_uid_t *)data;
             if (snap_info->rqtype == OSQL_NET_SNAP_FOUND_UID) {
                 entry->clnt->is_retry = 1;
+                if (effects) {
+                    memcpy(&entry->clnt->effects, effects,
+                           sizeof(struct query_effects));
+                }
             } else if (snap_info->rqtype == OSQL_NET_SNAP_NOT_FOUND_UID) {
                 entry->clnt->is_retry = 0;
             } else {
