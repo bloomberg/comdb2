@@ -3453,6 +3453,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
                 /* Generate normalized sql */
                 if (!(flags & PREPARE_NO_NORMALIZE)) {
+                    free_normalized_sql(clnt);
                     normalize_stmt_and_store(clnt, rec, 0);
                     zNormSql = clnt->work.zNormSql;
                     normalize_sql_done = true;
@@ -3520,8 +3521,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        free_normalized_sql(clnt);
         if (!(flags & PREPARE_NO_NORMALIZE) && !normalize_sql_done) {
+            free_normalized_sql(clnt);
             normalize_stmt_and_store(clnt, rec, 0);
         }
         sqlite3_resetclock(rec->stmt);
