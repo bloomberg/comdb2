@@ -260,7 +260,9 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
     bdb_state_type *p_bdb_state = bdb_state;
     DB_LSN lsn;
 
-    ++gbl_dbopen_gen;
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
+        ++gbl_dbopen_gen;
+
     if (bdb_state->name) {
         dtbl = alloca(sizeof(DBT));
         bzero(dtbl, sizeof(DBT));
@@ -301,14 +303,18 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
 int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
                     int *bdberr)
 {
-    ++gbl_dbopen_gen;
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
+        ++gbl_dbopen_gen;
+
     return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
 }
 
 int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
                              const char *origtable, int *bdberr)
 {
-    ++gbl_dbopen_gen;
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
+        ++gbl_dbopen_gen;
+
     return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);
 }
 

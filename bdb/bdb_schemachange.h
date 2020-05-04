@@ -52,6 +52,9 @@ typedef enum scdone {
     del_queue_file
 } scdone_t;
 
+#define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
+    (((a) == add_queue_file) || ((a) == del_queue_file))
+
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, const char *origtable, int *bdberr);
 int bdb_llog_scdone(bdb_state_type *, scdone_t, int wait, int *bdberr);
