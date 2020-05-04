@@ -13,6 +13,9 @@ create lua consumer log1 on (table foraudit for insert)
 create lua consumer dml2 on (table foraudit for insert)
 EOF
 
+cdb2sql $SP_OPTIONS "insert into t1 values('outer t1');"
+cdb2sql $SP_OPTIONS "insert into t2 values('outer t2');"
+
 for ((i=1;i<9600;++i)); do
     echo "insert into foraudit values(${i})"
 done | cdb2sql $SP_OPTIONS - >/dev/null
