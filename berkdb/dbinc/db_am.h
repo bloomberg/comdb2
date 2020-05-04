@@ -39,6 +39,8 @@
 #else
 #define CHECK_ABORT 
 #endif
+
+#include <dbinc/recovery_info.h>
 /*
  * Standard initialization and shutdown macros for all recovery functions.
  */
@@ -57,11 +59,14 @@
 			ret = 0;					\
 			goto done;					\
 		}							\
-        CHECK_ABORT                 \
+		CHECK_ABORT				 \
 		goto out;						\
 	}								\
+	if ((ret = __recthd_dispatch(dbenv, file_dbp)) == 0) { \
+		goto done; \
+	}\
 	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0){		\
-        CHECK_ABORT \
+		CHECK_ABORT \
 		goto out;						\
 	}										   \
 	F_SET(dbc, DBC_RECOVER);					\
@@ -86,15 +91,18 @@ extern void __bb_dbreg_print_dblist_stdout(DB_ENV *dbenv);
 	    &file_dbp, argp->fileid, inc_count, lsnp, 0)) != 0) {		\
 		if (ret	== DB_DELETED) {				               \
 			if (!(IS_RECOVERING(dbenv)))                    \
-         {                                               \
-            __bb_dbreg_print_dblist_stdout(dbenv);       \
-            __db_panic(dbenv, DB_RUNRECOVERY) ;          \
-         }                                               \
-         ret = 0;					                           \
-			goto done;					                        \
-		}							                              \
-		goto out;						                        \
-	}								                              \
+		 {											   \
+			__bb_dbreg_print_dblist_stdout(dbenv);	   \
+			__db_panic(dbenv, DB_RUNRECOVERY) ;		  \
+		 }											   \
+		 ret = 0;											   \
+			goto done;											\
+		}														  \
+		goto out;												\
+	}															  \
+	if ((ret = __recthd_dispatch(dbenv, file_dbp)) == 0) { \
+		goto done; \
+	}\
 	if ((ret = __db_cursor(file_dbp, NULL, &dbc, 0)) != 0)		\
 		goto out;						\
 	F_SET(dbc, DBC_RECOVER);					\
@@ -109,9 +117,9 @@ extern void __bb_dbreg_print_dblist_stdout(DB_ENV *dbenv);
 	    (__t_ret = __db_c_close(dbc)) != 0 && ret == 0)		\
 		ret = __t_ret;						\
 	}								\
-    if (ret != 0) {                         \
-        CHECK_ABORT                         \
-    } \
+	if (ret != 0) {						 \
+		CHECK_ABORT						 \
+	} \
 	return (ret)
 
 /*

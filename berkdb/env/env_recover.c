@@ -50,11 +50,13 @@ static const char revid[] =
 
 #include <printformats.h>
 
+#include <dbinc/recovery_info.h>
 #include "dbinc/btree.h"
 #include "dbinc/lock.h"
 
 #include "list.h"
 #include "logmsg.h"
+#include <alloca.h>
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
@@ -928,8 +930,386 @@ void log_recovery_progress(int stage, int progress)
 	}
 }
 
+static int forward(DB_ENV *dbenv, DB_LSN lsn, DB_LSN stop_lsn,
+	void *txninfo, DB_LSN *outlsn)
+{
+	int ret = 0;
+	DBT data = {0};
+	DB_LOGC *logc = NULL;
+	
+	if ((ret = __log_cursor(dbenv, &logc)) != 0) {
+		abort();
+    }
+
+	ret = __log_c_get(logc, &lsn, &data, DB_SET);
+	if (ret) {
+		abort();
+    }
+
+	for (ret = __log_c_get(logc, &lsn, &data, DB_NEXT);
+		ret == 0; ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
+		/*
+		 * If we are recovering to a timestamp or an LSN,
+		 * we need to make sure that we don't try to roll
+		 * forward beyond the soon-to-be end of log.
+		 */
+
+		if (log_compare(&lsn, &stop_lsn) > 0)
+			break;
+
+		ret = __db_dispatch(dbenv, dbenv->recover_dtab,
+			dbenv->recover_dtab_size, &data, &lsn,
+			DB_TXN_FORWARD_ROLL, txninfo);
+		if (ret != 0) {
+			if (ret != DB_TXN_CKP)
+				abort();
+			else
+				ret = 0;
+		}
+	}
+
+done:
+	if (logc)
+		__log_c_close(logc);
+	*outlsn = lsn;
+	return ret;
+}
+
+static int backward(DB_ENV *dbenv, DB_LSN first_lsn, DB_LSN stop_lsn,
+	void *txninfo, DB_LSN *outlsn)
+{
+	int ret;
+	DBT data = {0};
+	DB_LOGC *logc = NULL;
+	DB_LSN lsn;
+	
+	if ((ret = __log_cursor(dbenv, &logc)) != 0)
+		abort();
+
+	ret = __log_c_get(logc, &lsn, &data, DB_LAST);
+	if (ret)
+		abort();
+
+	for (; ret == 0 && log_compare(&lsn, &first_lsn) >= 0;
+		ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
+		ret = __db_dispatch(dbenv, dbenv->recover_dtab,
+			dbenv->recover_dtab_size, &data, &lsn,
+			DB_TXN_BACKWARD_ROLL, txninfo);
+		if (ret != 0) {
+			if (ret != DB_TXN_CKP)
+				abort();
+			else
+				ret = 0;
+		}
+		if (dbenv->lsn_undone_callback)
+			dbenv->lsn_undone_callback(dbenv, &lsn);
+	}
+done:
+	if (logc)
+		__log_c_close(logc);
+	*outlsn = lsn;
+	return ret;
+}
+
+int gbl_full_recovery_threads = 4;
+
+__thread recovery_info_t *__recovery_info;
+
+int __recthd_dbreg_dispatch(DB_ENV *dbenv, u_int8_t *fid, db_recops op)
+{
+	ufid_thd_t *fnd;
+	int min = INT_MAX, v, thread_number = -1, rtn = 0, added = 0;
+
+	if (__recovery_info == NULL) {
+		return 1;
+	}
+
+	assert(op == DB_TXN_FORWARD_ROLL || op == DB_TXN_BACKWARD_ROLL);
+
+	Pthread_mutex_lock(&__recovery_info->r->lk);
+
+	if ((fnd = hash_find(__recovery_info->r->fileid_hash, fid)) == NULL) {
+		fnd = (ufid_thd_t *)malloc(sizeof(*fnd));
+		memcpy(fnd->fileid, fid, DB_FILE_ID_LEN);
+		hash_add(__recovery_info->r->fileid_hash, fnd);
+		added = 1;
+		for (int i = 0; i < __recovery_info->r->total_threads; i++) {
+			if ((v = __recovery_info->r->hitcounts[i]) < min) {
+				min = v;
+				thread_number = i;
+			}
+		}
+		fnd->thd = thread_number;
+	}
+
+	if (fnd->thd == __recovery_info->threadnum) {
+		rtn = 1;
+	}
+
+	if (added) {
+		__recovery_info->r->hitcounts[fnd->thd]++;
+	}
+
+	Pthread_mutex_unlock(&__recovery_info->r->lk);
+	return rtn;
+}
+
+int __recthd_fileop_dispatch(DB_ENV *dbenv, const char *f1, const char *f2,
+		u_int8_t *fid)
+{
+	int min = INT_MAX, v, thread_number = -1, rtn = 0, added = 0;
+	ufid_thd_t *fidtd = NULL;
+	fop_thd_t *fop1 = NULL, *fop2 = NULL;
+
+	if (__recovery_info == NULL) {
+		return 1;
+	}
+
+	Pthread_mutex_lock(&__recovery_info->r->lk);
+	if (f1) {
+		if ((fop1 = hash_find(__recovery_info->r->fop_hash, &f1)) == NULL) {
+			fop1 = (fop_thd_t *)malloc(sizeof(*fop1));
+			fop1->name = strdup(f1);
+			fop1->thd = -1;
+			hash_add(__recovery_info->r->fop_hash, fop1);
+			added = 1;
+		}
+		if (fop1->thd >= 0) {
+			thread_number = fop1->thd;
+		}
+	}
+
+	if (f2) {
+		if ((fop2 = hash_find(__recovery_info->r->fop_hash, &f2)) == NULL) {
+			fop2 = (fop_thd_t *)malloc(sizeof(*fop1));
+			fop2->name = strdup(f2);
+			fop2->thd = -1;
+			hash_add(__recovery_info->r->fop_hash, fop2);
+			added = 1;
+		}
+		if (fop2->thd >= 0) {
+			thread_number = fop2->thd;
+		}
+	}
+
+	if (fid) {
+		if ((fidtd = hash_find(__recovery_info->r->fileid_hash, fid)) == NULL) {
+			fidtd = (ufid_thd_t *)malloc(sizeof(*fop1));
+			memcpy(fidtd->fileid, fid, DB_FILE_ID_LEN);
+			fidtd->thd = -1;
+			hash_add(__recovery_info->r->fileid_hash, fidtd);
+			added = 1;
+		}
+		if (fidtd->thd >= 0) {
+			thread_number = fidtd->thd;
+		}
+	}
+
+	if (thread_number < 0) {
+		for (int i = 0; i < __recovery_info->r->total_threads; i++) {
+			if ((v = __recovery_info->r->hitcounts[i]) < min) {
+				min = v;
+				thread_number = i;
+			}
+		}
+	}
+
+	if (fop1) {
+		fop1->thd = thread_number;
+	}
+
+	if (fop2) {
+		fop2->thd = thread_number;
+	}
+
+	if (fidtd) {
+		fidtd->thd = thread_number;
+	}
+
+	if (thread_number == __recovery_info->threadnum) {
+		rtn = 1;
+	}
+
+	if (added) {
+		__recovery_info->r->hitcounts[thread_number]++;
+	}
+
+	Pthread_mutex_unlock(&__recovery_info->r->lk);
+	return rtn;
+}
+
+int __recthd_dispatch(DB_ENV *dbenv, DB *file_dbp)
+{
+	ufid_thd_t *fnd;
+	int min = INT_MAX, v, thread_number = -1, rtn = 0, added = 0;
+	if (__recovery_info == NULL) {
+		return 1;
+	}
+	Pthread_mutex_lock(&__recovery_info->r->lk);
+	if ((fnd = hash_find(__recovery_info->r->fileid_hash, file_dbp->fileid)) == NULL) {
+		fnd = (ufid_thd_t *)malloc(sizeof(*fnd));
+		memcpy(fnd->fileid, file_dbp->fileid, DB_FILE_ID_LEN);
+		hash_add(__recovery_info->r->fileid_hash, fnd);
+		added = 1;
+		for (int i = 0; i < __recovery_info->r->total_threads; i++) {
+			if ((v = __recovery_info->r->hitcounts[i]) < min) {
+				min = v;
+				thread_number = i;
+			}
+		}
+		fnd->thd = thread_number;
+	}
+
+	if (fnd->thd == __recovery_info->threadnum) {
+		rtn = 1;
+	}
+
+	if (added) {
+		__recovery_info->r->hitcounts[fnd->thd]++;
+	}
+
+	Pthread_mutex_unlock(&__recovery_info->r->lk);
+	return rtn;
+}
 
 
+static void *threaded_recovery_thread(void *arg)
+{
+	int ret;
+	void *txninfo = NULL;
+	recthd_t *t = (recthd_t *)arg;
+
+	/* Thread local */
+	recovery_info_t r;
+	r.r = t;
+	Pthread_mutex_lock(&t->lk);
+	r.threadnum = (*t->count)++;
+	Pthread_mutex_unlock(&t->lk);
+	__recovery_info = &r;
+	//txninfo = (void *)t->dbenv->parallel_txnlist[r.threadnum];
+
+	/* Outlsn */
+	DB_LSN outlsn;
+
+	/* Thread txninfo */
+	__db_txnlist_copy(t->dbenv, t->txninfo, &txninfo);
+
+	/* Backward pass */
+	t->dbenv->recovery_pass = DB_TXN_BACKWARD_ROLL;
+	backward(t->dbenv, t->lsn, t->stop_lsn, txninfo, &outlsn);
+
+	/* Block threads here */
+	Pthread_mutex_lock(&t->lk);
+	t->completed_backwards++;
+	while(t->completed_backwards < t->total_threads) {
+		Pthread_cond_wait(&t->cd, &t->lk);
+	}
+
+	Pthread_cond_broadcast(&t->cd);
+	Pthread_mutex_unlock(&t->lk);
+
+	/* Forward pass */
+	t->dbenv->recovery_pass = DB_TXN_FORWARD_ROLL;
+	forward(t->dbenv, t->lsn, t->stop_lsn, txninfo, &outlsn);
+
+	Pthread_mutex_lock(&t->lk);
+	t->outlsn = outlsn;
+	Pthread_mutex_unlock(&t->lk);
+/*
+	if (t->dbpp) {
+		__db_close(*t->dbpp, NULL, 0);
+	}
+*/
+	if (txninfo) {
+		__db_txnlist_end(t->dbenv, txninfo);
+	}
+	__recovery_info = NULL;
+	return NULL;
+}
+
+static int free_fop_hash(void *obj, void *arg)
+{
+	fop_thd_t *f = (fop_thd_t *)obj;
+	free(f->name);
+	free(f);
+	return 0;
+}
+
+static int free_fileid_hash(void *obj, void *arg)
+{
+	free(obj);
+	return 0;
+}
+
+/* Spawn threads for forward and backward pass */
+static void threaded_recovery(DB_ENV *dbenv, int total_threads, DB_LSN lsn,
+							  DB_LSN stop_lsn, void *txninfo, DB_LSN *outlsn)
+{
+	recthd_t t = {0};
+	int count = 0, *hitcounts;
+	pthread_t *threads;
+
+	/* FILEID hash and lock */
+	Pthread_mutex_init(&t.lk, NULL);
+	Pthread_cond_init(&t.cd, NULL);
+	t.fileid_hash = hash_init(DB_FILE_ID_LEN);
+	t.fop_hash = hash_init_strptr(0);
+
+	/* Shared elements */
+	hitcounts = alloca(sizeof(int) * total_threads);
+	memset(hitcounts, 0, sizeof(int) * total_threads);
+	t.hitcounts = hitcounts;
+	t.count = &count;
+	t.completed_backwards = 0;
+	t.total_threads = total_threads;
+
+	/* Arguments to backward and forward */
+	t.dbenv = dbenv;
+	t.lsn = lsn;
+	t.stop_lsn = stop_lsn;
+	t.txninfo = txninfo;
+
+	/* Pthread ids */
+	threads = alloca(sizeof(pthread_t) * total_threads);
+
+	/* Spawn threads */
+	for (int i = 0; i < total_threads; i++) {
+		Pthread_create(&threads[i], NULL, threaded_recovery_thread, &t);
+	}
+
+	/* Join threads */
+	for (int i = 0; i < total_threads; i++) {
+		Pthread_join(threads[i], NULL);
+	}
+
+	/* Cleanup */
+	Pthread_mutex_destroy(&t.lk);
+	Pthread_cond_destroy(&t.cd);
+	hash_for(t.fileid_hash, free_fileid_hash, NULL);
+	hash_free(t.fileid_hash);
+	hash_for(t.fop_hash, free_fop_hash, NULL);
+	hash_free(t.fop_hash);
+
+	for (int i = 0; i < total_threads; i++) {
+		logmsg(LOGMSG_USER, "Thread %d: %d records\n", i, hitcounts[i]);
+	}
+	(*outlsn) = t.outlsn;
+}
+
+static int forwardbackward(DB_ENV *dbenv, int thread_count, DB_LSN lsn,
+		DB_LSN last_lsn, void *txninfo, DB_LSN *outlsn)
+{
+	//int thread_count = gbl_full_recovery_threads;
+	if (thread_count > 0) {
+		threaded_recovery(dbenv, thread_count, lsn, last_lsn, txninfo, outlsn);
+	} else {
+		dbenv->recovery_pass = DB_TXN_BACKWARD_ROLL;
+		backward(dbenv, lsn, last_lsn, txninfo, outlsn);
+		dbenv->recovery_pass = DB_TXN_FORWARD_ROLL;
+		forward(dbenv, lsn, last_lsn, txninfo, outlsn);
+	}
+	return 0;
+}
 
 /*
  * __db_apprec --
@@ -953,6 +1333,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	DB_REP *db_rep;
 	DB_TXNREGION *region;
 	REP *rep;
+	int thread_count = gbl_full_recovery_threads;
 	__txn_ckp_args *ckp_args;
 	time_t now, tlow;
 	int32_t log_size, low;
@@ -962,6 +1343,7 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	u_int32_t hi_txn, txnid;
 	char *p, *pass, t1[60], t2[60];
 	void *txninfo;
+    //void *txn_alloc[thread_count];
 	DB_LSN logged_checkpoint_lsn;
 	int start_recovery_at_dbregs;
 
@@ -1313,11 +1695,24 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		(ret = __log_c_get(logc, &first_lsn, &data, DB_SET)) != 0)
 		goto err;
 
-	/* Initialize the transaction list. */
 	if ((ret =
 		__db_txnlist_init(dbenv, txnid, hi_txn, max_lsn,
-			&txninfo)) != 0)
+			&txninfo)) != 0) {
 		goto err;
+	} 
+
+/*
+	if (thread_count > 0) {
+		dbenv->parallel_txnlist_count = thread_count;
+		for (int i = 0; i < thread_count; i++) {
+			if ((ret = __db_txnlist_init(dbenv, txnid, hi_txn, max_lsn,
+					(void *)&txn_alloc[i])) != 0) {
+				abort();
+			}
+		}
+		dbenv->parallel_txnlist = (void **)txn_alloc;
+	} 
+*/
 
 	__fileid_track_free(dbenv);
 
@@ -1368,43 +1763,19 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 		__db_err(dbenv, "Recovery starting from [%lu][%lu]",
 			(u_long)first_lsn.file, (u_long)first_lsn.offset);
 
-	pass = "backward";
+//	pass = "backward";
+/*
 	ret = __log_c_get(logc, &lsn, &data, DB_LAST);
 	if (ret)
 		goto err;
 	logmsg(LOGMSG_WARN, "running backward pass from %u:%u <- %u:%u\n",
 		first_lsn.file, first_lsn.offset, lsn.file, lsn.offset);
-	for (; ret == 0 && log_compare(&lsn, &first_lsn) >= 0;
-		ret = __log_c_get(logc, &lsn, &data, DB_PREV)) {
-#if 0
-		progress = 34 + (int)(33 * (__lsn_diff(&first_lsn,
-#else
-		progress = (int)(100 * (__lsn_diff(&first_lsn,
-#endif
-			&last_lsn, &lsn, log_size, 0) / nfiles));
-		log_recovery_progress(2, progress);
-
-		if (dbenv->db_feedback != NULL) {
-			dbenv->db_feedback(dbenv, DB_RECOVER, progress);
-		}
-
-		ret = __db_dispatch(dbenv, dbenv->recover_dtab,
-			dbenv->recover_dtab_size, &data, &lsn,
-			DB_TXN_BACKWARD_ROLL, txninfo);
-		if (ret != 0) {
-			if (ret != DB_TXN_CKP)
-				goto msgerr;
-			else
-				ret = 0;
-		}
-		if (dbenv->lsn_undone_callback)
-			dbenv->lsn_undone_callback(dbenv, &lsn);
-	}
-
-	if (ret != 0 && ret != DB_NOTFOUND)
-		goto err;
-
+	*/
+	/*
+	DB_LSN unused = {0};
+	backward(dbenv, first_lsn, unused, txninfo, &lsn);
 	log_recovery_progress(2, -1);
+	*/
 
 	/*
 	 * Pass #3.  If we are recovering to a timestamp or to an LSN,
@@ -1416,48 +1787,23 @@ __db_apprec(dbenv, max_lsn, trunclsn, update, flags)
 	 * derive a real stop_lsn that tells how far the forward pass
 	 * should go.
 	 */
+	 /*
 	log_recovery_progress(3, -1);
 	pass = "forward";
 	dbenv->recovery_pass = DB_TXN_FORWARD_ROLL;
+	*/
 	stop_lsn = last_lsn;
 	if (max_lsn != NULL ||dbenv->tx_timestamp != 0)
 		stop_lsn = ((DB_TXNHEAD *)txninfo)->maxlsn;
 
+	ret = forwardbackward(dbenv, thread_count, lsn, stop_lsn,
+			txninfo, &lsn);
+
+/*
 	logmsg(LOGMSG_WARN, "running forward pass from %u:%u -> %u:%u\n",
 		lsn.file, lsn.offset, stop_lsn.file, stop_lsn.offset);
-	for (ret = __log_c_get(logc, &lsn, &data, DB_NEXT);
-		ret == 0; ret = __log_c_get(logc, &lsn, &data, DB_NEXT)) {
-		/*
-		 * If we are recovering to a timestamp or an LSN,
-		 * we need to make sure that we don't try to roll
-		 * forward beyond the soon-to-be end of log.
-		 */
-
-		if (log_compare(&lsn, &stop_lsn) > 0)
-			break;
-#if 0
-		progress = 67 + (int)(33 * (__lsn_diff(&first_lsn,
-#else
-		progress = (int)(100 * (__lsn_diff(&first_lsn,
-#endif
-			&last_lsn, &lsn, log_size, 1) / nfiles));
-		log_recovery_progress(3, progress);
-
-		if (dbenv->db_feedback != NULL) {
-			dbenv->db_feedback(dbenv, DB_RECOVER, progress);
-		}
-
-		ret = __db_dispatch(dbenv, dbenv->recover_dtab,
-			dbenv->recover_dtab_size, &data, &lsn,
-			DB_TXN_FORWARD_ROLL, txninfo);
-		if (ret != 0) {
-			if (ret != DB_TXN_CKP)
-				goto msgerr;
-			else
-				ret = 0;
-		}
-
-	}
+	forward(dbenv, lsn, stop_lsn, txninfo, &lsn);
+*/
 
 	if (ret != 0 && ret != DB_NOTFOUND)
 		goto err;
@@ -1667,6 +2013,13 @@ msgerr:	__db_err(dbenv,
 err:	if (logc != NULL && (t_ret = __log_c_close(logc)) != 0 && ret == 0)
 		ret = t_ret;
 
+	if (thread_count > 0 && dbenv->parallel_txnlist) {
+		for (int i = 0; i < thread_count; i++) {
+			if ((void *)dbenv->parallel_txnlist[i]) {
+				__db_txnlist_end(dbenv, (void *)dbenv->parallel_txnlist[i]);
+			}
+		}
+	}
 	if (txninfo != NULL)
 		__db_txnlist_end(dbenv, txninfo);
 

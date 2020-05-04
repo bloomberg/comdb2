@@ -833,6 +833,7 @@ __dbenv_close(dbenv, rep_check)
 	if (dbenv->db_ref != 0) {
 		__db_err(dbenv,
 		    "Database handles open during environment close");
+		abort();
 		if (ret == 0)
 			ret = EINVAL;
 	}

@@ -28,6 +28,8 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "printformats.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include <dbinc/recovery_info.h>
+
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -409,6 +411,12 @@ __dbreg_id_to_db_in_recovery(DB_ENV *dbenv, int ndx, DB_TXN *txn, DB_LSN *lsnp,
 
 				goto err;
 			}
+/*
+            if (__recovery_info != NULL && __recovery_info->r->dbpp != NULL) {
+                __db_close(*__recovery_info->r->dbpp, txn, 0);
+                (*__recovery_info->r->dbpp) = *dbpp;
+            }
+*/
 		}
 		*dbpp = r->dbp;
 		goto err;

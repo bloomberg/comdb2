@@ -140,7 +140,7 @@ EOF
 done
 
 # Make sure that root can access common/ under SELinux
-chmod 777 -R common
+chmod -R 777 common
 
 docker-compose build
 docker-compose up --abort-on-container-exit

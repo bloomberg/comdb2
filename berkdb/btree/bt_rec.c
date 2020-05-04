@@ -26,6 +26,7 @@ static const char revid[] = "$Id: bt_rec.c,v 11.64 2003/09/13 18:48:58 bostic Ex
 #include "dbinc/mp.h"
 #include "bt_prefix.h"
 
+#include <dbinc/recovery_info.h>
 #include <stdlib.h>
 #include <logmsg.h>
 #include <locks_wrap.h>

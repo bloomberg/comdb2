@@ -38,6 +38,8 @@ RUN apt-get update && \
     tcl-dev \
     time \
     tzdata \
+    valgrind \
+    vim \
     uuid-dev && \
   ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
   dpkg-reconfigure --frontend noninteractive tzdata
@@ -48,12 +50,17 @@ RUN cd /comdb2 &&  \
     rm -rf build && \
     mkdir build && \
     cd build && \
-    cmake -DWITH_TCL=1 .. && \
+    cmake -DWITH_TCL=1 -DCMAKE_BUILD_TYPE="Debug" -DDEBUG_ABORT_ON_RECOVERY_FAILURE=1 -DCOMDB2_PER_THREAD_MALLOC=0 .. && \
     make -j4 && \
     make -j4 test-tools && \
     make install &&  \
+    cd /comdb2/pgdump && \
+    make -j4 && \
+    make install && \
     cp /comdb2/tests/docker/client / && \
     cp /comdb2/tests/docker/server / && \
     apt-get clean
 
 ENV PATH      $PATH:/opt/bb/bin
+ENV CLUSTER   "n1 n2 n3"
+ENV SKIPSSL   1

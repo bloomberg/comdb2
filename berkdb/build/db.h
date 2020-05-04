@@ -2566,6 +2566,8 @@ struct __db_env {
 	DB_LSN durable_lsn;
 	uint32_t durable_generation;
     uint32_t rep_gen;
+    void **parallel_txnlist;
+    int parallel_txnlist_count;
 
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));

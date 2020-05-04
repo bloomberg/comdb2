@@ -24,6 +24,7 @@ static const char revid[] = "$Id: fop_rec.c,v 1.27 2003/10/07 20:23:28 ubell Exp
 #include "dbinc/db_am.h"
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
+#include <dbinc/recovery_info.h>
 
 /*
  * __fop_create_recover --
@@ -49,6 +50,11 @@ __fop_create_recover(dbenv, dbtp, lsnp, op, info)
 	COMPQUIET(info, NULL);
 	REC_PRINT(__fop_create_print);
 	REC_NOOP_INTRO(__fop_create_read);
+
+	if ((ret = __recthd_fileop_dispatch(dbenv, (const char *)argp->name.data,
+		NULL, NULL)) == 0) {
+		goto out;
+	}
 
 	if ((ret = __db_appname(dbenv, (APPNAME)argp->appname,
 	    (const char *)argp->name.data, 0, NULL, &real_name)) != 0)
@@ -133,6 +139,11 @@ __fop_write_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__fop_write_print);
 	REC_NOOP_INTRO(__fop_write_read);
 
+	if ((ret = __recthd_fileop_dispatch(dbenv, (const char *)argp->name.data,
+		NULL, NULL)) == 0) {
+		goto done;
+	}
+
 	ret = 0;
 	if (DB_UNDO(op))
 		DB_ASSERT(argp->flag != 0);
@@ -142,6 +153,7 @@ __fop_write_recover(dbenv, dbtp, lsnp, op, info)
 		    NULL, argp->pgsize, argp->pageno, argp->offset,
 		    argp->page.data, argp->page.size, argp->flag, 0);
 
+done:
 	if (ret == 0)
 		*lsnp = argp->prev_lsn;
 	REC_NOOP_CLOSE;
@@ -179,6 +191,11 @@ __fop_rename_recover(dbenv, dbtp, lsnp, op, info)
 	REC_PRINT(__fop_rename_print);
 	REC_NOOP_INTRO(__fop_rename_read);
 	fileid = argp->fileid.data;
+
+	if ((ret = __recthd_fileop_dispatch(dbenv, (const char *)argp->newname.data,
+		(const char *)argp->oldname.data, argp->fileid.data)) == 0) {
+		goto done;
+	}
 
 	if ((ret = __db_appname(dbenv, (APPNAME)argp->appname,
 	    (const char *)argp->newname.data, 0, NULL, &real_new)) != 0)
@@ -265,6 +282,11 @@ __fop_file_remove_recover(dbenv, dbtp, lsnp, op, info)
 	meta = (DBMETA *)&mbuf[0];
 	REC_PRINT(__fop_file_remove_print);
 	REC_NOOP_INTRO(__fop_file_remove_read);
+
+	if ((ret = __recthd_fileop_dispatch(dbenv, (const char *)argp->name.data,
+		NULL, NULL)) == 0) {
+		goto done;
+	}
 
 	/*
 	 * This record is only interesting on the backward, forward, and

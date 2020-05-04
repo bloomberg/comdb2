@@ -804,14 +804,73 @@ static int __txnlist_cmp(const void *key1, const void *key2, int len)
 }
 
 /*
- * __db_txnlist_add --
- *	Add an element to our transaction linked list.
+ * __db_txnlist_copy --
+ *	Copy a txnlist
  *
- * PUBLIC: int __db_txnlist_add __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ * PUBLIC: int __db_txnlist_copy __P((DB_ENV *,
+ * PUBLIC:	 void *, void *));
  */
 int
-__db_txnlist_add(dbenv, listp, txnid, status, lsn)
+__db_txnlist_copy(dbenv, listp, cplistp)
+	DB_ENV *dbenv;
+	void *listp;
+	void *cplistp;
+{
+	DB_TXNHEAD *hp, *cphp;
+	int ret;
+	u_int32_t i;
+
+	*(void **)cplistp = NULL;
+
+	if ((hp = (DB_TXNHEAD *)listp) == NULL)
+		return -1;
+
+	if ((ret = __os_malloc(dbenv,
+		sizeof(DB_TXNHEAD) + hp->nslots * sizeof(hp->head), &cphp)) != 0) {
+		abort();
+	}
+	memset(cphp, 0, sizeof(DB_TXNHEAD) + hp->nslots * sizeof(hp->head));
+	cphp->maxid = hp->maxid;
+	cphp->generation = hp->generation;
+	cphp->nslots = hp->nslots;
+	cphp->gen_alloc = hp->gen_alloc;
+
+	if ((ret = __os_malloc(dbenv, cphp->gen_alloc * sizeof(cphp->gen_array[0]),
+				&cphp->gen_array)) != 0) {
+		abort();
+	}
+
+	for (i = 0; i < hp->generation; i++) {
+		cphp->gen_array[i].generation = hp->gen_array[i].generation;
+		cphp->gen_array[i].txn_min = hp->gen_array[i].txn_min;
+		cphp->gen_array[i].txn_max = hp->gen_array[i].txn_max;
+	}
+
+	for (i = 0; i < hp->nslots; i++) {
+		DB_TXNLIST *last = NULL, *fnd, *p, *cp;
+		cphp->h = hash_init_user((hashfunc_t *)hash_default_fixedwidth,
+				  __txnlist_cmp, 0, offsetof(struct __db_txnlist, u.t.status));
+		for (p = LIST_FIRST(&hp->head[i]); p != NULL; p = LIST_NEXT(p, links)) {
+			if ((ret = __os_malloc(dbenv, sizeof(DB_TXNLIST), &cp)) != 0) {
+				abort();
+			}
+			memcpy(cp, p, sizeof(DB_TXNLIST));
+			if (last == NULL) {
+				LIST_INSERT_HEAD(&cphp->head[i], cp, links);
+			} else {
+				LIST_INSERT_AFTER(last, cp, links);
+			}
+			last = cp;
+		}
+        cphp->h = NULL;
+	}
+	*(void **)cplistp = cphp;
+
+	return(0);
+}
+
+static int
+__db_txnlist_add_int(dbenv, listp, txnid, status, lsn)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
@@ -858,13 +917,35 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 }
 
 /*
- * __db_txnlist_remove --
- *	Remove an element from our transaction linked list.
+ * __db_txnlist_add --
+ *	Add an element to our transaction linked list.
  *
- * PUBLIC: int __db_txnlist_remove __P((DB_ENV *, void *, u_int32_t));
+ * PUBLIC: int __db_txnlist_add __P((DB_ENV *,
+ * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
  */
+
 int
-__db_txnlist_remove(dbenv, listp, txnid)
+__db_txnlist_add(dbenv, listp, txnid, status, lsn)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+	int32_t status;
+	DB_LSN *lsn;
+{
+    int ret, first;
+    ret = first = __db_txnlist_add_int(dbenv, listp, txnid, status, lsn);
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        ret = __db_txnlist_add_int(dbenv, tinfo, txnid, status, lsn);
+        assert(ret == first); 
+    }
+    return ret;
+}
+
+
+
+static int
+__db_txnlist_remove_int(dbenv, listp, txnid)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
@@ -875,6 +956,50 @@ __db_txnlist_remove(dbenv, listp, txnid)
 	    listp, TXNLIST_TXNID, txnid,
 	    NULL, &entry, 1) == TXN_NOTFOUND ? TXN_NOTFOUND : TXN_OK);
 }
+
+/*
+ * __db_txnlist_remove --
+ *	Remove an element from our transaction linked list.
+ *
+ * PUBLIC: int __db_txnlist_remove __P((DB_ENV *, void *, u_int32_t));
+ */
+
+int
+__db_txnlist_remove(dbenv, listp, txnid)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+{
+    int ret, first;
+    ret = first = __db_txnlist_remove_int(dbenv, listp, txnid);
+
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        ret = __db_txnlist_remove_int(dbenv, tinfo, txnid);
+        assert(ret == first); 
+    }
+    return ret;
+}
+
+
+static void
+__db_txnlist_ckp_int(dbenv, listp, ckp_lsn)
+	DB_ENV *dbenv;
+	void *listp;
+	DB_LSN *ckp_lsn;
+{
+	DB_TXNHEAD *hp;
+
+	COMPQUIET(dbenv, NULL);
+
+	hp = (DB_TXNHEAD *)listp;
+
+	if (IS_ZERO_LSN(hp->ckplsn) && !IS_ZERO_LSN(hp->maxlsn) &&
+	    log_compare(&hp->maxlsn, ckp_lsn) >= 0)
+		hp->ckplsn = *ckp_lsn;
+}
+
+
 
 /*
  * __db_txnlist_ckp --
@@ -892,15 +1017,12 @@ __db_txnlist_ckp(dbenv, listp, ckp_lsn)
 	void *listp;
 	DB_LSN *ckp_lsn;
 {
-	DB_TXNHEAD *hp;
+    __db_txnlist_ckp_int(dbenv, listp, ckp_lsn);
 
-	COMPQUIET(dbenv, NULL);
-
-	hp = (DB_TXNHEAD *)listp;
-
-	if (IS_ZERO_LSN(hp->ckplsn) && !IS_ZERO_LSN(hp->maxlsn) &&
-	    log_compare(&hp->maxlsn, ckp_lsn) >= 0)
-		hp->ckplsn = *ckp_lsn;
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        __db_txnlist_ckp_int(dbenv, tinfo, ckp_lsn);
+    }
 }
 
 /*
@@ -1000,8 +1122,8 @@ __db_txnlist_first(dbenv, listp, txnlistp, delete)
  *
  * PUBLIC: int __db_txnlist_find __P((DB_ENV *, void *, u_int32_t));
  */
-int
-__db_txnlist_find(dbenv, listp, txnid)
+static int
+__db_txnlist_find_int(dbenv, listp, txnid)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
@@ -1014,16 +1136,27 @@ __db_txnlist_find(dbenv, listp, txnid)
 	    TXNLIST_TXNID, txnid, NULL, &entry, 0));
 }
 
-/*
- * __db_txnlist_update --
- *	Change the status of an existing transaction entry.
- *	Returns TXN_NOTFOUND if no such entry exists.
- *
- * PUBLIC: int __db_txnlist_update __P((DB_ENV *,
- * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
- */
+
 int
-__db_txnlist_update(dbenv, listp, txnid, status, lsn)
+__db_txnlist_find(dbenv, listp, txnid)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+{
+    int ret, first;
+    ret = first = __db_txnlist_find_int(dbenv, listp, txnid);
+
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        ret = __db_txnlist_find_int(dbenv, tinfo, txnid);
+        assert(ret == first); 
+    }
+    return ret;
+}
+
+
+static int
+__db_txnlist_update_int(dbenv, listp, txnid, status, lsn)
 	DB_ENV *dbenv;
 	void *listp;
 	u_int32_t txnid;
@@ -1049,6 +1182,34 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 
 	return (ret);
 }
+
+/*
+ * __db_txnlist_update --
+ *	Change the status of an existing transaction entry.
+ *	Returns TXN_NOTFOUND if no such entry exists.
+ *
+ * PUBLIC: int __db_txnlist_update __P((DB_ENV *,
+ * PUBLIC:     void *, u_int32_t, int32_t, DB_LSN *));
+ */
+int
+__db_txnlist_update(dbenv, listp, txnid, status, lsn)
+	DB_ENV *dbenv;
+	void *listp;
+	u_int32_t txnid;
+	int32_t status;
+	DB_LSN *lsn;
+{
+    int ret, first;
+    ret = first = __db_txnlist_update_int(dbenv, listp, txnid, status, lsn);
+
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        ret = __db_txnlist_update_int(dbenv, tinfo, txnid, status, lsn);
+        assert(ret == first); 
+    }
+    return ret;
+}
+
 
 /*
  * __db_txnlist_find_internal --
@@ -1186,15 +1347,8 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 	return (TXN_NOTFOUND);
 }
 
-/*
- * __db_txnlist_gen --
- *	Change the current generation number.
- *
- * PUBLIC: int __db_txnlist_gen __P((DB_ENV *,
- * PUBLIC:       void *, int, u_int32_t, u_int32_t));
- */
-int
-__db_txnlist_gen(dbenv, listp, incr, min, max)
+static int
+__db_txnlist_gen_int(dbenv, listp, incr, min, max)
 	DB_ENV *dbenv;
 	void *listp;
 	int incr;
@@ -1235,6 +1389,31 @@ __db_txnlist_gen(dbenv, listp, incr, min, max)
 		hp->gen_array[0].txn_max = max;
 	}
 	return (0);
+}
+
+/*
+ * __db_txnlist_gen --
+ *	Change the current generation number.
+ *
+ * PUBLIC: int __db_txnlist_gen __P((DB_ENV *,
+ * PUBLIC:       void *, int, u_int32_t, u_int32_t));
+ */
+int
+__db_txnlist_gen(dbenv, listp, incr, min, max)
+	DB_ENV *dbenv;
+	void *listp;
+	int incr;
+	u_int32_t min, max;
+{
+    int ret, first;
+    ret = first = __db_txnlist_gen_int(dbenv, listp, incr, min, max);
+
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        ret = __db_txnlist_gen_int(dbenv, tinfo, incr, min, max);
+        assert(ret == first); 
+    }
+    return ret;
 }
 
 #define	TXN_BUBBLE(AP, MAX) {						\
@@ -1377,6 +1556,43 @@ __db_add_limbo(dbenv, info, fileid, pgno, count)
 	return (0);
 }
 
+static int
+__db_do_the_limbo_int(dbenv, ptxn, txn, hp, state)
+	DB_ENV *dbenv;
+	DB_TXN *ptxn, *txn;
+	DB_TXNHEAD *hp;
+	db_limbo_state state;
+{
+	DB_TXNLIST *elp;
+	u_int32_t h;
+	int ret;
+
+	ret = 0;
+	/*
+	 * The slots correspond to hash buckets.  We've hashed the
+	 * fileids into hash buckets and need to pick up all affected
+	 * files. (There will only be a single slot for an abort.)
+	 */
+	for (h = 0; h < hp->nslots; h++) {
+		if ((elp = LIST_FIRST(&hp->head[h])) == NULL)
+			continue;
+		if (ptxn != NULL) {
+			if ((ret =
+			    __db_limbo_move(dbenv, ptxn, txn, elp)) != 0)
+				goto err;
+		} else if ((ret =
+		    __db_limbo_bucket(dbenv, txn, elp, state)) != 0)
+			goto err;
+	}
+
+err:	if (ret != 0) {
+		__db_err(dbenv, "Fatal error in abort of an allocation");
+		ret = __db_panic(dbenv, ret);
+	}
+
+	return (ret);
+}
+
 /*
  * __db_do_the_limbo -- move pages from limbo to free.
  *
@@ -1419,34 +1635,15 @@ __db_do_the_limbo(dbenv, ptxn, txn, hp, state)
 	DB_TXNHEAD *hp;
 	db_limbo_state state;
 {
-	DB_TXNLIST *elp;
-	u_int32_t h;
-	int ret;
+    int ret, first;
+    ret = first = __db_do_the_limbo_int(dbenv, ptxn, txn, hp, state);
 
-	ret = 0;
-	/*
-	 * The slots correspond to hash buckets.  We've hashed the
-	 * fileids into hash buckets and need to pick up all affected
-	 * files. (There will only be a single slot for an abort.)
-	 */
-	for (h = 0; h < hp->nslots; h++) {
-		if ((elp = LIST_FIRST(&hp->head[h])) == NULL)
-			continue;
-		if (ptxn != NULL) {
-			if ((ret =
-			    __db_limbo_move(dbenv, ptxn, txn, elp)) != 0)
-				goto err;
-		} else if ((ret =
-		    __db_limbo_bucket(dbenv, txn, elp, state)) != 0)
-			goto err;
-	}
-
-err:	if (ret != 0) {
-		__db_err(dbenv, "Fatal error in abort of an allocation");
-		ret = __db_panic(dbenv, ret);
-	}
-
-	return (ret);
+    for (int i = 0; i < dbenv->parallel_txnlist_count; i++) {
+        void *tinfo = (void *)dbenv->parallel_txnlist[i];
+        ret = __db_do_the_limbo_int(dbenv, ptxn, txn, tinfo, state);
+        assert(ret == first);
+    }
+    return ret;
 }
 
 /* Limbo support routines. */

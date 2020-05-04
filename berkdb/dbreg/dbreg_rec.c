@@ -55,6 +55,7 @@ static const char revid[] = "$Id: dbreg_rec.c,v 11.120 2003/10/27 15:54:31 sue E
 #include "dbinc/mp.h"
 #include "dbinc/txn.h"
 #include "dbinc/qam.h"
+#include <dbinc/recovery_info.h>
 
 #include "printformats.h"
 
@@ -97,6 +98,12 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 	do_open = do_close = 0;
 	if ((ret = __dbreg_register_read(dbenv, dbtp->data, &argp)) != 0)
 		goto out;
+
+    
+/*
+	if ((ret = __recthd_dbreg_dispatch(dbenv, argp->uid.data, op)) != 1)
+		goto done;
+*/
 
 	/* we're in a forward recovery pass opening files - */
 	if ((op == DB_TXN_OPENFILES || op == DB_TXN_POPENFILES) &&
