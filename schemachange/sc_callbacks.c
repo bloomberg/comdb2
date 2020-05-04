@@ -758,7 +758,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     }
 
     if (type != drop && type != user_view &&
-        type != add_queue_file && type != del_queue_file) {
+        !IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
         if (get_csc2_file_tran(table, -1, &csc2text, NULL, tran)) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
                    table);
@@ -774,7 +774,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     if (type == setcompr) {
         logmsg(LOGMSG_INFO,
                "Replicant setting compression flags for table:%s\n", table);
-    } else if (type == add_queue_file || type == del_queue_file) {
+    } else if (IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
         // TODO: How should we ideally handle failure cases here?
         rc = reopen_qdb(table, 0, tran);
         logmsg(LOGMSG_INFO, "Replicant %s queuedb '%s', rc %d\n",
@@ -860,7 +860,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type != add_queue_file && type != del_queue_file) {
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
         set_odh_options_tran(db, tran);
         db->tableversion = table_version_select(db, tran);
     }
@@ -888,7 +888,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_tag_schema(db->tablename, ver_one);
     }
 
-    if (type != add_queue_file && type != del_queue_file) {
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
         llmeta_dump_mapping_tran(tran, thedb);
         llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
     }
