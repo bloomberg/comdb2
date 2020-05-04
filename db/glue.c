@@ -252,7 +252,7 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                tran_type **out_trans, int logical, int sc,
-                               int retries)
+                               int retries, int force_physical)
 {
     int bdberr;
     bdb_state_type *bdb_handle = thedb->bdb_env;
@@ -270,7 +270,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                                 retries, &bdberr);
     } else {
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
-        if (iq->tranddl && sc && *out_trans) {
+        if ((force_physical || iq->tranddl) && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
@@ -305,12 +305,17 @@ int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
                     int logical, int retries)
 {
     return trans_start_int_int(iq, parent_trans, out_trans, logical, 0,
-                               retries);
+                               retries, 0);
 }
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 0);
+}
+
+int trans_start_logical_sc_with_force(struct ireq *iq, tran_type **out_trans)
+{
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 1);
 }
 
 int trans_start_logical(struct ireq *iq, tran_type **out_trans)

@@ -1994,6 +1994,7 @@ int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             int retries);
 int trans_start_logical(struct ireq *, tran_type **out);
 int trans_start_logical_sc(struct ireq *, tran_type **out);
+int trans_start_logical_sc_with_force(struct ireq *, tran_type **out);
 int is_rowlocks_transaction(tran_type *);
 int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
