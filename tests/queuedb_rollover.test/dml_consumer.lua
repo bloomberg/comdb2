@@ -28,6 +28,5 @@ local function main()
 	while row5 do
 		row5 = statement5:fetch()
 	end
-	print(event.type .. ", " .. oldi .. ", " .. newi .. "\n")
 	consumer:consume()
 end
