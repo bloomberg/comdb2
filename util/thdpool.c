@@ -482,6 +482,10 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
     tok = segtok(line, lline, &st, &ltok);
     if (tokcmp(tok, ltok, "stat") == 0) {
         thdpool_print_stats(stdout, pool);
+    } else if (tokcmp(tok, ltok, "restart") == 0) {
+        thdpool_stop(pool);
+        thdpool_resume(pool);
+        logmsg(LOGMSG_USER, "Pool [%s] restarted\n", pool->name);
     } else if (tokcmp(tok, ltok, "stop") == 0) {
         thdpool_stop(pool);
         logmsg(LOGMSG_USER, "Pool [%s] stopped\n", pool->name);
@@ -566,6 +570,7 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
 
     } else if (tokcmp(tok, ltok, "help") == 0) {
         logmsg(LOGMSG_USER, "Pool [%s] commands:-\n", pool->name);
+        logmsg(LOGMSG_USER, "  restart   -            stop threads and then resume pool\n");
         logmsg(LOGMSG_USER, "  stop      -            stop all threads\n");
         logmsg(LOGMSG_USER, "  resume    -            resume all threads\n");
         logmsg(LOGMSG_USER, "  mint #    -            set desired minimum number of threads\n");

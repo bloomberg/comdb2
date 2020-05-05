@@ -15,6 +15,7 @@ EOF
 
 cdb2sql $SP_OPTIONS "insert into t1 values('outer t1');"
 cdb2sql $SP_OPTIONS "insert into t2 values('outer t2');"
+cdb2sql $SP_OPTIONS "exec procedure sys.cmd.send('sqlenginepool restart')"
 
 for ((i=1;i<9600;++i)); do
     echo "insert into foraudit values(${i})"
