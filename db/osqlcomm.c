@@ -1057,9 +1057,8 @@ static const uint8_t *serial_readset_get(CurRangeArr *arr, int buf_size,
 
 enum { OSQLCOMM_QUERY_EFFECTS_LEN = sizeof(struct query_effects) };
 
-static uint8_t *osqlcomm_query_effects_put(const struct query_effects *effects,
-                                           uint8_t *p_buf,
-                                           const uint8_t *p_buf_end)
+uint8_t *osqlcomm_query_effects_put(const struct query_effects *effects,
+                                    uint8_t *p_buf, const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_QUERY_EFFECTS_LEN > (p_buf_end - p_buf))
         return NULL;
@@ -1078,9 +1077,9 @@ static uint8_t *osqlcomm_query_effects_put(const struct query_effects *effects,
     return p_buf;
 }
 
-static const uint8_t *osqlcomm_query_effects_get(struct query_effects *effects,
-                                                 const uint8_t *p_buf,
-                                                 const uint8_t *p_buf_end)
+const uint8_t *osqlcomm_query_effects_get(struct query_effects *effects,
+                                          const uint8_t *p_buf,
+                                          const uint8_t *p_buf_end)
 {
     if (p_buf_end < p_buf || OSQLCOMM_QUERY_EFFECTS_LEN > (p_buf_end - p_buf))
         return NULL;
