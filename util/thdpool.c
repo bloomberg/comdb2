@@ -474,6 +474,25 @@ void thdpool_command_to_all(char *line, int lline, int st)
     Pthread_mutex_unlock(&pool_list_lk);
 }
 
+/*
+** WARNING: This function will block the calling thread, potentially forever,
+**          be very careful using it.
+*/
+static void thdpool_sync(struct thdpool *pool, int minthd, int maxthd)
+{
+    while (1) {
+        if ((minthd >= 0) && (ATOMIC_LOAD32(pool->nactthd) < minthd)) {
+            sleep(1);
+            continue;
+        }
+        if ((maxthd >= 0) && (ATOMIC_LOAD32(pool->nactthd) > maxthd)) {
+            sleep(1);
+            continue;
+        }
+        break;
+    }
+}
+
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st)
 {
@@ -484,6 +503,7 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
         thdpool_print_stats(stdout, pool);
     } else if (tokcmp(tok, ltok, "restart") == 0) {
         thdpool_stop(pool);
+        thdpool_sync(pool, -1, 0);
         thdpool_resume(pool);
         logmsg(LOGMSG_USER, "Pool [%s] restarted\n", pool->name);
     } else if (tokcmp(tok, ltok, "stop") == 0) {
