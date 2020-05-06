@@ -2267,9 +2267,7 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     struct errstat err = {0};
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
-    int did_retry = 0;
     rec_ptr->sql = sql;
-retry:
     sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags)
                          : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
     sp->initial = 0;
@@ -2277,12 +2275,7 @@ retry:
         *stmt = rec_ptr->stmt;
         rec_ptr->sql = sqlite3_sql(*stmt);
     } else if (sp->rc == SQLITE_SCHEMA) {
-        if (did_retry == 0) {
-            flags |= PREPARE_RECREATE; did_retry = 1;
-            goto retry;
-        } else {
-            return luaL_error(L, sqlite3ErrStr(sp->rc));
-        }
+        return luaL_error(L, sqlite3ErrStr(sp->rc));
     } else {
         luabb_error(L, sp, "%s in stmt: %s", err.errstr, sql);
     }

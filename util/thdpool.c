@@ -45,6 +45,7 @@
 #include "logmsg.h"
 #include "priority_queue.h"
 #include "comdb2_atomic.h"
+#include <unistd.h>
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -503,7 +504,7 @@ void thdpool_process_message(struct thdpool *pool, char *line, int lline,
         thdpool_print_stats(stdout, pool);
     } else if (tokcmp(tok, ltok, "restart") == 0) {
         thdpool_stop(pool);
-        thdpool_sync(pool, -1, 0);
+        thdpool_sync(pool, -1, 1);
         thdpool_resume(pool);
         logmsg(LOGMSG_USER, "Pool [%s] restarted\n", pool->name);
     } else if (tokcmp(tok, ltok, "stop") == 0) {

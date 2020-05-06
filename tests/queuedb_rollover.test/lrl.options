@@ -3,3 +3,4 @@ setattr MIN_KEEP_LOGS 1
 queuedb_file_threshold 1
 queuedb_file_interval 5000
 allow_lua_print 1
+max_lua_instructions 0
