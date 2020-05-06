@@ -388,6 +388,17 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     }
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
+    if (clnt->dbtran.dtran->fdb_trans.top->timeout) {
+        errstat_set_rcstrf(&clnt->osql.xerr, CDB2ERR_IO_ERROR,
+                           "timeout commit sequence");
+        rc = fdb_svc_trans_rollback(tid, lvl, clnt, seq);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Transaction timeout, also rollback rc %d\n",
+                   rc);
+        }
+        return CDB2ERR_IO_ERROR;
+    }
+
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
         clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
         clnt->dbtran.mode == TRANLEVEL_SERIAL ||

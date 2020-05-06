@@ -1360,19 +1360,42 @@ int fdb_svc_trans_get_tid(char *cid, char *tid, int isuuid)
  *
  * NOTE: this is called with dtran_mtx locked, and returns it LOCKED!
  */
+int gbl_deadman_timer = 60 * 1000; /* default 1 minutes */
+#define DEF_SEQ_POLL 10
+
 void fdb_sequence_request(struct sqlclntstate *tran_clnt, fdb_tran_t *trans,
                           int seq)
 {
+    int orig_seq = trans->seq;
+    int waitms = gbl_deadman_timer;
+
+retry:
     while (trans->seq < seq) {
+        if (orig_seq != trans->seq) {
+            /* progress, reset timer */
+            orig_seq = trans->seq;
+            waitms = gbl_deadman_timer;
+        }
+
         /* free this guy */
         Pthread_mutex_unlock(&tran_clnt->dtran_mtx);
 
         /* wait for all the updates to arrive; we could skip that in socksql,
            but I am
            not gonna do that now.  Recom ftw */
-        poll(NULL, 0, 10);
+        poll(NULL, 0, DEF_SEQ_POLL);
+        waitms -= DEF_SEQ_POLL;
 
         Pthread_mutex_lock(&tran_clnt->dtran_mtx);
+
+        if (waitms <= 0) {
+            fprintf(stderr, "%s timeout waiting for sequence %d current %d\n",
+                    __func__, seq, trans->seq);
+            trans->timeout = 1;
+            trans->seq++; /* skip missing cursor */
+            waitms = gbl_deadman_timer;
+            goto retry;
+        }
     }
 
     /* bump the transactional sequence */
