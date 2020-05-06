@@ -176,6 +176,7 @@ struct fdb_tran {
 
     int seq; /* sequencing tran begin/commit/rollback, writes, cursor open/close
                 */
+    int timeout; /* timeout a sequence */
 };
 typedef struct fdb_tran fdb_tran_t;
 
