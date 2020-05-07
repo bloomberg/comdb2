@@ -31,7 +31,7 @@ done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
 
 for ((i=1;i<9600;++i)); do
     echo "exec procedure dml2()"
-done | cdb2sql --host $SP_HOST $SP_OPTIONS - >/dev/null
+done | cdb2sql --host $SP_HOST $SP_OPTIONS -
 
 if [ $SP_HOST == `hostname` ]; then
     cp ${TESTDIR}/logs/${DBNAME}.db qdb1-log1.log
@@ -41,8 +41,8 @@ fi
 
 cdb2sql $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"
 
-cdb2sql $SP_OPTIONS "select s from t1 order by s;"
-cdb2sql $SP_OPTIONS "select s from t2 order by s;"
+cdb2sql $SP_OPTIONS "select count(*) from t1;"
+cdb2sql $SP_OPTIONS "select count(*) from t2;"
 
 added_to_log=$(cat qdb1-log1.log | egrep "add, <nil>, [0123456789]{1,4}$" | uniq | wc -l)
 
