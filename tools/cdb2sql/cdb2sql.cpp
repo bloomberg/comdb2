@@ -72,6 +72,7 @@ static int time_mode = 0;
 static int rowsleep = 0;
 static int string_blobs = 0;
 static int show_effects = 0;
+static int show_fk_effects = 0;
 static char doublefmt[32];
 static int docost = 0;
 static int maxretries = 0;
@@ -1415,12 +1416,26 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
     if (show_effects) {
         cdb2_effects_tp effects;
-        if (cdb2_get_effects(cdb2h, &effects) == 0) {
-            printf("Number of rows affected %d\n", effects.num_affected);
-            printf("Number of rows selected %d\n", effects.num_selected);
-            printf("Number of rows deleted %d\n", effects.num_deleted);
-            printf("Number of rows updated %d\n", effects.num_updated);
-            printf("Number of rows inserted %d\n", effects.num_inserted);
+        cdb2_effects_tp fk_effects;
+        if (cdb2_get_effects_v2(cdb2h, &effects, &fk_effects) == 0) {
+            if (show_fk_effects) {
+                printf("Number of rows affected %d (%d)\n",
+                       effects.num_affected, fk_effects.num_affected);
+                printf("Number of rows selected %d (%d)\n",
+                       effects.num_selected, fk_effects.num_selected);
+                printf("Number of rows deleted %d (%d)\n", effects.num_deleted,
+                       fk_effects.num_deleted);
+                printf("Number of rows updated %d (%d)\n", effects.num_updated,
+                       fk_effects.num_updated);
+                printf("Number of rows inserted %d (%d)\n",
+                       effects.num_inserted, fk_effects.num_inserted);
+            } else {
+                printf("Number of rows affected %d\n", effects.num_affected);
+                printf("Number of rows selected %d\n", effects.num_selected);
+                printf("Number of rows deleted %d\n", effects.num_deleted);
+                printf("Number of rows updated %d\n", effects.num_updated);
+                printf("Number of rows inserted %d\n", effects.num_inserted);
+            }
         } else {
             printf("Effects not sent by comdb2 server. \n");
         }
@@ -1687,6 +1702,7 @@ int main(int argc, char *argv[])
         {"debugtrace", no_argument, &debug_trace, 1},
         {"showports", no_argument, &show_ports, 1},
         {"showeffects", no_argument, &show_effects, 1},
+        {"showfkeffects", no_argument, &show_fk_effects, 1},
         {"cost", no_argument, &docost, 1},
         {"exponent", no_argument, &exponent, 1},
         {"isatty", no_argument, &isttyarg, 1},

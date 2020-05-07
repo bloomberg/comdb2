@@ -3292,7 +3292,20 @@ after_callback:
     return rc;
 }
 
-int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
+static void cdb2_copy_effects(CDB2EFFECTS *src, cdb2_effects_tp *dst)
+{
+    if (!src || !dst)
+        return;
+
+    dst->num_affected = src->num_affected;
+    dst->num_selected = src->num_selected;
+    dst->num_updated = src->num_updated;
+    dst->num_deleted = src->num_deleted;
+    dst->num_inserted = src->num_inserted;
+}
+
+int cdb2_get_effects_v2(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects,
+                        cdb2_effects_tp *fk_effects)
 {
     int rc = 0;
 
@@ -3304,11 +3317,10 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
         if (lrc) {
             rc = -1;
         } else if (hndl->firstresponse && hndl->firstresponse->effects) {
-            effects->num_affected = hndl->firstresponse->effects->num_affected;
-            effects->num_selected = hndl->firstresponse->effects->num_selected;
-            effects->num_updated = hndl->firstresponse->effects->num_updated;
-            effects->num_deleted = hndl->firstresponse->effects->num_deleted;
-            effects->num_inserted = hndl->firstresponse->effects->num_inserted;
+            cdb2_copy_effects(hndl->firstresponse->effects, effects);
+            if (fk_effects && hndl->firstresponse->fk_effects) {
+                cdb2_copy_effects(hndl->firstresponse->fk_effects, fk_effects);
+            }
             cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
             free((void *)hndl->first_buf);
             hndl->first_buf = NULL;
@@ -3318,11 +3330,10 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
             rc = -1;
         }
     } else if (hndl->lastresponse->effects) {
-        effects->num_affected = hndl->lastresponse->effects->num_affected;
-        effects->num_selected = hndl->lastresponse->effects->num_selected;
-        effects->num_updated = hndl->lastresponse->effects->num_updated;
-        effects->num_deleted = hndl->lastresponse->effects->num_deleted;
-        effects->num_inserted = hndl->lastresponse->effects->num_inserted;
+        cdb2_copy_effects(hndl->lastresponse->effects, effects);
+        if (fk_effects && hndl->lastresponse->fk_effects) {
+            cdb2_copy_effects(hndl->lastresponse->fk_effects, fk_effects);
+        }
         rc = 0;
     } else {
         rc = -1;
@@ -3332,14 +3343,20 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
         fprintf(stderr, "%p> cdb_get_effects(%p) = %d", (void *)pthread_self(),
                 hndl, rc);
         if (rc == 0)
-            fprintf(stderr, " => affected %d, selected %d, updated %d, deleted "
-                            "%d, inserted %d\n",
+            fprintf(stderr,
+                    " => affected %d, selected %d, updated %d, deleted "
+                    "%d, inserted %d\n",
                     effects->num_affected, effects->num_selected,
                     effects->num_updated, effects->num_deleted,
                     effects->num_inserted);
     }
 
     return rc;
+}
+
+int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
+{
+    return cdb2_get_effects_v2(hndl, effects, NULL);
 }
 
 static void free_events(cdb2_hndl_tp *hndl)
