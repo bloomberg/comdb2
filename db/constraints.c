@@ -41,6 +41,7 @@ static int is_delete_op(int op);
 extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
 extern int gbl_debug_skip_constraintscheck_on_insert;
+extern int gbl_master_sends_query_effects;
 
 /**
  * Checks to see if there are any cascading deleletes/updates pointing to this
@@ -828,6 +829,11 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 close_constraint_table_cursor(cur);
                 return rc;
             }
+
+            if (likely(gbl_master_sends_query_effects) && IQ_HAS_SNAPINFO(iq)) {
+                IQ_SNAPINFO(iq)->fk_effects.num_deleted++;
+            }
+
             /* here, we need to retry to verify the constraint */
             /* sub 1 to go to current constraint again */
             continue;
@@ -892,6 +898,11 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                 close_constraint_table_cursor(cur);
                 return rc;
             }
+
+            if (likely(gbl_master_sends_query_effects) && IQ_HAS_SNAPINFO(iq)) {
+                IQ_SNAPINFO(iq)->fk_effects.num_updated++;
+            }
+
             /* here, we need to retry to verify the constraint */
             continue;
         } else { /* key was not found in parent tbl and we are not cascading */

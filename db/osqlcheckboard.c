@@ -309,7 +309,8 @@ bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
                                 void *data, struct errstat *errstat,
-                                struct query_effects *effects)
+                                struct query_effects *effects,
+                                struct query_effects *fk_effects)
 {
     if (!checkboard)
         return 0;
@@ -344,8 +345,15 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
 
-    if (gbl_master_sends_query_effects && effects) {
-        memcpy(&entry->clnt->effects, effects, sizeof(struct query_effects));
+    if (gbl_master_sends_query_effects) {
+        if (effects) {
+            memcpy(&entry->clnt->effects, effects,
+                   sizeof(struct query_effects));
+        }
+        if (fk_effects) {
+            memcpy(&entry->clnt->fk_effects, fk_effects,
+                   sizeof(struct query_effects));
+        }
     }
 
     Pthread_cond_signal(&entry->cond);

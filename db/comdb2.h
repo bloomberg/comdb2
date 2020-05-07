@@ -1130,6 +1130,7 @@ typedef struct snap_uid {
     uuid_t uuid; /* wait for the reply */
     int rqtype;  /* add/check */
     struct query_effects effects;
+    struct query_effects fk_effects;
     uint16_t unused;
     uint8_t replicant_is_able_to_retry; /* verifyretry on && !snapshot_iso or
                                            higer */
@@ -1137,7 +1138,8 @@ typedef struct snap_uid {
     char key[MAX_SNAP_KEY_LEN]; /* cnonce */
 } snap_uid_t;
 
-enum { SNAP_UID_LENGTH = 16 + 4 + (4 * 5) + 4 + 64 };
+/* TODO(NC): check for backwards compatibility */
+enum { SNAP_UID_LENGTH = 16 + 4 + (4 * 5 * 2) + 4 + 64 };
 
 BB_COMPILE_TIME_ASSERT(snap_uid_size, sizeof(snap_uid_t) == SNAP_UID_LENGTH);
 

@@ -239,6 +239,20 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
                                                                                \
     sql_response.effects = &effects;
 
+#define _has_fk_effects(clnt, sql_response)                                    \
+    CDB2EFFECTS fk_effects = CDB2__EFFECTS__INIT;                              \
+                                                                               \
+    clnt->fk_effects.num_affected = clnt->fk_effects.num_updated +             \
+                                    clnt->fk_effects.num_deleted +             \
+                                    clnt->fk_effects.num_inserted;             \
+    fk_effects.num_affected = clnt->fk_effects.num_affected;                   \
+    fk_effects.num_selected = clnt->fk_effects.num_selected;                   \
+    fk_effects.num_updated = clnt->fk_effects.num_updated;                     \
+    fk_effects.num_deleted = clnt->fk_effects.num_deleted;                     \
+    fk_effects.num_inserted = clnt->fk_effects.num_inserted;                   \
+                                                                               \
+    sql_response.fk_effects = &fk_effects;
+
 #define _has_features(clnt, sql_response)                                      \
     CDB2ServerFeatures features[10];                                           \
     int n_features = 0;                                                        \
@@ -855,6 +869,7 @@ static int newsql_row_last(struct sqlclntstate *clnt)
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
     resp.response_type = RESPONSE_TYPE__LAST_ROW;
     _has_effects(clnt, resp);
+    _has_fk_effects(clnt, resp);
     _has_snapshot(clnt, resp);
     _has_features(clnt, resp);
     return newsql_response(clnt, &resp, 1);
@@ -2158,6 +2173,7 @@ retry_read:
                 effects.num_updated = clnt->effects.num_updated;
                 effects.num_deleted = clnt->effects.num_deleted;
                 effects.num_inserted = clnt->effects.num_inserted;
+                /* TODO(NC): also send clnt->fk_effects */
                 set_sent_data_to_client(clnt, 1, __func__, __LINE__);
                 sql_response.effects = &effects;
                 sql_response.error_code = 0;
@@ -2403,8 +2419,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.added_to_hist = 0;
 
         if (!in_client_trans(&clnt)) {
-            bzero(&clnt.effects, sizeof(clnt.effects));
-            bzero(&clnt.log_effects, sizeof(clnt.log_effects));
+            reset_query_effects(&clnt);
             clnt.had_errors = 0;
             clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
         }
