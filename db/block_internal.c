@@ -1959,6 +1959,13 @@ int blkseq_get_rcode(void *data, int datalen)
                 goto error;
             }
             struct query_effects unused;
+            /* effects */
+            if (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                      &unused, p_fstblk_buf, p_fstblk_buf_end))) {
+                blkseq_line = __LINE__;
+                goto error;
+            }
+            /* fk_effects */
             if (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
                       &unused, p_fstblk_buf, p_fstblk_buf_end))) {
                 blkseq_line = __LINE__;

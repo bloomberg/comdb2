@@ -984,8 +984,11 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                         abort();
                     }
                 }
-                // retrieve the effects
+                // retrieve query effects
                 if (IQ_HAS_SNAPINFO(iq) &&
+                    (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                           &(IQ_SNAPINFO(iq)->effects), p_fstblk_buf,
+                           p_fstblk_buf_end))) &&
                     (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
                            &(IQ_SNAPINFO(iq)->effects), p_fstblk_buf,
                            p_fstblk_buf_end)))) {
@@ -5525,6 +5528,11 @@ add_blkseq:
                 }
                 if (!(p_buf_fstblk = osqlcomm_query_effects_put(
                           &(IQ_SNAPINFO(iq)->effects), p_buf_fstblk,
+                          p_buf_fstblk_end))) {
+                    return ERR_INTERNAL;
+                }
+                if (!(p_buf_fstblk = osqlcomm_query_effects_put(
+                          &(IQ_SNAPINFO(iq)->fk_effects), p_buf_fstblk,
                           p_buf_fstblk_end))) {
                     return ERR_INTERNAL;
                 }
