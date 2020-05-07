@@ -8,8 +8,8 @@ create lua consumer nopZ on (table foraudit0 for insert)
 EOF
 
 for ((i=0;i<2;++i)); do
-    ./qdb0_adds.sh 9600 &
-    ./qdb0_cons.sh 9600 &
+    ./qdb0_adds.sh 96 &
+    ./qdb0_cons.sh 96 &
     wait
     cdb2sql $SP_OPTIONS "select depth from comdb2_queues where queuename = '__qnopZ';"
 done
