@@ -155,13 +155,16 @@ void verify_pthread_mutex(pthread_mutex_t *lock) { return; }
 
 void bdb_verify_repo_lock() { verify_pthread_mutex(&trn_repo_mtx); }
 
+extern int gbl_snapisol;
+extern int gbl_new_snapisol;
 /**
  * lock the snapshot/serializable transaction repository
  *
  */
 inline void bdb_osql_trn_repo_lock()
 {
-    Pthread_mutex_lock(&trn_repo_mtx);
+    if (gbl_snapisol && !gbl_new_snapisol)
+        Pthread_mutex_lock(&trn_repo_mtx);
 }
 
 /**
@@ -170,7 +173,8 @@ inline void bdb_osql_trn_repo_lock()
  */
 inline void bdb_osql_trn_repo_unlock()
 {
-    Pthread_mutex_unlock(&trn_repo_mtx);
+    if (gbl_snapisol && !gbl_new_snapisol)
+        Pthread_mutex_unlock(&trn_repo_mtx);
 }
 
 /**
@@ -207,7 +211,6 @@ int bdb_osql_trn_repo_destroy(int *bdberr)
 }
 
 extern int gbl_extended_sql_debug_trace;
-extern int gbl_new_snapisol;
 DB_LSN bdb_gbl_recoverable_lsn;
 int32_t bdb_gbl_recoverable_timestamp = 0;
 pthread_mutex_t bdb_gbl_recoverable_lsn_mutex;
