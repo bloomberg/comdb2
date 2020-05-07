@@ -337,7 +337,7 @@ constraints
 		"$KEY_1E994F88" -> <"t1":"IDX1"> 
 	}
 ')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index 'IDX1'
+[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key 'IDX1'
 (rows inserted=1)
 (rows inserted=1)
 (i=1)
@@ -364,7 +364,7 @@ constraints
 		"IDX2" -> <"t1":"IDX1"> 
 	}
 ')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index 'IDX1'
+[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key 'IDX2' -> table 't1' index '0' key 'IDX1'
 (rows inserted=1)
 (rows inserted=1)
 (i=1)
