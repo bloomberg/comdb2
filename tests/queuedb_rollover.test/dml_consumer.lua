@@ -31,7 +31,7 @@ local function main()
 	if rc3 ~= 0 then return db:error() end
 	db:commit()
 	db:begin()
-	local statement4 = db:exec("SELECT s FROM t1")
+	local statement4 = db:exec("SELECT s FROM t1 ORDER BY CAST(s AS INTEGER), s")
 	if statement4 == nil then return db:error() end
 	local row4 = statement4:fetch()
 	while row4 do
@@ -40,7 +40,7 @@ local function main()
 	end
 	db:commit()
 	db:begin()
-	local statement5 = db:exec("SELECT s FROM t2")
+	local statement5 = db:exec("SELECT s FROM t2 ORDER BY CAST(s AS INTEGER), s")
 	if statement5 == nil then return db:error() end
 	local row5 = statement5:fetch()
 	while row5 do
