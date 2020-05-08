@@ -986,12 +986,12 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
                 }
                 // retrieve query effects
                 if (IQ_HAS_SNAPINFO(iq) &&
-                    (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
-                           &(IQ_SNAPINFO(iq)->effects), p_fstblk_buf,
-                           p_fstblk_buf_end))) &&
-                    (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
-                           &(IQ_SNAPINFO(iq)->effects), p_fstblk_buf,
-                           p_fstblk_buf_end)))) {
+                    ((!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                            &(IQ_SNAPINFO(iq)->effects), p_fstblk_buf,
+                            p_fstblk_buf_end))) ||
+                     (!(p_fstblk_buf = (uint8_t *)osqlcomm_query_effects_get(
+                            &(IQ_SNAPINFO(iq)->fk_effects), p_fstblk_buf,
+                            p_fstblk_buf_end))))) {
                     flush_db();
                     abort();
                 }

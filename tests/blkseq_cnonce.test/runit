@@ -14,7 +14,6 @@ function replay_count
     echo $(cdb2sql -tabs ${CDB2_OPTIONS} $dbname --host $master default 'exec procedure sys.cmd.send("stat replay")' | egrep 'Blkseq-replay-count:' | awk '{print $2}')
 }
 
-cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("master_swing_osql_verbose")'
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t1 { schema { int a } }'
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t2 { schema { int a } keys { "a" = a } }'
 
