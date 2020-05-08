@@ -399,7 +399,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
-    sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
+    sc_printf(s, "starting schema update with seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
 
     int local_lock = 0;
     if (!iq->sc_locked) {
@@ -925,7 +926,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     free(newdb);
     free(new_bdb_handle);
 
-    sc_printf(s, "Schema change finished, seed %llx\n", iq->sc_seed);
+    sc_printf(s, "Schema change finished, seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
     return 0;
 
 backout:

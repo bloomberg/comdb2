@@ -117,9 +117,8 @@ struct schema_change_type {
 
 #define SC_CHK_PGSZ 0x00000001U
 #define SC_IDXRBLD 0x00000002U
-#define SC_MASK_FLG                                                            \
-    0xfffffffcU /* Detect and fail if newer ver started sc.                    \
-                   Update this mask when new flags added */
+#define SC_MASK_FLG 0xfffffffcU /* Detect and fail if newer ver started sc.
+                                 * Update this mask when new flags added */
     uint32_t flg;
 
     uint8_t rebuild_index;    /* option to rebuild only one index */

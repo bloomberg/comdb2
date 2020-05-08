@@ -753,6 +753,7 @@
 (name='sc_delay_verify_error', description='', type='INTEGER', value='100', read_only='N')
 (name='sc_done_same_tran', description='Write scdone record in the same logical transaction as DDLs.', type='BOOLEAN', value='ON', read_only='N')
 (name='sc_force_delay', description='Force schemachange to delay after every record inserted - to have sc backoff.', type='BOOLEAN', value='OFF', read_only='N')
+(name='sc_hist_keep', description='Number of items to keep in llmeta for comdb2_sc_history sys table.', type='INTEGER', value='20', read_only='N')
 (name='sc_is_at_end', description='Schema-change has converted all records.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='sc_logical_save_lsn_every_n', description='Save schema change redo lsn to llmeta every n-th transactions.', type='INTEGER', value='10', read_only='N')
 (name='sc_no_rebuild_thr_sleep', description='Sleep this many microsec when conversion threads count is at max.', type='INTEGER', value='10', read_only='N')
