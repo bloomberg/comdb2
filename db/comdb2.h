@@ -105,10 +105,6 @@ typedef long long tranid_t;
 /* we will delete at most this many per run of purge_old_blkseq */
 #define MAXBLKSEQ_PURGE (5 * 1024)
 
-#define MAX_NUM_TABLES 1024
-#define MAX_NUM_QUEUES 1024
-#define MAX_NUM_VIEWS 1024
-
 #define DEC_ROUND_NONE (-1)
 
 enum AUXDB_TYPES {
@@ -347,7 +343,8 @@ enum OSQL_RPL_TYPE {
     OSQL_DELIDX = 24, /* new osql type to support indexes on expressions */
     OSQL_INSIDX = 25, /* new osql type to support indexes on expressions */
     OSQL_STARTGEN = 27,
-    MAX_OSQL_TYPES = 28
+    OSQL_DONE_WITH_EFFECTS = 28,
+    MAX_OSQL_TYPES = 29,
 };
 
 enum DEBUGREQ { DEBUG_METADB_PUT = 1 };

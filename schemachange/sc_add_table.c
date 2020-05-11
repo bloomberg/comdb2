@@ -285,6 +285,10 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "error populating reverse constraints\n");
         return -1;
     }
+    if (thedb->num_dbs >= MAX_NUM_TABLES) {
+        sc_errf(s, "error too many tables\n");
+        return -1;
+    }
 
     sc_printf(s, "Start add table transaction ok\n");
     rc = load_new_table_schema_tran(thedb, tran, s->tablename, s->newcsc2);

@@ -1393,6 +1393,11 @@ REGISTER_TUNABLE("master_req_waitms",
                  "Request master once per this interval.  (Default: 200ms)",
                  TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "master_sends_query_effects",
+    "Enables master to send query effects to the replicant. (Default: on)",
+    TUNABLE_BOOLEAN, &gbl_master_sends_query_effects, NOARG | READONLY, NULL,
+    NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
                  "Use req_all if a replicant is behind by "
                  "this amount or more.  (Default: 10000000)",

@@ -54,7 +54,6 @@ int gbl_disable_access_controls;
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
-extern char **qdbs;
 extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
@@ -334,6 +333,7 @@ static char *legacy_options[] = {
     "logmsg notimestamp",
     "logmsg skiplevel",
     "logput window 1",
+    "master_sends_query_effects 0",
     "noblobstripe",
     "nochecksums",
     "nocrc32c",
@@ -913,22 +913,17 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         parse_lua_funcs(a);
     } else if (tokcmp(tok, ltok, "queuedb") == 0) {
         int nqdbs = thedb->num_qdbs;
-        qdbs = realloc(qdbs, (nqdbs + 1) * sizeof(char *));
-        if (qdbs == NULL) {
-            logmsgperror("realloc");
-            return -1;
-        }
         thedb->qdbs = realloc(thedb->qdbs, (nqdbs + 1) * sizeof(dbtable *));
         if (thedb->qdbs == NULL) {
             logmsgperror("realloc");
             return -1;
         }
         tok = segtok(line, len, &st, &ltok);
-        qdbs[nqdbs] = tokdup(tok, ltok);
-        char *name = get_qdb_name(qdbs[nqdbs]);
+        char *qfname = tokdup(tok, ltok);
+        char *name = get_qdb_name(qfname);
         if (name == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
-                   qdbs[nqdbs]);
+                   qfname);
             return -1;
         }
         dbtable *qdb = newqdb(dbenv, name, 65536, 65536, 1);
@@ -937,6 +932,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         }
         free(name);
+        free(qfname);
         thedb->qdbs[nqdbs] = qdb;
         ++thedb->num_qdbs;
     } else if (tokcmp(tok, ltok, "table") == 0) {

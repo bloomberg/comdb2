@@ -43,7 +43,7 @@ static char *status_num2str(int s)
     return "UNKNOWN";
 }
 
-int get_status(void **data, int *npoints)
+static int get_status(void **data, int *npoints)
 {
     int rc, bdberr, nkeys;
     llmeta_sc_status_data *status = NULL;
@@ -125,7 +125,7 @@ cleanup:
     return rc;
 }
 
-void free_status(void *p, int n)
+static void free_status(void *p, int n)
 {
     struct sc_status_ent *sc_status_ents = p;
     for (int i = 0; i < n; i++) {

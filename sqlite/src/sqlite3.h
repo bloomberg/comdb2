@@ -5024,7 +5024,8 @@ SQLITE_API int sqlite3_create_window_function(
 ** to [sqlite3_create_function()], [sqlite3_create_function16()], or
 ** [sqlite3_create_function_v2()].
 */
-#define SQLITE_DETERMINISTIC    0x800
+#define SQLITE_DETERMINISTIC    0x000000800
+#define SQLITE_SUBTYPE          0x000100000
 
 /*
 ** CAPI3REF: Deprecated Functions

@@ -213,8 +213,9 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         return 0;
     }
 
-    is_msg_done = osql_comm_is_done(sess, type, data, datalen,
-                                    rqid == OSQL_RQID_USE_UUID, &perr) != 0;
+    is_msg_done =
+        osql_comm_is_done(sess, type, data, datalen, rqid == OSQL_RQID_USE_UUID,
+                          &perr, NULL) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */

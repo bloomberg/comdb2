@@ -1867,7 +1867,6 @@ size_t gbl_lkr_parts = 23;
 size_t gbl_lk_hash = 32;
 size_t gbl_lkr_hash = 16;
 
-char **qdbs = NULL;
 char **sfuncs = NULL;
 char **afuncs = NULL;
 
@@ -1987,7 +1986,7 @@ int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
         return 0;
 
     /* re-load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, MAX_NUM_TABLES,
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -2191,7 +2190,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     dbtable *tbl;
 
     /* load the tables from the low level metatable */
-    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, sizeof(tblnames),
+    if (bdb_llmeta_get_tables(tran, tblnames, dbnums, MAX_NUM_TABLES,
                               &fndnumtbls, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "couldn't load tables from low level meta table"
@@ -3219,16 +3218,6 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int llmeta_set_qdbs(void)
-{
-    int rc = 0;
-    for (int i = 0; i != thedb->num_qdbs; ++i) {
-        if ((rc = llmeta_set_qdb(qdbs[i])) != 0)
-            break;
-    }
-    return rc;
-}
-
 static int init_sqlite_table(struct dbenv *dbenv, char *table)
 {
     int rc;
@@ -4066,11 +4055,6 @@ static int init(int argc, char **argv)
                 logmsg(LOGMSG_FATAL, "Failed to create time partitions!\n");
                 return -1;
             }
-        }
-
-        if (llmeta_set_qdbs() != 0) {
-            logmsg(LOGMSG_FATAL, "failed to add queuedbs to llmeta\n");
-            return -1;
         }
 
         llmeta_set_lua_funcs(s);
@@ -5671,6 +5655,15 @@ struct dbview *get_view_by_name(const char *view_name)
     view = hash_find_readonly(thedb->view_hash, &view_name);
     Pthread_rwlock_unlock(&thedb_lock);
     return view;
+}
+
+int count_views()
+{
+    int count = 0;
+    Pthread_rwlock_wrlock(&thedb_lock);
+    count = hash_get_num_entries(thedb->view_hash);
+    Pthread_rwlock_unlock(&thedb_lock);
+    return count;
 }
 
 int add_view(struct dbview *view)

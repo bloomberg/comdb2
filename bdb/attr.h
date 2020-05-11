@@ -585,6 +585,8 @@ DEF_ATTR(DISABLE_SELECTVONLY_TRAN_NOP, disable_selectvonly_tran_nop, BOOLEAN, 0,
          "action done by the same transaction.")
 DEF_ATTR(SC_VIA_DDL_ONLY, ddl_only, BOOLEAN, 0,
          "If set, we don't do checks needed for comdb2sc.")
+DEF_ATTR(SC_HIST_KEEP, sc_hist_keep, QUANTITY, 20,
+         "Number of items to keep in llmeta for comdb2_sc_history sys table.")
 DEF_ATTR(PAGE_COMPACT_UDP, page_compact_udp, BOOLEAN, 0,
          "Enables sending of page compact requests over UDP.")
 DEF_ATTR(PAGE_COMPACT_INDEXES, page_compact_indexes, BOOLEAN, 0,

@@ -7922,6 +7922,7 @@ static int update_pglogs_from_global_queues_int(
     bdb_cursor_impl_t *cur, struct pglogs_queue_cursor *qcur, int *bdberr)
 {
     struct pglogs_queue_key *current, *prev, *last;
+    int update_current_pglogs = 0;
 
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
@@ -7949,19 +7950,34 @@ static int update_pglogs_from_global_queues_int(
             current = current->lnk.prev;
         }
 
-        if (!current && prev && found_greater) {
-            update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, prev);
+        if (!found_greater) {
+            current = NULL;
+        } else if (!current && prev) {
             current = prev;
+            /* Check to see if we start at the first record */
+            if (current->type == PGLOGS_QUEUE_PAGE &&
+                log_compare(&current->commit_lsn, start_lsn) > 0) {
+                update_current_pglogs = 1;
+            }
         }
 
-        if (!found_greater)
-            current = NULL;
+        /* Skip over unneeded RELINKS */
+        while (!update_current_pglogs && current && current != last) {
+            current = current->lnk.next;
+            if (current->type != PGLOGS_QUEUE_PAGE)
+                continue;
+            assert(log_compare(&current->commit_lsn, start_lsn) > 0);
+            update_current_pglogs = 1;
+        }
     }
 
     Pthread_rwlock_unlock(&qcur->queue->queue_lk);
 
     if (current)
         assert(last);
+
+    if (update_current_pglogs)
+        update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, current);
 
     // No locking: things above my birth_lsn can't disappear
     while (current && current != last) {
@@ -7984,10 +8000,6 @@ static int update_pglogs_from_global_queues_int(
                current ? current->commit_lsn.file : 0,
                current ? current->commit_lsn.offset : 0);
 #endif
-    } else if (current != last) {
-        assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
-               log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <=
-                   0);
     }
 
     qcur->last = current;

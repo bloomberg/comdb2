@@ -6107,6 +6107,7 @@ static bdb_state_type *bdb_open_int(
                 ctrace("bdb_open_int took last slot %d and extended\n",
                        parent->numchildren);
                 parent->numchildren++;
+                assert(parent->numchildren < MAX_CHILDREN);
             }
 
             bdb_unlock_children_lock(parent);
@@ -7169,6 +7170,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid,
         ctrace("bdb_open_again_tran took last slot %d and extended\n",
                parent->numchildren);
         parent->numchildren++;
+        assert(parent->numchildren < MAX_CHILDREN);
     }
 
     bdb_unlock_children_lock(parent);

@@ -1546,6 +1546,7 @@ typedef struct {
 } llmeta_sc_status_data;
 
 int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
+                                 uint64_t seed, uint64_t converted,
                                  void *schema_change_data,
                                  size_t schema_change_data_len, int status,
                                  const char *errstr, int *bdberr);
@@ -1553,7 +1554,33 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
 int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data **status_out,
                                  void ***sc_data_out, int *num, int *bdberr);
 
-int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
+typedef struct {
+    uint64_t start;
+    uint64_t last;
+    uint64_t converted;
+    int status;
+    int type; // optional
+    char errstr[LLMETA_SCERR_LEN];
+    int sc_data_len;   // extra data that we might want to store
+} llmeta_sc_hist_data; // this is the data stored in llmeta for sc_history
+
+typedef struct {
+    uint64_t seed;
+    uint64_t start;
+    uint64_t last;
+    uint64_t converted;
+    char tablename[MAXTABLELEN];
+    int status;
+    char errstr[LLMETA_SCERR_LEN];
+} sc_hist_row; // this is content of row in comdb2_sc_history
+
+int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
+                              int *bdberr, const char *tablename);
+
+int bdb_del_schema_change_history(tran_type *t, const char *tablename,
+                                  uint64_t seed);
+
+int bdb_set_high_genid(tran_type *input_trans, const char *tablename,
                        unsigned long long genid, int *bdberr);
 int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
                               int stripe, unsigned long long genid,
