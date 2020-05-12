@@ -269,7 +269,7 @@ setup_db() {
         echo "!$TESTCASE: waiting until ready"
         while [[ "$out" != "1" ]]; do
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' &> $LOGDIR/${DBNAME}.conn
             sleep 1
         done
     else
