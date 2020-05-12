@@ -5350,7 +5350,8 @@ int dbq_dump(struct dbtable *db, FILE *out)
     return 0;
 }
 
-int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
+                  tran_type *tran, void *userptr)
 {
     int bdberr, rc;
     void *bdb_handle;
@@ -5359,7 +5360,7 @@ int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
 
 retry:
     iq->gluewhere = "bdb_queuedb_stats";
-    rc = bdb_queuedb_stats(bdb_handle, callback, userptr, &bdberr);
+    rc = bdb_queuedb_stats(bdb_handle, callback, tran, userptr, &bdberr);
     iq->gluewhere = "bdb_queuedb_stats done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5380,7 +5381,7 @@ retry:
 }
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr)
+             tran_type *tran, void *userptr)
 {
     int bdberr;
     void *bdb_handle;
@@ -5396,7 +5397,8 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 retry:
     iq->gluewhere = "bdb_queue_walk";
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
-                        (bdb_queue_walk_callback_t)callback, userptr, &bdberr);
+                        (bdb_queue_walk_callback_t)callback, tran, userptr,
+                        &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
