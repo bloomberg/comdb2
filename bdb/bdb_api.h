@@ -924,11 +924,12 @@ enum {
 
 typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
                                           unsigned int epoch,
-                                          unsigned int depth, void *userptr);
+                                          unsigned int depth, tran_type *tran,
+                                          void *userptr);
 
 int bdb_queuedb_stats(bdb_state_type *bdb_state,
-                      bdb_queue_stats_callback_t callback, void *userptr,
-                      int *bdberr);
+                      bdb_queue_stats_callback_t callback, tran_type *tran,
+                      void *userptr, int *bdberr);
 
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, tran_type *tran,
