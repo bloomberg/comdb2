@@ -1100,6 +1100,7 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
         rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, tran,
                               userptr, bdberr);
     } else {
+        /* TODO: The "tran" parameter is not passed here.  Maybe it should be? */
         rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
                                 bdberr);
     }

@@ -563,9 +563,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
         if (db->odh)
-            dbq_odh_stats(&iq, stat_odh_callback, stats);
+            dbq_odh_stats(&iq, stat_odh_callback, NULL, stats);
         else
-            dbq_walk(&iq, flags, stat_callback, stats);
+            dbq_walk(&iq, flags, stat_callback, NULL, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
