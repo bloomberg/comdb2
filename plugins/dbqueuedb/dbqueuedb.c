@@ -502,7 +502,7 @@ static void admin(struct dbenv *dbenv, int type)
 }
 
 static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
-                             unsigned int depth, void *userptr)
+                             unsigned int depth, tran_type *tran, void *userptr)
 {
     struct consumer_stat *stats = userptr;
 
@@ -521,7 +521,8 @@ static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
 }
 
 static int stat_callback(int consumern, size_t length,
-                                 unsigned int epoch, void *userptr)
+                                 unsigned int epoch, tran_type *tran,
+                                 void *userptr)
 {
     struct consumer_stat *stats = userptr;
 
@@ -906,9 +907,9 @@ static int get_stats(struct dbtable *db, struct consumer_stat *st) {
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
     if (db->odh) {
-        rc = dbq_odh_stats(&iq, stat_odh_callback, st);
+        rc = dbq_odh_stats(&iq, stat_odh_callback, NULL, st);
     } else {
-        rc = dbq_walk(&iq, 0, stat_callback, st);
+        rc = dbq_walk(&iq, 0, stat_callback, NULL, st);
     }
     if (rc)
         return rc;
