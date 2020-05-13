@@ -31,7 +31,7 @@ struct comdb2_queue_consumer {
     int (*wake_all_consumers_all_queues)(struct dbenv *dbenv, int force);
     int (*handles_method)(const char *method);
     int (*get_name)(struct dbtable *db, char **spname);
-    int (*get_stats)(struct dbtable *db, struct consumer_stat *stat);
+    int (*get_stats)(struct dbtable *db, int flags, struct consumer_stat *stat);
 };
 typedef struct comdb2_queue_consumer comdb2_queue_consumer_t;
 
