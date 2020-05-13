@@ -560,7 +560,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        get_stats(db, flags, stats);
+        get_stats(db, flags, NULL, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
