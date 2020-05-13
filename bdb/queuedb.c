@@ -643,7 +643,7 @@ chk_db_last_rc:
 
     if (last_seq >= first_seq)
         callback(consumern, item_length, epoch, (last_seq - first_seq) + 1,
-                 tran, userptr);
+                 userptr);
 
 done:
     if (dbcp2 && (dbcp2 != dbcp1)) {
@@ -766,7 +766,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                 goto done;
             }
 
-            rc = callback(consumern, dbt_data.size, epoch, tran, userptr);
+            rc = callback(consumern, dbt_data.size, epoch, userptr);
             if (rc) {
                 rc = 0;
                 break;

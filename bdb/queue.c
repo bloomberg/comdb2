@@ -1020,7 +1020,7 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
                     int callbackrc =
                         callback(consumern, (size_t)hdr.total_sz,
                                  (unsigned int)hdr.genid[0], /* epoch */
-                                 NULL, userptr);
+                                 userptr);
 
                     if (callbackrc == BDB_QUEUE_WALK_STOP) {
                         dbcp->c_close(dbcp);
