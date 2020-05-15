@@ -21,11 +21,7 @@
 #include "../berkdb/dbinc/queue.h"
 #include "cson.h"
 
-const cson_buffer cson_buffer_empty;
-const cson_parse_info cson_parse_info_empty_m;
-const cson_parse_opt cson_parse_opt_empty;
-
-/* Glue which binds cson and json1 */
+/* cson::glue::json1 */
 
 enum {
     SQLITE_INTEGER = 1,
@@ -216,7 +212,7 @@ static void cson__result_text(cson_kvp *kvp, const char *z, int n,
         return;
     }
     if (kvp->val_type == JSON_OBJECT || kvp->val_type == JSON_ARRAY) {
-        cson_parse_string(&kvp->val, z, n, NULL, NULL);
+        cson_parse_string(&kvp->val, z, n);
     } else {
         kvp->val = cson_value_new_string(z, n);
     }
@@ -647,16 +643,14 @@ char cson_value_get_bool(cson_value const *val)
 {
     return cson__type(val) == JSON_TRUE;
 }
-int cson_output_FILE(cson_value *val, FILE *dest,
-                     cson_output_opt const *opt)
+int cson_output_FILE(cson_value *val, FILE *dest)
 {
     if (val->sub_type) {
         cson__render(val);
     }
     return fprintf(dest, "%s\n", val->value_text);
 }
-int cson_output_buffer(cson_value *val, cson_buffer *buf,
-                       cson_output_opt const *opt)
+int cson_output_buffer(cson_value *val, cson_buffer *buf)
 {
     if (val->sub_type) {
         cson__render(val);
@@ -665,8 +659,7 @@ int cson_output_buffer(cson_value *val, cson_buffer *buf,
     buf->used = val->value_bytes;
     return 0;
 }
-int cson_output(cson_value *val, cson_data_dest_f f, void *arg,
-                cson_output_opt const *opt)
+int cson_output(cson_value *val, cson_data_dest_f f, void *arg)
 {
     if (val->sub_type) {
         cson__render(val);
@@ -677,10 +670,6 @@ int cson_output(cson_value *val, cson_data_dest_f f, void *arg,
     }
     return rc;
 }
-int cson_buffer_reserve(cson_buffer *buf, cson_size_t n)
-{
-    return 0;
-}
 void cson_value_free(cson_value *v)
 {
     cson__reset(v);
@@ -690,8 +679,7 @@ void cson_free_value(cson_value *v)
 {
     cson_value_free(v);
 }
-int cson_parse_string(cson_value **out, char const *src, unsigned int len,
-                      cson_parse_opt const *opt, cson_parse_info *info)
+int cson_parse_string(cson_value **out, char const *src, unsigned int len)
 {
     cson_value *val = calloc(1, sizeof(cson_value));
     if (cson__parse(val, src, len)) {

@@ -8484,7 +8484,7 @@ int bdb_get_table_parameter_tran(const char *table, const char *parameter,
     cson_value *rootV = NULL;
     cson_object *rootObj = NULL;
 
-    rc = cson_parse_string(&rootV, blob, len, NULL, NULL);
+    rc = cson_parse_string(&rootV, blob, len);
     // The NULL arguments hold optional information for/about
     // the parse results. These can be used to set certain
     // parsing options and get more detailed error information
@@ -8532,7 +8532,7 @@ int bdb_get_table_parameter_tran(const char *table, const char *parameter,
             // Here we just print out: KEY=VALUE
             fprintf(stdout, "%s", cson_string_cstr(ckey));
             putchar('=');
-            cson_output_FILE(v, stdout, NULL);
+            cson_output_FILE(v, stdout);
         }
         // cson_object_iterator objects own no memory and need not be cleaned
         // up.
@@ -8568,7 +8568,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
     cson_object *rootObj = NULL;
 
     if (blob != NULL) {
-        rc = cson_parse_string(&rootV, blob, len, NULL, NULL);
+        rc = cson_parse_string(&rootV, blob, len);
         // The NULL arguments hold optional information for/about
         // the parse results. These can be used to set certain
         // parsing options and get more detailed error information
@@ -8633,7 +8633,7 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
             // Here we just print out: KEY=VALUE
             fprintf(stdout, "%s", cson_string_cstr(ckey));
             putchar('=');
-            cson_output_FILE(v, stdout, NULL);
+            cson_output_FILE(v, stdout);
         }
         // cson_object_iterator objects own no memory and need not be cleaned
         // up.
@@ -8642,8 +8642,8 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
     }
 #endif
 
-    cson_buffer buf = cson_buffer_empty;
-    rc = cson_output_buffer(rootV, &buf, NULL); // write obj to buffer
+    cson_buffer buf;
+    rc = cson_output_buffer(rootV, &buf); // write obj to buffer
     if (0 != rc) {
         logmsg(LOGMSG_ERROR, "cson_output_buffer returned rc %d", rc);
     } else if (buf.used > 2) {
@@ -8655,7 +8655,6 @@ int bdb_set_table_parameter(void *parent_tran, const char *table,
     }
 
     // Clean up
-    cson_buffer_reserve(&buf, 0);
     cson_value_free(rootV);
     free(blob);
     return rc;
