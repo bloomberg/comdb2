@@ -162,13 +162,6 @@ static char *eventlog_fname(const char *dbname)
                            comdb2_time_epochus());
 }
 
-static cson_output_opt opt = {.indentation = 0,
-                              .maxDepth = 4096,
-                              .addNewline = 1,
-                              .addSpaceAfterColon = 1,
-                              .indentSingleMemberValues = 0,
-                              .escapeForwardSlashes = 1};
-
 cson_array *get_bind_array(struct reqlogger *logger, int nfields)
 {
     if (eventlog == NULL || !eventlog_enabled || !eventlog_detailed)
@@ -361,17 +354,11 @@ void eventlog_perfdata(cson_object *obj, const struct reqlogger *logger)
     cson_object_set(obj, "perf", perfval);
 }
 
-int write_json(void *state, const void *src, unsigned int n)
+static int write_json(void *state, const void *src, unsigned int n)
 {
     int rc = gzwrite(state, src, n);
     bytes_written += rc;
     return rc != n;
-}
-
-int write_logmsg(void *state, const void *src, unsigned int n)
-{
-    logmsg(LOGMSG_USER, "%.*s", n, (const char *)src);
-    return 0;
 }
 
 static void eventlog_context(cson_object *obj, const struct reqlogger *logger)
@@ -451,8 +438,8 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
     /* yes, this can spill the file to beyond the configured size - we need
        this
        event to be in the same file as the event its being logged for */
-    cson_output(newval, write_json, eventlog, &opt);
-    if (eventlog_verbose) cson_output(newval, write_logmsg, stdout, &opt);
+    cson_output(newval, write_json, eventlog);
+    if (eventlog_verbose) cson_output_FILE(newval, stdout);
     cson_value_free(newval);
 }
 
@@ -569,11 +556,11 @@ void eventlog_add(const struct reqlogger *logger)
             eventlog_roll();
         }
         add_to_fingerprints(logger);
-        cson_output(val, write_json, eventlog, &opt);
+        cson_output(val, write_json, eventlog);
     }
     Pthread_mutex_unlock(&eventlog_lk);
 
-    if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
+    if (eventlog_verbose) cson_output_FILE(val, stdout);
 
     cson_value_free(val);
 }
@@ -767,7 +754,7 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
 
     Pthread_mutex_lock(&eventlog_lk);
     if (eventlog_enabled && eventlog != NULL)
-        cson_output(dval, write_json, eventlog, &opt);
+        cson_output(dval, write_json, eventlog);
     Pthread_mutex_unlock(&eventlog_lk);
     cson_value_free(dval);
 }

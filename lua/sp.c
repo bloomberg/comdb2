@@ -3928,7 +3928,7 @@ static int db_json_to_table(Lua lua)
     }
     const char *json = luabb_tostring(lua, 2);
     cson_value *cson = NULL;
-    if ((rc = cson_parse_string(&cson, json, strlen(json), NULL, NULL)) != 0) {
+    if ((rc = cson_parse_string(&cson, json, strlen(json))) != 0) {
         luaL_error(lua, "Parsing JSON rc:%d err:%s", rc, cson_rc_string(rc));
     }
     lua_newtable(lua);
@@ -4025,10 +4025,9 @@ static int db_table_to_json(Lua L)
         }
         lua_pushnil(L); // CONV_REASON_UTF8_NIL
     } else {
-        cson_buffer buf = cson_buffer_empty;
-        cson_output_buffer(cson, &buf, NULL);
+        cson_buffer buf;
+        cson_output_buffer(cson, &buf);
         lua_pushstring(L, (char *)buf.mem);
-        cson_buffer_reserve(&buf, 0);
         cson_free_value(cson);
     }
     // non-zero rc if nil'd, truncated or hexified cstring
