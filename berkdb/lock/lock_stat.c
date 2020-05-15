@@ -1297,7 +1297,7 @@ berkdb_dump_lockers_summary(DB_ENV *dbenv)
 		    (l->parent_locker ==
 			INVALID_ROFF ? 0 : ((DB_LOCKER *)R_ADDR(&lt->reginfo,
 				l->parent_locker))->id), (m ? m->id : 0),
-		    (l->wstatus ? 'y' : (m &&m->wstatus ? 'p' : 'n'))
+		    (l->dd_in_wlockers ? 'y' : (m &&m->dd_in_wlockers ? 'p' : 'n'))
 		    );
 		l = SH_TAILQ_NEXT(l, ulinks, __db_locker);
 	}

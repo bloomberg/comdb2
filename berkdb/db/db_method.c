@@ -131,10 +131,6 @@ db_create(dbpp, dbenv, flags)
 	if (ret != 0)
 		goto err;
 
-    /* Use thread-local cursor queues for indexes. */
-	if (idxpri)
-		dbp->use_tlcq = 1;
-
 	/* If we don't have an environment yet, allocate a local one. */
 	if (dbenv == NULL) {
 		if ((ret = db_env_create(&dbenv, 0)) != 0)
