@@ -31,10 +31,7 @@ typedef size_t cson_size_t;
 typedef struct cson_value cson_value;
 typedef struct cson_object cson_object;
 typedef struct cson_array cson_array;
-typedef struct cson_parse_opt cson_parse_opt;
 typedef struct cson_buffer cson_buffer;
-typedef struct cson_output_opt cson_output_opt;
-typedef struct cson_parse_info cson_parse_info;
 typedef struct cson_kvp cson_kvp;
 typedef struct cson_object_iterator cson_object_iterator;
 typedef int (*cson_data_dest_f)(void *, const void *, unsigned int);
@@ -43,31 +40,13 @@ struct cson_buffer {
     int used;
     void *mem;
 };
+
 struct cson_object_iterator {
     cson_object *obj;
     cson_kvp *kv;
     unsigned i;
     unsigned end;
 };
-
-/* Dummy structs - getting db to compile without changing code. Can remove any
- * users/callers of these later */
-struct cson_output_opt {
-    int indentation;
-    int maxDepth;
-    int addNewline;
-    int addSpaceAfterColon;
-    int indentSingleMemberValues;
-    int escapeForwardSlashes;
-};
-struct cson_parse_opt {
-};
-
-struct cson_parse_info {
-};
-extern const cson_parse_info cson_parse_info_empty_m;
-extern const cson_parse_opt cson_parse_opt_empty;
-extern const cson_buffer cson_buffer_empty;
 
 char *cson_value_get_cstr(cson_value *);
 char const *cson_rc_string(int rc);
@@ -104,14 +83,13 @@ cson_value *cson_value_null(void);
 int cson_array_append(cson_array *, cson_value *);
 int cson_array_reserve(cson_array *, unsigned int size);
 int cson_array_set(cson_array *, unsigned int ndx, cson_value *);
-int cson_buffer_reserve(cson_buffer *buf, cson_size_t n);
 int cson_object_iter_init(cson_object *, cson_object_iterator *iter);
 int cson_object_set(cson_object *, char const *key, cson_value *);
 int cson_object_unset(cson_object *, char const *key);
-int cson_output(cson_value *, cson_data_dest_f dest, void *destState, cson_output_opt const *opt);
-int cson_output_FILE(cson_value *, FILE *dest, cson_output_opt const *opt);
-int cson_output_buffer(cson_value *, cson_buffer *buf, cson_output_opt const *opt);
-int cson_parse_string(cson_value **, const char *, unsigned int len, cson_parse_opt const *opt, cson_parse_info *info);
+int cson_output(cson_value *, cson_data_dest_f dest, void *destState);
+int cson_output_FILE(cson_value *, FILE *dest);
+int cson_output_buffer(cson_value *, cson_buffer *buf);
+int cson_parse_string(cson_value **, const char *, unsigned int len);
 int cson_value_fetch_double(cson_value const *, cson_double_t *);
 int cson_value_fetch_integer(cson_value const *, cson_int_t *);
 int cson_value_fetch_object(cson_value *, cson_object **);
