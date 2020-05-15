@@ -896,13 +896,14 @@ static int get_name(struct dbtable *db, char **spname) {
 static int get_stats(struct dbtable *db, int flags, void *tran,
                      struct consumer_stat *st) {
     if (db->dbtype != DBTYPE_QUEUEDB) return -1;
-    int bdberr = 0;
+    int bdberr;
     int made_tran = 0;
     if (tran == NULL) {
+        bdberr = 0;
         tran = bdb_tran_begin(db->handle, NULL, &bdberr);
         if (tran == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to begin transaction\n",
-                   __FILE__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%s:%d failed to begin transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
             return -1;
         }
         made_tran = 1;
@@ -920,8 +921,8 @@ static int get_stats(struct dbtable *db, int flags, void *tran,
         bdberr = 0;
         int rc2 = bdb_tran_abort(db->handle, tran, &bdberr);
         if (rc2) {
-            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
-                   __FILE__, __LINE__);
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
             abort();
         }
     }

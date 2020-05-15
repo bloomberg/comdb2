@@ -696,7 +696,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_walk %s\n", bdb_state->name);
 
-    for (int i = 0; i < sizeof(dbs); i++) {
+    for (int i = 0; i < sizeof(dbs)/sizeof(dbs[0]); i++) {
         if (dbcp) {
             int crc2;
             crc2 = dbcp->c_close(dbcp);
