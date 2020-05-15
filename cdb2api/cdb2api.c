@@ -6581,3 +6581,56 @@ static int refresh_gbl_events_on_hndl(cdb2_hndl_tp *hndl)
     pthread_mutex_unlock(&cdb2_event_mutex);
     return 0;
 }
+
+/*
+  Get the value of a particular field from the client handle.
+
+  @return 0 Success
+          1 Failure
+*/
+int cdb2_get_info(cdb2_hndl_tp *hndl, cdb2_hndl_field field, void **out_buf,
+                  cdb2_coltype *out_type, int *out_arr_sz)
+{
+    if (out_arr_sz) {
+        *out_arr_sz = 1;
+    }
+
+    switch (field) {
+    case CDB2_HNDL_ENV_TZ:
+        *out_buf = hndl->env_tz;
+        *out_type = CDB2_CSTRING;
+        return 0;
+    case CDB2_HNDL_HOSTS:
+        *out_buf = &(hndl->hosts);
+        *out_type = CDB2_INTEGER;
+        *out_arr_sz = MAX_NODES;
+        return 0;
+    case CDB2_HNDL_HOSTS_CONNECTED:
+        *out_buf = &(hndl->hosts_connected);
+        *out_type = CDB2_INTEGER;
+        *out_arr_sz = MAX_NODES;
+        return 0;
+    case CDB2_HNDL_IN_TRANS:
+        *out_buf = &(hndl->in_trans);
+        *out_type = CDB2_INTEGER;
+        return 0;
+    case CDB2_HNDL_IS_ADMIN:
+        *out_buf = &(hndl->is_admin);
+        *out_type = CDB2_INTEGER;
+        return 0;
+    case CDB2_HNDL_IS_HASQL:
+        *out_buf = &(hndl->is_hasql);
+        *out_type = CDB2_INTEGER;
+        return 0;
+    case CDB2_HNDL_MAX_RETRIES:
+        *out_buf = &(hndl->max_retries);
+        *out_type = CDB2_INTEGER;
+        return 0;
+    case CDB2_HNDL_PORTS:
+        *out_buf = &(hndl->ports);
+        *out_type = CDB2_INTEGER;
+        *out_arr_sz = MAX_NODES;
+        return 0;
+    }
+    return 1;
+}
