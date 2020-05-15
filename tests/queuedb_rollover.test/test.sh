@@ -24,6 +24,9 @@ pproc=cat
 # figure out which host should deal with the tunable
 export SP_HOST=$(cdb2sql --tabs -s ${CDB2_OPTIONS} $a_dbn default "SELECT comdb2_host()")
 
+# wait for the "who is master" question to be fully settled.
+sleep 30
+
 # Iterate through input files
 for testcase in $files ; do
 
