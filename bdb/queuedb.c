@@ -321,13 +321,15 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     int rc;
     uint8_t ver = 0;
     DBT dbt_key = {0}, dbt_data = {0};
-    DBC *dbcp = NULL;
+    DBC *dbcp1 = NULL;
+    DBC *dbcp2 = NULL;
     uint8_t key[QUEUEDB_KEY_LEN];
     uint8_t *p_buf, *p_buf_end;
     struct bdb_queue_found qfnd;
     struct bdb_queue_found_seq qfnd_odh, prev_seq;
     void *databuf = NULL;
-    void *freeme = NULL;
+    void *freeme1 = NULL;
+    void *freeme2 = NULL;
     struct bdb_queue_priv *qstate = bdb_state->qpriv;
 
     if (gbl_debug_queuedb)
@@ -354,9 +356,16 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
         rc = -1;
         goto done;
     }
-    DB *db = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
-    if (db == NULL) db = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
-    rc = db->cursor(db, tran->tid, &dbcp, 0);
+    int usingDbpOne = 0;
+    DB *db1 = BDB_QUEUEDB_GET_DBP_ZERO(bdb_state);
+    DB *db2 = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
+    DB *db = db2;
+    if (db != NULL) {
+        usingDbpOne = 1; /* second file is being used */
+    } else {
+        db = db1;
+    }
+    rc = db->cursor(db, tran->tid, &dbcp1, 0);
     if (rc != 0) {
         *bdberr = BDBERR_MISC;
         rc = -1;
@@ -371,11 +380,11 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     dbt_data.flags = DB_DBT_MALLOC;
 
     /* Lock last page */
-    rc = bdb_cget_unpack(bdb_state, dbcp, &dbt_key, &dbt_data, &ver,
+    rc = bdb_cget_unpack(bdb_state, dbcp1, &dbt_key, &dbt_data, &ver,
                          DB_LAST | DB_RMW);
 
     if (rc == 0) {
-        freeme = dbt_data.data;
+        freeme1 = dbt_data.data;
     } else if (rc == DB_LOCK_DEADLOCK) {
         *bdberr = BDBERR_DEADLOCK;
         rc = -1;
@@ -415,6 +424,52 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
             }
         } else if (bdb_state->persistent_seq) {
             get_queue_sequence_tran(bdb_state->name, &prev_seq.seq, tran);
+        } else if (usingDbpOne) {
+            int rc2;
+            assert(db == db2);
+
+            rc2 = db1->cursor(db1, tran->tid, &dbcp2, 0);
+            if (rc2 != 0) {
+                *bdberr = BDBERR_MISC;
+                rc = -1;
+                goto done;
+            }
+
+            dbt_key.data = key;
+            dbt_key.ulen = QUEUEDB_KEY_LEN;
+            dbt_key.flags = DB_DBT_USERMEM;
+
+            dbt_data.data = NULL;
+            dbt_data.flags = DB_DBT_MALLOC;
+
+            rc2 = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver,
+                                  DB_LAST);
+
+            if (rc2 == 0) {
+                freeme2 = dbt_data.data;
+                p_buf = dbt_data.data;
+                p_buf_end = p_buf + dbt_data.size;
+                p_buf = (uint8_t *)queue_found_seq_get(&prev_seq, p_buf,
+                                                       p_buf_end);
+                if (p_buf == NULL) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s failed to decode prev seq for %s\n",
+                           __func__, bdb_state->name);
+                    *bdberr = BDBERR_MISC;
+                    rc = -1;
+                    goto done;
+                }
+            } else if (rc2 == DB_LOCK_DEADLOCK) {
+                *bdberr = BDBERR_DEADLOCK;
+                rc = -1;
+                goto done;
+            } else if (rc2 != DB_NOTFOUND) {
+                logmsg(LOGMSG_ERROR, "%s bad rc2 %d retrieving seq for %s\n",
+                       __func__, rc2, bdb_state->name);
+                *bdberr = BDBERR_MISC;
+                rc = -1;
+                goto done;
+            }
         }
         qfnd_odh.seq = (prev_seq.seq + 1);
 
@@ -491,7 +546,7 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
             }
 
             /* TODO: rowlocks? */
-            rc = bdb_cput_pack(bdb_state, 0, dbcp, &dbt_key, &dbt_data,
+            rc = bdb_cput_pack(bdb_state, 0, dbcp1, &dbt_key, &dbt_data,
                                DB_KEYLAST);
             if (rc == DB_LOCK_DEADLOCK) {
                 *bdberr = BDBERR_DEADLOCK;
@@ -512,9 +567,9 @@ int bdb_queuedb_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     rc = 0;
 
 done:
-    if (dbcp) {
+    if (dbcp2) {
         int crc;
-        crc = dbcp->c_close(dbcp);
+        crc = dbcp2->c_close(dbcp2);
         if (crc) {
             if (crc == DB_LOCK_DEADLOCK) {
                 logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
@@ -526,12 +581,30 @@ done:
                 rc = -1;
             }
         }
-        dbcp = NULL;
+        dbcp2 = NULL;
+    }
+    if (dbcp1) {
+        int crc;
+        crc = dbcp1->c_close(dbcp1);
+        if (crc) {
+            if (crc == DB_LOCK_DEADLOCK) {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+                *bdberr = DB_LOCK_DEADLOCK;
+                rc = -1;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: c_close berk rc %d\n", __func__, crc);
+                *bdberr = BDBERR_MISC;
+                rc = -1;
+            }
+        }
+        dbcp1 = NULL;
     }
     if (databuf)
         free(databuf);
-    if (freeme)
-        free(freeme);
+    if (freeme2)
+        free(freeme2);
+    if (freeme1)
+        free(freeme1);
     return rc;
 }
 
