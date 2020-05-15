@@ -315,6 +315,7 @@ static void _track_que_free(dohsql_connector_t *conn)
 static void _que_limiter(dohsql_connector_t *conn, sqlite3_stmt *stmt,
                          int row_size)
 {
+    int rc;
     if (gbl_dohsql_max_queued_kb_highwm) {
         conn->queue_size += row_size;
     }
@@ -332,6 +333,15 @@ cleanup:
                 conn->status != DOH_MASTER_DONE) {
                 Pthread_mutex_unlock(&conn->mtx);
                 poll(NULL, 0, gbl_dohsql_full_queue_poll_msec);
+                if (bdb_lock_desired(thedb->bdb_env)) {
+                    rc = recover_deadlock_simple(thedb->bdb_env);
+                    if (rc) {
+                        Pthread_mutex_lock(&conn->mtx);
+                        logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
+                                __func__, rc);
+                        return;
+                    }
+                }
                 Pthread_mutex_lock(&conn->mtx);
                 goto cleanup;
             }
@@ -1262,7 +1272,7 @@ int dohsql_distribute(dohsql_node_t *node)
 int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
 {
     dohsql_t *conns = clnt->conns;
-    int i;
+    int i, rc;
 
     if (!clnt->conns)
         return SHARD_NOERR;
@@ -1281,6 +1291,14 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
         while (conns->conns[i].status != DOH_CLIENT_DONE) {
             Pthread_mutex_unlock(&conns->conns[i].mtx);
             poll(NULL, 0, 10);
+            if (bdb_lock_desired(thedb->bdb_env)) {
+                rc = recover_deadlock_simple(thedb->bdb_env);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
+                            __func__, rc);
+                    return rc;
+                }
+            }
             Pthread_mutex_lock(&conns->conns[i].mtx);
         }
         Pthread_mutex_unlock(&conns->conns[i].mtx);
@@ -1343,6 +1361,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
 
 void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
 {
+    int rc;
     dohsql_connector_t *conn;
 
     if (!stmt || !DOHSQL_CLIENT)
@@ -1357,6 +1376,14 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
         while (conn->status == DOH_RUNNING && queue_count(conn->que) > 0) {
             Pthread_mutex_unlock(&conn->mtx);
             poll(NULL, 0, 10);
+            if (bdb_lock_desired(thedb->bdb_env)) {
+                rc = recover_deadlock_simple(thedb->bdb_env);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "%s failed recover_deadlock "
+                            "rc=%d\n", __func__, rc);
+                    return;
+                }
+            }
             Pthread_mutex_lock(&conn->mtx);
         }
     }
