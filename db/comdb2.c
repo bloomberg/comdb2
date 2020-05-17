@@ -778,8 +778,6 @@ int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
 
-#define COMDB2_STATIC_TABLE "_comdb2_static_table"
-
 int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);

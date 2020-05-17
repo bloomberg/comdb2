@@ -2206,24 +2206,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct thr_handle *thr_self;
     struct sbuf2 *sb;
     struct dbenv *dbenv;
-    struct dbtable *tab;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
-    tab = arg->tab;
     sb = arg->sb;
-
-    if (tab->dbtype != DBTYPE_TAGGED_TABLE) {
-        /*
-          Don't change this message. The sql api recognises the first four
-          characters (Erro) and can respond gracefully.
-        */
-        sbuf2printf(sb, "Error: newsql is only supported for tagged DBs\n");
-        logmsg(LOGMSG_ERROR,
-               "Error: newsql is only supported for tagged DBs\n");
-        sbuf2flush(sb);
-        return APPSOCK_RETURN_ERR;
-    }
 
     if (incoh_reject(arg->admin, dbenv->bdb_env)) {
         return APPSOCK_RETURN_OK;
