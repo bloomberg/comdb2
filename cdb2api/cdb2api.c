@@ -130,6 +130,7 @@ static char cdb2_sslca[PATH_MAX];
 static char cdb2_sslcrl[PATH_MAX];
 #endif
 
+
 #ifdef NID_host /* available as of RFC 4524 */
 #define CDB2_NID_DBNAME_DEFAULT NID_host
 #else
@@ -1034,6 +1035,8 @@ struct cdb2_hndl {
     char stack[MAX_STACK];
     int send_stack;
     void *user_arg;
+    char *bind_list_name;
+    char *bind_list_repl;
     int gbl_event_version; /* Cached global event version */
     int api_call_timeout;
     int connect_timeout;
@@ -4801,9 +4804,40 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     }
 
     sql = cdb2_skipws(sql);
-    rc = cdb2_run_statement_typed_int(hndl, sql, ntypes, types, __LINE__);
+    char *new_sql = NULL;
+    const char *actual_sql = sql;
+    if (hndl->bind_list_name && hndl->bind_list_repl) {
+        char *p = strstr(sql, hndl->bind_list_name);
+        if (!p) {
+            fprintf(stderr, "List bind parameter '%s' not found in sql '%s'\n", hndl->bind_list_name, sql);
+            return -1;
+        }
+        int p1len = p - sql; // part 1
+
+        int list_len = strlen(hndl->bind_list_repl);
+        new_sql = malloc(strlen(sql) + list_len);
+        strncpy(new_sql, sql, p1len);
+        strncpy(&new_sql[p1len], hndl->bind_list_repl, list_len);
+        strcat(&new_sql[p1len + list_len],
+               &sql[p1len + strlen(hndl->bind_list_name)]);
+        actual_sql = new_sql;
+        /* replace ',' with \0 for the bind parameter name */
+        for(int i = 0; i < list_len; i++) {
+            if (hndl->bind_list_repl[i] == ',')
+                hndl->bind_list_repl[i] = '\0';
+        }
+        debugprint("actual_sql='%s'\n", actual_sql);
+    }
+
+    rc = cdb2_run_statement_typed_int(hndl, actual_sql, ntypes, types, __LINE__);
     if (rc)
         debugprint("rc = %d\n", rc);
+
+    if (hndl->bind_list_name && hndl->bind_list_repl) {
+        free(hndl->bind_list_name); hndl->bind_list_name = NULL;
+        free(hndl->bind_list_repl); hndl->bind_list_repl = NULL;
+        free(new_sql); new_sql = NULL;
+    }
 
     // XXX This code does not work correctly for WITH statements
     // (they can be either read or write)
@@ -5069,8 +5103,52 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
     free(hndl->bindvars);
     hndl->bindvars = NULL;
     hndl->n_bindvars = 0;
+    free(hndl->bind_list_name);
+    hndl->bind_list_name = NULL;
+    free(hndl->bind_list_repl);
+    hndl->bind_list_repl = NULL;
     return 0;
 }
+
+/* bind @list with array of type/variable */
+int cdb2_bind_list(cdb2_hndl_tp *hndl, const char *varname, int count,
+                   int type[], const void *varaddr[], int length[])
+{
+    free(hndl->bind_list_name);
+    free(hndl->bind_list_repl);
+    int len = strlen(varname);
+    hndl->bind_list_name = malloc(len + 1);
+    hndl->bind_list_name[0] = '@';
+    strcpy(&hndl->bind_list_name[1], varname); // to search
+    hndl->bind_list_repl = malloc((len + 8) * count); // to replace
+    hndl->bind_list_repl[0] = '\0';
+
+    char loc_varname[len + 6];
+    strcpy(loc_varname, varname);
+    char *end_ptr = hndl->bind_list_repl;
+    for (int i = 0; i < count; i++) {
+        sprintf(&loc_varname[len], "_%d", i);
+
+        int n = sprintf(end_ptr, "%s@%s", ((i==0) ? "" : ","), loc_varname);
+        if (n < 0) {
+            fprintf(stderr, "Error endptr %s\n", end_ptr);
+            return -1;
+        }
+
+        int rc = cdb2_bind_param(hndl, end_ptr + ((i==0) ? 0 : 1) , type[i], varaddr[i], length[i]);
+        if (rc) {
+            fprintf(stderr, "Error binding list parameter %s (err: %s)\n", loc_varname,
+                    cdb2_errstr(hndl));
+            exit(1);
+        }
+        end_ptr += n;
+    }
+    if (end_ptr - hndl->bind_list_repl >= (len + 8) * count) {
+        return -1;
+    }
+    return 0;
+}
+
 
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
                                 int comdb2db_num, const char *host, int port,
