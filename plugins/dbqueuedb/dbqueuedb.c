@@ -168,7 +168,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
 
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
         for (consumern = 0; consumern < MAXCONSUMERS; consumern++) {
             struct consumer *consumer = db->consumers[consumern];
@@ -176,7 +176,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
                 wake_up_consumer(consumer, force);
         }
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
     return 0;
 }
 
@@ -199,8 +199,11 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     const char *opts;
     int rc = 0;
 
-    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_wrlock(&db->consumer_lk);
+    assert(!db || db->dbtype != DBTYPE_QUEUE);
+
+    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB) {
+        consumer_lock_write(db);
+    }
 
     if (checkonly) {
         if (strncmp(method, "lua:", 4) != 0 &&
@@ -299,8 +302,9 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     rc = 0;
 
 done:
-    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_unlock(&db->consumer_lk);
+    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB) {
+        consumer_unlock(db);
+    }
     return rc;
 }
 
@@ -470,7 +474,7 @@ static void admin(struct dbenv *dbenv, int type)
                 continue;
             if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
                 struct dbtable *db = dbenv->qdbs[ii];
-                Pthread_rwlock_rdlock(&db->consumer_lk);
+                consumer_lock_read(db);
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
                     struct consumer *consumer = db->consumers[consumern];
                     if (!consumer)
@@ -499,7 +503,7 @@ static void admin(struct dbenv *dbenv, int type)
                         break;
                     }
                 }
-                Pthread_rwlock_unlock(&db->consumer_lk);
+                consumer_unlock(db);
             }
         }
     }
@@ -585,8 +589,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                bdbstats->n_new_way_geese_consumed,
                bdbstats->n_old_way_frags_consumed);
 
-        if (db->dbtype == DBTYPE_QUEUEDB)
-            Pthread_rwlock_rdlock(&db->consumer_lk);
+        if (db->dbtype == DBTYPE_QUEUEDB) {
+            consumer_lock_read(db);
+        }
         for (ii = 0; ii < MAXCONSUMERS; ii++) {
             struct consumer *consumer = db->consumers[ii];
 
@@ -629,8 +634,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             } else if (consumer)
                 logmsg(LOGMSG_USER, "    empty\n");
         }
-        if (db->dbtype == DBTYPE_QUEUEDB)
-            Pthread_rwlock_unlock(&db->consumer_lk);
+        if (db->dbtype == DBTYPE_QUEUEDB) {
+            consumer_unlock(db);
+        }
 
         logmsg(LOGMSG_USER, "-----\n");
     }
@@ -855,12 +861,12 @@ int stop_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             stop_consumer(db->consumers[i]);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
     return 0;
 }
 
@@ -868,12 +874,12 @@ int restart_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             restart_consumer(db->consumers[i]);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
 
     return 0;
 }

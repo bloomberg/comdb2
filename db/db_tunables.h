@@ -1981,12 +1981,14 @@ REGISTER_TUNABLE("client_queued_slow_seconds",
                  "which may trigger an action by the watchdog.  (Default: off)",
                  TUNABLE_INTEGER, &gbl_client_queued_slow_seconds,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("client_running_slow_seconds",
                  "If a client connection remains \"running\" longer than this "
                  "period of time (in seconds), it is considered to be \"slow\", "
                  "which may trigger an action by the watchdog.  (Default: off)",
                  TUNABLE_INTEGER, &gbl_client_running_slow_seconds,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("client_abort_on_slow",
                  "Enable watchdog to abort if a \"slow\" client is detected."
                  "  (Default: off)", TUNABLE_BOOLEAN, &gbl_client_abort_on_slow,
@@ -2026,5 +2028,10 @@ REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid 
 
 REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_consumer_lock",
+                 "Enable debug-trace for consumer lock.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_consumer_lock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */
