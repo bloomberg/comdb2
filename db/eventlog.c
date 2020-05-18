@@ -175,27 +175,21 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
     return arr;
 }
 
-inline static cson_object *
-eventlog_append_name(cson_array *arr, const char *name, const char *type)
+static void eventlog_append_value(cson_array *arr, const char *name, const char *type, cson_value *value)
 {
     if (!arr)
-        return NULL;
+        return;
     cson_value *binding = cson_value_new_object();
-    cson_array_append(arr, binding);
     cson_object *bobj = cson_value_get_object(binding);
     cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
     cson_object_set(bobj, "type", cson_value_new_string(type, strlen(type)));
-    return bobj;
+    cson_object_set(bobj, "value", value);
+    cson_array_append(arr, binding);
 }
-
 void eventlog_bind_null(cson_array *arr, const char *name)
 {
     /* log null values as int for simplicity */
-    cson_object *bobj = eventlog_append_name(arr, name, "int");
-    if (!bobj)
-        return;
-    cson_object_set(bobj, "value", cson_value_null());
-    return;
+    eventlog_append_value(arr, name, "int", cson_value_null());
 }
 
 void eventlog_bind_int64(cson_array *arr, const char *name, int64_t val,
@@ -208,19 +202,13 @@ void eventlog_bind_int64(cson_array *arr, const char *name, int64_t val,
     case 8: type = "largeint"; break;
     default: return;
     }
-    cson_object *bobj = eventlog_append_name(arr, name, type);
-    if (!bobj)
-        return;
-    cson_object_set(bobj, "value", cson_value_new_integer(val));
+    eventlog_append_value(arr, name, type, cson_value_new_integer(val));
 }
 
 void eventlog_bind_text(cson_array *arr, const char *name, const char *val,
                         int dlen)
 {
-    cson_object *bobj = eventlog_append_name(arr, name, "char");
-    if (!bobj)
-        return;
-    cson_object_set(bobj, "value", cson_value_new_string(val, dlen));
+    eventlog_append_value(arr, name, "char", cson_value_new_string(val, dlen));
 }
 
 void eventlog_bind_double(cson_array *arr, const char *name, double val,
@@ -232,18 +220,12 @@ void eventlog_bind_double(cson_array *arr, const char *name, double val,
     case 8: type = "doublefloat"; break;
     default: return;
     }
-    cson_object *bobj = eventlog_append_name(arr, name, type);
-    if (!bobj)
-        return;
-    cson_object_set(bobj, "value", cson_value_new_double(val));
+    eventlog_append_value(arr, name, type, cson_value_new_double(val));
 }
 
 static void eventlog_bind_blob_int(cson_array *arr, const char *name,
                                    const char *type, const void *val, int dlen)
 {
-    cson_object *bobj = eventlog_append_name(arr, name, type);
-    if (!bobj)
-        return;
     int datalen = min(dlen, 1024);         /* cap the datalen logged */
     const int exp_len = (2 * datalen) + 3; /* x' ... ' */
     char *expanded_buf = malloc(exp_len + 1);
@@ -252,7 +234,7 @@ static void eventlog_bind_blob_int(cson_array *arr, const char *name,
     util_tohex(&expanded_buf[2], val, datalen);
     expanded_buf[exp_len - 1] = '\'';
     expanded_buf[exp_len] = '\0';
-    cson_object_set(bobj, "value", cson_value_new_string(expanded_buf, exp_len));
+    eventlog_append_value(arr, name, type, cson_value_new_string(expanded_buf, exp_len));
     free(expanded_buf);
 }
 
@@ -271,13 +253,10 @@ void eventlog_bind_datetime(cson_array *arr, const char *name, dttz_t *dt,
 {
     const char *type =
         dt->dttz_prec == DTTZ_PREC_MSEC ? "datetime" : "datetimeus";
-    cson_object *bobj = eventlog_append_name(arr, name, type);
-    if (!bobj)
-        return;
     char str[256];
     int used;
     dttz_to_str(dt, str, sizeof(str), &used, tz);
-    cson_object_set(bobj, "value", cson_value_new_string(str, used));
+    eventlog_append_value(arr, name, type, cson_value_new_string(str, used));
 }
 
 void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
@@ -289,13 +268,10 @@ void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
     case INTV_DSUS_TYPE: type = "interval usec"; break;
     default: return;
     }
-    cson_object *bobj = eventlog_append_name(arr, name, type);
-    if (!bobj)
-        return;
     char str[256];
     int n;
     intv_to_str(tv, str, sizeof(str), &n);
-    cson_object_set(bobj, "value", cson_value_new_string(str, n));
+    eventlog_append_value(arr, name, type, cson_value_new_string(str, n));
 }
 
 void eventlog_tables(cson_object *obj, const struct reqlogger *logger)
@@ -719,28 +695,14 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     if (!eventlog_enabled || eventlog == NULL) {
         return;
     }
-
-    cson_value *dval = cson_value_new_object();
-    cson_object *obj = cson_value_get_object(dval);
-
     cson_value *dd_list = cson_value_new_array();
-    uint64_t startus = comdb2_time_epochus();
-    cson_object_set(obj, "time", cson_new_int(startus));
-    extern char *gbl_myhostname;
-    cson_object_set(
-        obj, "host",
-        cson_value_new_string(gbl_myhostname, strlen(gbl_myhostname)));
-    cson_object_set(obj, "deadlock_cycle", dd_list);
     cson_array *arr = cson_value_get_array(dd_list);
     cson_array_reserve(arr, nlockers);
-
     for (int j = 0; j < nlockers; j++) {
         if (!ISSET_MAP(deadmap, j))
             continue;
-
         cson_value *lobj = cson_value_new_object();
         cson_object *vobj = cson_value_get_object(lobj);
-
         cson_snap_info_key(vobj, idmap[j].snap_info);
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);
@@ -751,7 +713,14 @@ void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         cson_array_append(arr, lobj);
     }
     logmsg(LOGMSG_USER, "\n");
-
+    uint64_t startus = comdb2_time_epochus();
+    extern char *gbl_myhostname;
+    cson_value *host = cson_value_new_string(gbl_myhostname, strlen(gbl_myhostname));
+    cson_value *dval = cson_value_new_object();
+    cson_object *obj = cson_value_get_object(dval);
+    cson_object_set(obj, "time", cson_new_int(startus));
+    cson_object_set(obj, "host", host);
+    cson_object_set(obj, "deadlock_cycle", dd_list);
     Pthread_mutex_lock(&eventlog_lk);
     if (eventlog_enabled && eventlog != NULL)
         cson_output(dval, write_json, eventlog);
