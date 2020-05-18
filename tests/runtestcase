@@ -340,6 +340,9 @@ elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
     echo -e "!$TESTCASE: also ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
     echo "!$TESTCASE: also failed verify ($verify_ret)" >> ${TEST_LOG}
+elif [[ -f "${DBNAME}.failexit" ]] ; then
+    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} (found ${DBNAME}.failexit)"
+    echo "!$TESTCASE: failed (found ${DBNAME}.failexit)" >> ${TEST_LOG}
 elif [[ -n "$verify_ret" ]] ; then
     echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
     echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}

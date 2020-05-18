@@ -18,12 +18,6 @@ fi
 nout=0  # file extension counter
 
 
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
-
 assert_vers()
 {
     tbl=$1

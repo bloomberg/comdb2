@@ -19,16 +19,9 @@ nrecs=100
 # Max number of schema changes
 max_nusc=100
 
-function failexit
-{
-    echo "Failed $1"
-    touch failexit
-    exit -1
-}
-
 function checkfailexit
 {
-    if [[ -f failexit ]] ; then
+    if [[ -f ${DBNAME}.failexit ]] ; then
         exit 1
     fi
 }
