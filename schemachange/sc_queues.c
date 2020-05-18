@@ -54,10 +54,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
         return -1;
     }
 
-    /* Stop everything */
-    stop_threads(thedb);
-    broadcast_quiesce_threads();
-
     /* Do the change.  If it works locally then assume that it will work
      * globally. */
     rc = dbqueuedb_add_consumer(db, consumern, method, 0);
@@ -65,10 +61,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     if (rc == 0) {
         rc = broadcast_add_consumer(queuename, consumern, method);
     }
-
-    /* Start up again. */
-    broadcast_resume_threads();
-    resume_threads(thedb);
 
     logmsg(LOGMSG_WARN, "consumer change %s-%d-%s %s\n", queuename, consumern,
            method, rc == 0 ? "SUCCESS" : "FAILED");
@@ -161,12 +153,6 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         logmsg(LOGMSG_ERROR, "add_queue_to_environment:newqdb failed\n");
         return SC_INTERNAL_ERROR;
     }
-
-    /* why?  er... not sure.  this is copied off the pattern below, but we
-     * don't have much to do.   think this is still good as we'll get a
-     * memory sync in there. */
-    stop_threads(thedb);
-    resume_threads(thedb);
 
     if (newdb->dbenv->master == gbl_myhostname) {
         /* I am master: create new db */

@@ -581,6 +581,16 @@ struct dbstore {
 };
 
 typedef struct timepart_views timepart_views_t;
+
+#define consumer_lock_read(x) consumer_lock_read_int(x, __func__, __LINE__);
+void consumer_lock_read_int(struct dbtable *db, const char *func, int line);
+
+#define consumer_lock_write(x) consumer_lock_write_int(x, __func__, __LINE__);
+void consumer_lock_write_int(struct dbtable *db, const char *func, int line);
+
+#define consumer_unlock(x) consumer_unlock_int(x, __func__, __LINE__);
+void consumer_unlock_int(struct dbtable *db, const char *func, int line);
+
 /*
  * We now have different types of db (I overloaded this structure rather than
  * create a new structure because the ireq usedb concept is endemic anyway).
@@ -2427,8 +2437,6 @@ int broadcast_add_new_queue(char *table, int avgitemsz);
 int broadcast_add_consumer(const char *queuename, int consumern,
                            const char *method);
 int broadcast_procedure_op(int op, const char *name, const char *param);
-int broadcast_quiesce_threads(void);
-int broadcast_resume_threads(void);
 int broadcast_close_db(char *table);
 int broadcast_close_only_db(char *table);
 int broadcast_close_all_dbs(void);

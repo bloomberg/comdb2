@@ -320,9 +320,12 @@ int trigger_stat()
     time_t now = time(NULL);
     for (int i = 0; i < thedb->num_qdbs; ++i) {
         struct dbtable *qdb = thedb->qdbs[i];
+        consumer_lock_read(qdb);
         int ctype = dbqueue_consumer_type(qdb->consumers[0]);
-        if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA)
+        if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA) {
+            consumer_unlock(qdb);
             continue;
+        }
         const char *type = ctype == CONSUMER_TYPE_LUA ? "trigger" : "consumer";
         char *spname = SP4Q(qdb->tablename);
         trigger_info_t *info =
@@ -337,6 +340,7 @@ int trigger_stat()
             logmsg(LOGMSG_USER, "%s: %8s:%s UNASSIGNED\n", __func__, type,
                    spname);
         }
+        consumer_unlock(qdb);
     }
     Pthread_mutex_unlock(&trighash_lk);
     return 0;

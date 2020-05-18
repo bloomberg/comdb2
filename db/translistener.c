@@ -84,7 +84,7 @@ struct stored_proc {
 LISTC_T(struct stored_proc) stored_procs;
 LISTC_T(struct stored_proc) delayed_stored_procs;
 
-pthread_rwlock_t splk = PTHREAD_RWLOCK_INITIALIZER;
+static pthread_rwlock_t splk = PTHREAD_RWLOCK_INITIALIZER;
 #define SP_READLOCK() Pthread_rwlock_rdlock(&splk)
 #define SP_WRITELOCK() Pthread_rwlock_wrlock(&splk)
 #define SP_RELLOCK() Pthread_rwlock_unlock(&splk)
@@ -1039,17 +1039,10 @@ int javasp_unload_procedure(const char *name)
     rc = javasp_unload_procedure_int(name);
     if (rc)
         goto done;
-    /* Stop everything */
-    stop_threads(thedb);
-    broadcast_quiesce_threads();
 
     if (rc == 0) {
         rc = broadcast_procedure_op(JAVASP_OP_UNLOAD, name, "");
     }
-
-    /* Start up again. */
-    broadcast_resume_threads();
-    resume_threads(thedb);
 
 done:
     SP_RELLOCK();
@@ -1067,19 +1060,12 @@ int javasp_reload_procedure(const char *name, const char *jarfile,
 
     rc = javasp_load_procedure_int(name, param, NULL);
 
-    stop_threads(thedb);
-    broadcast_quiesce_threads();
-
     if (rc == 0) {
         rc = broadcast_procedure_op(JAVASP_OP_RELOAD, name, param);
     }
 
-    /* Start up again. */
-    broadcast_resume_threads();
-    resume_threads(thedb);
-
-    SP_RELLOCK();
 done:
+    SP_RELLOCK();
     return rc;
 }
 
