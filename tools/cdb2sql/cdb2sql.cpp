@@ -50,6 +50,8 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
+static char delim_char = '\n';
+
 /* display modes */
 enum {
     DISP_CLASSIC = 1 << 0, /* default output */
@@ -487,7 +489,7 @@ static char *read_line()
         return line;
     }
     static size_t sz = 0;
-    ssize_t n = getline(&line, &sz, stdin);
+    ssize_t n = getdelim(&line, &sz, delim_char, stdin);
     if (n == -1) {
         if (line) {
             free(line);
@@ -1699,12 +1701,13 @@ int main(int argc, char *argv[])
         {"cdb2cfg", required_argument, NULL, 'c'},
         {"file", required_argument, NULL, 'f'},
         {"gensql", required_argument, NULL, 'g'},
+        {"delim", required_argument, NULL, 'd'},
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:d:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1739,6 +1742,10 @@ int main(int argc, char *argv[])
             printmode = DISP_GENSQL;
             gensql_tbl = optarg;
             break;
+	case 'd':
+	    if (optarg)
+                delim_char = optarg[0];
+	    break;
         case 't':
             dbtype = optarg;
             break;
