@@ -42,6 +42,7 @@ function failexit
         kill -9 $(cat $repdir/${repname}.pid)
     fi
     [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     exit -1
 }
 

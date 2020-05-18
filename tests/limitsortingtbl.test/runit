@@ -1,15 +1,12 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 set -x
 
 db=$1
 
 set -e
-
-function failexit {
-    echo "Failed $1"
-    exit 1
-}
 
 cdb2sql ${CDB2_OPTIONS} $db default "create table t1 { `cat t1.csc2` }"
 cdb2sql ${CDB2_OPTIONS} $db default "create table t2 { `cat t2.csc2` }"
