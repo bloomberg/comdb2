@@ -1377,4 +1377,13 @@ local function main(emoji)
 end}$$
 EOF
 cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"
-cdb2sql $SP_OPTIONS "execute procedure json_emoji('hello world 😁')"
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure escape_controls version 'sptest' {
+local function main()
+    local tbl = {control=""}
+    local json = db:table_to_json(tbl)
+    db:emit(json)
+end}$$
+exec procedure escape_controls()
+EOF
