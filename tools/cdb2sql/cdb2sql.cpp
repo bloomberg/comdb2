@@ -508,12 +508,12 @@ static char *read_line()
     int total_len = 0;
     int n = -1;
     static size_t sz = 0;
-    static char *ret_line = NULL;
-    while ((n = getdelim(&ret_line, &sz, delimstr[delim_len-1], stdin)) != -1) {
+    static char *getline = NULL;
+    while ((n = getdelim(&getline, &sz, delimstr[delim_len-1], stdin)) != -1) {
         if (n > 0) {
             total_len += n;
             line = (char*)realloc(line , total_len+1);
-            strcpy(line + total_len - n, ret_line);
+            strcpy(line + total_len - n, getline);
             if (has_delimiter(line, total_len, delimstr, delim_len) == 0) {
                  line[total_len-delim_len] = 0;
                  return line;
@@ -522,6 +522,14 @@ static char *read_line()
 
     }
     if (n == -1 && total_len == 0) {
+        if (line) {
+            free(line);
+            line = NULL;
+        }
+        if (getline) {
+            free(getline);
+            getline = NULL;
+        }
         return NULL;
     }
     /* We never found delimiter */
