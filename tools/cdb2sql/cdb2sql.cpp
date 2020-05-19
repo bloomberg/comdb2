@@ -50,7 +50,10 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
-static char delim_char = '\n';
+static char *delimstr = (char*)"\n";
+
+//For performance
+static int delim_len = 1;
 
 /* display modes */
 enum {
@@ -474,6 +477,20 @@ static bool skip_history(const char *line)
     return true;
 }
 
+int has_delimiter(char *line, int len, char *delimiter,int dlen) {
+    if (dlen > len)
+        return -1;
+    while (dlen>0) {
+        if (delimiter[dlen-1] != line[len-1]) {
+            return -1;
+        }
+        len--;
+        dlen--;
+    }
+    return 0;
+}
+
+
 static char *read_line()
 {
     static char *line = NULL;
@@ -488,17 +505,27 @@ static char *read_line()
             add_history(line);
         return line;
     }
+    int total_len = 0;
+    int n = -1;
     static size_t sz = 0;
-    ssize_t n = getdelim(&line, &sz, delim_char, stdin);
-    if (n == -1) {
-        if (line) {
-            free(line);
-            line = NULL;
+    static char *ret_line = NULL;
+    while ((n = getdelim(&ret_line, &sz, delimstr[delim_len-1], stdin)) != -1) {
+        if (n > 0) {
+            total_len += n;
+            line = (char*)realloc(line , total_len+1);
+            strcpy(line + total_len - n, ret_line);
+            if (has_delimiter(line, total_len, delimstr, delim_len) == 0) {
+                 line[total_len-delim_len] = 0;
+                 return line;
+            }
         }
+
+    }
+    if (n == -1 && total_len == 0) {
         return NULL;
     }
-    if (line[n - 1] == '\n')
-        line[n - 1] = 0;
+    /* We never found delimiter */
+    line[total_len-1] = 0;
     return line;
 }
 
@@ -1742,10 +1769,10 @@ int main(int argc, char *argv[])
             printmode = DISP_GENSQL;
             gensql_tbl = optarg;
             break;
-	case 'd':
-	    if (optarg)
-                delim_char = optarg[0];
-	    break;
+        case 'd':
+            delimstr = optarg;
+            delim_len = strlen(delimstr);
+            break;
         case 't':
             dbtype = optarg;
             break;
