@@ -816,6 +816,20 @@ static void comdb2PrevquerycostFunc(
   }
 }
 
+extern i64 comdb2_last_stmt_cost(void);
+
+static void comdb2LastCostFunc(
+  sqlite3_context *context,
+  int NotUsed,
+  sqlite3_value **NotUsed2
+){
+  i64 cost;
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  cost = comdb2_last_stmt_cost();
+  sqlite3_result_int64(context, cost);
+}
+
+
 static void comdb2HostFunc(
   sqlite3_context *context,
   int NotUsed,
@@ -2567,6 +2581,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(comdb2_prevquerycost,  0, 0, 0, comdb2PrevquerycostFunc),
     FUNCTION(comdb2_starttime,      0, 0, 0, comdb2StartTimeFunc),
     FUNCTION(comdb2_user,           0, 0, 0, comdb2UserFunc),
+    FUNCTION(comdb2_last_cost,      0, 0, 0, comdb2LastCostFunc),
 #if defined(SQLITE_BUILDING_FOR_COMDB2_DBGLOG)
     FUNCTION(dbglog_cookie,         0, 0, 0, dbglogCookieFunc),
     FUNCTION(dbglog_begin,          1, 0, 0, dbglogBeginFunc),
