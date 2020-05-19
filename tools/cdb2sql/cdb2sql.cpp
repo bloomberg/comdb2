@@ -50,10 +50,10 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
-static char *delimstr = (char*)";\n";
+static char *delimstr = (char*)"\n";
 
 //For performance
-static int delim_len = 2;
+static int delim_len = 1;
 
 /* display modes */
 enum {
@@ -1416,7 +1416,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
         } else if (printmode & DISP_TABS) {
             fprintf(out, "\n");
         } else if (printmode & DISP_GENSQL) {
-            fprintf(out, ")");
+            fprintf(out, ");");
             fprintf(out, delimstr);
         } else if (printmode & DISP_TABULAR) {
             /* Noop */
