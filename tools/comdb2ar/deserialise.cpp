@@ -1,4 +1,5 @@
 #include <cstring>
+#include <thread>
 
 #include "comdb2ar.h"
 #include "error.h"
@@ -976,16 +977,39 @@ void deserialise_database(
     unlink(fluff_file.c_str());
 }
 
+int write_file_thread(std::ostream out, int i)
+{
+    return 0;
+}
+
+int testthd(int x)
+{
+    return 0;
+}
+
 void deserialize_file(const std::string &filename, off_t filesize, bool write_file, bool dryrun, bool do_direct_io) {
     /* must be a multiple of 512! */
 #define DESERIALIZE_BUFSIZE 1024*1024
+#define DESERIALIZE_THREADS 10
+    std::thread tds[DESERIALIZE_THREADS];
     static char buf[DESERIALIZE_BUFSIZE];
     int rb; // read bytes
     const int bufsz = DESERIALIZE_BUFSIZE;
 
+    //std::unique_ptr<fdostream> out;
     std::unique_ptr<fdostream> out;
-    if (write_file && !dryrun)
-        out = output_file(filename, false, do_direct_io);
+    //if (write_file && !dryrun)
+    fdostream out = output_file(filename, false, do_direct_io);
+
+    //std::ostream ref = (std::ostream)out;
+    for (int i = 0; i < DESERIALIZE_THREADS; i++) {
+        tds[i] = std::thread(write_file_thread, ref, i);
+        //tds[i] = std::thread(testthd, i);
+    }
+    for (int i = 0; i < DESERIALIZE_THREADS; i++) {
+        tds[i].join();
+        //std::thread::join(tds[i]);
+    }
 
     for (int i = 0; i < filesize / sizeof(buf); i++) {
         rb = readall(0, buf, sizeof(buf));

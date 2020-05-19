@@ -42,6 +42,7 @@ class fdostream : public std::ostream {
 
 public:
     fdostream(int fd);
+    fdostream(void);
     int skip(unsigned long long size);
 };
 
