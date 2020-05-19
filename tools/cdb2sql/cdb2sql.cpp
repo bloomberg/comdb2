@@ -1417,7 +1417,7 @@ static int run_statement(const char *sql, int ntypes, int *types,
             fprintf(out, "\n");
         } else if (printmode & DISP_GENSQL) {
             fprintf(out, ");");
-            fprintf(out, delimstr);
+            fprintf(out, "%s", delimstr);
         } else if (printmode & DISP_TABULAR) {
             /* Noop */
         }
