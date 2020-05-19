@@ -5,6 +5,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/comdb2rle
+  ${PROJECT_SOURCE_DIR}/cson
   ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
@@ -34,6 +35,7 @@ add_exe(cldeadlock cldeadlock.c)
 add_exe(comdb2_blobtest comdb2_blobtest.c)
 add_exe(comdb2_sqltest client_datetime.c endian_core.c md5.c slt_comdb2.c slt_sqlite.c sqllogictest.c)
 add_exe(crle crle.c)
+add_exe(cson_test cson_test.c)
 add_exe(deadlock_load deadlock_load.c)
 add_exe(emit_timeout emit_timeout.c)
 add_exe(hatest hatest.c)
@@ -63,6 +65,7 @@ add_exe(updater updater.c testutil.c)
 add_exe(utf8 utf8.c)
 add_exe(verify_atomics_work verify_atomics_work.c)
 
+target_link_libraries(cson_test cson)
 target_link_libraries(stepper util mem dlmalloc util)
 target_link_libraries(test_threadpool util mem dlmalloc util)
 

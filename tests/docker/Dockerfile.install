@@ -12,6 +12,7 @@ RUN apt-get update && \
     gdb \
     iproute2 \
     iputils-ping \
+    jq \
     libevent-dev \
     liblz4-dev \
     liblz4-tool \
@@ -38,6 +39,7 @@ RUN apt-get update && \
     tcl-dev \
     time \
     tzdata \
+    valgrind \
     uuid-dev && \
   ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
   dpkg-reconfigure --frontend noninteractive tzdata

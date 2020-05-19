@@ -223,7 +223,7 @@ if [[ -z "$CLUSTER" ]]; then
     cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("flush")'
     cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("reql events roll")'
 
-    zcat $logfl | grep -v 'sys.cmd.send' | sort -n > $logflunziped
+    zcat $logfl | grep --text -v 'sys.cmd.send' | sort -n > $logflunziped
 
 else
 
@@ -231,7 +231,7 @@ else
         logfl=`cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
         cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("flush")'
         cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} --host $node 'exec procedure sys.cmd.send("reql events roll")'
-        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep -v 'sys.cmd.send' > ${node}.events.unzipped
+        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep --text -v 'sys.cmd.send' > ${node}.events.unzipped
     done
     sort -n *.events.unzipped > $logflunziped
 fi
@@ -239,13 +239,14 @@ fi
 set +e
 
 echo "Make sure that the data we expect is in the event log file"
-cat $logflunziped | grep fingerprint | grep -oP '(?<="fingerprint": ").*?(?=",)'  | sort | uniq -c > fingerprints_only.out
+echo $logflunziped
+jq -r 'if (.type == "sql") and has("fingerprint") then .fingerprint else empty end' < $logflunziped | sort | uniq -c > fingerprints_only.out
 if ! diff fingerprints_only.out fingerprints_freq.exp ; then
     failexit "fingerprints_only.out contains different fingerprint data than expected"
 fi
 
 
-count=`grep -c '"txn"\|"type": "sql"' $logflunziped`
+count=$(jq -rc 'if (.type == "sql") or (.type == "txn") then . else empty end' < $logflunziped | wc -l)
 CSHOULDBE=8210 # number of lines that should be in the log when single node
 if [[ $count -ne $CSHOULDBE ]] ; then
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
@@ -270,7 +271,7 @@ if [[ -z "$CLUSTER" ]]; then
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("flush")'
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("reql events roll")'
 
-    zcat $logfl | grep -v 'sys.cmd.send' | sort -n > $slogflunziped
+    zcat $logfl | grep --text -v 'sys.cmd.send' | sort -n > $slogflunziped
 
 else
 
@@ -278,7 +279,7 @@ else
         logfl=`cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g"`
         cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node 'exec procedure sys.cmd.send("flush")'
         cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node 'exec procedure sys.cmd.send("reql events roll")'
-        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep -v 'sys.cmd.send' > ${node}.events.unzipped
+        ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep --text -v 'sys.cmd.send' > ${node}.events.unzipped
     done
     sort -n *.events.unzipped > $slogflunziped
 fi
@@ -296,25 +297,21 @@ if [ $success != 1 ] ; then
 fi
 
 
-count=`grep -c '"txn"\|"type": "sql"' $slogflunziped`
+count=$(jq -rc 'if (.type == "sql") or (.type == "txn") then . else empty end' < $slogflunziped | wc -l)
 CSHOULDBE=$((CSHOULDBE-1)) # one less than the orig which had an error which does not get replayed
 if [[ $count -ne $CSHOULDBE ]] ; then
     failexit "$slogflunziped contains $count rather than $CSHOULDBE entries"
 fi
 
-if which jq ; then
-    # be bold: compare fingerprint and sql of both runs
-    grep '"type": "sql"' $logflunziped | grep -v '"fingerprint": "00000000000000000000000000000000"' | jq '[.fingerprint,.sql] | @csv'  > 1.out
-    grep '"type": "sql"' $slogflunziped | jq '[.fingerprint,.sql] | @csv' > 2.out
-    if ! diff 1.out 2.out ; then
-        failexit "fingerprint and sql content is not same (1.out vs 2.out)"
-    fi
+jq 'if (.type == "sql") and (.fingerprint != "00000000000000000000000000000000") then [.fingerprint, .sql] | @csv else empty end' < $logflunziped > 1.out
+jq 'if (.type == "sql") then [.fingerprint, .sql] | @csv else empty end' < $slogflunziped > 2.out
+if ! diff 1.out 2.out ; then
+    failexit "fingerprint and sql content is not same (1.out vs 2.out)"
 fi
-
 
 if [ "$CLEANUPDBDIR" != "0" ] ; then
     #delete files now that test is successful
-    rm orig.txt replayed.txt sqlreplay.out $logflunziped $slogflunziped
+    rm 1.out 2.out orig.txt replayed.txt sqlreplay.out $logflunziped $slogflunziped
 fi
 
 echo "Success"
