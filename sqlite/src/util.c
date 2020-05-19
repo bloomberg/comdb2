@@ -296,7 +296,7 @@ void sqlite3DequoteExpr(Expr *p){
  * ie first and last char are a quote...
  * note that string should be null terminated
  */
-int sqlite3IsCorrectlyQuoted(char *z){
+int sqlite3IsCorrectlyQuoted(const char *z){
   char quote = z[0];
   int i = 1;
   if( !sqlite3Isquote(quote) ) return 1;
@@ -304,7 +304,7 @@ int sqlite3IsCorrectlyQuoted(char *z){
   if( i>1 ) return z[i-1]==quote;
   return 0;
 }
-int sqlite3IsCorrectlyBraced(char *z){
+int sqlite3IsCorrectlyBraced(const char *z){
   int i = 1;
   int q = 0;
   if( z[0]=='\0' ) return 0; /* empty string? */
