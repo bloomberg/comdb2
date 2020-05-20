@@ -3543,6 +3543,12 @@ const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
  *
  */
 const char *fdb_dbname_name(fdb_t *fdb) { return fdb->dbname; }
+const char *fdb_dbname_class_routing(fdb_t *fdb)
+{
+    if (fdb->local)
+        return "LOCAL";
+    return mach_class_class2name(fdb->class);
+}
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent)
 {
     return ent->tbl->name;
