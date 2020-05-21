@@ -3471,15 +3471,22 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                         /* Create a copy of cached column names and pass it to
                          * stmt, to be later freed when the stmt finalizes. */
                         column_count = t->cachedColCount;
-                        column_names =
-                            calloc(sizeof(char *), t->cachedColCount);
-                        if (column_names == NULL) {
-                            logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
-                                   __func__, __LINE__);
-                            column_count = 0;
-                        } else {
-                            for (int i = 0; i < t->cachedColCount; i++) {
-                                column_names[i] = strdup(t->cachedColNames[i]);
+                        /* column_count is 0 if column names do match,
+                           in which case we just set column_names to NULL */
+                        if (column_count == 0)
+                            column_names = NULL;
+                        else {
+                            column_names =
+                                calloc(sizeof(char *), t->cachedColCount);
+                            if (column_names == NULL) {
+                                logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
+                                       __func__, __LINE__);
+                                column_count = 0;
+                            } else {
+                                for (int i = 0; i < t->cachedColCount; i++) {
+                                    column_names[i] =
+                                        strdup(t->cachedColNames[i]);
+                                }
                             }
                         }
                         logmsg(LOGMSG_DEBUG,
