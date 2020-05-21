@@ -710,20 +710,13 @@ static int comdb2_authorizer_for_sqlite(
   int denyCreateTrigger = (pAuthState->flags & PREPARE_DENY_CREATE_TRIGGER);
   int denyPragma = (pAuthState->flags & PREPARE_DENY_PRAGMA);
   int denyDdl = (pAuthState->flags & PREPARE_DENY_DDL);
+  int allowTempDDL = (pAuthState->flags & PREPARE_ALLOW_TEMP_DDL);
   switch (code) {
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
-    case SQLITE_CREATE_TEMP_INDEX:
-    case SQLITE_CREATE_TEMP_TABLE:
-    case SQLITE_CREATE_TEMP_TRIGGER:
-    case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
     case SQLITE_DROP_TABLE:
-    case SQLITE_DROP_TEMP_INDEX:
-    case SQLITE_DROP_TEMP_TABLE:
-    case SQLITE_DROP_TEMP_TRIGGER:
-    case SQLITE_DROP_TEMP_VIEW:
     case SQLITE_DROP_TRIGGER:
     case SQLITE_DROP_VIEW:
     case SQLITE_ALTER_TABLE:
@@ -770,6 +763,16 @@ static int comdb2_authorizer_for_sqlite(
       } else {
         return SQLITE_OK;
       }
+    case SQLITE_CREATE_TEMP_INDEX:
+    case SQLITE_CREATE_TEMP_TABLE:
+    case SQLITE_CREATE_TEMP_TRIGGER:
+    case SQLITE_CREATE_TEMP_VIEW:
+    case SQLITE_DROP_TEMP_INDEX:
+    case SQLITE_DROP_TEMP_TABLE:
+    case SQLITE_DROP_TEMP_TRIGGER:
+    case SQLITE_DROP_TEMP_VIEW:
+      pAuthState->numDdls++;
+      return allowTempDDL ? SQLITE_OK : SQLITE_DENY;
     default:
       return SQLITE_OK;
   }
@@ -4754,6 +4757,8 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
+    clnt->thd = thd;
+    sql_update_usertran_state(clnt);
 
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, 1);

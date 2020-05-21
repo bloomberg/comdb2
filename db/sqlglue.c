@@ -11282,23 +11282,19 @@ out:
     thread_memdestroy();
 }
 
-void clone_temp_table(sqlite3 *dest, const sqlite3 *src, const char *sql,
-                      struct temptable *tbl)
+void clone_temp_table(sqlite3_stmt *stmt, struct temptable *tbl)
 {
     int rc;
     char *err = NULL;
-    sqlite3_stmt *stmt;
-    sqlite3_prepare_v2(dest, sql, -1, &stmt, NULL);
     tmptbl_clone = tbl;
     while ((rc = sqlite3_step(stmt)) == SQLITE_ROW)
         ;
     tmptbl_clone = NULL;
     if (rc != SQLITE_DONE) {
-        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s sql:%s\n", __func__, rc,
-               err ? err : "(none)", sql ? sql : "(empty)");
+        logmsg(LOGMSG_FATAL, "%s rc:%d err:%s\n", __func__, rc,
+               err ? err : "(none)");
         abort();
     }
-    sqlite3_finalize(stmt);
 }
 
 int bt_hash_table(char *table, int szkb)

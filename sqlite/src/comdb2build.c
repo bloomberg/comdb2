@@ -4363,7 +4363,8 @@ void comdb2CreateTableStart(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
+        int code = isTemp ? SQLITE_CREATE_TEMP_TABLE : SQLITE_CREATE_TABLE;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5240,7 +5241,8 @@ void comdb2CreateIndex(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_INDEX, 0, 0, 0) ){
+        int code = temp ? SQLITE_CREATE_TEMP_INDEX : SQLITE_CREATE_INDEX;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }

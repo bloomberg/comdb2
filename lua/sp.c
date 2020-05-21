@@ -1169,8 +1169,8 @@ static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
 static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
 static void lua_end_all_step(struct sqlclntstate *, SP);
 static int lua_get_prepare_flags();
-static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
-static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
+static int lua_prepare_sql(SP, const char *sql, sqlite3_stmt **);
+static int lua_prepare_sql_with_temp_ddl(SP, const char *sql, sqlite3_stmt **);
 
 /*
 ** Lua stack:
@@ -1225,7 +1225,7 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     strbuf_free(sql);
     sql = NULL;
     sqlite3_stmt *stmt;
-    if ((rc = lua_prepare_sql_with_ddl(lua, sp, ddl, &stmt)) != 0) {
+    if ((rc = lua_prepare_sql_with_temp_ddl(sp, ddl, &stmt)) != 0) {
         goto out;
     }
 
@@ -2194,10 +2194,10 @@ static int dbstmt_bind_int(Lua lua, dbstmt_t *dbstmt)
     return stmt_bind(lua, dbstmt->stmt);
 }
 
-static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
-                               sqlite3_stmt **stmt, struct sql_state *rec,
-                               int flags)
+static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
+                               struct sql_state *rec, int flags)
 {
+    Lua L = sp->lua;
     struct errstat err = {0};
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
@@ -2322,16 +2322,16 @@ static int lua_get_prepare_flags()
     return PREPARE_DENY_DDL | PREPARE_IGNORE_ERR | PREPARE_NO_NORMALIZE;
 }
 
-static int lua_prepare_sql(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
+static int lua_prepare_sql(SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, lua_get_prepare_flags());
+    return lua_prepare_sql_int(sp, sql, stmt, NULL, lua_get_prepare_flags());
 }
 
-static int lua_prepare_sql_with_ddl(Lua L, SP sp, const char *sql, sqlite3_stmt **stmt)
+static int lua_prepare_sql_with_temp_ddl(SP sp, const char *sql, sqlite3_stmt **stmt)
 {
-    int prepFlags = lua_get_prepare_flags() & ~PREPARE_DENY_DDL;
+    int prepFlags = lua_get_prepare_flags() | PREPARE_ALLOW_TEMP_DDL;
 
-    return lua_prepare_sql_int(L, sp, sql, stmt, NULL, prepFlags);
+    return lua_prepare_sql_int(sp, sql, stmt, NULL, prepFlags);
 }
 
 static void push_clnt_cols(Lua L, SP sp)
@@ -2424,7 +2424,7 @@ static int dbtable_insert(Lua lua)
 
     db_reset(lua);
     sqlite3_stmt *stmt = NULL;
-    rc = lua_prepare_sql(lua, sp, sqlstr, &stmt);
+    rc = lua_prepare_sql(sp, sqlstr, &stmt);
     free(sqlstr);
     if (rc != 0) {
         lua_pushinteger(lua, rc); /* Failure return code. */
@@ -2493,7 +2493,7 @@ static int dbtable_copyfrom(Lua lua)
 
     db_reset(lua);
     sqlite3_stmt *stmt = NULL;
-    int rc = lua_prepare_sql(lua, sp, strbuf_buf(sql), &stmt);
+    int rc = lua_prepare_sql(sp, strbuf_buf(sql), &stmt);
     strbuf_free(sql);
     if (rc != 0) {
         return rc;
@@ -2593,7 +2593,7 @@ static int dbtable_where(lua_State *lua)
         strbuf_appendf(sql, "select * from %s%s\"%s\"", n1, separator, n2);
     db_reset(lua);
     sqlite3_stmt *stmt = NULL;
-    int rc = lua_prepare_sql(lua, sp, strbuf_buf(sql), &stmt);
+    int rc = lua_prepare_sql(sp, strbuf_buf(sql), &stmt);
     strbuf_free(sql);
     if (rc) {
         lua_pushnil(lua);
@@ -3119,16 +3119,36 @@ static void update_tran_funcs(Lua L, struct sqlclntstate *clnt)
 
 static void drop_temp_tables(SP sp)
 {
+    int expire = 0;
     tmptbl_info_t *tbl;
+    char drop_sql[128];
+    struct sqlclntstate *clnt = sp->clnt;
+    clnt->skip_peer_chk = 1;
     LIST_FOREACH(tbl, &sp->tmptbls, entries) {
+        int rc;
         char n1[MAXTABLELEN], n2[MAXTABLELEN];
         two_part_tbl_name(tbl->name, n1, n2);
-        char drop_sql[128];
         sprintf(drop_sql, "DROP TABLE temp.\"%s\"", n2);
-        sqlite3 *db = getdb(sp);
-        sp->clnt->skip_peer_chk = 1;
-        sqlite3_exec(db, drop_sql, NULL, NULL, NULL);
-        sp->clnt->skip_peer_chk = 0;
+        sqlite3_stmt *stmt;
+        rc = lua_prepare_sql_with_temp_ddl(sp, drop_sql, &stmt);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "lua_prepare_sql_with_temp_ddl rc:%d sql:%s\n",
+                   rc, drop_sql);
+            expire = 1;
+            continue;
+        }
+        do {
+            rc = sqlite3_step(stmt);
+        } while (rc == SQLITE_ROW);
+        sqlite3_finalize(stmt);
+        if (rc != SQLITE_DONE) {
+            expire = 1;
+            logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
+        }
+    }
+    clnt->skip_peer_chk = 0;
+    if (expire) {
+        clnt->thd->dbopen_gen = -1;
     }
 }
 
@@ -3640,7 +3660,7 @@ int db_csvcopy(Lua lua)
     
     db_reset(lua);
     sqlite3_stmt *stmt = NULL;
-    rc = lua_prepare_sql(lua, sp, sqlstr, &stmt);
+    rc = lua_prepare_sql(sp, sqlstr, &stmt);
     free(sqlstr);
     if (rc != 0) {
         rc = luaL_error(lua, sp->error);
@@ -3721,7 +3741,7 @@ static int db_exec(Lua lua)
         ++sql;
 
     sqlite3_stmt *stmt = NULL;
-    int rc = lua_prepare_sql(lua, sp, sql, &stmt);
+    int rc = lua_prepare_sql(sp, sql, &stmt);
     if (rc != 0) {
         lua_pushnil(lua);
         lua_pushinteger(lua, rc);
@@ -3772,7 +3792,7 @@ static int db_prepare(Lua L)
     }
     sqlite3_stmt *stmt = NULL;
     struct sql_state *rec = calloc(1, sizeof(*rec));
-    if (lua_prepare_sql_int(L, sp, sql, &stmt, rec, lua_get_prepare_flags()) != 0) {
+    if (lua_prepare_sql_int(sp, sql, &stmt, rec, lua_get_prepare_flags()) != 0) {
         free(rec);
         return 2;
     }
@@ -6281,7 +6301,6 @@ static void clone_temp_tables(SP sp)
 {
     sqlite3 *src = getdb(sp->parent);
     if (!src) return;
-    sqlite3 *dest = getdb(sp);
     tmptbl_info_t *tmp;
     LIST_FOREACH(tmp, &sp->tmptbls, entries) {
         strbuf *sql = strbuf_new();
@@ -6289,7 +6308,10 @@ static void clone_temp_tables(SP sp)
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
         sp->clnt->skip_peer_chk = 1;
-        clone_temp_table(dest, src, strbuf_buf(sql), &tmp->tbl);
+        sqlite3_stmt *stmt;
+        lua_prepare_sql_with_temp_ddl(sp, strbuf_buf(sql), &stmt);
+        clone_temp_table(stmt, &tmp->tbl);
+        sqlite3_finalize(stmt);
         sp->clnt->skip_peer_chk = 0;
         strbuf_free(sql);
     }
