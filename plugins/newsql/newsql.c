@@ -471,7 +471,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
     return appdata;
 oom:
     logmsg(LOGMSG_ERROR,
-           "%s:%d failed to (re)alloc %lu bytes (errno: %d, reason: %s)\n",
+           "%s:%d failed to (re)alloc %zu bytes (errno: %d, reason: %s)\n",
            __func__, __LINE__, alloc_sz, errno, strerror(errno));
     return NULL;
 }
@@ -1666,7 +1666,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     sqlite3Dequote(sqlstr);
                     if (strlen(sqlstr) >= sizeof(clnt->password)) {
                         snprintf(err, sizeof(err),
-                                 "set password: password length exceeds %lu "
+                                 "set password: password length exceeds %zu "
                                  "characters",
                                  sizeof(clnt->password) - 1);
                         rc = ii + 1;

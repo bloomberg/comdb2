@@ -908,13 +908,15 @@ static void akq_work_free(struct event_info *e, struct user_msg_info *info)
     if (e->rd_full) {
         if (outstanding <= max_bytes * resume_lvl) {
             e->rd_full = 0;
-            hprintf("RESUMING RD bytes:%lu (max:%lu)\n", outstanding, max_bytes);
+            hprintf("RESUMING RD bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
+                    outstanding, max_bytes);
             event_once(rd_base, resume_read, e);
         }
     } else {
         if (outstanding > max_bytes) {
             e->rd_full = 1;
-            hprintf("SUSPENDING RD bytes:%lu (max:%lu)\n", outstanding, max_bytes);
+            hprintf("SUSPENDING RD bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
+                    outstanding, max_bytes);
             event_once(rd_base, suspend_read, e);
         }
     }
@@ -2528,7 +2530,8 @@ static void check_wr_full(struct event_info *e)
     uint64_t outstanding = evbuffer_get_length(e->wr_buf);
     if (max_bytes && outstanding > max_bytes) {
         e->wr_full = 1;
-        hprintf("SUSPENDING WR bytes:%lu (max:%lu)\n", outstanding, max_bytes);
+        hprintf("SUSPENDING WR bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
+                outstanding, max_bytes);
     }
 }
 
@@ -2570,7 +2573,8 @@ static void flush_evbuffer_int(struct event_info *e)
     if (e->wr_full && max_bytes) {
         if (want <= max_bytes * resume_lvl) {
             e->wr_full = 0;
-            hprintf("RESUMING WR bytes:%d (max:%lu)\n", want, max_bytes);
+            hprintf("RESUMING WR bytes:%d (max:%" PRIu64 ")\n", want,
+                    max_bytes);
         }
     }
 }

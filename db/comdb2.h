@@ -1229,8 +1229,8 @@ struct osql_sess {
     const char *sql; /* if set, pointer to sql string (part of req) */
 
     /* this are set for each session retry */
-    time_t startus; /* when this was first started */
-    time_t endus;   /* when this was complete */
+    int64_t sess_startus;   /* when this was first started */
+    int64_t sess_endus;     /* when this was complete */
     unsigned int tran_rows; /* number of rows that are actual ADD/UPD/DEL */
 
     int queryid;

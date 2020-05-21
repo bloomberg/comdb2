@@ -181,11 +181,11 @@ char *osql_sess_info(osql_sess_t *sess)
 void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
 {
     char *info = osql_sess_info(sess);
-    reqlog_logf(reqlog, REQL_INFO,
-                "%s time %" PRId64 "ms queuetime=%" PRId64 "ms \"%s\"\n",
-                (info) ? info : "unknown", U2M(sess->endus - sess->startus),
-                U2M(reqlog_get_queue_time(reqlog)),
-                sess->sql ? sess->sql : "()");
+    reqlog_logf(
+        reqlog, REQL_INFO,
+        "%s time %" PRId64 "ms queuetime=%" PRId64 "ms \"%s\"\n",
+        (info) ? info : "unknown", U2M(sess->sess_endus - sess->sess_startus),
+        U2M(reqlog_get_queue_time(reqlog)), sess->sql ? sess->sql : "()");
     if (info)
         free(info);
 }
@@ -299,7 +299,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
     comdb2uuidcpy(sess->uuid, uuid);
     sess->type = type;
     sess->host = host ? intern(host) : NULL;
-    sess->startus = comdb2_time_epochus();
+    sess->sess_startus = comdb2_time_epochus();
     sess->is_reorder_on = is_reorder_on;
     strncpy0((char *)sess->sql, sql, sqlen + 1);
     if (tzname)
@@ -396,7 +396,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
     /* NOTE: the session here has one client at least, so it will not be
     close; it might be terminanted but we allow to dispatch */
     sess->dispatched = true;
-    psess->endus = comdb2_time_epochus();
+    psess->sess_endus = comdb2_time_epochus();
     bzero(&psess->xerr, sizeof(psess->xerr));
     Pthread_mutex_unlock(&sess->mtx);
 
