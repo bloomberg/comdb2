@@ -2628,12 +2628,7 @@ void sqlite3RegisterBuiltinFunctions(void){
                                                      SQLITE_FUNC_TYPEOF),
 #endif
     FUNCTION(ltrim,              1, 1, 0, trimFunc         ),
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* TODO: Why is a 3 argument version of ltrim needed? */
-    FUNCTION(ltrim,              3, 1, 0, trimFunc         ),
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(ltrim,              2, 1, 0, trimFunc         ),
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(rtrim,              1, 2, 0, trimFunc         ),
     FUNCTION(rtrim,              2, 2, 0, trimFunc         ),
     FUNCTION(trim,               1, 3, 0, trimFunc         ),
