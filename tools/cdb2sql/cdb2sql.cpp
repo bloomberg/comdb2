@@ -50,9 +50,9 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
-static char *delimstr = (char*)"\n";
+static char *delimstr = (char *)"\n";
 
-//For performance
+// For performance
 static int delim_len = 1;
 
 /* display modes */
@@ -477,11 +477,12 @@ static bool skip_history(const char *line)
     return true;
 }
 
-int has_delimiter(char *line, int len, char *delimiter,int dlen) {
+int has_delimiter(char *line, int len, char *delimiter, int dlen)
+{
     if (dlen > len)
         return -1;
-    while (dlen>0) {
-        if (delimiter[dlen-1] != line[len-1]) {
+    while (dlen > 0) {
+        if (delimiter[dlen - 1] != line[len - 1]) {
             return -1;
         }
         len--;
@@ -489,7 +490,6 @@ int has_delimiter(char *line, int len, char *delimiter,int dlen) {
     }
     return 0;
 }
-
 
 static char *read_line()
 {
@@ -509,17 +509,17 @@ static char *read_line()
     int n = -1;
     static size_t sz = 0;
     static char *getline = NULL;
-    while ((n = getdelim(&getline, &sz, delimstr[delim_len-1], stdin)) != -1) {
+    while ((n = getdelim(&getline, &sz, delimstr[delim_len - 1], stdin)) !=
+           -1) {
         if (n > 0) {
             total_len += n;
-            line = (char*)realloc(line , total_len+1);
+            line = (char *)realloc(line, total_len + 1);
             strcpy(line + total_len - n, getline);
             if (has_delimiter(line, total_len, delimstr, delim_len) == 0) {
-                 line[total_len-delim_len] = 0;
-                 return line;
+                line[total_len - delim_len] = 0;
+                return line;
             }
         }
-
     }
     if (n == -1 && total_len == 0) {
         if (line) {
@@ -532,8 +532,6 @@ static char *read_line()
         }
         return NULL;
     }
-    /* We never found delimiter */
-    line[total_len-1] = 0;
     return line;
 }
 
@@ -1743,7 +1741,7 @@ int main(int argc, char *argv[])
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:d:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
