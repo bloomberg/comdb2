@@ -521,8 +521,10 @@ int get_type(const char **sqlstr)
     checkfortype(*sqlstr, "REAL", CDB2_REAL);
     checkfortype(*sqlstr, "CSTRING", CDB2_CSTRING);
     checkfortype(*sqlstr, "BLOB", CDB2_BLOB);
+    checkfortype(*sqlstr, "DATETIMEUS", CDB2_DATETIMEUS);
     checkfortype(*sqlstr, "DATETIME", CDB2_DATETIME);
     checkfortype(*sqlstr, "INTERVALYM", CDB2_INTERVALYM);
+    checkfortype(*sqlstr, "INTERVALDSUS", CDB2_INTERVALDSUS);
     checkfortype(*sqlstr, "INTERVALDS", CDB2_INTERVALDS);
     return -1;
 }
@@ -559,6 +561,26 @@ int fromhex(uint8_t *out, const uint8_t *in, size_t len)
     return 0;
 }
 
+const char *cdb2_tp_str[] = {"???",
+                             "CDB2_INTEGER",
+                             "CDB2_REAL",
+                             "CDB2_CSTRING",
+                             "CDB2_BLOB",
+                             "???",
+                             "CDB2_DATETIME",
+                             "CDB2_INTERVALYM",
+                             "CDB2_INTERVALDS",
+                             "CDB2_DATETIMEUS",
+                             "CDB2_INTERVALDSUS"};
+
+inline const char *cdb2_type_str(int type)
+{
+    if (type < 1 || type > CDB2_INTERVALDSUS)
+        return "???";
+
+    return cdb2_tp_str[type];
+}
+
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
@@ -591,16 +613,39 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         cdb2_client_datetime_t *dt =
             (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
                                               1);
-        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d", &dt->tm.tm_year,
-                        &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
-                        &dt->tm.tm_min, &dt->tm.tm_sec);
+        int rc =
+            sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d.%03d", &dt->tm.tm_year,
+                   &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                   &dt->tm.tm_min, &dt->tm.tm_sec, &dt->msec);
         /* timezone not supported for now */
-        if (rc != 6) {
+        if (rc != 6 && rc != 7) {
             fprintf(stderr,
-                    "Invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
+                    "Invalid datetime (need format yyyy-mm-ddTHH:MM:SS[.fff], "
+                    "rc=%d)\n",
+                    rc);
             return NULL;
         }
-        dt->msec = 0;
+        dt->tzname[0] = 0;
+        dt->tm.tm_year -= 1900;
+        dt->tm.tm_mon--;
+
+        *vallen = sizeof(*dt);
+        return dt;
+    } else if (type == CDB2_DATETIMEUS) {
+        cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t *)calloc(
+            sizeof(cdb2_client_datetimeus_t), 1);
+        int rc =
+            sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", &dt->tm.tm_year,
+                   &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                   &dt->tm.tm_min, &dt->tm.tm_sec, &dt->usec);
+        /* timezone not supported for now */
+        if (rc != 6 && rc != 7) {
+            fprintf(stderr,
+                    "Invalid datetime (need format "
+                    "yyyy-mm-ddTHH:MM:SS[.ffffff], rc=%d\n)",
+                    rc);
+            return NULL;
+        }
         dt->tzname[0] = 0;
         dt->tm.tm_year -= 1900;
         dt->tm.tm_mon--;
@@ -634,7 +679,7 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         *vallen = unexlen;
         return unexpanded;
     } else {
-        fprintf(stderr, "Type %d not yet supported\n", type);
+        fprintf(stderr, "Type %s not yet supported\n", cdb2_type_str(type));
     }
     return NULL;
 }
@@ -1205,8 +1250,9 @@ int process_bind(const char *sql)
     if (type < 0 || !isspace(*sql)) {
         fprintf(stderr, "Usage: @bind <type> <paramname> <value>, with type "
                         "one of the following:\n"
-                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,"
-                        "INTERVALDS}\n");
+                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME[,US]"
+                        // uncomment when supported: ",INTERVAL[YM,DS,DSUS]"
+                        "}\n");
         fprintf(stderr, "[%s] rc %d\n", copy_sql, type);
         return type;
     }
