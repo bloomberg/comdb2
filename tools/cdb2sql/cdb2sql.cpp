@@ -136,6 +136,7 @@ static const char *usage_text =
     " -c, --cdb2cfg FL    Set the config file to FL\n"
     "     --cost          Log the cost of query in db trace files\n"
     "     --debugtrace    Set debug trace flag on api handle\n"
+    " -d, --delim str     Set string used to separate two sql statements\n"
     " -f, --file FL       Read queries from the specified file FL\n"
     " -h, --help          Help on usage \n"
     " -n, --host HOST     Host to connect to and run query.\n"
@@ -477,18 +478,18 @@ static bool skip_history(const char *line)
     return true;
 }
 
-int has_delimiter(char *line, int len, char *delimiter, int dlen)
+static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
 {
     if (dlen > len)
-        return -1;
+        return false;
     while (dlen > 0) {
         if (delimiter[dlen - 1] != line[len - 1]) {
-            return -1;
+            return false;
         }
         len--;
         dlen--;
     }
-    return 0;
+    return true;
 }
 
 static char *read_line()
@@ -515,7 +516,7 @@ static char *read_line()
             total_len += n;
             line = (char *)realloc(line, total_len + 1);
             strcpy(line + total_len - n, getline);
-            if (has_delimiter(line, total_len, delimstr, delim_len) == 0) {
+            if (has_delimiter(line, total_len, delimstr, delim_len) == true) {
                 line[total_len - delim_len] = 0;
                 return line;
             }
