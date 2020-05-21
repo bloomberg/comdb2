@@ -332,6 +332,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     if (!clnt) {
         return -1;
     }
+    thd->clnt = clnt;
 
     init_sqlclntstate(clnt, tid, isuuid);
 
