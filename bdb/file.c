@@ -7422,6 +7422,65 @@ uint64_t bdb_logs_size(bdb_state_type *bdb_state, unsigned *num_logs)
     return total;
 }
 
+uint64_t bdb_tmp_size(bdb_state_type *bdb_state, uint64_t *ptmptbls, uint64_t *psqlsorters, uint64_t *pblkseqs,
+                      uint64_t *pothers)
+{
+    DIR *dh;
+    struct dirent *dirent_buf;
+    struct dirent *result;
+    uint64_t total = 0;
+    bdb_state_type *bdb_env;
+
+    char path[PATH_MAX];
+    uint64_t fsz;
+    uint64_t tmptbls = *ptmptbls = 0;
+    uint64_t sqlsorters = *psqlsorters = 0;
+    uint64_t blkseqs = *pblkseqs = 0;
+    uint64_t others = *pothers = 0;
+
+    if (bdb_state->parent)
+        bdb_env = bdb_state->parent;
+    else
+        bdb_env = bdb_state;
+
+    /* Scan the environment directory for queue extents */
+    dh = opendir(bdb_env->tmpdir);
+    if (!dh) {
+        logmsg(LOGMSG_ERROR, "%s: opendir error on %s: %d %s\n", __func__, bdb_env->tmpdir, errno, strerror(errno));
+        return 0;
+    }
+
+    dirent_buf = alloca(dirent_buf_size(bdb_env->tmpdir));
+
+    while (bb_readdir(dh, dirent_buf, &result) == 0 && result) {
+        if (strcmp(result->d_name, ".") == 0 || strcmp(result->d_name, "..") == 0)
+            continue;
+
+        snprintf(path, sizeof(path), "%s/%s", bdb_env->tmpdir, result->d_name);
+        fsz = mystat(path);
+
+        if (strncmp(result->d_name, "_temp_", 6) == 0)
+            tmptbls += fsz;
+        else if (strncmp(result->d_name, "sqlsort_", 8) == 0)
+            sqlsorters += fsz;
+        else if (strncmp(result->d_name, "_blkseq", 7) == 0)
+            blkseqs += fsz;
+        else
+            others += fsz;
+
+        total += fsz;
+    }
+
+    closedir(dh);
+
+    *ptmptbls = tmptbls;
+    *psqlsorters = sqlsorters;
+    *pblkseqs = blkseqs;
+    *pothers = others;
+
+    return total;
+}
+
 void bdb_log_berk_tables(bdb_state_type *bdb_state)
 {
     __bb_dbreg_print_dblist(bdb_state->dbenv,

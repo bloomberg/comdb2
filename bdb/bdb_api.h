@@ -552,6 +552,8 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum);
 uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents);
 uint64_t bdb_queue_size_tran(bdb_state_type *bdb_state, tran_type *tran, unsigned *num_extents);
 uint64_t bdb_logs_size(bdb_state_type *bdb_state, unsigned *num_logs);
+uint64_t bdb_tmp_size(bdb_state_type *bdb_state, uint64_t *ptmptbls, uint64_t *psqlsorters, uint64_t *pblkseqs,
+                      uint64_t *pothers);
 
 /*
   bdb_close(): destroy a bdb_handle.

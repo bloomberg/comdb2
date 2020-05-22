@@ -420,6 +420,15 @@ Shows the sizes on disk of the tables.
 * `tablename` - Name of the table
 * `bytes` - Size of the table in bytes
 
+## comdb2_temporary_file_sizes
+
+Reports sizes of temporary files.
+
+    comdb2_temporary_file_sizes(type, bytes)
+
+* `type` - Temporary file type. Can be one of `temptables`, `sqlsorters`, `blkseqs` and `others`
+* `bytes` - Size in bytes
+
 ## comdb2_threadpools
 
 Information about thread pools in the database.

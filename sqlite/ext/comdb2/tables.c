@@ -289,6 +289,8 @@ int comdb2SystblInit(
     rc = systblSQLClientStats(db);
   if (rc == SQLITE_OK)
     rc = systblSQLIndexStatsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTemporaryFileSizesModuleInit(db);
 #endif
   return rc;
 }
