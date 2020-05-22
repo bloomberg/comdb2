@@ -5012,6 +5012,11 @@ static void dump_table_sizes(struct dbenv *dbenv)
     int ii, len;
     unsigned num_logs;
     uint64_t logsize;
+    uint64_t tmpsize;
+    uint64_t tmptbls;
+    uint64_t sqlsorters;
+    uint64_t blkseqs;
+    uint64_t others;
 
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
@@ -5029,6 +5034,9 @@ static void dump_table_sizes(struct dbenv *dbenv)
     }
     logsize = bdb_logs_size(dbenv->bdb_env, &num_logs);
     total += logsize;
+
+    tmpsize = bdb_tmp_size(dbenv->bdb_env, &tmptbls, &sqlsorters, &blkseqs, &others);
+    total += tmpsize;
 
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
@@ -5061,12 +5069,25 @@ static void dump_table_sizes(struct dbenv *dbenv)
                maxtblname, db->tablename, fmt_size(b, sizeof(b), db->totalsize),
                (int)percent, db->numextents);
     }
+
     if (total > 0)
         percent = (logsize * 100ULL) / total;
     else
         percent = 0;
    logmsg(LOGMSG_USER, "%-*s sz %12s %3d%% (%u logs)\n", maxtblname + 6, "log files",
            fmt_size(b, sizeof(b), logsize), (int)percent, num_logs);
+
+   if (total > 0)
+       percent = (tmpsize * 100ULL) / total;
+   else
+       percent = 0;
+   logmsg(LOGMSG_USER, "%-*s sz %12s %3d%% (", maxtblname + 6, "temp files", fmt_size(b, sizeof(b), tmpsize),
+          (int)percent);
+   logmsg(LOGMSG_USER, "tmptbls %s", fmt_size(b, sizeof(b), tmptbls));
+   logmsg(LOGMSG_USER, ", sqlsorters %s", fmt_size(b, sizeof(b), sqlsorters));
+   logmsg(LOGMSG_USER, ", blkseqs %s", fmt_size(b, sizeof(b), blkseqs));
+   logmsg(LOGMSG_USER, ", others %s", fmt_size(b, sizeof(b), others));
+   logmsg(LOGMSG_USER, ")\n");
 
    logmsg(LOGMSG_USER, "GRAND TOTAL %s\n", fmt_size(b, sizeof(b), total));
 

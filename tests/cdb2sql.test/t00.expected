@@ -52,6 +52,7 @@ unknown @ls sub-command foo
 (name='comdb2_tablepermissions')
 (name='comdb2_tables')
 (name='comdb2_tablesizes')
+(name='comdb2_temporary_file_sizes')
 (name='comdb2_threadpools')
 (name='comdb2_timepartevents')
 (name='comdb2_timepartitions')

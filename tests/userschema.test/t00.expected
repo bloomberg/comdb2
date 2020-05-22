@@ -34,6 +34,7 @@
 (tablename='comdb2_tablepermissions', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_tables', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_tablesizes', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_temporary_file_sizes', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_threadpools', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_timepartevents', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_timepartitions', username='mohit', READ='Y', WRITE='Y', DDL='Y')

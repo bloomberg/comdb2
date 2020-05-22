@@ -349,6 +349,11 @@
 [SELECT COUNT(*)=1 FROM comdb2_appsock_handlers WHERE name = 'newsql'] rc 0
 (COUNT(*)=1=1)
 [SELECT COUNT(*)=1 FROM comdb2_opcode_handlers WHERE name = 'blockop'] rc 0
+(type='blkseqs')
+(type='others')
+(type='sqlsorters')
+(type='temptables')
+[SELECT type FROM comdb2_temporary_file_sizes ORDER BY type] rc 0
 (name='comdb2_active_osqls')
 (name='comdb2_appsock_handlers')
 (name='comdb2_blkseq')
@@ -384,6 +389,7 @@
 (name='comdb2_tablepermissions')
 (name='comdb2_tables')
 (name='comdb2_tablesizes')
+(name='comdb2_temporary_file_sizes')
 (name='comdb2_threadpools')
 (name='comdb2_timepartevents')
 (name='comdb2_timepartitions')

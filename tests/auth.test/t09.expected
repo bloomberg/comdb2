@@ -250,6 +250,7 @@
 (candidate='comdb2_tablepermissions')
 (candidate='comdb2_tables')
 (candidate='comdb2_tablesizes')
+(candidate='comdb2_temporary_file_sizes')
 (candidate='comdb2_threadpools')
 (candidate='comdb2_timepartevents')
 (candidate='comdb2_timepartitions')
