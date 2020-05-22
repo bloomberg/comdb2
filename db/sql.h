@@ -1209,10 +1209,10 @@ void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
                          struct dbtable *db, int ixnum, void *trans);
 
-int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *, int);
-int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *, int);
+int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+int get_prepared_stmt_no_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);

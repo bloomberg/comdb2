@@ -1229,12 +1229,6 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         goto out;
     }
 
-    // Run ddl stmt 'create temp table...' under schema lk
-    if (tryrdlock_schema_lk() != 0) {
-        sqlite3_finalize(stmt);
-        return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
-    }
-    // now, actually create the temp table
     *lk = malloc(sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
@@ -1244,7 +1238,6 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     }
     lua_end_step(sp->clnt, sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
-    unlock_schema_lk();
     sqlite3_finalize(stmt);
 
     if (rc == SQLITE_DONE) {
@@ -1332,6 +1325,7 @@ static int new_temp_table(Lua lua)
         // make this fatal for sp
         // temptable name may shadow real tbl name and bad things
         // will happen if sloppy sp keeps using tbl name
+        sp->thd->dbopen_gen = -1;
         return luaL_error(lua, sp->error);
     }
     lua_pushinteger(lua, 0);
@@ -2202,8 +2196,13 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
-    sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags)
-                         : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
+    if (sp->initial) {
+        sp->rc = get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags);
+    } else if (flags & PREPARE_ALLOW_TEMP_DDL) {
+        sp->rc = get_prepared_stmt_no_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
+    } else {
+        sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
+    }
     sp->initial = 0;
     if (sp->rc == 0) {
         *stmt = rec_ptr->stmt;
@@ -3148,7 +3147,7 @@ static void drop_temp_tables(SP sp)
     }
     clnt->skip_peer_chk = 0;
     if (expire) {
-        clnt->thd->dbopen_gen = -1;
+        sp->thd->dbopen_gen = -1;
     }
 }
 
@@ -6601,11 +6600,7 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     sp->clnt = clnt;
     sp->thd = thd;
     Lua L = sp->lua;
-    if (tryrdlock_schema_lk() != 0) {
-        return -1;
-    }
     clone_temp_tables(sp);
-    unlock_schema_lk();
     int args = lua_gettop(L) - 1;
     int rc;
     char *err = NULL;
@@ -6840,6 +6835,7 @@ void *exec_trigger(trigger_reg_t *reg)
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
+    clnt.thd = &thd;
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
