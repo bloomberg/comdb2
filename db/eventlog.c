@@ -426,8 +426,7 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
             cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
 
     /* yes, this can spill the file to beyond the configured size - we need
-       this
-       event to be in the same file as the event its being logged for */
+       this event to be in the same file as the event its being logged for */
     cson_output(newval, write_json, eventlog);
     if (eventlog_verbose) cson_output_FILE(newval, stdout);
     cson_value_free(newval);
