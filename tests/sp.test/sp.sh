@@ -1288,7 +1288,7 @@ cdb2sql $SP_OPTIONS - > /dev/null 2>&1 <<'EOF'
 create table no_ddl_t1(x INT)$$
 create table no_ddl_t2(x BLOB)$$
 create table no_ddl_t3(x INT)$$
-create index no_ddl_t1_i1 on no_ddl_t1(x)$$
+create index no_ddl_t1_i1 on no_ddl_t1(x)
 create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {}$$
 create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {}$$
 put password 'password' for 'auth_test_user'

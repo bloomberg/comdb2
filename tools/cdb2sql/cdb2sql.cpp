@@ -14,11 +14,7 @@
    limitations under the License.
  */
 
-/*
- * Comdb2 sql command line client.
- *
- * $Id: client.c 88379 2013-12-11 20:11:12Z mkhullar $
- */
+/* Comdb2 sql command line client */
 
 #include <ctype.h>
 #include <errno.h>
