@@ -4027,7 +4027,7 @@ static int db_table_to_json(Lua L)
     } else {
         cson_buffer buf;
         cson_output_buffer(cson, &buf);
-        lua_pushstring(L, (char *)buf.mem);
+        lua_pushlstring(L, (char *)buf.mem, buf.used);
         cson_free_value(cson);
     }
     // non-zero rc if nil'd, truncated or hexified cstring
