@@ -2152,7 +2152,8 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table)
 repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
         bdb_state_type *bdb_state, int *pnnodes)
 {
-    int rc, i, nnodes;
+    int rc, i, nnodes, nodeidx;
+    DB_LSN *lsnp, *master_lsnp;
     const char *host;
     struct host_node_info nodes[REPMAX];
     netinfo_type *p_netinfo;
@@ -2168,18 +2169,21 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
     if (nnodes == 1) /* Standalone */
         return NULL;
 
-    rv = malloc(sizeof(repl_wait_and_net_use_t) * nnodes);
+    pos = rv = malloc(sizeof(repl_wait_and_net_use_t) * nnodes);
     if (rv == NULL) /* Malloc failed. */
         return NULL;
 
+    nodeidx = nodeix(bdb_state->repinfo->master_host);
+    master_lsnp = &bdb_state->seqnum_info->seqnums[nodeidx].lsn;
+
     for (i = 0; i != nnodes; ++i) {
-        pos = rv + i;
-        strncpy0(pos->host, nodes[i].host, sizeof(pos->host));
         host = nodes[i].host;
 
         /* net_get_nodes_info() returns all nodes. Exclude myself. */
         if (host == bdb_state->repinfo->myhost)
             continue;
+
+        strncpy0(pos->host, host, sizeof(pos->host));
 
         rc = net_get_host_network_usage(p_netinfo,
                                         host,
@@ -2190,9 +2194,7 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
 
         Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
 
-        if (rc != 0 ||
-                bdb_state->seqnum_info->time_10seconds[nodeix(host)] == NULL || 
-                bdb_state->seqnum_info->time_minute[nodeix(host)] == NULL) {
+        if (rc != 0) {
             /* Make sure we don't read uninitialized data on error. */
             pos->bytes_written = 0;
             pos->bytes_read = 0;
@@ -2202,18 +2204,37 @@ repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(
             pos->max_wait_over_10secs = 0;
             pos->avg_wait_over_1min = 0;
             pos->max_wait_over_1min = 0;
+            pos->lsn_text[0] = '\0';
+            pos->lsn_bytes_behind = 0;
         } else {
-            pos->avg_wait_over_10secs =
-                averager_avg(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
-            pos->max_wait_over_10secs =
-                averager_max(bdb_state->seqnum_info->time_10seconds[nodeix(host)]);
-            pos->avg_wait_over_1min =
-                averager_avg(bdb_state->seqnum_info->time_minute[nodeix(host)]);
-            pos->max_wait_over_1min =
-                averager_max(bdb_state->seqnum_info->time_minute[nodeix(host)]);
+            nodeidx = nodeix(host);
+            if (bdb_state->seqnum_info->time_10seconds[nodeidx] == NULL) {
+                pos->avg_wait_over_10secs = 0;
+                pos->max_wait_over_10secs = 0;
+            } else {
+                pos->avg_wait_over_10secs = averager_avg(
+                    bdb_state->seqnum_info->time_10seconds[nodeidx]);
+                pos->max_wait_over_10secs = averager_max(
+                    bdb_state->seqnum_info->time_10seconds[nodeidx]);
+            }
+
+            if (bdb_state->seqnum_info->time_minute[nodeidx] == NULL) {
+                pos->avg_wait_over_1min = 0;
+                pos->max_wait_over_1min = 0;
+            } else {
+                pos->avg_wait_over_1min =
+                    averager_avg(bdb_state->seqnum_info->time_minute[nodeidx]);
+                pos->max_wait_over_1min =
+                    averager_max(bdb_state->seqnum_info->time_minute[nodeidx]);
+            }
+            lsnp = &bdb_state->seqnum_info->seqnums[nodeidx].lsn;
+            lsn_to_str(pos->lsn_text, lsnp);
+            pos->lsn_bytes_behind = subtract_lsn(bdb_state, master_lsnp, lsnp);
         }
 
         Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
+
+        ++pos;
     }
     return rv;
 }
