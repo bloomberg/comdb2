@@ -50,6 +50,11 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
+static char *delimstr = (char *)"\n";
+
+// For performance
+static int delim_len = 1;
+
 /* display modes */
 enum {
     DISP_CLASSIC = 1 << 0, /* default output */
@@ -131,6 +136,8 @@ static const char *usage_text =
     " -c, --cdb2cfg FL    Set the config file to FL\n"
     "     --cost          Log the cost of query in db trace files\n"
     "     --debugtrace    Set debug trace flag on api handle\n"
+    " -d, --delim str     Set string used to separate two sql statements read "
+    "from a file or input stream\n"
     " -f, --file FL       Read queries from the specified file FL\n"
     " -h, --help          Help on usage \n"
     " -n, --host HOST     Host to connect to and run query.\n"
@@ -472,6 +479,20 @@ static bool skip_history(const char *line)
     return true;
 }
 
+static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
+{
+    if (dlen > len)
+        return false;
+    while (dlen > 0) {
+        if (delimiter[dlen - 1] != line[len - 1]) {
+            return false;
+        }
+        len--;
+        dlen--;
+    }
+    return true;
+}
+
 static char *read_line()
 {
     static char *line = NULL;
@@ -486,17 +507,33 @@ static char *read_line()
             add_history(line);
         return line;
     }
+    int total_len = 0;
+    int n = -1;
     static size_t sz = 0;
-    ssize_t n = getline(&line, &sz, stdin);
-    if (n == -1) {
+    static char *getline = NULL;
+    while ((n = getdelim(&getline, &sz, delimstr[delim_len - 1], stdin)) !=
+           -1) {
+        if (n > 0) {
+            total_len += n;
+            line = (char *)realloc(line, total_len + 1);
+            strcpy(line + total_len - n, getline);
+            if (has_delimiter(line, total_len, delimstr, delim_len) == true) {
+                line[total_len - delim_len] = 0;
+                return line;
+            }
+        }
+    }
+    if (n == -1 && total_len == 0) {
         if (line) {
             free(line);
             line = NULL;
         }
+        if (getline) {
+            free(getline);
+            getline = NULL;
+        }
         return NULL;
     }
-    if (line[n - 1] == '\n')
-        line[n - 1] = 0;
     return line;
 }
 
@@ -1425,7 +1462,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
         } else if (printmode & DISP_TABS) {
             fprintf(out, "\n");
         } else if (printmode & DISP_GENSQL) {
-            fprintf(out, ");\n");
+            fprintf(out, ");");
+            fprintf(out, "%s", delimstr);
         } else if (printmode & DISP_TABULAR) {
             /* Noop */
         }
@@ -1745,12 +1783,13 @@ int main(int argc, char *argv[])
         {"cdb2cfg", required_argument, NULL, 'c'},
         {"file", required_argument, NULL, 'f'},
         {"gensql", required_argument, NULL, 'g'},
+        {"delim", required_argument, NULL, 'd'},
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1784,6 +1823,10 @@ int main(int argc, char *argv[])
         case 'g':
             printmode = DISP_GENSQL;
             gensql_tbl = optarg;
+            break;
+        case 'd':
+            delimstr = optarg;
+            delim_len = strlen(delimstr);
             break;
         case 't':
             dbtype = optarg;
