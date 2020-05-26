@@ -5146,7 +5146,6 @@ static cson_value *table_to_cson_array(Lua L, int lvl, json_conv *conv)
     cson_value *v = cson_value_new_array();
     cson_array *a = cson_value_get_array(v);
     int n = luaL_getn(L, -1);
-    cson_array_reserve(a, n);
     for (int i = 0; i < n; ++i) {
         lua_rawgeti(L, -1, i + 1);
         cson_value *val = table_to_cson(L, lvl, conv);
