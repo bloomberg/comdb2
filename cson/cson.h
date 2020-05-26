@@ -81,7 +81,6 @@ cson_value *cson_value_new_object(void);
 cson_value *cson_value_new_string(char const *str, unsigned int n);
 cson_value *cson_value_null(void);
 int cson_array_append(cson_array *, cson_value *);
-int cson_array_reserve(cson_array *, unsigned int size);
 int cson_array_set(cson_array *, unsigned int ndx, cson_value *);
 int cson_object_iter_init(cson_object *, cson_object_iterator *iter);
 int cson_object_set(cson_object *, char const *key, cson_value *);

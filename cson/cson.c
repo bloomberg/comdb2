@@ -521,10 +521,6 @@ int cson_array_append(cson_array *ar, cson_value *v)
     cson_value_free(v);
     return 0;
 }
-int cson_array_reserve(cson_array *ar, unsigned int size)
-{
-    return 0;
-}
 cson_value *cson_value_new_integer(cson_int_t v)
 {
     cson_value *val = calloc(1, sizeof(cson_value));
