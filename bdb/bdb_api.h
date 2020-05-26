@@ -2159,6 +2159,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
 
 /* Return per-node replication wait and net usage. */
+#define LSN_TEXT_WIDTH 22  /* max possible lsn is 4294967296:4294967296 */
 typedef struct repl_wait_and_net_use {
     char host[HOST_NAME_MAX];
     unsigned long long bytes_written;
@@ -2169,6 +2170,8 @@ typedef struct repl_wait_and_net_use {
     double max_wait_over_10secs;
     double avg_wait_over_1min;
     double max_wait_over_1min;
+    char lsn_text[LSN_TEXT_WIDTH];
+    uint64_t lsn_bytes_behind;
 } repl_wait_and_net_use_t;
 repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(bdb_state_type *bdb_state, int *pnnodes);
 
