@@ -129,6 +129,7 @@ struct cson_value {
     char *value_text;
     char value_buf[128];
     int modified;
+    JsonString output;
     struct {
         cson_value **slots;
         int capacity;
@@ -252,6 +253,7 @@ static void cson__free_get_list(struct get_list *get_list)
 }
 static void cson__reset(cson_value *val)
 {
+    jsonReset(&val->output);
     cson__reset_slots(val);
     free(val->replace.slots);
     val->replace.used = 0;
@@ -358,24 +360,30 @@ static void cson__grow_slots(cson_value *val)
         val->replace.slots = realloc(val->replace.slots, sz);
     }
 }
-static void cson__render(cson_value *val)
+static void cson__output(cson_value *val)
 {
-    if (!val->modified) return;
-    JsonString s;
-    jsonInit(&s, NULL);
-    jsonRenderNode(val->parse.aNode, &s, val->replace.slots);
+    jsonReset(&val->output);
+    jsonRenderNode(val->parse.aNode, &val->output, val->replace.slots);
     if (cson__type(val) == JSON_ARRAY && val->u.arr.str.nUsed) {
         // process appended values
         cson_array *arr = cson_value_get_array(val);
         JsonString *suffix = &arr->str;
-        --s.nUsed; // remove trailing ]
-        jsonAppendSeparator(&s);
-        jsonAppendRaw(&s, suffix->zBuf, suffix->nUsed);
-        jsonAppendChar(&s, ']');
+        --val->output.nUsed; // remove trailing ]
+        jsonAppendSeparator(&val->output);
+        jsonAppendRaw(&val->output, suffix->zBuf, suffix->nUsed);
+        jsonAppendChar(&val->output, ']');
         jsonReset(suffix);
     }
-    cson__parse(val, s.zBuf, s.nUsed);
-    jsonReset(&s);
+}
+static void cson__render(cson_value *val)
+{
+    if (!val->modified) return;
+    cson__output(val);
+    JsonString tmp = val->output;
+    if (tmp.bStatic) tmp.zBuf = tmp.zSpace;
+    jsonInit(&val->output, NULL);
+    cson__parse(val, tmp.zBuf, tmp.nUsed);
+    jsonReset(&tmp);
 }
 static int cson__set(cson_value *val, char *path, cson_value *v)
 {
@@ -654,28 +662,36 @@ char cson_value_get_bool(cson_value const *val)
 }
 int cson_output_FILE(cson_value *val, FILE *dest)
 {
-    if (val->sub_type) {
-        cson__render(val);
+    if (val->sub_type && val->modified) {
+        cson__output(val);
+        fwrite(val->output.zBuf, val->output.nUsed, 1, dest);
+    } else {
+        fwrite(val->value_text, val->value_bytes, 1, dest);
     }
-    fwrite(val->value_text, val->value_bytes, 1, dest);
     fputc('\n', dest);
     return 0;
 }
 int cson_output_buffer(cson_value *val, cson_buffer *buf)
 {
-    if (val->sub_type) {
-        cson__render(val);
+    if (val->sub_type && val->modified) {
+        cson__output(val);
+        buf->mem = val->output.zBuf;
+        buf->used = val->output.nUsed;
+    } else {
+        buf->mem = val->value_text;
+        buf->used = val->value_bytes;
     }
-    buf->mem = val->value_text;
-    buf->used = val->value_bytes;
     return 0;
 }
 int cson_output(cson_value *val, cson_data_dest_f f, void *arg)
 {
+    int rc;
     if (val->sub_type) {
-        cson__render(val);
+        cson__output(val);
+        rc = f(arg, val->output.zBuf, val->output.nUsed);
+    } else {
+        rc = f(arg, val->value_text, val->value_bytes);
     }
-    int rc = f(arg, val->value_text, val->value_bytes);
     if (rc == 0) {
         rc = f(arg, "\n", 1);
     }
