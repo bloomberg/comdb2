@@ -175,10 +175,9 @@ cson_array *get_bind_array(struct reqlogger *logger, int nfields)
     return arr;
 }
 
-static void eventlog_append_value(cson_array *arr, const char *name, const char *type, cson_value *value)
+static inline void eventlog_append_value(cson_array *arr, const char *name,
+                                         const char *type, cson_value *value)
 {
-    if (!arr)
-        return;
     cson_value *binding = cson_value_new_object();
     cson_object *bobj = cson_value_get_object(binding);
     cson_object_set(bobj, "name", cson_value_new_string(name, strlen(name)));
@@ -186,8 +185,11 @@ static void eventlog_append_value(cson_array *arr, const char *name, const char 
     cson_object_set(bobj, "value", value);
     cson_array_append(arr, binding);
 }
+
 void eventlog_bind_null(cson_array *arr, const char *name)
 {
+    if (!arr)
+        return;
     /* log null values as int for simplicity */
     eventlog_append_value(arr, name, "int", cson_value_null());
 }
@@ -195,6 +197,8 @@ void eventlog_bind_null(cson_array *arr, const char *name)
 void eventlog_bind_int64(cson_array *arr, const char *name, int64_t val,
                          int dlen)
 {
+    if (!arr)
+        return;
     const char *type;
     switch (dlen) {
     case 2: type = "smallint"; break;
@@ -208,12 +212,16 @@ void eventlog_bind_int64(cson_array *arr, const char *name, int64_t val,
 void eventlog_bind_text(cson_array *arr, const char *name, const char *val,
                         int dlen)
 {
+    if (!arr)
+        return;
     eventlog_append_value(arr, name, "char", cson_value_new_string(val, dlen));
 }
 
 void eventlog_bind_double(cson_array *arr, const char *name, double val,
                           int dlen)
 {
+    if (!arr)
+        return;
     const char *type;
     switch (dlen) {
     case 4: type = "float"; break;
@@ -226,6 +234,8 @@ void eventlog_bind_double(cson_array *arr, const char *name, double val,
 static void eventlog_bind_blob_int(cson_array *arr, const char *name,
                                    const char *type, const void *val, int dlen)
 {
+    if (!arr)
+        return;
     int datalen = min(dlen, 1024);         /* cap the datalen logged */
     const int exp_len = (2 * datalen) + 3; /* x' ... ' */
     char *expanded_buf = malloc(exp_len + 1);
@@ -251,6 +261,8 @@ void eventlog_bind_varchar(cson_array *a, const char *n, const void *v, int l)
 void eventlog_bind_datetime(cson_array *arr, const char *name, dttz_t *dt,
                             const char *tz)
 {
+    if (!arr)
+        return;
     const char *type =
         dt->dttz_prec == DTTZ_PREC_MSEC ? "datetime" : "datetimeus";
     char str[256];
@@ -261,6 +273,8 @@ void eventlog_bind_datetime(cson_array *arr, const char *name, dttz_t *dt,
 
 void eventlog_bind_interval(cson_array *arr, const char *name, intv_t *tv)
 {
+    if (!arr)
+        return;
     const char *type;
     switch (tv->type) {
     case INTV_YM_TYPE: type = "interval month"; break;
