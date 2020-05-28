@@ -93,3 +93,41 @@ fi
 # For instance, in the query below, the 2nd column in the order-by clause
 # is 'SELECT 1', and it would crash the database.
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'SELECT i, (SELECT 1) FROM t0 ORDER BY 1, 2' >/dev/null
+
+
+######## Leak 4: Dohast leaking sqlite3_mprintf (DRQS 159154516) ########
+sleep 5
+
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "CREATE TABLE drqs_159154516 (i INTEGER, j INTEGER)"
+sleep 1
+
+# warm up
+while true; do cdb2sql $dbnm --host $host "SELECT i, j FROM drqs_159154516"; done >/dev/null &
+pid=$!
+sleep 5
+kill $pid
+
+# Get a steady memory snapshot
+sleep 2 # allow the sql engine to detect the disconnect and back out
+cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+
+sleep 5
+
+while true; do cdb2sql $dbnm --host $host "SELECT i, j FROM drqs_159154516"; done >/dev/null &
+pid=$!
+sleep 120
+kill $pid
+
+# Get a memory snapshot again
+sleep 2 # allow the sql engine to detect the disconnect and back out
+cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+
+# Should almost be identical
+ratio=`echo "$after/$before" | bc`
+echo "$after/$before=$ratio"
+if [ $ratio -gt 1 ]; then
+  echo "leak 4 ratio is $ratio" >&2
+  exit 1
+fi
