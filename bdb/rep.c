@@ -1740,7 +1740,7 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
 }
 
 /* Timestamp of when our coherency lease expires on replicant */
-uint64_t coherency_timestamp = 0;
+static uint64_t coherency_timestamp = 0;
 int gbl_dump_zero_coherency_timestamp;
 
 char coherency_master[128] = {0};
