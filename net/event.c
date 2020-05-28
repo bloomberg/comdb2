@@ -2001,6 +2001,7 @@ static int accept_host(struct accept_info *a)
     if (host_node_ptr == NULL) {
         return -1;
     }
+    host_node_ptr->addr = a->ss.sin_addr;
     update_host_node_ptr(host_node_ptr, e);
     update_event_port(e, port);
     update_wire_hdrs(e);
