@@ -5025,3 +5025,100 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
 cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+cdb2sql ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "tbl1v1",
+  "PERIOD"    : "daily",
+  "RETENTION" : 3,
+  "SHARD0NAME": "tbl1",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$2_F2A9A46E",
+  },
+  {
+   "TABLENAME"    : "$1_BA9A149A",
+  },
+  {
+   "TABLENAME"    : "tbl1",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "tbl2v1",
+  "PERIOD"    : "weekly",
+  "RETENTION" : 3,
+  "SHARD0NAME": "tbl2",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$2_E1F9579A",
+  },
+  {
+   "TABLENAME"    : "$1_A9CAE76E",
+  },
+  {
+   "TABLENAME"    : "tbl2",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "tbl3v1",
+  "PERIOD"    : "monthly",
+  "RETENTION" : 3,
+  "SHARD0NAME": "tbl3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$2_1392D499",
+  },
+  {
+   "TABLENAME"    : "$1_5BA1646D",
+  },
+  {
+   "TABLENAME"    : "tbl3",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "tbl4v1",
+  "PERIOD"    : "yearly",
+  "RETENTION" : 3,
+  "SHARD0NAME": "tbl4",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$1_8F6B0086",
+  },
+  {
+   "TABLENAME"    : "tbl4",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='tbl1v1', period='daily', retention=3, nshards=3, version=0, shard0name='tbl1')
+(name='tbl2v1', period='weekly', retention=3, nshards=3, version=0, shard0name='tbl2')
+(name='tbl3v1', period='monthly', retention=3, nshards=3, version=0, shard0name='tbl3')
+(name='tbl4v1', period='yearly', retention=3, nshards=2, version=0, shard0name='tbl4')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='tbl1v1', shardname='$2_F2A9A46E')
+(name='tbl1v1', shardname='$1_BA9A149A')
+(name='tbl1v1', shardname='tbl1')
+(name='tbl2v1', shardname='$2_E1F9579A')
+(name='tbl2v1', shardname='$1_A9CAE76E')
+(name='tbl2v1', shardname='tbl2')
+(name='tbl3v1', shardname='$2_1392D499')
+(name='tbl3v1', shardname='$1_5BA1646D')
+(name='tbl3v1', shardname='tbl3')
+(name='tbl4v1', shardname='$1_8F6B0086')
+(name='tbl4v1', shardname='tbl4')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents
+(name='AddShard', arg1='tbl1v1', arg2=NULL, arg3=NULL)
+(name='AddShard', arg1='tbl4v1', arg2=NULL, arg3=NULL)
+(name='AddShard', arg1='tbl2v1', arg2=NULL, arg3=NULL)
+(name='AddShard', arg1='tbl3v1', arg2=NULL, arg3=NULL)
