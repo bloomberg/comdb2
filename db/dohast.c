@@ -789,6 +789,9 @@ static char *_gen_col_expr(Vdbe *v, Expr *expr, char **tblname,
         return NULL;
 
     if (tblname && w.pParse) {
+        /* The function is called from a for-loop in generate_columns().
+           Make sure the tblname allocated by the previous call is freed. */
+        sqlite3_free(*tblname);
         Table *tab = (Table *)w.pParse;
         if (tab->iDb > 1) {
             fdb_t *fdb = v->db->aDb[tab->iDb].pBt->fdb;
