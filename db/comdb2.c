@@ -5418,6 +5418,7 @@ int main(int argc, char **argv)
     init_q_vars();
 
     srand(time(NULL) ^ getpid() << 16);
+    srandom(comdb2_time_epochus());
 
     if (debug_switch_verbose_deadlocks())
         verbose_deadlocks = 1;

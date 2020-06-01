@@ -53,14 +53,14 @@
 
 #define MB(x) ((x) * 1024 * 1024)
 #define TCP_BUFSZ MB(8)
-#define DISTRESS_COUNT 5
+#define MAX_DISTRESS_COUNT 10
 #define hprintf_lvl LOGMSG_USER
 #define hprintf_format(a) "[%.3s %-8s fd:%-3d %18s] " a, e->service, e->host, e->fd, __func__
 #define distress_logmsg(...)                                                   \
     do {                                                                       \
         if (e->distressed) {                                                   \
             break;                                                             \
-        } else if (e->distress_count >= DISTRESS_COUNT) {                      \
+        } else if (e->distress_count >= MAX_DISTRESS_COUNT) {                  \
             logmsg(hprintf_lvl, hprintf_format("ENTERING DISTRESS MODE\n"));   \
             e->distressed = 1;                                                 \
             break;                                                             \
@@ -210,13 +210,15 @@ static void unix_connect(int, short, void *);
         erc;                                                                   \
     })
 
-static struct timeval reconnect_time(void)
+static struct timeval reconnect_time(int retry)
 {
-    int min = 5;
-    int max = 10;
-    int range = max - min;
-    int r = random() % range;
-    struct timeval t = {r + min, 0};
+    /* Range 100ms - 999ms if not in distress mode */
+    time_t sec = 0;
+    suseconds_t usec = (random() % 900000) + 100000;
+    if (retry > MAX_DISTRESS_COUNT) {
+        sec = 5 + (usec % 5);
+    }
+    struct timeval t = {sec, usec};
     return t;
 }
 
@@ -1052,8 +1054,8 @@ static void do_reconnect(int dummyfd, short what, void *data)
     if (e->connect_ev) {
         return;
     }
-    struct timeval t = reconnect_time();
-    hprintf("RECONNECT IN %ds\n", (int)t.tv_sec);
+    struct timeval t = reconnect_time(e->distress_count);
+    hprintf("RECONNECT IN %lds.%ldus\n", t.tv_sec, t.tv_usec);
     e->connect_ev = event_new(base, -1, EV_TIMEOUT, pmux_connect, e);
     event_add(e->connect_ev, &t);
 }
@@ -1355,7 +1357,7 @@ static void hello_msg(struct event_info *e, uint8_t *payload)
     int count = e->distress_count;
     /* Need to clear before we can print */
     e->distress_count = e->distressed = 0;
-    if (count >= DISTRESS_COUNT) {
+    if (count >= MAX_DISTRESS_COUNT) {
         hprintf("LEAVING DISTRESS MODE (retries:%d)\n", count);
     }
 }
