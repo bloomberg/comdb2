@@ -7,6 +7,9 @@ TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(uname -m)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
+elif [[ "$(uname -m)" == "aarch64" ]] ; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 2 + 2))m
 elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m

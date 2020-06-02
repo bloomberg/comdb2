@@ -27,24 +27,24 @@ host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT comdb2_host()'`
 
 # Warm up
 for i in `seq 1 20`; do
-  cdb2sql $dbnm --host $host 'SELECT * FROM t0 UNION ALL SELECT * FROM t1 UNION ALL SELECT * FROM t2 UNION ALL SELECT * FROM t3 UNION ALL SELECT * FROM t4' >/dev/null
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $host 'SELECT * FROM t0 UNION ALL SELECT * FROM t1 UNION ALL SELECT * FROM t2 UNION ALL SELECT * FROM t3 UNION ALL SELECT * FROM t4' >/dev/null
 done
 
 # Get a steady memory snapshot
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
-cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+before=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
 
 # Wait for SQL threads to exit
 sleep 5
 
 # Run the reproducer another 100 times
 for i in `seq 1 100`; do
-  cdb2sql $dbnm --host $host 'SELECT * FROM t0 UNION ALL SELECT * FROM t1 UNION ALL SELECT * FROM t2 UNION ALL SELECT * FROM t3 UNION ALL SELECT * FROM t4' >/dev/null
+  cdb2sql ${CDB2_OPTIONS} $dbnm --host $host 'SELECT * FROM t0 UNION ALL SELECT * FROM t1 UNION ALL SELECT * FROM t2 UNION ALL SELECT * FROM t3 UNION ALL SELECT * FROM t4' >/dev/null
 done
 
 # Get a memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
-cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+after=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
@@ -58,27 +58,27 @@ fi
 
 sleep 5
 
-while true; do cdb2sql $dbnm --host $host "SELECT NULL FROM t0 ORDER BY 1"; done >/dev/null &
+while true; do cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "SELECT NULL FROM t0 ORDER BY 1"; done >/dev/null &
 pid=$!
 sleep 5
 kill $pid
 
 # Get a steady memory snapshot
 sleep 2 # allow the sql engine to detect the disconnect and back out
-cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+before=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 sleep 5
 
-while true; do cdb2sql $dbnm --host $host "SELECT NULL FROM t0 ORDER BY 1"; done >/dev/null &
+while true; do cdb2sql ${CDB2_OPTIONS} $dbnm --host $host "SELECT NULL FROM t0 ORDER BY 1"; done >/dev/null &
 pid=$!
 sleep 120
 kill $pid
 
 # Get a memory snapshot again
 sleep 2 # allow the sql engine to detect the disconnect and back out
-cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
+after=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`

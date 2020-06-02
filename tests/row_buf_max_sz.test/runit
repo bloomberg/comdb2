@@ -10,18 +10,18 @@ mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 echo "target machine is $mach"
 
 # Create a table
-cdb2sql --host $mach $dbnm "create table lengthy_blob (b blob)" >/dev/null
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "create table lengthy_blob (b blob)" >/dev/null
 # Insert a lengthy blob
-cdb2sql --host $mach $dbnm "insert into lengthy_blob values(randomblob(104857600))" >/dev/null
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "insert into lengthy_blob values(randomblob(104857600))" >/dev/null
 # Reproducer
 for i in `seq 1 10`; do
-cat << EOF | cdb2sql --host $mach $dbnm - >/dev/null 2>&1 &
+cat << EOF | cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm - >/dev/null 2>&1 &
 select b from lengthy_blob
 select 1
 EOF
 done
 
-total=`cdb2sql --tabs --host $mach $dbnm 'exec procedure sys.cmd.send("memstat")' | grep total | tail -1 | awk '{print $4}'`
+total=`cdb2sql --tabs ${CDB2_OPTIONS} --host $mach $dbnm 'exec procedure sys.cmd.send("memstat")' | grep total | tail -1 | awk '{print $4}'`
 echo "total mem use: $total" >&2
 
 wait

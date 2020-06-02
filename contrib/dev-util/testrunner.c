@@ -154,11 +154,10 @@ char* runtime_to_string(time_t t) {
     seconds = t;
 #define suffix(t) ((t == 1) ? "" : "s")
     if (hours)
-        sprintf(str+strlen(str), "%d hour%s ", hours, suffix(hours));
-    if (minutes)
-        sprintf(str+strlen(str), "%d minute%s ", minutes, suffix(minutes));
-    if (seconds)
-        sprintf(str+strlen(str), "%d second%s ", seconds, suffix(seconds));
+        sprintf(str+strlen(str), "%.2d:", hours);
+    if (minutes || hours)
+        sprintf(str+strlen(str), "%.2d", minutes);
+    sprintf(str+strlen(str), ":%.2ds", seconds);
 #undef suffix
     return strdup(str);
 }
@@ -198,7 +197,7 @@ void draw() {
 
             if (t->timeout && t->status == ST_RUNNING) {
                 char *r = runtime_to_string(t->timeout - (now - t->start_time));
-                printf("  (timeout in %s)", r);
+                printf(" (timeout in %s)", r);
                 free(r);
             }
         }
@@ -256,6 +255,8 @@ status_type status_from_string(const char *s) {
     else if (strcmp(s, "db") == 0)
         return ST_DBFAIL;
     else if (strcmp(s, "failed") == 0)
+        return ST_FAIL;
+    else if (strcmp(s, "setup") == 0)
         return ST_FAIL;
     else if (strcmp(s, "success") == 0)
         return ST_SUCCESS;

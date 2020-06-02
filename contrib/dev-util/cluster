@@ -115,10 +115,17 @@ function interactive-init {
     [[ -z "$v" ]] && v=$defdb
     put defaultdb $v
     v=""
+    defsrc=`find $PWD -type f  | grep "contrib/dev-util/cluster" > /dev/null && echo $PWD`
+    if [ -z "$defsrc" ]; then
+        defsrc=`find .. -type f  | grep "contrib/dev-util/cluster" > /dev/null && realpath ".."`
+    fi
+    if [ -z "$defsrc" ]; then
+        defsrc=$HOME/comdb2/src
+    fi
     while [[ -z "$v" ]]; do
-        printf "Comdb2 source root [$HOME/comdb2/src]: "
+        printf "Comdb2 source root [$defsrc]: "
         read v
-        [[ -z "$v" ]] && v="${HOME}/comdb2/src"
+        [[ -z "$v" ]] && v="${defsrc}"
     done
     put src $v
     v="$defsource"
@@ -182,6 +189,7 @@ function build {
 			figlet			\
 			gawk			\
 			gdb			\
+			jq			\
 			less			\
 			libevent-2.1		\
 			libevent-core-2.1	\
@@ -198,11 +206,11 @@ function build {
 			openssh-server		\
 			openssl			\
 			psmisc			\
-            sqlite3         \
+			sqlite3                 \
 			strace			\
 			tzdata			\
 			valgrind		\
-			vim             \
+			vim                     \
 			tclsh
         RUN useradd -d ${HOME} -m -u ${uid} ${id} -s /bin/bash
 	EOF
@@ -259,6 +267,7 @@ function build {
 		RUN chmod -R 777 /opt/bb/
 		RUN chown -R ${id}:${id} ${HOME}
 	EOF
+	#if having problems with missing packages build with --no-cache=true 
 	docker build -t comdb2:dev .
 	popd
 	rm -rf $DIR
