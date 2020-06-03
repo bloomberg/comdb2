@@ -608,7 +608,9 @@ onconf(A) ::= .                              {A = OE_Default;}
 onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
 orconf(A) ::= .                              {A = OE_Default;}
 orconf(A) ::= OR resolvetype(X).             {A = X;}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 resolvetype(A) ::= raisetype(A).
+%endif !SQLITE_BUILDING_FOR_COMDB2
 resolvetype(A) ::= IGNORE.                   {A = OE_Ignore;}
 resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
 
@@ -1077,19 +1079,41 @@ where_opt(A) ::= WHERE expr(X).       {A = X;}
 ////////////////////////// The UPDATE command ////////////////////////////////
 //
 %ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3Update(pParse,X,Y,W,0,O,L,0);
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3Update(pParse,X,Y,W,0,0,0,0);
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 }
 %endif
 
@@ -1790,13 +1814,9 @@ expr(A) ::= RAISE LP raisetype(T) COMMA nm(Z) RP.  {
 %endif  !SQLITE_OMIT_TRIGGER
 
 %type raisetype {int}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ROLLBACK.  {A = OE_Rollback;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ABORT.     {A = OE_Abort;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
