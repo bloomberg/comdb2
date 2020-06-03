@@ -397,21 +397,25 @@ static int enable_sql_stmt_caching_update(void *context, void *value)
     int len;
 
     tunable = (comdb2_tunable *)context;
-    len = strlen(value);
+    if ((tunable->flags & EMPTY) != 0) {
 
-    tok = segtok(value, len, &st, &ltok);
+        /* Backward compatibility */
+        *(int *)tunable->var = STMT_CACHE_PARAM;
 
-    for (int i = 0; i < (sizeof(enable_sql_stmt_caching_vals) /
-                         sizeof(struct enable_sql_stmt_caching_st));
-         i++) {
-        if (tokcmp(tok, ltok, enable_sql_stmt_caching_vals[i].name) == 0) {
-            *(int *)tunable->var = enable_sql_stmt_caching_vals[i].code;
-            return 0;
+    } else {
+        len = strlen(value);
+
+        tok = segtok(value, len, &st, &ltok);
+
+        for (int i = 0; i < (sizeof(enable_sql_stmt_caching_vals) /
+                             sizeof(struct enable_sql_stmt_caching_st));
+             i++) {
+            if (tokcmp(tok, ltok, enable_sql_stmt_caching_vals[i].name) == 0) {
+                *(int *)tunable->var = enable_sql_stmt_caching_vals[i].code;
+                break;
+            }
         }
     }
-
-    /* Backward compatibility */
-    *(int *)tunable->var = STMT_CACHE_PARAM;
 
     return 0;
 }
@@ -1207,28 +1211,33 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     switch (t->type) {
     case TUNABLE_INTEGER: {
         int num;
-        PARSE_TOKEN;
 
-        if ((ret = parse_int(buf, &num))) {
-            logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return TUNABLE_ERR_INVALID_VALUE;
-        }
-
-        /*
-          Verify the validity of the specified argument. We perform this
-          check for all INTEGER types.
-        */
-        if ((t->flags & SIGNED) == 0) {
-            if (((t->flags & NOZERO) != 0) && (num <= 0)) {
-                logmsg(LOGMSG_ERROR,
-                       "Invalid argument for '%s' (should be > 0).\n", t->name);
-                return TUNABLE_ERR_INVALID_VALUE;
-            } else if (num < 0) {
-                logmsg(LOGMSG_ERROR,
-                       "Invalid argument for '%s' (should be >= 0).\n",
-                       t->name);
+        if ((t->flags & EMPTY) == 0) {
+            PARSE_TOKEN;
+            if ((ret = parse_int(buf, &num))) {
+                logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
                 return TUNABLE_ERR_INVALID_VALUE;
             }
+
+            /*
+              Verify the validity of the specified argument. We perform this
+              check for all INTEGER types.
+            */
+            if ((t->flags & SIGNED) == 0) {
+                if (((t->flags & NOZERO) != 0) && (num <= 0)) {
+                    logmsg(LOGMSG_ERROR,
+                           "Invalid argument for '%s' (should be > 0).\n",
+                           t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                } else if (num < 0) {
+                    logmsg(LOGMSG_ERROR,
+                           "Invalid argument for '%s' (should be >= 0).\n",
+                           t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                }
+            }
+        } else {
+            num = 1;
         }
 
         /* Inverse the value, if needed. */
@@ -1288,11 +1297,15 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     }
     case TUNABLE_BOOLEAN: {
         int num;
-        PARSE_TOKEN;
+        if ((t->flags & EMPTY) == 0) {
+            PARSE_TOKEN;
 
-        if ((ret = parse_bool(buf, &num))) {
-            logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return TUNABLE_ERR_INVALID_VALUE;
+            if ((ret = parse_bool(buf, &num))) {
+                logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+                return TUNABLE_ERR_INVALID_VALUE;
+            }
+        } else {
+            num = 1;
         }
 
         /* Inverse the value, if needed. */
@@ -1448,10 +1461,10 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
           set for the tunable, in which case its ok.
         */
         if (((t->flags & NOARG) != 0) &&
-            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN))) {
-
-            strcpy(buf, "1");
-
+            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN) ||
+             (t->type == TUNABLE_ENUM))) {
+            /* Empty the buffer */
+            strcpy(buf, "");
             /*
               Also set the EMPTY flags for lower functions
               to detect that no argument was supplied.
