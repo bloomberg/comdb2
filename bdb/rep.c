@@ -90,6 +90,7 @@ int gbl_ignore_lost_master_time = 0;
 int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
+int gbl_dump_sql_on_repwait_sec = 10;
 
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
@@ -106,6 +107,7 @@ void create_master_lease_thread(bdb_state_type *bdb_state);
 int gbl_net_lmt_upd_incoherent_nodes = 70;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+void comdb2_dump_blockers(DB_ENV *);
 
 static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
                                                     seqnum_type *seqnum,
@@ -5214,6 +5216,7 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 }
 
 extern int gbl_dump_locks_on_repwait;
+extern int gbl_dump_sql_on_repwait_sec;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
                             int truncate);
@@ -5252,7 +5255,7 @@ void *watcher_thread(void *arg)
 
     thread_started("bdb watcher");
 
-    /* hold off om "watching" for a little bit during startup */
+    /* hold off on "watching" for a little bit during startup */
     sleep(5);
 
     bdb_state = (bdb_state_type *)arg;
@@ -5338,7 +5341,7 @@ void *watcher_thread(void *arg)
             abort();
         }
 
-        /* are we incoherent?  see how we're doing, lets send commitdelay
+        /* are we incoherent?  see how we're doing, let's send commitdelay
            if we are falling far behind */
         if (!bdb_am_i_coherent_int(bdb_state)) {
             DB_LSN my_lsn, master_lsn;
@@ -5397,7 +5400,7 @@ void *watcher_thread(void *arg)
                     num_skipped++;
 
             if (num_skipped >= bdb_state->attr->toomanyskipped) {
-                /* too many guys being skipped, lets take drastic measures!
+                /* too many guys being skipped, let's take drastic measures!
                  * delay ourselves */
                 if (bdb_state->attr->commitdelay <
                     bdb_state->attr->skipdelaybase) {
@@ -5444,9 +5447,17 @@ void *watcher_thread(void *arg)
                 10) {
                 logmsg(LOGMSG_WARN, "rep_process_message running for 10 seconds,"
                                 "dumping thread pool\n");
+
                 bdb_state->repinfo->rep_process_message_start_time = 0;
                 if (bdb_state->callback->threaddump_rtn)
                     (bdb_state->callback->threaddump_rtn)();
+            }
+
+            if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >
+                gbl_dump_sql_on_repwait_sec) {
+                logmsg(LOGMSG_USER, "SQL statements currently blocking the "
+                                    "replication thread:\n");
+                comdb2_dump_blockers(bdb_state->dbenv);
             }
         }
 

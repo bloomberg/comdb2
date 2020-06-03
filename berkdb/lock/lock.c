@@ -74,6 +74,8 @@ int gbl_berkdb_track_locks = 0;
 int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
 
+void comdb2_dump_blocker(unsigned int);
+
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
 static int __lock_freelock __P((DB_LOCKTAB *,
@@ -107,6 +109,8 @@ static int __lock_fix_list __P((DB_ENV *, DBT *, u_int32_t, u_int8_t));
 static const char __db_lock_err[] = "Lock table is out of available %s";
 static const char __db_lock_invalid[] = "%s: Lock is no longer valid";
 static const char __db_locker_invalid[] = "Locker is not valid";
+
+int __lock_to_dbt_pp(DB_ENV *, DB_LOCK *, DBT *);
 
 #ifdef DEBUG_LOCKS
 extern void bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbt, char *out,
@@ -2031,6 +2035,52 @@ rep_return_deadlock(DB_ENV *dbenv, u_int32_t sz)
 	}
 }
 
+#define LOCKOBJ_MAX_SIZE 33
+struct {
+	DBT obj;
+	char mem[LOCKOBJ_MAX_SIZE];
+} gbl_rep_lockobj;
+
+void berk_init_rep_lockobj() {
+	gbl_rep_lockobj.obj.data = gbl_rep_lockobj.mem;
+	gbl_rep_lockobj.obj.ulen = LOCKOBJ_MAX_SIZE;
+	gbl_rep_lockobj.obj.flags = DB_DBT_USERMEM;
+}
+
+void comdb2_dump_blockers(DB_ENV *dbenv)
+{
+	struct __db_lock *hlp, *lp;
+	DB_LOCKTAB *lt;
+	DB_LOCKREGION *region;
+	DB_LOCKOBJ *obj;
+	u_int32_t ndx;
+	u_int32_t partition;
+	int ret;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	OBJECT_INDX(lt, region, &gbl_rep_lockobj.obj, ndx, partition);
+
+	lock_obj_partition(region, partition);
+
+	ret = __lock_getobj(lt, &gbl_rep_lockobj.obj, ndx, partition, 0, &obj);
+
+	if (ret != 0 || !obj) {
+		unlock_obj_partition(region, partition);
+		return;
+	}
+
+	for (hlp = SH_TAILQ_FIRST(&obj->holders, __db_lock);
+		hlp != NULL; hlp = SH_TAILQ_NEXT(hlp, links, __db_lock))
+	{
+		comdb2_dump_blocker(hlp->holderp->id);
+	}
+
+	unlock_obj_partition(region, partition);
+}
+
+
 #define ADD_TO_HOLDARR(x)                                                      \
 	do {                                                                   \
 		if (holdix + 1 >= holdsz) {                                    \
@@ -2605,6 +2655,19 @@ upgrade:
 			++sh_obj->generation;
 			unlock_detector(region);
 		}
+
+		extern u_int32_t gbl_rep_lockid;
+		if (locker == gbl_rep_lockid) {
+			// Copy the lockobj that the replication thread is
+			// waiting on. This could later be used to look up
+			// the information of the lock holders.
+			assert(sh_obj->lockobj.size <= LOCKOBJ_MAX_SIZE);
+			memset(gbl_rep_lockobj.obj.data, 0, LOCKOBJ_MAX_SIZE);
+			gbl_rep_lockobj.obj.size = sh_obj->lockobj.size;
+			memcpy(gbl_rep_lockobj.obj.data, sh_obj->lockobj.data,
+				sh_obj->lockobj.size);
+		}
+
 		switch (action) {
 		case HEAD:
 			SH_TAILQ_INSERT_HEAD(&sh_obj->waiters, newl, links,

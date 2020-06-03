@@ -144,22 +144,21 @@ void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
 void osql_send_test(void);
-extern unsigned long long get_genid(bdb_state_type *bdb_state,
-                                    unsigned int dtafile);
+unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
 void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state);
-extern void delete_log_files(bdb_state_type *bdb_state);
+void comdb2_dump_blockers(DB_ENV *);
+void delete_log_files(bdb_state_type *bdb_state);
 void malloc_stats();
-extern int get_blkmax(void);
+int get_blkmax(void);
 void set_analyze_abort_requested();
-extern void dump_log_event_counts(void);
-extern void bdb_dumptrans(bdb_state_type *bdb_state);
+void dump_log_event_counts(void);
+void bdb_dumptrans(bdb_state_type *bdb_state);
 void bdb_locker_summary(void *_bdb_state);
-extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
-                    int endfile, int endoff);
-extern void dump_remote_policy();
+int printlog(bdb_state_type *bdb_state, int startfile, int startoff, int endfile, int endoff);
+void dump_remote_policy();
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -240,12 +239,15 @@ static const char *HELP_STAT[] = {
 static const char *HELP_SQL[] = {
     "sql ...",
     "dump               - dump currently running statements and cursor info",
+    "dump repblockers   - dump info on currently running statements that are"
+    "                     blocking replication thread",
     "keep N             - keep stats on last N statements",
     "hist               - show recently run statements",
     "cancel N           - cancel running statement with id N",
-    "cancelcnonce N      - cancel running statement with cnonce N",
+    "cancelcnonce N     - cancel running statement with cnonce N",
     "wrtimeout N        - set write timeout in ms",
-    "help               - this information", NULL,
+    "help               - this information",
+    NULL,
 };
 static const char *HELP_SCHEMA[] = {
     "Commands for inspecting and altering schema information:-",
@@ -2914,7 +2916,12 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "sql") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "dump") == 0) {
-            sql_dump_running_statements();
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                sql_dump_running_statements();
+            } else if (tokcmp(tok, ltok, "repblockers") == 0) {
+                comdb2_dump_blockers(thedb->bdb_env->dbenv);
+            }
         } else if (tokcmp(tok, ltok, "keep") == 0) {
             int n;
             tok = segtok(line, lline, &st, &ltok);

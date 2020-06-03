@@ -1015,10 +1015,6 @@ void bdb_dump_active_locks(bdb_state_type *bdb_state, FILE *out)
 {
     if (bdb_state == NULL)
         bdb_state = gbl_bdb_state;
-#if 0
-    extern u_int32_t gbl_rep_lockid;
-    fprintf(out, "Replication locker: %x\n", gbl_rep_lockid);
-#endif
     __lock_dump_active_locks(bdb_state->dbenv, out);
 }
 

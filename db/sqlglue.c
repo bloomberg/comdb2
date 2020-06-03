@@ -8970,6 +8970,7 @@ void cancel_sql_statement(int id)
         if (thd->id == id && thd->clnt) {
             found = 1;
             thd->clnt->stop_this_statement = 1;
+            break;
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -9081,7 +9082,6 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                       uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
-    int rcode = 0;
     int retries = 0;
     uint32_t curgen;
     int bdberr = 0;
@@ -9168,11 +9168,11 @@ retry:
 
             bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
             clnt->dbtran.cursor_tran = NULL;
-            rcode = rc;
+            return rc;
         }
     }
 
-    return rcode;
+    return 0;
 }
 
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
@@ -9383,7 +9383,6 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     unlock_bdb_cursors(thd, bdbcur, &bdberr);
 
     curtran_flags = CURTRAN_RECOVERY;
-
     /* free curtran */
     rc = put_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
     assert(bdb_lockref() == 0);
@@ -12599,4 +12598,23 @@ int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt)
     }
 
     return 0;
+}
+
+void comdb2_dump_blocker(unsigned int lockerid)
+{
+    struct sql_thread *thd;
+    unsigned int clnt_lockerid;
+
+    Pthread_mutex_lock(&gbl_sql_lock);
+    LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
+    {
+        if (!(thd->clnt) || !(thd->clnt->dbtran.cursor_tran))
+            continue;
+        clnt_lockerid = bdb_curtran_get_lockerid(thd->clnt->dbtran.cursor_tran);
+        if (lockerid == clnt_lockerid) {
+            logmsg(LOGMSG_USER, "id: %u sql: %s\n", thd->id, thd->clnt->sql);
+            break;
+        }
+    }
+    Pthread_mutex_unlock(&gbl_sql_lock);
 }
