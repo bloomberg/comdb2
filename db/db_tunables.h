@@ -303,11 +303,10 @@ REGISTER_TUNABLE("dtastripe", NULL, TUNABLE_INTEGER, &gbl_dtastripe,
                  READONLY | NOZERO, NULL, dtastripe_verify, NULL, NULL);
 REGISTER_TUNABLE("early",
                  "When set, replicants will ack a transaction as soon as they "
-                 "acquire locks - not that replication must succeed at that "
+                 "acquire locks - note that replication must succeed at that "
                  "point, and reads on that node will either see the records or "
                  "block. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_early, READONLY | NOARG, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_early, READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_berkdb_retry_deadlock_bias", NULL, TUNABLE_BOOLEAN,
                  &gbl_enable_berkdb_retry_deadlock_bias, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
@@ -1935,4 +1934,8 @@ REGISTER_TUNABLE("debug_queuedb",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("dump_sql_on_repwait_sec",
+                 "Dump sql queries that are blocking the replication thread "
+                 "for more than this duration (Default: 10secs)",
+                 TUNABLE_INTEGER, &gbl_dump_sql_on_repwait_sec, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

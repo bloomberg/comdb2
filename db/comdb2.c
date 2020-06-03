@@ -3749,6 +3749,8 @@ static int init(int argc, char **argv)
      * with the entire company asking me if this is a problem. -- SJ */
     berk_set_long_trace_func(myctrace);
 
+    berk_init_rep_lockobj();
+
     /* disallow bools on test machines.  Prod will continue
      * to allow them because at least one prod database uses them.
      * Still alow bools for people who want to copy/test prod dbs

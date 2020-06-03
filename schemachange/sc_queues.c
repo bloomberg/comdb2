@@ -184,7 +184,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 
     /* Queue information should already be in llmeta. Fetch it and create
      * queue/consumer handles.  Use a transaction with gbl_rep_lockid to
-     * querry (see comment in scdone_callback). */
+     * query (see comment in scdone_callback). */
     tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
     if (tran == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,

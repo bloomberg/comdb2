@@ -2821,6 +2821,7 @@ void berk_write_alarm_ms(int x);
 void berk_read_alarm_ms(int x);
 void berk_fsync_alarm_ms(int x);
 void berk_set_long_trace_func(void (*func)(const char *msg));
+void berk_init_rep_lockobj(void);
 
 long long get_unique_longlong(struct dbenv *env);
 void no_new_requests(struct dbenv *dbenv);
