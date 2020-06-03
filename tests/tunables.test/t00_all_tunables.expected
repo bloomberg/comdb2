@@ -751,6 +751,7 @@
 (name='sc_decrease_thrds_on_deadlock', description='Decrease number of schema change threads on deadlock - way to have schema change backoff.', type='BOOLEAN', value='ON', read_only='N')
 (name='sc_del_unused_files_threshold', description='', type='INTEGER', value='30000', read_only='Y')
 (name='sc_delay_verify_error', description='', type='INTEGER', value='100', read_only='N')
+(name='sc_detached', description='Run schema changes in detached mode--just return seed to client.', type='BOOLEAN', value='OFF', read_only='N')
 (name='sc_done_same_tran', description='Write scdone record in the same logical transaction as DDLs.', type='BOOLEAN', value='ON', read_only='N')
 (name='sc_force_delay', description='Force schemachange to delay after every record inserted - to have sc backoff.', type='BOOLEAN', value='OFF', read_only='N')
 (name='sc_hist_keep', description='Number of items to keep in llmeta for comdb2_sc_history sys table.', type='INTEGER', value='20', read_only='N')
