@@ -260,7 +260,7 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
     bdb_state_type *p_bdb_state = bdb_state;
     DB_LSN lsn;
 
-    ++gbl_dbopen_gen;
+    inc_dbopen_gen();
     if (bdb_state->name) {
         dtbl = alloca(sizeof(DBT));
         bzero(dtbl, sizeof(DBT));
@@ -301,14 +301,14 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
 int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
                     int *bdberr)
 {
-    ++gbl_dbopen_gen;
+    inc_dbopen_gen();
     return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
 }
 
 int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
                              const char *origtable, int *bdberr)
 {
-    ++gbl_dbopen_gen;
+    inc_dbopen_gen();
     return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);
 }
 
@@ -493,4 +493,14 @@ int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock)
     }
 
     return 0;
+}
+
+static int32_t dbopen_gen = 0;
+void inc_dbopen_gen(void)
+{
+    ATOMIC_ADD32(dbopen_gen, 1);
+}
+int32_t get_dbopen_gen(void)
+{
+    return ATOMIC_LOAD32(dbopen_gen);
 }

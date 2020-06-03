@@ -1648,7 +1648,6 @@ extern int gbl_default_plannedsc;
 extern int gbl_default_sc_scanmode;
 extern int gbl_sc_abort;
 extern int gbl_tranmode;
-extern volatile int gbl_dbopen_gen;
 extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 extern int gbl_sc_report_freq;

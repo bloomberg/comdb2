@@ -18,7 +18,6 @@
 #define BDB_SCHEMACHANGE_H
 
 extern int gbl_maxretries;
-extern volatile int gbl_dbopen_gen;
 extern volatile int gbl_lua_version;
 extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
