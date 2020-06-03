@@ -2832,10 +2832,10 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER,
                "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               thd->dbopen_gen, get_dbopen_gen(), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
-    if (thd->dbopen_gen != gbl_dbopen_gen) {
+    if (thd->dbopen_gen != get_dbopen_gen()) {
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
@@ -4692,7 +4692,7 @@ check_version:
                 /* there is no really way forward, grab core */
                 abort();
             }
-            thd->dbopen_gen = gbl_dbopen_gen;
+            thd->dbopen_gen = get_dbopen_gen();
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);

@@ -541,7 +541,7 @@ int finalize_default_sp(struct schema_change_type *sc)
 // LUA SQL FUNCTIONS
 // -----------------
 #define reload_lua_funcs(pfx)                                                  \
-    ++gbl_dbopen_gen;                                                          \
+    inc_dbopen_gen();                                                          \
     ++gbl_lua_version;                                                         \
     do {                                                                       \
         for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \

@@ -73,7 +73,7 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
-    ++gbl_dbopen_gen;
+    inc_dbopen_gen();
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
@@ -836,7 +836,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
             exit(1);
         }
         create_sqlite_master(); /* create sql statements */
-        ++gbl_dbopen_gen;
+        inc_dbopen_gen();
         if (type == drop || type == user_view)
             goto done;
     }

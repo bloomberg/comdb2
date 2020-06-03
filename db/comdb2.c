@@ -134,9 +134,6 @@ void berk_memp_sync_alarm_ms(int);
 #include <build/db.h>
 #include "comdb2_ruleset.h"
 
-#define QUOTE_(x) #x
-#define QUOTE(x) QUOTE_(x)
-
 #define tokdup strndup
 
 int gbl_sc_timeoutms = 1000 * 60;
@@ -189,8 +186,9 @@ int clear_temp_tables(void);
 pthread_key_t comdb2_open_key;
 
 /*---GLOBAL SETTINGS---*/
+#define QUOTE_(x) #x
+#define QUOTE(x) QUOTE_(x)
 const char *const gbl_db_git_version_sha = QUOTE(GIT_VERSION_SHA=COMDB2_GIT_VERSION_SHA);
-
 const char gbl_db_version[] = QUOTE(COMDB2_BUILD_VERSION);
 const char gbl_db_semver[] = QUOTE(COMDB2_SEMVER);
 const char gbl_db_codename[] = QUOTE(COMDB2_CODENAME);
@@ -362,7 +360,6 @@ long long gbl_nnewsql_steps;
 
 uint32_t gbl_masterrejects = 0;
 
-volatile int gbl_dbopen_gen = 0;
 volatile uint32_t gbl_analyze_gen = 0;
 volatile int gbl_views_gen = 0;
 
@@ -6023,7 +6020,7 @@ retry_tran:
     create_sqlite_master();
     oldfile_list_clear();
 
-    gbl_dbopen_gen++;
+    inc_dbopen_gen();
 
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_commit returns %d\n", __func__, rc);
@@ -6105,5 +6102,3 @@ static void create_service_file(const char *lrlname)
 #endif
     return;
 }
-
-#undef QUOTE
