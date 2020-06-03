@@ -1464,7 +1464,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
             ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN) ||
              (t->type == TUNABLE_ENUM))) {
             /* Empty the buffer */
-            strcpy(buf, "");
+            buf[0] = '\0';
             /*
               Also set the EMPTY flags for lower functions
               to detect that no argument was supplied.
