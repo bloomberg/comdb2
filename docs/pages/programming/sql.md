@@ -5,11 +5,11 @@ sidebar: mydoc_sidebar
 permalink: sql.html
 ---
 
-This section defines the syntax of SQL as accepted by Comdb2.  Anyone familiar with [SQLite](http://sqlite.org) 
-will find the syntax diagrams familiar. Comdb2 uses SQLite as the query parser and query planner.  The SQL dialects 
-in Comdb2 and SQLite are not identical however.  Some things have been taken away (DDL syntax is different, 
-```OR REPLACE``` clauses are gone), and some have been added (stored procedures, time partitions).
-
+This section defines the syntax of SQL as accepted by Comdb2. Anyone familiar
+with [SQLite](http://sqlite.org) will find the syntax diagrams familiar. Comdb2
+uses SQLite as the query parser and query planner. The SQL dialects in Comdb2
+and SQLite are not identical however. Some things have been taken away and some
+have been added (stored procedures, time partitions).
 ## Transactions
 
 ### BEGIN
@@ -65,20 +65,15 @@ undone.
 
 ## Changing data
 
-### INSERT/REPLACE
+### INSERT
 
 #### insert
 
 ![insert](images/insert-stmt.gif)
 
-#### replace
-
-![replace](images/replace-stmt.gif)
-
 #### upsert-clause
 
 ![upsert-clause](images/upsert-clause.gif)
-
 
 The ```INSERT``` statement comes in three basic forms. The first form (with the "VALUES" keyword) creates a single new
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 
