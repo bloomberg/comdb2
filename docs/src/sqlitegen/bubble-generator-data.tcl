@@ -139,7 +139,13 @@ set all_graphs {
   insert-stmt {
     stack
        {line {opt with-clause}
-          INSERT INTO
+         {or
+           {line INSERT}
+           {line REPLACE}
+           {line INSERT OR REPLACE}
+           {line INSERT OR IGNORE}
+         }
+         {line INTO}
        }
        {line {optx /db-name .} /qualified-table-name
              {optx ( {loop /column-name ,} )}}
@@ -167,19 +173,6 @@ set all_graphs {
               {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
           }
       }
-  }
-
-  replace-stmt {
-    stack
-       {line {opt with-clause}
-          REPLACE INTO
-       }
-       {line {optx /db-name .} /qualified-table-name
-             {optx ( {loop /column-name ,} )}}
-       {or
-         {line VALUES {loop {line ( {loop expr ,} )} ,}}
-         select-stmt
-       }
   }
 
   select-stmt {
