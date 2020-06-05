@@ -3215,15 +3215,13 @@ int dyns_get_table_field_count(char *tabletag)
 
 int dyns_get_constraint_count(void)
 {
-    if (nconstraints < 0)
-        return 0;
-    return nconstraints;
+    return (nconstraints + 1);
 }
 
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,
                            int *rulecnt, int *flags)
 {
-    if (idx < 0 || idx >= nconstraints)
+    if (idx < 0 || idx > nconstraints)
         return -1;
     *consname = constraints[idx].consname;
     *keyname = constraints[idx].lclkey;
@@ -3235,7 +3233,7 @@ int dyns_get_constraint_at(int idx, char **consname, char **keyname,
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm)
 {
     int rcnt = 0;
-    if (cidx < 0 || cidx >= nconstraints)
+    if (cidx < 0 || cidx > nconstraints)
         return -1;
     rcnt = constraints[cidx].ncnstrts;
     if (ridx < 0 || ridx >= rcnt)
