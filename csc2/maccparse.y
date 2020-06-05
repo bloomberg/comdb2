@@ -125,7 +125,7 @@ validstruct:	recstruct
 
 
 /* constraintstruct: defines cross-table constraints */
-constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' { end_constraint_list(); }
+constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' { }
                 ;
 
 ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_constraint_mod(0,0,1); }
