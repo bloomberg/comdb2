@@ -5676,8 +5676,6 @@ static void *accept_thread(void *arg)
             last_stat_dump_time = pollend;
         }
 
-        netinfo_ptr->num_accepts++;
-
         /* drop connection on poll error */
         if (rc < 0) {
             findpeer(new_fd, paddr, sizeof(paddr));
