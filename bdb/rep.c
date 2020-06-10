@@ -90,6 +90,7 @@ int gbl_ignore_lost_master_time = 0;
 int gbl_prefault_latency = 0;
 int gbl_long_log_truncation_warn_thresh_sec = INT_MAX;
 int gbl_long_log_truncation_abort_thresh_sec = INT_MAX;
+int gbl_dump_sql_on_repwait_sec = 10;
 
 extern struct thdpool *gbl_udppfault_thdpool;
 extern int gbl_commit_delay_trace;
@@ -106,6 +107,7 @@ void create_master_lease_thread(bdb_state_type *bdb_state);
 int gbl_net_lmt_upd_incoherent_nodes = 70;
 
 char *lsn_to_str(char lsn_str[], DB_LSN *lsn);
+void comdb2_dump_blockers(DB_ENV *);
 
 static int bdb_wait_for_seqnum_from_node_nowait_int(bdb_state_type *bdb_state,
                                                     seqnum_type *seqnum,
@@ -5214,6 +5216,7 @@ void send_downgrade_and_lose(bdb_state_type *bdb_state)
 }
 
 extern int gbl_dump_locks_on_repwait;
+extern int gbl_dump_sql_on_repwait_sec;
 extern int gbl_lock_get_list_start;
 int bdb_clean_pglogs_queues(bdb_state_type *bdb_state, DB_LSN lsn,
                             int truncate);
@@ -5229,6 +5232,21 @@ int request_delaymore(void *bdb_state_in)
 }
 
 int gbl_rep_wait_core_ms = 0;
+
+void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int fatal)
+{
+    if (bdb_state->callback->threaddump_rtn)
+        (bdb_state->callback->threaddump_rtn)();
+    lock_info_lockers(stdout, bdb_state);
+    char buf[100] = {0};
+    snprintf(buf, sizeof(buf), "pstack %d", (int)getpid());
+    int rc = system(buf);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: system(\"%s\") rc = %d\n",
+               __func__, buf, rc);
+    }
+    if (fatal) abort();
+}
 
 void *watcher_thread(void *arg)
 {
@@ -5252,7 +5270,7 @@ void *watcher_thread(void *arg)
 
     thread_started("bdb watcher");
 
-    /* hold off om "watching" for a little bit during startup */
+    /* hold off on "watching" for a little bit during startup */
     sleep(5);
 
     bdb_state = (bdb_state_type *)arg;
@@ -5334,11 +5352,10 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_FATAL,
                    "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__, elapsed);
-            lock_info_lockers(stdout, bdb_state);
-            abort();
+            bdb_dump_threads_and_maybe_abort(bdb_state, 1);
         }
 
-        /* are we incoherent?  see how we're doing, lets send commitdelay
+        /* are we incoherent?  see how we're doing, let's send commitdelay
            if we are falling far behind */
         if (!bdb_am_i_coherent_int(bdb_state)) {
             DB_LSN my_lsn, master_lsn;
@@ -5397,7 +5414,7 @@ void *watcher_thread(void *arg)
                     num_skipped++;
 
             if (num_skipped >= bdb_state->attr->toomanyskipped) {
-                /* too many guys being skipped, lets take drastic measures!
+                /* too many guys being skipped, let's take drastic measures!
                  * delay ourselves */
                 if (bdb_state->attr->commitdelay <
                     bdb_state->attr->skipdelaybase) {
@@ -5444,9 +5461,16 @@ void *watcher_thread(void *arg)
                 10) {
                 logmsg(LOGMSG_WARN, "rep_process_message running for 10 seconds,"
                                 "dumping thread pool\n");
+
                 bdb_state->repinfo->rep_process_message_start_time = 0;
-                if (bdb_state->callback->threaddump_rtn)
-                    (bdb_state->callback->threaddump_rtn)();
+                bdb_dump_threads_and_maybe_abort(bdb_state, 0);
+            }
+
+            if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >
+                gbl_dump_sql_on_repwait_sec) {
+                logmsg(LOGMSG_USER, "SQL statements currently blocking the "
+                                    "replication thread:\n");
+                comdb2_dump_blockers(bdb_state->dbenv);
             }
         }
 
@@ -5454,7 +5478,7 @@ void *watcher_thread(void *arg)
         if (gbl_dump_locks_on_repwait && list_start > 0 &&
             (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
-            lock_info_lockers(stdout, bdb_state);
+            bdb_dump_threads_and_maybe_abort(bdb_state, 0);
         }
 
         if (bdb_state->exiting) {

@@ -242,6 +242,7 @@ extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
 extern int gbl_master_sends_query_effects;
+extern int gbl_dump_sql_on_repwait_sec;
 
 extern long long sampling_threshold;
 
@@ -309,6 +310,8 @@ extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
+extern int gbl_queuedb_file_threshold;
+extern int gbl_queuedb_file_interval;
 extern int gbl_queuedb_timeout_sec;
 
 extern int gbl_timeseries_metrics;

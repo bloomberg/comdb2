@@ -3785,7 +3785,6 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
 		int64_t rectype, void* blob, int blob_len)
 {
-
 	REP_CONTROL rp;
 
 	DBT rec = {0};
@@ -3826,6 +3825,7 @@ size_t __dbenv_get_log_header_size(DB_ENV* dbenv)
 	return hdrsize;
 }
 
+// TODO(NC): rename it to lockerid
 u_int32_t gbl_rep_lockid;
 
 static void
@@ -5192,7 +5192,7 @@ bad_resize:	;
 		goto err;
 #endif
 	}
-
+	gbl_rep_lockid = lockid;
 
 	/* setup transaction processsor */
 	rp->commit_lsn = ctrllsn;

@@ -2832,10 +2832,10 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER,
                "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, get_dbopen_gen(), thd->analyze_gen,
+               thd->dbopen_gen, bdb_get_dbopen_gen(), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
-    if (thd->dbopen_gen != get_dbopen_gen()) {
+    if (thd->dbopen_gen != bdb_get_dbopen_gen()) {
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
@@ -3596,8 +3596,8 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
     if (tryrdlock_schema_lk() != 0) {
         // only schemachange will wrlock(schema)
         sql_debug_logf(clnt, __func__, __LINE__,
-                       "Returning SQLITE_SCHEMA on tryrdlock failure\n");
-        return SQLITE_SCHEMA;
+                       "Returning SQLITE_PERM on tryrdlock failure\n");
+        return SQLITE_PERM;
     }
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags & ~PREPARE_RECREATE);
@@ -4692,7 +4692,7 @@ check_version:
                 /* there is no really way forward, grab core */
                 abort();
             }
-            thd->dbopen_gen = get_dbopen_gen();
+            thd->dbopen_gen = bdb_get_dbopen_gen();
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
@@ -5095,6 +5095,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
     sql_reset_sqlthread(sqlthd);
+
     /* this is a compromise; we release the curtran here, even though
        we might have a begin/commit transaction pending
        any query inside the begin/commit will be performed under its

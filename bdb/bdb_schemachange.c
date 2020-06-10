@@ -57,6 +57,72 @@ extern int sc_ready(void);
 
 /* bdb routines to support schema change */
 
+static const char *const bdb_scdone_type_names[] = {
+    "invalid",                 // -1
+    "alter",                   //  0
+    "fastinit / add",          //  1
+    "drop",                    //  2
+    "bulkimport",              //  3
+    "setcompr",                //  4
+    "luareload",               //  5
+    "sc_analyze",              //  6
+    "bthash",                  //  7
+    "rowlocks_on",             //  8
+    "rowlocks_on_master_only", //  9
+    "rowlocks_off",            // 10
+    "views",                   // 11
+    "llmeta_queue_add",        // 12
+    "llmeta_queue_alter",      // 13
+    "llmeta_queue_drop",       // 14
+    "genid48_enable",          // 15
+    "genid48_disable",         // 16
+    "lua_sfunc",               // 17
+    "lua_afunc",               // 18
+    "rename_table",            // 19
+    "change_stripe",           // 20
+    "user_view",               // 21
+    "add_queue_file",          // 22
+    "del_queue_file"           // 23
+};
+
+const char *bdb_get_scdone_str(scdone_t type)
+{
+    int maxIndex = sizeof(bdb_scdone_type_names) /
+                   sizeof(bdb_scdone_type_names[0]);
+    static __thread char buf[100];
+    if (type >= invalid && type <= del_queue_file) {
+        int index = ((int)type) + 1; // -1 ==> 0
+        if (index >= 0 && index <= maxIndex) {
+            snprintf(buf, sizeof(buf), "\"%s\" (%d)",
+                     bdb_scdone_type_names[index], (int)type);
+        } else {
+            snprintf(buf, sizeof(buf), "BAD_INDEX %d (%d)",
+                     index, (int)type);
+        }
+    } else {
+        snprintf(buf, sizeof(buf), "UNKNOWN (%d)", (int)type);
+    }
+    return buf;
+}
+
+static int32_t dbopen_gen = 0;
+
+int32_t bdb_get_dbopen_gen(void)
+{
+    return ATOMIC_LOAD32(dbopen_gen);
+}
+
+int bdb_bump_dbopen_gen(const char *type, const char *message,
+                        const char *funcName, const char *fileName, int lineNo)
+{
+    int rc = ATOMIC_ADD32(dbopen_gen, 1);
+    if (message == NULL) message = "<null>";
+    logmsg(LOGMSG_WARN,
+           "DBOPEN_GEN is now %d (for type %s via %s, %s, line #%d): %s\n",
+           rc, type, funcName, fileName, lineNo, message);
+    return rc;
+}
+
 static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
                           const char table[], const char *newtable,
                           int fastinit)
@@ -260,7 +326,9 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
     bdb_state_type *p_bdb_state = bdb_state;
     DB_LSN lsn;
 
-    inc_dbopen_gen();
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
+
     if (bdb_state->name) {
         dtbl = alloca(sizeof(DBT));
         bzero(dtbl, sizeof(DBT));
@@ -301,14 +369,18 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
 int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
                     int *bdberr)
 {
-    inc_dbopen_gen();
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
+
     return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
 }
 
 int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
                              const char *origtable, int *bdberr)
 {
-    inc_dbopen_gen();
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
+
     return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);
 }
 
@@ -493,14 +565,4 @@ int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock)
     }
 
     return 0;
-}
-
-static int32_t dbopen_gen = 0;
-void inc_dbopen_gen(void)
-{
-    ATOMIC_ADD32(dbopen_gen, 1);
-}
-int32_t get_dbopen_gen(void)
-{
-    return ATOMIC_LOAD32(dbopen_gen);
 }

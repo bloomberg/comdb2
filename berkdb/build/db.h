@@ -2583,10 +2583,13 @@ struct __db_env {
 	int (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
-					 pthread_mutex_t **, const uint8_t **active));
+					 pthread_mutex_t **, const uint8_t **));
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
+	int(*trigger_ispaused) __P((DB_ENV *, const char *));
+	int(*trigger_pause) __P((DB_ENV *, const char *));
+	int(*trigger_unpause) __P((DB_ENV *, const char *));
 
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));

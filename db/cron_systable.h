@@ -32,6 +32,7 @@ typedef struct systable_cron_events {
     char *arg1;
     char *arg2;
     char *arg3;
+    char *arg4;
     char *sourceid;
 } systable_cron_events_t;
 

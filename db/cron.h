@@ -53,10 +53,10 @@ typedef void *(*FCRON)(struct cron_event *event, struct errstat *err);
 struct cron_event {
     int epoch;  /* when this event should run */
     FCRON func; /* what function should run */
-    void *
-        arg1; /* arguments 1-3 for "func"; note: 2-3 are just for convenience */
+    void *arg1; /* arguments 1-4 for "func"; note: 2-4 are for convenience */
     void *arg2;
     void *arg3;
+    void *arg4; /* NOT OWNED: NEVER FREED */
     uuid_t source_id; /* source id, if any, used to map events to sources */
     struct sched_if *schedif; /* implicit scheduler */
     LINKC_T(struct cron_event) lnk;
@@ -88,7 +88,7 @@ typedef struct sched_if sched_if_t;
  */
 cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
                              FCRON func, void *arg1, void *arg2, void *arg3,
-                             uuid_t *source_id, struct errstat *err,
+                             void *arg4, uuid_t *source_id, struct errstat *err,
                              sched_if_t *intf);
 
 /**

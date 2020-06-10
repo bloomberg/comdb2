@@ -1990,6 +1990,7 @@ int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             int retries);
 int trans_start_logical(struct ireq *, tran_type **out);
 int trans_start_logical_sc(struct ireq *, tran_type **out);
+int trans_start_logical_sc_with_force(struct ireq *, tran_type **out);
 int is_rowlocks_transaction(tran_type *);
 int rowlocks_check_commit_physical(bdb_state_type *, tran_type *,
                                    int blockop_count);
@@ -2508,9 +2509,9 @@ typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
                                     void *userptr);
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr);
+             tran_type *tran, void *userptr);
 int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
-                  void *userptr);
+                  tran_type *tran, void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
 int dbq_add_goose(struct ireq *iq, void *trans);
@@ -2820,6 +2821,7 @@ void berk_write_alarm_ms(int x);
 void berk_read_alarm_ms(int x);
 void berk_fsync_alarm_ms(int x);
 void berk_set_long_trace_func(void (*func)(const char *msg));
+void berk_init_rep_lockobj(void);
 
 long long get_unique_longlong(struct dbenv *env);
 void no_new_requests(struct dbenv *dbenv);
@@ -3442,6 +3444,8 @@ extern int gbl_accept_on_child_nets;
 extern int gbl_disable_etc_services_lookup;
 extern int gbl_sql_random_release_interval;
 extern int gbl_debug_queuedb;
+extern int gbl_lua_prepare_max_retries;
+extern int gbl_lua_prepare_retry_sleep;
 
 /**
  * Schema change that touches a table in any way updates its version

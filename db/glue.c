@@ -252,7 +252,7 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                tran_type **out_trans, int logical, int sc,
-                               int retries)
+                               int retries, int force_physical)
 {
     int bdberr;
     bdb_state_type *bdb_handle = thedb->bdb_env;
@@ -270,7 +270,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                                 retries, &bdberr);
     } else {
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
-        if (iq->tranddl && sc && *out_trans) {
+        if ((force_physical || iq->tranddl) && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
@@ -305,12 +305,17 @@ int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
                     int logical, int retries)
 {
     return trans_start_int_int(iq, parent_trans, out_trans, logical, 0,
-                               retries);
+                               retries, 0);
 }
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 0);
+}
+
+int trans_start_logical_sc_with_force(struct ireq *iq, tran_type **out_trans)
+{
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 1);
 }
 
 int trans_start_logical(struct ireq *iq, tran_type **out_trans)
@@ -5283,10 +5288,17 @@ int dbq_get(struct ireq *iq, int consumer,
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
+    tran_type *tran = NULL;
+    rc = trans_start(iq, NULL, (void *)&tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+        goto done;
+    }
+
 retry:
     iq->gluewhere = "bdb_queue_get";
-    rc = bdb_queue_get(bdb_handle, consumer, prevcursor, fnddta, fnddtalen,
-                       fnddtaoff, fndcursor, seq, epoch, &bdberr);
+    rc = bdb_queue_get(bdb_handle, tran, consumer, prevcursor, fnddta,
+                       fnddtalen, fnddtaoff, fndcursor, seq, epoch, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5298,16 +5310,28 @@ retry:
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n",
                    bdberr, retries);
-            return ERR_INTERNAL;
+            rc = ERR_INTERNAL;
+            goto done;
         } else if (bdberr == BDBERR_FETCH_DTA) {
-            return IX_NOTFND;
+            rc = IX_NOTFND;
+            goto done;
         }
 
         else if (bdberr == BDBERR_LOCK_DESIRED) {
-            return IX_NOTFND;
+            rc = IX_NOTFND;
+            goto done;
         }
 
-        return map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        rc = map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        goto done;
+    }
+done:
+    if (tran) {
+        if (bdb_tran_abort(bdb_handle, tran, &bdberr)) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction: %d\n",
+                   __FILE__, __LINE__, bdberr);
+            exit(1);
+        }
     }
     return rc;
 }
@@ -5345,7 +5369,8 @@ int dbq_dump(struct dbtable *db, FILE *out)
     return 0;
 }
 
-int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
+                  tran_type *tran, void *userptr)
 {
     int bdberr, rc;
     void *bdb_handle;
@@ -5354,7 +5379,7 @@ int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
 
 retry:
     iq->gluewhere = "bdb_queuedb_stats";
-    rc = bdb_queuedb_stats(bdb_handle, callback, userptr, &bdberr);
+    rc = bdb_queuedb_stats(bdb_handle, callback, tran, userptr, &bdberr);
     iq->gluewhere = "bdb_queuedb_stats done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5375,7 +5400,7 @@ retry:
 }
 
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr)
+             tran_type *tran, void *userptr)
 {
     int bdberr;
     void *bdb_handle;
@@ -5391,7 +5416,8 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 retry:
     iq->gluewhere = "bdb_queue_walk";
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
-                        (bdb_queue_walk_callback_t)callback, userptr, &bdberr);
+                        (bdb_queue_walk_callback_t)callback, tran, userptr,
+                        &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {

@@ -2520,6 +2520,11 @@ int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
                                                  curtran->lockerid);
 }
 
+unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran)
+{
+    return curtran->lockerid;
+}
+
 int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                            int *bdberr)
 {
