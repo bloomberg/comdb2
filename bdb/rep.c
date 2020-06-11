@@ -5472,6 +5472,13 @@ void *watcher_thread(void *arg)
                                     "replication thread:\n");
                 comdb2_dump_blockers(bdb_state->dbenv);
             }
+
+            if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >
+                gbl_dump_sql_on_repwait_sec) {
+                logmsg(LOGMSG_USER, "SQL statements currently blocking the "
+                                    "replication thread:\n");
+                comdb2_dump_blockers(bdb_state->dbenv);
+            }
         }
 
         list_start = gbl_lock_get_list_start;
