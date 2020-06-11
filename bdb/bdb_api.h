@@ -252,7 +252,7 @@ enum {
                             comdb2 exposes 256 bytes, with 256 columns and
                             1 byte of overhead per, that gets us to 512
                           */
-    BDB_RECORD_MAX = 20480 /*
+    BDB_RECORD_MAX = 20480, /*
                              max size of a fixed record ON DISK.
                              comdb2 exposes 16384.  add 1 byte for an
                              amazing 4k of columns (we dont support that)
@@ -269,6 +269,14 @@ enum {
                              even better, with 4k pages, we shouldnt be
                              using record sizes more than 900k or so.
                             */
+
+    BDB_QUEUEDB_MAX_FILES = 2 /* how many files could a QueueDB have?  for
+                               * now, this value should always be two.  the
+                               * first file should always be the one being
+                               * consumed from and the second file should
+                               * always be the one being added to.  there
+                               * may be no second file if the first one has
+                               * not exceeded its size limit. */
 };
 
 enum COMPRESS {
@@ -277,6 +285,12 @@ enum COMPRESS {
     BDB_COMPRESS_RLE8 = 2,
     BDB_COMPRESS_CRLE = 3,
     BDB_COMPRESS_LZ4 = 4
+};
+
+enum OPENFLAGS { /* NOTE: For "uint32_t flags" arg to "bdb_open_*()". */
+    BDB_OPEN_NONE = 0x0,
+    BDB_OPEN_ADD_QDB_FILE = 0x1000000,
+    BDB_OPEN_DEL_QDB_FILE = 0x2000000
 };
 
 int bdb_compr2algo(const char *a);
@@ -411,6 +425,9 @@ void bdb_attr_dump(FILE *fh, const bdb_attr_type *bdb_attr);
 
 /* Get the type of this bdb-state object as a BDBTYPE_ constant */
 bdbtype_t bdb_get_type(bdb_state_type *bdb_state);
+
+int bdb_get_qdb_adds(bdb_state_type *bdb_state);
+int bdb_get_qdb_cons(bdb_state_type *bdb_state);
 
 bdb_state_type *bdb_clone_handle_with_other_data_files(
     const bdb_state_type *clone_bdb_state,
@@ -887,7 +904,7 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
  * be set to point to memory that the caller must free.  The actual item data
  * will be at ((const char *)*fnd) + *fnddtaoff). */
 struct bdb_queue_found;
-int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor,
                   struct bdb_queue_found **fnd, size_t *fnddtalen,
                   size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
@@ -916,15 +933,15 @@ typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
                                           unsigned int depth, void *userptr);
 
 int bdb_queuedb_stats(bdb_state_type *bdb_state,
-                      bdb_queue_stats_callback_t callback, void *userptr,
-                      int *bdberr);
+                      bdb_queue_stats_callback_t callback, tran_type *tran,
+                      void *userptr, int *bdberr);
 
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
 
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, void *userptr,
-                   int *bdberr);
+                   bdb_queue_walk_callback_t callback, tran_type *tran,
+                   void *userptr, int *bdberr);
 
 /* debug aid - dump the entire queue */
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);
@@ -1141,6 +1158,8 @@ int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_open_again(bdb_state_type *bdb_handle, int *bdberr);
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran,
                         int *bdberr);
+int bdb_open_again_tran_queue(bdb_state_type *bdb_state, tran_type *tran,
+                              uint32_t flags, int *bdberr);
 
 /* destroy resources related to bdb_handle.  assumes that bdb_close_only
    was called */
@@ -1421,6 +1440,9 @@ int bdb_set_pagesize_alldata(tran_type *tran, int pagesize, int *bdberr);
 int bdb_set_pagesize_allblob(tran_type *tran, int pagesize, int *bdberr);
 int bdb_set_pagesize_allindex(tran_type *tran, int pagesize, int *bdberr);
 
+int bdb_del_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
+                             int file_num, int *bdberr);
+
 int bdb_new_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
                               int dtanum, unsigned long long version_num,
                               int *bdberr);
@@ -1431,7 +1453,7 @@ int bdb_new_file_version_all(bdb_state_type *bdb_state, tran_type *input_tran,
                              int *bdberr);
 int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long version_num, int *bdberr);
-int bdb_new_file_version_qdb(bdb_state_type *, tran_type *,
+int bdb_new_file_version_qdb(bdb_state_type *, tran_type *, int file_num,
                              unsigned long long version, int *bdberr);
 
 int bdb_get_file_version_data(bdb_state_type *bdb_state, tran_type *tran,
@@ -1442,7 +1464,7 @@ int bdb_get_file_version_index(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr);
 int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
                                unsigned long long *version_num, int *bdberr);
-int bdb_get_file_version_qdb(bdb_state_type *, tran_type *,
+int bdb_get_file_version_qdb(bdb_state_type *, tran_type *, int file_num,
                              unsigned long long *version, int *bdberr);
 int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,
                                       int file_num,
@@ -1884,6 +1906,8 @@ void bdb_berkdb_dump_attrs(bdb_state_type *bdb_state, FILE *out);
 
 int bdb_berkdb_blobmem_yield(bdb_state_type *bdb_state);
 
+void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int fatal);
+
 int calc_pagesize(int recsize);
 
 int getpgsize(void *handle_);
@@ -2220,7 +2244,6 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 /* Return 1 if this node is master, 0 otherwise */
 int bdb_iam_master(bdb_state_type *bdb_state);
 
-void inc_dbopen_gen(void);
-int32_t get_dbopen_gen(void);
+int32_t bdb_get_dbopen_gen(void);
 
 #endif

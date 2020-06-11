@@ -437,6 +437,22 @@ bdbtype_t bdb_get_type(bdb_state_type *bdb_state)
         return BDBTYPE_NONE;
 }
 
+int bdb_get_qdb_adds(bdb_state_type *bdb_state)
+{
+    if (bdb_state)
+        return bdb_state->qdb_adds;
+    else
+        return 0;
+}
+
+int bdb_get_qdb_cons(bdb_state_type *bdb_state)
+{
+    if (bdb_state)
+        return bdb_state->qdb_cons;
+    else
+        return 0;
+}
+
 int bdb_zap_freerec(bdb_state_type *bdb_state, int *bdberr)
 {
     *bdberr = BDBERR_MISC;

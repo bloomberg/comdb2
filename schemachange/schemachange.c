@@ -393,6 +393,7 @@ int start_schema_change(struct schema_change_type *s)
         return -1;
     }
     init_fake_ireq(thedb, iq);
+    if (s->already_locked) iq->sc_locked = 1;
     iq->sc = s;
     s->iq = iq;
     if (s->db == NULL) {

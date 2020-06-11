@@ -1975,6 +1975,159 @@ int bdb_del_file_versions(
     return bdb_chg_file_versions(bdb_state, input_trans, NULL, bdberr);
 }
 
+static int bdb_del_file_version(
+    bdb_state_type *bdb_state,
+    tran_type *input_trans,    /* if this is !NULL it will be used as
+                                * the transaction for all actions, if
+                                * it is NULL a new transaction will be
+                                * created internally */
+    int file_type,             /* see FILE_VERSIONS_FILE_TYPE_* */
+    int file_num,              /* ixnum or dtanum */
+    int *bdberr)
+{
+    int retries = 0, rc;
+    char key[LLMETA_IXLEN] = {0};
+    tran_type *trans;
+    struct llmeta_file_type_dbname_file_num_key file_type_dbname_file_num_key;
+    uint8_t *p_key_buf, *p_key_buf_end;
+
+    /*fail if the db isn't open*/
+    if (!llmeta_bdb_state) {
+        logmsg(LOGMSG_ERROR, "%s: low level meta table not yet "
+                        "open, you must run bdb_llmeta_open\n",
+                __func__);
+        *bdberr = BDBERR_MISC;
+        return -1;
+    }
+
+    if (!bdb_state || !bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: NULL argument\n", __func__);
+        if (bdberr)
+            *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    if (bdb_get_type(llmeta_bdb_state) != BDBTYPE_LITE) {
+        logmsg(LOGMSG_ERROR, "%s: llmeta db not lite\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    /* make sure we have a proper file type */
+    switch (file_type) {
+    case LLMETA_FVER_FILE_TYPE_TBL:
+    case LLMETA_FVER_FILE_TYPE_DTA:
+    case LLMETA_FVER_FILE_TYPE_IX:
+    case LLMETA_FVER_FILE_TYPE_QDB:
+        break;
+
+    default:
+        logmsg(LOGMSG_ERROR, "%s: unrecognized file type\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+    /*add the file_type (ie dta, ix) */
+    file_type_dbname_file_num_key.file_type = file_type;
+
+    /* copy the db_name and check its length so that it fit with enough room
+     * left for the rest of the key */
+    strncpy0(file_type_dbname_file_num_key.dbname, bdb_state->name,
+             sizeof(file_type_dbname_file_num_key.dbname));
+    file_type_dbname_file_num_key.dbname_len =
+        strlen(file_type_dbname_file_num_key.dbname) + 1;
+
+    if (file_type_dbname_file_num_key.dbname_len > LLMETA_TBLLEN) {
+        logmsg(LOGMSG_ERROR, "%s: db_name is too long\n", __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+    /* add the file_num (ie ixnum dtanum) */
+    file_type_dbname_file_num_key.file_num = file_num;
+
+    p_key_buf = (uint8_t *)key;
+    p_key_buf_end = (uint8_t *)(key + LLMETA_IXLEN);
+
+    if (!(llmeta_file_type_dbname_file_num_put(&file_type_dbname_file_num_key,
+                                               p_key_buf, p_key_buf_end))) {
+        logmsg(LOGMSG_ERROR, 
+                "%s: llmeta_file_type_dbname_file_num_put returns NULL\n",
+                __func__);
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+
+retry:
+
+    if (++retries >= 500 /*gbl_maxretries*/) {
+        logmsg(LOGMSG_INFO, "%s: giving up after %d retries\n", __func__, retries);
+        return -1;
+    }
+
+    /*if the user didn't give us a transaction, create our own*/
+    if (!input_trans) {
+        trans = bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
+        if (!trans) {
+            if (*bdberr == BDBERR_DEADLOCK)
+                goto retry;
+
+            logmsg(LOGMSG_ERROR, "%s: failed to get transaction\n", __func__);
+            return -1;
+        }
+    } else
+        trans = input_trans;
+
+    /* delete old entry */
+    rc = bdb_lite_exact_del(llmeta_bdb_state, trans, key, bdberr);
+    if (rc && *bdberr != BDBERR_NOERROR && *bdberr != BDBERR_DEL_DTA)
+        goto backout;
+
+    /*commit if we created our own transaction*/
+    if (!input_trans) {
+        rc = bdb_tran_commit(llmeta_bdb_state, trans, bdberr);
+        if (rc && *bdberr != BDBERR_NOERROR)
+            return -1;
+    }
+
+    *bdberr = BDBERR_NOERROR;
+    return 0;
+
+backout:
+    /*if we created the transaction*/
+    if (!input_trans) {
+        int prev_bdberr = *bdberr;
+
+        /*kill the transaction*/
+        rc = bdb_tran_abort(llmeta_bdb_state, trans, bdberr);
+        if (rc && !BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: trans abort failed with "
+                            "bdberr %d\n",
+                    __func__, *bdberr);
+            return -1;
+        }
+
+        *bdberr = prev_bdberr;
+        if (*bdberr == BDBERR_DEADLOCK)
+            goto retry;
+
+        logmsg(LOGMSG_ERROR, "%s: failed with bdberr %d\n", __func__, *bdberr);
+    }
+    return -1;
+}
+
+int bdb_del_file_version_qdb(
+    bdb_state_type *bdb_state,
+    tran_type *input_trans,    /* if this is !NULL it will be used as
+                                * the transaction for all actions, if
+                                * it is NULL a new transaction will be
+                                * created internally */
+    int file_num,              /* ixnum or dtanum */
+    int *bdberr)
+{
+    return bdb_del_file_version(bdb_state, input_trans,
+                                LLMETA_FVER_FILE_TYPE_QDB, file_num, bdberr);
+}
+
 static int
 bdb_set_pagesize(tran_type *input_trans, /* if this is !NULL it will be used as
                                           * the transaction for all actions, if
@@ -2217,11 +2370,12 @@ int bdb_new_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_new_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                             unsigned long long version_num, int *bdberr)
+                             int file_num, unsigned long long version_num,
+                             int *bdberr)
 {
     return bdb_new_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
-                                bdberr);
+                                LLMETA_FVER_FILE_TYPE_QDB, file_num,
+                                version_num, bdberr);
 }
 
 /* update all of the db's file's version numbers, usually called when first
@@ -2498,11 +2652,12 @@ int bdb_get_file_version_table(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_get_file_version_qdb(bdb_state_type *bdb_state, tran_type *tran,
-                             unsigned long long *version_num, int *bdberr)
+                             int file_num, unsigned long long *version_num,
+                             int *bdberr)
 {
     return bdb_get_file_version(tran, bdb_state->name,
-                                LLMETA_FVER_FILE_TYPE_QDB, 0, version_num,
-                                bdberr);
+                                LLMETA_FVER_FILE_TYPE_QDB, file_num,
+                                version_num, bdberr);
 }
 
 int bdb_get_file_version_data_by_name(tran_type *tran, const char *name,

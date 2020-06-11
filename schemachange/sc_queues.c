@@ -20,6 +20,26 @@
 #include "sc_schema.h"
 #include "logmsg.h"
 
+#define BDB_TRAN_MAYBE_ABORT_OR_FATAL(a,b,c) do {                             \
+    (c) = 0;                                                                  \
+    if (((b) != NULL) && bdb_tran_abort((a), (b), &(c)) != 0) {               \
+        logmsg(LOGMSG_FATAL, "%s: bdb_tran_abort err = %d\n", __func__, (c)); \
+        abort();                                                              \
+    }                                                                         \
+} while (0);
+
+#define BDB_TRIGGER_MAYBE_UNPAUSE(a,b) do {                                   \
+    if (((a) != NULL) && (b)) {                                               \
+        int rc3 = bdb_trigger_unpause((a));                                   \
+        if (rc3 == 0) {                                                       \
+            (b) = 0;                                                          \
+        } else {                                                              \
+            logmsg(LOGMSG_ERROR, "%s: bdb_trigger_unpause rc = %d\n",         \
+                   __func__, rc3);                                            \
+        }                                                                     \
+    }                                                                         \
+} while (0);
+
 extern int dbqueue_add_consumer(struct dbtable *db, int consumern,
                                 const char *method, int noremove);
 
@@ -90,6 +110,16 @@ int do_alter_queues_int(struct schema_change_type *sc)
     return rc;
 }
 
+void static add_to_qdbs(struct dbtable *db)
+{
+    thedb->qdbs =
+        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
+    thedb->qdbs[thedb->num_qdbs++] = db;
+
+    /* Add queue to the hash. */
+    hash_add(thedb->qdb_hash, db);
+}
+
 int static remove_from_qdbs(struct dbtable *db)
 {
     for (int i = 0; i < thedb->num_qdbs; i++) {
@@ -154,12 +184,7 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
                thedb->basedir, newdb->tablename, bdberr);
         return SC_BDB_ERROR;
     }
-    thedb->qdbs =
-        realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
-    thedb->qdbs[thedb->num_qdbs++] = newdb;
-
-    /* Add queue to the hash. */
-    hash_add(thedb->qdb_hash, newdb);
+    add_to_qdbs(newdb);
 
     return SC_OK;
 }
@@ -240,12 +265,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
             rc = -1;
             goto done;
         }
-        thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
-        thedb->qdbs[thedb->num_qdbs++] = db;
-
-        /* Add queue to the hash. */
-        hash_add(thedb->qdb_hash, db);
+        add_to_qdbs(db);
 
         /* TODO: needs locking */
         rc =
@@ -575,12 +595,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
                                   sc->persistent_seq);
 
-        thedb->qdbs =
-            realloc(thedb->qdbs, (thedb->num_qdbs + 1) * sizeof(struct dbtable *));
-        thedb->qdbs[thedb->num_qdbs++] = db;
-
-        /* Add queue to the hash. */
-        hash_add(thedb->qdb_hash, db);
+        add_to_qdbs(db);
 
         /* create a consumer for this guy */
         /* TODO: needs locking */
@@ -722,8 +737,16 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             }
         }
 
+        /*
+        ** NOTE: This call to bdb_get_file_version_qdb(), which ignores the
+        **       returned file version number itself, is (apparently) being
+        **       used to determine if the queuedb exists within llmeta.  In
+        **       that case, since the first file should always be present,
+        **       there should be no need to check for subsequent (optional)
+        **       files?
+        */
         unsigned long long ver = 0;
-        if (bdb_get_file_version_qdb(db->handle, tran, &ver, &bdberr) == 0) {
+        if (bdb_get_file_version_qdb(db->handle, tran, 0, &ver, &bdberr) == 0) {
             sc_del_unused_files_tran(db, tran);
         } else {
             rc = bdb_del(db->handle, tran, &bdberr);
@@ -790,4 +813,302 @@ int perform_trigger_update(struct schema_change_type *sc)
 int finalize_trigger(struct schema_change_type *s)
 {
     return 0;
+}
+
+static int close_qdb(struct dbtable *db, tran_type *tran)
+{
+    int rc, bdberr = 0;
+    assert(db->handle != NULL);
+    rc = bdb_close_only_sc(db->handle, tran, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
+               __func__, rc, bdberr);
+    }
+    return rc;
+}
+
+static int open_qdb(struct dbtable *db, uint32_t flags, tran_type *tran)
+{
+    int rc, bdberr = 0;
+    assert(db->handle != NULL);
+    rc = bdb_open_again_tran_queue(db->handle, tran, flags, &bdberr);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s: bdb_open_again_tran failed, bdberr %d\n",
+               __func__, bdberr);
+    }
+    return rc;
+}
+
+int reopen_qdb(const char *queue_name, uint32_t flags, tran_type *tran)
+{
+    struct dbtable *db = getqueuebyname(queue_name);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n", __func__,
+               queue_name);
+        return -1;
+    }
+    int rc, paused = 0;
+    rc = bdb_trigger_pause(db->handle);
+    if (rc != 0) goto done;
+    paused = 1;
+    rc = close_qdb(db, tran);
+    if (rc != 0) goto done;
+    rc = open_qdb(db, flags, tran);
+    if (rc != 0) goto done;
+done:
+    BDB_TRIGGER_MAYBE_UNPAUSE(db->handle, paused);
+    return rc;
+}
+
+static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
+{
+    int rc, bdberr;
+    struct dbtable *db;
+    SBUF2 *sb = s->sb;
+
+    db = getqueuebyname(s->tablename);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
+               __func__, s->tablename);
+        sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
+        rc = -1;
+        goto done;
+    }
+
+    /* NOTE: The file number is hard-coded to 1 here because a queuedb is
+    **       limited to having either one or two files -AND- we are adding
+    **       a file, which implies there should only be one file for this
+    **       queuedb at the moment, with file number 0. */
+    int file_num = 1;
+    unsigned long long file_version = 0;
+    bdberr = 0;
+    rc = bdb_get_file_version_qdb(db->handle, tran, file_num, &file_version,
+                                  &bdberr);
+    if (rc == 0 && file_version != 0) {
+        logmsg(LOGMSG_ERROR,
+             "%s: bdb_get_file_version_qdb rc %d name %s num %d ver %lld "
+             "bdberr %d\n", __func__, rc, s->tablename, file_num, file_version,
+             bdberr);
+        sbuf2printf(sb,
+             "!Should not find qdb %s file version %lld for file #%d\n",
+             s->tablename, file_version, file_num);
+        goto done;
+    }
+    file_version = s->qdb_file_ver;
+    bdberr = 0;
+    rc = bdb_new_file_version_qdb(db->handle, tran, file_num, file_version,
+                                  &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+             "%s: bdb_new_file_version_qdb rc %d name %s num %d ver %lld "
+             "bdberr %d\n", __func__, rc, s->tablename, file_num, file_version,
+             bdberr);
+        sbuf2printf(sb, "!Failed add qdb %s file num %d file version %lld\n",
+                    s->tablename, file_num, file_version);
+        goto done;
+    }
+
+done:
+    logmsg(LOGMSG_INFO, "%s: %s (0x%llx) ==> %s (%d)\n",
+           __func__, s->tablename, file_version,
+           (rc == 0) ? "SUCCESS" : "FAILURE", rc);
+    return rc;
+}
+
+static int del_qdb_file(struct schema_change_type *s, tran_type *tran)
+{
+    int rc, bdberr;
+    struct dbtable *db;
+    SBUF2 *sb = s->sb;
+
+    db = getqueuebyname(s->tablename);
+    if (db == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
+               __func__, s->tablename);
+        sbuf2printf(sb, "!No such queuedb %s\n", s->tablename);
+        rc = -1;
+        goto done;
+    }
+
+    assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
+    unsigned long long file_versions[BDB_QUEUEDB_MAX_FILES] = {0};
+    for (int file_num = 0; file_num < BDB_QUEUEDB_MAX_FILES; file_num++) {
+        bdberr = 0;
+        rc = bdb_get_file_version_qdb(db->handle, tran, file_num,
+                                      &file_versions[file_num], &bdberr);
+        if ((rc != 0) || (file_versions[file_num] == 0)) {
+            logmsg(LOGMSG_ERROR,
+                 "%s: bdb_get_file_version_qdb rc %d name %s num %d ver %lld "
+                 "bdberr %d\n", __func__, rc, s->tablename, file_num,
+                 file_versions[file_num], bdberr);
+            sbuf2printf(sb,
+                 "!Bad or missing qdb %s file version %lld for file #%d\n",
+                 s->tablename, file_versions[file_num], file_num);
+            goto done;
+        }
+    }
+
+    bdberr = 0;
+    rc = bdb_new_file_version_qdb(db->handle, tran, 0, file_versions[1],
+                                  &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_new_file_version_qdb rc %d err %d\n",
+               __func__, rc, bdberr);
+        sbuf2printf(sb, "!Failed to reset file version\n");
+        goto done;
+    }
+
+    bdberr = 0;
+    rc = bdb_del_file_version_qdb(db->handle, tran, 1, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_del_file_version rc %d err %d\n",
+               __func__, rc, bdberr);
+        sbuf2printf(sb, "!Failed to delete file version\n");
+        goto done;
+    }
+
+    sc_del_unused_files_tran(db, tran);
+
+done:
+    logmsg(LOGMSG_INFO, "%s: %s (0x%llx) ==> %s (%d)\n",
+           __func__, s->tablename, file_versions[0],
+           (rc == 0) ? "SUCCESS" : "FAILURE", rc);
+    return rc;
+}
+
+int do_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *tran)
+{
+    return 0; /* TODO: Is this even necessary? */
+}
+
+int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    int rc, paused = 0, bdberr;
+    tran_type *sc_logical_tran = NULL;
+    tran_type *sc_phys_tran = NULL;
+
+    rc = trans_start_logical_sc_with_force(iq, &sc_logical_tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc_with_force rc %d\n",
+               __func__, rc);
+        goto done;
+    }
+    bdb_ltran_get_schema_lock(sc_logical_tran);
+    if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
+               __func__);
+        rc = SC_FAILED_TRANSACTION;
+        goto done;
+    }
+    rc = bdb_lock_table_write(s->db->handle, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    rc = bdb_trigger_pause(s->db->handle);
+    if (rc != 0) {
+        goto done;
+    }
+    paused = 1;
+    rc = close_qdb(s->db, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    rc = add_qdb_file(s, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    rc = open_qdb(s->db, BDB_OPEN_ADD_QDB_FILE, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    bdberr = 0;
+    rc = bdb_llog_scdone_tran(s->db->handle, add_queue_file, sc_phys_tran,
+                              NULL, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
+               __func__, rc, bdberr);
+        goto done;
+    }
+    rc = trans_commit(iq, sc_logical_tran, gbl_myhostname);
+    sc_logical_tran = NULL;
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: could not commit trans\n", __func__);
+        goto done;
+    }
+    logmsg(LOGMSG_INFO, "%s SUCCESS\n", __func__);
+done:
+    BDB_TRIGGER_MAYBE_UNPAUSE(s->db->handle, paused);
+    BDB_TRAN_MAYBE_ABORT_OR_FATAL(s->db->handle, sc_logical_tran, bdberr);
+    return rc;
+}
+
+int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                    tran_type *tran)
+{
+    return 0; /* TODO: Is this even necessary? */
+}
+
+int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
+                          tran_type *tran)
+{
+    int rc, paused = 0, bdberr;
+    tran_type *sc_logical_tran = NULL;
+    tran_type *sc_phys_tran = NULL;
+
+    rc = trans_start_logical_sc_with_force(iq, &sc_logical_tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start_logical_sc_with_force rc %d\n",
+               __func__, rc);
+        goto done;
+    }
+    bdb_ltran_get_schema_lock(sc_logical_tran);
+    if ((sc_phys_tran = bdb_get_physical_tran(sc_logical_tran)) == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_get_physical_tran returns NULL\n",
+               __func__);
+        rc = SC_FAILED_TRANSACTION;
+        goto done;
+    }
+    rc = bdb_lock_table_write(s->db->handle, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    rc = bdb_trigger_pause(s->db->handle);
+    if (rc != 0) {
+        goto done;
+    }
+    paused = 1;
+    rc = close_qdb(s->db, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    rc = del_qdb_file(s, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    rc = open_qdb(s->db, BDB_OPEN_DEL_QDB_FILE, sc_phys_tran);
+    if (rc != 0) {
+        goto done;
+    }
+    bdberr = 0;
+    rc = bdb_llog_scdone_tran(s->db->handle, del_queue_file, sc_phys_tran,
+                              NULL, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
+               __func__, rc, bdberr);
+        goto done;
+    }
+    rc = trans_commit(iq, sc_logical_tran, gbl_myhostname);
+    sc_logical_tran = NULL;
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: could not commit trans\n", __func__);
+        goto done;
+    }
+    logmsg(LOGMSG_INFO, "%s SUCCESS\n", __func__);
+done:
+    BDB_TRIGGER_MAYBE_UNPAUSE(s->db->handle, paused);
+    BDB_TRAN_MAYBE_ABORT_OR_FATAL(s->db->handle, sc_logical_tran, bdberr);
+    return rc;
 }

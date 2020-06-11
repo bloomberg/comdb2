@@ -130,14 +130,14 @@ int dbqueuedb_get_name(struct dbtable *db, char **spname) {
     return -1;
 }
 
-static int dbqueuedb_get_stats_int(struct dbtable *db,
+static int dbqueuedb_get_stats_int(struct dbtable *db, tran_type *tran,
                                    struct consumer_stat *stats)
 {
     comdb2_queue_consumer_t *handler;
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
         if (handler) {
-            int rc = handler->get_stats(db, stats);
+            int rc = handler->get_stats(db, 0, tran, stats);
             if (rc == 0)
                 return 0;
         }
@@ -157,7 +157,7 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats)
         return -1;
     }
     if ((rc = bdb_lock_table_read(bdb_state, trans)) == 0) {
-        rc = dbqueuedb_get_stats_int(db, stats);
+        rc = dbqueuedb_get_stats_int(db, trans, stats);
     } else {
         logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
                db->tablename, rc);

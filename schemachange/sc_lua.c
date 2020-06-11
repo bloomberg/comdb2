@@ -540,8 +540,8 @@ int finalize_default_sp(struct schema_change_type *sc)
 // -----------------
 // LUA SQL FUNCTIONS
 // -----------------
-#define reload_lua_funcs(pfx)                                                  \
-    inc_dbopen_gen();                                                          \
+#define reload_lua_funcs(type, pfx)                                            \
+    BDB_BUMP_DBOPEN_GEN(type, NULL);                                           \
     ++gbl_lua_version;                                                         \
     do {                                                                       \
         for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \
@@ -555,12 +555,12 @@ int finalize_default_sp(struct schema_change_type *sc)
 
 int reload_lua_sfuncs()
 {
-    reload_lua_funcs(s);
+    reload_lua_funcs(lua_sfunc, s);
 }
 
 int reload_lua_afuncs()
 {
-    reload_lua_funcs(a);
+    reload_lua_funcs(lua_afunc, a);
 }
 
 #define finalize_lua_func(pfx)                                                 \

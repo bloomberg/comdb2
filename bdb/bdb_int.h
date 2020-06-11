@@ -870,6 +870,10 @@ struct bdb_state_tag {
     /* One of the BDBTYPE_ constants */
     int bdbtype;
 
+    /* How many total queue/queuedb add/consume operations total (ever)? */
+    int qdb_adds;
+    int qdb_cons;
+
     /* Lite databases have no rrn cache, freerecs files, ix# files */
     int pagesize_override; /* 0, or a power of 2 */
 

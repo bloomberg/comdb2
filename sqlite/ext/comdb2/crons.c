@@ -71,6 +71,7 @@ static int systblCronEventsInit(sqlite3 *db)
         CDB2_CSTRING, "arg1", -1, offsetof(systable_cron_events_t, arg1),
         CDB2_CSTRING, "arg2", -1, offsetof(systable_cron_events_t, arg2),
         CDB2_CSTRING, "arg3", -1, offsetof(systable_cron_events_t, arg3),
+        CDB2_INTEGER, "arg4", -1, offsetof(systable_cron_events_t, arg4),
         CDB2_CSTRING, "sourceid", -1, offsetof(systable_cron_events_t, sourceid),
         SYSTABLE_END_OF_FIELDS);
 }

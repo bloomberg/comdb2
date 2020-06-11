@@ -314,7 +314,11 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     if (input_tran == NULL) {
         // void all_locks(void*);
         // all_locks(thedb->bdb_env);
-        rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
+        if (s->keep_locked) {
+            rc = trans_commit(iq, tran, gbl_myhostname);
+        } else {
+            rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
+        }
         if (rc) {
             sc_errf(s, "Failed to commit finalize transaction\n");
             return rc;
@@ -535,6 +539,8 @@ char *get_ddl_type_str(struct schema_change_type *s)
         return "ALTER STRIPE";
     else if (s->add_view || s->drop_view)
         return "VIEW";
+    else if (s->add_qdb_file || s->del_qdb_file)
+        return "QUEUE_DB";
 
     return "UNKNOWN";
 }
@@ -620,6 +626,12 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
         rc = do_ddl(do_add_view, finalize_add_view, iq, s, trans, user_view);
     else if (s->drop_view)
         rc = do_ddl(do_drop_view, finalize_drop_view, iq, s, trans, user_view);
+    else if (s->add_qdb_file)
+        rc = do_ddl(do_add_qdb_file, finalize_add_qdb_file, iq, s, trans,
+                    add_queue_file);
+    else if (s->del_qdb_file)
+        rc = do_ddl(do_del_qdb_file, finalize_del_qdb_file, iq, s, trans,
+                    del_queue_file);
 
 downgraded:
     if (rc == SC_MASTER_DOWNGRADE) {

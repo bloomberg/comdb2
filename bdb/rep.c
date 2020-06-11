@@ -5233,6 +5233,21 @@ int request_delaymore(void *bdb_state_in)
 
 int gbl_rep_wait_core_ms = 0;
 
+void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int fatal)
+{
+    if (bdb_state->callback->threaddump_rtn)
+        (bdb_state->callback->threaddump_rtn)();
+    lock_info_lockers(stdout, bdb_state);
+    char buf[100] = {0};
+    snprintf(buf, sizeof(buf), "pstack %d", (int)getpid());
+    int rc = system(buf);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: system(\"%s\") rc = %d\n",
+               __func__, buf, rc);
+    }
+    if (fatal) abort();
+}
+
 void *watcher_thread(void *arg)
 {
     bdb_state_type *bdb_state;
@@ -5337,8 +5352,7 @@ void *watcher_thread(void *arg)
             logmsg(LOGMSG_FATAL,
                    "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__, elapsed);
-            lock_info_lockers(stdout, bdb_state);
-            abort();
+            bdb_dump_threads_and_maybe_abort(bdb_state, 1);
         }
 
         /* are we incoherent?  see how we're doing, let's send commitdelay
@@ -5449,8 +5463,14 @@ void *watcher_thread(void *arg)
                                 "dumping thread pool\n");
 
                 bdb_state->repinfo->rep_process_message_start_time = 0;
-                if (bdb_state->callback->threaddump_rtn)
-                    (bdb_state->callback->threaddump_rtn)();
+                bdb_dump_threads_and_maybe_abort(bdb_state, 0);
+            }
+
+            if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >
+                gbl_dump_sql_on_repwait_sec) {
+                logmsg(LOGMSG_USER, "SQL statements currently blocking the "
+                                    "replication thread:\n");
+                comdb2_dump_blockers(bdb_state->dbenv);
             }
 
             if ((comdb2_time_epoch() - bdb_state->repinfo->rep_process_message_start_time) >
@@ -5465,7 +5485,7 @@ void *watcher_thread(void *arg)
         if (gbl_dump_locks_on_repwait && list_start > 0 &&
             (time(NULL) - list_start) >= 3) {
             logmsg(LOGMSG_USER, "Long wait on replicant getting locks:\n");
-            lock_info_lockers(stdout, bdb_state);
+            bdb_dump_threads_and_maybe_abort(bdb_state, 0);
         }
 
         if (bdb_state->exiting) {

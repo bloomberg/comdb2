@@ -554,6 +554,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     free(fragment);
     if (out_genid)
         *out_genid = genid;
+    bdb_state->qdb_adds++;
     return 0;
 }
 
@@ -581,10 +582,10 @@ int bdb_queue_add(bdb_state_type *bdb_state, tran_type *tran, const void *dta,
     int rc = 0;
 
     BDB_READLOCK("bdb_queue_add");
-    bdb_lock_table_read(bdb_state, tran);
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
         rc = bdb_queuedb_add(bdb_state, tran, dta, dtalen, bdberr, out_genid);
     } else {
+        bdb_lock_table_read(bdb_state, tran);
         rc = bdb_queue_add_int(bdb_state, tran, dta, dtalen, bdberr, out_genid);
     }
     BDB_RELLOCK();
@@ -1086,8 +1087,8 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
 }
 
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, void *userptr,
-                   int *bdberr)
+                   bdb_queue_walk_callback_t callback, tran_type *tran,
+                   void *userptr, int *bdberr)
 {
     int rc;
 
@@ -1096,9 +1097,10 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
      * worth of state,
      * caller needs to call it correctly. */
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, userptr,
-                              bdberr);
+        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, tran,
+                              userptr, bdberr);
     } else {
+        /* TODO: The "tran" parameter is not passed here.  Maybe it should be? */
         rc = bdb_queue_walk_int(bdb_state, flags, lastitem, callback, userptr,
                                 bdberr);
     }
@@ -1724,7 +1726,7 @@ lookagain:
 /* get the first item uncomsumed by this consumer number, AFTER the passed in
  * key (pass in a zero key to get the first unconsumed item).  the caller is
  * responsible for freeing *fnddta. */
-int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
+int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor,
                   struct bdb_queue_found **fnd, size_t *fnddtalen,
                   size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
@@ -1734,8 +1736,9 @@ int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
 
     BDB_READLOCK("bdb_queue_get");
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
-        rc = bdb_queuedb_get(bdb_state, consumer, prevcursor, fnd, fnddtalen,
-                             fnddtaoff, fndcursor, seq, epoch, bdberr);
+        rc = bdb_queuedb_get(bdb_state, tran, consumer, prevcursor, fnd,
+                             fnddtalen, fnddtaoff, fndcursor, seq, epoch,
+                             bdberr);
     else
         rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, (void **)fnd, fnddtalen,
                                fnddtaoff, fndcursor, epoch, bdberr);
@@ -2091,6 +2094,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
         }
     }
 
+    bdb_state->qdb_cons++;
     return 0;
 }
 

@@ -1514,6 +1514,14 @@ REGISTER_TUNABLE("queuedb_genid_filename",
                  "Use genid in queuedb filenames.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_queuedb_genid_filename, READONLY, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("queuedb_file_threshold",
+                 "Maximum queuedb file size (in MB) before enqueueing to the "
+                 "alternate file.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_queuedb_file_threshold, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("queuedb_file_interval",
+                 "Check on this interval each queuedb against its configured "
+                 "maximum file size. (Default: 60000ms)", TUNABLE_INTEGER,
+                 &gbl_queuedb_file_interval, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("random_election_timeout",
                  "Use a random timeout in election.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_rand_elect_timeout,
@@ -1934,6 +1942,20 @@ REGISTER_TUNABLE("debug_queuedb",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("lua_prepare_retries",
+                 "Maximum number of times to retry SQL query preparation "
+                 "when faced with 'database schema has changed' errors in "
+                 "the Lua subsystem.  (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_lua_prepare_max_retries, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
+
+REGISTER_TUNABLE("lua_prepare_retry_sleep",
+                 "The number of milliseconds in between SQL query preparation "
+                 "retries in the Lua subsystem.  (Default: 200)",
+                 TUNABLE_INTEGER, &gbl_lua_prepare_retry_sleep,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("dump_sql_on_repwait_sec",
                  "Dump sql queries that are blocking the replication thread "
                  "for more than this duration (Default: 10secs)",

@@ -194,7 +194,7 @@ static void *trigger_start_int(void *name_)
     strcpy(name, name_);
     free(name_);
     trigger_reg_t *reg;
-    trigger_reg_init(reg, name);
+    trigger_reg_init(reg, name, 0);
     ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
     int rc, retry = 10;
     while (--retry > 0) {

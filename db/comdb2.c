@@ -151,6 +151,8 @@ int gbl_handoff_node = 0;
 int gbl_use_node_pri = 0;
 int gbl_allow_lua_print = 0;
 int gbl_allow_lua_dynamic_libs = 0;
+int gbl_lua_prepare_max_retries = 0;
+int gbl_lua_prepare_retry_sleep = 200;
 int gbl_allow_pragma = 0;
 int gbl_master_changed_oldfiles = 0;
 int gbl_recovery_timestamp = 0;
@@ -4832,7 +4834,7 @@ static void *memstat_cron_event(struct cron_event *_, struct errstat *err)
     if (gbl_memstat_freq > 0) {
         tm = comdb2_time_epoch() + gbl_memstat_freq;
         rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                            NULL, NULL, NULL, err, NULL);
+                            NULL, NULL, NULL, NULL, err, NULL);
 
         if (rc == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
@@ -4854,7 +4856,7 @@ static void *memstat_cron_kickoff(struct cron_event *_, struct errstat *err)
 
     tm = comdb2_time_epoch() + gbl_memstat_freq;
     rc = cron_add_event(gbl_cron, NULL, tm, (FCRON)memstat_cron_event, NULL,
-                        NULL, NULL, NULL, err, NULL);
+                        NULL, NULL, NULL, NULL, err, NULL);
     if (rc == NULL)
         logmsg(LOGMSG_ERROR, "Failed to schedule next memstat event. "
                         "rc = %d, errstr = %s\n",
@@ -4891,12 +4893,12 @@ static int comdb2ma_stats_cron(void)
             time_cron_create(&impl, gbl_cron_describe, gbl_cron_event_describe);
             gbl_cron = cron_add_event(NULL, "Global Job Scheduler", INT_MIN,
                                       (FCRON)memstat_cron_kickoff, NULL, NULL,
-                                      NULL, NULL, &xerr, &impl);
+                                      NULL, NULL, NULL, &xerr, &impl);
 
         } else {
             gbl_cron = cron_add_event(gbl_cron, NULL, INT_MIN,
                                       (FCRON)memstat_cron_kickoff, NULL, NULL,
-                                      NULL, NULL, &xerr, NULL);
+                                      NULL, NULL, NULL, &xerr, NULL);
         }
         if (gbl_cron == NULL)
             logmsg(LOGMSG_ERROR, "Failed to schedule memstat cron job. "
@@ -5517,6 +5519,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    if (bdb_queuedb_create_cron(thedb) != 0)
+        abort();
+
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
 
@@ -6022,7 +6027,7 @@ retry_tran:
     create_sqlite_master();
     oldfile_list_clear();
 
-    inc_dbopen_gen();
+    BDB_BUMP_DBOPEN_GEN(invalid, NULL);
 
     if ((rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr)) != 0) {
         logmsg(LOGMSG_FATAL, "%s: bdb_tran_commit returns %d\n", __func__, rc);
