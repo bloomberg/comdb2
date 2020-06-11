@@ -23,7 +23,6 @@
 #include "sqloffload.h"
 
 extern int gbl_partial_indexes;
-extern int gbl_reorder_idx_writes;
 static __thread void *defered_index_tbl = NULL;
 static __thread void *defered_index_tbl_cursor = NULL;
 
@@ -117,7 +116,7 @@ static inline void *get_defered_index_tbl_cursor(int createIfNull)
         if (!createIfNull)
             return NULL;
 
-        defered_index_tbl = (void *)create_defered_index_table(NULL);
+        defered_index_tbl = (void *)create_defered_index_table();
     }
 
     defered_index_tbl_cursor = get_constraint_table_cursor(defered_index_tbl);

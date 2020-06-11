@@ -37,6 +37,7 @@
 #include <ctrace.h>
 #include <logmsg.h>
 #include "str0.h"
+#include "sc_util.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -537,7 +538,6 @@ static int local_replicate_write_analyze(char *table)
         return 0;
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
 
     iq.blkstate = &blkstate;
 again:
@@ -590,7 +590,7 @@ again:
         logmsg(LOGMSG_ERROR, "analyze: add_oplog_entry(commit) rc %d\n", rc);
         goto done;
     }
-    rc = trans_commit(&iq, trans, gbl_mynode);
+    rc = trans_commit(&iq, trans, gbl_myhostname);
     if (rc) {
         logmsg(LOGMSG_ERROR, "analyze: commit rc %d\n", rc);
         goto done;
@@ -901,7 +901,7 @@ static void *table_thread(void *arg)
     /* mark the return */
     if (0 == rc) {
         td->table_state = TABLE_COMPLETE;
-        if (thedb->master == gbl_mynode) { // reset directly
+        if (thedb->master == gbl_myhostname) { // reset directly
             ctrace("analyze: Analyzed Table %s, reseting counter to 0\n", td->table);
             reset_aa_counter(td->table);
         } else {
@@ -1038,7 +1038,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     if (check_stat1(sb))
         return -1;
 
-    if (gbl_schema_change_in_progress) {
+    if (get_schema_change_in_progress(__func__, __LINE__)) {
         logmsg(LOGMSG_ERROR, 
                 "%s: Aborting Analyze because schema_change_in_progress\n",
                 __func__);

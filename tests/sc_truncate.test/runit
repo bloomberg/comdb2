@@ -8,31 +8,11 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/ddl.sh
 . ${TESTSROOTDIR}/tools/cluster_utils.sh
 
-function cleanup
-{
-    [[ $debug == "1" ]] && set -x
-    typeset func="cleanup"
-    write_prompt $func "Running $func"
-    touch $stopfile
-    wait
-}
-
 function randomtable
 {
     [[ $debug == "1" ]] && set -x
     typeset table=$(( RANDOM % tablecount ))
     echo "t$table"
-}
-
-function failexit
-{
-    [[ $debug == "1" ]] && set -x
-    typeset func="failexit"
-    write_prompt $func "Running $func"
-    typeset f=$1
-    write_prompt $func "$f failed: $2"
-    cleanup
-    exit -1
 }
 
 function create_database_tables
@@ -59,11 +39,22 @@ function truncate_thread
     [[ $debug == "1" ]] && set -x
     typeset func="truncate_thread"
     typeset tdno=$1
-    typeset sleep_sec=${2:-0.10}
+    typeset sleep_sec=${2}
+    typeset max_fail=${3}
+    typeset curfail=0
     write_prompt $func "Running $func $tdno"
     while [[ ! -f $stopfile ]]; do
         table=$(randomtable)
-        truncate_table $table
+        out=$(truncate_table $table)
+        echo "$out"
+        if [[ $out = *fail* ]]; then
+            let curfail=curfail+1
+            if [[ $curfail -gt $max_fail ]]; then
+                echo "Too many truncate failures: $curfail" >> $failfile
+            fi
+        else
+            curfail=0
+        fi
         [[ $sleep_sec ]] && sleep $sleep_sec
     done
 }
@@ -78,7 +69,10 @@ function insert_thread
     write_prompt $func "Running $func $tdno"
     while [[ ! -f $stopfile ]]; do
         table=$(randomtable)
+        write_prompt inserter-$tdno "Inserting $maxrec records into table $table"
         $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "INSERT INTO $table SELECT * FROM generate_series(1, $maxrec)" >/dev/null 2>&1
+        r=$?
+        [[ $r != 0 ]] && echo "Inserter-$tdno failed insert"
         [[ $sleep_sec ]] && sleep $sleep_sec
     done
 }
@@ -96,16 +90,20 @@ function run_test
     typeset inserters=${4}
     typeset insertrecs=${5}
     typeset nocheckpoint=${6}
+    typeset dgcount=${7}
+    typeset maxtruncatefail=${8}
 
     # Locals
     typeset maxtime=300
     typeset downgrade=1
     typeset i=0
+    typeset downgrades=0
     typeset now=$(date +%s)
     typeset endtime=$(( now + maxtime ))
 
     create_database_tables
     rm -f $stopfile
+    rm -f $failfile
 
     # Tell nodes to not change the checkpoint-lsn
     if [[ $nocheckpoint != 0 ]]; then
@@ -116,7 +114,7 @@ function run_test
 
     i=0
     while [[ $i -lt $truncaters ]]; do
-        truncate_thread $i $truncate_sleep &
+        truncate_thread $i $truncate_sleep $maxtruncatefail &
         let i=i+1
     done
 
@@ -129,9 +127,12 @@ function run_test
     while [[ "$(date +%s)" -lt $endtime ]]; do
         sleep $downgrade_sleep
         if [[ $downgrade != 0 ]]; then
-            for node in $CLUSTER ; do
-                $CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('downgrade')"
-            done
+            if [[ $dgcount == 0 || $downgrades -lt $dgcount ]]; then
+                for node in $CLUSTER ; do
+                    $CDB2SQL_EXE -tabs $CDB2_OPTIONS --host $node $DBNAME "EXEC PROCEDURE sys.cmd.send('downgrade')"
+                done
+                let downgrades=downgrades+1
+            fi
         fi
     done
     touch $stopfile
@@ -140,6 +141,8 @@ function run_test
 
 # Globals
 export stopfile=./stop.test
+export failfile=./failed.test
+
 if [[ $DBNAME == *"lockordergenerated"* ]]; then
     export tablecount=3
     export truncaters=5
@@ -148,6 +151,8 @@ if [[ $DBNAME == *"lockordergenerated"* ]]; then
     export inserters=10
     export insertrecs=10
     export nocheckpoint=0
+    export dgcount=0
+    export maxtruncatefail=10
 else
     export tablecount=100
     export truncaters=1
@@ -156,8 +161,15 @@ else
     export inserters=1
     export insertrecs=10000
     export nocheckpoint=1
+    export dgcount=0
+    export maxtruncatefail=10
 fi
 
-run_test $truncaters $truncate_sleep $downgrade_sleep $inserters $insertrecs $nocheckpoint
+run_test $truncaters $truncate_sleep $downgrade_sleep $inserters $insertrecs $nocheckpoint $dgcount $maxtruncatefail
+if [[ -f $failfile ]]; then
+    echo "Failed test"
+    cat $failfile
+    exit 1
+fi
 
 echo "Success"

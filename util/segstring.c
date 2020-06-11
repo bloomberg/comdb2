@@ -14,7 +14,7 @@
    limitations under the License.
  */
 
-#include <segstring.h>
+#include <segstr.h>
 #include <f2cstr.h>
 
 #include <stdio.h>

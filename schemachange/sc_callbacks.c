@@ -73,15 +73,13 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
-    ++gbl_dbopen_gen;
+    inc_dbopen_gen();
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (rc)
-        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__, rc);
-
-    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0);
-
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
+               rc);
     return rc;
 }
 
@@ -292,8 +290,9 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
-    if (usedb->sc_downgrading)
+    if (usedb->sc_downgrading) {
         return ERR_NOMASTER;
+    }
 
     if (usedb->sc_from != iq->usedb) {
         return 0;
@@ -548,7 +547,7 @@ int schema_change_abort_callback(void)
 {
     Pthread_mutex_lock(&gbl_sc_lock);
     /* if a schema change is in progress */
-    if (gbl_schema_change_in_progress) {
+    if (get_schema_change_in_progress(__func__, __LINE__)) {
         /* we should safely stop the sc here, but until we find a good way to do
          * that, just kill us */
         exit(1);
@@ -740,6 +739,12 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         rc = bdberr;
         goto done;
     }
+
+    /* This code runs on the replicant to handle an SC_DONE message.  The
+     * transaction will have updated (and hold locks for) records in llmeta
+     * which we need to look at in order to set up our data structures
+     * correctly.  This replaces the tran's lid with replication's lid so that
+     * we can query this information without self-deadlocking. */
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
@@ -831,7 +836,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
             exit(1);
         }
         create_sqlite_master(); /* create sql statements */
-        ++gbl_dbopen_gen;
+        inc_dbopen_gen();
         if (type == drop || type == user_view)
             goto done;
     }
@@ -897,7 +902,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
 done:
     if (tran) {
         bdb_set_tran_lockerid(tran, lid);
-        /* TODO: (NC) Why abort? */
+        /* Replace this lid with the original lid so we don't leak it.  Because
+         * we haven't done any work with the original tran, just abort it. */
         rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
@@ -906,6 +912,5 @@ done:
         }
     }
 
-    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0);
     return rc; /* success */
 }

@@ -189,6 +189,60 @@ uint8_t *queue_found_put(const struct bdb_queue_found *p_queue_found,
     return p_buf;
 }
 
+enum { QUEUE_FOUND_SEQ_LEN = 8 + 4 + 4 + 4 + 4 + 4 + 4 };
+
+BB_COMPILE_TIME_ASSERT(bdb_queue_found_seq_len,
+                       sizeof(struct bdb_queue_found_seq) ==
+                           QUEUE_FOUND_SEQ_LEN);
+
+const uint8_t *
+queue_found_seq_get(struct bdb_queue_found_seq *p_queue_found_seq,
+                    const uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || QUEUE_FOUND_SEQ_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_get(&(p_queue_found_seq->genid),
+                    sizeof(p_queue_found_seq->genid), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->data_len),
+                    sizeof(p_queue_found_seq->data_len), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->data_offset),
+                    sizeof(p_queue_found_seq->data_offset), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->trans.num_fragments),
+                    sizeof(p_queue_found_seq->trans.num_fragments), p_buf,
+                    p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->epoch),
+                    sizeof(p_queue_found_seq->epoch), p_buf, p_buf_end);
+    p_buf = buf_get(&(p_queue_found_seq->seq), sizeof(p_queue_found_seq->seq),
+                    p_buf, p_buf_end);
+
+    return p_buf;
+}
+
+uint8_t *
+queue_found_seq_put(const struct bdb_queue_found_seq *p_queue_found_seq,
+                    uint8_t *p_buf, const uint8_t *p_buf_end)
+{
+    if (p_buf_end < p_buf || QUEUE_FOUND_SEQ_LEN > (p_buf_end - p_buf))
+        return NULL;
+
+    p_buf = buf_put(&(p_queue_found_seq->genid),
+                    sizeof(p_queue_found_seq->genid), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->data_len),
+                    sizeof(p_queue_found_seq->data_len), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->data_offset),
+                    sizeof(p_queue_found_seq->data_offset), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->trans.num_fragments),
+                    sizeof(p_queue_found_seq->trans.num_fragments), p_buf,
+                    p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->epoch),
+                    sizeof(p_queue_found_seq->epoch), p_buf, p_buf_end);
+    p_buf = buf_put(&(p_queue_found_seq->seq), sizeof(p_queue_found_seq->seq),
+                    p_buf, p_buf_end);
+
+    return p_buf;
+}
+
 struct bdb_queue_priv {
     struct bdb_queue_stats stats;
 
@@ -503,7 +557,7 @@ static int bdb_queue_add_int(bdb_state_type *bdb_state, tran_type *intran,
     return 0;
 }
 
-unsigned long long bdb_queue_item_genid(const void *dta)
+unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta)
 {
     if (dta) {
         uint8_t *p_buf = (uint8_t *)dta;
@@ -1314,7 +1368,7 @@ lookagain:
          * is silly because its last fragment may come after the first fragment
          * of what is logically the next item queued (if they were added at the
          * same time then their fragments may interleave). */
-        memcpy(&lastgenid, prevcursor->genid, 8);
+        memcpy(&lastgenid, &prevcursor->genid, 8);
         if (lastgenid == 0) {
             prevcursor = NULL;
             getop = DB_FIRST;
@@ -1649,7 +1703,7 @@ lookagain:
 
     /* Success - found all fragments and stitched them up! */
     if (fndcursor) {
-        memcpy(fndcursor->genid, &item.genid, 8);
+        memcpy(&fndcursor->genid, &item.genid, 8);
         fndcursor->recno = ntohl(recnos[0]);
         fndcursor->reserved = 0;
     }
@@ -1671,19 +1725,19 @@ lookagain:
  * key (pass in a zero key to get the first unconsumed item).  the caller is
  * responsible for freeing *fnddta. */
 int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
-                  const struct bdb_queue_cursor *prevcursor, void **fnd,
-                  size_t *fnddtalen, size_t *fnddtaoff,
-                  struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
-                  int *bdberr)
+                  const struct bdb_queue_cursor *prevcursor,
+                  struct bdb_queue_found **fnd, size_t *fnddtalen,
+                  size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                  long long *seq, unsigned int *epoch, int *bdberr)
 {
     int rc;
 
     BDB_READLOCK("bdb_queue_get");
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
         rc = bdb_queuedb_get(bdb_state, consumer, prevcursor, fnd, fnddtalen,
-                             fnddtaoff, fndcursor, epoch, bdberr);
+                             fnddtaoff, fndcursor, seq, epoch, bdberr);
     else
-        rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, fnd, fnddtalen,
+        rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, (void **)fnd, fnddtalen,
                                fnddtaoff, fndcursor, epoch, bdberr);
     BDB_RELLOCK();
 
@@ -2042,7 +2096,7 @@ static int bdb_queue_consume_int(bdb_state_type *bdb_state, tran_type *intran,
 
 /* consume a queue item previously found by bdb_queue_get. */
 int bdb_queue_consume(bdb_state_type *bdb_state, tran_type *tran, int consumer,
-                      const void *prevfnd, int *bdberr)
+                      const struct bdb_queue_found *prevfnd, int *bdberr)
 {
     int rc;
     *bdberr = BDBERR_NOERROR;

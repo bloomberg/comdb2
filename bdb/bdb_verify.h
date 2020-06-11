@@ -23,16 +23,22 @@ struct SBUF2;
 struct bdb_state_type;
 typedef struct thdpool thdpool;
 
-typedef enum { PROCESS_DATA, PROCESS_KEY, PROCESS_BLOB } processing_type;
+typedef enum {
+    PROCESS_SEQUENTIAL,
+    PROCESS_DATA,
+    PROCESS_KEY,
+    PROCESS_BLOB
+} processing_type;
 
 // common data for all verify threads
 typedef struct {
     SBUF2 *sb;
     bdb_state_type *bdb_state;
-    dbtable *db_table;
-    int (*formkey_callback)(const dbtable *tbl, void *dta, void *blob_parm,
+    struct dbtable *db_table;
+    const char *tablename;
+    int (*formkey_callback)(const struct dbtable *tbl, void *dta, void *blob_parm,
                             int ix, void *keyout, int *keysz);
-    int (*get_blob_sizes_callback)(const dbtable *tbl, void *dta, int blobs[16],
+    int (*get_blob_sizes_callback)(const struct dbtable *tbl, void *dta, int blobs[16],
                                    int bloboffs[16], int *nblobs);
     int (*vtag_callback)(void *parm, void *dta, int *dtasz, uint8_t ver);
     int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz,
@@ -43,15 +49,16 @@ typedef struct {
     int (*lua_callback)(void *, const char *);
     void *lua_params;
     char *header; // header string for printing for prog rep in default mode
-    unsigned long long items_processed;   // atomic inc: for progres report
-    unsigned long long records_processed; // progress report in default mode
-    unsigned long long saved_progress;    // previous progress counter
+    uint64_t items_processed;             // atomic inc: for progres report
+    uint64_t records_processed;           // progress report in default mode
+    uint64_t saved_progress;              // previous progress counter
     int nrecs_progress;                   // progress done in this time window
-    int last_reported;                    // last reported time
-    int progress_report_seconds;
+    unsigned int last_connection_check;   // last reported time in ms
+    int progress_report_seconds;          // freq of report in seconds
+    int progress_report_counter;          // counter used to print progress
     int attempt_fix;
-    unsigned short threads_spawned;
-    unsigned short threads_completed; // atomic inc
+    unsigned int threads_spawned;
+    unsigned int threads_completed; // atomic inc
     verify_mode_t verify_mode;
     uint8_t client_dropped_connection;
     uint8_t verify_status; // 0 success, 1 failure

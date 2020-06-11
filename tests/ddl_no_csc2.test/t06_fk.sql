@@ -138,3 +138,33 @@ select * from t1 order by i;
 select * from t2 order by i;
 drop table t2;
 drop table t1;
+
+select "tests for FK order desc keys";
+create table t1(i int)$$
+create index "idx1" on t1(i desc);
+create table t2(i int unique, foreign key (i) references t1(i))$$
+select csc2 as "t1 schema" from sqlite_master where name = "t1";
+select csc2 as "t2 schema" from sqlite_master where name = "t2";
+insert into t2 values(1);
+insert into t1 values(1);
+insert into t2 values(1);
+select * from t1;
+select * from t1;
+drop table t2;
+drop table t1;
+
+create table t1(i int)$$
+create index "idx1" on t1(i desc);
+create table t2(i int)$$
+create index "idx2" on t2(i desc);
+alter table t2 add foreign key (i) references t1(i)$$
+select csc2 as "t1 schema" from sqlite_master where name = "t1";
+select csc2 as "t2 schema" from sqlite_master where name = "t2";
+insert into t2 values(1);
+insert into t1 values(1);
+insert into t2 values(1);
+select * from t1;
+select * from t1;
+drop table t2;
+drop table t1;
+

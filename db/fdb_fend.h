@@ -135,6 +135,8 @@ enum fdb_errors {
     FDB_ERR_SSL = -25 /* SSL configuration error */
     ,
     FDB_ERR_ACCESS = -26 /* Access error */
+    ,
+    FDB_ERR_TRANSIENT_IO = -27 /* Temporary IO failure */
 };
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
@@ -294,6 +296,7 @@ void fdb_sqlstats_put(fdb_t *fdb);
  *
  */
 const char *fdb_dbname_name(fdb_t *fdb);
+const char *fdb_dbname_class_routing(fdb_t *fdb);
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent);
 const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 

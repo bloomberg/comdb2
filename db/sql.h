@@ -72,6 +72,8 @@ struct fingerprint_track {
     int64_t rows;     /* Cumulative number of rows selected */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
+    char ** cachedColNames; /* Cached column names from sqlitex */
+    int cachedColCount;     /* Cached column count from sqlitex */
 };
 
 typedef struct stmt_hash_entry {
@@ -105,6 +107,11 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+
+    /* A flag to tell us whether we are inside the query preparer plugin. This
+     * is especially needed to differentiate between fdb cursors opened by core
+     * versus query preparer plugin. */
+    bool query_preparer_running;
 };
 
 typedef struct osqltimings {
@@ -144,28 +151,28 @@ typedef struct osqlstate {
     int replicant_numops; /* total num of ops sent by replicant to master which
                              includes USEDB, BLOB, etc. */
 
-    SBUF2 *logsb; /* help debugging */
-
     /* == sqlclntstate == */
 
     int count_changes;   /* enable pragma count_changes=1, for rr, sosql, recom,
                             snapisol, serial */
 
-    /* the phantom menace */
-    LISTC_T(struct shad_tbl)
-        shadtbls;    /* storage for shadow tables created by offloading */
-    shadbq_t shadbq; /* storage for dbq's shadtbl */
+    /* storage for shadow tables created by offloading */
+    LISTC_T(struct shad_tbl) shadtbls;
 
-    struct temp_table *
-        verify_tbl; /* storage for verify, common for all transaction */
+    /* storage for dbq's shadtbl */
+    shadbq_t shadbq;
+    hash_t *dbq_hash;
+
+    /* storage for verify, common for all transaction */
+    struct temp_table * verify_tbl;
     struct temp_cursor *verify_cur; /* verify cursor */
 
-    struct temp_table
-        *sc_tbl; /* storage for schemachange, common for all transaction */
+    /* storage for schemachange, common for all transaction */
+    struct temp_table *sc_tbl;
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
-    struct temp_table
-        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    /* storage for bpfunc, common for all transaction */
+    struct temp_table *bpfunc_tbl;
     struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
     int bpfunc_seq;
 
@@ -176,8 +183,8 @@ typedef struct osqlstate {
     fdbtimings_t fdbtimes; /* measure remote access */
 
     /* verify handling */
-    srs_tran_t *
-        history; /* keep the log of sql strings for the current transaction */
+    /* keep the log of sql strings for the current transaction */
+    srs_tran_t * history;
     int replay;  /* set this when a session is replayed, used by sorese */
     int sent_column_data; /* set this if we've already sent the column data */
 
@@ -540,7 +547,8 @@ enum prepare_flags {
     PREPARE_DENY_DDL = 8,
     PREPARE_IGNORE_ERR = 16,
     PREPARE_NO_NORMALIZE = 32,
-    PREPARE_ONLY = 64
+    PREPARE_ONLY = 64,
+    PREPARE_ALLOW_TEMP_DDL = 128,
 };
 struct sql_state {
     enum cache_status status;          /* populated by get_prepared_stmt */
@@ -848,6 +856,8 @@ struct sqlclntstate {
     int8_t sent_data_to_client;
     int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
+    int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
+                              desired */
 };
 
 /* Query stats. */
@@ -1039,6 +1049,8 @@ struct BtCursor {
     int open_flags; /* flags used to open it */
 
     int tableversion;
+
+    void *query_preparer_data;
 };
 
 struct sql_hist {
@@ -1186,8 +1198,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
-void clone_temp_table(sqlite3 *, const sqlite3 *, const char *,
-                      struct temptable *);
+void clone_temp_table(sqlite3_stmt *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
@@ -1198,10 +1209,10 @@ void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
                          struct dbtable *db, int ixnum, void *trans);
 
-int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *, int);
-int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *, int);
+int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+int get_prepared_stmt_no_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
@@ -1259,8 +1270,9 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *, unsigned char *fingerprint_out);
+void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *,
+                     const char *, int64_t, int64_t, int64_t, int64_t,
+                     struct reqlogger *, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1307,6 +1319,15 @@ struct query_count {
     int64_t last_timems;
 };
 
-void add_fingerprint_to_rawstats(struct rawnodestats *stats, unsigned char *fingerprint, int cost, int rows, int timems);
+void add_fingerprint_to_rawstats(struct rawnodestats *stats,
+                                 unsigned char *fingerprint, int cost,
+                                 int rows, int timems);
 
-#endif
+/**
+ * If bdb_lock_desired, run recovery (releasing locks)
+ * and pause proportionally with the number of retries
+ *
+ */
+int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
+
+#endif /* _SQL_H_ */

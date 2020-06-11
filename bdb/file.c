@@ -90,7 +90,6 @@
 #include "util.h"
 #include <bb_oscompat.h>
 #include <logmsg.h>
-#include <portmuxapi.h>
 
 #include <build/db_int.h>
 #include "dbinc/db_swap.h"
@@ -102,13 +101,15 @@
 #include <rep_qstat.h>
 
 #include <bdb_queuedb.h>
+#include <schema_lk.h>
+#include <tohex.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
 extern int gbl_early;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
-extern char *gbl_mynode;
+extern char *gbl_myhostname;
 extern size_t gbl_blobmem_cap;
 
 #define FILENAMELEN 100
@@ -134,8 +135,9 @@ int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
 static int bdb_reopen_int(bdb_state_type *bdb_state);
 static int open_dbs(bdb_state_type *, int, int, int, DB_TXN *);
 static int open_dbs_flags(bdb_state_type *, int, int, int, DB_TXN *, uint32_t);
-static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid);
-static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid);
+static int close_dbs(bdb_state_type *bdb_state);
+static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *tid);
+static int close_dbs_flush(bdb_state_type *bdb_state);
 static int bdb_watchdog_test_io_dir(bdb_state_type *bdb_state, char *dir);
 
 void berkdb_set_recovery(DB_ENV *dbenv);
@@ -1019,7 +1021,7 @@ int bdb_rename_table(bdb_state_type *bdb_state, tran_type *tran, char *newname,
     char *saved_origname; /* certain sc set this, preserve */
     int rc;
 
-    rc = close_dbs_flush(bdb_state, tid);
+    rc = close_dbs_flush(bdb_state);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -1289,16 +1291,19 @@ static void net_stopthread_rtn(void *arg)
  * After this is called, the db is closed.
  */
 static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
-
 {
     int rc;
     int i;
     int dtanum, strnum;
+    u_int8_t fileid[21] = {0};
+    char fid_str[41] = {0};
 
     print(bdb_state, "in %s(name=%s)\n", __func__, bdb_state->name);
 
     if (!bdb_state->isopen) {
         print(bdb_state, "%s not open, not closing\n", bdb_state->name);
+        logmsg(LOGMSG_DEBUG, "%s:%d %s not open, not closing\n", __func__,
+               __LINE__, bdb_state->name);
         return 0;
     }
 
@@ -1309,22 +1314,39 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     for (dtanum = 0; dtanum < MAXDTAFILES; dtanum++) {
         for (strnum = 0; strnum < MAXDTASTRIPE; strnum++) {
             if (bdb_state->dbp_data[dtanum][strnum]) {
-                rc = bdb_state->dbp_data[dtanum][strnum]->close(
-                    bdb_state->dbp_data[dtanum][strnum], flags);
+                bdb_state->dbp_data[dtanum][strnum]->get_fileid(
+                    bdb_state->dbp_data[dtanum][strnum], fileid);
+                fileid_str(fileid, fid_str);
+                logmsg(LOGMSG_DEBUG, "%s:%d  closing fileid %s\n", __func__,
+                       __LINE__, fid_str);
+                rc = bdb_state->dbp_data[dtanum][strnum]->closetxn(
+                    bdb_state->dbp_data[dtanum][strnum], tid, flags);
                 if (0 != rc) {
                     logmsg(LOGMSG_ERROR,
                            "%s: error closing %s[%d][%d]: %d %s\n", __func__,
                            bdb_state->name, dtanum, strnum, rc,
                            db_strerror(rc));
                 }
+            } else {
+                logmsg(LOGMSG_DEBUG,
+                       "%s:%d not closing dtafile %d stripe %d "
+                       "(NULL ptr)\n",
+                       __func__, __LINE__, dtanum, strnum);
             }
         }
     }
 
     if (bdb_state->bdbtype == BDBTYPE_TABLE) {
+        logmsg(LOGMSG_DEBUG, "%s:%d  looking through table %s numix %d\n",
+               __func__, __LINE__, bdb_state->name, bdb_state->numix);
         for (i = 0; i < bdb_state->numix; i++) {
             /*fprintf(stderr, "closing ix %d\n", i);*/
-            rc = bdb_state->dbp_ix[i]->close(bdb_state->dbp_ix[i], flags);
+            bdb_state->dbp_ix[i]->get_fileid(bdb_state->dbp_ix[i], fileid);
+            fileid_str(fileid, fid_str);
+            logmsg(LOGMSG_DEBUG, "%s:%d closing fileid %s\n", __func__,
+                   __LINE__, fid_str);
+            rc = bdb_state->dbp_ix[i]->closetxn(bdb_state->dbp_ix[i], tid,
+                                                flags);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s: error closing %s->dbp_ix[%d] %d %s\n",
                        __func__, bdb_state->name, i, rc, db_strerror(rc));
@@ -1343,14 +1365,19 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
     return 0;
 }
 
-static int close_dbs(bdb_state_type *bdb_state, DB_TXN *tid)
+static int close_dbs(bdb_state_type *bdb_state)
 {
-    return close_dbs_int(bdb_state, tid, DB_NOSYNC);
+    return close_dbs_int(bdb_state, NULL, DB_NOSYNC);
 }
 
-static int close_dbs_flush(bdb_state_type *bdb_state, DB_TXN *tid)
+static int close_dbs_txn(bdb_state_type *bdb_state, DB_TXN *txn)
 {
-    return close_dbs_int(bdb_state, tid, 0);
+    return close_dbs_int(bdb_state, txn, DB_NOSYNC);
+}
+
+static int close_dbs_flush(bdb_state_type *bdb_state)
+{
+    return close_dbs_int(bdb_state, NULL, 0);
 }
 
 int bdb_isopen(bdb_state_type *bdb_handle) { return bdb_handle->isopen; }
@@ -1525,14 +1552,15 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     if (is_real_netinfo(netinfo_ptr)) {
         /* get me off the network */
-        net_send_decom_all(netinfo_ptr, gbl_mynode);
-        osql_process_message_decom(gbl_mynode);
-
-        sleep(2);
-
-        net_exiting(netinfo_ptr);
-        osql_net_exiting();
-
+        if (gbl_libevent) {
+            stop_event_net();
+        } else {
+            net_send_decom_all(netinfo_ptr, gbl_myhostname);
+            osql_process_message_decom(gbl_myhostname);
+            sleep(2);
+            net_exiting(netinfo_ptr);
+            osql_net_exiting();
+        }
     }
     net_cleanup_netinfo(netinfo_ptr);
     osql_cleanup_netinfo();
@@ -1573,7 +1601,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
     /* close all database files.   doesn't fail. */
     if (!envonly) {
-        rc = close_dbs(bdb_state, tid);
+        rc = close_dbs(bdb_state);
     }
 
     /* now do it for all of our children */
@@ -1583,7 +1611,7 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 
         /* close all of our databases.  doesn't fail. */
         if (child) {
-            rc = close_dbs(child, tid);
+            rc = close_dbs(child);
             bdb_access_destroy(child);
         }
     }
@@ -1651,10 +1679,12 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     return 0;
 }
 
-int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
+int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans,
+                          tran_type *cltrans)
 {
     DB_TXN *tid = trans ? trans->tid : NULL;
-    int rc = close_dbs(bdb_state, tid);
+    DB_TXN *cltid = cltrans ? cltrans->tid : NULL;
+    int rc = close_dbs_txn(bdb_state, cltid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         return -1;
@@ -1677,7 +1707,7 @@ int bdb_handle_reset_tran(bdb_state_type *bdb_state, tran_type *trans)
 }
 int bdb_handle_reset(bdb_state_type *bdb_state)
 {
-    return bdb_handle_reset_tran(bdb_state, NULL);
+    return bdb_handle_reset_tran(bdb_state, NULL, NULL);
 }
 
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb)
@@ -2149,23 +2179,21 @@ static void set_dbenv_stuff(DB_ENV *dbenv, bdb_state_type *bdb_state)
 /* spawn off thread that does updbackup and autoanalyze */
 void create_udpbackup_analyze_thread(bdb_state_type *bdb_state)
 {
+    if (gbl_exit) return;
+#   if 0
+    if (gbl_libevent) {
+        add_timer_event(udp_backup, bdb_state, 500);
+        add_timer_event(auto_analyze, bdb_state, bdb_state->attr->chk_aa_time * 1000);
+        return;
+    }
+#   endif
     pthread_t thread_id;
     pthread_attr_t thd_attr;
-
-    if (gbl_exit) return;
-
     logmsg(LOGMSG_INFO, "starting udpbackup_and_autoanalyze_thd thread\n");
-
     Pthread_attr_init(&thd_attr);
     Pthread_attr_setstacksize(&thd_attr, 128 * 1024); /* 4K */
     Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-
-    int rc = pthread_create(&thread_id, &thd_attr,
-                            udpbackup_and_autoanalyze_thd, (void *)bdb_state);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "create_udpbackup_analyze_thread: pthread_create: %s", strerror(errno));
-        exit(1);
-    }
+    Pthread_create(&thread_id, &thd_attr, udpbackup_and_autoanalyze_thd, bdb_state);
 }
 
 int gbl_passed_repverify = 0;
@@ -3186,7 +3214,7 @@ done2:
 
     /* send our real seqnum to the master now.  */
 
-    if (bdb_state->repinfo->master_host != gbl_mynode &&
+    if (bdb_state->repinfo->master_host != gbl_myhostname &&
         net_count_nodes(bdb_state->repinfo->netinfo) > 1) {
         rc = send_myseqnum_to_master(bdb_state, 1);
         if (rc != 0) {
@@ -4090,6 +4118,8 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
+    assert_wrlock_schema_lk();
+
 deadlock_again:
     tmp_tid = 0;
 
@@ -4277,8 +4307,9 @@ deadlock_again:
             }
 
             /* Don't print this trace during schemachange */
-            extern int gbl_schema_change_in_progress;
-            if (!gbl_schema_change_in_progress) {
+            extern int get_schema_change_in_progress(const char *func,
+                                                     int line);
+            if (!get_schema_change_in_progress(__func__, __LINE__)) {
                 int calc_pgsz = calc_pagesize(bdb_state->lrl);
                 if (calc_pgsz > x) {
                     logmsg(LOGMSG_WARN, "%s: Warning: Table %s has non-optimal page size. "
@@ -4587,14 +4618,11 @@ deadlock_again:
     return 0;
 }
 
-static pthread_mutex_t open_dbs_mtx = PTHREAD_MUTEX_INITIALIZER;
 static int open_dbs_flags(bdb_state_type *bdb_state, int iammaster, int upgrade,
                           int create, DB_TXN *tid, uint32_t flags)
 {
     int rc = 0;
-    Pthread_mutex_lock(&open_dbs_mtx);
     rc = open_dbs_int(bdb_state, iammaster, upgrade, create, tid, flags);
-    Pthread_mutex_unlock(&open_dbs_mtx);
     return rc;
 }
 
@@ -4814,7 +4842,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
 
     if (!bdb_state->envonly) {
         /* close all of our databases.  doesn't fail */
-        rc = close_dbs(bdb_state, NULL);
+        rc = close_dbs(bdb_state);
 
         /* fprintf(stderr, "back from close_dbs\n"); */
 
@@ -4837,7 +4865,7 @@ static int bdb_reopen_int(bdb_state_type *bdb_state)
             child->read_write = 0;
 
             /* close all of our databases.  doesn't fail */
-            rc = close_dbs(child, NULL);
+            rc = close_dbs(child);
 
             /* fprintf(stderr, "back from close_dbs\n"); */
 
@@ -4892,8 +4920,8 @@ void bdb_setmaster(bdb_state_type *bdb_state, char *host)
     BDB_RELLOCK();
 
     if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host);
+        (bdb_state->callback->whoismaster_rtn)(
+            bdb_state, bdb_state->repinfo->master_host, 0);
 }
 
 static inline void bdb_set_read_only(bdb_state_type *bdb_state)
@@ -5070,8 +5098,8 @@ static int bdb_upgrade_int(bdb_state_type *bdb_state, uint32_t newgen,
 
     /* notify the user that we are the master */
     if (bdb_state->callback->whoismaster_rtn) {
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host);
+        (bdb_state->callback->whoismaster_rtn)(
+            bdb_state, bdb_state->repinfo->master_host, 1);
     }
 
     /* master cannot be incoherent, that makes no sense.
@@ -5120,7 +5148,7 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
     }
 
     if (op != UPGRADE) {
-        wait_for_sc_to_stop("downgrade");
+        wait_for_sc_to_stop("downgrade", __func__, __LINE__);
         bdb_set_read_only(bdb_state);
     }
 
@@ -5216,8 +5244,8 @@ static int bdb_upgrade_downgrade_reopen_wrap(bdb_state_type *bdb_state, int op,
 
     /* call the user with a NEWMASTER of -1 */
     if (bdb_state->callback->whoismaster_rtn)
-        (bdb_state->callback->whoismaster_rtn)(bdb_state,
-                                               bdb_state->repinfo->master_host);
+        (bdb_state->callback->whoismaster_rtn)(
+            bdb_state, bdb_state->repinfo->master_host, 1);
 
     allow_sc_to_run();
     BDB_RELLOCK();
@@ -5668,7 +5696,7 @@ static bdb_state_type *bdb_open_int(
         bzero(bdb_state->repinfo, sizeof(repinfo_type));
 
         /* record who we are */
-        bdb_state->repinfo->myhost = gbl_mynode;
+        bdb_state->repinfo->myhost = gbl_myhostname;
 
         /* we dont know who the master is yet */
         set_repinfo_master_host(bdb_state, db_eid_invalid, __func__, __LINE__);
@@ -5859,11 +5887,12 @@ static bdb_state_type *bdb_open_int(
 
         if (bdb_state->callback->whoismaster_rtn)
             (bdb_state->callback->whoismaster_rtn)(
-                bdb_state, bdb_state->repinfo->master_host);
+                bdb_state, bdb_state->repinfo->master_host, 1);
 
-        logmsg(LOGMSG_INFO, "@LSN %u:%u\n",
-               bdb_state->seqnum_info->seqnums[nodeix(gbl_mynode)].lsn.file,
-               bdb_state->seqnum_info->seqnums[nodeix(gbl_mynode)].lsn.offset);
+        logmsg(
+            LOGMSG_INFO, "@LSN %u:%u\n",
+            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.file,
+            bdb_state->seqnum_info->seqnums[nodeix(gbl_myhostname)].lsn.offset);
 
         BDB_RELLOCK();
     } else {
@@ -5934,6 +5963,7 @@ static bdb_state_type *bdb_open_int(
                 ctrace("bdb_open_int took last slot %d and extended\n",
                        parent->numchildren);
                 parent->numchildren++;
+                assert(parent->numchildren < MAX_CHILDREN);
             }
 
             bdb_unlock_children_lock(parent);
@@ -6710,7 +6740,7 @@ int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr)
         return 0;
 
     /* close doesn't fail */
-    rc = close_dbs(bdb_state, NULL);
+    rc = close_dbs(bdb_state);
 
     return rc;
 }
@@ -6774,7 +6804,7 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
         return 0;
 
     /* close doesn't fail */
-    close_dbs(bdb_state, tid);
+    close_dbs(bdb_state);
 
     /* now remove myself from my parents list of children */
 
@@ -6980,6 +7010,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
         ctrace("bdb_open_again_tran took last slot %d and extended\n",
                parent->numchildren);
         parent->numchildren++;
+        assert(parent->numchildren < MAX_CHILDREN);
     }
 
     bdb_unlock_children_lock(parent);
@@ -7094,16 +7125,18 @@ static size_t dirent_buf_size(const char *dir)
 
 uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
 {
-    char tmpname[PATH_MAX];
-    struct stat st;
-
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
 
-    snprintf(tmpname, sizeof(tmpname), "%s/%s.queuedb", bdb_state->dir,
-             bdb_state->name);
-    int rc = stat(tmpname, &st);
+    char filename[255]; // 255 = max allowed filename length
+    form_queuedb_name(bdb_state, NULL, 0, filename, sizeof(filename));
+
+    char fullpath[PATH_MAX];
+    bdb_trans(filename, fullpath);
+
+    struct stat st;
+    int rc = stat(fullpath, &st);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", tmpname, rc);
+        logmsg(LOGMSG_ERROR, "stat(%s) rc %d\n", fullpath, rc);
         return 0;
     }
     return st.st_size;
@@ -7433,7 +7466,7 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
     }
     bzero(&logent, sizeof(DBT));
     logent.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &current_lsn, &logent, DB_LAST);
+    rc = logc->get(logc, &current_lsn, &logent, DB_FIRST);
     if (rc) {
         logc->close(logc, 0);
         logmsg(LOGMSG_ERROR, "%s: logc->get last LSN rc %d\n", __func__, rc);
@@ -7842,8 +7875,14 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         /* We have to check new. prefix for schemachange first.
          * See NOTE in bdb_is_new_sc_file()
          */
-        rc = bdb_is_new_sc_file(bdb_state, tran, bdb_state->name, file_version,
-                                bdberr);
+        /* Core is showing bdb_is_new_sc_file has tblname 0xffffffffffffffff ..
+         * maybe this is a race? */
+
+        if (bdb_state->name == (char *)0xffffffffffffffff)
+            abort();
+
+        rc = bdb_is_new_sc_file(bdb_state, tran, (const char *)bdb_state->name,
+                                file_version, bdberr);
         if (rc == 1) {
             found_in_llmeta = 1;
             rc = 0;
@@ -8484,4 +8523,19 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
     closedir(dirp);
     free(buf);
     return 0;
+}
+
+void bdb_assert_notran(bdb_state_type *bdb_state)
+{
+    bdb_state->dbenv->txn_assert_notran(bdb_state->dbenv);
+}
+
+int bdb_debug_log(bdb_state_type *bdb_state, tran_type *trans, int inop)
+{
+    DB_TXN *tid = trans ? trans->tid : NULL;
+    int endianized = htonl(inop);
+    DBT op = {0};
+    op.size = sizeof(int);
+    op.data = &endianized;
+    return bdb_state->dbenv->debug_log(bdb_state->dbenv, tid, &op, NULL, NULL);
 }

@@ -19,23 +19,34 @@
 #include <string.h>
 #include <stddef.h>
 
+#include "reqlog.h"
 #include "logmsg.h"
 #include "md5.h"
 #include "sql.h"
 #include "util.h"
 #include "tohex.h"
 
-hash_t *gbl_fingerprint_hash = NULL;
+extern int gbl_old_column_names;
+
+hash_t *gbl_fingerprint_hash;
 pthread_mutex_t gbl_fingerprint_hash_mu = PTHREAD_MUTEX_INITIALIZER;
 
 extern int gbl_fingerprint_queries;
 extern int gbl_verbose_normalized_queries;
 int gbl_fingerprint_max_queries = 1000;
 
-static int free_fingerprint(void *obj, void *arg){
+static int free_fingerprint(void *obj, void *arg)
+{
     struct fingerprint_track *t = (struct fingerprint_track *)obj;
     if (t != NULL) {
         free(t->zNormSql);
+        /* Free cached column names */
+        if (t->cachedColCount > 0) {
+            for (int i = 0; i < t->cachedColCount; i++) {
+                free(t->cachedColNames[i]);
+            }
+            free(t->cachedColNames);
+        }
         free(t);
     }
     return 0;
@@ -44,6 +55,10 @@ static int free_fingerprint(void *obj, void *arg){
 int clear_fingerprints(void) {
     int count = 0;
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    if (!gbl_fingerprint_hash) {
+        Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+        return count;
+    }
     hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
     hash_for(gbl_fingerprint_hash, free_fingerprint, NULL);
     hash_clear(gbl_fingerprint_hash);
@@ -68,20 +83,26 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
     MD5Final(fingerprint, &ctx);
 }
 
-void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                     const char *zSql, const char *zNormSql, int64_t cost,
                      int64_t time, int64_t prepTime, int64_t nrows,
-                     struct reqlogger *logger, unsigned char *fingerprint_out) {
-    assert(zSql);
+                     struct reqlogger *logger, unsigned char *fingerprint_out)
+{
     size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
+
+    assert(zSql);
+    assert(zNormSql);
+
+    /* Calculate fingerprint */
     calc_fingerprint(zNormSql, &nNormSql, fingerprint);
+
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
     struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
     if (t == NULL) {
         /* make sure we haven't generated an unreasonable number of these */
-        int nents;
-        hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &nents, NULL, NULL);
+        int nents = hash_get_num_entries(gbl_fingerprint_hash);
         if (nents >= gbl_fingerprint_max_queries) {
             static int complain_once = 1;
             if (complain_once) {
@@ -119,6 +140,32 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                    fp, zSql, t->zNormSql);
         }
+
+        if (gbl_old_column_names && !stmt_do_column_names_match(stmt)) {
+            logmsg(LOGMSG_USER,
+                   "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
+                   "column names stable, fp:%s "
+                   "(https://www.sqlite.org/c3ref/column_name.html)\n",
+                   fp);
+
+            /* Also cache the old column names, stored in the stmt, alongside
+             * the fingerpint. */
+            t->cachedColCount = stmt_cached_column_count(stmt);
+            t->cachedColNames = calloc(sizeof(char *), t->cachedColCount);
+            if (t->cachedColNames == NULL) {
+                logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__,
+                       __LINE__);
+                t->cachedColCount = 0;
+            } else {
+                for (int i = 0; i < t->cachedColCount; i++) {
+                    t->cachedColNames[i] =
+                        strdup(stmt_cached_column_name(stmt, i));
+                }
+            }
+        } else {
+            t->cachedColNames = NULL;
+            t->cachedColCount = 0;
+        }
     } else {
         t->count++;
         t->cost += cost;
@@ -130,12 +177,13 @@ void add_fingerprint(const char *zSql, const char *zNormSql, int64_t cost,
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     }
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+
     if (logger != NULL) {
         reqlog_set_fingerprint(
             logger, (const char*)fingerprint, FINGERPRINTSZ
         );
     }
-    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 done:
     if (fingerprint_out)
         memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);

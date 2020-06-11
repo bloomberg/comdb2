@@ -132,16 +132,21 @@ cleanup_cluster() {
 
 flush_node() {
     local node=$1
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")'
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
-    sleep 1
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("stat")'
+    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")'
 }
 
 
 unsetup_db() {
     if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
         echo "Unsetup deferred"
+        exit 0
+    fi
+
+    if [[ "$NOKILL_ON_FAILURE" -eq 1 && "$successful" -ne "1" ]]; then
+        echo "Not killing on failed test"
         exit 0
     fi
 

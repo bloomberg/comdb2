@@ -39,6 +39,8 @@
 
 #include <assert.h>
 
+#include <compile_time_assert.h>
+
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
@@ -330,7 +332,8 @@ typedef int (*GETROOMFP)(bdb_state_type *bdb_handle, const char *host);
   updates directed elesewhere if you learned of a new master.
   do NOT call back into the bdb library from this routine.
 */
-typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host);
+typedef int (*WHOISMASTERFP)(bdb_state_type *bdb_handle, char *host,
+                             int assert_sc_clear);
 
 /*
   pass in a routine that will be called when the replication
@@ -517,7 +520,7 @@ bdb_state_type *bdb_open_env(const char name[], const char dir[],
 
 int bdb_set_all_contexts(bdb_state_type *bdb_state, int *bdberr);
 int bdb_handle_reset(bdb_state_type *);
-int bdb_handle_reset_tran(bdb_state_type *, tran_type *);
+int bdb_handle_reset_tran(bdb_state_type *, tran_type *, tran_type *);
 int bdb_handle_dbp_add_hash(bdb_state_type *bdb_state, int szkb);
 int bdb_handle_dbp_drop_hash(bdb_state_type *bdb_state);
 int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state);
@@ -820,6 +823,9 @@ int bdb_lite_exact_fetch(bdb_state_type *bdb_handle, void *key, void *fnddta,
                          int maxlen, int *fndlen, int *bdberr);
 int bdb_lite_exact_fetch_alloc(bdb_state_type *bdb_handle, void *key,
                                void **fnddta, int *fndlen, int *bdberr);
+int bdb_lite_exact_fetch_alloc_tran(bdb_state_type *bdb_handle, tran_type *tran,
+                                    void *key, void **fnddta, int *fndlen,
+                                    int *bdberr);
 int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                               void *key, void *fnddta, int maxlen, int *fndlen,
                               int *bdberr);
@@ -852,10 +858,12 @@ enum { BDBQUEUE_MAX_CONSUMERS = 32 };
 
 /* 16 byte pointer to an item in an ondisk queue. */
 struct bdb_queue_cursor {
-    bbuint32_t genid[2]; /* genid of item */
-    bbuint32_t recno;    /* recno of first fragment of item */
-    bbuint32_t reserved; /* must be zero */
+    uint64_t genid;    /* genid of item */
+    uint32_t recno;    /* recno of first fragment of item */
+    uint32_t reserved; /* must be zero */
 };
+
+BB_COMPILE_TIME_ASSERT(queue_cursor_size, sizeof(struct bdb_queue_cursor) == 16);
 
 /* mark a consumer as active or inactive.  this grabs the bdb write lock. */
 int bdb_queue_consumer(bdb_state_type *bdb_state, int consumer, int active,
@@ -878,14 +886,15 @@ int bdb_queue_consume_goose(bdb_state_type *bdb_state, tran_type *tran,
  * found result (passed in through prevfnd).  On a successful find *fnd will
  * be set to point to memory that the caller must free.  The actual item data
  * will be at ((const char *)*fnd) + *fnddtaoff). */
+struct bdb_queue_found;
 int bdb_queue_get(bdb_state_type *bdb_state, int consumer,
-                  const struct bdb_queue_cursor *prevcursor, void **fnd,
-                  size_t *fnddtalen, size_t *fnddtaoff,
-                  struct bdb_queue_cursor *fndcursor, unsigned int *epoch,
-                  int *bdberr);
+                  const struct bdb_queue_cursor *prevcursor,
+                  struct bdb_queue_found **fnd, size_t *fnddtalen,
+                  size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                  long long *seq, unsigned int *epoch, int *bdberr);
 
 /* Get the genid of a queue item that was retrieved by bdb_queue_get() */
-unsigned long long bdb_queue_item_genid(const void *dta);
+unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta);
 
 /* Call a callback function for each item on the queue.  The parameters to the
  * callback are: consumer number, item length, epoch time it was added,
@@ -901,8 +910,18 @@ enum {
     BDB_QUEUE_WALK_FIRST_ONLY = 2,
     BDB_QUEUE_WALK_RESTART = 4
 };
+
+typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
+                                          unsigned int epoch,
+                                          unsigned int depth, void *userptr);
+
+int bdb_queuedb_stats(bdb_state_type *bdb_state,
+                      bdb_queue_stats_callback_t callback, void *userptr,
+                      int *bdberr);
+
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
+
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
                    bdb_queue_walk_callback_t callback, void *userptr,
                    int *bdberr);
@@ -911,8 +930,9 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);
 
 /* consume a queue item previously found by bdb_queue_get. */
+struct bdb_queue_found;
 int bdb_queue_consume(bdb_state_type *bdb_state, tran_type *tran, int consumer,
-                      const void *prevfnd, int *bdberr);
+                      const struct bdb_queue_found *prevfnd, int *bdberr);
 
 /* work out the best page size to use for the given average item size */
 int bdb_queue_best_pagesize(int avg_item_sz);
@@ -1087,6 +1107,9 @@ void bdb_set_blobstripe_genid(bdb_state_type *bdb_state,
 /* set various options for the ondisk header. */
 void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,
                          int blob_compression);
+
+void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
+                               int compression, int persistseq);
 
 void bdb_get_compr_flags(bdb_state_type *bdb_state, int *odh, int *compr,
                          int *blob_compr);
@@ -1507,6 +1530,7 @@ typedef struct {
 } llmeta_sc_status_data;
 
 int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
+                                 uint64_t seed, uint64_t converted,
                                  void *schema_change_data,
                                  size_t schema_change_data_len, int status,
                                  const char *errstr, int *bdberr);
@@ -1514,7 +1538,33 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
 int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data **status_out,
                                  void ***sc_data_out, int *num, int *bdberr);
 
-int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
+typedef struct {
+    uint64_t start;
+    uint64_t last;
+    uint64_t converted;
+    int status;
+    int type; // optional
+    char errstr[LLMETA_SCERR_LEN];
+    int sc_data_len;   // extra data that we might want to store
+} llmeta_sc_hist_data; // this is the data stored in llmeta for sc_history
+
+typedef struct {
+    uint64_t seed;
+    uint64_t start;
+    uint64_t last;
+    uint64_t converted;
+    char tablename[MAXTABLELEN];
+    int status;
+    char errstr[LLMETA_SCERR_LEN];
+} sc_hist_row; // this is content of row in comdb2_sc_history
+
+int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
+                              int *bdberr, const char *tablename);
+
+int bdb_del_schema_change_history(tran_type *t, const char *tablename,
+                                  uint64_t seed);
+
+int bdb_set_high_genid(tran_type *input_trans, const char *tablename,
                        unsigned long long genid, int *bdberr);
 int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
                               int stripe, unsigned long long genid,
@@ -1822,6 +1872,9 @@ int bdb_master_should_reject(bdb_state_type *bdb_state);
 
 void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff);
 
+int bdb_berkdb_get_attr(bdb_state_type *bdb_state, char *attr, char **value,
+                        int *ivalue);
+
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,
                         int ivalue);
 int bdb_berkdb_set_attr_after_open(bdb_attr_type *bdb_attr, char *attr,
@@ -1998,8 +2051,8 @@ void bdb_send_analysed_table_to_master(bdb_state_type *bdb_state, char *table);
 int bdb_llmeta_get_queues(char **queue_names, size_t max_queues,
                           int *fnd_queues, int *bdberr);
 /* get info for a queue */
-int bdb_llmeta_get_queue(char *qname, char **config, int *ndests, char ***dests,
-                         int *bdberr);
+int bdb_llmeta_get_queue(tran_type *tran, char *qname, char **config,
+                         int *ndests, char ***dests, int *bdberr);
 
 /* manipulate queues */
 int bdb_llmeta_add_queue(bdb_state_type *bdb_state, tran_type *tran,
@@ -2071,13 +2124,15 @@ void send_newmaster(bdb_state_type *bdb_state, int online);
 
 typedef struct bias_info bias_info;
 typedef int (*bias_cmp_t)(bias_info *, void *found);
+struct BtCursor;
+struct UnpackedRecord;
 struct bias_info {
     int bias;
     int dirLeft;
     int truncated;
     bias_cmp_t cmp;
-    BtCursor *cur;
-    UnpackedRecord *unpacked;
+    struct BtCursor *cur;
+    struct UnpackedRecord *unpacked;
 };
 
 void bdb_set_fld_hints(bdb_state_type *, uint16_t *);
@@ -2104,9 +2159,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr);
 
 /* Return per-node replication wait and net usage. */
-#ifndef HOST_NAME_MAX
-#define HOST_NAME_MAX 64
-#endif
+#define LSN_TEXT_WIDTH 22  /* max possible lsn is 4294967296:4294967296 */
 typedef struct repl_wait_and_net_use {
     char host[HOST_NAME_MAX];
     unsigned long long bytes_written;
@@ -2117,6 +2170,8 @@ typedef struct repl_wait_and_net_use {
     double max_wait_over_10secs;
     double avg_wait_over_1min;
     double max_wait_over_1min;
+    char lsn_text[LSN_TEXT_WIDTH];
+    uint64_t lsn_bytes_behind;
 } repl_wait_and_net_use_t;
 repl_wait_and_net_use_t *bdb_get_repl_wait_and_net_stats(bdb_state_type *bdb_state, int *pnnodes);
 
@@ -2136,7 +2191,7 @@ int bdb_clear_mintruncate_list(bdb_state_type *bdb_state);
 int bdb_build_mintruncate_list(bdb_state_type *bdb_state);
 int bdb_print_mintruncate_min(bdb_state_type *bdb_state);
 
-void wait_for_sc_to_stop(const char *operation);
+void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 void allow_sc_to_run(void);
 
 int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);
@@ -2157,4 +2212,15 @@ int bdb_pack_heap(bdb_state_type *bdb_state, void *in, size_t inlen, void **out,
  * Otherwise unpack the payload into heap memory. */
 int bdb_unpack_heap(bdb_state_type *bdb_state, void *in, size_t inlen,
                     void **out, size_t *outlen, void **freeptr);
+/* Abort if this thread has an open transaction */
+void bdb_assert_notran(bdb_state_type *bdb_state);
+
+int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
+
+/* Return 1 if this node is master, 0 otherwise */
+int bdb_iam_master(bdb_state_type *bdb_state);
+
+void inc_dbopen_gen(void);
+int32_t get_dbopen_gen(void);
+
 #endif

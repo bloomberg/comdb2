@@ -270,6 +270,7 @@ static int comdb2ma_destroy_int(comdb2ma cm);
 
 #ifdef PER_THREAD_MALLOC
 __thread const char *thread_type_key;
+static __thread comdb2ma *t_zone;
 static comdb2ma get_area(int indx);
 static void destroy_zone(void *);
 #else
@@ -326,7 +327,7 @@ static void ma_stats_dashes(int length, int toctrc);
 /* print table head. if `percentage' is no-zero, a '%' column head will be added
  */
 static int ma_stats_head(size_t maxnamesz, size_t maxscopesz, int columns,
-                         int verbose, int hr, int percentage, int toctrc);
+                         int verbose, int percentage, int toctrc);
 
 /* default stats display function on `cm'.
    this will be overridden if a stats callback has been defined through
@@ -1059,7 +1060,7 @@ int comdb2_malloc_stats(comdb2ma cm, int verbose, int hr, int toctrc)
             (*(cm->print_stats_fn))(&info, verbose, hr, cm->arg);
         } else {
             ma_stats_head(cm->len, strlen(cm->thr_type), COMDB2MA_GRP_NONE,
-                          verbose, hr, 0, toctrc);
+                          verbose, 0, toctrc);
             ma_stats_dashes(ma_stats_int(cm->len, strlen(cm->thr_type),
                                          COMDB2MA_GRP_NONE, cm, verbose, hr,
                                          NULL, toctrc),
@@ -1295,13 +1296,14 @@ static comdb2ma get_area(int indx)
         return COMDB2_STATIC_MAS[indx];
 #endif /* !THREAD_DIAGNOSIS */
 
-    zone = (comdb2ma *)pthread_getspecific(root.zone);
+    zone = t_zone;
     if (zone == NULL) {
         if (COMDB2MA_LOCK(&root) == 0) {
             zone = mspace_calloc(root.m, COMDB2MA_COUNT, sizeof(comdb2ma));
             COMDB2MA_UNLOCK(&root);
         }
         Pthread_setspecific(root.zone, (void *)zone);
+        t_zone = zone;
     }
 
     if (zone[indx] == NULL) {
@@ -1619,7 +1621,7 @@ static void ma_pair_dump(pair_t *pairs, size_t len, int columns, int verbose,
             maxscopesz = strlen(pairs[idx].cm->thr_type);
     }
 
-    np = ma_stats_head(maxnamesz, maxscopesz, columns, verbose, hr, 1, toctrc);
+    np = ma_stats_head(maxnamesz, maxscopesz, columns, verbose, 1, toctrc);
     for (idx = 0; idx != len; ++idx) {
         curpos = pairs[idx].cm;
         if (COMDB2MA_LOCK(curpos) == 0) {
@@ -1857,7 +1859,7 @@ static void ma_stats_dashes(int length, int toctrc)
 }
 
 static int ma_stats_head(size_t maxnamesz, size_t maxscopesz, int columns,
-                         int verbose, int hr, int percentage, int toctrc)
+                         int verbose, int percentage, int toctrc)
 {
     char head[256];
     size_t len = 256, ofs = 0;

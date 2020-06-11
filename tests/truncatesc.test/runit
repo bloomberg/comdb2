@@ -42,6 +42,7 @@ function failexit
         kill -9 $(cat $repdir/${repname}.pid)
     fi
     [[ "$reader_pid" -gt 0 ]] && kill -9 $reader_pid
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     exit -1
 }
 
@@ -163,6 +164,9 @@ function get_current_lsn
     typeset func="get_current_lsn"
     typeset tries=$total_tries
     repeat_command "exec procedure sys.cmd.send(\"flush\")" "flush" "tabs" >/dev/null
+    sleep $sleeptime
+    repeat_command "exec procedure sys.cmd.send(\"flush\")" "flush" "tabs" >/dev/null
+    sleep $sleeptime
     repeat_command "select lsn from comdb2_transaction_logs(NULL, NULL, 4) limit 1" "get_current_lsn" "tabs"
 }
 
@@ -204,7 +208,7 @@ function get_comdb2_columns_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_comdb2_columns_rep"
-    r=$($CDB2SQL_EXE --tabs $repname --host localhost "select * from comdb2_columns")
+    r=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $repname --host localhost "select * from comdb2_columns")
     echo "$r"
 }
 
@@ -304,7 +308,7 @@ function get_dtastripe_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_dtastripe_rep"
-    r=$($CDB2SQL_EXE -tabs $repname --host localhost "select value from comdb2_tunables where name='dtastripe'")
+    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "select value from comdb2_tunables where name='dtastripe'")
     echo "$r"
 }
 
@@ -346,7 +350,7 @@ function get_rowlocks_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_rowlocks_rep"
-    r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send(\"stat\")" | egrep "rowlocks is")
+    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "exec procedure sys.cmd.send(\"stat\")" | egrep "rowlocks is")
     echo "$r"
 }
 
@@ -387,7 +391,7 @@ function get_time_partitions_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_time_partitions_rep"
-    r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send('partitions')")
+    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "exec procedure sys.cmd.send('partitions')")
     echo "$r"
 }
 
@@ -430,7 +434,7 @@ function get_genid_format_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="get_genid_format_rep"
-    r=$($CDB2SQL_EXE -tabs $repname --host localhost "exec procedure sys.cmd.send(\"bdb bdbstate\")" | egrep genid_format | egrep -v child)
+    r=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "exec procedure sys.cmd.send(\"bdb bdbstate\")" | egrep genid_format | egrep -v child)
     echo "$r"
 }
 
@@ -485,13 +489,13 @@ function assert_notable
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         tries=$total_tries
-        rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+        rep=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
         r=$?
         while [[ $r == 0 ]]; do
             let tries=tries-1
             [[ "$tries" == 0 ]] && failexit $func "table $tbl in rep still exists"
             sleep 1
-            rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+            rep=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
             r=$?
         done
     fi
@@ -543,7 +547,7 @@ function select_json_extract_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_json_extract_rep"
-    r=$($CDB2SQL_EXE $repname --host localhost "select json_extract(str, 'i') as i from strings" 2>/dev/null)
+    r=$($CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "select json_extract(str, 'i') as i from strings" 2>/dev/null)
     echo "$r"
 }
 
@@ -586,7 +590,7 @@ function select_myavg_rep
     [[ $debug == "1" ]] && set -x
     typeset func="select_myavg_rep"
     typeset tries=$total_tries
-    r=$($CDB2SQL_EXE $repname --host localhost "select myavg(i) from nums" 2>/dev/null)
+    r=$($CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "select myavg(i) from nums" 2>/dev/null)
     echo "$r"
 }
 
@@ -630,7 +634,7 @@ function select_sp_rep
     [[ $debug == "1" ]] && set -x
     typeset func="select_sp_rep"
     typeset tries=$total_tries
-    r=$($CDB2SQL_EXE $repname --host localhost "select * from comdb2_procedures")
+    r=$($CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "select * from comdb2_procedures")
     echo "$r"
 }
 
@@ -673,7 +677,7 @@ function select_t1_rep
     [[ $debug == "1" ]] && set -x
     typeset func="select_t1_rep"
     typeset tries=$total_tries
-    r=$($CDB2SQL_EXE $repname --host localhost "exec procedure select_t1()")
+    r=$($CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "exec procedure select_t1()")
     echo "$r"
 }
 
@@ -695,7 +699,19 @@ function assert_select_t1
     typeset curr_rn=$(select_t1)
     while [[ "$prev_rn" != "$curr_rn" ]] ; do 
         let tries=tries-1
-        [[ "$tries" == 0 ]] && failexit $func "return_number sp changed"
+        if [[ "$tries" == 0 ]] ; then
+            echo "return_number changed:"
+            echo "$prev_rn"
+            echo "$curr_rn"
+            if [[ -n "$CLUSTER" ]]; then
+                for node in $CLUSTER ; do
+                    echo "Node $node:"
+                    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $node "exec procedure select_t1()"
+                    echo " "
+                done
+            fi
+            failexit $func "return_number sp changed"
+        fi
         sleep 1
         curr_rn=$(select_t1)
     done
@@ -721,7 +737,7 @@ function return_number_rep
     [[ $debug == "1" ]] && set -x
     typeset func="return_number_rep"
     typeset tries=$total_tries
-    r=$($CDB2SQL_EXE $repname --host localhost "exec procedure return_number()")
+    r=$($CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "exec procedure return_number()")
     echo "$r"
 }
 
@@ -763,9 +779,9 @@ function select_all_rep
 {
     [[ $debug == "1" ]] && set -x
     typeset func="select_all_rep"
-    $CDB2SQL_EXE $repname --host localhost "select * from t1" 2>/dev/null
-    $CDB2SQL_EXE $repname --host localhost "select * from t2" 2>/dev/null
-    $CDB2SQL_EXE $repname --host localhost "select * from t3" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "select * from t1" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "select * from t2" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $repname --host localhost "select * from t3" 2>/dev/null
 }
 
 function select_all_int
@@ -850,12 +866,12 @@ function assert_count
     if [[ "$physrep" == 1 ]]; then
         sleep $repsleep
         typeset tries=$total_tries
-        typeset rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+        typeset rep=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
         while [[ "$rep" != "$cnt" ]] ; do 
             let tries=tries-1
             [[ "$tries" == 0 ]] && failexit $func "count for $tbl is not $cnt in rep"
             sleep 1
-            rep=$($CDB2SQL_EXE -tabs $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
+            rep=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $repname --host localhost "select count(*) from $tbl" 2>/dev/null)
         done
     fi
 }

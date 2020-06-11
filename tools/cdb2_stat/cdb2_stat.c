@@ -1340,9 +1340,27 @@ argcheck(arg, ok_args)
 int
 cdb2_stat_usage()
 {
-	fprintf(stderr, "%s\n\t%s\n",
-	    "usage: cdb2_stat [-celmNrtVZ] [-C Aclmop]",
-	    "[-d file [-f] [-s database]] [-h home] [-M Ahlm] [-P /path/to/password]");
+	fprintf(stderr,
+	    "usage: cdb2_stat [-celmNrtVZ] [-C Aclmop]\n\t"
+	    "[-d file [-f] [-s database]] [-h home] [-M Ahlm] [-P /path/to/password]\n"
+	    " -C    - display lock stats with options\n"
+	    " -c    - display lock stats\n"
+	    " -d    - file to open\n"
+	    " -e    - display environment stats\n"
+	    " -f    - fast stats\n"
+	    " -h    - home directory for database file\n"
+	    " -l    - log stats\n"
+	    " -M    - display mpool stats with options\n"
+	    " -M    - display mpool stats\n"
+	    " -N    - no locking\n"
+	    " -P    - password file for decryption\n"
+	    " -r    - display replication stats\n"
+	    " -s    - subdb (unused)\n"
+	    " -t    - display transaction stats\n"
+	    " -V    - version info\n"
+	    " -Z    - clear stats\n"
+	    " ?     - this usage info\n"
+        );
 	return (EXIT_FAILURE);
 }
 

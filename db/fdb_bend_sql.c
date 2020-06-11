@@ -56,6 +56,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
     clnt->fdb_state.version = version;
     clnt->fdb_state.flags = flags;
     clnt->osql.timings.query_received = osql_log_time();
+    clnt->queue_me = 1;
 
     /*
        dispatch the sql
@@ -331,6 +332,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     if (!clnt) {
         return -1;
     }
+    thd->clnt = clnt;
 
     init_sqlclntstate(clnt, tid, isuuid);
 

@@ -51,7 +51,7 @@
 #include <uuid/uuid.h>
 
 #include "comdb2.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "views.h"
 #include "comdb2uuid.h"
 
@@ -253,7 +253,7 @@ timepart_view_t *timepart_deserialize_view(const char *str, struct errstat *err)
     }
 
     /* parse string */
-    rc = cson_parse_string(&cson_view, str, strlen(str), NULL, NULL);
+    rc = cson_parse_string(&cson_view, str, strlen(str));
     if (rc) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
@@ -302,7 +302,7 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err)
     }
 
     /* parse string */
-    rc = cson_parse_string(&cson, str, strlen(str), NULL, NULL);
+    rc = cson_parse_string(&cson, str, strlen(str));
     if (rc) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
@@ -602,7 +602,7 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
     int rc;
 
     /* string to conversion */
-    rc = cson_parse_string(&cson_cmd, cmd, strlen(cmd), NULL, NULL);
+    rc = cson_parse_string(&cson_cmd, cmd, strlen(cmd));
     if (rc) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Invalid JSON string \"%s\":\n\"%s\"\n", cson_rc_string(rc),
@@ -1284,7 +1284,7 @@ static timepart_views_t *_create_all_views(const char *views_str)
     int rc;
     struct errstat xerr = {0};
 
-    rc = cson_parse_string(&cson, views_str, strlen(views_str), NULL, NULL);
+    rc = cson_parse_string(&cson, views_str, strlen(views_str));
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: views incorrect llmeta format", __func__);
         return NULL;

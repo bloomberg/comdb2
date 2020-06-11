@@ -35,6 +35,7 @@
 #include "cron_systable.h"
 #include "timepart_systable.h"
 #include "logical_cron.h"
+#include "sc_util.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -331,7 +332,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     rc = _next_shard_exists(view, next_existing_shard,
                             sizeof(next_existing_shard));
     if (rc == VIEW_ERR_EXIST) {
-        errstat_set_strf(err, "Next shard %s verlaps existing table for %s",
+        errstat_set_strf(err, "Next shard %s overlaps existing table for %s",
                          next_existing_shard, view->name);
         errstat_set_rc(err, rc);
         goto done;
@@ -385,7 +386,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
        NOTE:
        As it is now, changing partitions doesn't update any global counters:
-          - gbl_dbopen_gen
+          - inc_dbopen_gen()
           - gbl_analyze_gen
           - gbl_views_gen (at least this one should get updated)
 
@@ -936,7 +937,7 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
+    if (run && (thedb->master != gbl_myhostname || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -982,7 +983,9 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 done:
     if (run) {
         Pthread_rwlock_unlock(&views_lk);
-        unlock_schema_lk();
+        /* commit_adaptive unlocks the schema-lk */
+        if (rc != VIEW_NOERR)
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -1091,7 +1094,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
+    if (run && (thedb->master != gbl_myhostname || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -1205,7 +1208,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
     }
 
     run = (!gbl_exit);
-    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
+    if (run && (thedb->master != gbl_myhostname || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -1221,7 +1224,8 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
         }
 
         Pthread_rwlock_unlock(&views_lk);
-        unlock_schema_lk();
+        if (rc != VIEW_NOERR)
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -1917,7 +1921,7 @@ int views_cron_restart(timepart_views_t *views)
        if this is the case, abort the schema change */
     rc = pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
-        if (gbl_schema_change_in_progress) {
+        if (get_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "
                                  "partition: aborting\n");
             gbl_sc_abort = 1;
@@ -1931,7 +1935,7 @@ int views_cron_restart(timepart_views_t *views)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     BDB_READLOCK(__func__);
 
-    if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
+    if (thedb->master == gbl_myhostname && !gbl_is_physical_replicant) {
         /* queue all the events required for this */
         for(i=0;i<views->nviews; i++)
         {

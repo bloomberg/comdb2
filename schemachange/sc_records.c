@@ -32,7 +32,9 @@
 #include "bdb_osql_log_rec.h"
 
 #include "comdb2_atomic.h"
+#include "reqlog.h"
 #include "logmsg.h"
+#include "debug_switches.h"
 
 int gbl_logical_live_sc = 0;
 
@@ -371,7 +373,7 @@ static void delay_sc_if_needed(struct convert_record_data *data,
 
     /* wait for replication on what we just committed */
     if ((data->nrecs % data->num_records_per_trans) == 0) {
-        if ((rc = trans_wait_for_seqnum(&data->iq, gbl_mynode, ss)) != 0) {
+        if ((rc = trans_wait_for_seqnum(&data->iq, gbl_myhostname, ss)) != 0) {
             sc_errf(data->s, "delay_sc_if_needed: error waiting for "
                              "replication rcode %d\n",
                     rc);
@@ -697,6 +699,11 @@ static int convert_record(struct convert_record_data *data)
             // AZ: determine what locks we hold at this time
             // bdb_dump_active_locks(data->to->handle, stdout);
             data->sc_genids[data->stripe] = -1ULL;
+
+            if (debug_switch_scconvert_finish_delay()) {
+                logmsg(LOGMSG_WARN, "scgenid reset. sleeping 10 sec.\n");
+                sleep(10);
+            }
 
             int usellmeta = 0;
             if (!data->to->plan) {
@@ -1079,7 +1086,7 @@ err:
     if (data->live) {
         rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
     } else {
-        rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+        rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
     }
 
     data->trans = NULL;
@@ -1178,7 +1185,7 @@ void *convert_records_thd(struct convert_record_data *data)
         if (data->cmembers->is_decrease_thrds)
             release_rebuild_thr(&data->cmembers->thrcount);
 
-        if (stopsc) { // set from downgrade
+        if (get_stopsc(__func__, __LINE__)) { // set from downgrade
             data->outrc = SC_MASTER_DOWNGRADE;
             goto cleanup_no_msg;
         }
@@ -1201,7 +1208,7 @@ void *convert_records_thd(struct convert_record_data *data)
         /* can only get here for non-live schema change, shouldn't ever get here
          * now since bulk transactions have been disabled in all schema changes
          */
-        rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+        rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
         data->trans = NULL;
         if (rc) {
             sc_errf(data->s, "convert_records_thd: trans_commit failed due "
@@ -1259,6 +1266,9 @@ static void stop_sc_redo_wait(bdb_state_type *bdb_state,
     Pthread_cond_signal(&bdb_state->sc_redo_wait);
     Pthread_mutex_unlock(&bdb_state->sc_redo_lk);
 }
+
+int gbl_sc_pause_at_end = 0;
+int gbl_sc_is_at_end = 0;
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,
                         unsigned long long *sc_genids,
@@ -1541,6 +1551,16 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
     convert_record_data_cleanup(&data);
 
+    gbl_sc_is_at_end = 1;
+
+    while (gbl_sc_pause_at_end) {
+        logmsg(LOGMSG_USER, "%s pausing after converted all threads\n",
+               __func__);
+        sleep(1);
+    }
+
+    gbl_sc_is_at_end = 0;
+
     if (data.cmembers) {
         free(data.cmembers);
         data.cmembers = NULL;
@@ -1716,7 +1736,8 @@ static int upgrade_records(struct convert_record_data *data)
 
         // txn contains enough records, wait for replicants
         if ((data->nrecs % data->num_records_per_trans) == 0) {
-            if ((rc = trans_wait_for_seqnum(&data->iq, gbl_mynode, &ss)) != 0) {
+            if ((rc = trans_wait_for_seqnum(&data->iq, gbl_myhostname, &ss)) !=
+                0) {
                 sc_errf(data->s, "%s: error waiting for "
                                  "replication rcode %d\n",
                         __func__, rc);
@@ -1835,7 +1856,7 @@ static void *upgrade_records_thd(void *vdata)
     }
 
     while ((rc = upgrade_records(data)) > 0) {
-        if (stopsc) {
+        if (get_stopsc(__func__, __LINE__)) {
             if (data->isThread)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
             return NULL;
@@ -3041,7 +3062,7 @@ done:
         } else if (data->live)
             rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
         else
-            rc = trans_commit(&data->iq, data->trans, gbl_mynode);
+            rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
     }
 
     reqlog_end_request(data->iq.reqlogger, 0, __func__, __LINE__);
@@ -3071,7 +3092,7 @@ static struct sc_redo_lsn *get_next_redo_lsn(bdb_state_type *bdb_state,
 
     Pthread_mutex_lock(mtx);
 
-    if (s->sc_convert_done[MAXDTASTRIPE]) {
+    if (!s->sc_convert_done || s->sc_convert_done[MAXDTASTRIPE]) {
         /* all converter threads have finished */
         wait = 0;
     }
@@ -3205,7 +3226,7 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     s->tablename);
             goto cleanup;
         }
-        if (stopsc) {
+        if (get_stopsc(__func__, __LINE__)) {
             sc_errf(s, "[%s] %s stopping due to master swings\n", s->tablename,
                     __func__);
             goto cleanup;

@@ -62,8 +62,6 @@ typedef struct trigger_reg {
     // hostname[]
 } trigger_reg_t;
 
-extern int gbl_queuedb_timeout_sec;
-
 struct consumer;
 enum consumer_t dbqueue_consumer_type(struct consumer *c);
 int trigger_register(trigger_reg_t *);
@@ -82,7 +80,7 @@ void trigger_reg_to_cpu(trigger_reg_t *);
 #define trigger_hostname(t) ((t)->spname + (t)->spname_len + 1)
 
 #define trigger_reg_sz(sp_name)                                                \
-    sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_mynode) + 1
+    sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_myhostname) + 1
 
 #define trigger_reg_init(dest, sp_name)                                        \
     do {                                                                       \
@@ -92,7 +90,7 @@ void trigger_reg_to_cpu(trigger_reg_t *);
         dest->trigger_cookie = get_id(thedb->bdb_env);                         \
         dest->spname_len = strlen(sp_name);                                    \
         strcpy(dest->spname, sp_name);                                         \
-        strcpy(trigger_hostname(dest), gbl_mynode);                            \
+        strcpy(trigger_hostname(dest), gbl_myhostname);                        \
     } while (0)
 
 #define Q4SP(var, spname)                                                      \

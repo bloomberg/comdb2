@@ -29,6 +29,7 @@ function failexit
     typeset f=$1
     kill_background_writer
     write_prompt $func "$f failed: $2"
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     exit -1
 }
 

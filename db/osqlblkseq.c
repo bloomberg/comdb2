@@ -65,27 +65,27 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
     assert(hiqs_cnonce != NULL);
 
     Pthread_mutex_lock(&hmtx);
-    iq_src = hash_find(hiqs_cnonce, &iq->snap_info);
+    iq_src = hash_find(hiqs_cnonce, IQ_SNAPINFO(iq));
     if (!iq_src) { /* not there, we add it */
-        hash_add(hiqs_cnonce, &iq->snap_info);
+        hash_add(hiqs_cnonce, IQ_SNAPINFO(iq));
         rc = OSQL_BLOCKSEQ_FIRST;
     }
     Pthread_mutex_unlock(&hmtx);
 #ifdef DEBUG_BLKSEQ
     if (!iq_src) {
-        logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n", iq->snap_info.keylen - 3,
-               iq->snap_info.key);
+        logmsg(LOGMSG_DEBUG, "Added to blkseq %*s\n",
+               IQ_SNAPINFO(iq)->keylen - 3, IQ_SNAPINFO(iq)->key);
     }
 #endif
 
     /* rc == 0 means we need to wait for it to go away */
     while (rc == 0) {
         logmsg(LOGMSG_DEBUG, "Already in blkseq %*s, stalling...\n",
-               iq->snap_info.keylen - 3, iq->snap_info.key);
+               IQ_SNAPINFO(iq)->keylen - 3, IQ_SNAPINFO(iq)->key);
         poll(NULL, 0, gbl_block_blkseq_poll);
 
         Pthread_mutex_lock(&hmtx);
-        iq_src = hash_find_readonly(hiqs_cnonce, &iq->snap_info);
+        iq_src = hash_find_readonly(hiqs_cnonce, IQ_SNAPINFO(iq));
         Pthread_mutex_unlock(&hmtx);
 
         if (!iq_src) {
@@ -102,7 +102,8 @@ int osql_blkseq_register_cnonce(struct ireq *iq)
 static inline int osql_blkseq_unregister_cnonce(struct ireq *iq)
 {
     assert(hiqs_cnonce != NULL);
-    return hash_del(hiqs_cnonce, &iq->snap_info);
+
+    return hash_del(hiqs_cnonce, IQ_SNAPINFO(iq));
 }
 
 /*
@@ -190,17 +191,22 @@ int osql_blkseq_unregister(struct ireq *iq)
     Pthread_mutex_lock(&hmtx);
 
     hash_del(hiqs, iq);
+    if (IQ_HAS_SNAPINFO(iq)) {
 #ifdef DEBUG_BLKSEQ
-    int rc = osql_blkseq_unregister_cnonce(iq);
+        int rc = osql_blkseq_unregister_cnonce(iq);
 #else
-    osql_blkseq_unregister_cnonce(iq);
+        osql_blkseq_unregister_cnonce(iq);
 #endif
+    }
 
     Pthread_mutex_unlock(&hmtx);
 #ifdef DEBUG_BLKSEQ
-    if (iq->have_snap_info)
+    if (IQ_HAS_SNAPINFO(iq))
         logmsg(LOGMSG_DEBUG, "Removed from blkseq %*s, rc=%d\n",
-               iq->snap_info.keylen - 3, iq->snap_info.key, rc);
+               IQ_SNAPINFO(iq)->keylen - 3, IQ_SNAPINFO(iq)->key, rc);
+    else
+        logmsg(LOGMSG_DEBUG, "XXXXX NO CNONCE rc=%d\n", rc);
+
 #endif
     return 0;
 }

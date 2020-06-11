@@ -91,7 +91,7 @@ fi
 
 SSL_MIN_TLS_VER=1.2 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()"
 if [ $? != 0 ]; then
-    echo 'Should sallow valid TLS protocols'
+    echo 'Should allow valid TLS protocols'
     exit 1
 fi
 

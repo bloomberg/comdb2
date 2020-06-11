@@ -531,6 +531,37 @@ static void jsonReturnJson(
 }
 
 /*
+** Translate a single byte of Hex into an integer.
+** This routine only works if h really is a valid hexadecimal
+** character:  0..9a..fA..F
+*/
+static u8 jsonHexToInt(int h){
+  assert( (h>='0' && h<='9') ||  (h>='a' && h<='f') ||  (h>='A' && h<='F') );
+#ifdef SQLITE_EBCDIC
+  h += 9*(1&~(h>>4));
+#else
+  h += 9*(1&(h>>6));
+#endif
+  return (u8)(h & 0xf);
+}
+
+/*
+** Convert a 4-byte hex string into an integer
+*/
+static u32 jsonHexToInt4(const char *z){
+  u32 v;
+  assert( safe_isxdigit(z[0]) );
+  assert( safe_isxdigit(z[1]) );
+  assert( safe_isxdigit(z[2]) );
+  assert( safe_isxdigit(z[3]) );
+  v = (jsonHexToInt(z[0])<<12)
+    + (jsonHexToInt(z[1])<<8)
+    + (jsonHexToInt(z[2])<<4)
+    + jsonHexToInt(z[3]);
+  return v;
+}
+
+/*
 ** Make the JsonNode the return value of the function.
 */
 static void jsonReturn(
@@ -623,15 +654,8 @@ static void jsonReturn(
           }else{
             c = z[++i];
             if( c=='u' ){
-              u32 v = 0, k;
-              for(k=0; k<4; i++, k++){
-                assert( i<n-2 );
-                c = z[i+1];
-                assert( safe_isxdigit(c) );
-                if( c<='9' ) v = v*16 + c - '0';
-                else if( c<='F' ) v = v*16 + c - 'A' + 10;
-                else v = v*16 + c - 'a' + 10;
-              }
+              u32 v = jsonHexToInt4(z+i+1);
+              i += 4;
               if( v==0 ) break;
               if( v<=0x7f ){
                 zOut[j++] = (char)v;
@@ -639,9 +663,25 @@ static void jsonReturn(
                 zOut[j++] = (char)(0xc0 | (v>>6));
                 zOut[j++] = 0x80 | (v&0x3f);
               }else{
-                zOut[j++] = (char)(0xe0 | (v>>12));
-                zOut[j++] = 0x80 | ((v>>6)&0x3f);
-                zOut[j++] = 0x80 | (v&0x3f);
+                u32 vlo;
+                if( (v&0xfc00)==0xd800
+                  && i<n-6
+                  && z[i+1]=='\\'
+                  && z[i+2]=='u'
+                  && ((vlo = jsonHexToInt4(z+i+3))&0xfc00)==0xdc00
+                ){
+                  /* We have a surrogate pair */
+                  v = ((v&0x3ff)<<10) + (vlo&0x3ff) + 0x10000;
+                  i += 6;
+                  zOut[j++] = 0xf0 | (v>>18);
+                  zOut[j++] = 0x80 | ((v>>12)&0x3f);
+                  zOut[j++] = 0x80 | ((v>>6)&0x3f);
+                  zOut[j++] = 0x80 | (v&0x3f);
+                }else{
+                  zOut[j++] = 0xe0 | (v>>12);
+                  zOut[j++] = 0x80 | ((v>>6)&0x3f);
+                  zOut[j++] = 0x80 | (v&0x3f);
+                }
               }
             }else{
               if( c=='b' ){
@@ -1091,6 +1131,7 @@ static JsonNode *jsonLookupStep(
   const char *zKey;
   JsonNode *pRoot = &pParse->aNode[iRoot];
   if( zPath[0]==0 ) return pRoot;
+  if( pRoot->jnFlags & JNODE_REPLACE ) return 0;
   if( zPath[0]=='.' ){
     if( pRoot->eType!=JSON_OBJECT ) return 0;
     zPath++;
@@ -1131,7 +1172,7 @@ static JsonNode *jsonLookupStep(
       u32 iStart, iLabel;
       JsonNode *pNode;
       iStart = jsonParseAddNode(pParse, JSON_OBJECT, 2, 0);
-      iLabel = jsonParseAddNode(pParse, JSON_STRING, i, zPath);
+      iLabel = jsonParseAddNode(pParse, JSON_STRING, nKey, zKey);
       zPath += i;
       pNode = jsonLookupAppend(pParse, zPath, pApnd, pzErr);
       if( pParse->oom ) return 0;
@@ -1143,18 +1184,49 @@ static JsonNode *jsonLookupStep(
       }
       return pNode;
     }
-  }else if( zPath[0]=='[' && safe_isdigit(zPath[1]) ){
-    if( pRoot->eType!=JSON_ARRAY ) return 0;
+  }else if( zPath[0]=='[' ){
     i = 0;
     j = 1;
     while( safe_isdigit(zPath[j]) ){
       i = i*10 + zPath[j] - '0';
       j++;
     }
-    if( zPath[j]!=']' ){
-      *pzErr = zPath;
-      return 0;
+    if( j<2 || zPath[j]!=']' ){
+      if( zPath[1]=='#' ){
+        JsonNode *pBase = pRoot;
+        int iBase = iRoot;
+        if( pRoot->eType!=JSON_ARRAY ) return 0;
+        for(;;){
+          while( j<=pBase->n ){
+            if( (pBase[j].jnFlags & JNODE_REMOVE)==0 ) i++;
+            j += jsonNodeSize(&pBase[j]);
+          }
+          if( (pBase->jnFlags & JNODE_APPEND)==0 ) break;
+          iBase += pBase->u.iAppend;
+          pBase = &pParse->aNode[iBase];
+          j = 1;
+        }
+        j = 2;
+        if( zPath[2]=='-' && safe_isdigit(zPath[3]) ){
+          unsigned int x = 0;
+          j = 3;
+          do{
+            x = x*10 + zPath[j] - '0';
+            j++;
+          }while( safe_isdigit(zPath[j]) );
+          if( x>i ) return 0;
+          i -= x;
+        }
+        if( zPath[j]!=']' ){
+          *pzErr = zPath;
+          return 0;
+        }
+      }else{
+        *pzErr = zPath;
+        return 0;
+      }
     }
+    if( pRoot->eType!=JSON_ARRAY ) return 0;
     zPath += j + 1;
     j = 1;
     for(;;){
@@ -1827,7 +1899,7 @@ static void jsonArrayStep(
     if( pStr->zBuf==0 ){
       jsonInit(pStr, ctx);
       jsonAppendChar(pStr, '[');
-    }else{
+    }else if( pStr->nUsed>1 ){
       jsonAppendChar(pStr, ',');
       pStr->pCtx = ctx;
     }
@@ -1875,9 +1947,11 @@ static void jsonGroupInverse(
   int argc,
   sqlite3_value **argv
 ){
-  int i;
+  unsigned int i;
   int inStr = 0;
+  int nNest = 0;
   char *z;
+  char c;
   JsonString *pStr;
   UNUSED_PARAM(argc);
   UNUSED_PARAM(argv);
@@ -1888,12 +1962,18 @@ static void jsonGroupInverse(
   if( NEVER(!pStr) ) return;
 #endif
   z = pStr->zBuf;
-  for(i=1; z[i]!=',' || inStr; i++){
-    assert( i<pStr->nUsed );
-    if( z[i]=='"' ){
+  for(i=1; (c = z[i])!=',' || inStr || nNest; i++){
+    if( i>=pStr->nUsed ){
+      pStr->nUsed = 1;
+      return;
+    }
+    if( c=='"' ){
       inStr = !inStr;
-    }else if( z[i]=='\\' ){
+    }else if( c=='\\' ){
       i++;
+    }else if( !inStr ){
+      if( c=='{' || c=='[' ) nNest++;
+      if( c=='}' || c==']' ) nNest--;
     }
   }
   pStr->nUsed -= i;      
@@ -1923,7 +2003,7 @@ static void jsonObjectStep(
     if( pStr->zBuf==0 ){
       jsonInit(pStr, ctx);
       jsonAppendChar(pStr, '{');
-    }else{
+    }else if( pStr->nUsed>1 ){
       jsonAppendChar(pStr, ',');
       pStr->pCtx = ctx;
     }
@@ -2488,6 +2568,7 @@ int sqlite3Json1Init(sqlite3 *db){
     { "json_test1",           1, 0,   jsonTest1Func         },
 #endif
   };
+#ifndef SQLITE_OMIT_WINDOWFUNC
   static const struct {
      const char *zName;
      int nArg;
@@ -2500,6 +2581,7 @@ int sqlite3Json1Init(sqlite3 *db){
     { "json_group_object",    2,
       jsonObjectStep,  jsonObjectFinal, jsonObjectValue },
   };
+#endif
 #ifndef SQLITE_OMIT_VIRTUALTABLE
   static const struct {
      const char *zName;
@@ -2511,14 +2593,14 @@ int sqlite3Json1Init(sqlite3 *db){
 #endif
   for(i=0; i<sizeof(aFunc)/sizeof(aFunc[0]) && rc==SQLITE_OK; i++){
     rc = sqlite3_create_function(db, aFunc[i].zName, aFunc[i].nArg,
-                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC, 
+                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC,
                                  (void*)&aFunc[i].flag,
                                  aFunc[i].xFunc, 0, 0);
   }
 #ifndef SQLITE_OMIT_WINDOWFUNC
   for(i=0; i<sizeof(aAgg)/sizeof(aAgg[0]) && rc==SQLITE_OK; i++){
     rc = sqlite3_create_window_function(db, aAgg[i].zName, aAgg[i].nArg,
-                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC, 0,
+                SQLITE_SUBTYPE | SQLITE_UTF8 | SQLITE_DETERMINISTIC, 0,
                                  aAgg[i].xStep, aAgg[i].xFinal,
                                  aAgg[i].xValue, jsonGroupInverse, 0);
   }

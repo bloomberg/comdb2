@@ -1,43 +1,48 @@
-FROM ubuntu:xenial
+FROM ubuntu:latest
 
+ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y \
-    cmake \
     bc \
     bison \
     build-essential \
+    cmake \
     flex \
     gawk \
+    gdb \
+    iproute2 \
+    iputils-ping \
+    jq \
+    libevent-dev \
     liblz4-dev \
+    liblz4-tool \
+    libprotobuf-c1 \
     libprotobuf-c-dev \
     libreadline-dev \
+    libsqlite3-0 \
     libsqlite3-dev \
     libssl-dev \
     libunwind-dev \
+    libuuid1 \
+    libz1 \
     libz-dev \
     make \
     ncurses-dev \
+    netcat-openbsd \
+    net-tools \
+    openssh-server \
     protobuf-c-compiler \
+    psmisc \
+    socat \
+    strace \
     tcl \
     tcl-dev \
-    uuid-dev \
-    libz1 \
-    liblz4-tool \
-    libprotobuf-c1 \
-    libsqlite3-0 \
-    libuuid1 \
-    libz1 \
-    tzdata \
-    iputils-ping \
-    net-tools \
-    netcat-openbsd \
-    iproute2 \
-    socat \
     time \
-    strace \
-    gdb \
-    openssh-server \
-    psmisc
+    tzdata \
+    valgrind \
+    uuid-dev && \
+  ln -fs /usr/share/zoneinfo/America/New_York /etc/localtime && \
+  dpkg-reconfigure --frontend noninteractive tzdata
 
 COPY . /comdb2
 

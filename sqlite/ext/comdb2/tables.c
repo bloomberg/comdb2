@@ -279,11 +279,15 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
+    rc = systblScHistoryInit(db);
+  if (rc == SQLITE_OK)
     rc = systblConnectionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblViewsInit(db);
   if (rc == SQLITE_OK)
-    rc  = systblSQLClientStats(db);
+    rc = systblSQLClientStats(db);
+  if (rc == SQLITE_OK)
+    rc = systblSQLIndexStatsInit(db);
 #endif
   return rc;
 }

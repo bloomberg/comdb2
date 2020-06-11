@@ -81,6 +81,26 @@ static int __fop_set_pgsize __P((DB *, DB_FH *, const char *));
 	}								\
 }
 
+
+#if defined (WRITELOCK_HANDLE_DUMP_MATCHING)
+static void dump_matching_dbp(DB_ENV *dbenv, DB *dbp, const char *func,
+		int line)
+{
+	DB *lldbp;
+	int count=0;
+	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
+	for (lldbp = LIST_FIRST(&dbenv->dblist);
+		lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
+		if (memcmp(lldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0) {
+			count++;
+			logmsg(LOGMSG_USER, "%s:%d matching dbp %p for %p count %d\n", func,
+					line, lldbp, dbp, count);
+		}
+	}
+	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
+}
+#endif
+
 /*
  * __fop_lock_handle --
  *
@@ -128,6 +148,10 @@ __fop_lock_handle(dbenv, dbp, locker, mode, elock, flags)
 	fileobj.data = &lock_desc;
 	fileobj.size = sizeof(lock_desc);
 	DB_TEST_SUBLOCKS(dbenv, flags);
+#if defined (WRITELOCK_HANDLE_DUMP_MATCHING)
+	if (mode == DB_LOCK_WRITE)
+		dump_matching_dbp(dbenv, dbp, __func__, __LINE__);
+#endif
 	if (elock == NULL)
 		ret = __lock_get(dbenv, locker,
 		    flags, &fileobj, mode, &dbp->handle_lock);

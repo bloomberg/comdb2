@@ -2,10 +2,10 @@
 #define INCLUDED_REQLOG_INT_H
 
 #include "list.h"
-#include "comdb2.h"
 #include "cdb2_constants.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "sql.h"
+#include "reqlog.h"
 
 /* This used to be private to reqlog.  Moving to a shared header since
    eventlog also needs access to reqlog internals.  I am not sure
@@ -113,7 +113,7 @@ struct reqlogger {
     int have_fingerprint;
     char id[41];
     int have_id;
-    const char *event_type;
+    evtype_t event_type;
 
     int ntables;
     int alloctables;

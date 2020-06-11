@@ -1034,7 +1034,7 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             if (rc < 0)
                 return -1;
             rc = sslio_accept(sb, gbl_ssl_ctx, SSL_REQUIRE, NULL,
-                              gbl_nid_dbname, NULL, 0, 1);
+                              gbl_nid_dbname, 1);
             if (rc != 1)
                 return -1;
         }
@@ -3686,7 +3686,7 @@ int handle_alias_request(comdb2_appsock_arg_t *arg)
     line = arg->cmdline;
     llen = strlen(line);
 
-    if (dbenv->master != gbl_mynode) {
+    if (dbenv->master != gbl_myhostname) {
         sbuf2printf(sb, "!master swinged, now on %s, please rerun\n",
                     thedb->master);
         sbuf2printf(sb, "FAILED\n");

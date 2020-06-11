@@ -30,7 +30,7 @@ upid=0
 function failexit
 {
     echo "Failed: $1"
-    touch failexit
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     if [[ $$ -eq $upid ]] ; then
         kill -9 $t_ppid
     else
@@ -41,19 +41,8 @@ function failexit
 
 function checkfailexit
 {
-    if [[ -f failexit ]] ; then
-        rm failexit
+    if [[ -f ${DBNAME}.failexit ]] ; then
         exit 1
-    fi
-}
-
-
-function do_verify
-{
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
     fi
 }
 
@@ -75,7 +64,7 @@ function do_rebuild_track_pid
         fi
 
         checkfailexit
-        do_verify $loc_dbnm $loc_tbl
+        do_verify $loc_tbl
         let scnt=scnt+1
         sleep $loc_sleeptm
     done
@@ -229,7 +218,7 @@ function run_test
 
     insert_records 0 
     assertcnt $tbl $nrecs "run_test"
-    do_verify
+    do_verify $tbl
 
 
     update_same_record &

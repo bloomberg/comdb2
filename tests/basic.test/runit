@@ -12,8 +12,7 @@ fi
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
-    echo "need a DB name"
-    exit 1
+    failexit "need a DB name"
 fi
 
 # Number of insert_records function calls
@@ -23,8 +22,7 @@ nins=0
 if [[ $DBNAME == *"snapshotgenerated"* ]] ; then
     lvl=$(cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select value from comdb2_tunables where name='sql_tranlevel_default'")
     if [ "$lvl" != "SNAPSHOT ISOLATION" ] ; then
-       echo "FAILURE: DB is not running in snapshot isolation mode"
-       exit 1
+       failexit "DB is not running in snapshot isolation mode"
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default "@send get_newsi_status" 
 fi
@@ -50,16 +48,6 @@ assert_schema()
     if ! diff -Bw schema.out $schema ; then 
         cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
         failexit "final schema is not same as $schema: diff schema.out $schema"
-    fi
-}
-
-do_verify()
-{
-    tbl=$1
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "verify $tbl failed"
     fi
 }
 
@@ -276,14 +264,37 @@ select count(*) from t1
 select count(*) from t2
 select count(*) from t2 where i = 1
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans1.txt
+echo "[begin] rc 0
+(count(*)=0)
+[select count(*) from t1] rc 0
+(count(*)=2)
+[select count(*) from t2] rc 0
+(count(*)=1)
+[select count(*) from t2 where i = 1] rc 0
+[commit] rc 0" > trans1.exp 
+if ! diff trans1.txt trans1.exp ; then
+    failexit "trans1.txt does not match expected"
+fi
 
 # test transaction of diff sizes
 echo "begin
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans0.txt
+echo "[begin] rc 0
+[commit] rc 0" > trans0.exp
+if ! diff trans0.txt trans0.exp ; then
+    failexit "trans0.txt does not match expected"
+fi
+
 
 echo "begin
 insert into t2 values(3)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans2.txt
+echo "[begin] rc 0
+[insert into t2 values(3)] rc 0
+[commit] rc 0" > trans2.exp
+if ! diff trans2.txt trans2.exp ; then
+    failexit "trans2 does not match expected"
+fi
 
 assertcnt t2 3
 
@@ -291,6 +302,13 @@ echo "begin
 insert into t2 values(4)
 insert into t2 values(5)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans3.txt
+echo "[begin] rc 0
+[insert into t2 values(4)] rc 0
+[insert into t2 values(5)] rc 0
+[commit] rc 0" > trans3.exp
+if ! diff trans3.txt trans3.exp ; then
+    failexit "trans3 does not match expected"
+fi
 
 assertcnt t2 5
 
@@ -299,6 +317,14 @@ insert into t2 values(6)
 insert into t2 values(7)
 insert into t2 values(8)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans4.txt
+echo "[begin] rc 0
+[insert into t2 values(6)] rc 0
+[insert into t2 values(7)] rc 0
+[insert into t2 values(8)] rc 0
+[commit] rc 0" > trans4.exp
+if ! diff trans4.txt trans4.exp ; then
+    failexit "trans4 does not match expected"
+fi
 
 assertcnt t2 8
 
@@ -306,13 +332,26 @@ assertcnt t2 8
 echo "begin
 insert into t2 values(9)
 rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+echo "[begin] rc 0
+[insert into t2 values(9)] rc 0
+[rollback] rc 0" > trans5.exp
+if ! diff trans5.txt trans5.exp ; then
+    failexit "trans5 does not match expected"
+fi
 
 assertcnt t2 8
 
 echo "begin
 insert into t2 values(9)
 insert into t2 values(10)
-rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans6.txt
+echo "[begin] rc 0
+[insert into t2 values(9)] rc 0
+[insert into t2 values(10)] rc 0
+[rollback] rc 0" > trans6.exp
+if ! diff trans6.txt trans6.exp ; then
+    failexit "trans6 does not match expected"
+fi
 
 assertcnt t2 8
 
@@ -458,9 +497,19 @@ test_bulk() {
         cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from mytable6 where 1"
     done
 }
+test_generate_series() {
+    CNT=5000
+    for j in `seq 1 2` ; do
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into mytable6 select value, value, value from generate_series limit $CNT"
+        assertcnt mytable6 $CNT
+        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from mytable6 where 1"
+    done
+}
+
 
 test_t1
 test_bulk
+test_generate_series
 
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
@@ -475,3 +524,4 @@ res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select i from trowid where co
 assertres $res 12345
 
 echo "Success"
+

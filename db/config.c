@@ -54,7 +54,6 @@ int gbl_disable_access_controls;
 extern char *gbl_recovery_options;
 extern const char *gbl_repoplrl_fname;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
-extern char **qdbs;
 extern char **sfuncs;
 extern char **afuncs;
 static int gbl_nogbllrl; /* don't load /bb/bin/comdb2*.lrl */
@@ -79,31 +78,25 @@ static struct option long_options[] = {
     {"insecure", no_argument, &gbl_disable_access_controls, 1},
     {NULL, 0, NULL, 0}};
 
-static const char *help_text = {
-    "Usage: comdb2 [--lrl LRLFILE] [--recovertotime EPOCH]\n"
-    "              [--recovertolsn FILE:OFFSET]\n"
-    "              [--tunable STRING]\n"
-    "              [--fullrecovery] NAME\n"
+static const char *help_text =
+    "Usage: comdb2 [OPTION]... NAME\n"
     "\n"
-    "       comdb2 --create [--lrl LRLFILE] [--dir PATH] NAME\n"
+    "  --create                     creates a new database\n"
+    "  --dir PATH                   specify path to database directory\n"
+    "  --fullrecovery               runs full recovery after a hot copy\n"
+    "  --help                       displays this help text and exit\n"
+    "  --insecure                   disable access controls\n"
+    "  --lrl PATH                   specify path to alternate lrl file\n"
+    "  --recovertolsn FILE:OFFSET   recovers database to FILE:OFFSET\n"
+    "  --recovertotime EPOCH        recovers database to EPOCH\n"
+    "  --tunable STRING             override tunable\n"
+    "  --version                    displays version information and exit\n"
     "\n"
-    "        --lrl                      specify alternate lrl file\n"
-    "        --fullrecovery             runs full recovery after a hot copy\n"
-    "        --recovertolsn             recovers database to file:offset\n"
-    "        --recovertotime            recovers database to epochtime\n"
-    "        --create                   creates a new database\n"
-    "        --dir                      specify path to database directory\n"
-    "        --tunable                  override tunable\n"
-    "        --help                     displays this help text and exit\n"
-    "        --version                  displays version information and exit\n"
-    "        --insecure                 disable access controls\n"
-    "\n"
-    "        NAME                       database name\n"
-    "        LRLFILE                    lrl configuration file\n"
-    "        FILE                       ID of a database file\n"
-    "        OFFSET                     offset within FILE\n"
-    "        EPOCH                      time in seconds since 1970\n"
-    "        PATH                       path to database directory\n"};
+    "Examples:\n"
+    "  comdb2 name                  start database:name from default location\n"
+    "  comdb2 --create name         create database:name at default location\n"
+    "  comdb2 --dir /db name        start database:name at location:/db\n"
+    ;
 
 struct read_lrl_option_type {
     int lineno;
@@ -119,10 +112,10 @@ void print_version_and_exit()
     exit(2);
 }
 
-void print_usage_and_exit()
+void print_usage_and_exit(int rc)
 {
-    logmsg(LOGMSG_WARN, "%s\n", help_text);
-    exit(1);
+    logmsg(LOGMSG_USER, "%s", help_text);
+    exit(rc);
 }
 
 static int write_pidfile(const char *pidfile)
@@ -208,7 +201,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
 
     while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
            -1) {
-        if (c == 'h') print_usage_and_exit();
+        if (c == 'h') print_usage_and_exit(0);
         if (c == 'v') print_version_and_exit();
         if (c == '?') return 1;
 
@@ -340,6 +333,7 @@ static char *legacy_options[] = {
     "logmsg notimestamp",
     "logmsg skiplevel",
     "logput window 1",
+    "master_sends_query_effects 0",
     "noblobstripe",
     "nochecksums",
     "nocrc32c",
@@ -365,6 +359,9 @@ static char *legacy_options[] = {
     "setattr NET_SEND_GBLCONTEXT 1",
     "setattr SC_DONE_SAME_TRAN 0",
     "unnatural_types 1",
+    "init_with_queue_ondisk_header off",
+    "init_with_queue_compr off",
+    "init_with_queue_persistent_sequence off",
     "usenames",
 };
 int gbl_legacy_defaults = 0;
@@ -413,7 +410,7 @@ static int lrl_if(char **tok_inout, char *line, int line_len, int *st,
 
 void getmyaddr()
 {
-    if (comdb2_gethostbyname(&gbl_mynode, &gbl_myaddr) != 0) {
+    if (comdb2_gethostbyname(&gbl_myhostname, &gbl_myaddr) != 0) {
         gbl_myaddr.s_addr = INADDR_LOOPBACK; /* default to localhost */
         return;
     }
@@ -778,27 +775,20 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 tokcpy(tok, ltok, nodename);
                 errno = 0;
 
-                if (dbenv->nsiblings >= MAXSIBLINGS) {
-                    logmsg(LOGMSG_ERROR,
-                           "too many sibling nodes (max=%d) in lrl %s\n",
-                           MAXSIBLINGS, options->lrlname);
-                    return -1;
-                }
-
                 /* Check to see if this name is another name for me. */
                 struct in_addr addr;
                 char *name = nodename;
                 if (comdb2_gethostbyname(&name, &addr) == 0 &&
                     addr.s_addr == gbl_myaddr.s_addr) {
                     /* Assume I am better known by this name. */
-                    gbl_mynode = intern(name);
-                    gbl_mynodeid = machine_num(gbl_mynode);
+                    gbl_myhostname = intern(name);
+                    gbl_mynodeid = machine_num(gbl_myhostname);
                 }
-                if (strcmp(gbl_mynode, name) == 0 &&
+                if (strcmp(gbl_myhostname, name) == 0 &&
                     gbl_rep_node_pri == 0) {
                     /* assign the priority of current node according to its
                      * sequence in nodes list. */
-                    gbl_rep_node_pri = MAXSIBLINGS - dbenv->nsiblings;
+                    gbl_rep_node_pri = REPMAX - dbenv->nsiblings;
                     continue;
                 }
                 /* lets ignore duplicate for now and make a list out of what is
@@ -809,6 +799,12 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     ; /*look for dupes*/
                 if (kk == dbenv->nsiblings) {
                     /*not a dupe.*/
+                    if (dbenv->nsiblings >= REPMAX) {
+                        logmsg(LOGMSG_ERROR,
+                               "too many sibling nodes (max=%d) in lrl %s\n",
+                               REPMAX, options->lrlname);
+                        return -1;
+                    }
                     dbenv->sibling_hostname[dbenv->nsiblings] =
                         intern(name);
                     for (int netnum = 0; netnum < MAXNETS; netnum++)
@@ -816,7 +812,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     dbenv->nsiblings++;
                 }
             }
-            dbenv->sibling_hostname[0] = gbl_mynode;
+            dbenv->sibling_hostname[0] = gbl_myhostname;
         }
     } else if (tokcmp(tok, ltok, "machine_classes") == 0) {
         int classval = 1;
@@ -917,22 +913,17 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         parse_lua_funcs(a);
     } else if (tokcmp(tok, ltok, "queuedb") == 0) {
         int nqdbs = thedb->num_qdbs;
-        qdbs = realloc(qdbs, (nqdbs + 1) * sizeof(char *));
-        if (qdbs == NULL) {
-            logmsgperror("realloc");
-            return -1;
-        }
         thedb->qdbs = realloc(thedb->qdbs, (nqdbs + 1) * sizeof(dbtable *));
         if (thedb->qdbs == NULL) {
             logmsgperror("realloc");
             return -1;
         }
         tok = segtok(line, len, &st, &ltok);
-        qdbs[nqdbs] = tokdup(tok, ltok);
-        char *name = get_qdb_name(qdbs[nqdbs]);
+        char *qfname = tokdup(tok, ltok);
+        char *name = get_qdb_name(qfname);
         if (name == NULL) {
             logmsg(LOGMSG_ERROR, "Failed to obtain queuedb name from:%s\n",
-                   qdbs[nqdbs]);
+                   qfname);
             return -1;
         }
         dbtable *qdb = newqdb(dbenv, name, 65536, 65536, 1);
@@ -941,6 +932,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         }
         free(name);
+        free(qfname);
         thedb->qdbs[nqdbs] = qdb;
         ++thedb->num_qdbs;
     } else if (tokcmp(tok, ltok, "table") == 0) {

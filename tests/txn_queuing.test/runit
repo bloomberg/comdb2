@@ -12,7 +12,7 @@ mach=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select comdb2_host()'`
 pid=$!
 
 sleep 1
-cdb2sql -s --host $mach $dbnm 'select sleep(5)' >/dev/null &
-cdb2sql -s --host $mach $dbnm 'select sleep(5)' >/dev/null &
+cdb2sql -s ${CDB2_OPTIONS} --host $mach $dbnm 'select sleep(5)' >/dev/null &
+cdb2sql -s ${CDB2_OPTIONS} --host $mach $dbnm 'select sleep(5)' >/dev/null &
 
 wait $pid

@@ -42,18 +42,6 @@ cdb2sql --tabs ${CDB2_OPTIONS} $a_dbn --host $node 'exec procedure sys.cmd.send(
 done
 
 
-function do_verify
-{
-    local tbl=$1
-    local dbnm=$a_dbn
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify_$tbl.out
-
-    if ! grep "Verify succeeded." verify_$tbl.out > /dev/null ; then
-        failexit "Verify $tbl"
-    fi
-}
-
-
 # fastinit
 function fastinit
 {
@@ -212,12 +200,6 @@ for testcase in $files ; do
 done
 
 ### Tests for CREATE UNIQUE INDEX with multiple NULL values
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
 
 function assertbadexitcode
 {

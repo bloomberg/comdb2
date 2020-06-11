@@ -84,11 +84,6 @@ REGISTER_TUNABLE("blobmem_sz_thresh_kb",
                  NULL, blobmem_sz_thresh_kb_update, NULL);
 REGISTER_TUNABLE("blobstripe", NULL, TUNABLE_BOOLEAN, &gbl_blobstripe,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("blocksql_grace",
-                 "Let block transactions run this long if db is exiting before "
-                 "being killed (and returning an error). (Default: 10sec)",
-                 TUNABLE_INTEGER, &gbl_blocksql_grace, 0, NULL, NULL, NULL,
-                 NULL);
 REGISTER_TUNABLE("broken_max_rec_sz", NULL, TUNABLE_INTEGER,
                  &gbl_broken_max_rec_sz, READONLY, NULL, NULL,
                  broken_max_rec_sz_update, NULL);
@@ -277,9 +272,17 @@ REGISTER_TUNABLE("dont_init_with_instant_schema_change",
                  &gbl_init_with_instant_sc, INVERSE_VALUE | READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_init_with_ondisk_header",
-                 "Disables 'dont_init_with_ondisk_header'", TUNABLE_BOOLEAN,
+                 "Disables 'init_with_ondisk_header'", TUNABLE_BOOLEAN,
                  &gbl_init_with_odh, INVERSE_VALUE | READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_queue_with_persistent_sequence",
+                 "Disables 'init_queue_with_persistent_sequence'",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("dont_init_with_queue_persistent_sequence",
+                 "Disables 'dont_init_with_queue_ondisk_header'",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_optimize_repdb_truncate",
                  "Disable 'optimize_repdb_truncate'", TUNABLE_BOOLEAN,
                  &gbl_optimize_truncate_repdb,
@@ -486,7 +489,7 @@ REGISTER_TUNABLE("heartbeat_send_time",
                  "Send heartbeats this often. (Default: 5secs)",
                  TUNABLE_INTEGER, &gbl_heartbeat_send, READONLY | NOZERO, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_mynode,
+REGISTER_TUNABLE("hostname", NULL, TUNABLE_STRING, &gbl_myhostname,
                  READONLY | READEARLY, NULL, NULL, hostname_update, NULL);
 REGISTER_TUNABLE("incoherent_alarm_time", NULL, TUNABLE_INTEGER,
                  &gbl_incoherent_alarm_time, READONLY, NULL, NULL, NULL, NULL);
@@ -500,6 +503,9 @@ REGISTER_TUNABLE("init_with_bthash", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("init_with_compr", NULL, TUNABLE_ENUM, &gbl_init_with_compr,
                  READONLY, init_with_compr_value, NULL, init_with_compr_update,
                  NULL);
+REGISTER_TUNABLE("init_with_queue_compr", NULL, TUNABLE_ENUM,
+                 &gbl_init_with_queue_compr, READONLY, init_with_compr_value,
+                 NULL, init_with_queue_compr_update, NULL);
 REGISTER_TUNABLE("init_with_compr_blobs", NULL, TUNABLE_ENUM,
                  &gbl_init_with_compr_blobs, READONLY, init_with_compr_value,
                  NULL, init_with_compr_blobs_update, NULL);
@@ -519,6 +525,15 @@ REGISTER_TUNABLE("init_with_ondisk_header",
                  "Initialize tables with on-disk header. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_init_with_odh, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("init_with_queue_ondisk_header",
+                 "Initialize queues with on-disk header. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_odh, READONLY | NOARG,
+                 NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("init_with_queue_persistent_sequence",
+                 "Initialize queues with persistent sequence numbers. "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_init_with_queue_persistent_seq,
+                 READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("init_with_rowlocks",
                  "Enables row-locks for the database. (Default: 0)",
                  TUNABLE_INTEGER, &gbl_init_with_rowlocks, READONLY | NOARG,
@@ -815,6 +830,11 @@ REGISTER_TUNABLE("num_record_converts",
                  "transaction. (Default: 100)",
                  TUNABLE_INTEGER, &gbl_num_record_converts, READONLY | NOZERO,
                  NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "old_column_names",
+    "Generate and use column names from sqlite version 3.8.9 (Default: on)",
+    TUNABLE_BOOLEAN, &gbl_old_column_names, EXPERIMENTAL | INTERNAL, NULL,
+    NULL, NULL, NULL);
 /* Backwards compatibility: This tunable DOES expect an argument. */
 REGISTER_TUNABLE("oldrangexlim", NULL, TUNABLE_BOOLEAN,
                  &gbl_honor_rangextunit_for_old_apis, READONLY, NULL, NULL,
@@ -895,8 +915,8 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
-                 &gbl_portmux_unix_socket, READONLY | READEARLY, NULL, NULL,
-                 NULL, NULL);
+                 NULL, READONLY | READEARLY, portmux_bind_path_get, NULL,
+                 portmux_bind_path_set, NULL);
 REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port,
                  READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
@@ -1373,6 +1393,11 @@ REGISTER_TUNABLE("master_req_waitms",
                  "Request master once per this interval.  (Default: 200ms)",
                  TUNABLE_INTEGER, &gbl_master_req_waitms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "master_sends_query_effects",
+    "Enables master to send query effects to the replicant. (Default: on)",
+    TUNABLE_BOOLEAN, &gbl_master_sends_query_effects, NOARG | READONLY, NULL,
+    NULL, NULL, NULL);
 REGISTER_TUNABLE("req_all_threshold",
                  "Use req_all if a replicant is behind by "
                  "this amount or more.  (Default: 10000000)",
@@ -1456,6 +1481,10 @@ REGISTER_TUNABLE("net_writer_poll_ms",
                  "Poll time for net writer thread.  (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_net_writer_thread_poll_ms,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("inmem_repdb",
+                 "Use in memory structure for repdb (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_inmem_repdb,
+                 EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("inmem_repdb_maxlog",
                  "Maximum records for in-memory replist.  "
                  "(Default: 10000)",
@@ -1616,11 +1645,6 @@ REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
                  TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("osql_check_replicant_numops",
-                 "Check replicant nops sent in osql stream. (Default: on)",
-                 TUNABLE_BOOLEAN, &gbl_osql_check_replicant_numops,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("osql_snap_info_hashcheck",
                  "Enable snapinfo to be stored and checked in a hash in "
                  "toblock on master. (Default: on)",
@@ -1720,11 +1744,9 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("abort_on_missing_osql_session",
-                 "Abort if we can't find an osql session in the repository.  "
-                 "(Default: off)",
-                 TUNABLE_BOOLEAN, &gbl_abort_on_missing_osql_session,
-                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("libevent",
+                 "Use libevent in net library. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",
@@ -1872,9 +1894,45 @@ REGISTER_TUNABLE("ref_sync_iterations",
                  TUNABLE_INTEGER, &gbl_ref_sync_iterations,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("ref_sync_wait_txnlist",
+                 "Wait for running txns to complete on sync failure.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_ref_sync_wait_txnlist,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sc_close_txn",
+                 "Use separate close txn in schemachange.  "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sc_close_txn, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("abort_on_illegal_log_put",
+                 "Abort if replicant log_puts.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_abort_on_illegal_log_put,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sc_pause_at_end",
+                 "Pause schema-change after converters have completed.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_pause_at_end, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sc_is_at_end",
+                 "Schema-change has converted all records.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sc_is_at_end, EXPERIMENTAL, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("cached_output_buffer_max_bytes",
                  "Maximum size in bytes of the output buffer of an appsock "
                  "thread.  (Default: 8 MiB)",
                  TUNABLE_INTEGER, &gbl_cached_output_buffer_max_bytes, 0, NULL,
                  NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_queuedb",
+                 "Enable debug-trace for queuedb.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_queuedb, EXPERIMENTAL, NULL, NULL,
+                 NULL, NULL);
 #endif /* _DB_TUNABLES_H */

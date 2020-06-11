@@ -16,6 +16,7 @@
 
 /* comdb index front end */
 
+#include <unistd.h> /* For usleep() */
 #include <ctype.h>
 #include <epochlib.h>
 #include "comdb2.h"
@@ -29,9 +30,11 @@
 #include "osqlblockproc.h"
 #include "osqlblkseq.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "plhash.h"
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
+#include "sc_util.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -122,8 +125,8 @@ static void adjust_maxwthreadpenalty(int *totpen_p,
         penaltyinc = 1;
     }
 
-    if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
-        penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
+    if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxwthreads)
+        penaltyinc = gbl_maxwthreads - gbl_maxwthreadpenalty;
 
     gbl_maxwthreadpenalty += penaltyinc;
     *totpen_p += penaltyinc;
@@ -134,11 +137,15 @@ static void adjust_maxwthreadpenalty(int *totpen_p,
 static int handle_op_block(struct ireq *iq)
 {
     int rc;
+    int64_t startus, stopus;
+    int deadlocksleepus;
+
+    static int avg_toblock_us;
 
     if (gbl_readonly || gbl_readonly_sc) {
         /* ERR_REJECTED will force a proxy retry. This is essential to make live
          * schema change work reliably. */
-        if (gbl_schema_change_in_progress)
+        if (get_schema_change_in_progress(__func__, __LINE__))
             rc = ERR_REJECTED;
         else
             rc = ERR_READONLY;
@@ -154,7 +161,9 @@ static int handle_op_block(struct ireq *iq)
     double lcl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
 
 retry:
+    startus = comdb2_time_epochus();
     rc = toblock(iq);
+    stopus = comdb2_time_epochus();
 
     extern int gbl_test_blkseq_replay_code;
     if (gbl_test_blkseq_replay_code &&
@@ -168,7 +177,16 @@ retry:
         rc = ERR_NOT_DURABLE;
     }
 
-    if (rc == RC_INTERNAL_RETRY) {
+    if (rc == 0) {
+        /* Calculate a moving average runtime of toblock calls, and cap it
+           at 25 milliseconds. The value is used to determine how much time we
+           sleep before retrying on a deadlock. It does not have to be 100%
+           accurate so we do not hold a lock here. We could make the number of
+           calls and the cap tunables but for now leave them hardcoded. */
+        avg_toblock_us += ((stopus - startus - avg_toblock_us) >> 4);
+        if (avg_toblock_us > 25000)
+            avg_toblock_us = 25000;
+    } else if (rc == RC_INTERNAL_RETRY) {
         iq->retries++;
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
@@ -179,7 +197,10 @@ retry:
             iq->usedb = iq->origdb;
 
             n_retries++;
-            poll(0, 0, (rand() % 25 + 1));
+            deadlocksleepus = (rand() % gbl_maxwthreads * avg_toblock_us);
+            /* usleep(0) will likely give up the CPU. Avoid it. */
+            if (deadlocksleepus != 0)
+                usleep(deadlocksleepus);
             goto retry;
         }
 
@@ -268,7 +289,7 @@ int handle_ireq(struct ireq *iq)
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles)
-        osql_snap_info = &iq->snap_info;
+        osql_snap_info = IQ_SNAPINFO(iq);
 
     comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
     if (!opcode) {
@@ -339,24 +360,12 @@ int handle_ireq(struct ireq *iq)
 
             if (iq->sorese->rqid == 0)
                 abort();
-            osql_comm_signal_sqlthr_rc(iq->sorese, &iq->errstat, sorese_rc);
+            osql_comm_signal_sqlthr_rc(
+                iq->sorese->host, iq->sorese->rqid, iq->sorese->uuid,
+                iq->sorese->nops, &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();
 
-#if 0
-            /*
-                I don't wanna do this here, reloq_end_request() needs sql
-                details that are in the buffer; I am not gonna remalloc and copy
-                just to preserve code symmetry.
-                free the buffer, that was created by sorese_rcvreq()
-            */
-            if(iq->p_buf_out_start)
-            {
-                free(iq->p_buf_out_start);
-                iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-                iq->p_buf_in_end = iq->p_buf_in = NULL;
-            }
-#endif
         } else if (iq->is_dumpresponse) {
             signal_buflock(iq->request_data);
             if (rc != 0) {
@@ -422,8 +431,8 @@ int handle_ireq(struct ireq *iq)
     }
 
     /* Finish off logging. */
-    if (iq->blocksql_tran) {
-        osql_bplog_reqlog_queries(iq);
+    if (iq->sorese) {
+        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     release_node_stats(NULL, NULL, iq->frommach);

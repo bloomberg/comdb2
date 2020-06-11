@@ -19,7 +19,7 @@
 
 #define COMDB2_MAX_RECORD_SIZE 16384
 #define LONG_REQMS 2000
-#define MAXBLOBLENGTH 255 * 1024 * 1024 /* TODO: set a good maximum here */
+#define MAXBLOBLENGTH ((1 << 28) - 1)   /* (1 << ODH_LENGTH_BITS) - 1 */
 #define MAXBLOBS 15                     /* Should be bdb's MAXDTAFILES - 1 */
 #define MAXCOLNAME 99                   /* not incl. \0 */
 #define MAXCOLUMNS 1024
@@ -30,12 +30,11 @@
 #define MAXDYNTAGCOLUMNS 2048
 #define MAXKEYLEN 512
 #define MAXLRL 65536
-#define MAXNETS 3
+#define MAXNETS 2
 #define MAXNODES 32768
 #define MAXPLUGINS 100
 #define MAXPSTRLEN 256
 #define MAX_QUEUE_HITS_PER_TRANS 8
-#define MAXSIBLINGS 64
 #define MAX_SPNAME MAXTABLELEN
 #define MAX_SPVERSION_LEN 80
 #define MAXTABLELEN 32
@@ -51,12 +50,16 @@
 #define MAXCUR 100
 #define MAXRECSZ (17 * 1024)
 #define MAXKEYSZ 1024
-#define MAXTABLES 4096
+#define MAX_NUM_TABLES 1024
+#define MAX_NUM_QUEUES 1024
+#define MAX_NUM_VIEWS 1024
+#define NUM_ADMIN_TABLES 3
+#define MAX_CHILDREN (2 * (MAX_NUM_TABLES + NUM_ADMIN_TABLES) + MAX_NUM_QUEUES)
 #define MAXINDEX 50
 /* Primary data file + 15 blobs files */
 #define MAXDTAFILES 16
 #define MAXDTASTRIPE 16
-#define MAX_USERNAME_LEN 17
+#define MAX_USERNAME_LEN 16
 #define MAX_PASSWORD_LEN 19
 
 /*

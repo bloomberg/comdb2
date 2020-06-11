@@ -3,6 +3,7 @@
 
 #include <unistd.h>
 #include <poll.h>
+#include <locks.h>
 
 /* Wrapper for queue consumers. Core db code calls these, which then find
  * the first consumer plugin that knows how to handle the request, and dispatch
@@ -129,9 +130,10 @@ int dbqueuedb_get_name(struct dbtable *db, char **spname) {
     return -1;
 }
 
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats) {
-    comdb2_queue_consumer_t *handler; 
-
+static int dbqueuedb_get_stats_int(struct dbtable *db,
+                                   struct consumer_stat *stats)
+{
+    comdb2_queue_consumer_t *handler;
     for (int i = 0; i < CONSUMER_TYPE_LAST; i++) {
         handler = thedb->queue_consumer_handlers[i];
         if (handler) {
@@ -143,8 +145,28 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats) {
     return -1;
 }
 
-int 
-queue_consume(struct ireq *iq, const void *fnd, int consumern)
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats)
+{
+    int rc;
+    int bdberr;
+    bdb_state_type *bdb_state = db->handle;
+    tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (!trans) {
+        logmsg(LOGMSG_ERROR, "%s bdb_tran_begin:%s bdberr:%d\n", __func__,
+               db->tablename, bdberr);
+        return -1;
+    }
+    if ((rc = bdb_lock_table_read(bdb_state, trans)) == 0) {
+        rc = dbqueuedb_get_stats_int(db, stats);
+    } else {
+        logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
+               db->tablename, rc);
+    }
+    bdb_tran_abort(bdb_state, trans, &bdberr);
+    return rc;
+}
+
+int queue_consume(struct ireq* iq, const void* fnd, int consumern)
 {
     const int sleeptime = 1;
     int gotlk = 0;
@@ -205,7 +227,7 @@ queue_consume(struct ireq *iq, const void *fnd, int consumern)
 
         logmsg(LOGMSG_ERROR, "difficulty consuming key from queue '%s' consumer %d\n",
                 iq->usedb->tablename, consumern);
-        if (db_is_stopped() || thedb->master != gbl_mynode)
+        if (db_is_stopped() || thedb->master != gbl_myhostname)
             return -1;
         sleep(sleeptime);
     }

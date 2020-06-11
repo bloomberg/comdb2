@@ -34,15 +34,16 @@ struct errstat;
 struct sqlclntstate;
 
 struct osql_sqlthr {
+    struct errstat err;  /* valid if done = 1 */
+    pthread_cond_t cond;
     unsigned long long rqid; /* osql rq id */
     uuid_t uuid;             /* request id, take 2 */
     char *master;            /* who was the master I was talking to */
+    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
     int done;            /* result of socksql, recom, snapisol and serial master
                             transactions*/
-    struct errstat err;  /* valid if done = 1 */
     int type;            /* type of the request, enum OSQL_REQ_TYPE */
     pthread_mutex_t c_mtx; /* mutex and cond for commitrc sync */
-    pthread_cond_t cond;
     pthread_mutex_t cleanup_mtx; /* mutex and cond for cleanup/freeing entry */
     pthread_cond_t cleanup_cond;
     int master_changed; /* set if we detect that node we were waiting for was
@@ -108,7 +109,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt);
  *
  */
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat);
+                                void *data, struct errstat *errstat,
+                                struct query_effects *effects);
 
 /**
  * Wait the default time for the session to complete

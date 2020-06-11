@@ -46,6 +46,7 @@
  * but in case of B-Tree new data is allocated. So far haven't seen any
  * problems. */
 
+#include <schema_lk.h>
 #include "locks.h"
 #include "locks_wrap.h"
 #include "bdb_int.h"
@@ -153,36 +154,35 @@ struct temp_cursor {
 typedef struct arr_elem {
     int keylen;
     int dtalen;
-    void *key;
-    void *dta;
+    uint8_t *key;
+    uint8_t *dta;
 } arr_elem_t;
 
 #define COPY_KV_TO_CUR(c)                                                      \
     do {                                                                       \
         arr_elem_t *elem = &(c)->tbl->elements[(c)->ind];                      \
-        int maxkeylen = (c)->tbl->maxkeylen;                                   \
-        if ((c)->key == NULL || (c)->keymalloclen < maxkeylen) {               \
-            (c)->key = realloc((c)->key, maxkeylen);                           \
-            (c)->keymalloclen = maxkeylen;                                     \
+        int keylen = elem->keylen, dtalen = elem->dtalen;                      \
+        if ((c)->key == NULL || (c)->keymalloclen < keylen) {                  \
+            (c)->key = malloc_resize((c)->key, keylen);                        \
+            (c)->keymalloclen = keylen;                                        \
         }                                                                      \
         if ((c)->key == NULL) {                                                \
             (c)->valid = 0;                                                    \
             return -1;                                                         \
         }                                                                      \
-        int maxdatalen = (c)->tbl->maxdatalen;                                 \
-        if ((c)->data == NULL || (c)->datamalloclen < maxdatalen) {            \
-            (c)->data = realloc((c)->data, maxdatalen);                        \
-            (c)->datamalloclen = maxdatalen;                                   \
+        if ((c)->data == NULL || (c)->datamalloclen < dtalen) {                \
+            (c)->data = malloc_resize((c)->data, dtalen);                      \
+            (c)->datamalloclen = dtalen;                                       \
         }                                                                      \
         if ((c)->data == NULL) {                                               \
             free((c)->data);                                                   \
             (c)->valid = 0;                                                    \
             return -1;                                                         \
         }                                                                      \
-        (c)->keylen = elem->keylen;                                            \
-        (c)->datalen = elem->dtalen;                                           \
-        memcpy((c)->key, elem->key, (c)->keylen);                              \
-        memcpy((c)->data, elem->dta, (c)->datalen);                            \
+        (c)->keylen = keylen;                                                  \
+        (c)->datalen = dtalen;                                                 \
+        memcpy((c)->key, elem->key, keylen);                                   \
+        memcpy((c)->data, elem->dta, dtalen);                                  \
         (c)->valid = 1;                                                        \
     } while (0);
 
@@ -222,11 +222,6 @@ struct temp_table {
     unsigned long long inmemsz;
     unsigned long long cachesz;
     arr_elem_t *elements;
-    /* Keep track of the max key length and data length.
-       We allocate that much for a tempcursor such that
-       a tempcursor can reuse the same piece of memory. */
-    int maxkeylen;
-    int maxdatalen;
 };
 
 enum { TMPTBL_PRIORITY, TMPTBL_WAIT };
@@ -371,7 +366,6 @@ static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
     for (ii = 0; ii != nents; ++ii) {
         elem = &tbl->elements[ii];
         free(elem->key);
-        free(elem->dta);
     }
     tbl->inmemsz = 0;
     tbl->num_mem_entries = nents;
@@ -494,6 +488,19 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     int rc;
 
     if (tbl->tmpdb) {
+        /* Close all cursors that this table has open. */
+        struct temp_cursor *cur;
+        LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
+        {
+            if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) !=
+                0) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: bdb_temp_table_close_cursor(%p, %p) rc %d\n",
+                       __func__, tbl, cur, rc);
+                return rc;
+            }
+        }
+
         rc = tbl->tmpdb->close(tbl->tmpdb, 0);
         if (rc) {
             *bdberr = rc;
@@ -502,10 +509,6 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
             tbl->tmpdb = NULL;
             goto done;
         }
-
-        // set to NULL all cursors that this table has open
-        struct temp_cursor *cur;
-        LISTC_FOR_EACH(&tbl->cursors, cur, lnk) { cur->cur = NULL; }
     }
 
     rc = db_create(&db, tbl->dbenv_temp, 0);
@@ -695,7 +698,15 @@ int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
     if (rc1 == TMPTBL_PRIORITY) { /* Are we going to end up waiting? */
         return OP_FORCE_NOW; /* No, we are forcing object creation. */
     } else {
-        int rc2 = recover_deadlock_simple(bdb_state);
+        int rc2;
+
+        /* This is in the middle of prepare.  We can't call recover deadlock,
+         * as releasing and re-acquiring the bdblock while holding the schema
+         * lock violates lock order.  We also can't prevent upgrades. */
+        if (have_schema_lock()) {
+            return OP_FAIL_NOW;
+        }
+        rc2 = recover_deadlock_simple(bdb_state);
         if (rc2 != 0) {
             logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc2);
         }
@@ -912,7 +923,7 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
     DBT dkey, ddata;
     int rc = 0;
     arr_elem_t *elem;
-    void *keycopy, *dtacopy;
+    uint8_t *keycopy, *dtacopy;
 
     if (cur->tbl->temp_table_type != TEMP_TABLE_TYPE_BTREE ||
         cur->tbl->temp_table_type != TEMP_TABLE_TYPE_ARRAY) {
@@ -928,18 +939,13 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
         /* Free the existing elements and update the memory footprint. */
         elem = &cur->tbl->elements[cur->ind];
         free(elem->key);
-        free(elem->dta);
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
 
         /* malloc and copy */
-        keycopy = malloc(keylen);
+        keycopy = malloc(keylen + dtalen);
         if (keycopy == NULL)
             return -1;
-        dtacopy = malloc(dtalen);
-        if (dtacopy == NULL) {
-            free(keycopy);
-            return -1;
-        }
+        dtacopy = keycopy + keylen;
         memcpy(keycopy, key, keylen);
         memcpy(dtacopy, data, dtalen);
 
@@ -1434,7 +1440,6 @@ int bdb_temp_table_truncate(bdb_state_type *bdb_state, struct temp_table *tbl,
         for (; ii != tbl->num_mem_entries; ++ii) {
             elem = &tbl->elements[ii];
             free(elem->key);
-            free(elem->dta);
         }
         tbl->inmemsz = 0;
         tbl->num_mem_entries = 0;
@@ -1485,6 +1490,10 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                    __func__, tbl, cur, rc);
             return rc;
         }
+
+        /* We're closing the temptable so discard its cursors. */
+        listc_rfl(&tbl->cursors, cur);
+        free(cur);
     }
 
     rc = bdb_temp_table_truncate(bdb_state, tbl, bdberr);
@@ -1668,7 +1677,6 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         for (ii = 0; ii != tbl->num_mem_entries; ++ii) {
             elem = &tbl->elements[ii];
             free(elem->key);
-            free(elem->dta);
         }
         break;
 
@@ -1738,7 +1746,6 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         elem = &cur->tbl->elements[cur->ind];
         free(elem->key);
-        free(elem->dta);
         --cur->tbl->num_mem_entries;
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
@@ -1987,9 +1994,6 @@ static int bdb_temp_table_find_exact_hash(struct temp_cursor *cur,
 
 }
 
-/* Caller needs to free the key if return is not IX_FND
- * if IX_FND this function will free key [eventually not immediately]
- */
 int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
                               struct temp_cursor *cur, void *key, int keylen,
                               int *bdberr)
@@ -1999,6 +2003,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     DBT dkey, ddata;
     int exists = 0;
     arr_elem_t *elem;
+    void *keydup;
 
     if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_find_exact operation not supported for "
@@ -2051,22 +2056,22 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
 
     REOPEN_CURSOR(cur);
 
-    /*Pthread_setspecific(cur->tbl->curkey, cur);*/
+    /* Make a copy of the user key */
+    if ((keydup = malloc(keylen)) == NULL)
+        return ENOMEM;
+
+    memcpy(keydup, key, keylen);
 
     memset(&dkey, 0, sizeof(DBT));
     memset(&ddata, 0, sizeof(DBT));
     dkey.flags = ddata.flags = DB_DBT_MALLOC;
-    dkey.data = key;
+    dkey.data = keydup;
     dkey.size = keylen;
 
     cur->valid = 0;
     rc = cur->cur->c_get(cur->cur, &dkey, &ddata, DB_SET);
-    /*
-    printf("Got data %p %d key %p %d\n",
-           ddata.data, ddata.size, dkey.data, dkey.size); */
 
     if (rc == DB_NOTFOUND) {
-        exists = 0;
         goto done;
     } else if (rc) {
         *bdberr = rc;
@@ -2101,7 +2106,7 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
 done:
     dbghexdump(3, key, keylen);
     dbgtrace(3, "temp_table_find(cursor %d) = %d", cur->curid, rc);
-    return (exists) ? IX_FND : IX_NOTFND;
+    return (exists) ? IX_FND : (free(keydup), IX_NOTFND);
 }
 
 static int key_memcmp(void *_, int key1len, const void *key1, int key2len,
@@ -2129,8 +2134,8 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
     struct temp_table *tbl;
     tbl = cur->tbl;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE ||
-        cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE ||
+        tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
         if (cur->key) {
             free(cur->key);
             cur->key = NULL;
@@ -2158,8 +2163,6 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
         /*Pthread_setspecific(cur->tbl->curkey, NULL);*/
     }
 
-    listc_rfl(&tbl->cursors, cur);
-    free(cur);
     return rc;
 }
 
@@ -2299,7 +2302,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
     int rc, cmp, lo, hi, mid;
     tmptbl_cmp cmpfn;
     arr_elem_t *elem;
-    void *keycopy, *dtacopy;
+    uint8_t *keycopy, *dtacopy;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         struct temp_list_node *c_node = calloc(1, sizeof(struct temp_list_node));
@@ -2347,14 +2350,10 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
            If 1 or more elements of the same key already exist,
            insert it after the last one of those elements. */
 
-        keycopy = malloc(keylen);
+        keycopy = malloc(keylen + dtalen);
         if (keycopy == NULL)
             return -1;
-        dtacopy = malloc(dtalen);
-        if (dtacopy == NULL) {
-            free(keycopy);
-            return -1;
-        }
+        dtacopy = keycopy + keylen;
         memcpy(keycopy, key, keylen);
         memcpy(dtacopy, data, dtalen);
 
@@ -2398,11 +2397,6 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
                 return -1;
             }
         }
-
-        if (keylen > tbl->maxkeylen)
-            tbl->maxkeylen = keylen;
-        if (dtalen > tbl->maxdatalen)
-            tbl->maxdatalen = dtalen;
 
         return 0;
     }

@@ -351,6 +351,7 @@ struct __db_trigger_subscription;
 #define	DB_PR_RECOVERYTEST    0x0000010	/* Recovery test (-dr). */
 #define	DB_PRINTABLE	      0x0000020	/* Use printable format for salvage. */
 #define	DB_SALVAGE	      0x0000040	/* Salvage what looks like data. */
+#define	DB_IN_ORDER_CHECK   0x0000080	/* We are traversing in order so check intra page for out-of-order keys. */
 /*
  * !!!
  * These must not go over 0x8000, or they will collide with the flags
@@ -1518,7 +1519,9 @@ struct __db {
 					/* Methods. */
 	int  (*associate) __P((DB *, DB_TXN *, DB *, int (*)(DB *, const DBT *,
 		const DBT *, DBT *), u_int32_t));
+    int  (*get_fileid) __P((DB *, u_int8_t *fileid));
 	int  (*close) __P((DB *, u_int32_t));
+	int  (*closetxn) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	/* comdb2 addition */
 	int  (*cursor_ser) __P((DB *, DB_TXN *, DBCS *, DBC **, u_int32_t));
@@ -2394,7 +2397,9 @@ struct __db_env {
 	int  (*set_tx_max) __P((DB_ENV *, u_int32_t));
 	int  (*get_tx_timestamp) __P((DB_ENV *, time_t *));
 	int  (*set_tx_timestamp) __P((DB_ENV *, time_t *));
+	int  (*debug_log) __P((DB_ENV *, DB_TXN *, const DBT *op, const DBT *key, const DBT *data));
 	int  (*txn_begin) __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
+	int  (*txn_assert_notran) __P((DB_ENV *));
 	int  (*txn_checkpoint) __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));

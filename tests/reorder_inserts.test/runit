@@ -47,23 +47,6 @@ assert_schema()
     fi
 }
 
-function get_master
-{
-    [[ $debug == "1" ]] && set -x
-    typeset func="get_master"
-    typeset tries=$total_tries
-    $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send(\"bdb cluster\")" | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
-
-do_verify()
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
 
 # Update all records in the table
 update_all_records()
@@ -186,7 +169,7 @@ assertcnt t1 $((i*COUNT))
 
 
 # get master node
-master=$(get_master)
+master=`getmaster`
 
 export LOGDIR=$TESTDIR/logs # from setup
 if [[ -z "$CLUSTER" ]] ; then
@@ -198,12 +181,12 @@ fi
 ddcount=`grep -c DEADLOCK $mlog`
 
 if [[ $DBNAME == *"noreordergenerated"* ]] ; then
-    if [[ $ddcount -lt 1000 ]] ; then
-        failexit 'no reorder expected to get more than 1000 deadlocks for this test'
+    if [[ $ddcount -lt 500 ]] ; then
+        failexit 'no reorder expected to get more than 500 deadlocks for this test'
     fi
 else
-    if [[ $ddcount -gt 1000 ]] ; then
-        failexit 'reorder expected to get less than 1000 deadlocks for this test'
+    if [[ $ddcount -gt 500 ]] ; then
+        failexit 'reorder expected to get less than 500 deadlocks for this test'
     fi
 fi
 

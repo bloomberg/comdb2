@@ -19,81 +19,11 @@ nrecs=100
 # Max number of schema changes
 max_nusc=100
 
-function failexit
-{
-    echo "Failed $1"
-    touch failexit
-    exit -1
-}
-
 function checkfailexit
 {
-    if [[ -f failexit ]] ; then
+    if [[ -f ${DBNAME}.failexit ]] ; then
         exit 1
     fi
-}
-
-
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if cat verify.out | grep -i success > /dev/null ; then
-        failexit "failed verify"
-    fi
-}
-
-
-function do_rebuild_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            kill -9 $track_pid
-            exit 1
-        fi
-
-        do_verify $loc_dbnm $loc_tbl
-        let scnt=scnt+1
-    done
-
-    echo "Success!  Performed $scnt schema-changes."
-
-    return 0
-}
-
-
-
-
-function do_rebuild
-{
-    typeset max=$1
-    typeset scnt=0
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            return 1
-        fi
-        let scnt=scnt+1
-        do_verify
-        assertcnt t1 $nrecs
-    done
-
-    return 0
 }
 
 
@@ -130,7 +60,7 @@ function run_test_one
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c,d,e,f from t1" > out2.txt
     assertcnt t1 $nrecs
-    do_verify
+    do_verify t1
 
     if ! diff out1.txt out2.txt ; then
         failexit "out1 and out2 differ"
@@ -158,7 +88,7 @@ function run_test_two
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > out2.txt
     assertcnt t1 $nrecs
-    do_verify
+    do_verify t1
     mv insert.out insert2.out
 }
 

@@ -42,7 +42,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <segstring.h>
 #include "nodemap.h"
 #include "thread_stats.h"
 #include "logmsg.h"
@@ -153,6 +152,13 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return bdb_state->repinfo->master_host;
     else
         return NULL;
+}
+
+int bdb_iam_master(bdb_state_type *bdb_state)
+{
+    char *master;
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL, NULL);
+    return (master == bdb_state->repinfo->myhost);
 }
 
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
@@ -856,6 +862,14 @@ void bdb_dumptrans(bdb_state_type *bdb_state)
 void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff)
 {
     bdb_state->dbenv->setattr(bdb_state->dbenv, "iomap", NULL, onoff);
+}
+
+int bdb_berkdb_get_attr(bdb_state_type *bdb_state, char *attr, char **value,
+                        int *ivalue)
+{
+    int rc;
+    rc = bdb_state->dbenv->getattr(bdb_state->dbenv, attr, value, ivalue);
+    return rc;
 }
 
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,

@@ -3740,7 +3740,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= REC_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= REC_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= REC_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= REC_NONE; break;
     default: assert(0);
     }
 
@@ -3749,7 +3749,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= BLOB_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= BLOB_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= BLOB_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= BLOB_NONE; break;
     default: assert(0);
     }
 
@@ -4363,7 +4363,8 @@ void comdb2CreateTableStart(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
+        int code = isTemp ? SQLITE_CREATE_TEMP_TABLE : SQLITE_CREATE_TABLE;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5240,7 +5241,8 @@ void comdb2CreateIndex(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_INDEX, 0, 0, 0) ){
+        int code = temp ? SQLITE_CREATE_TEMP_INDEX : SQLITE_CREATE_INDEX;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5551,9 +5553,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortOrder == SQLITE_SO_DESC) {
-                idx_part->flags |= INDEX_ORDER_DESC;
-            }
+            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -5575,9 +5575,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-        if (pToCol->a[i].sortOrder == SQLITE_SO_DESC) {
-            idx_part->flags |= INDEX_ORDER_DESC;
-        }
+        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -5618,14 +5616,9 @@ void comdb2CreateForeignKey(
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
         {
-            int sort_order =
-                (parent_table->schema->ix[i]->member[j].flags & INDEX_DESCEND)
-                    ? INDEX_ORDER_DESC
-                    : 0;
-            if ((strcasecmp(idx_part->name,
-                            parent_table->schema->ix[i]->member[j].name) !=
-                 0) ||
-                idx_part->flags != sort_order) {
+            if (strcasecmp(idx_part->name,
+                           parent_table->schema->ix[i]->member[j].name) !=
+                0) {
                 key_found = 0;
                 break;
             }

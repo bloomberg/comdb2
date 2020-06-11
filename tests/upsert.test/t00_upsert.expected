@@ -137,3 +137,32 @@
 (i=11)
 (rows inserted=0)
 (i=12)
+(test='---- UPSERT & DATACOPY ----')
+(csc2='schema
+	{
+		int i null = yes 
+		int j null = yes 
+		int k null = yes 
+	}
+keys
+	{
+		datacopy uniqnulls "idx1" = i + j 
+	}
+')
+(rows inserted=3)
+[INSERT INTO t1 VALUES(1,1,1)] failed with rc 299 add key constraint duplicate key 'IDX1' on table 't1' index 0
+(rows inserted=0)
+(i=1, j=1, k=2)
+(i=2, j=2, k=2)
+(i=3, j=3, k=3)
+(test='---- INSERT OR IGNORE & INSERT OR REPLACE ----')
+(rows inserted=3)
+[INSERT INTO t1 VALUES(1,2)] failed with rc 299 add key constraint duplicate key '$KEY_877B2989' on table 't1' index 0
+(rows inserted=1)
+(i=1, j=1)
+(i=2, j=2)
+(i=3, j=3)
+(rows inserted=1)
+(i=1, j=2)
+(i=2, j=2)
+(i=3, j=3)
