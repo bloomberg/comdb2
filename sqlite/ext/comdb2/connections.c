@@ -60,6 +60,8 @@ void free_connections(void *data, int num_points) {
     for (int i = 0; i < num_points; i++) {
         if (info[i].sql)
             free(info[i].sql);
+        if (info[i].fingerprint)
+            free(info[i].fingerprint);
         /* state is static, don't free */
     }
     free(data);
@@ -79,5 +81,6 @@ int systblConnectionsInit(sqlite3 *db) {
             CDB2_CSTRING, "state", -1, offsetof(struct connection_info, state),
             CDB2_INTERVALDS, "time_in_state", -1, offsetof(struct connection_info, time_in_state),
             CDB2_CSTRING, "sql", -1, offsetof(struct connection_info, sql),
+            CDB2_CSTRING, "fingerprint", -1, offsetof(struct connection_info, fingerprint),
             SYSTABLE_END_OF_FIELDS);
 }

@@ -107,6 +107,7 @@
 #include <str0.h>
 #include <eventlog.h>
 #include "perf.h"
+#include "tohex.h"
 
 #include "dohsql.h"
 #include "comdb2_query_preparer.h"
@@ -1004,7 +1005,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     if (gbl_fingerprint_queries) {
         if (h->sql && clnt->zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-            add_fingerprint(clnt, stmt, h->sql, clnt->zNormSql, h->cost,
+            add_fingerprint(stmt, h->sql, clnt->zNormSql, h->cost,
                             h->time, clnt->nrows, logger, fingerprint);
             have_fingerprint = 1;
         } else {
@@ -3057,7 +3058,11 @@ static void normalize_stmt_and_store(
   if (gbl_fingerprint_queries) {
     const char *zNormSql = sqlite3_normalized_sql(rec->stmt);
     if (zNormSql) {
+      size_t nNormSql = 0; /* NOT USED */
+      unsigned char fingerprint[FINGERPRINTSZ];
       clnt->zNormSql = strdup(zNormSql);
+      calc_fingerprint(clnt->zNormSql, &nNormSql, fingerprint);
+      util_tohex(clnt->aFingerprint, (char *)fingerprint, FINGERPRINTSZ);
     } else if (gbl_verbose_normalized_queries) {
       logmsg(LOGMSG_USER, "FAILED sqlite3_normalized_sql({%s})\n", rec->sql);
     }
@@ -6240,10 +6245,11 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       Pthread_mutex_lock(&clnt->state_lk);
       if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
          c[connid].sql = strdup(clnt->sql);
-      }
-      else
+         c[connid].fingerprint = strdup(clnt->aFingerprint);
+      } else {
          c[connid].sql = NULL;
-
+         c[connid].fingerprint = NULL;
+      }
       Pthread_mutex_unlock(&clnt->state_lk);
       connid++;
    }

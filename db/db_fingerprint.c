@@ -82,26 +82,20 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
     MD5Final(fingerprint, &ctx);
 }
 
-void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                     const char *zSql, const char *zNormSql, int64_t cost,
-                     int64_t time, int64_t nrows, struct reqlogger *logger,
-                     unsigned char *fingerprint_out)
+void add_fingerprint(sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
+                     int64_t cost, int64_t time, int64_t nrows,
+                     struct reqlogger *logger, unsigned char *fingerprint_out)
 {
     assert(zSql);
-    assert(zNormSql);
-    size_t nNormSql;
+    size_t nNormSql = 0;
     unsigned char fingerprint[FINGERPRINTSZ];
-
-    /* Calculate fingerprint */
     calc_fingerprint(zNormSql, &nNormSql, fingerprint);
-
     Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
     if (gbl_fingerprint_hash == NULL) gbl_fingerprint_hash = hash_init(FINGERPRINTSZ);
     struct fingerprint_track *t = hash_find(gbl_fingerprint_hash, fingerprint);
     if (t == NULL) {
         /* make sure we haven't generated an unreasonable number of these */
-        int nents;
-        hash_info(gbl_fingerprint_hash, NULL, NULL, NULL, NULL, &nents, NULL, NULL);
+        int nents = hash_get_num_entries(gbl_fingerprint_hash);
         if (nents >= gbl_fingerprint_max_queries) {
             static int complain_once = 1;
             if (complain_once) {
@@ -123,15 +117,14 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
 
-        char fp[FINGERPRINTSZ * 2 + 1]; /* 16 ==> 33 */
+        char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
         util_tohex(fp, t->fingerprint, FINGERPRINTSZ);
         struct reqlogger *statlogger = NULL;
 
         // dump to statreqs immediately
         statlogger = reqlog_alloc();
         reqlog_diffstat_init(statlogger);
-        reqlog_logf(statlogger, REQL_INFO, "fp=%s sql=\"%s\"\n", fp,
-                    t->zNormSql);
+        reqlog_logf(statlogger, REQL_INFO, "fp=%s sql=\"%s\"\n", fp, t->zNormSql);
         reqlog_diffstat_dump(statlogger);
         reqlog_free(statlogger);
 
@@ -175,8 +168,13 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     }
-    reqlog_set_fingerprint(logger, (const char*)fingerprint, FINGERPRINTSZ);
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+
+    if (logger != NULL) {
+        reqlog_set_fingerprint(
+            logger, (const char*)fingerprint, FINGERPRINTSZ
+        );
+    }
 done:
     if (fingerprint_out)
         memcpy(fingerprint_out, fingerprint, FINGERPRINTSZ);
