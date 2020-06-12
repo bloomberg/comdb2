@@ -1035,8 +1035,10 @@ struct cdb2_hndl {
     char stack[MAX_STACK];
     int send_stack;
     void *user_arg;
-    char *bind_list_name;
+    char *bind_list_string; /* string to replace with a list */
     char *bind_list_repl;
+    char *bind_array_name;
+    char *bind_array_repl;
     int gbl_event_version; /* Cached global event version */
     int api_call_timeout;
     int connect_timeout;
@@ -4806,20 +4808,20 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     sql = cdb2_skipws(sql);
     char *new_sql = NULL;
     const char *actual_sql = sql;
-    if (hndl->bind_list_name && hndl->bind_list_repl) {
-        char *p = strstr(sql, hndl->bind_list_name);
+    if (hndl->bind_list_string && hndl->bind_list_repl) {
+        char *p = strstr(sql, hndl->bind_list_string);
         if (!p) {
-            fprintf(stderr, "List bind parameter '%s' not found in sql '%s'\n", hndl->bind_list_name, sql);
+            fprintf(stderr, "List bind parameter '%s' not found in sql '%s'\n", hndl->bind_list_string, sql);
             return -1;
         }
         int p1len = p - sql; // part 1
 
         int list_len = strlen(hndl->bind_list_repl);
-        new_sql = malloc(strlen(sql) + list_len);
+        new_sql = malloc(strlen(sql) + list_len + 1);
         strncpy(new_sql, sql, p1len);
         strncpy(&new_sql[p1len], hndl->bind_list_repl, list_len);
         strcat(&new_sql[p1len + list_len],
-               &sql[p1len + strlen(hndl->bind_list_name)]);
+               &sql[p1len + strlen(hndl->bind_list_string)]);
         actual_sql = new_sql;
         /* replace ',' with \0 for the bind parameter name */
         for(int i = 0; i < list_len; i++) {
@@ -4833,8 +4835,8 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     if (rc)
         debugprint("rc = %d\n", rc);
 
-    if (hndl->bind_list_name && hndl->bind_list_repl) {
-        free(hndl->bind_list_name); hndl->bind_list_name = NULL;
+    if (hndl->bind_list_string && hndl->bind_list_repl) {
+        free(hndl->bind_list_string); hndl->bind_list_string = NULL;
         free(hndl->bind_list_repl); hndl->bind_list_repl = NULL;
         free(new_sql); new_sql = NULL;
     }
@@ -5103,50 +5105,70 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
     free(hndl->bindvars);
     hndl->bindvars = NULL;
     hndl->n_bindvars = 0;
-    free(hndl->bind_list_name);
-    hndl->bind_list_name = NULL;
+    free(hndl->bind_list_string);
+    hndl->bind_list_string = NULL;
     free(hndl->bind_list_repl);
     hndl->bind_list_repl = NULL;
     return 0;
 }
 
-/* bind @list with array of type/variable */
-int cdb2_bind_list(cdb2_hndl_tp *hndl, const char *varname, int count,
-                   int type[], const void *varaddr[], int length[])
+#define SQLITE_MAX_VARIABLE_NUMBER 2048
+/* bind @list[] with array of type/variable */
+static int cdb2_bind_list_common(cdb2_hndl_tp *hndl, const char *varname,
+                          unsigned int count, int *listtype, int arraytype,
+                          const void *varaddr[], int length[], int typelen)
 {
-    free(hndl->bind_list_name);
+    free(hndl->bind_list_string);
     free(hndl->bind_list_repl);
+
+    if (count > SQLITE_MAX_VARIABLE_NUMBER)
+        fprintf(stderr,
+                "Error binding list parameter %s: Can not bind more than %d elements\n",
+                varname, SQLITE_MAX_VARIABLE_NUMBER);
+
     int len = strlen(varname);
-    hndl->bind_list_name = malloc(len + 1);
-    hndl->bind_list_name[0] = '@';
-    strcpy(&hndl->bind_list_name[1], varname); // to search
-    hndl->bind_list_repl = malloc((len + 8) * count); // to replace
-    hndl->bind_list_repl[0] = '\0';
+    hndl->bind_list_string = malloc(len + 4); // will look for '@varname[]' in the sql
+    sprintf(hndl->bind_list_string, "@%s[]", varname);
 
-    char loc_varname[len + 6];
-    strcpy(loc_varname, varname);
+    int new_bindstr_len = count * (len + sizeof(",@_1234"));
+    hndl->bind_list_repl = malloc(new_bindstr_len * count); // + 1 for '\0' - 1 for no leading ','
+
     char *end_ptr = hndl->bind_list_repl;
+    *end_ptr = '\0';
     for (int i = 0; i < count; i++) {
-        sprintf(&loc_varname[len], "_%d", i);
-
-        int n = sprintf(end_ptr, "%s@%s", ((i==0) ? "" : ","), loc_varname);
+        int n = sprintf(end_ptr, "%s@%s_%d", ((i==0) ? "" : ","), varname, i);
         if (n < 0) {
             fprintf(stderr, "Error endptr %s\n", end_ptr);
             return -1;
         }
 
-        int rc = cdb2_bind_param(hndl, end_ptr + ((i==0) ? 0 : 1) , type[i], varaddr[i], length[i]);
+        int tp = (listtype ? listtype[i] : arraytype);
+        int len = (length ? length[i] : typelen);
+        int rc = cdb2_bind_param(hndl, end_ptr + ((i==0) ? 0 : 1) , tp, varaddr[i], len);
         if (rc) {
-            fprintf(stderr, "Error binding list parameter %s (err: %s)\n", loc_varname,
-                    cdb2_errstr(hndl));
+            fprintf(stderr, "Error binding list parameter %d for %s (err: %s)\n",
+                    i, varname, cdb2_errstr(hndl));
             exit(1);
         }
         end_ptr += n;
     }
-    if (end_ptr - hndl->bind_list_repl >= (len + 8) * count) {
+    if (end_ptr - hndl->bind_list_repl >= new_bindstr_len) {
+        abort();
         return -1;
     }
     return 0;
+}
+
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *varname, unsigned int count,
+                    int type, const void *varaddr[], int typelen, int length[])
+{
+    return cdb2_bind_list_common(hndl, varname, count, NULL, type, varaddr, length, typelen);
+}
+
+int cdb2_bind_list(cdb2_hndl_tp *hndl, const char *varname, unsigned int count,
+                   int type[], const void *varaddr[], int length[])
+{
+    return cdb2_bind_list_common(hndl, varname, count, type, 0, varaddr, length, 0);
 }
 
 

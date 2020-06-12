@@ -338,14 +338,19 @@ void test_05()
     test_open(&hndl, db);
 
     {
-        int type[2] = {CDB2_INTEGER, CDB2_INTEGER};
-        int a = 11, b = 33;
-        const void *vals[2] = {&a, &b};
-        int lengths[2] = { sizeof(a), sizeof(b)};
+        int a = 11;
+        short b = 33;
+        long long int c = 44;
+        double d = 55.5;
+        const char e[] = "hello66";
+#define ITEMS 6
+        int type[ITEMS] = {CDB2_INTEGER, CDB2_INTEGER, CDB2_INTEGER, CDB2_REAL, CDB2_CSTRING};
+        const void *vals[ITEMS] = {&a, &b, &c, &d, &e};
+        int lengths[ITEMS] = { sizeof(a), sizeof(b), sizeof(c), sizeof(d), sizeof(e)};
 
-        cdb2_bind_list(hndl, "list", 2, type, vals, lengths);
+        cdb2_bind_list(hndl, "list", ITEMS, type, vals, lengths);
 
-        const char *select_list_sql = "select @list";
+        const char *select_list_sql = "select @list[]";
         test_exec(hndl, select_list_sql);
         test_next_record(hndl);
         long long *vala = cdb2_column_value(hndl, 0);
@@ -355,10 +360,29 @@ void test_05()
         }
         long long *valb = cdb2_column_value(hndl, 1);
         if (*valb != b) {
-            fprintf(stderr, "error got:%lld expected:%d\n", *valb, a);
+            fprintf(stderr, "error got:%lld expected:%d\n", *valb, b);
             exit(1);
         }
-        //printf("RESP %d %d\n", a, b);
+        /*
+        int t = cdb2_column_type(hndl, 2);
+        printf("type t = %d, %s\n", t);
+        */
+        long long *valc = cdb2_column_value(hndl, 2);
+        if (*valc != c) {
+            fprintf(stderr, "error got:%lld expected:%lld\n", *valc, c);
+            exit(1);
+        }        
+        double *vald = cdb2_column_value(hndl, 3);
+        if (abs(*vald - d) > 0.000001) {
+            fprintf(stderr, "error got:%lf expected:%lf\n", *vald, d);
+            exit(1);
+        }
+        char *vale = cdb2_column_value(hndl, 4);
+        if (strcmp(vale, e) != 0) {
+            fprintf(stderr, "error got: %s expected:%s\n", vale, e);
+            exit(1);
+        }
+        //printf("RESP %d %d %lld %lf %s\n", a, b, c, d, e);
         cdb2_clearbindings(hndl);
     }
 
@@ -380,7 +404,7 @@ void test_05()
             lengths[i] = sizeof(type[i]);
         }
         cdb2_bind_list(hndl, "otherlist", N, type, vals, lengths);
-        test_exec(hndl, "select a,b from t2 where a in (@otherlist) order by a");
+        test_exec(hndl, "select a,b from t2 where a in (@otherlist[]) order by a");
         for (int i = 0; i < N; i++) {
             test_next_record(hndl);
             long long *vala = cdb2_column_value(hndl, 0);
@@ -399,6 +423,36 @@ void test_05()
         }
         cdb2_clearbindings(hndl);
     }
+
+    {
+        int N = 200;
+        int values[N];
+        const void *vals[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = i;
+            vals[i] = &values[i];
+        }
+        cdb2_bind_array(hndl, "myarray", N, CDB2_INTEGER, vals, sizeof(values[0]), NULL);
+        test_exec(hndl, "select a,b from t2 where a in (@myarray[]) order by a");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            long long *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "error got:%lld expected:%d\n", *vala, values[i]);
+                exit(1);
+            }
+
+            long long *valb = cdb2_column_value(hndl, 0);
+            if (*valb != values[i]) {
+                fprintf(stderr, "error got:%lld expected:%d\n", *valb, values[i]);
+                exit(1);
+            }
+
+            //printf("RESP %lld %lld\n", *vala, *valb);
+        }
+        cdb2_clearbindings(hndl);
+    }
+    test_close(hndl);
 }
 
 
