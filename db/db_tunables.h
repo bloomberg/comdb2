@@ -1960,4 +1960,21 @@ REGISTER_TUNABLE("dump_sql_on_repwait_sec",
                  "Dump sql queries that are blocking the replication thread "
                  "for more than this duration (Default: 10secs)",
                  TUNABLE_INTEGER, &gbl_dump_sql_on_repwait_sec, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("client_queued_slow_seconds",
+                 "If a client connection remains \"queued\" longer than this "
+                 "period of time (in seconds), it is considered to be \"slow\", "
+                 "which may trigger an action by the watchdog.  (Default: off)",
+                 TUNABLE_INTEGER, &gbl_client_queued_slow_seconds,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("client_running_slow_seconds",
+                 "If a client connection remains \"running\" longer than this "
+                 "period of time (in seconds), it is considered to be \"slow\", "
+                 "which may trigger an action by the watchdog.  (Default: off)",
+                 TUNABLE_INTEGER, &gbl_client_running_slow_seconds,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("client_abort_on_slow",
+                 "Enable watchdog to abort if a \"slow\" client is detected."
+                 "  (Default: off)", TUNABLE_BOOLEAN, &gbl_client_abort_on_slow,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */
