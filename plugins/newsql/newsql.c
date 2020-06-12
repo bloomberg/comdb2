@@ -1637,18 +1637,19 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
-                    if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                    if (strlen(sqlstr) >= sizeof(clnt->current_user.name)) {
                         snprintf(err, sizeof(err),
                                  "set user: '%s' exceeds %zu characters",
-                                 sqlstr, sizeof(clnt->user) - 1);
+                                 sqlstr, sizeof(clnt->current_user.name) - 1);
                         rc = ii + 1;
                     } else {
-                        clnt->have_user = 1;
+                        clnt->current_user.have_name = 1;
                         /* Re-authenticate the new user. */
-                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
+                        if (clnt->authgen &&
+                            strcmp(clnt->current_user.name, sqlstr) != 0)
                             clnt->authgen = 0;
-                        clnt->is_x509_user = 0;
-                        strcpy(clnt->user, sqlstr);
+                        clnt->current_user.is_x509_user = 0;
+                        strcpy(clnt->current_user.name, sqlstr);
                     }
                 }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
@@ -1661,19 +1662,19 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
-                    if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                    if (strlen(sqlstr) >= sizeof(clnt->current_user.password)) {
                         snprintf(err, sizeof(err),
                                  "set password: password length exceeds %lu "
                                  "characters",
-                                 sizeof(clnt->password) - 1);
+                                 sizeof(clnt->current_user.password) - 1);
                         rc = ii + 1;
                     } else {
-                        clnt->have_password = 1;
+                        clnt->current_user.have_password = 1;
                         /* Re-authenticate the new password. */
                         if (clnt->authgen &&
-                            strcmp(clnt->password, sqlstr) != 0)
+                            strcmp(clnt->current_user.password, sqlstr) != 0)
                             clnt->authgen = 0;
-                        strcpy(clnt->password, sqlstr);
+                        strcpy(clnt->current_user.password, sqlstr);
                     }
                 }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {

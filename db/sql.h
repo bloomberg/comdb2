@@ -532,6 +532,16 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+struct user {
+    char name[MAX_USERNAME_LEN];
+    char password[MAX_PASSWORD_LEN];
+
+    uint8_t have_name;
+    uint8_t have_password;
+    /* 1 if the user is retrieved from a client certificate */
+    uint8_t is_x509_user;
+};
+
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
 
 /* Client specific sql state */
@@ -626,14 +636,7 @@ struct sqlclntstate {
     struct query_effects log_effects;
     int64_t nsteps;
 
-    int have_user;
-    char user[MAX_USERNAME_LEN];
-    int is_x509_user; /* True if the user is retrieved
-                         from a client certificate. */
-
-    int have_password;
-    char password[MAX_PASSWORD_LEN];
-
+    struct user current_user;
     int authgen;
 
     int no_transaction;

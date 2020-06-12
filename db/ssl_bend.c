@@ -329,12 +329,12 @@ static const char *ssl_mode_to_string(ssl_mode mode)
 
 void ssl_set_clnt_user(struct sqlclntstate *clnt)
 {
-    int rc =
-        sslio_x509_attr(clnt->sb, gbl_nid_user, clnt->user, sizeof(clnt->user));
+    int rc = sslio_x509_attr(clnt->sb, gbl_nid_user, clnt->current_user.name,
+                             sizeof(clnt->current_user.name));
     if (rc != 0)
         return;
-    clnt->have_user = 1;
-    clnt->is_x509_user = 1;
+    clnt->current_user.have_name = 1;
+    clnt->current_user.is_x509_user = 1;
 }
 
 void ssl_stats(void)
