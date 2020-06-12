@@ -2910,7 +2910,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-/* if userpassword does not match this function
+/* If user password does not match this function
  * will write error response and return a non 0 rc
  */
 static inline int check_user_password(struct sqlclntstate *clnt)
@@ -2921,18 +2921,18 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if (!gbl_uses_password)
         return 0;
 
-    if (!clnt->have_user) {
-        clnt->have_user = 1;
-        strcpy(clnt->user, DEFAULT_USER);
+    if (!clnt->current_user.have_name) {
+        clnt->current_user.have_name = 1;
+        strcpy(clnt->current_user.name, DEFAULT_USER);
     }
 
-    if (!clnt->have_password) {
-        clnt->have_password = 1;
-        strcpy(clnt->password, DEFAULT_PASSWORD);
+    if (!clnt->current_user.have_password) {
+        clnt->current_user.have_password = 1;
+        strcpy(clnt->current_user.password, DEFAULT_PASSWORD);
     }
 
-    password_rc =
-        bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+    password_rc = bdb_user_password_check(
+        clnt->current_user.name, clnt->current_user.password, &valid_user);
 
     if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
@@ -2944,10 +2944,18 @@ static inline int check_user_password(struct sqlclntstate *clnt)
 /* Return current authenticated user for the session */
 char *get_current_user(struct sqlclntstate *clnt)
 {
-    if (clnt && !clnt->is_x509_user && clnt->have_user) {
-        return clnt->user;
+    if (clnt && !clnt->current_user.is_x509_user &&
+        clnt->current_user.have_name) {
+        return clnt->current_user.name;
     }
     return NULL;
+}
+
+static void reset_user(struct sqlclntstate *clnt)
+{
+    if (!clnt)
+        return;
+    bzero(&clnt->current_user, sizeof(clnt->current_user));
 }
 
 void thr_set_current_sql(const char *sql)
@@ -4330,16 +4338,17 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
        3) and client does not override the user, let it through. */
-    if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
+    if (sslio_has_x509(clnt->sb) && clnt->current_user.is_x509_user)
         rc = 0;
     else
 #   endif
         rc = check_user_password(clnt);
 
     if (rc == 0) {
-        if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
+        if (thd->lastuser[0] != '\0' &&
+            strcmp(thd->lastuser, clnt->current_user.name) != 0)
             delete_prepared_stmts(thd);
-        strcpy(thd->lastuser, clnt->user);
+        strcpy(thd->lastuser, clnt->current_user.name);
         clnt->authgen = bpfunc_auth_gen;
     } else {
         clnt->authgen = 0;
@@ -4890,7 +4899,8 @@ void clnt_to_ruleset_item_criteria(
   if ((clnt == NULL) || (context == NULL)) return;
   context->zOriginHost = clnt->origin_host;
   context->zOriginTask = clnt->conninfo.pename;
-  context->zUser = clnt->have_user ? clnt->user : NULL;
+  context->zUser =
+      clnt->current_user.have_name ? clnt->current_user.name : NULL;
   context->zSql = clnt->sql;
   context->pFingerprint = clnt->work.aFingerprint;
 }
@@ -5675,17 +5685,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->limits.tablescans_warn = gbl_querylimits_tablescans_warn;
     clnt->limits.temptables_warn = gbl_querylimits_temptables_warn;
 
-
     reset_query_effects(clnt);
 
-    /* reset the user */
-    clnt->have_user = 0;
-    clnt->is_x509_user = 0;
-    bzero(clnt->user, sizeof(clnt->user));
-
-    /* reset the password */
-    clnt->have_password = 0;
-    bzero(clnt->password, sizeof(clnt->password));
+    reset_user(clnt);
 
     /* reset authentication status */
     clnt->authgen = 0;

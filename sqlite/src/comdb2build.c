@@ -134,8 +134,8 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
-    if(gbl_allow_user_schema && clnt->user[0] != '\0' &&
-       strcasecmp(clnt->user,DEFAULT_USER) != 0) {
+    if (gbl_allow_user_schema && clnt->current_user.name[0] != '\0' &&
+        strcasecmp(clnt->current_user.name, DEFAULT_USER) != 0) {
         /* Check whether table_name contains user name. */
         char* username = strchr(table_name, '@');
         if (username) {
@@ -147,7 +147,9 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             int bdberr;
             int bytes_written;
             bdb_state_type *bdb_state = thedb->bdb_env;
-            if (bdb_tbl_access_userschema_get(bdb_state, NULL, clnt->user, userschema, &bdberr) == 0) {
+            if (bdb_tbl_access_userschema_get(bdb_state, NULL,
+                                              clnt->current_user.name,
+                                              userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", table_name);
               } else {
@@ -161,7 +163,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
               }
             } else {
               bytes_written = snprintf(dst, MAXTABLELEN, "%s@%s", table_name,
-                                       clnt->user);
+                                       clnt->current_user.name);
               if (bytes_written >= MAXTABLELEN) {
                 rc = setError(pParse, SQLITE_MISUSE, "User-schema name is "
                                                      "too long");
@@ -399,7 +401,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      if (clnt && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, clnt->user, &bdberr))
+            tablename, clnt->current_user.name, &bdberr))
           return SQLITE_AUTH;
         else
             return SQLITE_OK;
@@ -439,14 +441,15 @@ static int comdb2AuthenticateOpPassword(Parse* pParse)
      if (clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         if (bdb_user_password_check(clnt->user, clnt->password, NULL))
+         if (bdb_user_password_check(clnt->current_user.name,
+                                     clnt->current_user.password, NULL))
          {
             return SQLITE_AUTH;
          }
          
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", clnt->user,
-                                   &bdberr))
+         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "",
+                                   clnt->current_user.name, &bdberr))
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
@@ -606,7 +609,7 @@ static int authenticateSC(const char * table,  Parse *pParse)
 {
     char *username = strstr(table, "@");
     struct sqlclntstate *clnt = get_sql_clnt();
-    if (username && strcmp(username+1, clnt->user) == 0) {
+    if (username && strcmp(username+1, clnt->current_user.name) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserDDL(table) == 0) {
         return 0;
@@ -1980,8 +1983,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     {
         struct sqlclntstate *clnt = get_sql_clnt();
         /* Check if its password change request */
-        if (!(clnt &&
-                   strcmp(clnt->user, password->user) == 0 )) {
+        if (!(clnt && strcmp(clnt->current_user.name, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             goto clean_arg;
         }
@@ -2244,7 +2246,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        snprintf(tableName, len, "%s", p->zName);
-   } else if (clnt && (clnt->user[0] != '\0') &&
+   } else if (clnt && (clnt->current_user.name[0] != '\0') &&
               !strchr(p->zName, '@') &&
               strncasecmp(p->zName, "sqlite_", 7) &&
               strncasecmp(p->zName, "comdb2", 6))
@@ -2253,7 +2255,8 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
        int bdberr;
        int bytes_written;
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL, clnt->user,
+       if (bdb_tbl_access_userschema_get(bdb_state, NULL,
+                                         clnt->current_user.name,
                                          userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
            bytes_written = snprintf(tableName, len, "%s", p->zName);
@@ -2269,7 +2272,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
          }
        } else {
          bytes_written = snprintf(tableName, len, "%s@%s", p->zName,
-                                  clnt->user);
+                                  clnt->current_user.name);
          if (bytes_written >= len) {
              return 1;
          }

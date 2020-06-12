@@ -12346,14 +12346,14 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
                 return SQLITE_OK;
             }
 
-            rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
-                                           (char *)mod->zName, ACCESS_READ,
-                                           &bdberr);
+            rc = bdb_check_user_tbl_access(
+                thedb->bdb_env, thd->clnt->current_user.name,
+                (char *)mod->zName, ACCESS_READ, &bdberr);
             if (rc != 0) {
                 char msg[1024];
                 snprintf(msg, sizeof(msg),
                          "Read access denied to %s for user %s bdberr=%d",
-                         mod->zName, thd->clnt->user, bdberr);
+                         mod->zName, thd->clnt->current_user.name, bdberr);
                 logmsg(LOGMSG_INFO, "%s\n", msg);
                 errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
                 errstat_set_str(&thd->clnt->osql.xerr, msg);

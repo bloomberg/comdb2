@@ -124,6 +124,7 @@ typedef struct table_descriptor {
     int scale;
     int override_llmeta;
     index_descriptor_t index[MAXINDEX];
+    struct user current_user;
 } table_descriptor_t;
 
 /* loadStat4 (analyze.c) will ignore all stat entries
@@ -742,6 +743,8 @@ static int analyze_table_int(table_descriptor_t *td,
     sbuf2settimeout(clnt.sb, 0, 0);
     int sampled_table = 0;
 
+    clnt.current_user = td->current_user;
+
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
     int rc = run_internal_sql_clnt(&clnt, "BEGIN");
@@ -1055,6 +1058,13 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     td.scale = scale;
     td.override_llmeta = override_llmeta;
     strncpy0(td.table, table, sizeof(td.table));
+
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = (thd) ? thd->clnt : NULL;
+
+    if (clnt) {
+        td.current_user = clnt->current_user;
+    }
 
     /* dispatch */
     int rc = dispatch_table_thread(&td);

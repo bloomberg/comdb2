@@ -115,7 +115,8 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
       continue;
 
     /* Check user access. */
-    rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
+    rc = bdb_check_user_tbl_access(thedb->bdb_env,
+                                   thd->clnt->current_user.name,
                                    thedb->qdbs[i]->tablename, ACCESS_READ,
                                    &bdberr);
     if (rc != 0) {

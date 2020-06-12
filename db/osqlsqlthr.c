@@ -1715,13 +1715,13 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
     if (gbl_uses_password &&
         (thd->clnt->no_transaction == 0)) {
         rc = bdb_check_user_tbl_access(
-            pCur->db->dbenv->bdb_env, thd->clnt->user,
+            pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
             pCur->db->tablename, ACCESS_WRITE, &bdberr);
         if (rc != 0) {
             char msg[1024];
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->clnt->user, bdberr);
+                     pCur->db->tablename, thd->clnt->current_user.name, bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -1762,13 +1762,13 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     /* Check it only if engine is open already. */
     if (gbl_uses_password && thd->clnt->no_transaction == 0) {
         rc = bdb_check_user_tbl_access(
-            pCur->db->dbenv->bdb_env, thd->clnt->user,
+            pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
             pCur->db->tablename, ACCESS_READ, &bdberr);
         if (rc != 0) {
             char msg[1024];
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->clnt->user, bdberr);
+                     pCur->db->tablename, thd->clnt->current_user.name, bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
