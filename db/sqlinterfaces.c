@@ -3471,6 +3471,8 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
                 /* Calculate fingerprint */
                 calc_fingerprint(zNormSql, &unused, fingerprint);
+                /* Store for virtual table use. */
+                memcpy(clnt->work.aFingerprint, fingerprint, FINGERPRINTSZ);
 
                 Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
                 if (gbl_fingerprint_hash) {
@@ -3539,6 +3541,13 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         if (!(flags & PREPARE_NO_NORMALIZE) && !normalize_sql_done) {
             free_normalized_sql(clnt);
             normalize_stmt_and_store(clnt, rec, 0);
+            if (clnt->work.zNormSql) {
+                size_t nNormSql = 0; /* NOT USED */            
+                calc_fingerprint(clnt->work.zNormSql, &nNormSql,
+                                 clnt->work.aFingerprint);
+            } else {
+                memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
+            }
         }
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
@@ -7047,9 +7056,13 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
        Pthread_mutex_lock(&clnt->state_lk);
        if (clnt->state == CONNECTION_RUNNING ||
            clnt->state == CONNECTION_QUEUED) {
+           char zFingerprint[FINGERPRINTSZ*2+1];
+           util_tohex(zFingerprint, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);          
            c[cid].sql = strdup(clnt->sql);
+           c[cid].fingerprint = strdup(zFingerprint);
       } else {
           c[cid].sql = NULL;
+          c[cid].fingerprint = NULL;
       }
       Pthread_mutex_unlock(&clnt->state_lk);
       cid++;
@@ -7064,6 +7077,7 @@ void free_connection_info(struct connection_info *info, int num_connections)
     if (info == NULL) return;
     for (int i = 0; i < num_connections; i++) {
         if (info[i].sql) free(info[i].sql);
+        if (info[i].fingerprint) free(info[i].fingerprint);
         /* state is static, don't free */
     }
     free(info);

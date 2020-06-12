@@ -70,6 +70,9 @@ int clear_fingerprints(void) {
 
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]) {
+    memset(fingerprint, 0, FINGERPRINTSZ);
+    if (zNormSql == NULL) return; /* just return all zeros. */
+
     MD5Context ctx = {0};
 
     assert(zNormSql);
@@ -79,7 +82,6 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
 
     MD5Init(&ctx);
     MD5Update(&ctx, (unsigned char *)zNormSql, *pnNormSql);
-    memset(fingerprint, 0, FINGERPRINTSZ);
     MD5Final(fingerprint, &ctx);
 }
 
