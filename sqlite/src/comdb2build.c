@@ -2239,17 +2239,19 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
-int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
-                      size_t len)
+int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
+                     char *tableName, size_t len)
 {
    struct sqlclntstate *clnt = get_sql_clnt();
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        snprintf(tableName, len, "%s", p->zName);
-   } else if (clnt && (clnt->current_user.name[0] != '\0') &&
-              !strchr(p->zName, '@') &&
-              strncasecmp(p->zName, "sqlite_", 7) &&
-              strncasecmp(p->zName, "comdb2", 6))
+   } else if (clnt &&
+              (clnt->current_user.name[0] != '\0') &&   /* authenticated */
+              !strchr(p->zName, '@') &&                 /* mustn't have user
+                                                           name */
+              strncasecmp(p->zName, "sqlite_", 7) &&    /* sqlite table */
+              !sqlite3HashFind(&db->aModule, p->zName)) /* sqlite module */
    {
        char userschema[MAXTABLELEN];
        int bdberr;

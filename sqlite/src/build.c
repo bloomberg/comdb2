@@ -735,7 +735,7 @@ Table *sqlite3LocateTableItem(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( gbl_allow_user_schema ){
     char tblName[MAXTABLELEN];
-    if (resolveTableName(p, zDb, tblName, sizeof(tblName))) {
+    if (resolveTableName(pParse->db, p, zDb, tblName, sizeof(tblName))) {
         sqlite3ErrorMsg(pParse, "failed to resolve table name");
         return 0;
     }
