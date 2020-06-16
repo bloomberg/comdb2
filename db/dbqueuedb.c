@@ -145,10 +145,11 @@ static int dbqueuedb_get_stats_int(struct dbtable *db, tran_type *tran,
     return -1;
 }
 
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats)
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_t lockid)
 {
     int rc;
     int bdberr;
+    uint32_t savedlid;
     bdb_state_type *bdb_state = db->handle;
     tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (!trans) {
@@ -156,11 +157,18 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats)
                db->tablename, bdberr);
         return -1;
     }
+    if (lockid) {
+        bdb_get_tran_lockerid(trans, &savedlid);
+        bdb_set_tran_lockerid(trans, lockid);
+    }
     if ((rc = bdb_lock_table_read(bdb_state, trans)) == 0) {
         rc = dbqueuedb_get_stats_int(db, trans, stats);
     } else {
         logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
                db->tablename, rc);
+    }
+    if (lockid) {
+        bdb_set_tran_lockerid(trans, savedlid);
     }
     bdb_tran_abort(bdb_state, trans, &bdberr);
     return rc;

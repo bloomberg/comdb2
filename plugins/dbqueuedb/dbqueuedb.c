@@ -62,6 +62,8 @@
 #include <trigger.h>
 #include <intern_strings.h>
 #include "logmsg.h"
+#include <schema_lk.h>
+#include <locks.h>
 
 static void coalesce(struct dbenv *dbenv);
 static int wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
@@ -364,6 +366,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     struct bdb_queue_found *fnddta;
     size_t fnddtalen;
     size_t fnddtaoff;
+    uint32_t lockid;
     const uint8_t *status;
     pthread_mutex_t *mu;
     pthread_cond_t *cond;
@@ -371,6 +374,10 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     init_fake_ireq(table->dbenv, &iq);
     iq.usedb = table;
     genid = 0;
+
+    lockid = bdb_readonly_lock_id(thedb->bdb_env);
+    assert(lockid > 0);
+    bdb_lock_table_read_fromlid(table->handle, lockid);
 
     rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &status);
     if (rc != 0) {
@@ -386,7 +393,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
         goto skip;
     }
 
-    rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL, NULL);
+    rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL, NULL, lockid);
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
     } else if (rc != IX_NOTFND) {
@@ -404,6 +411,7 @@ skip:
                "failed (rc: %d)\n",
                rc);
     }
+    bdb_free_lock_id(thedb->bdb_env, lockid);
     Pthread_mutex_unlock(mu);
 
     return genid;
@@ -446,6 +454,7 @@ static void admin(struct dbenv *dbenv, int type)
 {
     int iammaster = (dbenv->master == gbl_myhostname) ? 1 : 0;
 
+    assert_lock_schema_lk();
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
         Pthread_mutex_unlock(&dbqueuedb_admin_lk);
@@ -719,7 +728,7 @@ static void queue_flush(struct dbtable *db, int consumern)
             return;
         }
 
-        rc = dbq_get(&iq, consumern, NULL, &item, NULL, NULL, NULL, NULL);
+        rc = dbq_get(&iq, consumern, NULL, &item, NULL, NULL, NULL, NULL, 0);
 
         if (rc != 0) {
             if (rc != IX_NOTFND)

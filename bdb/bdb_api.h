@@ -1793,6 +1793,8 @@ void berkdb_set_max_rep_retries(int max);
 void bdb_set_recovery(bdb_state_type *);
 tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
                                       int retries, int *bdberr);
+uint32_t bdb_readonly_lock_id(bdb_state_type *bdb_state);
+void bdb_free_lock_id(bdb_state_type *bdb_state, uint32_t lid);
 void bdb_lockspeed(bdb_state_type *bdb_state);
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
 int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
