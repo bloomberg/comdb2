@@ -2498,9 +2498,8 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen);
 int dbq_consume(struct ireq *iq, void *trans, int consumer,
                 const struct bdb_queue_found *fnd);
 int dbq_consume_genid(struct ireq *, void *trans, int consumer, const genid_t);
-int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prev,
-            struct bdb_queue_found **fnddta, size_t *fnddtalen,
-            size_t *fnddtaoff, struct bdb_queue_cursor *fnd, long long *seq);
+int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prev, struct bdb_queue_found **fnddta,
+            size_t *fnddtalen, size_t *fnddtaoff, struct bdb_queue_cursor *fnd, long long *seq, uint32_t lockid);
 void dbq_get_item_info(const struct bdb_queue_found *fnd, size_t *dtaoff, size_t *dtalen);
 unsigned long long dbq_item_genid(const struct bdb_queue_found *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
@@ -2632,7 +2631,7 @@ int dbqueuedb_stop_consumers(struct dbtable *db);
 int dbqueuedb_restart_consumers(struct dbtable *db);
 int dbqueuedb_check_consumer(const char *method);
 int dbqueuedb_get_name(struct dbtable *db, char **spname);
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats);
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_t lockid);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);

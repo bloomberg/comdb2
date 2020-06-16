@@ -5274,13 +5274,11 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
-int dbq_get(struct ireq *iq, int consumer,
-            const struct bdb_queue_cursor *prevcursor,
-            struct bdb_queue_found **fnddta, size_t *fnddtalen,
-            size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-            long long *seq)
+int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnddta,
+            size_t *fnddtalen, size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor, long long *seq, uint32_t lockid)
 {
     int bdberr;
+    uint32_t savedlid;
     void *bdb_handle;
     int retries = 0;
     int rc;
@@ -5289,13 +5287,20 @@ int dbq_get(struct ireq *iq, int consumer,
         return ERR_NO_AUXDB;
 
     tran_type *tran = NULL;
+retry:
     rc = trans_start(iq, NULL, (void *)&tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
         goto done;
     }
 
-retry:
+    /* This is a curtran-lockid: the lock on the queue will be released
+     * when the cursor is closed */
+    if (lockid) {
+        bdb_get_tran_lockerid(tran, &savedlid);
+        bdb_set_tran_lockerid(tran, lockid);
+    }
+
     iq->gluewhere = "bdb_queue_get";
     rc = bdb_queue_get(bdb_handle, tran, consumer, prevcursor, fnddta,
                        fnddtalen, fnddtaoff, fndcursor, seq, &bdberr);
@@ -5303,14 +5308,17 @@ retry:
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
-            if (++retries < gbl_maxretries) {
+            if (++retries < gbl_maxretries && !lockid) {
                 n_retries++;
                 poll(0, 0, (rand() % 500 + 10));
+                bdb_tran_abort(bdb_handle, tran, &bdberr);
                 goto retry;
             }
-            logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n",
-                   bdberr, retries);
-            rc = ERR_INTERNAL;
+            if (!lockid) {
+                logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n", bdberr, retries);
+            }
+            /* if lockid is passed in the calling code will recover_deadlock */
+            rc = lockid ? IX_NOTFND : ERR_INTERNAL;
             goto done;
         } else if (bdberr == BDBERR_FETCH_DTA) {
             rc = IX_NOTFND;
@@ -5327,6 +5335,9 @@ retry:
     }
 done:
     if (tran) {
+        if (lockid) {
+            bdb_set_tran_lockerid(tran, savedlid);
+        }
         if (bdb_tran_abort(bdb_handle, tran, &bdberr)) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction: %d\n",
                    __FILE__, __LINE__, bdberr);

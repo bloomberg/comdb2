@@ -847,6 +847,23 @@ bdb_state_type *bdb_get_table_by_name_dbnum(bdb_state_type *bdb_state,
     return NULL;
 }
 
+uint32_t bdb_readonly_lock_id(bdb_state_type *bdb_state)
+{
+    uint32_t lid = 0;
+    DB_ENV *dbenv = bdb_state->dbenv;
+    dbenv->lock_id_flags(dbenv, &lid, DB_LOCK_ID_READONLY);
+    return lid;
+}
+
+void bdb_free_lock_id(bdb_state_type *bdb_state, uint32_t lid)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    DB_LOCKREQ rq = {0};
+    rq.op = DB_LOCK_PUT_ALL;
+    dbenv->lock_vec(dbenv, lid, 0, &rq, 1, NULL);
+    dbenv->lock_id_free(dbenv, lid);
+}
+
 void bdb_lockspeed(bdb_state_type *bdb_state)
 {
     u_int32_t lid;
