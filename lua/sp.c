@@ -4799,7 +4799,16 @@ static int db_get_event_tid(Lua L)
     luaL_checkudata(L, 1, dbtypes.db);
     if (lua_getmetatable(L, -1) == 0)
         return 0;
-    lua_getfield(L, -1, "__metatable");
+    lua_getfield(L, -1, "tid");
+    return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
+}
+
+static int db_get_event_epoch(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    if (lua_getmetatable(L, -1) == 0)
+        return 0;
+    lua_getfield(L, -1, "epoch");
     return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
 }
 
@@ -4877,12 +4886,13 @@ static const luaL_Reg db_funcs[] = {
     {"sp", db_sp},
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"error", db_error},
-    /************ CONSUMER **************/
-#ifdef WITH_RDKAFKA    
-    {"kafka_publish", kafka_publish},
-#endif    
+    #ifdef WITH_RDKAFKA
+        {"kafka_publish", kafka_publish},
+    #endif
+    /************ CONSUMER/TRIGGER ************/
     {"consumer", db_consumer},
     {"get_event_tid", db_get_event_tid},
+    {"get_event_epoch", db_get_event_epoch},
     /************** DEBUG ***************/
     {"debug", db_debug},
     {"db_debug", db_db_debug},
@@ -6402,9 +6412,14 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         return -1;
     }
 
-    lua_newtable(L);
+    lua_newtable(L);    /* Metatable for payload with tid, epoch */
+
     luabb_pushinteger(L, f->item->trans.tid);
-    lua_setfield(L, -2, "__metatable");
+    lua_setfield(L, -2, "tid");
+
+    luabb_pushinteger(L, f->epoch);
+    lua_setfield(L, -2, "epoch");
+
     lua_setmetatable(L, -2);
 
     return 1; // trigger sp receives only one argument
