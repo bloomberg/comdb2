@@ -474,6 +474,20 @@ static void udp_reader(int fd, short what, void *arg)
     char *from;
     int type;
     filepage_type fp;
+
+    struct pollfd pol;
+    pol.fd = fd;
+    pol.events = POLLIN;
+
+    // poll for any data on fd, if no data for one second, return to caller
+    int rc = poll(&pol, 1, 1000);
+    if (rc == 0 || (pol.revents & POLLIN) == 0)
+        return;
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "udp_reader:%d: poll err %d %s\n", __LINE__, errno, strerror(errno));
+        return;
+    }
+
 #ifdef UDP_DEBUG
     repinfo_type *repinfo = bdb_state->repinfo;
     netinfo_type *netinfo = repinfo->netinfo;
@@ -637,7 +651,7 @@ static void *udp_reader_thd(void *arg)
     repinfo_type *repinfo = bdb_state->repinfo;
     int fd = repinfo->udp_fd;
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-    while (1) {
+    while (!db_is_stopped()) {
         udp_reader(fd, 0, bdb_state);
     }
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
