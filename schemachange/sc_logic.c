@@ -948,7 +948,7 @@ int resume_schema_change(void)
                 sc_errf(s, "could not unpack the schema change data retrieved "
                            "from the low level meta table\n");
                 free(packed_sc_data);
-                free(s);
+                free_schema_change_type(s);
                 continue;
             }
 
@@ -961,7 +961,7 @@ int resume_schema_change(void)
                     logmsg(LOGMSG_ERROR,
                            "Failed to cancel resuming schema change %d %d\n",
                            rc, bdberr);
-                free(s);
+                free_schema_change_type(s);
                 continue; /* unmark all ongoing schema changes */
             }
 
