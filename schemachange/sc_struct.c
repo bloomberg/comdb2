@@ -1054,7 +1054,7 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->is_osql = sc->is_osql;
 
     if (!p_buf) {
-        free(newsc);
+        free_schema_change_type(newsc);
         free(buf);
         return NULL;
     }
