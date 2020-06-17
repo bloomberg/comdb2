@@ -34,6 +34,18 @@ if {[llength [info commands appendArgs]] == 0} then {
 
 ###############################################################################
 
+if {[llength [info commands maybeValue]] == 0} then {
+  proc maybeValue { varName } {
+    upvar 1 $varName variable
+
+    return [expr {
+      [info exists variable] ? $variable : ""
+    }]
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands isBinary]] == 0} then {
   proc isBinary { value } {
     return [regexp -- {[^\t\n\v\f\r[:print:]]} $value]
@@ -140,10 +152,20 @@ if {[llength [info commands normalizeResult]] == 0} then {
 
     set percentD {(?:-)?[0-9]{1,10}}
 
-    set pattern [appendArgs \
-        ^ $percentD - $percentD - $percentD - $percentD \$]
+    set pattern1 [appendArgs \
+        ^ $percentD - $percentD - $percentD - $percentD \$]; # TODO: When?
 
-    if {[regexp -- $pattern $result]} then {
+    if {[regexp -- $pattern1 $result]} then {
+      return <cnonce>
+    }
+
+    set percentX1 {(?:0x)?[0-9A-F]{1,16}}; # optional hex prefix
+    set percentX2 {[0-9A-F]{1,16}}; # no hex prefix
+
+    set pattern2 [appendArgs \
+        ^ $percentD - $percentD - $percentX1 - $percentX2 \$]
+
+    if {[regexp -nocase -- $pattern2 $result]} then {
       return <cnonce>
     }
 
@@ -252,6 +274,10 @@ if {[llength [info commands getDbName]] == 0} then {
       set name [getEnvVar TCLCDB2_DB_NAME]
     }
 
+    if {[string length $name] == 0} then {
+      error "no database name specified, please set TCLCDB2_DB_NAME"
+    }
+
     return $name
   }
 }
@@ -296,9 +322,41 @@ if {[llength [info commands resetConfig]] == 0} then {
 
 ###############################################################################
 
+if {[llength [info commands testConnection]] == 0} then {
+  proc testConnection { {name ""} {type ""} {flags ""} {varName error} } {
+    upvar 1 $varName error
+    unset -nocomplain error
+
+    set status error
+
+    if {[catch {
+      openConnection $name $type $flags
+    } result] == 0} then {
+      set connection $result
+
+      if {[catch {
+        cdb2 run $connection "SELECT 1"
+      } result] == 0} then {
+        set status ok
+      } else {
+        set error $result
+      }
+
+      closeConnection $connection
+    } else {
+      set error $result
+    }
+
+    return $status
+  }
+}
+
+###############################################################################
+
 if {[llength [info commands openConnection]] == 0} then {
-  proc openConnection { {name ""} {flags ""} } {
-    set command [list cdb2 open [getDbName $name] local]
+  proc openConnection { {name ""} {type ""} {flags ""} } {
+    if {[string length $type] == 0} then {set type local}
+    set command [list cdb2 open [getDbName $name] $type]
 
     if {[string length $flags] > 0} then {
       lappend command $flags
@@ -2207,6 +2265,47 @@ test cdb2-89.3 {configure sub-command w/file} -setup {
   unset -nocomplain result fileName
 } -result {{} {} 1 <get_dbhosts_error> 1 <connection_not_found> {} {} 0\
 <connection_open> 0 {} {} 0 <connection_open> 0 {}}
+
+###############################################################################
+
+catch {resetConfig false}; # Reset configuration and disable sockpool.
+
+###############################################################################
+
+test cdb2-91.1 {configure sub-command without included defaults} -body {
+  cdb2 configure [string trim [appendArgs \
+    comdb2_config:connect_timeout=3000\n \
+    comdb2_config:comdb2db_timeout=5000\n \
+    comdb2_config:auto_consume_timeout=7000\n \
+  ]]
+
+  list [testConnection [getDbName] default] [string match \
+      "*cdb2_get_dbhosts: no default_type entry in comdb2db config.*" \
+      [maybeValue error]]
+} -cleanup {
+  unset -nocomplain error
+} -result {error 1}
+
+###############################################################################
+
+catch {resetConfig false}; # Reset configuration and disable sockpool.
+
+###############################################################################
+
+test cdb2-91.2 {configure sub-command with included defaults} -body {
+  cdb2 configure [string trim [appendArgs \
+    comdb2_config:include_defaults\n \
+    comdb2_config:connect_timeout=2000\n \
+    comdb2_config:comdb2db_timeout=4000\n \
+    comdb2_config:auto_consume_timeout=6000\n \
+  ]]
+
+  list [testConnection [getDbName] default] [string match \
+      "*cdb2_get_dbhosts: no default_type entry in comdb2db config.*" \
+      [maybeValue error]]
+} -cleanup {
+  unset -nocomplain error
+} -match regexp -result {^(?:ok|error) 0$}
 
 ###############################################################################
 

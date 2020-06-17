@@ -602,7 +602,7 @@ BB_COMPILE_TIME_ASSERT(fstblk_rspok_size,
                        sizeof(struct fstblk_rspok) == FSTBLK_RSPOK_LEN);
 
 /* replay info for a failed block op - store some rrns (up to the failed
-* request), and store the index of the op that failed and its rcode) */
+ * request), and store the index of the op that failed and its rcode) */
 struct fstblk_rsperr {
     short num_completed;
     uint8_t pad0[2];
@@ -628,6 +628,21 @@ struct fstblk_rspkl {
 enum { FSTBLK_RSPKL_LEN = 8 };
 BB_COMPILE_TIME_ASSERT(fstblk_rspkl_size,
                        sizeof(struct fstblk_rspkl) == FSTBLK_RSPKL_LEN);
+
+/* This buffer must always be able to hold a fstblk header and the max number
+   of block err's. It will also have to hold one of the following:
+     fstblk pre rspkl + rspkl,
+     fstblk rsperr, or
+     fstblk rspok.
+   Since I don't want to bother figuring out which of those lengths is the
+   longest, just add them all together.
+*/
+#define FSTBLK_MAX_BUF_LEN                                                     \
+    FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN + BLOCK_RSPKL_LEN +               \
+        FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) + \
+        sizeof(int) /* snapinfo_outrc */ + ERRSTAT_LEN /* iq->errstat */ +     \
+        sizeof(int) /* ? */ + sizeof(int) /* comdb2_time_epoch() */ +          \
+        sizeof(struct query_effects) /* query effects */
 
 typedef struct block_state {
     /* ptrs into the main fstsnd buf */
@@ -752,6 +767,8 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
                   int blkpos, int flags);
 
+int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
+                          int *blkpos, int *ixout, int *errout);
 int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                      int *blkpos, int *ixout, int *errout);
 void *create_constraint_table();
@@ -759,12 +776,15 @@ void *create_constraint_index_table();
 int delete_constraint_table(void *table);
 int clear_constraints_tables(void);
 int truncate_constraint_table(void *table);
+void *get_constraint_table_cursor(void *table);
+int close_constraint_table_cursor(void *cursor);
 
-int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+void delete_defered_index_tbl();
+void truncate_defered_index_tbl();
+
+int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, int *errout);
-int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
-                           struct ireq *iq, block_state_t *blkstate,
+int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
                            void *trans, blob_buffer_t *blobs, int *errout);
 int check_delete_constraints(struct ireq *iq, void *trans,
                              block_state_t *blkstate, int op, void *rec_dta,

@@ -24,7 +24,7 @@
 [create table m {schema{int i} keys{"pk" = i}}] rc 0
 [create table c {schema{int i} keys{dup "key" = i} constraints{"key" -> <"m" : "pk">}}] rc 0
 [commit] rc 0
-[insert into c values (1)] failed with rc 3 verify key constraint cannot resolve constraint table 'm' index 'pk'
+[insert into c values (1)] failed with rc 3 verify key constraint cannot resolve constraint table 'c' key 'key' -> table 'm' index '0' key 'pk'
 (rows inserted=1)
 [insert into m values (1)] rc 0
 (rows inserted=1)

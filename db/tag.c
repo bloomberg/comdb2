@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <alloca.h>
 #include <ctype.h>
 #include <errno.h>
@@ -29,6 +28,7 @@
 #include <poll.h>
 #include <flibc.h>
 #include <inttypes.h>
+#include "osqluprec.h"
 
 #include <str0.h>
 #include <epochlib.h>
@@ -36,7 +36,7 @@
 #include <netinet/in.h>
 #include <plbitlib.h>
 #include <segstr.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <netinet/in.h>
 #include "util.h"
@@ -83,9 +83,6 @@ hash_t *gbl_tag_hash;
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
-
-extern int offload_comm_send_upgrade_records(const dbtable *,
-                                             unsigned long long);
 
 static inline void lock_taglock_read(void)
 {
@@ -155,11 +152,19 @@ int schema_init(void)
     return 0;
 }
 
-void add_tag_schema(const char *table, struct schema *schema)
+#if defined DEBUG_STACK_TAG_SCHEMA
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+#else
+#define backtrace(A, B) 1
+#endif
+#endif
+
+static void add_tag_schema_lk(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
-
-    lock_taglock();
+    struct schema *fnd;
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -176,47 +181,72 @@ void add_tag_schema(const char *table, struct schema *schema)
         hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
+    if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
+        listc_rfl(&tag->taglist, fnd);
+        hash_del(tag->tags, fnd);
+        free(fnd);
+    }
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          schema->tag);
+    schema->frames = backtrace(schema->buf, MAX_TAG_STACK_FRAMES);
+    schema->tid = pthread_self();
+#endif
+}
 
+void add_tag_schema(const char *table, struct schema *schema)
+{
+    lock_taglock();
+    add_tag_schema_lk(table, schema);
     unlock_taglock();
 }
 
-void del_tag_schema(const char *table, const char *tagname)
+static void del_tag_schema_lk(const char *table, const char *tagname)
 {
-    lock_taglock();
-
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (tag == NULL) {
-        unlock_taglock();
-        return; /* doesn't exist */
-    }
+    if (tag == NULL)
+        return;
+
     struct schema *sc = hash_find(tag->tags, &tagname);
+
     if (sc) {
         hash_del(tag->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+        comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                              table, tagname);
+#endif
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
             free(sc->datacopy);
             sc->datacopy = NULL;
         }
     }
-    /* doesn't exist? */
+}
+
+void del_tag_schema(const char *table, const char *tagname)
+{
+    lock_taglock();
+    del_tag_schema_lk(table, tagname);
     unlock_taglock();
+}
+
+static struct schema *find_tag_schema_lk(const char *table, const char *tagname)
+{
+    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
+    if (unlikely(tag == NULL))
+        return NULL;
+    struct schema *s = hash_find_readonly(tag->tags, &tagname);
+    return s;
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
+    struct schema *s;
     lock_taglock_read();
-
-    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (unlikely(tag == NULL)) {
-        unlock_taglock();
-        return NULL;
-    }
-    struct schema *s = hash_find_readonly(tag->tags, &tagname);
-
+    s = find_tag_schema_lk(table, tagname);
     unlock_taglock();
-
     return s;
 }
 
@@ -1421,6 +1451,12 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     }
 
     hash_add(tag->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          name);
+    sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+    sc->tid = pthread_self();
+#endif
     unlock_taglock();
 }
 
@@ -1433,9 +1469,12 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
     struct field *from_field, *to_field;
     int rc;
 
-    from = find_tag_schema(table, fromtag);
-    if (from == NULL)
+    lock_taglock();
+    from = find_tag_schema_lk(table, fromtag);
+    if (from == NULL) {
+        unlock_taglock();
         return -1;
+    }
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
@@ -1474,6 +1513,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
             }
             free(to->tag);
             free(to);
+            unlock_taglock();
             return -1;
         }
         to->member[field].offset = offset;
@@ -1484,7 +1524,11 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
-    add_tag_schema(table, to);
+
+    del_tag_schema_lk(table, newtag);
+    add_tag_schema_lk(table, to);
+
+    unlock_taglock();
     return 0;
 }
 
@@ -4288,7 +4332,7 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
         field_idx = field; /* find_field_idx_in_tag(from, to_field->name);*/
         from_field = &from->member[field_idx];
 
-        if (nulls && stype_is_null(inbuf + from_field->offset)) {
+        if (nulls && field_is_null(from, from_field, inbuf)) {
             *nulls = 1;
         }
 
@@ -5991,6 +6035,11 @@ int get_schema_blob_count(const char *table, const char *ctag)
     return sc->numblobs;
 }
 
+int get_numblobs(const dbtable *tbl)
+{
+    return tbl->schema->numblobs;
+}
+
 void free_blob_buffers(blob_buffer_t *blobs, int nblobs)
 {
     int ii;
@@ -6293,13 +6342,6 @@ void commit_schemas(const char *tblname)
     }
 
     sc = dbt->taglist.top;
-    while (sc != NULL) {
-        tmp = sc->lnk.next;
-        /* printf("]]]]]] %p %s\n", sc, sc->tag); */
-        sc = tmp;
-    }
-
-    sc = dbt->taglist.top;
     hash_clear(dbt->tags);
     while (sc != NULL) {
         tmp = sc->lnk.next;
@@ -6377,6 +6419,12 @@ void commit_schemas(const char *tblname)
             sc = NULL;
         } else {
             hash_add(dbt->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+            comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                                  tblname, sc->tag);
+            sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+            sc->tid = pthread_self();
+#endif
         }
         sc = tmp;
     }
@@ -6389,11 +6437,13 @@ void commit_schemas(const char *tblname)
         int i = 0;
         int count = to_be_freed.count;
 
-        s = malloc(sizeof(struct schema *) * count);
+        s = calloc(sizeof(struct schema *), count);
         sc = listc_rtl(&to_be_freed);
         while (sc) {
             if (db->schema != sc)
                 s[i++] = sc;
+            else
+                count--;
             sc = listc_rtl(&to_be_freed);
         }
 
@@ -6630,29 +6680,35 @@ static struct field *get_field_position(struct schema *s, const char *name,
     return NULL;
 }
 
-static void update_fld_hints(dbtable *db)
+static void update_fld_hints(dbtable *tbl)
 {
-    struct schema *ondisk = db->schema;
+    struct schema *ondisk = tbl->schema;
     int n = ondisk->nmembers;
     uint16_t *hints = malloc(sizeof(*hints) * (n + 1));
     for (int i = 0; i < n; ++i) {
         hints[i] = ondisk->member[i].len;
     }
     hints[n] = 0;
-    bdb_set_fld_hints(db->handle, hints);
+    bdb_set_fld_hints(tbl->handle, hints);
 }
 
-void set_bdb_option_flags(dbtable *db, int odh, int ipu, int isc, int ver,
+void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh)
 {
-    update_fld_hints(db);
-    bdb_state_type *handle = db->handle;
+    update_fld_hints(tbl);
+    bdb_state_type *handle = tbl->handle;
     bdb_set_odh_options(handle, odh, compr, blob_compr);
     bdb_set_inplace_updates(handle, ipu);
     bdb_set_instant_schema_change(handle, isc);
     bdb_set_csc2_version(handle, ver);
     bdb_set_datacopy_odh(handle, datacopy_odh);
     bdb_set_key_compression(handle);
+}
+
+void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)
+{
+    bdb_state_type *handle = tbl->handle;
+    bdb_set_queue_odh_options(handle, odh, compr, persist);
 }
 
 /* Compute map of dbstores used in vtag_to_ondisk */
@@ -6782,6 +6838,10 @@ void delete_schema(const char *tblname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &tblname);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s", __func__, __LINE__, tblname);
+#endif
+    assert(dbt != NULL);
     hash_del(gbl_tag_hash, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
@@ -6805,6 +6865,10 @@ void rename_schema(const char *oldname, char *newname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &oldname);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d rename %s to %s\n", __func__, __LINE__,
+                          oldname, newname);
+#endif
     hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);
     dbt->tblname = newname;
@@ -6923,6 +6987,7 @@ struct schema *create_version_schema(char *csc2, int version,
     int rc;
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
+    dyns_init_globals();
     rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -6953,6 +7018,7 @@ struct schema *create_version_schema(char *csc2, int version,
         logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
         goto err;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     sprintf(tag, gbl_ondisk_ver_fmt, version);
@@ -6971,6 +7037,7 @@ struct schema *create_version_schema(char *csc2, int version,
     return ver_schema;
 
 err:
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     return NULL;
 }
@@ -7034,6 +7101,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         goto err;
     }
 
+    dyns_init_globals();
     rc = dyns_load_schema_string(csc2, db->dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
@@ -7067,12 +7135,15 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
-    /* reopen db no tran - i.e. auto commit */
-    newdb->handle = bdb_open_more(
+    extern int gbl_rowlocks;
+    tran_type *arg_tran = gbl_rowlocks ? NULL : tran;
+
+    /* Must use tran or this can cause deadlocks */
+    newdb->handle = bdb_open_more_tran(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, &bdberr);
+        newdb->numblobs + 1, thedb->bdb_env, arg_tran, 0, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",
@@ -7080,6 +7151,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         cheap_stack_trace();
         goto err;
     }
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     old_bdb_handle = db->handle;
@@ -7109,6 +7181,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     return 0;
 
 err:
+    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     free(csc2);
     return 1;
@@ -7127,6 +7200,8 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
     }
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
     return 0;
 }
 
@@ -7424,7 +7499,8 @@ int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf,
 
     decimals = 0;
     for (i = 0; i < s->nmembers; i++) {
-        decimals++;
+        if (s->member[i].type == SERVER_DECIMAL)
+            decimals++;
     }
 
     if (outbuf && outlen && (outbuf_max < 4 * decimals)) {

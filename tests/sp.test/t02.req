@@ -1,1 +1,1 @@
-select * from comdb2_queues
+select queuename, spname, head_age, depth from comdb2_queues

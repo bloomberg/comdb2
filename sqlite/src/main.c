@@ -1164,8 +1164,8 @@ static int sqlite3Close(sqlite3 *db, int forceZombie){
     {
       sqlite3_stmt *pStmt = 0;
       while( (pStmt = sqlite3_next_stmt(db,pStmt))!=0 ){
-        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> {%s}\n",
-               __FILE__, __LINE__, db, sqlite3_sql(pStmt));
+        logmsg(LOGMSG_DEBUG, "%s:%d NOT FINALIZED: %p ==> %p {%s}\n",
+               __FILE__, __LINE__, db, pStmt, sqlite3_sql(pStmt));
       }
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3433,15 +3433,15 @@ opendb_out:
 #endif
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+  pthread_mutex_lock(&mutex);
+  /* these modify global structures */
   if( thd!=NULL ){
-    static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-    pthread_mutex_lock(&mutex);
-    /* these modify global structures */
     register_lua_sfuncs(db, thd);
     register_lua_afuncs(db, thd);
-    register_date_functions(db); 
-    pthread_mutex_unlock(&mutex);
   }
+  register_date_functions(db);
+  pthread_mutex_unlock(&mutex);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #if defined(SQLITE_HAS_CODEC)
   if( rc==SQLITE_OK ) sqlite3CodecQueryParameters(db, 0, zOpen);
@@ -3462,22 +3462,8 @@ int sqlite3_open(
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int rc;
-
-#ifdef DEBUG_SQLITE_MEMORY
-  extern void sqlite_init_start(void);
-  sqlite_init_start();
-#endif
-
-  rc = openDatabase(zFilename, ppDb,
+  return openDatabase(zFilename, ppDb,
                     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0, thd);
-
-#ifdef DEBUG_SQLITE_MEMORY
-  extern void sqlite_init_end(void);
-  sqlite_init_end();
-#endif
-
-  return rc;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return openDatabase(zFilename, ppDb,
                       SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, 0);

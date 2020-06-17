@@ -19,6 +19,8 @@
 
 #include <locks_wrap.h>
 
+int have_schema_lock(void);
+
 #define rdlock_schema_lk() rdlock_schema_int(__FILE__, __func__, __LINE__)
 void rdlock_schema_int(const char *file, const char *func, int line);
 
@@ -30,5 +32,21 @@ void unlock_schema_int(const char *file, const char *func, int line);
 
 #define wrlock_schema_lk() wrlock_schema_int(__FILE__, __func__, __LINE__)
 void wrlock_schema_int(const char *file, const char *func, int line);
+
+#define assert_wrlock_schema_lk()                                              \
+    assert_wrlock_schema_int(__FILE__, __func__, __LINE__);
+void assert_wrlock_schema_int(const char *file, const char *func, int line);
+
+#define assert_rdlock_schema_lk()                                              \
+    assert_rdlock_schema_int(__FILE__, __func__, __LINE__);
+void assert_rdlock_schema_int(const char *file, const char *func, int line);
+
+#define assert_lock_schema_lk()                                                \
+    assert_lock_schema_int(__FILE__, __func__, __LINE__);
+void assert_lock_schema_int(const char *file, const char *func, int line);
+
+#define assert_no_schema_lk()                                                  \
+    assert_no_schema_lock_int(__FILE__, __func__, __LINE__);
+void assert_no_schema_lock_int(const char *file, const char *func, int line);
 
 #endif

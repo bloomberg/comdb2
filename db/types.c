@@ -51,6 +51,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "util.h"
 #include "tohex.h"
 #include "str0.h"
@@ -3827,8 +3828,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             memcpy(out, inblob->data, len);
             *outdtsz += len;
 
-            free(inblob->data);
-            bzero(inblob, sizeof(blob_buffer_t));
+            free_blob_buffers(inblob, 1);
 
             if (outblob) {
                 outblob->collected = 1;
@@ -6526,8 +6526,7 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
             memcpy(out, inblob->data, len);
             *outdtsz += len;
 
-            free(inblob->data);
-            bzero(inblob, sizeof(blob_buffer_t));
+            free_blob_buffers(inblob, 1);
 
             if (outblob) {
                 outblob->collected = 1;

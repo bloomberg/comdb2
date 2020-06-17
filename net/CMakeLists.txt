@@ -1,4 +1,6 @@
 add_library(net
+  akq.c
+  event.c
   info.c
   net.c
   trace.c
@@ -19,8 +21,9 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
+  ${PROJECT_SOURCE_DIR}/db
+  ${LIBEVENT_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
 )
 
 add_dependencies(net mem)

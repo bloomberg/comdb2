@@ -32,6 +32,8 @@ enum dyns_cnst {
 };
 
 char *dyns_field_option_text(int option);
+void dyns_init_globals();
+void dyns_cleanup_globals();
 int dyns_load_schema_string(char *schematxt, char *dbname, char *tablename);
 int dyns_load_schema(char *filename, char *dbname, char *tblname);
 int dyns_form_key(int index, char *record, int recsz, char *key, int keysize);
@@ -53,9 +55,6 @@ int dyns_get_db_table_size(void);
 int dyns_get_field_count(void);
 int dyns_get_field_info(int fidx, char *name, int namelen, int *type,
                         int *offset, int *elsize, int *fullsize);
-int dyns_get_field_option(int fidx, int opttype, int *valtype, int *valsz,
-                          void *valuebuf, int vbsz);
-
 int dyns_field_depth(int fidx, dpth_t *dpthinfo, int ndpthsinfo, int *ndpthout);
 int dyns_field_type(int fidx);
 int dyns_is_field_array(int fidx);

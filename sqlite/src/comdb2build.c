@@ -118,7 +118,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
 {
     int rc = 0;
     char *table_name;
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = get_sql_clnt();
 
     table_name = strndup(name, name_len);
     if (table_name == NULL) {
@@ -134,8 +134,8 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
-    if(gbl_allow_user_schema && thd->clnt->user[0] != '\0' &&
-       strcasecmp(thd->clnt->user,DEFAULT_USER) != 0) {
+    if (gbl_allow_user_schema && clnt->current_user.name[0] != '\0' &&
+        strcasecmp(clnt->current_user.name, DEFAULT_USER) != 0) {
         /* Check whether table_name contains user name. */
         char* username = strchr(table_name, '@');
         if (username) {
@@ -147,7 +147,9 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             int bdberr;
             int bytes_written;
             bdb_state_type *bdb_state = thedb->bdb_env;
-            if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user, userschema, &bdberr) == 0) {
+            if (bdb_tbl_access_userschema_get(bdb_state, NULL,
+                                              clnt->current_user.name,
+                                              userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", table_name);
               } else {
@@ -161,7 +163,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
               }
             } else {
               bytes_written = snprintf(dst, MAXTABLELEN, "%s@%s", table_name,
-                                       thd->clnt->user);
+                                       clnt->current_user.name);
               if (bytes_written >= MAXTABLELEN) {
                 rc = setError(pParse, SQLITE_MISUSE, "User-schema name is "
                                                      "too long");
@@ -388,7 +390,7 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
 
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
-     struct sql_thread *thd = pthread_getspecific(query_info_key);
+     struct sqlclntstate *clnt = get_sql_clnt();
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
      int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr); 
@@ -396,10 +398,10 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      if (authOn != 0)
         return SQLITE_OK;
 
-     if (thd->clnt && tablename)
+     if (clnt && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, thd->clnt->user, &bdberr))
+            tablename, clnt->current_user.name, &bdberr))
           return SQLITE_AUTH;
         else
             return SQLITE_OK;
@@ -416,7 +418,7 @@ static int comdb2CheckOpAccess(void) {
 
 int comdb2IsPrepareOnly(Parse* pParse)
 {
-    return pParse==NULL || pParse->prepare_only;
+    return pParse==NULL || (pParse->prepFlags & SQLITE_PREPARE_ONLY);
 }
 
 int comdb2AuthenticateUserOp(Parse* pParse)
@@ -432,22 +434,22 @@ int comdb2AuthenticateUserOp(Parse* pParse)
 /* Only an op user can turn authentication on. */
 static int comdb2AuthenticateOpPassword(Parse* pParse)
 {
-     struct sql_thread *thd = pthread_getspecific(query_info_key);
+     struct sqlclntstate *clnt = get_sql_clnt();
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
 
-     if (thd->clnt)
+     if (clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         struct sqlclntstate *s = thd->clnt;
-         if (bdb_user_password_check(s->user, s->password, NULL))
+         if (bdb_user_password_check(clnt->current_user.name,
+                                     clnt->current_user.password, NULL))
          {
             return SQLITE_AUTH;
          }
          
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", thd->clnt->user,
-                                   &bdberr))
+         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "",
+                                   clnt->current_user.name, &bdberr))
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
@@ -458,7 +460,7 @@ static int comdb2AuthenticateOpPassword(Parse* pParse)
 
 int comdb2SqlDryrunSchemaChange(OpFunc *f)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = get_sql_clnt();
     struct schema_change_type *s = (struct schema_change_type*)f->arg;
 
     FILE *fl = tmpfile();
@@ -492,7 +494,7 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
 
     /*
     */
-    osqlstate_t *osql = &thd->clnt->osql;
+    osqlstate_t *osql = &clnt->osql;
     osql->xerr.errval = 0;
     f->errorMsg = osql->xerr.errstr;
     return f->rc;
@@ -522,8 +524,7 @@ static int comdb2SqlSchemaChange(OpFunc *f)
 
 int comdb2SqlSchemaChange_tran(OpFunc *f)
 {
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    struct sqlclntstate *clnt = thd->clnt;
+    struct sqlclntstate *clnt = get_sql_clnt();
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int sentops = 0;
@@ -607,8 +608,8 @@ static void comdb2Rebuild(Parse *p, Token* nm, Token* lnm, int opt);
 static int authenticateSC(const char * table,  Parse *pParse)
 {
     char *username = strstr(table, "@");
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    if (username && strcmp(username+1, thd->clnt->user) == 0) {
+    struct sqlclntstate *clnt = get_sql_clnt();
+    if (username && strcmp(username+1, clnt->current_user.name) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserDDL(table) == 0) {
         return 0;
@@ -990,11 +991,6 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
     if (OPT_ON(opt, PAGE_ORDER))
         sc->scanmode = SCAN_PAGEORDER;
-
-    if (OPT_ON(opt, READ_ONLY))
-        sc->live = 0;
-    else
-        sc->live = 1;
 
     if (OPT_ON(opt, READ_ONLY))
         sc->live = 0;
@@ -1985,10 +1981,9 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
 
     if (comdb2AuthenticateUserDDL(""))
     {
-        struct sql_thread *thd = pthread_getspecific(query_info_key);
+        struct sqlclntstate *clnt = get_sql_clnt();
         /* Check if its password change request */
-        if (!(thd && thd->clnt &&
-                   strcmp(thd->clnt->user, password->user) == 0 )) {
+        if (!(clnt && strcmp(clnt->current_user.name, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             goto clean_arg;
         }
@@ -2244,23 +2239,26 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
-int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
-                      size_t len)
+int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
+                     char *tableName, size_t len)
 {
-   struct sql_thread *thd = pthread_getspecific(query_info_key);
+   struct sqlclntstate *clnt = get_sql_clnt();
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        snprintf(tableName, len, "%s", p->zName);
-   } else if (thd->clnt && (thd->clnt->user[0] != '\0') &&
-              !strchr(p->zName, '@') &&
-              strncasecmp(p->zName, "sqlite_", 7) &&
-              strncasecmp(p->zName, "comdb2", 6))
+   } else if (clnt &&
+              (clnt->current_user.name[0] != '\0') &&   /* authenticated */
+              !strchr(p->zName, '@') &&                 /* mustn't have user
+                                                           name */
+              strncasecmp(p->zName, "sqlite_", 7) &&    /* sqlite table */
+              !sqlite3HashFind(&db->aModule, p->zName)) /* sqlite module */
    {
        char userschema[MAXTABLELEN];
        int bdberr;
        int bytes_written;
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL, thd->clnt->user,
+       if (bdb_tbl_access_userschema_get(bdb_state, NULL,
+                                         clnt->current_user.name,
                                          userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
            bytes_written = snprintf(tableName, len, "%s", p->zName);
@@ -2276,7 +2274,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
          }
        } else {
          bytes_written = snprintf(tableName, len, "%s@%s", p->zName,
-                                  thd->clnt->user);
+                                  clnt->current_user.name);
          if (bytes_written >= len) {
              return 1;
          }
@@ -3747,7 +3745,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= REC_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= REC_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= REC_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= REC_NONE; break;
     default: assert(0);
     }
 
@@ -3756,7 +3754,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= BLOB_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= BLOB_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= BLOB_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= BLOB_NONE; break;
     default: assert(0);
     }
 
@@ -4370,7 +4368,8 @@ void comdb2CreateTableStart(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
+        int code = isTemp ? SQLITE_CREATE_TEMP_TABLE : SQLITE_CREATE_TABLE;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5247,7 +5246,8 @@ void comdb2CreateIndex(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_INDEX, 0, 0, 0) ){
+        int code = temp ? SQLITE_CREATE_TEMP_INDEX : SQLITE_CREATE_INDEX;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5558,9 +5558,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortOrder == SQLITE_SO_DESC) {
-                idx_part->flags |= INDEX_ORDER_DESC;
-            }
+            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -5582,9 +5580,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-        if (pToCol->a[i].sortOrder == SQLITE_SO_DESC) {
-            idx_part->flags |= INDEX_ORDER_DESC;
-        }
+        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -5625,14 +5621,9 @@ void comdb2CreateForeignKey(
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
         {
-            int sort_order =
-                (parent_table->schema->ix[i]->member[j].flags & INDEX_DESCEND)
-                    ? INDEX_ORDER_DESC
-                    : 0;
-            if ((strcasecmp(idx_part->name,
-                            parent_table->schema->ix[i]->member[j].name) !=
-                 0) ||
-                idx_part->flags != sort_order) {
+            if (strcasecmp(idx_part->name,
+                           parent_table->schema->ix[i]->member[j].name) !=
+                0) {
                 key_found = 0;
                 break;
             }
@@ -6127,7 +6118,7 @@ cleanup:
     return;
 }
 
-void comdb2putTunable(Parse *pParse, Token *name, Token *value)
+void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -6144,14 +6135,24 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     if (comdb2AuthenticateUserOp(pParse))
         return;
 
-    char *t_name;
+    char t_name[160];
+    char *t_name1;
+    char *t_name2 = NULL;
     char *t_value = NULL;
     int rc;
     comdb2_tunable_err err;
 
-    rc = create_string_from_token(NULL, pParse, &t_name, name);
+    rc = create_string_from_token(NULL, pParse, &t_name1, name1);
     if (rc != SQLITE_OK)
         goto cleanup; /* Error has been set. */
+    if (name2 && name2->n > 0) {
+        rc = create_string_from_token(NULL, pParse, &t_name2, name2);
+        if (rc != SQLITE_OK)
+            goto cleanup; /* Error has been set. */
+        snprintf(t_name, sizeof(t_name) - 1, "%s.%s", t_name1, t_name2);
+    } else {
+        snprintf(t_name, sizeof(t_name) - 1, "%s", t_name1);
+    }
     rc = create_string_from_token(NULL, pParse, &t_value, value);
     if (rc != SQLITE_OK)
         goto cleanup; /* Error has been set. */
@@ -6161,7 +6162,8 @@ void comdb2putTunable(Parse *pParse, Token *name, Token *value)
     }
 
 cleanup:
-    free(t_name);
+    free(t_name1);
+    free(t_name2);
     free(t_value);
     return;
 }

@@ -1,4 +1,5 @@
-#!/bin/bash
+#!/usr/bin/env bash
+
 
 set -e
 set -x
@@ -41,7 +42,6 @@ while [[ "$out" != "1" ]]; do
 done
 set -e
 
-cdb2sql ${CDB2_OPTIONS} $dbname default "exec procedure sys.cmd.verify('t')"
 count=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbname default "select count(*) from t")
 echo "found $count rows, expected $nrows"
 if [[ $count -ne $nrows ]]; then

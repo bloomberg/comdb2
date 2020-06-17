@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <alloca.h>
 #include <errno.h>
 #include <signal.h>

@@ -29,6 +29,8 @@
 #include "osqlcheckboard.h"
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
+#include "priority_queue.h"
+#include "comdb2_ruleset.h"
 
 #include "fdb_fend.h"
 #include <sp.h>
@@ -62,7 +64,7 @@ enum transaction_level {
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 struct fingerprint_track {
-    char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
+    unsigned char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
     int64_t count;    /* Cumulative number of times executed */
     int64_t cost;     /* Cumulative cost */
     int64_t time;     /* Cumulative preparation and execution time */
@@ -70,6 +72,8 @@ struct fingerprint_track {
     int64_t rows;     /* Cumulative number of rows selected */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
+    char ** cachedColNames; /* Cached column names from sqlitex */
+    int cachedColCount;     /* Cached column count from sqlitex */
 };
 
 typedef struct stmt_hash_entry {
@@ -103,6 +107,11 @@ struct sqlthdstate {
     int dbopen_gen;
     int analyze_gen;
     int views_gen;
+
+    /* A flag to tell us whether we are inside the query preparer plugin. This
+     * is especially needed to differentiate between fdb cursors opened by core
+     * versus query preparer plugin. */
+    bool query_preparer_running;
 };
 
 typedef struct osqltimings {
@@ -142,31 +151,28 @@ typedef struct osqlstate {
     int replicant_numops; /* total num of ops sent by replicant to master which
                              includes USEDB, BLOB, etc. */
 
-    SBUF2 *logsb; /* help debugging */
-
-    osql_sqlthr_t *
-        sess_blocksock; /* pointer to osql thread registration entry */
-
     /* == sqlclntstate == */
 
     int count_changes;   /* enable pragma count_changes=1, for rr, sosql, recom,
                             snapisol, serial */
 
-    /* the phantom menace */
-    LISTC_T(struct shad_tbl)
-        shadtbls;    /* storage for shadow tables created by offloading */
-    shadbq_t shadbq; /* storage for dbq's shadtbl */
+    /* storage for shadow tables created by offloading */
+    LISTC_T(struct shad_tbl) shadtbls;
 
-    struct temp_table *
-        verify_tbl; /* storage for verify, common for all transaction */
+    /* storage for dbq's shadtbl */
+    shadbq_t shadbq;
+    hash_t *dbq_hash;
+
+    /* storage for verify, common for all transaction */
+    struct temp_table * verify_tbl;
     struct temp_cursor *verify_cur; /* verify cursor */
 
-    struct temp_table
-        *sc_tbl; /* storage for schemachange, common for all transaction */
+    /* storage for schemachange, common for all transaction */
+    struct temp_table *sc_tbl;
     struct temp_cursor *sc_cur; /* schemachange cursor */
 
-    struct temp_table
-        *bpfunc_tbl; /* storage for bpfunc, common for all transaction */
+    /* storage for bpfunc, common for all transaction */
+    struct temp_table *bpfunc_tbl;
     struct temp_cursor *bpfunc_cur; /* bpfunc cursor */
     int bpfunc_seq;
 
@@ -177,8 +183,8 @@ typedef struct osqlstate {
     fdbtimings_t fdbtimes; /* measure remote access */
 
     /* verify handling */
-    srs_tran_t *
-        history; /* keep the log of sql strings for the current transaction */
+    /* keep the log of sql strings for the current transaction */
+    srs_tran_t * history;
     int replay;  /* set this when a session is replayed, used by sorese */
     int sent_column_data; /* set this if we've already sent the column data */
 
@@ -198,16 +204,29 @@ typedef struct osqlstate {
 } osqlstate_t;
 
 enum ctrl_sqleng {
-    SQLENG_NORMAL_PROCESS =
-        0, /* no user specified transactions, i.e. begin/commit */
-    SQLENG_PRE_STRT_STATE =
-        1, /* "begin" was submitted, mark this as user transaction begin */
-    SQLENG_STRT_STATE = 2,     /* we are waiting for a non-"begin" user query */
-    SQLENG_INTRANS_STATE = 3,  /* we have a transaction, ignore further
-                                  BtreeTransBegin until commit/rollback */
-    SQLENG_FNSH_STATE = 4,     /* "commit" was submitted */
-    SQLENG_FNSH_RBK_STATE = 5, /* "rollback" was submitted */
-    SQLENG_WRONG_STATE = 6,     /* duplicated command submitted */
+    /* No user specified transactions, i.e. BEGIN/COMMIT */
+    SQLENG_NORMAL_PROCESS,
+    /* "BEGIN" was submitted, mark this as user transaction begin */
+    SQLENG_PRE_STRT_STATE,
+    /* We have seen 'BEGIN' and now waiting for a non-"BEGIN" user query */
+    SQLENG_STRT_STATE,
+    /* We have a transaction, ignore further BtreeTransBegin until
+     * COMMIT/ROLLBACK */
+    SQLENG_INTRANS_STATE,
+    /* "COMMIT" was submitted */
+    SQLENG_FNSH_STATE,
+    /* "ROLLBACK" was submitted */
+    SQLENG_FNSH_RBK_STATE,
+    /* Transaction has been aborted due to a bad command */
+    SQLENG_FNSH_ABORTED_STATE,
+    /* We have entered a wrong stated (possibly a bug) */
+    SQLENG_WRONG_STATE,
+};
+
+enum trans_clntcomm {
+    TRANS_CLNTCOMM_NOREPLY = 0,
+    TRANS_CLNTCOMM_NORMAL = 1,
+    TRANS_CLNTCOMM_CHUNK = 2
 };
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -229,6 +248,9 @@ typedef struct {
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
                                         remote tables */
     int nLockedRemTables; /* number of pointers in lockedRemTablesRootp */
+    int trans_has_sp;     /* running a stored procedure */
+    int maxchunksize;     /* multi-transaction bulk mode */
+    int crtchunksize;     /* how many rows are processed already */
 } dbtran_type;
 typedef dbtran_type trans_t;
 
@@ -510,8 +532,89 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+#define HINT_LEN 127
+enum cache_status {
+    CACHE_DISABLED = 0,
+    CACHE_HAS_HINT = 1,
+    CACHE_FOUND_STMT = 2,
+    CACHE_FOUND_STR = 4,
+};
+enum prepare_flags {
+    PREPARE_NONE = 0,
+    PREPARE_RECREATE = 1,
+    PREPARE_DENY_CREATE_TRIGGER = 2,
+    PREPARE_DENY_PRAGMA = 4,
+    PREPARE_DENY_DDL = 8,
+    PREPARE_IGNORE_ERR = 16,
+    PREPARE_NO_NORMALIZE = 32,
+    PREPARE_ONLY = 64,
+    PREPARE_ALLOW_TEMP_DDL = 128,
+};
+struct sql_state {
+    enum cache_status status;          /* populated by get_prepared_stmt */
+    sqlite3_stmt *stmt;                /* cached engine, if any */
+    char cache_hint[HINT_LEN];         /* hint copy, if any */
+    const char *sql;                   /* the actual string used */
+    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    int prepFlags;                     /* flags to get_prepared_stmt_int */
+};
+
+/* This structure is designed to hold several pieces of data related to
+ * work-in-progress on client SQL requests. */
+struct sqlworkstate {
+    const char *zNormSql; /* Normalized version of latest SQL query. */
+    char *zOrigNormSql;   /* Normalized version of original SQL query. */
+    struct sql_state rec; /* Prepared statement for original SQL query. */
+    unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+    char zRuleRes[100];   /* Ruleset match result, if any. */
+};
+
+struct sql_hist_cost {
+    double cost;
+    int64_t time;
+    int64_t prepTime;
+    int64_t rows;
+};
+
+struct user {
+    char name[MAX_USERNAME_LEN];
+    char password[MAX_PASSWORD_LEN];
+
+    uint8_t have_name;
+    uint8_t have_password;
+    /* 1 if the user is retrieved from a client certificate */
+    uint8_t is_x509_user;
+};
+
+
+#define in_client_trans(clnt) ((clnt)->in_client_trans)
+
 /* Client specific sql state */
 struct sqlclntstate {
+    uint64_t seqNo;            /* Monotonically increasing sequence number
+                                * assigned during dispatch.  This value is
+                                * not allowed to be zero.  Further, it must
+                                * be based on a value that is never reset
+                                * while the server is running.  This value
+                                * will be used as a proxy for the original
+                                * time of the client request, which impacts
+                                * the relative priority of queued SQL work
+                                * items.  This value should only be changed
+                                * by the dispatch_sql_query() function. */
+
+    priority_t priority;       /* This is the (relative) priority assigned
+                                * to the SQL work item currently in progress.
+                                * Lower values indicate higher priority.  In
+                                * theory, higher priority SQL work items will
+                                * be processed before lower priority SQL work
+                                * items.  This value should only be changed
+                                * by the dispatch_sql_query() function. */
+
+    struct sqlworkstate work;  /* This is the primary data related to the SQL
+                                * client request in progress.  This includes
+                                * the original SQL query and its normalized
+                                * variant (if applicable). */
+
     /* appsock plugin specific data */
     void *appdata;
     struct plugin_callbacks plugin;
@@ -526,7 +629,6 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
-    char *zNormSql;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -572,12 +674,12 @@ struct sqlclntstate {
     uint8_t ready_for_heartbeats;
     uint8_t no_more_heartbeats;
     uint8_t done;
+    unsigned long long sqltick, sqltick_last_seen;
 
     int using_case_insensitive_like;
     int deadlock_recovered;
 
     /* lua stored procedure */
-    int trans_has_sp;
     struct stored_proc *sp;
     int exec_lua_thread;
     int want_stored_procedure_trace;
@@ -601,14 +703,7 @@ struct sqlclntstate {
     struct query_effects log_effects;
     int64_t nsteps;
 
-    int have_user;
-    char user[MAX_USERNAME_LEN];
-    int is_x509_user; /* True if the user is retrieved
-                         from a client certificate. */
-
-    int have_password;
-    char password[MAX_PASSWORD_LEN];
-
+    struct user current_user;
     int authgen;
 
     int no_transaction;
@@ -625,10 +720,11 @@ struct sqlclntstate {
                        need to pend the first error until a commit is issued.
                        any statements
                        past the first error are ignored. */
-    int in_client_trans; /* clnt is in a client transaction (ie: client ran
-                            "begin" but not yet commit or abort) */
+    int in_client_trans; /* clnt is in a client transaction (ie. client ran
+                            "begin" but not yet commit or rollback */
     char *saved_errstr;  /* if had_errors, save the error string */
     int saved_rc;        /* if had_errors, save the return code */
+    char *sqlite_errstr; /* sqlite error string, static, never allocated */
 
     int prep_rc;    /* last value returned from sqlite3_prepare_v3() */
     int step_rc;    /* last value returned from sqlite3_step() */
@@ -659,9 +755,11 @@ struct sqlclntstate {
     sqlclntstate_fdb_t fdb_state;
 
     int nrows;
+    struct sql_hist_cost spcost;
 
     int planner_effort;
     int osql_max_trans;
+    int group_concat_mem_limit;
     /* read-set validation */
     CurRangeArr *arr;
     CurRangeArr *selectv_arr;
@@ -716,7 +814,6 @@ struct sqlclntstate {
     hash_t *dml_tables;
     hash_t *ddl_contexts;
 
-    int ignore_coherency;
     int statement_query_effects;
 
     int verify_remote_schemas;
@@ -763,6 +860,8 @@ struct sqlclntstate {
     int8_t sent_data_to_client;
     int8_t is_asof_snapshot;
     LINKC_T(struct sqlclntstate) lnk;
+    int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
+                              desired */
 };
 
 /* Query stats. */
@@ -954,14 +1053,14 @@ struct BtCursor {
     int open_flags; /* flags used to open it */
 
     int tableversion;
+
+    void *query_preparer_data;
 };
 
 struct sql_hist {
     LINKC_T(struct sql_hist) lnk;
     char *sql;
-    double cost;
-    int time;
-    int prepTime;
+    struct sql_hist_cost cost;
     int when;
     int64_t txnid;
     struct conninfo conn;
@@ -978,7 +1077,7 @@ struct sql_thread {
     int nfind;
     int nwrite;
     int bufsz;
-    int id;
+    uint32_t id;
     char *buf;
     LISTC_T(struct query_path_component) query_stats;
     hash_t *query_hash;
@@ -1009,6 +1108,7 @@ struct connection_info {
     cdb2_client_datetime_t last_reset_time;
     char *state;
     char *sql;
+    char *fingerprint;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
@@ -1043,21 +1143,30 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
 unsigned long long osql_log_time(void);
 void osql_log_time_done(struct sqlclntstate *clnt);
 
-int dispatch_sql_query(struct sqlclntstate *clnt);
+void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
+                                   struct ruleset_item_criteria *context);
+
+int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
+int wait_for_sql_query(struct sqlclntstate *clnt);
+void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                     int sendresponse);
+                     enum trans_clntcomm sideeffects);
 int handle_sql_commitrollback(struct sqlthdstate *thd,
-                              struct sqlclntstate *clnt, int sendresponse);
+                              struct sqlclntstate *clnt,
+                              enum trans_clntcomm sideeffects);
 
 int replicant_is_able_to_retry(struct sqlclntstate *clnt);
 void sql_get_query_id(struct sql_thread *thd);
 
 void sql_dlmalloc_init(void);
-int sql_mem_init(void *dummy);
-void sql_mem_shutdown(void *dummy);
+int sql_mem_init(void *);
+int sql_mem_init_with_save(void *, void **);
+void sql_mem_shutdown(void *);
+void sql_mem_shutdown_and_restore(void *, void **);
 
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
+int sqlite3_close_serial(sqlite3 **);
 
 void reset_clnt(struct sqlclntstate *, SBUF2 *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
@@ -1097,8 +1206,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 void clearClientSideRow(struct sqlclntstate *clnt);
 void comdb2_set_tmptbl_lk(pthread_mutex_t *);
 struct temptable get_tbl_by_rootpg(const sqlite3 *, int);
-void clone_temp_table(sqlite3 *, const sqlite3 *, const char *,
-                      struct temptable *);
+void clone_temp_table(sqlite3_stmt *, struct temptable *);
 int sqlengine_prepare_engine(struct sqlthdstate *, struct sqlclntstate *,
                              int recreate);
 int sqlserver2sqlclient_error(int rc);
@@ -1109,33 +1217,10 @@ void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
                          struct dbtable *db, int ixnum, void *trans);
 
-#define HINT_LEN 127
-enum cache_status {
-    CACHE_DISABLED = 0,
-    CACHE_HAS_HINT = 1,
-    CACHE_FOUND_STMT = 2,
-    CACHE_FOUND_STR = 4,
-};
-enum prepare_flags {
-    PREPARE_NONE = 0,
-    PREPARE_RECREATE = 1,
-    PREPARE_DENY_CREATE_TRIGGER = 2,
-    PREPARE_DENY_PRAGMA = 4,
-    PREPARE_DENY_DDL = 8,
-    PREPARE_IGNORE_ERR = 16
-};
-struct sql_state {
-    enum cache_status status;          /* populated by get_prepared_stmt */
-    sqlite3_stmt *stmt;                /* cached engine, if any */
-    char cache_hint[HINT_LEN];         /* hint copy, if any */
-    const char *sql;                   /* the actual string used */
-    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    int prepFlags;                     /* flags to get_prepared_stmt_int */
-};
-int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                      struct sql_state *, struct errstat *, int);
-int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
-                               struct sql_state *, struct errstat *, int);
+int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+int get_prepared_stmt_no_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
+
 void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
@@ -1185,8 +1270,17 @@ struct query_stats {
     int64_t npwrites;
 };
 int get_query_stats(struct query_stats *stats);
-void add_fingerprint(const char *, const char *, int64_t, int64_t, int64_t,
-                     int64_t, struct reqlogger *);
+
+void save_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
+
+int clear_fingerprints(void);
+void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
+                      unsigned char fingerprint[FINGERPRINTSZ]);
+void add_fingerprint(struct sqlclntstate *, sqlite3_stmt *, const char *,
+                     const char *, int64_t, int64_t, int64_t, int64_t,
+                     struct reqlogger *, unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
@@ -1194,8 +1288,55 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
 
 /* Connection tracking */
 int gather_connection_info(struct connection_info **info, int *num_connections);
+void free_connection_info(struct connection_info *info, int num_connections);
 void clnt_change_state(struct sqlclntstate *clnt, enum connection_state state);
 void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
-#endif
+struct sqlclntstate *get_sql_clnt(void);
+uint64_t get_sql_clnt_seqno(void);
+
+/* Returns the current user for the session */
+char *get_current_user(struct sqlclntstate *clnt);
+
+struct client_sql_systable_data {
+    char *host;
+    char *task;
+    char *fingerprint;
+    int64_t count;
+    int64_t timems;
+    int64_t cost;
+    int64_t rows;
+
+    char fp[FINGERPRINTSZ*2+1];
+};
+
+struct query_count {
+    char fingerprint[FINGERPRINTSZ];
+
+    // TODO: counter_t that we automatically reset when needed
+    int64_t count;
+    int64_t last_count;
+
+    int64_t cost;
+    int64_t last_cost;
+
+    int64_t rows;
+    int64_t last_rows;
+
+    int64_t timems;
+    int64_t last_timems;
+};
+
+void add_fingerprint_to_rawstats(struct rawnodestats *stats,
+                                 unsigned char *fingerprint, int cost,
+                                 int rows, int timems);
+
+/**
+ * If bdb_lock_desired, run recovery (releasing locks)
+ * and pause proportionally with the number of retries
+ *
+ */
+int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
+
+#endif /* _SQL_H_ */

@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -22,6 +21,9 @@
 #include "sc_csc2.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+
+static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
+                      const char *csc2cmp);
 
 int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
                         int *foundix, struct ireq *iq)
@@ -40,7 +42,7 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
     }
 
     /* find which db has a matching name */
-    if ((*foundix = getdbidxbyname(s->tablename)) < 0) {
+    if ((*foundix = getdbidxbyname_ll(s->tablename)) < 0) {
         logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         exit(1);
     }
@@ -94,13 +96,16 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
     if (meta_csc2) {
         /* see if the loaded schema differs from the schema contained
          * in our meta table. */
-        if (schema_cmp(dbenv, db, meta_csc2) != 0) {
+        dyns_init_globals();
+        rc = schema_cmp(dbenv, db, meta_csc2);
+        dyns_cleanup_globals();
+        if (rc != 0) {
             logmsg(LOGMSG_ERROR, "SCHEMA MIS-MATCH FOR TABLE %s.\n", table);
             logmsg(LOGMSG_ERROR, "THIS IS MY SCHEMA (VERSION %d):-\n", version);
             logmsg(LOGMSG_ERROR, "%s\n", meta_csc2);
             rc = -1;
         }
-    } else if (dbenv->master == gbl_mynode) {
+    } else if (dbenv->master == gbl_myhostname) {
         /* on master node, store schema if we don't have one already. */
         file_csc2 = load_text_file(csc2file);
         if (!file_csc2) {
@@ -124,11 +129,10 @@ int check_table_schema(struct dbenv *dbenv, const char *table,
     return rc;
 }
 
-int schema_cmp(struct dbenv *dbenv, struct dbtable *db, const char *csc2cmp)
+static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
+                      const char *csc2cmp)
 {
-    int rc;
-
-    rc =
+    int rc =
         dyns_load_schema_string((char *)csc2cmp, dbenv->envname, db->tablename);
     if (rc) {
         logmsg(LOGMSG_ERROR, "schema_cmp: error loading comparison schema\n");

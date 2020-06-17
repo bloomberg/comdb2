@@ -20,7 +20,6 @@
    This is because the transaction needs to abort, and start over again.
    non-transactional can retry within glue code.
 */
-#include "limit_fortify.h"
 
 #include <errno.h>
 #include <stdio.h>
@@ -77,19 +76,18 @@
 #include <cdb2_constants.h>
 #include <autoanalyze.h>
 #include "util.h"
-#include <schemachange/sc_global.h>
+#include "sc_global.h"
 
 #include "rtcpu.h"
 
-#include <intern_strings.h>
+#include "intern_strings.h"
 #include "debug_switches.h"
-#include <trigger.h>
+#include "trigger.h"
 
-#include "views.h"
-#include <sc_callbacks.h>
-
+#include "sc_callbacks.h"
 #include "views.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "time_accounting.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
@@ -215,36 +213,11 @@ static void *get_bdb_handle_ireq(struct ireq *iq, int auxdb)
     return bdb_handle;
 }
 
-static void *bdb_handle_from_ireq(const struct ireq *iq)
-{
-    struct dbtable *db = iq->usedb;
-    if (db)
-        return db->handle;
-    else if (iq->use_handle)
-        return iq->use_handle;
-    else {
-        logmsg(LOGMSG_FATAL, "bdb_handle_from_ireq: ireq has no bdb handle\n");
-        abort();
-        return NULL;
-    }
-}
-
-static struct dbenv *dbenv_from_ireq(const struct ireq *iq)
-{
-    struct dbtable *db = iq->usedb;
-    if (db)
-        return db->dbenv;
-    else
-        return iq->dbenv;
-}
-
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb)
 {
     memset(iq, 0, sizeof(struct ireq));
-    iq->transflags = 0;
     iq->is_fake = 1;
     iq->dbenv = dbenv;
-    iq->use_handle = get_bdb_handle_ireq(iq, auxdb);
 }
 
 void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
@@ -257,7 +230,6 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
     iq->corigin[0] = '\0';
     iq->debug_buf[0] = '\0';
     iq->tzname[0] = '\0';
-    iq->sqlhistory[0] = '\0';
 
     /* region 3 */
     const size_t len3 = sizeof(*iq) - offsetof(struct ireq, region3);
@@ -265,14 +237,13 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
 
     /* Make it fake */
     iq->dbenv = dbenv;
-    iq->use_handle = dbenv->bdb_env;
     iq->is_fake = 1;
     iq->helper_thread = -1;
 }
 
 int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     return bdb_set_tran_lowpri(bdb_handle, tran);
 }
 
@@ -281,10 +252,10 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                tran_type **out_trans, int logical, int sc,
-                               int retries)
+                               int retries, int force_physical)
 {
     int bdberr;
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     int rc = 0;
     tran_type *physical_tran = NULL;
     iq->gluewhere = "bdb_tran_begin";
@@ -299,7 +270,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                                 retries, &bdberr);
     } else {
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
-        if (iq->tranddl && sc && *out_trans) {
+        if ((force_physical || iq->tranddl) && sc && *out_trans) {
             bdb_ltran_get_schema_lock(*out_trans);
             rc = get_physical_transaction(bdb_handle, *out_trans,
                                           &physical_tran, 0);
@@ -320,8 +291,7 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
          * Once we're inside a transaction we hold the bdb read lock
          * until we've committed or aborted so no need to worry about this
          * later on. */
-        /* struct dbenv *dbenv = dbenv_from_ireq(iq); */
-        if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_mynode*/) {
+        if (bdberr == BDBERR_READONLY /*&& dbenv->master!=gbl_myhostname*/) {
             /* return NOMASTER so client retries. */
             return ERR_NOMASTER;
         }
@@ -335,13 +305,17 @@ int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
                     int logical, int retries)
 {
     return trans_start_int_int(iq, parent_trans, out_trans, logical, 0,
-                               retries);
+                               retries, 0);
 }
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
-    iq->use_handle = thedb->bdb_env;
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0);
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 0);
+}
+
+int trans_start_logical_sc_with_force(struct ireq *iq, tran_type **out_trans)
+{
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 1);
 }
 
 int trans_start_logical(struct ireq *iq, tran_type **out_trans)
@@ -393,7 +367,7 @@ int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
 
 tran_type *trans_start_socksql(struct ireq *iq, int trak)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
@@ -413,7 +387,7 @@ tran_type *trans_start_socksql(struct ireq *iq, int trak)
 
 tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
@@ -435,7 +409,7 @@ tran_type *trans_start_readcommitted(struct ireq *iq, int trak)
 tran_type *trans_start_snapisol(struct ireq *iq, int trak, int epoch, int file,
                                 int offset, int *error, int is_ha_retry)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
 
     *error = 0;
@@ -462,7 +436,7 @@ tran_type *trans_start_serializable(struct ireq *iq, int trak, int epoch,
                                     int file, int offset, int *error,
                                     int is_ha_retry)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     tran_type *out_trans = NULL;
     int bdberr = 0;
 
@@ -569,9 +543,8 @@ static int trans_commit_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
 int trans_commit_seqnum(struct ireq *iq, void *trans, db_seqnum_type *seqnum)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
-    return trans_commit_seqnum_int(bdb_handle, dbenv, iq, trans, seqnum, 0,
+    bdb_state_type *bdb_handle = thedb->bdb_env;
+    return trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, seqnum, 0,
                                    NULL, 0, NULL, 0);
 }
 
@@ -626,7 +599,7 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 
     case REP_SYNC_SOURCE:
         /*source machine sync, wait for source machine */
-        if (source_node == gbl_mynode)
+        if (source_node == gbl_myhostname)
             break;
         iq->gluewhere = "bdb_wait_for_seqnum_from_node";
 
@@ -701,22 +674,22 @@ static int trans_wait_for_seqnum_int(void *bdb_handle, struct dbenv *dbenv,
 int trans_wait_for_seqnum(struct ireq *iq, char *source_host,
                           db_seqnum_type *ss)
 {
-    void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
-    return trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
+    bdb_state_type *bdb_handle = thedb->bdb_env;
+    return trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, -1,
                                      0 /*adaptive*/, ss);
 }
 
 int trans_wait_for_last_seqnum(struct ireq *iq, char *source_host)
 {
     db_seqnum_type seqnum;
-    void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
+    int rc = -1;
+    bdb_state_type *bdb_handle = thedb->bdb_env;
 
-    bdb_get_myseqnum(bdb_handle, (void *)&seqnum);
-
-    return trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host, -1,
-                                     0 /*adaptive*/, &seqnum);
+    if (bdb_get_myseqnum(bdb_handle, (void *)&seqnum)) {
+        rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host, -1,
+                                       0 /*adaptive*/, &seqnum);
+    }
+    return rc;
 }
 
 int trans_commit_logical_tran(void *trans, int *bdberr)
@@ -731,34 +704,38 @@ int trans_commit_logical_tran(void *trans, int *bdberr)
 static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
                             int timeoutms, int adaptive, int logical,
                             void *blkseq, int blklen, void *blkkey,
-                            int blkkeylen)
+                            int blkkeylen, int release_schema_lk)
 {
     int rc;
     db_seqnum_type ss;
     char *cnonce = NULL;
     int cn_len;
-    void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
+    void *bdb_handle = thedb->bdb_env;
 
     memset(&ss, -1, sizeof(ss));
 
-    rc = trans_commit_seqnum_int(bdb_handle, dbenv, iq, trans, &ss, logical,
+    rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
 
-    if (gbl_extended_sql_debug_trace && iq->have_snap_info) {
-        cn_len = iq->snap_info.keylen;
+    if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO(iq)) {
+        cn_len = IQ_SNAPINFO(iq)->keylen;
         cnonce = alloca(cn_len + 1);
-        memcpy(cnonce, iq->snap_info.key, cn_len);
+        memcpy(cnonce, IQ_SNAPINFO(iq)->key, cn_len);
         cnonce[cn_len] = '\0';
         logmsg(LOGMSG_USER, "%s %s line %d: trans_commit returns %d\n", cnonce,
                __func__, __LINE__, rc);
+    }
+
+    if (release_schema_lk && iq->sc_locked) {
+        unlock_schema_lk();
+        iq->sc_locked = 0;
     }
 
     if (rc != 0) {
         return rc;
     }
 
-    rc = trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, source_host,
+    rc = trans_wait_for_seqnum_int(bdb_handle, thedb, iq, source_host,
                                    timeoutms, adaptive, &ss);
 
     if (cnonce) {
@@ -776,33 +753,34 @@ int trans_commit_logical(struct ireq *iq, void *trans, char *source_host,
                          void *blkkey, int blkkeylen)
 {
     return trans_commit_int(iq, trans, source_host, timeoutms, adaptive, 1,
-                            blkseq, blklen, blkkey, blkkeylen);
+                            blkseq, blklen, blkkey, blkkeylen, 0);
 }
 
 /* XXX i made this be the same as trans_commit_adaptive */
 int trans_commit(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
+                            0);
 }
 
 int trans_commit_timeout(struct ireq *iq, void *trans, char *source_host,
                          int timeoutms)
 {
     return trans_commit_int(iq, trans, source_host, timeoutms, 0, 0, NULL, 0,
-                            NULL, 0);
+                            NULL, 0, 0);
 }
 
 int trans_commit_adaptive(struct ireq *iq, void *trans, char *source_host)
 {
-    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0);
+    return trans_commit_int(iq, trans, source_host, -1, 1, 0, NULL, 0, NULL, 0,
+                            1);
 }
 
 int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
                         void *seqkey, int seqkeylen)
 {
     int bdberr, rc = 0;
-    void *bdb_handle = bdb_handle_from_ireq(iq);
-    struct dbenv *dbenv = dbenv_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     db_seqnum_type ss;
 
     iq->gluewhere = "bdb_tran_abort";
@@ -822,7 +800,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
     /* Single phy-txn logical aborts will set ss to 0: check before waiting */
     u_int32_t *file = (u_int32_t *)&ss;
     if (*file != 0) {
-        trans_wait_for_seqnum_int(bdb_handle, dbenv, iq, gbl_mynode,
+        trans_wait_for_seqnum_int(bdb_handle, thedb, iq, gbl_myhostname,
                                   -1 /* timeoutms */, 1 /* adaptive */, &ss);
     }
     return rc;
@@ -831,7 +809,7 @@ int trans_abort_logical(struct ireq *iq, void *trans, void *blkseq, int blklen,
 int trans_abort_int(struct ireq *iq, void *trans, int *priority)
 {
     int bdberr;
-    void *bdb_handle = bdb_handle_from_ireq(iq);
+    bdb_state_type *bdb_handle = thedb->bdb_env;
     iq->gluewhere = "bdb_tran_abort";
     bdb_tran_abort_priority(bdb_handle, trans, &bdberr, priority);
     iq->gluewhere = "bdb_tran_abort done";
@@ -938,12 +916,6 @@ int ix_addk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
     int rc, bdberr;
     void *bdb_handle;
 
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_addk_auxdb: ix %d write disabled", ixnum);
-        return 0;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -992,12 +964,6 @@ int ix_upd_key(struct ireq *iq, void *trans, void *key, int keylen, int ixnum,
     int rc, bdberr;
     void *bdb_handle;
 
-    if (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED) {
-        if (iq->debug)
-            reqprintf(iq, "upd_key: ix %d write disabled", ixnum);
-        return 0;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -1030,11 +996,6 @@ int ix_delk_auxdb(int auxdb, struct ireq *iq, void *trans, void *key, int ixnum,
 {
     int rc, bdberr;
     void *bdb_handle;
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_WRITE_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_delk_auxdb: ix %d write disabled", ixnum);
-        return 0;
-    }
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -1446,12 +1407,6 @@ int ix_find_last_dup_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
 
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_last_dup_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
-
 retry:
     if (fnddta) {
         iq->gluewhere = "bdb_fetch_lastdupe_recnum";
@@ -1493,12 +1448,6 @@ int ix_find_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
 
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
-
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_recnum";
@@ -1539,11 +1488,7 @@ int ix_next_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_next_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
+
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_next_recnum";
@@ -1595,12 +1540,6 @@ static int ix_find_int_ll(int auxdb, struct ireq *iq, int ixnum, void *key,
         args = &default_args;
     }
 
-    if (!auxdb && ixnum != -1 &&
-        (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "%s: ix %d read disabled", __func__, ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2327,13 +2266,6 @@ int ix_find_auxdb_by_key_tran(int auxdb, struct ireq *iq, void *key, int keylen,
     int bdberr;
     char *req;
     bdb_fetch_args_t args = {0};
-    if (!auxdb && (iq->usedb->ix_disabled[index] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_find_auxdb_by_key_tran: ix %d read disabled",
-                      index);
-        return ERR_INDEX_DISABLED;
-    }
-
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2387,11 +2319,6 @@ static int ix_next_int_ll(int auxdb, int lookahead, struct ireq *iq, int ixnum,
         args = &default_args;
     }
 
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_next_blobs_auxdb: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(db, auxdb);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
@@ -2641,11 +2568,6 @@ static int ix_prev_int(int auxdb, int lookahead, struct ireq *iq, int ixnum,
     void *curlast = last;
     int numskips = 0;
     bdb_fetch_args_t args = {0};
-    if (!auxdb && (iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_prev_blobs_auxdb: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
     bdb_handle = get_bdb_handle(iq->usedb, auxdb);
     iq->gluewhere = "ix_prev_blobs_auxdb";
     if (!bdb_handle)
@@ -2834,11 +2756,6 @@ int ix_prev_rnum(struct ireq *iq, int ixnum, void *key, int keylen, void *last,
     char *req;
     int ixrc, bdberr, retries = 0;
     bdb_fetch_args_t args = {0};
-    if ((iq->usedb->ix_disabled[ixnum] & INDEX_READ_DISABLED)) {
-        if (iq->debug)
-            reqprintf(iq, "ix_prev_rnum: ix %d read disabled", ixnum);
-        return ERR_INDEX_DISABLED;
-    }
 retry:
     if (fnddta) {
         iq->gluewhere = req = "bdb_fetch_prev_recnum";
@@ -2946,7 +2863,8 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
 }
 
 /* callback to report new master */
-static int new_master_callback(void *bdb_handle, char *host)
+static int new_master_callback(void *bdb_handle, char *host,
+                               int assert_sc_clear)
 {
     ++gbl_master_changes;
     struct dbenv *dbenv;
@@ -2958,6 +2876,12 @@ static int new_master_callback(void *bdb_handle, char *host)
     oldgen = dbenv->gen;
     dbenv->master = host;
 
+    if (assert_sc_clear) {
+        bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
+        if (oldmaster == gbl_myhostname && host != gbl_myhostname)
+            sc_assert_clear(__func__, __LINE__);
+    }
+
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
@@ -2966,8 +2890,10 @@ static int new_master_callback(void *bdb_handle, char *host)
                newmaster ? newmaster : "NULL", egen);
     dbenv->gen = gen;
     /*this is only used when handle not established yet. */
-    if (host == gbl_mynode) {
+    if (host == gbl_myhostname) {
+
         trigger_clear_hash();
+
         if (oldmaster != host) {
             logmsg(LOGMSG_WARN, "I AM NEW MASTER NODE %s\n", host);
             gbl_master_changes++;
@@ -2993,8 +2919,7 @@ static int new_master_callback(void *bdb_handle, char *host)
         if (oldmaster != host && !gbl_create_mode) {
             logmsg(LOGMSG_WARN, "NEW MASTER NODE %s\n", host);
         }
-        /*bdb_set_timeout(bdb_handle, 0, &bdberr);*/
-        sc_set_running(NULL, 0, 0, NULL, 0);
+
         osql_repository_cancelall();
     }
 
@@ -3180,176 +3105,6 @@ void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-/* yuk. */
-static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
-                                 char **table, char **csc2, char **fname,
-                                 char **aname)
-{
-    int tlen, flen;
-    char *dta = (char *)dtap;
-    char **fvar = NULL;
-    int offset;
-    int origlen;
-
-    *table = NULL;
-    *csc2 = NULL;
-    *fname = NULL;
-    *aname = NULL;
-
-    if (dtalen < 8) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    memcpy(&tlen, dta, sizeof(int));
-    memcpy(&flen, dta + sizeof(int), sizeof(int));
-
-    if (dtalen < 2 * sizeof(int) + tlen + flen) {
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-
-    /* length of original data before I added the advisory file name */
-    origlen = 2 * sizeof(int) + tlen + flen;
-
-    if (flen > 0) {
-        offset = 2 * sizeof(int) + tlen;
-        if (flen >= 6 && memcmp(dta + offset, "<CSC2>", 6) == 0) {
-            flen -= 6;
-            offset += 6;
-            fvar = csc2;
-        } else {
-            fvar = fname;
-        }
-        *fvar = malloc(flen + 1);
-        if (!*fvar) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*fvar, dta + offset, flen);
-        (*fvar)[flen] = '\0';
-    }
-
-    *table = malloc(tlen + 1);
-    if (!*table) {
-        if (*fvar)
-            free(*fvar);
-        logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-        net_ack_message(hndl, 1);
-        return -1;
-    }
-    memcpy(*table, dta + 2 * sizeof(int), tlen);
-    (*table)[tlen] = '\0';
-
-    if (dtalen > origlen) {
-        /* the extra data is the advised file name. */
-        int anamelen = dtalen - origlen;
-        *aname = malloc(anamelen + 1);
-        if (!*aname) {
-            logmsg(LOGMSG_ERROR, "decode_schema_net_msg: out of memory\n");
-            if (*fvar)
-                free(*fvar);
-            free(*table);
-            net_ack_message(hndl, 1);
-            return -1;
-        }
-        memcpy(*aname, dta + origlen, anamelen);
-        (*aname)[anamelen] = '\0';
-    }
-
-    return 0;
-}
-
-void net_reload_schemas(void *hndl, void *uptr, char *fromnode, int usertype,
-                        void *dtap, int dtalen)
-{
-    char *table;
-    char *csc2;
-    char *fname;
-    char *aname;
-    int rc;
-    int rc2;
-
-    rc = decode_schema_net_msg(hndl, dtap, dtalen, &table, &csc2, &fname,
-                               &aname);
-    if (rc != 0)
-        return;
-
-    if (fname || aname) {
-        logmsg(LOGMSG_ERROR, "%s: fname and aname no longer supported\n", __func__);
-
-        net_ack_message(hndl, 1);
-        if (table)
-            free(table);
-        if (csc2)
-            free(csc2);
-        if (fname)
-            free(fname);
-        if (aname)
-            free(aname);
-        return;
-    }
-
-    rc = reload_schema(table, csc2, NULL);
-
-    rc2 = create_sqlmaster_records(NULL);
-    if (rc2) {
-        logmsg(LOGMSG_ERROR, "create_sqlmaster_records rc2 %d\n", rc2);
-    }
-    create_sqlite_master(); /* create sql statements */
-
-    net_ack_message(hndl, rc || rc2);
-
-    if (table)
-        free(table);
-    if (csc2)
-        free(csc2);
-}
-
-void net_close_db(void *hndl, void *uptr, char *fromnode, int usertype,
-                  void *dtap, int dtalen)
-{
-    int len, free_handle;
-    char table[MAXTABLELEN];
-    char *dta = (char *)dtap;
-    struct dbtable *db;
-    int bdberr;
-
-    memset(table, 0, sizeof(table));
-    if (dtalen < 2 * sizeof(int)) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(&len, dta, sizeof(int));
-    if (dtalen < 2 * sizeof(int) + len) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-    memcpy(table, dta + sizeof(int), len);
-    memcpy(&free_handle, dta + sizeof(int) + len, sizeof(int));
-    logmsg(LOGMSG_DEBUG, "table %s free_handle %d\n", table, free_handle);
-
-    db = get_dbtable_by_name(table);
-    logmsg(LOGMSG_DEBUG, "net_close_db get_dbtable_by_name 0x%p\n", db);
-    if (db == NULL) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    bdb_close_only(db->handle, &bdberr);
-    logmsg(LOGMSG_DEBUG, "net_close_db bdb_close_only %d\n", bdberr);
-    if (free_handle) {
-        bdb_free(db->handle, &bdberr);
-        db->handle = NULL;
-        logmsg(LOGMSG_DEBUG, "net_close_db bdb_free %d\n", bdberr);
-    }
-    if (net_ack_message(hndl, 0)) {
-        logmsg(LOGMSG_DEBUG, 
-               "net_close_db: Error sending back the acknoledgement\n");
-    }
-}
-
 static void net_close_all_dbs(void *hndl, void *uptr, char *fromnode,
                               int usertype, void *dtap, int dtalen,
                               uint8_t is_tcp)
@@ -3369,30 +3124,37 @@ struct net_sc_msg {
 static void net_start_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                          void *dtap, int dtalen, uint8_t is_tcp)
 {
-    int rc;
     struct net_sc_msg *sc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    if (!bdb_state)
+        return;
 
     sc = (struct net_sc_msg *)dtap;
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
     sc->time = flibc_ntohll(sc->time);
 
-    rc = sc_set_running(sc->table, 1, sc->seed, sc->host, sc->time);
-    net_ack_message(hndl, rc == 0 ? 0 : 1);
+    BDB_READLOCK("start_sc");
+    net_ack_message(hndl, 0);
+    BDB_RELLOCK();
 }
 
 static void net_stop_sc(void *hndl, void *uptr, char *fromnode, int usertype,
                         void *dtap, int dtalen, uint8_t is_tcp)
 {
-    int rc;
     struct net_sc_msg *sc;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+    if (!bdb_state)
+        return;
+
     sc = (struct net_sc_msg *)dtap;
 
     sc->table[sizeof(sc->table) - 1] = '\0';
     sc->seed = flibc_ntohll(sc->seed);
 
-    rc = sc_set_running(sc->table, 0, sc->seed, NULL, 0);
-    net_ack_message(hndl, rc == 0 ? 0 : 1);
+    BDB_READLOCK("stop_sc");
+    net_ack_message(hndl, 0);
+    BDB_RELLOCK();
 }
 
 static void net_check_sc_ok(void *hndl, void *uptr, char *fromnode,
@@ -3416,34 +3178,6 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
     net_ack_message(hndl, 0);
 }
 
-static void net_morestripe_and_open_all_dbs(void *hndl, void *uptr,
-                                            char *fromnode, int usertype,
-                                            void *dtap, int dtalen,
-                                            uint8_t is_tcp)
-{
-    int rc;
-    struct net_morestripe_msg *msg;
-    msg = dtap;
-
-    if (dtalen < sizeof(struct net_morestripe_msg) || dtap == NULL) {
-        logmsg(LOGMSG_ERROR, "net_morestripe_and_open_all_dbs: bad msglen %d\n",
-                dtalen);
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    apply_new_stripe_settings(msg->newdtastripe, msg->newblobstripe);
-
-    rc = open_all_dbs();
-    if (rc != 0) {
-        net_ack_message(hndl, 1);
-        return;
-    }
-
-    fix_blobstripe_genids(NULL);
-    net_ack_message(hndl, 0);
-}
-
 void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
                    void *dtap, int dtalen, uint8_t is_tcp)
 {
@@ -3455,9 +3189,10 @@ void net_new_queue(void *hndl, void *uptr, char *fromnode, int usertype,
         return;
     }
 
-    /* just to make sure */
     msg->name[sizeof(msg->name) - 1] = '\0';
+    wrlock_schema_lk();
     rc = add_queue_to_environment(msg->name, msg->avgitemsz, 0);
+    unlock_schema_lk();
     net_ack_message(hndl, rc);
 }
 
@@ -3505,6 +3240,7 @@ void net_javasp_op(void *hndl, void *uptr, char *fromnode, int usertype,
 void net_prefault_ops(void *hndl, void *uptr, char *fromnode, int usertype,
                       void *dtap, int dtalen, uint8_t is_tcp)
 {
+    /* TODO: Does nothing?  Refactor to remove it? */
 }
 
 int process_broadcast_prefault(struct dbenv *dbenv, unsigned char *dta,
@@ -3916,27 +3652,28 @@ int open_bdb_env(struct dbenv *dbenv)
 #endif
 
     if (dbenv->sibling_hostname[0] == NULL)
-        dbenv->sibling_hostname[0] = gbl_mynode;
+        dbenv->sibling_hostname[0] = gbl_myhostname;
 
     if (dbenv->nsiblings > 0) {
         /*zero element is always me. */
-        dbenv->handle_sibling = (void *)create_netinfo(
+        dbenv->handle_sibling = create_netinfo(
             dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_REPLICATION],
             dbenv->listen_fds[NET_REPLICATION], "comdb2", "replication",
-            dbenv->envname, 0, !gbl_disable_etc_services_lookup);
+            dbenv->envname, 0, 0, 0, !gbl_disable_etc_services_lookup);
         if (dbenv->handle_sibling == NULL) {
-            logmsg(LOGMSG_ERROR, 
-                    "open_bdb_env:failed create_netinfo host %s port %d\n",
-                    dbenv->sibling_hostname[0],
-                    dbenv->sibling_port[0][NET_REPLICATION]);
+            logmsg(LOGMSG_ERROR,
+                   "open_bdb_env:failed create_netinfo host %s port %d\n",
+                   dbenv->sibling_hostname[0],
+                   dbenv->sibling_port[0][NET_REPLICATION]);
             return -1;
         }
 
-        dbenv->handle_sibling_offload = create_netinfo_offload(
+        dbenv->handle_sibling_offload = create_netinfo(
             dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SQL],
-            dbenv->listen_fds[NET_SQL], "comdb2", "offloadsql", dbenv->envname);
+            dbenv->listen_fds[NET_SQL], "comdb2", "offloadsql",
+            dbenv->envname, 0, 1, 1, !gbl_disable_etc_services_lookup);
         if (dbenv->handle_sibling_offload == NULL) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                    "open_bdb_env:failed create_netinfo host %s port %d\n",
                    dbenv->sibling_hostname[0], dbenv->sibling_port[0][NET_SQL]);
             return -1;
@@ -4082,6 +3819,45 @@ static int init_odh_lrl(struct dbtable *d, int *compr, int *compr_blobs,
     *compr_blobs = gbl_init_with_compr_blobs;
     d->inplace_updates = gbl_init_with_ipu;
     d->instant_schema_change = gbl_init_with_instant_sc;
+    return 0;
+}
+
+static int init_queue_odh_lrl(struct dbtable *d, int *compr,
+                              int *persistent_seq)
+{
+    if (gbl_init_with_queue_odh == 0) {
+        gbl_init_with_queue_compr = 0;
+        gbl_init_with_queue_persistent_seq = 0;
+    }
+    if (put_db_queue_odh(d, NULL, gbl_init_with_queue_odh) != 0)
+        return -1;
+    if (put_db_queue_compress(d, NULL, gbl_init_with_queue_compr) != 0)
+        return -1;
+    if (put_db_queue_persistent_seq(d, NULL,
+                                    gbl_init_with_queue_persistent_seq) != 0)
+        return -1;
+    if (gbl_init_with_queue_persistent_seq &&
+        put_db_queue_sequence(d, NULL, 0) != 0) {
+        return -1;
+    }
+    d->odh = gbl_init_with_queue_odh;
+    *compr = gbl_init_with_queue_compr;
+    *persistent_seq = gbl_init_with_queue_persistent_seq;
+    return 0;
+}
+
+static int init_queue_odh_llmeta(struct dbtable *d, int *compr, int *persist,
+                                 tran_type *tran)
+{
+    if (get_db_queue_odh_tran(d, &d->odh, tran) != 0 || d->odh == 0) {
+        d->odh = 0;
+        *compr = 0;
+        *persist = 0;
+        return 0;
+    }
+
+    get_db_queue_compress_tran(d, compr, tran);
+    get_db_queue_persistent_seq_tran(d, persist, tran);
     return 0;
 }
 
@@ -4256,48 +4032,68 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
      * table so that we can find pre-blobstripe blobs */
     fix_blobstripe_genids(tran);
 
+    /* read queue odh and compression information */
+    for (ii = 0; ii < dbenv->num_qdbs; ii++) {
+        struct dbtable *queue = dbenv->qdbs[ii];
+        int compress;
+        int persist;
+        if (gbl_create_mode) {
+            if (init_queue_odh_lrl(queue, &compress, &persist) != 0) {
+                logmsg(LOGMSG_ERROR, "save queue odh to llmeta failed\n");
+                return -1;
+            }
+        } else {
+            if (init_queue_odh_llmeta(queue, &compress, &persist, tran) != 0) {
+                logmsg(LOGMSG_ERROR, "fetch queue odh from llmeta failed\n");
+                return -1;
+            }
+        }
+
+        set_bdb_queue_option_flags(queue, queue->odh, compress, persist);
+    }
+
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
         /* read ondisk header and compression information */
-        struct dbtable *d = dbenv->dbs[ii];
+        struct dbtable *tbl = dbenv->dbs[ii];
         int compress, compress_blobs, datacopy_odh;
         int bthashsz;
         if (gbl_create_mode) {
-            if (init_odh_lrl(d, &compress, &compress_blobs, &datacopy_odh) !=
+            if (init_odh_lrl(tbl, &compress, &compress_blobs, &datacopy_odh) !=
                 0) {
                 logmsg(LOGMSG_ERROR, "save odh to llmeta failed\n");
                 return -1;
             }
             if (gbl_init_with_bthash &&
-                put_db_bthash(d, NULL, gbl_init_with_bthash) != 0) {
+                put_db_bthash(tbl, NULL, gbl_init_with_bthash) != 0) {
                 logmsg(LOGMSG_ERROR, "save bthash size to llmeta failed\n");
                 return -1;
             }
             bthashsz = gbl_init_with_bthash;
         } else {
-            if (init_odh_llmeta(d, &compress, &compress_blobs, &datacopy_odh,
+            if (init_odh_llmeta(tbl, &compress, &compress_blobs, &datacopy_odh,
                                 tran) != 0) {
                 logmsg(LOGMSG_ERROR, "fetch odh from llmeta failed\n");
                 return -1;
             }
 
-            if (get_db_bthash_tran(d, &bthashsz, tran) != 0) {
+            if (get_db_bthash_tran(tbl, &bthashsz, tran) != 0) {
                 bthashsz = 0;
             }
 
-            get_disable_skipscan(d, tran);
+            get_disable_skipscan(tbl, tran);
         }
 
         if (bthashsz) {
             logmsg(LOGMSG_INFO,
                    "Building bthash for table %s, size %dkb per stripe\n",
-                   d->tablename, bthashsz);
-            bdb_handle_dbp_add_hash(d->handle, bthashsz);
+                   tbl->tablename, bthashsz);
+            bdb_handle_dbp_add_hash(tbl->handle, bthashsz);
         }
 
         /* now tell bdb what the flags are - CRUCIAL that this is done
          * before any records are read/written from/to these tables. */
-        set_bdb_option_flags(d, d->odh, d->inplace_updates,
-                             d->instant_schema_change, d->schema_version,
+        set_bdb_option_flags(tbl, tbl->odh, tbl->inplace_updates,
+                             tbl->instant_schema_change, tbl->schema_version,
                              compress, compress_blobs, datacopy_odh);
 
         ctrace("Table %s  "
@@ -4306,9 +4102,10 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                "isc %s  "
                "odh_datacopy %s  "
                "ipu %s",
-               d->tablename, d->schema_version, d->odh ? "yes" : "no",
-               d->instant_schema_change ? "yes" : "no",
-               datacopy_odh ? "yes" : "no", d->inplace_updates ? "yes" : "no");
+               tbl->tablename, tbl->schema_version, tbl->odh ? "yes" : "no",
+               tbl->instant_schema_change ? "yes" : "no",
+               datacopy_odh ? "yes" : "no",
+               tbl->inplace_updates ? "yes" : "no");
     }
 
     if (gbl_create_mode) {
@@ -4468,7 +4265,7 @@ void backend_stat(struct dbenv *dbenv)
     logmsg(LOGMSG_USER, "txn commit delay        %d ms (max %d ms)\n", delay, delaymax);
     if (dbenv->nsiblings == 0)
         logmsg(LOGMSG_USER, "LOCAL MODE.\n");
-    else if (who == gbl_mynode)
+    else if (who == gbl_myhostname)
         logmsg(LOGMSG_USER, "I *AM* MASTER.  MASTER IS %s\n", who);
     else
         logmsg(LOGMSG_USER, "I AM NOT MASTER.  MASTER IS %s\n", who);
@@ -4479,10 +4276,10 @@ void backend_stat(struct dbenv *dbenv)
         logmsg(LOGMSG_USER, "!!! I AM NOT COHERENT !!!\n");
     f = dbenv->cacheszkb / 1024.0;
     logmsg(LOGMSG_USER, "cachesize %.3f mb\n", f);
-    logmsg(LOGMSG_USER, "hits        %lu\n", hits);
-    logmsg(LOGMSG_USER, "misses      %lu\n", misses);
-    logmsg(LOGMSG_USER, "page reads  %lu\n", reads);
-    logmsg(LOGMSG_USER, "page writes %lu\n", writes);
+    logmsg(LOGMSG_USER, "hits        %" PRIu64 "\n", hits);
+    logmsg(LOGMSG_USER, "misses      %" PRIu64 "\n", misses);
+    logmsg(LOGMSG_USER, "page reads  %" PRIu64 "\n", reads);
+    logmsg(LOGMSG_USER, "page writes %" PRIu64 "\n", writes);
     if ((hits + misses) == 0)
         f = 100.0;
     else
@@ -4651,39 +4448,108 @@ int get_blobstripe_genid(struct dbtable *db, unsigned long long *genid)
     return get_blobstripe_genid_tran(db, genid, NULL);
 }
 
-#define get_put_db(x, y)                                                       \
-    int put_db_##x(struct dbtable *db, tran_type *tran, int value)                  \
-    {                                                                          \
-        struct metahdr hdr = {.rrn = y, .attr = 0};                            \
-        int tmp = htonl(value);                                                \
-        return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
-    }                                                                          \
-    int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)          \
-    {                                                                          \
-        struct metahdr hdr = {.rrn = y, .attr = 0};                            \
-        int tmp;                                                               \
-        int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
-        if (rc == 0)                                                           \
-            *value = ntohl(tmp);                                               \
-        else                                                                   \
-            *value = 0;                                                        \
-        return rc;                                                             \
-    }                                                                          \
-    int get_db_##x(struct dbtable *db, int *value)                                  \
-    {                                                                          \
-        return get_db_##x##_tran(db, value, NULL);                             \
-    }
+// clang-format off
+#define get_put_db_ll(x, y)                                                \
+int put_db_##x(struct dbtable *db, tran_type *tran, long long value)       \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    long long tmp = flibc_htonll(value);                                   \
+    return meta_put(db, tran, &hdr, &tmp, sizeof(unsigned long long));     \
+}                                                                          \
+int put_##x(const char *name, tran_type *tran, long long value)            \
+{                                                                          \
+    struct dbtable *db = getqueuebyname(name);                             \
+    return put_db_##x(db, tran, value);                                    \
+}                                                                          \
+int get_db_##x##_tran(struct dbtable *db, long long *value,                \
+                      tran_type *tran)                                     \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    long long tmp;                                                         \
+    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(long long));       \
+    if (rc == 0)                                                           \
+        *value = flibc_ntohll(tmp);                                        \
+    else                                                                   \
+        *value = 0;                                                        \
+    return rc;                                                             \
+}                                                                          \
+int get_##x##_tran(const char *name, long long *value, tran_type *tran)    \
+{                                                                          \
+    struct dbtable *db = getqueuebyname(name);                             \
+    return get_db_##x##_tran(db, value, tran);                             \
+}                                                                          \
+int get_db_##x(struct dbtable *db, long long *value)                       \
+{                                                                          \
+    return get_db_##x##_tran(db, value, NULL);                             \
+}                                                                          \
+int get_##x(const char *name, long long *value)                            \
+{                                                                          \
+    struct dbtable *db = getqueuebyname(name);                             \
+    return get_db_##x(db, value);                                          \
+}
 
-get_put_db(odh, META_ONDISK_HEADER_RRN) get_put_db(inplace_updates,
-                                                   META_INPLACE_UPDATES)
-    get_put_db(compress, META_COMPRESS_RRN)
-        get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
-            get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
-                get_put_db(datacopy_odh, META_DATACOPY_ODH)
-                    get_put_db(bthash, META_BTHASH)
+#define get_put_db(x, y)                                                   \
+int put_db_##x(struct dbtable *db, tran_type *tran, int value)             \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    int tmp = htonl(value);                                                \
+    return meta_put(db, tran, &hdr, &tmp, sizeof(int));                    \
+}                                                                          \
+int get_db_##x##_tran(struct dbtable *db, int *value, tran_type *tran)     \
+{                                                                          \
+    struct metahdr hdr = {.rrn = y, .attr = 0};                            \
+    int tmp;                                                               \
+    int rc = meta_get_tran(tran, db, &hdr, &tmp, sizeof(int));             \
+    if (rc == 0)                                                           \
+        *value = ntohl(tmp);                                               \
+    else                                                                   \
+        *value = 0;                                                        \
+    return rc;                                                             \
+}                                                                          \
+int get_db_##x(struct dbtable *db, int *value)                             \
+{                                                                          \
+    return get_db_##x##_tran(db, value, NULL);                             \
+}
 
-                        static int put_meta_int(const char *table, void *tran,
-                                                int rrn, int key, int value)
+// get_db_odh, get_db_odh_tran, put_db_odh
+get_put_db(odh, META_ONDISK_HEADER_RRN)
+
+// get_db_inplace_updates, get_db_inplace_updates_tran,
+// put_db_inplace_updates
+get_put_db(inplace_updates, META_INPLACE_UPDATES)
+
+// get_db_compress, get_db_compress_tran, put_db_compress
+get_put_db(compress, META_COMPRESS_RRN)
+
+// get_db_compress_blobs, get_db_compress_blobs_tran, put_db_compress_blobs
+get_put_db(compress_blobs, META_COMPRESS_BLOBS_RRN)
+
+// get_db_instant_schema_change, get_db_instant_schema_change_tran,
+// put_db_instant_schema_change
+get_put_db(instant_schema_change, META_INSTANT_SCHEMA_CHANGE)
+
+// get_db_datacopy_odh, get_db_datacopy_odh_tran, put_db_datacopy_odh
+get_put_db(datacopy_odh, META_DATACOPY_ODH)
+
+// get_db_queue_odh, get_db_queue_odh_tran, put_db_queue_odh
+get_put_db(queue_odh, META_QUEUE_ODH)
+
+// get_db_queue_compress, get_db_queue_compress_tran, put_db_queue_compress
+get_put_db(queue_compress, META_QUEUE_COMPRESS)
+
+// get_db_bthash, get_db_bthash_tran, put_db_bthash
+get_put_db(bthash, META_BTHASH)
+
+// get_db_queue_persistent_seq, get_db_queue_persistent_seq_tran,
+// put_db_queue_persistent_seq
+get_put_db(queue_persistent_seq, META_QUEUE_PERSISTENT_SEQ)
+
+// get_db_queue_sequence, get_db_queue_sequence_tran,
+// put_db_queue_sequence
+get_put_db_ll(queue_sequence, META_QUEUE_SEQ)
+
+static int put_meta_int(const char *table, void *tran, int rrn, int key,
+                        int value)
 {
     struct metahdr hdr;
     struct dbtable *db;
@@ -4697,6 +4563,8 @@ get_put_db(odh, META_ONDISK_HEADER_RRN) get_put_db(inplace_updates,
     }
     return meta_put(db, tran, &hdr, &value, sizeof(int));
 }
+
+// clang-format on
 
 static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
                              int key)
@@ -4888,7 +4756,7 @@ retry:
             goto backout;
     }
     if (!input_tran) {
-        rc = trans_commit(&iq, trans, gbl_mynode);
+        rc = trans_commit(&iq, trans, gbl_myhostname);
         if (iq.debug)
             logmsg(LOGMSG_USER, "meta_put:trans_commit RC %d\n", rc);
         if (rc == RC_INTERNAL_RETRY)
@@ -5053,6 +4921,26 @@ void flush_db(void)
 {
     int rc;
     bdb_flush(thedb->bdb_env, &rc);
+}
+
+void dump_cache(const char *file, int max_pages)
+{
+    bdb_dump_cache_to_file(thedb->bdb_env, file, max_pages);
+}
+
+void load_cache(const char *file)
+{
+    bdb_load_cache(thedb->bdb_env, file);
+}
+
+void load_cache_default(void)
+{
+    bdb_load_cache_default(thedb->bdb_env);
+}
+
+void dump_cache_default(void)
+{
+    bdb_dump_cache_default(thedb->bdb_env);
 }
 
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
@@ -5247,6 +5135,10 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     iq->gluewhere = "bdb_queue_add done";
 
     if (bdberr == 0) {
+        struct dbtable *qdb = iq->usedb;
+        if (qdb->dbtype == DBTYPE_QUEUEDB) {
+            return 0;
+        }
         /* remember that this queue was updated so the consumer can
          * be woken after we commit. */
         if (iq->num_queues_hit <= MAX_QUEUE_HITS_PER_TRANS) {
@@ -5275,11 +5167,10 @@ int dbq_add(struct ireq *iq, void *trans, const void *dta, size_t dtalen)
     return map_unhandled_bdb_wr_rcode("bdb_queue_add", bdberr);
 }
 
-int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd)
+int dbq_consume(struct ireq *iq, void *trans, int consumer, const struct bdb_queue_found *fnd)
 {
     int bdberr;
-    void *bdb_handle;
-    bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+    bdb_state_type *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
     if (!bdb_handle)
         return ERR_NO_AUXDB;
     iq->gluewhere = "bdb_queue_consume";
@@ -5293,7 +5184,7 @@ int dbq_consume(struct ireq *iq, void *trans, int consumer, const void *fnd)
     if (bdberr == BDBERR_READONLY)
         return ERR_NOMASTER;
     if (bdberr == BDBERR_DELNOTFOUND)
-        return IX_NOTFND;
+        return  bdb_get_type(bdb_handle) == BDBTYPE_QUEUEDB ? ERR_UNCOMMITABLE_TXN: IX_NOTFND;
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume", bdberr);
 }
 
@@ -5383,9 +5274,11 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
-int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
-            void **fnddta, size_t *fnddtalen, size_t *fnddtaoff,
-            struct dbq_cursor *fndcursor, unsigned int *epoch)
+int dbq_get(struct ireq *iq, int consumer,
+            const struct bdb_queue_cursor *prevcursor,
+            struct bdb_queue_found **fnddta, size_t *fnddtalen,
+            size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+            long long *seq, unsigned int *epoch)
 {
     int bdberr;
     void *bdb_handle;
@@ -5395,12 +5288,17 @@ int dbq_get(struct ireq *iq, int consumer, const struct dbq_cursor *prevcursor,
     if (!bdb_handle)
         return ERR_NO_AUXDB;
 
+    tran_type *tran = NULL;
+    rc = trans_start(iq, NULL, (void *)&tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
+        goto done;
+    }
+
 retry:
     iq->gluewhere = "bdb_queue_get";
-    rc = bdb_queue_get(bdb_handle, consumer,
-                       (const struct bdb_queue_cursor *)prevcursor, fnddta,
-                       fnddtalen, fnddtaoff,
-                       (struct bdb_queue_cursor *)fndcursor, epoch, &bdberr);
+    rc = bdb_queue_get(bdb_handle, tran, consumer, prevcursor, fnddta,
+                       fnddtalen, fnddtaoff, fndcursor, seq, epoch, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5412,26 +5310,38 @@ retry:
             }
             logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n",
                    bdberr, retries);
-            return ERR_INTERNAL;
+            rc = ERR_INTERNAL;
+            goto done;
         } else if (bdberr == BDBERR_FETCH_DTA) {
-            return IX_NOTFND;
+            rc = IX_NOTFND;
+            goto done;
         }
 
         else if (bdberr == BDBERR_LOCK_DESIRED) {
-            return IX_NOTFND;
+            rc = IX_NOTFND;
+            goto done;
         }
 
-        return map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        rc = map_unhandled_bdb_rcode("bdb_queue_get", bdberr, 0);
+        goto done;
+    }
+done:
+    if (tran) {
+        if (bdb_tran_abort(bdb_handle, tran, &bdberr)) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction: %d\n",
+                   __FILE__, __LINE__, bdberr);
+            exit(1);
+        }
     }
     return rc;
 }
 
-unsigned long long dbq_item_genid(const void *dta)
+unsigned long long dbq_item_genid(const struct bdb_queue_found *dta)
 {
     return bdb_queue_item_genid(dta);
 }
 
-void dbq_get_item_info(const void *fnd, size_t *dtaoff, size_t *dtalen)
+void dbq_get_item_info(const struct bdb_queue_found *fnd, size_t *dtaoff, size_t *dtalen)
 {
     bdb_queue_get_found_info(fnd, dtaoff, dtalen);
 }
@@ -5459,8 +5369,38 @@ int dbq_dump(struct dbtable *db, FILE *out)
     return 0;
 }
 
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
+                  tran_type *tran, void *userptr)
+{
+    int bdberr, rc;
+    void *bdb_handle;
+    int retries = 0;
+    bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+
+retry:
+    iq->gluewhere = "bdb_queuedb_stats";
+    rc = bdb_queuedb_stats(bdb_handle, callback, tran, userptr, &bdberr);
+    iq->gluewhere = "bdb_queuedb_stats done";
+    if (rc != 0) {
+        if (bdberr == BDBERR_DEADLOCK) {
+            iq->retries++;
+            if (++retries < gbl_maxretries) {
+                n_retries++;
+                goto retry;
+            }
+            logmsg(LOGMSG_ERROR,
+                   "*ERROR* bdb_queue_stats too much contention "
+                   "%d count %d\n",
+                   bdberr, retries);
+            return ERR_INTERNAL;
+        }
+        return map_unhandled_bdb_rcode("bdb_queue_stats", bdberr, 0);
+    }
+    return rc;
+}
+
 int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr)
+             tran_type *tran, void *userptr)
 {
     int bdberr;
     void *bdb_handle;
@@ -5476,7 +5416,8 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 retry:
     iq->gluewhere = "bdb_queue_walk";
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
-                        (bdb_queue_walk_callback_t)callback, userptr, &bdberr);
+                        (bdb_queue_walk_callback_t)callback, tran, userptr,
+                        &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5567,42 +5508,10 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size_analyze(struct dbtable *db)
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
 {
     int ii;
-    uint64_t returnsize;
-    returnsize = db->totalsize = 0;
-
-    if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
-        db->dbtype == DBTYPE_TAGGED_TABLE) {
-        for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
-            db->totalsize += db->ixsizes[ii];
-        }
-
-        returnsize = db->totalsize;
-
-        db->dtasize = bdb_data_size(db->handle, 0);
-        db->totalsize += db->dtasize;
-
-        for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
-            db->totalsize += db->blobsizes[ii];
-        }
-    } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUE) {
-        returnsize = db->totalsize =
-            bdb_queue_size(db->handle, &db->numextents);
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
-                __func__, db->dbtype);
-    }
-
-    return returnsize;
-}
-
-uint64_t calc_table_size(struct dbtable *db)
-{
-    int ii;
+    uint64_t size_without_blobs = 0;
     db->totalsize = 0;
 
     if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
@@ -5614,6 +5523,7 @@ uint64_t calc_table_size(struct dbtable *db)
 
         db->dtasize = bdb_data_size(db->handle, 0);
         db->totalsize += db->dtasize;
+        size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
             db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
@@ -5626,7 +5536,10 @@ uint64_t calc_table_size(struct dbtable *db)
                 __func__, db->dbtype);
     }
 
-    return db->totalsize;
+    if (skip_blobs)
+        return size_without_blobs;
+    else
+        return db->totalsize;
 }
 
 void compr_print_stats()
@@ -6226,7 +6139,7 @@ int table_version_set(tran_type *tran, const char *tablename,
     int rc;
     int bdberr = 0;
 
-    if (is_tablename_queue(tablename, strlen(tablename)))
+    if (is_tablename_queue(tablename))
         return 0;
 
     db = get_dbtable_by_name(tablename);
@@ -6244,7 +6157,10 @@ int table_version_set(tran_type *tran, const char *tablename,
     return rc;
 }
 
-void *get_bdb_env(void) { return thedb->bdb_env; }
+void *get_bdb_env(void)
+{
+    return thedb->bdb_env;
+}
 
 /* This function can be used as an iterator to jump to the next
  * base table, starting the table at the specified index in the
@@ -6265,8 +6181,9 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
     while (*tabId < thedb->num_dbs) {
         pDb = thedb->dbs[*tabId];
         tablename = pDb->tablename;
-        rc = bdb_check_user_tbl_access(thedb->bdb_env, thd->clnt->user,
-                                       tablename, ACCESS_READ, &bdberr);
+        rc = bdb_check_user_tbl_access(thedb->bdb_env,
+                                       thd->clnt->current_user.name, tablename,
+                                       ACCESS_READ, &bdberr);
         if (rc == 0)
             return SQLITE_OK;
         (*tabId)++;

@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <comdb2.h>
 #include <epochlib.h>
 
@@ -58,7 +57,6 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
     assert(count >= 0 && tcount >= 0);
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
     rep_reset_send_callcount();
     rep_reset_send_bytecount();
     net_reset_num_flushes();
@@ -84,7 +82,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
             }
         }
 
-        if ((rc = trans_commit_adaptive(&iq, trans, gbl_mynode)) != 0) {
+        if ((rc = trans_commit_adaptive(&iq, trans, gbl_myhostname)) != 0) {
             fprintf(stderr, "%s: trans_commit returns %d\n", __func__, rc);
             return;
         }
@@ -161,7 +159,6 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
     assert(count >= 1 && phys_txns_per_logical >= 1);
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
 
     rep_reset_send_callcount();
     rep_reset_send_bytecount();
@@ -196,8 +193,8 @@ static void rowlocks_bench_int(bdb_state_type *bdb_state, int op, int count,
         }
 
         /* This will wait for all nodes to respond */
-        if ((rc = trans_commit_logical(&iq, trans, gbl_mynode, 0, 1, NULL, 0,
-                                       iq.seq, iq.seqlen)) != 0) {
+        if ((rc = trans_commit_logical(&iq, trans, gbl_myhostname, 0, 1, NULL,
+                                       0, iq.seq, iq.seqlen)) != 0) {
             fprintf(stderr, "%s: trans_commit_logical returns %d\n", 
                     __func__, rc);
             return;

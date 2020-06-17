@@ -1,0 +1,9 @@
+version 1
+
+rule 9 action REJECT
+rule 9 flags {PRINT STOP}
+rule 9 mode {REGEXP NOCASE}
+rule 9 sql ^DROP .*$
+
+rule 8 action NONE
+rule 8 mode {NONE}

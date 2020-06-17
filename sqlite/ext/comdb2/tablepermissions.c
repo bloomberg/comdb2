@@ -95,7 +95,7 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   memset(pCur, 0, sizeof(*pCur));
 
   struct sql_thread *thd = pthread_getspecific(query_info_key);
-  char *usr = thd->clnt->user;
+  char *usr = thd->clnt->current_user.name;
 
   rdlock_schema_lk();
   pCur->ppTables = sqlite3_malloc(sizeof(char*) * (thedb->num_dbs +

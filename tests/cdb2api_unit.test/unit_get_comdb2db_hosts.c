@@ -35,16 +35,17 @@ static char cdb2_dnssuffix[255] = "";
 static int get_comdb2db_hosts(cdb2_hndl_tp *hndl, char comdb2db_hosts[][64],
                               int *comdb2db_ports, int *master,
                               const char *comdb2db_name, int *num_hosts,
-                              int *comdb2db_num, const char *dbname, char *dbtype,
-                              char db_hosts[][64], int *num_db_hosts,
-                              int *dbnum, int read_cfg, int dbinfo_or_dns);
+                              int *comdb2db_num, const char *dbname,
+                              char db_hosts[][64],
+                              int *num_db_hosts, int *dbnum, int read_cfg,
+                              int dbinfo_or_dns);
 
 
 // we need here all the functions that get_comdb2db_hosts() calls
 static int read_available_comdb2db_configs(
     cdb2_hndl_tp *hndl, char comdb2db_hosts[][64], const char *comdb2db_name,
     int *num_hosts, int *comdb2db_num, const char *dbname, char db_hosts[][64],
-    int *num_db_hosts, int *dbnum)
+    int *num_db_hosts, int *dbnum, int noLock, int defaultOnly)
 {
     if (global_state == 1) return -1;
 
@@ -138,7 +139,7 @@ int main()
     global_state = 1; // read_available_comdb2db_configs returns -1, nothing gets set
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
-            NULL, &num_hosts, NULL,NULL, NULL,
+            NULL, &num_hosts, NULL,NULL,
             NULL, &num_db_hosts, NULL, 1, 1);
 
     assert(rc == -1);
@@ -151,7 +152,7 @@ int main()
     global_state = 2; // read_available_comdb2db_configs returns 0, just get defaults
 
     rc = get_comdb2db_hosts(NULL,NULL, NULL, &master, 
-            NULL, &num_hosts, NULL,NULL, NULL,
+            NULL, &num_hosts, NULL,NULL,
             NULL, &num_db_hosts, NULL, 1, 0); //just get defaults
 
     assert(rc == 0);
@@ -166,7 +167,7 @@ int main()
     char comdb2db_hosts[MAX_NODES][64] = {0};
     char db_hosts[MAX_NODES][64] = {0};
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
-            NULL, &num_hosts, NULL, NULL, NULL,
+            NULL, &num_hosts, NULL, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
 
     assert(rc == 0);
@@ -187,7 +188,7 @@ int main()
     char comdb2db_hosts[MAX_NODES][64] = {0};
     char db_hosts[MAX_NODES][64] = {0};
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
-            NULL, &num_hosts, NULL, NULL, NULL,
+            NULL, &num_hosts, NULL, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
 
     assert(rc == 0);
@@ -208,7 +209,7 @@ int main()
     char db_hosts[MAX_NODES][64] = {0};
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
-            NULL, &num_hosts, &comdb2db_num, NULL, NULL,
+            NULL, &num_hosts, &comdb2db_num, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
 
     assert(rc == 0);
@@ -230,7 +231,7 @@ int main()
     char db_hosts[MAX_NODES][64] = {0};
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
-            NULL, &num_hosts, &comdb2db_num, NULL, NULL,
+            NULL, &num_hosts, &comdb2db_num, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
 
     assert(rc == -1);
@@ -248,7 +249,7 @@ int main()
     char db_hosts[MAX_NODES][64] = {0};
     int comdb2db_num = 0;
     rc = get_comdb2db_hosts(NULL, comdb2db_hosts, NULL, &master, 
-            NULL, &num_hosts, &comdb2db_num, NULL, NULL,
+            NULL, &num_hosts, &comdb2db_num, NULL,
             db_hosts, &num_db_hosts, NULL, 1, 1);
 
     assert(rc == 0);

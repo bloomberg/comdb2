@@ -417,7 +417,7 @@ static inline void bdb_get_writelock_int(bdb_state_type *bdb_state,
 
         rc = pthread_rwlock_trywrlock(lock_handle->bdb_lock);
         if (rc == EBUSY) {
-            logmsg(LOGMSG_ERROR,
+            logmsg(LOGMSG_INFO,
                    "trying writelock (%s %lu), last writelock is %s %lu\n",
                    idstr, pthread_self(), lock_handle->bdb_lock_write_idstr,
                    lock_handle->bdb_lock_write_holder);
@@ -548,8 +548,6 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
             get_read_lock_ref_log(bdb_state, lk->lockref);
     }
 
-    /*printf("get [%2d] %*s%s %s %d\n", lk->lockref, lk->lockref*2, "",
-     * funcname, lk->ident, line); */
     if (lk->lockref == 0) {
         lk->line = line;
         if (lk->stack) {
@@ -571,15 +569,34 @@ void bdb_get_the_readlock(const char *idstr, const char *function, int line)
     bdb_get_readlock(gbl_bdb_state, idstr, function, line);
 }
 
+void bdb_assert_wrlock(bdb_state_type *bdb_state, const char *funcname,
+                       int line)
+{
+    thread_lock_info_type *lk = pthread_getspecific(lock_key);
+    bdb_state_type *lock_handle = bdb_state;
+
+    if (lock_handle->parent)
+        lock_handle = lock_handle->parent;
+
+    if (lk == NULL) {
+        logmsg(LOGMSG_FATAL, "%s(%s): bdb lock not inited in this thread\n",
+               funcname, __func__);
+        abort();
+    }
+
+    if (lk->lockref == 0 || lk->locktype != WRITELOCK) {
+        logmsg(LOGMSG_FATAL, "%s(%s): I do not hold the writelock!\n", funcname,
+               __func__);
+        abort_lk(lk);
+    }
+}
+
 /* Release the lock of either type (decrements reference count, releases
  * actual lock if reference count hits zero). */
 void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line)
 {
     thread_lock_info_type *lk = pthread_getspecific(lock_key);
     bdb_state_type *lock_handle = bdb_state;
-
-    /*printf("rel [%2d] %*s%s %s %d\n", lk->lockref, (lk->lockref-1)*2, "",
-     * funcname, lk->ident, line);*/
 
     if (lock_handle->parent)
         lock_handle = lock_handle->parent;

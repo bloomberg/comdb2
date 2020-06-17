@@ -21,7 +21,9 @@
 
 #define thread_memcreate(x)
 #define thread_memcreate_notrace(x)
+#define thread_memcreate_with_save(x, y)
 #define thread_memdestroy()
+#define thread_memdestroy_and_restore(x)
 #define thread_malloc(x) malloc(x)
 #define thread_free(x) free(x)
 #define thread_calloc(x, y) calloc(x, y)
@@ -31,7 +33,9 @@
 
 void thread_memcreate(size_t);
 void thread_memcreate_notrace(size_t);
+void thread_memcreate_with_save(size_t, void **);
 void thread_memdestroy(void);
+void thread_memdestroy_and_restore(void **);
 void *thread_malloc(size_t);
 void thread_free(void *);
 void *thread_calloc(size_t n_elem, size_t elem_sz);

@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -26,22 +25,6 @@ nrecs=2000
 # Max number of schema changes
 max_nusc=1000
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
 assert_vers()
 {
     local loc_tbl=$1
@@ -52,25 +35,15 @@ assert_vers()
     fi
 }
 
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 function do_rebuild_track_pid
 {
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
+    typeset loc_tbl=$1
+    typeset track_pid=$2
     typeset scnt=0
     while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
 
         echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
+        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $loc_tbl"
 
         if [[ $? != 0 ]]; then
             echo "Error schema-changing on iteration $scnt"
@@ -80,7 +53,7 @@ function do_rebuild_track_pid
         fi
 
         let scnt=scnt+1
-        do_verify $loc_dbnm $loc_tbl
+        do_verify $loc_tbl
         assert_vers $loc_tbl $tblver
     done
 
@@ -107,7 +80,7 @@ function delete_records
          cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $tbl where a = $j" >> delete.out 2>&1 || $(echo "ERROR DELETING"; exit -1)
          let j=j+1
 	     let remaining=remaining-1
-         #assertcnt $remaining
+         #assertcnt $tbl $remaining
          #sleep 0.1
     done
     end=$(date +%s)
@@ -123,7 +96,7 @@ function insert_records
 
     while [[ $j -le $nrecs ]]; do 
         cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $1 -gt 0 ] ; then
             sleep 0.1
@@ -148,23 +121,23 @@ function run_test
     ipid=$!
 
     if [ $rebuild -eq 1 ] ; then
-        do_rebuild_track_pid $dbnm $tbl $ipid
+        do_rebuild_track_pid $tbl $ipid
     fi
     wait
 
-    assertcnt $nrecs
-    do_verify
+    assertcnt $tbl $nrecs
+    do_verify $tbl
 
     echo "deleting all records in background"
     delete_records &
     upid=$!
 
     if [ $rebuild -eq 1 ] ; then
-        do_rebuild_track_pid $dbnm $tbl $upid
+        do_rebuild_track_pid $tbl $upid
     fi
     wait
 
-    assertcnt 0
+    assertcnt $tbl 0
 }
 
 echo 'Querying for nonexistent table should return NULL'

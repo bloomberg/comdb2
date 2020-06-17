@@ -93,16 +93,22 @@ include_directories(
   ${PROJECT_BINARY_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/crc32c
+  ${PROJECT_SOURCE_DIR}/csc2
   ${PROJECT_SOURCE_DIR}/cson
+  ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/db
+  ${PROJECT_BINARY_DIR}/db
+  ${PROJECT_SOURCE_DIR}/dfp/decNumber
+  ${PROJECT_SOURCE_DIR}/dfp/dfpal
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_SOURCE_DIR}/schemachange
   ${OPENSSL_INCLUDE_DIR}
-  ${PROTOBUF_C_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_definitions(-DBERKDB_4_2)
 add_dependencies(bdb db mem protobuf)

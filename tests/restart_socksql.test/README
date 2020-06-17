@@ -4,13 +4,33 @@ When a replicant sends the osql stream to master and in the middle of sending
 there is a failure, we restart from the beginning. This test makes sure that 
 the restart is successful.
 
-TODO: Currently when the replicant sends to the master commit and looses connection, 
-it will get a verify retry and try again, this time it may see a NEW (different) number of
-rows affected. Master checks in blkseq that this transaction actually commited and 
-so returns a good rc to the replicant (does not rerun the transaction). Replicant 
-sees the good rc and reports to the client the NEW number of rows affected, which 
-is not correct--we should store in blkseq the number of rows affected and report them
-back to client. As part of this we should add the number of cascaded rows that was
-done by a transaction, store that in blkseq, and return that to the replicant, which
-in turn can relay that to the client.
+This test brought to light the following issue: 
+When the replicant sends to the master commit and loses connection, it will get
+a verify_retry error and try again; this time replicant may see a different set
+of rows affected (NB. also different number of rows). 
+Master checks in blkseq that this transaction actually commited and so returns
+a good rc to the replicant (does not rerun the transaction).
+Replicant sees the good rc and reports to the client the NEW number of rows
+affected, which is not correct--we should store in blkseq the number of rows
+affected and report them back to client. As part of this we should add the
+number of cascaded rows that was done by a transaction, store that in blkseq,
+and return that to the replicant, which in turn can relay that to the client.
+
+There were thus two issues:
+1) We didn't store a live accounting of what snap_info sessions are currently
+being processed, thus the replicant will retry rather than wait to get the 
+answer.
+
+2) We don't store the number of rows affected in the blkseq thus simply
+returning the rc of the transaction will mean replicant will inform client for
+an erroneous number of rows affected.
+
+
+At first we fix issue 1) by adding all conces to hashtbl when session
+begins processing, and removing when session is done. That change makes this 
+testcase pass. However 2) will need more work to store extra information about
+the transaction in blkseq, as well as adding a test case to coersing the db
+into that state and to check the number of rows affected. 
+NOTE that a potential optimization is to check blkseq on the replicant for
+successful transactions, in the case of a lost connection to master.
 

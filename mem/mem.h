@@ -36,7 +36,6 @@ XMACRO_COMDB2MA(COMDB2MA_STATIC_BERKDB,         "berkdb",           0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_NET,            "net",              0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_SQLITE,         "sqlite",           0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_UTIL,           "util",             0, 0) \
-XMACRO_COMDB2MA(COMDB2MA_STATIC_CSC2,           "csc2",             0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_DATETIME,       "datetime",         0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_DFP_DECNUMBER,  "dfp_decNumber",    0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_PROTOBUF,       "protobuf",         0, 0) \

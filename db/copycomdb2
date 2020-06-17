@@ -146,14 +146,6 @@ do_recovery=yes
 [ -z "$comdb2ar" ] && comdb2ar="${PREFIX}/bin/comdb2ar"
 [ -z "$lz4" ] && lz4="${PREFIX}/bin/lz4"
 
-function nolz4 {
-    while [[ $# -gt 0 && $1 = '-*' ]]; do
-        shift
-    done
-    shift 2
-    cat
-}
-
 if [[ ! -x $comdb2ar ]]; then
    comdb2ar=$(which comdb2ar 2>/dev/null)
 fi
@@ -161,7 +153,11 @@ fi
 if [[ ! -x $lz4 ]]; then
    lz4=$(which lz4 2>/dev/null)
    if [[ -z "$lz4" ]]; then
-       lz4=nolz4
+       ar_compress="cat"
+       ar_decompress="cat"
+   else
+       ar_compress="$lz4 stdin stdout"
+       ar_decompress="$lz4 -d stdin stdout"
    fi
 fi
 
@@ -275,6 +271,14 @@ done
 # allow comdb2ar_rmt to be changed
 [ -z "$comdb2ar_rmt" ] && comdb2ar_rmt="${comdb2ar}"
 [ -z "$lz4_rmt" ] && lz4_rmt="${lz4}"
+
+if [[ -z "$lz4_rmt" ]]; then
+    ar_compress_rmt="cat"
+    ar_decompress_rmt="cat"
+else
+    ar_compress_rmt="$lz4_rmt stdin stdout"
+    ar_decompress_rmt="$lz4_rmt -d stdin stdout"
+fi
 
 [ $copy_data = no -a $copy_lrls = no ] && die "cannot use -s and -d together"
 
@@ -403,16 +407,16 @@ if [[ $partial = yes ]]; then
         fi
         $comdb2ar p $destlrldir/$partiallrl > $partials
         rcp -q $partials $srcmach:$partials
-        $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc"
-        $rsh $srcmach "tar xvf $partials -C $partialsdir"
+        $rsh $srcmach "mkdir  $TMPDIR/$dbname.$$.inc" </dev/null
+        $rsh $srcmach "tar xvf $partials -C $partialsdir" </dev/null
     else
         if [ "$cluster_info" = strip ]; then
             orig=$destlrldir/$partiallrl.orig.$(date +"%Y%m%dT%H%MZ%3N")
-            $rsh $destmach "mv $destlrldir/$partiallrl $orig"
-            $rsh $destmach "egrep -v "cluster nodes" $orig > $destlrldir/$partiallrl"
+            $rsh $destmach "mv $destlrldir/$partiallrl $orig" </dev/null
+            $rsh $destmach "egrep -v "cluster nodes" $orig > $destlrldir/$partiallrl" </dev/null
             cluster_info=default
         fi
-        $rsh $destmach $comdb2ar p $destlrldir/$partiallrl > $partials
+        $rsh $destmach $comdb2ar p $destlrldir/$partiallrl > $partials </dev/null
         rcp -q $destmach:$partials $partials
         mkdir  $TMPDIR/$dbname.$$.inc
         tar xvf $partials -C $partialsdir
@@ -468,9 +472,9 @@ exopts="-C $cluster_info -u $max_du_percent $recovery_opts"
 [ $do_recovery = no ]           && exopts="$exopts -R"
 
 if [ $restoremode = yes ]; then
-    $IONICE $lz4 -d stdin stdout | $comdb2ar $COMDB2AR_AROPTS $exopts x $destlrldir $destdbdir 2>$arstatus 
+    $IONICE $ar_decompress | $comdb2ar $COMDB2AR_AROPTS $exopts x $destlrldir $destdbdir 2>$arstatus 
 elif [ $backupmode = yes ]; then
-    $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout
+    $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $ar_compress
 else
     printf "\n\nSetting up pipe\n_______________________________________\n\n" >>$logfile
     (
@@ -498,10 +502,10 @@ else
 
 
     if [[ -n "$rmt" ]]; then
-        rmtarch=$($rsh $rmt uname)
+        rmtarch=$($rsh $rmt uname </dev/null)
 
         if [[ "$rmtarch" = "Linux" ]]; then 
-            if [[ $($rsh $rmt 'ionice -c 3 echo 2>&1 |grep Operation >/dev/null; echo $?') == 1 ]]; then 
+            if [[ $($rsh $rmt 'ionice -c 3 echo 2>&1 |grep Operation >/dev/null; echo $?' </dev/null) == 1 ]]; then 
                 echo "using remote ionice"
                 IONICE_RMT="ionice -c 3 "
             else
@@ -515,12 +519,12 @@ else
         # Pull mode.  Serialise the db at the destination and pipe this in to
         # a local deserialise.
         if [[ $partial = yes ]] ; then
-            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4_rmt stdin stdout " | \
-                $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
+            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $ar_compress_rmt " </dev/null | \ 
+                $ar_decompress | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl >$exstatus 2>&1
             rc=$?
         else
-            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4_rmt stdin stdout " | \
-                $lz4 -d stdin stdout | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
+            $rsh $srcmach "$IONICE_RMT $comdb2ar_rmt $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $ar_compress_rmt " </dev/null | \
+                $ar_decompress | $IONICE $comdb2ar $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir >$exstatus 2>&1
             rc=$?
         fi
 
@@ -528,12 +532,12 @@ else
         # Push mode.  Serialise db locally, pipe through o rshd deserialise
         # process on remote machine.
         if [[ $partial = yes ]] ; then
-            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $lz4 stdin stdout | \
-                $rsh $destmach "$lz4_rmt -d stdin stdout | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl " >$exstatus 2>&1
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $partialopts $srclrl 2>$arstatus | $ar_compress | \
+                $rsh $destmach "$ar_decompress_rmt | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir/$partiallrl " >$exstatus 2>&1
             rc=$?
         else
-            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $lz4 stdin stdout | \
-                $rsh $destmach "$lz4_rmt -d stdin stdout | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir " >$exstatus 2>&1
+            $IONICE $comdb2ar $COMDB2AR_AROPTS $aropts c $srclrl 2>$arstatus | $ar_compress | \
+                $rsh $destmach "$ar_decompress_rmt | $IONICE_RMT $comdb2ar_rmt $COMDB2AR_EXOPTS $exopts $outmode $destlrldir $destdbdir " >$exstatus 2>&1
             rc=$?
         fi
 

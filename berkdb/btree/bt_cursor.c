@@ -884,7 +884,7 @@ __bam_pgorder_next(dbc, pgno)
 	static int lastpr=0;
 	if (gbl_enable_pageorder_trace && time(NULL) > lastpr + 1) {
 		logmsg(LOGMSG_USER, "Berkdb cursor %p page-order next to page"
-			"%d, skip=%lu next=%lu\n",
+			"%d, skip=%"PRIu64" next=%"PRIu64"\n",
 			dbc, pgno + 1, dbc->skipcount, dbc->nextcount);
 		lastpr=time(NULL);
 	}
@@ -3032,7 +3032,7 @@ split:	ret = stack = 0;
 		 * in order to adjust the record count.
 		 */
 		if ((ret = __bam_c_search(dbc,
-		    F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
+						F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
 		    flags == DB_KEYFIRST || dbp->dup_compare != NULL ?
 		    DB_KEYFIRST : DB_KEYLAST, &exact)) != 0)
 			goto err;
@@ -3152,6 +3152,14 @@ split:	ret = stack = 0;
 		 * posistioned to a particular record.  This
 		 * is in the case where C_RECNUM is set.
 		 */
+		if(gbl_skip_cget_in_db_put) {
+			/* COMDB2_MODIFICATION since we are not calling cget before cput
+			 * then we need an extra lock on this page about to be split */
+			ret = __db_lget(dbc, LOCK_ISSET(cp->lock) ? LCK_COUPLE : 0,
+					cp->pgno, DB_LOCK_WRITE, 0, &cp->lock);
+			if (ret != 0)
+				goto err;
+		}
 
 		/* Invalidate the cursor before releasing the pagelock */
 		if (own == 0) {

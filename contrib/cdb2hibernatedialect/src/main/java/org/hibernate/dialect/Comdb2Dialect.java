@@ -238,11 +238,11 @@ public class Comdb2Dialect extends Dialect {
         return new StringBuilder().append(" add constraint ")
                 .append(constraintName)
                 .append(" foreign key (")
-                .append(StringHelper.join(", ", foreignKey))
+                .append(String.join(", ", foreignKey))
                 .append(") references ")
                 .append(referencedTable)
                 .append(" (")
-                .append(StringHelper.join(", ", primaryKey))
+                .append(String.join(", ", primaryKey))
                 .append(')').toString();
     }
 
@@ -329,49 +329,6 @@ public class Comdb2Dialect extends Dialect {
 
                 sb.append(" )");
 
-                return sb.toString();
-            }
-
-            @Override
-            public String getTableCreationUniqueConstraintsFragment(Table table) {
-                StringBuilder sb = new StringBuilder();
-                /*
-                table.getUniqueKeyIterator().forEachRemaining(uk -> {
-
-                    sb.append(", UNIQUE '")
-                            .append(dialect.escapeLiteral(uk.getName()))
-                            .append("' (")
-                            .append(uk.getColumns().stream().map(c -> c.getName()).collect(Collectors.joining(", ")))
-                            .append(")");
-                });
-                 */
-
-                //COMDB2 Requires a key for each foreign key. This seems like the only place to add the code
-                Map<Table.ForeignKeyKey, ForeignKey> fkmap = table.getForeignKeys();
-                for (Table.ForeignKeyKey fkk : fkmap.keySet()) {
-                    ForeignKey fkv = fkmap.get(fkk);
-                    sb.append(", KEY ");
-                    sb.append(dialect.quote(fkv.getName()));
-                    sb.append(" (");
-
-                    List<Column> columns = fkv.getColumns();
-                    for (int ii = 0, len = columns.size(); ii != len; ++ii) {
-                        sb.append(columns.get(ii).getName());
-                        if (ii != len - 1)
-                            sb.append(", ");
-                    }
-
-                    sb.append(" )");
-                }
-                    /*
-                    sb.append(", FOREIGN KEY (")
-                            .append(v.getColumns().stream().map(c -> c.getName()).collect(Collectors.joining(",")))
-                            .append(") REFERENCES ")
-                            .append(v.getReferencedTable().getName())
-                            .append(" (")
-                            .append((v.getReferencedColumns().size() > 0 ? v.getReferencedColumns() : v.getReferencedTable().getPrimaryKey().getColumns()).stream().map(c -> ((Column) c).getName()).collect(Collectors.joining(", ")))
-                            .append(")");
-                     */
                 return sb.toString();
             }
         };

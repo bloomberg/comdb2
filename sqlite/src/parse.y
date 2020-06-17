@@ -54,6 +54,15 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "comdb2Int.h"  /* ALL CUSTOM HEADERS ARE INCLUDED FROM HERE) */
+
+#define TRAN_ERROR      "BEGIN, COMMIT, and ROLLBACK statements cannot be "   \
+                        "prepared or executed directly against SQL engine "   \
+                        "instances (e.g. via Lua stored procedures, etc). "   \
+                        "Instead, a custom set of Lua commands must be used," \
+                        "e.g. db:begin.  Other than Lua, these statements "   \
+                        "are normally handled directly by code within the "   \
+                        "subsystem used to prepare SQL queries for worker "   \
+                        "threads."
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -141,7 +150,12 @@ cmdx ::= cmd.           { sqlite3FinishCoding(pParse); }
 ///////////////////// Begin and end transactions. ////////////////////////////
 //
 
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3ErrorMsg(pParse, TRAN_ERROR, Y);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= BEGIN transtype(Y) trans_opt.  {sqlite3BeginTransaction(pParse, Y);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 trans_opt ::= .
 trans_opt ::= TRANSACTION.
 trans_opt ::= TRANSACTION nm.
@@ -150,19 +164,37 @@ transtype(A) ::= .             {A = TK_DEFERRED;}
 transtype(A) ::= DEFERRED(X).  {A = @X; /*A-overwrites-X*/}
 transtype(A) ::= IMMEDIATE(X). {A = @X; /*A-overwrites-X*/}
 transtype(A) ::= EXCLUSIVE(X). {A = @X; /*A-overwrites-X*/}
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= COMMIT|END(X) trans_opt.   {sqlite3ErrorMsg(pParse, TRAN_ERROR, @X);}
+cmd ::= ROLLBACK(X) trans_opt.     {sqlite3ErrorMsg(pParse, TRAN_ERROR, @X);}
+%endif SQLITE_BUILDING_FOR_COMDB2
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= COMMIT|END(X) trans_opt.   {sqlite3EndTransaction(pParse,@X);}
 cmd ::= ROLLBACK(X) trans_opt.     {sqlite3EndTransaction(pParse,@X);}
+%endif !SQLITE_BUILDING_FOR_COMDB2
 
 savepoint_opt ::= SAVEPOINT.
 savepoint_opt ::= .
 cmd ::= SAVEPOINT nm(X). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_BEGIN, &X);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 cmd ::= RELEASE savepoint_opt nm(X). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_RELEASE, &X);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 cmd ::= ROLLBACK trans_opt TO savepoint_opt nm(X). {
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  sqlite3ErrorMsg(pParse, TRAN_ERROR, &X);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3Savepoint(pParse, SAVEPOINT_ROLLBACK, &X);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 ///////////////////// The CREATE TABLE statement ////////////////////////////
@@ -258,7 +290,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   EACH END EXCLUSIVE EXPLAIN FAIL FOR
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
   QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW ROWS
-  ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
+  ROLLBACK SAVEPOINT SEQUENCE TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
 %endif SQLITE_OMIT_COMPOUND_SELECT
@@ -282,7 +314,8 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   BLOBFIELD BULKIMPORT
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DISABLE DISTRIBUTION DRYRUN
-  ENABLE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW LUA LZ4 NONE
+  ENABLE EXEC EXECUTE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW
+  LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
@@ -575,7 +608,9 @@ onconf(A) ::= .                              {A = OE_Default;}
 onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
 orconf(A) ::= .                              {A = OE_Default;}
 orconf(A) ::= OR resolvetype(X).             {A = X;}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 resolvetype(A) ::= raisetype(A).
+%endif !SQLITE_BUILDING_FOR_COMDB2
 resolvetype(A) ::= IGNORE.                   {A = OE_Ignore;}
 resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
 
@@ -1044,19 +1079,41 @@ where_opt(A) ::= WHERE expr(X).       {A = X;}
 ////////////////////////// The UPDATE command ////////////////////////////////
 //
 %ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3Update(pParse,X,Y,W,0,O,L,0);
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3Update(pParse,X,Y,W,0,0,0,0);
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 }
 %endif
 
@@ -1757,13 +1814,9 @@ expr(A) ::= RAISE LP raisetype(T) COMMA nm(Z) RP.  {
 %endif  !SQLITE_OMIT_TRIGGER
 
 %type raisetype {int}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ROLLBACK.  {A = OE_Rollback;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ABORT.     {A = OE_Abort;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
@@ -1993,6 +2046,16 @@ wqlist(A) ::= wqlist(A) COMMA nm(X) eidlist_opt(Y) AS LP select(Z) RP. {
 ////////////////////////// COMDB2 SYNTAX EXTENSIONS ///////////////////////////
 // These rules are used to support the syntax extensions provided by COMDB2.
 %ifdef SQLITE_BUILDING_FOR_COMDB2
+//////////////////////////////// EXEC / EXECUTE ///////////////////////////////
+cmd ::= EXEC sproccmd.
+cmd ::= EXECUTE sproccmd.
+
+exec_proc_arg ::= NULL|FLOAT|BLOB|STRING|INTEGER.
+exec_proc_arg_list ::= exec_proc_arg.
+exec_proc_arg_list ::= exec_proc_arg_list COMMA exec_proc_arg.
+
+sproccmd ::= PROCEDURE ids LP exec_proc_arg_list RP.
+
 ////////////////////////////////// GET / PUT //////////////////////////////////
 cmd ::= GET getcmd.
 
@@ -2125,8 +2188,10 @@ putcmd ::= SCHEMACHANGE CONVERTSLEEP INTEGER(F). {
     comdb2schemachangeConvertsleep(pParse, tmp);
 }
 
-putcmd ::= TUNABLE nm(N) INTEGER|FLOAT|STRING(M). {
-    comdb2putTunable(pParse, &N, &M);
+opteq ::= .
+opteq ::= EQ .
+putcmd ::= TUNABLE nm(N) dbnm(M) opteq INTEGER|FLOAT|STRING(V). {
+    comdb2putTunable(pParse, &N, &M, &V);
 }
 
 /////////////////////////////////// REBUILD ///////////////////////////////////
@@ -2352,13 +2417,20 @@ cmd ::= createkw PROCEDURE nm(N) NOSQL(X). {
 }
 cmd ::= createkw PROCEDURE nm(N) VERSION STRING(V) NOSQL(X). {
     comdb2CreateProcedure(pParse, &N, &V, &X);
+}
 
 /////////////////////////////// DROP PROCEDURE ////////////////////////////////
-}
+
 cmd ::= DROP PROCEDURE nm(N) INTEGER(V). {
     comdb2DropProcedure(pParse, &N, &V, 0);
 }
+cmd ::= DROP PROCEDURE nm(N) VERSION INTEGER(V). {
+    comdb2DropProcedure(pParse, &N, &V, 0);
+}
 cmd ::= DROP PROCEDURE nm(N) STRING(V). {
+    comdb2DropProcedure(pParse, &N, &V, 1);
+}
+cmd ::= DROP PROCEDURE nm(N) VERSION STRING(V). {
     comdb2DropProcedure(pParse, &N, &V, 1);
 }
 
@@ -2372,12 +2444,12 @@ cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= createkw LUA TRIGGER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,&Q,T);
+cmd ::= createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,0,S,&Q,T);
 }
 
-cmd ::= createkw LUA CONSUMER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,&Q,T);
+cmd ::= createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,1,S,&Q,T);
 }
 
 table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
@@ -2387,6 +2459,11 @@ table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR
 table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
   A = comdb2AddTriggerTable(pParse,0,T,B);
 }
+
+%type withsequence {int}
+withsequence(A) ::= .                   { A = -1; }
+withsequence(A) ::= WITHOUT SEQUENCE.   { A = 0; }
+withsequence(A) ::= WITH SEQUENCE.      { A = 1; }
 
 %type table_trigger_event {Cdb2TrigTables*}
 %destructor table_trigger_event {sqlite3DbFree(pParse->db, $$);}

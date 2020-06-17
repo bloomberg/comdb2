@@ -1,10 +1,5 @@
-include(${CMAKE_MODULE_PATH}/pkg_helper.cmake)
-find_pkg_for_comdb2(Protobuf_C
-  "protobuf-c/protobuf-c.h"
-  "protobuf-c"
-  "${PROTOBUF_C_ROOT_DIR}"
-  ""
-  PROTOBUF_C_INCLUDE_DIR
-  PROTOBUF_C_LIBRARY
-)
-mark_as_advanced(PROTOBUF_C_INCLUDE_DIR PROTOBUF_C_LIBRARY)
+find_path(PROTOBUF-C_INCLUDE_DIR NAMES protobuf-c/protobuf-c.h)
+find_library(PROTOBUF-C_LIBRARY NAMES protobuf-c)
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(PROTOBUF-C DEFAULT_MSG PROTOBUF-C_INCLUDE_DIR)
+find_package_handle_standard_args(libprotobuf-c DEFAULT_MSG PROTOBUF-C_LIBRARY)

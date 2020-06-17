@@ -31,6 +31,7 @@
 #include <ctrace.h>
 #include <autoanalyze.h>
 #include <sqlstat1.h>
+#include "schemachange/sc_util.h"
 
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
@@ -55,13 +56,13 @@ void reset_aa_counter(char *tblname)
     tbl->aa_saved_counter = 0;
     tbl->aa_lastepoch = time(NULL);
 
-    if (save_freq > 0 && thedb->master == gbl_mynode) {
+    if (save_freq > 0 && thedb->master == gbl_myhostname) {
         // save updated counter
         const char *str = "0";
         bdb_set_table_parameter(NULL, tblname, aa_counter_str, str);
 
         char epoch[30] = {0};
-        sprintf(epoch, "%" PRId64, tbl->aa_lastepoch);
+        sprintf(epoch, "%d", (int)tbl->aa_lastepoch);
         bdb_set_table_parameter(NULL, tblname, aa_lastepoch_str, epoch);
     }
 
@@ -95,7 +96,8 @@ void *auto_analyze_table(void *arg)
     }
     int rc;
 
-    for (int retries = 0; gbl_schema_change_in_progress && retries < 10;
+    for (int retries = 0;
+         get_schema_change_in_progress(__func__, __LINE__) && retries < 10;
          retries++) {
         sleep(5); // wait around for sequential fastinits to finish
     }
@@ -246,7 +248,8 @@ out:
 // print autoanalyze stats
 void stat_auto_analyze(void)
 {
-    if (thedb->master != gbl_mynode) // refresh from saved if we are not master
+    // refresh from saved if we are not master
+    if (thedb->master != gbl_myhostname)
         load_auto_analyze_counters();
 
     logmsg(LOGMSG_USER, "AUTOANALYZE: %s\n",
@@ -348,8 +351,8 @@ void *auto_analyze_main(void *unused)
     rdlock_schema_lk();
     // for each table update the counters
     for (int i = 0; i < thedb->num_dbs; i++) {
-        if (thedb->master != gbl_mynode ||
-            gbl_schema_change_in_progress) // should not be writing
+        if (thedb->master != gbl_myhostname ||
+            get_schema_change_in_progress(__func__, __LINE__))
             break;
 
         struct dbtable *tbl = thedb->dbs[i];
@@ -396,7 +399,8 @@ void *auto_analyze_main(void *unused)
          * only one analyze at a time is allowed to run (auto_analyze_running)
          * we should not auto analyze if analyze_is_running (manually)
          */
-        if (!auto_analyze_running && !gbl_schema_change_in_progress &&
+        if (!auto_analyze_running &&
+            !get_schema_change_in_progress(__func__, __LINE__) &&
             !analyze_is_running() &&
             ((newautoanalyze_counter > min_ops &&
               now - tbl->aa_lastepoch > min_time) ||

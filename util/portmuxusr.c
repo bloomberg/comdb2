@@ -37,7 +37,6 @@
 #include <unistd.h>
 
 #include <passfd.h>
-#include <safestrerror.h>
 #include <sbuf2.h>
 #include <tcputil.h>
 #include <xstring.h>
@@ -84,8 +83,8 @@ enum {
 static int portmux_default_timeout = TIMEOUTMS;
 static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
 
-static const char *gbl_portmux_unix_socket_default = "/tmp/portmux.socket";
-char *gbl_portmux_unix_socket;
+static char gbl_portmux_unix_socket_default[] = "/tmp/portmux.socket";
+static char *gbl_portmux_unix_socket = gbl_portmux_unix_socket_default;
 
 static int (*reconnect_callback)(void *) = NULL;
 static void *reconnect_callback_arg;
@@ -195,8 +194,8 @@ int portmux_cmd(const char *cmd, const char *app, const char *service,
     return port;
 }
 
-inline int portmux_use(const char *app, const char *service,
-                       const char *instance, int port)
+int portmux_use(const char *app, const char *service, const char *instance,
+                int port)
 {
     char portstr[20];
     snprintf(portstr, sizeof(portstr), " %d", port);
@@ -204,8 +203,7 @@ inline int portmux_use(const char *app, const char *service,
 }
 
 /* returns port number, or -1 for error*/
-inline int portmux_register(const char *app, const char *service,
-                            const char *instance)
+int portmux_register(const char *app, const char *service, const char *instance)
 {
     return portmux_cmd("reg", app, service, instance, "");
 }
@@ -804,12 +802,9 @@ static bool portmux_client_side_validation(int fd, const char *app,
     }
 
     struct sockaddr_in client_addr;
-    int len = sizeof(client_addr);
+    socklen_t len = sizeof(client_addr);
     char dotted_quad[16]; // nnn.nnn.nnn.nnn0
-    // The third argument of getpeername() is in reality an int *.
-    // Some POSIX confusion resulted in the present socklen_t,
-    if (getpeername(fd, (struct sockaddr *)&client_addr, (socklen_t *)&len) ==
-        0) {
+    if (getpeername(fd, (struct sockaddr *)&client_addr, &len) == 0) {
         unsigned char *cptr = (unsigned char *)&(client_addr.sin_addr.s_addr);
         snprintf(dotted_quad, sizeof(dotted_quad), "%u.%u.%u.%u", cptr[0],
                  cptr[1], cptr[2], cptr[3]);
@@ -1768,9 +1763,15 @@ void portmux_set_max_wait_timeout(unsigned timeoutms)
     max_wait_timeoutms = timeoutms;
 }
 
-const char *portmux_fds_get_app(portmux_fd_t *fds) { return fds->app; }
+const char *portmux_fds_get_app(portmux_fd_t *fds)
+{
+    return fds->app;
+}
 
-const char *portmux_fds_get_service(portmux_fd_t *fds) { return fds->service; }
+const char *portmux_fds_get_service(portmux_fd_t *fds)
+{
+    return fds->service;
+}
 
 const char *portmux_fds_get_instance(portmux_fd_t *fds)
 {
@@ -1789,7 +1790,9 @@ void set_portmux_port(int port)
 
 void clear_portmux_bind_path()
 {
-    free(gbl_portmux_unix_socket);
+    if (gbl_portmux_unix_socket != gbl_portmux_unix_socket_default) {
+        free(gbl_portmux_unix_socket);
+    }
     gbl_portmux_unix_socket = NULL;
 }
 
@@ -1800,15 +1803,12 @@ char *get_portmux_bind_path(void)
 
 int set_portmux_bind_path(const char *path)
 {
-    path = (path) ? path : gbl_portmux_unix_socket_default;
-
     if (strlen(path) < sizeof(((struct sockaddr_un *)0)->sun_path)) {
-        free(gbl_portmux_unix_socket);
+        clear_portmux_bind_path();
         gbl_portmux_unix_socket = strdup(path);
         return (gbl_portmux_unix_socket) ? 0 : -1;
     }
-    logmsg(LOGMSG_ERROR, "%s:%d Portmux unix socket path too long.", __func__,
-           __LINE__);
+    logmsg(LOGMSG_ERROR, "%s bad unix socket path", __func__);
     return -1;
 }
 
@@ -1875,9 +1875,8 @@ static void client_thr(int fd)
     char line[128];
 
     struct sockaddr_in client_addr;
-    int len = sizeof(client_addr);
-    if (getpeername(fd, (struct sockaddr *)&client_addr, (socklen_t *)&len) ==
-        0) {
+    socklen_t len = sizeof(client_addr);
+    if (getpeername(fd, (struct sockaddr *)&client_addr, &len) == 0) {
         unsigned char *cptr = (unsigned char *)&(client_addr.sin_addr.s_addr);
         printf("server: accepted connection on fd# %d from %u.%u.%u.%u\n", fd,
                cptr[0], cptr[1], cptr[2], cptr[3]);

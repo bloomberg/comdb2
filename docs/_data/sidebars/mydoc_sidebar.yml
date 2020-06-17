@@ -131,6 +131,10 @@ entries:
       url: /ssl.html
       output: web
 
+    - title: Ruleset files
+      url: /ruleset.html
+      output: web
+
   - title: Operating databases
     url: /operations.html
     output: web

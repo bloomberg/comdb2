@@ -36,8 +36,6 @@
 #include "nodemap.h"
 #include "logmsg.h"
 
-enum { MAX_CPU = 65536 };
-
 struct rmtpol {
     const char *descr;
     char explicit_allow_machs[MAX_CPU / 8];
@@ -49,7 +47,8 @@ struct rmtpol {
                             implies "allow write from alpha". */
 };
 
-static enum mach_class mach_classes[MAX_CPU] = {CLASS_UNKNOWN};
+enum mach_class mach_classes[MAX_CPU] = {CLASS_UNKNOWN};
+
 static struct rmtpol write_pol = {"write from", {0}, {0}, 0, 0, 1};
 static struct rmtpol brd_pol = {"broadcast to", {0}, {0}, 0, 0, 0};
 static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
@@ -58,38 +57,25 @@ enum mach_class get_my_mach_class(void)
 {
     if (gbl_machine_class)
         return mach_class_name2class(gbl_machine_class);
-    return get_mach_class(gbl_mynode);
+    return machine_my_class();
+}
+
+const char *get_my_mach_class_str()
+{
+    return mach_class_class2name(get_my_mach_class());
 }
 
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
-
 
 const char *get_mach_class_str(char *host)
 {
     return mach_class_class2name(get_mach_class(host));
 }
 
-static int disable_rmt_dbupdates(const char *mach)
-{
-    enum mach_class rmtclass, myclass;
-
-    rmtclass = get_mach_class(mach);
-    myclass = get_my_mach_class();
-
-    if (rmtclass == CLASS_TEST && rmtclass != CLASS_BETA &&
-        myclass != CLASS_TEST)
-        return 1;
-    return 0;
-}
-
 static int allow_action_from_remote(const char *host, const struct rmtpol *pol)
 {
-
     enum mach_class rmtclass;
     int ix = nodeix(host);
-
-    if (disable_rmt_dbupdates(host))
-        return 0;
 
     if (btst(pol->explicit_disallow_machs, ix))
         return 0;
@@ -122,7 +108,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_my_mach_class())
+        if (get_mach_class(host) >= get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -137,7 +123,7 @@ int allow_cluster_from_remote(const char *host)
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
-        if (get_mach_class(host) == get_my_mach_class())
+        if (get_mach_class(host) == get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -151,7 +137,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_my_mach_class())
+        if (get_mach_class(host) <= get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -271,7 +257,7 @@ int process_allow_command(char *line, int lline)
         if (parse_mach_or_group(tok, ltok, &if_mach, &if_cls) != 0)
             goto bad;
 
-        if (if_mach > 0 && if_mach != gbl_mynode)
+        if (if_mach > 0 && if_mach != gbl_myhostname)
             goto ignore;
         if (if_cls != CLASS_UNKNOWN && if_cls != get_my_mach_class())
             goto ignore;
@@ -321,4 +307,34 @@ ignore:
 bad:
     logmsg(LOGMSG_ERROR, "bad command <%*.*s>\n", lline, lline, line);
     return -1;
+}
+
+void dump_policy_structure(const struct rmtpol *pol)
+{
+    logmsg(LOGMSG_USER, "Policy '%s'\n", pol->descr);
+    for (int i = 0; i < sizeof(pol->explicit_disallow_machs); i++) {
+        if (btst(pol->explicit_disallow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_disallow mach %d\n", i);
+    }
+    for (int i = 0; i < sizeof(pol->explicit_allow_machs); i++) {
+        if (btst(pol->explicit_allow_machs, i))
+            logmsg(LOGMSG_USER, "  explicit_allow mach %d\n", i);
+    }
+
+    int c = 0;
+    while (++c <= 6) { // start from dev
+        if (btst(&pol->explicit_disallow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_disallow class %s\n",
+                   mach_class_class2name(c));
+        if (btst(&pol->explicit_allow_classes, c))
+            logmsg(LOGMSG_USER, "  explicit_allow class %s\n",
+                   mach_class_class2name(c));
+    }
+}
+
+void dump_remote_policy()
+{
+    dump_policy_structure(&write_pol);
+    dump_policy_structure(&brd_pol);
+    dump_policy_structure(&cluster_pol);
 }

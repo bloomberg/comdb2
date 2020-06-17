@@ -77,7 +77,7 @@ as long as there was a successful move in the past
 #include <netinet/in.h>
 
 #include <build/db.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 #include <ctrace.h>
 
 #include "net.h"
@@ -97,7 +97,8 @@ as long as there was a successful move in the past
 #include "thrman.h"
 
 #include "genid.h"
-#define MERGE_DEBUG (0)
+
+//#define MERGE_DEBUG 1
 
 struct datacopy_info {
     void *datacopy;
@@ -176,8 +177,6 @@ extern DB_LSN bdb_asof_current_lsn;
 extern DB_LSN bdb_latest_commit_lsn;
 extern uint32_t bdb_latest_commit_gen;
 extern pthread_cond_t bdb_asof_current_lsn_cond;
-
-extern int db_is_stopped(void);
 
 static int bdb_switch_stripe(bdb_cursor_impl_t *cur, int dtafile, int *bdberr);
 static int bdb_cursor_find_merge(bdb_cursor_impl_t *cur, void *key, int keylen,
@@ -478,8 +477,9 @@ static inline int pageorder_skip_trace(bdb_cursor_impl_t *cur)
     }
 
     logmsg(LOGMSG_USER,
-           "Table scan for table '%s' skipcount = %lu nextcount = %lu "
-           "ratio = %lu (threshold = %d)\n",
+           "Table scan for table '%s' skipcount = %" PRIu64
+           " nextcount = %" PRIu64 " "
+           "ratio = %" PRIu64 " (threshold = %d)\n",
            cur->state->name, skipcount, nextcount, ratio,
            cur->state->attr->disable_pgorder_threshold);
 
@@ -529,7 +529,8 @@ static inline int verify_pageorder_tablescan(bdb_cursor_impl_t *cur)
     if (ratio > cur->state->attr->disable_pgorder_threshold) {
         logmsg(LOGMSG_WARN,
                "Disable page-order tablescan for table %s skipcount = "
-               "%lu nextcount = %lu ratio = %lu%% threshold = %d%%\n",
+               "%" PRIu64 " nextcount = %" PRIu64 " ratio = %" PRIu64
+               "%% threshold = %d%%\n",
                cur->state->name, skipcount, nextcount, ratio,
                cur->state->attr->disable_pgorder_threshold);
 
@@ -4438,7 +4439,7 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
         if (rc < 0)
             return rc;
 
-#ifdef MERGE_DEBUG
+#if MERGE_DEBUG
         logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
                (int)pthread_self(), __FILE__, __LINE__, rc,
                *(unsigned long long *)key);
@@ -4457,8 +4458,8 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
     if (rc < 0)
         return rc;
 #if MERGE_DEBUG
-    logmsg(LOGMSG_DEBUG, "%d %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
-           pthread_self(), __FILE__, __LINE__, rc);
+    logmsg(LOGMSG_DEBUG, "%p %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
+           (void*)pthread_self(), __FILE__, __LINE__, rc);
 #endif
 
     /* now update the out-of-order flag */
@@ -4515,8 +4516,8 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                 return rc;
 
 #if MERGE_DEBUG
-            logmsg(LOGMSG_DEBUG, "%d %s:%d berkdb->move rc=%d\n",
-                   pthread_self(), __FILE__, __LINE__, rc);
+            logmsg(LOGMSG_DEBUG, "%p %s:%d berkdb->move rc=%d\n",
+                   (void*)pthread_self(), __FILE__, __LINE__, rc);
 #endif
         } else {
             /* Move the cursor for the next iteration. */
@@ -4628,8 +4629,8 @@ static int bdb_cursor_find_and_skip(bdb_cursor_impl_t *cur,
 
         rc = berkdb->find(berkdb, key, keylen, howcrt, bdberr);
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d find() how=%d returned rc=%d\n",
-               pthread_self(), __FILE__, __LINE__, how, rc);
+        logmsg(LOGMSG_DEBUG, "%p %s:%d find() how=%d returned rc=%d\n",
+               (void*)pthread_self(), __FILE__, __LINE__, how, rc);
 #endif
         if (rc < 0)
             return rc;
@@ -4860,9 +4861,8 @@ step1:
                                       bdberr);
 
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n", pthread_self(),
-               __FILE__, __LINE__, rc, cur->used_rl, how);
-
+        logmsg(LOGMSG_DEBUG, "%p %s:%d rc=%d used_rl=%d [%d]\n",
+               (void *)pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
         print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
 
@@ -4948,17 +4948,9 @@ step1:
 
     /* Check the virtual stripe */
     if (cur->addcur && cur->type == BDBC_DT && 0 == got_rl && cur->pageorder) {
-        /* Temptable find-exact semantics require that I malloc the key. */
-        void *fndkey = malloc(keylen);
-
-        /* Copy key. */
-        memcpy(fndkey, key, keylen);
-
         /* Find my record. */
-        rc = bdb_temp_table_find_exact(cur->state, cur->addcur, fndkey, keylen,
+        rc = bdb_temp_table_find_exact(cur->state, cur->addcur, key, keylen,
                                        bdberr);
-        if (rc != IX_FND)
-            free(fndkey);
         if (rc < 0)
             return rc;
 
@@ -4996,7 +4988,6 @@ step1:
                 if (dtalen > 0 && bdb_osql_log_is_optim_data(addptr)) {
                     bdb_osql_log_addc_ptr_t *newptr;
                     int rowlen;
-                    unsigned long long *pgenid;
 
                     /* Rebuild the row from the logfiles. */
                     rc = bdb_osql_log_get_optim_data_addcur(
@@ -5018,21 +5009,15 @@ step1:
                     if (rc < 0)
                         return rc;
 
-                    /* Malloc pgenid for find_exact. */
-                    pgenid = (unsigned long long *)malloc(sizeof(*pgenid));
-
-                    /* Copy it. */
-                    *pgenid = *genid_ck;
-
                     /* Re-find the newly inserted position */
                     rc = bdb_temp_table_find_exact(cur->state, cur->addcur,
-                                                   (char *)pgenid, 8, bdberr);
+                                                   genid_ck, sizeof(*genid_ck),
+                                                   bdberr);
                     if (rc != IX_FND) {
                         logmsg(LOGMSG_ERROR, "%s: fail to retrieve back the "
                                         "updated row rc=%d bdberr=%d\n",
                                 __func__, rc, *bdberr);
                         rc = -1; /* we have to find this row back */
-                        free(pgenid);
                     }
 
                     /* Retrieve the header. */
@@ -5439,8 +5424,8 @@ step1:
     /* STEP 1 */
     if (cur->rl) {
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d used_rl=%d cur->genid=%llx [%d]\n",
-               pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
+        logmsg(LOGMSG_DEBUG, "%p %s:%d used_rl=%d cur->genid=%llx [%d]\n",
+               (void*)pthread_self(), __FILE__, __LINE__, cur->used_rl, cur->genid,
                how);
 #endif
         if ((how != DB_NEXT && how != DB_PREV) || cur->used_rl) {
@@ -5451,8 +5436,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_rl=%d [%d]\n",
-                   pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
+            logmsg(LOGMSG_DEBUG, "%p %s:%d rc=%d used_rl=%d [%d]\n",
+                   (void*)pthread_self(), __FILE__, __LINE__, rc, cur->used_rl, how);
 
             print_cursor_keys(cur, BDB_SHOW_RL);
 #endif
@@ -5538,14 +5523,10 @@ step1:
          * something was added, reposition the cursor. */
         if ((crt_how == DB_NEXT || crt_how == DB_PREV) && cur->repo_addcur &&
             cur->agenid != 0) {
-            unsigned long long *agenid = malloc(sizeof(*agenid));
-
-            /* Set the reposition genid. */
-            *agenid = cur->agenid;
-
             /* Reposition the cursor. */
-            rc = bdb_temp_table_find_exact(cur->state, cur->addcur,
-                                           (char *)agenid, 8, bdberr);
+            rc =
+                bdb_temp_table_find_exact(cur->state, cur->addcur, &cur->agenid,
+                                          sizeof(cur->agenid), bdberr);
 
             /* Things shouldn't be disappearing from addcur. */
             assert(rc == IX_FND);
@@ -5615,21 +5596,11 @@ step1:
                                 cur, *genid_ck);
                     }
 
-                    /* Temp_table semantics require that I malloc the key. */
-                    srec = (unsigned long long *)malloc(sizeof(*srec));
-
-                    /* Copy the current key. */
-                    memcpy(srec, genid_ck, sizeof(*srec));
-
                     /* Find this record. */
                     int find_rc =
-                        bdb_temp_table_find(cur->state, cur->vs_skip,
-                                            (char *)srec, 8, NULL, bdberr);
+                        bdb_temp_table_find(cur->state, cur->vs_skip, &genid_ck,
+                                            sizeof(genid_ck), NULL, bdberr);
 
-                    /* Temp_table semantics also require that we free key if not
-                     * found */
-                    if (find_rc != IX_FND)
-                        free(srec);
                     if (find_rc) {
                         if (cur->trak) {
                             logmsg(LOGMSG_USER, 
@@ -5719,7 +5690,6 @@ step1:
             if (dtalen > 0 && bdb_osql_log_is_optim_data(addptr)) {
                 bdb_osql_log_addc_ptr_t *newptr;
                 int rowlen;
-                unsigned long long *pgenid;
 
                 /* Rebuild the row from the logfiles. */
                 rc = bdb_osql_log_get_optim_data_addcur(
@@ -5740,21 +5710,15 @@ step1:
                 if (rc < 0)
                     return rc;
 
-                /* Malloc pgenid for find_exact. */
-                pgenid = (unsigned long long *)malloc(sizeof(*pgenid));
-
-                /* Copy it. */
-                *pgenid = *genid_ck;
-
                 /* Re-find the newly inserted position */
-                rc = bdb_temp_table_find_exact(cur->state, cur->addcur,
-                                               (char *)pgenid, 8, bdberr);
+                rc =
+                    bdb_temp_table_find_exact(cur->state, cur->addcur, genid_ck,
+                                              sizeof(*genid_ck), bdberr);
                 if (rc != IX_FND) {
                     logmsg(LOGMSG_ERROR, "%s: fail to retrieve back the updated row "
                                     "rc=%d bdberr=%d\n",
                             __func__, rc, *bdberr);
                     rc = -1; /* we have to find this row back */
-                    free(pgenid);
                 }
 
                 /* Retrieve the header. */
@@ -5887,8 +5851,8 @@ step1:
 
     if (cur->sd && cur->shadow_tran->check_shadows) {
 #if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%d %s:%d used_sd=%d cur->genid=%llx [%d]\n",
-               pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
+        logmsg(LOGMSG_DEBUG, "%p %s:%d used_sd=%d cur->genid=%llx [%d]\n",
+               (void*)pthread_self(), __FILE__, __LINE__, cur->used_sd, cur->genid,
                how);
         print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
@@ -5900,8 +5864,8 @@ step1:
                 return rc;
 
 #if MERGE_DEBUG
-            logmsg(LOGMSG_DEBUG, "%d %s:%d rc=%d used_sd=%d [%d]\n",
-                   pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, how);
+            logmsg(LOGMSG_DEBUG, "%p %s:%d rc=%d used_sd=%d [%d]\n",
+                   (void*)pthread_self(), __FILE__, __LINE__, rc, cur->used_sd, how);
 
             print_cursor_keys(cur, BDB_SHOW_BOTH);
 #endif
@@ -7958,6 +7922,7 @@ static int update_pglogs_from_global_queues_int(
     bdb_cursor_impl_t *cur, struct pglogs_queue_cursor *qcur, int *bdberr)
 {
     struct pglogs_queue_key *current, *prev, *last;
+    int update_current_pglogs = 0;
 
 #ifdef NEWSI_STAT
     struct timeval before, after, diff;
@@ -7985,19 +7950,34 @@ static int update_pglogs_from_global_queues_int(
             current = current->lnk.prev;
         }
 
-        if (!current && prev && found_greater) {
-            update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, prev);
+        if (!found_greater) {
+            current = NULL;
+        } else if (!current && prev) {
             current = prev;
+            /* Check to see if we start at the first record */
+            if (current->type == PGLOGS_QUEUE_PAGE &&
+                log_compare(&current->commit_lsn, start_lsn) > 0) {
+                update_current_pglogs = 1;
+            }
         }
 
-        if (!found_greater)
-            current = NULL;
+        /* Skip over unneeded RELINKS */
+        while (!update_current_pglogs && current && current != last) {
+            current = current->lnk.next;
+            if (current->type != PGLOGS_QUEUE_PAGE)
+                continue;
+            assert(log_compare(&current->commit_lsn, start_lsn) > 0);
+            update_current_pglogs = 1;
+        }
     }
 
     Pthread_rwlock_unlock(&qcur->queue->queue_lk);
 
     if (current)
         assert(last);
+
+    if (update_current_pglogs)
+        update_pglogs_from_queue(cur->shadow_tran, qcur->fileid, current);
 
     // No locking: things above my birth_lsn can't disappear
     while (current && current != last) {
@@ -8020,10 +8000,6 @@ static int update_pglogs_from_global_queues_int(
                current ? current->commit_lsn.file : 0,
                current ? current->commit_lsn.offset : 0);
 #endif
-    } else if (current != last) {
-        assert(last == NULL || last->type == PGLOGS_QUEUE_RELINK ||
-               log_compare(&last->commit_lsn, &cur->shadow_tran->birth_lsn) <=
-                   0);
     }
 
     qcur->last = current;
@@ -8441,8 +8417,8 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
                                       1 /* keylen incremented */, 1, bdberr);
 #if MERGE_DEBUG
         logmsg(LOGMSG_DEBUG,
-               "%d %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
-               pthread_self(), __FILE__, __LINE__, rc, cur->used_sd,
+               "%p %s:%d rc=%d, used_sd=%d, used_rl=%d, cur->genid=%llx [%d]\n",
+               (void*)pthread_self(), __FILE__, __LINE__, rc, cur->used_sd,
                cur->used_rl, cur->genid, how);
 #endif
 
@@ -8456,13 +8432,13 @@ static int bdb_cursor_reposition_noupdate_int(bdb_cursor_ifn_t *pcur_ifn,
 #if MERGE_DEBUG
                 logmsg(
                     LOGMSG_DEBUG,
-                    "%d %s:%d we used this value so for PREV need"
+                    "%p %s:%d we used this value so for PREV need"
                     "to \nreturn rc=%d, berkdb is %s, used_sd=%d, used_rl=%d, "
-                    "sd_eof=%d, rl_eof=%d, key=%x [%d]\n",
-                    pthread_self(), __FILE__, __LINE__, rc,
+                    "sd_eof=%d, rl_eof=%d, how:%d\n",
+                    (void*)pthread_self(), __FILE__, __LINE__, rc,
                     (cur->rl == berkdb ? "RL" : "SD"), cur->used_sd,
                     cur->used_rl, cur->sd->is_at_eof(cur->sd),
-                    cur->rl->is_at_eof(cur->rl), key, how);
+                    cur->rl->is_at_eof(cur->rl), how);
 #endif
                 break;
             }

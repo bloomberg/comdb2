@@ -2467,7 +2467,7 @@ __txn_regop_rowlocks_print(dbenv, dbtp, lsnp, notused2, notused3)
 	(void)printf("\tlast_commit_lsn: [%lu][%lu]\n",
 	    (u_long)argp->last_commit_lsn.file, (u_long)argp->last_commit_lsn.offset);
 	fflush(stdout);
-	(void)printf("\tcontext: %lx\n", argp->context);
+	(void)printf("\tcontext: %"PRIx64"\n", argp->context);
 	fflush(stdout);
     time_t timestamp = argp->timestamp;
 	lt = localtime((time_t *)&timestamp);
@@ -2900,7 +2900,7 @@ __txn_regop_gen_print(dbenv, dbtp, lsnp, notused2, notused3)
     flipptr[0] = htonl(fliporig[1]);
     flipptr[1] = htonl(fliporig[0]);
     fflush(stdout);
-    (void)printf("\tcontext: %016lx %016llx\n", argp->context, flipcontext);
+    (void)printf("\tcontext: %016"PRIx64" %016llx\n", argp->context, flipcontext);
     fflush(stdout);
     lt = localtime((time_t *)&argp->timestamp);
     if (lt)

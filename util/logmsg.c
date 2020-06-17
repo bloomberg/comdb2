@@ -18,6 +18,7 @@ static loglvl level = LOGMSG_WARN;
 static int do_syslog = 0;
 static int do_time = 1;
 static int do_thread = 0;
+static int do_prefix_level = 1;
 static int ended_with_newline = 1;
 
 /* from io_override.c */
@@ -31,6 +32,10 @@ int io_override_set_std(FILE *f)
 
 FILE *io_override_get_std(void) { 
     return ptr;
+}
+
+inline int logmsg_level_ok(loglvl lvl) {
+    return (lvl >= level);
 }
 
 void logmsg_set_level(loglvl lvl) {
@@ -89,13 +94,12 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     FILE *f;
     int ret = 0;
 
-    FILE *override = io_override_get_std();
-    if (!override) {
-        if (lvl < level)
-            return 0;
+    if (!logmsg_level_ok(lvl))
+        return 0;
 
+    FILE *override = io_override_get_std();
+    if (!override)
         f = stderr;
-    }
     else
         f = override;
 
@@ -145,7 +149,8 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
             *s = 0;
             ended_with_newline = 1;
             /* Add a prefix for ERROR/FATAL messages. */
-            if (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL) {
+            if (do_prefix_level &&
+                (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL)) {
                 ret += fprintf(f, "[%s] ", logmsg_level_str(lvl));
             }
             ret += fprintf(f, "%s\n", msg);
@@ -158,7 +163,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     }
     if (*msg != 0) {
         /* Add a prefix for ERROR/FATAL messages. */
-        if (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL) {
+        if (do_prefix_level && (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL)) {
             ret += fprintf(f, "[%s] ", logmsg_level_str(lvl));
         }
         ret += fprintf(f, "%s", msg);
@@ -245,7 +250,11 @@ int logmsg_process_message(char *line, int llen) {
         return 1;
     } else if (tokcmp(tok, ltok, "level") == 0) {
         tok = segtok(line, llen, &st, &ltok);
-        logmsg_level_update(0, tok);
+        if (!ltok)
+            logmsg(LOGMSG_USER, "Current log level is %s\n",
+                   logmsg_level_str(level));
+        else
+            logmsg_level_update(0, tok);
     } else if (tokcmp(tok, ltok, "thread") == 0) {
         logmsg_set_thd(1);
         logmsg(LOGMSG_USER, "threadids on\n");
@@ -304,7 +313,7 @@ int logmsg_level_update(void *unused, void *value)
     } else if (tokcmp(tok, ltok, "fatal") == 0) {
         logmsg_set_level(LOGMSG_FATAL);
     } else {
-        logmsg(LOGMSG_DEBUG, "Unknown logging level requested\n");
+        logmsg(LOGMSG_USER, "Unknown logging level requested\n");
         return 1;
     }
     logmsg(LOGMSG_USER, "Set default log level to %s\n",
@@ -332,4 +341,15 @@ int logmsg_timestamp_update(void *unused, void *value)
 {
     logmsg_set_time(*(int *)value);
     return 0;
+}
+
+int logmsg_prefix_level_update(void *unused, void *value)
+{
+    do_prefix_level = *(int *)value;
+    return 0;
+}
+
+void *logmsg_prefix_level_value(void *unused)
+{
+    return &do_prefix_level;
 }

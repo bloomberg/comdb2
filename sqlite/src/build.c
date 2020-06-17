@@ -735,17 +735,14 @@ Table *sqlite3LocateTableItem(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( gbl_allow_user_schema ){
     char tblName[MAXTABLELEN];
-    if (resolveTableName(p, zDb, tblName, sizeof(tblName))) {
+    if (resolveTableName(pParse->db, p, zDb, tblName, sizeof(tblName))) {
         sqlite3ErrorMsg(pParse, "failed to resolve table name");
         return 0;
     }
     return sqlite3LocateTable(pParse, flags, tblName, zDb);
-  }else{
-    return sqlite3LocateTable(pParse, flags, p->zName, zDb);
   }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  return sqlite3LocateTable(pParse, flags, p->zName, zDb);
 }
 
 /*
@@ -5136,7 +5133,12 @@ restart:
   for( k=sqliteHashFirst(&pDb->pSchema->tblHash);  k; k=sqliteHashNext(k) ){
     pTab = (Table*)sqliteHashData(k);
     if( pTab->pSelect ){  
-      /* this is a view */
+      /* Ignore 'user' views */
+      if ((get_view_by_name(pTab->zName))) {
+        continue;
+      }
+
+      /* This is a time partition view */
       if( (*predicated_delete)(pTab->zName, db, arg) ){
 
         /* NOTE: we need to delete also the trigggers, and that require 
@@ -5456,6 +5458,7 @@ char *sqlite3DescribeIndexOrder(
   }
 
   switch( op ){
+    case OP_IfNoHope:
     case OP_Found:
     case OP_NotFound: {
       isMovingLeft = 0; 
@@ -5516,6 +5519,9 @@ char *sqlite3DescribeIndexOrder(
         :">";
       break;
     }
+    default:
+        logmsg(LOGMSG_ERROR, "Unknown opcode, upgraded sqlite? op %d\n", op);
+        abort();
   }
 
   pTbl = pIdx->pTable;

@@ -6,6 +6,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdint.h>
 #include <comdb2_atomic.h>
 
 #define FORL(ii,s,e) for(int ii = s; ii < e; ii++)
@@ -14,9 +15,9 @@
 
 void * add_a_million(void *arg)
 {
-    int *a = (int *) arg;
+    uint32_t *a = arg;
     FORL(i, 0, NUMTOADD) {
-        ATOMIC_ADD(*a, 1);
+        ATOMIC_ADD32(*a, 1);
     }
     return NULL;
 }

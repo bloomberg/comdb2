@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <pthread.h>
@@ -247,7 +248,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%ld, ret=%d.\n", id, ret);
+            fprintf(stderr, "error selecting record id=%"PRId64", ret=%d.\n", id, ret);
             exit(1);
         }
 
@@ -280,7 +281,7 @@ void *update_records_thd(void *arg)
         while(ret == CDB2_OK);
 
         if(sum < 20000) {
-           fprintf(stderr, "id = %ld, sum = %lld < 20,000\n", id, sum);
+           fprintf(stderr, "id = %"PRId64", sum = %lld < 20,000\n", id, sum);
            exit(1);
         }
 
@@ -298,7 +299,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
+            fprintf(stderr, "error selecting record id=%"PRId64" and acct=%"PRId64", ret=%d.\n", id, acct, ret);
             exit(1);
         }
 
@@ -360,7 +361,7 @@ void *update_records_thd(void *arg)
         }
         if ((ret = cdb2_run_statement(sqlh, sql)) != 0)
         {
-            fprintf(stderr, "error selecting record id=%ld and acct=%ld, ret=%d.\n", id, acct, ret);
+            fprintf(stderr, "error selecting record id=%"PRId64" and acct=%"PRId64", ret=%d.\n", id, acct, ret);
             exit(1);
         }
         do
@@ -423,6 +424,23 @@ int update_records(config_t *c)
     return 0;
 }
 
+static void print_stats(void)
+{
+    fprintf(stderr,
+            "Number of successful commits: %d\n"
+            "Number of failed commits: %d\n",
+            num_succeeded, num_failed);
+}
+
+static void *print_stats_loop(void *dum)
+{
+    while (1) {
+        sleep(60);
+        print_stats();
+    }
+    return NULL;
+}
+
 int main(int argc,char *argv[])
 {
     config_t *c;
@@ -483,11 +501,13 @@ int main(int argc,char *argv[])
         exit(1);
     }
 
+    pthread_t stat;
+    pthread_create(&stat, NULL, print_stats_loop, NULL);
+    pthread_detach(stat);
+
     // start test here
     insert_records(c);
     update_records(c);
-    fprintf(stderr, "Number of successful commits: %d\n", num_succeeded);
-    fprintf(stderr, "Number of failed commits: %d\n", num_failed);
-
+    print_stats();
     return 0;
 }

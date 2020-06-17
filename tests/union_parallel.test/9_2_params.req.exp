@@ -1,3 +1,3 @@
-('one'='one', comdb2_ctxinfo ( 'parallel' )=1, a=1)
-('one'='two', comdb2_ctxinfo ( 'parallel' )=0, a=2)
-('one'='three', comdb2_ctxinfo ( 'parallel' )=0, a=3)
+(c1='one', comdb2_ctxinfo ( 'parallel' )=1, a=1)
+(c1='three', comdb2_ctxinfo ( 'parallel' )=0, a=3)
+(c1='two', comdb2_ctxinfo ( 'parallel' )=0, a=2)

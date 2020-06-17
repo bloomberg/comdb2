@@ -904,3 +904,42 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
     }
     return 0;
 }
+
+#include <stdlib.h>
+#include <stdarg.h>
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern char **backtrace_symbols(void *const *, int);
+#else
+#define backtrace(A, B) 0
+#define backtrace_symbols(A, B) NULL
+#endif
+
+static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)
+{
+    void *buf[MAXFRAMES];
+    unsigned int frames;
+    char **strings;
+
+    vfprintf(f, fmt, args);
+    frames = backtrace(buf, MAXFRAMES);
+    strings = backtrace_symbols(buf, frames);
+    for (int j = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            fprintf(f, " %s", &p[1]);
+        }
+    }
+    fprintf(f, "\n");
+    if (strings)
+        free(strings);
+}
+
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    comdb2_cheapstack_sym_valist(f, fmt, args);
+    va_end(args);
+}

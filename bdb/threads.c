@@ -19,35 +19,39 @@
 #include <pthread.h>
 #include <sys/poll.h>
 #include <unistd.h>
-#include <ctrace.h>
-#include <memory_sync.h>
+
+#include "ctrace.h"
 #include "bdb_int.h"
 #include "locks.h"
-#include "locks_wrap.h"
+#include "comdb2_atomic.h"
+#include "memory_sync.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
-#include "thrman.h"
-#include "thread_util.h"
+#include <locks_wrap.h>
 
 extern int db_is_stopped(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);
+extern pthread_attr_t gbl_pthread_attr_detached;
 
-void *udp_backup(void *arg)
+void udp_backup(int dummyfd, short what, void *arg)
 {
-    unsigned pollms = 500; // factor of 1000
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    while (!db_is_stopped()) {
-        if (repinfo->master_host != repinfo->myhost && gbl_udp) {
-            send_myseqnum_to_master(bdb_state, 1);
-        }
-        poll(NULL, 0, pollms);
-    }
-    return NULL;
+    if (!gbl_udp) return;
+    if (repinfo->master_host == repinfo->myhost) return;
+    send_myseqnum_to_master(bdb_state, 1);
 }
 
-extern pthread_attr_t gbl_pthread_attr_detached;
+void auto_analyze(int dummyfd, short what, void *arg)
+{
+    bdb_state_type *bdb_state = arg;
+    repinfo_type *repinfo = bdb_state->repinfo;
+    if (!bdb_state->attr->autoanalyze) return;
+    if (repinfo->master_host != repinfo->myhost) return;
+    pthread_t t;
+    Pthread_create(&t, &gbl_pthread_attr_detached, auto_analyze_main, NULL);
+}
 
 /* this thread serves two purposes:
  * 1. on replicants it sends acks via tcp in case
@@ -62,41 +66,37 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     thread_started("udpbackup_and_autoanalyze");
 
     bdb_state_type *bdb_state = arg;
-    repinfo_type *repinfo = bdb_state->repinfo;
     while (!db_is_stopped()) {
         ++count;
-        if (repinfo->master_host != repinfo->myhost) { // not master
-            if (gbl_udp)
-                send_myseqnum_to_master(bdb_state, 1);
-        } else if (bdb_state->attr->autoanalyze &&
-                   count % ((bdb_state->attr->chk_aa_time * 1000) / pollms) ==
-                       0) { // do this is on master if autoanalyze on
-            pthread_t autoanalyze;
-            pthread_create(&autoanalyze, &gbl_pthread_attr_detached,
-                           auto_analyze_main, NULL);
+        udp_backup(-1, 0, bdb_state);
+        if (count % ((bdb_state->attr->chk_aa_time * 1000) / pollms) == 0) {
+            auto_analyze(-1, 0, bdb_state);
         }
-
         poll(NULL, 0, pollms);
     }
     return NULL;
+}
+
+/* try to with atomic compare-and-exchange to set thread_running to 1
+ * if CAS is successful, we are the only (first) such thread and returns 1
+ * if CAS is UNsuccessful, another thread is already running and we return 0
+ */
+static inline int try_set(int *thread_running)
+{
+    int zero = 0;
+    return CAS32(*thread_running, zero, 1);
 }
 
 void *memp_trickle_thread(void *arg)
 {
     unsigned int time;
     bdb_state_type *bdb_state;
-    static int have_memp_trickle_thread = 0;
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    static int memp_trickle_thread_running = 0;
     int nwrote;
     int rc;
 
-    Pthread_mutex_lock(&lk);
-    if (have_memp_trickle_thread) {
-        Pthread_mutex_unlock(&lk);
+    if (try_set(&memp_trickle_thread_running) == 0)
         return NULL;
-    }
-    have_memp_trickle_thread = 1;
-    Pthread_mutex_unlock(&lk);
 
     bdb_state = (bdb_state_type *)arg;
 
@@ -206,20 +206,14 @@ void *deadlockdetect_thread(void *arg)
 void *master_lease_thread(void *arg)
 {
     int pollms, renew, lease_time;
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-    static int have_master_lease_thread = 0;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
+    static int master_lease_thread_running = 0;
 
-    Pthread_mutex_lock(&lk);
-    if (have_master_lease_thread) {
-        Pthread_mutex_unlock(&lk);
+    if (try_set(&master_lease_thread_running) == 0)
         return NULL;
-    } else {
-        have_master_lease_thread = 1;
-        bdb_state->master_lease_thread = pthread_self();
-        Pthread_mutex_unlock(&lk);
-    }
+
+    bdb_state->master_lease_thread = pthread_self();
 
     assert(!bdb_state->parent);
     thrman_register(THRTYPE_GENERIC);
@@ -242,33 +236,26 @@ void *master_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    Pthread_mutex_lock(&lk);
-    have_master_lease_thread = 0;
+
     bdb_state->master_lease_thread = 0;
-    Pthread_mutex_unlock(&lk);
+    master_lease_thread_running = 0;
     return NULL;
 }
 
 void *coherency_lease_thread(void *arg)
 {
     int pollms, renew, lease_time, inc_wait, add_interval;
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
-    static int have_coherency_thread = 0;
     static time_t last_add_record = 0;
-    time_t now;
     bdb_state_type *bdb_state = (bdb_state_type *)arg;
     repinfo_type *repinfo = bdb_state->repinfo;
     pthread_t tid;
+    static int coherency_thread_running = 0;
 
-    Pthread_mutex_lock(&lk);
-    if (have_coherency_thread) {
-        Pthread_mutex_unlock(&lk);
+    if (try_set(&coherency_thread_running) == 0)
         return NULL;
-    } else {
-        have_coherency_thread = 1;
-        bdb_state->coherency_lease_thread = pthread_self();
-        Pthread_mutex_unlock(&lk);
-    }
+
+    bdb_state->coherency_lease_thread = pthread_self();
+
     assert(!bdb_state->parent);
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb coherency lease");
@@ -300,8 +287,8 @@ void *coherency_lease_thread(void *arg)
                 }
             }
         }
-        now = time(NULL);
         if (inc_wait && (add_interval = bdb_state->attr->add_record_interval)) {
+            time_t now = time(NULL);
             if ((now - last_add_record) >= add_interval) {
                 pthread_create(&tid, &gbl_pthread_attr_detached,
                                rep_catchup_add_thread, bdb_state);
@@ -321,10 +308,9 @@ void *coherency_lease_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "%s exiting\n", __func__);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDWR);
-    Pthread_mutex_lock(&lk);
-    have_coherency_thread = 0;
+
     bdb_state->coherency_lease_thread = 0;
-    Pthread_mutex_unlock(&lk);
+    coherency_thread_running = 0;
     return NULL;
 }
 
@@ -361,18 +347,20 @@ void *logdelete_thread(void *arg)
 
 extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
-extern int db_is_stopped();
 
 int64_t gbl_last_checkpoint_ms;
 int64_t gbl_total_checkpoint_ms;
 int gbl_checkpoint_count;
+int gbl_cache_flush_interval = 30;
+int backend_opened(void);
 
 void *checkpoint_thread(void *arg)
 {
-    int rc;
+    int rc, now;
     int checkpointtime;
     int checkpointtimepoll;
     int checkpointrand;
+    int loaded_cache = 0, last_cache_dump = 0;
     bdb_state_type *bdb_state;
     int start, end;
     int total_sleep_msec;
@@ -381,16 +369,10 @@ void *checkpoint_thread(void *arg)
     DB_LSN logfile;
     DB_LSN crtlogfile;
     int broken;
-    static int have_checkpoint_thd = 0;
-    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    static int checkpoint_thd_running = 0;
 
-    Pthread_mutex_lock(&lk);
-    if (have_checkpoint_thd) {
-        Pthread_mutex_unlock(&lk);
+    if (try_set(&checkpoint_thd_running) == 0)
         return NULL;
-    }
-    have_checkpoint_thd = 1;
-    Pthread_mutex_unlock(&lk);
 
     thrman_register(THRTYPE_GENERIC);
     thread_started("bdb checkpoint");
@@ -416,9 +398,7 @@ void *checkpoint_thread(void *arg)
                     broken);
         }
 
-        /* can't call checkpoint until llmeta is open if we are using rowlocks
-         */
-        if (gbl_rowlocks && !bdb_state->after_llmeta_init_done) {
+        if (gbl_rowlocks && !backend_opened()) {
             BDB_RELLOCK();
             sleep(1);
             continue;
@@ -436,6 +416,20 @@ void *checkpoint_thread(void *arg)
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "checkpoint failed rc %d\n", rc);
         }
+
+        /* This is spawned before we open tables- don't repopulate the
+         * cache until the backend has opened */
+        if ((gbl_cache_flush_interval > 0) &&
+            ((now = time(NULL)) - last_cache_dump) > gbl_cache_flush_interval) {
+            if (!loaded_cache) {
+                bdb_state->dbenv->memp_load_default(bdb_state->dbenv);
+                loaded_cache = 1;
+            } else {
+                bdb_state->dbenv->memp_dump_default(bdb_state->dbenv, 0);
+                last_cache_dump = now;
+            }
+        }
+
         end = comdb2_time_epochms();
         bdb_state->checkpoint_start_time = 0;
         MEMORY_SYNC;

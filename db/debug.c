@@ -246,7 +246,7 @@ void debug_trap(char *line, int lline)
 
         numnodes = net_get_all_nodes_connected(thedb->handle_sibling, hosts);
 
-        hosts[numnodes] = gbl_mynode;
+        hosts[numnodes] = gbl_myhostname;
         numnodes++;
 
         logmsg(LOGMSG_USER, "nodes:\n");

@@ -127,7 +127,7 @@ void comdb2deletePassword(Parse* pParse, Token* nm);
 int  comdb2genidcontainstime(void);
 void comdb2schemachangeCommitsleep(Parse* pParse, int num);
 void comdb2schemachangeConvertsleep(Parse* pParse, int num);
-void comdb2putTunable(Parse *pParse, Token *name, Token *value);
+void comdb2putTunable(Parse*, Token*, Token*, Token*);
 
 enum
 {

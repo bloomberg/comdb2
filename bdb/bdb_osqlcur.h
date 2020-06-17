@@ -18,6 +18,7 @@
 #define __BDB_OSQL_CUR_H_
 
 #include "bdb_api.h"
+#include "bdb_int.h"
 
 struct bdb_osql_trn;
 
@@ -94,9 +95,8 @@ int bdb_tran_deltbl_next(bdb_state_type *bdb_state, tran_type *shadow_tran,
  *  - if this is the last log, reset log for transactions
  *  If any shadow row is added/deleted, mark dirty
  */
-enum log_ops;
 int bdb_osql_update_shadows(bdb_cursor_ifn_t *cur, struct bdb_osql_trn *trn,
-                            int *dirty, enum log_ops log_op, int *bdberr);
+                            int *dirty, log_ops_t log_op, int *bdberr);
 
 /**
  * Check if a shadow is backfilled
@@ -124,4 +124,14 @@ struct bdb_osql_log *bdb_osql_shadow_get_lastlog(bdb_cursor_ifn_t *cur,
  */
 int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *cur, struct bdb_osql_log *log,
                                 int *bdberr);
+
+/**
+ * Clear any cached pointers to existing transactions
+ * Set the shadow transaction to a reset cursor
+ *
+ */
+int bdb_osql_cursor_reset(bdb_state_type *bdb_state,
+                          bdb_cursor_ifn_t *pcur_ifn);
+void bdb_osql_cursor_set(bdb_cursor_ifn_t *pcur_ifn, tran_type *shadow_tran);
+
 #endif

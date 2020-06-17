@@ -192,4 +192,10 @@ int osql_shadtbl_empty(struct sqlclntstate *clnt);
  */
 int osql_shadtbl_usedb_only(struct sqlclntstate *clnt);
 
+/**
+ * Record a genid for dbq_consume as part of this transaction
+ *
+ */
+int osql_save_delrec_qdb(struct sqlclntstate *, char *, genid_t);
+
 #endif

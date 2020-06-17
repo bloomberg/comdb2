@@ -8,7 +8,10 @@ permalink: auth.html
 
 ### Password-based Authentication
 
-A comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password), just after opening the connection.
+A comdb2 session can be authenticated by setting username and password using
+[set user](sql.html#set-user) and [set password](sql.html#set-password), just
+after opening the connection. The allowed limits for username and password are
+`15` and `18` characters respectively.
 
 ```sql
 set user 'foo_user'
@@ -131,6 +134,7 @@ testdb> select * from comdb2_tablepermissions
 (tablename='t2', username='foo_user', READ='N', WRITE='N', DDL='N')
 (tablename='t2', username='op_user', READ='Y', WRITE='Y', DDL='Y')
 [select * from comdb2_tablepermissions] rc 0
+```
 
 ## User Schemas
 Comdb2 supports tables in user's namespace. This allows multiple users to have tables with same name.
@@ -142,7 +146,6 @@ allow_user_schema
 
 The following example will create multiple users and separate table (with same name) for each user.
 Querying comdb2_tables from op user account will show all the tables.
-
 
 ```sql
 put password 'user' for 'user'
@@ -159,7 +162,6 @@ select * from comdb2_users
 (username='user1', isOP='N')
 (username='user2', isOP='N')
 [select * from comdb2_users] rc 0
-
 
 set user user1
 set password user1

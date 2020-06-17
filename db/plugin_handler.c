@@ -30,6 +30,7 @@
 #include "comdb2_opcode.h"
 #include "comdb2_machine_info.h"
 #include "comdb2_initializer.h"
+#include "comdb2_query_preparer.h"
 #include "rtcpu.h"
 #include "all_static_plugins.h"
 #include "trigger.h"
@@ -121,8 +122,8 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
         machine_info = (comdb2_machine_info_t *)new_plugin->data;
         register_rtcpu_callbacks(
             machine_info->machine_is_up, machine_info->machine_status_init,
-            machine_info->machine_class, machine_info->machine_dc,
-            machine_info->machine_num);
+            machine_info->machine_class, machine_info->machine_my_class,
+            machine_info->machine_dc, machine_info->machine_num);
         break;
     }
     case COMDB2_PLUGIN_QUEUE_CONSUMER: {
@@ -137,6 +138,10 @@ static int install_plugin_int(comdb2_plugin_t *new_plugin)
     }
     case COMDB2_PLUGIN_INITIALIZER:
         break;
+    case COMDB2_PLUGIN_QUERY_PREPARER: {
+        query_preparer_plugin = (comdb2_query_preparer_t *)new_plugin->data;
+        break;
+    }
     default:
         logmsg(LOGMSG_ERROR, "Invalid plugin %s.\n", new_plugin->name);
         return 1;
@@ -315,7 +320,9 @@ const char *comdb2_plugin_type_to_str(int type)
     case COMDB2_PLUGIN_INITIALIZER:
         return "initializer";
     case COMDB2_PLUGIN_QUEUE_CONSUMER:
-        return "queueconsumer";
+        return "queue_consumer";
+    case COMDB2_PLUGIN_QUERY_PREPARER:
+        return "query_preparer";
     default:
         break;
     }

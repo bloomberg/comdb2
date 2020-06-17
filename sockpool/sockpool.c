@@ -46,7 +46,7 @@
 
 #include <plhash.h>
 #include <list.h>
-#include <pool_c.h>
+#include <pool.h>
 #include <passfd.h>
 #include <syslog.h>
 #include <locks_wrap.h>

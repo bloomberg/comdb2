@@ -37,7 +37,7 @@ for testcase in $files ; do
     output=$testcase.res
 
     # full path
-    [[ "$output" == "${output#\/}" ]] && output=$(pwd)/$output
+    [[ "$output" == "${output#\/}" ]] && output=${PWD}/$output
 
     # Check for run-stepper
     if [[ -f $new_batch.tool ]] ; then

@@ -37,6 +37,7 @@ static const char revid[] = "$Id: txn_method.c,v 11.66 2003/06/30 17:20:30 bosti
 static int __txn_get_tx_max __P((DB_ENV *, u_int32_t *));
 static int __txn_get_tx_timestamp __P((DB_ENV *, time_t *));
 static int __txn_set_tx_timestamp __P((DB_ENV *, time_t *));
+static int __txn_debug_log __P((DB_ENV *, DB_TXN *, const DBT *, const DBT *, const DBT *));
 static void __txn_dump_ltrans __P((DB_ENV *, FILE *, u_int32_t));
 static int __txn_set_logical_start __P((DB_ENV *,
 	int (*)(DB_ENV *, void *, u_int64_t, DB_LSN *)));
@@ -128,10 +129,12 @@ __txn_dbenv_create(dbenv)
 		dbenv->set_tx_max = __txn_set_tx_max;
 		dbenv->get_tx_timestamp = __txn_get_tx_timestamp;
 		dbenv->set_tx_timestamp = __txn_set_tx_timestamp;
+		dbenv->debug_log = __txn_debug_log;
 
 		dbenv->txn_checkpoint = __txn_checkpoint_pp;
 		dbenv->txn_recover = __txn_recover_pp;
 		dbenv->txn_stat = __txn_stat_pp;
+		dbenv->txn_assert_notran = __txn_assert_notran_pp;
 		dbenv->txn_begin = __txn_begin_pp;
 		dbenv->txn_dump_ltrans =  __txn_dump_ltrans;
 		dbenv->lowest_logical_lsn = __txn_ltrans_find_lowest_lsn;
@@ -221,6 +224,30 @@ __txn_get_tx_timestamp(dbenv, timestamp)
 	return (0);
 }
 
+int __db_debug_log(DB_ENV *, DB_TXN *, DB_LSN *, u_int32_t, const DBT *,
+		int32_t, const DBT *, const DBT *, u_int32_t);
+
+/*
+ * __txn_debug_log
+ *  Write a debug log-message
+ *
+ */
+static int
+__txn_debug_log(dbenv, txnid, op, key, data)
+	DB_ENV *dbenv;
+	DB_TXN *txnid;
+	const DBT *op;
+	const DBT *key;
+	const DBT *data;
+{
+	DB_LSN unused;
+	int ret;
+	if (IS_REP_CLIENT(dbenv))
+		return (0);
+	ret = __db_debug_log(dbenv, txnid, &unused, 0, op, -1, key, data, 0);
+	return (ret);
+}
+
 /*
  * __txn_set_tx_timestamp --
  *	Set the transaction recovery timestamp.
@@ -243,7 +270,7 @@ __txn_print_ltrans(dbenv, lt, f, flags)
 	FILE *f;
 	u_int32_t flags;
 {
-	logmsg(LOGMSG_USER, "LTRANID %016lx ACTIVE-TXN %4d\n", lt->ltranid,
+	logmsg(LOGMSG_USER, "LTRANID %016"PRIx64" ACTIVE-TXN %4d\n", lt->ltranid,
 	    lt->active_txn_count);
 }
 

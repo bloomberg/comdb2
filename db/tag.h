@@ -23,7 +23,7 @@
 #include <pthread.h>
 
 struct ireq;
-typedef struct dbtable dbtable;
+struct dbtable;
 
 /* libcmacc2 populates these structures.
    Schema records are added from upon parsing a "csc" directive.
@@ -52,6 +52,10 @@ struct field {
     int blob_index; /* index of this blob, -1 for non blobs */
 };
 
+#if defined STACK_TAG_SCHEMA
+#define MAX_TAG_STACK_FRAMES 64
+#endif
+
 /* A schema for a tag or index.  The schema for the .ONDISK tag will have
  * an array of ondisk index schemas too. */
 struct schema {
@@ -71,6 +75,11 @@ struct schema {
     char *sqlitetag;
     int *datacopy;
     char *where;
+#if defined STACK_TAG_SCHEMA
+    int frames;
+    void *buf[MAX_TAG_STACK_FRAMES];
+    pthread_t tid;
+#endif
     LINKC_T(struct schema) lnk;
 };
 
@@ -416,7 +425,7 @@ int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail, int *tail
                            char *outbuf, struct convert_failure *reason,
                            const char *tzname);
 
-int create_key_from_ondisk_blobs(const dbtable *db, int ixnum, char **tail,
+int create_key_from_ondisk_blobs(const struct dbtable *db, int ixnum, char **tail,
                                  int *taillen, char *mangled_key,
                                  const char *fromtag, const char *inbuf,
                                  int inbuflen, const char *totag, char *outbuf,
@@ -431,7 +440,7 @@ int create_key_from_ondisk_sch(struct dbtable *db, struct schema *fromsch, int i
                                struct convert_failure *reason,
                                const char *tzname);
 
-int create_key_from_ondisk_sch_blobs(const dbtable *db, struct schema *fromsch,
+int create_key_from_ondisk_sch_blobs(const struct dbtable *db, struct schema *fromsch,
                                      int ixnum, char **tail, int *taillen,
                                      char *mangled_key, const char *fromtag,
                                      const char *inbuf, int inbuflen,

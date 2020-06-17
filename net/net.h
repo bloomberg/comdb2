@@ -21,15 +21,23 @@
 #ifndef __NET_H__
 #define __NET_H__
 
+#include <limits.h>
+#include <netdb.h>
 #include <netinet/in.h>
-#include <sbuf2.h>
-#include <cdb2_constants.h>
-#include "perf.h"
 
-/*
-  we have an int, but we only need a short for real ports.
-  */
-#define MAGICPORT 100000
+#include <cdb2_constants.h>
+#include <perf.h>
+#include <sbuf2.h>
+
+#ifndef HOST_NAME_MAX
+#   ifdef MAXHOSTNAMELEN
+#       define HOST_NAME_MAX MAXHOSTNAMELEN
+#   else
+#       define HOST_NAME_MAX 64
+#   endif
+#endif
+
+enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_MAX };
 
 /* Public structures and typedefs */
 struct netinfo_struct;
@@ -186,39 +194,10 @@ int net_ack_message(void *ack_handle, int outrc);
 int net_ack_message_payload(void *ack_handle, int outrc, void *payload, 
         int payloadlen);
 
-enum {
-    WIRE_HEADER_HEARTBEAT = 1,
-    WIRE_HEADER_HELLO = 2,
-    WIRE_HEADER_DECOM = 3, /* deprecated */
-    WIRE_HEADER_USER_MSG = 5,
-    WIRE_HEADER_ACK = 6,
-    WIRE_HEADER_HELLO_REPLY = 7,
-    WIRE_HEADER_DECOM_NAME = 8,
-    WIRE_HEADER_ACK_PAYLOAD = 9
-};
-
-/*
-  net_send_message() puts out a message of:
-wire_header_type (type=WIRE_HEADER_USERDATA)  (sizeof(wire_header_type))
-usertype                                      (4 bytes)
-seqnum                                        (4 bytes)
-ack (1 == needack, 0 == noack)                (4 bytes)
-datalen                                       (4 bytes)
-data                                          (datalen bytes)
-*/
-
-/*
-  net_ack_message() puts out a message of:
-wire_header_type (type=WIRE_HEADER_ACK)       (sizeof(wire_header_type))
-seqnum                                        (4 bytes)
-rc                                            (4 bytes)
-*/
-
-/* create a netinfo object.  you need to specify your own info at
-   this point, ie, your host name, your port num. your node num */
 netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
                              char app[], char service[], char instance[],
-                             int ischild, int use_getservbyname);
+                             int fake, int offload, int ischild,
+                             int use_getservbyname);
 
 host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
                                int portnum);
@@ -228,9 +207,6 @@ host_node_type *add_to_netinfo(netinfo_type *netinfo_ptr, const char hostname[],
    sending/recieving data.  it will fail the "is_real_netinfo" test */
 netinfo_type *create_netinfo_fake(void);
 int is_real_netinfo(netinfo_type *netinfo);
-netinfo_type *create_netinfo_offload(char myhostname[], int myportnum, int myfd,
-                                     char app[], char service[],
-                                     char instance[]);
 int is_offload_netinfo(netinfo_type *netinfo);
 
 void net_inc_recv_cnt_from(netinfo_type *netinfo_ptr, char *host);
@@ -333,10 +309,6 @@ int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
 /* pick a sibling for sql offloading */
 char *net_get_osql_node(netinfo_type *netinfo_ptr);
 
-/* pick a sibling for sql offloading using blackout list */
-char *net_get_osql_node_blkout(netinfo_type *netinfo_ptr, char *nodes[REPMAX],
-                               int lnodes);
-
 /* netinfo getters and setters so that we don't have tomake the entire
  * netinfo struct public. */
 char *net_get_mynode(netinfo_type *netinfo_ptr);
@@ -405,7 +377,7 @@ void net_disable_test(netinfo_type *netinfo_ptr);
 /* used by comdb2 to add subnet suffices for replication */
 int net_add_nondedicated_subnet(void *, void *);
 int net_add_to_subnets(const char *suffix, const char *lrlname);
-void net_cleanup_subnets();
+void net_cleanup();
 void net_cleanup_netinfo(netinfo_type *netinfo_ptr);
 
 /* Maximum time accept will wait for a identifying byte from a socket.
@@ -469,5 +441,16 @@ int64_t net_get_num_current_non_appsock_accepts(netinfo_type *netinfo_ptr);
 int64_t net_get_num_accept_timeouts(netinfo_type *netinfo_ptr);
 void net_set_conntime_dump_period(netinfo_type *netinfo_ptr, int value);
 int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
+int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
+
+extern int gbl_libevent;
+#if 0
+void add_tcp_event(int, void(*)(int, short, void *), void *);
+void add_udp_event(int, void(*)(int, short, void *), void *);
+void add_timer_event(void(*)(int, short, void *), void *, int);
+#endif
+int db_is_stopped(void);
+int db_is_exiting(void);
+void stop_event_net(void);
 
 #endif

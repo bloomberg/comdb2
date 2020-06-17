@@ -1,3 +1,5 @@
+find_package(Readline REQUIRED)
+
 get_property(lclENABLE_COSTS GLOBAL PROPERTY ENABLE_COSTS)
 if (lclENABLE_COSTS)
   add_definitions("-DENABLE_COSTS=${lclENABLE_COSTS}")
@@ -13,6 +15,7 @@ add_executable(cdb2sql
 )
 
 add_dependencies(cdb2sql cdb2api)
+
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
@@ -20,17 +23,17 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${READLINE_INCLUDE_DIR}
 )
+
 set(libs
   cdb2api
-  ${PROTOBUF_C_LIBRARY}
-  ${READLINE_LIBRARY}
-  ${CURSES_LIBRARIES}
+  ${PROTOBUF-C_LIBRARY}
+  ${READLINE_LIBRARIES}
+  ${UNWIND_LIBRARY}
 )
+
 if(WITH_SSL)
   list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
 endif()
-
-list(APPEND libs ${UNWIND_LIBRARY})
 
 target_link_libraries(cdb2sql ${libs})
 

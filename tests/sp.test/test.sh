@@ -9,6 +9,11 @@ TMPDIR=${TMPDIR:-/tmp}
 # args
 a_dbn=$1
 
+skip_t10=0
+if [[ "$a_dbn" == *"queueodhgenerated"* ]]; then
+    skip_t10=1
+fi
+
 # find input files
 files=$( ls *.req | sort )
 
@@ -69,6 +74,10 @@ function myarch
     return 0
 }
 
+function fix_genid {
+    sed 's/genid =.* rc/genid =dum rc/' < $1
+}
+
 # Iterate through input files
 for testcase in $files ; do
 
@@ -77,6 +86,10 @@ for testcase in $files ; do
 
     # cleanup testcase
     testcase=${testcase##*/}
+
+    if [[ $skip_t10 == 1 && "$testcase" == "t10.req" ]]; then
+        continue
+    fi
     
     # see if the prefix has changed
     new_batch=${testcase%%_*}
@@ -85,7 +98,7 @@ for testcase in $files ; do
     output=$testcase.res
 
     # full path 
-    [[ "$output" == "${output#\/}" ]] && output=$(pwd)/$output
+    [[ "$output" == "${output#\/}" ]] && output=${PWD}/$output
     
     # fastinit if requested
     if [[ $new_batch != $last_batch ]] ; then
@@ -134,11 +147,7 @@ for testcase in $files ; do
     testcase_output=$(cat $output)
 
     # get expected output
-    if [[ "$(uname)" = "Linux" && -f $testcase.linux.out ]]; then
-        expected_output=$(cat $testcase.linux.out)
-    else
-        expected_output=$(cat $testcase.out)
-    fi
+    expected_output=$(cat $testcase.out)
 
     if [[ -f $testcase.out.1 ]]; then
         expected_output_alt=$(cat $testcase.out.1)
@@ -160,6 +169,12 @@ for testcase in $files ; do
     fi
 
 done
+
+egrep -i "ctrl engine has wrong state" $TESTDIR/logs/sp*.db
+if [[ $? == 0 ]]; then
+    echo "error: corrupted transaction state detected"
+    exit 1
+fi
 
 echo "Testcase passed."
 

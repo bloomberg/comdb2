@@ -275,12 +275,12 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
     for(ndb = 0; ndb < dbenv->num_dbs; ndb++)
     {
         db = dbenv->dbs[ndb];
-        total += calc_table_size(db);
+        total += calc_table_size(db, 0);
     }
     for(ndb = 0; ndb < dbenv->num_qdbs; ndb++)
     {
         db = dbenv->qdbs[ndb];
-        total += calc_table_size(db);
+        total += calc_table_size(db, 0);
     }
     total += bdb_logs_size(dbenv->bdb_env, &num_logs);
     return total;
@@ -414,7 +414,8 @@ int refresh_metrics(void)
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master =
-        bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_mynode ? 1 : 0;
+        bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_myhostname ? 1
+                                                                            : 0;
     stats.ismaster = master;
     rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
                              (unsigned long long *)&stats.num_sc_done, &bdberr);

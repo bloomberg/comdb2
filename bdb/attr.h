@@ -224,6 +224,8 @@ DEF_ATTR(FSTDUMP_MAXTHREADS, fstdump_maxthreads, QUANTITY, 0,
          "maximum database thrashing)")
 DEF_ATTR(VERIFY_THREAD_STACKSZ, verify_thread_stacksz, BYTES, 2 * 1024 * 1024,
          "Size of the verify thread stack.")
+DEF_ATTR(VERIFY_POOL_MAXT, verify_pool_maxt, QUANTITY, 8,
+         "Max Number of verify threads in the thrd pool.")
 DEF_ATTR(REP_LONGREQ, rep_longreq, SECS, 1,
          "Warn if replication events are taking this long to process.")
 DEF_ATTR(COMMITDELAYBEHINDTHRESH, commitdelaybehindthresh, BYTES, 1048576,
@@ -299,7 +301,7 @@ DEF_ATTR(LOG_DEBUG_CTRACE_THRESHOLD, log_debug_ctrace_threshold, QUANTITY, 20,
 DEF_ATTR(DISABLE_UPDATE_STRIPE_CHANGE, disable_update_stripe_change, BOOLEAN, 1,
          "Enable to move records between stripes on an update.")
 DEF_ATTR(REP_SKIP_PHASE_3, rep_skip_phase_3, BOOLEAN, 0, NULL)
-DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 1,
+DEF_ATTR(PAGE_ORDER_TABLESCAN, page_order_tablescan, BOOLEAN, 0,
          "Scan tables in order of pages, not in order of rowids (faster for "
          "non-sparse tables).")
 DEF_ATTR_2(
@@ -370,10 +372,10 @@ DEF_ATTR(SOSQL_MAX_COMMIT_WAIT_SEC, sosql_max_commit_wait_sec, SECS, 600,
 DEF_ATTR(SOSQL_DDL_MAX_COMMIT_WAIT_SEC, sosql_ddl_max_commit_wait_sec, SECS,
          24 * 3600 * 3,
          "Wait for the master to commit a DDL transaction for up to this long.")
-DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 2,
+DEF_ATTR(SOSQL_POKE_TIMEOUT_SEC, sosql_poke_timeout_sec, QUANTITY, 60,
          "On replicants, when checking on master for transaction status, retry "
          "the check after this many seconds.")
-DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 1,
+DEF_ATTR(SOSQL_POKE_FREQ_SEC, sosql_poke_freq_sec, QUANTITY, 5,
          "On replicants, check this often for transaction status.")
 DEF_ATTR(SOSQL_MAX_DEADLOCK_RECOVERED, sosql_max_deadlock_recovered, QUANTITY,
          100, "On replicants, maximum deadlock recovered count allowed.")
@@ -478,6 +480,8 @@ DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60,
 DEF_ATTR(SC_DELAY_VERIFY_ERROR, sc_delay_verify_error, MSECS, 100, NULL)
 DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 1,
          "Run transactional schema changes asynchronously.")
+DEF_ATTR(SC_DETACHED, sc_detached, BOOLEAN, 0,
+         "Run schema changes in detached mode--just return seed to client.")
 DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
          "Max number of threads for asynchronous schema changes.")
 DEF_ATTR(SC_DONE_SAME_TRAN, sc_done_same_tran, BOOLEAN, 1,
@@ -583,6 +587,8 @@ DEF_ATTR(DISABLE_SELECTVONLY_TRAN_NOP, disable_selectvonly_tran_nop, BOOLEAN, 0,
          "action done by the same transaction.")
 DEF_ATTR(SC_VIA_DDL_ONLY, ddl_only, BOOLEAN, 0,
          "If set, we don't do checks needed for comdb2sc.")
+DEF_ATTR(SC_HIST_KEEP, sc_hist_keep, QUANTITY, 20,
+         "Number of items to keep in llmeta for comdb2_sc_history sys table.")
 DEF_ATTR(PAGE_COMPACT_UDP, page_compact_udp, BOOLEAN, 0,
          "Enables sending of page compact requests over UDP.")
 DEF_ATTR(PAGE_COMPACT_INDEXES, page_compact_indexes, BOOLEAN, 0,
@@ -670,8 +676,8 @@ DEF_ATTR(
 DEF_ATTR(
     AA_REQUEST_MODE, aa_request_mode, BOOLEAN, 0,
     "Print a message to stdout instead of performing auto-analyze ourselves")
-DEF_ATTR(
-    TEST_IO_TIME, test_io_time, SECS, 10, "Check I/O in watchdog this often")
+DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10,
+         "Check I/O in watchdog this often")
 
 /*
   BDB_ATTR_REPTIMEOUT

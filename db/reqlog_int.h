@@ -2,10 +2,10 @@
 #define INCLUDED_REQLOG_INT_H
 
 #include "list.h"
-#include "comdb2.h"
 #include "cdb2_constants.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "sql.h"
+#include "reqlog.h"
 
 /* This used to be private to reqlog.  Moving to a shared header since
    eventlog also needs access to reqlog internals.  I am not sure
@@ -76,8 +76,6 @@ struct reqlogger {
     unsigned dump_mask;
     unsigned mask; /* bitwise or of the above two masks */
 
-    uint64_t startus;
-
     struct prefix_type prefix;
     char dumpline[1024];
     int dumplinepos;
@@ -101,19 +99,21 @@ struct reqlogger {
     /* the bound parameters */
     cson_value *bound_param_cson;
 
-    unsigned int nsqlreqs;  /* Number of sqlreqs so far */
+    uint32_t nsqlreqs;  /* Number of sqlreqs so far */
     int sqlrows;
     double sqlcost;
 
-    int rc;
+    uint64_t startus;     /* logger start timestamp */
+    uint64_t startprcsus; /* processing start timestamp */
     uint64_t durationus;
-    int vreplays;
     uint64_t queuetimeus;
+    int rc;
+    int vreplays;
     char fingerprint[FINGERPRINTSZ];
     int have_fingerprint;
     char id[41];
     int have_id;
-    const char *event_type;
+    evtype_t event_type;
 
     int ntables;
     int alloctables;

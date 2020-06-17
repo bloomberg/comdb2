@@ -33,28 +33,63 @@ On every machine in the cluster:
    **Ubuntu 16.04, 16.10, 17.04, Windows Subsystem for Linux (WSL)**
         
    ```
-   sudo apt-get install -y \
-       bison \
-       build-essential \
-       cmake \
-       flex \
-       protobuf-c-compiler \
-       liblz4-dev \
-       libncurses5-dev \
-       libprotobuf-c-dev \
-       libreadline-dev \
-       libssl-dev \
-       libsqlite3-dev \
-       libunwind-dev \
-       tcl \
-       uuid-dev \
+   sudo apt-get install -y  \
+       bison                \
+       build-essential      \
+       cmake                \
+       flex                 \
+       libevent-dev         \
+       liblz4-dev           \
+       libprotobuf-c-dev    \
+       libreadline-dev      \
+       libsqlite3-dev       \
+       libssl-dev           \
+       libunwind-dev        \
+       ncurses-dev          \
+       protobuf-c-compiler  \
+       tcl                  \
+       uuid-dev             \
        zlib1g-dev
    ```
 
-   **CentOS 7**
+   **CentOS 7/8**
+
+   On CentOS 8, enable the PowerTools repository first:
 
    ```
-   sudo yum install -y gcc gcc-c++ cmake3 protobuf-c libunwind libunwind-devel protobuf-c-devel byacc flex openssl openssl-devel openssl-libs readline-devel sqlite sqlite-devel libuuid libuuid-devel zlib-devel zlib lz4-devel gawk tcl epel-release lz4 rpm-build which
+   dnf config-manager --set-enabled PowerTools
+   ```
+
+   ```
+   yum install -y       \
+       byacc            \
+       cmake3           \
+       epel-release     \
+       flex             \
+       gawk             \
+       gcc              \
+       gcc-c++          \
+       libevent-devel   \
+       libunwind        \
+       libunwind-devel  \
+       libuuid          \
+       libuuid-devel    \
+       lz4              \
+       lz4-devel        \
+       make             \
+       openssl          \
+       openssl-devel    \
+       openssl-libs     \
+       protobuf-c       \
+       protobuf-c-devel \
+       readline-devel   \
+       rpm-build        \
+       sqlite           \
+       sqlite-devel     \
+       tcl              \
+       which            \
+       zlib             \
+       zlib-devel
    ```
 
    **macOS High Sierra (experimental)**
@@ -62,13 +97,13 @@ On every machine in the cluster:
    Install Xcode and Homebrew. Then install required libraries:
 
    ```
-   brew install cmake lz4 openssl protobuf-c readline
+   brew install cmake lz4 openssl protobuf-c readline libevent
    ```
 
    To run tests, install following:
 
    ```
-   brew install coreutils bash
+   brew install coreutils bash jq
    export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
    ```
 

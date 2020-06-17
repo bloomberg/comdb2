@@ -36,7 +36,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <sys/types.h>
 #endif
 
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 #include <execinfo.h>
 #include <walkback.h>
 #endif
@@ -54,7 +54,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #define PRINTF(...)
 #endif
 
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
@@ -73,6 +73,8 @@ extern int gbl_print_deadlock_cycles;
 int gbl_berkdb_track_locks = 0;
 int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
+
+void comdb2_dump_blocker(unsigned int);
 
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
@@ -107,6 +109,8 @@ static int __lock_fix_list __P((DB_ENV *, DBT *, u_int32_t, u_int8_t));
 static const char __db_lock_err[] = "Lock table is out of available %s";
 static const char __db_lock_invalid[] = "%s: Lock is no longer valid";
 static const char __db_locker_invalid[] = "Locker is not valid";
+
+int __lock_to_dbt_pp(DB_ENV *, DB_LOCK *, DBT *);
 
 #ifdef DEBUG_LOCKS
 extern void bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbt, char *out,
@@ -1923,6 +1927,37 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 	return (ret);
 }
 
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+static void inline
+get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
+{
+	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
+
+	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
+		abort();
+	}
+	lockp->stack_gen = lockp->gen;
+	lockp->tid = pthread_self();
+	lockp->lock = lock;
+}
+#endif
+
+static void inline
+stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
+{
+#ifdef STACK_AT_LOCK_GEN_INCREMENT
+	get_stack(lockp, lock, 1);
+#endif
+}
+
+static void inline
+stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock)
+{
+#ifdef STACK_AT_GET_LOCK
+	get_stack(lockp, lock, 0);
+#endif
+}
+
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */
 static inline int
 is_comdb2_rowlock(u_int32_t sz)
@@ -1999,6 +2034,52 @@ rep_return_deadlock(DB_ENV *dbenv, u_int32_t sz)
 		return 0;
 	}
 }
+
+#define LOCKOBJ_MAX_SIZE 33
+struct {
+	DBT obj;
+	char mem[LOCKOBJ_MAX_SIZE];
+} gbl_rep_lockobj;
+
+void berk_init_rep_lockobj() {
+	gbl_rep_lockobj.obj.data = gbl_rep_lockobj.mem;
+	gbl_rep_lockobj.obj.ulen = LOCKOBJ_MAX_SIZE;
+	gbl_rep_lockobj.obj.flags = DB_DBT_USERMEM;
+}
+
+void comdb2_dump_blockers(DB_ENV *dbenv)
+{
+	struct __db_lock *hlp, *lp;
+	DB_LOCKTAB *lt;
+	DB_LOCKREGION *region;
+	DB_LOCKOBJ *obj;
+	u_int32_t ndx;
+	u_int32_t partition;
+	int ret;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	OBJECT_INDX(lt, region, &gbl_rep_lockobj.obj, ndx, partition);
+
+	lock_obj_partition(region, partition);
+
+	ret = __lock_getobj(lt, &gbl_rep_lockobj.obj, ndx, partition, 0, &obj);
+
+	if (ret != 0 || !obj) {
+		unlock_obj_partition(region, partition);
+		return;
+	}
+
+	for (hlp = SH_TAILQ_FIRST(&obj->holders, __db_lock);
+		hlp != NULL; hlp = SH_TAILQ_NEXT(hlp, links, __db_lock))
+	{
+		comdb2_dump_blocker(hlp->holderp->id);
+	}
+
+	unlock_obj_partition(region, partition);
+}
+
 
 #define ADD_TO_HOLDARR(x)                                                      \
 	do {                                                                   \
@@ -2574,6 +2655,19 @@ upgrade:
 			++sh_obj->generation;
 			unlock_detector(region);
 		}
+
+		extern u_int32_t gbl_rep_lockid;
+		if (locker == gbl_rep_lockid) {
+			// Copy the lockobj that the replication thread is
+			// waiting on. This could later be used to look up
+			// the information of the lock holders.
+			assert(sh_obj->lockobj.size <= LOCKOBJ_MAX_SIZE);
+			memset(gbl_rep_lockobj.obj.data, 0, LOCKOBJ_MAX_SIZE);
+			gbl_rep_lockobj.obj.size = sh_obj->lockobj.size;
+			memcpy(gbl_rep_lockobj.obj.data, sh_obj->lockobj.data,
+				sh_obj->lockobj.size);
+		}
+
 		switch (action) {
 		case HEAD:
 			SH_TAILQ_INSERT_HEAD(&sh_obj->waiters, newl, links,
@@ -2605,7 +2699,7 @@ upgrade:
 			__os_clock(dbenv, &now, NULL);
 
 			if ((now - conftime) > 1) {
-				logmsg(LOGMSG_USER, "st_nconflicts is %ld\n",
+				logmsg(LOGMSG_USER, "st_nconflicts is %"PRId64"\n",
 				    region->stat.st_nconflicts);
 				conftime = now;
 			}
@@ -2818,6 +2912,7 @@ expired:			obj_ndx = sh_obj->index;
 	lock->off = R_OFFSET(&lt->reginfo, newl);
 	lock->gen = newl->gen;
 	lock->mode = newl->mode;
+	stack_at_get_lock(newl, lock);
 	sh_locker->nlocks++;
 
 
@@ -3124,21 +3219,6 @@ out:	UNLOCKREGION(dbenv, lt);
 	return (ret);
 }
 
-static void inline
-stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
-{
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
-	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
-
-	if (lockp->gen != lockp->stack_gen + 1) {
-		abort();
-	}
-	lockp->stack_gen = lockp->gen;
-	lockp->tid = pthread_self();
-	lockp->lock = lock;
-#endif
-}
-
 static int
 __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	DB_LOCKTAB *lt;
@@ -3177,6 +3257,20 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 		lockp->refcount--;
 		return (0);
 	}
+	DB_LOCKER *sh_locker = lockp->holderp;
+
+	if (is_pagelock(lockp->lockobj) && IS_WRITELOCK(lockp->mode) &&
+			F_ISSET(sh_locker, DB_LOCKER_TRACK_WRITELOCKS)) {
+		for (int i = 0; i < sh_locker->ntrackedlocks; i++) {
+			if (sh_locker->tracked_locklist[i] == lockp) {
+				struct __db_lock *last = sh_locker->tracked_locklist[
+					sh_locker->ntrackedlocks - 1];
+				sh_locker->tracked_locklist[i] = last;
+				sh_locker->ntrackedlocks--;
+				i--;
+			}
+		}
+	}
 
 	/* Increment generation number. */
 	lockp->gen++;
@@ -3189,7 +3283,6 @@ __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 
 
 #ifdef DEBUG_LOCKS
-	DB_LOCKER *sh_locker = lockp->holderp;
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Put locker (%c) lock %x (m %x)\n",
 			(void *)pthread_self(), lockp->mode == DB_LOCK_READ? 'R':'W', sh_locker->id,
@@ -5699,7 +5792,6 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
             if (size == sizeof(DB_LOCK_ILOCK) && 
                     IS_WRITELOCK(lock_mode) &&
                     ((DB_LOCK_ILOCK*)obj_dbt.data)->type == DB_HANDLE_LOCK) {
-                logmsg(LOGMSG_INFO, "Skipped write handle lock on replicant\n");
                 continue;
             }
 			do {
@@ -6247,6 +6339,18 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 
 	if (!txnp->pglogs_hashtbl)
 		DB_ASSERT(F_ISSET(txnp, TXN_COMPENSATE));
+
+#ifdef NEWSI_DEBUG
+	for (i = 0; i < locker->ntrackedlocks; i++) {
+		lp = SH_LIST_FIRST(&locker->heldby, __db_lock);
+		for ( ; lp != NULL; lp = SH_LIST_NEXT(lp, locker_links, __db_lock)) {
+			if (lp == locker->tracked_locklist[i])
+				break;
+		}
+		assert(lp != NULL);
+	}
+#endif
+
 	assert(locker->ntrackedlocks != 0);
 	for (i = 0; i < locker->ntrackedlocks; i++) {
 		lp = locker->tracked_locklist[i];

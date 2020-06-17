@@ -120,9 +120,15 @@ void sqlite3VdbeAddDblquoteStr(sqlite3 *db, Vdbe *p, const char *z){
 int sqlite3VdbeUsesDoubleQuotedString(
   Vdbe *pVdbe,            /* The prepared statement */
   const char *zId         /* The double-quoted identifier, already dequoted */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  ,int iDefDqId           /* Return value when there is no Vdbe. */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 ){
   DblquoteStr *pStr;
   assert( zId!=0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pVdbe==0 ) return iDefDqId;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pVdbe->pDblStr==0 ) return 0;
   for(pStr=pVdbe->pDblStr; pStr; pStr=pStr->pNextStr){
     if( strcmp(zId, pStr->z)==0 ) return 1;
@@ -152,16 +158,16 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
   zTmp = pA->zSql;
   pA->zSql = pB->zSql;
   pB->zSql = zTmp;
-#if 0
+#ifdef SQLITE_ENABLE_NORMALIZE
   zTmp = pA->zNormSql;
   pA->zNormSql = pB->zNormSql;
   pB->zNormSql = zTmp;
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
-    int *iTmp = pA->updCols;
-    pA->updCols = pB->updCols;
-    pB->updCols = iTmp;
+    SWAP(int *, pA->updCols, pB->updCols);
+    SWAP(int, pA->oldColCount, pB->oldColCount);
+    SWAP(char **, pA->oldColNames, pB->oldColNames);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pB->expmask = pA->expmask;
@@ -5720,10 +5726,11 @@ int sqlite3_value_dup_inplace(
   memset(pNew, 0, sizeof(Mem));
   memcpy(pNew, pOrig, MEMCELLSIZE);
   pNew->flags &= ~MEM_Dyn;
+  pNew->szMalloc = 0;
   pNew->db = 0;
   if( pNew->flags&(MEM_Str|MEM_Blob) ){
     int rc;
-    pNew->flags &= ~(MEM_Static|MEM_Dyn);
+    pNew->flags &= ~MEM_Static;
     pNew->flags |= MEM_Ephem;
     rc = sqlite3VdbeMemMakeWriteable(pNew);
     if( rc!=SQLITE_OK ) return rc;
@@ -5751,6 +5758,9 @@ Mem *sqlite3CloneResult(
     if( !pMem ) return 0;
   }else{
     *pSize -= memRowSize(pMem, nCols);
+    for(i=0; i<nCols; i++){
+      sqlite3_value_free_inplace(&pMem[i]);
+    }
   }
   memset(pMem, 0, sizeof(Mem) * nCols);
   for(i=0; i<nCols; i++){

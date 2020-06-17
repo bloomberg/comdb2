@@ -26,12 +26,15 @@ int mark_schemachange_over_tran(const char *table, tran_type *);
 int prepare_table_version_one(tran_type *, struct dbtable *db,
                               struct schema **version);
 
-int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
+int fetch_sc_seed(const char *tablename, struct dbenv *thedb,
                              unsigned long long *stored_sc_genid,
                              unsigned int *stored_sc_host);
 
 int check_option_coherency(struct schema_change_type *s, struct dbtable *db,
                            struct scinfo *scinfo);
+
+int check_option_queue_coherency(struct schema_change_type *s,
+                                 struct dbtable *db);
 
 int sc_request_disallowed(SBUF2 *sb);
 
