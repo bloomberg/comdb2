@@ -16,6 +16,7 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 #include "time_accounting.h"
+#include <inttypes.h>
 
 #ifndef NDEBUG
 const char *CHR_NAMES[] = {"ix_addk", "dat_add", "temp_table_saveop"};

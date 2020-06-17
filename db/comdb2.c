@@ -1260,6 +1260,12 @@ static void *purge_old_blkseq_thread(void *arg)
 
 extern int gbl_is_physical_replicant;
 
+static inline void sleep_with_check_for_stopped(int secs)
+{
+    for(int i = 0; i < secs && !db_is_stopped(); i++)
+        sleep(1);
+}
+
 static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
@@ -1283,7 +1289,7 @@ static void *purge_old_files_thread(void *arg)
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
         if (thedb->master != gbl_myhostname) {
-            sleep(empty_pause);
+            sleep_with_check_for_stopped(empty_pause);
             continue;
         }
         if (db_is_stopped())
@@ -1296,7 +1302,7 @@ static void *purge_old_files_thread(void *arg)
                 logmsg(LOGMSG_ERROR,
                        "%s: bdb_list_unused_files failed with rc=%d\n",
                        __func__, rc);
-                sleep(empty_pause);
+                sleep_with_check_for_stopped(empty_pause);
                 continue;
             }
         }
@@ -1309,7 +1315,7 @@ static void *purge_old_files_thread(void *arg)
         rc = trans_start_sc(&iq, NULL, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: failed to create transaction\n", __func__);
-            sleep(empty_pause);
+            sleep_with_check_for_stopped(empty_pause);
             continue;
         }
 
@@ -1331,12 +1337,12 @@ static void *purge_old_files_thread(void *arg)
                        "%s: failed to commit purged file, "
                        "rc=%d\n",
                        __func__, rc);
-                sleep(empty_pause);
+                sleep_with_check_for_stopped(empty_pause);
                 continue;
             }
 
             if (empty) {
-                sleep(empty_pause);
+                sleep_with_check_for_stopped(empty_pause);
                 continue;
             }
         } else {
@@ -1344,7 +1350,7 @@ static void *purge_old_files_thread(void *arg)
                    "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
                    __func__, rc, bdberr);
             trans_abort(&iq, trans);
-            sleep(empty_pause);
+            sleep_with_check_for_stopped(empty_pause);
             continue;
         }
     }
@@ -1527,8 +1533,6 @@ static void do_clean()
     cleanup_peer_hash();
     free(gbl_dbdir);
     gbl_dbdir = NULL;
-    free(gbl_myhostname);
-    gbl_myhostname = NULL;
 
     cleanresources(); // list of lrls
     // TODO: would be nice but other threads need to exit first:
@@ -1573,14 +1577,6 @@ void clean_exit(void)
     stop_threads(thedb);
     set_stop_mempsync_thread();
     flush_db();
-
-#   if 0
-    /* TODO: (NC) Instead of sleep(), maintain a counter of threads and wait for
-      them to quit.
-    */
-    if (!gbl_create_mode)
-        sleep(4);
-#   endif
 
     cleanup_q_vars();
     cleanup_switches();
@@ -5382,6 +5378,7 @@ static void handle_resume_sc()
 
 static void goodbye()
 {
+    abort(); //to discover the threadpools which arent registered
     logmsg(LOGMSG_USER, "goodbye\n");
 #ifndef NDEBUG //TODO:wrap the follwing lines before checking in
     char cmd[400];

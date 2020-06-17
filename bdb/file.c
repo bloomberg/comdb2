@@ -122,6 +122,7 @@ extern int is_db_roomsync();
 int gbl_debug_children_lock = 0;
 int gbl_queuedb_genid_filename = 1;
 int gbl_queuedb_file_threshold = 0;
+int gbl_queuedb_file_interval = 60000;
 static const char NEW_PREFIX[] = "new.";
 
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;

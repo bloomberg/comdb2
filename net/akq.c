@@ -74,7 +74,7 @@ static void akq_worker_int(struct akq *q)
 {
     struct akq_work_list work_list;
     TAILQ_INIT(&work_list);
-    while (1) {
+    while (!db_is_stopped()) {
         Pthread_mutex_lock(&q->lock);
         TAILQ_CONCAT(&q->free_list, &work_list, entry);
         if (TAILQ_EMPTY(&q->work_list)) {

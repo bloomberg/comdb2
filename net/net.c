@@ -75,6 +75,7 @@
 #include "comdb2_atomic.h"
 #include "thrman.h"
 #include "thread_util.h"
+#include "comdb2_atomic.h"
 
 BB_COMPILE_TIME_ASSERT(NUMNETS, MAXNETS == NET_MAX);
 
@@ -1601,7 +1602,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
     }
 
     msghd.usertype = usertype;
-    msghd.seqnum = ATOMIC_ADD(netinfo_ptr->seqnum, 1);
+    msghd.seqnum = ATOMIC_ADD32(netinfo_ptr->seqnum, 1);
     msghd.waitforack = waitforack;
     msghd.datalen = datalen;
 
@@ -1953,7 +1954,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     /*ctrace("net_send_message: to node %s, ut=%d\n", host_node_ptr->host, usertype);*/
 
     msghd.usertype = usertype;
-    msghd.seqnum = ATOMIC_ADD(netinfo_ptr->seqnum, 1);
+    msghd.seqnum = ATOMIC_ADD32(netinfo_ptr->seqnum, 1);
     msghd.waitforack = 0;
     msghd.datalen = datalen + tailen;
 

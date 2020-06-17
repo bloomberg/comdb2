@@ -27,6 +27,7 @@
 #include "memory_sync.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
+#include "thrman.h"
 #include <locks_wrap.h>
 
 extern int db_is_stopped(void);

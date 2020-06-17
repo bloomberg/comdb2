@@ -5733,6 +5733,9 @@ void *watcher_thread(void *arg)
 
         gbl_watcher_thread_ran = comdb2_time_epoch();
 
+        if (db_is_stopped())
+            break;
+
         /* sleep for somewhere between 1-2 seconds */
         poll(NULL, 0, (rand() % 1000) + 1000);
 
