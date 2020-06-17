@@ -25,6 +25,8 @@
 
 #define CHUNK_CAPACITY 10000
 
+int db_is_stopped(void);
+
 struct akq_work {
     TAILQ_ENTRY(akq_work) entry;
 };

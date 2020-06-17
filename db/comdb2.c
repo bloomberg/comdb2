@@ -160,7 +160,7 @@ int gbl_recovery_lsn_offset = 0;
 int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
-int gbl_perform_full_clean_exit = 0;
+int gbl_perform_full_clean_exit = 1;
 extern int gbl_dump_fsql_response;
 struct ruleset *gbl_ruleset = NULL;
 
@@ -5378,19 +5378,20 @@ static void handle_resume_sc()
 
 static void goodbye()
 {
-    abort(); //to discover the threadpools which arent registered
     logmsg(LOGMSG_USER, "goodbye\n");
 #ifndef NDEBUG //TODO:wrap the follwing lines before checking in
-    char cmd[400];
-    sprintf(cmd,
-            "bash -c 'gdb --batch --eval-command=\"thr app all ba\" "
-            "/proc/%d/exe %d 2>&1 > %s/logs/%s.onexit'",
-            gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
+    if (gbl_perform_full_clean_exit) {
+        char cmd[400];
+        sprintf(cmd,
+                "bash -c 'gdb --batch --eval-command=\"thr app all ba\" "
+                "/proc/%d/exe %d 2>&1 > %s/logs/%s.onexit'",
+                gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
 
-    logmsg(LOGMSG_ERROR, "goodbye: running %s\n", cmd);
-    int rc = system(cmd);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "goodbye: system  returned rc %d\n", rc);
+        logmsg(LOGMSG_ERROR, "goodbye: running %s\n", cmd);
+        int rc = system(cmd);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "goodbye: system  returned rc %d\n", rc);
+        }
     }
 #endif
 }
@@ -5615,7 +5616,9 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    /* clean_exit() will wait for all the generic threads to exit */
+    /* wait until THRTYPE_CLEANEXIT thread has exited
+     * THRTYPE_CLEANEXIT threads calls clean_exit() which in turn
+     * will wait for all the generic threads to exit */
     thrman_wait_type_exit(THRTYPE_CLEANEXIT);
     do_clean();
 

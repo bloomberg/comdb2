@@ -146,6 +146,7 @@ wait_for_exit_pids() {
     shift
     for pid in $@ ; do
         while :; do
+            # wait up till script execution reaches $SECONDS
             if [ $TTL -lt $SECONDS ] ; then
                 return
             fi

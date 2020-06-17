@@ -1053,14 +1053,13 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	Pthread_mutex_unlock(&pgpool_lk);
 }
 
-static struct thdpool *loadcache_thdpool;
+struct thdpool *gbl_loadcache_thdpool;
 int gbl_load_cache_threads = 8;
 int gbl_load_cache_max_pages = 0;
 int gbl_dump_cache_max_pages = 0;
 int gbl_max_pages_per_cache_thread = 8192;
 
-void
-init_trickle_threads(void)
+void init_trickle_threads(void)
 {
 	gbl_trickle_thdpool = thdpool_create("memptrickle", 0);
 	thdpool_set_linger(gbl_trickle_thdpool, 10);
@@ -1073,13 +1072,13 @@ init_trickle_threads(void)
 	pgpool =
 		pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
 
-	loadcache_thdpool = thdpool_create("loadcache", 0);
-	thdpool_set_linger(loadcache_thdpool, 10);
-	thdpool_set_minthds(loadcache_thdpool, 0);
-	thdpool_set_maxthds(loadcache_thdpool, gbl_load_cache_threads);
-	thdpool_set_maxqueue(loadcache_thdpool, 0);
-	thdpool_set_maxqueueoverride(loadcache_thdpool, 0);
-	thdpool_set_wait(loadcache_thdpool, 0);
+	gbl_loadcache_thdpool = thdpool_create("loadcache", 0);
+	thdpool_set_linger(gbl_loadcache_thdpool, 10);
+	thdpool_set_minthds(gbl_loadcache_thdpool, 0);
+	thdpool_set_maxthds(gbl_loadcache_thdpool, gbl_load_cache_threads);
+	thdpool_set_maxqueue(gbl_loadcache_thdpool, 0);
+	thdpool_set_maxqueueoverride(gbl_loadcache_thdpool, 0);
+	thdpool_set_wait(gbl_loadcache_thdpool, 0);
 }
 
 int gbl_parallel_memptrickle = 1;
@@ -2083,7 +2082,7 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
 	int ret;
 	Pthread_mutex_lock(fileid_env->lk);
 	(*fileid_env->active_threads)++;
-	if ((ret = thdpool_enqueue(loadcache_thdpool, load_fileids,
+	if ((ret = thdpool_enqueue(gbl_loadcache_thdpool, load_fileids,
                                    fileid_env, 0, NULL, 0,
                                    PRIORITY_T_DEFAULT)) != 0) {
 		Pthread_mutex_unlock(fileid_env->lk);

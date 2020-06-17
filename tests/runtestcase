@@ -362,6 +362,20 @@ trap - INT EXIT
 
 call_unsetup
 
+# find any cores after unsetup -- ONLY works if CLEANUPDBDIR=0 because unsetup cleans up dir
+cr=`find_cores ${DBNAME} $DBDIR`
+
+if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+    cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+fi
+
+
+if [[ -n "$cr" ]] ; then
+    echo "!$TESTCASE: at unsetup found core ($cr)" | tee -a ${TEST_LOG}
+    exit 1
+fi
+
+
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase

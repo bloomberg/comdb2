@@ -51,6 +51,8 @@
 #include "reqlog.h"
 #include "str0.h"
 
+extern struct thdpool *gbl_loadcache_thdpool;
+
 struct thr_handle {
     pthread_t tid;
 
@@ -556,8 +558,8 @@ void stop_threads(struct dbenv *dbenv)
         thdpool_stop(gbl_udppfault_thdpool);
     if (gbl_pgcompact_thdpool)
         thdpool_stop(gbl_pgcompact_thdpool);
-    if (gbl_osqlpfault_thdpool)
-        thdpool_stop(gbl_osqlpfault_thdpool);
+    if (gbl_loadcache_thdpool)
+        thdpool_stop(gbl_loadcache_thdpool);
 
     /* Membar ensures that all other threads will now see that db is stopping */
     MEMORY_SYNC;

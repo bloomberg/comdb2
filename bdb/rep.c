@@ -22,36 +22,16 @@
 #include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #include <unistd.h>
-#include <errno.h>
-#include <strings.h>
 #include <poll.h>
-#include <alloca.h>
-#include <limits.h>
-#include <math.h>
 
-#include <epochlib.h>
-#include <build/db.h>
-#include <rtcpu.h>
 #include "debug_switches.h"
 
-#include <cheapstack.h>
-#include "net.h"
 #include "bdb_int.h"
 #include "locks.h"
 #include "locks_wrap.h"
-#include "list.h"
 #include <endian_core.h>
-
-#include <time.h>
-
 #include "memory_sync.h"
-#include "compile_time_assert.h"
-
-#include <arpa/inet.h>
-#include <sys/socket.h>
-
 #include "ctrace.h"
 #include "nodemap.h"
 #include "util.h"
@@ -59,22 +39,14 @@
 #include "gettimeofday_ms.h"
 
 #include <build/db_int.h>
-#include "dbinc/db_page.h"
-#include "dbinc/db_swap.h"
-#include "dbinc/db_shash.h"
-#include "dbinc/btree.h"
-#include "dbinc/lock.h"
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
 #include <trigger.h>
 #include "printformats.h"
-#include <llog_auto.h>
 #include "phys_rep_lsn.h"
-#include "logmsg.h"
 #include <compat.h>
 #include "str0.h"
-
-#include <inttypes.h>
+#include <thrman.h>
 
 #define REP_PRI 100     /* we are all equal in the eyes of god */
 #define REPTIME 3000000 /* default 3 second timeout on election */
@@ -5268,6 +5240,7 @@ void *watcher_thread(void *arg)
 
     gbl_watcher_thread_ran = comdb2_time_epoch();
 
+    thrman_register(THRTYPE_WATCHDOG);
     thread_started("bdb watcher");
 
     /* hold off on "watching" for a little bit during startup */
