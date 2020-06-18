@@ -1158,8 +1158,10 @@ __log_is_outdated(dbenv, fnum, outdatedp)
 	dblp = dbenv->lg_handle;
 	*outdatedp = 0;
 
-	if ((ret = __log_name(dblp, fnum, &name, NULL, 0)) != 0)
+	if ((ret = __log_name(dblp, fnum, &name, NULL, 0)) != 0) {
+		abort();
 		return (ret);
+	}
 
 	/* If the file exists, we're just fine. */
 	if (__os_exists(name, NULL) == 0)
@@ -1175,8 +1177,10 @@ __log_is_outdated(dbenv, fnum, outdatedp)
 	cfile = lp->lsn.file;
 	R_UNLOCK(dbenv, &dblp->reginfo);
 
-	if (cfile > fnum)
+	if (cfile > fnum) {
+		logmsg(LOGMSG_INFO, "%s returning outdated for %s\n", __func__, name);
 		*outdatedp = 1;
+	}
 out:	__os_free(dbenv, name);
 	return (ret);
 }

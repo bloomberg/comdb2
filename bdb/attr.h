@@ -480,6 +480,8 @@ DEF_ATTR(SC_RESUME_WATCHDOG_TIMER, sc_resume_watchdog_timer, QUANTITY, 60,
 DEF_ATTR(SC_DELAY_VERIFY_ERROR, sc_delay_verify_error, MSECS, 100, NULL)
 DEF_ATTR(SC_ASYNC, sc_async, BOOLEAN, 1,
          "Run transactional schema changes asynchronously.")
+DEF_ATTR(SC_DETACHED, sc_detached, BOOLEAN, 0,
+         "Run schema changes in detached mode--just return seed to client.")
 DEF_ATTR(SC_ASYNC_MAXTHREADS, sc_async_maxthreads, QUANTITY, 5,
          "Max number of threads for asynchronous schema changes.")
 DEF_ATTR(SC_DONE_SAME_TRAN, sc_done_same_tran, BOOLEAN, 1,
@@ -585,6 +587,8 @@ DEF_ATTR(DISABLE_SELECTVONLY_TRAN_NOP, disable_selectvonly_tran_nop, BOOLEAN, 0,
          "action done by the same transaction.")
 DEF_ATTR(SC_VIA_DDL_ONLY, ddl_only, BOOLEAN, 0,
          "If set, we don't do checks needed for comdb2sc.")
+DEF_ATTR(SC_HIST_KEEP, sc_hist_keep, QUANTITY, 20,
+         "Number of items to keep in llmeta for comdb2_sc_history sys table.")
 DEF_ATTR(PAGE_COMPACT_UDP, page_compact_udp, BOOLEAN, 0,
          "Enables sending of page compact requests over UDP.")
 DEF_ATTR(PAGE_COMPACT_INDEXES, page_compact_indexes, BOOLEAN, 0,

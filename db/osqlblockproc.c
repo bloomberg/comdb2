@@ -36,6 +36,7 @@
 #include <epochlib.h>
 #include <plhash.h>
 #include <assert.h>
+#include <unistd.h>
 
 #include "comdb2.h"
 #include "osqlblockproc.h"
@@ -102,11 +103,11 @@ typedef struct {
 int gbl_selectv_writelock_on_update = 1;
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int *nops, struct block_err *err,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char **, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *));
+                                     struct block_err *, int *));
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(bool is_uuid, const char *rpl,
                                           int *tableversion);
@@ -340,8 +341,7 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
     }
 
     /* apply changes */
-    rc = apply_changes(iq, tran, iq_trans, nops, err, iq->sorese->osqllog,
-                       osql_process_packet);
+    rc = apply_changes(iq, tran, iq_trans, nops, err, osql_process_packet);
 
     iq->timings.req_applied = osql_log_time();
 
@@ -465,7 +465,7 @@ static void setup_reorder_key(blocksql_tran_t *tran, int type,
     switch (type) {
     case OSQL_USEDB: {
         /* usedb is always called prior to any other osql event */
-        if (tablename && !is_tablename_queue(tablename, strlen(tablename))) {
+        if (tablename && !is_tablename_queue(tablename)) {
             tran->tbl_idx = get_dbtable_idx_by_name(tablename) + 1;
             key->tbl_idx = tran->tbl_idx;
 
@@ -554,10 +554,7 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
 {
     switch (type) {
     case OSQL_SCHEMACHANGE:
-        sess->iq->tranddl++;
-        break;
-    case OSQL_DONE_SNAP:
-        osql_extract_snap_info(sess->iq, rpl, rplen, tran->is_uuid);
+        sess->is_tranddl++;
         break;
     case OSQL_USEDB:
         if (tran->is_selectv_wl_upd || tran->is_reorder_on) {
@@ -654,6 +651,30 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     return rc;
 }
 
+/**
+ * Set proper blkseq from session to iq
+ * NOTE: We don't need to create buffers _SEQ, _SEQV2 for it
+ *
+ */
+void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq)
+{
+    iq->have_blkseq = true;
+    if (sess->rqid == OSQL_RQID_USE_UUID) {
+        memcpy(iq->seq, sess->uuid, sizeof(uuid_t));
+        iq->seqlen = sizeof(uuid_t);
+    } else {
+        struct packedreq_seq seq;
+        int *p_rqid = (int *)&sess->rqid;
+        int seed;
+        seq.seq1 = p_rqid[0];
+        seq.seq2 = p_rqid[1];
+        seed = seq.seq1 ^ seq.seq2;
+        seq.seq3 = rand_r((unsigned int *)&seed);
+
+        memcpy(iq->seq, &seq, 3 * sizeof(int));
+        iq->seqlen = 3 * sizeof(int);
+    }
+}
 
 /**
  * Construct a blockprocessor transaction buffer containing
@@ -663,25 +684,15 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
  *       This will allow let us point directly to the buffer
  *
  */
-static int wordoff(int byteoff) { return (byteoff + 3) / 4; }
-int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
+int osql_bplog_build_sorese_req(uint8_t **pp_buf_start,
                                 const uint8_t **pp_buf_end, const char *sqlq,
                                 int sqlqlen, const char *tzname, int reqtype,
-                                char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid)
 {
-    struct dbtable *db;
-
     struct req_hdr req_hdr;
     struct block_req req;
     struct packedreq_hdr op_hdr;
-    struct packedreq_usekl usekl;
-    struct packedreq_tzset tzset;
     struct packedreq_sql sql;
-    struct packedreq_seq seq;
-    struct packedreq_seq2 seq2;
-    int *p_rqid = (int *)&rqid;
-    int seed;
 
     uint8_t *p_buf;
 
@@ -691,10 +702,22 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     uint8_t *p_buf_op_hdr_start;
     const uint8_t *p_buf_op_hdr_end;
 
-    p_buf = p_buf_start;
+    /* FORMAT:
+       op_block + req_flags + block2_sorese */
+    int buflen = REQ_HDR_LEN /* op_block */ + BLOCK_REQ_LEN +
+                 3 /* req flags */ + PACKEDREQ_HDR_LEN + 3 + PACKEDREQ_SQL_LEN +
+                 sqlqlen + 3;
+
+    *pp_buf_start = calloc(1, buflen);
+    if (!(*pp_buf_start))
+        return -1;
+    p_buf = *pp_buf_start;
+    *pp_buf_end = (*pp_buf_start) + buflen;
 
     /*
      * req hdr (prccom hdr)
+     * we need this to dispatch to mark this as a write transaction
+     * and to arrive in toblock()
      */
 
     /* build prccom header */
@@ -708,91 +731,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /*
      * req
      */
-
-    /* save room in the buffer for req, we need to write it last after we know
-     * the proper overall offset */
+    /* save room in the buffer for req, until we have the overall offset */
     if (BLOCK_REQ_LEN > (*pp_buf_end - p_buf))
         return -1;
     p_buf_req_start = p_buf;
     p_buf += BLOCK_REQ_LEN;
     p_buf_req_end = p_buf;
-
-    req.num_reqs = 0; /* will be incremented as we go */
-
-    /*
-     * usekl
-     */
-
-    /* save room for usekl op header */
-    if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    p_buf_op_hdr_end = p_buf;
-
-    /* provide db[0], it doesn't matter anyway */
-    db = &thedb->static_table;
-    usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->tablename) + 1 /*NUL byte*/;
-
-    /* pack usekl */
-    if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, *pp_buf_end)))
-        return -1;
-    if (!(p_buf =
-              buf_no_net_put(db->tablename, usekl.taglen, p_buf, *pp_buf_end)))
-        return -1;
-
-    /* build usekl op hdr */
-    ++req.num_reqs;
-    op_hdr.opcode = BLOCK2_USE;
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    /* pad to the next word */
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, *pp_buf_end)))
-        return -1;
-
-    /* pack usekl op hdr in the space we saved */
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return -1;
-
-    /*
-     * tzset
-     */
-
-    /* save room for tzset op header */
-    if (PACKEDREQ_HDR_LEN > (*pp_buf_end - p_buf))
-        return -1;
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    p_buf_op_hdr_end = p_buf;
-
-    /* build tzset */
-    tzset.tznamelen = strlen(tzname) + 1 /*NUL byte*/;
-
-    /* pack tzset */
-    if (!(p_buf = packedreq_tzset_put(&tzset, p_buf, *pp_buf_end)))
-        return -1;
-    if (!(p_buf = buf_no_net_put(tzname, tzset.tznamelen, p_buf, *pp_buf_end)))
-        return -1;
-
-    /* build tzset op hdr */
-    ++req.num_reqs;
-    op_hdr.opcode = BLOCK2_TZ;
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    /* pad to the next word */
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, *pp_buf_end)))
-        return -1;
-
-    /* pack usekl op hdr in the space we saved */
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return -1;
 
     /*
      * sql
@@ -815,21 +759,16 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
     /* pack sql */
     if (!(p_buf = packedreq_sql_put(&sql, p_buf, *pp_buf_end)))
         return -1;
-    *sqlqret =
-        (char *)p_buf; /* save location of the sql string in the buffer */
-    *sqlqlenret = sql.sqlqlen;
     if (!(p_buf = buf_no_net_put(sqlq, sql.sqlqlen, p_buf, *pp_buf_end)))
         return -1;
 
     /* build sql op hdr */
-    ++req.num_reqs;
     op_hdr.opcode = req2blockop(reqtype);
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
+    op_hdr.nxt = one_based_word_offset_from_ptr(*pp_buf_start, p_buf);
 
-    /* TODO NUL terminate sql here if it was truncated earlier */
     /* pad to the next word */
     if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
+              ptr_from_one_based_word_offset(*pp_buf_start, op_hdr.nxt) - p_buf,
               p_buf, *pp_buf_end)))
         return -1;
 
@@ -839,59 +778,12 @@ int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
         return -1;
 
     /*
-     * blkseq
-     */
-    p_buf_op_hdr_start = p_buf;
-    p_buf += PACKEDREQ_HDR_LEN;
-    if (rqid == OSQL_RQID_USE_UUID) {
-        if (PACKEDREQ_SEQ2_LEN > (*pp_buf_end - p_buf))
-            return -1;
-    } else {
-        if (PACKEDREQ_SEQ_LEN > (*pp_buf_end - p_buf))
-            return -1;
-    }
-    p_buf_op_hdr_end = p_buf;
-
-    ++req.num_reqs;
-    if (rqid == OSQL_RQID_USE_UUID) {
-        comdb2uuidcpy(seq2.seq, uuid);
-
-        if (!(p_buf = packedreq_seq2_put(&seq2, p_buf, *pp_buf_end)))
-            return -1;
-
-        op_hdr.opcode = BLOCK2_SEQV2;
-    } else {
-        seq.seq1 = p_rqid[0];
-        seq.seq2 = p_rqid[1];
-        seed = seq.seq1 ^ seq.seq2;
-        seq.seq3 = rand_r((unsigned int *)&seed);
-
-        if (!(p_buf = packedreq_seq_put(&seq, p_buf, *pp_buf_end)))
-            return -1;
-
-        op_hdr.opcode = BLOCK_SEQ;
-    }
-
-    /* blkseq header */
-    op_hdr.nxt = one_based_word_offset_from_ptr(p_buf_start, p_buf);
-
-    /* pad to the next word */
-    if (!(p_buf = buf_zero_put(
-              ptr_from_one_based_word_offset(p_buf_start, op_hdr.nxt) - p_buf,
-              p_buf, *pp_buf_end)))
-        return -1;
-
-    /* pack seq op hdr in the space we saved */
-    if (packedreq_hdr_put(&op_hdr, p_buf_op_hdr_start, p_buf_op_hdr_end) !=
-        p_buf_op_hdr_end)
-        return -1;
-
-    /*
-     * req
+     * req, written in the original saved space (after OP_BLOCK header)
      */
 
     /* build req */
     req.flags = BLKF_ERRSTAT; /* we want error stat */
+    req.num_reqs = 1;
     req.offset = op_hdr.nxt;  /* overall offset = next offset of last op */
 
     /* pack req in the space we saved at the start */
@@ -1029,11 +921,10 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
 
 static int process_this_session(
     struct ireq *iq, void *iq_tran, osql_sess_t *sess, int *bdberr, int *nops,
-    struct block_err *err, SBUF2 *logsb, struct temp_cursor *dbc,
-    struct temp_cursor *dbc_ins,
+    struct block_err *err, struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
     int (*func)(struct ireq *, unsigned long long, uuid_t, void *, char **, int,
                 int *, int **, blob_buffer_t blobs[MAXBLOBS], int,
-                struct block_err *, int *, SBUF2 *))
+                struct block_err *, int *))
 {
     int countops = 0;
     int lastrcv = 0;
@@ -1122,7 +1013,7 @@ static int process_this_session(
         /* This call locks pages:
          * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, sess->rqid, sess->uuid, iq_tran, &data, datalen,
-                      &flags, &updCols, blobs, step, err, &receivedrows, logsb);
+                      &flags, &updCols, blobs, step, err, &receivedrows);
         free(data);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
@@ -1170,11 +1061,11 @@ static int process_this_session(
 }
 
 static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
-                         int *nops, struct block_err *err, SBUF2 *logsb,
+                         int *nops, struct block_err *err,
                          int (*func)(struct ireq *, unsigned long long, uuid_t,
                                      void *, char **, int, int *, int **,
                                      blob_buffer_t blobs[MAXBLOBS], int,
-                                     struct block_err *, int *, SBUF2 *))
+                                     struct block_err *, int *))
 {
 
     int rc = 0;
@@ -1227,7 +1118,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 
     /* go through the complete list and apply all the changes */
     out_rc = process_this_session(iq, iq_tran, iq->sorese, &bdberr, nops, err,
-                                  logsb, dbc, dbc_ins, func);
+                                  dbc, dbc_ins, func);
 
     Pthread_mutex_unlock(&tran->store_mtx);
 
@@ -1341,7 +1232,6 @@ static void osql_cache_selectv(blocksql_tran_t *tran, char *rpl, int type)
     }
 }
 
-void sc_set_downgrading(struct schema_change_type *s);
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -1357,8 +1247,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     iq->sc_locked = 0;
     iq->sc_should_abort = 0;
 
-    rc = apply_changes(iq, tran, NULL, &nops, err, iq->sorese->osqllog,
-                       osql_process_schemachange);
+    rc = apply_changes(iq, tran, NULL, &nops, err, osql_process_schemachange);
 
     if (rc)
         logmsg(LOGMSG_DEBUG, "apply_changes returns rc %d\n", rc);
@@ -1366,6 +1255,7 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
     /* wait for all schema changes to finish */
     iq->sc = sc = iq->sc_pending;
     iq->sc_pending = NULL;
+
     while (sc != NULL) {
         Pthread_mutex_lock(&sc->mtx);
         sc->nothrevent = 1;
@@ -1375,8 +1265,8 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
             sc->sc_next = iq->sc_pending;
             iq->sc_pending = sc;
         } else if (sc->sc_rc == SC_MASTER_DOWNGRADE) {
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
-            free_schema_change_type(sc);
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
             rc = ERR_NOMASTER;
         } else if (sc->sc_rc == SC_PAUSED) {
             Pthread_mutex_lock(&sc->mtx);
@@ -1388,16 +1278,18 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
             Pthread_mutex_unlock(&sc->mtx);
             rc = ERR_SC;
         } else if (sc->sc_rc != SC_DETACHED) {
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
-            if (sc->sc_rc)
+            sc->sc_next = iq->sc_pending;
+            iq->sc_pending = sc;
+            if (sc->sc_rc) {
                 rc = ERR_SC;
-            free_schema_change_type(sc);
+            }
         }
         sc = iq->sc;
     }
     if (rc)
         csc2_free_all();
-    if (rc == ERR_NOMASTER) {
+
+    if (rc) {
         /* free schema changes that have finished without marking schema change
          * over in llmeta so new master can resume properly */
         struct schema_change_type *next;
@@ -1405,13 +1297,24 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
         while (sc != NULL) {
             next = sc->sc_next;
             if (sc->newdb && sc->newdb->handle) {
+                void live_sc_off(struct dbtable * db);
                 int bdberr = 0;
-                sc_set_downgrading(sc);
+                live_sc_off(sc->db);
+                while (sc->logical_livesc) {
+                    usleep(200);
+                }
+                if (sc->db->sc_live_logical) {
+                    bdb_clear_logical_live_sc(sc->db->handle, 1);
+                    sc->db->sc_live_logical = 0;
+                }
+                if (rc == ERR_NOMASTER)
+                    sc_set_downgrading(sc);
                 bdb_close_only(sc->newdb->handle, &bdberr);
                 freedb(sc->newdb);
                 sc->newdb = NULL;
             }
-            sc_set_running(sc->tablename, 0, iq->sc_seed, NULL, 0);
+            sc_set_running(iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
+                           __LINE__);
             free_schema_change_type(sc);
             sc = next;
         }
@@ -1431,6 +1334,14 @@ void *bplog_commit_timepart_resuming_sc(void *p)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     init_fake_ireq(thedb, &iq);
     iq.tranddl = 1;
+
+    /* iq sc_running count */
+    sc = sc_pending;
+    while (sc != NULL) {
+        if (sc->set_running)
+            iq.sc_running++;
+        sc = sc->sc_next;
+    }
     iq.sc = sc = sc_pending;
     sc_pending = NULL;
     while (sc != NULL) {
@@ -1444,7 +1355,8 @@ void *bplog_commit_timepart_resuming_sc(void *p)
         } else {
             logmsg(LOGMSG_ERROR, "%s: shard '%s', rc %d\n", __func__,
                    sc->tablename, sc->sc_rc);
-            sc_set_running(sc->tablename, 0, 0, NULL, 0);
+            sc_set_running(&iq, sc, sc->tablename, 0, NULL, 0, 0, __func__,
+                           __LINE__);
             free_schema_change_type(sc);
             error = 1;
         }
@@ -1508,7 +1420,7 @@ void *bplog_commit_timepart_resuming_sc(void *p)
         create_sqlite_master();
     }
 
-    if (trans_commit(&iq, iq.sc_tran, gbl_mynode)) {
+    if (trans_commit(&iq, iq.sc_tran, gbl_myhostname)) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();
@@ -1516,8 +1428,8 @@ void *bplog_commit_timepart_resuming_sc(void *p)
 
     unlock_schema_lk();
 
-    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_mynode, 0, 1, NULL, 0,
-                             NULL, 0)) {
+    if (trans_commit_logical(&iq, iq.sc_logical_tran, gbl_myhostname, 0, 1,
+                             NULL, 0, NULL, 0)) {
         logmsg(LOGMSG_FATAL, "%s:%d failed to commit schema change\n", __func__,
                __LINE__);
         abort();

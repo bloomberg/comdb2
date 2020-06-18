@@ -3,6 +3,7 @@
 
 struct Mem;
 struct sqlthdstate;
+struct sqlclntstate;
 struct sqlite3_context;
 
 typedef struct {
@@ -20,5 +21,7 @@ void lua_func(struct sqlite3_context *, int, struct sqlite3_value **);
 
 void lua_step(struct sqlite3_context *, int, struct sqlite3_value **);
 void lua_final(struct sqlite3_context *);
+
+int osql_delrec_qdb(struct sqlclntstate *, char *, uint64_t);
 
 #endif

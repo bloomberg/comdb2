@@ -24,12 +24,12 @@ done
 
 out=$TMPDIR/t1_dump.txt
 
-myhostname=`hostname`
-if [ "$master" != "$myhostname" ] ; then
+hnamelist="`hostname -A` localhost"
+if [[ " $hnamelist " =~ .*\ $master\ .* ]] ; then 
+    find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} -f $out
+else
     ssh -o StrictHostKeyChecking=no $master "ln -f ${COMDB2_EXE} ${CDB2DUMP_EXE}"
     ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} " > $out
-else
-    find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} -f $out
 fi
 
 lc=$(wc $out | awk '{print $1,$2,$3}')

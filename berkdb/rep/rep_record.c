@@ -74,7 +74,7 @@ extern int gbl_is_physical_replicant;
 extern int gbl_dumptxn_at_commit;
 int gbl_rep_badgen_trace;
 int gbl_decoupled_logputs = 1;
-int gbl_inmem_repdb = 1;
+int gbl_inmem_repdb = 0;
 int gbl_max_apply_dequeue = 100000;
 int gbl_master_req_waitms = 200;
 int gbl_fills_waitms = 1000;
@@ -128,7 +128,7 @@ static inline void send_dupmaster(DB_ENV *dbenv, const char *func, int line);
 extern void bdb_set_seqnum(void *);
 extern void __pgdump_reprec(DB_ENV *dbenv, DBT *dbt);
 extern int dumptxn(DB_ENV * dbenv, DB_LSN * lsnpp);
-extern void wait_for_sc_to_stop(const char *operation);
+extern void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 extern void allow_sc_to_run(void);
 
 int64_t gbl_rep_trans_parallel = 0, gbl_rep_trans_serial =
@@ -1302,10 +1302,11 @@ skip:				/*
 						__FILE__, __LINE__, lsn.file,
 						lsn.offset);
 #endif
-
-					(void)__rep_send_message(dbenv, *eidp,
-						REP_VERIFY_REQ,
-						&lsn, NULL, 0, NULL);
+					if (lsn.file > 0) {
+						(void)__rep_send_message(dbenv, *eidp,
+								REP_VERIFY_REQ,
+								&lsn, NULL, 0, NULL);
+					}
 				}
 			}
 			fromline = __LINE__;
@@ -1677,6 +1678,8 @@ more:
 							"Unable to get prev of [%lu][%lu]",
 							(u_long)lsn.file,
 							(u_long)lsn.offset);
+                    logmsg(LOGMSG_INFO, "%s:%d sending DB_REP_OUTDATED\n",
+                            __func__, __LINE__);
 					ret = DB_REP_OUTDATED;
 					/* Tell the replicant he's outdated. */
 					if (gbl_verbose_fills) {
@@ -1684,6 +1687,9 @@ more:
 								"for LSN %d:%d\n", __func__, __LINE__, 
 								lsn.file, lsn.offset);
 					}
+                    logmsg(LOGMSG_INFO, "%s:%d log_c_get failed to find [%d:%d]"
+                            " and [%d:%d]: REP_VERIFY_FAIL\n", __func__, __LINE__,
+                            lsn.file, lsn.offset,endlsn.file, endlsn.offset);
 					if ((resp_rc = __rep_time_send_message(dbenv, *eidp,
 								REP_VERIFY_FAIL, &lsn, NULL, 0,
 								NULL, &sendtime)) != 0 && gbl_verbose_fills) {
@@ -1998,6 +2004,7 @@ more:
 				verify_req_print = now;
 			}
 
+            assert(lsn.file > 0);
 			(void)__rep_send_message(dbenv,
 				*eidp, REP_VERIFY_REQ, &lsn, NULL, 0, NULL);
 
@@ -2033,6 +2040,7 @@ notfound:
 						verify_req_print = now;
 					}
 
+                    assert(lsn.file > 0);
 					(void)__rep_send_message(dbenv,
 						*eidp, REP_VERIFY_REQ, &lsn, NULL,
 						0, NULL);
@@ -2062,6 +2070,9 @@ notfound:
 			 * the same environment and we'll say so.
 			 */
 			ret = DB_REP_OUTDATED;
+            logmsg(LOGMSG_INFO, "%s:%d returning DB_REP_OUTDATED\n",
+                    __func__, __LINE__);
+
 			if (rp->lsn.file != 1)
 				__db_err(dbenv,
 					"Too few log files to sync with master");
@@ -2090,6 +2101,8 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 	case REP_VERIFY_FAIL:
 		rep->stat.st_outdated++;
 		ret = DB_REP_OUTDATED;
+        logmsg(LOGMSG_INFO, "%s:%d returning DB_REP_OUTDATED\n",
+                __func__, __LINE__);
 		fromline = __LINE__;
 		goto errlock;
 	case REP_VERIFY_REQ:
@@ -2118,8 +2131,11 @@ rep_verify_err:if ((t_ret = __log_c_close(logc)) != 0 &&
 		 */
 		if (ret == DB_NOTFOUND &&
 			__log_is_outdated(dbenv, rp->lsn.file, &old) == 0 &&
-			old != 0)
+			old != 0) {
+            logmsg(LOGMSG_INFO, "%s rep_verify_req returning REP_VERIFY_FAIL "
+                    "for [%d:%d]\n", __func__, rp->lsn.file, rp->lsn.offset);
 			type = REP_VERIFY_FAIL;
+        }
 
 		if (ret != 0)
 			d = NULL;
@@ -3769,7 +3785,6 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset, 
 		int64_t rectype, void* blob, int blob_len)
 {
-
 	REP_CONTROL rp;
 
 	DBT rec = {0};
@@ -3810,6 +3825,7 @@ size_t __dbenv_get_log_header_size(DB_ENV* dbenv)
 	return hdrsize;
 }
 
+// TODO(NC): rename it to lockerid
 u_int32_t gbl_rep_lockid;
 
 static void
@@ -5176,7 +5192,7 @@ bad_resize:	;
 		goto err;
 #endif
 	}
-
+	gbl_rep_lockid = lockid;
 
 	/* setup transaction processsor */
 	rp->commit_lsn = ctrllsn;
@@ -6412,7 +6428,7 @@ __rep_dorecovery(dbenv, lsnp, trunclsnp, online, undid_schema_change)
 	i_am_master = F_ISSET(rep, REP_F_MASTER);
 
 	if (i_am_master) {
-		wait_for_sc_to_stop("log-truncate");
+		wait_for_sc_to_stop("log-truncate", __func__, __LINE__);
 	}
 
 	Pthread_rwlock_wrlock(&dbenv->recoverlk);

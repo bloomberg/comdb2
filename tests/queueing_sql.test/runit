@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 set -e
 set -x
@@ -16,13 +17,6 @@ fi
 
 # Number of insert_records function calls
 nins=0
-
-
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
 
 
 echo "create t1"

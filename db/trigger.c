@@ -153,8 +153,9 @@ int trigger_register(trigger_reg_t *t)
 
 static int trigger_unregister_int(trigger_reg_t *t)
 {
-    if (trigger_hash == NULL)
-        return 0;
+    if (trigger_hash == NULL) {
+        return CDB2_TRIG_REQ_SUCCESS;
+    }
     GET_BDB_STATE(bdb_state);
     uint8_t buf[TRIGGER_REG_MAX];
     t = trigger_recv(t, buf);
@@ -193,7 +194,7 @@ static void *trigger_start_int(void *name_)
     strcpy(name, name_);
     free(name_);
     trigger_reg_t *reg;
-    trigger_reg_init(reg, name);
+    trigger_reg_init(reg, name, 0);
     ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
     int rc, retry = 10;
     while (--retry > 0) {

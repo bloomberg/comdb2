@@ -7,8 +7,8 @@ set -x
 
 function fdbinfo
 {
-    echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')"
-    cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')" >> $output 2>&1
+    echo cdb2sql --tabs ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')"
+    cdb2sql --tabs ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')" >> $output 2>&1
     if (( $? != 0 )) ; then
         echo "Failed to retrieved fdb info ${a_dbname}"
         exit 1
@@ -17,8 +17,8 @@ function fdbinfo
 
 function tblver
 {
-    echo cdb2sql --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "select table_version('${tbl}')"
-    cdb2sql --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "select table_version('${tbl}')" >> $output
+    echo cdb2sql ${REM_CDB2_OPTIONS} ${a_remdbname} default "select table_version('${tbl}')"
+    cdb2sql ${REM_CDB2_OPTIONS} ${a_remdbname} default "select table_version('${tbl}')" >> $output
     if (( $? != 0 )) ; then
         echo "Failed to retrieved version for ${a_remdbname}"
         exit 1
@@ -28,8 +28,8 @@ function tblver
 function alter
 {
     csc=$1
-    echo cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table ${tbl} { `cat ${csc}` }"
-    cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table ${tbl} { `cat ${csc}` }"
+    echo cdb2sql ${REM_CDB2_OPTIONS} $a_remdbname default "alter table ${tbl} { `cat ${csc}` }"
+    cdb2sql ${REM_CDB2_OPTIONS} $a_remdbname default "alter table ${tbl} { `cat ${csc}` }"
     if (( $? != 0 )) ; then
         echo "Failed to alter schema to ${csc}"
         exit 1
@@ -42,8 +42,8 @@ function alter
 function sel
 {
     col=$1
-    echo cdb2sql --host $mach ${a_dbname} "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}"
-    cdb2sql --host $mach ${a_dbname} "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
+    echo cdb2sql ${SRC_CDB2_OPTIONS} --host $mach ${a_dbname} "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}"
+    cdb2sql ${SRC_CDB2_OPTIONS} --host $mach ${a_dbname} "select ${col} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
     if (( $? != 0 )) ; then
         echo "Failed to select rows from ${a_dbname}"
         exit 1
@@ -55,8 +55,12 @@ function sel
 a_remdbname=$1
 a_remcdb2config=$2
 a_dbname=$3
-a_dbdir=$4
-a_testdir=$5
+a_cdb2config=$4
+a_dbdir=$5
+a_testdir=$6
+
+REM_CDB2_OPTIONS="--cdb2cfg ${a_remcdb2config}"
+SRC_CDB2_OPTIONS="--cdb2cfg ${a_cdb2config}"
 
 output=run.out
 col1="a"
@@ -79,8 +83,8 @@ if (( $# > 5 )); then
 fi
 
 # Make sure we talk to the same host
-echo cdb2sql --tabs --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "SELECT comdb2_host()"
-mach=`cdb2sql --tabs --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "SELECT comdb2_host()"`
+echo cdb2sql --tabs ${REM_CDB2_OPTIONS} ${a_remdbname} default "SELECT comdb2_host()"
+mach=`cdb2sql --tabs ${REM_CDB2_OPTIONS} ${a_remdbname} default "SELECT comdb2_host()"`
 if (( $? != 0 )); then
     echo "Failed to get a machine"
     exit 1
@@ -89,8 +93,8 @@ fi
 test=1
 if (( $test >= $test1 && $test<= $test2 )) ; then
 
-echo cdb2sql -s --cdb2cfg ${a_remcdb2config} ${a_remdbname} "create table ${tbl} {`cat ${csc1}`}"
-cdb2sql -s --cdb2cfg ${a_remcdb2config} ${a_remdbname} default "create table ${tbl} {`cat ${csc1}`}" > $output 2>&1
+echo cdb2sql -s ${REM_CDB2_OPTIONS} ${a_remdbname} "create table ${tbl} {`cat ${csc1}`}"
+cdb2sql -s ${REM_CDB2_OPTIONS} ${a_remdbname} default "create table ${tbl} {`cat ${csc1}`}" > $output 2>&1
 if (( $? != 0 )); then
     echo "Fail to create table ${tbl} for ${a_remdbname}"
     exit 1
@@ -101,7 +105,7 @@ let test=test+1
 if (( $test >= $test1 && $test<= $test2 )) ; then
 
 # populate table on remote
-cdb2sql -s --cdb2cfg ${a_remcdb2config} $a_remdbname default - < insdata.req >> $output 2>&1
+cdb2sql -s ${REM_CDB2_OPTIONS} $a_remdbname default - < insdata.req >> $output 2>&1
 
 fdbinfo
 tblver
@@ -145,7 +149,7 @@ let test=test+1
 if (( $test >= $test1 && $test<= $test2 )) ; then
 
 # error now
-cdb2sql --host $mach ${a_dbname} "select ${col2} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --host $mach ${a_dbname} "select ${col2} from LOCAL_${a_remdbname}.${tbl} order by ${col1}" >> $output 2>&1
 
 fdbinfo 
 tblver

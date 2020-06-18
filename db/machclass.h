@@ -17,6 +17,8 @@
 #ifndef INCLUDED_MACHCLASS_H
 #define INCLUDED_MACHCLASS_H
 
+enum { MAX_CPU = 65536 };
+
 /* order is important; custom defined classes are indexed from 1 to
   < CLASS_DENIED
 */

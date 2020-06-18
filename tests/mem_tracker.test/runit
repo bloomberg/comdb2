@@ -2,14 +2,21 @@
 
 bash -n "$0" | exit 1
 set -e
+set -x
 
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
 
 # Get the base address of comdb2 binary in the address space of the db process
-dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
-echo DB pid is $dbpid
-baseaddr=`ssh $host "pmap $dbpid" | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
+if [ -z "$CLUSTER" ] ; then
+    dbpid=`pgrep -a comdb2 | grep $dbnm | awk '{print $1}'`
+    echo DB pid is $dbpid
+    baseaddr=`pmap $dbpid | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
+else
+    dbpid=`ssh $host 'pgrep -a comdb2' | grep $dbnm | awk '{print $1}'`
+    echo DB pid is $dbpid
+    baseaddr=`ssh $host "pmap $dbpid" | grep comdb2$ | head -1 | awk '{printf "0x%s", $1}'`
+fi
 echo base address is $baseaddr
 
 cat << EOF | cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm --host $host - >/dev/null

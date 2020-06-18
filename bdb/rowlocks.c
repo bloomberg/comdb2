@@ -17,7 +17,7 @@
 #include <segstr.h>
 #include <list.h>
 #include <plhash.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <net.h>
 #include <bdb_int.h>
@@ -99,8 +99,6 @@ static int undo_upd_dta_lk(bdb_state_type *bdb_state, tran_type *tran,
 static int undo_upd_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                           llog_undo_upd_ix_lk_args *upd_ix_lk, DB_LSN *undolsn,
                           DB_LSN *prev, int just_load_lsn);
-
-extern u_int32_t gbl_rep_lockid;
 
 static int print_log_records(bdb_state_type *bdb_state, DB_LSN *lsn)
 {

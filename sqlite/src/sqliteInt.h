@@ -4095,8 +4095,8 @@ void sqlite3ErrorMsg(Parse*, const char*, ...);
 int sqlite3ErrorToParser(sqlite3*,int);
 void sqlite3Dequote(char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3IsCorrectlyQuoted(char *);
-int sqlite3IsCorrectlyBraced(char *);
+int sqlite3IsCorrectlyQuoted(const char *);
+int sqlite3IsCorrectlyBraced(const char *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3DequoteExpr(Expr*);
 void sqlite3TokenInit(Token*,char*);
@@ -5083,7 +5083,7 @@ struct Cdb2TrigTables {
 Cdb2TrigEvents *comdb2AddTriggerEvent(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
 void comdb2DropTrigger(Parse*,int,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
-void comdb2CreateTrigger(Parse*,int dynamic,Token*,Cdb2TrigTables*);
+void comdb2CreateTrigger(Parse*,int dynamic,int seq,Token*,Cdb2TrigTables*);
 
 void comdb2CreateScalarFunc(Parse *, Token *);
 void comdb2DropScalarFunc(Parse *, Token *);

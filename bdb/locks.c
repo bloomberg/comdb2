@@ -227,17 +227,6 @@ int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode,
 {
     int rc;
 
-#if 0
-    char lock_description[100];
-    bdb_describe_lock(dbenv, lkname->data, lkname->size, lock_description,
-                      sizeof(lock_description));
-    printf("get: %s\n", lock_description);
-    if (lid && lid == gbl_rep_lockid && lkname->size == 30) {
-        printf("Replication thread getting row lock?\n");
-        abort();
-    }
-#endif
-
     if (lid == gbl_rep_lockid && (lkname->size == 30 || lkname->size > 32)) {
         logmsg(LOGMSG_WARN, "replication thread getting logical locks!\n");
     }
@@ -791,8 +780,6 @@ int bdb_lock_row_write_getlock_fromlid(bdb_state_type *bdb_state, int lid,
                               lkname, 0);
     return rc;
 }
-
-extern int __lock_to_dbt(DB_ENV *dbenv, DB_LOCK *lock, void **ptr, int *sz);
 
 int bdb_release_lock(bdb_state_type *bdb_state, DB_LOCK *lk)
 {

@@ -209,7 +209,7 @@ int tool_cdb2_printlog_main(argc, argv)
 	argc -= optind;
 	argv += optind;
 
-	if (argc >= 0)
+	if (argc > 0)
 		return (cdb2_printlog_usage());
 
 	/* Handle possible interruptions. */

@@ -40,43 +40,6 @@ function do_alter
 }
 
 
-function do_sc_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    typeset failed=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        v=$((scnt%2 + 2)) #2 or 3
-        csc=t${v}.csc2
-
-        echo "Running alter iteration $scnt: $loc_tbl $csc"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "alter table $loc_tbl { `cat $csc ` }"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "NOTE: schemachange above CORRECTLY failed"
-            failed=1
-        fi
-
-        do_verify $loc_tbl
-        let scnt=scnt+1
-        #sleep 1
-    done
-
-    echo "Performed $scnt schema-changes."
-
-    if [ $failed -eq 0 ] ; then
-        echo "Testcase failed: SC succeeded $scnt times"
-        exit 1
-    fi
-
-    return 0
-}
-
-
 function do_rebuild_track_pid
 {
     typeset loc_dbnm=$1
@@ -148,30 +111,6 @@ function remove_compression_rebuild
 
     return 0
 }
-
-
-function do_rebuild
-{
-    typeset max=$1
-    typeset scnt=0
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            return 1
-        fi
-        let scnt=scnt+1
-        do_verify $tbl
-    done
-    assertcnt $tbl $nrecs
-
-    return 0
-}
-
 
 
 function delete_records

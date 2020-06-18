@@ -29,32 +29,49 @@
 #include <mem_util.h>
 #include <mem_override.h>
 
-static int os_gethostbyname(char **name_ptr, struct in_addr *addr)
+static int os_get_host_and_cname_by_name(char **name_ptr, struct in_addr *addr,
+                                         char **cname)
 {
     const char *name = *name_ptr;
+    int rc;
     struct addrinfo *res = NULL, hints = {0};
     hints.ai_family = AF_INET;
     hints.ai_socktype = SOCK_STREAM;
-    if (getaddrinfo(name, NULL, &hints, &res) != 0 || res == NULL) {
-        return -1;
+    hints.ai_flags = AI_CANONNAME;
+
+    if ((rc = getaddrinfo(name, NULL, &hints, &res)) != 0 || res == NULL) {
+        logmsg(LOGMSG_ERROR, "getaddrinfo: %s\n", gai_strerror(rc));
+        return rc;
     }
+
     if (addr) {
         *addr = ((struct sockaddr_in*)res->ai_addr)->sin_addr;
     }
+
+    if (cname != NULL)
+        *cname = strdup(res->ai_canonname);
+
     freeaddrinfo(res);
     return 0;
 }
 
-static hostbyname *hostbyname_impl = os_gethostbyname;
+static hostbyname *hostbyname_impl = os_get_host_and_cname_by_name;
 
 int comdb2_gethostbyname(char **name, struct in_addr *addr)
 {
-    return hostbyname_impl(name, addr);
+    return hostbyname_impl(name, addr, NULL);
+}
+
+char *comdb2_getcanonicalname(char *name)
+{
+    char *cname = NULL;
+    (void)hostbyname_impl(&name, NULL, &cname);
+    return cname;
 }
 
 hostbyname *get_os_hostbyname(void)
 {
-    return os_gethostbyname;
+    return os_get_host_and_cname_by_name;
 }
 
 void set_hostbyname(hostbyname *impl)

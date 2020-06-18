@@ -270,6 +270,7 @@ static int comdb2ma_destroy_int(comdb2ma cm);
 
 #ifdef PER_THREAD_MALLOC
 __thread const char *thread_type_key;
+static __thread comdb2ma *t_zone;
 static comdb2ma get_area(int indx);
 static void destroy_zone(void *);
 #else
@@ -1295,13 +1296,14 @@ static comdb2ma get_area(int indx)
         return COMDB2_STATIC_MAS[indx];
 #endif /* !THREAD_DIAGNOSIS */
 
-    zone = (comdb2ma *)pthread_getspecific(root.zone);
+    zone = t_zone;
     if (zone == NULL) {
         if (COMDB2MA_LOCK(&root) == 0) {
             zone = mspace_calloc(root.m, COMDB2MA_COUNT, sizeof(comdb2ma));
             COMDB2MA_UNLOCK(&root);
         }
         Pthread_setspecific(root.zone, (void *)zone);
+        t_zone = zone;
     }
 
     if (zone[indx] == NULL) {

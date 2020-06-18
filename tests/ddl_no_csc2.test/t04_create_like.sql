@@ -1,3 +1,4 @@
+SELECT '---------------------------------- PART #00 ----------------------------------' AS part;
 CREATE TABLE t1(i INT, j INT)$$
 CREATE INDEX idx1 ON t1(i, j)
 CREATE INDEX idx2 ON t1(i DESC, j ASC)
@@ -27,3 +28,35 @@ DROP TABLE t3_copy;
 DROP TABLE t4_copy;
 DROP TABLE t5_copy;
 DROP TABLE t1;
+
+SELECT '---------------------------------- PART #01 ----------------------------------' AS part;
+CREATE TABLE t0(i INT)$$
+CREATE TABLE t1(i INT) OPTIONS REC NONE, BLOBFIELD NONE $$
+CREATE TABLE t2(i INT) OPTIONS REC CRLE $$
+CREATE TABLE t3(i INT) OPTIONS REC LZ4, BLOBFIELD LZ4 $$
+CREATE TABLE t4(i INT) OPTIONS REC RLE, BLOBFIELD RLE $$
+CREATE TABLE t5(i INT) OPTIONS REC ZLIB, BLOBFIELD ZLIB $$
+
+CREATE TABLE t0a LIKE t0 $$
+CREATE TABLE t1a LIKE t1 $$
+CREATE TABLE t2a LIKE t2 $$
+CREATE TABLE t3a LIKE t3 $$
+CREATE TABLE t4a LIKE t4 $$
+CREATE TABLE t5a LIKE t5 $$
+
+SELECT SLEEP(5);
+
+exec procedure sys.cmd.send('stat compr')
+
+DROP TABLE t0;
+DROP TABLE t1;
+DROP TABLE t2;
+DROP TABLE t3;
+DROP TABLE t4;
+DROP TABLE t5;
+DROP TABLE t0a;
+DROP TABLE t1a;
+DROP TABLE t2a;
+DROP TABLE t3a;
+DROP TABLE t4a;
+DROP TABLE t5a;

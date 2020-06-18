@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 dbname=$1
 NRUNS=100
@@ -44,12 +45,6 @@ function makebl
     echo
 
     return 0
-}
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
 }
 
 function insert

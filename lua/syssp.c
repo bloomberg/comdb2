@@ -18,7 +18,6 @@
 #include <bdb_api.h>
 #include <phys_rep.h>
 
-
 /* Wishes for anyone who wants to clean this up one day:
  * 1)  don't need boilerplate lua code for this, should have a fixed description
  *     of types/names for each call, and C code for emitting them. 
@@ -454,7 +453,8 @@ static int db_send(Lua L) {
     if (gbl_uses_password) {
       if (sp && sp->clnt) {
           int bdberr;
-          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
+          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "",
+                                    sp->clnt->current_user.name, &bdberr)) {
               return luaL_error(L, "User doesn't have access to run this command.");
           }
       }
@@ -561,6 +561,25 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+// delete sc history by tablename and by seed
+static int db_comdb_delete_sc_history(Lua L)
+{
+    if (!lua_isstring(L, 1))
+        return luaL_error(L, "Expected string value for tablename.");
+    if (lua_isnil(L, 2)) 
+        return luaL_error(L, "Expected non null value for seed.");
+
+    if (gbl_myhostname != thedb->master)
+        return luaL_error(L, "Can only delete from master node");
+    uint64_t fseed = lua_tointeger(L, -1);
+    char *tbl = (char*) lua_tostring(L, -2);
+    int rc = bdb_del_schema_change_history(NULL, tbl, fseed);
+    if (rc)
+        return luaL_error(L, "Error deleting entry");
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -574,6 +593,7 @@ static const luaL_Reg sys_funcs[] = {
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
+    { "delete_sc_history", db_comdb_delete_sc_history },
     { NULL, NULL }
 }; 
 
@@ -745,6 +765,32 @@ static struct sp_source syssps[] = {
         "    end\n"
         "end\n",
         "register_replicant"
+    }
+    ,{
+        /* delete all but the last N rows from llmeta for this table */
+        "sys.cmd.trim_sc_history",
+        "local function main(t, n)\n"
+        " if (n == nil) then \n"
+        "  n = 10 \n"
+        " end \n"
+        " local resultset, rc = db:exec('select seed from comdb2_sc_history where seed not in "
+        "   (select seed from comdb2_sc_history where name = \"'..t..'\" order by seed desc limit '..n..') "
+        "   and name=\"'..t..'\"' )\n"
+        "  local c = 0\n"
+        "  local row = resultset:fetch()\n"
+        "  while row do\n"
+        "    sys.delete_sc_history(t, ' '..row.seed)\n"
+        //"    db:emit('Deleting '..row.seed)\n"
+        "    row = resultset:fetch()\n"
+        "    c = c + 1\n"
+        "  end\n"
+        "  if (c > 0) then \n"
+        "    db:emit('Deleted '..c..' rows from sc_history for tablename '..t)\n"
+        "  else \n"
+        "    db:emit('No rows to delete from sc_history for tablename '..t)\n"
+        "  end \n"
+        "end\n",
+        NULL
     }
 };
 

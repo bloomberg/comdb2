@@ -1,6 +1,12 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+test_file="t10_view_timepart.sql"
+TIMEPART_STARTTIME=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC";\
+                    print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+2)'`
+cat ${test_file} | sed "s/{{STARTTIME}}/${TIMEPART_STARTTIME}/" > ${test_file}.new
+mv ${test_file}.new ${test_file}
+
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
 [ $? -eq 0 ] || exit 1
 exit 0

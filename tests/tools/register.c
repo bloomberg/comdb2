@@ -384,7 +384,7 @@ void *thd(void *arg)
     char *readnode;
     cdb2_hndl_tp *db;
     int rc, iter = 0;
-    int threadnum = (unsigned long long)arg;
+    int threadnum = *(int*)arg;
     fprintf(stdout, "Thread %d starting\n", threadnum);
 
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
@@ -574,8 +574,10 @@ int main(int argc, char *argv[])
     }
 
     threads = malloc(sizeof(pthread_t) * nthreads);
-    for (unsigned long long i = 0; i < nthreads; i++) {
-        rc = pthread_create(&threads[i], NULL, thd, (void *)i);
+    int t_ids[nthreads];
+    for (unsigned int i = 0; i < nthreads; i++) {
+        t_ids[i] = i;
+        rc = pthread_create(&threads[i], NULL, thd, (void *)&t_ids[i]);
     }
 
     int sleeptime = (runtime / 2 - 1);
