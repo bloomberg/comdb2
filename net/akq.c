@@ -67,7 +67,6 @@ static void akq_new_chunk(struct akq *q)
         buf += q->work_size;
     }
     ++q->chunks;
-    logmsg(LOGMSG_USER, "[%-19s%19s] total chunks:%d\n", q->name, __func__, q->chunks);
 }
 
 static void akq_worker_int(struct akq *q)
