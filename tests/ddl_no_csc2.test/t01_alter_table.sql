@@ -304,3 +304,16 @@ CREATE INDEX idx2 ON t1(CAST(v || 'aaa' AS CSTRING(10)));
 CREATE INDEX idx3 ON t1(CAST(v || '"aaa"' AS CSTRING(10)));
 SELECT csc2 FROM sqlite_master WHERE name LIKE 't1';
 DROP TABLE t1;
+
+# Test that ALTER TABLE preserves table options
+CREATE TABLE t1(i INT) OPTIONS REC NONE, BLOBFIELD NONE $$
+ALTER TABLE t1 ADD COLUMN j INT NULL $$
+CREATE TABLE t2(i INT) OPTIONS REC ZLIB, BLOBFIELD ZLIB $$
+ALTER TABLE t2 ADD COLUMN j INT NULL $$
+
+SELECT SLEEP(5);
+
+exec procedure sys.cmd.send('stat compr')
+
+DROP TABLE t1;
+DROP TABLE t2;

@@ -264,14 +264,37 @@ select count(*) from t1
 select count(*) from t2
 select count(*) from t2 where i = 1
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans1.txt
+echo "[begin] rc 0
+(count(*)=0)
+[select count(*) from t1] rc 0
+(count(*)=2)
+[select count(*) from t2] rc 0
+(count(*)=1)
+[select count(*) from t2 where i = 1] rc 0
+[commit] rc 0" > trans1.exp 
+if ! diff trans1.txt trans1.exp ; then
+    failexit "trans1.txt does not match expected"
+fi
 
 # test transaction of diff sizes
 echo "begin
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans0.txt
+echo "[begin] rc 0
+[commit] rc 0" > trans0.exp
+if ! diff trans0.txt trans0.exp ; then
+    failexit "trans0.txt does not match expected"
+fi
+
 
 echo "begin
 insert into t2 values(3)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans2.txt
+echo "[begin] rc 0
+[insert into t2 values(3)] rc 0
+[commit] rc 0" > trans2.exp
+if ! diff trans2.txt trans2.exp ; then
+    failexit "trans2 does not match expected"
+fi
 
 assertcnt t2 3
 
@@ -279,6 +302,13 @@ echo "begin
 insert into t2 values(4)
 insert into t2 values(5)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans3.txt
+echo "[begin] rc 0
+[insert into t2 values(4)] rc 0
+[insert into t2 values(5)] rc 0
+[commit] rc 0" > trans3.exp
+if ! diff trans3.txt trans3.exp ; then
+    failexit "trans3 does not match expected"
+fi
 
 assertcnt t2 5
 
@@ -287,6 +317,14 @@ insert into t2 values(6)
 insert into t2 values(7)
 insert into t2 values(8)
 commit" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans4.txt
+echo "[begin] rc 0
+[insert into t2 values(6)] rc 0
+[insert into t2 values(7)] rc 0
+[insert into t2 values(8)] rc 0
+[commit] rc 0" > trans4.exp
+if ! diff trans4.txt trans4.exp ; then
+    failexit "trans4 does not match expected"
+fi
 
 assertcnt t2 8
 
@@ -294,13 +332,26 @@ assertcnt t2 8
 echo "begin
 insert into t2 values(9)
 rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+echo "[begin] rc 0
+[insert into t2 values(9)] rc 0
+[rollback] rc 0" > trans5.exp
+if ! diff trans5.txt trans5.exp ; then
+    failexit "trans5 does not match expected"
+fi
 
 assertcnt t2 8
 
 echo "begin
 insert into t2 values(9)
 insert into t2 values(10)
-rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans5.txt
+rollback" | cdb2sql ${CDB2_OPTIONS} $dbnm default &> trans6.txt
+echo "[begin] rc 0
+[insert into t2 values(9)] rc 0
+[insert into t2 values(10)] rc 0
+[rollback] rc 0" > trans6.exp
+if ! diff trans6.txt trans6.exp ; then
+    failexit "trans6 does not match expected"
+fi
 
 assertcnt t2 8
 

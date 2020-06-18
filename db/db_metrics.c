@@ -414,7 +414,8 @@ int refresh_metrics(void)
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);
     int master =
-        bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_mynode ? 1 : 0;
+        bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_myhostname ? 1
+                                                                            : 0;
     stats.ismaster = master;
     rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
                              (unsigned long long *)&stats.num_sc_done, &bdberr);

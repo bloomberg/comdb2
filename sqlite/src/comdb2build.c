@@ -134,8 +134,8 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
-    if(gbl_allow_user_schema && clnt->user[0] != '\0' &&
-       strcasecmp(clnt->user,DEFAULT_USER) != 0) {
+    if (gbl_allow_user_schema && clnt->current_user.name[0] != '\0' &&
+        strcasecmp(clnt->current_user.name, DEFAULT_USER) != 0) {
         /* Check whether table_name contains user name. */
         char* username = strchr(table_name, '@');
         if (username) {
@@ -147,7 +147,9 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             int bdberr;
             int bytes_written;
             bdb_state_type *bdb_state = thedb->bdb_env;
-            if (bdb_tbl_access_userschema_get(bdb_state, NULL, clnt->user, userschema, &bdberr) == 0) {
+            if (bdb_tbl_access_userschema_get(bdb_state, NULL,
+                                              clnt->current_user.name,
+                                              userschema, &bdberr) == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", table_name);
               } else {
@@ -161,7 +163,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
               }
             } else {
               bytes_written = snprintf(dst, MAXTABLELEN, "%s@%s", table_name,
-                                       clnt->user);
+                                       clnt->current_user.name);
               if (bytes_written >= MAXTABLELEN) {
                 rc = setError(pParse, SQLITE_MISUSE, "User-schema name is "
                                                      "too long");
@@ -399,7 +401,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      if (clnt && tablename)
      {
         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, clnt->user, &bdberr))
+            tablename, clnt->current_user.name, &bdberr))
           return SQLITE_AUTH;
         else
             return SQLITE_OK;
@@ -439,14 +441,15 @@ static int comdb2AuthenticateOpPassword(Parse* pParse)
      if (clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         if (bdb_user_password_check(clnt->user, clnt->password, NULL))
+         if (bdb_user_password_check(clnt->current_user.name,
+                                     clnt->current_user.password, NULL))
          {
             return SQLITE_AUTH;
          }
          
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", clnt->user,
-                                   &bdberr))
+         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "",
+                                   clnt->current_user.name, &bdberr))
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
@@ -606,7 +609,7 @@ static int authenticateSC(const char * table,  Parse *pParse)
 {
     char *username = strstr(table, "@");
     struct sqlclntstate *clnt = get_sql_clnt();
-    if (username && strcmp(username+1, clnt->user) == 0) {
+    if (username && strcmp(username+1, clnt->current_user.name) == 0) {
         return 0;
     } else if (comdb2AuthenticateUserDDL(table) == 0) {
         return 0;
@@ -1980,8 +1983,7 @@ void comdb2setPassword(Parse* pParse, Token* pwd, Token* nm)
     {
         struct sqlclntstate *clnt = get_sql_clnt();
         /* Check if its password change request */
-        if (!(clnt &&
-                   strcmp(clnt->user, password->user) == 0 )) {
+        if (!(clnt && strcmp(clnt->current_user.name, password->user) == 0 )) {
             setError(pParse, SQLITE_AUTH, "User does not have OP credentials");
             goto clean_arg;
         }
@@ -2237,23 +2239,26 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
-int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
-                      size_t len)
+int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
+                     char *tableName, size_t len)
 {
    struct sqlclntstate *clnt = get_sql_clnt();
    if ((zDB && (!strcasecmp(zDB, "main") || !strcasecmp(zDB, "temp"))))
    {
        snprintf(tableName, len, "%s", p->zName);
-   } else if (clnt && (clnt->user[0] != '\0') &&
-              !strchr(p->zName, '@') &&
-              strncasecmp(p->zName, "sqlite_", 7) &&
-              strncasecmp(p->zName, "comdb2", 6))
+   } else if (clnt &&
+              (clnt->current_user.name[0] != '\0') &&   /* authenticated */
+              !strchr(p->zName, '@') &&                 /* mustn't have user
+                                                           name */
+              strncasecmp(p->zName, "sqlite_", 7) &&    /* sqlite table */
+              !sqlite3HashFind(&db->aModule, p->zName)) /* sqlite module */
    {
        char userschema[MAXTABLELEN];
        int bdberr;
        int bytes_written;
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL, clnt->user,
+       if (bdb_tbl_access_userschema_get(bdb_state, NULL,
+                                         clnt->current_user.name,
                                          userschema, &bdberr) == 0) {
          if (userschema[0] == '\0') {
            bytes_written = snprintf(tableName, len, "%s", p->zName);
@@ -2269,7 +2274,7 @@ int resolveTableName(struct SrcList_item *p, const char *zDB, char *tableName,
          }
        } else {
          bytes_written = snprintf(tableName, len, "%s@%s", p->zName,
-                                  clnt->user);
+                                  clnt->current_user.name);
          if (bytes_written >= len) {
              return 1;
          }
@@ -3740,7 +3745,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= REC_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= REC_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= REC_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= REC_NONE; break;
     default: assert(0);
     }
 
@@ -3749,7 +3754,7 @@ static int retrieve_table_options(struct dbtable *table)
     case BDB_COMPRESS_CRLE: table_options |= BLOB_CRLE; break;
     case BDB_COMPRESS_ZLIB: table_options |= BLOB_ZLIB; break;
     case BDB_COMPRESS_LZ4: table_options |= BLOB_LZ4; break;
-    case BDB_COMPRESS_NONE: break;
+    case BDB_COMPRESS_NONE: table_options |= BLOB_NONE; break;
     default: assert(0);
     }
 
@@ -4363,7 +4368,8 @@ void comdb2CreateTableStart(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_TABLE, 0, 0, 0) ){
+        int code = isTemp ? SQLITE_CREATE_TEMP_TABLE : SQLITE_CREATE_TABLE;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5240,7 +5246,8 @@ void comdb2CreateIndex(
 
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
-        if( sqlite3AuthCheck(pParse, SQLITE_CREATE_INDEX, 0, 0, 0) ){
+        int code = temp ? SQLITE_CREATE_TEMP_INDEX : SQLITE_CREATE_INDEX;
+        if( sqlite3AuthCheck(pParse, code, 0, 0, 0) ){
             setError(pParse, SQLITE_AUTH, COMDB2_NOT_AUTHORIZED_ERRMSG);
             return;
         }
@@ -5551,9 +5558,7 @@ void comdb2CreateForeignKey(
             if (idx_part->name == 0)
                 goto oom;
 
-            if (pFromCol->a[i].sortOrder == SQLITE_SO_DESC) {
-                idx_part->flags |= INDEX_ORDER_DESC;
-            }
+            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -5575,9 +5580,7 @@ void comdb2CreateForeignKey(
         if (idx_part->name == 0)
             goto oom;
 
-        if (pToCol->a[i].sortOrder == SQLITE_SO_DESC) {
-            idx_part->flags |= INDEX_ORDER_DESC;
-        }
+        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -5618,14 +5621,9 @@ void comdb2CreateForeignKey(
         int j = 0;
         LISTC_FOR_EACH(&constraint->parent_idx_col_list, idx_part, lnk)
         {
-            int sort_order =
-                (parent_table->schema->ix[i]->member[j].flags & INDEX_DESCEND)
-                    ? INDEX_ORDER_DESC
-                    : 0;
-            if ((strcasecmp(idx_part->name,
-                            parent_table->schema->ix[i]->member[j].name) !=
-                 0) ||
-                idx_part->flags != sort_order) {
+            if (strcasecmp(idx_part->name,
+                           parent_table->schema->ix[i]->member[j].name) !=
+                0) {
                 key_found = 0;
                 break;
             }

@@ -74,5 +74,22 @@ else
     exit 1
 fi
 
+# 4) run tests with --showeffects
+showeffectsfiles=`ls *.showeffects`
+[ $? -eq 0 ] || exit 1
+for showeffectsfile in $showeffectsfiles; do
+    echo "$showeffectsfile"
+    testname=`echo $showeffectsfile | cut -d "." -f 1`
+
+    cmd="cdb2sql ${CDB2_OPTIONS} $script_mode --showeffects -f $showeffectsfile $dbname default "
+    echo $cmd "> $testname.output"
+    $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
+                          s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/;
+                          s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;
+                          s/rrn ([0-9]+) genid 0x([a-zA-Z0-9]+)/rrn xx genid xx/;"\
+                          > $testname.output
+    verify $testname
+done
+
 echo "Testcase passed."
 exit 0

@@ -70,6 +70,17 @@ struct newsql_postponed_data {
     uint8_t *row;
 };
 
+struct pb_sbuf_writer {
+    ProtobufCBuffer base;
+    struct sbuf2 *sb;
+    int nbytes; /* bytes written */
+};
+
+#define PB_SBUF_WRITER_INIT(sb)                                                                                        \
+    {                                                                                                                  \
+        {.append = pb_sbuf_write}, (sb), 0                                                                             \
+    }
+
 /*                (SERVER)                                                */
 /*  Default --> (val: 1)                                                  */
 /*                  |                                                     */
@@ -117,10 +128,6 @@ struct newsql_appdata {
     CDB2QUERY *query;
     CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
-
-    /* row buf */
-    size_t packed_capacity;
-    void *packed_buf;
 
     /* columns */
     int count;
@@ -377,36 +384,32 @@ done:
     return rc;
 }
 
-#define NEWSQL_MAX_RESPONSE_ON_STACK (16 * 1024)
+static void pb_sbuf_write(ProtobufCBuffer *buffer, size_t len, const uint8_t *data)
+{
+    struct pb_sbuf_writer *writer = (struct pb_sbuf_writer *)buffer;
+    writer->nbytes += sbuf2write((char *)data, len, writer->sb);
+}
 
 static int newsql_response_int(struct sqlclntstate *clnt,
                                const CDB2SQLRESPONSE *r, int h, int flush)
 {
     size_t len = cdb2__sqlresponse__get_packed_size(r);
-    uint8_t *buf;
-    if (len < NEWSQL_MAX_RESPONSE_ON_STACK) {
-        buf = alloca(len);
-    } else {
-        struct newsql_appdata *appdata = clnt->appdata;
-        if (appdata->packed_capacity < len) {
-            appdata->packed_capacity = len + 1024;
-            appdata->packed_buf =
-                malloc_resize(appdata->packed_buf, appdata->packed_capacity);
-        }
-        buf = appdata->packed_buf;
-    }
-    cdb2__sqlresponse__pack(r, buf);
 
     struct newsqlheader hdr = {0};
     hdr.type = ntohl(h);
     hdr.length = ntohl(len);
 
+    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(clnt->sb);
+
     int rc;
     lock_client_write_lock(clnt);
     if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
         goto done;
-    if ((rc = sbuf2write((char *)buf, len, clnt->sb)) != len)
+    cdb2__sqlresponse__pack_to_buffer(r, (ProtobufCBuffer *)&writer);
+    if (writer.nbytes != len) {
+        rc = -1;
         goto done;
+    }
     if (flush && (rc = sbuf2flush(clnt->sb)) < 0)
         goto done;
     rc = 0;
@@ -471,7 +474,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
     return appdata;
 oom:
     logmsg(LOGMSG_ERROR,
-           "%s:%d failed to (re)alloc %lu bytes (errno: %d, reason: %s)\n",
+           "%s:%d failed to (re)alloc %zu bytes (errno: %d, reason: %s)\n",
            __func__, __LINE__, alloc_sz, errno, strerror(errno));
     return NULL;
 }
@@ -487,7 +490,6 @@ static void free_newsql_appdata(struct sqlclntstate *clnt)
         free(appdata->postponed);
         appdata->postponed = NULL;
     }
-    free(appdata->packed_buf);
     free(appdata);
     clnt->appdata = NULL;
 }
@@ -512,7 +514,7 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     for (int i = 0; i < ncols; ++i) {
         value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
-        const char *name = comdb2_column_name(clnt, stmt, i);
+        const char *name = sqlite3_column_name(stmt, i);
         size_t len = strlen(name) + 1;
         ADJUST_LONG_COL_NAME(name, len);
         cols[i].value.data = (uint8_t *)name;
@@ -796,7 +798,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                 char *e =
                     "failed to convert sqlite to client datetime for field";
                 errstat_set_rcstrf(arg->err, ERR_CONVERSION_DT, "%s \"%s\"", e,
-                                   comdb2_column_name(clnt, stmt, i));
+                                   sqlite3_column_name(stmt, i));
                 return -1;
             }
             if (flip) {
@@ -1354,17 +1356,11 @@ static int newsql_get_high_availability(struct sqlclntstate *clnt)
     /* MOHIT -- Check here that we are in high availablity, its cdb2api, and
      * is its a retry. */
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        if (sqlquery->retry) {
-            clnt->num_retry = sqlquery->retry;
-            if (sqlquery->snapshot_info) {
-                clnt->snapshot_file = sqlquery->snapshot_info->file;
-                clnt->snapshot_offset = sqlquery->snapshot_info->offset;
-            } else {
-                clnt->snapshot_file = 0;
-                clnt->snapshot_offset = 0;
-            }
+        clnt->num_retry = sqlquery->retry;
+        if (sqlquery->retry && sqlquery->snapshot_info) {
+            clnt->snapshot_file = sqlquery->snapshot_info->file;
+            clnt->snapshot_offset = sqlquery->snapshot_info->offset;
         } else {
-            clnt->num_retry = 0;
             clnt->snapshot_file = 0;
             clnt->snapshot_offset = 0;
         }
@@ -1646,18 +1642,19 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
-                    if (strlen(sqlstr) >= sizeof(clnt->user)) {
+                    if (strlen(sqlstr) >= sizeof(clnt->current_user.name)) {
                         snprintf(err, sizeof(err),
                                  "set user: '%s' exceeds %zu characters",
-                                 sqlstr, sizeof(clnt->user) - 1);
+                                 sqlstr, sizeof(clnt->current_user.name) - 1);
                         rc = ii + 1;
                     } else {
-                        clnt->have_user = 1;
+                        clnt->current_user.have_name = 1;
                         /* Re-authenticate the new user. */
-                        if (clnt->authgen && strcmp(clnt->user, sqlstr) != 0)
+                        if (clnt->authgen &&
+                            strcmp(clnt->current_user.name, sqlstr) != 0)
                             clnt->authgen = 0;
-                        clnt->is_x509_user = 0;
-                        strcpy(clnt->user, sqlstr);
+                        clnt->current_user.is_x509_user = 0;
+                        strcpy(clnt->current_user.name, sqlstr);
                     }
                 }
             } else if (strncasecmp(sqlstr, "password", 8) == 0) {
@@ -1670,18 +1667,19 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                     rc = ii + 1;
                 } else {
                     sqlite3Dequote(sqlstr);
-                    if (strlen(sqlstr) >= sizeof(clnt->password)) {
+                    if (strlen(sqlstr) >= sizeof(clnt->current_user.password)) {
                         snprintf(err, sizeof(err),
-                                 "set password: '%s' exceeds %zu characters",
-                                 sqlstr, sizeof(clnt->password) - 1);
+                                 "set password: password length exceeds %zu "
+                                 "characters",
+                                 sizeof(clnt->current_user.password) - 1);
                         rc = ii + 1;
                     } else {
-                        clnt->have_password = 1;
+                        clnt->current_user.have_password = 1;
                         /* Re-authenticate the new password. */
                         if (clnt->authgen &&
-                            strcmp(clnt->password, sqlstr) != 0)
+                            strcmp(clnt->current_user.password, sqlstr) != 0)
                             clnt->authgen = 0;
-                        strcpy(clnt->password, sqlstr);
+                        strcpy(clnt->current_user.password, sqlstr);
                     }
                 }
             } else if (strncasecmp(sqlstr, "spversion", 9) == 0) {
@@ -1900,20 +1898,15 @@ static void send_dbinforesponse(struct dbenv *dbenv, SBUF2 *sb)
     cdb2__dbinforesponse__init(dbinfo_response);
     fill_dbinfo(dbinfo_response, dbenv->bdb_env);
     int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
-    uint8_t *buf, *malloc_buf = NULL;
-    if (len > NEWSQL_MAX_RESPONSE_ON_STACK) {
-        buf = malloc_buf = malloc(len);
-    } else {
-        buf = alloca(len);
-    }
-    cdb2__dbinforesponse__pack(dbinfo_response, buf);
+
+    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(sb);
+
     struct newsqlheader hdr = {0};
     hdr.type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
     hdr.length = htonl(len);
     sbuf2write((char *)&hdr, sizeof(hdr), sb);
-    sbuf2write((char *)buf, len, sb);
+    cdb2__dbinforesponse__pack_to_buffer(dbinfo_response, (ProtobufCBuffer *)&writer);
     sbuf2flush(sb);
-    free(malloc_buf);
     cdb2__dbinforesponse__free_unpacked(dbinfo_response, &pb_alloc);
 }
 
@@ -2233,7 +2226,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct sbuf2 *sb;
     struct dbenv *dbenv;
     struct dbtable *tab;
-    extern size_t gbl_cached_output_buffer_max_bytes;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
@@ -2270,7 +2262,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
       incoherent data.
     */
     if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
-        dbenv->master != gbl_mynode) {
+        dbenv->master != gbl_myhostname) {
         logmsg(LOGMSG_DEBUG,
                "%s:%d td %u new query on replicant with sync none, dropping\n",
                __func__, __LINE__, (uint32_t)pthread_self());
@@ -2309,7 +2301,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     query = read_newsql_query(dbenv, &clnt, sb);
     if (query == NULL) {
-        logmsg(LOGMSG_DEBUG, "Query is NULL.\n");
         goto done;
     }
 
@@ -2532,13 +2523,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (APPDATA->query) {
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
-        }
-
-        /* Keep a reasonable amount of memory in the clnt. */
-        if (APPDATA->packed_capacity > gbl_cached_output_buffer_max_bytes) {
-            APPDATA->packed_capacity = 0;
-            free(APPDATA->packed_buf);
-            APPDATA->packed_buf = NULL;
         }
 
         query = read_newsql_query(dbenv, &clnt, sb);

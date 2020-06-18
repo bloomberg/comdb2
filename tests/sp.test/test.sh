@@ -9,6 +9,11 @@ TMPDIR=${TMPDIR:-/tmp}
 # args
 a_dbn=$1
 
+skip_t10=0
+if [[ "$a_dbn" == *"queueodhgenerated"* ]]; then
+    skip_t10=1
+fi
+
 # find input files
 files=$( ls *.req | sort )
 
@@ -81,6 +86,10 @@ for testcase in $files ; do
 
     # cleanup testcase
     testcase=${testcase##*/}
+
+    if [[ $skip_t10 == 1 && "$testcase" == "t10.req" ]]; then
+        continue
+    fi
     
     # see if the prefix has changed
     new_batch=${testcase%%_*}

@@ -47,7 +47,6 @@
 #include <str0.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
-#include <segstring.h>
 
 #include <bdb_api.h>
 #include <sbuf2.h>
@@ -55,7 +54,6 @@
 #include <tcputil.h>
 #include "dbdest.h"
 #include "comdb2.h"
-#include <portmuxapi.h>
 
 #include "util.h"
 
@@ -363,10 +361,10 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     unsigned long long genid;
     int rc;
     struct ireq iq;
-    void *fnddta;
+    struct bdb_queue_found *fnddta;
     size_t fnddtalen;
     size_t fnddtaoff;
-    const uint8_t *open;
+    const uint8_t *status;
     pthread_mutex_t *mu;
     pthread_cond_t *cond;
 
@@ -374,7 +372,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     iq.usedb = table;
     genid = 0;
 
-    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &open);
+    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &status);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR,
                "dbq_get_front_genid: bdb_trigger_subscribe "
@@ -384,11 +382,11 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     }
     Pthread_mutex_lock(mu);
 
-    if (*open != 1) {
+    if (*status != TRIGGER_SUBSCRIPTION_OPEN) {
         goto skip;
     }
 
-    rc = dbq_get(&iq, consumer, NULL, (void **)&fnddta, &fnddtalen, &fnddtaoff,
+    rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL,
                  NULL, NULL);
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
@@ -447,7 +445,7 @@ static int dbqueuedb_admin_running = 0;
  * for each consumer. */
 static void admin(struct dbenv *dbenv, int type)
 {
-    int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
+    int iammaster = (dbenv->master == gbl_myhostname) ? 1 : 0;
 
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
@@ -503,6 +501,25 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
+static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
+                             unsigned int depth, void *userptr)
+{
+    struct consumer_stat *stats = userptr;
+
+    if (consumern < 0 || consumern >= MAXCONSUMERS) {
+        logmsg(LOGMSG_USER, "%s: consumern=%d length=%u epoch=%u\n", __func__,
+               consumern, (unsigned)length, epoch);
+    } else {
+        assert(!stats[consumern].has_stuff);
+        stats[consumern].has_stuff = 1;
+        stats[consumern].first_item_length = length;
+        stats[consumern].epoch = epoch;
+        stats[consumern].has_stuff = 1;
+        stats[consumern].depth = depth;
+    }
+    return BDB_QUEUE_WALK_CONTINUE;
+}
+
 static int stat_callback(int consumern, size_t length,
                                  unsigned int epoch, void *userptr)
 {
@@ -523,21 +540,19 @@ static int stat_callback(int consumern, size_t length,
     return BDB_QUEUE_WALK_CONTINUE;
 }
 
+static int get_stats(struct dbtable *, int, void *, struct consumer_stat *);
+
 static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 {
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
         logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename);
     else {
         int ii;
-        struct ireq iq;
         struct consumer_stat stats[MAXCONSUMERS] = {{0}};
         int flags = 0;
         const struct bdb_queue_stats *bdbstats;
 
         bdbstats = bdb_queue_get_stats(db->handle);
-
-        init_fake_ireq(db->dbenv, &iq);
-        iq.usedb = db;
 
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
                db->tablename);
@@ -545,7 +560,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        dbq_walk(&iq, flags, stat_callback, stats);
+        get_stats(db, flags, NULL, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
@@ -691,13 +706,13 @@ static void queue_flush(struct dbtable *db, int consumern)
     logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n",
            db->tablename, consumern);
 
-    if (db->dbenv->master != gbl_mynode) {
+    if (db->dbenv->master != gbl_myhostname) {
         logmsg(LOGMSG_WARN, "... but I am not the master node, so I do nothing.\n");
         return;
     }
 
     while (1) {
-        void *item;
+        struct bdb_queue_found *item;
         int rc;
 
         if (!flush_thread_active) {
@@ -705,8 +720,7 @@ static void queue_flush(struct dbtable *db, int consumern)
             return;
         }
 
-        rc = dbq_get(&iq, consumern, NULL, (void **)&item, NULL, NULL, NULL,
-                     NULL);
+        rc = dbq_get(&iq, consumern, NULL, &item, NULL, NULL, NULL, NULL, NULL);
 
         if (rc != 0) {
             if (rc != IX_NOTFND)
@@ -879,16 +893,40 @@ static int get_name(struct dbtable *db, char **spname) {
     return 0;
 }
 
-static int get_stats(struct dbtable *db, struct consumer_stat *st) {
+static int get_stats(struct dbtable *db, int flags, void *tran,
+                     struct consumer_stat *st) {
+    if (db->dbtype != DBTYPE_QUEUEDB) return -1;
+    int bdberr;
+    int made_tran = 0;
+    if (tran == NULL) {
+        bdberr = 0;
+        tran = bdb_tran_begin(db->handle, NULL, &bdberr);
+        if (tran == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to begin transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
+            return -1;
+        }
+        made_tran = 1;
+    }
     struct ireq iq;
-    if (db->dbtype != DBTYPE_QUEUEDB)
-        return -1;
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
-    int rc = dbq_walk(&iq, 0, stat_callback, st);
-    if (rc)
-        return rc;
-    return 0;
+    int rc;
+    if (db->odh) {
+        rc = dbq_odh_stats(&iq, stat_odh_callback, (tran_type *)tran, st);
+    } else {
+        rc = dbq_walk(&iq, flags, stat_callback, (tran_type *)tran, st);
+    }
+    if (made_tran) {
+        bdberr = 0;
+        int rc2 = bdb_tran_abort(db->handle, tran, &bdberr);
+        if (rc2) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
+            abort();
+        }
+    }
+    return rc;
 }
 
 comdb2_queue_consumer_t dbqueuedb_plugin_lua = {

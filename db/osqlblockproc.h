@@ -101,11 +101,17 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
  *       This will allow let us point directly to the buffer
  *
  */
-int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
+int osql_bplog_build_sorese_req(uint8_t **p_buf_start,
                                 const uint8_t **pp_buf_end, const char *sqlq,
                                 int sqlqlen, const char *tzname, int reqtype,
-                                char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid);
+
+/**
+ * Set proper blkseq from session to iq
+ * NOTE: We don't need to create buffers _SEQ, _SEQV2 for it
+ *
+ */
+void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq);
 
 /**
  * Debugging support

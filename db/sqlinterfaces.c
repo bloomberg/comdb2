@@ -80,7 +80,7 @@
 #include <sqlite3expert.h>
 
 #include <alloca.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include "flibc.h"
 
@@ -144,6 +144,8 @@ extern int gbl_verbose_normalized_queries;
 extern int gbl_group_concat_mem_limit;
 extern int gbl_expressions_indexes;
 extern int gbl_old_column_names;
+extern hash_t *gbl_fingerprint_hash;
+extern pthread_mutex_t gbl_fingerprint_hash_mu;
 
 /* Once and for all:
 
@@ -609,12 +611,8 @@ static LISTC_T(struct sqlclntstate) clntlist;
 static int64_t connid = 0;
 
 static __thread comdb2ma sql_mspace = NULL;
-int sql_mem_init(void *arg)
+static void sql_mem_create()
 {
-    if (unlikely(sql_mspace)) {
-        return 0;
-    }
-
     /* We used to start with 1MB - this isn't quite necessary
        as comdb2_malloc pre-allocation is much smarter now.
        We also name it "SQLITE" (uppercase) to differentiate it
@@ -626,7 +624,21 @@ int sql_mem_init(void *arg)
         logmsg(LOGMSG_FATAL, "%s: comdb2a_create failed\n", __func__);
         exit(1);
     }
+}
 
+int sql_mem_init(void *arg)
+{
+    if (unlikely(sql_mspace)) {
+        return 0;
+    }
+    sql_mem_create();
+    return 0;
+}
+
+int sql_mem_init_with_save(void *arg, void **poldm)
+{
+    *poldm = sql_mspace;
+    sql_mem_create();
     return 0;
 }
 
@@ -636,6 +648,12 @@ void sql_mem_shutdown(void *arg)
         comdb2ma_destroy(sql_mspace);
         sql_mspace = NULL;
     }
+}
+
+void sql_mem_shutdown_and_restore(void *arg, void **poldm)
+{
+    sql_mem_shutdown(arg);
+    sql_mspace = *poldm; *poldm = NULL;
 }
 
 static void *sql_mem_malloc(int size)
@@ -708,20 +726,13 @@ static int comdb2_authorizer_for_sqlite(
   int denyCreateTrigger = (pAuthState->flags & PREPARE_DENY_CREATE_TRIGGER);
   int denyPragma = (pAuthState->flags & PREPARE_DENY_PRAGMA);
   int denyDdl = (pAuthState->flags & PREPARE_DENY_DDL);
+  int allowTempDDL = (pAuthState->flags & PREPARE_ALLOW_TEMP_DDL);
   switch (code) {
     case SQLITE_CREATE_INDEX:
     case SQLITE_CREATE_TABLE:
-    case SQLITE_CREATE_TEMP_INDEX:
-    case SQLITE_CREATE_TEMP_TABLE:
-    case SQLITE_CREATE_TEMP_TRIGGER:
-    case SQLITE_CREATE_TEMP_VIEW:
     case SQLITE_CREATE_VIEW:
     case SQLITE_DROP_INDEX:
     case SQLITE_DROP_TABLE:
-    case SQLITE_DROP_TEMP_INDEX:
-    case SQLITE_DROP_TEMP_TABLE:
-    case SQLITE_DROP_TEMP_TRIGGER:
-    case SQLITE_DROP_TEMP_VIEW:
     case SQLITE_DROP_TRIGGER:
     case SQLITE_DROP_VIEW:
     case SQLITE_ALTER_TABLE:
@@ -768,6 +779,16 @@ static int comdb2_authorizer_for_sqlite(
       } else {
         return SQLITE_OK;
       }
+    case SQLITE_CREATE_TEMP_INDEX:
+    case SQLITE_CREATE_TEMP_TABLE:
+    case SQLITE_CREATE_TEMP_TRIGGER:
+    case SQLITE_CREATE_TEMP_VIEW:
+    case SQLITE_DROP_TEMP_INDEX:
+    case SQLITE_DROP_TEMP_TABLE:
+    case SQLITE_DROP_TEMP_TRIGGER:
+    case SQLITE_DROP_TEMP_VIEW:
+      pAuthState->numDdls++;
+      return allowTempDDL ? SQLITE_OK : SQLITE_DENY;
     default:
       return SQLITE_OK;
   }
@@ -2813,18 +2834,24 @@ void delete_prepared_stmts(struct sqlthdstate *thd)
 }
 
 // Call with schema_lk held and no_transaction == 1
-static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
 {
+    int allow_temp = flags & PREPARE_ALLOW_TEMP_DDL;
+    int recreate = flags & PREPARE_RECREATE;
+    if (!recreate && allow_temp) {
+        /* Never stale to operate on sqlite_temp_master */
+        return SQLITE_OK;
+    }
     /* cache analyze gen first because gbl_analyze_gen is NOT protected by
      * schema_lk */
     int cached_analyze_gen = gbl_analyze_gen;
     if (gbl_fdb_track)
         logmsg(LOGMSG_USER,
                "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, gbl_dbopen_gen, thd->analyze_gen,
+               thd->dbopen_gen, bdb_get_dbopen_gen(), thd->analyze_gen,
                cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
-    if (thd->dbopen_gen != gbl_dbopen_gen) {
+    if (thd->dbopen_gen != bdb_get_dbopen_gen()) {
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
@@ -2888,7 +2915,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
         return 0;
 
     /* We're emitting a row & have waiters */
-    if (!gbl_rep_wait_release_ms || thedb->master == gbl_mynode)
+    if (!gbl_rep_wait_release_ms || thedb->master == gbl_myhostname)
         return release_locks("release locks on emit-row");
 
     /* We're emitting a row and are blocking replication */
@@ -2899,7 +2926,7 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
-/* if userpassword does not match this function
+/* If user password does not match this function
  * will write error response and return a non 0 rc
  */
 static inline int check_user_password(struct sqlclntstate *clnt)
@@ -2910,18 +2937,18 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     if (!gbl_uses_password)
         return 0;
 
-    if (!clnt->have_user) {
-        clnt->have_user = 1;
-        strcpy(clnt->user, DEFAULT_USER);
+    if (!clnt->current_user.have_name) {
+        clnt->current_user.have_name = 1;
+        strcpy(clnt->current_user.name, DEFAULT_USER);
     }
 
-    if (!clnt->have_password) {
-        clnt->have_password = 1;
-        strcpy(clnt->password, DEFAULT_PASSWORD);
+    if (!clnt->current_user.have_password) {
+        clnt->current_user.have_password = 1;
+        strcpy(clnt->current_user.password, DEFAULT_PASSWORD);
     }
 
-    password_rc =
-        bdb_user_password_check(clnt->user, clnt->password, &valid_user);
+    password_rc = bdb_user_password_check(
+        clnt->current_user.name, clnt->current_user.password, &valid_user);
 
     if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
@@ -2933,10 +2960,18 @@ static inline int check_user_password(struct sqlclntstate *clnt)
 /* Return current authenticated user for the session */
 char *get_current_user(struct sqlclntstate *clnt)
 {
-    if (clnt && !clnt->is_x509_user && clnt->have_user) {
-        return clnt->user;
+    if (clnt && !clnt->current_user.is_x509_user &&
+        clnt->current_user.have_name) {
+        return clnt->current_user.name;
     }
     return NULL;
+}
+
+static void reset_user(struct sqlclntstate *clnt)
+{
+    if (!clnt)
+        return;
+    bzero(&clnt->current_user, sizeof(clnt->current_user));
 }
 
 void thr_set_current_sql(const char *sql)
@@ -3037,6 +3072,7 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
         param_count(clnt) == 0)
         return;
+    /* NC: Do we use this? */
     if (extract_sqlcache_hint(rec->sql, rec->cache_hint, HINT_LEN)) {
         rec->status = CACHE_HAS_HINT;
         if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
@@ -3293,10 +3329,10 @@ static int handle_bad_transaction_mode(struct sqlthdstate *thd,
 
 static int prepare_engine(struct sqlthdstate *, struct sqlclntstate *, int);
 int sqlengine_prepare_engine(struct sqlthdstate *thd,
-                             struct sqlclntstate *clnt, int recreate)
+                             struct sqlclntstate *clnt, int flags)
 {
     clnt->no_transaction = 1;
-    int rc = prepare_engine(thd, clnt, recreate);
+    int rc = prepare_engine(thd, clnt, flags);
     clnt->no_transaction = 0;
     return rc;
 }
@@ -3381,21 +3417,6 @@ static void normalize_stmt_and_store(
   }
 }
 
-const char *comdb2_column_name(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
-                               int index)
-{
-    if (gbl_old_column_names == 0 || clnt->old_columns_count == 0) {
-        return sqlite3_column_name(stmt, index);
-    }
-
-    if (index > (clnt->old_columns_count - 1)) {
-        logmsg(LOGMSG_ERROR, "%s:%d bad column index %d\n", __func__, __LINE__,
-               index);
-        return 0;
-    }
-    return clnt->old_columns[index];
-}
-
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3406,9 +3427,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int flags)
 {
-    int recreate = (flags & PREPARE_RECREATE);
+    bool normalize_sql_done = false;
     int prepareOnly = (flags & PREPARE_ONLY);
-    int rc = sqlengine_prepare_engine(thd, clnt, recreate);
+    int rc = sqlengine_prepare_engine(thd, clnt, flags);
     if (thd->sqldb == NULL) {
         return handle_bad_engine(clnt);
     } else if (rc) {
@@ -3434,7 +3455,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     const char *tail = NULL;
 
-    /* if we did not get a cached stmt, need to prepare it in sql engine */
+    /* If we did not get a cached stmt, need to prepare it in sql engine */
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
@@ -3446,14 +3467,82 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
-        if (rc == SQLITE_OK && gbl_old_column_names && query_preparer_plugin &&
+        /* Prepare the query with the query_preparer plugin. */
+        if (rc == SQLITE_OK && gbl_old_column_names && rec->stmt &&
+            !clnt->fdb_state.remote_sql_sb && query_preparer_plugin &&
             query_preparer_plugin->do_prepare &&
             sqlite3_stmt_readonly(rec->stmt) &&
             !sqlite3_stmt_isexplain(rec->stmt) &&
             (thd->authState.numDdls == 0)) {
-            rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql);
-            if (rc)
-                return rc;
+            char **column_names;
+            int column_count;
+            struct fingerprint_track *t = NULL;
+
+            if (gbl_fingerprint_queries) {
+                unsigned char fingerprint[FINGERPRINTSZ];
+                const char *zNormSql;
+                size_t unused;
+
+                /* Generate normalized sql */
+                if (!(flags & PREPARE_NO_NORMALIZE)) {
+                    free_normalized_sql(clnt);
+                    normalize_stmt_and_store(clnt, rec, 0);
+                    zNormSql = clnt->work.zNormSql;
+                    normalize_sql_done = true;
+                } else {
+                    zNormSql = sqlite3_normalized_sql(rec->stmt);
+                }
+
+                /* Calculate fingerprint */
+                calc_fingerprint(zNormSql, &unused, fingerprint);
+                /* Store for virtual table use. */
+                memcpy(clnt->work.aFingerprint, fingerprint, FINGERPRINTSZ);
+
+                Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+                if (gbl_fingerprint_hash) {
+                    t = hash_find(gbl_fingerprint_hash, fingerprint);
+                    if (t) {
+                        /* Create a copy of cached column names and pass it to
+                         * stmt, to be later freed when the stmt finalizes. */
+                        column_count = t->cachedColCount;
+                        /* column_count is 0 if column names do match,
+                           in which case we just set column_names to NULL */
+                        if (column_count == 0)
+                            column_names = NULL;
+                        else {
+                            column_names =
+                                calloc(sizeof(char *), t->cachedColCount);
+                            if (column_names == NULL) {
+                                logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
+                                       __func__, __LINE__);
+                                column_count = 0;
+                            } else {
+                                for (int i = 0; i < t->cachedColCount; i++) {
+                                    column_names[i] =
+                                        strdup(t->cachedColNames[i]);
+                                }
+                            }
+                        }
+                        logmsg(LOGMSG_DEBUG,
+                               "%s:%d: using cached column names from "
+                               "fingerprint\n",
+                               __func__, __LINE__);
+                    }
+                }
+                Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+            }
+
+            /* If there's no fingerprint for this query, let's take the longer
+             * route of repreparing the query. */
+            if (!t) {
+                rc = query_preparer_plugin->do_prepare(
+                    thd, clnt, rec->sql, &column_names, &column_count);
+                if (rc)
+                    return rc;
+            }
+
+            if (rec->stmt)
+                stmt_set_cached_columns(rec->stmt, column_names, column_count);
         }
 
         thd->authState.flags = 0;
@@ -3470,11 +3559,19 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         sql_remote_schema_changed(clnt, rec->stmt);
         update_schema_remotes(clnt, rec);
     }
+
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        free_normalized_sql(clnt);
-        if (!(flags & PREPARE_NO_NORMALIZE)) {
+        if (!(flags & PREPARE_NO_NORMALIZE) && !normalize_sql_done) {
+            free_normalized_sql(clnt);
             normalize_stmt_and_store(clnt, rec, 0);
+            if (clnt->work.zNormSql) {
+                size_t nNormSql = 0; /* NOT USED */            
+                calc_fingerprint(clnt->work.zNormSql, &nNormSql,
+                                 clnt->work.aFingerprint);
+            } else {
+                memset(clnt->work.aFingerprint, 0, FINGERPRINTSZ);
+            }
         }
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
@@ -3513,6 +3610,14 @@ int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
+/* Only customer is creating and dropping temp-tables from stored procedures */
+int get_prepared_stmt_no_lock(struct sqlthdstate *thd,
+                               struct sqlclntstate *clnt, struct sql_state *rec,
+                               struct errstat *err, int flags)
+{
+    return get_prepared_stmt_int(thd, clnt, rec, err, flags);
+}
+
 /*
 ** Only customer is stored-procedure.
 ** This prevents lock inversion between tbllk and schemalk.
@@ -3524,8 +3629,8 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
     if (tryrdlock_schema_lk() != 0) {
         // only schemachange will wrlock(schema)
         sql_debug_logf(clnt, __func__, __LINE__,
-                       "Returning SQLITE_SCHEMA on tryrdlock failure\n");
-        return SQLITE_SCHEMA;
+                       "Returning SQLITE_PERM on tryrdlock failure\n");
+        return SQLITE_PERM;
     }
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags & ~PREPARE_RECREATE);
@@ -3698,7 +3803,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
 
     *outrc = 0;
     rdlock_schema_lk();
-    rc = sqlengine_prepare_engine(thd, clnt, 1);
+    rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
     unlock_schema_lk();
     if (thd->sqldb == NULL) {
         *outrc = handle_bad_engine(clnt);
@@ -3775,7 +3880,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         return 1;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
-        rc = sqlengine_prepare_engine(thd, clnt, 1);
+        rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
         unlock_schema_lk();
         if (thd->sqldb == NULL) {
             *outrc = handle_bad_engine(clnt);
@@ -4258,16 +4363,17 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
        3) and client does not override the user, let it through. */
-    if (sslio_has_x509(clnt->sb) && clnt->is_x509_user)
+    if (sslio_has_x509(clnt->sb) && clnt->current_user.is_x509_user)
         rc = 0;
     else
 #   endif
         rc = check_user_password(clnt);
 
     if (rc == 0) {
-        if (thd->lastuser[0] != '\0' && strcmp(thd->lastuser, clnt->user) != 0)
+        if (thd->lastuser[0] != '\0' &&
+            strcmp(thd->lastuser, clnt->current_user.name) != 0)
             delete_prepared_stmts(thd);
-        strcpy(thd->lastuser, clnt->user);
+        strcpy(thd->lastuser, clnt->current_user.name);
         clnt->authgen = bpfunc_auth_gen;
     } else {
         clnt->authgen = 0;
@@ -4542,8 +4648,10 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 // call with schema_lk held + no_transaction
 static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                          int recreate)
+                          int flags)
 {
+    int recreate = flags & PREPARE_RECREATE;
+
     struct errstat xerr;
     int rc = 0;
     int got_views_lock = 0;
@@ -4558,7 +4666,7 @@ static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
 check_version:
-    if (thd->sqldb && (rc = check_thd_gen(thd, clnt)) != SQLITE_OK) {
+    if (thd->sqldb && (rc = check_thd_gen(thd, clnt, flags)) != SQLITE_OK) {
         if (rc != SQLITE_SCHEMA_REMOTE) {
             if (!recreate) {
                 goto done;
@@ -4618,7 +4726,7 @@ check_version:
                 /* there is no really way forward, grab core */
                 abort();
             }
-            thd->dbopen_gen = gbl_dbopen_gen;
+            thd->dbopen_gen = bdb_get_dbopen_gen();
         }
 
         get_copy_rootpages_nolock(thd->sqlthd);
@@ -4698,9 +4806,11 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 
     clnt->osql.timings.query_dispatched = osql_log_time();
     clnt->deque_timeus = comdb2_time_epochus();
+    clnt->thd = thd;
+    sql_update_usertran_state(clnt);
 
     rdlock_schema_lk();
-    rc = sqlengine_prepare_engine(thd, clnt, 1);
+    rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
     unlock_schema_lk();
 
     if (thd->sqldb == NULL || rc) {
@@ -4814,7 +4924,8 @@ void clnt_to_ruleset_item_criteria(
   if ((clnt == NULL) || (context == NULL)) return;
   context->zOriginHost = clnt->origin_host;
   context->zOriginTask = clnt->conninfo.pename;
-  context->zUser = clnt->have_user ? clnt->user : NULL;
+  context->zUser =
+      clnt->current_user.have_name ? clnt->current_user.name : NULL;
   context->zSql = clnt->sql;
   context->pFingerprint = clnt->work.aFingerprint;
 }
@@ -4990,13 +5101,14 @@ void sqlengine_work_appsock(void *thddata, void *work)
         (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
          (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
           clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS))) {
-        clnt->osql.host = (thedb->master == gbl_mynode) ? 0 : thedb->master;
+        clnt->osql.host = (thedb->master == gbl_myhostname) ? 0 : thedb->master;
     }
 
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
         clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-        clnt->had_lease_at_begin =
-            (thedb->master == gbl_mynode) ? 1 : bdb_valid_lease(thedb->bdb_env);
+        clnt->had_lease_at_begin = (thedb->master == gbl_myhostname)
+                                       ? 1
+                                       : bdb_valid_lease(thedb->bdb_env);
     }
 
     /* assign this query a unique id */
@@ -5018,6 +5130,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
     sql_reset_sqlthread(sqlthd);
+
     /* this is a compromise; we release the curtran here, even though
        we might have a begin/commit transaction pending
        any query inside the begin/commit will be performed under its
@@ -5597,17 +5710,9 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->limits.tablescans_warn = gbl_querylimits_tablescans_warn;
     clnt->limits.temptables_warn = gbl_querylimits_temptables_warn;
 
-
     reset_query_effects(clnt);
 
-    /* reset the user */
-    clnt->have_user = 0;
-    clnt->is_x509_user = 0;
-    bzero(clnt->user, sizeof(clnt->user));
-
-    /* reset the password */
-    clnt->have_password = 0;
-    bzero(clnt->password, sizeof(clnt->password));
+    reset_user(clnt);
 
     /* reset authentication status */
     clnt->authgen = 0;
@@ -6330,6 +6435,10 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     rec.sql = clnt->sql;
     if (get_prepared_bound_stmt(poolthd, clnt, &rec, &clnt->osql.xerr,
                                 PREPARE_NONE)) {
+        /* if prepare failed, and this is not a versioning issue,
+           report error */
+        if (clnt->fdb_state.xerr.errval != SQLITE_SCHEMA)
+            ret = ERR_SQL_PREP;
         goto done;
     }
     thrman_wheref(poolthd->thr_self, "%s", rec.sql);
@@ -6945,6 +7054,10 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
    Pthread_mutex_lock(&clnt_lk);
    *num_connections = listc_size(&clntlist);
    c = malloc(*num_connections * sizeof(struct connection_info));
+   if (c == NULL) {
+       Pthread_mutex_unlock(&clnt_lk);
+       return -1;
+   }
    struct sqlclntstate *clnt;
    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
        c[cid].connection_id = clnt->connid;
@@ -6961,9 +7074,13 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
        Pthread_mutex_lock(&clnt->state_lk);
        if (clnt->state == CONNECTION_RUNNING ||
            clnt->state == CONNECTION_QUEUED) {
+           char zFingerprint[FINGERPRINTSZ*2+1];
+           util_tohex(zFingerprint, (char *)clnt->work.aFingerprint, FINGERPRINTSZ);          
            c[cid].sql = strdup(clnt->sql);
+           c[cid].fingerprint = strdup(zFingerprint);
       } else {
           c[cid].sql = NULL;
+          c[cid].fingerprint = NULL;
       }
       Pthread_mutex_unlock(&clnt->state_lk);
       cid++;
@@ -6971,6 +7088,17 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
    Pthread_mutex_unlock(&clnt_lk);
    *info = c;
    return 0;
+}
+
+void free_connection_info(struct connection_info *info, int num_connections)
+{
+    if (info == NULL) return;
+    for (int i = 0; i < num_connections; i++) {
+        if (info[i].sql) free(info[i].sql);
+        if (info[i].fingerprint) free(info[i].fingerprint);
+        /* state is static, don't free */
+    }
+    free(info);
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)

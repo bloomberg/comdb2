@@ -290,7 +290,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   EACH END EXCLUSIVE EXPLAIN FAIL FOR
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
   QUERY KEY OF OFFSET PRAGMA RAISE RECURSIVE RELEASE REPLACE RESTRICT ROW ROWS
-  ROLLBACK SAVEPOINT TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
+  ROLLBACK SAVEPOINT SEQUENCE TEMP TRIGGER VACUUM VIEW VIRTUAL WITH WITHOUT
 %ifdef SQLITE_OMIT_COMPOUND_SELECT
   EXCEPT INTERSECT UNION
 %endif SQLITE_OMIT_COMPOUND_SELECT
@@ -612,7 +612,9 @@ onconf(A) ::= .                              {A = OE_Default;}
 onconf(A) ::= ON CONFLICT resolvetype(X).    {A = X;}
 orconf(A) ::= .                              {A = OE_Default;}
 orconf(A) ::= OR resolvetype(X).             {A = X;}
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 resolvetype(A) ::= raisetype(A).
+%endif !SQLITE_BUILDING_FOR_COMDB2
 resolvetype(A) ::= IGNORE.                   {A = OE_Ignore;}
 resolvetype(A) ::= REPLACE.                  {A = OE_Replace;}
 
@@ -1081,19 +1083,41 @@ where_opt(A) ::= WHERE expr(X).       {A = X;}
 ////////////////////////// The UPDATE command ////////////////////////////////
 //
 %ifdef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W) orderby_opt(O) limit_opt(L).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,O,L,0);
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3Update(pParse,X,Y,W,0,O,L,0);
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
+%ifndef SQLITE_BUILDING_FOR_COMDB2
 cmd ::= with UPDATE orconf(R) xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
+%endif SQLITE_BUILDING_FOR_COMDB2
         where_opt(W).  {
   sqlite3SrcListIndexedBy(pParse, X, &I);
   sqlite3ExprListCheckLength(pParse,Y,"set list"); 
+%ifndef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,R,0,0,0);
+%endif !SQLITE_BUILDING_FOR_COMDB2
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+  sqlite3Update(pParse,X,Y,W,0,0,0,0);
+%endif SQLITE_BUILDING_FOR_COMDB2
+
 }
 %endif
 
@@ -1792,13 +1816,9 @@ expr(A) ::= RAISE LP raisetype(T) COMMA nm(Z) RP.  {
 %endif  !SQLITE_OMIT_TRIGGER
 
 %type raisetype {int}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ROLLBACK.  {A = OE_Rollback;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= ABORT.     {A = OE_Abort;}
-%ifndef SQLITE_BUILDING_FOR_COMDB2
 raisetype(A) ::= FAIL.      {A = OE_Fail;}
-%endif !SQLITE_BUILDING_FOR_COMDB2
 
 
 ////////////////////////  DROP TRIGGER statement //////////////////////////////
@@ -2426,12 +2446,12 @@ cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= createkw LUA TRIGGER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,&Q,T);
+cmd ::= createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,0,S,&Q,T);
 }
 
-cmd ::= createkw LUA CONSUMER nm(Q) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,&Q,T);
+cmd ::= createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,1,S,&Q,T);
 }
 
 table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
@@ -2441,6 +2461,11 @@ table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR
 table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
   A = comdb2AddTriggerTable(pParse,0,T,B);
 }
+
+%type withsequence {int}
+withsequence(A) ::= .                   { A = -1; }
+withsequence(A) ::= WITHOUT SEQUENCE.   { A = 0; }
+withsequence(A) ::= WITH SEQUENCE.      { A = 1; }
 
 %type table_trigger_event {Cdb2TrigTables*}
 %destructor table_trigger_event {sqlite3DbFree(pParse->db, $$);}

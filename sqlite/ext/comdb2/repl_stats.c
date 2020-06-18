@@ -49,7 +49,9 @@ enum {
     COLUMN_AVG_WAIT_OVER_10SEC,
     COLUMN_MAX_WAIT_OVER_10SEC,
     COLUMN_AVG_WAIT_OVER_1MIN,
-    COLUMN_MAX_WAIT_OVER_1MIN
+    COLUMN_MAX_WAIT_OVER_1MIN,
+    COLUMN_LSN,
+    COLUMN_LSN_BYTES_BEHIND_MASTER
 };
 
 static int systblReplStatsConnect(sqlite3 *db, void *pAux, int argc,
@@ -62,7 +64,8 @@ static int systblReplStatsConnect(sqlite3 *db, void *pAux, int argc,
         db, "CREATE TABLE comdb2_repl_stats(\"host\", "
             "\"bytes_written\", \"bytes_read\", \"throttle_waits\", "
             "\"reorders\", \"avg_wait_over_10secs\", \"max_wait_over_10secs\", "
-            "\"avg_wait_over_1min\", \"max_wait_over_1min\")");
+            "\"avg_wait_over_1min\", \"max_wait_over_1min\", "
+            "\"lsn\", \"lsn_bytes_behind_master\")");
 
     if (rc == SQLITE_OK) {
         if ((*ppVtab = sqlite3_malloc(sizeof(sqlite3_vtab))) == 0) {
@@ -171,6 +174,12 @@ static int systblReplStatsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         break;
     case COLUMN_MAX_WAIT_OVER_1MIN:
         sqlite3_result_double(ctx, stats->max_wait_over_1min);
+        break;
+    case COLUMN_LSN:
+        sqlite3_result_text(ctx, stats->lsn_text, -1, NULL);
+        break;
+    case COLUMN_LSN_BYTES_BEHIND_MASTER:
+        sqlite3_result_int64(ctx, stats->lsn_bytes_behind);
         break;
     default:
         assert(0);

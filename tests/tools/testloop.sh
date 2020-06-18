@@ -93,6 +93,7 @@ function pull_and_recompile
 
 while :; do 
     let i=i+1 
+    export TESTLOG=~/testlog.$i.txt
     print_status
     if [[ ! -z $TESTLOOPCOMPILE ]]; then
         pull_and_recompile
@@ -132,6 +133,16 @@ while :; do
                 looktest=0
             fi
         fi
+
+        # Check all nodes for any core and fail if its there
+        for m in $CLUSTER ; do
+            cnt=$(ssh $m 'ls -l /db/cores/core.comdb2*' </dev/null 2>/dev/null | wc -l)
+            if [[ "$cnt" != 0 ]]; then
+                echo "ERROR FOUND CORE ON MACHINE $m"
+                mail_error "TESTCASE FAILURE ITERATION $i ON $host !!"
+                break 5
+            fi
+        done
 
         if [[ $looktest == 1 && $r == 0 ]]; then
             let goodtests=goodtests+1
@@ -187,7 +198,7 @@ while :; do
 
                 echo "ERROR IN ITERATION $i" 
                 err=1
-                mail_error "JEPSEN FAILURE ITERATION $i ON $host !!"
+                mail_error "TESTCASE FAILURE ITERATION $i ON $host !!"
                 break 5
             fi
         fi

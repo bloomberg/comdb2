@@ -1076,6 +1076,8 @@ public class Comdb2Handle extends AbstractConnection {
                     int retryrc = retryQueries(retry, runLast);
 
                     if (retryrc < 0) {
+                        if (inTxn)
+                            errorInTxn = retryrc;
                         tdlog(Level.FINE, "Can't retry query, retryrc = %d", retryrc);
                         return retryrc;
                     } 

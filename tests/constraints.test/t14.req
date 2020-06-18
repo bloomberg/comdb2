@@ -1,0 +1,5 @@
+drop table if exists c
+drop table if exists p
+
+create table p {schema{int i int j} keys{"pki" = i "pkj" = j}} $$
+create table c {schema{int i} keys{"cki" = i} constraints{"cki" -> <"p" : "pki">} constraints{"cki" -> <"p" : "pkj">}} $$

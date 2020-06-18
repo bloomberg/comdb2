@@ -32,8 +32,7 @@ typedef struct osql_uuid_req osql_uuid_req_t;
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, uint8_t *p_buf,
-                              bool is_reorder_on);
+                              const char *host, bool is_reorder_on);
 
 /**
  * Terminates an in-use osql session (for which we could potentially

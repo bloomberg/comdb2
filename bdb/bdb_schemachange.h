@@ -18,37 +18,50 @@
 #define BDB_SCHEMACHANGE_H
 
 extern int gbl_maxretries;
-extern volatile int gbl_dbopen_gen;
 extern volatile int gbl_lua_version;
 extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
 typedef enum scdone {
-    invalid = -1,
-    alter,
-    fastinit,
-    add = fastinit,
-    drop,
-    bulkimport,
-    setcompr,
-    luareload,
-    sc_analyze,
-    bthash,
-    rowlocks_on,
-    rowlocks_on_master_only,
-    rowlocks_off,
-    views,
-    llmeta_queue_add,
-    llmeta_queue_alter,
-    llmeta_queue_drop,
-    genid48_enable,
-    genid48_disable,
-    lua_sfunc,
-    lua_afunc,
-    rename_table,
-    change_stripe,
-    user_view,
+    invalid = -1,            // -1
+    alter,                   //  0
+    fastinit,                //  1
+    add = fastinit,          //  1
+    drop,                    //  2
+    bulkimport,              //  3
+    setcompr,                //  4
+    luareload,               //  5
+    sc_analyze,              //  6
+    bthash,                  //  7
+    rowlocks_on,             //  8
+    rowlocks_on_master_only, //  9
+    rowlocks_off,            // 10
+    views,                   // 11
+    llmeta_queue_add,        // 12
+    llmeta_queue_alter,      // 13
+    llmeta_queue_drop,       // 14
+    genid48_enable,          // 15
+    genid48_disable,         // 16
+    lua_sfunc,               // 17
+    lua_afunc,               // 18
+    rename_table,            // 19
+    change_stripe,           // 20
+    user_view,               // 21
+    add_queue_file,          // 22
+    del_queue_file           // 23
 } scdone_t;
+
+#define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
+    (((a) == add_queue_file) || ((a) == del_queue_file))
+
+#define BDB_BUMP_DBOPEN_GEN(type, msg) \
+    bdb_bump_dbopen_gen(bdb_get_scdone_str(type), (msg), \
+                        __func__, __FILE__, __LINE__)
+
+const char *bdb_get_scdone_str(scdone_t type);
+
+int bdb_bump_dbopen_gen(const char *type, const char *message,
+                        const char *funcName, const char *fileName, int lineNo);
 
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, const char *origtable, int *bdberr);

@@ -227,14 +227,16 @@ __db_associate_arg(dbp, sdbp, callback, flags)
 }
 
 /*
- * __db_close_pp --
- *	DB->close pre/post processing.
+ * __db_closetxn_pp --
+ *  DB->closetxn pre/post processing.
  *
- * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
+ * PUBLIC: int __db_closetxn_pp __P((DB *, DB_TXN *, u_int32_t));
  */
+
 int
-__db_close_pp(dbp, flags)
+__db_closetxn_pp(dbp, txn, flags)
 	DB *dbp;
+    DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
@@ -262,7 +264,7 @@ __db_close_pp(dbp, flags)
 	    (t_ret = __db_rep_enter(dbp, 0, 0)) != 0 && ret == 0)
 		ret = t_ret;
 
-	if ((t_ret = __db_close(dbp, NULL, flags)) != 0 && ret == 0)
+	if ((t_ret = __db_close(dbp, txn, flags)) != 0 && ret == 0)
 		ret = t_ret;
 
 	/* Release replication block. */
@@ -270,6 +272,21 @@ __db_close_pp(dbp, flags)
 		__db_rep_exit(dbenv);
 
 	return (ret);
+}
+
+
+/*
+ * __db_close_pp --
+ *	DB->close pre/post processing.
+ *
+ * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
+ */
+int
+__db_close_pp(dbp, flags)
+	DB *dbp;
+	u_int32_t flags;
+{
+    return __db_closetxn_pp(dbp, NULL, flags);
 }
 
 /*

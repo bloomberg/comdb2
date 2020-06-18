@@ -79,9 +79,9 @@ contrib/docker/volumes
 
 # editor files
 *.swp
-/tags
-
-#cscope files
+.clangd
+tags
+compile_commands.json
 cscope.*
-
+CMakeLists.txt.user
 plugins/.gitignore

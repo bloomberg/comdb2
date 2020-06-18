@@ -8,7 +8,10 @@ permalink: auth.html
 
 ### Password-based Authentication
 
-A comdb2 session can be authenticated by setting username and password using [set user](sql.html#set-user) and [set password](sql.html#set-password), just after opening the connection.
+A comdb2 session can be authenticated by setting username and password using
+[set user](sql.html#set-user) and [set password](sql.html#set-password), just
+after opening the connection. The allowed limits for username and password are
+`15` and `18` characters respectively.
 
 ```sql
 set user 'foo_user'

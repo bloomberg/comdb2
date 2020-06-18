@@ -23,7 +23,6 @@ extern pthread_mutex_t schema_change_sbuf2_lock;
 extern pthread_mutex_t sc_resuming_mtx;
 extern pthread_mutex_t csc2_subsystem_mtx;
 extern struct schema_change_type *sc_resuming;
-extern volatile int gbl_schema_change_in_progress;
 extern volatile int gbl_lua_version;
 extern int gbl_default_livesc;
 extern int gbl_default_plannedsc;
@@ -61,14 +60,14 @@ extern int rep_sync_save;
 extern int log_sync_save;
 extern int log_sync_time_save;
 
-extern int stopsc;        /* stop schemachange, so it can resume */
-
 int is_dta_being_rebuilt(struct scplan *plan);
 const char *get_sc_to_name();
-void wait_for_sc_to_stop(const char *operation);
+void wait_for_sc_to_stop(const char *operation, const char *func, int line);
 void allow_sc_to_run();
-int sc_set_running(char *table, int running, uint64_t seed, const char *host,
-                   time_t time);
+int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
+                   int running, const char *host, time_t time, int replicant,
+                   const char *func, int line);
+void sc_assert_clear(const char *func, int line);
 void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct dbtable *db);
 void sc_set_downgrading(struct schema_change_type *s);
@@ -79,11 +78,14 @@ int replicant_reload_analyze_stats();
 void sc_set_logical_redo_lwm(char *table, unsigned int file);
 unsigned int sc_get_logical_redo_lwm();
 unsigned int sc_get_logical_redo_lwm_table(char *table);
+/* get sc seed for table for a running schema change */
+uint64_t sc_get_seed_table(char *table);
 
 void add_ongoing_alter(struct schema_change_type *sc);
 void remove_ongoing_alter(struct schema_change_type *sc);
 struct schema_change_type *find_ongoing_alter(char *table);
 struct schema_change_type *preempt_ongoing_alter(char *table, int action);
 void clear_ongoing_alter();
+int get_stopsc(const char *func, int line);
 
 #endif

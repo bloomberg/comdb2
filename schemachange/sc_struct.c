@@ -40,6 +40,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->compress_blobs = -1;
     sc->ip_updates = -1;
     sc->instant_sc = -1;
+    sc->persistent_seq = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
@@ -137,17 +138,18 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->force_rebuild) + sizeof(s->force_dta_rebuild) +
         sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
         sizeof(s->header_change) + sizeof(s->compress) +
-        sizeof(s->compress_blobs) + sizeof(s->ip_updates) +
-        sizeof(s->instant_sc) + sizeof(s->preempted) + sizeof(s->use_plan) +
-        sizeof(s->commit_sleep) + sizeof(s->convert_sleep) +
-        sizeof(s->same_schema) + sizeof(s->dbnum) + sizeof(s->flg) +
-        sizeof(s->rebuild_index) + sizeof(s->index_to_rebuild) +
-        sizeof(s->drop_table) + sizeof(s->original_master_node) +
-        dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
-        sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
-        sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
-        sizeof(s->newtable) + sizeof(s->usedbtablevers) + sizeof(s->add_view) +
-        sizeof(s->drop_view);
+        sizeof(s->compress_blobs) + sizeof(s->persistent_seq) +
+        sizeof(s->ip_updates) + sizeof(s->instant_sc) + sizeof(s->preempted) +
+        sizeof(s->use_plan) + sizeof(s->commit_sleep) +
+        sizeof(s->convert_sleep) + sizeof(s->same_schema) + sizeof(s->dbnum) +
+        sizeof(s->flg) + sizeof(s->rebuild_index) +
+        sizeof(s->index_to_rebuild) + sizeof(s->drop_table) +
+        sizeof(s->original_master_node) + dests_field_packed_size(s) +
+        sizeof(s->spname_len) + s->spname_len + sizeof(s->addsp) +
+        sizeof(s->delsp) + sizeof(s->defaultsp) + sizeof(s->is_sfunc) +
+        sizeof(s->is_afunc) + sizeof(s->rename) + sizeof(s->newtable) +
+        sizeof(s->usedbtablevers) + sizeof(s->add_view) + sizeof(s->drop_view) +
+        sizeof(s->add_qdb_file) + sizeof(s->del_qdb_file) + sizeof(s->qdb_file_ver);
 
     return s->packed_len;
 }
@@ -251,6 +253,9 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->compress_blobs, sizeof(s->compress_blobs), p_buf,
                     p_buf_end);
 
+    p_buf = buf_put(&s->persistent_seq, sizeof(s->persistent_seq), p_buf,
+                    p_buf_end);
+
     p_buf = buf_put(&s->ip_updates, sizeof(s->ip_updates), p_buf, p_buf_end);
 
     p_buf = buf_put(&s->instant_sc, sizeof(s->instant_sc), p_buf, p_buf_end);
@@ -299,6 +304,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
     p_buf = buf_put(&s->drop_view, sizeof(s->drop_view), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->add_qdb_file, sizeof(s->add_qdb_file), p_buf, p_buf_end);
+    p_buf = buf_put(&s->del_qdb_file, sizeof(s->del_qdb_file), p_buf, p_buf_end);
+    p_buf = buf_put(&s->qdb_file_ver, sizeof(s->qdb_file_ver), p_buf, p_buf_end);
     return p_buf;
 }
 
@@ -463,6 +472,9 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->compress_blobs, sizeof(s->compress_blobs),
                                p_buf, p_buf_end);
 
+    p_buf = (uint8_t *)buf_get(&s->persistent_seq, sizeof(s->persistent_seq),
+                               p_buf, p_buf_end);
+
     p_buf = (uint8_t *)buf_get(&s->ip_updates, sizeof(s->ip_updates), p_buf,
                                p_buf_end);
 
@@ -526,6 +538,13 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         (uint8_t *)buf_get(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->drop_view, sizeof(s->drop_view), p_buf,
                                p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->add_qdb_file, sizeof(s->add_qdb_file),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->del_qdb_file, sizeof(s->del_qdb_file),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->qdb_file_ver, sizeof(s->qdb_file_ver),
+                               p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -1032,9 +1051,10 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->use_new_genids = newsc->use_new_genids;
     newsc->finalize = sc->finalize;
     newsc->finalize_only = sc->finalize_only;
+    newsc->is_osql = sc->is_osql;
 
     if (!p_buf) {
-        free(newsc);
+        free_schema_change_type(newsc);
         free(buf);
         return NULL;
     }

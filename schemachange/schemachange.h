@@ -99,6 +99,7 @@ struct schema_change_type {
     int header_change;
     int compress;       /* new compression algorithm or -1 for no change */
     int compress_blobs; /* new blob com algorithm or -1 for no change */
+    int persistent_seq; /* init queue with persistent sequence */
     int ip_updates;     /* inplace updates or -1 for no change */
     int instant_sc;     /* 1 is enable, 0 disable, or -1 for no change */
     int preempted;
@@ -116,9 +117,8 @@ struct schema_change_type {
 
 #define SC_CHK_PGSZ 0x00000001U
 #define SC_IDXRBLD 0x00000002U
-#define SC_MASK_FLG                                                            \
-    0xfffffffcU /* Detect and fail if newer ver started sc.                    \
-                   Update this mask when new flags added */
+#define SC_MASK_FLG 0xfffffffcU /* Detect and fail if newer ver started sc.
+                                 * Update this mask when new flags added */
     uint32_t flg;
 
     uint8_t rebuild_index;    /* option to rebuild only one index */
@@ -141,9 +141,16 @@ struct schema_change_type {
     int add_view;
     int drop_view;
 
+    /* QueueDB operations */
+    int add_qdb_file;
+    int del_qdb_file;
+    unsigned long long qdb_file_ver; /* part of file name to add */
+
     /* ========== runtime members ========== */
     int onstack; /* if 1 don't free */
     int nothrevent;
+    int already_locked; /* already holding schema lock */
+    int keep_locked; /* don't release schema lock upon commit */
     int pagesize; /* pagesize override to use */
     int showsp;
     SBUF2 *sb; /* socket to sponsoring program */
@@ -164,6 +171,7 @@ struct schema_change_type {
     pthread_mutex_t mtx; /* mutex for thread sync */
     pthread_mutex_t mtxStart; /* mutex for thread start */
     pthread_cond_t condStart; /* condition var for thread sync */
+    int started;
     int sc_rc;
 
     struct ireq *iq;
@@ -212,6 +220,9 @@ struct schema_change_type {
     size_t packed_len;
 
     bool views_locked : 1;
+    bool is_osql : 1;
+    bool set_running : 1;
+    uint64_t seed;
 };
 
 struct ireq;
@@ -219,6 +230,7 @@ typedef struct {
     tran_type *trans;
     struct ireq *iq;
     struct schema_change_type *sc;
+    int started;
 } sc_arg_t;
 
 struct scinfo {

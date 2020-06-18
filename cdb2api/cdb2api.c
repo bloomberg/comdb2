@@ -2630,8 +2630,10 @@ retry:
            An invalid client (e.g., a revoked cert) may see a successful
            handshake but encounter an error when reading data from the server.
            Catch the error here. */
+#       if WITH_SSL
         if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
             sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+#       endif
         goto after_callback;
     }
 
@@ -3682,8 +3684,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
         debugprint("in_trans=%d snapshot_file=%d query_no=%d\n", hndl->in_trans,
                    hndl->snapshot_file, hndl->query_no);
-        sprintf(hndl->errstr, "%s: Database disconnected while in transaction.",
-                __func__);
+        sprintf(hndl->errstr, "Database disconnected while in transaction.");
         return CDB2ERR_TRAN_IO_ERROR; /* Fail if disconnect happens in
                                          transaction which doesn't have snapshot
                                          info.*/
@@ -3810,6 +3811,8 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
         if (rc) {
             debugprint("Can't read response from the db node %s\n", host);
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
             return 1;
@@ -3874,6 +3877,8 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
 
     if (rc) {
+        free(hndl->first_buf);
+        hndl->first_buf = NULL;
         PRINT_AND_RETURN_OK(rc);
     }
 
@@ -4290,7 +4295,8 @@ retry_queries:
                 goto retry_queries;
             }
             else if (rc < 0) {
-                sprintf(hndl->errstr, "Can't retry query to db");
+                if (hndl->in_trans)
+                    hndl->error_in_trans = rc;
                 PRINT_AND_RETURN(rc);
             }
         }
@@ -4391,6 +4397,8 @@ read_record:
 
     if (rc == 0) {
         if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
 #if WITH_SSL
             hndl->s_sslmode = PEER_SSL_REQUIRE;
             /* server wants us to use ssl so turn ssl on in same connection */
@@ -4441,7 +4449,8 @@ read_record:
                 sl->list = NULL;
             }
 #endif
-
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
             GOTO_RETRY_QUERIES();
         }
 

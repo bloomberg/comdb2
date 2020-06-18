@@ -39,12 +39,14 @@
 static int machine_is_up_default(const char *host);
 static int machine_status_init(void);
 static int machine_class_default(const char *host);
+static int machine_my_class_default(void);
 static int machine_dc_default(const char *host);
 static int machine_num_default(const char *host);
 
 static int (*machine_is_up_cb)(const char *host) = machine_is_up_default;
 static int (*machine_status_init_cb)(void) = machine_status_init;
 static int (*machine_class_cb)(const char *host) = machine_class_default;
+static int (*machine_my_class_cb)(void) = machine_my_class_default;
 static int (*machine_dc_cb)(const char *host) = machine_dc_default;
 static int (*machine_num_cb)(const char *host) = machine_num_default;
 
@@ -62,8 +64,8 @@ static void init_once(void)
 }
 
 void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
-                              int (*c)(const char *), int (*d)(const char *),
-                              int (*e)(const char *))
+                              int (*c)(const char *), int (*d)(void),
+                              int (*e)(const char *), int (*f)(const char *))
 {
 
     if (inited) {
@@ -74,8 +76,9 @@ void register_rtcpu_callbacks(int (*a)(const char *), int (*b)(void),
     machine_is_up_cb = a;
     machine_status_init_cb = b;
     machine_class_cb = c;
-    machine_dc_cb = d;
-    machine_num_cb = e;
+    machine_my_class_cb = d;
+    machine_dc_cb = e;
+    machine_num_cb = f;
 }
 
 int machine_is_up(const char *host)
@@ -91,6 +94,11 @@ int machine_is_up(const char *host)
 int machine_class(const char *host)
 {
     return machine_class_cb(host);
+}
+
+int machine_my_class(void)
+{
+    return machine_my_class_cb();
 }
 
 int machine_dc(const char *host)
@@ -113,7 +121,7 @@ static int machine_status_init(void)
     return 0;
 }
 
-extern char *gbl_mynode;
+extern char *gbl_myhostname;
 
 /* pthread_once? */
 static int machine_class_default(const char *host)
@@ -147,8 +155,8 @@ static int machine_class_default(const char *host)
                        rc, cdb2_errstr(db));
                 goto done;
             }
-            rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_mynode,
-                                 strlen(gbl_mynode));
+            rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_myhostname,
+                                 strlen(gbl_myhostname));
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host,
                        rc, cdb2_errstr(db));
@@ -195,6 +203,10 @@ static int machine_class_default(const char *host)
     return my_class;
 }
 
+static int machine_my_class_default(void)
+{
+    return machine_class_default(gbl_myhostname);
+}
 static int machine_dcs[MAXNODES];
 
 static int resolve_dc(const char *host)

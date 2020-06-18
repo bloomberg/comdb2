@@ -23,7 +23,7 @@
 #include <limits.h>
 
 #include "list.h"
-#include "pool_c.h"
+#include "pool.h"
 
 #include "averager.h"
 #include "mem_util.h"
