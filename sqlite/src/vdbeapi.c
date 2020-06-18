@@ -165,7 +165,6 @@ int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
   }
   return 1;
 }
-
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

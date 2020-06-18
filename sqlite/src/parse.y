@@ -1105,7 +1105,6 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,0,O,L,0);
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 }
 %endif
 %ifndef SQLITE_ENABLE_UPDATE_DELETE_LIMIT
