@@ -759,6 +759,21 @@ static void renameWalkWith(Walker *pWalker, Select *pSelect){
 }
 
 /*
+** Unmap all tokens in the IdList object passed as the second argument.
+*/
+static void unmapColumnIdlistNames(
+  Parse *pParse,
+  IdList *pIdList
+){
+  if( pIdList ){
+    int ii;
+    for(ii=0; ii<pIdList->nId; ii++){
+      sqlite3RenameTokenRemap(pParse, 0, (void*)pIdList->a[ii].zName);
+    }
+  }
+}
+
+/*
 ** Walker callback used by sqlite3RenameExprUnmap().
 */
 static int renameUnmapSelectCb(Walker *pWalker, Select *p){
@@ -779,6 +794,7 @@ static int renameUnmapSelectCb(Walker *pWalker, Select *p){
     for(i=0; i<pSrc->nSrc; i++){
       sqlite3RenameTokenRemap(pParse, 0, (void*)pSrc->a[i].zName);
       if( sqlite3WalkExpr(pWalker, pSrc->a[i].pOn) ) return WRC_Abort;
+      unmapColumnIdlistNames(pParse, pSrc->a[i].pUsing);
     }
   }
 
@@ -986,6 +1002,7 @@ static void renameColumnIdlistNames(
     }
   }
 }
+
 
 /*
 ** Parse the SQL statement zSql using Parse object (*p). The Parse object

@@ -3560,7 +3560,10 @@ static Expr *substExpr(
   ){
     pExpr->iRightJoinTable = pSubst->iNewTable;
   }
-  if( pExpr->op==TK_COLUMN && pExpr->iTable==pSubst->iTable ){
+  if( pExpr->op==TK_COLUMN
+   && pExpr->iTable==pSubst->iTable
+   && !ExprHasProperty(pExpr, EP_FixedCol)
+  ){
     if( pExpr->iColumn<0 ){
       pExpr->op = TK_NULL;
     }else{
@@ -5446,6 +5449,7 @@ static void resetAccumulator(Parse *pParse, AggInfo *pAggInfo){
   struct AggInfo_func *pFunc;
   int nReg = pAggInfo->nFunc + pAggInfo->nColumn;
   if( nReg==0 ) return;
+  if( pParse->nErr ) return;
 #ifdef SQLITE_DEBUG
   /* Verify that all AggInfo registers are within the range specified by
   ** AggInfo.mnReg..AggInfo.mxReg */
