@@ -1,9 +1,10 @@
-apply plugin: "java"
-apply plugin: 'maven'
-apply plugin: 'groovy'
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
 
 group = 'com.bloomberg.comdb2'
-version = '0.1.0'
+version = '0.1.1'
 
 
 repositories {
@@ -12,7 +13,19 @@ repositories {
 }
 
 dependencies {
-    testCompile 'junit:junit:4.11'
-    
-    compile 'org.hibernate:hibernate-core:5.2.12.Final'
+    implementation 'org.hibernate:hibernate-core:5.4.10.Final'
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+    archiveClassifier = "sources"
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            from components.java
+            artifact sourceJar
+        }
+    }
 }

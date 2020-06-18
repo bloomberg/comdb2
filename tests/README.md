@@ -27,6 +27,14 @@ are torn down after the test is over.
 of running tests. It requires python 2.7 and the `blessings` module. It implies
 `-k` and takes an optional `-j` setting and a list of tests to run.
 
+Some of the tests require non standard tools to be installed, so here is a 
+list of packages needed to run all the tests:
+
+apt-get install bash coreutils jq
+
+Clustered tests also need ssh client and server setup.
+
+
 ## Adding new tests
 
 ### 4 *easy* steps
@@ -372,7 +380,7 @@ of comdb2 servers in those containers.
 
     You will also want to install inside the containers the required packages for comdb2 to run:
     ```sh
-      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0
+      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0 libevent-core-2.1 libevent-pthreads-2.1
     ```
 
 4.  At this time you will want to make copies of this container:

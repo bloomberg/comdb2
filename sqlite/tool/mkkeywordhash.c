@@ -395,6 +395,7 @@ static Keyword aKeywordTable[] = {
   { "SCALAR",           "TK_SCALAR",         ALWAYS,         0      },
   { "SCHEMACHANGE",     "TK_SCHEMACHANGE",   ALWAYS,         0      },
   { "SELECTV",          "TK_SELECTV",        ALWAYS,         0      },
+  { "SEQUENCE",         "TK_SEQUENCE",       ALWAYS,         0      },
   { "SKIPSCAN",         "TK_SKIPSCAN",       ALWAYS,         0      },
   { "START",            "TK_START",          ALWAYS,         0      },
   { "SUMMARIZE",        "TK_SUMMARIZE",      ALWAYS,         0      },

@@ -123,6 +123,8 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype);
  */
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid);
 
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_rqid);
+
 /**
  * Start a sosql session if not already started
  */

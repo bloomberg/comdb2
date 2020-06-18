@@ -230,7 +230,7 @@ support_datetime_in_triggers|  on |Enable support for datetime/interval types in
 prefix_foreign_keys|  on |Allow foreign key to be a prefix of your key
 superset_foreign_keys|  on |Allow foreign key to be a superset of your key
 repverifyrecs|  off |Verify every berkeley log record received
-enable_osql_logging|  off |Log every osql packet received in a special file, per iq
+enable_osql_logging|  off |Log every osql packet and operation
 enable_osql_longreq_logging|  off |Log untruncated osql strings
 check_sparse_files|  off |When allocating a page, check that we aren't creating a sparse file
 core_on_sparse_file|  off |Generate a core if we catch berkeley creating a sparse file

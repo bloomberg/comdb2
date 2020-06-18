@@ -85,11 +85,6 @@
         return rc;                                                             \
     }
 
-/* This is the berkley replication lockid.  We need it on the replicant because
-   any page locks we acquire must be on behalf of the replication thread.  */
-/* XXX delete after cleanup - we dont need this anymore .. */
-extern u_int32_t gbl_rep_lockid;
-
 /* Grab the rowlock for a record in this index */
 static int get_row_lock_ix(bdb_state_type *bdb_state, DBC *dbcp,
                            tran_type *tran, int ixnum, unsigned long long genid,

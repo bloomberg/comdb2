@@ -41,7 +41,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
         newdb->csc2_schema_len = strlen(newdb->csc2_schema);
     }
 
-    if (newdb->dbenv->master == gbl_mynode) {
+    if (newdb->dbenv->master == gbl_myhostname) {
         if ((rc = sql_syntax_check(iq, newdb)))
             return SC_CSC2_ERROR;
     }
@@ -52,7 +52,7 @@ static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
 static inline int get_db_handle(struct dbtable *newdb, void *trans)
 {
     int bdberr;
-    if (newdb->dbenv->master == gbl_mynode && !gbl_is_physical_replicant) {
+    if (newdb->dbenv->master == gbl_myhostname && !gbl_is_physical_replicant) {
         /* I am master: create new db */
         newdb->handle = bdb_create_tran(
             newdb->tablename, thedb->basedir, newdb->lrl, newdb->nix,
@@ -171,7 +171,7 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
 
     /* must re add the dbs if you're a physical replicant */
-    if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
+    if (newdb->dbenv->master != gbl_myhostname || gbl_is_physical_replicant) {
         /* This is a replicant calling scdone_callback */
         add_db(newdb);
     }
@@ -222,7 +222,14 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db;
     set_empty_options(s);
 
-    if ((rc = check_option_coherency(s, NULL, NULL))) return rc;
+    if ((rc = check_option_coherency(s, NULL, NULL))) {
+        return rc;
+    }
+    if (is_tablename_queue(s->tablename)) {
+        sc_errf(s, "bad tablename:%s\n", s->tablename);
+        logmsg(LOGMSG_ERROR, "bad tablename:%s\n", s->tablename);
+        return SC_INVALID_OPTIONS;
+    }
 
     if ((db = get_dbtable_by_name(s->tablename))) {
         sc_errf(s, "Table %s already exists\n", s->tablename);
@@ -230,6 +237,11 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         return SC_TABLE_ALREADY_EXIST;
     }
 
+    int local_lock = 0;
+    if (!iq->sc_locked) {
+        wrlock_schema_lk();
+        local_lock = 1;
+    }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     dyns_init_globals();
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
@@ -237,6 +249,8 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");
+        if (local_lock)
+            unlock_schema_lk();
         return rc;
     }
 
@@ -245,6 +259,8 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     db->odh = s->headers;
     db->inplace_updates = s->ip_updates;
     db->schema_version = 1;
+    if (local_lock)
+        unlock_schema_lk();
 
     /* compression algorithms set to 0 for new table - this
        will have to be changed manually by the operator */
@@ -267,6 +283,10 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
     if (iq && iq->tranddl > 1 && populate_reverse_constraints(db)) {
         sc_errf(s, "error populating reverse constraints\n");
+        return -1;
+    }
+    if (thedb->num_dbs >= MAX_NUM_TABLES) {
+        sc_errf(s, "error too many tables\n");
         return -1;
     }
 

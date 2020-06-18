@@ -2569,6 +2569,7 @@ int sqlite3Json1Init(sqlite3 *db){
     { "json_test1",           1, 0,   jsonTest1Func         },
 #endif
   };
+#ifndef SQLITE_OMIT_WINDOWFUNC
   static const struct {
      const char *zName;
      int nArg;
@@ -2581,6 +2582,7 @@ int sqlite3Json1Init(sqlite3 *db){
     { "json_group_object",    2,
       jsonObjectStep,  jsonObjectFinal, jsonObjectValue },
   };
+#endif
 #ifndef SQLITE_OMIT_VIRTUALTABLE
   static const struct {
      const char *zName;

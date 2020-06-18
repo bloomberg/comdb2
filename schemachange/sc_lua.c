@@ -501,30 +501,47 @@ int do_add_sp(struct schema_change_type *sc, struct ireq *iq)
     int rc = do_add_sp_int(sc, iq);
     ++gbl_lua_version;
     unlock_schema_lk();
-    return rc;
+    return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
 }
+
+int finalize_add_sp(struct schema_change_type *sc)
+{
+    return 0;
+}
+
 int do_del_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     wrlock_schema_lk();
     int rc = do_del_sp_int(sc, iq);
     ++gbl_lua_version;
     unlock_schema_lk();
-    return rc;
+    return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
 }
+
+int finalize_del_sp(struct schema_change_type *sc)
+{
+    return 0;
+}
+
 int do_default_sp(struct schema_change_type *sc, struct ireq *iq)
 {
     wrlock_schema_lk();
     int rc = do_default_sp_int(sc, iq);
     ++gbl_lua_version;
     unlock_schema_lk();
-    return rc;
+    return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
+}
+
+int finalize_default_sp(struct schema_change_type *sc)
+{
+    return 0;
 }
 
 // -----------------
 // LUA SQL FUNCTIONS
 // -----------------
-#define reload_lua_funcs(pfx)                                                  \
-    ++gbl_dbopen_gen;                                                          \
+#define reload_lua_funcs(type, pfx)                                            \
+    BDB_BUMP_DBOPEN_GEN(type, NULL);                                           \
     ++gbl_lua_version;                                                         \
     do {                                                                       \
         for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \
@@ -538,12 +555,12 @@ int do_default_sp(struct schema_change_type *sc, struct ireq *iq)
 
 int reload_lua_sfuncs()
 {
-    reload_lua_funcs(s);
+    reload_lua_funcs(lua_sfunc, s);
 }
 
 int reload_lua_afuncs()
 {
-    reload_lua_funcs(a);
+    reload_lua_funcs(lua_afunc, a);
 }
 
 #define finalize_lua_func(pfx)                                                 \

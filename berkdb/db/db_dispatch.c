@@ -51,6 +51,7 @@ static const char revid[] = "$Id: db_dispatch.c,v 11.145 2003/09/10 20:31:18 ube
 #include <stdio.h>
 #endif
 
+#include <plhash.h>
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
@@ -788,6 +789,20 @@ __db_txnlist_init(dbenv, low_txn, hi_txn, trunc_lsn, retp)
 	return (0);
 }
 
+static int __txnlist_cmp(const void *key1, const void *key2, int len)
+{
+	DB_TXNLIST *hp1 = (DB_TXNLIST *)key1;
+	DB_TXNLIST *hp2 = (DB_TXNLIST *)key2;
+
+	if (hp1->type != hp2->type || hp1->type != TXNLIST_TXNID)
+		abort();
+	if (hp1->u.t.txnid != hp2->u.t.txnid)
+		return hp1->u.t.txnid - hp2->u.t.txnid;
+	if (hp1->u.t.generation != hp2->u.t.generation)
+		return hp1->u.t.generation - hp2->u.t.generation;
+	return 0;
+}
+
 /*
  * __db_txnlist_add --
  *	Add an element to our transaction linked list.
@@ -804,11 +819,12 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 	DB_LSN *lsn;
 {
 	DB_TXNHEAD *hp;
-	DB_TXNLIST *elp;
+	DB_TXNLIST *elp, *fnd;
 	int ret;
 
 	if ((ret = __os_malloc(dbenv, sizeof(DB_TXNLIST), &elp)) != 0)
 		return (ret);
+	memset(elp, 0, sizeof(DB_TXNLIST));
 
 	hp = (DB_TXNHEAD *)listp;
 	LIST_INSERT_HEAD(&hp->head[DB_TXNLIST_MASK(hp, txnid)], elp, links);
@@ -823,7 +839,20 @@ __db_txnlist_add(dbenv, listp, txnid, status, lsn)
 		hp->maxlsn = *lsn;
 
 	DB_ASSERT(lsn == NULL ||
-	    status != TXN_COMMIT || log_compare(&hp->maxlsn, lsn) >= 0);
+		status != TXN_COMMIT || log_compare(&hp->maxlsn, lsn) >= 0);
+
+	if (hp->h == NULL)
+		hp->h = hash_init_user((hashfunc_t *)hash_default_fixedwidth,
+				__txnlist_cmp, 0, offsetof(struct __db_txnlist, u.t.status));
+
+	if (!(fnd = hash_find(hp->h, elp))) {
+		hash_add(hp->h, elp);
+	}
+	else {
+		hash_del(hp->h, fnd);
+		elp->next = fnd;
+		hash_add(hp->h, elp);
+	}
 
 	return (0);
 }
@@ -914,6 +943,8 @@ __db_txnlist_end(dbenv, listp)
 
 	if (hp->gen_array != NULL)
 		__os_free(dbenv, hp->gen_array);
+	if (hp->h)
+		hash_free(hp->h);
 	__os_free(dbenv, listp);
 }
 
@@ -1038,9 +1069,13 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 {
 	struct __db_headlink *head;
 	DB_TXNHEAD *hp;
-	DB_TXNLIST *p;
+	DB_TXNLIST *p, *elp = NULL;
 	u_int32_t generation, hash, i;
 	int ret;
+#if defined DEBUG_TXNLIST_PLHASH
+	int chk = 0;
+#endif
+
 
 	if ((hp = (DB_TXNHEAD *)listp) == NULL)
 		return (TXN_NOTFOUND);
@@ -1052,11 +1087,11 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 		for (i = 0; i <= hp->generation; i++)
 			/* The range may wrap around the end. */
 			if (hp->gen_array[i].txn_min <
-			    hp->gen_array[i].txn_max ?
-			    (txnid >= hp->gen_array[i].txn_min &&
-			    txnid <= hp->gen_array[i].txn_max) :
-			    (txnid >= hp->gen_array[i].txn_min ||
-			    txnid <= hp->gen_array[i].txn_max))
+				hp->gen_array[i].txn_max ?
+				(txnid >= hp->gen_array[i].txn_min &&
+				txnid <= hp->gen_array[i].txn_max) :
+				(txnid >= hp->gen_array[i].txn_min ||
+				txnid <= hp->gen_array[i].txn_max))
 				break;
 		DB_ASSERT(i <= hp->generation);
 		generation = hp->gen_array[i].generation;
@@ -1073,14 +1108,30 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 	}
 
 	head = &hp->head[DB_TXNLIST_MASK(hp, hash)];
+	p = LIST_FIRST(head);
+	if (type == TXNLIST_TXNID && hp->h) {
+		DB_TXNLIST fnd = {0};
+		fnd.type = type;
+		fnd.u.t.txnid = txnid;
+		fnd.u.t.generation = generation;
+		elp = hash_find(hp->h, &fnd);
+#if defined DEBUG_TXNLIST_PLHASH
+		chk = 1;
+#else
+		if (elp == NULL)
+			return (TXN_NOTFOUND);
+		p = elp;
+		assert(elp->u.t.txnid == txnid && elp->u.t.generation == generation);
+#endif
+	}
 
-	for (p = LIST_FIRST(head); p != NULL; p = LIST_NEXT(p, links)) {
+	for (; p != NULL; p = LIST_NEXT(p, links)) {
 		if (p->type != type)
 			continue;
 		switch (type) {
 		case TXNLIST_TXNID:
 			if (p->u.t.txnid != txnid ||
-			    generation != p->u.t.generation)
+				generation != p->u.t.generation)
 				continue;
 			ret = p->u.t.status;
 			break;
@@ -1098,8 +1149,19 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 			ret = EINVAL;
 		}
 		if (delete == 1) {
+			if (type == TXNLIST_TXNID && hp->h) {
+				if (elp == NULL) {
+					abort();
+				}
+
+				hash_del(hp->h, p);
+				if (elp->next) {
+					hash_add(hp->h, elp->next);
+				}
+			}
 			LIST_REMOVE(p, links);
 			__os_free(dbenv, p);
+			elp = NULL;
 			p = NULL;
 		} else if (p != LIST_FIRST(head)) {
 			/* Move it to head of list. */
@@ -1107,8 +1169,19 @@ __db_txnlist_find_internal(dbenv, listp, type, txnid, uid, txnlistp, delete)
 			LIST_INSERT_HEAD(head, p, links);
 		}
 		*txnlistp = p;
+#if defined DEBUG_TXNLIST_PLHASH
+		if (chk && (p != elp)) {
+			abort();
+		}
+#endif
 		return (ret);
 	}
+
+#if defined DEBUG_TXNLIST_PLHASH
+	if (chk && elp) {
+		abort();
+	}
+#endif
 
 	return (TXN_NOTFOUND);
 }

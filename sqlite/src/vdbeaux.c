@@ -176,9 +176,9 @@ void sqlite3VdbeSwap(Vdbe *pA, Vdbe *pB){
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   {
-    int *iTmp = pA->updCols;
-    pA->updCols = pB->updCols;
-    pB->updCols = iTmp;
+    SWAP(int *, pA->updCols, pB->updCols);
+    SWAP(int, pA->oldColCount, pB->oldColCount);
+    SWAP(char **, pA->oldColNames, pB->oldColNames);
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pB->expmask = pA->expmask;

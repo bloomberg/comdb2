@@ -321,7 +321,7 @@ struct __db_dbt {
  *******************************************************/
 #define	DB_LOCKVERSION	1
 
-#define	DB_FILE_ID_LEN		20	/* Unique file ID length. */
+#include "fileid_len.h"
 
 /*
  * Deadlock detector modes; used in the DB_ENV structure to configure the

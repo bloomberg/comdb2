@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+set -x
 # Remote cursor moves testcase for comdb2
 ################################################################################
 
@@ -9,8 +10,12 @@
 a_remdbname=$1
 a_remcdb2config=$2
 a_dbname=$3
-a_dbdir=$4
-a_testdir=$5
+a_cdb2config=$4
+a_dbdir=$5
+a_testdir=$6
+
+REM_CDB2_OPTIONS="--cdb2cfg ${a_remcdb2config}"
+SRC_CDB2_OPTIONS="--cdb2cfg ${a_cdb2config}"
 
 output=run.out
 
@@ -18,38 +23,38 @@ output=run.out
 #TEST1 test conflicts between V1 and V2 (see README)
 
 # populate table on remote
-cdb2sql -s --cdb2cfg ${a_remcdb2config} $a_remdbname default - < remdata.req > $output 2>&1
+cdb2sql -s $REM_CDB2_OPTIONS $a_remdbname default - < remdata.req > $output 2>&1
 
 # get the version V1 from remote
-cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default 'select table_version("t")' >> $output
+cdb2sql $REM_CDB2_OPTIONS $a_remdbname default 'select table_version("t")' >> $output
 
 # Make sure we talk to the same host
-mach=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
+mach=`cdb2sql --tabs ${SRC_CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
 
 # retrieve data through remote sql
-cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+echo cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
 # schema change the remote V1->V1'
-cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table t { `cat t.csc2 ` }"
+cdb2sql $REM_CDB2_OPTIONS $a_remdbname default "alter table t { `cat t.csc2 ` }"
 
 # sleep since we don't wait for schema change right now!
 sleep 5
 
 # get the new version V1'
-cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default 'select table_version("t")' >> $output
+cdb2sql $REM_CDB2_OPTIONS $a_remdbname default 'select table_version("t")' >> $output
 
 # retrieve data
-cdb2sql -cost --host $mach $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} -cost --host $mach $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
 
 # get the new version V2'
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+echo cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
 sed "s/DBNAME/${a_remdbname}/g" output.log > output.log.actual
 

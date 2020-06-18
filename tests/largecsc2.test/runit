@@ -1,18 +1,12 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 dbnm=$1
 
 if [ "x$dbnm" == "x" ] ; then
-    echo "need a DB name"
-    exit 1
+    failexit "need a DB name"
 fi
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
 
 echo "create table t2, should succeed"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat t2_1.csc2 ` }" || failexit "create failed"

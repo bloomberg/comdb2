@@ -602,7 +602,7 @@ BB_COMPILE_TIME_ASSERT(fstblk_rspok_size,
                        sizeof(struct fstblk_rspok) == FSTBLK_RSPOK_LEN);
 
 /* replay info for a failed block op - store some rrns (up to the failed
-* request), and store the index of the op that failed and its rcode) */
+ * request), and store the index of the op that failed and its rcode) */
 struct fstblk_rsperr {
     short num_completed;
     uint8_t pad0[2];
@@ -628,6 +628,21 @@ struct fstblk_rspkl {
 enum { FSTBLK_RSPKL_LEN = 8 };
 BB_COMPILE_TIME_ASSERT(fstblk_rspkl_size,
                        sizeof(struct fstblk_rspkl) == FSTBLK_RSPKL_LEN);
+
+/* This buffer must always be able to hold a fstblk header and the max number
+   of block err's. It will also have to hold one of the following:
+     fstblk pre rspkl + rspkl,
+     fstblk rsperr, or
+     fstblk rspok.
+   Since I don't want to bother figuring out which of those lengths is the
+   longest, just add them all together.
+*/
+#define FSTBLK_MAX_BUF_LEN                                                     \
+    FSTBLK_HEADER_LEN + FSTBLK_PRE_RSPKL_LEN + BLOCK_RSPKL_LEN +               \
+        FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) + \
+        sizeof(int) /* snapinfo_outrc */ + ERRSTAT_LEN /* iq->errstat */ +     \
+        sizeof(int) /* ? */ + sizeof(int) /* comdb2_time_epoch() */ +          \
+        sizeof(struct query_effects) /* query effects */
 
 typedef struct block_state {
     /* ptrs into the main fstsnd buf */

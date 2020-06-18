@@ -185,6 +185,8 @@ int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
 
 int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran);
 
+unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran);
+
 int bdb_bkfill_shadows_pglogs_from_active_ltrans(bdb_state_type *bdb_state,
                                                  tran_type *shadow_tran,
                                                  int *bdberr);

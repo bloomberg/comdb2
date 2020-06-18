@@ -58,9 +58,15 @@ else
     cp -r $cadir /cert
     chown -R $(whoami) /cert
 
+    if [ "`hostname -d`" = "" ]; then
+        sslclientmode='VERIFY_CA'
+    else
+        sslclientmode='VERIFY_DBNAME'
+    fi
+
     comdb2 --create $db >/dev/null 2>&1 &
     comdb2 --create \
-           --tunable 'ssl_client_mode VERIFY_DBNAME' \
+           --tunable "ssl_client_mode ${sslclientmode}" \
            --tunable 'ssl_dbname_field street' \
            --tunable 'ssl_cert_path /cert' \
            $ssldb >/dev/null 2>&1 &

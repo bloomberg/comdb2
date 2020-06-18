@@ -70,7 +70,7 @@ int open_all_dbs(void)
 int check_sc_ok(struct schema_change_type *s)
 {
     /* I must be rtcpu up */
-    if (!is_node_up(gbl_mynode)) {
+    if (!is_node_up(gbl_myhostname)) {
         sc_errf(s, "cannot perform schema change; I am rtcpu'd down\n");
         return -1;
     }
@@ -179,5 +179,48 @@ int validate_ix_names(struct dbtable *db)
         rc = validate_ixname(keynm);
         if (rc) break;
     }
+    return rc;
+}
+
+static int seed_qsort_cmpfunc(const void *key1, const void *key2)
+{
+    sc_hist_row *s1, *s2;
+    s1 = (sc_hist_row *)key1;
+    s2 = (sc_hist_row *)key2;
+
+    return bdb_cmp_genids(s1->seed, s2->seed);
+}
+
+// keep only last N sc history entries
+int trim_sc_history_entries(tran_type *tran, const char *tablename)
+{
+    int rc = 0, bdberr, nkeys;
+    sc_hist_row *hist = NULL;
+
+    rc = bdb_llmeta_get_sc_history(tran, &hist, &nkeys, &bdberr, tablename);
+    if (rc || bdberr) {
+        logmsg(LOGMSG_ERROR, "%s: failed to get all schema change hist\n",
+               __func__);
+        return 1;
+    }
+    int attr = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_HIST_KEEP);
+    if (nkeys < attr)
+        goto cleanup; // nothing to trim
+
+#if defined(_IBM_SOURCE) || defined(_SUN_SOURCE)
+    qsort(hist, nkeys, sizeof(sc_hist_row), seed_qsort_cmpfunc);
+#endif
+
+    for (int i = 0; i < nkeys - attr; i++) {
+        logmsg(LOGMSG_DEBUG, "Deleting sc_hist entry %i seed %0#16" PRIx64 "\n",
+               i, hist[i].seed);
+
+        rc = bdb_del_schema_change_history(tran, tablename, hist[i].seed);
+        if (rc)
+            return rc;
+    }
+
+cleanup:
+    free(hist);
     return rc;
 }

@@ -3,7 +3,7 @@
 
 #include "list.h"
 #include "cdb2_constants.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "sql.h"
 #include "reqlog.h"
 

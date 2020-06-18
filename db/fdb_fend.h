@@ -296,6 +296,7 @@ void fdb_sqlstats_put(fdb_t *fdb);
  *
  */
 const char *fdb_dbname_name(fdb_t *fdb);
+const char *fdb_dbname_class_routing(fdb_t *fdb);
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent);
 const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 

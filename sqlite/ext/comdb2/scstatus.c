@@ -10,6 +10,7 @@
 #include "cdb2api.h"
 #include "schemachange.h"
 #include "sc_schema.h"
+#include "sc_global.h"
 
 struct sc_status_ent {
     char *name;
@@ -42,7 +43,7 @@ static char *status_num2str(int s)
     return "UNKNOWN";
 }
 
-int get_status(void **data, int *npoints)
+static int get_status(void **data, int *npoints)
 {
     int rc, bdberr, nkeys;
     llmeta_sc_status_data *status = NULL;
@@ -104,13 +105,10 @@ int get_status(void **data, int *npoints)
         if (status[i].status == BDB_SC_RUNNING || 
             status[i].status == BDB_SC_PAUSED || 
             status[i].status == BDB_SC_COMMIT_PENDING) {
-            unsigned long long seed = 0;
-            unsigned int host = 0;
-            if ((rc = fetch_sc_seed(sc.tablename, thedb, &seed, &host)) == SC_OK) {
-                char str[22];
-                sprintf(str, "0x%llx", seed);
-                sc_status_ents[i].seed = strdup(str);
-            }
+            uint64_t seed = sc_get_seed_table(sc.tablename);
+            char str[22];
+            sprintf(str, "%0#16" PRIx64, flibc_htonll(seed));
+            sc_status_ents[i].seed = strdup(str);
         }
     }
 
@@ -127,7 +125,7 @@ cleanup:
     return rc;
 }
 
-void free_status(void *p, int n)
+static void free_status(void *p, int n)
 {
     struct sc_status_ent *sc_status_ents = p;
     for (int i = 0; i < n; i++) {

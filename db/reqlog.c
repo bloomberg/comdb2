@@ -2038,8 +2038,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                                "LONG REQUEST %d MS logged in %s [%s time %d]\n",
                                U2M(logger->durationus),
                                long_request_out->filename, sqlinfo,
-                               U2M(logger->iq->sorese->endus -
-                                   logger->iq->sorese->startus));
+                               U2M(logger->iq->sorese->sess_endus -
+                                   logger->iq->sorese->sess_startus));
                     } else {
                         logmsg(LOGMSG_USER,
                                "%d LONG REQUESTS %d MS - %d MS logged "
@@ -2647,12 +2647,15 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
 
             case BLOCK2_RECOM:
                 summaries[ii].recom += n;
+                break;
 
             case BLOCK2_SNAPISOL:
                 summaries[ii].snapisol += n;
+                break;
 
             case BLOCK2_SERIAL:
                 summaries[ii].serial += n;
+                break;
             }
         }
         ii++;

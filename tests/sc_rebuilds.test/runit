@@ -37,72 +37,6 @@ function do_alter
 }
 
 
-function do_sc_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    typeset failed=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        v=$((scnt%2 + 2)) #2 or 3
-        csc=t${v}.csc2
-
-        echo "Running alter iteration $scnt: $loc_tbl $csc"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "alter table $loc_tbl { `cat $csc ` }"
-
-        if [[ $? != 0 ]]; then
-            print "Error schema-changing on iteration $scnt"
-            echo "NOTE: schemachange above CORRECTLY failed"
-            failed=1
-        fi
-
-        do_verify $loc_tbl
-        let scnt=scnt+1
-        #sleep 1
-    done
-
-    echo "Performed $scnt schema-changes."
-
-    if [ $failed -eq 0 ] ; then
-        echo "Testcase failed: SC succeeded $scnt times"
-        exit 1
-    fi
-
-    return 0
-}
-
-
-function do_rebuild_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            kill -9 $track_pid
-            exit 1
-        fi
-
-        do_verify $loc_tbl
-        let scnt=scnt+1
-        #sleep 1
-    done
-
-    echo "Performed $scnt schema-changes."
-
-    return 0
-}
-
-
 
 
 function do_rebuild
@@ -412,6 +346,32 @@ function rebuild_new_field_and_idx
     do_verify $tbl
 }
 
+function check_comdb2_sc_hist
+{
+    if [[ -n "$CLUSTER" ]]; then
+        master=`getmaster`
+        ssh -o StrictHostKeyChecking=no $master "cat $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c" | grep "starting schema" | cut -f10 -d' ' > seeds_trc.txt
+    else
+        grep "starting schema" $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c | cut -f10 -d' ' > seeds_trc.txt
+    fi
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql.txt
+
+    # use tail +3 to skip first two entries which are creating t1 and t2 and dont show up in trc.c
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" | tail +3 > seeds_sql.txt
+    if ! diff seeds_trc.txt seeds_sql.txt ; then
+        failexit "Seed captured in sc_history is not the same as trc.c"
+    fi
+    # delete the aforementioned first two entries by truncating, and check again
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'EXEC PROCEDURE sys.cmd.trim_sc_history("t1",0)'
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'EXEC PROCEDURE sys.cmd.trim_sc_history("t2",15)'
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" > seeds_sql2.txt
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql2.txt
+    if ! diff seeds_trc.txt seeds_sql2.txt ; then
+        failexit "Seed captured in sc_history is not the same as trc.c"
+    fi
+
+}
+
 
 echo "running test in machine $(hostname):${PWD}"
 
@@ -437,5 +397,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 run_plain_rebuilds 500
 run_pageorder_rebuilds
 rebuild_new_field_and_idx 
+
+check_comdb2_sc_hist
 
 echo Success

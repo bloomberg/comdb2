@@ -2345,7 +2345,7 @@ __memp_load_default(dbenv)
 {
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	u_int32_t lines;
-	u_int64_t cnt;
+	u_int64_t cnt = 0;
 	int fd, ret;
 	SBUF2 *s;
 
@@ -2406,7 +2406,7 @@ __memp_dump_default(dbenv, force)
 	static int count = 0;
 	int fd, ret = 0;
 	u_int32_t lines;
-	u_int64_t cnt;
+	u_int64_t cnt = 0;
 	int thresh = gbl_memp_dump_cache_threshold;
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	char tmppath[PATH_MAX], tmppathbuf[PATH_MAX], *rtmppath;

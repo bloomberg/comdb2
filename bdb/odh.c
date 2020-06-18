@@ -35,7 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include "bdb_int.h"
 #include <locks.h>
@@ -166,6 +166,8 @@ int bdb_compr2algo(const char *a)
         return BDB_COMPRESS_CRLE;
     if (strncasecmp(a, "lz4", 3) == 0)
         return BDB_COMPRESS_LZ4;
+    if (strncasecmp(a, "none", 4) == 0)
+        return BDB_COMPRESS_NONE;
     return BDB_COMPRESS_NONE;
 }
 
@@ -767,7 +769,7 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
         fsnapf(stdout, odh.recptr, odh.length);
         */
         if (buf) {
-            if (data->flags & DB_DBT_MALLOC) {
+            if (data->flags & (DB_DBT_MALLOC | DB_DBT_REALLOC)) {
                 free(data->data);
                 data->data = odh.recptr;
             } else if (data->flags & DB_DBT_USERMEM) {
@@ -1280,6 +1282,18 @@ int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
     }
 
     return rc;
+}
+
+void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
+                               int compression, int persistseq)
+{
+    print(bdb_state,
+          "BDB queue options set: ODH %d compression %d "
+          "persitent_seq %d\n",
+          odh, compression, persistseq);
+    bdb_state->ondisk_header = odh;
+    bdb_state->compress = compression;
+    bdb_state->persistent_seq = persistseq;
 }
 
 void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,

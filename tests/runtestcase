@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-# set -x
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
@@ -8,6 +7,9 @@ TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(uname -m)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
+elif [[ "$(uname -m)" == "aarch64" ]] ; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 2 + 2))m
 elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m
@@ -73,8 +75,9 @@ find_cores() {
     # for all machines in cluster 
     local LCLDBNM=$1
     local LCLDBDIR=$2
-    local COREAGE=60
+    local COREAGE=${FINDCOREAGE:-60}
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
+    [[ ${CPAT:0:1} == '|' ]] && return #TODO: handle cores controled by coredumpctl
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
         COREDIR=$LCLDBDIR
@@ -247,6 +250,16 @@ verify_db_at_finish() {
     done
 }
 
+stop_if_more_than_n_failed () {
+    N=10   # if more that N failures in test.log stop running
+    F=`grep failed ${TESTDIR}/test.log | wc -l`
+    if [ "$F" -ge "$N" ] ; then 
+        exit 1; 
+    fi
+}
+
+stop_if_more_than_n_failed
+
 
 # start the testing: setup, runit, check cores, unsetup
 
@@ -330,6 +343,9 @@ elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
     echo -e "!$TESTCASE: also ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
     echo "!$TESTCASE: also failed verify ($verify_ret)" >> ${TEST_LOG}
+elif [[ -f "${DBNAME}.failexit" ]] ; then
+    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} (found ${DBNAME}.failexit)"
+    echo "!$TESTCASE: failed (found ${DBNAME}.failexit)" >> ${TEST_LOG}
 elif [[ -n "$verify_ret" ]] ; then
     echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
     echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}
