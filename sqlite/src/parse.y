@@ -1132,7 +1132,6 @@ cmd ::= with UPDATE xfullname(X) indexed_opt(I) SET setlist(Y)
 %ifdef SQLITE_BUILDING_FOR_COMDB2
   sqlite3Update(pParse,X,Y,W,0,0,0,0);
 %endif SQLITE_BUILDING_FOR_COMDB2
-
 }
 %endif
 
