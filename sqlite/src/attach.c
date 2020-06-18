@@ -282,7 +282,6 @@ static void attachFunc(
     rc = SQLITE_NOMEM_BKPT;
   }
 
-
 #ifdef SQLITE_HAS_CODEC
   if( rc==SQLITE_OK ){
     extern int sqlite3CodecAttach(sqlite3*, int, const void*, int);
@@ -320,7 +319,7 @@ static void attachFunc(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 done_with_open:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  sqlite3_free( zPath );
+  sqlite3FreeFilename( zPath );
 
   /* If the file was opened successfully, read the schema for the new database.
   ** If this fails, or if opening the file failed, then close the file and 
