@@ -143,7 +143,7 @@ static void set_dbdir(char *dir)
     int n = snprintf(NULL, 0, "%s/%s", wd, dir);
     gbl_dbdir = malloc(++n);
     snprintf(gbl_dbdir, n, "%s/%s", wd, dir);
-    free(wd);
+    os_free(wd);
 }
 
 #include <berkdb/dbinc/queue.h>
