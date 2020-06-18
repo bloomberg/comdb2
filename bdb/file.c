@@ -1670,7 +1670,11 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
     bdb_unlock_children_lock(bdb_state);
 
     /* Commit */
-    tid->commit(tid, 0);
+    rc = tid->commit(tid, 0);
+    assert(rc == 0);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "bdb_close_int: commit %d\n", rc);
+    }
 
     /* close our transactional environment.  note that according to berkdb
      * docs the handle is invalid after this is called regardless of the
