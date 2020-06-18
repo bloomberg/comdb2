@@ -192,7 +192,7 @@ do_test check-3.1 {
   catchsql {
     CREATE TABLE t3( x INTEGER, y INTEGER, z INTEGER, CHECK( x<(SELECT min(x) FROM t1) ));
   }
-} {1 {malformed database schema (t3) - no such table: t1}}
+} {1 {malformed database schema (t3) - subqueries prohibited in CHECK constraints}}
 #} {1 {subqueries prohibited in CHECK constraints}}
 
 do_test check-3.2 {

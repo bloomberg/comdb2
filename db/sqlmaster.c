@@ -117,7 +117,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
             ent->tblname = strdup(view->view_name);
             ent->isstrdup = 1;
             ent->ixnum = -1;
-            ent->rootpage = -1;
+            ent->rootpage = 0;
             ent->entry = create_master_row_for_view(view, &ent->entry_size);
             i++;
         }
@@ -276,8 +276,8 @@ static void *create_master_row_for_view(struct dbview *view, int *sz)
 
     fill_mem_str(&mems[0], etype);
     fill_mem_str(&mems[1], name);
-    fill_mem_str(&mems[2], 0);
-    fill_mem_int(&mems[3], -1);
+    fill_mem_str(&mems[2], name);
+    fill_mem_int(&mems[3], 0);
     fill_mem_str(&mems[4], view->view_def);
     fill_mem_str(&mems[5], 0);
 

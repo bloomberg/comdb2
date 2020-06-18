@@ -14,6 +14,8 @@
 ** planner logic in "where.c".  These definitions are broken out into
 ** a separate source file for easier editing.
 */
+#ifndef SQLITE_WHEREINT_H
+#define SQLITE_WHEREINT_H
 
 /*
 ** Trace output macros
@@ -75,13 +77,15 @@ struct WhereLevel {
   int addrCont;         /* Jump here to continue with the next loop cycle */
   int addrFirst;        /* First instruction of interior of the loop */
   int addrBody;         /* Beginning of the body of this loop */
+  int regBignull;       /* big-null flag reg. True if a NULL-scan is needed */
+  int addrBignull;      /* Jump here for next part of big-null scan */
 #if !defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS)
   u32 iLikeRepCntr;     /* LIKE range processing counter register (times 2) */
   int addrLikeRep;      /* LIKE range processing address */
 #endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_LIKE_DOESNT_MATCH_BLOBS) */
   u8 iFrom;             /* Which entry in the FROM clause */
   u8 op, p3, p5;        /* Opcode, P3 & P5 of the opcode that ends the loop */
-  int p1, p2;           /* Operands of the opcode used to ends the loop */
+  int p1, p2;           /* Operands of the opcode used to end the loop */
   union {               /* Information that depends on pWLoop->wsFlags */
     struct {
       int nIn;              /* Number of entries in aInLoop[] */
@@ -132,7 +136,7 @@ struct WhereLoop {
       u16 nEq;               /* Number of equality constraints */
       u16 nBtm;              /* Size of BTM vector */
       u16 nTop;              /* Size of TOP vector */
-      u16 nIdxCol;           /* Index column used for ORDER BY */
+      u16 nDistinctCol;      /* Index columns used to sort for DISTINCT */
       Index *pIndex;         /* Index used, or NULL */
     } btree;
     struct {               /* Information for virtual tables */
@@ -276,22 +280,22 @@ struct WhereTerm {
 /*
 ** Allowed values of WhereTerm.wtFlags
 */
-#define TERM_DYNAMIC    0x01   /* Need to call sqlite3ExprDelete(db, pExpr) */
-#define TERM_VIRTUAL    0x02   /* Added by the optimizer.  Do not code */
-#define TERM_CODED      0x04   /* This term is already coded */
-#define TERM_COPIED     0x08   /* Has a child */
-#define TERM_ORINFO     0x10   /* Need to free the WhereTerm.u.pOrInfo object */
-#define TERM_ANDINFO    0x20   /* Need to free the WhereTerm.u.pAndInfo obj */
-#define TERM_OR_OK      0x40   /* Used during OR-clause processing */
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
-#  define TERM_VNULL    0x80   /* Manufactured x>NULL or x<=NULL term */
+#define TERM_DYNAMIC    0x0001 /* Need to call sqlite3ExprDelete(db, pExpr) */
+#define TERM_VIRTUAL    0x0002 /* Added by the optimizer.  Do not code */
+#define TERM_CODED      0x0004 /* This term is already coded */
+#define TERM_COPIED     0x0008 /* Has a child */
+#define TERM_ORINFO     0x0010 /* Need to free the WhereTerm.u.pOrInfo object */
+#define TERM_ANDINFO    0x0020 /* Need to free the WhereTerm.u.pAndInfo obj */
+#define TERM_OR_OK      0x0040 /* Used during OR-clause processing */
+#ifdef SQLITE_ENABLE_STAT4
+#  define TERM_VNULL    0x0080 /* Manufactured x>NULL or x<=NULL term */
 #else
-#  define TERM_VNULL    0x00   /* Disabled if not using stat3 */
+#  define TERM_VNULL    0x0000 /* Disabled if not using stat4 */
 #endif
-#define TERM_LIKEOPT    0x100  /* Virtual terms from the LIKE optimization */
-#define TERM_LIKECOND   0x200  /* Conditionally this LIKE operator term */
-#define TERM_LIKE       0x400  /* The original LIKE operator */
-#define TERM_IS         0x800  /* Term.pExpr is an IS operator */
+#define TERM_LIKEOPT    0x0100 /* Virtual terms from the LIKE optimization */
+#define TERM_LIKECOND   0x0200 /* Conditionally this LIKE operator term */
+#define TERM_LIKE       0x0400 /* The original LIKE operator */
+#define TERM_IS         0x0800 /* Term.pExpr is an IS operator */
 #define TERM_VARSELECT  0x1000 /* Term.pExpr contains a correlated sub-query */
 
 /*
@@ -403,7 +407,7 @@ struct WhereLoopBuilder {
   ExprList *pOrderBy;       /* ORDER BY clause */
   WhereLoop *pNew;          /* Template WhereLoop */
   WhereOrSet *pOrSet;       /* Record best loops here, if not NULL */
-#ifdef SQLITE_ENABLE_STAT3_OR_STAT4
+#ifdef SQLITE_ENABLE_STAT4
   UnpackedRecord *pRec;     /* Probe for stat4 (if required) */
   int nRecValid;            /* Number of valid fields currently in pRec */
 #endif
@@ -436,6 +440,20 @@ struct WhereLoopBuilder {
 #endif
 
 /*
+** Each instance of this object records a change to a single node
+** in an expression tree to cause that node to point to a column
+** of an index rather than an expression or a virtual column.  All
+** such transformations need to be undone at the end of WHERE clause
+** processing.
+*/
+typedef struct WhereExprMod WhereExprMod;
+struct WhereExprMod {
+  WhereExprMod *pNext;  /* Next translation on a list of them all */
+  Expr *pExpr;          /* The Expr node that was transformed */
+  Expr orig;            /* Original value of the Expr node */
+};
+
+/*
 ** The WHERE clause processing routine has two halves.  The
 ** first part does the start of the WHERE loop and the second
 ** half does the tail of the WHERE loop.  An instance of
@@ -451,23 +469,25 @@ struct WhereInfo {
   ExprList *pOrderBy;       /* The ORDER BY clause or NULL */
   ExprList *pResultSet;     /* Result set of the query */
   Expr *pWhere;             /* The complete WHERE clause */
-  LogEst iLimit;            /* LIMIT if wctrlFlags has WHERE_USE_LIMIT */
   int aiCurOnePass[2];      /* OP_OpenWrite cursors for the ONEPASS opt */
   int iContinue;            /* Jump here to continue with next record */
   int iBreak;               /* Jump here to break out of the loop */
   int savedNQueryLoop;      /* pParse->nQueryLoop outside the WHERE loop */
   u16 wctrlFlags;           /* Flags originally passed to sqlite3WhereBegin() */
+  LogEst iLimit;            /* LIMIT if wctrlFlags has WHERE_USE_LIMIT */
   u8 nLevel;                /* Number of nested loop */
   i8 nOBSat;                /* Number of ORDER BY terms satisfied by indices */
-  u8 sorted;                /* True if really sorted (not just grouped) */
   u8 eOnePass;              /* ONEPASS_OFF, or _SINGLE, or _MULTI */
-  u8 untestedTerms;         /* Not all WHERE terms resolved by outer loop */
   u8 eDistinct;             /* One of the WHERE_DISTINCT_* values */
-  u8 bOrderedInnerLoop;     /* True if only the inner-most loop is ordered */
+  unsigned bDeferredSeek :1;   /* Uses OP_DeferredSeek */
+  unsigned untestedTerms :1;   /* Not all WHERE terms resolved by outer loop */
+  unsigned bOrderedInnerLoop:1;/* True if only the inner-most loop is ordered */
+  unsigned sorted :1;          /* True if really sorted (not just grouped) */
+  LogEst nRowOut;           /* Estimated number of output rows */
   int iTop;                 /* The very beginning of the WHERE loop */
   WhereLoop *pLoops;        /* List of all WhereLoop objects */
+  WhereExprMod *pExprMods;  /* Expression modifications */
   Bitmask revMask;          /* Mask of ORDER BY terms that need reversing */
-  LogEst nRowOut;           /* Estimated number of output rows */
   WhereClause sWC;          /* Decomposition of the WHERE clause */
   WhereMaskSet sMaskSet;    /* Map cursor numbers to bitmasks */
   WhereLevel a[1];          /* Information about each nest loop in WHERE */
@@ -481,6 +501,8 @@ struct WhereInfo {
 Bitmask sqlite3WhereGetMask(WhereMaskSet*,int);
 #ifdef WHERETRACE_ENABLED
 void sqlite3WhereClausePrint(WhereClause *pWC);
+void sqlite3WhereTermPrint(WhereTerm *pTerm, int iTerm);
+void sqlite3WhereLoopPrint(WhereLoop *p, WhereClause *pWC);
 #endif
 WhereTerm *sqlite3WhereFindTerm(
   WhereClause *pWC,     /* The WHERE clause to be searched */
@@ -590,3 +612,6 @@ void sqlite3WhereTabFuncArgs(Parse*, struct SrcList_item*, WhereClause*);
 #define WHERE_UNQ_WANTED   0x00010000  /* WHERE_ONEROW would have been helpful*/
 #define WHERE_PARTIALIDX   0x00020000  /* The automatic index is partial */
 #define WHERE_IN_EARLYOUT  0x00040000  /* Perhaps quit IN loops early */
+#define WHERE_BIGNULL_SORT 0x00080000  /* Column nEq of index is BIGNULL */
+
+#endif /* !defined(SQLITE_WHEREINT_H) */

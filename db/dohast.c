@@ -50,14 +50,14 @@ static char *generate_columns(Vdbe *v, ExprList *c, char **tbl,
         }
         if (!cols)
             cols = sqlite3_mprintf("%s%s%w%s", sExpr,
-                                   (c->a[i].zName) ? " aS \"" : "",
-                                   (c->a[i].zName) ? c->a[i].zName : "",
-                                   (c->a[i].zName) ? "\" " : "");
+                                   (c->a[i].zEName) ? " aS \"" : "",
+                                   (c->a[i].zEName) ? c->a[i].zEName : "",
+                                   (c->a[i].zEName) ? "\" " : "");
         else {
             accum = sqlite3_mprintf("%s, %s%s%w%s", cols, sExpr,
-                                    (c->a[i].zName) ? " aS \"" : "",
-                                    (c->a[i].zName) ? c->a[i].zName : "",
-                                    (c->a[i].zName) ? "\" " : "");
+                                    (c->a[i].zEName) ? " aS \"" : "",
+                                    (c->a[i].zEName) ? c->a[i].zEName : "",
+                                    (c->a[i].zEName) ? "\" " : "");
             sqlite3_free(cols);
             cols = accum;
         }
@@ -90,7 +90,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         return NULL;
     }
 
-    if (((*order_dir)[0] = lst->a[0].sortOrder) != 0) {
+    if (((*order_dir)[0] = lst->a[0].sortFlags) & KEYINFO_ORDER_DESC) {
         tmp = sqlite3_mprintf("%s DeSC", ret);
         sqlite3_free(ret);
         ret = tmp;
@@ -105,7 +105,7 @@ static char *describeExprList(Vdbe *v, const ExprList *lst, int *order_size,
         }
         tmp = sqlite3_mprintf(
             "%s, %s%s", ret, newterm,
-            (((*order_dir)[i] = lst->a[i].sortOrder) != 0) ? " DeSC" : "");
+            (((*order_dir)[i] = lst->a[i].sortFlags) & KEYINFO_ORDER_DESC) ? " DeSC" : "");
         sqlite3_free(newterm);
         sqlite3_free(ret);
         ret = tmp;

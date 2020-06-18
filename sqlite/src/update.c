@@ -155,7 +155,7 @@ void sqlite3Update(
   Expr *pLimit,          /* LIMIT clause. May be null */
   Upsert *pUpsert        /* ON CONFLICT clause, or null */
 ){
-  int i, j;              /* Loop counters */
+  int i, j, k;           /* Loop counters */
   Table *pTab;           /* The table to be updated */
   int addrTop = 0;       /* VDBE instruction address of the start of the loop */
   WhereInfo *pWInfo;     /* Information about the WHERE clause */
@@ -163,11 +163,12 @@ void sqlite3Update(
   Index *pIdx;           /* For looping over indices */
   Index *pPk;            /* The PRIMARY KEY index for WITHOUT ROWID tables */
   int nIdx;              /* Number of indices that need updating */
+  int nAllIdx;           /* Total number of indexes */
   int iBaseCur;          /* Base cursor number */
   int iDataCur;          /* Cursor for the canonical data btree */
   int iIdxCur;           /* Cursor for the first index */
   sqlite3 *db;           /* The database structure */
-  int *aRegIdx = 0;      /* First register in array assigned to each index */
+  int *aRegIdx = 0;      /* Registers for to each index and the main table */
   int *aXRef = 0;        /* aXRef[i] is the index in pChanges->a[] of the
                          ** an expression for the i-th column of the table.
                          ** aXRef[i]==-1 if the i-th column is not changed. */
@@ -198,6 +199,7 @@ void sqlite3Update(
   int iPk = 0;           /* First of nPk cells holding PRIMARY KEY value */
   i16 nPk = 0;           /* Number of components of the PRIMARY KEY */
   int bReplace = 0;      /* True if REPLACE conflict resolution might happen */
+  int bFinishSeek = 1;   /* The OP_FinishSeek opcode is needed */
 
   /* Register Allocations */
   int regRowCount = 0;   /* A count of rows changed */
@@ -287,10 +289,10 @@ void sqlite3Update(
   /* Allocate space for aXRef[], aRegIdx[], and aToOpen[].  
   ** Initialize aXRef[] and aToOpen[] to their default values.
   */
-  aXRef = sqlite3DbMallocRawNN(db, sizeof(int) * (pTab->nCol+nIdx) + nIdx+2 );
+  aXRef = sqlite3DbMallocRawNN(db, sizeof(int) * (pTab->nCol+nIdx+1) + nIdx+2 );
   if( aXRef==0 ) goto update_cleanup;
   aRegIdx = aXRef+pTab->nCol;
-  aToOpen = (u8*)(aRegIdx+nIdx);
+  aToOpen = (u8*)(aRegIdx+nIdx+1);
   memset(aToOpen, 1, nIdx+1);
   aToOpen[nIdx+1] = 0;
   for(i=0; i<pTab->nCol; i++) aXRef[i] = -1;
@@ -301,6 +303,10 @@ void sqlite3Update(
   sNC.pSrcList = pTabList;
   sNC.uNC.pUpsert = pUpsert;
   sNC.ncFlags = NC_UUpsert;
+
+  /* Begin generating code. */
+  v = sqlite3GetVdbe(pParse);
+  if( v==0 ) goto update_cleanup;
 
   /* Resolve the column names in all the expressions of the
   ** of the UPDATE statement.  Also find the column index
@@ -314,24 +320,34 @@ void sqlite3Update(
       goto update_cleanup;
     }
     for(j=0; j<pTab->nCol; j++){
-      if( sqlite3StrICmp(pTab->aCol[j].zName, pChanges->a[i].zName)==0 ){
+      if( sqlite3StrICmp(pTab->aCol[j].zName, pChanges->a[i].zEName)==0 ){
         if( j==pTab->iPKey ){
           chngRowid = 1;
           pRowidExpr = pChanges->a[i].pExpr;
         }else if( pPk && (pTab->aCol[j].colFlags & COLFLAG_PRIMKEY)!=0 ){
           chngPk = 1;
         }
+#ifndef SQLITE_OMIT_GENERATED_COLUMNS
+        else if( pTab->aCol[j].colFlags & COLFLAG_GENERATED ){
+          testcase( pTab->aCol[j].colFlags & COLFLAG_VIRTUAL );
+          testcase( pTab->aCol[j].colFlags & COLFLAG_STORED );
+          sqlite3ErrorMsg(pParse, 
+             "cannot UPDATE generated column \"%s\"",
+             pTab->aCol[j].zName);
+          goto update_cleanup;
+        }
+#endif
         aXRef[j] = i;
         break;
       }
     }
     if( j>=pTab->nCol ){
-      if( pPk==0 && sqlite3IsRowid(pChanges->a[i].zName) ){
+      if( pPk==0 && sqlite3IsRowid(pChanges->a[i].zEName) ){
         j = -1;
         chngRowid = 1;
         pRowidExpr = pChanges->a[i].pExpr;
       }else{
-        sqlite3ErrorMsg(pParse, "no such column: %s", pChanges->a[i].zName);
+        sqlite3ErrorMsg(pParse, "no such column: %s", pChanges->a[i].zEName);
         pParse->checkSchema = 1;
         goto update_cleanup;
       }
@@ -355,6 +371,33 @@ void sqlite3Update(
   assert( chngPk==0 || chngPk==1 );
   chngKey = chngRowid + chngPk;
 
+#ifndef SQLITE_OMIT_GENERATED_COLUMNS
+  /* Mark generated columns as changing if their generator expressions
+  ** reference any changing column.  The actual aXRef[] value for 
+  ** generated expressions is not used, other than to check to see that it
+  ** is non-negative, so the value of aXRef[] for generated columns can be
+  ** set to any non-negative number.  We use 99999 so that the value is
+  ** obvious when looking at aXRef[] in a symbolic debugger. 
+  */
+  if( pTab->tabFlags & TF_HasGenerated ){
+    int bProgress;
+    testcase( pTab->tabFlags & TF_HasVirtual );
+    testcase( pTab->tabFlags & TF_HasStored );
+    do{
+      bProgress = 0;
+      for(i=0; i<pTab->nCol; i++){
+        if( aXRef[i]>=0 ) continue;
+        if( (pTab->aCol[i].colFlags & COLFLAG_GENERATED)==0 ) continue;
+        if( sqlite3ExprReferencesUpdatedColumn(pTab->aCol[i].pDflt,
+                                               aXRef, chngRowid) ){
+          aXRef[i] = 99999;
+          bProgress = 1;
+        }
+      }
+    }while( bProgress );
+  }
+#endif
+
   /* The SET expressions are not actually used inside the WHERE loop.  
   ** So reset the colUsed mask. Unless this is a virtual table. In that
   ** case, set all bits of the colUsed mask (to ensure that the virtual
@@ -369,7 +412,7 @@ void sqlite3Update(
   ** the key for accessing each index.
   */
   if( onError==OE_Replace ) bReplace = 1;
-  for(j=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, j++){
+  for(nAllIdx=0, pIdx=pTab->pIndex; pIdx; pIdx=pIdx->pNext, nAllIdx++){
     int reg;
     if( chngKey || hasFK>1 || pIdx==pPk
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -392,18 +435,16 @@ void sqlite3Update(
         }
       }
     }
-    if( reg==0 ) aToOpen[j+1] = 0;
-    aRegIdx[j] = reg;
+    if( reg==0 ) aToOpen[nAllIdx+1] = 0;
+    aRegIdx[nAllIdx] = reg;
   }
+  aRegIdx[nAllIdx] = ++pParse->nMem;  /* Register storing the table record */
   if( bReplace ){
     /* If REPLACE conflict resolution might be invoked, open cursors on all 
     ** indexes in case they are needed to delete records.  */
     memset(aToOpen, 1, nIdx+1);
   }
 
-  /* Begin generating code. */
-  v = sqlite3GetVdbe(pParse);
-  if( v==0 ) goto update_cleanup;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   /* create our updCols array. */
   if( isView && strncmp(pTab->aCol[0].zName, "__hidden__rowid",
@@ -418,7 +459,13 @@ void sqlite3Update(
 
   /* Allocate required registers. */
   if( !IsVirtual(pTab) ){
-    regRowSet = ++pParse->nMem;
+    /* For now, regRowSet and aRegIdx[nAllIdx] share the same register.
+    ** If regRowSet turns out to be needed, then aRegIdx[nAllIdx] will be
+    ** reallocated.  aRegIdx[nAllIdx] is the register in which the main
+    ** table record is written.  regRowSet holds the RowSet for the
+    ** two-pass update algorithm. */
+    assert( aRegIdx[nAllIdx]==pParse->nMem );
+    regRowSet = aRegIdx[nAllIdx];
     regOldRowid = regNewRowid = ++pParse->nMem;
     if( chngPk || pTrigger || hasFK ){
       regOld = pParse->nMem + 1;
@@ -504,6 +551,7 @@ void sqlite3Update(
     pWInfo = 0;
     eOnePass = ONEPASS_SINGLE;
     sqlite3ExprIfFalse(pParse, pWhere, labelBreak, SQLITE_JUMPIFNULL);
+    bFinishSeek = 0;
   }else{
     /* Begin the database scan. 
     **
@@ -534,6 +582,7 @@ void sqlite3Update(
     ** strategy that uses an index for which one or more columns are being
     ** updated.  */
     eOnePass = sqlite3WhereOkOnePass(pWInfo, aiCurOnePass);
+    bFinishSeek = sqlite3WhereUsesDeferredSeek(pWInfo);
     if( eOnePass!=ONEPASS_SINGLE ){
       sqlite3MultiWrite(pParse);
       if( eOnePass==ONEPASS_MULTI ){
@@ -552,6 +601,8 @@ void sqlite3Update(
     ** leave it in register regOldRowid.  */
     sqlite3VdbeAddOp2(v, OP_Rowid, iDataCur, regOldRowid);
     if( eOnePass==ONEPASS_OFF ){
+      /* We need to use regRowSet, so reallocate aRegIdx[nAllIdx] */
+      aRegIdx[nAllIdx] = ++pParse->nMem;
       sqlite3VdbeAddOp2(v, OP_RowSetAdd, regRowSet, regOldRowid);
     }
   }else{
@@ -562,7 +613,8 @@ void sqlite3Update(
     ** is not required) and leave the PK fields in the array of registers.  */
     for(i=0; i<nPk; i++){
       assert( pPk->aiColumn[i]>=0 );
-      sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur,pPk->aiColumn[i],iPk+i);
+      sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur,
+                                      pPk->aiColumn[i], iPk+i);
     }
     if( eOnePass ){
       if( addrOpen ) sqlite3VdbeChangeToNoop(v, addrOpen);
@@ -656,14 +708,16 @@ void sqlite3Update(
         pTrigger, pChanges, 0, TRIGGER_BEFORE|TRIGGER_AFTER, pTab, onError
     );
     for(i=0; i<pTab->nCol; i++){
+      u32 colFlags = pTab->aCol[i].colFlags;
+      k = sqlite3TableColumnToStorage(pTab, i) + regOld;
       if( oldmask==0xffffffff
        || (i<32 && (oldmask & MASKBIT32(i))!=0)
-       || (pTab->aCol[i].colFlags & COLFLAG_PRIMKEY)!=0
+       || (colFlags & COLFLAG_PRIMKEY)!=0
       ){
         testcase(  oldmask!=0xffffffff && i==31 );
-        sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur, i, regOld+i);
+        sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur, i, k);
       }else{
-        sqlite3VdbeAddOp2(v, OP_Null, 0, regOld+i);
+        sqlite3VdbeAddOp2(v, OP_Null, 0, k);
       }
     }
     if( chngRowid==0 && pPk==0 ){
@@ -687,13 +741,15 @@ void sqlite3Update(
   newmask = sqlite3TriggerColmask(
       pParse, pTrigger, pChanges, 1, TRIGGER_BEFORE, pTab, onError
   );
-  for(i=0; i<pTab->nCol; i++){
+  for(i=0, k=regNew; i<pTab->nCol; i++, k++){
     if( i==pTab->iPKey ){
-      sqlite3VdbeAddOp2(v, OP_Null, 0, regNew+i);
+      sqlite3VdbeAddOp2(v, OP_Null, 0, k);
+    }else if( (pTab->aCol[i].colFlags & COLFLAG_GENERATED)!=0 ){
+      if( pTab->aCol[i].colFlags & COLFLAG_VIRTUAL ) k--;
     }else{
       j = aXRef[i];
       if( j>=0 ){
-        sqlite3ExprCode(pParse, pChanges->a[j].pExpr, regNew+i);
+        sqlite3ExprCode(pParse, pChanges->a[j].pExpr, k);
       }else if( 0==(tmask&TRIGGER_BEFORE) || i>31 || (newmask & MASKBIT32(i)) ){
         /* This branch loads the value of a column that will not be changed 
         ** into a register. This is done if there are no BEFORE triggers, or
@@ -702,12 +758,20 @@ void sqlite3Update(
         */
         testcase( i==31 );
         testcase( i==32 );
-        sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur, i, regNew+i);
+        sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur, i, k);
+        bFinishSeek = 0;
       }else{
-        sqlite3VdbeAddOp2(v, OP_Null, 0, regNew+i);
+        sqlite3VdbeAddOp2(v, OP_Null, 0, k);
       }
     }
   }
+#ifndef SQLITE_OMIT_GENERATED_COLUMNS
+  if( pTab->tabFlags & TF_HasGenerated ){
+    testcase( pTab->tabFlags & TF_HasVirtual );
+    testcase( pTab->tabFlags & TF_HasStored );
+    sqlite3ComputeGeneratedColumns(pParse, regNew, pTab);
+  }
+#endif
 
   /* Fire any BEFORE UPDATE triggers. This happens before constraints are
   ** verified. One could argue that this is wrong.
@@ -740,21 +804,49 @@ void sqlite3Update(
     ** BEFORE trigger runs.  See test case trigger1-18.0 (added 2018-04-26)
     ** for an example.
     */
-    for(i=0; i<pTab->nCol; i++){
-      if( aXRef[i]<0 && i!=pTab->iPKey ){
-        sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur, i, regNew+i);
+    for(i=0, k=regNew; i<pTab->nCol; i++, k++){
+      if( pTab->aCol[i].colFlags & COLFLAG_GENERATED ){
+        if( pTab->aCol[i].colFlags & COLFLAG_VIRTUAL ) k--;
+      }else if( aXRef[i]<0 && i!=pTab->iPKey ){
+        sqlite3ExprCodeGetColumnOfTable(v, pTab, iDataCur, i, k);
       }
     }
+#ifndef SQLITE_OMIT_GENERATED_COLUMNS
+    if( pTab->tabFlags & TF_HasGenerated ){
+      testcase( pTab->tabFlags & TF_HasVirtual );
+      testcase( pTab->tabFlags & TF_HasStored );
+      sqlite3ComputeGeneratedColumns(pParse, regNew, pTab);
+    }
+#endif 
   }
 
   if( !isView ){
-    int addr1 = 0;        /* Address of jump instruction */
-
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    int bUseLastIndex = 0;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     /* Do constraint checks. */
     assert( regOldRowid>0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
+        regNewRowid, regOldRowid, chngKey, onError, labelContinue, &bReplace,
+        aXRef, 0, &bUseLastIndex);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3GenerateConstraintChecks(pParse, pTab, aRegIdx, iDataCur, iIdxCur,
         regNewRowid, regOldRowid, chngKey, onError, labelContinue, &bReplace,
         aXRef, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
+    /* If REPLACE conflict handling may have been used, or if the PK of the
+    ** row is changing, then the GenerateConstraintChecks() above may have
+    ** moved cursor iDataCur. Reseek it. */
+    if( bReplace || chngKey ){
+      if( pPk ){
+        sqlite3VdbeAddOp4Int(v, OP_NotFound,iDataCur,labelContinue,regKey,nKey);
+      }else{
+        sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, labelContinue,regOldRowid);
+      }
+      VdbeCoverageNeverTaken(v);
+    }
 
     /* Do FK constraint checks. */
     if( hasFK ){
@@ -762,15 +854,16 @@ void sqlite3Update(
     }
 
     /* Delete the index entries associated with the current record.  */
-    if( bReplace || chngKey ){
-      if( pPk ){
-        addr1 = sqlite3VdbeAddOp4Int(v, OP_NotFound, iDataCur, 0, regKey, nKey);
-      }else{
-        addr1 = sqlite3VdbeAddOp3(v, OP_NotExists, iDataCur, 0, regOldRowid);
-      }
-      VdbeCoverageNeverTaken(v);
-    }
     sqlite3GenerateRowIndexDelete(pParse, pTab, iDataCur, iIdxCur, aRegIdx, -1);
+
+    /* We must run the OP_FinishSeek opcode to resolve a prior
+    ** OP_DeferredSeek if there is any possibility that there have been
+    ** no OP_Column opcodes since the OP_DeferredSeek was issued.  But
+    ** we want to avoid the OP_FinishSeek if possible, as running it
+    ** costs CPU cycles. */
+    if( bFinishSeek ){
+      sqlite3VdbeAddOp1(v, OP_FinishSeek, iDataCur);
+    }
 
     /* If changing the rowid value, or if there are foreign key constraints
     ** to process, delete the old record. Otherwise, add a noop OP_Delete
@@ -799,9 +892,6 @@ void sqlite3Update(
       sqlite3VdbeAddOp2(v, OP_Delete, iDataCur, 0);
     }
 #endif
-    if( bReplace || chngKey ){
-      sqlite3VdbeJumpHere(v, addr1);
-    }
 
     if( hasFK ){
       sqlite3FkCheck(pParse, pTab, 0, regNewRowid, aXRef, chngKey);
@@ -812,7 +902,7 @@ void sqlite3Update(
     sqlite3CompleteInsertion(
         pParse, pTab, iDataCur, iIdxCur, regNewRowid, aRegIdx, 
         OPFLAG_ISUPDATE | (eOnePass==ONEPASS_MULTI ? OPFLAG_SAVEPOSITION : 0), 
-        0, 0, OE_None, 0
+        0, 0, OE_None, 0, bUseLastIndex
     );
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3CompleteInsertion(
@@ -959,6 +1049,7 @@ static void updateVirtualTable(
 
   /* Populate the argument registers. */
   for(i=0; i<pTab->nCol; i++){
+    assert( (pTab->aCol[i].colFlags & COLFLAG_GENERATED)==0 );
     if( aXRef[i]>=0 ){
       sqlite3ExprCode(pParse, pChanges->a[aXRef[i]].pExpr, regArg+2+i);
     }else{

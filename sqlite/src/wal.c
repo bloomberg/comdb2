@@ -1824,7 +1824,19 @@ static int walCheckpoint(
       ** not decreasing it. So assuming either that either the "old" or
       ** "new" version of the value is read, and not some arbitrary value
       ** that would never be written by a real client, things are still 
-      ** safe.  */
+      ** safe.
+      **
+      ** Astute readers have pointed out that the assumption stated in the
+      ** last sentence of the previous paragraph is not guaranteed to be
+      ** true for all conforming systems.  However, the assumption is true
+      ** for all compilers and architectures in common use today (circa
+      ** 2019-11-27) and the alternatives are both slow and complex, and
+      ** so we will continue to go with the current design for now.  If this
+      ** bothers you, or if you really are running on a system where aligned
+      ** 32-bit reads and writes are not atomic, then you can simply avoid
+      ** the use of WAL mode, or only use WAL mode together with
+      ** PRAGMA locking_mode=EXCLUSIVE and all will be well.
+      */
       u32 y = pInfo->aReadMark[i];
       if( mxSafeFrame>y ){
         assert( y<=pWal->hdr.mxFrame );
@@ -1900,6 +1912,10 @@ static int walCheckpoint(
           if( rc==SQLITE_OK ){
             rc = sqlite3OsSync(pWal->pDbFd, CKPT_SYNC_FLAGS(sync_flags));
           }
+        }
+        if( rc==SQLITE_OK ){
+          rc = sqlite3OsFileControl(pWal->pDbFd, SQLITE_FCNTL_CKPT_DONE, 0);
+          if( rc==SQLITE_NOTFOUND ) rc = SQLITE_OK;
         }
         if( rc==SQLITE_OK ){
           pInfo->nBackfill = mxSafeFrame;
@@ -2908,9 +2924,9 @@ int sqlite3WalFindFrame(
     }
     nCollide = HASHTABLE_NSLOT;
     for(iKey=walHash(pgno); sLoc.aHash[iKey]; iKey=walNextHash(iKey)){
-      u32 iFrame = sLoc.aHash[iKey] + sLoc.iZero;
-      if( iFrame<=iLast && iFrame>=pWal->minFrame
-       && sLoc.aPgno[sLoc.aHash[iKey]]==pgno ){
+      u32 iH = sLoc.aHash[iKey];
+      u32 iFrame = iH + sLoc.iZero;
+      if( iFrame<=iLast && iFrame>=pWal->minFrame && sLoc.aPgno[iH]==pgno ){
         assert( iFrame>iRead || CORRUPT_DB );
         iRead = iFrame;
       }
@@ -3478,6 +3494,7 @@ int sqlite3WalFrames(
         if( rc ) return rc;
         iOffset += szFrame;
         nExtra++;
+        assert( pLast!=0 );
       }
     }
     if( bSync ){
@@ -3510,6 +3527,7 @@ int sqlite3WalFrames(
     iFrame++;
     rc = walIndexAppend(pWal, iFrame, p->pgno);
   }
+  assert( pLast!=0 || nExtra==0 );
   while( rc==SQLITE_OK && nExtra>0 ){
     iFrame++;
     nExtra--;

@@ -87,7 +87,6 @@ const unsigned char sqlite3UpperToLower[] = {
 ** non-ASCII UTF character. Hence the test for whether or not a character is
 ** part of an identifier is 0x46.
 */
-#ifdef SQLITE_ASCII
 const unsigned char sqlite3CtypeMap[256] = {
   0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,  /* 00..07    ........ */
   0x00, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00,  /* 08..0f    ........ */
@@ -125,7 +124,6 @@ const unsigned char sqlite3CtypeMap[256] = {
   0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40,  /* f0..f7    ........ */
   0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40, 0x40   /* f8..ff    ........ */
 };
-#endif
 
 /* EVIDENCE-OF: R-02982-34736 In order to maintain full backwards
 ** compatibility for legacy applications, the URI filename capability is
@@ -153,8 +151,15 @@ const unsigned char sqlite3CtypeMap[256] = {
 ** SQLITE_ALLOW_COVERING_INDEX_SCAN compile-time option, or is "on" if
 ** that compile-time option is omitted.
 */
-#ifndef SQLITE_ALLOW_COVERING_INDEX_SCAN
+#if !defined(SQLITE_ALLOW_COVERING_INDEX_SCAN)
 # define SQLITE_ALLOW_COVERING_INDEX_SCAN 1
+#else
+# if !SQLITE_ALLOW_COVERING_INDEX_SCAN 
+#   error "Compile-time disabling of covering index scan using the\
+ -DSQLITE_ALLOW_COVERING_INDEX_SCAN=0 option is deprecated.\
+ Contact SQLite developers if this is a problem for you, and\
+ delete this #error macro to continue with your build."
+# endif
 #endif
 
 /* The minimum PMA size is set to this value multiplied by the database
@@ -183,9 +188,18 @@ const unsigned char sqlite3CtypeMap[256] = {
 ** changed as start-time using sqlite3_config(SQLITE_CONFIG_LOOKASIDE)
 ** or at run-time for an individual database connection using
 ** sqlite3_db_config(db, SQLITE_DBCONFIG_LOOKASIDE);
+**
+** With the two-size-lookaside enhancement, less lookaside is required.
+** The default configuration of 1200,40 actually provides 30 1200-byte slots
+** and 93 128-byte slots, which is more lookaside than is available
+** using the older 1200,100 configuration without two-size-lookaside.
 */
 #ifndef SQLITE_DEFAULT_LOOKASIDE
-# define SQLITE_DEFAULT_LOOKASIDE 1200,100
+# ifdef SQLITE_OMIT_TWOSIZE_LOOKASIDE
+#   define SQLITE_DEFAULT_LOOKASIDE 1200,100  /* 120KB of memory */
+# else
+#   define SQLITE_DEFAULT_LOOKASIDE 1200,40   /* 48KB of memory */
+# endif
 #endif
 
 
@@ -207,6 +221,7 @@ SQLITE_WSD struct Sqlite3Config sqlite3Config = {
    SQLITE_USE_URI,            /* bOpenUri */
    SQLITE_ALLOW_COVERING_INDEX_SCAN,   /* bUseCis */
    0,                         /* bSmallMalloc */
+   1,                         /* bExtraSchemaChecks */
    0x7ffffffe,                /* mxStrlen */
    0,                         /* neverCorrupt */
    SQLITE_DEFAULT_LOOKASIDE,  /* szLookaside, nLookaside */
@@ -254,9 +269,9 @@ SQLITE_WSD struct Sqlite3Config sqlite3Config = {
    0,                         /* xTestCallback */
 #endif
    0,                         /* bLocaltimeFault */
-   0,                         /* bInternalFunctions */
    0x7ffffffe,                /* iOnceResetThreshold */
    SQLITE_DEFAULT_SORTERREF_SIZE,   /* szSorterRef */
+   0,                         /* iPrngSeed */
 };
 
 /*
@@ -265,14 +280,6 @@ SQLITE_WSD struct Sqlite3Config sqlite3Config = {
 ** read-only.
 */
 FuncDefHash sqlite3BuiltinFunctions;
-
-/*
-** Constant tokens for values 0 and 1.
-*/
-const Token sqlite3IntTokens[] = {
-   { "0", 1 },
-   { "1", 1 }
-};
 
 #ifdef VDBE_PROFILE
 /*
