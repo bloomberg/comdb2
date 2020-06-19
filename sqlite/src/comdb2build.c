@@ -2251,6 +2251,8 @@ int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
               !strchr(p->zName, '@') &&                 /* mustn't have user
                                                            name */
               strncasecmp(p->zName, "sqlite_", 7) &&    /* sqlite table */
+              strncasecmp(p->zName, "comdb2sys_", 10) &&/* old system table
+                                                           name */
               !sqlite3HashFind(&db->aModule, p->zName)) /* sqlite module */
    {
        char userschema[MAXTABLELEN];
