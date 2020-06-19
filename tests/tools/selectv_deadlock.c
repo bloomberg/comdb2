@@ -413,7 +413,7 @@ int main(int argc, char *argv[])
 
     errlog = fopen("err.log", "w");
     assert(errlog);
-    srand(time(NULL));
+    srandom(time(NULL));
 
     if (do_create) {
         drop_tables();

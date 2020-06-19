@@ -5418,7 +5418,7 @@ int main(int argc, char **argv)
 
     init_q_vars();
 
-    srand(time(NULL) ^ (((unsigned int)getpid()) << 16));
+    srandom(time(NULL) ^ (((unsigned int)getpid()) << 16));
     srandom(comdb2_time_epochus());
 
     if (debug_switch_verbose_deadlocks())

@@ -973,7 +973,7 @@ int main(int argc, char *argv[])
         printf("master is %s\n", master_node);
     else
         printf("could not find master\n");
-    srand(time(NULL) ^ getpid());
+    srandom(time(NULL) ^ getpid());
     setbuf(stdout, NULL);
     state = calloc(1, sizeof(int) * allocated);
     clear();
