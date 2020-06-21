@@ -4372,20 +4372,33 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
     }
     sqlite3_stmt *stmt;
     const char *tail;
-    clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
-                                            &tail);
-    if (rc != SQLITE_OK) {
-        return rc;
+
+    if (thd->stmt_cache == NULL) {
+        thd->stmt_cache = stmt_cache_new(NULL);
     }
+
+    stmt_cache_entry_t *cached_entry;
+    if ((stmt_cache_find_entry(thd->stmt_cache, clnt->sql, &cached_entry)) ==
+        0) {
+        stmt = cached_entry->stmt;
+    } else {
+        clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
+                                                &tail);
+        if (rc != SQLITE_OK) {
+            return rc;
+        }
+    }
+
     bind_verify_indexes_query(stmt, clnt->schema_mems);
     run_stmt_setup(clnt, stmt);
     if ((clnt->step_rc = rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
         rc = verify_indexes_column_value(stmt, clnt->schema_mems);
-        sqlite3_finalize(stmt);
+        stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt);
         return rc;
     }
-    sqlite3_finalize(stmt);
+
+    stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt);
     clnt->has_sqliterow = 0;
     if (rc == SQLITE_DONE) {
         return 0;
@@ -4448,7 +4461,6 @@ void clnt_to_ruleset_item_criteria(
 }
 
 static int can_execute_sql_query_now(
-  struct sqlthdstate *thd,
   struct sqlclntstate *clnt,
   int *pRuleNo,
   int *pbRejected,
@@ -4968,7 +4980,7 @@ static int verify_dispatch_sql_query(
         *pPriority = PRIORITY_T_INITIAL; /* TODO: Tunable default priority? */
 
         if (!can_execute_sql_query_now(
-                clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain, pPriority)) {
+                clnt, &ruleNo, &bRejected, &bTryAgain, pPriority)) {
             if (bRejected) {
                 int rc = bTryAgain ? CDB2ERR_REJECTED: ERR_QUERY_REJECTED;
                 char zRuleRes[100];
