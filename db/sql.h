@@ -31,9 +31,9 @@
 #include "fwd_types.h"
 #include "priority_queue.h"
 #include "comdb2_ruleset.h"
-
 #include "fdb_fend.h"
 #include <sp.h>
+#include "sql_stmt_cache.h"
 
 /* Modern transaction modes, more or less */
 enum transaction_level {
@@ -57,7 +57,6 @@ enum transaction_level {
  * we can have a small pool of sql threads with big stacks, and a large pool
  * of appsock threads with small stacks. */
 
-#define MAX_HASH_SQL_LENGTH 8192
 #define FINGERPRINTSZ 16
 
 /* Static rootpages numbers. */
@@ -76,14 +75,6 @@ struct fingerprint_track {
     int cachedColCount;     /* Cached column count from sqlitex */
 };
 
-typedef struct stmt_hash_entry {
-    char sql[MAX_HASH_SQL_LENGTH];
-    sqlite3_stmt *stmt;
-    char *query;
-    //struct schema *params_to_bind;
-    LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
-} stmt_hash_entry_type;
-
 struct sql_authorizer_state {
     struct sqlclntstate *clnt;         /* pointer to current client info */
     int flags;                         /* DDL, PRAGMA, CREATE TRIGGER denied? */
@@ -99,10 +90,9 @@ struct sqlthdstate {
     struct sql_authorizer_state authState; /* SQL authorizer state info */
 
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
-    hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
-    LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
-    LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
+    /* Statement cache */
+    stmt_cache_t *stmt_cache;
 
     int dbopen_gen;
     int analyze_gen;
@@ -532,13 +522,6 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
-#define HINT_LEN 127
-enum cache_status {
-    CACHE_DISABLED = 0,
-    CACHE_HAS_HINT = 1,
-    CACHE_FOUND_STMT = 2,
-    CACHE_FOUND_STR = 4,
-};
 enum prepare_flags {
     PREPARE_NONE = 0,
     PREPARE_RECREATE = 1,
@@ -549,14 +532,6 @@ enum prepare_flags {
     PREPARE_NO_NORMALIZE = 32,
     PREPARE_ONLY = 64,
     PREPARE_ALLOW_TEMP_DDL = 128,
-};
-struct sql_state {
-    enum cache_status status;          /* populated by get_prepared_stmt */
-    sqlite3_stmt *stmt;                /* cached engine, if any */
-    char cache_hint[HINT_LEN];         /* hint copy, if any */
-    const char *sql;                   /* the actual string used */
-    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
 
 /* This structure is designed to hold several pieces of data related to

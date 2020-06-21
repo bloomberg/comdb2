@@ -85,7 +85,6 @@
 #include "flibc.h"
 
 #include "sp.h"
-#include "lrucache.h"
 
 #include <ctrace.h>
 #include <bb_oscompat.h>
@@ -2258,202 +2257,6 @@ done:
     return outrc;
 }
 
-static int strcmpfunc_stmt(char *a, char *b, int len) { return strcmp(a, b); }
-
-static u_int strhashfunc_stmt(u_char *keyp, int len)
-{
-    unsigned hash;
-    u_char *key = keyp;
-    for (hash = 0; *key; key++)
-        hash = ((hash % 8388013) << 8) + ((*key));
-    return hash;
-}
-
-static int finalize_stmt_hash(void *stmt_entry, void *args)
-{
-    stmt_hash_entry_type *entry = (stmt_hash_entry_type *)stmt_entry;
-    sqlite3_finalize(entry->stmt);
-    if (entry->query && gbl_debug_temptables) {
-        free(entry->query);
-        entry->query = NULL;
-    }
-    sqlite3_free(entry);
-    return 0;
-}
-
-void delete_stmt_caching_table(hash_t *stmt_caching_table)
-{
-    assert(stmt_caching_table);
-    /* parse through hash table and finalize all the statements */
-    hash_for(stmt_caching_table, finalize_stmt_hash, NULL);
-    hash_clear(stmt_caching_table);
-    hash_free(stmt_caching_table);
-}
-
-static inline void init_stmt_caching_table(struct sqlthdstate *thd)
-{
-    thd->stmt_caching_table = hash_init_user(
-        (hashfunc_t *)strhashfunc_stmt, (cmpfunc_t *)strcmpfunc_stmt,
-        offsetof(stmt_hash_entry_type, sql), MAX_HASH_SQL_LENGTH);
-
-    assert(thd->stmt_caching_table && "hash_init_user: can not init");
-    listc_init(&thd->param_stmt_list,
-               offsetof(struct stmt_hash_entry, stmtlist_linkv));
-    listc_init(&thd->noparam_stmt_list,
-               offsetof(struct stmt_hash_entry, stmtlist_linkv));
-}
-
-/*
- * Requeue a stmt that was previously removed from the queues
- * by calling remove_stmt_entry().
- * Called by put_prepared_stmt_int() after we are done running stmt
- * and by add_stmt_table() after it allocates the new entry
- */
-int requeue_stmt_entry(struct sqlthdstate *thd, stmt_hash_entry_type *entry)
-{
-    if (hash_find(thd->stmt_caching_table, entry->sql) != NULL)
-        return -1; // already there, dont add again
-
-    if (hash_add(thd->stmt_caching_table, entry) != 0) {
-        return -1;
-    }
-    int rc = sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
-    assert(rc == SQLITE_OK);
-    if (rc != SQLITE_OK) {
-        logmsg(LOGMSG_ERROR, "%s: sqlite3_reset(%p) error, rc = %d\n",
-               __func__, entry->stmt, rc);
-    }
-    rc = sqlite3_clear_bindings(entry->stmt);
-    assert(rc == SQLITE_OK);
-    if (rc != SQLITE_OK) {
-        logmsg(LOGMSG_ERROR, "%s: sqlite3_clear_bindings(%p) error, rc = %d\n",
-               __func__, entry->stmt, rc);
-    }
-    void *list;
-    if (sqlite3_bind_parameter_count(entry->stmt)) {
-        list = &thd->param_stmt_list;
-    } else {
-        list = &thd->noparam_stmt_list;
-    }
-    listc_atl(list, entry);
-    return 0;
-}
-
-static void cleanup_stmt_entry_only(stmt_hash_entry_type *entry)
-{
-    if (entry->query) {
-        free(entry->query);
-        entry->query = NULL;
-    }
-    sqlite3_free(entry);
-}
-
-static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
-{
-    sqlite3_finalize(entry->stmt);
-    cleanup_stmt_entry_only(entry);
-}
-
-static void delete_last_stmt_entry(struct sqlthdstate *thd, void *list)
-{
-    stmt_hash_entry_type *entry = listc_rbl(list);
-    int rc = hash_del(thd->stmt_caching_table, entry);
-    if (rc)
-        logmsg(LOGMSG_ERROR,
-               "delete_last_stmt_entry: hash_del returning rc=%d\n", rc);
-    assert(rc == 0);
-    cleanup_stmt_entry(entry);
-}
-
-/*
- * Remove from queue and stmt_caching_table this entry so that
- * subsequent finds of the same sql will not find it but
- * rather create a new stmt (to avoid having stmt vdbe
- * used by two sql at the same time).
- */
-static void remove_stmt_entry(struct sqlthdstate *thd,
-                              stmt_hash_entry_type *entry,
-                              int noComplain)
-{
-    assert(entry);
-
-    void *list = NULL;
-    if (sqlite3_bind_parameter_count(entry->stmt)) {
-        list = &thd->param_stmt_list;
-    } else {
-        list = &thd->noparam_stmt_list;
-    }
-    listc_maybe_rfl(list, entry);
-    int rc = hash_del(thd->stmt_caching_table, entry->sql);
-    if (!noComplain && rc)
-        logmsg(LOGMSG_ERROR, "remove_stmt_entry: hash_del returning rc=%d\n",
-               rc);
-    assert(noComplain || rc == 0);
-}
-
-/* This will call requeue_stmt_entry() after it has allocated memory
- * for the new entry.
- * On error will return non zero and
- * caller will need to finalize_stmt() in that case
- */
-static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
-                          const char *actual_sql, sqlite3_stmt *stmt)
-{
-    if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
-        return -1;
-    }
-
-    assert(thd->stmt_caching_table);
-    /* stored procedure can call same stmt a lua thread more than once
-     * so we should not add stmt that exists already */
-    if (hash_find(thd->stmt_caching_table, sql) != NULL) {
-        return -1;
-    }
-
-    void *list = NULL;
-    if (sqlite3_bind_parameter_count(stmt)) {
-        list = &thd->param_stmt_list;
-    } else {
-        list = &thd->noparam_stmt_list;
-    }
-
-    /* remove older entries to make room for new ones */
-    if (gbl_max_sqlcache <= listc_size(list)) {
-        delete_last_stmt_entry(thd, list);
-    }
-
-    stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
-    strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
-    entry->stmt = stmt;
-
-    if (actual_sql && gbl_debug_temptables)
-        entry->query = strdup(actual_sql);
-    else
-        entry->query = NULL;
-    return requeue_stmt_entry(thd, entry);
-}
-
-static inline int find_stmt_table(struct sqlthdstate *thd, const char *sql,
-                                  stmt_hash_entry_type **entry)
-{
-    assert(thd);
-    hash_t *stmt_caching_table = thd->stmt_caching_table;
-    if (stmt_caching_table == NULL)
-        return -1;
-
-    if (strlen(sql) >= MAX_HASH_SQL_LENGTH)
-        return -1;
-
-    *entry = hash_find(stmt_caching_table, sql);
-
-    if (*entry == NULL)
-        return -1;
-
-    remove_stmt_entry(thd, *entry, 0); // will add again when done
-
-    return 0;
-}
-
 static const char *osqlretrystr(int i)
 {
     switch (i) {
@@ -2466,157 +2269,6 @@ static const char *osqlretrystr(int i)
     default:
         return "???";
     }
-}
-
-/** Table which stores sql strings and sql hints
-  * We will hit this table if the thread running the queries from
-  * certain sql control changes.
-  **/
-
-lrucache *sql_hints = NULL;
-
-/* sql_hint/sql_str/tag all point to mem (tag can also be NULL) */
-typedef struct {
-    char *sql_hint;
-    char *sql_str;
-    lrucache_link lnk;
-    char mem[0];
-} sql_hint_hash_entry_type;
-
-void delete_sql_hint_table() { lrucache_destroy(sql_hints); }
-
-static unsigned int sqlhint_hash(const void *p, int len)
-{
-    unsigned char *s;
-    unsigned h = 0;
-
-    memcpy(&s, p, sizeof(char *));
-
-    while (*s) {
-        h = ((h % 8388013) << 8) + (*s);
-        s++;
-    }
-    return h;
-}
-
-int sqlhint_cmp(const void *key1, const void *key2, int len)
-{
-    char *s1, *s2;
-    memcpy(&s1, key1, sizeof(char *));
-    memcpy(&s2, key2, sizeof(char *));
-    return strcmp((char *)s1, (char *)s2);
-}
-
-void init_sql_hint_table()
-{
-    sql_hints = lrucache_init(sqlhint_hash, sqlhint_cmp, free,
-                              offsetof(sql_hint_hash_entry_type, lnk),
-                              offsetof(sql_hint_hash_entry_type, sql_hint),
-                              sizeof(char *), gbl_max_sql_hint_cache);
-}
-
-void reinit_sql_hint_table()
-{
-    Pthread_mutex_lock(&gbl_sql_lock);
-    {
-        delete_sql_hint_table();
-        init_sql_hint_table();
-    }
-    Pthread_mutex_unlock(&gbl_sql_lock);
-}
-
-static void add_sql_hint_table(char *sql_hint, char *sql_str)
-{
-    int sql_hint_len = strlen(sql_hint) + 1;
-    int sql_len = strlen(sql_str) + 1;
-    int len = sql_hint_len + sql_len;
-    sql_hint_hash_entry_type *entry = malloc(sizeof(*entry) + len);
-
-    entry->sql_hint = entry->mem;
-    memcpy(entry->sql_hint, sql_hint, sql_hint_len);
-
-    entry->sql_str = entry->sql_hint + sql_hint_len;
-    memcpy(entry->sql_str, sql_str, sql_len);
-
-    Pthread_mutex_lock(&gbl_sql_lock);
-    {
-        if (lrucache_hasentry(sql_hints, &sql_hint) == 0) {
-            lrucache_add(sql_hints, entry);
-        } else {
-            free(entry);
-            logmsg(LOGMSG_ERROR, "Client BUG: Two threads using same SQL tag.\n");
-        }
-    }
-    Pthread_mutex_unlock(&gbl_sql_lock);
-}
-
-static int find_sql_hint_table(char *sql_hint, char **sql_str)
-{
-    sql_hint_hash_entry_type *entry;
-    Pthread_mutex_lock(&gbl_sql_lock);
-    {
-        entry = lrucache_find(sql_hints, &sql_hint);
-    }
-    Pthread_mutex_unlock(&gbl_sql_lock);
-    if (entry) {
-        *sql_str = entry->sql_str;
-        return 0;
-    }
-    return -1;
-}
-
-static int has_sql_hint_table(char *sql_hint)
-{
-    int ret;
-    Pthread_mutex_lock(&gbl_sql_lock);
-    {
-        ret = lrucache_hasentry(sql_hints, &sql_hint);
-    }
-    Pthread_mutex_unlock(&gbl_sql_lock);
-    return ret;
-}
-
-#define SQLCACHEHINT "/*+ RUNCOMDB2SQL"
-
-int has_sqlcache_hint(const char *sql, const char **pstart, const char **pend)
-{
-    char *start, *end;
-    start = strstr(sql, SQLCACHEHINT);
-    if (pstart)
-        *pstart = start;
-    if (start) {
-        end = strstr(start, " */");
-        if (pend)
-            *pend = end;
-        if (end) {
-            end += 3;
-            if (pend)
-                *pend = end;
-            return 1;
-        }
-    }
-    return 0;
-}
-
-int extract_sqlcache_hint(const char *sql, char *hint, int hintlen)
-{
-    const char *start = NULL;
-    const char *end = NULL;
-    int length;
-    int ret;
-
-    ret = has_sqlcache_hint(sql, &start, &end);
-
-    if (ret) {
-        length = end - start;
-        if (length >= hintlen) {
-            logmsg(LOGMSG_WARN, "Query has very long hint! \"%s\"\n", sql);
-            length = hintlen - 1;
-        }
-        strncpy(hint, start, length);
-        hint[length] = '\0';
-    }
-    return ret;
 }
 
 /* Execute the query.  Caller should flush the sbuf when this returns.
@@ -2825,14 +2477,6 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
-void delete_prepared_stmts(struct sqlthdstate *thd)
-{
-    if (thd->stmt_caching_table) {
-        delete_stmt_caching_table(thd->stmt_caching_table);
-        init_stmt_caching_table(thd);
-    }
-}
-
 // Call with schema_lk held and no_transaction == 1
 static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
 {
@@ -2856,7 +2500,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
     }
     if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
-        delete_prepared_stmts(thd);
+        stmt_cache_delete(thd->stmt_cache);
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
         return ret;
     }
@@ -3063,147 +2707,19 @@ int override_type(struct sqlclntstate *clnt, int i)
     return clnt->plugin.override_type(clnt, i);
 }
 
-static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
-                            struct sql_state *rec, int prepFlags)
-{
-    rec->status = CACHE_DISABLED;
-    if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE)
-        return;
-    if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
-        param_count(clnt) == 0)
-        return;
-    /* NC: Do we use this? */
-    if (extract_sqlcache_hint(rec->sql, rec->cache_hint, HINT_LEN)) {
-        rec->status = CACHE_HAS_HINT;
-        if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
-            rec->status |= CACHE_FOUND_STMT;
-            rec->stmt = rec->stmt_entry->stmt;
-        } else {
-            /* We are not able to find the statement in cache, and this is a
-             * partial statement. Try to find sql string stored in hash table */
-            if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql) == 0) {
-                rec->status |= CACHE_FOUND_STR;
-            }
-        }
-    } else {
-        if (find_stmt_table(thd, rec->sql, &rec->stmt_entry) == 0) {
-            rec->status = CACHE_FOUND_STMT;
-            rec->stmt = rec->stmt_entry->stmt;
-        }
-    }
-    if (rec->stmt) {
-        rec->sql = sqlite3_sql(rec->stmt); // save expanded query
-        if ((prepFlags & PREPARE_ONLY) == 0) {
-            int rc = sqlite3LockStmtTables(rec->stmt);
-            if (rc) {
-                cleanup_stmt_entry(rec->stmt_entry);
-                rec->stmt = NULL;
-            }
-        }
-    }
-}
-
-/* This is called at the time of put_prepared_stmt_int()
- * to determine whether the given sql should be cached.
- * We should not cache ddl stmts, analyze commands,
- * rebuild commands, truncate commands, explain commands.
- * Ddl stmts and explain commands should not get to
- * put_prepared_stmt_int() so are not handled in this function.
- * However, most of these cases are now handled via the custom
- * authorizer callback.  This function only needs to handle the
- * EXPLAIN case.
- */
-static inline int dont_cache_this_sql(struct sql_state *rec)
-{
-    return sqlite3_stmt_isexplain(rec->stmt);
-}
-
-/* return code of 1 means we encountered an error and the caller
- * needs to cleanup this rec->stmt */
-static int put_prepared_stmt_int(struct sqlthdstate *thd,
-                                 struct sqlclntstate *clnt,
-                                 struct sql_state *rec,
-                                 int noCache, int outrc,
-                                 int distributed)
-{
-    if (noCache) {
-        goto cleanup;
-    }
-    if (gbl_enable_sql_stmt_caching == STMT_CACHE_NONE) {
-        goto cleanup;
-    }
-    if (distributed || clnt->conns || clnt->plugin.state) {
-        goto cleanup;
-    }
-    if (thd && thd->authState.numDdls > 0) { /* NOTE: Never cache DDL. */
-        goto cleanup;
-    }
-    if (dont_cache_this_sql(rec)) {
-        goto cleanup;
-    }
-    sqlite3_stmt *stmt = rec->stmt;
-    if (stmt == NULL) {
-        goto cleanup;
-    }
-    if (gbl_enable_sql_stmt_caching == STMT_CACHE_PARAM &&
-        param_count(clnt) == 0) {
-        goto cleanup;
-    }
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_CACHING_STMT_WITH_FDB) &&
-        sqlite3_stmt_has_remotes(stmt)) {
-        goto cleanup;
-    }
-    if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
-        if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
-            cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
-
-        return 0;
-    }
-
-    /* this is a new stmt (never was in cache before) so create cache object */
-    const char *sqlptr = clnt->sql;
-    if (rec->sql)
-        sqlptr = rec->sql;
-
-    if (rec->status & CACHE_HAS_HINT) {
-        sqlptr = rec->cache_hint;
-        if (!(rec->status & CACHE_FOUND_STR)) {
-            add_sql_hint_table(rec->cache_hint, clnt->sql);
-        }
-    }
-    return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
-                          stmt);
-cleanup:
-    if (rec->stmt_entry != NULL) {
-        remove_stmt_entry(thd, rec->stmt_entry, 1);
-        cleanup_stmt_entry_only(rec->stmt_entry);
-        rec->stmt_entry = NULL;
-    }
-    return 1;
-}
-
 static void put_prepared_stmt_distributed(struct sqlthdstate *thd,
                                           struct sqlclntstate *clnt,
-                                          struct sql_state *rec,
-                                          int outrc,
+                                          struct sql_state *rec, int outrc,
                                           int distributed)
 {
     int rc;
 
     dohsql_wait_for_master((rec) ? rec->stmt : NULL, clnt);
 
-    rc = put_prepared_stmt_int(thd, clnt, rec, 0, outrc, distributed);
+    rc = stmt_cache_put(thd, clnt, rec, 0, outrc, distributed);
     if (rc != 0 && rec->stmt) {
         sqlite3_finalize(rec->stmt);
         rec->stmt = NULL;
-    }
-    if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
-        char *k = rec->cache_hint;
-        Pthread_mutex_lock(&gbl_sql_lock);
-        {
-            lrucache_release(sql_hints, &k);
-        }
-        Pthread_mutex_unlock(&gbl_sql_lock);
     }
 }
 
@@ -3439,7 +2955,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         return handle_bad_transaction_mode(thd, clnt);
     }
     query_stats_setup(thd, clnt);
-    get_cached_stmt(thd, clnt, rec, flags);
+    stmt_cache_get(thd, clnt, rec, flags);
     int sqlPrepFlags = 0;
 
     if (gbl_fingerprint_queries)
@@ -4371,8 +3887,9 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (rc == 0) {
         if (thd->lastuser[0] != '\0' &&
-            strcmp(thd->lastuser, clnt->current_user.name) != 0)
-            delete_prepared_stmts(thd);
+            strcmp(thd->lastuser, clnt->current_user.name) != 0) {
+            stmt_cache_reset(thd->stmt_cache);
+        }
         strcpy(thd->lastuser, clnt->current_user.name);
         clnt->authgen = bpfunc_auth_gen;
     } else {
@@ -4671,14 +4188,14 @@ check_version:
             if (!recreate) {
                 goto done;
             }
-            delete_prepared_stmts(thd);
+            stmt_cache_reset(thd->stmt_cache);
             sqlite3_close_serial(&thd->sqldb);
         }
     }
     assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
 
-    if (gbl_enable_sql_stmt_caching && (thd->stmt_caching_table == NULL)) {
-        init_stmt_caching_table(thd);
+    if (gbl_enable_sql_stmt_caching && (thd->stmt_cache == NULL)) {
+        thd->stmt_cache = stmt_cache_new(NULL);
     }
     if (!thd->sqldb || (rc == SQLITE_SCHEMA_REMOTE)) {
         /* need to refresh things; we need to grab views lock */
@@ -4693,7 +4210,7 @@ check_version:
                            "rc = %d!\n",
                            __func__, pthread_self(), ctrc);
                     if (thd->sqldb) {
-                        delete_prepared_stmts(thd);
+                        stmt_cache_reset(thd->stmt_cache);
                         sqlite3_close_serial(&thd->sqldb);
                     }
                     rdlock_schema_lk();
@@ -5500,7 +5017,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
 
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
-    thd->stmt_caching_table = NULL;
+    thd->stmt_cache = NULL;
     thd->lastuser[0] = '\0';
 
     start_sql_thread();
@@ -5531,8 +5048,8 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
         }
     }
 
-    if (thd->stmt_caching_table)
-        delete_stmt_caching_table(thd->stmt_caching_table);
+    if (thd->stmt_cache)
+        stmt_cache_delete(thd->stmt_cache);
     sqlite3_close_serial(&thd->sqldb);
 
     /* AZ moved after the close which uses thd for rollbackall */
@@ -6960,26 +6477,6 @@ int watcher_warning_function(void *arg, int timeout, int gap)
             gap, timeout, (clnt->origin) ? clnt->origin : "(unknown)");
 
     return 1; /* cancel recurrent */
-}
-
-static void dump_sql_hint_entry(void *item, void *p)
-{
-    int *count = (int *)p;
-    sql_hint_hash_entry_type *entry = (sql_hint_hash_entry_type *)item;
-
-    logmsg(LOGMSG_USER, "%d hit %d ref %d   %s  => %s\n", *count, entry->lnk.hits,
-           entry->lnk.ref, entry->sql_hint, entry->sql_str);
-    (*count)++;
-}
-
-void sql_dump_hints(void)
-{
-    int count = 0;
-    Pthread_mutex_lock(&gbl_sql_lock);
-    {
-        lrucache_foreach(sql_hints, dump_sql_hint_entry, &count);
-    }
-    Pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 /**

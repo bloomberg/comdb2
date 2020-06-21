@@ -12519,7 +12519,6 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
         sm.mout = &mout;
 
         start_internal_sql_clnt(&clnt);
-        clnt.dbtran.mode = TRANLEVEL_SOSQL;
         clnt.sql = table->check_constraint_query[i];
         clnt.verify_indexes = 1;
         clnt.schema_mems = &sm;

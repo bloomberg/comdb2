@@ -72,6 +72,7 @@ set(src
   sqlmaster.c
   sqloffload.c
   sqlstat1.c
+  sql_stmt_cache.c
   tag.c
   testcompr.c
   thrman.c

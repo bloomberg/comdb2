@@ -460,6 +460,13 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
+
+    thdinfo->stmt_cache = stmt_cache_new(NULL);
+    if (thdinfo->stmt_cache == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to create statement cache\n",
+               __func__, __LINE__);
+    }
+
     Pthread_setspecific(unique_tag_key, thdinfo);
 
     /*printf("started handler %ld thd %p thd->id %ld\n", pthread_self(), thd,
