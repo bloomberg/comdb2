@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 
 set -e
+if [[ $CLEANUPDBDIR -eq 0 ]]; then
+    set -x
+fi
 
 failexit() {
     echo $1
