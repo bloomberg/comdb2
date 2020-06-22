@@ -1500,8 +1500,6 @@ void clean_exit(void)
     cleanup_q_vars();
     cleanup_switches();
     free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
     destroy_plugins();
     destroy_appsock();
 
@@ -1544,6 +1542,8 @@ void clean_exit(void)
     cleanresources(); // list of lrls
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
+    free_tzdir();
+    tz_hash_free();
 
     logmsg(LOGMSG_USER, "goodbye\n");
     exit(0);
