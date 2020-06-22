@@ -873,6 +873,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     rc = bdb_close_only_sc(old_bdb_handle, NULL, &bdberr);
     if (rc) {
         sc_errf(s, "Failed closing old db, bdberr %d\n", bdberr);
+        abort();
         goto failed;
     }
     sc_printf(s, "Close old db ok\n");
@@ -892,6 +893,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
             rc = table_version_upsert(db, transac, &bdberr);
         if (rc) {
             sc_errf(s, "Failed updating table version bdberr %d\n", bdberr);
+            abort();
             goto failed;
         }
     } else {
@@ -916,6 +918,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
     if (rc) {
         sc_errf(s, "Failed freeing old db, bdberr %d\n", bdberr);
+        abort();
         goto failed;
     } else
         sc_printf(s, "bdb free ok\n");

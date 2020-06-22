@@ -16,14 +16,13 @@
 
 /* Implement comdb2_triggers to introspect triggers and consumers */
 
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
-#include <schema_lk.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
 #include <comdb2.h>
 #include <bdb/bdb_int.h>
-
 #include <translistener.h>
-#include "sql.h"
+#include <bdb_int.h>
+#include <sql.h>
 
 typedef struct trigger trigger;
 struct trigger {
