@@ -32,6 +32,8 @@
 #define DEFAULT_USER "default"
 #define DEFAULT_PASSWORD ""
 
+#define COMDB2_STATIC_TABLE "_comdb2_static_table"
+
 enum { IOTIMEOUTMS = 10000 };
 
 struct dbtable;
