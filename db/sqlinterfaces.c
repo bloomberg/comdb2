@@ -2500,7 +2500,7 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
     }
     if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
-        stmt_cache_delete(thd->stmt_cache);
+        stmt_cache_reset(thd->stmt_cache);
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
         return ret;
     }

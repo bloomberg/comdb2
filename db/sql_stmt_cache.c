@@ -245,6 +245,9 @@ int stmt_cache_find_entry(stmt_cache_t *stmt_cache, const char *sql,
 
 int stmt_cache_reset(stmt_cache_t *stmt_cache)
 {
+    if (!stmt_cache)
+        return 0;
+
     stmt_cache_delete(stmt_cache);
     if (!stmt_cache_new(stmt_cache)) {
         return 1;
