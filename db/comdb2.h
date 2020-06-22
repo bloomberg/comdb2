@@ -3279,7 +3279,7 @@ int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len,
                           uint8_t ver);
 
 int get_origin_mach(char *origin);
-void comdb2_die(int abort);
+void comdb2_die(int doabort, const char *str);
 int access_control_check_read(struct ireq *iq, tran_type *tran, int *bdberr);
 int access_control_check_write(struct ireq *iq, tran_type *tran, int *bdberr);
 

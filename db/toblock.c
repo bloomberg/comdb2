@@ -2423,7 +2423,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
                    __LINE__, rc);
-            comdb2_die(1);
+            comdb2_die(1, "TRANS_ABORT FAILED");
         }
         parent = bdb_get_sc_parent_tran(parent);
     }
@@ -2435,7 +2435,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d\n", __func__,
                    __LINE__, iq->sc_closed_files ? "COMMIT" : "ABORT", rc);
-            comdb2_die(0);
+            comdb2_die(0, NULL);
         }
         iq->sc_close_tran = NULL;
     }
@@ -2445,7 +2445,7 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         if (rc != 0) {
             logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
                    __LINE__, rc);
-            comdb2_die(1);
+            comdb2_die(1, "TRANS_ABORT FAILED");
         }
         iq->sc_tran = NULL;
         backout_schema_changes(iq, parent);
@@ -5017,7 +5017,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (irc != 0) { /* this shouldnt happen */
             logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
                    __LINE__, irc);
-            comdb2_die(0);
+            comdb2_die(0, NULL);
         }
         trans = NULL;
     }
@@ -5210,7 +5210,7 @@ backout:
                         logmsg(LOGMSG_FATAL, "%s:%d TRANS_%s FAILED RC %d\n",
                                __func__, __LINE__,
                                iq->sc_closed_files ? "COMMIT" : "ABORT", irc);
-                        comdb2_die(0);
+                        comdb2_die(0, NULL);
                     }
                     iq->sc_close_tran = NULL;
                 }
@@ -5219,7 +5219,7 @@ backout:
                     if (irc != 0) {
                         logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
                                __func__, __LINE__, irc);
-                        comdb2_die(1);
+                        comdb2_die(1, "TRANS_ABORT FAILED");
                     }
                     iq->sc_tran = NULL;
                 }
@@ -5232,7 +5232,7 @@ backout:
                     if (irc != 0) {
                         logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
                                __func__, __LINE__, irc);
-                        comdb2_die(1);
+                        comdb2_die(1, "TRANS_ABORT FAILED");
                     }
                     trans = NULL;
                     backout_schema_changes(iq, parent_trans);
@@ -5243,7 +5243,7 @@ backout:
                 if (irc != 0) {
                     logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d",
                            __func__, __LINE__, irc);
-                    comdb2_die(1);
+                    comdb2_die(1, "TRANS_ABORT FAILED");
                 }
                 trans = NULL;
             }
@@ -5598,7 +5598,7 @@ add_blkseq:
                                        __func__, __LINE__,
                                        iq->sc_closed_files ? "COMMIT" : "ABORT",
                                        irc);
-                                comdb2_die(0);
+                                comdb2_die(0, NULL);
                             }
                             iq->sc_close_tran = NULL;
                         }
@@ -5608,7 +5608,7 @@ add_blkseq:
                             logmsg(LOGMSG_FATAL,
                                    "%s:%d TRANS_COMMIT FAILED RC %d", __func__,
                                    __LINE__, irc);
-                            comdb2_die(0);
+                            comdb2_die(0, NULL);
                         }
                         iq->sc_tran = NULL;
                     }
@@ -5740,7 +5740,7 @@ add_blkseq:
                                    __func__, __LINE__,
                                    iq->sc_closed_files ? "COMMIT" : "ABORT",
                                    irc);
-                            comdb2_die(0);
+                            comdb2_die(0, NULL);
                         }
                         iq->sc_close_tran = NULL;
                     }
@@ -5749,7 +5749,7 @@ add_blkseq:
                     if (irc != 0) { /* this shouldnt happen */
                         logmsg(LOGMSG_FATAL, "%s:%d TRANS_COMMIT FAILED RC %d",
                                __func__, __LINE__, irc);
-                        comdb2_die(0);
+                        comdb2_die(0, NULL);
                     }
                     iq->sc_tran = NULL;
                 }

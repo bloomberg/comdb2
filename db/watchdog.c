@@ -435,7 +435,7 @@ void watchdog_enable(void)
 
 void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
 
-void comdb2_die(int aborat)
+void comdb2_die(int doabort, const char *str)
 {
     pid_t pid;
     char pstack_cmd[128];
@@ -463,7 +463,7 @@ void comdb2_die(int aborat)
         }
     }
 
-    if (aborat)
+    if (doabort)
         abort();
     else
         _exit(1);
@@ -489,7 +489,7 @@ static void *watchdog_watcher_thread(void *arg)
             */
             if (failed_once > 0) {
                 logmsg(LOGMSG_FATAL, "watchdog thread stuck, exiting\n");
-                comdb2_die(1);
+                comdb2_die(1, "watchdog thread stuck");
             }
             failed_once++;
             continue;
@@ -504,7 +504,7 @@ static void *watchdog_watcher_thread(void *arg)
            gets stuck every time there is berkdb lockdown */
         if (tmstmp - gbl_watcher_thread_ran > 60) {
             logmsg(LOGMSG_FATAL, "rep watcher thread stuck, exiting\n");
-            comdb2_die(1);
+            comdb2_die(1, "rep watcher thread stuck");
         }
     }
     return NULL;
