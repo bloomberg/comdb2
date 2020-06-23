@@ -110,7 +110,7 @@ int systblFingerprintsInit(sqlite3 *db)
         CDB2_CSTRING, "fingerprint", -1, offsetof(struct fingerprint_track_systbl, fingerprint),
         CDB2_INTEGER, "count", -1, offsetof(struct fingerprint_track_systbl, count),
         CDB2_INTEGER, "total_cost", -1, offsetof(struct fingerprint_track_systbl, cost),
-        CDB2_INTEGER, "total_time", -1, offsetof(struct fingerprint_track, time),
+        CDB2_INTEGER, "total_time", -1, offsetof(struct fingerprint_track_systbl, time),
         CDB2_INTEGER, "total_rows", -1, offsetof(struct fingerprint_track_systbl, rows),
         CDB2_CSTRING, "normalized_sql", -1, offsetof(struct fingerprint_track_systbl, zNormSql),
         SYSTABLE_END_OF_FIELDS);
