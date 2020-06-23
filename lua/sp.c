@@ -174,7 +174,6 @@ struct dbconsumer_t {
 struct qfound {
     struct bdb_queue_found *item;
     long long seq;
-    unsigned int epoch;
     size_t len;
     size_t dtaoff;
 };
@@ -750,7 +749,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
         return rc == -2 ? 0 : -1;
     }
     rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
-                 &f.seq, &f.epoch);
+                 &f.seq);
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
     sp->num_instructions = 0;
@@ -6381,7 +6380,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         lua_setfield (L, -2, "sequence");
     }
     if (q->push_epoch) {
-        luabb_pushinteger(L, f->epoch);
+        luabb_pushinteger(L, f->item->epoch);
         lua_setfield (L, -2, "epoch");
     }
     if (flags & TYPE_TAGGED_ADD) {
@@ -6417,7 +6416,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
     luabb_pushinteger(L, f->item->trans.tid);
     lua_setfield(L, -2, "tid");
 
-    luabb_pushinteger(L, f->epoch);
+    luabb_pushinteger(L, f->item->epoch);
     lua_setfield(L, -2, "epoch");
 
     lua_setmetatable(L, -2);

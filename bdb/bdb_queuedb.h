@@ -40,7 +40,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                     const struct bdb_queue_cursor *prevcursor,
                     struct bdb_queue_found **fnd, size_t *fnddtalen,
                     size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-                    long long *seq, unsigned int *epoch, int *bdberr);
+                    long long *seq, int *bdberr);
 
 int bdb_queuedb_consume(bdb_state_type *bdb_state, tran_type *tran,
                         int consumer, const struct bdb_queue_found *prevfnd,
