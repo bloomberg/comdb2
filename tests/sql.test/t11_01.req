@@ -1,0 +1,10 @@
+create table t11(a datetime, b datetimeus)$$
+insert into t11 values('2020-01-02T03:04:05.006', '2021-02-03T04:05:06.000007')
+select year(a), year(b) from t11
+select month(a), month(b) from t11
+select day(a), day(b) from t11
+select hour(a), hour(b) from t11
+select minute(a), minute(b) from t11
+select second(a), second(b) from t11
+select millisecond(a), millisecond(b) from t11
+select microsecond(a), microsecond(b) from t11

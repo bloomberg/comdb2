@@ -48,6 +48,8 @@ static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void monthsFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void minuteFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void secondFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void milliSecondFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void microSecondFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void currentTS(sqlite3_context *context, int argc, sqlite3_value **argv);
 
@@ -65,6 +67,8 @@ void register_date_functions(sqlite3 * db) {
         { "hour",                    1, hourFunc         , NULL, NULL},
         { "minute",                  1, minuteFunc       , NULL, NULL},
         { "second",                  1, secondFunc       , NULL, NULL},
+        { "millisecond",             1, milliSecondFunc  , NULL, NULL},
+        { "microsecond",             1, microSecondFunc  , NULL, NULL},
         { "days",                    2, daysFunc         , NULL, NULL},
         { "now",                     0, nowFunc          , NULL, NULL},
         { "now",                     1, nowFunc          , NULL, NULL},
@@ -153,132 +157,128 @@ int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz) {
         _convMem2ClientDatetime(pMem, out, outlen, outdtsz, 1);
 }
 
+#define datetimeComponentFunc(context, argc, argv, component)        \
+do {                                                                 \
+  assert(argc == 1);                                                 \
+                                                                     \
+  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){                    \
+                                                                     \
+      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {           \
+            cdb2_client_datetime_t   cdt;                            \
+                                                                     \
+            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) { \
+                sqlite3_result_null(context);                        \
+                return;                                              \
+            }                                                        \
+                                                                     \
+            sqlite3_result_int(context, cdt.component);              \
+      }                                                              \
+                                                                     \
+  } else                                                             \
+      sqlite3_result_null(context);                                  \
+} while(0)
+
 static void yearFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
-
-  assert(argc == 1);
-
-  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
-
-      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
-            cdb2_client_datetime_t   cdt;
-
-            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) {
-                sqlite3_result_null(context);
-                return;
-            }
-
-            sqlite3_result_int(context, cdt.tm.tm_year+1900);
-      }
-
-  } else 
-      sqlite3_result_null(context);
+  datetimeComponentFunc(context, argc, argv, tm.tm_year+1900);
 }
 
 static void monthFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
-  assert(argc == 1);
-
-  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
-
-      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
-            cdb2_client_datetime_t   cdt;
-
-            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) {
-                sqlite3_result_null(context);
-                return;
-            }
-
-            sqlite3_result_int(context, cdt.tm.tm_mon+1);
-      }
-
-  } else 
-      sqlite3_result_null(context);
+  datetimeComponentFunc(context, argc, argv, tm.tm_mon+1);
 }
 
 static void dayFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
-  assert(argc == 1);
-
-  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
-
-      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
-            cdb2_client_datetime_t   cdt;
-
-            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) {
-                sqlite3_result_null(context);
-                return;
-            }
-
-            sqlite3_result_int(context, cdt.tm.tm_mday);
-      }
-
-  } else 
-      sqlite3_result_null(context);
+  datetimeComponentFunc(context, argc, argv, tm.tm_mday);
 }
 
 static void hourFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
-  assert(argc == 1);
-
-  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
-
-      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
-            cdb2_client_datetime_t   cdt;
-
-            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) {
-                sqlite3_result_null(context);
-                return;
-            }
-
-            sqlite3_result_int(context, cdt.tm.tm_hour);
-      }
-
-  } else 
-      sqlite3_result_null(context);
+  datetimeComponentFunc(context, argc, argv, tm.tm_hour);
 }
 
 static void minuteFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
-  assert(argc == 1);
-
-  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
-
-      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
-            cdb2_client_datetime_t   cdt;
-
-            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) {
-                sqlite3_result_null(context);
-                return;
-            }
-
-            sqlite3_result_int(context, cdt.tm.tm_min);
-      }
-
-  } else 
-      sqlite3_result_null(context);
+  datetimeComponentFunc(context, argc, argv, tm.tm_min);
 }
 
 static void secondFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
+  datetimeComponentFunc(context, argc, argv, tm.tm_sec);
+}
 
+static void milliSecondFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
   assert(argc == 1);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
+      Mem *pMem = argv[0];
 
       if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
-            cdb2_client_datetime_t   cdt;
+          cdb2_client_datetime_t cdt;
+          cdb2_client_datetimeus_t cdtus;
+          void *out = NULL;
+          switch (pMem->du.dt.dttz_prec) {
+              case DTTZ_PREC_MSEC:
+                  out = &cdt;
+                  break;
+              case DTTZ_PREC_USEC:
+                  out = &cdtus;
+                  break;
+          }
+          assert(out != NULL);
 
-            if(convMem2ClientDatetime(argv[0], &cdt) != SQLITE_OK) {
-                sqlite3_result_null(context);
-                return;
-            }
+          if(convMem2ClientDatetime(argv[0], out) != SQLITE_OK) {
+              sqlite3_result_null(context);
+              return;
+          }
 
-            sqlite3_result_int(context, cdt.tm.tm_sec);
+          switch (pMem->du.dt.dttz_prec) {
+              case DTTZ_PREC_MSEC:
+                  sqlite3_result_double(context, (double) cdt.msec);
+                  break;
+              case DTTZ_PREC_USEC:
+                  sqlite3_result_double(context, (double) cdtus.usec / 1000);
+                  break;
+          }
       }
 
-  } else 
+  } else
       sqlite3_result_null(context);
 }
 
+static void microSecondFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
+  assert(argc == 1);
+
+  if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
+      Mem *pMem = argv[0];
+
+      if(sqlite3VdbeMemDatetimefy(argv[0]) == SQLITE_OK) {
+          cdb2_client_datetime_t cdt;
+          cdb2_client_datetimeus_t cdtus;
+          void *out = NULL;
+          switch (pMem->du.dt.dttz_prec) {
+              case DTTZ_PREC_MSEC:
+                  out = &cdt;
+                  break;
+              case DTTZ_PREC_USEC:
+                  out = &cdtus;
+                  break;
+          }
+          assert(out != NULL);
+
+          if(convMem2ClientDatetime(argv[0], out) != SQLITE_OK) {
+              sqlite3_result_null(context);
+              return;
+          }
+
+          switch (pMem->du.dt.dttz_prec) {
+              case DTTZ_PREC_MSEC:
+                  sqlite3_result_double(context, (double) cdt.msec * 1000);
+                  break;
+              case DTTZ_PREC_USEC:
+                  sqlite3_result_double(context, (double) cdtus.usec);
+                  break;
+          }
+      }
+
+  } else
+      sqlite3_result_null(context);
+}
 
 
 static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
