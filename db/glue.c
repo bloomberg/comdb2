@@ -5278,7 +5278,7 @@ int dbq_get(struct ireq *iq, int consumer,
             const struct bdb_queue_cursor *prevcursor,
             struct bdb_queue_found **fnddta, size_t *fnddtalen,
             size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-            long long *seq, unsigned int *epoch)
+            long long *seq)
 {
     int bdberr;
     void *bdb_handle;
@@ -5298,7 +5298,7 @@ int dbq_get(struct ireq *iq, int consumer,
 retry:
     iq->gluewhere = "bdb_queue_get";
     rc = bdb_queue_get(bdb_handle, tran, consumer, prevcursor, fnddta,
-                       fnddtalen, fnddtaoff, fndcursor, seq, epoch, &bdberr);
+                       fnddtalen, fnddtaoff, fndcursor, seq, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {

@@ -386,8 +386,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
         goto skip;
     }
 
-    rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL,
-                 NULL, NULL);
+    rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL, NULL);
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
     } else if (rc != IX_NOTFND) {
@@ -720,7 +719,7 @@ static void queue_flush(struct dbtable *db, int consumern)
             return;
         }
 
-        rc = dbq_get(&iq, consumern, NULL, &item, NULL, NULL, NULL, NULL, NULL);
+        rc = dbq_get(&iq, consumern, NULL, &item, NULL, NULL, NULL, NULL);
 
         if (rc != 0) {
             if (rc != IX_NOTFND)

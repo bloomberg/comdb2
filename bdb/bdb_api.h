@@ -908,7 +908,7 @@ int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor,
                   struct bdb_queue_found **fnd, size_t *fnddtalen,
                   size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-                  long long *seq, unsigned int *epoch, int *bdberr);
+                  long long *seq, int *bdberr);
 
 /* Get the genid of a queue item that was retrieved by bdb_queue_get() */
 unsigned long long bdb_queue_item_genid(const struct bdb_queue_found *dta);
