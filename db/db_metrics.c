@@ -17,12 +17,14 @@
 #include <assert.h>
 #include <stdint.h>
 #include <unistd.h>
-#include "comdb2.h"
-#include "comdb2_atomic.h"
-#include "metrics.h"
-#include "bdb_api.h"
-#include "net.h"
-#include "thread_stats.h"
+#include <sql.h>
+#include <bdb_int.h>
+#include <comdb2.h>
+#include <comdb2_atomic.h>
+#include <metrics.h>
+#include <bdb_api.h>
+#include <net.h>
+#include <thread_stats.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -459,7 +461,7 @@ int refresh_metrics(void)
 
     refresh_queue_size(thedb);
 
-    bdb_rep_stats(thedb->bdb_env, &stats.rep_deadlocks);
+    bdb_rep_deadlocks(thedb->bdb_env, &stats.rep_deadlocks);
 
     stats.standing_queue_time = metrics_standing_queue_time();
 

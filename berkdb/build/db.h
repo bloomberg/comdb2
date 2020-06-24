@@ -2325,6 +2325,7 @@ struct __db_env {
 	int  (*lock_abort_logical_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
+    int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
 	int  (*lock_put) __P((DB_ENV *, DB_LOCK *));
 	int  (*lock_id) __P((DB_ENV *, u_int32_t *));
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
@@ -2378,6 +2379,7 @@ struct __db_env {
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
+	int  (*rep_deadlocks) __P((DB_ENV *, u_int64_t *));
 	int  (*set_logical_start) __P((DB_ENV *, int (*) (DB_ENV *, void *,
 		u_int64_t, DB_LSN *)));
 	int  (*set_logical_commit) __P((DB_ENV *, int (*) (DB_ENV *, void *,

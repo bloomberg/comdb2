@@ -1798,6 +1798,13 @@ int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran);
 int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
                              tran_type *tran);
 int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
+
+enum assert_lock_type {
+    ASSERT_TABLENAME_LOCKED_WRITE = 1,
+    ASSERT_TABLENAME_LOCKED_READ = 2,
+    ASSERT_TABLENAME_LOCKED_EITHER = 3
+};
+int bdb_assert_tablename_locked(bdb_state_type *, const char *name, uint32_t lid, enum assert_lock_type type);
 int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                        unsigned long long genid);
 int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
@@ -2221,6 +2228,7 @@ void allow_sc_to_run(void);
 int bdb_lock_stats(bdb_state_type *bdb_state, int64_t *nlocks);
 
 int bdb_rep_stats(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
+int bdb_rep_deadlocks(bdb_state_type *bdb_state, int64_t *nrep_deadlocks);
 
 int bdb_run_logical_recovery(bdb_state_type *bdb_state, int locks_only);
 
