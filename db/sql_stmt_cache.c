@@ -88,6 +88,10 @@ stmt_cache_t *stmt_cache_new(stmt_cache_t *in_stmt_cache)
     return stmt_cache;
 }
 
+#define GET_STMT_LIST(cache, stmt)                                             \
+    (sqlite3_bind_parameter_count(stmt)) ? (void *)&cache->param_stmt_list     \
+                                         : (void *)&cache->noparam_stmt_list;
+
 /* Requeue a stmt that was previously removed from the queues by calling
  * stmt_cache_remove_entry(). Called by put_prepared_stmt_int() after we are
  * done running stmt and by add_stmt_table() after it allocates the new entry.
@@ -117,12 +121,7 @@ static int stmt_cache_requeue_entry(stmt_cache_t *stmt_cache,
                __LINE__, entry->stmt, rc);
     }
 
-    void *list;
-    if (sqlite3_bind_parameter_count(entry->stmt)) {
-        list = &stmt_cache->param_stmt_list;
-    } else {
-        list = &stmt_cache->noparam_stmt_list;
-    }
+    void *list = GET_STMT_LIST(stmt_cache, entry->stmt);
     listc_atl(list, entry);
 
     return 0;
@@ -165,12 +164,7 @@ static int stmt_cache_remove_entry(stmt_cache_t *stmt_cache,
 {
     assert(entry);
 
-    void *list;
-    if (sqlite3_bind_parameter_count(entry->stmt)) {
-        list = &stmt_cache->param_stmt_list;
-    } else {
-        list = &stmt_cache->noparam_stmt_list;
-    }
+    void *list = GET_STMT_LIST(stmt_cache, entry->stmt);
 
     listc_maybe_rfl(list, entry);
     int rc = hash_del(stmt_cache->hash, entry->sql);
@@ -200,12 +194,7 @@ int stmt_cache_add_entry(stmt_cache_t *stmt_cache, const char *sql,
         return -1;
     }
 
-    void *list = NULL;
-    if (sqlite3_bind_parameter_count(stmt)) {
-        list = &stmt_cache->param_stmt_list;
-    } else {
-        list = &stmt_cache->noparam_stmt_list;
-    }
+    void *list = GET_STMT_LIST(stmt_cache, stmt);
 
     /* remove older entries to make room for new ones */
     if (gbl_max_sqlcache <= listc_size(list)) {
