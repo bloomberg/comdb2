@@ -189,6 +189,7 @@ const sqlite3_module systblTablesModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
+  .systable_lock = "comdb2_tables",
 };
 
 /* This initializes this table but also a bunch of other schema tables

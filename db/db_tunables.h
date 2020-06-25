@@ -1983,4 +1983,15 @@ REGISTER_TUNABLE("test_log_file",
                  "(Default: off)", TUNABLE_STRING, &gbl_test_log_file,
                  EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL,
                  test_log_file_update, NULL);
+
+REGISTER_TUNABLE("debug_systable_locks",
+                 "Grab the comdb2_systables lock in every schema change.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_systable_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("assert_systable_locks",
+                 "Assert that schema change holds the correct locks on replicants.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_assert_systable_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
