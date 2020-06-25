@@ -309,4 +309,5 @@ const sqlite3_module systblTriggersModule = {
   0,                 /* xRollbackTo */
   0,                 /* xShadowName */
   .access_flag = CDB2_ALLOW_ALL,
+  .systable_lock = "comdb2_queues",
 };

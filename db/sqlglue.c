@@ -61,6 +61,7 @@
 #include <bdb_api.h>
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
+#include <bdb_int.h>
 #include <time.h>
 
 #include "comdb2.h"
@@ -7329,6 +7330,13 @@ static int rootpcompare(const void *p1, const void *p2)
     return strcmp(tp1->zName, tp2->zName);
 }
 
+int gbl_debug_systable_locks = 0;
+#ifdef ASSERT_SYSTABLE_LOCKS
+int gbl_assert_systable_locks = 1;
+#else
+int gbl_assert_systable_locks = 0;
+#endif
+
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
     if (pStmt == NULL)
@@ -7345,16 +7353,33 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     int remote_schema_changed = 0;
     int dups = 0;
     struct dbtable *db;
-
-    if (nTables == 0)
-        return 0;
-
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
     }
+
+    // TODO: re-enable when systables are fixed
+    for (int i = 0; 0 && (i < p->numVTableLocks); i++) {
+        if ((rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, p->vTableLocks[i],
+                                                  bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+            logmsg(LOGMSG_ERROR, "%s lock %s returns %d\n", __func__, p->vTableLocks[i], rc);
+            return rc;
+        }
+    }
+
+    // TODO: re-enable when systables are fixed
+    if (0 && gbl_debug_systable_locks && p->numVTableLocks > 0) {
+        if ((rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, "_comdb2_systables",
+                                                  bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+            logmsg(LOGMSG_ERROR, "%s lock _comdb2_systables returns %d\n", __func__, rc);
+            return rc;
+        }
+    }
+
+    if (nTables == 0)
+        return 0;
 
     /* sort and dedup */
     qsort(tbls, nTables, sizeof(Table *), rootpcompare);
@@ -7448,8 +7473,11 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
-        bdb_lock_table_read_fromlid(
-            db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+        if ((rc = bdb_lock_table_read_fromlid(db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) !=
+            0) {
+            logmsg(LOGMSG_ERROR, "%s lock table %s returns %d\n", __func__, tab->zName, rc);
+            return rc;
+        }
 
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||

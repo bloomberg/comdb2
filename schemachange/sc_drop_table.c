@@ -77,8 +77,16 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return ERR_SC;
     }
 
-    /* Before this handle is closed, lets wait for all the db reads to finish*/
-    bdb_lock_table_write(db->handle, tran);
+    /* Before this handle is closed, lets wait for all the db reads to finish */
+    if ((bdb_lock_tablename_write(db->handle, "comdb2_tables", tran) != 0)) {
+        sc_errf(s, "%s: failed to lock comdb2_tables rc: %d\n", __func__, rc);
+        return rc;
+    }
+
+    if ((bdb_lock_table_write(db->handle, tran) != 0)) {
+        sc_errf(s, "%s: failed to lock table rc: %d\n", __func__, rc);
+        return rc;
+    }
 
     /* at this point if a backup is going on, it will be bad */
     gbl_sc_commit_count++;

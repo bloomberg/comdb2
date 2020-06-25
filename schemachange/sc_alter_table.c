@@ -708,6 +708,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     new_bdb_handle = newdb->handle;
     old_bdb_handle = db->handle;
 
+    if ((rc = bdb_lock_tablename_write(db->handle, "comdb2_tables", transac)) != 0) {
+        sc_errf(s, "Error getting comdb2_tables lock: %d\n", rc);
+        BACKOUT;
+    }
+
     if ((rc = bdb_lock_table_write(db->handle, transac)) != 0) {
         sc_errf(s, "Error getting tablelock: %d\n", rc);
         BACKOUT;

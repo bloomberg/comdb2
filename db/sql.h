@@ -86,8 +86,11 @@ typedef struct stmt_hash_entry {
 
 struct sql_authorizer_state {
     struct sqlclntstate *clnt;         /* pointer to current client info */
+    sqlite3 *db;
     int flags;                         /* DDL, PRAGMA, CREATE TRIGGER denied? */
     int numDdls;                       /* number of DDLs found */
+    int numVTableLocks;
+    char **vTableLocks;
 };
 
 /* Thread specific sql state */

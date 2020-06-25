@@ -4847,6 +4847,7 @@ int stmt_cached_column_count(sqlite3_stmt *);
 char *stmt_cached_column_name(sqlite3_stmt *, int);
 char *stmt_column_name(sqlite3_stmt *, int);
 void stmt_set_cached_columns(sqlite3_stmt *, char **, int);
+void stmt_set_vlock_tables(sqlite3_stmt *, char **, int);
 int stmt_do_column_names_match(sqlite3_stmt *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -6504,6 +6505,7 @@ struct sqlite3_module {
   int (*xShadowName)(const char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int access_flag;
+  char *systable_lock;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

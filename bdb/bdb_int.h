@@ -1606,7 +1606,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
 
 unsigned long long get_lowest_genid_for_datafile(int file);
 
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
 
 DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
                                      u_int32_t flags, int *bdberr);

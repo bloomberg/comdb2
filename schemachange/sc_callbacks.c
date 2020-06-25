@@ -672,6 +672,7 @@ static int bthash_callback(const char *table)
     }
 }
 
+extern int gbl_assert_systable_locks;
 static int replicant_reload_views(const char *name)
 {
     int rc;
@@ -680,6 +681,8 @@ static int replicant_reload_views(const char *name)
 
     return rc;
 }
+
+extern int gbl_assert_systable_locks;
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
@@ -691,6 +694,24 @@ static int replicant_reload_views(const char *name)
 int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
+    extern uint32_t gbl_rep_lockid;
+    if (gbl_assert_systable_locks) {
+        switch (type) {
+        case llmeta_queue_add:
+        case llmeta_queue_alter:
+        case llmeta_queue_drop:
+            bdb_assert_tablename_locked(bdb_state, "comdb2_queues", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            break;
+        case user_view:
+            bdb_assert_tablename_locked(bdb_state, "comdb2_views", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            break;
+        case add: // includes fastinit
+        case drop:
+        case alter:
+            bdb_assert_tablename_locked(bdb_state, "comdb2_tables", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            break;
+        }
+    }
     switch (type) {
     case luareload:
         return reload_lua();
@@ -729,7 +750,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     int highest_ver;
     int dbnum;
     uint32_t lid = 0;
-    extern uint32_t gbl_rep_lockid;
 
     struct dbtable *olddb = get_dbtable_by_name(table);
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);

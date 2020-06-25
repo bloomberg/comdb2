@@ -281,6 +281,7 @@ const sqlite3_module systblKeysModule = {
   0,                       /* xRollbackTo */
   0,                       /* xShadowName */
   .access_flag = CDB2_ALLOW_ALL,
+  .systable_lock = "comdb2_tables",
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

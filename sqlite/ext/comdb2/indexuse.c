@@ -30,6 +30,7 @@
 
 static sqlite3_module systblIndexUsageModule = {
     .access_flag = CDB2_ALLOW_USER,
+    .systable_lock = "comdb2_tables"
 };
 
 struct index_usage {

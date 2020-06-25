@@ -445,6 +445,13 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    if (rc != 0) {
+        sbuf2printf(sb, "!Error %d getting tablelock for comdb2_queues.\n", rc, sc->tablename);
+        sbuf2printf(sb, "FAILED\n");
+        goto done;
+    }
+
     rc = bdb_lock_tablename_write(thedb->bdb_env, sc->tablename, tran);
     if (rc) {
         sbuf2printf(sb, "!Error %d getting tablelock for %s.\n", rc,
