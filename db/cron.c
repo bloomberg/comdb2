@@ -452,7 +452,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
             arr = temparr;
         }
         cron_lock(sched);
-        arr[narr].name = strdup(sched->impl.name);
+        arr[narr].name = sched->impl.name ? strdup(sched->impl.name) : strdup("");
         arr[narr].type = strdup(cron_type_to_name(sched->impl.type));
         arr[narr].running = sched->running;
         arr[narr].nevents = sched->events.count;
@@ -516,7 +516,7 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
         arr[narr].name = sched->impl.event_describe
                              ? sched->impl.event_describe(&sched->impl, event)
                              : strdup("");
-        arr[narr].type = strdup(sched->impl.name);
+        arr[narr].type = sched->impl.name ? strdup(sched->impl.name) : strdup("");
         arr[narr].epoch = event->epoch;
         arr[narr].arg1 = event->arg1 ? strdup(event->arg1) : NULL;
         arr[narr].arg2 = event->arg2 ? strdup(event->arg2) : NULL;

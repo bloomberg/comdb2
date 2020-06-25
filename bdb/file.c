@@ -5545,6 +5545,7 @@ static bdb_state_type *bdb_open_int(
     iammaster = 0;
 
     if (numix > MAXINDEX) {
+        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
         *bdberr = BDBERR_MISC;
         return NULL;
     }
@@ -5555,11 +5556,13 @@ static bdb_state_type *bdb_open_int(
         return NULL;
     }
     if (bdbtype == BDBTYPE_LITE && numix != 1) {
+        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
         *bdberr = BDBERR_MISC;
         return NULL;
     }
     if ((bdbtype == BDBTYPE_QUEUE || bdbtype == BDBTYPE_QUEUEDB) &&
         numix != 0) {
+        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
         *bdberr = BDBERR_MISC;
         return NULL;
     }
@@ -5576,6 +5579,7 @@ static bdb_state_type *bdb_open_int(
 
     if ((envonly && numdtafiles != 0) ||
         (!envonly && (numdtafiles > MAXDTAFILES || numdtafiles < 1))) {
+        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
         *bdberr = BDBERR_MISC;
         return NULL;
     }
@@ -6070,6 +6074,7 @@ static bdb_state_type *bdb_open_int(
         if (rc != 0) {
             if (bdb_state->parent) {
                 free(bdb_state);
+                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
                 *bdberr = BDBERR_MISC;
                 return NULL;
             } else {
