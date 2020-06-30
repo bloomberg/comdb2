@@ -641,16 +641,17 @@ int sp_column_val(struct response_data *arg, int col, int type, void *out)
     SP sp = arg->sp;
     Lua L = sp->lua;
     int idx = col_to_idx(arg->ncols, col);
+    int rc = -1;
     switch (type) {
-    case SQLITE_INTEGER: luabb_tointeger(L, idx, out); return 0;
-    case SQLITE_FLOAT: luabb_toreal(L, idx, out); return 0;
+    case SQLITE_INTEGER:       rc = luabb_tointeger_noerr(L, idx, out); break;
+    case SQLITE_FLOAT:         rc = luabb_toreal_noerr(L, idx, out); break;
     case SQLITE_DATETIME: /* fall through */
-    case SQLITE_DATETIMEUS: luabb_todatetime(L, idx, out); return 0;
-    case SQLITE_INTERVAL_YM: luabb_tointervalym(L, idx, out); return 0;
+    case SQLITE_DATETIMEUS:    rc = luabb_todatetime_noerr(L, idx, out); break;
+    case SQLITE_INTERVAL_YM:   rc = luabb_tointervalym_noerr(L, idx, out); break;
     case SQLITE_INTERVAL_DS: /* fall through */
-    case SQLITE_INTERVAL_DSUS: luabb_tointervalds(L, idx, out); return 0;
+    case SQLITE_INTERVAL_DSUS: rc = luabb_tointervalds_noerr(L, idx, out); break;
     }
-    return -1;
+    return rc;
 }
 
 void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
@@ -681,7 +682,8 @@ void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
         }
         return c;
     case SQLITE_BLOB:
-        luabb_toblob(L, idx, &b);
+        if (luabb_toblob_noerr(L, idx, &b))
+            break;
         if (luabb_type(L, idx) != DBTYPES_BLOB) {
             luabb_pushblob_dl(L, &b);
             lua_replace(L, idx);
@@ -5545,9 +5547,15 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
+    int sp_rc = sp->rc;
+    sp->rc = 0;
     Pthread_mutex_lock(parent->emit_mutex);
     rc = write_response(clnt, type, &arg, 0);
     Pthread_mutex_unlock(parent->emit_mutex);
+    if (sp->rc) { /* type conversion failure */
+        luaL_error(lua, sp->error);
+    }
+    sp->rc = sp_rc;
     return rc;
 }
 
