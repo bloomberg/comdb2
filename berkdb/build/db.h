@@ -1811,6 +1811,7 @@ struct __dbc {
 
 	u_int32_t lid;			/* Default process' locker id. */
 	u_int32_t locker;		/* Locker for this operation. */
+	u_int32_t origlocker;
 	DBT	  lock_dbt;		/* DBT referencing lock. */
 	DB_LOCK_ILOCK lock;		/* Object to be locked. */
 	DB_LOCK	  mylock;		/* CDB lock held on this cursor. */
@@ -1848,6 +1849,7 @@ struct __dbc {
 	int (*c_pget) __P((DBC *, DBT *, DBT *, DBT *, u_int32_t));
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
+	int (*c_replace_lockid) __P((DBC *, u_int32_t));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
