@@ -143,13 +143,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                    fp, zSql, t->zNormSql);
         }
 
-        if (gbl_old_column_names && !stmt_do_column_names_match(stmt)) {
-            logmsg(LOGMSG_USER,
-                   "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
-                   "column names stable, fp:%s "
-                   "(https://www.sqlite.org/c3ref/column_name.html)\n",
-                   fp);
-
+        if (gbl_old_column_names && stmt && !stmt_do_column_names_match(stmt)) {
             /* Also cache the old column names, stored in the stmt, alongside
              * the fingerpint. */
             t->cachedColCount = stmt_cached_column_count(stmt);
@@ -164,6 +158,43 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                         strdup(stmt_cached_column_name(stmt, i));
                 }
             }
+
+            /* Temporary buffers to hold list of column names for logging */
+            char buf1[1024];
+            char buf2[1024];
+            unsigned short int remaining_bytes1 = 0;
+            unsigned short int remaining_bytes2 = 0;
+            int mismatch_col_count = 0;
+
+            /* Create a list of mismatched column names returned by current
+               and old sqlite engines. */
+            for (int i = 0; i < sqlite3_column_count(stmt); i++) {
+                char *ptr1 = stmt_column_name(stmt, i);
+                char *ptr2 = stmt_cached_column_name(stmt, i);
+
+                if (strcmp(ptr1, ptr2) != 0) {
+                    mismatch_col_count++;
+
+                    /* mismatched column name from new sqlite engine */
+                    remaining_bytes1 +=
+                        snprintf(buf1 + remaining_bytes1,
+                                 sizeof(buf1) - remaining_bytes1, "%s%s",
+                                 (mismatch_col_count == 1) ? "" : ", ",
+                                 stmt_column_name(stmt, i));
+                    /* mismatched column name from old sqlite engine */
+                    remaining_bytes2 += snprintf(
+                        buf2 + remaining_bytes2,
+                        sizeof(buf2) - remaining_bytes2, "%s%s",
+                        (i == 0) ? "" : ", ", stmt_cached_column_name(stmt, i));
+                }
+            }
+
+            logmsg(LOGMSG_USER,
+                   "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
+                   "column names in the result set stable across Comdb2 "
+                   "versions. fp:%s mismatched column names (old): %s (new): "
+                   "%s (https://www.sqlite.org/c3ref/column_name.html)\n",
+                   fp, buf2, buf1);
         } else {
             t->cachedColNames = NULL;
             t->cachedColCount = 0;
