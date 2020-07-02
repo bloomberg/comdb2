@@ -94,6 +94,15 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_old_column_names;
 
+char *stmt_column_name(sqlite3_stmt *pStmt, int index) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  return (char *) sqlite3_value_text((sqlite3_value*)&vdbe->aColName[index]);
+}
+
 char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   char **column_names;
   Vdbe *vdbe = (Vdbe *)pStmt;
