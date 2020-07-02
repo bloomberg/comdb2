@@ -296,6 +296,7 @@ extern int gbl_reorder_socksql_no_deadlock;
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
 extern int gbl_queuedb_timeout_sec;
+extern int gbl_fake_replication_timeout;
 
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;

@@ -177,6 +177,10 @@ for run in 1 2 3 4 5; do
    echo "Done waiting for ${partition_config[${run}]}"
    echo "Done waiting for ${partition_config[${run}]}" >> $OUT
 
+   if [[ "$run" == "4" && $dbname == *"reptimeout"* ]]; then
+       cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "PUT TUNABLE 'fake_sc_replication_timeout' 1"
+   fi
+
    timepart_stats
 done
 
