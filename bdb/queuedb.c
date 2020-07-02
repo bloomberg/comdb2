@@ -944,10 +944,14 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran, DB *d
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
+    rc = db->cursor(db, NULL, &dbcp, 0);
     if (rc) {
         *bdberr = BDBERR_MISC;
         goto done;
+    }
+
+    if (tran) {
+        dbcp->c_replace_lockid(dbcp, tran->tid->txnid);
     }
 
     k.consumer = consumer;
