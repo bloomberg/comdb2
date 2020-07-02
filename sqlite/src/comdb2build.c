@@ -134,7 +134,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
-    if (gbl_allow_user_schema && clnt->current_user.name[0] != '\0' &&
+    if (gbl_allow_user_schema && clnt->current_user.have_name &&
         strcasecmp(clnt->current_user.name, DEFAULT_USER) != 0) {
         /* Check whether table_name contains user name. */
         char* username = strchr(table_name, '@');
@@ -2247,7 +2247,7 @@ int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
    {
        snprintf(tableName, len, "%s", p->zName);
    } else if (clnt &&
-              (clnt->current_user.name[0] != '\0') &&   /* authenticated */
+              (clnt->current_user.have_name) &&         /* authenticated */
               !strchr(p->zName, '@') &&                 /* mustn't have user
                                                            name */
               strncasecmp(p->zName, "sqlite_", 7) &&    /* sqlite table */

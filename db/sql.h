@@ -98,6 +98,7 @@ struct sqlthdstate {
     sqlite3 *sqldb;
     struct sql_authorizer_state authState; /* SQL authorizer state info */
 
+    uint8_t have_lastuser;
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 

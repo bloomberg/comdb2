@@ -4370,9 +4370,9 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         rc = check_user_password(clnt);
 
     if (rc == 0) {
-        if (thd->lastuser[0] != '\0' &&
-            strcmp(thd->lastuser, clnt->current_user.name) != 0)
+        if (thd->have_lastuser && strcmp(thd->lastuser, clnt->current_user.name) != 0)
             delete_prepared_stmts(thd);
+        thd->have_lastuser = 1;
         strcpy(thd->lastuser, clnt->current_user.name);
         clnt->authgen = bpfunc_auth_gen;
     } else {
@@ -5501,7 +5501,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
     thd->stmt_caching_table = NULL;
-    thd->lastuser[0] = '\0';
+    thd->have_lastuser = 0;
 
     start_sql_thread();
 
