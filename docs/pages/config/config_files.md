@@ -968,7 +968,6 @@ configurations:
     on accept_on_child_nets
     on disable_etc_services_lookup
     online_recovery off
-    osql_check_replicant_numops off
     osql_send_startgen off
     queuedb_genid_filename off
     reorder_socksql_no_deadlock off

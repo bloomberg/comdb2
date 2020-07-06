@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+set -x
+
 source ${TESTSROOTDIR}/tools/runit_common.sh
 # Grab my database name.
 dbnm=$1
@@ -353,21 +355,20 @@ function check_comdb2_sc_hist
         master=`getmaster`
         ssh -o StrictHostKeyChecking=no $master "cat $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c" | grep "starting schema" | cut -f10 -d' ' > seeds_trc.txt
     else
-        master=localhost
         grep "starting schema" $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c | cut -f10 -d' ' > seeds_trc.txt
     fi
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql.txt
 
-    # use tail +3 to skip first two entries which are creating t1 and t2 and dont show up in trc.c
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" | tail +3 > seeds_sql.txt
+    # use tail -n +3 to skip first two entries which are creating t1 and t2 and dont show up in trc.c
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" | tail -n +3 > seeds_sql.txt
     if ! diff seeds_trc.txt seeds_sql.txt ; then
         failexit "Seed captured in sc_history is not the same as trc.c"
     fi
     # delete the aforementioned first two entries by truncating, and check again
-    d1=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'EXEC PROCEDURE sys.cmd.trim_sc_history("t1",0)'`
+    d1=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'EXEC PROCEDURE sys.cmd.trim_sc_history("t1",0)'`
     assertres "$d1" "Deleted 1 rows from sc_history for tablename t1"
 
-    d2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $master 'EXEC PROCEDURE sys.cmd.trim_sc_history("t2",15)'`
+    d2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'EXEC PROCEDURE sys.cmd.trim_sc_history("t2",15)'`
     assertres "$d2" "Deleted 1 rows from sc_history for tablename t2"
 
     cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" > seeds_sql2.txt
