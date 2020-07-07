@@ -10783,6 +10783,7 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
     int port;
     int retry;
     int sockfd;
+    int nodelay = 1;
 
     if (use_cache) {
         /* lets try to use sockpool, if available */
@@ -10816,6 +10817,9 @@ retry:
                 __func__, dbname, host, port);
         return NULL;
     }
+
+    (void)setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
 sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {
