@@ -428,6 +428,10 @@ int handle_ireq(struct ireq *iq)
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     release_node_stats(NULL, NULL, iq->frommach);
+
+    int64_t nowus = comdb2_time_epochus();
+    time_metric_add(thedb->service_time, (int)((nowus - iq->startus)/1000));
+
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
 
