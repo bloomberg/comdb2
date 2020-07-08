@@ -248,7 +248,6 @@ int comdb2_objpool_create_rand(comdb2_objpool_t *opp, const char *name,
                                void *del_arg, obj_not_fn not_fn,
                                void *not_arg)
 {
-    srandom(time(NULL));
     return comdb2_objpool_create_int(opp, name, cap, new_fn, new_arg, del_fn,
                                      del_arg, not_fn, not_arg, OP_RAND);
 }
