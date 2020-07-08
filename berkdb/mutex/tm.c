@@ -255,8 +255,6 @@ run_locker(id)
 
 	(void)__os_sleep(&dbenv, 3, 0);		/* Let everyone catch up. */
 
-	srandom((u_int)time(NULL) % getpid());	/* Initialize random numbers. */
-
 #if defined(MUTEX_THREAD_TEST)
 	/*
 	 * Spawn off threads.  We have nthreads all locking and going to
@@ -444,8 +442,6 @@ run_wakeup(id)
 	void *retp;
 #endif
 	(void)__os_sleep(&dbenv, 3, 0);		/* Let everyone catch up. */
-
-	srandom((u_int)time(NULL) % getpid());	/* Initialize random numbers. */
 
 #if defined(MUTEX_THREAD_TEST)
 	/*
