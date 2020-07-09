@@ -1,0 +1,14 @@
+schema
+{
+   int a0
+   int a1
+   int a2
+}
+
+keys
+{
+   "a0"  = a0
+   "a1"  = a1
+   "a2"  = a2
+}
+
