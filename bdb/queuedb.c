@@ -931,8 +931,7 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran, DB *d
     size_t data_offset;
     int rc;
     long long sequence = 0;
-    struct bdb_queue_found qfnd;
-    struct bdb_queue_found_seq qfnd_odh;
+
     uint8_t *p_buf, *p_buf_end;
     uint8_t key[QUEUEDB_KEY_LEN] = {0};
     struct queuedb_key fndk;
@@ -1094,11 +1093,15 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran, DB *d
     }
 
     if (bdb_state->ondisk_header) {
+        struct bdb_queue_found_seq qfnd_odh;
         p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+        memcpy(dbt_data.data, &qfnd_odh, sizeof(qfnd_odh));
         sequence = qfnd_odh.seq;
         data_offset = qfnd_odh.data_offset;
     } else {
+        struct bdb_queue_found qfnd;
         p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
+        memcpy(dbt_data.data, &qfnd, sizeof(qfnd));
         data_offset = qfnd.data_offset;
     }
     if (p_buf == NULL) {
@@ -1109,7 +1112,6 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran, DB *d
         goto done;
     }
 
-    /* what endianness is this? */
     *fnd = dbt_data.data;
     if (fnddtalen)
         *fnddtalen = dbt_data.size;
