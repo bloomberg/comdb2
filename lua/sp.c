@@ -175,8 +175,6 @@ struct dbconsumer_t {
 struct qfound {
     struct bdb_queue_found *item;
     long long seq;
-    size_t len;
-    size_t dtaoff;
 };
 
 static int db_reset(Lua);
@@ -760,7 +758,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
         Pthread_mutex_unlock(q->lock);
         return rc == -2 ? 0 : -1;
     }
-    rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
+    rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd,
                  &f.seq, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
@@ -6352,8 +6350,8 @@ static uint8_t *consume_field(Lua L, uint8_t *payload)
 
 static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char **err)
 {
-    uint8_t *payload = ((uint8_t *)f->item) + f->dtaoff;
-    size_t len = f->len - f->dtaoff;
+    uint8_t *payload = ((uint8_t *)f->item) + f->item->data_offset;
+    size_t len = f->item->data_len;
     memcpy(&q->genid, &q->fnd.genid, sizeof(genid_t));
     /*
     char header[] = "CDB2_UPD";
