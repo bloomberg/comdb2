@@ -626,8 +626,13 @@ static int newsql_heartbeat(struct sqlclntstate *clnt)
     if (!clnt->ready_for_heartbeats)
         return 0;
 
-    state = (clnt->sqltick > clnt->sqltick_last_seen);
-    clnt->sqltick_last_seen = clnt->sqltick;
+    /* We're still in a good state if we're just waiting for the client to consume an event. */
+    if (is_pingpong(clnt))
+        state = 1;
+    else {
+        state = (clnt->sqltick > clnt->sqltick_last_seen);
+        clnt->sqltick_last_seen = clnt->sqltick;
+    }
 
     return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT,
                            state);
