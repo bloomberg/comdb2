@@ -4822,6 +4822,15 @@ static int db_get_event_epoch(Lua L)
     return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
 }
 
+static int db_get_event_sequence(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    if (lua_getmetatable(L, -1) == 0)
+        return 0;
+    lua_getfield(L, -1, "sequence");
+    return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
+}
+
 static int db_bootstrap(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -4903,6 +4912,7 @@ static const luaL_Reg db_funcs[] = {
     {"consumer", db_consumer},
     {"get_event_tid", db_get_event_tid},
     {"get_event_epoch", db_get_event_epoch},
+    {"get_event_sequence", db_get_event_sequence},
     /************** DEBUG ***************/
     {"debug", db_debug},
     {"db_debug", db_db_debug},
@@ -6435,6 +6445,9 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
 
     luabb_pushinteger(L, f->item->epoch);
     lua_setfield(L, -2, "epoch");
+
+    luabb_pushinteger(L, f->seq);
+    lua_setfield(L, -2, "sequence");
 
     lua_setmetatable(L, -2);
 
