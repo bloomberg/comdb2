@@ -6602,3 +6602,8 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
     }
     return rc;
 }
+
+int is_pingpong(struct sqlclntstate *clnt)
+{
+    return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
+}
