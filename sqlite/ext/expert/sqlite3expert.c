@@ -1842,7 +1842,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
       // to 
       // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") OPTION DATACOPY;
       // note that there is enough space because 'collate' is 1 char longer than 'OPTION'
-      if ((coll=strcasestr(zSql, " collate DATACOPY"))) {
+      if ((coll = strstr(zSql, " collate DATACOPY"))) {
         char *end = coll + sizeof(" collate DATACOPY") - 1;
         while(*end != ';') {
             *coll = *end;
