@@ -487,6 +487,8 @@ static void bdb_temp_table_reset(struct temp_table *tbl)
     tbl->num_mem_entries = 0;
 }
 
+static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr);
+
 static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
                                        struct temp_table *tbl, int *bdberr)
 {
@@ -496,10 +498,12 @@ static int bdb_temp_table_init_temp_db(bdb_state_type *bdb_state,
     if (tbl->tmpdb) {
         /* Close all cursors that this table has open. */
         struct temp_cursor *cur;
-        LISTC_FOR_EACH(&tbl->cursors, cur, lnk) {
-            if ((rc = bdb_temp_table_close_cursor(bdb_state, cur, bdberr)) != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_close_cursor(%p, %p) rc %d\n",
-                       __func__, tbl, cur, rc);
+        LISTC_FOR_EACH(&tbl->cursors, cur, lnk)
+        {
+            /* Do not destory the temp cursor. Only reset it. The cursor may still
+               be referenced by others (e.g., SQLite's BtCursor). */
+            if ((rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr)) != 0) {
+                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_reset_cursor(%p, %p) rc %d\n", __func__, tbl, cur, rc);
                 return rc;
             }
         }
@@ -1491,10 +1495,6 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                    __func__, tbl, cur, rc);
             return rc;
         }
-
-        /* We're closing the temptable so discard its cursors. */
-        listc_rfl(&tbl->cursors, cur);
-        free(cur);
     }
 
     rc = bdb_temp_table_truncate(bdb_state, tbl, bdberr);
@@ -2132,8 +2132,7 @@ static int key_memcmp(void *_, int key1len, const void *key1, int key2len,
     return rc;
 }
 
-int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
-                                struct temp_cursor *cur, int *bdberr)
+static int bdb_temp_table_reset_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr)
 {
     int rc = 0;
     struct temp_table *tbl;
@@ -2160,13 +2159,20 @@ int bdb_temp_table_close_cursor(bdb_state_type *bdb_state,
             }
             cur->cur = NULL;
         }
-
-        /* Note: we can't do this until the cursor is closed.
-           Closing a cursor may invoke a search if we deleted items through that
-           cursor.  The search (custom search routine)
-           will need access to thread-specific data. */
-        /*Pthread_setspecific(cur->tbl->curkey, NULL);*/
     }
+
+    return rc;
+}
+
+/* The function closes the underlying berkdb cursor, removes the temp cursor from the temp table and frees it. */
+int bdb_temp_table_close_cursor(bdb_state_type *bdb_state, struct temp_cursor *cur, int *bdberr)
+{
+    int rc;
+    struct temp_table *tbl = cur->tbl;
+
+    listc_rfl(&tbl->cursors, cur);
+    rc = bdb_temp_table_reset_cursor(bdb_state, cur, bdberr);
+    free(cur);
 
     return rc;
 }
