@@ -1603,6 +1603,7 @@ dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
     tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
+    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
 
     if (tbl->dbtype == DBTYPE_QUEUEDB) {
         Pthread_rwlock_init(&tbl->consumer_lk, NULL);
@@ -1641,6 +1642,7 @@ void cleanup_newdb(dbtable *tbl)
         free(tbl->check_constraint_query[i]);
         tbl->check_constraint_query[i] = NULL;
     }
+    Pthread_mutex_destroy(&tbl->rev_constraints_lk);
 
     if (tbl->dbtype == DBTYPE_QUEUEDB)
         Pthread_rwlock_destroy(&tbl->consumer_lk);
@@ -1672,6 +1674,7 @@ dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
     Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
+    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
     if (dbnum == 0) {
         /* if no dbnumber then no default tag is required ergo lrl can be 0 */
         if (tbl->lrl < 0)
