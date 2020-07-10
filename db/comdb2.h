@@ -687,6 +687,7 @@ typedef struct dbtable {
     /* Pointers to other table constraints that are directed at this table. */
     constraint_t *rev_constraints[MAXCONSTRAINTS];
     int n_rev_constraints;
+    pthread_mutex_t rev_constraints_lk;
 
     /* CHECK constraints */
     check_constraint_t check_constraints[MAXCONSTRAINTS];
