@@ -376,6 +376,20 @@ int check_update_constraints(struct ireq *iq, void *trans,
             if (strcasecmp(cnstrt->table[j], iq->usedb->tablename)) {
                 continue;
             }
+            /* The lock on the usedb table prevents the reverse-constraint from 
+             * disappearing.  Getting a lock here protects it against schema-changes. */
+            rc = bdb_lock_tablename_read(thedb->bdb_env, cnstrt->table[j], trans);
+            if (rc != 0) {
+                if (iq->debug) {
+                    reqprintf(iq, "VERBKYCNSTRT CANT LOCK CONSTRAINT TABLE %s RC %d",
+                              cnstrt->table[j], rc);
+                }
+                if (rc == BDBERR_DEADLOCK) {
+                    rc = RC_INTERNAL_RETRY;
+                }
+                *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+                return rc;
+            }
             rc = getidxnumbyname(cnstrt->table[j], cnstrt->keynm[j], &ixnum);
             if (rc) {
                 if (iq->debug)
