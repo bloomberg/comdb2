@@ -462,6 +462,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     Pthread_mutex_unlock(&consumer_sqlthds_mutex);
 
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
+        /* trigger_register_req() can take up to 1 second. Tick up immediately
+           after this so that it's guaranteed that the appsock thread observes
+           a good query state for the next heartbeat. */
         comdb2_sql_tick();
         if (register_timeoutms) {
             if (retry == 0) {
@@ -477,6 +480,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
             goto out;
         }
         sleep(1);
+        /* Tick up after the sleep(1). Again this is to make sure that
+           the appsock thread sends out a "good" heartbeat every second. */
+        comdb2_sql_tick();
     }
 
 out:
