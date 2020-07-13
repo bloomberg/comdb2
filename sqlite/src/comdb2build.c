@@ -441,7 +441,7 @@ static int comdb2AuthenticateOpPassword(Parse* pParse)
      if (clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         if (bdb_user_password_check(clnt->current_user.name,
+         if (bdb_user_password_check(NULL, clnt->current_user.name,
                                      clnt->current_user.password, NULL))
          {
             return SQLITE_AUTH;

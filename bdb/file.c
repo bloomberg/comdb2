@@ -5568,11 +5568,13 @@ static bdb_state_type *bdb_open_int(
     }
     if (envonly && bdbtype != BDBTYPE_ENV) {
         logmsg(LOGMSG_ERROR, "bdb_open_int: envonly but type is not BDBTYPE_ENV\n");
+        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
         *bdberr = BDBERR_MISC;
         return NULL;
     }
     if (!envonly && bdbtype == BDBTYPE_ENV) {
         logmsg(LOGMSG_ERROR, "bdb_open_int: not envonly but type is BDBTYPE_ENV\n");
+        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
         *bdberr = BDBERR_MISC;
         return NULL;
     }
@@ -5816,6 +5818,7 @@ static bdb_state_type *bdb_open_int(
                 if (mkdir(bdb_state->txndir, 0774) != 0) {
                     print(bdb_state, "mkdir: %s: %s\n", bdb_state->txndir,
                           strerror(errno));
+                    logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
                     *bdberr = BDBERR_MISC;
                     return NULL;
                 }
@@ -5828,6 +5831,7 @@ static bdb_state_type *bdb_open_int(
             if (mkdir(bdb_state->tmpdir, 0774) != 0) {
                 print(bdb_state, "mkdir: %s: %s\n", bdb_state->tmpdir,
                       strerror(errno));
+                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
                 *bdberr = BDBERR_MISC;
                 return NULL;
             }
@@ -5912,6 +5916,7 @@ static bdb_state_type *bdb_open_int(
                 logmsg(LOGMSG_ERROR, "unable to create checkpoint thread - rc=%d "
                                 "errno=%d %s\n",
                         rc, errno, strerror(errno));
+                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
                 *bdberr = BDBERR_MISC;
                 return NULL;
             }
@@ -5928,6 +5933,7 @@ static bdb_state_type *bdb_open_int(
                 logmsg(LOGMSG_ERROR, "unable to create memp_trickle thread - rc=%d "
                                 "errno=%d %s\n",
                         rc, errno, strerror(errno));
+                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
                 *bdberr = BDBERR_MISC;
                 return NULL;
             }
@@ -6550,8 +6556,10 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                    db_strerror(rc));
             if (rc == ENOENT)
                 *bdberr = BDBERR_DELNOTFOUND;
-            else
+            else {
+                logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
                 *bdberr = BDBERR_MISC;
+            }
             rc = -1;
         } else {
             print(bdb_state, "bdb_del_file: removed %s\n", filename);
@@ -6562,8 +6570,10 @@ static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                 strerror(errno));
         if (errno == ENOENT)
             *bdberr = BDBERR_DELNOTFOUND;
-        else
+        else {
+            logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
             *bdberr = BDBERR_MISC;
+        }
 
         rc = -1;
     }
@@ -7240,20 +7250,20 @@ static uint64_t mystat(const char *filename)
     return st.st_size;
 }
 
-uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum)
+uint64_t bdb_index_size_tran(bdb_state_type *bdb_state, tran_type *tran, int ixnum)
 {
     char bdbname[PATH_MAX], physname[PATH_MAX];
 
     if (ixnum < 0 || ixnum >= bdb_state->numix)
         return 0;
 
-    form_indexfile_name(bdb_state, NULL, ixnum, bdbname, sizeof(bdbname));
+    form_indexfile_name(bdb_state, tran ? tran->tid : NULL, ixnum, bdbname, sizeof(bdbname));
     bdb_trans(bdbname, physname);
 
     return mystat(physname);
 }
 
-uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
+uint64_t bdb_data_size_tran(bdb_state_type *bdb_state, tran_type *tran, int dtanum)
 {
     int stripenum, numstripes = 1;
     uint64_t total = 0;
@@ -7266,8 +7276,7 @@ uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum)
 
     for (stripenum = 0; stripenum < numstripes; stripenum++) {
         char bdbname[PATH_MAX], physname[PATH_MAX];
-        form_datafile_name(bdb_state, NULL, dtanum, stripenum, bdbname,
-                           sizeof(bdbname));
+        form_datafile_name(bdb_state, tran ? tran->tid : NULL, dtanum, stripenum, bdbname, sizeof(bdbname));
         bdb_trans(bdbname, physname);
         total += mystat(physname);
     }
@@ -7287,15 +7296,14 @@ static size_t dirent_buf_size(const char *dir)
                                              : sizeof(struct dirent));
 }
 
-uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
+uint64_t bdb_queuedb_size_tran(bdb_state_type *bdb_state, tran_type *tran)
 {
     uint64_t totalSize = 0;
     assert(bdb_state->bdbtype == BDBTYPE_QUEUEDB);
     assert(BDB_QUEUEDB_MAX_FILES == 2); // TODO: Hard-coded for now.
     for (int dtanum = 0; dtanum < BDB_QUEUEDB_MAX_FILES; dtanum++) {
         unsigned long long old_qdb_file_ver;
-        if (should_stop_looking_for_queuedb_files(bdb_state, NULL, dtanum,
-                                                  &old_qdb_file_ver)) {
+        if (should_stop_looking_for_queuedb_files(bdb_state, tran, dtanum, &old_qdb_file_ver)) {
             break;
         }
         char tmpname[PATH_MAX];
@@ -7315,7 +7323,12 @@ uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
     return totalSize;
 }
 
-uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
+uint64_t bdb_queuedb_size(bdb_state_type *bdb_state)
+{
+    return bdb_queuedb_size_tran(bdb_state, NULL);
+}
+
+uint64_t bdb_queue_size_tran(bdb_state_type *bdb_state, tran_type *tran, unsigned *num_extents)
 {
     DIR *dh;
     struct dirent *dirent_buf;
@@ -7333,7 +7346,7 @@ uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents)
     *num_extents = 0;
 
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
-        return bdb_queuedb_size(bdb_state);
+        return bdb_queuedb_size_tran(bdb_state, tran);
 
     prefix_len = snprintf(extent_prefix, sizeof(extent_prefix),
                           "__dbq.%s.queue.", bdb_state->name);
