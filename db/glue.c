@@ -5519,7 +5519,7 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
+uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blobs)
 {
     int ii;
     uint64_t size_without_blobs = 0;
@@ -5528,20 +5528,20 @@ uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
     if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
         db->dbtype == DBTYPE_TAGGED_TABLE) {
         for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
+            db->ixsizes[ii] = bdb_index_size_tran(db->handle, tran, ii);
             db->totalsize += db->ixsizes[ii];
         }
 
-        db->dtasize = bdb_data_size(db->handle, 0);
+        db->dtasize = bdb_data_size_tran(db->handle, tran, 0);
         db->totalsize += db->dtasize;
         size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
+            db->blobsizes[ii] = bdb_data_size_tran(db->handle, tran, ii + 1);
             db->totalsize += db->blobsizes[ii];
         }
     } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
-        db->totalsize = bdb_queue_size(db->handle, &db->numextents);
+        db->totalsize = bdb_queue_size_tran(db->handle, tran, &db->numextents);
     } else {
         logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
                 __func__, db->dbtype);
@@ -5551,6 +5551,11 @@ uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
         return size_without_blobs;
     else
         return db->totalsize;
+}
+
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
+{
+    return calc_table_size_tran(NULL, db, skip_blobs);
 }
 
 void compr_print_stats()

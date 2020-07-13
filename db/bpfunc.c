@@ -353,7 +353,7 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     int valid_user;
 
     if (auth->enabled)
-        bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
+        bdb_user_password_check(tran, DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
 
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);

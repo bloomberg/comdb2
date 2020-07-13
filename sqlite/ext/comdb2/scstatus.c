@@ -50,7 +50,7 @@ static int get_status(void **data, int *npoints)
     void **sc_data = NULL;
     struct sc_status_ent *sc_status_ents = NULL;
 
-    rc = bdb_llmeta_get_all_sc_status(&status, &sc_data, &nkeys, &bdberr);
+    rc = bdb_llmeta_get_all_sc_status(NULL, &status, &sc_data, &nkeys, &bdberr);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to get all schema change status\n",
                __func__);
