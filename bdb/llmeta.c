@@ -9636,10 +9636,8 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num)
     return bdb_get_all_for_versioned_sp_tran(NULL, name, versions, num);
 }
 
-static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran,
-                                  void *key, int klen,
-                                  int (*func)(bdb_state_type *bdb_state,
-                                              void *arg, void *rec),
+static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran, void *key, int klen,
+                                  int (*func)(bdb_state_type *bdb_state, tran_type *tran, void *arg, void *rec),
                                   void *arg, int *bdberr)
 {
     int fnd;
@@ -9655,7 +9653,7 @@ static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran,
             break;
         }
 
-        if ((irc = (*func)(bdb_state, arg, out)) != 0)
+        if ((irc = (*func)(bdb_state, tran, arg, out)) != 0)
             break;
 
         rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1,
@@ -9665,7 +9663,7 @@ static int bdb_process_each_entry(bdb_state_type *bdb_state, tran_type *tran,
     return irc ? irc : rc;
 }
 
-static int table_version_callback(bdb_state_type *bdb_state, void *arg,
+static int table_version_callback(bdb_state_type *bdb_state, tran_type *tran, void *arg,
                                   struct llmeta_sane_table_version *rec)
 {
     const char *tblname = rec->tblname;
@@ -9700,14 +9698,12 @@ int bdb_process_each_table_version_entry(bdb_state_type *bdb_state,
 
     key.file_type = htonl(LLMETA_TABLE_VERSION);
 
-    return bdb_process_each_entry(
-        bdb_state, NULL, &key, sizeof(key.file_type),
-        (int (*)(bdb_state_type *, void *, void *))table_version_callback,
-        (void *)func, bdberr);
+    return bdb_process_each_entry(bdb_state, NULL, &key, sizeof(key.file_type),
+                                  (int (*)(bdb_state_type *, tran_type *, void *, void *))table_version_callback,
+                                  (void *)func, bdberr);
 }
 
-static int table_file_callback(bdb_state_type *bdb_state,
-                               unsigned long long *file_version,
+static int table_file_callback(bdb_state_type *bdb_state, tran_type *tran, unsigned long long *file_version,
                                struct llmeta_file_type_dbname_file_num_key *rec)
 {
     int rc;
@@ -9715,8 +9711,7 @@ static int table_file_callback(bdb_state_type *bdb_state,
     int fndlen;
     int bdberr;
 
-    rc = bdb_lite_exact_fetch(llmeta_bdb_state, rec, &version, sizeof(version),
-                              &fndlen, &bdberr);
+    rc = bdb_lite_exact_fetch_tran(llmeta_bdb_state, tran, rec, &version, sizeof(version), &fndlen, &bdberr);
 
     return (rc == 0 && fndlen == sizeof(version) && version == *file_version);
 }
@@ -9758,10 +9753,9 @@ static int bdb_process_each_table_entry(bdb_state_type *bdb_state,
 
     key_offset = p_buf - p_buf_start;
 
-    return bdb_process_each_entry(
-        bdb_state, tran, &key, key_offset,
-        (int (*)(bdb_state_type *, void *, void *))table_file_callback,
-        &version, bdberr);
+    return bdb_process_each_entry(bdb_state, tran, &key, key_offset,
+                                  (int (*)(bdb_state_type *, tran_type *, void *, void *))table_file_callback, &version,
+                                  bdberr);
 }
 
 int bdb_process_each_table_dta_entry(bdb_state_type *bdb_state, tran_type *tran,

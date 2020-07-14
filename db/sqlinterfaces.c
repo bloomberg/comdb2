@@ -2999,7 +2999,9 @@ static inline int check_user_password(struct sqlclntstate *clnt)
         strcpy(clnt->current_user.password, DEFAULT_PASSWORD);
     }
 
-    password_rc = bdb_user_password_check(NULL, clnt->current_user.name, clnt->current_user.password, &valid_user);
+    tran_type *tran = curtran_gettran();
+    password_rc = bdb_user_password_check(tran, clnt->current_user.name, clnt->current_user.password, &valid_user);
+    curtran_puttran(tran);
 
     if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);

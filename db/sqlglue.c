@@ -11321,6 +11321,49 @@ out:
     thread_memdestroy_and_restore(&thread_oldm);
 }
 
+void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out);
+
+void curtran_assert_nolocks(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd)
+        return;
+    uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
+    if (!lockid)
+        return;
+
+    int nlocks = bdb_nlocks_for_locker(thedb->bdb_env, lockid);
+    if (nlocks > 0) {
+        logmsg(LOGMSG_ERROR, "%s lockid %u holds %d locks\n", __func__, lockid, nlocks);
+        bdb_lock_stats_me(thedb->bdb_env, stderr);
+    }
+    assert(nlocks == 0);
+}
+
+tran_type *curtran_gettran(void)
+{
+    int bdberr;
+    tran_type *tran = NULL;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd || !thd->clnt || !thd->clnt->dbtran.cursor_tran)
+        return NULL;
+    uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
+    if ((tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr)) != NULL) {
+        bdb_get_tran_lockerid(tran, &tran->original_lid);
+        bdb_set_tran_lockerid(tran, lockid);
+    }
+    return tran;
+}
+
+void curtran_puttran(tran_type *tran)
+{
+    int bdberr;
+    if (!tran)
+        return;
+    bdb_set_tran_lockerid(tran, tran->original_lid);
+    bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+}
+
 void clone_temp_table(sqlite3_stmt *stmt, struct temptable *tbl)
 {
     int rc;

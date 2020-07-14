@@ -4094,8 +4094,11 @@ char *fdb_get_alias(const char **p_tablename)
     char *errstr = NULL;
     char *alias = NULL;
     const char *tablename = *p_tablename;
+    tran_type *trans;
 
-    alias = llmeta_get_tablename_alias(tablename, &errstr);
+    trans = curtran_gettran();
+    alias = llmeta_get_tablename_alias_tran(trans, tablename, &errstr);
+    curtran_puttran(trans);
     if (!alias) {
         if (errstr) {
             logmsg(LOGMSG_ERROR, "%s: error retrieving fdb alias for %s\n", __func__,

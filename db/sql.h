@@ -1343,4 +1343,13 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
  */
 int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
 
+/**
+ * Bdb transaction objects with curtran lockid
+ */
+tran_type *curtran_gettran(void);
+
+void curtran_assert_nolocks(void);
+
+void curtran_puttran(tran_type *tran);
+
 #endif /* _SQL_H_ */

@@ -266,8 +266,7 @@ int gbl_metrics_count = sizeof(gbl_metrics) / sizeof(comdb2_metric);
 extern int n_commits;
 extern long n_fstrap;
 
-
-static int64_t refresh_diskspace(struct dbenv *dbenv)
+static int64_t refresh_diskspace(struct dbenv *dbenv, tran_type *tran)
 {
     int64_t total = 0;
     int ndb;
@@ -277,12 +276,12 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
     for(ndb = 0; ndb < dbenv->num_dbs; ndb++)
     {
         db = dbenv->dbs[ndb];
-        total += calc_table_size(db, 0);
+        total += calc_table_size_tran(tran, db, 0);
     }
     for(ndb = 0; ndb < dbenv->num_qdbs; ndb++)
     {
         db = dbenv->qdbs[ndb];
-        total += calc_table_size(db, 0);
+        total += calc_table_size_tran(tran, db, 0);
     }
     total += bdb_logs_size(dbenv->bdb_env, &num_logs);
     return total;
@@ -406,7 +405,6 @@ int refresh_metrics(void)
     }
     stats.cpu_percent = gbl_cpupercent;
 #endif
-    stats.diskspace = refresh_diskspace(thedb);
     stats.service_time = time_metric_average(thedb->service_time);
     stats.queue_depth = time_metric_average(thedb->queue_depth);
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
@@ -419,13 +417,6 @@ int refresh_metrics(void)
         bdb_whoismaster((bdb_state_type *)thedb->bdb_env) == gbl_myhostname ? 1
                                                                             : 0;
     stats.ismaster = master;
-    rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), NULL,
-                             (unsigned long long *)&stats.num_sc_done, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__,
-               __LINE__);
-        return 1;
-    }
     stats.last_checkpoint_ms = gbl_last_checkpoint_ms;
     stats.total_checkpoint_ms = gbl_total_checkpoint_ms;
     stats.checkpoint_count = gbl_checkpoint_count;
@@ -471,6 +462,17 @@ int refresh_metrics(void)
     stats.minimum_truncation_offset = min_offset;
     stats.minimum_truncation_timestamp = min_timestamp;
 #endif
+
+    tran_type *trans = curtran_gettran();
+    rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), trans, (unsigned long long *)&stats.num_sc_done,
+                             &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "failed to refresh statistics (%s:%d)\n", __FILE__, __LINE__);
+        return 1;
+    }
+    stats.diskspace = refresh_diskspace(thedb, trans);
+    curtran_puttran(trans);
+
     return 0;
 }
 
