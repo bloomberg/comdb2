@@ -159,6 +159,8 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1(i int)"
 NUM=2000
 for ((i=1;i<=$NUM;++i)); do echo "insert into t1 values($i)"; done | cdb2sql ${CDB2_OPTIONS} $DBNAME default -
 
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events flush')"
+
 COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
 
 find $TESTDIR/var/log/cdb2/ | grep "/$DBNAME" | grep '.events.' > logfls.txt
