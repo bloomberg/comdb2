@@ -3908,10 +3908,12 @@ void get_disable_skipscan_all()
 #ifdef DEBUGSKIPSCAN
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
 #endif
+    tran_type *tran = curtran_gettran();
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *d = thedb->dbs[ii];
-        get_disable_skipscan(d, NULL);
+        get_disable_skipscan(d, tran);
     }
+    curtran_puttran(tran);
 }
  
 
