@@ -21,7 +21,7 @@
 
 #ifndef NDEBUG
 
-enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX } CHR_ENUM;
+enum { CHR_IXADDK, CHR_DATADD, CHR_TMPSVOP, CHR_MAX };
 
 /* NB: this construct is ment to encompass a function call like this:
  * ACCUMULATE_TIMING(CHR_FUNCTOMEASURE

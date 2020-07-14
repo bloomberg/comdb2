@@ -232,8 +232,8 @@ void bdb_access_tbl_invalidate(bdb_state_type *bdb_state)
           sizeof(bdb_state->access->hosts_cache));
 }
 
-int gbl_allow_user_schema;
-int gbl_uses_password;
+extern int gbl_allow_user_schema;
+extern int gbl_uses_password;
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                               char *table, int access_type, int *bdberr)
