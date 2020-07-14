@@ -569,7 +569,7 @@ static int bdb_temp_table_env_close(bdb_state_type *bdb_state,
     return 0;
 }
 
-pthread_key_t current_sql_query_key;
+extern pthread_key_t current_sql_query_key;
 int gbl_debug_temptables = 0;
 
 static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,

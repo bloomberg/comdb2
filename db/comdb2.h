@@ -1588,7 +1588,7 @@ extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_myhostname; /* my hostname */
 extern char *gbl_machine_class; /* my machine class */
-struct in_addr gbl_myaddr;   /* my IPV4 address */
+extern struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
 extern pid_t gbl_mypid;      /* my pid */
 extern int gbl_create_mode;  /* create files if no exists */
@@ -2865,20 +2865,10 @@ void debug_traverse_data(char *tbl);
 int add_gtid(struct ireq *iq, int source_db, tranid_t id);
 int rem_gtid(struct ireq *iq, tranid_t id);
 
-enum rsptype { RSP_COORDINATOR_PARTIAL_BLOCK = 12 };
-
-struct crsphdr {
-    enum rsptype rsptype;
-};
-
 /* Wrappers around berkeley lock code (gut says bad idea, brain insists) */
 int locks_get_locker(unsigned int *lid);
 int locks_lock_row(unsigned int lid, unsigned long long genid);
 int locks_release_locker(unsigned int lid);
-
-void reload_gtids(void);
-
-int handle_coordinator_master_switch(void);
 
 void berkdb_use_malloc_for_regions(void);
 int get_slotnum_from_buf(struct dbtable *db, char *tagname, void *buf, void *nulls);
@@ -2897,16 +2887,6 @@ int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
                            void *rec, int *reclen, int maxlen,
                            unsigned long long *genid);
 
-int remaining_active_gtid_count(void);
-
-void check_old_transaction_status(void);
-
-/* TODO: move all the twophase stuff into a separate .h file - too much
- * pollution */
-
-void twophase_process_message(char *line, int lline, int st);
-void get_instant_record_lock(unsigned long long genid);
-int genid_exists(struct ireq *iq, unsigned long long genid);
 extern int gbl_exclusive_blockop_qconsume;
 extern pthread_rwlock_t gbl_block_qconsume_lock;
 
@@ -3182,17 +3162,17 @@ extern int gbl_lowpri_snapisol_sessions;
 
 /* stats */
 /* non-sql request service times (last minute, last hour, since start) */
-struct quantize *q_min;
-struct quantize *q_hour;
-struct quantize *q_all;
+extern struct quantize *q_min;
+extern struct quantize *q_hour;
+extern struct quantize *q_all;
 /* sql query times */
-struct quantize *q_sql_min;
-struct quantize *q_sql_hour;
-struct quantize *q_sql_all;
+extern struct quantize *q_sql_min;
+extern struct quantize *q_sql_hour;
+extern struct quantize *q_sql_all;
 /* sql #steps */
-struct quantize *q_sql_steps_min;
-struct quantize *q_sql_steps_hour;
-struct quantize *q_sql_steps_all;
+extern struct quantize *q_sql_steps_min;
+extern struct quantize *q_sql_steps_hour;
+extern struct quantize *q_sql_steps_all;
 
 extern int gbl_stop_thds_time;
 extern int gbl_stop_thds_time_threshold;
@@ -3362,7 +3342,7 @@ int reload_after_bulkimport(dbtable *, tran_type *);
 int reload_db_tran(dbtable *, tran_type *);
 int debug_this_request(int until);
 
-int gbl_disable_stable_for_ipu;
+extern int gbl_disable_stable_for_ipu;
 
 extern int gbl_debug_memp_alloc_size;
 
@@ -3416,7 +3396,7 @@ int setup_net_listen_all(struct dbenv *dbenv);
 
 extern int gbl_no_env;
 
-int gbl_hostname_refresh_time;
+extern int gbl_hostname_refresh_time;
 
 extern int gbl_noenv_messages;
 
@@ -3434,8 +3414,8 @@ void stat4dump(int more, char *table, int istrace);
 int net_allow_node(struct netinfo_struct *netinfo_ptr, const char *host);
 
 extern int gbl_ctrace_dbdir;
-int gbl_private_blkseq;
-int gbl_use_blkseq;
+extern int gbl_private_blkseq;
+extern int gbl_use_blkseq;
 
 extern int gbl_sc_inco_chk;
 extern int gbl_track_queue_time;
@@ -3574,4 +3554,7 @@ void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 
 int backout_schema_changes(struct ireq *iq, tran_type *tran);
 int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
+
+extern int gbl_abort_invalid_query_info_key;
+extern int gbl_is_physical_replicant;
 #endif /* !INCLUDED_COMDB2_H */

@@ -544,7 +544,7 @@ BB_COMPILE_TIME_ASSERT(packedreq_dbglog_cookie_size,
 struct packed_pragma {
     int type;
     int len;
-} pragma;
+};
 enum { PACKEDREQ_PRAGMA_LEN = 4 + 4 };
 BB_COMPILE_TIME_ASSERT(packed_pragma_size,
                        sizeof(struct packed_pragma) == PACKEDREQ_PRAGMA_LEN);
@@ -576,13 +576,6 @@ enum FSTBLK_CODES {
     FSTBLK_RSPKL = 2,
     FSTBLK_SNAP_INFO = 3
 };
-
-enum GTID_CODES { GTID_PREPARED = 1, GTID_COMMITED = 2 };
-
-struct gtid_record {
-    int type;
-    int dbnum;
-} coord;
 
 struct fstblk_header {
     short type;

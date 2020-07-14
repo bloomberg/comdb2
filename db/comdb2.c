@@ -18,7 +18,6 @@ int __berkdb_write_alarm_ms;
 int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
-extern int gbl_berkdb_track_locks;
 extern int gbl_delay_sql_lock_release_sec;
 
 void __berkdb_set_num_read_ios(long long *n);
@@ -520,6 +519,7 @@ int gbl_newsi_use_timestamp_table = 0;
 int gbl_update_shadows_interval = 0;
 int gbl_lowpri_snapisol_sessions = 0;
 int gbl_support_sock_luxref = 1;
+int gbl_allow_user_schema;
 
 struct quantize *q_min;
 struct quantize *q_hour;
@@ -534,7 +534,6 @@ struct quantize *q_sql_steps_hour;
 struct quantize *q_sql_steps_all;
 
 extern int gbl_net_lmt_upd_incoherent_nodes;
-extern int gbl_allow_user_schema;
 extern int gbl_skip_cget_in_db_put;
 
 int gbl_argc;
@@ -776,6 +775,8 @@ int64_t gbl_temptable_spills;
 int gbl_osql_odh_blob = 1;
 
 int gbl_clean_exit_on_sigterm = 1;
+
+int gbl_is_physical_replicant;
 
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
@@ -1232,8 +1233,6 @@ static void *purge_old_blkseq_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
 }
-
-extern int gbl_is_physical_replicant;
 
 static void *purge_old_files_thread(void *arg)
 {
