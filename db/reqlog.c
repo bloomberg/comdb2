@@ -111,7 +111,7 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-int reqltruncate = 1;
+int reqltruncate = 0;
 
 /* sometimes you have to debug the debugger */
 static int verbose = 0;
