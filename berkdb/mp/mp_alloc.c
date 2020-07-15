@@ -494,7 +494,9 @@ found:		if (offsetp != NULL)
 		    bhp->priority > priority)
 			goto next_hb;
 
-		GET_BH_GEN(&bhp->buf) = 0;
+		/* Previous value could even be zero.
+		 * We just want it different from previous value */
+		++GET_BH_GEN(&bhp->buf);
 		buffers++;
 
 		/* Find the associated MPOOLFILE. */
