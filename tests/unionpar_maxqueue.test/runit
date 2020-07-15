@@ -17,6 +17,18 @@ set maxtransize 1000000000
 insert into t2 select value from generate_series(1, 1000000)
 EOF
 
+echo "Testing limit on max threads"
+$r << "EOF"
+select * from t union all select * from t union all select * from t union all select * from t union all select * from t union all select * from t union all select * from t union all select * from t union all select * from t
+EOF
+
+maxreqs=`$r "exec procedure sys.cmd.send('stat dohsql')"| grep requests| awk '{ print $3;}'`
+
+if (( $maxreqs != 0 )); then
+    echo "Failure to stop more than 8 parallel threads"
+    exit 1
+fi
+
 $r "alter table t add b cstring(1000) default '          '"
 $r "alter table t2 add b cstring(1000) default '          '"
 
@@ -36,3 +48,4 @@ else
     echo "Limited queue size $maxsize"
     echo "Testcase passed."
 fi
+
