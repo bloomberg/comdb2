@@ -29,8 +29,9 @@ extern char *print_mem(Mem *m);
 
 int gbl_dohsql_disable = 0;
 int gbl_dohsql_verbose = 0;
-int gbl_dohsql_max_queued_kb_highwm = 10000000; /* 10 GB */
+int gbl_dohsql_max_queued_kb_highwm = 10000;    /* 10 MB */
 int gbl_dohsql_full_queue_poll_msec = 10;       /* 10msec */
+int gbl_dohsql_max_threads = 8; /* do not run more than 8 threads */
 /* for now we keep this tunning "private */
 static int gbl_dohsql_track_stats = 1;
 static int gbl_dohsql_que_free_highwm = 10;
@@ -1209,6 +1210,11 @@ int dohsql_distribute(dohsql_node_t *node)
     char *sqlcpy;
     int i, rc;
     int clnt_nparams;
+    int flags = 0;
+
+    if (gbl_dohsql_max_threads && node->nnodes > gbl_dohsql_max_threads) {
+        return SHARD_ERR_TOOMANYTHR;
+    }
 
     clnt_nparams = param_count(clnt);
     if (clnt_nparams != node->nparams) {
@@ -1230,6 +1236,7 @@ int dohsql_distribute(dohsql_node_t *node)
             free(conns);
             return SHARD_ERR_MALLOC;
         }
+        flags = THDPOOL_FORCE_DISPATCH;
     }
     clnt->conns = conns;
     /* augment interface */
@@ -1248,7 +1255,7 @@ int dohsql_distribute(dohsql_node_t *node)
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
-                                 sqlcpy = strdup(node->nodes[i]->sql), 0,
+                                 sqlcpy = strdup(node->nodes[i]->sql), flags,
                                  PRIORITY_T_DEFAULT);
             if (rc) {
                 free(sqlcpy);
@@ -1323,6 +1330,14 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
                 conns->conns[i].stats.max_queue_bytes)
                 conns->stats.max_queue_bytes =
                     conns->conns[i].stats.max_queue_bytes;
+            if (logger) {
+                reqlog_logf(logger, REQL_INFO,
+                            "shard %d max_queue %d max_free_queue %d "
+                            "max_queued_bytes %lld\n",
+                            i, conns->conns[i].stats.max_queue_len,
+                            conns->conns[i].stats.max_free_queue_len,
+                            conns->conns[i].stats.max_queue_bytes);
+            }
         }
         _shard_disconnect(&conns->conns[i]);
     }

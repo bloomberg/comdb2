@@ -1632,6 +1632,11 @@ REGISTER_TUNABLE("dohsql_max_queued_kb_highwm",
                  NULL, NULL, NULL);
 
 REGISTER_TUNABLE(
+    "dohsql_max_threads",
+    "Maximum number of parallel threads, otherwise run sequential.",
+    TUNABLE_INTEGER, &gbl_dohsql_max_threads, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE(
     "dohsql_full_queue_poll_msec",
     "Poll milliseconds while waiting for coordinator to consume from queue.",
     TUNABLE_INTEGER, &gbl_dohsql_full_queue_poll_msec, 0, NULL, NULL, NULL,
