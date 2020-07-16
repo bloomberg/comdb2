@@ -26,7 +26,6 @@
 #include "sql.h"
 #include "ezsystables.h"
 #include "cdb2api.h"
-#include "schema_lk.h"
 
 static sqlite3_module systblIndexUsageModule = {
     .access_flag = CDB2_ALLOW_USER,
@@ -60,7 +59,6 @@ static int get_index_usage(void **recsp, int *nrecs) {
     int allocated = 0;
     int nix = 0;
 
-    rdlock_schema_lk();
 
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
         db = thedb->dbs[dbn];
@@ -73,7 +71,6 @@ static int get_index_usage(void **recsp, int *nrecs) {
                 struct index_usage *n = realloc(ixs, allocated * sizeof(struct index_usage));
                 if (n == NULL) {
                     free_index_usage(ixs, nix);
-                    unlock_schema_lk();
                     return -1;
                 }
                 ixs = n;
@@ -91,7 +88,6 @@ static int get_index_usage(void **recsp, int *nrecs) {
     }
     *nrecs = nix;
     *recsp = ixs;
-    unlock_schema_lk();
     return 0;
 }
 

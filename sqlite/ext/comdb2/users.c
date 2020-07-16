@@ -23,9 +23,11 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comdb2.h"
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
+#include <bdb_int.h>
+#include <sql.h>
+#include <comdb2.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
 
 /* systbl_users_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -77,13 +79,19 @@ static int systblUsersDisconnect(sqlite3_vtab *pVtab){
 */
 static int systblUsersOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   systbl_users_cursor *pCur = sqlite3_malloc(sizeof(*pCur));
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return -1;
+  }
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
-  if( bdb_user_get_all(&pCur->ppUsers, &pCur->nUsers) ) {
+  if( bdb_user_get_all_tran(trans, &pCur->ppUsers, &pCur->nUsers) ) {
     sqlite3_free(pCur);
     return SQLITE_INTERNAL;
   }
   *ppCursor = &pCur->base;
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 
