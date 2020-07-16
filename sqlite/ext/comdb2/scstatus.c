@@ -49,8 +49,14 @@ static int get_status(void **data, int *npoints)
     llmeta_sc_status_data *status = NULL;
     void **sc_data = NULL;
     struct sc_status_ent *sc_status_ents = NULL;
+    tran_type *tran = curtran_gettran();
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+        return SQLITE_INTERNAL;
+    }
 
-    rc = bdb_llmeta_get_all_sc_status(NULL, &status, &sc_data, &nkeys, &bdberr);
+    rc = bdb_llmeta_get_all_sc_status(tran, &status, &sc_data, &nkeys, &bdberr);
+    curtran_puttran(tran);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to get all schema change status\n",
                __func__);

@@ -48,8 +48,13 @@ static int get_status(void **data, int *npoints)
     int rc, bdberr, nkeys;
     sc_hist_row *hist = NULL;
     struct sc_hist_ent *sc_hist_ents = NULL;
+    tran_type *trans = curtran_gettran();
+    if (trans == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: cannot create transaction object\n", __func__);
+        return SQLITE_INTERNAL;
+    }
 
-    rc = bdb_llmeta_get_sc_history(NULL, &hist, &nkeys, &bdberr, NULL);
+    rc = bdb_llmeta_get_sc_history(trans, &hist, &nkeys, &bdberr, NULL);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to get all schema change hist\n",
                __func__);
@@ -87,6 +92,7 @@ static int get_status(void **data, int *npoints)
     *data = sc_hist_ents;
 
 cleanup:
+    curtran_puttran(trans);
     free(hist);
 
     return rc;

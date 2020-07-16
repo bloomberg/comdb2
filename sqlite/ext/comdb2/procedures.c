@@ -19,10 +19,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comdb2.h"
-#include "bdb_api.h"
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
+#include <comdb2.h>
+#include <bdb_api.h>
+#include <bdb_int.h>
+#include <sql.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
 
 /*
 ** Functions to load server & client versioned SPs
@@ -61,9 +63,14 @@ static void get_sp_versions(systbl_sps_cursor *c) {
   free_sp_versions(c);
   char *sp = c->ppProc[c->iProc];
   char **cvers;
-  int scnt, ccnt, bdberr;
-  bdb_get_lua_highest(NULL, sp, &scnt, INT_MAX, &bdberr);
-  bdb_get_all_for_versioned_sp(sp, &cvers, &ccnt);
+  int scnt = 0, ccnt = 0, bdberr;
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return;
+  }
+  bdb_get_lua_highest(trans, sp, &scnt, INT_MAX, &bdberr);
+  bdb_get_all_for_versioned_sp_tran(trans, sp, &cvers, &ccnt);
   c->pVer = sqlite3_malloc(sizeof(spversion) * (scnt + ccnt));
   int i;
   for(i = 0; i < scnt; ++i) {
@@ -83,14 +90,15 @@ static void get_sp_versions(systbl_sps_cursor *c) {
   c->defaultVer.sVer = 0;
   c->defaultVer.cVer = NULL;
   int rc;
-  if((rc = bdb_get_sp_get_default_version(sp, &bdberr)) > 0) {
+  if((rc = bdb_get_sp_get_default_version_tran(trans, sp, &bdberr)) > 0) {
     c->defaultVer.sVer = rc;
   } else {
-    bdb_get_default_versioned_sp(sp, &c->defaultVer.cVer);
+    bdb_get_default_versioned_sp_tran(trans, sp, &c->defaultVer.cVer);
   }
+  curtran_puttran(trans);
 }
 
-static void get_server_versioned_sps(char ***a, int *x) {
+static void get_server_versioned_sps(tran_type *tran, char ***a, int *x) {
   char old_sp[MAX_SPNAME] = {0};
   char new_sp[MAX_SPNAME] = {0};
   old_sp[0] = 127;
@@ -100,7 +108,7 @@ static void get_server_versioned_sps(char ***a, int *x) {
   int alloc = 0;
   while(1) {
     int bdberr;
-    int rc = bdb_get_sp_name(NULL, old_sp, new_sp, &bdberr);
+    int rc = bdb_get_sp_name(tran, old_sp, new_sp, &bdberr);
     if(rc || (strcmp(old_sp, new_sp) <= 0)) {
       break;
     }
@@ -185,8 +193,14 @@ static int systblSPsOpen(
   char **sname, **cname; // server name, client name
   int scnt, ccnt;        // server count, client count
 
-  get_server_versioned_sps(&sname, &scnt);
-  bdb_get_versioned_sps(&cname, &ccnt);
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return -1;
+  }
+
+  get_server_versioned_sps(trans, &sname, &scnt);
+  bdb_get_versioned_sps_tran(trans, &cname, &ccnt);
 
   // SP can have both clnt and server versioned names.
   // Merge the two lists to de-dup
@@ -210,6 +224,7 @@ static int systblSPsOpen(
   for(i = 0; i < ccnt; ++i)
     free(cname[i]);
   free(cname);
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 
@@ -271,6 +286,11 @@ static int systblSPsColumn(
   char *sp = NULL;
   int def = 0, size;
   spversion *v;
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return -1;
+  }
 
   /* Check to see if c->pVer is already allocated. If not, allocate. */
   if (c->iVer == 0 && c->pVer == NULL) {
@@ -319,9 +339,9 @@ static int systblSPsColumn(
         sqlite3_result_null( ctx );
       else if( v->sVer ) {
         int bdberr;
-        bdb_get_sp_lua_source( NULL, NULL, sp, &src, v->sVer, &size, &bdberr );
+        bdb_get_sp_lua_source( thedb->bdb_env, trans, sp, &src, v->sVer, &size, &bdberr );
       } else {
-        bdb_get_versioned_sp( sp, v->cVer, &src );
+        bdb_get_versioned_sp_tran( trans, sp, v->cVer, &src );
         size = strlen(src);
       }
       if( src == NULL )
@@ -330,6 +350,7 @@ static int systblSPsColumn(
         sqlite3_result_text( ctx, src, size, free );
       break;
   }
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 

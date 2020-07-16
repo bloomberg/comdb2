@@ -163,12 +163,11 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
         bdb_get_tran_lockerid(trans, &savedlid);
         bdb_set_tran_lockerid(trans, lockid);
 
-        // TODO: re-enable when systable fixes are checked in
-        if (0 && gbl_debug_systable_locks) {
+        if (gbl_debug_systable_locks) {
             bdb_assert_tablename_locked(bdb_state, "_comdb2_systables", lockid, ASSERT_TABLENAME_LOCKED_READ);
         }
 
-        if (0 && gbl_assert_systable_locks) {
+        if (gbl_assert_systable_locks) {
             bdb_assert_tablename_locked(bdb_state, "comdb2_queues", lockid, ASSERT_TABLENAME_LOCKED_READ);
         }
     }

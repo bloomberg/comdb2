@@ -53,7 +53,6 @@ static int get_views(void **data, int *npoints)
     int rc = SQLITE_OK;
     *npoints = 0;
     *data = NULL;
-    rdlock_schema_lk();
     if (thedb->view_hash != NULL) {
         int count;
         hash_info(thedb->view_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
@@ -79,7 +78,6 @@ static int get_views(void **data, int *npoints)
             }
         }
     }
-    unlock_schema_lk();
     return rc;
 }
 

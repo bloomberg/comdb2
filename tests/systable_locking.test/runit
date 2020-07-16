@@ -24,10 +24,10 @@ function failexit
 }
 
 # The test will pass this after all the "chunked" changes are checked in
-function stat_all_tables_complete
+function stat_all_tables
 {
     [[ $debug == "1" ]] && set -x
-    t=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "SELECT * FROM COMDB2_SYSTABLES" 2>&1 | egrep -v comdb2_sc_history)
+    t=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "SELECT * FROM COMDB2_SYSTABLES")
     for x in $t; do
         $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM $x LIMIT 10" >/dev/null 2>&1
     done
@@ -84,12 +84,6 @@ function stat_all_tables_complete
 # comdb2_tablepermissions
 # comdb2_net_userfuncs
 # comdb2_active_osqls
-
-function stat_all_tables
-{
-    #$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM comdb2_queues LIMIT 10" >/dev/null 2>&1
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM comdb2_triggers LIMIT 10" >/dev/null 2>&1
-}
 
 function write_tables
 {
