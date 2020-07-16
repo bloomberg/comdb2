@@ -1650,12 +1650,12 @@ REGISTER_TUNABLE("random_fail_client_write_lock",
 
 REGISTER_TUNABLE("reorder_socksql_no_deadlock",
                  "Reorder sock sql to have no deadlocks ", TUNABLE_BOOLEAN,
-                 &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL | INTERNAL,
+                 &gbl_reorder_socksql_no_deadlock, DYNAMIC | EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
-                 TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC, NULL, NULL,
-                 NULL, NULL);
+                 TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC | EXPERIMENTAL,
+                 NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_snap_info_hashcheck",
                  "Enable snapinfo to be stored and checked in a hash in "
