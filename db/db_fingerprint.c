@@ -24,6 +24,7 @@
 #include "sql.h"
 #include "util.h"
 #include "tohex.h"
+#include "strbuf.h"
 
 extern int gbl_old_column_names;
 
@@ -150,10 +151,8 @@ void add_fingerprint(sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
             }
 
             /* Temporary buffers to hold list of column names for logging */
-            char buf1[1024];
-            char buf2[1024];
-            unsigned short int remaining_bytes1 = 0;
-            unsigned short int remaining_bytes2 = 0;
+            strbuf *buf1 = strbuf_new();
+            strbuf *buf2 = strbuf_new();
             int mismatch_col_count = 0;
 
             /* Create a list of mismatched column names returned by current
@@ -166,25 +165,25 @@ void add_fingerprint(sqlite3_stmt *stmt, const char *zSql, const char *zNormSql,
                     mismatch_col_count++;
 
                     /* mismatched column name from new sqlite engine */
-                    remaining_bytes1 +=
-                        snprintf(buf1 + remaining_bytes1,
-                                 sizeof(buf1) - remaining_bytes1, "%s%s",
-                                 (mismatch_col_count == 1) ? "" : ", ",
-                                 stmt_column_name(stmt, i));
+                    strbuf_appendf(buf1, "%s%s",
+                                   (mismatch_col_count == 1) ? "" : ", ",
+                                   stmt_column_name(stmt, i));
+
                     /* mismatched column name from old sqlite engine */
-                    remaining_bytes2 += snprintf(
-                        buf2 + remaining_bytes2,
-                        sizeof(buf2) - remaining_bytes2, "%s%s",
-                        (i == 0) ? "" : ", ", stmt_cached_column_name(stmt, i));
+                    strbuf_appendf(buf2, "%s%s",
+                                   (mismatch_col_count == 1) ? "" : ", ",
+                                   stmt_cached_column_name(stmt, i));
                 }
             }
 
             logmsg(LOGMSG_USER,
                    "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
                    "column names in the result set stable across Comdb2 "
-                   "versions. fp:%s mismatched column names (old): %s (new): "
-                   "%s (https://www.sqlite.org/c3ref/column_name.html)\n",
-                   fp, buf2, buf1);
+                   "versions. fp:%s mismatched column names -- old: %s new: %s "
+                   "(https://www.sqlite.org/c3ref/column_name.html)\n",
+                   fp, strbuf_buf(buf2), strbuf_buf(buf1));
+            strbuf_free(buf1);
+            strbuf_free(buf2);
         } else {
             t->cachedColNames = NULL;
             t->cachedColCount = 0;
