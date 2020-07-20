@@ -1992,6 +1992,16 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( pOut->db );
 
+  /* SQLite may reuse a Mem object. If the Mem object has dynamically allocated
+     memory (zMalloc), we free it here. If we do not free it here, zMalloc will
+     be overwritten to NULL by one of the arithmetic routines below and the memory
+     will be leaked. */
+  if( pOut->szMalloc>0 ){
+    sqlite3DbFreeNN(pOut->db, pOut->zMalloc);
+    pOut->szMalloc = 0;
+    pOut->z = pOut->zMalloc = NULL;
+  }
+
   if( (pIn1->flags & MEM_Interval) && pIn1->du.tv.type == INTV_DECIMAL_TYPE)
   {
     Mem res;

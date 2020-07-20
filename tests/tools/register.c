@@ -255,13 +255,13 @@ out:
 void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
 {
     cdb2_hndl_tp *db = (*indb);
-    int rc, op, newval = (rand() % 5), curval = (rand() % 5),
-                newuid = (rand() % 100000);
+    int rc, op, newval = (random() % 5), curval = (random() % 5),
+                newuid = (random() % 100000);
     int foundval, founduid;
     unsigned long long begintm, endtm;
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
-    op = (rand() % 3);
+    op = (random() % 3);
 
     if (is_hasql) {
         rc = cdb2_run_statement(db, "set hasql on");
@@ -542,7 +542,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "NO TESTS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
     }
 
-    srand(time(NULL) ^ getpid());
+    srandom(time(NULL) ^ getpid());
 
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;

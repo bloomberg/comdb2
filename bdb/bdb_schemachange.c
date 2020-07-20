@@ -54,6 +54,7 @@
 #include "comdb2_atomic.h"
 
 extern int sc_ready(void);
+extern int gbl_debug_systable_locks;
 
 /* bdb routines to support schema change */
 
@@ -177,6 +178,12 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     memcpy(&type, scdoneop->fastinit.data, sizeof(type));
     scdone_t sctype = ntohl(type);
 
+    if (gbl_debug_systable_locks) {
+        extern int32_t gbl_rep_lockid;
+        bdb_assert_tablename_locked(dbenv->app_private, "_comdb2_systables", gbl_rep_lockid,
+                                    ASSERT_TABLENAME_LOCKED_WRITE);
+    }
+
     if (sctype == rename_table) {
         assert(strlen(table) + 1 < scdoneop->table.size);
         newtable = &table[strlen(table) + 1];
@@ -260,6 +267,10 @@ retry:
     /* analyze does NOT need schema_lk */
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;
+
+    if (gbl_debug_systable_locks) {
+        bdb_lock_tablename_write(p_bdb_state, "_comdb2_systables", tran);
+    }
 
     DB_LSN lsn;
     rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, tbl, type);
@@ -358,6 +369,10 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         bdb_lock_table_write(bdb_state, tran);
 #endif
 
+    extern int gbl_debug_systable_locks;
+    if (gbl_debug_systable_locks) {
+        bdb_lock_tablename_write(p_bdb_state, "_comdb2_systables", tran);
+    }
     rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, dtbl, &dtype);
     if (rc) {
         *bdberr = BDBERR_MISC;

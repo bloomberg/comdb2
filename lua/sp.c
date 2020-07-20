@@ -163,6 +163,7 @@ struct dbconsumer_t {
     int register_timeoutms;
     int emit_timeoutms;
     time_t registration_time;
+    char name[MAXTABLELEN];
 
     /* signaling from libdb on qdb insert */
     pthread_mutex_t *lock;
@@ -174,9 +175,6 @@ struct dbconsumer_t {
 struct qfound {
     struct bdb_queue_found *item;
     long long seq;
-    unsigned int epoch;
-    size_t len;
-    size_t dtaoff;
 };
 
 static int db_reset(Lua);
@@ -198,6 +196,7 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
 {
     init_fake_ireq(thedb, &q->iq);
     int spname_len = info->spname_len;
+    strncpy0(q->name, qdb->tablename, MAXTABLELEN);
     q->iq.usedb = qdb;
     q->emit_timeoutms = 60000; /* emit times-out after 1 min */
     q->consumer = consumer;
@@ -463,6 +462,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     Pthread_mutex_unlock(&consumer_sqlthds_mutex);
 
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
+        /* trigger_register_req() can take up to 1 second. Tick up immediately
+           after this so that it's guaranteed that the appsock thread observes
+           a good query state for the next heartbeat. */
         comdb2_sql_tick();
         if (register_timeoutms) {
             if (retry == 0) {
@@ -478,6 +480,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
             goto out;
         }
         sleep(1);
+        /* Tick up after the sleep(1). Again this is to make sure that
+           the appsock thread sends out a "good" heartbeat every second. */
+        comdb2_sql_tick();
     }
 
 out:
@@ -640,16 +645,17 @@ int sp_column_val(struct response_data *arg, int col, int type, void *out)
     SP sp = arg->sp;
     Lua L = sp->lua;
     int idx = col_to_idx(arg->ncols, col);
+    int rc = -1;
     switch (type) {
-    case SQLITE_INTEGER: luabb_tointeger(L, idx, out); return 0;
-    case SQLITE_FLOAT: luabb_toreal(L, idx, out); return 0;
+    case SQLITE_INTEGER:       rc = luabb_tointeger_noerr(L, idx, out); break;
+    case SQLITE_FLOAT:         rc = luabb_toreal_noerr(L, idx, out); break;
     case SQLITE_DATETIME: /* fall through */
-    case SQLITE_DATETIMEUS: luabb_todatetime(L, idx, out); return 0;
-    case SQLITE_INTERVAL_YM: luabb_tointervalym(L, idx, out); return 0;
+    case SQLITE_DATETIMEUS:    rc = luabb_todatetime_noerr(L, idx, out); break;
+    case SQLITE_INTERVAL_YM:   rc = luabb_tointervalym_noerr(L, idx, out); break;
     case SQLITE_INTERVAL_DS: /* fall through */
-    case SQLITE_INTERVAL_DSUS: luabb_tointervalds(L, idx, out); return 0;
+    case SQLITE_INTERVAL_DSUS: rc = luabb_tointervalds_noerr(L, idx, out); break;
     }
-    return -1;
+    return rc;
 }
 
 void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
@@ -680,7 +686,8 @@ void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
         }
         return c;
     case SQLITE_BLOB:
-        luabb_toblob(L, idx, &b);
+        if (luabb_toblob_noerr(L, idx, &b))
+            break;
         if (luabb_type(L, idx) != DBTYPES_BLOB) {
             luabb_pushblob_dl(L, &b);
             lua_replace(L, idx);
@@ -709,8 +716,9 @@ char *sp_column_name(struct response_data *arg, int col)
 }
 
 static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
-                                    struct dbtable *db, trigger_reg_t *reg,
-                                    int have_schema_lock, int *got_lock)
+                                    const char *qname, struct dbtable **db,
+                                    trigger_reg_t *reg, int have_schema_lock,
+                                    int *got_lock)
 {
     if ((reg != NULL) && reg->qdb_locked) {
         return 0; /* we already have the table read lock */
@@ -719,7 +727,14 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
         logmsg(LOGMSG_WARN, "%s: tryrdlock_schema_lk failed\n", __func__);
         return -2;
     }
-    int rc = bdb_lock_table_read_fromlid(db->handle,
+    (*db) = getqueuebyname(qname);
+    if ((*db) == NULL) {
+        if (!have_schema_lock) unlock_schema_lk();
+        logmsg(LOGMSG_ERROR, "%s: failed to get queue %s by name\n", __func__,
+                qname);
+        return -2;
+    }
+    int rc = bdb_lock_table_read_fromlid((*db)->handle,
              bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "%s: bdb_lock_table_read_fromlid rc %d\n",
@@ -742,15 +757,15 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
     struct qfound f = {0};
-    int rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL);
+    int rc = grab_qdb_table_read_lock(clnt, q->name, &q->iq.usedb, &q->info, 0, NULL);
     if (rc != 0) {
         // TODO: Temporary hack for testing.
         //       Transform -2 (schema lock fail) to 0 (success).
         Pthread_mutex_unlock(q->lock);
         return rc == -2 ? 0 : -1;
     }
-    rc = dbq_get(&q->iq, 0, &q->last, &f.item, &f.len, &f.dtaoff, &q->fnd,
-                 &f.seq, &f.epoch);
+    rc = dbq_get(&q->iq, 0, &q->last, &f.item, NULL, NULL, &q->fnd,
+                 &f.seq, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
     Pthread_mutex_unlock(q->lock);
     comdb2_sql_tick();
     sp->num_instructions = 0;
@@ -924,7 +939,7 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
     }
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                             SQLENG_INTRANS_STATE);
-    rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL);
+    rc = grab_qdb_table_read_lock(clnt, q->name, &q->iq.usedb, &q->info, 0, NULL);
     if (rc != 0) {
         return rc;
     }
@@ -949,7 +964,8 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    if ((rc = grab_qdb_table_read_lock(clnt, q->iq.usedb, &q->info, 0, NULL)) != 0) {
+
+    if ((rc = grab_qdb_table_read_lock(clnt, q->name, &q->iq.usedb, &q->info, 0, NULL)) != 0) {
         if (start) {
             osql_sock_abort(clnt, OSQL_SOCK_REQ);
             clnt->intrans = 0;
@@ -4704,7 +4720,7 @@ static int get_qdb(Lua L, struct sqlclntstate *clnt, char *spname,
             return luaL_error(L, "trigger not found for sp:%s", spname);
         }
     }
-    int rc = grab_qdb_table_read_lock(clnt, db, NULL, 1, got_lock);
+    int rc = grab_qdb_table_read_lock(clnt, qname, &db, NULL, 1, got_lock);
     if (rc != 0) {
         *pDb = NULL;
         unlock_schema_lk();
@@ -4799,7 +4815,25 @@ static int db_get_event_tid(Lua L)
     luaL_checkudata(L, 1, dbtypes.db);
     if (lua_getmetatable(L, -1) == 0)
         return 0;
-    lua_getfield(L, -1, "__metatable");
+    lua_getfield(L, -1, "tid");
+    return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
+}
+
+static int db_get_event_epoch(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    if (lua_getmetatable(L, -1) == 0)
+        return 0;
+    lua_getfield(L, -1, "epoch");
+    return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
+}
+
+static int db_get_event_sequence(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    if (lua_getmetatable(L, -1) == 0)
+        return 0;
+    lua_getfield(L, -1, "sequence");
     return luabb_type(L, -1) == DBTYPES_INTEGER ? 1 : 0;
 }
 
@@ -4877,12 +4911,14 @@ static const luaL_Reg db_funcs[] = {
     {"sp", db_sp},
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"error", db_error},
-    /************ CONSUMER **************/
-#ifdef WITH_RDKAFKA    
-    {"kafka_publish", kafka_publish},
-#endif    
+    #ifdef WITH_RDKAFKA
+        {"kafka_publish", kafka_publish},
+    #endif
+    /************ CONSUMER/TRIGGER ************/
     {"consumer", db_consumer},
     {"get_event_tid", db_get_event_tid},
+    {"get_event_epoch", db_get_event_epoch},
+    {"get_event_sequence", db_get_event_sequence},
     /************** DEBUG ***************/
     {"debug", db_debug},
     {"db_debug", db_db_debug},
@@ -5525,9 +5561,15 @@ static int l_send_back_row(Lua lua, sqlite3_stmt *stmt, int nargs)
         if (rc) return rc;
     }
     int type = stmt ? RESPONSE_ROW : RESPONSE_ROW_LUA;
+    int sp_rc = sp->rc;
+    sp->rc = 0;
     Pthread_mutex_lock(parent->emit_mutex);
     rc = write_response(clnt, type, &arg, 0);
     Pthread_mutex_unlock(parent->emit_mutex);
+    if (sp->rc) { /* type conversion failure */
+        luaL_error(lua, sp->error);
+    }
+    sp->rc = sp_rc;
     return rc;
 }
 
@@ -6324,8 +6366,8 @@ static uint8_t *consume_field(Lua L, uint8_t *payload)
 
 static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char **err)
 {
-    uint8_t *payload = ((uint8_t *)f->item) + f->dtaoff;
-    size_t len = f->len - f->dtaoff;
+    uint8_t *payload = ((uint8_t *)f->item) + f->item->data_offset;
+    size_t len = f->item->data_len;
     memcpy(&q->genid, &q->fnd.genid, sizeof(genid_t));
     /*
     char header[] = "CDB2_UPD";
@@ -6371,7 +6413,7 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         lua_setfield (L, -2, "sequence");
     }
     if (q->push_epoch) {
-        luabb_pushinteger(L, f->epoch);
+        luabb_pushinteger(L, f->item->epoch);
         lua_setfield (L, -2, "epoch");
     }
     if (flags & TYPE_TAGGED_ADD) {
@@ -6402,9 +6444,17 @@ static int push_trigger_args_int(Lua L, dbconsumer_t *q, struct qfound *f, char 
         return -1;
     }
 
-    lua_newtable(L);
+    lua_newtable(L);    /* Metatable for payload with tid, epoch */
+
     luabb_pushinteger(L, f->item->trans.tid);
-    lua_setfield(L, -2, "__metatable");
+    lua_setfield(L, -2, "tid");
+
+    luabb_pushinteger(L, f->item->epoch);
+    lua_setfield(L, -2, "epoch");
+
+    luabb_pushinteger(L, f->seq);
+    lua_setfield(L, -2, "sequence");
+
     lua_setmetatable(L, -2);
 
     return 1; // trigger sp receives only one argument
@@ -7042,4 +7092,9 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
         reset_sp(clnt->sp);
     }
     return rc;
+}
+
+int is_pingpong(struct sqlclntstate *clnt)
+{
+    return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
 }

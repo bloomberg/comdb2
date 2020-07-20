@@ -798,7 +798,7 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 if ((rc = trans_start(iq, NULL, &lock_trans)) == 0) {
                     bdb_lock_tablename_read(thedb->bdb_env, iq->sc->tablename,
                                             lock_trans);
-                    sc_del_unused_files(iq->sc->db);
+                    sc_del_unused_files_tran(iq->sc->db, lock_trans);
                     trans_abort(iq, lock_trans);
                 } else {
                     logmsg(LOGMSG_ERROR,

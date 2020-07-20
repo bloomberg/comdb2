@@ -276,6 +276,11 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     int rc, bdberr;
     struct dbtable *db = s->db;
 
+    if ((rc = bdb_lock_tablename_write(db->handle, "comdb2_tables", tran)) != 0) {
+        sc_errf(s, "failed to lock comdb2_tables (%s:%d)\n", __func__, __LINE__);
+        return -1;
+    }
+
     if (iq && iq->tranddl > 1 &&
         verify_constraints_exist(db, NULL, NULL, s) != 0) {
         sc_errf(s, "error verifying constraints\n");

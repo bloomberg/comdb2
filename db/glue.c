@@ -3908,10 +3908,12 @@ void get_disable_skipscan_all()
 #ifdef DEBUGSKIPSCAN
     logmsg(LOGMSG_WARN, "get_disable_skipscan_all() called\n");
 #endif
+    tran_type *tran = curtran_gettran();
     for (int ii = 0; ii < thedb->num_dbs; ii++) {
         struct dbtable *d = thedb->dbs[ii];
-        get_disable_skipscan(d, NULL);
+        get_disable_skipscan(d, tran);
     }
+    curtran_puttran(tran);
 }
  
 
@@ -5274,13 +5276,11 @@ int dbq_consume_goose(struct ireq *iq, void *trans)
     return map_unhandled_bdb_wr_rcode("bdb_queue_consume_goose", bdberr);
 }
 
-int dbq_get(struct ireq *iq, int consumer,
-            const struct bdb_queue_cursor *prevcursor,
-            struct bdb_queue_found **fnddta, size_t *fnddtalen,
-            size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-            long long *seq, unsigned int *epoch)
+int dbq_get(struct ireq *iq, int consumer, const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnddta,
+            size_t *fnddtalen, size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor, long long *seq, uint32_t lockid)
 {
     int bdberr;
+    uint32_t savedlid;
     void *bdb_handle;
     int retries = 0;
     int rc;
@@ -5289,28 +5289,38 @@ int dbq_get(struct ireq *iq, int consumer,
         return ERR_NO_AUXDB;
 
     tran_type *tran = NULL;
+retry:
     rc = trans_start(iq, NULL, (void *)&tran);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: trans_start rc %d\n", __func__, rc);
         goto done;
     }
 
-retry:
+    /* This is a curtran-lockid: the lock on the queue will be released
+     * when the cursor is closed */
+    if (lockid) {
+        bdb_get_tran_lockerid(tran, &savedlid);
+        bdb_set_tran_lockerid(tran, lockid);
+    }
+
     iq->gluewhere = "bdb_queue_get";
     rc = bdb_queue_get(bdb_handle, tran, consumer, prevcursor, fnddta,
-                       fnddtalen, fnddtaoff, fndcursor, seq, epoch, &bdberr);
+                       fnddtalen, fnddtaoff, fndcursor, seq, &bdberr);
     iq->gluewhere = "bdb_queue_get done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
             iq->retries++;
-            if (++retries < gbl_maxretries) {
+            if (++retries < gbl_maxretries && !lockid) {
                 n_retries++;
                 poll(0, 0, (rand() % 500 + 10));
+                bdb_tran_abort(bdb_handle, tran, &bdberr);
                 goto retry;
             }
-            logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n",
-                   bdberr, retries);
-            rc = ERR_INTERNAL;
+            if (!lockid) {
+                logmsg(LOGMSG_ERROR, "*ERROR* bdb_queue_get too much contention %d count %d\n", bdberr, retries);
+            }
+            /* if lockid is passed in the calling code will recover_deadlock */
+            rc = lockid ? IX_NOTFND : ERR_INTERNAL;
             goto done;
         } else if (bdberr == BDBERR_FETCH_DTA) {
             rc = IX_NOTFND;
@@ -5327,6 +5337,9 @@ retry:
     }
 done:
     if (tran) {
+        if (lockid) {
+            bdb_set_tran_lockerid(tran, savedlid);
+        }
         if (bdb_tran_abort(bdb_handle, tran, &bdberr)) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction: %d\n",
                    __FILE__, __LINE__, bdberr);
@@ -5508,7 +5521,7 @@ void start_exclusive_backend_request(struct dbenv *env)
 
 void end_backend_request(struct dbenv *env) { bdb_end_request(env->bdb_env); }
 
-uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
+uint64_t calc_table_size_tran(tran_type *tran, struct dbtable *db, int skip_blobs)
 {
     int ii;
     uint64_t size_without_blobs = 0;
@@ -5517,20 +5530,20 @@ uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
     if (db->dbtype == DBTYPE_UNTAGGED_TABLE ||
         db->dbtype == DBTYPE_TAGGED_TABLE) {
         for (ii = 0; ii < db->nix; ii++) {
-            db->ixsizes[ii] = bdb_index_size(db->handle, ii);
+            db->ixsizes[ii] = bdb_index_size_tran(db->handle, tran, ii);
             db->totalsize += db->ixsizes[ii];
         }
 
-        db->dtasize = bdb_data_size(db->handle, 0);
+        db->dtasize = bdb_data_size_tran(db->handle, tran, 0);
         db->totalsize += db->dtasize;
         size_without_blobs = db->totalsize;
 
         for (ii = 0; ii < db->numblobs; ii++) {
-            db->blobsizes[ii] = bdb_data_size(db->handle, ii + 1);
+            db->blobsizes[ii] = bdb_data_size_tran(db->handle, tran, ii + 1);
             db->totalsize += db->blobsizes[ii];
         }
     } else if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
-        db->totalsize = bdb_queue_size(db->handle, &db->numextents);
+        db->totalsize = bdb_queue_size_tran(db->handle, tran, &db->numextents);
     } else {
         logmsg(LOGMSG_ERROR, "%s: db->dbtype=%d (what the heck is this?)\n",
                 __func__, db->dbtype);
@@ -5540,6 +5553,11 @@ uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
         return size_without_blobs;
     else
         return db->totalsize;
+}
+
+uint64_t calc_table_size(struct dbtable *db, int skip_blobs)
+{
+    return calc_table_size_tran(NULL, db, skip_blobs);
 }
 
 void compr_print_stats()

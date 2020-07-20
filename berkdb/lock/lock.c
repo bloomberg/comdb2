@@ -69,9 +69,9 @@ extern int gbl_rowlocks;
 extern int gbl_page_latches;
 extern int gbl_replicant_latches;
 extern int gbl_print_deadlock_cycles;
+extern int gbl_lock_conflict_trace;
 
 int gbl_berkdb_track_locks = 0;
-int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
 
 void comdb2_dump_blocker(unsigned int);
@@ -1306,26 +1306,6 @@ __get_page_latch(lt, locker, flags, obj, lock_mode, lock)
  * PUBLIC: int __lock_vec __P((DB_ENV *,
  * PUBLIC:     u_int32_t, u_int32_t, DB_LOCKREQ *, int, DB_LOCKREQ **));
  */
-
-static char *
-opstring(int op)
-{
-	switch (op) {
-	case DB_LOCK_PUT_ALL:
-		return "PUT_ALL";
-		break;
-	case DB_LOCK_PUT_READ:
-		return "PUT_READ";
-		break;
-	case DB_LOCK_UPGRADE_WRITE:
-		return "UPGRADE_WRITE";
-		break;
-	default:
-		return "OTHER_LOCKOP";
-		break;
-	}
-}
-
 int
 __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	DB_ENV *dbenv;
@@ -2974,6 +2954,103 @@ err:
 	if (holdarr)
 		__os_free(dbenv, holdarr);
 
+	return (ret);
+}
+
+/* Return 1 if this lockid holds this lockobj in this lock_mode, 0 otherwise */
+static inline int
+__lock_query_internal(lt, locker, obj, lock_mode)
+	DB_LOCKTAB *lt;
+	u_int32_t locker;
+	const DBT *obj;
+	db_lockmode_t lock_mode;
+{
+	int ret = 0;
+	u_int32_t partition = gbl_lk_parts, lpartition = gbl_lkr_parts;
+	DB_ENV *dbenv = lt->dbenv;
+	DB_LOCKREGION *region = lt->reginfo.primary;
+	DB_LOCKER *sh_locker;
+
+	if (unlikely(F_ISSET(dbenv, DB_ENV_NOLOCKING)))
+		return (0);
+
+	u_int32_t locker_ndx;
+	u_int32_t gl_flags = GETLOCKER_KEEP_PART;
+	LOCKER_INDX(lt, region, locker, locker_ndx);
+	if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+					gl_flags, &sh_locker)) != 0 || sh_locker == NULL) {
+		logmsg(LOGMSG_DEBUG, "Locker %u does not exist\n", locker);
+		goto out;
+	}
+	lpartition = sh_locker->partition;
+
+	DB_LOCKOBJ *sh_obj;
+	u_int32_t object_ndx;
+	OBJECT_INDX(lt, region, obj, object_ndx, partition);
+	lock_obj_partition(region, partition);
+	if ((ret = __lock_getobj(lt, obj, object_ndx, partition, 0, &sh_obj)) != 0
+			|| sh_obj == NULL) {
+		logmsg(LOGMSG_DEBUG, "Lockobj does not exist\n");
+		goto out;
+	}
+
+	struct __db_lock *lp;
+	for (lp = SH_TAILQ_FIRST(&sh_obj->holders, __db_lock); lp != NULL;
+			lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
+		if (locker == lp->holderp->id && lp->mode == lock_mode &&
+				lp->status == DB_LSTAT_HELD) {
+			ret = 1;
+			break;
+		}
+	}
+
+out:
+	if (partition < gbl_lk_parts)
+		unlock_obj_partition(region, partition);
+	if (lpartition < gbl_lkr_parts)
+		unlock_locker_partition(region, lpartition);
+	return ret;
+}
+
+static int
+__lock_query(dbenv, locker, obj, lock_mode)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	const DBT *obj;
+	db_lockmode_t lock_mode;
+{
+	int ret;
+	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
+	ret = __lock_query_internal(dbenv->lk_handle,
+		locker, obj, lock_mode);
+	UNLOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
+	return (ret);
+}
+
+/*
+ * __lock_query_pp --
+ *	DB_ENV->lock_query pre/post processing.
+ *
+ * PUBLIC: int __lock_query_pp __P((DB_ENV *,
+ * PUBLIC:	 u_int32_t, const DBT *, db_lockmode_t));
+ */
+int
+__lock_query_pp(dbenv, locker, obj, lock_mode)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	const DBT *obj;
+	db_lockmode_t lock_mode;
+{
+	int rep_check, ret;
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+		dbenv->lk_handle, "DB_ENV->lock_get", DB_INIT_LOCK);
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __lock_query(dbenv, locker, obj, lock_mode);
+	if (rep_check)
+		__env_rep_exit(dbenv);
 	return (ret);
 }
 

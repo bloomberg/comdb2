@@ -94,6 +94,15 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 extern int gbl_old_column_names;
 
+char *stmt_column_name(sqlite3_stmt *pStmt, int index) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  return (char *) sqlite3_value_text((sqlite3_value*)&vdbe->aColName[index]);
+}
+
 char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   char **column_names;
   Vdbe *vdbe = (Vdbe *)pStmt;
@@ -130,6 +139,28 @@ static void stmt_free_column_names(sqlite3_stmt *pStmt) {
 
   vdbe->oldColNames = 0;
   vdbe->oldColCount = 0;
+}
+
+static void stmt_free_vtable_locks(sqlite3_stmt *pStmt) {
+  Vdbe *vdbe;
+  int i;
+  vdbe = (Vdbe *)pStmt;
+  if (!vdbe)
+      return;
+  for (i=0; i<vdbe->numVTableLocks; i++) {
+      free(vdbe->vTableLocks[i]);
+  }
+  free(vdbe->vTableLocks);
+  vdbe->vTableLocks = 0;
+  vdbe->numVTableLocks = 0;
+}
+
+void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks,
+        int numVTableLocks) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  stmt_free_vtable_locks(pStmt);
+  vdbe->numVTableLocks = numVTableLocks;
+  vdbe->vTableLocks = vTableLocks;
 }
 
 void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
@@ -188,6 +219,7 @@ int sqlite3_finalize(sqlite3_stmt *pStmt){
     if (gbl_old_column_names && (stmt_cached_column_count(pStmt)>0)){
       stmt_free_column_names(pStmt);
     }
+    stmt_free_vtable_locks(pStmt);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3 *db = v->db;
     if( vdbeSafety(v) ) return SQLITE_MISUSE_BKPT;

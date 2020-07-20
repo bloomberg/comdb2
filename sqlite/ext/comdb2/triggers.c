@@ -96,13 +96,16 @@ again:
 
 static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   struct sql_thread *thd;
-
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return -1;
+  }
   trigger_cursor *cur = sqlite3_malloc(sizeof(trigger_cursor));
   if( cur == 0)
     return SQLITE_NOMEM;
   memset(cur, 0, sizeof(*cur));
   listc_init(&cur->trgs, offsetof(trigger, lnk));
-  rdlock_schema_lk(); // protect thedb access
 
   thd = pthread_getspecific(query_info_key);
 
@@ -115,7 +118,7 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
       continue;
 
     /* Check user access. */
-    rc = bdb_check_user_tbl_access(thedb->bdb_env,
+    rc = bdb_check_user_tbl_access_tran(thedb->bdb_env, trans,
                                    thd->clnt->current_user.name,
                                    thedb->qdbs[i]->tablename, ACCESS_READ,
                                    &bdberr);
@@ -133,13 +136,13 @@ static int triggerOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
       t->type = dbqueue_consumer_type(thedb->qdbs[i]->consumers[0]);
     listc_abl(&cur->trgs, t);
   }
-  unlock_schema_lk();
   if( (t = LISTC_TOP(&cur->trgs)) != NULL ){
     cur->trg = t;
     get_info(cur);
   }
 
   *ppCursor = &cur->base;
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 
@@ -309,4 +312,5 @@ const sqlite3_module systblTriggersModule = {
   0,                 /* xRollbackTo */
   0,                 /* xShadowName */
   .access_flag = CDB2_ALLOW_ALL,
+  .systable_lock = "comdb2_queues",
 };

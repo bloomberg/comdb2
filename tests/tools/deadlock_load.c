@@ -192,7 +192,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    srand(time(NULL));
+    srandom(time(NULL));
     drop_table();
     create_table();
 

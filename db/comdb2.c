@@ -18,7 +18,6 @@ int __berkdb_write_alarm_ms;
 int __berkdb_read_alarm_ms;
 int __berkdb_fsync_alarm_ms;
 
-extern int gbl_berkdb_track_locks;
 extern int gbl_delay_sql_lock_release_sec;
 
 void __berkdb_set_num_read_ios(long long *n);
@@ -520,6 +519,7 @@ int gbl_newsi_use_timestamp_table = 0;
 int gbl_update_shadows_interval = 0;
 int gbl_lowpri_snapisol_sessions = 0;
 int gbl_support_sock_luxref = 1;
+int gbl_allow_user_schema;
 
 struct quantize *q_min;
 struct quantize *q_hour;
@@ -534,7 +534,6 @@ struct quantize *q_sql_steps_hour;
 struct quantize *q_sql_steps_all;
 
 extern int gbl_net_lmt_upd_incoherent_nodes;
-extern int gbl_allow_user_schema;
 extern int gbl_skip_cget_in_db_put;
 
 int gbl_argc;
@@ -777,12 +776,12 @@ int gbl_osql_odh_blob = 1;
 
 int gbl_clean_exit_on_sigterm = 1;
 
+int gbl_is_physical_replicant;
+
 comdb2_tunables *gbl_tunables; /* All registered tunables */
 int init_gbl_tunables();
 int free_gbl_tunables();
 int register_db_tunables(struct dbenv *tbl);
-
-#define COMDB2_STATIC_TABLE "_comdb2_static_table"
 
 int destroy_plugins(void);
 void register_plugin_tunables(void);
@@ -1204,7 +1203,9 @@ static void *purge_old_blkseq_thread(void *arg)
 
         /* queue consumer thread admin */
         thrman_where(thr_self, "dbqueue_admin");
+        rdlock_schema_lk();
         dbqueuedb_admin(dbenv);
+        unlock_schema_lk();
         thrman_where(thr_self, NULL);
 
         /* purge old blobs.  i didn't want to make a whole new thread just
@@ -1232,8 +1233,6 @@ static void *purge_old_blkseq_thread(void *arg)
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDONLY);
     return NULL;
 }
-
-extern int gbl_is_physical_replicant;
 
 static void *purge_old_files_thread(void *arg)
 {
@@ -1502,8 +1501,6 @@ void clean_exit(void)
     cleanup_q_vars();
     cleanup_switches();
     free_gbl_tunables();
-    free_tzdir();
-    tz_hash_free();
     destroy_plugins();
     destroy_appsock();
 
@@ -1546,6 +1543,8 @@ void clean_exit(void)
     cleanresources(); // list of lrls
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
+    free_tzdir();
+    tz_hash_free();
 
     logmsg(LOGMSG_USER, "goodbye\n");
     exit(0);
@@ -1604,6 +1603,7 @@ dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
     tbl->dbtype = isqueuedb ? DBTYPE_QUEUEDB : DBTYPE_QUEUE;
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
+    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
 
     if (tbl->dbtype == DBTYPE_QUEUEDB) {
         Pthread_rwlock_init(&tbl->consumer_lk, NULL);
@@ -1642,6 +1642,7 @@ void cleanup_newdb(dbtable *tbl)
         free(tbl->check_constraint_query[i]);
         tbl->check_constraint_query[i] = NULL;
     }
+    Pthread_mutex_destroy(&tbl->rev_constraints_lk);
 
     if (tbl->dbtype == DBTYPE_QUEUEDB)
         Pthread_rwlock_destroy(&tbl->consumer_lk);
@@ -1673,6 +1674,7 @@ dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
     tbl->dbnum = dbnum;
     tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
     Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
+    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
     if (dbnum == 0) {
         /* if no dbnumber then no default tag is required ergo lrl can be 0 */
         if (tbl->lrl < 0)
@@ -5418,7 +5420,6 @@ int main(int argc, char **argv)
 
     init_q_vars();
 
-    srand(time(NULL) ^ getpid() << 16);
     srandom(comdb2_time_epochus());
 
     if (debug_switch_verbose_deadlocks())

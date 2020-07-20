@@ -914,14 +914,10 @@ int bdb_queuedb_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr)
     return 0;
 }
 
-static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
-                               DB *db, int consumer,
-                               const struct bdb_queue_cursor *prevcursor,
-                               struct bdb_queue_found **fnd, size_t *fnddtalen,
-                               size_t *fnddtaoff,
-                               struct bdb_queue_cursor *fndcursor,
-                               long long *seq, unsigned int *epoch,
-                               int *bdberr)
+static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran, DB *db, int consumer,
+                               const struct bdb_queue_cursor *prevcursor, struct bdb_queue_found **fnd,
+                               size_t *fnddtalen, size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
+                               long long *seq, int *bdberr)
 {
     if (db == NULL) { // trigger dropped?
         *bdberr = BDBERR_BADARGS;
@@ -935,9 +931,7 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
     size_t data_offset;
     int rc;
     long long sequence = 0;
-    unsigned int found_epoch = 0;
-    struct bdb_queue_found qfnd;
-    struct bdb_queue_found_seq qfnd_odh;
+
     uint8_t *p_buf, *p_buf_end;
     uint8_t key[QUEUEDB_KEY_LEN] = {0};
     struct queuedb_key fndk;
@@ -949,10 +943,14 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
 
     dbt_key.flags = dbt_data.flags = DB_DBT_REALLOC;
 
-    rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
+    rc = db->cursor(db, NULL, &dbcp, 0);
     if (rc) {
         *bdberr = BDBERR_MISC;
         goto done;
+    }
+
+    if (tran) {
+        dbcp->c_replace_lockid(dbcp, tran->tid->txnid);
     }
 
     k.consumer = consumer;
@@ -1099,13 +1097,15 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     if (bdb_state->ondisk_header) {
+        struct bdb_queue_found_seq qfnd_odh;
         p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+        memcpy(dbt_data.data, &qfnd_odh, sizeof(qfnd_odh));
         sequence = qfnd_odh.seq;
-        found_epoch = qfnd_odh.epoch;
         data_offset = qfnd_odh.data_offset;
     } else {
+        struct bdb_queue_found qfnd;
         p_buf = (uint8_t *)queue_found_get(&qfnd, p_buf, p_buf_end);
-        found_epoch = qfnd.epoch;
+        memcpy(dbt_data.data, &qfnd, sizeof(qfnd));
         data_offset = qfnd.data_offset;
     }
     if (p_buf == NULL) {
@@ -1116,7 +1116,6 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
         goto done;
     }
 
-    /* what endianness is this? */
     *fnd = dbt_data.data;
     if (fnddtalen)
         *fnddtalen = dbt_data.size;
@@ -1125,8 +1124,6 @@ static int bdb_queuedb_get_int(bdb_state_type *bdb_state, tran_type *tran,
             data_offset; /* This length will be used to check version. */
     if (seq)
         *seq = sequence;
-    if (epoch)
-        *epoch = found_epoch;
     if (fndcursor) {
         memcpy(&fndcursor->genid, &fndk.genid, sizeof(fndk.genid));
         fndcursor->recno = 0;
@@ -1164,7 +1161,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                     const struct bdb_queue_cursor *prevcursor,
                     struct bdb_queue_found **fnd, size_t *fnddtalen,
                     size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-                    long long *seq, unsigned int *epoch, int *bdberr)
+                    long long *seq, int *bdberr)
 {
     int rc = bdb_lock_table_read(bdb_state, tran);
     if (rc == DB_LOCK_DEADLOCK) {
@@ -1185,7 +1182,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
 
     rc = bdb_queuedb_get_int(bdb_state, tran, db, consumer, prevcursor,
                              fnd, fnddtalen, fnddtaoff, fndcursor,
-                             seq, epoch, bdberr);
+                             seq, bdberr);
     if ((rc == -1) && (*bdberr == BDBERR_FETCH_DTA)) { /* EMPTY FILE #0? */
         db = BDB_QUEUEDB_GET_DBP_ONE(bdb_state);
 
@@ -1194,7 +1191,7 @@ int bdb_queuedb_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
 
             rc = bdb_queuedb_get_int(bdb_state, tran, db, consumer, prevcursor,
                                      fnd, fnddtalen, fnddtaoff, fndcursor,
-                                     seq, epoch, bdberr);
+                                     seq, bdberr);
         }
     }
     return rc;
