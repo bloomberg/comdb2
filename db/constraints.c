@@ -1098,8 +1098,8 @@ int delayed_key_adds(struct ireq *iq, block_state_t *blkstate, void *trans,
                 reqprintf(iq, "%p:ADDKYCNSTRT FNDLEN %d != DTALEN %d RC %d",
                           trans, fndlen, ondisk_size, rc);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                      "add key constraint: record not found in table %s",
-                      iq->usedb->tablename);
+                      "add key constraint: FNDLEN %d != DTALEN %d rc %d",
+                      fndlen, ondisk_size, rc);
             *errout = OP_FAILED_INTERNAL;
             *blkpos = curop->blkpos;
             close_constraint_table_cursor(cur);
@@ -1401,22 +1401,23 @@ int verify_add_constraints(struct javasp_trans_state *javasp_trans_handle,
             rc = ix_find_by_rrn_and_genid_tran(iq, addrrn, genid, od_dta,
                                                &fndlen, ondisk_size, trans);
 
-            if (rc) {
+            if (rc == RC_INTERNAL_RETRY) {
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
+                return rc;
+            }
 
-                if (rc == RC_INTERNAL_RETRY)
-                    return rc;
-
+            /* make sure fndlen is not overwritten in the meantime,
+               since rc can be an error code! */
+            if (fndlen != ondisk_size) {
                 if (iq->debug)
-                    reqprintf(iq,
-                              "VERKYCNSTRT CASCADE DELETED GENID 0x%llx "
-                              "FNDLEN %d DTALEN %d RC %d",
-                              genid, fndlen, ondisk_size, rc);
+                    reqprintf(iq, "VERKYCNSTRT FNDLEN %d != DTALEN %d", fndlen,
+                              ondisk_size);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                          "verify key constraint: record not found in table %s "
-                          "(cascaded)",
-                          iq->usedb->tablename);
+                          "verify key constraint FNDLEN %d != DTALEN %d",
+                          fndlen, ondisk_size);
+                *errout = OP_FAILED_INTERNAL;
+                close_constraint_table_cursor(cur);
                 return ERR_INTERNAL;
             }
 
