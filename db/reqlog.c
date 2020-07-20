@@ -655,6 +655,8 @@ static const char *help_text[] = {
     "       rollat N         - roll when log file size larger than N bytes",
     "       every N          - log only every Nth event, 0 logs all",
     "       verbose on/off   - turn on/off verbose mode",
+    "       dir <dir>        - set custom directory for event log files\n",
+    "       file <file>      - set log file to custom location\n",
     "       flush            - flush log file to disk",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",

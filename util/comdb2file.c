@@ -36,7 +36,7 @@ struct location {
 
 #define LOCATION_SEP " \t\n"
 
-static void add_location(char *type, const char *dir)
+static void add_location(const char *type, const char *dir)
 {
     struct location *l;
 
@@ -162,6 +162,7 @@ void init_file_locations(char *lrlname)
 
     /* init defaults */
     DEFAULT_LOCATION("logs", logs);
+    DEFAULT_LOCATION("eventlog", logs);
     DEFAULT_LOCATION("marker", marker);
     DEFAULT_LOCATION("debug", "var/log/cdb2");
     DEFAULT_LOCATION("tmp", "tmp/cdb2");
@@ -252,4 +253,9 @@ void cleanup_file_locations()
         hash_free(locations);
         locations = NULL;
     }
+}
+
+void update_file_location(char *type, const char *dir)
+{
+    add_location(type, dir);
 }
