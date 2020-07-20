@@ -22,6 +22,7 @@
 #include <stddef.h>
 #include <sys/time.h>
 #include <inttypes.h>
+#include <dirent.h>
 
 #include <comdb2.h>
 #if defined(_IBM_SOURCE)
@@ -57,7 +58,7 @@ static int eventlog_verbose = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static gzFile eventlog_open(void);
+static gzFile eventlog_open(char *fname);
 static int eventlog_every_n = 1;
 static int64_t eventlog_count = 0;
 
@@ -78,7 +79,8 @@ void eventlog_init()
     seen_sql =
         hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
-    if (eventlog_enabled) eventlog = eventlog_open();
+    char *fname = eventlog_fname(thedb->envname);
+    if (eventlog_enabled) eventlog = eventlog_open(fname);
 }
 
 static inline void free_gbl_eventlog_fname()
@@ -98,7 +100,7 @@ static void eventlog_roll_cleanup()
 
     char cmd[512] = {0};
     const char postfix[] = ".events.";
-    char *fname = comdb2_location("logs", "%s%s", thedb->envname, postfix);
+    char *fname = comdb2_location("eventlog", "%s%s", thedb->envname, postfix);
 
     if (fname == NULL)
         abort();
@@ -126,13 +128,13 @@ static void eventlog_roll_cleanup()
     }
 }
 
-static gzFile eventlog_open()
+static gzFile eventlog_open(char *fname)
 {
     eventlog_roll_cleanup();
-    char *fname = eventlog_fname(thedb->envname);
     gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
     if (f == NULL) {
+        logmsg(LOGMSG_ERROR, "Failed to open log file = %s\n", fname);
         eventlog_enabled = 0;
         free(fname);
         return NULL;
@@ -158,7 +160,7 @@ static void eventlog_close(void)
 
 static char *eventlog_fname(const char *dbname)
 {
-    return comdb2_location("logs", "%s.events.%" PRId64 "", dbname,
+    return comdb2_location("eventlog", "%s.events.%" PRId64 "", dbname,
                            comdb2_time_epochus());
 }
 
@@ -568,7 +570,22 @@ static void eventlog_roll(void)
 {
     eventlog_close();
 
-    eventlog = eventlog_open();
+    char *fname = eventlog_fname(thedb->envname);
+    eventlog = eventlog_open(fname);
+}
+
+static void eventlog_usefile(const char *fname)
+{
+    eventlog_close();
+
+    char *d = strdup(fname);
+    eventlog = eventlog_open(d); // passes responsibility to free d
+    if (eventlog) // success
+        return;
+
+    // failed to open fname, so open from default location
+    char *defaultname = eventlog_fname(thedb->envname);
+    eventlog = eventlog_open(defaultname);
 }
 
 static void eventlog_enable(void)
@@ -601,7 +618,10 @@ static void eventlog_help(void)
                         "events rollat N          - roll when log file size larger than N bytes\n"
                         "events every N           - log only every Nth event, 0 logs all\n"
                         "events verbose on/off    - turn on/off verbose mode\n"
-                        "events flush             - flush log\n");
+                        "events dir <dir>         - set custom directory for event log files\n"
+                        "events file <file>       - set log file to custom location\n"
+                        "events flush             - flush log\n"
+                        "events help              - this help message\n");
 }
 
 static void eventlog_process_message_locked(char *line, int lline, int *toff)
@@ -698,6 +718,20 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         gzflush(eventlog, 1);
+    } else if (tokcmp(tok, ltok, "file") == 0) {
+        // use given file for logging, when we roll, we go back to the original scheme
+        tok = segtok(line, lline, toff, &ltok);
+        eventlog_usefile(tok);
+    } else if (tokcmp(tok, ltok, "dir") == 0) {
+        // set directory for event file logging
+        tok = segtok(line, lline, toff, &ltok);
+        DIR *pd = opendir (tok);
+        if (pd == NULL) {
+            logmsg(LOGMSG_ERROR, "Cannot open directory '%s'\n", tok);
+        } else { 
+            closedir(pd);
+            update_file_location("eventlog", tok);
+        }
     } else if (tokcmp(tok, ltok, "help") == 0) {
         eventlog_help();
     } else {
