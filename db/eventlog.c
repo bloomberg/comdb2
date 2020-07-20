@@ -458,8 +458,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     }
 
     if (logger->have_id)
-        cson_object_set(obj, "id",
-                        cson_value_new_string(logger->id, sizeof(logger->id)));
+        cson_object_set(obj, "id", cson_value_new_string(logger->id, strlen(logger->id)));
     if (logger->sqlcost)
         cson_object_set(obj, "cost", cson_new_double(logger->sqlcost));
     if (logger->sqlrows)
@@ -591,6 +590,20 @@ void eventlog_stop(void)
     eventlog_disable();
 }
 
+static void eventlog_help(void)
+{
+    logmsg(LOGMSG_USER, "Event logging framework commands:\n"
+                        "events on                - enable event logging\n"
+                        "events off               - disable event logging\n"
+                        "events roll              - roll the event log file\n"
+                        "events keep N            - keep N files\n"
+                        "events detailed <on|off> - turn on/off detailed mode (ex. sql bound param)\n"
+                        "events rollat N          - roll when log file size larger than N bytes\n"
+                        "events every N           - log only every Nth event, 0 logs all\n"
+                        "events verbose on/off    - turn on/off verbose mode\n"
+                        "events flush             - flush log\n");
+}
+
 static void eventlog_process_message_locked(char *line, int lline, int *toff)
 {
     char *tok;
@@ -685,9 +698,11 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
         gzflush(eventlog, 1);
+    } else if (tokcmp(tok, ltok, "help") == 0) {
+        eventlog_help();
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown eventlog command\n");
-        return;
+        logmsg(LOGMSG_ERROR, "Unknown eventlog command '%s'\n", line);
+        eventlog_help();
     }
 }
 

@@ -290,6 +290,7 @@ struct tran_tag {
     tranclass_type tranclass;
     DB_TXN *tid;
     u_int32_t logical_lid;
+    u_int32_t original_lid;
 
     void *usrptr;
     DB_LSN savelsn;
@@ -1606,7 +1607,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
 
 unsigned long long get_lowest_genid_for_datafile(int file);
 
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
 
 DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
                                      u_int32_t flags, int *bdberr);
@@ -1693,7 +1694,7 @@ int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
 /* we use this structure to create a dummy cursor to be used for all
  * non-transactional cursors. it is defined below */
 struct cursor_tran {
-    unsigned int lockerid;
+    uint32_t lockerid;
     int id; /* debugging */
 };
 

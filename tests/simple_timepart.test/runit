@@ -178,6 +178,10 @@ for run in 1 2 3 4 5; do
    echo "Done waiting for ${partition_config[${run}]}"
    echo "Done waiting for ${partition_config[${run}]}" >> $OUT
 
+   if [[ "$run" == "4" && $dbname == *"reptimeout"* ]]; then
+       cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "PUT TUNABLE 'fake_sc_replication_timeout' 1"
+   fi
+
    timepart_stats
 done
 
@@ -213,28 +217,28 @@ assertcnt tbl2 $CNT
 assertcnt tbl3 $CNT
 assertcnt tbl4 $CNT
 
-adayago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(24*3600 + 60))'`
+adayago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(24*3600 + 3600))'`
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl1 as tbl1v1 PERIOD 'DAILY' RETENTION 3 START '${adayago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1
 fi
 
-aweekago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(7*24*3600 + 60))'`
+aweekago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(7*24*3600 + 3600))'`
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl2 as tbl2v1 PERIOD 'WEEKLY' RETENTION 3 START '${aweekago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1
 fi
 
-amonthago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(30*24*3600 + 60))'`
+amonthago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(27*24*3600))'`
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl3 as tbl3v1 PERIOD 'MONTHLY' RETENTION 3 START '${amonthago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
    exit 1
 fi
 
-ayearago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(365*24*3600 + 60))'`
+ayearago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(365*24*3600 +3600))'`
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl4 as tbl4v1 PERIOD 'YEARLY' RETENTION 3 START '${ayearago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"
@@ -242,7 +246,7 @@ if (( $? != 0 )) ; then
 fi
 
 
-sleep 20
+sleep 60
 timepart_stats
 
 cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl1v1 select value from generate_series($CNT+1,2*$CNT)"

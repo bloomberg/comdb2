@@ -2,9 +2,6 @@
 #include "vdbeInt.h"
 #include "vdbe.h"
 
-/* Unfortunately needed for now */
-extern pthread_key_t query_info_key;
-
 
 inline int initOpFunc(OpFunc* o, size_t len)
 {

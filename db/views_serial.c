@@ -478,13 +478,37 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
                  first_shard);
         goto error;
     }
+
+    /* constraints from time partition to other tables are only possible if the existing
+       reverse constraints for the other tables plus the total number of shards is less
+       then MAXCONSTRAINTS */
+    if (db->n_constraints > 0 ) {
+        struct dbtable *rev_db;
+        int i,j;
+        for (i = 0; i < db->n_constraints; i++) {
+            constraint_t * ct=&db->constraints[i];
+            for (j = 0; j < ct->nrules; j++) {
+                rev_db = get_dbtable_by_name(ct->table[j]);
+                assert(rev_db); /* schema change for the original table ensures this assert */
+                if (rev_db->n_rev_constraints - 1 /*this */ + view->retention > MAXCONSTRAINTS) {
+                    err->errval = VIEW_ERR_PARAM;
+                    snprintf(err->errstr, sizeof(err->errstr), "FKEY %s->%s, %s has too many rev constraints %d > %d",
+                            db->tablename, rev_db->tablename, rev_db->tablename,
+                            rev_db->n_rev_constraints + view->retention, MAXCONSTRAINTS);
+                    goto error;
+                }
+            }
+        }
+    }
+
+    /* reverse constraints from the time partition to other table not supported */
     if (db->n_rev_constraints > 0) {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr), "Table %s has constraints",
                  first_shard);
         goto error;
     }
-
+    
     check_columns_null_and_dbstore(view->name, db);
 
     /* check to see if the name exists either as a table, or part of a

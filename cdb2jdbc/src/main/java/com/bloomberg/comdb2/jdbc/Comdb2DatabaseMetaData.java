@@ -1133,7 +1133,7 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
 
         ps = conn.prepareStatement(q.toString());
         ps.setString(1, conn.getDatabase());
-        ps.setString(2, conn.getCluster());
+        ps.setObject(2, null);
         ps.setInt(3, DatabaseMetaData.procedureResultUnknown);
         if (procedureNamePattern != null)
             ps.setString(4, procedureNamePattern);
@@ -1189,7 +1189,7 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
             ps.close();
         ps = conn.prepareStatement(sql.toString());
         ps.setString(1, conn.getDatabase());
-        ps.setString(2, conn.getCluster());
+        ps.setObject(2, null);
         ps.setString(3, tableNamePattern);
 
         return ps.executeQuery();
@@ -1199,7 +1199,7 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         if (ps != null)
             ps.close();
         ps = conn.prepareStatement("select ? as TABLE_SCHEM, ? as TABLE_CATALOG");
-        ps.setString(1, conn.getCluster());
+        ps.setObject(1, null);
         ps.setString(2, conn.getDatabase());
 
         return ps.executeQuery();
@@ -1490,6 +1490,12 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
             .append("    ? as TABLE_SCHEM,")
             .append("    tablename as TABLE_NAME,")
             .append("    columnname as COLUMN_NAME,")
+            .append("    0 as DATA_TYPE,")
+            .append("    type as TYPE_NAME,")
+            .append("    (size - 1) as COLUMN_SIZE,")
+            .append("    0 as BUFFER_LENGTH,")
+            .append("    0 as DECIMAL_DIGITS,")
+            .append("    10 as NUM_PREC_RADIX,")
             .append("    (upper(isnullable) == 'Y') as NULLABLE,")
             .append("    null as REMARKS,")
             .append("    trim(defaultvalue) as COLUMN_DEF,")
@@ -1509,17 +1515,17 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
             .append("where 1=1 AND ")
             .append("tablename LIKE ? AND ")
             .append("columnname LIKE ? ")
-            .append("order by TABLE_CAT,TABLE_SCHEM, TABLE_NAME, ORDINAL_POSITION");
+            .append("order by TABLE_CAT,TABLE_SCHEM, TABLE_NAME");
 
         if (ps != null)
             ps.close();
         ps = conn.prepareStatement(q.toString());
         ps.setString(1, conn.getDatabase());
-        ps.setString(2, conn.getCluster());
+        ps.setObject(2, null);
         ps.setString(3, tableNamePattern != null ? tableNamePattern : "%");
         ps.setString(4, columnNamePattern != null ? columnNamePattern : "%");
 
-        return ps.executeQuery();
+        return new Comdb2DatabaseMetaDataResultSet(ps.executeQuery());
     }
 
     public ResultSet getColumnPrivileges(String catalog, String schema,
@@ -2028,7 +2034,7 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     }
 
     public ResultSet getSchemas(String catalog, String schemaPattern) throws SQLException {
-        return stmt.executeQuery("select null as TABLE_SCHEM, null as TABLE_CATALOG limit 0");
+        return getSchemas();
     }
 
     public boolean supportsStoredFunctionsUsingCallSyntax() throws SQLException {

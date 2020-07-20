@@ -2664,7 +2664,7 @@ int bdb_get_lsn_lwm(bdb_state_type *bdb_state, DB_LSN *lsnout)
     return rc;
 }
 
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran)
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran)
 {
     return curtran->lockerid;
 }

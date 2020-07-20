@@ -134,7 +134,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
     }
 
-    if (gbl_allow_user_schema && clnt->current_user.name[0] != '\0' &&
+    if (gbl_allow_user_schema && clnt->current_user.have_name &&
         strcasecmp(clnt->current_user.name, DEFAULT_USER) != 0) {
         /* Check whether table_name contains user name. */
         char* username = strchr(table_name, '@');
@@ -147,9 +147,10 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             int bdberr;
             int bytes_written;
             bdb_state_type *bdb_state = thedb->bdb_env;
-            if (bdb_tbl_access_userschema_get(bdb_state, NULL,
-                                              clnt->current_user.name,
-                                              userschema, &bdberr) == 0) {
+            tran_type *tran = curtran_gettran();
+            int rc = bdb_tbl_access_userschema_get(bdb_state, tran, clnt->current_user.name, userschema, &bdberr);
+            curtran_puttran(tran);
+            if (rc == 0) {
               if (userschema[0] == '\0') {
                 snprintf(dst, MAXTABLELEN, "%s", table_name);
               } else {
@@ -392,20 +393,25 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
      bdb_state_type *bdb_state = thedb->bdb_env;
+     tran_type *tran = curtran_gettran();
      int bdberr; 
-     int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr); 
+     int authOn = bdb_authentication_get(bdb_state, tran, &bdberr); 
     
-     if (authOn != 0)
+     if (authOn != 0) {
+        curtran_puttran(tran);
         return SQLITE_OK;
+     }
 
      if (clnt && tablename)
      {
-        if (bdb_tbl_op_access_get(bdb_state, NULL, 0, 
-            tablename, clnt->current_user.name, &bdberr))
+        int rc = bdb_tbl_op_access_get(bdb_state, tran, 0, tablename, clnt->current_user.name, &bdberr);
+        curtran_puttran(tran);
+        if (rc)
           return SQLITE_AUTH;
         else
             return SQLITE_OK;
      }
+     curtran_puttran(tran);
 
      return SQLITE_AUTH;
 }
@@ -435,25 +441,30 @@ int comdb2AuthenticateUserOp(Parse* pParse)
 static int comdb2AuthenticateOpPassword(Parse* pParse)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
+     tran_type *tran = curtran_gettran();
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
 
      if (clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
-         if (bdb_user_password_check(clnt->current_user.name,
+         if (bdb_user_password_check(tran, clnt->current_user.name,
                                      clnt->current_user.password, NULL))
          {
+            curtran_puttran(tran);
             return SQLITE_AUTH;
          }
          
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "",
-                                   clnt->current_user.name, &bdberr))
+         int rc = bdb_tbl_op_access_get(bdb_state, tran, 0, "",
+                                   clnt->current_user.name, &bdberr);
+         curtran_puttran(tran);
+         if (rc)
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
      }
+     curtran_puttran(tran);
 
      return SQLITE_AUTH;
 }
@@ -761,7 +772,10 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
     sc->fastinit = 1;
     sc->nothrevent = 1;
 
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
+    tran_type *tran = curtran_gettran();
+    int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+    curtran_puttran(tran);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -820,7 +834,10 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     sc->convert_sleep = gbl_convert_sleep;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
+    tran_type *tran = curtran_gettran();
+    int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+    curtran_puttran(tran);
+    if (rc)
     {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
@@ -918,7 +935,10 @@ void comdb2Truncate(Parse* pParse, Token* nm, Token* lnm)
     sc->nothrevent = 1;
     sc->same_schema = 1;
 
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL ))
+    tran_type *tran = curtran_gettran();
+    int rc = get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL, tran);
+    curtran_puttran(tran);
+    if(rc)
     {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
@@ -963,7 +983,10 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
         goto out;
 
     sc->same_schema = 1;
-    if(get_csc2_file(sc->tablename, -1 , &sc->newcsc2, NULL )) {
+    tran_type *tran = curtran_gettran();
+    int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+    curtran_puttran(tran);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -973,7 +996,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
     if (create_string_from_token(v, pParse, &indexname, index))
         goto out;
 
-    int rc = getidxnumbyname(sc->tablename, indexname, &index_num );
+    rc = getidxnumbyname(sc->tablename, indexname, &index_num );
     if( rc ){
         logmsg(LOGMSG_ERROR, "!table:index '%s:%s' not found\n", sc->tablename, indexname);
         setError(pParse, SQLITE_ERROR, "Index not found");
@@ -1414,6 +1437,9 @@ err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 }
 
+/*
+  Implementation of PUT ANALYZE COVERAGE ...
+ */
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -2126,7 +2152,9 @@ static int produceAnalyzeCoverage(OpFunc *f)
     char  *tablename = (char*) f->arg;
     int rst;
     int bdberr; 
-    int rc = bdb_get_analyzecoverage_table(NULL, tablename, &rst, &bdberr);
+    tran_type *tran = curtran_gettran();
+    int rc = bdb_get_analyzecoverage_table(tran, tablename, &rst, &bdberr);
+    curtran_puttran(tran);
     
     if (!rc)
     {
@@ -2197,7 +2225,9 @@ static int produceAnalyzeThreshold(OpFunc *f)
     char  *tablename = (char*) f->arg;
     long long int rst;
     int bdberr;
-    int rc = bdb_get_analyzethreshold_table(NULL, tablename, &rst, &bdberr);
+    tran_type *tran = curtran_gettran();
+    int rc = bdb_get_analyzethreshold_table(tran, tablename, &rst, &bdberr);
+    curtran_puttran(tran);
 
     if (!rc)
     {
@@ -2247,7 +2277,7 @@ int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
    {
        snprintf(tableName, len, "%s", p->zName);
    } else if (clnt &&
-              (clnt->current_user.name[0] != '\0') &&   /* authenticated */
+              (clnt->current_user.have_name) &&         /* authenticated */
               !strchr(p->zName, '@') &&                 /* mustn't have user
                                                            name */
               strncasecmp(p->zName, "sqlite_", 7) &&    /* sqlite table */
@@ -2259,9 +2289,10 @@ int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
        int bdberr;
        int bytes_written;
        bdb_state_type *bdb_state = thedb->bdb_env;
-       if (bdb_tbl_access_userschema_get(bdb_state, NULL,
-                                         clnt->current_user.name,
-                                         userschema, &bdberr) == 0) {
+       tran_type *tran = curtran_gettran();
+       int rc = bdb_tbl_access_userschema_get(bdb_state, tran, clnt->current_user.name, userschema, &bdberr);
+       curtran_puttran(tran);
+       if (rc == 0) {
          if (userschema[0] == '\0') {
            bytes_written = snprintf(tableName, len, "%s", p->zName);
            if (bytes_written >= len) {
@@ -5916,7 +5947,7 @@ cleanup:
 }
 
 /*
-  Top-level implementation for DROP INDEX.
+  Top-level implementation for DROP INDEX
 */
 void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
@@ -6120,6 +6151,9 @@ cleanup:
     return;
 }
 
+/*
+  Implementation of PUT TUNABLE
+ */
 void comdb2putTunable(Parse *pParse, Token *name1, Token *name2, Token *value)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6204,6 +6238,9 @@ done:
     return rc;
 }
 
+/* 
+  Implementation of ALTER TABLE .. ALTER COLUMN .. 
+ */
 void comdb2AlterColumnStart(Parse *pParse /* Parser context */,
                             Token *pName /* Column name */)
 {
@@ -6270,6 +6307,9 @@ void comdb2AlterColumnEnd(Parse *pParse /* Parser context */)
     return;
 }
 
+/* 
+  Implementation of ALTER TABLE .. ALTER COLUMN .. TYPE .. 
+ */
 void comdb2AlterColumnType(Parse *pParse, /* Parser context */
                            Token *pType /* New type of the column */)
 {
@@ -6312,6 +6352,9 @@ cleanup:
     return;
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. SET DEFAULT .. 
+ */
 void comdb2AlterColumnSetDefault(
     Parse *pParse,      /* Parsing context */
     Expr *pExpr,        /* The parsed expression of the default value */
@@ -6338,6 +6381,9 @@ void comdb2AlterColumnSetDefault(
     return;
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. DROP DEFAULT .. 
+ */
 void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6360,6 +6406,9 @@ void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
     return;
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. SET NOT NULL .. 
+ */
 void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6381,6 +6430,9 @@ void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
     comdb2ColumnSetNotNull(pParse, ctx->alter_column);
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. DROP NOT NULL .. 
+ */
 void comdb2AlterColumnDropNotNull(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6425,7 +6477,10 @@ void comdb2SchemachangeControl(Parse *pParse, int action, Token *nm, Token *lnm)
     if (authenticateSC(sc->tablename, pParse))
         goto out;
 
-    if (get_csc2_file(sc->tablename, -1, &sc->newcsc2, NULL)) {
+    tran_type *tran = curtran_gettran();
+    int rc = get_csc2_file_tran(sc->tablename, -1, &sc->newcsc2, NULL, tran);
+    curtran_puttran(tran);
+    if (rc) {
         logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
                sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
@@ -6508,6 +6563,9 @@ cleanup:
     return;
 }
 
+/*
+  Implementation of CREATE VIEW
+ */
 void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
                         const char *zStmt, int temp)
 {
@@ -6562,6 +6620,9 @@ out:
     return;
 }
 
+/*
+  Implementation of DROP VIEW
+ */
 void comdb2_drop_view(Parse *pParse, SrcList *pName)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6602,3 +6663,31 @@ void comdb2_drop_view(Parse *pParse, SrcList *pName)
 out:
     free_schema_change_type(sc);
 }
+
+/* delete entry by seed from comdb2_sc_history 
+ * called from stored procedure function db_comdb_delete_sc_history()
+ */
+int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
+{
+    BpfuncArg arg = {{0}};
+    bpfunc_arg__init(&arg);
+
+    BpfuncDeleteFromScHistory tblseed = {{0}};
+    bpfunc_delete_from_sc_history__init(&tblseed);
+
+    arg.tblseed = &tblseed;
+    arg.type = BPFUNC_DELETE_FROM_SC_HISTORY;
+    tblseed.tablename = tablename;
+    tblseed.seed = seed;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = get_sql_clnt();
+    int rc = 0;
+    if(!clnt->intrans) {
+        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) == 0)
+            clnt->intrans = 1;
+    }
+    if (!rc)
+        rc = osql_bpfunc_logic(thd, &arg);
+    return rc;
+}
+

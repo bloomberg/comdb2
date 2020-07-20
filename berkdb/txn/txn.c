@@ -1156,8 +1156,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 						ltranflags, gen, request.obj,
 						&list_dbt_rl, usr_ptr);
 #if defined DEBUG_STACK_AT_TXN_LOG
-					comdb2_cheapstack_sym(stderr, "COMMIT-RL LSN [%d:%d]",
-							lsn_out->file,lsn_out->offset);
+					comdb2_cheapstack_sym(stderr, "COMMIT-RL TXNID %x LSN [%d:%d]",
+							txnp->txnid, lsn_out->file, lsn_out->offset);
 #endif
 
 					if (elect_highest_committed_gen) {
@@ -1199,8 +1199,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							TXN_COMMIT, gen, timestamp,
 							request.obj, usr_ptr);
 #if defined DEBUG_STACK_AT_TXN_LOG
-						comdb2_cheapstack_sym(stderr, "TXN-COMMIT-GEN LSN [%d:%d]",
-								txnp->last_lsn.file,txnp->last_lsn.offset);
+						comdb2_cheapstack_sym(stderr, "TXN-COMMIT-GEN TXNID %x LSN [%d:%d]",
+								txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);
 #endif
 						MUTEX_LOCK(dbenv,
 							db_rep->rep_mutexp);
@@ -1217,8 +1217,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 							timestamp, request.obj,
 							usr_ptr);
 #if defined DEBUG_STACK_AT_TXN_LOG
-						comdb2_cheapstack_sym(stderr, "TXN-COMMIT LSN [%d:%d]",
-							txnp->last_lsn.file,txnp->last_lsn.offset);
+						comdb2_cheapstack_sym(stderr, "TXN-COMMIT TXNID %x LSN [%d:%d]",
+							txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);
 #endif
 					}
 
@@ -1271,8 +1271,8 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 					goto err;
 				}
 #if defined DEBUG_STACK_AT_TXN_LOG
-				comdb2_cheapstack_sym(stderr, "CHILD-COMMIT LSN [%d:%d]",
-						txnp->last_lsn.file,txnp->last_lsn.offset);
+				comdb2_cheapstack_sym(stderr, "CHILD-COMMIT TXNID %x LSN [%d:%d]",
+						txnp->txnid,txnp->last_lsn.file,txnp->last_lsn.offset);
 #endif
 			}
 

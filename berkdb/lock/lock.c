@@ -69,9 +69,9 @@ extern int gbl_rowlocks;
 extern int gbl_page_latches;
 extern int gbl_replicant_latches;
 extern int gbl_print_deadlock_cycles;
+extern int gbl_lock_conflict_trace;
 
 int gbl_berkdb_track_locks = 0;
-int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
 
 void comdb2_dump_blocker(unsigned int);
@@ -1306,26 +1306,6 @@ __get_page_latch(lt, locker, flags, obj, lock_mode, lock)
  * PUBLIC: int __lock_vec __P((DB_ENV *,
  * PUBLIC:     u_int32_t, u_int32_t, DB_LOCKREQ *, int, DB_LOCKREQ **));
  */
-
-static char *
-opstring(int op)
-{
-	switch (op) {
-	case DB_LOCK_PUT_ALL:
-		return "PUT_ALL";
-		break;
-	case DB_LOCK_PUT_READ:
-		return "PUT_READ";
-		break;
-	case DB_LOCK_UPGRADE_WRITE:
-		return "UPGRADE_WRITE";
-		break;
-	default:
-		return "OTHER_LOCKOP";
-		break;
-	}
-}
-
 int
 __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	DB_ENV *dbenv;

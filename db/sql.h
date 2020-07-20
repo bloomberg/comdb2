@@ -86,8 +86,11 @@ typedef struct stmt_hash_entry {
 
 struct sql_authorizer_state {
     struct sqlclntstate *clnt;         /* pointer to current client info */
+    sqlite3 *db;
     int flags;                         /* DDL, PRAGMA, CREATE TRIGGER denied? */
     int numDdls;                       /* number of DDLs found */
+    int numVTableLocks;
+    char **vTableLocks;
 };
 
 /* Thread specific sql state */
@@ -98,6 +101,7 @@ struct sqlthdstate {
     sqlite3 *sqldb;
     struct sql_authorizer_state authState; /* SQL authorizer state info */
 
+    uint8_t have_lastuser;
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
     hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
@@ -1338,5 +1342,14 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
  *
  */
 int clnt_check_bdb_lock_desired(struct sqlclntstate *clnt);
+
+/**
+ * Bdb transaction objects with curtran lockid
+ */
+tran_type *curtran_gettran(void);
+
+void curtran_assert_nolocks(void);
+
+void curtran_puttran(tran_type *tran);
 
 #endif /* _SQL_H_ */

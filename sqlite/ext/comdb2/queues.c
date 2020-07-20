@@ -281,6 +281,7 @@ const sqlite3_module systblQueuesModule = {
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
   .access_flag = CDB2_ALLOW_USER,
+  .systable_lock = "comdb2_queues",
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

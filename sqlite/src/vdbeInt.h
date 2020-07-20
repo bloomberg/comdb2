@@ -577,6 +577,8 @@ struct Vdbe {
   int *updCols;           /* list of columns modified in this update */
   Table **tbls;           /* list of tables to be open. */ 
   u16 numTables;
+  u16 numVTableLocks;
+  char **vTableLocks;
   char tzname[TZNAME_MAX];/* timezone info for datetime support */
   int dtprec;             /* datetime precision - make it u32 to silence compiler */
   struct timespec tspec;  /* time of prepare, used for stable now() */

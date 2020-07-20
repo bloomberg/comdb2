@@ -61,6 +61,7 @@
 #include <bdb_api.h>
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
+#include <bdb_int.h>
 #include <time.h>
 
 #include "comdb2.h"
@@ -7332,6 +7333,13 @@ static int rootpcompare(const void *p1, const void *p2)
     return strcmp(tp1->zName, tp2->zName);
 }
 
+int gbl_debug_systable_locks = 0;
+#ifdef ASSERT_SYSTABLE_LOCKS
+int gbl_assert_systable_locks = 1;
+#else
+int gbl_assert_systable_locks = 0;
+#endif
+
 static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 {
     if (pStmt == NULL)
@@ -7348,16 +7356,31 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
     int remote_schema_changed = 0;
     int dups = 0;
     struct dbtable *db;
-
-    if (nTables == 0)
-        return 0;
-
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
     if (NULL == clnt->dbtran.cursor_tran) {
         return 0;
     }
+
+    for (int i = 0; i < p->numVTableLocks; i++) {
+        if ((rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, p->vTableLocks[i],
+                                                  bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+            logmsg(LOGMSG_ERROR, "%s lock %s returns %d\n", __func__, p->vTableLocks[i], rc);
+            return rc;
+        }
+    }
+
+    if (gbl_debug_systable_locks && p->numVTableLocks > 0) {
+        if ((rc = bdb_lock_tablename_read_fromlid(thedb->bdb_env, "_comdb2_systables",
+                                                  bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) != 0) {
+            logmsg(LOGMSG_ERROR, "%s lock _comdb2_systables returns %d\n", __func__, rc);
+            return rc;
+        }
+    }
+
+    if (nTables == 0)
+        return 0;
 
     /* sort and dedup */
     qsort(tbls, nTables, sizeof(Table *), rootpcompare);
@@ -7451,8 +7474,11 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             }
         }
 
-        bdb_lock_table_read_fromlid(
-            db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+        if ((rc = bdb_lock_table_read_fromlid(db->handle, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran))) !=
+            0) {
+            logmsg(LOGMSG_ERROR, "%s lock table %s returns %d\n", __func__, tab->zName, rc);
+            return rc;
+        }
 
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
@@ -10796,6 +10822,7 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
     int port;
     int retry;
     int sockfd;
+    int nodelay = 1;
 
     if (use_cache) {
         /* lets try to use sockpool, if available */
@@ -10829,6 +10856,9 @@ retry:
                 __func__, dbname, host, port);
         return NULL;
     }
+
+    (void)setsockopt(sockfd, IPPROTO_TCP, TCP_NODELAY, &nodelay, sizeof(nodelay));
+
 sbuf:
     sb = sbuf2open(sockfd, 0);
     if (!sb) {
@@ -11300,6 +11330,49 @@ out:
     Pthread_setspecific(query_info_key, old_thd);
     sql_mem_shutdown_and_restore(NULL, &sql_oldm);
     thread_memdestroy_and_restore(&thread_oldm);
+}
+
+void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out);
+
+void curtran_assert_nolocks(void)
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd)
+        return;
+    uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
+    if (!lockid)
+        return;
+
+    int nlocks = bdb_nlocks_for_locker(thedb->bdb_env, lockid);
+    if (nlocks > 0) {
+        logmsg(LOGMSG_ERROR, "%s lockid %u holds %d locks\n", __func__, lockid, nlocks);
+        bdb_lock_stats_me(thedb->bdb_env, stderr);
+    }
+    assert(nlocks == 0);
+}
+
+tran_type *curtran_gettran(void)
+{
+    int bdberr;
+    tran_type *tran = NULL;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd || !thd->clnt || !thd->clnt->dbtran.cursor_tran)
+        return NULL;
+    uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
+    if ((tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr)) != NULL) {
+        bdb_get_tran_lockerid(tran, &tran->original_lid);
+        bdb_set_tran_lockerid(tran, lockid);
+    }
+    return tran;
+}
+
+void curtran_puttran(tran_type *tran)
+{
+    int bdberr;
+    if (!tran)
+        return;
+    bdb_set_tran_lockerid(tran, tran->original_lid);
+    bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 }
 
 void clone_temp_table(sqlite3_stmt *stmt, struct temptable *tbl)

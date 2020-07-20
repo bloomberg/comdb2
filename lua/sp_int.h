@@ -91,6 +91,13 @@ void luabb_tointervalym(Lua, int index, intv_t *);
 void luabb_toreal(Lua, int index, double *);
 void luabb_todecimal(Lua, int index, decQuad *);
 
+int luabb_tointeger_noerr(Lua, int index, long long *);
+int luabb_toreal_noerr(Lua, int index, double *);
+int luabb_todatetime_noerr(Lua, int index, datetime_t *);
+int luabb_tointervalym_noerr(Lua, int index, intv_t *);
+int luabb_tointervalds_noerr(Lua, int index, intv_t *);
+int luabb_toblob_noerr(Lua, int index, blob_t *);
+
 void luabb_pushblob(Lua, const blob_t *);
 void luabb_pushblob_dl(Lua, const blob_t *); //dl -> dup-less
 void luabb_pushcstring(Lua, const char *);

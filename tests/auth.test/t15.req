@@ -12,8 +12,8 @@ set user 'user2'
 set password 'new_password'
 select '---------- non-OP user ----------' as user;
 # Both the following requests must be denied
-select * from 't1@user1';
-select count(*) from 't1@user1';
+select * from 't1';
+select count(*) from 't1';
 
 # Cleanup (OP user)
 set user 'user1'

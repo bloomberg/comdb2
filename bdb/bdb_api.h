@@ -545,9 +545,11 @@ int bdb_handle_dbp_hash_stat_reset(bdb_state_type *bdb_state);
 int bdb_close_temp_state(bdb_state_type *bdb_state, int *bdberr);
 
 /* get file sizes for indexes and data files */
-uint64_t bdb_index_size(bdb_state_type *bdb_state, int ixnum);
+uint64_t bdb_index_size_tran(bdb_state_type *bdb_state, tran_type *tran, int ixnum);
+uint64_t bdb_data_size_tran(bdb_state_type *bdb_state, tran_type *tran, int dtanum);
 uint64_t bdb_data_size(bdb_state_type *bdb_state, int dtanum);
 uint64_t bdb_queue_size(bdb_state_type *bdb_state, unsigned *num_extents);
+uint64_t bdb_queue_size_tran(bdb_state_type *bdb_state, tran_type *tran, unsigned *num_extents);
 uint64_t bdb_logs_size(bdb_state_type *bdb_state, unsigned *num_logs);
 
 /*
@@ -1557,8 +1559,8 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
                                  size_t schema_change_data_len, int status,
                                  const char *errstr, int *bdberr);
 
-int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data **status_out,
-                                 void ***sc_data_out, int *num, int *bdberr);
+int bdb_llmeta_get_all_sc_status(tran_type *tran, llmeta_sc_status_data **status_out, void ***sc_data_out, int *num,
+                                 int *bdberr);
 
 typedef struct {
     uint64_t start;
@@ -1679,6 +1681,7 @@ int bdb_rowlocks_check_commit_physical(bdb_state_type *bdb_state,
 int bdb_is_rowlocks_transaction(tran_type *tran);
 
 int bdb_get_sp_get_default_version(const char *sp_name, int *bdberr);
+int bdb_get_sp_get_default_version_tran(tran_type *tran, const char *sp_name, int *bdberr);
 int bdb_set_sp_lua_source(bdb_state_type *bdb_state, tran_type *tran,
                           const char *sp_name, char *lua_file, int size,
                           int version, int *bdberr);
@@ -1754,9 +1757,10 @@ int bdb_accesscontrol_tableXnode_get(bdb_state_type *bdb_state, tran_type *tran,
                                      int *bdberr);
 
 int bdb_user_password_set(tran_type *, char *user, char *passwd);
-int bdb_user_password_check(char *user, char *passwd, int *valid_user);
+int bdb_user_password_check(tran_type *, char *user, char *passwd, int *valid_user);
 int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
+int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num);
 
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);
@@ -2011,6 +2015,7 @@ int bdb_osql_serial_check(bdb_state_type *bdb_state, void *ranges,
 int llmeta_set_tablename_alias(void *ptran, const char *tablename_alias,
                                const char *url, char **errstr);
 char *llmeta_get_tablename_alias(const char *tablename_alias, char **errstr);
+char *llmeta_get_tablename_alias_tran(tran_type *tran, const char *tablename_alias, char **errstr);
 int llmeta_rem_tablename_alias(const char *tablename_alias, char **errstr);
 void llmeta_list_tablename_alias(void);
 
@@ -2128,18 +2133,24 @@ int bdb_watchdog_test_io(bdb_state_type *bdb_state);
 
 int bdb_add_versioned_sp(tran_type *, char *name, char *version, char *src);
 int bdb_get_versioned_sp(char *name, char *version, char **src);
+int bdb_get_versioned_sp_tran(tran_type *, char *name, char *version, char **src);
 int bdb_del_versioned_sp(char *name, char *version);
 
 int bdb_set_default_versioned_sp(tran_type *, char *name, char *version);
 int bdb_get_default_versioned_sp(char *name, char **version);
+int bdb_get_default_versioned_sp_tran(tran_type *, char *name, char **version);
 int bdb_del_default_versioned_sp(tran_type *tran, char *name);
 
 int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num);
+int bdb_get_all_for_versioned_sp_tran(tran_type *tran, char *name, char ***versions, int *num);
 int bdb_get_default_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps(char ***names, int *num);
+int bdb_get_versioned_sps_tran(tran_type *tran, char ***names, int *num);
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                               char *table, int access_type, int *bdberr);
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran, char *user, char *table, int access_type,
+                                   int *bdberr);
 int bdb_first_user_get(bdb_state_type *bdb_state, tran_type *tran,
                        char *key_out, char *user_out, int *isop, int *bdberr);
 int bdb_next_user_get(bdb_state_type *bdb_state, tran_type *tran, char *key,
