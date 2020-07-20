@@ -740,7 +740,10 @@ done:
 int perform_trigger_update(struct schema_change_type *sc)
 {
     wrlock_schema_lk();
+    javasp_do_procedure_op_pre();
+    // At this point, no block-processor can operate on queues
     int rc = perform_trigger_update_int(sc);
+    javasp_do_procedure_op_post();
     unlock_schema_lk();
     return rc;
 }

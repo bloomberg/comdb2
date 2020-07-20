@@ -2157,7 +2157,13 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 
     my_tid = pthread_self();
 
-    iq->jsph = javasp_trans_start(iq->debug);
+
+    if (!iq->tranddl) {
+        /* We're not schemachange - set up triggers */
+        iq->jsph = javasp_trans_start(iq->debug);
+        /* At this point, no schemachange can operate on queues */
+    }
+
     iq->blkstate = blkstate;
 
     /* paranoia - make sure this thing starts out initialized unless we
