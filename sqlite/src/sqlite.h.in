@@ -6775,6 +6775,7 @@ struct sqlite3_module {
   int (*xShadowName)(const char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int access_flag;
+  char *systable_lock;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
