@@ -5,6 +5,8 @@
 #include <poll.h>
 #include <locks.h>
 
+extern int gbl_debug_systable_locks;
+extern int gbl_assert_systable_locks;
 /* Wrapper for queue consumers. Core db code calls these, which then find
  * the first consumer plugin that knows how to handle the request, and dispatch
  * to it. */
@@ -145,10 +147,11 @@ static int dbqueuedb_get_stats_int(struct dbtable *db, tran_type *tran,
     return -1;
 }
 
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats)
+int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_t lockid)
 {
     int rc;
     int bdberr;
+    uint32_t savedlid;
     bdb_state_type *bdb_state = db->handle;
     tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (!trans) {
@@ -156,11 +159,26 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats)
                db->tablename, bdberr);
         return -1;
     }
+    if (lockid) {
+        bdb_get_tran_lockerid(trans, &savedlid);
+        bdb_set_tran_lockerid(trans, lockid);
+
+        if (gbl_debug_systable_locks) {
+            bdb_assert_tablename_locked(bdb_state, "_comdb2_systables", lockid, ASSERT_TABLENAME_LOCKED_READ);
+        }
+
+        if (gbl_assert_systable_locks) {
+            bdb_assert_tablename_locked(bdb_state, "comdb2_queues", lockid, ASSERT_TABLENAME_LOCKED_READ);
+        }
+    }
     if ((rc = bdb_lock_table_read(bdb_state, trans)) == 0) {
         rc = dbqueuedb_get_stats_int(db, trans, stats);
     } else {
         logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
                db->tablename, rc);
+    }
+    if (lockid) {
+        bdb_set_tran_lockerid(trans, savedlid);
     }
     bdb_tran_abort(bdb_state, trans, &bdberr);
     return rc;
@@ -198,7 +216,15 @@ int queue_consume(struct ireq* iq, const void* fnd, int consumern)
                 return -1;
             }
 
-            rc = dbq_consume(iq, trans, consumern, fnd);
+            if (gbl_debug_systable_locks) {
+                rc = bdb_lock_tablename_read(thedb->bdb_env, "_comdb2_systables", trans);
+            }
+
+            if (rc == 0) {
+                rc = dbq_consume(iq, trans, consumern, fnd);
+            } else {
+                rc = RC_INTERNAL_RETRY;
+            }
             if(rc != 0)
             {
                 trans_abort(iq, trans);

@@ -159,7 +159,8 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1(i int)"
 NUM=2000
 for ((i=1;i<=$NUM;++i)); do echo "insert into t1 values($i)"; done | cdb2sql ${CDB2_OPTIONS} $DBNAME default -
 
-COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+# need to flush to get correct stmts in logfile
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events flush')"
 
 find $TESTDIR/var/log/cdb2/ | grep "/$DBNAME" | grep '.events.' > logfls.txt
 echo logfls
@@ -175,6 +176,28 @@ res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.* | head -2); do
     zcat $f | jq -c 'if (.type == "sql") and (.sql == "insert into t1 values('"$NUM"')") then . else empty end'
 done | wc -l)
 assertres $res 1
+
+
+# test setting custom file for event logging
+myevfl=$TESTDIR/var/log/cdb2/$DBNAME.myfile.events
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events file $myevfl')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 2"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events dir $TESTDIR/var/log')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events roll')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 3"
+d=`cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g" | xargs dirname`
+
+COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+
+if [ ! -f $myevfl ] ; then
+    failexit "$myevfl was not created"
+fi
+cnt=`zgrep "select 2" $myevfl  | jq -c 'if (.type == "sql") then . else empty end' | wc -l`
+# assert setting the event log file
+assertres $cnt 1
+
+# assert setting the event log dir works
+assertres $d $TESTDIR/var/log
 
 #This would be a nice test to have but we're only keeping 4000 bytes around..
 #

@@ -23,9 +23,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comdb2.h"
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
+#include <comdb2.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
+#include <bdb_int.h>
+#include <sql.h>
+
+extern pthread_key_t query_info_key;
 
 /* systbl_queues_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -89,6 +93,8 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   unsigned long long depth = 0;
   char *spname = NULL;
   struct dbtable *qdb = thedb->qdbs[pCur->last_qid];
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
 
   dbqueuedb_get_name(qdb, &spname);
   strcpy(pCur->queue_name, qdb->tablename);
@@ -99,7 +105,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   else
       pCur->spname[0] = 0;
 
-  int rc = dbqueuedb_get_stats(qdb, stats);
+  int rc = dbqueuedb_get_stats(qdb, stats, lockid);
   if (rc) {
       /* TODO: signal error? */
   }
@@ -275,6 +281,7 @@ const sqlite3_module systblQueuesModule = {
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
   .access_flag = CDB2_ALLOW_USER,
+  .systable_lock = "comdb2_queues",
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

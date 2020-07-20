@@ -207,12 +207,22 @@ void init_lua_dbtypes(void)
     }
 }
 
-static int luabb_type_err(Lua lua, const char *to, int from)
+static void luabb_type_err_int(Lua L, const char *to, int from, int fatal)
 {
-    int type = lua_type(lua, from);
-    const char *ourtype = luabb_dbtypename(lua, from);
-    return luaL_error(lua, "conversion to: %s failed from: %s",
-      to, ourtype ? ourtype : lua_typename(lua, type));
+    int type = lua_type(L, from);
+    const char *ourtype = luabb_dbtypename(L, from);
+    luabb_error(L, fatal ? NULL : getsp(L), "conversion to:%s failed from:%s",
+      to, ourtype ? ourtype : lua_typename(L, type));
+}
+
+static void luabb_type_err(Lua L, const char *to, int from)
+{
+    luabb_type_err_int(L, to, from, 1);
+}
+
+static void luabb_type_err_non_fatal(Lua L, const char *to, int from)
+{
+    luabb_type_err_int(L, to, from, 0);
 }
 
 /* Trying to make this work ->
@@ -233,7 +243,7 @@ static int parseint(const char *str, long long *val)
 #endif
 }
 
-void luabb_tointeger(Lua lua, int idx, long long *val)
+static int luabb_tointeger_int(Lua lua, int idx, long long *val)
 {
     const lua_intervalym_t *ym;
     const lua_intervalds_t *ds;
@@ -251,9 +261,11 @@ void luabb_tointeger(Lua lua, int idx, long long *val)
 
     case LUA_TSTRING:
         s = lua_tostring(lua, idx);
-    str:if (parseint(s, val) != 0)
-            luaL_error(lua, "conversion to: int failed from: %s", s);
-        return;
+    str:
+        if (parseint(s, val) == 0) {
+            return 0;
+        }
+        break;
 
     case LUA_TNUMBER:
         darg = lua_tonumber(lua, idx);
@@ -261,14 +273,16 @@ void luabb_tointeger(Lua lua, int idx, long long *val)
 
     case DBTYPES_REAL:
         darg = ((lua_real_t *)lua_topointer(lua, idx))->val;
-    dbl:if (darg < LLONG_MIN || darg > LLONG_MAX)
-            luaL_error(lua, "conversion to: int failed from: %f", darg);
-        *val= (long long) darg;
-        return;
+    dbl:
+        if (darg >= LLONG_MIN && darg <= LLONG_MAX) {
+            *val= (long long) darg;
+            return 0;
+        }
+        break;
 
     case DBTYPES_INTEGER:
         *val = ((lua_int_t *)lua_topointer(lua, idx))->val;
-        return;
+        return 0;
 
     case DBTYPES_DATETIME:
         d = lua_topointer(lua, idx);
@@ -276,26 +290,40 @@ void luabb_tointeger(Lua lua, int idx, long long *val)
         datetime_t_to_client_datetime(&d->val, &c);
         if (client_datetime_to_dttz(&c, c.tzname, &dt, 0) == 0) {
             *val = dt.dttz_sec;
-            return;
+            return 0;
         }
         break;
 
     case DBTYPES_INTERVALYM:
         ym = lua_topointer(lua, idx);
         *val = interval_to_double(&ym->val);
-        return;
+        return 0;
 
     case DBTYPES_INTERVALDS:
         ds = lua_topointer(lua, idx);
         *val = interval_to_double(&ds->val);
-        return;
+        return 0;
     }
-
-    luabb_type_err(lua, dbtypes.integer, idx);
-    *val = 0; //just to silence warnings -- will never reach here
+    return -1;
 }
 
-void luabb_toreal(Lua lua, int idx, double *ret)
+void luabb_tointeger(Lua L, int idx, long long *val)
+{
+    if (luabb_tointeger_int(L, idx, val)) {
+        luabb_type_err(L, dbtypes.integer, idx);
+    }
+}
+
+int luabb_tointeger_noerr(Lua L, int idx, long long *val)
+{
+    if (luabb_tointeger_int(L, idx, val) == 0) {
+        return 0;
+    }
+    luabb_type_err_non_fatal(L, dbtypes.integer, idx);
+    return -1;
+}
+
+static int luabb_toreal_int(Lua lua, int idx, double *ret)
 {
     const lua_intervalym_t *ym;
     const lua_intervalds_t *ds;
@@ -308,22 +336,23 @@ void luabb_toreal(Lua lua, int idx, double *ret)
     switch (luabb_dbtype(lua, idx)) {
     case DBTYPES_INTEGER:
         *ret = ((lua_int_t *)lua_topointer(lua, idx))->val;
-        return;
+        return 0;
     case DBTYPES_LNUMBER:
         *ret = lua_tonumber(lua, idx);
-        return;
+        return 0;
     case DBTYPES_REAL:
         *ret = ((lua_real_t *)lua_topointer(lua, idx))->val;
-        return;
+        return 0;
     case DBTYPES_LSTRING:
         s = lua_tostring(lua, idx);
         goto str;
     case DBTYPES_CSTRING:
         s = ((lua_cstring_t *)lua_topointer(lua, idx))->val;
-    str:errno = 0;
+    str:
+        errno = 0;
         *ret = strtod(s, &e);
-        if (errno == 0)
-            return;
+        if (errno == 0 && (*e == 0))
+            return 0;
         break;
     case DBTYPES_DATETIME:
         d = lua_topointer(lua, idx);
@@ -331,23 +360,38 @@ void luabb_toreal(Lua lua, int idx, double *ret)
         datetime_t_to_client_datetimeus(&d->val, &c);
         if (client_datetimeus_to_dttz(&c, c.tzname, &dt, 0) == 0) {
             *ret = (double)dt.dttz_sec + (dt.dttz_frac / 1E6);
-            return;
+            return 0;
         }
         break;
     case DBTYPES_INTERVALYM:
         ym = lua_topointer(lua, idx);
         *ret = interval_to_double(&ym->val);
-        return;
+        return 0;
     case DBTYPES_INTERVALDS:
         ds = lua_topointer(lua, idx);
         *ret = interval_to_double(&ds->val);
-        return;
+        return 0;
     }
-    luabb_type_err(lua, dbtypes.real, idx);
-    *ret = 0; //just to silence warnings -- will never reach here
+    return -1;
 }
 
-void luabb_tointervalym(Lua lua, int idx, intv_t *ret)
+void luabb_toreal(Lua L, int idx, double *ret)
+{
+    if (luabb_toreal_int(L, idx, ret)) {
+        luabb_type_err(L, dbtypes.real, idx);
+    }
+}
+
+int luabb_toreal_noerr(Lua L, int idx, double *ret)
+{
+    if (luabb_toreal_int(L, idx, ret) == 0) {
+        return 0;
+    }
+    luabb_type_err_non_fatal(L, dbtypes.real, idx);
+    return -1;
+}
+
+static int luabb_tointervalym_int(Lua lua, int idx, intv_t *ret)
 {
     int rc = 0;
     const char *c;
@@ -359,18 +403,20 @@ void luabb_tointervalym(Lua lua, int idx, intv_t *ret)
     switch(luabb_dbtype(lua, idx)) {
     case DBTYPES_INTEGER:
         type = 2; // see str_to_interval()
-        luabb_tointeger(lua, idx, &i);
+        if (luabb_tointeger_noerr(lua, idx, &i))
+            goto err;
         rc = int_to_interval(i, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case LUA_TNUMBER:
     case DBTYPES_REAL:
         type = 2; // see str_to_interval()
-        luabb_toreal(lua, idx, &d);
+        if (luabb_toreal_noerr(lua, idx, &d))
+            goto err;
         rc = double_to_interval(d, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case DBTYPES_INTERVALYM:
         *ret = ((lua_intervalym_t *)lua_topointer(lua, idx))->val;
-        return;
+        return 0;
     case LUA_TSTRING:
     case DBTYPES_CSTRING:
         type = INTV_YM_TYPE;
@@ -382,8 +428,7 @@ void luabb_tointervalym(Lua lua, int idx, intv_t *ret)
         // else fall through - couldn't parse intervalym
     err:
     default:
-        luabb_type_err(lua, dbtypes.intervalym, idx);
-        break;
+        return -1;
     }
     if (rc != 0)
         goto err;
@@ -395,9 +440,24 @@ void luabb_tointervalym(Lua lua, int idx, intv_t *ret)
         ret->u.ym.months = tmp;
     }
     _normalizeIntervalYM(&ret->u.ym);
+    return 0;
 }
 
-void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
+void luabb_tointervalym(Lua L, int idx, intv_t *ret)
+{
+    if (luabb_tointervalym_int(L, idx, ret))
+        luabb_type_err(L, dbtypes.intervalym, idx);
+}
+
+int luabb_tointervalym_noerr(Lua L, int idx, intv_t *ret)
+{
+    if (luabb_tointervalym_int(L, idx, ret) == 0)
+        return 0;
+    luabb_type_err_non_fatal(L, dbtypes.intervalym, idx);
+    return -1;
+}
+
+static int luabb_tointervalds_int(Lua lua, int idx, intv_t *ret)
 {
     int rc = 0;
     const char *c;
@@ -407,17 +467,19 @@ void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
     int type;
     switch(luabb_dbtype(lua, idx)) {
     case DBTYPES_INTEGER:
-        luabb_tointeger(lua, idx, &i);
+        if (luabb_tointeger_noerr(lua, idx, &i))
+            goto err;
         rc = int_to_interval(i, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case LUA_TNUMBER:
     case DBTYPES_REAL:
-        luabb_toreal(lua, idx, &d);
+        if (luabb_toreal_noerr(lua, idx, &d))
+            goto err;
         rc = double_to_interval(d, (uint64_t *)&tmp, (uint64_t *)&tmp2, &ret->sign);
         break;
     case DBTYPES_INTERVALDS:
         *ret = ((lua_intervalds_t *)lua_topointer(lua, idx))->val;
-        return;
+        return 0;
     case LUA_TSTRING:
     case DBTYPES_CSTRING:
         type = INTV_DS_TYPE;
@@ -426,15 +488,14 @@ void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
           &ret->sign);
         if (type == 1) { // days hr:mn:sec.msec
             ret->type = ret->u.ds.prec == DTTZ_PREC_MSEC ? INTV_DS_TYPE : INTV_DSUS_TYPE;
-            return;
+            return 0;
         } else if (type == 2) { // number
             break;
         }
         // else fall through - couldn't parse intervalds
     err:
     default:
-        luabb_type_err(lua, dbtypes.intervalym, idx);
-        break;
+        return -1;
     }
     if (rc != 0)
         goto err;
@@ -445,6 +506,22 @@ void luabb_tointervalds(Lua lua, int idx, intv_t *ret)
         ret->type = INTV_DSUS_TYPE;
         _setIntervalDSUS(&ret->u.ds, tmp, tmp2);
     }
+    return 0;
+}
+
+void luabb_tointervalds(Lua L, int idx, intv_t *ret)
+{
+    if (luabb_tointervalds_int(L, idx, ret))
+        luabb_type_err(L, dbtypes.intervalym, idx);
+}
+
+int luabb_tointervalds_noerr(Lua L, int idx, intv_t *ret)
+{
+    if (luabb_tointervalds_int(L, idx, ret) == 0) {
+        return 0;
+    }
+    luabb_type_err_non_fatal(L, dbtypes.intervalym, idx);
+    return -1;
 }
 
 /*
@@ -480,7 +557,7 @@ const char *luabb_tostring(Lua L, int idx)
     return NULL;
 }
 
-void luabb_toblob(Lua lua, int idx, blob_t *ret)
+static int luabb_toblob_int(Lua lua, int idx, blob_t *ret)
 {
     const char *c;
     size_t s;
@@ -490,34 +567,47 @@ void luabb_toblob(Lua lua, int idx, blob_t *ret)
 str:    s = strlen(c);
         ret->data = strdup(c);
         ret->length = s;
-        return;
+        return 0;
     } else if (type == DBTYPES_CSTRING) {
         c = ((lua_cstring_t*)lua_touserdata(lua, idx))->val;
         goto str;
     } else if (type == DBTYPES_BLOB) {
         const lua_blob_t *blob = lua_topointer(lua, idx);
         *ret = blob->val;
-    } else {
-        luabb_type_err(lua, dbtypes.blob, idx);
+        return 0;
     }
+    return -1;
 }
 
-static int get_int_value(lua_State *lua, int index, char *type)
+void luabb_toblob(Lua L, int idx, blob_t *ret)
+{
+    if (luabb_toblob_int(L, idx, ret))
+        luabb_type_err(L, dbtypes.blob, idx);
+}
+
+int luabb_toblob_noerr(Lua L, int idx, blob_t *ret)
+{
+    if (luabb_toblob_int(L, idx, ret) == 0)
+        return 0;
+    luabb_type_err_non_fatal(L, dbtypes.blob, idx);
+    return -1;
+}
+
+
+static int get_date_value(lua_State *lua, int index, char *type, int *out)
 {
     if (index < 0) index = lua_gettop(lua) + index + 1;
     lua_pushstring(lua, type);
     lua_gettable(lua, index);
-    int i;
     if (lua_isnumber(lua, -1))  {
-        i = lua_tointeger( lua, -1 );
+        *out = lua_tointeger(lua, -1);
         lua_pop(lua, 1);
-        return i;
+        return 0;
     } else if (lua_isboolean(lua, -1))  {
-        i = lua_toboolean( lua, -1 );
+        *out = lua_toboolean(lua, -1);
         lua_pop(lua, 1);
-        return i;
+        return 0;
     }
-    luaL_error(lua, "data is not a valid number.");
     return -1;
 }
 
@@ -573,7 +663,51 @@ err:
     return 1;
 }
 
-void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
+static int lua_date_to_tm(Lua L, datetime_t *ret, int idx)
+{
+    int out;
+    int rc;
+
+    rc = get_date_value(L, idx, "year", &out);
+    if (rc) return rc;
+    ret->tm.tm_year = out - 1900;
+
+    rc = get_date_value(L,idx, "month", &out);
+    if (rc) return rc;
+    ret->tm.tm_mon = out - 1;
+
+    rc = get_date_value(L,idx, "day", &out);
+    if (rc) return rc;
+    ret->tm.tm_mday = out;
+
+    rc = get_date_value(L,idx, "yday", &out);
+    if (rc) return rc;
+    ret->tm.tm_yday = out - 1;
+
+    rc = get_date_value(L,idx, "wday", &out);
+    if (rc) return rc;
+    ret->tm.tm_wday = out;
+
+    rc = get_date_value(L, idx, "hour", &out);
+    if (rc) return rc;
+    ret->tm.tm_hour = out;
+
+    rc  = get_date_value(L,idx, "min", &out);
+    if (rc) return rc;
+    ret->tm.tm_min = out;
+
+    rc = get_date_value(L,idx, "sec", &out);
+    if (rc) return rc;
+    ret->tm.tm_sec = out;
+
+    rc = get_date_value(L,idx, "isdst", &out);
+    if (rc) return rc;
+    ret->tm.tm_isdst = out;
+
+    return 0;
+}
+
+static int luabb_todatetime_int(lua_State *lua, int idx, datetime_t *ret)
 {
     double d;
     int64_t i;
@@ -600,15 +734,9 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
         break;
     case LUA_TTABLE:
         /* This is for lua date, which is of type LUA_TTABLE. */
-        ret->tm.tm_year = get_int_value(lua,idx, "year") - 1900;
-        ret->tm.tm_mon = get_int_value(lua,idx, "month") - 1;
-        ret->tm.tm_mday = get_int_value(lua,idx, "day");
-        ret->tm.tm_yday = get_int_value(lua,idx, "yday") - 1;
-        ret->tm.tm_wday = get_int_value(lua,idx, "wday");
-        ret->tm.tm_hour = get_int_value(lua,idx, "hour");
-        ret->tm.tm_min = get_int_value(lua,idx, "min");
-        ret->tm.tm_sec = get_int_value(lua,idx, "sec");
-        ret->tm.tm_isdst = get_int_value(lua,idx, "isdst");
+        if (lua_date_to_tm(lua, ret, idx)) {
+            goto err;
+        }
         temp_t = mktime(&ret->tm);
         ret->frac = 0;
         ret->prec = precision;
@@ -620,10 +748,10 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
         }
         /* Correct it, if table doesn't have correct values. */
         localtime_r(&temp_t, &ret->tm);
-        return;
+        return 0;
     case DBTYPES_DATETIME:
         *ret = ((lua_datetime_t *)lua_topointer(lua, idx))->val;
-        return;
+        return 0;
     case DBTYPES_CSTRING:
         str = ((lua_cstring_t*)lua_topointer(lua, idx))->val;
         if (str_to_dttz(str, strlen(str), tzname, &dt, precision) != 0)
@@ -651,8 +779,24 @@ void luabb_todatetime(lua_State *lua, int idx, datetime_t *ret)
             goto err;
         client_datetime_to_datetime_t(&cdtms, ret, 0);
     }
-    return;
-err:luabb_type_err(lua, dbtypes.datetime, idx);
+    return 0;
+err:return -1;
+}
+
+void luabb_todatetime(Lua L, int idx, datetime_t *ret)
+{
+    if (luabb_todatetime_int(L, idx, ret)) {
+        luabb_type_err(L, dbtypes.datetime, idx);
+    }
+}
+
+int luabb_todatetime_noerr(Lua L, int idx, datetime_t *ret)
+{
+    if (luabb_todatetime_int(L, idx, ret) == 0) {
+        return 0;
+    }
+    luabb_type_err_non_fatal(L, dbtypes.datetime, idx);
+    return -1;
 }
 
 void luabb_todecimal(lua_State *lua, int idx, decQuad *val)

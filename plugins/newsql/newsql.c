@@ -626,8 +626,13 @@ static int newsql_heartbeat(struct sqlclntstate *clnt)
     if (!clnt->ready_for_heartbeats)
         return 0;
 
-    state = (clnt->sqltick > clnt->sqltick_last_seen);
-    clnt->sqltick_last_seen = clnt->sqltick;
+    /* We're still in a good state if we're just waiting for the client to consume an event. */
+    if (is_pingpong(clnt))
+        state = 1;
+    else {
+        state = (clnt->sqltick > clnt->sqltick_last_seen);
+        clnt->sqltick_last_seen = clnt->sqltick;
+    }
 
     return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT,
                            state);
@@ -898,32 +903,42 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
         switch (type) {
         case SQLITE_INTEGER: {
             int64_t i64;
-            sp_column_val(arg, i, type, &i64);
+            if (sp_column_val(arg, i, type, &i64)) {
+                return -1;
+            }
             newsql_integer(cols, i, i64, flip);
             break;
         }
         case SQLITE_FLOAT: {
             double d;
-            sp_column_val(arg, i, type, &d);
+            if (sp_column_val(arg, i, type, &d)) {
+                return -1;
+            }
             newsql_double(cols, i, d, flip);
             break;
         }
         case SQLITE_TEXT: {
             size_t l;
-            cols[i].value.data = sp_column_ptr(arg, i, type, &l);
+            if ((cols[i].value.data = sp_column_ptr(arg, i, type, &l)) == NULL) {
+                return -1;
+            }
             cols[i].value.len = l + 1;
             break;
         }
         case SQLITE_BLOB: {
             size_t l;
-            cols[i].value.data = sp_column_ptr(arg, i, type, &l);
+            if ((cols[i].value.data = sp_column_ptr(arg, i, type, &l)) == NULL) {
+                return -1;
+            }
             cols[i].value.len = l;
             break;
         }
         case SQLITE_DATETIME:
         case SQLITE_DATETIMEUS: {
             datetime_t d;
-            sp_column_val(arg, i, type, &d);
+            if (sp_column_val(arg, i, type, &d)) {
+                return -1;
+            }
             if (d.prec == DTTZ_PREC_MSEC && type == SQLITE_DATETIMEUS)
                 d.frac *= 1000;
             else if (d.prec == DTTZ_PREC_USEC && type == SQLITE_DATETIME)
@@ -959,7 +974,9 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
         }
         case SQLITE_INTERVAL_YM: {
             intv_t in, *val = &in;
-            sp_column_val(arg, i, type, val);
+            if (sp_column_val(arg, i, type, val)) {
+                return -1;
+            }
             cdb2_client_intv_ym_t *c = alloca(sizeof(*c));
             newsql_ym(cols, i, val, flip);
             break;
@@ -967,7 +984,9 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
         case SQLITE_INTERVAL_DS:
         case SQLITE_INTERVAL_DSUS: {
             intv_t in, *val = &in;
-            sp_column_val(arg, i, type, &in);
+            if (sp_column_val(arg, i, type, &in)) {
+                return -1;
+            }
             newsql_ds(cols, i, val, flip);
             break;
         }
@@ -980,8 +999,7 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
     r.n_value = ncols;
     r.value = value;
     if (arg->pingpong) {
-        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING,
-                                   1);
+        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING, 1);
     }
     return newsql_response(clnt, &r, 0);
 }
@@ -2225,24 +2243,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     struct thr_handle *thr_self;
     struct sbuf2 *sb;
     struct dbenv *dbenv;
-    struct dbtable *tab;
 
     thr_self = arg->thr_self;
     dbenv = arg->dbenv;
-    tab = arg->tab;
     sb = arg->sb;
-
-    if (tab->dbtype != DBTYPE_TAGGED_TABLE) {
-        /*
-          Don't change this message. The sql api recognises the first four
-          characters (Erro) and can respond gracefully.
-        */
-        sbuf2printf(sb, "Error: newsql is only supported for tagged DBs\n");
-        logmsg(LOGMSG_ERROR,
-               "Error: newsql is only supported for tagged DBs\n");
-        sbuf2flush(sb);
-        return APPSOCK_RETURN_ERR;
-    }
 
     if (incoh_reject(arg->admin, dbenv->bdb_env)) {
         logmsg(LOGMSG_DEBUG,

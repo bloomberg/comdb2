@@ -171,7 +171,7 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
  * Return lockerid in use by provided curtran
  *
  */
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
 
 /**
  * Parse a string containing an enable/disable feature and

@@ -248,7 +248,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "NO NEMESIS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
     }
 
-    srand(time(NULL) ^ getpid());
+    srandom(time(NULL) ^ getpid());
 
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
     if (partition_whole_network) flags |= NEMESIS_PARTITION_WHOLE_NETWORK;

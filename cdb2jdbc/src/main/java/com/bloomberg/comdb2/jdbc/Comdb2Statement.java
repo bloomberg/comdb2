@@ -188,7 +188,7 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public void setMaxFieldSize(int max) throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return;
     }
 
     @Override
@@ -198,7 +198,7 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public void setMaxRows(int max) throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return;
     }
 
     @Override
@@ -334,7 +334,7 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public ResultSet getGeneratedKeys() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return null;
     }
 
     @Override
@@ -384,7 +384,7 @@ public class Comdb2Statement implements Statement {
 
     @Override
     public void setPoolable(boolean poolable) throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return;
     }
 
     @Override
@@ -393,7 +393,7 @@ public class Comdb2Statement implements Statement {
     }
 
     public void closeOnCompletion() throws SQLException {
-        throw new SQLFeatureNotSupportedException();
+        return;
     }
 
     public boolean isCloseOnCompletion() throws SQLException {

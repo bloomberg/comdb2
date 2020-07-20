@@ -1288,10 +1288,10 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
     data.s = s;
 
     if (data.live && data.scanmode != SCAN_PARALLEL) {
-        sc_errf(data.s, "live schema change can only be done in parallel "
-                        "scan mode\n");
-        logmsg(LOGMSG_ERROR, "live schema change can only be done in parallel "
-                             "scan mode\n");
+        sc_errf(data.s,
+                "live schema change can only be done in parallel scan mode\n");
+        logmsg(LOGMSG_ERROR,
+               "live schema change can only be done in parallel scan mode\n");
         return -1;
     }
 

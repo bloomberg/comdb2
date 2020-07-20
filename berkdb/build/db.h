@@ -1811,6 +1811,7 @@ struct __dbc {
 
 	u_int32_t lid;			/* Default process' locker id. */
 	u_int32_t locker;		/* Locker for this operation. */
+	u_int32_t origlocker;
 	DBT	  lock_dbt;		/* DBT referencing lock. */
 	DB_LOCK_ILOCK lock;		/* Object to be locked. */
 	DB_LOCK	  mylock;		/* CDB lock held on this cursor. */
@@ -1848,6 +1849,7 @@ struct __dbc {
 	int (*c_pget) __P((DBC *, DBT *, DBT *, DBT *, u_int32_t));
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
+	int (*c_replace_lockid) __P((DBC *, u_int32_t));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
@@ -2325,6 +2327,7 @@ struct __db_env {
 	int  (*lock_abort_logical_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
+    int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
 	int  (*lock_put) __P((DB_ENV *, DB_LOCK *));
 	int  (*lock_id) __P((DB_ENV *, u_int32_t *));
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
@@ -2378,6 +2381,7 @@ struct __db_env {
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
+	int  (*rep_deadlocks) __P((DB_ENV *, u_int64_t *));
 	int  (*set_logical_start) __P((DB_ENV *, int (*) (DB_ENV *, void *,
 		u_int64_t, DB_LSN *)));
 	int  (*set_logical_commit) __P((DB_ENV *, int (*) (DB_ENV *, void *,

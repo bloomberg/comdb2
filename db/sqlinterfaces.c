@@ -708,6 +708,40 @@ void sqlinit(void)
         abort();
 }
 
+static char *vtable_lockname(sqlite3 *db, const char *vtable)
+{
+    if (vtable == NULL || db == NULL || db->aModule.count == 0)
+        return NULL;
+    struct Module *module;
+    char *lockname = NULL;
+    sqlite3_mutex_enter(db->mutex);
+    if ((module = sqlite3HashFind(&db->aModule, vtable)) != NULL) {
+        lockname = module->pModule->systable_lock;
+    }
+    sqlite3_mutex_leave(db->mutex);
+    return lockname;
+}
+
+static int vtable_search(char **vtables, int ntables, const char *table)
+{
+    for (int i = 0; i < ntables; i++) {
+        if (strcmp(vtables[i], table) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const char *table)
+{
+    const char *vtable_lock = vtable_lockname(pAuthState->db, table);
+    if (vtable_lock && !vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_lock)) {
+        pAuthState->vTableLocks =
+            (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * pAuthState->numVTableLocks + 1);
+        pAuthState->vTableLocks[pAuthState->numVTableLocks++] = strdup(vtable_lock);
+    }
+}
+
 static int comdb2_authorizer_for_sqlite(
   void *pArg,        /* IN: NOT USED */
   int code,          /* IN: NOT USED */
@@ -789,9 +823,27 @@ static int comdb2_authorizer_for_sqlite(
     case SQLITE_DROP_TEMP_VIEW:
       pAuthState->numDdls++;
       return allowTempDDL ? SQLITE_OK : SQLITE_DENY;
+    case SQLITE_READ:
+        record_locked_vtable(pAuthState, zArg1);
+        return SQLITE_OK;
     default:
       return SQLITE_OK;
   }
+}
+
+static void comdb2_reset_authstate(struct sqlthdstate *thd)
+{
+    bzero(&thd->authState, sizeof(thd->authState));
+}
+
+static void comdb2_set_authstate(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
+{
+    thd->authState.clnt = clnt;
+    thd->authState.flags = flags;
+    thd->authState.numDdls = 0;
+    thd->authState.numVTableLocks = 0;
+    thd->authState.vTableLocks = NULL;
+    thd->authState.db = thd->sqldb;
 }
 
 static void comdb2_setup_authorizer_for_sqlite(
@@ -2947,8 +2999,9 @@ static inline int check_user_password(struct sqlclntstate *clnt)
         strcpy(clnt->current_user.password, DEFAULT_PASSWORD);
     }
 
-    password_rc = bdb_user_password_check(
-        clnt->current_user.name, clnt->current_user.password, &valid_user);
+    tran_type *tran = curtran_gettran();
+    password_rc = bdb_user_password_check(tran, clnt->current_user.name, clnt->current_user.password, &valid_user);
+    curtran_puttran(tran);
 
     if (password_rc != 0) {
         write_response(clnt, RESPONSE_ERROR_ACCESS, "access denied", 0);
@@ -3459,9 +3512,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        thd->authState.clnt = clnt;
-        thd->authState.flags = flags;
-        thd->authState.numDdls = 0;
+        comdb2_set_authstate(thd, clnt, flags);
         rec->prepFlags = flags;
 
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
@@ -3543,6 +3594,19 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
             if (rec->stmt)
                 stmt_set_cached_columns(rec->stmt, column_names, column_count);
+        }
+
+        if (rec->stmt) {
+            stmt_set_vlock_tables(rec->stmt, thd->authState.vTableLocks, thd->authState.numVTableLocks);
+            thd->authState.numVTableLocks = 0;
+            thd->authState.vTableLocks = NULL;
+        } else {
+            for (int i = 0; i < thd->authState.numVTableLocks; i++) {
+                free(thd->authState.vTableLocks[i]);
+            }
+            free(thd->authState.vTableLocks);
+            thd->authState.numVTableLocks = 0;
+            thd->authState.vTableLocks = NULL;
         }
 
         thd->authState.flags = 0;
@@ -3813,6 +3877,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
         return;
     }
 
+    comdb2_set_authstate(thd, clnt, PREPARE_RECREATE);
     rc = -1;
     sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
 
@@ -4370,9 +4435,9 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         rc = check_user_password(clnt);
 
     if (rc == 0) {
-        if (thd->lastuser[0] != '\0' &&
-            strcmp(thd->lastuser, clnt->current_user.name) != 0)
+        if (thd->have_lastuser && strcmp(thd->lastuser, clnt->current_user.name) != 0)
             delete_prepared_stmts(thd);
+        thd->have_lastuser = 1;
         strcpy(thd->lastuser, clnt->current_user.name);
         clnt->authgen = bpfunc_auth_gen;
     } else {
@@ -4729,6 +4794,7 @@ check_version:
             thd->dbopen_gen = bdb_get_dbopen_gen();
         }
 
+        comdb2_reset_authstate(thd);
         get_copy_rootpages_nolock(thd->sqlthd);
         if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
@@ -5501,7 +5567,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
     thd->stmt_caching_table = NULL;
-    thd->lastuser[0] = '\0';
+    thd->have_lastuser = 0;
 
     start_sql_thread();
 
@@ -5509,8 +5575,6 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     rcache_init(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_COUNT),
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_PGSZ));
 }
-
-int gbl_abort_invalid_query_info_key;
 
 void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 {

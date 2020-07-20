@@ -1177,6 +1177,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
         if (!strcasecmp(rdb->tablename, newdb->tablename)) {
             rdb = newdb;
         }
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1193,6 +1194,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                 }
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
         for (int j = 0; j < newdb->n_constraints; j++) {
             for (int k = 0; k < newdb->constraints[j].nrules; k++) {
                 int ridx = 0;
@@ -1358,6 +1360,7 @@ int remove_constraint_pointers(struct dbtable *db)
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1374,6 +1377,7 @@ int remove_constraint_pointers(struct dbtable *db)
                 }
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
     return 0;
 }
@@ -1383,6 +1387,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1390,6 +1395,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
                 strcpy(ct->lcltable->tablename, newname);
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
     return 0;
 }
@@ -1407,6 +1413,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
         rdb = thedb->dbs[i];
         /* fix reverse references */
         if (rdb->n_rev_constraints > 0) {
+            Pthread_mutex_lock(&rdb->rev_constraints_lk);
             for (j = 0; j < rdb->n_rev_constraints; j++) {
                 ct = rdb->rev_constraints[j];
                 for (k = 0; k < MAXCONSTRAINTS; k++) {
@@ -1415,6 +1422,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
                     }
                 }
             }
+            Pthread_mutex_unlock(&rdb->rev_constraints_lk);
         }
         /* fix forward references */
         if (rdb->n_constraints) {

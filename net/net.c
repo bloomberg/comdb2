@@ -3020,7 +3020,7 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     netinfo_ptr->user_data_buf_size = 256 * 1024;
 
     netinfo_ptr->throttle_percent = 50;
-    netinfo_ptr->seqnum = (getpid() * 65537);
+    netinfo_ptr->seqnum = ((unsigned int)getpid()) * 65537;
     netinfo_ptr->myport = myportnum;
     netinfo_ptr->myhostname = intern(myhostname);
     netinfo_ptr->myhostname_len = strlen(netinfo_ptr->myhostname) + 1;

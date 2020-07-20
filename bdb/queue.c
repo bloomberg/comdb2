@@ -1287,7 +1287,7 @@ static int bdb_queue_get_int(bdb_state_type *bdb_state, int consumer,
                              const struct bdb_queue_cursor *prevcursor,
                              void **fnd, size_t *fnddtalen, size_t *fnddtaoff,
                              struct bdb_queue_cursor *fndcursor,
-                             unsigned int *epoch, int *bdberr)
+                             int *bdberr)
 {
     DBT dbt_key, dbt_data;
     DBC *dbcp;
@@ -1709,8 +1709,6 @@ lookagain:
         fndcursor->recno = ntohl(recnos[0]);
         fndcursor->reserved = 0;
     }
-    if (epoch)
-        *epoch = item.epoch;
     if (fnddtalen)
         *fnddtalen = item.data_len;
     if (fnddtaoff)
@@ -1730,18 +1728,17 @@ int bdb_queue_get(bdb_state_type *bdb_state, tran_type *tran, int consumer,
                   const struct bdb_queue_cursor *prevcursor,
                   struct bdb_queue_found **fnd, size_t *fnddtalen,
                   size_t *fnddtaoff, struct bdb_queue_cursor *fndcursor,
-                  long long *seq, unsigned int *epoch, int *bdberr)
+                  long long *seq, int *bdberr)
 {
     int rc;
 
     BDB_READLOCK("bdb_queue_get");
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
         rc = bdb_queuedb_get(bdb_state, tran, consumer, prevcursor, fnd,
-                             fnddtalen, fnddtaoff, fndcursor, seq, epoch,
-                             bdberr);
+                             fnddtalen, fnddtaoff, fndcursor, seq, bdberr);
     else
         rc = bdb_queue_get_int(bdb_state, consumer, prevcursor, (void **)fnd, fnddtalen,
-                               fnddtaoff, fndcursor, epoch, bdberr);
+                               fnddtaoff, fndcursor, bdberr);
     BDB_RELLOCK();
 
     return rc;

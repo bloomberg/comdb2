@@ -38,6 +38,7 @@
 #include "sc_view.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include <debug_switches.h>
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
@@ -267,6 +268,16 @@ typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
 **   1. also commit it
 **   2. log scdone here
 */
+static inline int replication_only_error_code(int rc)
+{
+    switch (rc) {
+    case -1:
+    case BDBERR_NOT_DURABLE:
+        return 1;
+    }
+    return 0;
+}
+
 static int do_finalize(ddl_t func, struct ireq *iq,
                        struct schema_change_type *s, tran_type *input_tran,
                        scdone_t type)
@@ -314,12 +325,18 @@ static int do_finalize(ddl_t func, struct ireq *iq,
     if (input_tran == NULL) {
         // void all_locks(void*);
         // all_locks(thedb->bdb_env);
+        if (debug_switch_fake_sc_replication_timeout()) {
+            logmsg(LOGMSG_USER, "Forcing replication error table %s '%s' for tran %p\n", bdb_get_scdone_str(type),
+                   s->tablename, tran);
+        }
         if (s->keep_locked) {
             rc = trans_commit(iq, tran, gbl_myhostname);
         } else {
             rc = trans_commit_adaptive(iq, tran, gbl_myhostname);
         }
-        if (rc) {
+        if (debug_switch_fake_sc_replication_timeout())
+            rc = -1;
+        if (rc && !replication_only_error_code(rc)) {
             sc_errf(s, "Failed to commit finalize transaction\n");
             return rc;
         }

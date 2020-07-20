@@ -60,6 +60,7 @@ static DB_Connection *curr_cnct = NULL;
 static volatile int do_repl;
 
 int gbl_deferred_phys_flag = 0;
+unsigned int gbl_deferred_phys_update;
 
 /* externs here */
 extern struct dbenv *thedb;

@@ -562,10 +562,11 @@ uint64_t sc_get_seed_table(char *table)
     sc_table_t *sctbl = NULL;
     uint64_t seed = 0;
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
-    assert(sc_tables);
-    sctbl = hash_find_readonly(sc_tables, &table);
-    if (sctbl)
-        seed = sctbl->seed;
+    if (sc_tables) {
+        sctbl = hash_find_readonly(sc_tables, &table);
+        if (sctbl)
+            seed = sctbl->seed;
+    }
     Pthread_mutex_unlock(&schema_change_in_progress_mutex);
     return seed;
 }

@@ -40,7 +40,7 @@ public class DatabaseMetaDataTest {
         String nm = rs.getString(3);
 
         assertEquals(cat, db);
-        assertEquals(sche, cluster);
+        assertEquals(sche, null);
         assertEquals(nm, "sp1");
         rs.close();
 
@@ -66,7 +66,7 @@ public class DatabaseMetaDataTest {
         String nm = rs.getString(3);
 
         assertEquals(cat, db);
-        assertEquals(sche, cluster);
+        assertEquals(sche, null);
         assertEquals(nm, "t1");
         assertFalse(rs.next());
         rs.close();
@@ -93,8 +93,14 @@ public class DatabaseMetaDataTest {
         assertTrue(rs.next());
         String tbl = rs.getString("TABLE_NAME");
         String col = rs.getString("COLUMN_NAME");
+        /* The 5th column is the SQL type. */
+        int sqltype = rs.getInt(5);
+        /* The 7th column is size. */
+        int len = rs.getInt(7);
         assertEquals(tbl, "t1");
         assertEquals(col, "i");
+        assertEquals(sqltype, java.sql.Types.INTEGER);
+        assertEquals(len, 4); /* 4-byte integer */
         assertFalse(rs.next());
         rs.close();
 
@@ -197,7 +203,7 @@ public class DatabaseMetaDataTest {
         String sche = rs.getString(1);
         String cat = rs.getString(2);
         assertEquals(cat, db);
-        assertEquals(sche, cluster);
+        assertEquals(sche, null);
         assertFalse(rs.next());
         rs.close();
     }
