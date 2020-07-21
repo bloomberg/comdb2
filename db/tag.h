@@ -272,6 +272,8 @@ int ctag_to_stag_blobs_tz(const char *table, const char *ctag,
                           const char *tzname);
 int ctag_to_ctag_buf(const char *table, const char *ftag, void *inbufp,
                      const char *ttag, void *outbufp);
+int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen);
+int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen);
 void add_tag_alias(const char *table, struct schema *s, char *name);
 void del_tag_schema(const char *table, const char *tagname);
 void replace_tag_schema(struct dbtable *db, struct schema *schema);

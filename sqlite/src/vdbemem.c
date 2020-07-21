@@ -1365,6 +1365,15 @@ int sqlite3VdbeMemSetStr(
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+
+int sqlite3VdbeMemSetMasterResolve(
+  Mem *pMem           /* Memory cell which will be resolved on master */
+) {
+  sqlite3VdbeMemSetNull(pMem);
+  pMem->flags = MEM_Master;
+  return SQLITE_OK;
+}
+
 /*
 ** Change the value of a Mem to be a datetime.
 */

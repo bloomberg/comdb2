@@ -46,13 +46,12 @@ enum {
     ,
     LLMETA_SPLEN = MAX_SPNAME /* maximum SP length. see also */
     ,
-    LLMETA_STATS_IXLEN =
-        64 /* maximum index name length for sqlite_stat1 & 2. */
+    LLMETA_STATS_IXLEN = 64 /* maximum index name length for sqlite_stat1 & 2. */
     ,
-    LLMETA_ALIASLEN =
-        63 /* maximum alias name, must be at least MAXALIASNAME in comdb2.h! */
+    LLMETA_ALIASLEN = 63 /* maximum alias name, must be at least MAXALIASNAME in comdb2.h! */
     ,
-    LLMETA_URLLEN = 255 /* maximum target name, format [CLASS_]DBNAME.TBLNAME */
+    LLMETA_URLLEN = 255, /* maximum target name, format [CLASS_]DBNAME.TBLNAME */
+    LLMETA_COLUMNLEN = MAXCOLNAME
 };
 
 /* this enum serves as a header for the llmeta keys */
@@ -117,11 +116,9 @@ typedef enum {
     LLMETA_ACCESSCONTROL_TABLExNODE = 19
 
     ,
-    LLMETA_SQLITE_STAT1_PREV_DONT_USE =
-        20 /* store previous sqlite-stat1 records- dont use this. */
+    LLMETA_SQLITE_STAT1_PREV_DONT_USE = 20 /* store previous sqlite-stat1 records- dont use this. */
     ,
-    LLMETA_SQLITE_STAT2_PREV_DONT_USE =
-        21 /* store previous sqlite-stat2 records- dont use this. */
+    LLMETA_SQLITE_STAT2_PREV_DONT_USE = 21 /* store previous sqlite-stat2 records- dont use this. */
     ,
     LLMETA_SQLITE_STAT1_PREV = 22 /* store previous sqlite-stat1 records. */
     ,
@@ -143,9 +140,8 @@ typedef enum {
     LLMETA_FDB_TABLENAME_ALIAS = 32 /* table name to replace a full path
                                     DBNAME.TABLENAME */
     ,
-    LLMETA_TABLE_VERSION =
-        33 /* reliable table version, updated by any schema change
-            */
+    LLMETA_TABLE_VERSION = 33 /* reliable table version, updated by any schema change
+                               */
     ,
     LLMETA_TABLE_PARAMETERS = 34 /* store various parameter values for tables
                               stored as a blob */
@@ -171,6 +167,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS = 50,
     LLMETA_VIEW = 51,                 /* User defined views */
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
+    LLMETA_SEQUENCE_VALUE = 53
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -3804,6 +3801,94 @@ static unsigned long long get_epochms(void)
         abort();
     }
     return (tv.tv_sec * 1000 + tv.tv_usec / 1000);
+}
+
+typedef struct llmeta_sequence_key {
+    int file_type;
+    char tablename[LLMETA_TBLLEN + 1];
+    uint8_t padding[3];
+    char columnname[LLMETA_COLUMNLEN + 1];
+} llmeta_sequence_key;
+
+enum { LLMETA_SEQUENCE_TYPE_KEY_LEN = 4 + LLMETA_TBLLEN + 1 + 3 + LLMETA_COLUMNLEN + 1 };
+BB_COMPILE_TIME_ASSERT(llmeta_sequence_key_len, sizeof(llmeta_sequence_key) == LLMETA_SEQUENCE_TYPE_KEY_LEN);
+
+int bdb_get_sequence(tran_type *t, const char *tablename, const char *columnname, int64_t *sequence, int *bdberr)
+{
+    int64_t s = 0;
+    int rc = 0, fndlen;
+    llmeta_sequence_key k = {0};
+    k.file_type = htonl(LLMETA_SEQUENCE_VALUE);
+    strncpy0(k.tablename, tablename, sizeof(k.tablename));
+    strncpy0(k.columnname, columnname, sizeof(k.columnname));
+
+    rc = bdb_lite_exact_fetch_full_tran(llmeta_bdb_state, t, &k, sizeof(k), &s, sizeof(s), &fndlen, bdberr);
+    if (rc || fndlen != sizeof(int64_t)) {
+        logmsg(LOGMSG_ERROR, "%s: tbl %s column %s sz=%d rc=%d bdberr=%d\n", __func__, tablename, columnname, fndlen,
+               rc, *bdberr);
+        return -1;
+    }
+    (*sequence) = flibc_ntohll(s);
+    return 0;
+}
+
+int bdb_del_sequence(tran_type *t, const char *tablename, const char *columnname, int *bdberr)
+{
+    llmeta_sequence_key k = {0};
+    k.file_type = htonl(LLMETA_SEQUENCE_VALUE);
+    strncpy0(k.tablename, tablename, sizeof(k.tablename));
+    strncpy0(k.columnname, columnname, sizeof(k.columnname));
+    int rc = bdb_lite_delete(llmeta_bdb_state, t, &k, sizeof(k), bdberr);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s: tbl %s column %s rc=%d bdberr=%d\n", __func__, tablename, columnname, rc, *bdberr);
+    return rc;
+}
+
+int bdb_set_sequence(tran_type *t, const char *tablename, const char *columnname, int64_t sequence, int *bdberr)
+{
+    llmeta_sequence_key k = {0};
+    k.file_type = htonl(LLMETA_SEQUENCE_VALUE);
+    strncpy0(k.tablename, tablename, sizeof(k.tablename));
+    strncpy0(k.columnname, columnname, sizeof(k.columnname));
+    sequence = flibc_htonll(sequence);
+    int rc = bdb_lite_delete(llmeta_bdb_state, t, &k, sizeof(k), bdberr);
+    if (rc != 0 && *bdberr != BDBERR_DEL_DTA) {
+        logmsg(LOGMSG_ERROR, "%s: tbl %s column %s del rc=%d bdberr=%d\n", __func__, tablename, columnname, rc,
+               *bdberr);
+        return rc;
+    }
+    rc = bdb_lite_full_add(llmeta_bdb_state, t, &sequence, sizeof(sequence), &k, sizeof(k), bdberr);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s: tbl %s column %s rc=%d bdberr=%d\n", __func__, tablename, columnname, rc, *bdberr);
+    return rc;
+}
+
+int bdb_increment_and_set_sequence(tran_type *t, const char *tablename, const char *columnname, int64_t *sequence,
+                                   int *bdberr)
+{
+    int rc = bdb_get_sequence(t, tablename, columnname, sequence, bdberr);
+    if (!rc) {
+        if (*sequence == INT64_MAX) {
+            logmsg(LOGMSG_ERROR, "%s: tbl %s column %s sequence at max %" PRId64 "\n", __func__, tablename, columnname,
+                   *sequence);
+            *bdberr = BDBERR_MAX_SEQUENCE;
+            return -1;
+        }
+        (*sequence)++;
+        rc = bdb_set_sequence(t, tablename, columnname, *sequence, bdberr);
+    }
+    return rc;
+}
+
+int bdb_check_and_set_sequence(tran_type *t, const char *tablename, const char *columnname, int64_t sequence,
+                               int *bdberr)
+{
+    int64_t s;
+    int rc = bdb_get_sequence(t, tablename, columnname, &s, bdberr);
+    if (!rc && sequence > s) {
+        rc = bdb_set_sequence(t, tablename, columnname, sequence, bdberr);
+    }
+    return rc;
 }
 
 static uint8_t *llmeta_sc_hist_data_put(const llmeta_sc_hist_data *p_sc_hist,

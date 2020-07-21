@@ -782,6 +782,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
             BACKOUT;
     }
 
+    if ((rc = alter_table_sequences(iq, transac, db, newdb))) {
+        sc_errf(s, "Failed alter_table_sequences: %d\n", rc);
+        BACKOUT;
+    }
+
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
         BACKOUT;
 

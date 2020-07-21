@@ -300,6 +300,8 @@ int client_type_to_server_type(int type)
         return SERVER_INTVDSUS;
     case CLIENT_VUTF8:
         return SERVER_VUTF8;
+    case CLIENT_SEQUENCE:
+        return SERVER_SEQUENCE;
     default:
         return type;
     }
@@ -2820,8 +2822,8 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
             if (flags & CONVERT_UPDATE) /* this is an update, so don't touch the
                                          * output buffer */
                 continue;
-            if (to_field->in_default == NULL ||
-                stype_is_null(to_field->in_default)) {
+            if (to_field->in_default_type != SERVER_SEQUENCE &&
+                (to_field->in_default == NULL || stype_is_null(to_field->in_default))) {
                 if (to_field->flags & NO_NULL) {
                     if (fail_reason)
                         fail_reason->reason =
@@ -3554,6 +3556,132 @@ void *create_blank_record(dbtable *db, size_t *length)
     if (length)
         *length = db->lrl;
     return record;
+}
+
+int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen)
+{
+    tran_type *tran = (tran_type *)intrans;
+    char *crec = record;
+    int rc = 0, bdberr = 0;
+    int64_t val;
+    struct schema *schema = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    for (int nfield = 0; nfield < schema->nmembers; nfield++) {
+        const struct field *field = &schema->member[nfield];
+
+        switch (field->in_default_type) {
+        case SERVER_SEQUENCE: {
+            struct field_conv_opts inopts = {0};
+            struct field_conv_opts outopts = {0};
+            int outsz, isnull;
+#ifdef _LINUX_SOURCE
+            outopts.flags |= FLD_CONV_LENDIAN;
+#endif
+            rc = SERVER_to_CLIENT(crec + field->offset, field->len, field->type,
+                                  (const struct field_conv_opts *)&inopts, NULL, 0, &val, sizeof(val), CLIENT_INT,
+                                  &isnull, &outsz, (const struct field_conv_opts *)&outopts, NULL);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Failed to convert field to client?\n");
+                abort();
+            }
+            if (!isnull) {
+                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename, field->name, val, &bdberr);
+                if (rc) {
+                    if (bdberr == BDBERR_DEADLOCK) {
+                        rc = bdberr;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error writing sequence %d bdberr %d\n", __func__, rc, bdberr);
+                    }
+                }
+            }
+            break;
+        }
+        }
+    }
+    return 0;
+}
+
+int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen)
+{
+    tran_type *tran = (tran_type *)intrans;
+    char *crec = record;
+    int rc = 0, bdberr = 0;
+    int64_t seq;
+    struct schema *schema = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    for (int nfield = 0; nfield < schema->nmembers; nfield++) {
+        const struct field *field = &schema->member[nfield];
+        int outsz;
+        // switch on the dbstore value, invoke handler to fill
+        switch (field->in_default_type) {
+        case SERVER_SEQUENCE:
+            if (stype_is_resolve_master(crec + field->offset)) {
+                struct field_conv_opts inopts = {0};
+                struct field_conv_opts outopts = {0};
+#ifdef _LINUX_SOURCE
+                inopts.flags |= FLD_CONV_LENDIAN;
+#endif
+                rc = bdb_increment_and_set_sequence(tran, iq->usedb->tablename, field->name, &seq, &bdberr);
+                if (rc) {
+                    if (bdberr == BDBERR_DEADLOCK || bdberr == BDBERR_MAX_SEQUENCE) {
+                        rc = bdberr;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error incrementing sequence %d bdberr %d\n", __func__, rc, bdberr);
+                    }
+                    return rc;
+                }
+                rc = CLIENT_to_SERVER(&seq, sizeof(seq), CLIENT_INT, 0, (const struct field_conv_opts *)&inopts, NULL,
+                                      crec + field->offset, field->len, field->type, 0, &outsz, &outopts, NULL);
+                if (rc) {
+                    switch (field->len) {
+                    case 3:
+                        if (seq > INT16_MAX)
+                            rc = BDBERR_MAX_SEQUENCE;
+                        break;
+                    case 5:
+                        if (seq > INT32_MAX)
+                            rc = BDBERR_MAX_SEQUENCE;
+                        break;
+                    case 9:
+                        if (seq > INT64_MAX)
+                            rc = BDBERR_MAX_SEQUENCE;
+                        break;
+                    }
+                    logmsg(LOGMSG_ERROR, "Failed to convert seq %" PRId64 " to %s %s\n", seq, iq->usedb->tablename,
+                           field->name);
+                    return rc;
+                }
+            } else if (!stype_is_null(crec + field->offset)) {
+                struct field_conv_opts inopts = {0};
+                struct field_conv_opts outopts = {0};
+                int isnull = 0;
+                int64_t val;
+#ifdef _LINUX_SOURCE
+                outopts.flags |= FLD_CONV_LENDIAN;
+#endif
+                rc = SERVER_to_CLIENT(crec + field->offset, field->len, field->type,
+                                      (const struct field_conv_opts *)&inopts, NULL, 0, &val, sizeof(val), CLIENT_INT,
+                                      &isnull, &outsz, (const struct field_conv_opts *)&outopts, NULL);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "Failed to convert field to client?\n");
+                    abort();
+                }
+                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename, field->name, val, &bdberr);
+                if (rc) {
+                    if (bdberr == BDBERR_DEADLOCK) {
+                        rc = bdberr;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error writing sequence %d bdberr %d\n", __func__, rc, bdberr);
+                    }
+                }
+            }
+
+            break;
+
+        /* other master resolved types here */
+        default:
+            break;
+        }
+    }
+    return 0;
 }
 
 /*
@@ -4595,6 +4723,13 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                          fold->in_default_type != fnew->in_default_type) {
                     snprintf(buf, sizeof(buf), "dbstore");
                     change = SC_DBSTORE_CHANGE;
+                    if (fnew->in_default_type == SERVER_SEQUENCE && fold->in_default_type != SERVER_SEQUENCE &&
+                        (fnew->flags & NO_NULL)) {
+                        if (out) {
+                            logmsg(LOGMSG_INFO, "tag %s field %s new sequence requires null\n", old->tag, fold->name);
+                        }
+                        return SC_BAD_NEW_FIELD;
+                    }
                 } else {
                     assert(fold->in_default_len == fnew->in_default_len);
                     int len = fold->in_default_len;
@@ -4735,7 +4870,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                             old->tag, nidx, fnew->name);
                 }
                 break;
-            } else if (fnew->in_default || allow_null) {
+            } else if (allow_null || (fnew->in_default && fnew->in_default_type != SERVER_SEQUENCE)) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)\n",
@@ -5175,6 +5310,7 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
                 is_null = 1; /* use isnull flag for current timestamp since
                                 null=yes is used for dbstore null */
         }
+
         if (*p_default == NULL) {
             logmsg(LOGMSG_ERROR, "init_default_value: out of memory\n");
             outrc = -1;
@@ -5183,10 +5319,15 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
              * system does and will balk if no \0 is found. */
             if (opttype == CLIENT_CSTR)
                 optsz++;
-            rc = CLIENT_to_SERVER(typebuf, optsz, opttype, is_null /*isnull*/,
-                                  NULL /*convopts*/, NULL /*blob*/, *p_default,
-                                  *p_default_len, *p_default_type, 0, &outdtsz,
-                                  &fld->convopts, NULL /*blob*/);
+
+            if (opttype == CLIENT_SEQUENCE && loadstore == FLDOPT_DBSTORE) {
+                set_resolve_master(*p_default, *p_default_len);
+                rc = 0;
+            } else {
+                rc = CLIENT_to_SERVER(typebuf, optsz, opttype, is_null /*isnull*/, NULL /*convopts*/, NULL /*blob*/,
+                                      *p_default, *p_default_len, *p_default_type, 0, &outdtsz, &fld->convopts,
+                                      NULL /*blob*/);
+            }
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "%s initialisation failed for field %s\n", name,
                         fld->name);
@@ -5196,13 +5337,6 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
                 *p_default_type = 0;
                 outrc = -1;
             }
-            /*
-            else
-            {
-               printf("%s opt for %s is:\n", name, fld->name);
-               fsnapf(stdout, *p_default, outdtsz);
-            }
-            */
         }
     }
 
@@ -6711,6 +6845,131 @@ void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)
     bdb_set_queue_odh_options(handle, odh, compr, persist);
 }
 
+int delete_table_sequences(tran_type *tran, struct dbtable *db)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr) != 0)) {
+                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
+int gbl_permit_small_sequences = 0;
+
+int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbtable *newdb)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < olddb->schema->nmembers; i++) {
+        struct field *f = &olddb->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int fn = find_field_idx_in_tag(newdb->schema, f->name);
+            if (fn == -1 || newdb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
+                if ((rc = bdb_del_sequence(tran, olddb->tablename, f->name, &bdberr))) {
+
+                    logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__,
+                           olddb->tablename, f->name, rc, bdberr);
+                    return rc;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < newdb->schema->nmembers; i++) {
+        struct field *f = &newdb->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int fn = find_field_idx_in_tag(olddb->schema, f->name);
+            if (fn == -1) {
+                if ((rc = bdb_set_sequence(tran, olddb->tablename, f->name, 0, &bdberr))) {
+                    logmsg(LOGMSG_ERROR, "%s error creating sequence %s %s rc=%d bdberr=%d\n", __func__,
+                           olddb->tablename, f->name, rc, bdberr);
+                    return rc;
+                }
+            }
+
+            // TODO: Scan for highest value?
+            else if (olddb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
+                logmsg(LOGMSG_ERROR, "%s cannot set nextsequence for existing column %s\n", __func__, f->name);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "cannot set sequence for existing column");
+                }
+                return -1;
+            }
+            if (!gbl_permit_small_sequences && f->len < 9) {
+                logmsg(LOGMSG_ERROR, "%s failing sc, permit-small-sequences is disabled\n", __func__);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                }
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+int rename_table_sequences(tran_type *tran, dbtable *db, const char *newname)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int64_t s;
+            if ((rc = bdb_get_sequence(tran, db->tablename, f->name, &s, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error getting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+            if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+            if ((rc = bdb_set_sequence(tran, newname, f->name, s, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, newname, f->name, rc,
+                       bdberr);
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
+int init_table_sequences(struct ireq *iq, tran_type *tran, dbtable *db)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            if (f->type != SERVER_BINT) {
+                logmsg(LOGMSG_ERROR, "%s sequences only supported for int types\n", __func__);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                }
+                return -1;
+            }
+            if (!gbl_permit_small_sequences && f->len < 9) {
+                logmsg(LOGMSG_ERROR, "%s failing sc, permit-small-sequences is disabled\n", __func__);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                }
+                return -1;
+            }
+            if ((rc = bdb_set_sequence(tran, db->tablename, f->name, 0, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
 /* Compute map of dbstores used in vtag_to_ondisk */
 void update_dbstore(dbtable *db)
 {
@@ -6779,7 +7038,7 @@ void update_dbstore(dbtable *db)
                 /* column not seen before */
                 db->dbstore[position].ver = v;
 
-                if (from->in_default_len) {
+                if (from->in_default_len && from->in_default_type != SERVER_SEQUENCE) {
                     db->dbstore[position].len = to->len;
                     db->dbstore[position].data = calloc(1, to->len);
                     if (db->dbstore[position].data == NULL) {

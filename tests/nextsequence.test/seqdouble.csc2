@@ -1,0 +1,5 @@
+schema
+{
+    int a null=yes
+    double b null=yes dbstore=nextsequence
+}

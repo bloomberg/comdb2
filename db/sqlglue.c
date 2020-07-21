@@ -990,6 +990,11 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
         return rc;
     }
 
+    if (m->flags & MEM_Master) {
+        set_resolve_master(out + f->offset, f->len);
+        rc = 0;
+    }
+
     if (m->flags & MEM_Int) {
         i64 i = flibc_htonll(m->u.i);
         rc = CLIENT_to_SERVER(
@@ -1589,6 +1594,10 @@ char *sql_field_default_trans(struct field *f, int is_out)
                 dstr = sqlite3_mprintf("'%q'", cval);
             }
         }
+        break;
+    }
+    case SERVER_SEQUENCE: {
+        dstr = sqlite3_mprintf("%q", "nextsequence");
         break;
     }
     /* no defaults for blobs or vutf8 */

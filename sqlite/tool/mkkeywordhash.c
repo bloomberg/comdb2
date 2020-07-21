@@ -67,10 +67,14 @@ struct Keyword {
 #else
 #  define ATTACH     0x00000008
 #endif
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#  define AUTOINCR   0x00000010
+#else
 #ifdef SQLITE_OMIT_AUTOINCREMENT
 #  define AUTOINCR   0
 #else
 #  define AUTOINCR   0x00000010
+#endif
 #endif
 #ifdef SQLITE_OMIT_CAST
 #  define CAST       0
@@ -252,6 +256,7 @@ static Keyword aKeywordTable[] = {
   { "LIMIT",            "TK_LIMIT",        ALWAYS                 },
   { "MATCH",            "TK_MATCH",        ALWAYS                 },
   { "NATURAL",          "TK_JOIN_KW",      ALWAYS                 },
+  { "NEXTSEQUENCE",     "TK_CTIME_KW",     ALWAYS                 },
   { "NO",               "TK_NO",           FKEY|WINDOWFUNC        },
   { "NOT",              "TK_NOT",          ALWAYS                 },
   { "NOTHING",          "TK_NOTHING",      UPSERT                 },

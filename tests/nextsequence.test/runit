@@ -1,0 +1,402 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+
+export output=output.txt
+export half=half.txt
+export update=update.txt
+export high=high.txt
+
+#export debug=1
+[[ $debug == "1" ]] && set -x
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    exit -1
+}
+
+function basic_output
+{
+    > $output
+    for (( x = 1 ; x <= 100 ; ++x )) ; do
+        echo "(a=$x, b=$x)" >> $output
+    done
+}
+
+function half_output
+{
+    > $half
+    for (( x = 1 ; x <= 50 ; ++x )) ; do
+        echo "(a=$x, b=$x)" >> $half
+    done
+
+    for (( x = 51 ; x <= 100 ; ++x )) ; do
+        echo "(a=$x, b=NULL)" >> $half
+    done
+}
+
+function high_output
+{
+    > $high
+    for (( x = 1 ; x <= 100 ; ++x )) ; do
+        echo "(a=$x, b=$(( x + 1000 )))" >> $high
+    done
+}
+
+function update_output
+{
+    > $update
+    for (( x = 1 ; x <= 50 ; ++x )) ; do
+        echo "(a=$x, b=$x)" >> $update
+    done
+
+    for (( x = 51 ; x <= 100 ; ++x )) ; do
+        echo "(a=$x, b=$(( x + 1000 )))" >> $update
+    done
+
+}
+
+function disable_strict_mode
+{
+    if [[ -n $CLUSTER ]]; then
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "put tunable 'permit_small_sequences' 1"
+        done
+    else
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "put tunable 'permit_small_sequences' 1"
+    fi
+}
+
+function enable_strict_mode
+{
+    if [[ -n $CLUSTER ]]; then
+        for n in $CLUSTER ; do
+            $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "put tunable 'permit_small_sequences' 0"
+        done
+    else
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME default "put tunable 'permit_small_sequences' 0"
+    fi
+}
+
+function ddl_basic
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $output
+    [[ $? != 0 ]] && failexit "Failed ddl_basic test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function csc2_basic
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seq.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $output
+    [[ $? != 0 ]] && failexit "Failed csc2_basic test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function rename_table
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,50)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 rename to t2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t2(a) select * from generate_series (51,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t2 order by a" > x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t2"
+    diff x $output
+    [[ $? != 0 ]] && failexit "Failed rename_table test"
+}
+
+function drop_nextsequence_ddl
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,50)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 alter b drop default"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (51,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $half
+    [[ $? != 0 ]] && failexit "Failed drop_nextsequence_ddl test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function drop_nextsequence_csc2
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seq.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,50)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat seqnonextsequence.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (51,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $half
+    [[ $? != 0 ]] && failexit "Failed drop_nextsequence_csc2 test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function insert_nextsequence
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a, b) values (1, 1000)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "delete from t1 where 1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $high
+    [[ $? != 0 ]] && failexit "Failed insert_nextsequence test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function update_nextsequence
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int default nextsequence)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,51)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "update t1 set b = 1051 where b = 51"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (52,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $update
+    [[ $? != 0 ]] && failexit "Failed update_nextsequence test"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function max_sequence_ddl
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "update t1 set b = 2147483646 where 1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    [[ $? != 0 ]] && failexit "Failed max_sequence"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    [[ $? == 0 ]] && failexit "Allowed insert after exhausted sequence"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function max_sequence_csc2
+{
+    disable_strict_mode
+$CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqlonglong.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "update t1 set b = 9223372036854775806 where 1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    [[ $? != 0 ]] && failexit "Failed max_sequence"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) values(1)"
+    [[ $? == 0 ]] && failexit "Allowed insert after exhausted sequence"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+# You can drop nextsequence from a column, but not add it (add a new column instead)
+function prevent_modify_ddl
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 alter a set autoincrement"
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to autoincrement from ddl"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_modify_csc2
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqnoseq.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat seq.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed column dbstore to be updated to nextsequence from csc2"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_non_null_new_column_ddl
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 add b int autoincrement not null"
+    [[ $? == 0 ]] && failexit "Allowed new ddl nextsequence column dbstore without null"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function prevent_non_null_new_column_csc2
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seq.csc2)}\$\$
+EOF
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat seqnonull.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed new csc2 nextsequence column dbstore without null"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function persist_against_fastinit
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a, b) values(1000, 1000)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "truncate t1"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "insert into t1(a) select * from generate_series (1,100)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "select * from t1 order by a" > x
+    diff x $high
+    [[ $? != 0 ]] && failexit "Sequence didn't persist against fastinit"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function non_strict_csc2
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqlonglong.csc2)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Failed to create nextsequence column in non strict csc2 mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat seq.csc2)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Failed modify nextsequence column in non strict csc2 mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function strict_csc2
+{
+    enable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seq.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Failed to prevent int nextsequence column in strict csc2 mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqlonglong.csc2)}\$\$
+EOF
+    [[ $? != 0 ]] && failexit "Failed to create nextsequence column in strict csc2 mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+alter table t1 {$(cat seqshort.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Failed to prevent short nextsequence column in strict csc2 mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function non_strict_ddl
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b longlong autoincrement)"
+    [[ $? != 0 ]] && failexit "Failed to create nextsequence column in non-strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 alter b set data type int"
+    [[ $? != 0 ]] && failexit "Failed to allow small nextsequence column in non strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function strict_ddl
+{
+    enable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    [[ $? == 0 ]] && failexit "Allowed small nextsequence column in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b longlong autoincrement)"
+    [[ $? != 0 ]] && failexit "Failed to create nextsequence column in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "alter table t1 alter b set data type int"
+    [[ $? == 0 ]] && failexit "Allowed small nextsequence column in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function validate_type_ddl
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b datetime autoincrement)"
+    [[ $? == 0 ]] && failexit "Allowed ddl autoincrement against datetime"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b text autoincrement)"
+    [[ $? == 0 ]] && failexit "Allowed ddl autoincrement against text"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b double autoincrement)"
+    [[ $? == 0 ]] && failexit "Allowed ddl autoincrement against double"
+    enable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b int autoincrement)"
+    [[ $? == 0 ]] && failexit "Allowed ddl autoincrement against int in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t1 (a int, b short autoincrement)"
+    [[ $? == 0 ]] && failexit "Allowed ddl autoincrement against short in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function validate_type_csc2
+{
+    disable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqdatetime.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against datetime"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqcstring.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against cstring"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqdouble.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against double"
+    enable_strict_mode
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seq.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against int in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seq.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against int in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table t1 {$(cat seqshort.csc2)}\$\$
+EOF
+    [[ $? == 0 ]] && failexit "Allowed csc2 nextsequence against short in strict mode"
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t1"
+}
+
+function set_output_files
+{
+    basic_output
+    half_output
+    high_output
+    update_output
+}
+
+function run_test
+{
+    set_output_files
+    insert_nextsequence
+    ddl_basic
+    csc2_basic
+    rename_table
+    drop_nextsequence_ddl
+    drop_nextsequence_csc2
+    update_nextsequence
+    max_sequence_ddl
+    max_sequence_csc2
+    prevent_modify_ddl
+    prevent_modify_csc2
+    prevent_non_null_new_column_ddl
+    prevent_non_null_new_column_csc2
+    persist_against_fastinit
+    non_strict_ddl
+    non_strict_csc2
+    strict_ddl
+    strict_csc2
+    validate_type_ddl
+    validate_type_csc2
+}
+
+run_test
+echo "Success"

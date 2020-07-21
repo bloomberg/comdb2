@@ -49,7 +49,7 @@
 %token T_KEYS 
 %token T_CONSTANTS
 %token T_PUBLIC T_PRIVATE
-%token T_FLD_NULL T_FLD_STRDEFAULT T_FLD_LDDEFAULT T_FLD_PADDING
+%token T_FLD_NULL T_FLD_STRDEFAULT T_FLD_LDDEFAULT T_FLD_NEXTSEQUENCE T_FLD_PADDING
 %token T_TABLE_TAG T_DEFAULT T_ONDISK T_SCHEMA
 %token T_CONSTRAINTS T_CASCADE
 %token T_CON_ON  T_CON_UPDATE T_CON_DELETE T_RESTRICT
@@ -190,6 +190,7 @@ cnstdef: varname '=' number ',' comment cnstdef { add_constant($1, $3.number, 0)
 fieldopts: T_FLD_STRDEFAULT '=' number fieldopts          { add_fldopt(FLDOPT_DBSTORE,CLIENT_INT, $3.numstr); }
            | T_FLD_LDDEFAULT '=' number fieldopts         { add_fldopt(FLDOPT_DBLOAD,CLIENT_INT, $3.numstr); }
            | T_FLD_STRDEFAULT '=' fltnumber fieldopts     { double f=$3; add_fldopt(FLDOPT_DBSTORE,CLIENT_REAL,&f); }
+           | T_FLD_STRDEFAULT '=' T_FLD_NEXTSEQUENCE fieldopts { add_fldopt(FLDOPT_DBSTORE,CLIENT_SEQUENCE,NULL); }
            | T_FLD_LDDEFAULT '=' fltnumber fieldopts      { double f=$3; add_fldopt(FLDOPT_DBLOAD,CLIENT_REAL,&f); }
            | T_FLD_STRDEFAULT '=' string  fieldopts       { add_fldopt(FLDOPT_DBSTORE,CLIENT_CSTR,$3); }
            | T_FLD_LDDEFAULT '=' string fieldopts         { add_fldopt(FLDOPT_DBLOAD,CLIENT_CSTR,$3); }

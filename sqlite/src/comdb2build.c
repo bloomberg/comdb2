@@ -27,6 +27,7 @@
 #include "cdb2_constants.h"
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
+#define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
 
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
@@ -35,6 +36,7 @@ extern int gbl_check_access_controls;
 extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;
+extern int gbl_permit_small_sequences;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -2757,6 +2759,21 @@ static const char *type_comdb2_str[] = {TYPE_MAPPING};
 static int type_flags[] = {TYPE_MAPPING};
 #undef XMACRO_TYPE
 
+static inline int validAutoIncrementColumnCheck(struct comdb2_column *column)
+{
+    if ( column->type == SQL_TYPE_LONGLONG )
+        return 0;
+    if ( gbl_permit_small_sequences ) {
+        switch ( column->type ) {
+            case SQL_TYPE_SHORT:
+            case SQL_TYPE_INT:
+                return 0;
+            break;
+        }
+    }
+    return 1;
+}
+
 /*
   Allocate Comdb2 DDL context to be used during parsing.
 */
@@ -4736,6 +4753,44 @@ static void comdb2ColumnSetNull(Parse *pParse, struct comdb2_column *column)
 }
 
 /*
+ * Set autoincrement flag 
+ */
+void comdb2SetAutoIncrement(Parse *pParse)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+    struct comdb2_column *column;
+
+    if (use_sqlite_impl(pParse)) {
+        assert(ctx == 0);
+        return;
+    }
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    column = (struct comdb2_column *)LISTC_BOT(&ctx->schema->column_list);
+
+    if (( validAutoIncrementColumnCheck(column) )) {
+        setError(pParse, SQLITE_MISUSE, COMDB2_INVALID_AUTOINCREMENT);
+        return;
+    }
+
+    char *nextsequence="nextsequence";
+    comdb2ColumnSetDefault(pParse, column, NULL, nextsequence, nextsequence + 12);
+    return;
+}
+
+/*
   Allow NULLs for the last added column.
 */
 void comdb2AddNull(Parse *pParse)
@@ -6385,6 +6440,28 @@ void comdb2AlterColumnSetDefault(
   Implementation of ALTER TABLE .. ALTER COLUMN .. DROP DEFAULT .. 
  */
 void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+
+    struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
+
+    if (ctx == 0) {
+        /* An error must have been set. */
+        assert(pParse->rc != 0);
+        return;
+    }
+
+    if ((ctx->flags & DDL_NOOP) != 0) {
+        return;
+    }
+
+    assert(ctx->alter_column);
+    ctx->alter_column->def = 0;
+    return;
+}
+
+void comdb2AlterColumnDropAutoIncrement(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
