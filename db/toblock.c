@@ -2166,7 +2166,9 @@ static int toblock_outer(struct ireq *iq, block_state_t *blkstate)
 
     my_tid = pthread_self();
 
-    iq->jsph = javasp_trans_start(iq->debug);
+    if (!iq->tranddl) {
+        iq->jsph = javasp_trans_start(iq->debug);
+    }
     iq->blkstate = blkstate;
 
     /* paranoia - make sure this thing starts out initialized unless we
