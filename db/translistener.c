@@ -210,14 +210,13 @@ struct javasp_trans_state *javasp_trans_start(int debug)
 
     LISTC_FOR_EACH(&stored_procs, sp, lnk) { st->events |= sp->flags; }
 
-    SP_RELLOCK();
-
     return st;
 }
 
 void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *ireq, void *parent_trans, void *trans)
 {
+    if (javasp_trans_handle == NULL) return;
     javasp_trans_handle->iq = ireq;
     javasp_trans_handle->trans = trans;
     javasp_trans_handle->parent_trans = parent_trans;
@@ -225,6 +224,8 @@ void javasp_trans_set_trans(struct javasp_trans_state *javasp_trans_handle,
 
 void javasp_trans_end(struct javasp_trans_state *javasp_trans_handle)
 {
+    if (javasp_trans_handle == NULL) return;
+    SP_RELLOCK();
     bzero(javasp_trans_handle, sizeof(struct javasp_trans_state));
     free(javasp_trans_handle);
 }
@@ -846,8 +847,6 @@ int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
     if (javasp_trans_handle == NULL)
         return 0;
 
-    SP_READLOCK();
-
     /* TODO: this code can be made a lot more efficient, eg
        should store list of stored procedures interested in a table's updates
        off the table structure */
@@ -859,7 +858,6 @@ int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
                 rc = sp_trigger_run(javasp_trans_handle, p, t, event, oldrec,
                                     newrec);
                 if (rc) {
-                    SP_RELLOCK();
                     return rc;
                 }
                 goto nextproc;
@@ -868,8 +866,6 @@ int javasp_trans_tagged_trigger(struct javasp_trans_state *javasp_trans_handle,
     nextproc:
         ;
     }
-
-    SP_RELLOCK();
 
     return 0;
 }
@@ -919,8 +915,7 @@ void javasp_dealloc_rec(struct javasp_rec *rec)
     }
 }
 
-static int javasp_do_procedure_op_int(int op, const char *name,
-                                      const char *param, const char *paramvalue)
+int javasp_do_procedure_op(int op, const char *name, const char *param, const char *paramvalue)
 {
     int rc;
 
@@ -950,14 +945,14 @@ static int javasp_do_procedure_op_int(int op, const char *name,
     }
 }
 
-int javasp_do_procedure_op(int op, const char *name, const char *param,
-                           const char *paramvalue)
+void javasp_do_procedure_wrlock(void)
 {
-    int rc;
     SP_WRITELOCK();
-    rc = javasp_do_procedure_op_int(op, name, param, paramvalue);
+}
+
+void javasp_do_procedure_unlock(void)
+{
     SP_RELLOCK();
-    return rc;
 }
 
 int javasp_trans_care_about(struct javasp_trans_state *javasp_trans_handle,
@@ -1402,13 +1397,11 @@ void javasp_rec_have_blob(struct javasp_rec *rec, int blobn,
 int javasp_exists(const char *name)
 {
     struct stored_proc *sp;
-    SP_READLOCK();
     LISTC_FOR_EACH(&stored_procs, sp, lnk)
     {
         if (strcmp(sp->name, name) == 0)
             break;
     }
-    SP_RELLOCK();
     return sp != NULL;
 }
 
