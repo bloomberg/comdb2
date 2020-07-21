@@ -3382,6 +3382,14 @@ extern int gbl_debug_sql_opcodes;
 void set_bdb_option_flags(struct dbtable *, int odh, int ipu, int isc, int ver,
                           int compr, int blob_compr, int datacopy_odh);
 
+int init_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *);
+
+int delete_table_sequences(tran_type *tran, struct dbtable *);
+
+int rename_table_sequences(tran_type *tran, struct dbtable *, const char *newname);
+
+int alter_table_sequences(struct ireq *iq, tran_type *tran, struct dbtable *old, struct dbtable *new);
+
 void set_bdb_queue_option_flags(struct dbtable *, int odh, int compr,
                                 int persist);
 

@@ -61,6 +61,7 @@ static int systblColumnsConnect(
 #define STCOL_DEFVAL    6
 #define STCOL_DBLOAD    7
 #define STCOL_ALLOWNULL 8
+#define STCOL_NEXTSEQ  9
 
   rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_columns(tablename,"
                                 "columnname,"
@@ -70,7 +71,8 @@ static int systblColumnsConnect(
                                 "varinlinesize,"
                                 "defaultvalue,"
                                 "dbload,"
-                                "isnullable)");
+                                "isnullable,"
+                                "lastsequence)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -193,6 +195,26 @@ static int systblColumnsColumn(
     case STCOL_ALLOWNULL: {
       sqlite3_result_text(ctx, YESNO(!(pField->flags & NO_NULL)),
         -1, SQLITE_STATIC);
+      break;
+    }
+    case STCOL_NEXTSEQ: {
+      if ( pField->in_default_type == SERVER_SEQUENCE ) {
+          tran_type *trans = curtran_gettran();
+          int64_t seq;
+          int bdberr;
+          int rc = bdb_get_sequence(trans, pDb->tablename, pField->name, &seq, &bdberr);
+          if (rc) {
+              logmsg(LOGMSG_ERROR, "bdb_get_sequence %s %s -> rc %d bdberr %d\n", pDb->tablename, pField->name, rc, bdberr);
+              curtran_puttran(trans);
+              return -1;
+          }
+          sqlite3_result_int64(ctx, seq+1);
+          curtran_puttran(trans);
+      }
+      else {
+          sqlite3_result_null(ctx);
+      }
+      break;
     }
   }
   return SQLITE_OK;

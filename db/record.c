@@ -377,6 +377,25 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
+    rc = set_master_columns(iq, trans, od_dta, od_len);
+    if (rc == BDBERR_DEADLOCK) {
+        if (iq->debug)
+            reqprintf(iq, "SET MASTER COLUMNS DEADLOCK");
+        retrc = RC_INTERNAL_RETRY;
+        ERR;
+    } else if (rc == BDBERR_MAX_SEQUENCE) {
+        reqerrstr(iq, ERR_INTERNAL, "Exhausted column sequence");
+        *opfailcode = ERR_INTERNAL;
+        retrc = ERR_INTERNAL;
+        ERR;
+    } else if (rc) {
+        if (iq->debug)
+            reqprintf(iq, "SET MASTER COLUMNS ERROR %d", rc);
+        *opfailcode = ERR_INTERNAL;
+        retrc = ERR_INTERNAL;
+        ERR;
+    }
+
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
     if (rc < 0) {
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
@@ -1155,6 +1174,19 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
         del_idx_blobs = del_blobs_buf;
         add_idx_blobs = add_blobs_buf;
+    }
+    rc = upd_master_columns(iq, trans, od_dta, od_len);
+    if (rc == BDBERR_DEADLOCK) {
+        if (iq->debug)
+            reqprintf(iq, "UPD MASTER COLUMNS DEADLOCK");
+        retrc = RC_INTERNAL_RETRY;
+        ERR;
+    } else if (rc) {
+        if (iq->debug)
+            reqprintf(iq, "SET MASTER COLUMNS ERROR %d", rc);
+        *opfailcode = ERR_INTERNAL;
+        retrc = ERR_INTERNAL;
+        ERR;
     }
 
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);

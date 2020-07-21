@@ -61,13 +61,14 @@ of fields enclosed by braces.
 Field types are explained in the [data types](datatypes.html) section.  A field is defined by listing its type, 
 name, size (if allowed/required by type), followed by optional field keywords.
 
-A example table definition looks like this:
+An example table definition looks like this:
 
 ```
 schema {
     cstring      first_name[32]                    // first name
     cstring      last_name[32]
     int          userid
+    longlong     sequence    dbstore=nextsequence
     double       balance     dbstore=100.00 null=yes
     datetime     paydate     dbstore="CURRENT_TIMESTAMP"
     byte         permissions[12]
@@ -90,6 +91,7 @@ The dbstore value must have the same datatype as the column they are attached to
 * Blob fields cannot have dbstore values.
 * For datetime fields you can specify a string such as "2017-03-08T235959.987 America/New_York" or "CURRENT_TIMESTAMP"
 for current database system timestamp.
+* For longlong integer fields may specify a dbstore of nextsequence.  This will populate the column with a value one greater than the largest value which has ever been seen for the column.
 * For byte arrays you can specify dbstore=0 to indicate that it should be zeroed be default.
 
 The schema section is required - it's the only required section.

@@ -558,7 +558,9 @@ stack
               }
           }
           {line
-              {opt dbstore = /literal-value}
+              {opt dbstore = {or
+                      {line nextsequence}
+                      {line /literal-value}}}
               {opt null = {or yes no}}
           }
       }
@@ -680,6 +682,7 @@ stack
 
   column-constraint {
       or
+      {line AUTOINCREMENT }
       {line DEFAULT expr }
       {line NULL }
       {line NOT NULL }
@@ -770,6 +773,7 @@ stack
                               {line {opt SET DATA} TYPE column-type }
                               {line SET DEFAULT expr }
                               {line DROP DEFAULT }
+                              {line DROP AUTOINCREMENT }
                               {line
                                   {or
                                       {line SET }

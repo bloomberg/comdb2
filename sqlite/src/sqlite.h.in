@@ -4549,8 +4549,7 @@ int sqlite3_data_count(sqlite3_stmt *pStmt);
 #define SQLITE_DATETIMEUS     9
 #define SQLITE_INTERVAL_DSUS 10
 #define SQLITE_DECIMAL       11
-
-#define comdb2_is_valid_type(tp) ((SQLITE_INTEGER <= tp) && (tp <= SQLITE_DECIMAL))
+#define SQLITE_NEXTSEQ       (SQLITE_MAX_U32-2)
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

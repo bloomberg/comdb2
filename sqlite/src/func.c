@@ -116,6 +116,7 @@ static void typeofFunc(
   assert( SQLITE_DATETIMEUS==9 );
   assert( SQLITE_INTERVAL_DSUS==10 );
   assert( SQLITE_DECIMAL==11 );
+  assert( SQLITE_NEXTSEQ==(SQLITE_MAX_U32-2) );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* EVIDENCE-OF: R-01470-60482 The sqlite3_value_type(V) interface returns
   ** the datatype code for the initial datatype of the sqlite3_value object
@@ -143,6 +144,7 @@ static void lengthFunc(
     case SQLITE_DATETIME:
     case SQLITE_DATETIMEUS:
     case SQLITE_DECIMAL:
+    case SQLITE_NEXTSEQ:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case SQLITE_BLOB:
     case SQLITE_INTEGER:

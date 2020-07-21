@@ -661,8 +661,7 @@ int keysize(struct key *ck) /* CALCULATES SIZE OF A STRUCT KEY */
     struct table *tables = macc_globals->tables;
     arr = (tables[ondtidx].sym[ck->sym].dim[0] != -1); /* is this an array? */
     rng = (ck->rg[0] > 0 && ck->rg[1] > 0); /* is an element specified?  */
-    chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) ||
-           (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
+    chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) || (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
            (tables[ondtidx].sym[ck->sym].type == T_CSTR)); /* is this a character type? */
 
     if (rng < 0) { /* report this odd error     */
@@ -1464,12 +1463,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
             case T_ULONG:
             case T_UINTEGER4:
             case T_INTEGER4:
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_UINT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
+                if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_INT &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_UINT &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_SEQUENCE &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL) {
                     csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
                                     "SCHEMA MUST MATCH FIELD TYPE: %s\n",
                             current_line, name);
@@ -1893,8 +1890,8 @@ void add_fldopt(int opttype, int valtype, void *value)
         reset_fldopt();
         return;
     }
-    if (valtype != CLIENT_INT && valtype != CLIENT_REAL &&
-        valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY) {
+    if (valtype != CLIENT_INT && valtype != CLIENT_REAL && valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY &&
+        valtype != CLIENT_SEQUENCE) {
         csc2_error("FIELD OPTION ERROR: INVALID VALUE TYPE %d\n", valtype);
         any_errors++;
         reset_fldopt();
@@ -3122,6 +3119,17 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
             }
             return -1;
         }
+
+        case CLIENT_SEQUENCE: {
+            if ((*value_type == CLIENT_INT)) {
+                *value_type = CLIENT_SEQUENCE;
+                *value_sz = (vbsz - 1);
+                memset(valuebuf, -1, *value_sz);
+                return 0;
+            }
+            return -1;
+        }
+
         case CLIENT_CSTR: {
             if (*value_type == CLIENT_BYTEARRAY && vbsz >= sym->szof) {
                 /* There are several production databases that try to
@@ -3140,7 +3148,7 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
             if ((*value_type == CLIENT_CSTR || *value_type == CLIENT_PSTR || *value_type == CLIENT_VUTF8) &&
                 vbsz > len) {
                 bzero(valuebuf, len + 1);
-                memcpy( valuebuf, f->value.strval, len);
+                memcpy(valuebuf, f->value.strval, len);
                 *value_sz = len;
                 return 0;
             } else if (*value_type == CLIENT_DATETIME || *value_type == CLIENT_DATETIMEUS) {

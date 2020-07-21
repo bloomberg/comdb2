@@ -483,6 +483,8 @@ int sqlite3_value_type(sqlite3_value* pVal){
   }else if( pVal->flags&MEM_Datetime ){
     return (pVal->du.dt.dttz_prec==DTTZ_PREC_USEC) ?
         SQLITE_DATETIMEUS : SQLITE_DATETIME;
+  }else if( pVal->flags&MEM_Master ) {
+      return SQLITE_NEXTSEQ;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return aType[pVal->flags&MEM_AffMask];

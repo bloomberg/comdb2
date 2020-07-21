@@ -66,9 +66,8 @@ static int get_cursor_lite(bdb_state_type *bdb_state, tran_type *tran, DBC **out
     return rc;
 }
 
-int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
-                             void *key, void *fnddta, int maxlen, int *fndlen,
-                             int *bdberr)
+static int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, void *fnddta,
+                                    int maxlen, int *fndlen, int *bdberr)
 {
     int rc, outrc = 0, ixlen;
     DBT dbt_key, dbt_data;
@@ -83,7 +82,7 @@ int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
     memset(&dbt_key, 0, sizeof(dbt_key));
     memset(&dbt_data, 0, sizeof(dbt_data));
 
-    ixlen = bdb_state->ixlen[0];
+    ixlen = keylen;
     dbt_key.data = key;
     dbt_key.size = ixlen;
     dbt_key.ulen = ixlen;
@@ -120,6 +119,19 @@ int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
     return outrc;
 }
 
+int bdb_lite_exact_fetch_full_tran(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, void *fnddta,
+                                   int maxlen, int *fndlen, int *bdberr)
+{
+    int rc;
+    BDB_READLOCK("bdb_lite_exact_fetch_full_tran");
+
+    rc = bdb_lite_exact_fetch_int(bdb_state, tran, key, keylen, fnddta, maxlen, fndlen, bdberr);
+
+    BDB_RELLOCK();
+
+    return rc;
+}
+
 /*allows you to pass a transaction if you want to (it can still be NULL)*/
 int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                               void *key, void *fnddta, int maxlen, int *fndlen,
@@ -128,8 +140,7 @@ int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_fetch_tran");
-    rc = bdb_lite_exact_fetch_int(bdb_state, tran, key, fnddta, maxlen, fndlen,
-                                  bdberr);
+    rc = bdb_lite_exact_fetch_int(bdb_state, tran, key, bdb_state->ixlen[0], fnddta, maxlen, fndlen, bdberr);
     BDB_RELLOCK();
 
     return rc;
@@ -141,8 +152,7 @@ int bdb_lite_exact_fetch(bdb_state_type *bdb_state, void *key, void *fnddta,
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_fetch");
-    rc = bdb_lite_exact_fetch_int(bdb_state, NULL /*tran*/, key, fnddta, maxlen,
-                                  fndlen, bdberr);
+    rc = bdb_lite_exact_fetch_int(bdb_state, NULL /*tran*/, key, bdb_state->ixlen[0], fnddta, maxlen, fndlen, bdberr);
     BDB_RELLOCK();
 
     return rc;
@@ -481,6 +491,12 @@ static int bdb_lite_fetch_keys_int(bdb_state_type *bdb_state, tran_type *tran,
 
         rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, flags);
 
+        /* SETRANGE allows us to read past the set of records we care about (which
+         * may have keys which are larger).  Coerce this to NOTFOUND. */
+        if (rc == ENOMEM) {
+            rc = DB_NOTFOUND;
+        }
+
         if (rc == DB_NOTFOUND) {
             /* no more data to be found */
             break;
@@ -555,8 +571,8 @@ int bdb_lite_fetch_keys_bwd(bdb_state_type *bdb_state, void *firstkey,
     return rc;
 }
 
-static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran,
-                            void *dtaptr, int dtalen, void *key, int *bdberr)
+static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr, int dtalen, void *key, int keylen,
+                            int *bdberr)
 {
     int rc;
     u_int32_t flags = 0;
@@ -585,7 +601,7 @@ static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran,
     dbt_data.flags |= DB_DBT_USERMEM;
 
     dbt_key.data = key;
-    dbt_key.size = bdb_state->ixlen[0];
+    dbt_key.size = keylen;
 
     dbt_data.data = dtaptr;
     dbt_data.size = dtalen;
@@ -620,14 +636,25 @@ int bdb_lite_add(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr,
     int rc;
 
     BDB_READLOCK("bdb_lite_add");
-    rc = bdb_lite_add_int(bdb_state, tran, dtaptr, dtalen, key, bdberr);
+    rc = bdb_lite_add_int(bdb_state, tran, dtaptr, dtalen, key, bdb_state->ixlen[0], bdberr);
     BDB_RELLOCK();
 
     return rc;
 }
 
-static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran,
-                                  void *key, int *bdberr)
+int bdb_lite_full_add(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr, int dtalen, void *key, int keylen,
+                      int *bdberr)
+{
+    int rc;
+
+    BDB_READLOCK("bdb_lite_add");
+    rc = bdb_lite_add_int(bdb_state, tran, dtaptr, dtalen, key, keylen, bdberr);
+    BDB_RELLOCK();
+
+    return rc;
+}
+
+static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, int *bdberr)
 {
     int rc;
     DBT dbt_key;
@@ -656,7 +683,7 @@ static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran,
 
     memset(&dbt_key, 0, sizeof(dbt_key));
     dbt_key.data = key;
-    dbt_key.size = bdb_state->ixlen[0];
+    dbt_key.size = keylen;
     dbt_key.flags |= DB_DBT_USERMEM;
 
     rc = bdb_state->dbp_data[0][0]->del(bdb_state->dbp_data[0][0], tid,
@@ -688,7 +715,18 @@ int bdb_lite_exact_del(bdb_state_type *bdb_state, tran_type *tran, void *key,
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_del");
-    rc = bdb_lite_exact_del_int(bdb_state, tran, key, bdberr);
+    rc = bdb_lite_exact_del_int(bdb_state, tran, key, bdb_state->ixlen[0], bdberr);
+    BDB_RELLOCK();
+
+    return rc;
+}
+
+int bdb_lite_delete(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, int *bdberr)
+{
+    int rc;
+
+    BDB_READLOCK("bdb_lite_exact_del");
+    rc = bdb_lite_exact_del_int(bdb_state, tran, key, keylen, bdberr);
     BDB_RELLOCK();
 
     return rc;

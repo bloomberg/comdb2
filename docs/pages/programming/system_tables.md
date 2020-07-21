@@ -92,7 +92,7 @@ Information about nodes in the cluster.
 Describes all the columns for all of the tables in the database.
 
     comdb2_columns(tablename, columnnname, type, size, sqltype,
-    varinlinesize, defaultvalue, dbload, isnullable)
+    varinlinesize, defaultvalue, dbload, isnullable, lastsequence)
 
 * `tablename` - Name of the table
 * `columnname` - Name of the column
@@ -102,6 +102,7 @@ Describes all the columns for all of the tables in the database.
 * `defaultvalue` - The default value for this column
 * `dbload` - `obsolete`
 * `isnullable` - `Y` if this column can hold nulls
+* `lastsequence` - Largest value the column has held (for autoincrement)
 
 ## comdb2_completion
 

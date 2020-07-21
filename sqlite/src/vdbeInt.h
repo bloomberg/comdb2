@@ -354,7 +354,8 @@ struct sqlite3_value {
 #define MEM_FromBind  0x00100  /* Value originates from sqlite3_bind() */
 #define MEM_Undefined 0x00200  /* Value is undefined */
 #define MEM_Cleared   0x00400  /* NULL set by OP_Null, not from data */
-#define MEM_TypeMask  0x306ff  /* Mask of type bits */
+#define MEM_Master    0x100000 /* Value will be set on master */
+#define MEM_TypeMask  0x1306ff  /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
 #define MEM_FromBind  0x0020   /* Value originates from sqlite3_bind() */
@@ -658,6 +659,7 @@ int sqlite3VdbeMemNulTerminate(Mem*);
 int sqlite3VdbeMemSetStr(Mem*, const char*, int, u8, void(*)(void*));
 void sqlite3VdbeMemSetInt64(Mem*, i64);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+int sqlite3VdbeMemSetMasterResolve(Mem*);
 int sqlite3VdbeMemSetDatetime(Mem*, dttz_t*, const char *tz);
 int sqlite3VdbeMemSetInterval(Mem *pMem, intv_t *tv);
 int sqlite3VdbeMemSetDecimal(Mem*, decQuad*);
@@ -796,6 +798,6 @@ int sqlite3LockStmtTables(sqlite3_stmt *);
 
 Mem* sqlite3GetCachedResultRow(sqlite3_stmt *pStmt, int *nColumns);
 
-#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || ((unsigned int)t)==SQLITE_MAX_U32 || ((unsigned int)t)==(SQLITE_MAX_U32-1) )
+#define sqlite3IsFixedLengthSerialType(t) ( (t)<12 || ((unsigned int)t)>=(SQLITE_MAX_U32-2) )
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #endif /* !defined(SQLITE_VDBEINT_H) */

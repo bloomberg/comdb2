@@ -412,6 +412,19 @@ int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     return sqlite3_column_count(stmt);
 }
 
+int validate_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
+{
+    int ncols = column_count(clnt, stmt), rc = 0;
+    if (!sqlite3_can_get_column_type_and_data(clnt, stmt))
+        return 0;
+    for (int i = 0; i < ncols; ++i) {
+        int type = column_type(clnt, stmt, i);
+        if (type == (int)SQLITE_NEXTSEQ)
+            rc = -1;
+    }
+    return rc;
+}
+
 #define FUNC_COLUMN_TYPE(ret, type)                                            \
     ret column_##type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int iCol) \
     {                                                                          \
@@ -4171,6 +4184,11 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     } else if (clnt->verify_indexes && steprc == SQLITE_DONE) {
         clnt->has_sqliterow = 0;
         return 0;
+    }
+
+    if ((rc = validate_columns(clnt, stmt)) != 0) {
+        send_run_error(clnt, "syntax error", CDB2ERR_PREPARE_ERROR);
+        return rc;
     }
 
     if ((rc = send_columns(clnt, stmt)) != 0) {

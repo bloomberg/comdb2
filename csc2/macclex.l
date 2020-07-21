@@ -227,6 +227,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 
 <RECTYPE>dbpad                  { return T_FLD_PADDING; }
 <RECTYPE>dbstore                { return T_FLD_STRDEFAULT;}
+<RECTYPE>nextsequence           { return T_FLD_NEXTSEQUENCE;}
 <RECTYPE>dbload                 { return T_FLD_LDDEFAULT;}
 <RECTYPE>null                   { return T_FLD_NULL;}
 

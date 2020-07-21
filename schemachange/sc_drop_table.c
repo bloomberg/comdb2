@@ -93,6 +93,11 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
 
     s->already_finalized = 1;
 
+    if ((rc = delete_table_sequences(tran, db))) {
+        sc_errf(s, "Failed deleting table sequences rc %d\n", rc);
+        return rc;
+    }
+
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
     bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
