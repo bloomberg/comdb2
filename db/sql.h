@@ -63,12 +63,13 @@ enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
 struct fingerprint_track {
     char fingerprint[FINGERPRINTSZ]; /* md5 digest hex string */
-    int64_t count;   /* Cumulative number of times executed */
-    int64_t cost;    /* Cumulative cost */
-    int64_t time;    /* Cumulative execution time */
-    int64_t rows;    /* Cumulative number of rows selected */
-    char *zNormSql;  /* The normalized SQL query */
-    size_t nNormSql; /* Length of normalized SQL query */
+    int64_t count;    /* Cumulative number of times executed */
+    int64_t cost;     /* Cumulative cost */
+    int64_t time;     /* Cumulative execution time */
+    int64_t prepTime; /* Cumulative preparation time only */
+    int64_t rows;     /* Cumulative number of rows selected */
+    char *zNormSql;   /* The normalized SQL query */
+    size_t nNormSql;  /* Length of normalized SQL query */
     char ** cachedColNames; /* Cached column names from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
 };
@@ -532,6 +533,46 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
+#define HINT_LEN 127
+enum cache_status {
+    CACHE_DISABLED = 0,
+    CACHE_HAS_HINT = 1,
+    CACHE_FOUND_STMT = 2,
+    CACHE_FOUND_STR = 4,
+};
+enum prepare_flags {
+    PREPARE_NONE = 0,
+    PREPARE_RECREATE = 1,
+    PREPARE_DENY_CREATE_TRIGGER = 2,
+    PREPARE_DENY_PRAGMA = 4,
+    PREPARE_DENY_DDL = 8,
+    PREPARE_IGNORE_ERR = 16,
+    PREPARE_NO_NORMALIZE = 32
+};
+struct sql_state {
+    enum cache_status status;          /* populated by get_prepared_stmt */
+    sqlite3_stmt *stmt;                /* cached engine, if any */
+    char cache_hint[HINT_LEN];         /* hint copy, if any */
+    const char *sql;                   /* the actual string used */
+    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
+    int prepFlags;                     /* flags to get_prepared_stmt_int */
+};
+
+/* This structure is designed to hold several pieces of data related to
+ * work-in-progress on client SQL requests. */
+struct sqlworkstate {
+    const char *zNormSql; /* Normalized version of latest SQL query. */
+    char *zOrigNormSql;   /* Normalized version of original SQL query. */
+    struct sql_state rec; /* Prepared statement for original SQL query. */
+    unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
+};
+
+struct sql_hist_cost {
+    double cost;
+    int64_t time;
+    int64_t prepTime;
+    int64_t rows;
+};
 struct user {
     char name[MAX_USERNAME_LEN];
     char password[MAX_PASSWORD_LEN];
@@ -546,6 +587,11 @@ struct user {
 
 /* Client specific sql state */
 struct sqlclntstate {
+    struct sqlworkstate work;  /* This is the primary data related to the SQL
+                                * client request in progress.  This includes
+                                * the original SQL query and its normalized
+                                * variant (if applicable). */
+
     /* appsock plugin specific data */
     void *appdata;
     struct plugin_callbacks plugin;
@@ -560,8 +606,6 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
-    char *zNormSql;
-    char aFingerprint[FINGERPRINTSZ*2+1];
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -687,6 +731,7 @@ struct sqlclntstate {
     sqlclntstate_fdb_t fdb_state;
 
     int nrows;
+    struct sql_hist_cost spcost;
 
     int planner_effort;
     int osql_max_trans;
@@ -992,8 +1037,7 @@ struct BtCursor {
 struct sql_hist {
     LINKC_T(struct sql_hist) lnk;
     char *sql;
-    double cost;
-    int time;
+    struct sql_hist_cost cost;
     int when;
     int64_t txnid;
     struct conninfo conn;
@@ -1004,6 +1048,7 @@ struct sql_thread {
     pthread_mutex_t lk;
     struct Btree *bt, *bttmp;
     int startms;
+    int prepms;
     int stime;
     int nmove;
     int nfind;
@@ -1144,29 +1189,6 @@ void run_stmt_setup(struct sqlclntstate *, sqlite3_stmt *);
 int sql_index_name_trans(char *namebuf, int len, struct schema *schema,
                          struct dbtable *db, int ixnum, void *trans);
 
-#define HINT_LEN 127
-enum cache_status {
-    CACHE_DISABLED = 0,
-    CACHE_HAS_HINT = 1,
-    CACHE_FOUND_STMT = 2,
-    CACHE_FOUND_STR = 4,
-};
-enum prepare_flags {
-    PREPARE_NONE = 0,
-    PREPARE_RECREATE = 1,
-    PREPARE_DENY_CREATE_TRIGGER = 2,
-    PREPARE_DENY_PRAGMA = 4,
-    PREPARE_DENY_DDL = 8,
-    PREPARE_IGNORE_ERR = 16
-};
-struct sql_state {
-    enum cache_status status;          /* populated by get_prepared_stmt */
-    sqlite3_stmt *stmt;                /* cached engine, if any */
-    char cache_hint[HINT_LEN];         /* hint copy, if any */
-    const char *sql;                   /* the actual string used */
-    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    int prepFlags;                     /* flags to get_prepared_stmt_int */
-};
 int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                       struct sql_state *, struct errstat *, int);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *,
@@ -1221,11 +1243,15 @@ struct query_stats {
 };
 int get_query_stats(struct query_stats *stats);
 
+void save_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void restore_thd_cost_and_reset(struct sqlthdstate *thd, Vdbe *pVdbe);
+void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
+
 int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
 void add_fingerprint(sqlite3_stmt *, const char *, const char *, int64_t,
-                     int64_t, int64_t, struct reqlogger *logger,
+                     int64_t, int64_t, int64_t, struct reqlogger *logger,
                      unsigned char *fingerprint_out);
 
 long long run_sql_return_ll(const char *query, struct errstat *err);
