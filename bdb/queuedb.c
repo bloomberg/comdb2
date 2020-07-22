@@ -26,6 +26,7 @@
 #include "cron.h"
 #include "schemachange.h"
 #include "comdb2.h"
+#include "translistener.h"
 
 extern int gbl_queuedb_file_threshold;
 extern int gbl_queuedb_file_interval;
@@ -134,6 +135,14 @@ static int bdb_queuedb_is_db_full(DB *db)
     return ((sb.st_size / 1048576) >= gbl_queuedb_file_threshold);
 }
 
+static int start_qdb_schemachange(struct schema_change_type *sc)
+{
+    javasp_do_procedure_wrlock();
+    int rc = start_schema_change(sc);
+    javasp_do_procedure_unlock();
+    return rc;
+}
+
 static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
 {
     if (db_is_stopped()) return NULL;
@@ -189,7 +198,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
                 sc->already_locked = 1;
                 sc->keep_locked = 1;
                 sc->db = tbl;
-                rc = start_schema_change(sc);
+                rc = start_qdb_schemachange(sc);
                 if ((rc != SC_OK) && (rc != SC_ASYNC)) {
                     logmsg(LOGMSG_ERROR,
                            "%s: failed to start schema change to delete "
@@ -220,7 +229,7 @@ static void *queuedb_cron_event(struct cron_event *evt, struct errstat *err)
             sc->already_locked = 1;
             sc->keep_locked = 1;
             sc->db = tbl;
-            rc = start_schema_change(sc);
+            rc = start_qdb_schemachange(sc);
             if ((rc != SC_OK) && (rc != SC_ASYNC)) {
                 logmsg(LOGMSG_ERROR,
                        "%s: failed to start schema change to add "
