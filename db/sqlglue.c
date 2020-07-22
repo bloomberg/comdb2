@@ -625,22 +625,22 @@ static int sql_tick(struct sql_thread *thd)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if ((gbl_epoch_time - clnt->last_sent_row_sec) >=
-        gbl_delay_sql_lock_release_sec) {
+    if (clnt->no_transaction == 0) {
+        if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
 
-        rc = clnt_check_bdb_lock_desired(clnt);
+            rc = clnt_check_bdb_lock_desired(clnt);
 
-    } else if (gbl_sql_random_release_interval &&
-               !(rand() % gbl_sql_random_release_interval)) {
+        } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
 
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+            rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
 
-        if ((rc = check_recover_deadlock(clnt)))
-            return rc;
+            if ((rc = check_recover_deadlock(clnt)))
+                return rc;
 
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+            logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
-        clnt->deadlock_recovered++;
+            clnt->deadlock_recovered++;
+        }
     }
 
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
