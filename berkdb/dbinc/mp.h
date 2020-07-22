@@ -278,6 +278,8 @@ struct __mpoolfile {
 	roff_t	  pgcookie_len;		/* Pgin/pgout cookie length. */
 	roff_t	  pgcookie_off;		/* Pgin/pgout cookie location. */
 
+    u_int64_t rootpagegen;      /* Bumped by rcache when root page changes */
+
 	/*
 	 * The flags are initialized at open and never subsequently modified.
 	 */

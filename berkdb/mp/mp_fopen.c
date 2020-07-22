@@ -997,6 +997,8 @@ alloc:	/* Allocate and initialize a new MPOOLFILE. */
 		mfp->pgcookie_len = dbmfp->pgcookie->size;
 	}
 
+	mfp->rootpagegen = 0;
+
 	/*
 	 * Prepend the MPOOLFILE to the list of MPOOLFILE's.
 	 */

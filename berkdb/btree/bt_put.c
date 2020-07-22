@@ -584,7 +584,6 @@ __bam_ritem(dbc, h, indx, data)
 	u_int32_t indx;
 	DBT *data;
 {
-	++GET_BH_GEN(h);
 	BKEYDATA *bk;
 	DB *dbp;
 	DBT orig, repl;
@@ -596,6 +595,8 @@ __bam_ritem(dbc, h, indx, data)
 	int disable_prefix_suffix_opt = bdb_logical_logging_enabled();
 
 	dbp = dbc->dbp;
+	if (h->pgno == 1)
+        rcache_bump(dbp);
 
 	/*
 	 * Replace a single item onto a page.  The logic figuring out where

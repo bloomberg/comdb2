@@ -1999,4 +1999,9 @@ REGISTER_TUNABLE("assert_systable_locks",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_assert_systable_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_rcache",
+                 "Turn on verbose rcache trace.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_rcache, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

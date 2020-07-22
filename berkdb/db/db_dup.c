@@ -47,13 +47,15 @@ __db_ditem(dbc, pagep, indx, nbytes)
 	PAGE *pagep;
 	u_int32_t indx, nbytes;
 {
-	++GET_BH_GEN(pagep);
 	DB *dbp;
 	db_indx_t cnt, *inp, offset;
 	int ret;
 	u_int8_t *from;
 
-	dbp = dbc->dbp;
+    dbp = dbc->dbp;
+	if (pagep->pgno == 1)
+	    rcache_bump(dbp);
+
 	if (DBC_LOGGING(dbc)) {
 		DBT ldbt;
 		int binternal_swap = 0;
@@ -112,7 +114,7 @@ __db_ditem(dbc, pagep, indx, nbytes)
 			M_32_SWAP(bo->tlen);
 		}
 
-		if (ret != 0)
+		if (ret !=0)
 			return (ret);
 
 	} else
@@ -180,7 +182,6 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	DBT *hdr, *data;
 	u_int32_t opcode;
 {
-	++GET_BH_GEN(pagep);
 	DBT thdr;
 	BKEYDATA bk;
 	DB *dbp;
@@ -188,7 +189,9 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 	int ret;
 	u_int8_t *p;
 
-	dbp = dbc->dbp;
+    dbp = dbc->dbp;
+	if (pagep->pgno == 1)
+	    rcache_bump(dbp);
 
 	/* If there is an active Lua trigger/consumer, wake it up. */
 	struct __db_trigger_subscription *t = dbp->trigger_subscription;

@@ -496,7 +496,6 @@ found:		if (offsetp != NULL)
 
 		/* Previous value could even be zero.
 		 * We just want it different from previous value */
-		++GET_BH_GEN(&bhp->buf);
 		buffers++;
 
 		/* Find the associated MPOOLFILE. */

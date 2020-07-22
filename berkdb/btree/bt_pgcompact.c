@@ -983,7 +983,8 @@ retry:
 		if (direct == P_R2L)
 			__bam_swap_parent_keys(dbc, ph, epg->indx);
 
-		++GET_BH_GEN(h);
+		if (h->pgno == 1)
+		    rcache_bump(dbc->dbp);
 
 		if ((ret = __db_relink(dbc, DB_REM_PAGE, dupcp->csp->page, NULL, 0)) != 0)
 			goto err_zero_h;

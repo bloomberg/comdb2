@@ -4769,7 +4769,7 @@ void *statthd(void *p)
         time_metric_purge_old(thedb->concurrent_queries);
         time_metric_purge_old(thedb->connections);
 
-        ++count;
+       ++count;
         sleep(1);
     }
 

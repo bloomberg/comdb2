@@ -507,11 +507,13 @@ uint64_t total_pgsz;
 static int
 pfx_log(DBC *dbc, PAGE *h, PAGE *c)
 {
-	++GET_BH_GEN(h);
 	BKEYDATA *p;
 	DB *dbp = dbc->dbp;
 	DBT pcomp = { 0 }, ncomp;
 	int ptype = 0, ntype;
+
+	if (h->pgno == 1)
+	    rcache_bump(dbc->dbp);
 
 	if (IS_PREFIX(h)) {
 		p = P_PFXENTRY(dbp, h);
