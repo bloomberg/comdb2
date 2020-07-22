@@ -111,25 +111,9 @@ extern int gbl_reorder_socksql_no_deadlock;
     } while (0);
 #endif
 
-static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
-                          int num_reqs, int check_long_trn, void *replay_data,
-                          int datalen, unsigned int line);
-static int do_block_sanity_checks_forward(struct ireq *iq,
-                                          block_state_t *blkstate);
 static int toblock_outer(struct ireq *iq, block_state_t *blkstate);
 static int toblock_main(struct javasp_trans_state *javasp_trans_handle,
                         struct ireq *iq, block_state_t *blkstate);
-static int keyless_range_delete_formkey(void *record, size_t record_len,
-                                        void *index, size_t index_len,
-                                        int index_num, void *userptr);
-static int keyless_range_delete_pre_delete(void *record, size_t record_len,
-                                           int rrn, unsigned long long genid,
-                                           void *userptr);
-static int keyless_range_delete_post_delete(void *record, size_t record_len,
-                                            int rrn, unsigned long long genid,
-                                            void *userptr);
-static int block2_custom(struct ireq *iq, struct packedreq_custom *buf,
-                         const uint8_t *p_opname, blob_buffer_t *blobs);
 static int block_state_offset_from_ptr(block_state_t *p_blkstate,
                                        const uint8_t *p_buf);
 
@@ -1125,10 +1109,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     return outrc;
 
 replay_error:
-    logmsg(LOGMSG_FATAL, "%s:%d in REPLAY ERROR\n", __func__, blkseq_line);
-    flush_db();
-    abort();
-#if 0 /* never reached */
+    logmsg(LOGMSG_ERROR, "%s:%d in REPLAY ERROR\n", __func__, blkseq_line);
     if (check_long_trn) {
         outrc = RC_TRAN_CLIENT_RETRY;
         return outrc;
@@ -1140,7 +1121,6 @@ replay_error:
     outrc = ERR_BLOCK_FAILED;
     blkseq_replay_error_count++;
     return outrc;
-#endif
 }
 
 /**
