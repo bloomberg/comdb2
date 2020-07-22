@@ -616,37 +616,37 @@ static int sql_tick(struct sql_thread *thd)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (((gbl_epoch_time - clnt->last_sent_row_sec) >=
-         gbl_delay_sql_lock_release_sec) &&
-        bdb_lock_desired(thedb->bdb_env)) {
-        int sleepms;
+    if (clnt->no_transaction == 0) {
+        if (((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) &&
+            bdb_lock_desired(thedb->bdb_env)) {
+            int sleepms;
 
-        logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
+            logmsg(LOGMSG_WARN, "bdb_lock_desired so calling recover_deadlock\n");
 
-        /* scale by number of times we try, cap at 10 seconds */
-        sleepms = 100 * clnt->deadlock_recovered;
-        if (sleepms > 10000)
-            sleepms = 10000;
+            /* scale by number of times we try, cap at 10 seconds */
+            sleepms = 100 * clnt->deadlock_recovered;
+            if (sleepms > 10000)
+                sleepms = 10000;
 
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
+            rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
 
-        if ((rc = check_recover_deadlock(clnt)))
-            return rc;
+            if ((rc = check_recover_deadlock(clnt)))
+                return rc;
 
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+            logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
-        clnt->deadlock_recovered++;
-    } else if (gbl_sql_random_release_interval &&
-               !(rand() % gbl_sql_random_release_interval)) {
+            clnt->deadlock_recovered++;
+        } else if (gbl_sql_random_release_interval && !(rand() % gbl_sql_random_release_interval)) {
 
-        rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
+            rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
 
-        if ((rc = check_recover_deadlock(clnt)))
-            return rc;
+            if ((rc = check_recover_deadlock(clnt)))
+                return rc;
 
-        logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
+            logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
-        clnt->deadlock_recovered++;
+            clnt->deadlock_recovered++;
+        }
     }
 
     if (gbl_epoch_time && (gbl_epoch_time - clnt->last_check_time > 5)) {
