@@ -46,6 +46,7 @@
  * but in case of B-Tree new data is allocated. So far haven't seen any
  * problems. */
 
+#include <schema_lk.h>
 #include "locks.h"
 #include "locks_wrap.h"
 #include "bdb_int.h"
@@ -706,7 +707,15 @@ int bdb_temp_table_notify_pool_wrapper(void **tblp, void *bdb_state_arg)
     if (rc1 == TMPTBL_PRIORITY) { /* Are we going to end up waiting? */
         return OP_FORCE_NOW; /* No, we are forcing object creation. */
     } else {
-        int rc2 = recover_deadlock_simple(bdb_state);
+        int rc2;
+
+        /* This is in the middle of prepare.  We can't call recover deadlock,
+         * as releasing and re-acquiring the bdblock while holding the schema
+         * lock violates lock order.  We also can't prevent upgrades. */
+        if (have_schema_lock()) {
+            return OP_FAIL_NOW;
+        }
+        rc2 = recover_deadlock_simple(bdb_state);
         if (rc2 != 0) {
             logmsg(LOGMSG_WARN, "%s: recover_deadlock rc=%d\n", __func__, rc2);
         }
