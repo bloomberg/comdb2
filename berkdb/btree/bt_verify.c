@@ -1848,7 +1848,7 @@ done:	if (F_ISSET(pip, VRFY_INCOMPLETE) && isbad == 0 && ret == 0) {
 	 * Internal pages below the top level do not store their own
 	 * record numbers, so we skip them.
 	 */
-	if (LF_ISSET(ST_RECNUM) && nrecs != pip->rec_cnt && toplevel) {
+	if (LF_ISSET(DB_RECCNTCHK) && LF_ISSET(ST_RECNUM) && nrecs != pip->rec_cnt && toplevel) {
 		isbad = 1;
 		EPRINT((dbenv,
 		    "Page %lu: bad record count: has %lu records, claims %lu",

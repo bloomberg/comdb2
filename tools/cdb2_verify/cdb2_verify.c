@@ -43,7 +43,7 @@ tool_cdb2_verify_main(argc, argv)
 	DB *dbp, *dbp1;
 	DB_ENV *dbenv;
 	u_int32_t cache;
-	int ch, exitval, nflag, oflag, private;
+	int ch, exitval, nflag, oflag, rflag, private;
 	int quiet, resize, ret;
 	char *home, passwd[1024];
 	FILE *crypto;
@@ -55,11 +55,11 @@ tool_cdb2_verify_main(argc, argv)
 	dbenv = NULL;
 	dbp = NULL;
 	cache = MEGABYTE;
-	exitval = nflag = oflag = quiet = 0;
+	exitval = nflag = oflag = rflag = quiet = 0;
 	home = NULL;
 	memset(passwd, 0, sizeof(passwd));
 
-	while ((ch = getopt(argc, argv, "h:NoP:qV")) != EOF)
+	while ((ch = getopt(argc, argv, "h:NorP:qV")) != EOF)
 		switch (ch) {
 		case 'h':
 			home = optarg;
@@ -83,6 +83,9 @@ tool_cdb2_verify_main(argc, argv)
 			break;
 		case 'o':
 			oflag = 1;
+			break;
+		case 'r':
+			rflag = 1;
 			break;
 		case 'q':
 			quiet = 1;
@@ -196,9 +199,14 @@ retry:	if ((ret = db_env_create(&dbenv, 0)) != 0) {
 			}
 		}
 
+        int verifyflags = 0;
+        if (oflag)
+            verifyflags |= DB_NOORDERCHK;
+        if (rflag)
+            verifyflags |= DB_RECCNTCHK;
 		/* The verify method is a destructor. */
 		ret = dbp->verify(dbp,
-		    argv[0], NULL, NULL, oflag ? DB_NOORDERCHK : 0);
+		    argv[0], NULL, NULL, verifyflags);
 		dbp = NULL;
 		if (ret != 0) {
 			dbenv->err(dbenv, ret, "DB->verify: %s", argv[0]);
@@ -230,7 +238,7 @@ static int
 cdb2_verify_usage()
 {
 	fprintf(stderr, "%s\n",
-	    "usage: cdb2_verify [-NoqV] [-h home] [-P /path/to/password] db_file ...");
+	    "usage: cdb2_verify [-NorqV] [-h home] [-P /path/to/password] db_file ...");
 	return (EXIT_FAILURE);
 }
 
