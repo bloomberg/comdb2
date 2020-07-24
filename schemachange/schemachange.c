@@ -565,6 +565,7 @@ int do_dryrun(struct schema_change_type *s)
     struct dbtable *newdb = NULL;
     struct scinfo scinfo = {0};
 
+    // not sure if useful to print: sc_printf(s, "starting dryrun\n");
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         if (s->alteronly) {
