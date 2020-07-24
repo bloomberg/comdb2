@@ -513,20 +513,20 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
-static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
-                             unsigned int depth, void *userptr)
+static int stat_odh_callback(int consumern, size_t length, unsigned int newest_epoch,
+        unsigned int oldest_epoch, unsigned int depth, void *userptr)
 {
     struct consumer_stat *stats = userptr;
 
     if (consumern < 0 || consumern >= MAXCONSUMERS) {
         logmsg(LOGMSG_USER, "%s: consumern=%d length=%u epoch=%u\n", __func__,
-               consumern, (unsigned)length, epoch);
+               consumern, (unsigned)length, newest_epoch);
     } else {
         assert(!stats[consumern].has_stuff);
         stats[consumern].has_stuff = 1;
         stats[consumern].first_item_length = length;
-        stats[consumern].epoch = epoch;
-        stats[consumern].has_stuff = 1;
+        stats[consumern].newest_epoch = newest_epoch;
+        stats[consumern].oldest_epoch = oldest_epoch;
         stats[consumern].depth = depth;
     }
     return BDB_QUEUE_WALK_CONTINUE;
@@ -543,7 +543,7 @@ static int stat_callback(int consumern, size_t length,
     } else {
         if (!stats[consumern].has_stuff) {
             stats[consumern].first_item_length = length;
-            stats[consumern].epoch = epoch;
+            stats[consumern].newest_epoch = epoch;
         }
         stats[consumern].has_stuff = 1;
         stats[consumern].depth++;
@@ -613,9 +613,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 
             if (stats[ii].has_stuff) {
                 unsigned int now = comdb2_time_epoch();
-                unsigned int age = now - stats[ii].epoch;
+                unsigned int age = now - stats[ii].newest_epoch;
                 struct tm ctime;
-                time_t cepoch = (time_t)stats[ii].epoch;
+                time_t cepoch = (time_t)stats[ii].newest_epoch;
                 char buf[32]; /* must be at least 26 chars */
                 unsigned int hr, mn, sc;
 
@@ -630,7 +630,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                     LOGMSG_USER,
                     "    head item length %u age %u:%02u:%02u created %ld %s",
                     (unsigned)stats[ii].first_item_length, hr, mn, sc,
-                    stats[ii].epoch, buf);
+                    stats[ii].newest_epoch, buf);
             } else if (consumer)
                 logmsg(LOGMSG_USER, "    empty\n");
         }
@@ -929,8 +929,12 @@ static int get_stats(struct dbtable *db, int flags, void *tran,
     if (db->odh) {
         rc = dbq_odh_stats(&iq, stat_odh_callback, (tran_type *)tran, st);
     } else {
-        rc = dbq_walk(&iq, flags, stat_callback, (tran_type *)tran, st);
+        rc = dbq_walk(&iq, flags, stat_callback, gbl_queue_walk_limit, (tran_type *)tran, st);
     }
+    time_t epoch;
+    rc = dbq_oldest_epoch(&iq, (tran_type*)tran, &epoch);
+    if (rc == 0)
+        st->oldest_epoch = epoch;
     if (made_tran) {
         bdberr = 0;
         int rc2 = bdb_tran_abort(db->handle, tran, &bdberr);
@@ -956,7 +960,7 @@ comdb2_queue_consumer_t dbqueuedb_plugin_lua = {
     .wake_all_consumers_all_queues = wake_all_consumers_all_queues,
     .handles_method = handles_method,
     .get_name = get_name,
-    .get_stats = get_stats
+    .get_stats = get_stats,
 };
 
 comdb2_queue_consumer_t dbqueuedb_plugin_dynlua = {
@@ -972,7 +976,7 @@ comdb2_queue_consumer_t dbqueuedb_plugin_dynlua = {
     .wake_all_consumers_all_queues = wake_all_consumers_all_queues,
     .handles_method = handles_method,
     .get_name = get_name,
-    .get_stats = get_stats
+    .get_stats = get_stats,
 };
 
 

@@ -1087,7 +1087,7 @@ static int bdb_queue_walk_int(bdb_state_type *bdb_state, int flags,
 }
 
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, tran_type *tran,
+                   bdb_queue_walk_callback_t callback, tran_type *tran, int limit,
                    void *userptr, int *bdberr)
 {
     int rc;
@@ -1097,7 +1097,7 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
      * worth of state,
      * caller needs to call it correctly. */
     if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, tran,
+        rc = bdb_queuedb_walk(bdb_state, flags, lastitem, callback, tran, limit,
                               userptr, bdberr);
     } else {
         /* TODO: The "tran" parameter is not passed here.  Maybe it should be? */
@@ -2138,4 +2138,12 @@ const struct bdb_queue_stats *bdb_queue_get_stats(bdb_state_type *bdb_state)
         return bdb_queuedb_get_stats(bdb_state);
 
     return &bdb_state->qpriv->stats;
+}
+
+int bdb_queue_oldest_epoch(bdb_state_type *bdb_state, tran_type *tran, time_t *epoch, int *bdberr) {
+    if (bdb_state->bdbtype != BDBTYPE_QUEUEDB) {
+        *bdberr = BDBERR_BADARGS;
+        return -1;
+    }
+    return bdb_queuedb_oldest_epoch(bdb_state, tran, epoch, bdberr);
 }

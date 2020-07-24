@@ -809,6 +809,8 @@ int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_clear(void);
 
+int gbl_queue_walk_limit = 10000;
+
 inline int getkeyrecnums(const dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)

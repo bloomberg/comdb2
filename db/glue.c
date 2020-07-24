@@ -5407,7 +5407,7 @@ retry:
     return rc;
 }
 
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
+int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback, int limit,
              tran_type *tran, void *userptr)
 {
     int bdberr;
@@ -5424,8 +5424,8 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 retry:
     iq->gluewhere = "bdb_queue_walk";
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
-                        (bdb_queue_walk_callback_t)callback, tran, userptr,
-                        &bdberr);
+                        (bdb_queue_walk_callback_t)callback, tran, limit, 
+                        userptr, &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5444,6 +5444,22 @@ retry:
         return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
     return rc;
+}
+
+int dbq_oldest_epoch(struct ireq *iq, tran_type *tran, time_t *epoch) {
+    bdb_state_type *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+    int bdberr;
+    int rc;
+    if (!bdb_handle)
+        return ERR_NO_AUXDB;
+    rc = bdb_queue_oldest_epoch(bdb_handle, tran, epoch, &bdberr);
+    if (rc) {
+        if (bdberr == BDBERR_DEADLOCK)
+            return RC_INTERNAL_RETRY;
+        else
+            return ERR_INTERNAL;
+    }
+    return 0;
 }
 
 int count_db(struct dbtable *db)
