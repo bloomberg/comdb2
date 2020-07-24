@@ -191,6 +191,13 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Error %d getting tablelock for comdb2_queues\n", rc);
+        goto done;
+    }
+
+
     /* TODO: assert we are holding the write-lock on the queue */
     if (type != llmeta_queue_drop) {
         rc = bdb_llmeta_get_queue(tran, (char *)queue_name, &config, &ndests,
@@ -415,6 +422,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             sbuf2printf(sb, "FAILED\n");
             goto done;
         }
+    }
+
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    if (rc) {
+        sbuf2printf(sb, "!Error %d getting tablelock for %s.\n", rc,
+                    sc->tablename);
+        sbuf2printf(sb, "FAILED\n");
+        goto done;
     }
 
     rc = bdb_lock_tablename_write(thedb->bdb_env, sc->tablename, tran);
@@ -645,6 +660,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
+    if (sc->addonly || sc->alteronly) {
+        dbqueuedb_admin(thedb, !same_tran ? tran : ltran);
+    }
+
     if (!same_tran) {
         rc = trans_commit(&iq, tran, gbl_mynode);
         if (rc) {
@@ -654,9 +673,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         tran = NULL;
     }
 
-    if (sc->addonly || sc->alteronly) {
-        dbqueuedb_admin(thedb);
-    }
 
     /* log for replicants to do the same */
     if (!same_tran) {

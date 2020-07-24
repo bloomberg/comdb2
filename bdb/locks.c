@@ -685,6 +685,12 @@ int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
                               BDB_LOCK_READ);
 }
 
+int bdb_lock_table_read_by_name_fromlid(bdb_state_type *bdb_state, char *name, int lid)
+{
+    return bdb_lock_table_int(bdb_state->dbenv, name, lid,
+                              BDB_LOCK_READ);
+}
+
 int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;

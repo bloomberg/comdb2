@@ -2497,12 +2497,16 @@ unsigned long long dbq_item_genid(const void *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
 typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
-                                    unsigned int epoch, unsigned int depth,
+                                    unsigned int newest_epoch, 
+                                    unsigned int oldest_epoch, 
+                                    unsigned int depth,
                                     void *userptr);
 
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr);
-int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
+
+int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback, int limit, 
+             tran_type *tran, void *userptr);
+int dbq_oldest_epoch(struct ireq *iq, tran_type *tran, time_t *epoch);
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, tran_type *tran,
                   void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
@@ -2615,7 +2619,7 @@ void diagnostics_dump_dta(struct dbtable *db, int dtanum);
 
 /* queue stuff */
 void dbqueuedb_coalesce(struct dbenv *dbenv);
-void dbqueuedb_admin(struct dbenv *dbenv);
+void dbqueuedb_admin(struct dbenv *dbenv, tran_type *tran);
 int dbqueuedb_add_consumer(struct dbtable *db, int consumer, const char *method,
                          int noremove);
 int consumer_change(const char *queuename, int consumern, const char *method);
@@ -2625,7 +2629,7 @@ int dbqueuedb_stop_consumers(struct dbtable *db);
 int dbqueuedb_restart_consumers(struct dbtable *db);
 int dbqueuedb_check_consumer(const char *method);
 int dbqueuedb_get_name(struct dbtable *db, char **spname);
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats);
+int dbqueuedb_get_stats(struct dbtable *db, tran_type *tran, struct consumer_stat *stats);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);
@@ -3646,4 +3650,6 @@ extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
 
 void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
+
+extern int gbl_queue_walk_limit;
 #endif /* !INCLUDED_COMDB2_H */
