@@ -783,6 +783,8 @@ void register_plugin_tunables(void);
 int install_static_plugins(void);
 int run_init_plugins(int phase);
 
+int gbl_queue_walk_limit = 10000;
+
 inline int getkeyrecnums(const dbtable *tbl, int ixnum)
 {
     if (ixnum < 0 || ixnum >= tbl->nix)
@@ -1199,7 +1201,7 @@ static void *purge_old_blkseq_thread(void *arg)
 
         /* queue consumer thread admin */
         thrman_where(thr_self, "dbqueue_admin");
-        dbqueuedb_admin(dbenv);
+        dbqueuedb_admin(dbenv, NULL);
         thrman_where(thr_self, NULL);
 
         /* purge old blobs.  i didn't want to make a whole new thread just

@@ -290,6 +290,7 @@ struct tran_tag {
     tranclass_type tranclass;
     DB_TXN *tid;
     u_int32_t logical_lid;
+    u_int32_t original_lid;
 
     void *usrptr;
     DB_LSN savelsn;

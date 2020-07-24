@@ -7440,7 +7440,7 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
 
         /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
 
-        if (iTable < RTPAGE_START)
+        if (iTable < RTPAGE_START && !IsVirtual(tab))
             continue;
 
         if (prev >= 0 && prev == iTable) {
@@ -7456,6 +7456,12 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
         }
         dups = 1;
         prev = iTable;
+
+        if (IsVirtual(tab)) {
+            // just get a lock on the name, don't do any other checks
+            bdb_lock_table_read_by_name_fromlid(thedb->bdb_env, tab->zName, bdb_get_lid_from_cursortran(clnt->dbtran.cursor_tran));
+            continue;
+        }
 
         db = get_sqlite_db(thd, iTable, NULL);
 

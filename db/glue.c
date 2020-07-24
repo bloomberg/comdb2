@@ -61,6 +61,7 @@
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
 #include <bdb_queue.h>
+#include <bdb_int.h>
 
 #include <net.h>
 #include <net_types.h>
@@ -5522,7 +5523,7 @@ int dbq_dump(struct dbtable *db, FILE *out)
     return 0;
 }
 
-int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, tran_type *tran, void *userptr)
 {
     int bdberr, rc;
     void *bdb_handle;
@@ -5531,28 +5532,30 @@ int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, void *userptr)
 
 retry:
     iq->gluewhere = "bdb_queuedb_stats";
-    rc = bdb_queuedb_stats(bdb_handle, callback, userptr, &bdberr);
+    rc = bdb_queuedb_stats(bdb_handle, callback, tran, userptr, &bdberr);
     iq->gluewhere = "bdb_queuedb_stats done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
-            iq->retries++;
-            if (++retries < gbl_maxretries) {
-                n_retries++;
-                goto retry;
+            if (tran == NULL) {
+                iq->retries++;
+                if (++retries < gbl_maxretries) {
+                    n_retries++;
+                    goto retry;
+                }
+                logmsg(LOGMSG_ERROR,
+                       "*ERROR* bdb_queue_stats too much contention "
+                       "%d count %d\n",
+                       bdberr, retries);
             }
-            logmsg(LOGMSG_ERROR,
-                   "*ERROR* bdb_queue_stats too much contention "
-                   "%d count %d\n",
-                   bdberr, retries);
-            return ERR_INTERNAL;
+            return -1;
         }
         return map_unhandled_bdb_rcode("bdb_queue_stats", bdberr, 0);
     }
     return rc;
 }
 
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr)
+int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback, int limit,
+             tran_type *tran, void *userptr)
 {
     int bdberr;
     void *bdb_handle;
@@ -5568,7 +5571,8 @@ int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
 retry:
     iq->gluewhere = "bdb_queue_walk";
     rc = bdb_queue_walk(bdb_handle, flags, &lastitem,
-                        (bdb_queue_walk_callback_t)callback, userptr, &bdberr);
+                        (bdb_queue_walk_callback_t)callback, tran, limit, 
+                        userptr, &bdberr);
     iq->gluewhere = "bdb_queue_walk done";
     if (rc != 0) {
         if (bdberr == BDBERR_DEADLOCK) {
@@ -5587,6 +5591,22 @@ retry:
         return map_unhandled_bdb_rcode("bdb_queue_walk", bdberr, 0);
     }
     return rc;
+}
+
+int dbq_oldest_epoch(struct ireq *iq, tran_type *tran, time_t *epoch) {
+    bdb_state_type *bdb_handle = get_bdb_handle_ireq(iq, AUXDB_NONE);
+    int bdberr;
+    int rc;
+    if (!bdb_handle)
+        return ERR_NO_AUXDB;
+    rc = bdb_queue_oldest_epoch(bdb_handle, tran, epoch, &bdberr);
+    if (rc) {
+        if (bdberr == BDBERR_DEADLOCK)
+            return RC_INTERNAL_RETRY;
+        else
+            return ERR_INTERNAL;
+    }
+    return 0;
 }
 
 int count_db(struct dbtable *db)
@@ -6353,4 +6373,28 @@ int comdb2_is_user_op(char *user, char *password)
     }
 
     return 1;
+}
+
+tran_type *curtran_gettran(void)
+{
+    int bdberr;
+    tran_type *tran = NULL;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (!thd || !thd->clnt || !thd->clnt->dbtran.cursor_tran)
+        return NULL;
+    uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
+    if ((tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr)) != NULL) {
+        bdb_get_tran_lockerid(tran, &tran->original_lid);
+        bdb_set_tran_lockerid(tran, lockid);
+    }
+    return tran;
+}
+
+void curtran_puttran(tran_type *tran)
+{
+    int bdberr;
+    if (!tran)
+        return;
+    bdb_set_tran_lockerid(tran, tran->original_lid);
+    bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 }

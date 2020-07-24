@@ -3653,6 +3653,7 @@ static int whereLoopAddAll(WhereLoopBuilder *pBuilder){
         }
       }
       rc = whereLoopAddVirtual(pBuilder, mPrereq, mUnusable);
+      sqlite3VdbeAddTable(pWInfo->pParse->pVdbe, pItem->pTab);
     }else
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
     {
@@ -5102,6 +5103,7 @@ WhereInfo *sqlite3WhereBegin(
     pTab = pTabItem->pTab;
     iDb = sqlite3SchemaToIndex(db, pTab->pSchema);
     pLoop = pLevel->pWLoop;
+
     if( (pTab->tabFlags & TF_Ephemeral)!=0 || pTab->pSelect ){
       /* Do nothing */
     }else
