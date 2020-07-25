@@ -260,7 +260,8 @@ void test_get_config_file()
 
     char filename[PATH_MAX];
     rc = get_config_file(NULL, filename, sizeof(filename));
-    assert(rc == 0);
+    /* NULL dbname is no longer permitted. */
+    assert(rc == -1);
 
     setenv("COMDB2_ROOT", "myroot", 1);
     rc = get_config_file("mydb", filename, sizeof(filename));

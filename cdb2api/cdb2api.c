@@ -1482,6 +1482,14 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 static int get_config_file(const char *dbname, char *f, size_t s)
 {
     char *root = getenv("COMDB2_ROOT");
+
+    /* `dbname' is NULL if we're only reading defaults from comdb2db.cfg.
+       Formatting a NULL pointer with %s specifier is undefined behavior,
+       and whatever file path it produces (in glibc, it's "(null).cfg")
+       does not make sense. Return an error. */
+    if (dbname == NULL)
+        return -1;
+
     if (root == NULL)
         root = QUOTE(COMDB2_ROOT);
     size_t n;
@@ -1521,12 +1529,6 @@ static int read_available_comdb2db_configs(
         debugprint("entering\n");
 
     if (!noLock) pthread_mutex_lock(&cdb2_cfg_lock);
-    if (get_config_file(dbname, filename, sizeof(filename)) != 0) {
-        if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
-        snprintf(hndl->errstr, sizeof(hndl->errstr),
-                 "Config file name too long.");
-        return -1;
-    }
 
     if (num_hosts)
         *num_hosts = 0;
@@ -1567,12 +1569,13 @@ static int read_available_comdb2db_configs(
         }
     }
 
-    s = sbuf2openread(filename);
-    if (s != NULL) {
-        read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts,
-                          num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, send_stack);
-        sbuf2close(s);
+    if (get_config_file(dbname, filename, sizeof(filename)) == 0) {
+        s = sbuf2openread(filename);
+        if (s != NULL) {
+            read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                              num_db_hosts, dbnum, send_stack);
+            sbuf2close(s);
+        }
     }
     if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
@@ -2243,13 +2246,16 @@ static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
     // sockpool had us connect to is not the same as what we intended to connect
 }
 
+static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *remote_host, const char *app,
+                           const char *service, const char *instance);
+
 /* Tries to connect to specified node using sockpool.
  * If there is none, then makes a new socket connection.
  */
 static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 {
     const char *host = hndl->hosts[node_indx];
-    const int port = hndl->ports[node_indx];
+    int port = hndl->ports[node_indx];
     debugprint("entering, host '%s:%d'\n", host, port);
     int fd = -1;
     SBUF2 *sb = NULL;
@@ -2281,9 +2287,17 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
-            fd =
-                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
+            if (port <= 0) {
+                port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
+                hndl->ports[node_indx] = port;
+            }
+            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
+            if (port <= 0) {
+                /* cdb2portmux_route() works without the assignment. We do it here to make it clear
+                   that we will be connecting directly to portmux on this host. */
+                hndl->ports[node_indx] = CDB2_PORTMUXPORT;
+            }
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
                                    hndl->dbname);
         }
@@ -2445,8 +2459,7 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
     for (int j = 0; j < max; j++) {
         int i = (begin + j) % max;
         hndl->node_seq = i + 1;
-        if (i == hndl->master || hndl->ports[i] <= 0 ||
-            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
+        if (i == hndl->master || i == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
         if (newsql_connect(hndl, i) == 0)
             return 0;
@@ -2484,21 +2497,6 @@ static int cdb2_random_int()
         do_once = 1;
     }
     return nrand48(rand_state);
-}
-
-static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
-{
-    for (int i = 0; i < hndl->num_hosts; i++) {
-        if (hndl->ports[i] <= 0) {
-            hndl->ports[i] =
-                cdb2portmux_get(hndl, hndl->type, hndl->hosts[i], "comdb2",
-                                "replication", hndl->dbname);
-            if (hndl->ports[i] > 0) {
-                return 1;
-            }
-        }
-    }
-    return 0;
 }
 
 /* Get random value from range 0 to max-1 excluding 1 value */
@@ -2542,21 +2540,6 @@ retry_connect:
             return 0;
     }
 
-    /* have hosts but no ports?  try to resolve ports */
-    if (hndl->flags & CDB2_DIRECT_CPU) {
-        for (int i = 0; i < hndl->num_hosts; i++) {
-            if (hndl->ports[i] <= 0) {
-                if (!cdb2_allow_pmux_route) {
-                    hndl->ports[i] =
-                        cdb2portmux_get(hndl, hndl->type, hndl->hosts[i],
-                                        "comdb2", "replication", hndl->dbname);
-                } else {
-                    hndl->ports[i] = CDB2_PORTMUXPORT;
-                }
-            }
-        }
-    }
-
     if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, hndl->num_hosts))
         return 0;
 
@@ -2565,16 +2548,8 @@ retry_connect:
          * master.*/
         /* After this retry on other nodes. */
         bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
-        if (hndl->ports[hndl->master] > 0) {
-            if (newsql_connect(hndl, hndl->master) == 0)
-                return 0;
-        }
-    }
-
-    /* have hosts but no ports?  try to resolve ports */
-    if (hndl->flags & CDB2_DIRECT_CPU && cdb2_try_resolve_ports(hndl) == 1) {
-        requery_done = 1;
-        goto retry_connect;
+        if (newsql_connect(hndl, hndl->master) == 0)
+            return 0;
     }
 
     /* Can't connect to any of the nodes, re-check information about db. */
@@ -5544,9 +5519,11 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (strcasecmp(hndl->cluster, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
-        hndl->ports[0] = cdb2portmux_get(hndl, "local", "localhost", "comdb2",
-                                         "replication", hndl->dbname);
         hndl->flags |= CDB2_DIRECT_CPU;
+
+        /* Skip dbinfo to avoid pulling other hosts in the cluster. */
+        rc = 0;
+        goto after_callback;
     } else {
         rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
                                 comdb2db_name, &num_comdb2db_hosts,
@@ -6165,7 +6142,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "room");
     } else {
         hndl->flags |= CDB2_RANDOMROOM;
-        strcpy(hndl->policy, "random_room");
+        /* DIRECTCPU mode behaves like RANDOMROOM. But let's pick a shorter policy name
+           for it so we can fit longer hostnames in the sockpool type string which is
+           merely 48 chars. */
+        strcpy(hndl->policy, (hndl->flags & CDB2_DIRECT_CPU) ? "dc" : "random_room");
     }
 
     if (hndl->flags & CDB2_DIRECT_CPU) {
@@ -6177,15 +6157,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (p) {
             *p = '\0';
             hndl->ports[0] = atoi(p + 1);
-        } else {
-            if (!cdb2_allow_pmux_route) {
-                hndl->ports[0] = cdb2portmux_get(hndl, type, type, "comdb2",
-                                                 "replication", dbname);
-                if (hndl->ports[0] < 0)
-                    rc = -1;
-            } else {
-                hndl->ports[0] = CDB2_PORTMUXPORT;
-            }
+        } else if (cdb2_allow_pmux_route) {
+            hndl->ports[0] = CDB2_PORTMUXPORT;
         }
         debugprint("host %s port %d\n", hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
