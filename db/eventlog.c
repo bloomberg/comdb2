@@ -471,17 +471,13 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     if (logger->error) {
         cson_object_set(obj, "rc", cson_new_int(logger->rc));
         cson_object_set(obj, "error_code", cson_new_int(logger->error_code));
-        cson_object_set(
-            obj, "error",
-            cson_value_new_string(logger->error, strlen(logger->error)));
+        cson_object_set(obj, "error", cson_value_new_string(logger->error, strlen(logger->error)));
 
         if (logger->iq && logger->iq->retries > 0)
-            cson_object_set(obj, "deadlockretries",
-                            cson_new_int(logger->iq->retries));
+            cson_object_set(obj, "deadlockretries", cson_new_int(logger->iq->retries));
     }
 
-    cson_object_set(obj, "host",
-                    cson_value_new_string(logger->origin, strlen(logger->origin)));
+    cson_object_set(obj, "host", cson_value_new_string(logger->origin, strlen(logger->origin)));
 
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
@@ -496,12 +492,14 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
             cson_object_set(obj, "startlag", /* in microseconds */
                             cson_new_int(logger->startus - clientstarttime));
         int clientretries = get_client_retries(logger->clnt);
-        if (clientretries > 0) {
-            cson_object_set(obj, "clientretries",
-                    cson_new_int(clientretries));
-        }
+        if (clientretries > 0)
+            cson_object_set(obj, "clientretries", cson_new_int(clientretries));
+
         cson_object_set(obj, "connid", cson_new_int(logger->clnt->connid));
         cson_object_set(obj, "pid", cson_new_int(logger->clnt->last_pid));
+        if (logger->clnt->argv0)
+            cson_object_set(obj, "client",
+                            cson_value_new_string(logger->clnt->argv0, strlen(logger->clnt->argv0)));
     }
 
     eventlog_context(obj, logger);
