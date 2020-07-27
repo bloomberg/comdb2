@@ -54,7 +54,7 @@ struct osql_sqlthr {
     int timestamp;    /* poking support: timestamp at the last check */
     int last_updated; /* poking support: when was the last time I got info, 0 is
                          never */
-    int last_checked; /* poking support: when was the loast poke sent */
+    int last_checked; /* poking support: when was the last poke sent */
 };
 typedef struct osql_sqlthr osql_sqlthr_t;
 

@@ -2026,6 +2026,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
         else if (seqnum) {
             bzero(seqnum, sizeof(seqnum_type));
+            // TODO: NC: copy lsn instead of tran->savelsn instead?
             memcpy(seqnum, &(tran->savelsn), sizeof(DB_LSN));
             seqnum->generation = generation;
         }

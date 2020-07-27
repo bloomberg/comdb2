@@ -341,25 +341,35 @@ int osql_repository_cancelall(void)
  * used by socksql poking
  *
  */
-int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
+int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
+                                   int *rows_affected)
 {
     if (!theosql)
         return 0;
 
     osql_sess_t *sess = NULL;
-    int out_rc = 0;
+    int exists = 0;
+
+    if (rows_affected)
+        *rows_affected = -1;
 
     Pthread_mutex_lock(&theosql->hshlck);
 
     sess = _get_sess(rqid, uuid);
+    if (sess) {
+        exists = 1;
+    }
 
-    /* register the new receiver; osql_close_req will wait for to finish storing
-     * the message */
-    out_rc = !!sess;
+    if (rows_affected) {
+        struct ireq *iq = sess->iq;
+        *rows_affected = IQ_SNAPINFO(iq)->effects.num_inserted +
+                         IQ_SNAPINFO(iq)->effects.num_updated +
+                         IQ_SNAPINFO(iq)->effects.num_deleted;
+    }
 
     Pthread_mutex_unlock(&theosql->hshlck);
 
-    return out_rc;
+    return exists;
 }
 
 void osql_repository_for_each(void *arg, int (*func)(void *, void *))
