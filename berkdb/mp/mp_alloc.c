@@ -5,6 +5,7 @@
  *	Sleepycat Software.  All rights reserved.
  */
 #include "db_config.h"
+#include "tohex.h"
 
 #ifndef lint
 static const char revid[] = "$Id: mp_alloc.c,v 11.40 2003/07/03 02:24:34 bostic Exp $";
@@ -224,6 +225,7 @@ static void dump_page_stats(DB_ENV *dbenv) {
 }
 
 
+extern int gbl_debug_rcache;
 int gbl_debug_memp_alloc_size = 0;
 static pthread_mutex_t dump_once_lk = PTHREAD_MUTEX_INITIALIZER;
 /*
@@ -551,7 +553,14 @@ found:		if (offsetp != NULL)
 		 * its space and keep looking.
 		 */
 		if (mfp != NULL &&
-		    mfp->stat.st_pagesize == bh_mfp->stat.st_pagesize) {
+            mfp->stat.st_pagesize == bh_mfp->stat.st_pagesize) {
+            if (bhp->pgno == 1 && gbl_debug_rcache && bhp->mpf->fileid_off != INVALID_ROFF) {
+                char hex[DB_FILE_ID_LEN * 2 + 1];
+                char fileid[DB_FILE_ID_LEN];
+                memcpy(fileid, R_ADDR(dbmp->reginfo, bhp->mpf->fileid_off), DB_FILE_ID_LEN);
+                util_tohex(hex, fileid, DB_FILE_ID_LEN);
+                printf("evict %s off %"PRId64"\n", hex, (int64_t) bhp->mpf->fileid_off);
+		    }
 			__memp_bhfree(dbmp, hp, bhp, 0);
 
 			p = bhp;
@@ -559,6 +568,13 @@ found:		if (offsetp != NULL)
 		}
 
 		freed_space += __db_shsizeof(bhp);
+        if (bhp->pgno == 1 && gbl_debug_rcache && bhp->mpf->fileid_off != INVALID_ROFF) {
+            char hex[DB_FILE_ID_LEN * 2 + 1];
+            char fileid[DB_FILE_ID_LEN];
+            memcpy(fileid, R_ADDR(dbmp->reginfo, bhp->mpf->fileid_off), DB_FILE_ID_LEN);
+            util_tohex(hex, fileid, DB_FILE_ID_LEN);
+            printf("evict %s off %"PRId64"\n", hex, (int64_t) bhp->mpf->fileid_off);
+        }
 		__memp_bhfree(dbmp, hp, bhp, 1);
 		if (aggressive > 1)
 			aggressive = 1;

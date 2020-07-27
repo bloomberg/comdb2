@@ -17,6 +17,8 @@ static const char revid[] = "$Id: mp_fopen.c,v 11.120 2003/11/07 18:45:15 ubell 
 #include <rpc/rpc.h>
 #endif
 #include <string.h>
+#include <tohex.h>
+
 #endif
 
 #include "db_int.h"
@@ -637,142 +639,149 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 	int mode;
 	size_t pagesize;
 {
-	DB_ENV *dbenv;
-	DB_MPOOL *dbmp;
-	DB_MPOOLFILE *tmp_dbmfp;
-	MPOOL *mp;
-	db_pgno_t last_pgno;
-	size_t maxmap;
-	u_int32_t mbytes, bytes, oflags;
-	int refinc, ret, i;
-	char *rpath, *recp_path, *recp_ext;
-	void *p;
+    DB_ENV *dbenv;
+    DB_MPOOL *dbmp;
+    DB_MPOOLFILE *tmp_dbmfp;
+    MPOOL *mp;
+    db_pgno_t last_pgno;
+    size_t maxmap;
+    u_int32_t mbytes, bytes, oflags;
+    int refinc, ret, i;
+    char *rpath, *recp_path, *recp_ext;
+    void *p;
 
-	dbenv = dbmfp->dbenv;
-	dbmp = dbenv->mp_handle;
-	mp = dbmp->reginfo[0].primary;
-	refinc = ret = 0;
-	rpath = recp_path = NULL;
-	recp_ext = DB_RECV_EXTENSION;
-	/*
-	 * If it's a temporary file, delay the open until we actually need
-	 * to write the file, and we know we can't join any existing files.
-	 */
-	if (path == NULL)
-		goto alloc;
+    dbenv = dbmfp->dbenv;
+    dbmp = dbenv->mp_handle;
+    mp = dbmp->reginfo[0].primary;
+    refinc = ret = 0;
+    rpath = recp_path = NULL;
+    recp_ext = DB_RECV_EXTENSION;
+    /*
+     * If it's a temporary file, delay the open until we actually need
+     * to write the file, and we know we can't join any existing files.
+     */
+    if (path == NULL)
+        goto alloc;
 
-	/*
-	 * If our caller knows what mfp we're using, increment the ref count,
-	 * no need to search.
-	 *
-	 * We don't need to acquire a lock other than the mfp itself, because
-	 * we know there's another reference and it's not going away.
-	 */
-	if (mfp != NULL) {
-		MUTEX_LOCK(dbenv, &mfp->mutex);
-		++mfp->mpf_cnt;
-		refinc = 1;
-		MUTEX_UNLOCK(dbenv, &mfp->mutex);
-	}
+    /*
+     * If our caller knows what mfp we're using, increment the ref count,
+     * no need to search.
+     *
+     * We don't need to acquire a lock other than the mfp itself, because
+     * we know there's another reference and it's not going away.
+     */
+    if (mfp != NULL) {
+        MUTEX_LOCK(dbenv, &mfp->mutex);
+        ++mfp->mpf_cnt;
+        refinc = 1;
+        MUTEX_UNLOCK(dbenv, &mfp->mutex);
+    }
 
-	/*
-	 * Get the real name for this file and open it.  If it's a Queue extent
-	 * file, it may not exist, and that's OK.
-	 */
-	oflags = 0;
-	if (LF_ISSET(DB_CREATE))
-		oflags |= DB_OSO_CREATE;
-	if (LF_ISSET(DB_DIRECT))
-		oflags |= DB_OSO_DIRECT;
-	if (LF_ISSET(DB_RDONLY)) {
-		F_SET(dbmfp, MP_READONLY);
-		oflags |= DB_OSO_RDONLY;
-	}
-	if (LF_ISSET(DB_OSYNC))
-		oflags |= DB_OSO_OSYNC;
-	if ((ret =
-		__db_appname(dbenv, DB_APP_DATA, path, 0, NULL, &rpath)) != 0)
-		 goto err;
+    /*
+     * Get the real name for this file and open it.  If it's a Queue extent
+     * file, it may not exist, and that's OK.
+     */
+    oflags = 0;
+    if (LF_ISSET(DB_CREATE))
+        oflags |= DB_OSO_CREATE;
+    if (LF_ISSET(DB_DIRECT))
+        oflags |= DB_OSO_DIRECT;
+    if (LF_ISSET(DB_RDONLY)) {
+        F_SET(dbmfp, MP_READONLY);
+        oflags |= DB_OSO_RDONLY;
+    }
+    if (LF_ISSET(DB_OSYNC))
+        oflags |= DB_OSO_OSYNC;
+    if ((ret =
+                 __db_appname(dbenv, DB_APP_DATA, path, 0, NULL, &rpath)) != 0)
+        goto err;
 
-	/*
-	 * Supply a page size so os_open can decide whether to turn buffering
-	 * off if the DB_DIRECT_DB flag is set.
-	 */
-	if ((ret = __os_open_extend(dbenv, rpath,
-		    0, (u_int32_t)pagesize, oflags, mode, &dbmfp->fhp)) != 0) {
-		if (!LF_ISSET(DB_EXTENT))
-			 __db_err(dbenv, "%s: %s", rpath, db_strerror(ret));
+    /*
+     * Supply a page size so os_open can decide whether to turn buffering
+     * off if the DB_DIRECT_DB flag is set.
+     */
+    if ((ret = __os_open_extend(dbenv, rpath,
+                                0, (u_int32_t) pagesize, oflags, mode, &dbmfp->fhp)) != 0) {
+        if (!LF_ISSET(DB_EXTENT))
+            __db_err(dbenv, "%s: %s", rpath, db_strerror(ret));
 
-		goto err;
-	}
+        goto err;
+    }
 
-	/*
-	 * Open the recovery-page file handle if the user has enabled this
-	 * option.
-	 */
-	if (dbenv->mp_recovery_pages) {
-		if ((ret = __os_calloc(dbenv, 1,
-			    strlen(rpath) + strlen(recp_ext) + 1,
-			    &recp_path)) != 0) {
-			__db_err(dbenv, "Error allocating %s file: %s",
-			    recp_ext, db_strerror(ret));
-			goto err;
-		}
+    /*
+     * Open the recovery-page file handle if the user has enabled this
+     * option.
+     */
+    if (dbenv->mp_recovery_pages) {
+        if ((ret = __os_calloc(dbenv, 1,
+                               strlen(rpath) + strlen(recp_ext) + 1,
+                               &recp_path)) != 0) {
+            __db_err(dbenv, "Error allocating %s file: %s",
+                     recp_ext, db_strerror(ret));
+            goto err;
+        }
 
-		/* Recovery-page filename. */
-		sprintf(recp_path, "%s%s", rpath, recp_ext);
+        /* Recovery-page filename. */
+        sprintf(recp_path, "%s%s", rpath, recp_ext);
 
-		/* Open the recovery page file.  */
-		if ((ret = __os_open_extend(dbenv, recp_path,
-			    0, (u_int32_t)pagesize,
-			    oflags | DB_OSO_CREATE |DB_OSO_OSYNC,
-			    mode, &dbmfp->recp)) != 0) {
-			__db_err(dbenv, "%s: %s", recp_path, db_strerror(ret));
-			goto err;
-		}
+        /* Open the recovery page file.  */
+        if ((ret = __os_open_extend(dbenv, recp_path,
+                                    0, (u_int32_t) pagesize,
+                                    oflags | DB_OSO_CREATE | DB_OSO_OSYNC,
+                                    mode, &dbmfp->recp)) != 0) {
+            __db_err(dbenv, "%s: %s", recp_path, db_strerror(ret));
+            goto err;
+        }
 
-		/* Initialize recp->mutexp. */
-		if (F_ISSET(dbenv, DB_ENV_THREAD) &&
-		    (ret = __db_mutex_setup(dbenv, dbmp->reginfo,
-			    &dbmfp->recp->mutexp,
-			    MUTEX_ALLOC |MUTEX_THREAD)) != 0)
-			 goto err;
-	}
-	/*
-	 * Cache file handles are shared, and have mutexes to protect the
-	 * underlying file handle across seek and read/write calls.
-	 */
-	dbmfp->fhp->ref = 1;
-	if (F_ISSET(dbenv, DB_ENV_THREAD) &&
-	    (ret = __db_mutex_setup(dbenv, dbmp->reginfo,
-	    &dbmfp->fhp->mutexp, MUTEX_ALLOC | MUTEX_THREAD)) != 0)
-		goto err;
+        /* Initialize recp->mutexp. */
+        if (F_ISSET(dbenv, DB_ENV_THREAD) &&
+            (ret = __db_mutex_setup(dbenv, dbmp->reginfo,
+                                    &dbmfp->recp->mutexp,
+                                    MUTEX_ALLOC | MUTEX_THREAD)) != 0)
+            goto err;
+    }
+    /*
+     * Cache file handles are shared, and have mutexes to protect the
+     * underlying file handle across seek and read/write calls.
+     */
+    dbmfp->fhp->ref = 1;
+    if (F_ISSET(dbenv, DB_ENV_THREAD) &&
+        (ret = __db_mutex_setup(dbenv, dbmp->reginfo,
+                                &dbmfp->fhp->mutexp, MUTEX_ALLOC | MUTEX_THREAD)) != 0)
+        goto err;
 
-	/*
-	 * Figure out the file's size.
-	 *
-	 * !!!
-	 * We can't use off_t's here, or in any code in the mainline library
-	 * for that matter.  (We have to use them in the os stubs, of course,
-	 * as there are system calls that take them as arguments.)  The reason
-	 * is some customers build in environments where an off_t is 32-bits,
-	 * but still run where offsets are 64-bits, and they pay us a lot of
-	 * money.
-	 */
-	if ((ret = __os_ioinfo(
-	    dbenv, rpath, dbmfp->fhp, &mbytes, &bytes, NULL)) != 0) {
-		__db_err(dbenv, "%s: %s", rpath, db_strerror(ret));
-		goto err;
-	}
+    /*
+     * Figure out the file's size.
+     *
+     * !!!
+     * We can't use off_t's here, or in any code in the mainline library
+     * for that matter.  (We have to use them in the os stubs, of course,
+     * as there are system calls that take them as arguments.)  The reason
+     * is some customers build in environments where an off_t is 32-bits,
+     * but still run where offsets are 64-bits, and they pay us a lot of
+     * money.
+     */
+    if ((ret = __os_ioinfo(
+            dbenv, rpath, dbmfp->fhp, &mbytes, &bytes, NULL)) != 0) {
+        __db_err(dbenv, "%s: %s", rpath, db_strerror(ret));
+        goto err;
+    }
 
-	/*
-	 * Get the file id if we weren't given one.  Generated file id's
-	 * don't use timestamps, otherwise there'd be no chance of any
-	 * other process joining the party.
-	 */
-	if (!F_ISSET(dbmfp, MP_FILEID_SET) &&
-	    (ret = __os_fileid(dbenv, rpath, 0, dbmfp->fileid)) != 0)
-		goto err;
+    /*
+     * Get the file id if we weren't given one.  Generated file id's
+     * don't use timestamps, otherwise there'd be no chance of any
+     * other process joining the party.
+     */
+    if (!F_ISSET(dbmfp, MP_FILEID_SET) &&
+        (ret = __os_fileid(dbenv, rpath, 0, dbmfp->fileid)) != 0)
+        goto err;
+
+    extern int gbl_debug_rcache;
+    if (gbl_debug_rcache && path) {
+        char hex[DB_FILE_ID_LEN*2+1];
+        util_tohex(hex, dbmfp->fileid, DB_FILE_ID_LEN);
+        printf("open %s -> %s\n", path, hex);
+    }
 
 	if (mfp != NULL) 
 		goto check_map;

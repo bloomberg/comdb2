@@ -23,7 +23,7 @@ uint32_t rcache_savd;
 uint32_t rcache_invalid;
 int32_t rcache_collide;
 
-int gbl_debug_rcache = 0;
+int gbl_debug_rcache = 1;
 
 typedef struct {
 	uint8_t fileid[DB_FILE_ID_LEN];
@@ -200,8 +200,13 @@ volatile int rcache_bump(DB *dbp) {
 
     // uint64_t val = ATOMIC_ADD64(dbp->mpf->mfp->rootpagegen, 1);
     uint64_t val = dbp->mpf->mfp->rootpagegen++;
-    if (gbl_debug_rcache)
-        logmsg(LOGMSG_USER, "%d bump %s to %"PRIu64"\n", hndl ? hndl->id : -1,
-               util_tohex(hex, (const char*) dbp->fileid, DB_FILE_ID_LEN), val);
+    if (gbl_debug_rcache) {
+        util_tohex(hex, (const char *) dbp->fileid, DB_FILE_ID_LEN);
+        // skip temptables
+        if (strcmp(hex, "0000000000000000000000000000000000000000")) {
+            logmsg(LOGMSG_USER, "%d bump %s to %"PRIu64"\n", hndl ? hndl->id : -1,
+                   hex, val);
+        }
+    }
     return 0;
 }
