@@ -157,8 +157,8 @@ int convMem2ClientDatetimeStr(Mem *pMem, void *out, int outlen, int *outdtsz) {
         _convMem2ClientDatetime(pMem, out, outlen, outdtsz, 1);
 }
 
-static void yearFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
-
+static void yearFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
   assert(argc == 1);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
@@ -178,8 +178,8 @@ static void yearFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
       sqlite3_result_null(context);
 }
 
-static void monthFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
+static void monthFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
   assert(argc == 1);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
@@ -199,7 +199,8 @@ static void monthFunc(sqlite3_context *context, int argc, sqlite3_value **argv) 
       sqlite3_result_null(context);
 }
 
-static void dayFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
+static void dayFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
 
   assert(argc == 1);
 
@@ -220,8 +221,8 @@ static void dayFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
       sqlite3_result_null(context);
 }
 
-static void hourFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
+static void hourFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
   assert(argc == 1);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
@@ -241,8 +242,8 @@ static void hourFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
       sqlite3_result_null(context);
 }
 
-static void minuteFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
+static void minuteFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
   assert(argc == 1);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
@@ -262,8 +263,8 @@ static void minuteFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
       sqlite3_result_null(context);
 }
 
-static void secondFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
+static void secondFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
   assert(argc == 1);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
@@ -285,7 +286,8 @@ static void secondFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
 
 
 
-static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
+static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
   assert(argc == 2);
 
   if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){
@@ -355,10 +357,8 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
 
    if (argc == 0) {
        precision = context->pVdbe->dtprec;
-       if (precision != DTTZ_PREC_MSEC
-               && precision != DTTZ_PREC_USEC) {
+       if (precision != DTTZ_PREC_MSEC && precision != DTTZ_PREC_USEC) {
            struct sql_thread *thd =pthread_getspecific(query_info_key);
-
            if(thd && thd->clnt)
                precision = thd->clnt->dtprec;
        }
@@ -370,8 +370,7 @@ static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
        DTTZ_TEXT_TO_PREC((char *)msus, precision, 0, goto err);
    }
 
-   if (precision != DTTZ_PREC_MSEC
-           && precision != DTTZ_PREC_USEC) {
+   if (precision != DTTZ_PREC_MSEC && precision != DTTZ_PREC_USEC) {
 err:
        sqlite3_result_error(context, "incorrect precision", -1);
        return;
@@ -399,8 +398,8 @@ err:
 }
 
 
-static void monthsFunc(sqlite3_context *context, int argc, sqlite3_value **argv) {
-
+static void monthsFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
    assert(argc == 1);
 
    if( SQLITE_NULL!=sqlite3_value_type(argv[0]) ){

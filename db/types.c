@@ -14670,3 +14670,11 @@ int intv_to_str(const intv_t *tv, char *out, int len, int *used)
         return 0;
     return -1;
 }
+
+/* return true if string is a valid date */
+int is_valid_datetime(const char *str, const char *tz)
+{
+    dttz_t dt;
+    int rc = str_to_dttz(str, strlen(str), tz, &dt, 6);
+    return rc == 0;
+}

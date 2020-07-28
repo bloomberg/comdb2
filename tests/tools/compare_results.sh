@@ -49,7 +49,7 @@ sqlfiles=`ls *.$sql_extn`
 
 for sqlfile in $sqlfiles; do
     echo "$sqlfile"
-    testname=`echo $sqlfile | cut -d "." -f 1`
+    testname=${sqlfile%.*}
     prep_log=$testname.prepare.err
 
     touch $prep_log
@@ -64,6 +64,14 @@ for sqlfile in $sqlfiles; do
     done
 
     rm $prep_log
+
+    if [ -f ${testname}.fastinit ] ; then
+        for t in `cat ${testname}.fastinit`; do
+            cmd="cdb2sql ${CDB2_OPTIONS} $dbname default 'truncate $t'"
+            echo $cmd "> $testname.output"
+            eval $cmd 2>&1 >> $testname.fastinit_out
+        done
+    fi
 
     cmd="cdb2sql ${CDB2_OPTIONS} $script_mode -f $sqlfile $dbname default "
     echo $cmd "> $testname.output"

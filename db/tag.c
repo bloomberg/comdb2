@@ -4962,7 +4962,7 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
             }
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "%s initialisation failed for field %s\n", name,
-                        fld->name);
+                       fld->name);
                 free(*p_default);
                 *p_default = NULL;
                 *p_default_len = 0;
