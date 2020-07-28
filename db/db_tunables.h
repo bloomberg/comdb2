@@ -1999,4 +1999,7 @@ REGISTER_TUNABLE("assert_systable_locks",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_assert_systable_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("track_curtran_gettran_locks", "Stack-trace curtran_gettran threads at lock-get.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_track_curtran_gettran_locks, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

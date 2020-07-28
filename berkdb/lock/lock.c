@@ -2179,6 +2179,12 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 	}
 	lpartition = sh_locker->partition;
 
+    extern __thread int track_thread_locks;
+    if (track_thread_locks) {
+        extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+        comdb2_cheapstack_sym(stderr, "lockid %u", locker);
+    }
+
 #ifdef DEBUG_LOCKS
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
 	logmsg(LOGMSG_ERROR, "%p Get (%c) locker lock %x (m %x)\n",
