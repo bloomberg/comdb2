@@ -1,6 +1,21 @@
-/*
-   MACC - access routine generator
-   */
+ /*
+    Copyright 2015, 2018, Bloomberg Finance L.P.
+
+    Licensed under the Apache License, Version 2.0 (the "License");
+    you may not use this file except in compliance with the License.
+    You may obtain a copy of the License at
+
+        http://www.apache.org/licenses/LICENSE-2.0
+
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+  */
+
+
+/* MACC - access routine generator */
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>
@@ -1234,6 +1249,8 @@ void key_piece_add(char *buf,
     macc_globals->workkeypieceflag = 0;
 }
 
+extern int is_valid_datetime(const char *str, const char *tz);
+
 void rec_c_add(int typ, int size, char *name, char *cmnt)
 {
     /* ADDS A SYMBOL TO SYM TABLE */
@@ -1513,6 +1530,15 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 break;
             case T_DATETIME:
             case T_DATETIMEUS:
+                if (fopt->valtype == CLIENT_CSTR && fopt->opttype != FLDOPT_NULL &&
+                    !is_valid_datetime(fopt->value.strval, "") && strcmp(fopt->value.strval, "CURRENT_TIMESTAMP") != 0) {
+                    csc2_error("Error at line %3d: STRING DEFAULT OPTION SCHEMA MUST BE A VALID DATETIME: %s\n",
+                               current_line, name);
+                    csc2_syntax_error("Error at line %3d: STRING DEFAULT OPTION SCHEMA MUST BE A VALID DATETIME: %s\n",
+                                      current_line, name);
+                    any_errors++;
+                    return;
+                }
                 CHECK_LEGACY_SCHEMA((fopt->opttype != FLDOPT_NULL));
             case T_PSTR:
             case T_CSTR:
