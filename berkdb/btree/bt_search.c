@@ -349,7 +349,6 @@ __bam_search(dbc, root_pgno, key, flags, stop, recnop, exactp)
 	void *cached_pg = NULL;
 	void *bfpool_pg = NULL;
 	bool save = false;
-	uint16_t gen;
 	uint32_t slot;
 	unsigned int hh = 0;
 	genid_hash *hash = NULL;
@@ -403,9 +402,8 @@ try_again:
 
 	if (gbl_rcache && pg == 1 && bfpool_pg == NULL &&
 	    lock_mode == DB_LOCK_READ && LF_ISSET(S_FIND)) {
-		save = true;
-		if (rcache_find(
-		    dbp, &cached_pg, &bfpool_pg, &gen, &slot) == 0) {
+        save = true;
+        if (rcache_find(dbp, &cached_pg, &slot) == 0) {
 			h = cached_pg;
 			goto got_pg;
 		}
@@ -531,10 +529,7 @@ hash_backup:
 	}
 
 	if (save && TYPE(h) == P_IBTREE) {	// WORKS ONLY WHEN ROOT IS INTERNAL
-		uint16_t gen = LSN(h).file + LSN(h).offset;
-
-		GET_BH_GEN(h) = gen;
-		rcache_save(dbp, h, gen);
+		rcache_save(dbp, h);
 	}
 
 	INTERNAL_PTR_CHECK(cp == dbc->internal);
@@ -773,29 +768,12 @@ next:		if (recnop != NULL)
 				 */
 				cached_pg = NULL;
 
+				printf("unexpected, invalidating cached page\n");
 				rcache_invalidate(slot);
 				__LPUT(dbc, lock);
 				goto try_again;
 			}
 			goto err;
-		}
-
-		if (cached_pg) {
-			/* Used rcache and got child page. Validate rcache. */
-			DB_LSN *l1 = &LSN(cached_pg);
-			DB_LSN *l2 = &LSN(bfpool_pg);
-			cached_pg = NULL;
-
-			if (gen == GET_BH_GEN(bfpool_pg)
-			    && memcmp(l1, l2, sizeof(DB_LSN)) == 0 && gen == GET_BH_GEN(bfpool_pg)	//re-check. warm&fuzzy
-			    ) {
-				;
-			} else {
-				__memp_fput(mpf, h, 0);
-				__LPUT(dbc, lock);
-				rcache_invalidate(slot);
-				goto try_again;
-			}
 		}
 	}
 	/* NOTREACHED */

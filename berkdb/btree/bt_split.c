@@ -250,7 +250,7 @@ __bam_root(dbc, cp)
 	if ((ret = __bam_psplit(dbc, cp, lp, rp, &split)) != 0)
 		goto err;
 
-	++GET_BH_GEN(cp->page);
+	rcache_bump(dbc->dbp);
 
 	/* Log the change. */
 	if (DBC_LOGGING(dbc)) {

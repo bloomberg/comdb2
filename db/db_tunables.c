@@ -346,6 +346,8 @@ int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
+extern int gbl_debug_rcache;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
