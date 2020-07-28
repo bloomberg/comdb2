@@ -5174,6 +5174,13 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
             if (strncasecmp(typebuf, "CURRENT_TIMESTAMP", 17) == 0)
                 is_null = 1; /* use isnull flag for current timestamp since
                                 null=yes is used for dbstore null */
+        } else if(opttype == CLIENT_BYTEARRAY) {
+            opttype = CLIENT_CSTR;
+            int len = strlen(typebuf);
+            if (len == 4 && 
+               (strncasecmp(typebuf, "GUID", 4) == 0 || strncasecmp(typebuf, "UUID", 4) == 0))
+                is_null = 1; /* use isnull flag for GUID since
+                                null=yes is used for dbstore null */
         }
         if (*p_default == NULL) {
             logmsg(LOGMSG_ERROR, "init_default_value: out of memory\n");
@@ -5439,8 +5446,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 }
 
                 /* input default */
-                rc = init_default_value(&schema->member[field], field,
-                                        FLDOPT_DBSTORE);
+                rc = init_default_value(&schema->member[field], field, FLDOPT_DBSTORE);
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
@@ -5448,8 +5454,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 }
 
                 /* output default  */
-                rc = init_default_value(&schema->member[field], field,
-                                        FLDOPT_DBLOAD);
+                rc = init_default_value(&schema->member[field], field, FLDOPT_DBLOAD);
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);

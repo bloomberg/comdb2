@@ -200,6 +200,7 @@
 (candidate='UPDATE')
 (candidate='USERSCHEMA')
 (candidate='USING')
+(candidate='UUID')
 (candidate='VACUUM')
 (candidate='VALUES')
 (candidate='VERSION')

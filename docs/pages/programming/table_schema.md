@@ -70,6 +70,7 @@ schema {
     int          userid
     double       balance     dbstore=100.00 null=yes
     datetime     paydate     dbstore="CURRENT_TIMESTAMP"
+    byte         autoid[16]  dbstore="GUID"
     byte         permissions[12]
 }
 
@@ -91,6 +92,7 @@ The dbstore value must have the same datatype as the column they are attached to
 * For datetime fields you can specify a string such as "2017-03-08T235959.987 America/New_York" or "CURRENT_TIMESTAMP"
 for current database system timestamp.
 * For byte arrays you can specify dbstore=0 to indicate that it should be zeroed be default.
+* If the type is byte[16], you can also specify `dbstore="GUID"` and that will allow the field to be autofilled by the database at the time of recond insertion.
 
 The schema section is required - it's the only required section.
 

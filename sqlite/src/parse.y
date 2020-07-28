@@ -321,7 +321,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE
-  VERSION WRITE DDL USERSCHEMA ZLIB
+  UUID VERSION WRITE DDL USERSCHEMA ZLIB
 %endif SQLITE_BUILDING_FOR_COMDB2
   .
 %wildcard ANY.
@@ -1328,6 +1328,12 @@ expr(A) ::= id(X) LP STAR RP over_clause(Z). {
 term(A) ::= CTIME_KW(OP). {
   A = sqlite3ExprFunction(pParse, 0, &OP, 0);
 }
+
+%ifdef SQLITE_BUILDING_FOR_COMDB2
+term(A) ::= UUID(OP). {
+  A = sqlite3ExprFunction(pParse, 0, &OP, 0);
+}
+%endif SQLITE_BUILDING_FOR_COMDB2
 
 expr(A) ::= LP nexprlist(X) COMMA expr(Y) RP. {
   ExprList *pList = sqlite3ExprListAppend(pParse, X, Y);

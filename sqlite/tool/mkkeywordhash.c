@@ -395,6 +395,7 @@ static Keyword aKeywordTable[] = {
   { "TUNABLE",          "TK_TUNABLE",        ALWAYS               },
   { "TYPE",             "TK_TYPE",           ALWAYS               },
   { "USERSCHEMA",       "TK_USERSCHEMA",     ALWAYS               },
+  { "UUID",             "TK_UUID",           ALWAYS               },
   { "VERSION",          "TK_VERSION",        ALWAYS               },
   { "WRITE",            "TK_WRITE",          ALWAYS               },
   { "ZLIB",             "TK_ZLIB",           ALWAYS               },

@@ -2700,6 +2700,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     VFUNCTION(guid_str,          0, 0, 0, guidStrFunc      ),
     FUNCTION(guid,               1, 0, 0, guidFromStrFunc  ),
     FUNCTION(guid_str,           1, 0, 0, guidFromByteFunc ),
+    VFUNCTION(uuid,              0, 0, 0, guidFunc         ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(nullif,             2, 0, 1, nullifFunc       ),
     DFUNCTION(sqlite_version,    0, 0, 0, versionFunc      ),

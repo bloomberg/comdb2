@@ -1541,20 +1541,26 @@ char *sql_field_default_trans(struct field *f, int is_out)
         break;
     }
     case SERVER_BYTEARRAY: {
-        /* ... */
         bval = sqlite3_malloc(this_default_len - 1);
         rc = SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
             this_default, this_default_len, NULL, NULL, bval,
             this_default_len - 1, &null, &outsz, NULL, NULL);
 
-        dstr = sqlite3_malloc((this_default_len * 2) + 3);
-        dstr[0] = 'x';
-        dstr[1] = '\'';
-        int i;
-        for (i = 0; i < this_default_len - 1; i++)
-            snprintf(&dstr[i * 2 + 2], 3, "%02x", bval[i]);
-        dstr[i * 2 + 2] = '\'';
-        dstr[i * 2 + 3] = 0;
+        if (rc != 0) {
+            break;
+        }
+        if (null) {
+            dstr = sqlite3_mprintf("%q", "UUID");
+        } else {
+            dstr = sqlite3_malloc((this_default_len * 2) + 3);
+            dstr[0] = 'x';
+            dstr[1] = '\'';
+            int i;
+            for (i = 0; i < this_default_len - 1; i++)
+                snprintf(&dstr[i * 2 + 2], 3, "%02x", bval[i]);
+            dstr[i * 2 + 2] = '\'';
+            dstr[i * 2 + 3] = 0;
+        }
         break;
     }
     case SERVER_DATETIME: {
