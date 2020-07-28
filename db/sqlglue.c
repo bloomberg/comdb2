@@ -11338,6 +11338,9 @@ void curtran_assert_nolocks(void)
     assert(nlocks == 0);
 }
 
+__thread int track_thread_locks = 0;
+int gbl_track_curtran_gettran_locks = 0;
+
 tran_type *curtran_gettran(void)
 {
     int bdberr;
@@ -11349,6 +11352,9 @@ tran_type *curtran_gettran(void)
     if ((tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr)) != NULL) {
         bdb_get_tran_lockerid(tran, &tran->original_lid);
         bdb_set_tran_lockerid(tran, lockid);
+        if (gbl_track_curtran_gettran_locks)
+            track_thread_locks = 1;
+        tran->is_curtran = 1;
     }
     return tran;
 }
@@ -11359,6 +11365,8 @@ void curtran_puttran(tran_type *tran)
     if (!tran)
         return;
     bdb_set_tran_lockerid(tran, tran->original_lid);
+    tran->is_curtran = 0;
+    track_thread_locks = 0;
     bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 }
 

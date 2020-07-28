@@ -291,6 +291,7 @@ struct tran_tag {
     DB_TXN *tid;
     u_int32_t logical_lid;
     u_int32_t original_lid;
+    int is_curtran;
 
     void *usrptr;
     DB_LSN savelsn;
