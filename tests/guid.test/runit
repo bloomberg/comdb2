@@ -22,6 +22,7 @@ echo $CDB2_CONFIG
 CNT=10000
 
 
+blah() {
 echo 'part of a transaction'
 
 echo begin > ins.in
@@ -89,47 +90,61 @@ fi
 
 mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
 echo "found $mult with duplicate key for randomblob()"
-
+}
 
 echo "Testing having guid as autoassigned colun via dbstore"
 
-# if line is 'byte        auto_guid[17] dbstore="UUID"' it should fail with syntax error:
-#} }] failed with rc 240 Error at line   3: CAN ONLY HAVE BYTE[16] FOR GUID DBSTORE: auto_guid
+# if line is 'byte        autoid[17] dbstore="UUID"' it should fail with syntax error:
+#} }] failed with rc 240 Error at line   3: CAN ONLY HAVE BYTE[16] FOR GUID/UUID DBSTORE: autoid
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { 
 schema 
 {
-    byte auto_guid[16] dbstore="UUID"
+    byte autoid[16] dbstore="UUID"
     int  i
+}
+keys
+{
+        "PK"=autoid
 }
 }'
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(1)'
-assertcnt t2 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(1),(2)'
+assertcnt t2 2
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(auto_guid byte(16) DEFAULT UUID, i int)'
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(1)'
-assertcnt t2 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(autoid byte(16) DEFAULT UUID PRIMARY KEY, i int)'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(3),(4)'
+assertcnt t2 2
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(auto_guid byte(16) DEFAULT GUID, i int)'
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(1)'
-assertcnt t2 1
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(autoid byte(16) DEFAULT uuid PRIMARY KEY, i int)'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(5),(6)'
+assertcnt t2 2
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(autoid byte(16) DEFAULT GUID PRIMARY KEY, i int)'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(7),(8)'
+assertcnt t2 2
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(autoid byte(16) DEFAULT guid PRIMARY KEY, i int)'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(9),(10)'
+assertcnt t2 2
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
 
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { 
 schema 
 {
-    byte  auto_guid[16] dbstore="GUID"
+    byte  autoid[16] dbstore="GUID"
     short i   
     int   j
 }
 
 keys 
 {
-        "PK"=auto_guid
+        "PK"=autoid
 }
 }'
 
@@ -171,14 +186,14 @@ set +e
 echo 'create table t3 { 
 schema 
 {
-    byte auto_guid[17] dbstore="UUID"
+    byte autoid[17] dbstore="UUID"
     int  i
 }
 }' > t3.in
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "`cat t3.in`" &> t3.err
 
-echo "[`cat t3.in`] failed with rc 240 Error at line   4: CAN ONLY HAVE BYTE[16] FOR GUID DBSTORE: auto_guid
+echo "[`cat t3.in`] failed with rc 240 Error at line   4: CAN ONLY HAVE BYTE[16] FOR GUID/UUID DBSTORE: autoid
 " > t3.expected
 
 if ! diff t3.err t3.expected ; then

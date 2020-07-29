@@ -663,8 +663,7 @@ int keysize(struct key *ck) /* CALCULATES SIZE OF A STRUCT KEY */
     rng = (ck->rg[0] > 0 && ck->rg[1] > 0); /* is an element specified?  */
     chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) ||
            (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
-           (tables[ondtidx].sym[ck->sym].type ==
-            T_CSTR)); /* is this a character type? */
+           (tables[ondtidx].sym[ck->sym].type == T_CSTR)); /* is this a character type? */
 
     if (rng < 0) { /* report this odd error     */
         csc2_error("ERROR: BAD RANGE FOR %s(%d:%d), SYMBOL #%d\n",
@@ -1523,11 +1522,11 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 }
                 if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype == CLIENT_CSTR &&
                     tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL) {
-                    if(strcmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "GUID") != 0 &&
-                       strcmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "UUID") != 0) {
+                    if(strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "GUID") != 0 &&
+                       strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "UUID") != 0) {
                         csc2_error(
-                            "Warning at line %3d: STRING DEFAULT OPTION WILL BE IGNORED FOR FIELD: %s\n",
-                            current_line, name);
+                            "Warning at line %3d: STRING DEFAULT OPTION '%s' WILL BE IGNORED FOR FIELD: %s\n",
+                            current_line, tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, name);
                     } else if (siz != 16) {
                         csc2_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID/UUID DBSTORE: %s\n",
                             current_line, name);
@@ -3143,8 +3142,8 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
                     return 0;
                 } else if (*value_type == CLIENT_BYTEARRAY && vbsz >= tables[tidx].sym[fidx].szof && 
                            tables[tidx].sym[fidx].szof == 16 && 
-                           (strcmp(tables[tidx].sym[fidx].fopts[i].value.strval, "GUID") == 0 ||
-                            strcmp(tables[tidx].sym[fidx].fopts[i].value.strval, "UUID") == 0)) {
+                           (strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "GUID") == 0 ||
+                            strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "UUID") == 0)) {
                     int len = strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
                     memcpy(valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval, len);
                     *value_sz = len;
