@@ -4666,22 +4666,26 @@ static void comdb2ColumnSetDefault(
     struct comdb2_column *column, /* Set the default value of this column */
     Expr *pExpr,        /* The parsed expression of the default value */
     const char *zStart, /* Start of the default value text */
-    const char *zEnd    /* First character past end of defaut value
-                           text */
+    const char *zEnd    /* First character past end of defaut value text */
 )
 {
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *def;
     int def_len;
 
+    /* need to remove space at the end: zStart is beggining of next word */
+    while (zEnd - 1 != zStart && *(zEnd - 1) == ' ')
+        --zEnd;
+
     /* Add DEFAULT to the specified column. */
     def_len = zEnd - zStart;
+    assert(def_len > 0);
+
     def = comdb2_strndup(ctx->mem, zStart, def_len);
     if (def == 0)
         goto oom;
     /* Remove the quotes around the default value (if any). */
     sqlite3Dequote(def);
-
     column->def = def;
 
     return;
