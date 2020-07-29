@@ -291,7 +291,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 <CONSTRAINTS>on                 { return T_CON_ON; }
 <CONSTRAINTS>update             { return T_CON_UPDATE; }
 <CONSTRAINTS>delete             { return T_CON_DELETE; }
-<CONSTRAINTS>[\-:]              { return yytext[0];;  }
+<CONSTRAINTS>[\-:]              { return yytext[0];  }
 <CONSTRAINTS>{varname}          { yylval.varname=yytext; return T_VARNAME; }
 <CONSTRAINTS>=                  { return T_EQ; }
 <INITIAL,RECTYPE,CONSTRAINTS>[\{]                   { rectplvl++; return yytext[0]; }
