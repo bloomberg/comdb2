@@ -33,6 +33,7 @@
 extern int yyparse(void);
 extern int compute_key_data(void);
 extern int compute_all_data(int tidx);
+extern int gbl_ready;
 
 char *revision = "$Revision: 1.24 $";
 int unionflag = 0;
@@ -663,7 +664,8 @@ int keysize(struct key *ck) /* CALCULATES SIZE OF A STRUCT KEY */
     rng = (ck->rg[0] > 0 && ck->rg[1] > 0); /* is an element specified?  */
     chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) ||
            (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
-           (tables[ondtidx].sym[ck->sym].type == T_CSTR)); /* is this a character type? */
+           (tables[ondtidx].sym[ck->sym].type == 
+            T_CSTR)); /* is this a character type? */
 
     if (rng < 0) { /* report this odd error     */
         csc2_error("ERROR: BAD RANGE FOR %s(%d:%d), SYMBOL #%d\n",
@@ -1503,10 +1505,14 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                  * Sadly we have to allow cstring as well because a bunch of
                  * people have it in their production databases.  cstring is a
                  * noop and gets ignored. */
-                if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_BYTEARRAY &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_CSTR &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL) {
+                if (tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].valtype != CLIENT_INT &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].valtype != CLIENT_BYTEARRAY &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].valtype != CLIENT_CSTR &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].opttype != FLDOPT_NULL) {
                     csc2_error(
                         "Error at line %3d: FIELD OPTION TYPE IN "
                         "SCHEMA MUST BE AN INTEGER OR HEX FOR THIS FIELD "
@@ -1520,17 +1526,13 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                     any_errors++;
                     return;
                 }
-                if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype == CLIENT_CSTR &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL) {
-                    if(strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "GUID") != 0 &&
-                       strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "UUID") != 0) {
-                        csc2_error(
-                            "Warning at line %3d: STRING DEFAULT OPTION '%s' WILL BE IGNORED FOR FIELD: %s\n",
-                            current_line, tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, name);
-                    } else if (siz != 16) {
-                        csc2_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID/UUID DBSTORE: %s\n",
+                if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype == CLIENT_BYTEARRAY &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL &&
+                    strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "UUID") == 0) {
+                    if (siz != 16) {
+                        csc2_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR UUID DBSTORE: %s\n",
                             current_line, name);
-                        csc2_syntax_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID/UUID DBSTORE: %s\n",
+                        csc2_syntax_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR UUID DBSTORE: %s\n",
                             current_line, name);
                         any_errors++;
                         return;
@@ -1538,11 +1540,30 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                         CHECK_LEGACY_SCHEMA(1);
                     }
                 }
-                if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype == CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts[i].value.i8val != 0) {
-                    csc2_error(
-                        "Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: %s\n",
+                if (tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].valtype == CLIENT_CSTR &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].opttype != FLDOPT_NULL) {
+                    if (gbl_ready) {
+                        csc2_error("Error at line %3d: STRING DEFAULT OPTION NOT ALLOWED FOR FIELD: %s\n",
+                                   current_line, name);
+                        csc2_syntax_error("Error at line %3d: STRING DEFAULT OPTION NOT ALLOWED FOR FIELD: %s\n",
+                                          current_line, name);
+                        any_errors++;
+                        return;
+                    }
+                    csc2_error("Warning at line %3d: STRING DEFAULT OPTION WILL BE IGNORED FOR FIELD: %s\n",
+                               current_line, name);
+                }
+                if (tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].valtype == CLIENT_INT &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].opttype != FLDOPT_NULL &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts
+                            [i].value.i8val != 0) {
+                    csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
+                                    "SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: "
+                                    "%s\n",
                         current_line, name);
                     csc2_syntax_error(
                         "Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: %s",
@@ -3112,6 +3133,15 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
             case CLIENT_BYTEARRAY: {
                 int *bytes;
                 int length;
+                if (*value_type == CLIENT_BYTEARRAY && vbsz >= tables[tidx].sym[fidx].szof && 
+                   tables[tidx].sym[fidx].szof == 16 && 
+                   strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "UUID") == 0) {
+                    int len = strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
+                    memcpy(valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval, len);
+                    *value_sz = len;
+                    return 0;
+                }
+
                 bytes = (int *)tables[tidx].sym[fidx].fopts[i].value.byteval;
                 if (!bytes) {
                     csc2_error("%s: null byteval\n", __func__);

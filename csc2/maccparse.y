@@ -32,7 +32,7 @@
 }
 
 
-%token T_STRING T_NUM T_FLOAT T_SQLHEXSTR
+%token T_STRING T_FLD_UUIDDEFAULT T_NUM T_FLOAT T_SQLHEXSTR
 %token T_WHERE T_VARNAME T_COMMENT
 
 %token T_LOGICAL T_INTEGER2 T_INTEGER4 
@@ -72,6 +72,7 @@
 %type <comment> comment
 %type <fltpoint> fltnumber
 %type <bytestr> sqlhexstr
+%type <opttext> uuid
 
 %{
 #include <stdio.h>
@@ -191,6 +192,7 @@ fieldopts: T_FLD_STRDEFAULT '=' number fieldopts          { add_fldopt(FLDOPT_DB
            | T_FLD_LDDEFAULT '=' number fieldopts         { add_fldopt(FLDOPT_DBLOAD,CLIENT_INT, $3.numstr); }
            | T_FLD_STRDEFAULT '=' fltnumber fieldopts     { double f=$3; add_fldopt(FLDOPT_DBSTORE,CLIENT_REAL,&f); }
            | T_FLD_LDDEFAULT '=' fltnumber fieldopts      { double f=$3; add_fldopt(FLDOPT_DBLOAD,CLIENT_REAL,&f); }
+           | T_FLD_STRDEFAULT '=' uuid  fieldopts       { add_fldopt(FLDOPT_DBSTORE,CLIENT_BYTEARRAY,$3); }
            | T_FLD_STRDEFAULT '=' string  fieldopts       { add_fldopt(FLDOPT_DBSTORE,CLIENT_CSTR,$3); }
            | T_FLD_LDDEFAULT '=' string fieldopts         { add_fldopt(FLDOPT_DBLOAD,CLIENT_CSTR,$3); }
            | T_FLD_STRDEFAULT '=' sqlhexstr  fieldopts       { add_fldopt(FLDOPT_DBSTORE,CLIENT_BYTEARRAY,$3); }
@@ -340,13 +342,22 @@ sqlhexstr:      T_SQLHEXSTR     { $$=yylval.bytestr; }
                 ;
 varname:	T_VARNAME
        {
-            yylval.varname=(char*)csc2_strdup(yylval.varname);
+            yylval.varname=csc2_strdup(yylval.varname);
             if (yylval.varname==0) {
               csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.comment);
               exit(-1);
             }
             $$=yylval.varname;
+            } 
+	        | uuid {
+ 	    yylval.varname=csc2_strdup(yylval.varname);
+            if (yylval.varname==0) {
+              csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.comment);
+              exit(-1);
             }
+            $$=yylval.varname;
+
+	}
 		;
 string:		T_STRING
 			{
@@ -362,6 +373,16 @@ string:		T_STRING
 			}
                 ;
 
+uuid:		T_FLD_UUIDDEFAULT {
+			char *str;
+			str=strdup(yylval.opttext);
+			if (!str) {
+			  csc2_error("ERROR: OUT OF MEMORY: %s\n",yylval.opttext);
+			  exit(-1);
+			}
+			$$=str;
+			}
+		;
 comment:	T_COMMENT	
 			{
 			remem_com=(char*)csc2_malloc(yyleng+1);

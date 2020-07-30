@@ -120,6 +120,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 				   }
                                 }
 
+<RECTYPE>uuid|UUID              { yylval.opttext=yytext; return T_FLD_UUIDDEFAULT; }
 <RECTYPE>{sqlhexstr}            { 
                                   char * data=NULL;
                                   int i=0, slen=0, j=sizeof(int);
@@ -226,7 +227,7 @@ sqlhexstr x{space}*"'"{space}*([a-fA-F0-9])*{space}*"'"
 
 
 <RECTYPE>dbpad                  { return T_FLD_PADDING; }
-<RECTYPE>dbstore                { return T_FLD_STRDEFAULT;}
+<RECTYPE>dbstore                { /* BEGIN DBSTORE */ return T_FLD_STRDEFAULT;}
 <RECTYPE>dbload                 { return T_FLD_LDDEFAULT;}
 <RECTYPE>null                   { return T_FLD_NULL;}
 
