@@ -3137,7 +3137,7 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
               does not allow single quoted value.
             */
             if ((type_flags[column->type] & FLAG_QUOTE_DEFAULT) == 0 ||
-                    (column->type == SQL_TYPE_BYTE && strcasecmp(column->def, "UUID") == 0)) {
+                    (column->type == SQL_TYPE_BYTE && strcasecmp(column->def, "GUID") == 0)) {
                 strbuf_appendf(csc2, "dbstore = %s ", column->def);
             } else {
                 strbuf_appendf(csc2, "dbstore = \"%s\" ", column->def);

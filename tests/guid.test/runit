@@ -93,7 +93,7 @@ echo "found $mult with duplicate key for randomblob()"
 }
 
 
-echo "Test that having guuid as a column works"
+echo "Test that having guid as a column works"
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(GUID int PRIMARY KEY, i int)'
 cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(GUID, i) values(1,1),(2,2)'
@@ -220,20 +220,20 @@ assertcnt t2 $((CNT*PARALLEL*3))
 
 set +e 
 
-# if line is 'byte        autoid[17] dbstore=UUID' it should fail with syntax error:
-#} }] failed with rc 240 Error at line   3: CAN ONLY HAVE BYTE[16] FOR UUID DBSTORE: autoid
+# if line is 'byte        autoid[17] dbstore=GUID' it should fail with syntax error:
+#} }] failed with rc 240 Error at line   3: CAN ONLY HAVE BYTE[16] FOR GUID DBSTORE: autoid
 
 echo 'create table t3 { 
 schema 
 {
-    byte autoid[17] dbstore=UUID
+    byte autoid[17] dbstore=GUID
     int  i
 }
 }' > t3.in
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "`cat t3.in`" &> t3.err
 
-echo "[`cat t3.in`] failed with rc 240 Error at line   4: CAN ONLY HAVE BYTE[16] FOR UUID DBSTORE: autoid
+echo "[`cat t3.in`] failed with rc 240 Error at line   4: CAN ONLY HAVE BYTE[16] FOR GUID DBSTORE: autoid
 " > t3.expected
 
 if ! diff t3.err t3.expected ; then

@@ -5177,8 +5177,7 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
         } else if(opttype == CLIENT_BYTEARRAY) {
             opttype = CLIENT_CSTR;
             int len = strlen(typebuf);
-            if (len == 4 && 
-               (strncasecmp(typebuf, "GUID", 4) == 0 || strncasecmp(typebuf, "UUID", 4) == 0))
+            if (len == 4 && strncasecmp(typebuf, "GUID", 4) == 0)
                 is_null = 1; /* use isnull flag for GUID since
                                 null=yes is used for dbstore null */
         }

@@ -1528,11 +1528,11 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 }
                 if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype == CLIENT_BYTEARRAY &&
                     tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL &&
-                    strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "UUID") == 0) {
+                    strcasecmp(tables[ntables].sym[tables[ntables].nsym].fopts[i].value.strval, "GUID") == 0) {
                     if (siz != 16) {
-                        csc2_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR UUID DBSTORE: %s\n",
+                        csc2_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID DBSTORE: %s\n",
                             current_line, name);
-                        csc2_syntax_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR UUID DBSTORE: %s\n",
+                        csc2_syntax_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID DBSTORE: %s\n",
                             current_line, name);
                         any_errors++;
                         return;
@@ -3135,7 +3135,7 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
                 int length;
                 if (*value_type == CLIENT_BYTEARRAY && vbsz >= tables[tidx].sym[fidx].szof && 
                    tables[tidx].sym[fidx].szof == 16 && 
-                   strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "UUID") == 0) {
+                   strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "GUID") == 0) {
                     int len = strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
                     memcpy(valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval, len);
                     *value_sz = len;
@@ -3172,8 +3172,7 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
                     return 0;
                 } else if (*value_type == CLIENT_BYTEARRAY && vbsz >= tables[tidx].sym[fidx].szof && 
                            tables[tidx].sym[fidx].szof == 16 && 
-                           (strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "GUID") == 0 ||
-                            strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "UUID") == 0)) {
+                           strcasecmp(tables[tidx].sym[fidx].fopts[i].value.strval, "GUID") == 0) {
                     int len = strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
                     memcpy(valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval, len);
                     *value_sz = len;
