@@ -303,7 +303,7 @@ int client_type_to_server_type(int type)
     case CLIENT_SEQUENCE:
         return SERVER_SEQUENCE;
     default:
-        return type;
+        abort();
     }
 }
 
