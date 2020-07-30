@@ -7,6 +7,7 @@ find_package_handle_standard_args(Readline DEFAULT_MSG READLINE_INCLUDE_DIR)
 find_package_handle_standard_args(libreadline DEFAULT_MSG READLINE_LIBRARY)
 find_package_handle_standard_args(libncurses  DEFAULT_MSG NCURSES_LIBRARY)
 
+set (TINFO_LIBRARY "")
 if (NOT APPLE)
   find_library(TINFO_LIBRARY NAMES tinfo HINTS ${TINFO_ROOT_DIR})
   find_package_handle_standard_args(libtinfo DEFAULT_MSG TINFO_LIBRARY)
