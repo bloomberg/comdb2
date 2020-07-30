@@ -1008,7 +1008,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
          * SQLite switches to double for values with numeric affinity that are out of range
          * for int, regardless of the source type, so we only need to cover the MEM_Real case. */
         if (gbl_disallow_sql_ull_values && f->type == SERVER_UINT && f->len == 9 &&
-                m->u.r >= LLONG_MAX) {
+                (uint64_t)m->u.r > LLONG_MAX) {
             if (fail_reason)
                 fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
             return -1;
@@ -1047,6 +1047,18 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
                               (struct field_conv_opts *)convopts,
                               NULL /*blob */, out + f->offset, f->len, f->type,
                               0, &outdtsz, &f->convopts, vutf8_outblob);
+        if (gbl_disallow_sql_ull_values && f->type == SERVER_UINT && f->len == 9 && !null) {
+            int64_t check;
+            int isnull;
+            int outsz;
+            rc = SERVER_to_CLIENT(out + f->offset, f->len, SERVER_UINT, (struct field_conv_opts *)convopts,
+                    NULL, 0, &check, sizeof(int64_t), CLIENT_INT, &isnull, &outsz, &f->convopts, vutf8_outblob);
+            if (rc) {
+                if (fail_reason)
+                    fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
+                return -1;
+            }
+        }
 
         if (gbl_report_sqlite_numeric_conversion_errors &&
             (f->type == SERVER_BINT || f->type == SERVER_UINT ||

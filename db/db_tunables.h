@@ -2005,7 +2005,7 @@ REGISTER_TUNABLE("track_curtran_gettran_locks", "Stack-trace curtran_gettran thr
 REGISTER_TUNABLE("permit_small_sequences", "Allow int32 and int16 length sequences.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_permit_small_sequences, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("disallow_sql_ull_values", "Disallow out of range longlong values on SQL insert to u_longlong fields.  (Default: off)",
+REGISTER_TUNABLE("disallow_sql_ull_values", "Disallow out of range longlong values on SQL insert to u_longlong fields.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_disallow_sql_ull_values, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

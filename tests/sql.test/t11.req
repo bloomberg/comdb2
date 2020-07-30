@@ -1,0 +1,12 @@
+create table ulltest(a u_longlong)$$
+put tunable disallow_sql_ull_values 'ON'
+insert into ulltest(a) values(9223372036854775807)
+insert into ulltest(a) values('9223372036854775807')
+insert into ulltest(a) values(9223372036854775808)
+insert into ulltest(a) values('9223372036854775808')
+insert into ulltest(a) values(1)
+insert into ulltest(a) values(0)
+select a from ulltest order by a
+put tunable disallow_sql_ull_values 'OFF'
+insert into ulltest(a) values(9223372036854775808)
+select a from ulltest order by a
