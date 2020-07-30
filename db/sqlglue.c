@@ -1002,6 +1002,17 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
             NULL /*blob */, out + f->offset, f->len, f->type, 0, &outdtsz,
             &f->convopts, NULL /*&outblob[nblobs] blob */);
     } else if (m->flags & MEM_Real) {
+        /* Prevent u_longlong fields from getting out of range (for longlong value).
+         * It's still possible to get them in with tags, but this prevents a situation
+         * where SQL lets you insert a value you can't subsequently read back.
+         * SQLite switches to double for values with numeric affinity that are out of range
+         * for int, regardless of the source type, so we only need to cover the MEM_Real case. */
+        if (gbl_disallow_sql_ull_values && f->type == SERVER_UINT && f->len == 9 &&
+                m->u.r >= LLONG_MAX) {
+            if (fail_reason)
+                fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
+            return -1;
+        }
         double r = flibc_htond(m->u.r);
         rc =
             CLIENT_to_SERVER(&r, sizeof(r), CLIENT_REAL, null,

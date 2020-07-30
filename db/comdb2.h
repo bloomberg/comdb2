@@ -3567,4 +3567,6 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
 
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;
+extern int gbl_disallow_sql_ull_values;
+
 #endif /* !INCLUDED_COMDB2_H */
