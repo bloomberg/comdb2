@@ -22,7 +22,6 @@ echo $CDB2_CONFIG
 CNT=10000
 
 
-blah() {
 echo 'part of a transaction'
 
 echo begin > ins.in
@@ -90,7 +89,6 @@ fi
 
 mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
 echo "found $mult with duplicate key for randomblob()"
-}
 
 
 echo "Test that having guid as a column works"
@@ -203,7 +201,7 @@ echo 'using cte for speed'
 echo "INSERT INTO t2 (i,j) WITH tblx(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM tblx where x < $CNT) SELECT x,($CNT-x) FROM tblx" >> ins2.in
 
 
-PARALLEL=1
+PARALLEL=10
 for ((j=1;j<=$PARALLEL;j++)) ; do
    cdb2sql -f ins2.in ${CDB2_OPTIONS} $dbnm default > ins2_${j}.out &
 done
