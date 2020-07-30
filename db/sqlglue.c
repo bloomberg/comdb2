@@ -1550,7 +1550,7 @@ char *sql_field_default_trans(struct field *f, int is_out)
             break;
         }
         if (null) {
-            dstr = sqlite3_mprintf("%q", "UUID");
+            dstr = sqlite3_mprintf("%q", "libuuid_call");
         } else {
             dstr = sqlite3_malloc((this_default_len * 2) + 3);
             dstr[0] = 'x';
