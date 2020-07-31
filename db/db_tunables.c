@@ -267,6 +267,7 @@ extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_test_log_file;
 extern pthread_mutex_t gbl_test_log_file_mtx;
 extern char *gbl_machine_class;
+extern int gbl_vdbe_debug;
 extern int gbl_ref_sync_pollms;
 extern int gbl_ref_sync_wait_txnlist;
 extern int gbl_ref_sync_iterations;

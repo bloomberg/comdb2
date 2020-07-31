@@ -1076,6 +1076,11 @@ REGISTER_TUNABLE("exec_sql_on_new_connect",
                  "SQL command(s) to run for each new connection.",
                  TUNABLE_RAW, &gbl_exec_sql_on_new_connect,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("vdbe_debug",
+                 "Enable diagnostic logging of SQL query execution within the "
+                 "VDBE.  Requires SQLITE_DEBUG at compile-time (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_vdbe_debug, EXPERIMENTAL | INTERNAL,
+                 NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlflush", "Force flushing the current record "
                              "stream to client every specified "
                              "number of records. (Default: 0)",

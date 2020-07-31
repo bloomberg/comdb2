@@ -164,7 +164,10 @@ __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 	int rc;
 	size_t niop = 0;
 
-	logmsg(LOGMSG_DEBUG, "ckpt lsn: %u:%u\n", lsn->file, lsn->offset);
+	// TODO: Do not emit this trace unconditionally, use a tunable;
+	//       Otherwise, running (some) tests in debug is problematic
+	//       due to the extraneous trace output.
+	// logmsg(LOGMSG_DEBUG, "ckpt lsn: %u:%u\n", lsn->file, lsn->offset);
 
 	LOGCOPY_TOLSN(&ckpt.lsn, lsn);
 

@@ -131,6 +131,7 @@ static int seriesConnect(
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
     memset(pNew, 0, sizeof(*pNew));
+    sqlite3_vtab_config(db, SQLITE_VTAB_INNOCUOUS);
   }
   return rc;
 }
@@ -402,7 +403,9 @@ static sqlite3_module seriesModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 #endif /* SQLITE_OMIT_VIRTUALTABLE */

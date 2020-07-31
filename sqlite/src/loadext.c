@@ -473,8 +473,32 @@ static const sqlite3_api_routines sqlite3Apis = {
 #endif
   /* Version 3.28.0 and later */
   sqlite3_stmt_isexplain,
-  sqlite3_value_frombind
+  sqlite3_value_frombind,
+  /* Version 3.30.0 and later */
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+  sqlite3_drop_modules,
+#else
+  0,
+#endif
+  /* Version 3.31.0 and later */
+  sqlite3_hard_heap_limit64,
+  sqlite3_uri_key,
+  sqlite3_filename_database,
+  sqlite3_filename_journal,
+  sqlite3_filename_wal,
+  /* Version 3.32.0 and later */
+  sqlite3_create_filename,
+  sqlite3_free_filename,
+  sqlite3_database_file_object,
 };
+
+/* True if x is the directory separator character
+*/
+#if SQLITE_OS_WIN
+# define DirSep(X)  ((X)=='/'||(X)=='\\')
+#else
+# define DirSep(X)  ((X)=='/')
+#endif
 
 /*
 ** Attempt to load an SQLite extension library contained in the file
@@ -577,7 +601,7 @@ static int sqlite3LoadExtension(
       return SQLITE_NOMEM_BKPT;
     }
     memcpy(zAltEntry, "sqlite3_", 8);
-    for(iFile=ncFile-1; iFile>=0 && zFile[iFile]!='/'; iFile--){}
+    for(iFile=ncFile-1; iFile>=0 && !DirSep(zFile[iFile]); iFile--){}
     iFile++;
     if( sqlite3_strnicmp(zFile+iFile, "lib", 3)==0 ) iFile += 3;
     for(iEntry=8; (c = zFile[iFile])!=0 && c!='.'; iFile++){
@@ -677,7 +701,7 @@ int sqlite3_enable_load_extension(sqlite3 *db, int onoff){
 ** The following object holds the list of automatically loaded
 ** extensions.
 **
-** This list is shared across threads.  The SQLITE_MUTEX_STATIC_MASTER
+** This list is shared across threads.  The SQLITE_MUTEX_STATIC_MAIN
 ** mutex must be held while accessing this list.
 */
 typedef struct sqlite3AutoExtList sqlite3AutoExtList;
@@ -719,7 +743,7 @@ int sqlite3_auto_extension(
   {
     u32 i;
 #if SQLITE_THREADSAFE
-    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
     wsdAutoextInit;
     sqlite3_mutex_enter(mutex);
@@ -757,7 +781,7 @@ int sqlite3_cancel_auto_extension(
   void (*xInit)(void)
 ){
 #if SQLITE_THREADSAFE
-  sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+  sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
   int i;
   int n = 0;
@@ -784,7 +808,7 @@ void sqlite3_reset_auto_extension(void){
 #endif
   {
 #if SQLITE_THREADSAFE
-    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
     wsdAutoextInit;
     sqlite3_mutex_enter(mutex);
@@ -814,7 +838,7 @@ void sqlite3AutoLoadExtensions(sqlite3 *db){
   for(i=0; go; i++){
     char *zErrmsg;
 #if SQLITE_THREADSAFE
-    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MASTER);
+    sqlite3_mutex *mutex = sqlite3MutexAlloc(SQLITE_MUTEX_STATIC_MAIN);
 #endif
 #ifdef SQLITE_OMIT_LOAD_EXTENSION
     const sqlite3_api_routines *pThunk = 0;

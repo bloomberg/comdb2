@@ -317,6 +317,30 @@ proc grab_cdb2_results { db varName {format csv} } {
     }
 }
 
+proc is_debug_build {} {
+  if {![info exists ::build_type]} then {
+    set version [lindex [lindex \
+        [do_cdb2_defquery "SELECT comdb2_sysinfo('version')" list] 0] 0]
+
+    puts stdout "Running with Comdb2 version $version..."
+
+    set pattern [string trim {
+      ^\[.*?\] \[.*?\] \[.*?\] \[.*?\] \[([A-Z]+?)\]
+    }]; # TODO: Update me for future versions?
+
+    if {![regexp -nocase -- $pattern $version _ ::build_type]} then {
+      set ::build_type Unknown
+    }
+  }
+
+  return [expr {$::build_type eq "Debug"}]
+}
+
+proc get_result_for_build { results } {
+  set build_type [expr {[is_debug_build] ? "Debug" : "Release"}]
+  return [dict get $results $build_type]
+}
+
 proc do_cdb2_defquery { sql {format csv} {costVarName ""} } {
     return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $format $costVarName]]
 }

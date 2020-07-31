@@ -86,7 +86,7 @@ struct VdbeOp {
     Mem *pMem;             /* Used when p4type is P4_MEM */
     VTable *pVtab;         /* Used when p4type is P4_VTAB */
     KeyInfo *pKeyInfo;     /* Used when p4type is P4_KEYINFO */
-    int *ai;               /* Used when p4type is P4_INTARRAY */
+    u32 *ai;               /* Used when p4type is P4_INTARRAY */
     SubProgram *pProgram;  /* Used when p4type is P4_SUBPROGRAM */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     OpFunc *comdb2func;    /* Used when p4type is P4_OPFUNC */
@@ -219,6 +219,7 @@ typedef struct VdbeOpList VdbeOpList;
 ** for a description of what each of these routines does.
 */
 Vdbe *sqlite3VdbeCreate(Parse*);
+Parse *sqlite3VdbeParser(Vdbe*);
 int sqlite3VdbeAddOp0(Vdbe*,int);
 int sqlite3VdbeAddOp1(Vdbe*,int,int);
 int sqlite3VdbeAddOp2(Vdbe*,int,int,int);
@@ -229,6 +230,7 @@ int sqlite3VdbeAddOp3(Vdbe*,int,int,int,int);
 int sqlite3VdbeAddOp4(Vdbe*,int,int,int,int,const char *zP4,int);
 int sqlite3VdbeAddOp4Dup8(Vdbe*,int,int,int,int,const u8*,int);
 int sqlite3VdbeAddOp4Int(Vdbe*,int,int,int,int,int);
+int sqlite3VdbeAddFunctionCall(Parse*,int,int,int,int,const FuncDef*,int);
 void sqlite3VdbeEndCoroutine(Vdbe*,int);
 #if defined(SQLITE_DEBUG) && !defined(SQLITE_TEST_REALLOC_STRESS)
   void sqlite3VdbeVerifyNoMallocRequired(Vdbe *p, int N);
@@ -265,14 +267,20 @@ void sqlite3VdbeAddParseSchemaOp(Vdbe*,int,char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3VdbeAddTable(Vdbe*,Table*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-void sqlite3VdbeChangeOpcode(Vdbe*, u32 addr, u8);
-void sqlite3VdbeChangeP1(Vdbe*, u32 addr, int P1);
-void sqlite3VdbeChangeP2(Vdbe*, u32 addr, int P2);
-void sqlite3VdbeChangeP3(Vdbe*, u32 addr, int P3);
+void sqlite3VdbeChangeOpcode(Vdbe*, int addr, u8);
+void sqlite3VdbeChangeP1(Vdbe*, int addr, int P1);
+void sqlite3VdbeChangeP2(Vdbe*, int addr, int P2);
+void sqlite3VdbeChangeP3(Vdbe*, int addr, int P3);
 void sqlite3VdbeChangeP5(Vdbe*, u16 P5);
 void sqlite3VdbeJumpHere(Vdbe*, int addr);
+void sqlite3VdbeJumpHereOrPopInst(Vdbe*, int addr);
 int sqlite3VdbeChangeToNoop(Vdbe*, int addr);
 int sqlite3VdbeDeletePriorOpcode(Vdbe*, u8 op);
+#ifdef SQLITE_DEBUG
+  void sqlite3VdbeReleaseRegisters(Parse*,int addr, int n, u32 mask, int);
+#else
+# define sqlite3VdbeReleaseRegisters(P,A,N,M,F)
+#endif
 void sqlite3VdbeChangeP4(Vdbe*, int addr, const char *zP4, int N);
 void sqlite3VdbeAppendP4(Vdbe*, void *pP4, int p4type);
 void sqlite3VdbeSetP4KeyInfo(Parse*, Index*);
@@ -340,11 +348,13 @@ UnpackedRecord *sqlite3VdbeAllocUnpackedRecord(KeyInfo*);
 typedef int (*RecordCompare)(int,const void*,UnpackedRecord*);
 RecordCompare sqlite3VdbeFindCompare(UnpackedRecord*);
 
-#ifndef SQLITE_OMIT_TRIGGER
 void sqlite3VdbeLinkSubProgram(Vdbe *, SubProgram *);
-#endif
+int sqlite3VdbeHasSubProgram(Vdbe*);
 
 int sqlite3NotPureFunc(sqlite3_context*);
+#ifdef SQLITE_ENABLE_BYTECODE_VTAB
+int sqlite3VdbeBytecodeVtabInit(sqlite3*);
+#endif
 
 /* Use SQLITE_ENABLE_COMMENTS to enable generation of extra comments on
 ** each VDBE opcode.

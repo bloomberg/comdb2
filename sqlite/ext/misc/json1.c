@@ -42,6 +42,10 @@ SQLITE_EXTENSION_INIT1
 # define SMALLEST_INT64 (((sqlite3_int64)-1) - LARGEST_INT64)
 #endif
 
+#ifndef deliberate_fall_through
+# define deliberate_fall_through
+#endif
+
 /*
 ** Versions of isspace(), isalnum() and isdigit() to which it is safe
 ** to pass signed char values.
@@ -254,6 +258,7 @@ static int jsonGrow(JsonString *p, u32 N){
 /* Append N bytes from zIn onto the end of the JsonString string.
 */
 static void jsonAppendRaw(JsonString *p, const char *zIn, u32 N){
+  if( N==0 ) return;
   if( (N+p->nUsed >= p->nAlloc) && jsonGrow(p,N)!=0 ) return;
   memcpy(p->zBuf+p->nUsed, zIn, N);
   p->nUsed += N;
@@ -467,7 +472,7 @@ static void jsonRenderNode(
         jsonAppendString(pOut, pNode->u.zJContent, pNode->n);
         break;
       }
-      /* Fall through into the next case */
+      /* no break */ deliberate_fall_through
     }
     case JSON_REAL:
     case JSON_INT: {
@@ -608,7 +613,7 @@ static void jsonReturn(
       sqlite3_result_int64(pCtx, i);
       int_done:
       break;
-      int_as_real: /* fall through to real */;
+      int_as_real: i=0; /* no break */ deliberate_fall_through
     }
     case JSON_REAL: {
       double r;
@@ -2099,6 +2104,7 @@ static int jsonEachConnect(
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
     memset(pNew, 0, sizeof(*pNew));
+    sqlite3_vtab_config(db, SQLITE_VTAB_INNOCUOUS);
   }
   return rc;
 }
@@ -2310,6 +2316,7 @@ static int jsonEachColumn(
       }
       /* For json_each() path and root are the same so fall through
       ** into the root case */
+      /* no break */ deliberate_fall_through
     }
     default: {
       const char *zRoot = p->zRoot;
@@ -2499,8 +2506,12 @@ static sqlite3_module jsonEachModule = {
   0,                         /* xSavepoint */
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   0,                         /* xShadowName */
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  0                          /* xShadowName */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /* The methods of the json_tree virtual table. */
@@ -2528,8 +2539,12 @@ static sqlite3_module jsonTreeModule = {
   0,                         /* xSavepoint */
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   0,                         /* xShadowName */
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  0                          /* xShadowName */
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
 
@@ -2593,16 +2608,19 @@ int sqlite3Json1Init(sqlite3 *db){
     { "json_tree",            &jsonTreeModule               },
   };
 #endif
+  static const int enc = 
+       SQLITE_UTF8 |
+       SQLITE_DETERMINISTIC |
+       SQLITE_INNOCUOUS;
   for(i=0; i<sizeof(aFunc)/sizeof(aFunc[0]) && rc==SQLITE_OK; i++){
-    rc = sqlite3_create_function(db, aFunc[i].zName, aFunc[i].nArg,
-                                 SQLITE_UTF8 | SQLITE_DETERMINISTIC,
+    rc = sqlite3_create_function(db, aFunc[i].zName, aFunc[i].nArg, enc,
                                  (void*)&aFunc[i].flag,
                                  aFunc[i].xFunc, 0, 0);
   }
 #ifndef SQLITE_OMIT_WINDOWFUNC
   for(i=0; i<sizeof(aAgg)/sizeof(aAgg[0]) && rc==SQLITE_OK; i++){
     rc = sqlite3_create_window_function(db, aAgg[i].zName, aAgg[i].nArg,
-                SQLITE_SUBTYPE | SQLITE_UTF8 | SQLITE_DETERMINISTIC, 0,
+                                 SQLITE_SUBTYPE | enc, 0,
                                  aAgg[i].xStep, aAgg[i].xFinal,
                                  aAgg[i].xValue, jsonGroupInverse, 0);
   }

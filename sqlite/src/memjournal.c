@@ -96,14 +96,9 @@ static int memjrnlRead(
   int iChunkOffset;
   FileChunk *pChunk;
 
-#if defined(SQLITE_ENABLE_ATOMIC_WRITE) \
- || defined(SQLITE_ENABLE_BATCH_ATOMIC_WRITE)
   if( (iAmt+iOfst)>p->endpoint.iOffset ){
     return SQLITE_IOERR_SHORT_READ;
   }
-#endif
-
-  assert( (iAmt+iOfst)<=p->endpoint.iOffset );
   assert( p->readpoint.iOffset==0 || p->readpoint.pChunk!=0 );
   if( p->readpoint.iOffset!=iOfst || iOfst==0 ){
     sqlite3_int64 iOff = 0;
@@ -371,7 +366,7 @@ int sqlite3JournalOpen(
     assert( MEMJOURNAL_DFLT_FILECHUNKSIZE==fileChunkSize(p->nChunkSize) );
   }
 
-  p->pMethod = (const sqlite3_io_methods*)&MemJournalMethods;
+  pJfd->pMethods = (const sqlite3_io_methods*)&MemJournalMethods;
   p->nSpill = nSpill;
   p->flags = flags;
   p->zJournal = zName;
@@ -397,7 +392,7 @@ void sqlite3MemJournalOpen(sqlite3_file *pJfd){
 int sqlite3JournalCreate(sqlite3_file *pJfd){
   int rc = SQLITE_OK;
   MemJournal *p = (MemJournal*)pJfd;
-  if( p->pMethod==&MemJournalMethods && (
+  if( pJfd->pMethods==&MemJournalMethods && (
 #ifdef SQLITE_ENABLE_ATOMIC_WRITE
      p->nSpill>0
 #else
