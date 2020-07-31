@@ -351,7 +351,6 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     BpfuncAuthentication *auth = func->arg->auth;
     int bdberr = 0;
     int valid_user;
-    //int read_rc = 0, write_rc = 0, ddl_rc = 0;
 
     if (auth->enabled)
         bdb_user_password_check(tran, DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
