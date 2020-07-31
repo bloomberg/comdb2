@@ -351,6 +351,7 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     BpfuncAuthentication *auth = func->arg->auth;
     int bdberr = 0;
     int valid_user;
+    //int read_rc = 0, write_rc = 0, ddl_rc = 0;
 
     if (auth->enabled)
         bdb_user_password_check(tran, DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
@@ -358,8 +359,26 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);
 
-    if (gbl_create_default_user && auth->enabled && valid_user == 0 && rc == 0)
+    if (gbl_create_default_user && auth->enabled && valid_user == 0 && rc == 0) {
         rc = bdb_user_password_set(tran, DEFAULT_USER, DEFAULT_PASSWORD);
+        
+        if (rc == 0) {
+            for (int i = 0; i < thedb->num_dbs; i++) {
+                // Grant default user read/write/ddl
+                rc = bdb_tbl_access_read_set(thedb->bdb_attr, tran, thedb->dbs[i]->tablename, DEFAULT_USER, &bdberr);
+                if (rc != 0)
+                    break;
+
+                rc = bdb_tbl_access_write_set(thedb->bdb_attr, tran, thedb->dbs[i]->tablename, DEFAULT_USER, &bdberr);
+                if (rc != 0)
+                    break;
+                
+                rc = bdb_tbl_op_access_set(thedb->bdb_attr, tran, 0, thedb->dbs[i]->tablename, DEFAULT_USER, &bdberr);
+                if (rc != 0)
+                    break;
+            }
+        }
+    }
 
     if (rc == 0)
       rc = net_send_authcheck_all(thedb->handle_sibling);
