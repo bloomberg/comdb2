@@ -19,10 +19,12 @@
 #include <strings.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <sys/time.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
 #include <plhash.h>
+#include <sys/time.h>
 #include <ctrace.h>
 #include "comdb2.h"
 #include "osqlcheckboard.h"
@@ -36,6 +38,7 @@
 #include "comdb2uuid.h"
 #include "net_types.h"
 #include "logmsg.h"
+#include "comdb2_atomic.h"
 
 /* delete this after comdb2_api.h changes makes it through */
 #define SQLHERR_MASTER_QUEUE_FULL -108
@@ -54,6 +57,9 @@ static osql_checkboard_t *checkboard = NULL;
 
 /* will get rdlock on checkboard->mtx if parameter lock is set
  * if caller already has mtx, call this func with lock = false
+ *
+ * NB: If calling with lock == false, make sure you don't dereference 
+ * pointer returned because it may be freed from under you.
  */
 static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
                                                        uuid_t uuid, bool lock)
@@ -159,6 +165,8 @@ static inline void cleanup_entry(osql_sqlthr_t *entry)
 {
     Pthread_cond_destroy(&entry->cond);
     Pthread_mutex_destroy(&entry->mtx);
+    Pthread_mutex_destroy(&entry->cleanup_mtx);
+    Pthread_cond_destroy(&entry->cleanup_cond);
     free(entry);
 }
 
@@ -208,10 +216,12 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
     if (entry->master == 0)
         entry->master = gbl_myhostname;
 
-    Pthread_mutex_init(&entry->mtx, NULL);
+    Pthread_mutex_init(&entry->c_mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
     return entry;
 }
+
+
 
 /**
  * Register an osql thread with the checkboard
@@ -219,15 +229,10 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
  * of its sql peer
  *
  */
-int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
+int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 {
+    osql_sqlthr_t *entry = (osql_sqlthr_t *)calloc(sizeof(osql_sqlthr_t), 1);
     uuidstr_t us;
-    osql_sqlthr_t *entry = get_new_entry(clnt, type);
-    if (!entry) {
-        logmsg(LOGMSG_ERROR, "%s: unable to allocate %zu bytes\n", __func__,
-               sizeof(unsigned long long));
-        return -1;
-    }
 
     int rc = insert_into_checkerboard(checkboard, entry);
     if (rc) {
@@ -239,26 +244,6 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
     return rc;
 }
 
-/**
- * Register an osql thread with the checkboard
- * This allows block processor to query the status
- * of its sql peer
- *
- */
-inline int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
-{
-    return _osql_register_sqlthr(clnt, type, 0);
-}
-
-/**
- * TODO: This is unused? If so cleanup.
- * Register a remote transaction, part of a distributed transaction
- *
-int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
-{
-    return _osql_register_sqlthr(clnt, type, 1);
-}
- */
 
 /**
  * Unregister an osql thread from the checkboard
@@ -280,6 +265,27 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
         return 0;
     }
 
+    int cnt = 0;
+    /* wait till not in use to free; TODO: Can i reuse entry->c_mtx instead? */
+    Pthread_mutex_lock(&entry->cleanup_mtx);
+    while (ATOMIC_LOAD32(entry->in_use) > 0) {
+        if (cnt > 10) // 10 seconds
+            abort();
+
+        struct timespec timeout;
+        struct timeval tp;
+        gettimeofday(&tp, NULL);
+        timeout.tv_sec = tp.tv_sec + 1;
+        timeout.tv_nsec = tp.tv_usec * 1000;
+
+        int rc = pthread_cond_timedwait(&entry->cleanup_cond,
+                                        &entry->cleanup_mtx, &timeout);
+        if (rc == ETIMEDOUT) {
+            cnt++;
+        }
+    }
+    Pthread_mutex_unlock(&entry->cleanup_mtx);
+
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
@@ -287,9 +293,6 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
                comdb2uuidstr(clnt->osql.uuid, us), entry->master, entry->type);
     }
 #endif
-
-    /*reset rqid */
-    clnt->osql.rqid = 0;
 
     cleanup_entry(entry);
     return rc;
@@ -333,13 +336,15 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
         return -1;
     }
 
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
+    Pthread_mutex_unlock(&checkboard->mtx);
+
+    Pthread_mutex_lock(&entry->c_mtx);
+
     if (errstat)
         entry->err = *errstat;
     else
         bzero(&entry->err, sizeof(entry->err));
-
-    Pthread_mutex_lock(&entry->mtx);
-    Pthread_mutex_unlock(&checkboard->mtx);
 
     entry->done = 1; /* mem sync? */
     entry->nops = nops;
@@ -349,29 +354,32 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
     }
 
     Pthread_cond_signal(&entry->cond);
-    Pthread_mutex_unlock(&entry->mtx);
+    Pthread_mutex_unlock(&entry->c_mtx);
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
+
     return 0;
 }
 
-static inline void signal_master_change(osql_sqlthr_t *rq, char *host,
+static inline void signal_master_change(osql_sqlthr_t *entry, char *host,
                                         const char *line)
 {
     uuidstr_t us;
     if (gbl_master_swing_osql_verbose)
-        logmsg(LOGMSG_INFO, "%s signaling rq new master %s %llx %s\n", line,
-               host, rq->rqid, comdb2uuidstr(rq->uuid, us));
-    rq->master_changed = 1;
-    Pthread_cond_signal(&rq->cond);
+        logmsg(LOGMSG_INFO, "%s signaling entry new master %s %llx %s\n", line,
+               host, entry->rqid, comdb2uuidstr(entry->uuid, us));
+    entry->master_changed = 1;
+    Pthread_cond_signal(&entry->cond);
 }
 
 int osql_checkboard_master_changed(void *obj, void *arg)
 {
-    osql_sqlthr_t *rq = obj;
-    Pthread_mutex_lock(&rq->mtx);
-    if (rq->master != arg && !(rq->master == 0 && gbl_myhostname == arg)) {
-        signal_master_change(rq, arg, __func__);
+    osql_sqlthr_t *entry = obj;
+    Pthread_mutex_lock(&entry->c_mtx);
+    if (entry->master != arg && !(entry->master == 0 && gbl_myhostname == arg)) {
+        signal_master_change(entry, arg, __func__);
     }
-    Pthread_mutex_unlock(&rq->mtx);
+    Pthread_mutex_unlock(&entry->c_mtx);
     return 0;
 }
 
@@ -390,12 +398,12 @@ void osql_checkboard_for_each(void *arg, int (*func)(void *, void *))
 
 static int osql_checkboard_check_request_down_node(void *obj, void *arg)
 {
-    osql_sqlthr_t *rq = obj;
-    Pthread_mutex_lock(&rq->mtx);
-    if (rq->master == arg) {
-        signal_master_change(rq, arg, __func__);
+    osql_sqlthr_t *entry = obj;
+    Pthread_mutex_lock(&entry->c_mtx);
+    if (entry->master == arg) {
+        signal_master_change(entry, arg, __func__);
     }
-    Pthread_mutex_unlock(&rq->mtx);
+    Pthread_mutex_unlock(&entry->c_mtx);
     return 0;
 }
 
@@ -406,7 +414,7 @@ void osql_checkboard_check_down_nodes(char *host)
 
 /* NB: this is a helper function and waits for response from master
  * until max_wait count is reached.
- * This function is ment to be called with mutex entry->mtx in locked state
+ * This function is ment to be called with mutex entry->c_mtx in locked state
  * and returns with that same mutex locked if rc is 0
  * but unlocked if rc is nonzero
  */
@@ -424,7 +432,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
         clock_gettime(CLOCK_REALTIME, &tm_s);
         tm_s.tv_sec++;
 
-        Pthread_mutex_unlock(&entry->mtx);
+        Pthread_mutex_unlock(&entry->c_mtx);
 
         int tm_recov_deadlk = comdb2_time_epochms();
         /* this call could wait for a bdb read lock; in the meantime,
@@ -436,13 +444,13 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
         }
         tm_recov_deadlk = comdb2_time_epochms() - tm_recov_deadlk;
 
-        Pthread_mutex_lock(&entry->mtx);
+        Pthread_mutex_lock(&entry->c_mtx);
 
         if (entry->done == 1 || entry->master_changed)
             break;
 
         int lrc = 0;
-        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->mtx, &tm_s))) {
+        if ((lrc = pthread_cond_timedwait(&entry->cond, &entry->c_mtx, &tm_s))) {
             if (ETIMEDOUT == lrc) {
                 /* normal timeout .. */
             } else {
@@ -534,44 +542,40 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
 int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                                 int max_wait, struct errstat *xerr)
 {
-    int done = 0;
     int cnt = 0;
     uuidstr_t us;
+    int rc =0;
 
     if (!checkboard)
         return 0;
 
-    while (!done) {
-        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
+    Pthread_mutex_lock(&checkboard->mtx);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
 
-        if (!entry) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: received result for missing session %llu\n", __func__,
-                   rqid);
-            return -2;
-        }
+    if (!entry) {
+        Pthread_mutex_unlock(&checkboard->mtx);
+        logmsg(LOGMSG_ERROR,
+               "%s: received result for missing session %llu\n", __func__,
+               rqid);
+        return -2;
+    }
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
+    Pthread_mutex_unlock(&checkboard->mtx);
 
-        /* accessing entry is valid at this point despite releasing rwlock
-         * because delete from hash happens after this function has returned */
 
-        if (entry->done == 1) { /* we are done */
-            *xerr = entry->err;
-            done = 1;
-            break;
-        }
-
-        Pthread_mutex_lock(&entry->mtx);
+    while (!entry->done) {
+        Pthread_mutex_lock(&entry->c_mtx);
         /* reset these time parameters */
         entry->last_checked = entry->last_updated = comdb2_time_epochms();
 
-        // wait_till_max_wait_or_timeout() expects to be called with mtx locked
-        int rc = wait_till_max_wait_or_timeout(entry, max_wait, xerr, &cnt);
-        if (rc) // dont unlock entry->mtx, on nonzero rc it was already unlocked
-            return rc;
+        // wait_till_max_wait_or_timeout() expects to be called with c_mtx locked
+        rc = wait_till_max_wait_or_timeout(entry, max_wait, xerr, &cnt);
+        if (rc) // dont unlock entry->c_mtx, on nonzero rc it was already unlocked
+            break;
 
         int master_changed = entry->master_changed; /* fetch value under lock */
 
-        Pthread_mutex_unlock(&entry->mtx);
+        Pthread_mutex_unlock(&entry->c_mtx);
 
         if (max_wait > 0 && cnt >= max_wait) {
             logmsg(LOGMSG_ERROR,
@@ -579,7 +583,8 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
                    "to commit id=%llu %s\n",
                    __func__, entry->master, entry->rqid,
                    comdb2uuidstr(entry->uuid, us));
-            return -6;
+            rc = -6;
+            break;
         }
 
         if (master_changed) { /* retry at higher level */
@@ -591,12 +596,16 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
             }
             break;
         }
-    } /* done */
+    }
+
+    *xerr = entry->err; // will deep copy err structure
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
 
     if (xerr->errval)
         logmsg(LOGMSG_DEBUG, "%s: done xerr->errval=%d\n", __func__,
                xerr->errval);
-    return 0;
+    return rc;
 }
 
 /**
@@ -621,14 +630,18 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
         return -1;
     }
 
-    Pthread_mutex_lock(&entry->mtx);
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
     Pthread_mutex_unlock(&checkboard->mtx);
+
+    Pthread_mutex_lock(&entry->c_mtx);
 
     entry->status = status;
     entry->timestamp = timestamp;
     entry->last_updated = comdb2_time_epochms();
 
-    Pthread_mutex_unlock(&entry->mtx);
+    Pthread_mutex_unlock(&entry->c_mtx);
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
 
     return 0;
 }
@@ -655,9 +668,10 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
         return -1;
     }
 
-    Pthread_mutex_lock(&entry->mtx);
+    ATOMIC_ADD32(entry->in_use, 1);  /* inc in use count so it won't be freed */
     Pthread_mutex_unlock(&checkboard->mtx);
 
+    Pthread_mutex_lock(&entry->c_mtx);
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* reset these time */
     entry->done = 0;
@@ -665,8 +679,10 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     entry->master =
         master ? master : gbl_myhostname; /* master changed, store it here */
     bzero(&entry->err, sizeof(entry->err));
-    Pthread_mutex_unlock(&entry->mtx);
+    Pthread_mutex_unlock(&entry->c_mtx);
 
+    ATOMIC_ADD32(entry->in_use, -1); /* no need for mtx because atomic */
+    Pthread_cond_signal(&entry->cleanup_cond);
     return 0;
 }
 
@@ -679,7 +695,6 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
  */
 int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 {
-    osql_sqlthr_t *entry = NULL;
     int rc = 0;
 
     if (!checkboard)
@@ -687,7 +702,7 @@ int osql_chkboard_get_clnt_int(hash_t *h, void *k, struct sqlclntstate **clnt)
 
     Pthread_mutex_lock(&checkboard->mtx);
 
-    entry = hash_find_readonly(h, k);
+    osql_sqlthr_t *entry = hash_find_readonly(h, k);
     if (!entry) {
         /* This happens naturally for example
            if the client drops the connection while block processor

@@ -39,11 +39,13 @@ struct osql_sqlthr {
     unsigned long long rqid; /* osql rq id */
     uuid_t uuid;             /* request id, take 2 */
     char *master;            /* who was the master I was talking to */
-    struct sqlclntstate *clnt; /* cache clnt */
     pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
     int done;            /* result of socksql, recom, snapisol and serial master
                             transactions*/
     int type;            /* type of the request, enum OSQL_REQ_TYPE */
+    pthread_mutex_t c_mtx; /* mutex and cond for commitrc sync */
+    pthread_mutex_t cleanup_mtx; /* mutex and cond for cleanup/freeing entry */
+    pthread_cond_t cleanup_cond;
     int master_changed; /* set if we detect that node we were waiting for was
                            disconnected */
     int nops;
@@ -55,6 +57,8 @@ struct osql_sqlthr {
     int last_updated; /* poking support: when was the last time I got info, 0 is
                          never */
     int last_checked; /* poking support: when was the loast poke sent */
+    struct sqlclntstate *clnt; /* cache clnt */
+    int in_use;       /* in use counter to allow for safe deleting */
 };
 typedef struct osql_sqlthr osql_sqlthr_t;
 

@@ -37,8 +37,8 @@ typedef struct getosqlsessions {
 
 static int collect_osql_session(void *obj, void *arg)
 {
-    osql_sqlthr_t *rq = obj;
-    struct sqlclntstate *clnt = rq->clnt;
+    osql_sqlthr_t *entry = obj;
+    struct sqlclntstate *clnt = entry->clnt;
     getosqlsessions_t *osqls = arg;
     osqls->count++;
     if (osqls->count >= osqls->alloc) {
@@ -65,15 +65,15 @@ static int collect_osql_session(void *obj, void *arg)
         memcpy(o->cnonce, snap.key, snap.keylen);
         o->cnonce[snap.keylen] = '\0';
     }
-    if (rq->rqid == 1) {
-        comdb2uuidstr(rq->uuid, us);
+    if (entry->rqid == 1) {
+        comdb2uuidstr(entry->uuid, us);
         o->id = strdup(us);
     } else {
         o->id = malloc(20);
-        snprintf(o->id, 20, "%llx", rq->rqid);
+        snprintf(o->id, 20, "%llx", entry->rqid);
     }
     o->nops = clnt->osql.replicant_numops;
-    o->start_time = rq->register_time;
+    o->start_time = entry->register_time;
     o->commit_time = clnt->osql.timings.commit_start;
     o->nretries = clnt->verify_retries;
     return 0;
