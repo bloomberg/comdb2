@@ -4187,7 +4187,9 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     }
 
     if ((rc = validate_columns(clnt, stmt)) != 0) {
-        send_run_error(clnt, "syntax error", CDB2ERR_PREPARE_ERROR);
+        send_run_error(clnt,
+                       "NEXTSEQUENCE function is not legal in this context",
+                       CDB2ERR_PREPARE_ERROR);
         return rc;
     }
 

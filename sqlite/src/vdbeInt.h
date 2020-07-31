@@ -354,8 +354,7 @@ struct sqlite3_value {
 #define MEM_FromBind  0x00100  /* Value originates from sqlite3_bind() */
 #define MEM_Undefined 0x00200  /* Value is undefined */
 #define MEM_Cleared   0x00400  /* NULL set by OP_Null, not from data */
-#define MEM_Master    0x100000 /* Value will be set on master */
-#define MEM_TypeMask  0x1306ff  /* Mask of type bits */
+#define MEM_TypeMask  0x306ff  /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */
 #define MEM_FromBind  0x0020   /* Value originates from sqlite3_bind() */
@@ -381,6 +380,7 @@ struct sqlite3_value {
 #define MEM_Subtype   0x020000 /* Mem.eSubtype is valid */
 #define MEM_Xor       0x040000 /* Mem.z needs XOR; <DESCEND> keys */
 #define MEM_OpFunc    0x080000 /* Mem.u is a custom function */
+#define MEM_Master    0x100000 /* Value will be set on master */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_Term      0x0200   /* String in Mem.z is zero terminated */
 #define MEM_Dyn       0x0400   /* Need to call Mem.xDel() on Mem.z */
