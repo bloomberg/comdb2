@@ -2837,12 +2837,13 @@ comdb2bma blobmem;
 #ifndef COMDB2MA_OMIT_DEBUG
 static int find_switch_index(const char *name)
 {
+    /* Allocator index is 1-based. */
     int i;
-    for (i = 0; i != COMDB2MA_COUNT; ++i) {
+    for (i = 1; i != COMDB2MA_COUNT; ++i) {
         if (strcasecmp(name, COMDB2_STATIC_MA_METAS[i].name) == 0)
             return i;
     }
-    return -1;
+    return 0;
 }
 
 static void print_stack_of_a_chunk(void *p, void *_)
