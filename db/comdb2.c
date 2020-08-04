@@ -4031,11 +4031,12 @@ static char *strtoupper(char instr[])
 
 static void ttrap(struct timer_parm *parm)
 {
-    char *msg;
     switch (parm->parm) {
     case TMEV_ENABLE_LOG_DELETE:
-        msg = "sync log-delete on";
-        process_command(thedb, msg, strlen(msg), 0);
+        /* We already hold timerlk. process_sync_command("sync log-delete on")
+           will attempt to grab timerlk one more time. So call the routine
+           directly without faking a message trap. */
+        log_delete_counter_change(thedb, LOG_DEL_ABS_ON);
         break;
     case TMEV_PURGE_OLD_LONGTRN:
         (void)purge_expired_long_transactions(thedb);
