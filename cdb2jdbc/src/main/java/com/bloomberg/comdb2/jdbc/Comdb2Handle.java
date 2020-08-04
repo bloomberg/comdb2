@@ -69,8 +69,7 @@ public class Comdb2Handle extends AbstractConnection {
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
     boolean pmuxrte = false;
-    boolean statement_effects = false;
-    boolean verifyretry = false;
+    boolean verifyretry = true;
     int soTimeout = 5000;
     boolean hasComdb2dbTimeout;
     int comdb2dbTimeout = 5000;
@@ -171,7 +170,6 @@ public class Comdb2Handle extends AbstractConnection {
         ret.tcpbufsz = tcpbufsz;
         ret.age = age;
         ret.pmuxrte = pmuxrte;
-        ret.statement_effects = statement_effects;
         ret.verifyretry = verifyretry;
         ret.soTimeout = soTimeout;
         ret.hasComdb2dbTimeout = hasComdb2dbTimeout;
@@ -204,14 +202,24 @@ public class Comdb2Handle extends AbstractConnection {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
 
+        /* CDB2JDBC_STATEMENT_QUERYEFFECTS and CDB2JDBC_VERIFY_RETRY
+           are used by the Jepsen tests to change the driver's behaviors. */
+
         /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
          */
         String queryeffectsEnv = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
-        statement_effects = (queryeffectsEnv != null && !queryeffectsEnv.equals("0"));
-        if (statement_effects)
+        if (queryeffectsEnv != null && !queryeffectsEnv.equals("0"))
             sets.add("set queryeffects statement");
+
+        /*
+         * export CDB2JDBC_VERIFY_RETRY   -> enable
+         * export CDB2JDBC_VERIFY_RETRY=1 -> enable
+         * export CDB2JDBC_VERIFY_RETRY=0 -> disable
+         */
+        String verifyRetryEnv = System.getenv("CDB2JDBC_VERIFY_RETRY");
+        verifyretry = (verifyRetryEnv != null && !verifyRetryEnv.equals("0"));
 
         String userEnv = System.getenv("COMDB2_USER");
         if (userEnv != null) {
@@ -306,18 +314,6 @@ public class Comdb2Handle extends AbstractConnection {
         pmuxrte = val;
         if (val)
             overriddenPort = portMuxPort;
-    }
-
-    public void setStatementQueryEffects(boolean val) {
-        if (val == statement_effects)
-            return;
-
-        if (val)
-            sets.add("set queryeffects statement");
-        else
-            sets.remove("set queryeffects statement");
-
-        statement_effects = val;
     }
 
     public void setVerifyRetry(boolean val) {

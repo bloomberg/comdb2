@@ -4,6 +4,7 @@
 #debug=1
 #debug_trace="-D"
 export CDB2JDBC_STATEMENT_QUERYEFFECTS=1
+export CDB2JDBC_VERIFY_RETRY=0
 
 [[ "$debug" == 1 ]] && set -x
 needcluster=0
