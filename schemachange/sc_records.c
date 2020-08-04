@@ -3052,8 +3052,8 @@ done:
         db_seqnum_type ss;
         if (rc) {
             trans_abort(&data->iq, data->trans);
+            data->trans = NULL;
             if (rc == RC_INTERNAL_RETRY) {
-                data->trans = NULL;
                 data->num_retry_errors++;
                 data->totnretries++;
                 poll(0, 0, (rand() % 500 + 10));
@@ -3063,6 +3063,7 @@ done:
             rc = trans_commit_seqnum(&data->iq, data->trans, &ss);
         else
             rc = trans_commit(&data->iq, data->trans, gbl_myhostname);
+        data->trans = NULL;
     }
 
     reqlog_end_request(data->iq.reqlogger, 0, __func__, __LINE__);
@@ -3070,7 +3071,6 @@ done:
     /* free memory used in this function */
     clear_recs_list(&recs);
     clear_blob_hash(data->blob_hash);
-    data->trans = NULL;
     if (rc && !data->s->sc_thd_failed)
         data->s->sc_thd_failed = -1;
     if (logc)

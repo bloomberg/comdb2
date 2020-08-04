@@ -854,11 +854,11 @@ again:
         goto done;
     }
     rc = trans_commit(&iq, trans, gbl_myhostname);
+    trans = NULL;
     if (rc) {
         printf("toclear: commit rc %d\n", rc);
         goto done;
     }
-    trans = NULL;
 
 done:
     if (trans) {

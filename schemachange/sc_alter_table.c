@@ -1042,6 +1042,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         if (rc != 0) continue;
 
         rc = trans_commit(&iq, tran, gbl_myhostname);
+        tran = NULL;
     }
 
     return rc;
