@@ -1059,9 +1059,14 @@ static void statGet(
       sqlite3_snprintf(24, zRet, "%llu", MAX(nRow, 1));
       z = zRet + sqlite3Strlen30(zRet);
       for(i=0; i<(p->nCol-1); i++){
-        u64 nDistinct = p->current.anDLt[i] + 1;
-        u64 iVal = (nRow + nDistinct - 1) / nDistinct;
-        sqlite3_snprintf(24, z, " %llu", iVal);
+        tRowcnt nDLt = p->current.anDLt[i];
+        if( nDLt>0 ){
+          u64 nDistinct = nDLt + 1;
+          u64 iVal = (nRow + nDistinct - 1) / nDistinct;
+          sqlite3_snprintf(24, z, " %llu", iVal);
+        }else{
+          sqlite3_snprintf(24, z, " 0");
+        }
         z += sqlite3Strlen30(z);
       }
     }
@@ -1433,6 +1438,11 @@ static void analyzeOneTable(
     */
     addrRewind = sqlite3VdbeAddOp1(v, OP_Rewind, iIdxCur);
     VdbeCoverage(v);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( sqlite3_gbl_tunables.analyze_empty_tables ){
+      sqlite3VdbeJumpHere(v, addrRewind);
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3VdbeAddOp2(v, OP_Integer, 0, regChng);
     addrNextRow = sqlite3VdbeCurrentAddr(v);
 
@@ -1530,11 +1540,6 @@ static void analyzeOneTable(
     sqlite3VdbeAddOp2(v, OP_Next, iIdxCur, addrNextRow); VdbeCoverage(v);
 
     /* Add the entry to the stat1 table. */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( sqlite3_gbl_tunables.analyze_empty_tables ){
-      sqlite3VdbeJumpHere(v, addrRewind);
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     callStatGet(v, regStat4, STAT_GET_STAT1, regStat1);
     assert( "BBB"[0]==SQLITE_AFF_TEXT );
     sqlite3VdbeAddOp4(v, OP_MakeRecord, regTabname, 3, regTemp, "BBB", 0);
@@ -1568,12 +1573,6 @@ static void analyzeOneTable(
 
       pParse->nMem = MAX(pParse->nMem, regCol+nCol);
 
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3_gbl_tunables.analyze_empty_tables ){
-        addrRewind = sqlite3VdbeAddOp1(v, OP_Rewind, iIdxCur);
-        VdbeCoverage(v);
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       addrNext = sqlite3VdbeCurrentAddr(v);
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
       callStatGet(v, regStat4, STAT_GET_ROWID, regSampleRowid);
@@ -1606,11 +1605,6 @@ static void analyzeOneTable(
       sqlite3VdbeAddOp3(v, OP_Insert, iStatCur+1, regTemp, regNewRowid);
       sqlite3VdbeAddOp2(v, OP_Goto, 1, addrNext); /* P1==1 for end-of-loop */
       sqlite3VdbeJumpHere(v, addrIsNull);
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      if( sqlite3_gbl_tunables.analyze_empty_tables ){
-        sqlite3VdbeJumpHere(v, addrRewind);
-      }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #endif /* SQLITE_ENABLE_STAT3_OR_STAT4 */
 
