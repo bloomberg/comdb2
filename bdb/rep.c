@@ -5498,7 +5498,6 @@ void *watcher_thread(void *arg)
                 logmsg(LOGMSG_USER, "SQL statements currently blocking the "
                                     "replication thread:\n");
                 comdb2_dump_blockers(bdb_state->dbenv);
->>>>>>> 88213cc44b7f847b4db5da9f46c6753751d1d60e
             }
         }
 
