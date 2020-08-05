@@ -10,7 +10,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROTOBUF-C_INCLUDE_DIR}
-  ${SQLITE3_INCLUDE_DIR}
+  ${SQLite3_INCLUDE_DIRS}
   ${READLINE_INCLUDE_DIR}
 )
 
@@ -71,7 +71,7 @@ target_link_libraries(test_threadpool util mem dlmalloc util)
 
 list(APPEND common-deps
   ${READLINE_LIBRARIES}
-  ${SQLITE3_LIBRARY}
+  ${SQLite3_LIBRARIES}
   ${OPENSSL_LIBRARIES}
   ${PROTOBUF-C_LIBRARY}
   ${ZLIB_LIBRARIES}
