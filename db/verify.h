@@ -17,10 +17,10 @@
 #ifndef INCLUDED_VERIFY_H
 #define INCLUDED_VERIFY_H
 
-typedef struct dbtable dbtable;
+struct dbtable;
 
 typedef enum {
-    VERIFY_DEFAULT,
+    VERIFY_SERIAL,
     VERIFY_PARALLEL,
     VERIFY_DATA,
     VERIFY_INDICES,

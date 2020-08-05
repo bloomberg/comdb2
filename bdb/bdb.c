@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include "limit_fortify.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -43,7 +42,6 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#include <segstring.h>
 #include "nodemap.h"
 #include "thread_stats.h"
 #include "logmsg.h"
@@ -154,6 +152,13 @@ char *bdb_whoismaster(bdb_state_type *bdb_state)
         return bdb_state->repinfo->master_host;
     else
         return NULL;
+}
+
+int bdb_iam_master(bdb_state_type *bdb_state)
+{
+    char *master;
+    bdb_state->dbenv->get_rep_master(bdb_state->dbenv, &master, NULL, NULL);
+    return (master == bdb_state->repinfo->myhost);
 }
 
 int bdb_get_rep_master(bdb_state_type *bdb_state, char **master_out,
@@ -430,6 +435,22 @@ bdbtype_t bdb_get_type(bdb_state_type *bdb_state)
         return bdb_state->bdbtype;
     else
         return BDBTYPE_NONE;
+}
+
+int bdb_get_qdb_adds(bdb_state_type *bdb_state)
+{
+    if (bdb_state)
+        return bdb_state->qdb_adds;
+    else
+        return 0;
+}
+
+int bdb_get_qdb_cons(bdb_state_type *bdb_state)
+{
+    if (bdb_state)
+        return bdb_state->qdb_cons;
+    else
+        return 0;
 }
 
 int bdb_zap_freerec(bdb_state_type *bdb_state, int *bdberr)
@@ -826,6 +847,23 @@ bdb_state_type *bdb_get_table_by_name_dbnum(bdb_state_type *bdb_state,
     return NULL;
 }
 
+uint32_t bdb_readonly_lock_id(bdb_state_type *bdb_state)
+{
+    uint32_t lid = 0;
+    DB_ENV *dbenv = bdb_state->dbenv;
+    dbenv->lock_id_flags(dbenv, &lid, DB_LOCK_ID_READONLY);
+    return lid;
+}
+
+void bdb_free_lock_id(bdb_state_type *bdb_state, uint32_t lid)
+{
+    DB_ENV *dbenv = bdb_state->dbenv;
+    DB_LOCKREQ rq = {0};
+    rq.op = DB_LOCK_PUT_ALL;
+    dbenv->lock_vec(dbenv, lid, 0, &rq, 1, NULL);
+    dbenv->lock_id_free(dbenv, lid);
+}
+
 void bdb_lockspeed(bdb_state_type *bdb_state)
 {
     u_int32_t lid;
@@ -857,6 +895,14 @@ void bdb_dumptrans(bdb_state_type *bdb_state)
 void bdb_berkdb_iomap_set(bdb_state_type *bdb_state, int onoff)
 {
     bdb_state->dbenv->setattr(bdb_state->dbenv, "iomap", NULL, onoff);
+}
+
+int bdb_berkdb_get_attr(bdb_state_type *bdb_state, char *attr, char **value,
+                        int *ivalue)
+{
+    int rc;
+    rc = bdb_state->dbenv->getattr(bdb_state->dbenv, attr, value, ivalue);
+    return rc;
 }
 
 int bdb_berkdb_set_attr(bdb_state_type *bdb_state, char *attr, char *value,

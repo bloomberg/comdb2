@@ -109,6 +109,11 @@ __dbenv_open(dbenv, db_home, flags, mode)
 	u_int32_t init_flags, orig_flags;
 	int rep_check, ret;
 
+	for (int i = 0; i < DB_UNKNOWN; i++) {
+		dbenv->pgin[i] = NULL;
+		dbenv->pgout[i] = NULL;
+	}
+
 	orig_flags = dbenv->flags;
 	rep_check = 0;
 
@@ -313,8 +318,6 @@ __dbenv_open(dbenv, db_home, flags, mode)
     Pthread_rwlock_init(&dbenv->dbreglk, NULL);
     Pthread_rwlock_init(&dbenv->recoverlk, NULL);
 
-    Pthread_rwlock_init(&dbenv->recoverlk, NULL);
-
 	/*
 	 * Initialize the subsystems.
 	 *
@@ -459,7 +462,8 @@ __dbenv_open(dbenv, db_home, flags, mode)
 				__txn_regop_rowlocks_args *regoprowlocks;
 				u_int32_t rectype;
 				int32_t timestamp=0;
-				DBT data;
+				DBT data = {0};
+				data.flags = DB_DBT_REALLOC;
 
 				if ((ret = __log_cursor(dbenv, &logc)) != 0)
 					goto err;
@@ -511,6 +515,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 							break;
 					}
 				}
+				free(data.data);
 foundlsn:
 				if ((ret = __log_c_close(logc)) != 0)
 					goto err;
@@ -607,7 +612,9 @@ foundlsn:
 		thdpool_set_maxqueue(dbenv->recovery_workers, 8000);
 		Pthread_mutex_init(&dbenv->recover_lk, NULL);
 		Pthread_cond_init(&dbenv->recover_cond, NULL);
-		Pthread_rwlock_init(&dbenv->ser_lk, NULL);
+		Pthread_mutex_init(&dbenv->ser_lk, NULL);
+		Pthread_cond_init(&dbenv->ser_cond, NULL);
+		dbenv->ser_count = 0;
 		listc_init(&dbenv->inflight_transactions,
 		    offsetof(struct __recovery_processor, lnk));
 		listc_init(&dbenv->inactive_transactions,
@@ -661,7 +668,6 @@ foundlsn:
 		goto err;
 
 	dbenv->verbose |= DB_VERB_REPLICATION;
-
 	return (0);
 
 err:				/* If we fail after creating the regions, remove them. */

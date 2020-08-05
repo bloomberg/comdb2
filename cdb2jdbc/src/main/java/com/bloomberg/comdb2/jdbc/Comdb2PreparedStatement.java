@@ -140,7 +140,7 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
     public void setNull(int parameterIndex, int sqlType) throws SQLException {
         String pname = getParamNameByIndex(parameterIndex);
         if (pname != null)
-            bindParameter(pname, sqlType, null);
+            bindParameter(pname, Constants.Types.CDB2_INTEGER, null);
     }
 
     @Override

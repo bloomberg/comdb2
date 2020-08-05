@@ -25,7 +25,7 @@
 #include <strings.h>
 
 #include <list.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 #include <bdb_osqllog.h>
 #include <bdb_osqltrn.h>
 #include <bdb_int.h>
@@ -383,7 +383,8 @@ bdb_osql_upddta_rec(llog_undo_upd_dta_args *upd_dta, DB_LSN *lsn, int *bdberr)
     unsigned long long genid = upd_dta->oldgenid;
 
     if (flibc_ntohll(upd_dta->oldgenid) >= flibc_ntohll(upd_dta->newgenid)) {
-        logmsg(LOGMSG_FATAL, "%s:%d %s incorrect genid received %lx %lx\n",
+        logmsg(LOGMSG_FATAL,
+               "%s:%d %s incorrect genid received %" PRIx64 " %" PRIx64 "\n",
                __FILE__, __LINE__, __func__, flibc_ntohll(upd_dta->oldgenid),
                flibc_ntohll(upd_dta->newgenid));
         abort();
@@ -479,7 +480,7 @@ int bdb_osql_log_updix(bdb_osql_log_t *log, DB_LSN *lsn,
     if (log->impl->trak)
         logmsg(LOGMSG_USER,
                "TRK_LOG: log %p rec %p upd_ix file=%d stripe=%d %s "
-               "genid=%llx->%lx oldest=%llx\n",
+               "genid=%llx->%" PRIx64 " oldest=%llx\n",
                log, rec, rec->dtafile, rec->dtastripe, rec->table, rec->genid,
                upd_ix->newgenid, log->impl->oldest_genid);
 
@@ -1303,26 +1304,26 @@ static int bdb_osql_log_apply_ll(bdb_state_type *bdb_state,
              * doesn't
              * exist before inserting it.  */
             if (tabletype == BDBC_BL) {
-                unsigned long long *gcopy = malloc(sizeof(unsigned long long));
-                *gcopy = get_search_genid(bdb_state, genid);
+                unsigned long long gcopy = get_search_genid(bdb_state, genid);
 
-                rc = bdb_temp_table_find_exact(bdb_state, cur, gcopy,
-                                               sizeof(*gcopy), bdberr);
+                rc = bdb_temp_table_find_exact(bdb_state, cur, &gcopy,
+                                               sizeof(gcopy), bdberr);
                 if (rc != IX_FND) {
-                    rc = bdb_temp_table_insert(bdb_state, cur, gcopy,
-                                               sizeof(*gcopy), dta, dtalen,
+                    rc = bdb_temp_table_insert(bdb_state, cur, &gcopy,
+                                               sizeof(gcopy), dta, dtalen,
                                                bdberr);
                     if (trak & SQL_DBG_SHADOW) {
-                        logmsg(LOGMSG_USER, "INSERTING SEARCH-GENID %llx, GENID %llx INTO "
+                        logmsg(LOGMSG_USER,
+                               "INSERTING SEARCH-GENID %llx, GENID %llx INTO "
                                "THE BLOB SHADOW TABLE\n",
-                               *gcopy, genid);
+                               gcopy, genid);
                     }
-                    free(gcopy);
                 } else {
                     if (trak & SQL_DBG_SHADOW) {
-                        logmsg(LOGMSG_USER, "NOT INSERTING ALREADY EXISTING SEARCH-GENID "
+                        logmsg(LOGMSG_USER,
+                               "NOT INSERTING ALREADY EXISTING SEARCH-GENID "
                                "%lld, GENID %lld INTO THE BLOB SHADOW TABLE\n",
-                               *gcopy, genid);
+                               gcopy, genid);
                     }
                 }
             } else {
@@ -1537,7 +1538,7 @@ static int bdb_osql_log_applicable(bdb_cursor_impl_t *cur,
 extern int gbl_rowlocks;
 int bdb_osql_log_apply_log(bdb_cursor_impl_t *cur, DB_LOGC *curlog,
                            bdb_osql_log_t *log, bdb_osql_trn_t *trn, int *dirty,
-                           enum log_ops log_op, int trak, int *bdberr)
+                           log_ops_t log_op, int trak, int *bdberr)
 {
     bdb_osql_log_rec_t *rec = NULL;
     int rc = 0;
@@ -2429,11 +2430,7 @@ int update_shadows_beforecommit(bdb_state_type *bdb_state,
         return 0;
 
     /* Skip entirely if there are no clients */
-    if ((rc = bdb_osql_trn_count_clients(&count, !is_master, &bdberr)) !=0 ) {
-        logmsg(LOGMSG_ERROR, "%s:%d error counting clients, rc %d\n", __FILE__, __LINE__, rc);
-        return rc;
-    }
-
+    bdb_osql_trn_count_clients(&count, !is_master);
     /* Don't parse if no one cares */
     if (count == 0)
         return 0;

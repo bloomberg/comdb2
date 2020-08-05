@@ -5763,6 +5763,27 @@ int sqlite3Select(
     p->selFlags &= ~SF_Distinct;
   }
   sqlite3SelectPrep(pParse, p, 0);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( !db->mallocFailed && pParse->prepFlags&SQLITE_PREPARE_SRCLIST_ONLY ){
+    SrcList *pSrc = p->pSrc;
+    int iSrc;
+    if( !pSrc ) goto select_end;
+    if( pSrc->nSrc==0 ) goto select_end;
+    pParse->azSrcListOnly = sqlite3DbMallocZero(db, pSrc->nSrc * sizeof(char*));
+    if( db->mallocFailed ) goto select_end;
+    for(iSrc=0; iSrc<pSrc->nSrc; iSrc++){
+      const char *zSrcDatabase = pSrc->a[iSrc].zDatabase;
+      if( !zSrcDatabase ) zSrcDatabase = "main";
+      pParse->azSrcListOnly[iSrc] = sqlite3MPrintf(db,
+          "%s.%s", zSrcDatabase, pSrc->a[iSrc].zName
+      );
+      if( db->mallocFailed ) goto select_end;
+    }
+    pParse->nSrcListOnly = pSrc->nSrc;
+    rc = 0;
+    goto select_end;
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pParse->nErr || db->mallocFailed ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( pParse->checkSchema == 1 /* parsing error */ && 

@@ -64,13 +64,7 @@ extern int gbl_time_osql;
  * Returns 0 if success.
  *
  */
-int osql_bplog_start(struct ireq *iq, osql_sess_t *sess);
-
-/**
- * Wait for all pending osql sessions of this transaction to
- * finish
- */
-int osql_bplog_finish_sql(struct ireq *iq, struct block_err *err);
+blocksql_tran_t *osql_bplog_create(bool is_uuid, bool is_reorder);
 
 /**
  * Apply all schema changes
@@ -84,21 +78,9 @@ int osql_bplog_commit(struct ireq *iq, void *iq_trans, int *nops,
                       struct block_err *err);
 
 /**
- * Free all the sessions and free the bplog
- * HACKY: since we want to catch and report long requests in block
- * process, call this function only after reqlog_end_request is called
- * (sltdbt.c)
+ * Free the bplog
  */
-void osql_bplog_free(struct ireq *iq, int are_sessions_linked, const char *func,
-                     const char *callfunc, int line);
-
-/**
- * Prints summary for the current osql bp transaction
- * It uses the specified "printfn" function to dump the information
- * to a reqlog engine.
- *
- */
-char *osql_get_tran_summary(struct ireq *iq);
+void osql_bplog_close(blocksql_tran_t **ptran);
 
 /**
  * Inserts the op in the iq oplog
@@ -108,8 +90,8 @@ char *osql_get_tran_summary(struct ireq *iq);
  * Returns 0 if success
  *
  */
-int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
-                      unsigned long long rqid, uuid_t uuid, int type);
+int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
+                      int rplen, int type);
 
 /**
  * Construct a blockprocessor transaction buffer containing
@@ -119,45 +101,23 @@ int osql_bplog_saveop(osql_sess_t *sess, char *rpl, int rplen,
  *       This will allow let us point directly to the buffer
  *
  */
-int osql_bplog_build_sorese_req(uint8_t *p_buf_start,
+int osql_bplog_build_sorese_req(uint8_t **p_buf_start,
                                 const uint8_t **pp_buf_end, const char *sqlq,
                                 int sqlqlen, const char *tzname, int reqtype,
-                                char **sqlqret, int *sqlqlenret,
                                 unsigned long long rqid, uuid_t uuid);
-/**
- * Signal blockprocessor that one has completed
- * For now this is used only for
- *
- */
-int osql_bplog_session_is_done(struct ireq *iq);
 
 /**
- * Set parallelism threshold
+ * Set proper blkseq from session to iq
+ * NOTE: We don't need to create buffers _SEQ, _SEQV2 for it
  *
  */
-void osql_bplog_setlimit(int limit);
-
-/**
- * Log the strings for each completed blocksql request for the
- * reqlog
- */
-int osql_bplog_reqlog_queries(struct ireq *iq);
+void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq);
 
 /**
  * Debugging support
  * Prints all the timings recorded for this bplog
  *
  */
-void osql_bplog_time_done(struct ireq *);
-
-int osql_get_delayed(struct ireq *);
-
-void osql_set_delayed(struct ireq *);
-
-/**
- * Throw bplog to /dev/null, sql does not need this
- *
- */
-int sql_cancelled_transaction(struct ireq *iq);
+void osql_bplog_time_done(osql_bp_timings_t *tms);
 
 #endif

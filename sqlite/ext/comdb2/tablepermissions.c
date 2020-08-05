@@ -23,10 +23,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comdb2.h"
-#include "sql.h"
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
+#include <comdb2.h>
+#include <sql.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
+#include <bdb_int.h>
+#include <sql.h>
 
 /* permissions_cursor is a subclass of sqlite3_vtab_cursor which serves
 ** as the underlying cursor to enumerate the rows in this vtable.
@@ -92,25 +94,28 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
 
   permissions_cursor *pCur = sqlite3_malloc(sizeof(*pCur));
   if( pCur==0 ) return SQLITE_NOMEM;
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return -1;
+  }
+
   memset(pCur, 0, sizeof(*pCur));
 
   struct sql_thread *thd = pthread_getspecific(query_info_key);
-  char *usr = thd->clnt->user;
-
-  rdlock_schema_lk();
+  char *usr = thd->clnt->current_user.name;
   pCur->ppTables = sqlite3_malloc(sizeof(char*) * (thedb->num_dbs +
                                                    vtab->db->aModule.count));
   for(int i=0;i<thedb->num_dbs;++i) {
     // skip sqlite_stat* ?
     char *tbl = thedb->dbs[i]->tablename;
     int err;
-    if( bdb_check_user_tbl_access(NULL, usr, tbl, ACCESS_READ, &err)!=0 ){
+    if( bdb_check_user_tbl_access_tran(thedb->bdb_env, trans, usr, tbl, ACCESS_READ, &err)!=0 ){
       continue;
     }
     pCur->ppTables[pCur->nTables++] = strdup(tbl);
   }
-  bdb_user_get_all(&pCur->ppUsers, &pCur->nUsers);
-  unlock_schema_lk();
+  bdb_user_get_all_tran(trans, &pCur->ppUsers, &pCur->nUsers);
 
   HashElem *systbl;
   for(systbl = sqliteHashFirst(&vtab->db->aModule);
@@ -120,6 +125,7 @@ static int permissionsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
   }
 
   *ppCursor = &pCur->base;
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 
@@ -156,6 +162,12 @@ static int permissionsColumn(
   int i
 ){
   permissions_cursor *pCur = (permissions_cursor*)cur;
+
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return 1;
+  }
   char *tbl = pCur->ppTables[pCur->iTable];
   char *usr = pCur->ppUsers[pCur->iUser];
   switch( i ){
@@ -179,11 +191,12 @@ static int permissionsColumn(
         access = ACCESS_DDL;
       }
       sqlite3_result_text(ctx,
-        YESNO(!bdb_check_user_tbl_access(NULL, usr, tbl, access, &err)),
+        YESNO(!bdb_check_user_tbl_access_tran(thedb->bdb_env, trans, usr, tbl, access, &err)),
         -1, SQLITE_STATIC);
       break;
     }
   }
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 
@@ -254,6 +267,7 @@ const sqlite3_module systblTablePermissionsModule = {
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
   .access_flag = CDB2_ALLOW_ALL,
+  .systable_lock = "comdb2_tables",
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

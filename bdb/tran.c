@@ -261,6 +261,12 @@ void *bdb_get_physical_tran(tran_type *ltran)
     return ltran->physical_tran;
 }
 
+void bdb_reset_physical_tran(tran_type *ltran)
+{
+    assert(ltran->tranclass == TRANCLASS_LOGICAL);
+    ltran->physical_tran = NULL;
+}
+
 void *bdb_get_sc_parent_tran(tran_type *ltran)
 {
     assert(ltran->tranclass == TRANCLASS_LOGICAL);
@@ -1502,10 +1508,11 @@ static int update_logical_redo_lsn(void *obj, void *arg)
     return 0;
 }
 
-static int bdb_tran_commit_with_seqnum_int_int(
-    bdb_state_type *bdb_state, tran_type *tran, seqnum_type *seqnum,
-    int *bdberr, int getseqnum, uint64_t *out_txnsize, void *blkseq, int blklen,
-    void *blkkey, int blkkeylen)
+int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
+                                    seqnum_type *seqnum, int *bdberr,
+                                    int getseqnum, uint64_t *out_txnsize,
+                                    void *blkseq, int blklen, void *blkkey,
+                                    int blkkeylen)
 {
     int rc = 0, outrc = 0;
     unsigned int flags;
@@ -1607,9 +1614,9 @@ static int bdb_tran_commit_with_seqnum_int_int(
             if (iirc) {
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
-                logmsg(LOGMSG_ERROR, 
-                        "%s:%d failed to log logical commit, rc %d\n", __func__,
-                       __LINE__, iirc);
+                logmsg(LOGMSG_ERROR,
+                       "%s:%d td %ld failed to log logical commit, rc %d\n",
+                       __func__, __LINE__, pthread_self(), iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
                 goto cleanup;
@@ -1628,7 +1635,8 @@ static int bdb_tran_commit_with_seqnum_int_int(
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
-                return -1;
+                outrc = -1;
+                goto cleanup;
             }
 
             if (!isabort && tran->committed_child &&
@@ -2102,18 +2110,6 @@ cleanup:
     return outrc;
 }
 
-int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
-                                    seqnum_type *seqnum, int *bdberr,
-                                    int getseqnum, uint64_t *out_txnsize,
-                                    void *blkseq, int blklen, void *blkkey,
-                                    int blkkeylen)
-{
-    int rc = bdb_tran_commit_with_seqnum_int_int(
-        bdb_state, tran, seqnum, bdberr, getseqnum, out_txnsize, blkseq, blklen,
-        blkkey, blkkeylen);
-    return rc;
-}
-
 int bdb_tran_rep_handle_dead(bdb_state_type *bdb_state)
 {
     tran_type *tran;
@@ -2210,25 +2206,6 @@ int bdb_tran_commit_with_seqnum_size(bdb_state_type *bdb_state, tran_type *tran,
 
     if (!is_rowlocks_trans)
         BDB_RELLOCK();
-
-    return rc;
-}
-
-int bdb_tran_commit_with_seqnum(bdb_state_type *bdb_state, tran_type *tran,
-                                seqnum_type *seqnum, int *bdberr)
-{
-    int rc;
-
-    /* lock was acquired in bdb_tran_begin */
-    /* BDB_READLOCK(); */
-
-    /* if we were passed a child, find his parent */
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-    rc = bdb_tran_commit_with_seqnum_int(bdb_state, tran, seqnum, bdberr, 1,
-                                         NULL, NULL, 0, NULL, 0);
-    BDB_RELLOCK();
 
     return rc;
 }
@@ -2550,6 +2527,11 @@ int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
                                                  curtran->lockerid);
 }
 
+unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran)
+{
+    return curtran->lockerid;
+}
+
 int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                            int *bdberr)
 {
@@ -2689,7 +2671,7 @@ int bdb_get_lsn_lwm(bdb_state_type *bdb_state, DB_LSN *lsnout)
     return rc;
 }
 
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran)
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran)
 {
     return curtran->lockerid;
 }

@@ -27,17 +27,12 @@
 
 extern int gbl_partial_indexes;
 
-static int should_skip_constraint_for_index(struct dbtable *db, int ixnum, int nulls)
-{
-    return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
-}
-
 int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
-    int rc;
+    int rc = 0;
     const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
@@ -54,11 +49,15 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         new_dta = malloc(db->lrl);
         if (new_dta == NULL) {
             logmsg(LOGMSG_ERROR, "%s() malloc failed\n", __func__);
-            goto bad;
+            rc = ERR_CONSTR;
+            goto done;
         }
         rc = stag_to_stag_buf(db->tablename, from, old_dta, ".NEW..ONDISK",
                               new_dta, &reason);
-        if (rc) goto bad;
+        if (rc) {
+            rc = ERR_CONSTR;
+            goto done;
+        }
         od_dta = new_dta;
         from = ".NEW..ONDISK";
     }
@@ -80,7 +79,8 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         rc = getidxnumbyname(db->tablename, lcl_tag, &lcl_idx);
         if (rc) {
             logmsg(LOGMSG_ERROR, "could not get index for %s\n", lcl_tag);
-            goto bad;
+            rc = ERR_CONSTR;
+            break;
         }
         if (gbl_partial_indexes && db->ix_partial &&
             !(ins_keys & (1ULL << lcl_idx))) {
@@ -94,71 +94,36 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         else
             rc = stag_to_stag_buf_blobs(db->tablename, from, od_dta, lcl_tag,
                                         lcl_key, NULL, blobs, maxblobs, 0);
-        if (rc) goto bad;
+        if (rc) {
+            rc = ERR_CONSTR;
+            break;
+        }
 
         lcl_len = getkeysize(db, lcl_idx);
-        if (lcl_len < 0) goto bad;
+        if (lcl_len < 0) {
+            rc = ERR_CONSTR;
+            break;
+        }
 
-        for (int ri = 0; ri < ct->nrules; ri++) {
-            int ridx;
-            int rixlen;
-            char rkey[MAXKEYLEN];
-            char rtag[MAXTAGLEN];
-            struct dbtable *ruledb;
-            int fndrrn;
-            unsigned long long genid;
-            int nulls;
-
-            ruledb = get_dbtable_by_name(ct->table[ri]);
-            if (ruledb == NULL) goto bad;
-
-            rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], &ridx);
-            if (rc != 0) goto bad;
-            snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", ridx);
-
-            /* Key -> Key : local table -> referenced table */
-            rixlen = rc = stag_to_stag_buf_ckey(db->tablename, lcl_tag, lcl_key,
-                                                ruledb->tablename, rtag, rkey,
-                                                &nulls, FK2PK);
-
-            if (-1 == rc) goto bad;
-
-            if (ruledb->ix_collattr[ridx]) {
-                rc = extract_decimal_quantum(ruledb, ridx, rkey, NULL, 0, NULL);
-                if (rc) {
-                    abort(); /* called doesn't return error for these arguments,
-                                at least not now */
-                }
-            }
-
-            if (should_skip_constraint_for_index(ruledb, ridx, nulls)) {
-                rc = IX_FND;
-            } else {
-                ruleiq.usedb = ruledb;
-                rc = ix_find_by_key_tran(&ruleiq, rkey, rixlen, ridx, NULL,
-                                         &fndrrn, &genid, NULL, NULL, 0, trans);
-            }
-
-            if (rc == RC_INTERNAL_RETRY) {
-                if (new_dta) free(new_dta);
-                return rc;
-            } else if (rc != IX_FND && rc != IX_FNDMORE) {
-                logmsg(LOGMSG_ERROR,
-                       "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
-                       ct->lclkeyname, db->tablename, ct->keynm[ri],
-                       ct->table[ri], rc);
-                fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
-                logmsg(LOGMSG_ERROR, "\n");
-                goto bad;
-            }
+        int ri;
+        rc = check_single_key_constraint(&ruleiq, ct, lcl_tag, lcl_key,
+                                         db->tablename, trans, &ri);
+        if (rc == RC_INTERNAL_RETRY) {
+            break;
+        } else if (rc && rc != ERR_CONSTR) {
+            logmsg(LOGMSG_ERROR, "fk violation: %s @ %s -> %s @ %s, rc=%d\n",
+                   ct->lclkeyname, db->tablename, ct->keynm[ri], ct->table[ri],
+                   rc);
+            fsnapf(stderr, lcl_key, lcl_len > 32 ? 32 : lcl_len);
+            logmsg(LOGMSG_ERROR, "\n");
+            rc = ERR_CONSTR;
+            break;
         }
     }
-    if (new_dta) free(new_dta);
-    return 0;
 
-bad:
+done:
     if (new_dta) free(new_dta);
-    return ERR_CONSTR;
+    return rc;
 }
 
 int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
@@ -507,27 +472,22 @@ struct dbtable *create_db_from_schema(struct dbenv *thedb,
     return newdb;
 }
 
-int fetch_schema_change_seed(struct schema_change_type *s, struct dbenv *thedb,
+int fetch_sc_seed(const char *tablename, struct dbenv *thedb,
                              unsigned long long *stored_sc_genid,
                              unsigned int *stored_sc_host)
 {
     int bdberr;
-    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, s->tablename,
+    int rc = bdb_get_sc_seed(thedb->bdb_env, NULL, tablename,
                              stored_sc_genid, stored_sc_host, &bdberr);
     if (rc == -1 && bdberr == BDBERR_FETCH_DTA) {
         /* No seed exists, proceed. */
     } else if (rc) {
         logmsg(LOGMSG_ERROR,
-               "Can't retrieve schema change seed, aborting rc %d bdberr %d\n",
+               "Can't retrieve schema change seed, rc %d bdberr %d\n",
                rc, bdberr);
         return SC_INTERNAL_ERROR;
     } else {
         /* found some seed */
-        logmsg(LOGMSG_INFO, "stored seed %016llx, stored host %u\n",
-               *stored_sc_genid, *stored_sc_host);
-        logmsg(
-            LOGMSG_WARN,
-            "Resuming previously restarted schema change, disabling plan.\n");
     }
 
     return SC_OK;
@@ -576,6 +536,17 @@ inline int check_option_coherency(struct schema_change_type *s, struct dbtable *
         return SC_INVALID_OPTIONS;
     }
     return SC_OK;
+}
+
+inline int check_option_queue_coherency(struct schema_change_type *s,
+                                        struct dbtable *db)
+{
+    if (s->ip_updates || s->instant_sc || s->compress_blobs) {
+        sc_errf(s, "unsupported option for queues.\n");
+        return SC_INVALID_OPTIONS;
+    }
+
+    return check_option_coherency(s, db, NULL);
 }
 
 int sc_request_disallowed(SBUF2 *sb)
@@ -1206,6 +1177,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
         if (!strcasecmp(rdb->tablename, newdb->tablename)) {
             rdb = newdb;
         }
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1222,6 +1194,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                 }
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
         for (int j = 0; j < newdb->n_constraints; j++) {
             for (int k = 0; k < newdb->constraints[j].nrules; k++) {
                 int ridx = 0;
@@ -1289,8 +1262,8 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     uint64_t oldsize, newsize, diff;
     char b1[32], b2[32], b3[32], b4[32];
 
-    oldsize = calc_table_size(olddb);
-    newsize = calc_table_size(newdb);
+    oldsize = calc_table_size(olddb, 0);
+    newsize = calc_table_size(newdb, 0);
 
     if (newsize > oldsize)
         diff = oldsize / 3; /* newdb already larger; assume 33% growth */
@@ -1387,6 +1360,7 @@ int remove_constraint_pointers(struct dbtable *db)
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1403,6 +1377,7 @@ int remove_constraint_pointers(struct dbtable *db)
                 }
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
     return 0;
 }
@@ -1412,6 +1387,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1419,6 +1395,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
                 strcpy(ct->lcltable->tablename, newname);
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
     return 0;
 }
@@ -1436,6 +1413,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
         rdb = thedb->dbs[i];
         /* fix reverse references */
         if (rdb->n_rev_constraints > 0) {
+            Pthread_mutex_lock(&rdb->rev_constraints_lk);
             for (j = 0; j < rdb->n_rev_constraints; j++) {
                 ct = rdb->rev_constraints[j];
                 for (k = 0; k < MAXCONSTRAINTS; k++) {
@@ -1444,6 +1422,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
                     }
                 }
             }
+            Pthread_mutex_unlock(&rdb->rev_constraints_lk);
         }
         /* fix forward references */
         if (rdb->n_constraints) {

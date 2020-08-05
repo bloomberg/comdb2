@@ -342,63 +342,61 @@ static const char *ssl_mode_to_string(ssl_mode mode)
 
 void ssl_set_clnt_user(struct sqlclntstate *clnt)
 {
-    int rc =
-        sslio_x509_attr(clnt->sb, gbl_nid_user, clnt->user, sizeof(clnt->user));
+    int rc = sslio_x509_attr(clnt->sb, gbl_nid_user, clnt->current_user.name,
+                             sizeof(clnt->current_user.name));
     if (rc != 0)
         return;
-    clnt->have_user = 1;
-    clnt->is_x509_user = 1;
+    clnt->current_user.have_name = 1;
+    clnt->current_user.is_x509_user = 1;
 }
 
 void ssl_stats(void)
 {
-    logmsg(LOGMSG_INFO, "Client SSL mode: %s\n",
+    logmsg(LOGMSG_USER, "Client SSL mode: %s\n",
            ssl_mode_to_string(gbl_client_ssl_mode));
     if (gbl_client_ssl_mode >= SSL_VERIFY_DBNAME)
-        logmsg(LOGMSG_INFO,
+        logmsg(LOGMSG_USER,
                "Verify database name in client certificate: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_dbname));
 
-    logmsg(LOGMSG_INFO, "Replicant SSL mode: %s\n",
+    logmsg(LOGMSG_USER, "Replicant SSL mode: %s\n",
            ssl_mode_to_string(gbl_rep_ssl_mode));
     if (gbl_client_ssl_mode >= SSL_VERIFY_DBNAME)
-        logmsg(LOGMSG_INFO,
+        logmsg(LOGMSG_USER,
                "Verify database name in replicant certificate: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_dbname));
 
-    logmsg(LOGMSG_INFO, "Certificate: %s\n",
+    logmsg(LOGMSG_USER, "Certificate: %s\n",
            gbl_cert_file ? gbl_cert_file : "N/A");
-    logmsg(LOGMSG_INFO, "Key: %s\n",
-           gbl_key_file ? gbl_key_file : "N/A");
-    logmsg(LOGMSG_INFO, "CA: %s\n",
-           gbl_ca_file ? gbl_ca_file : "N/A");
-    logmsg(LOGMSG_INFO, "CRL: %s\n", gbl_ca_file ? gbl_crl_file : "N/A");
-    logmsg(LOGMSG_INFO, "Allow remote SQL: %s\n",
+    logmsg(LOGMSG_USER, "Key: %s\n", gbl_key_file ? gbl_key_file : "N/A");
+    logmsg(LOGMSG_USER, "CA: %s\n", gbl_ca_file ? gbl_ca_file : "N/A");
+    logmsg(LOGMSG_USER, "CRL: %s\n", gbl_ca_file ? gbl_crl_file : "N/A");
+    logmsg(LOGMSG_USER, "Allow remote SQL: %s\n",
            gbl_ssl_allow_remsql ? "YES" : "no");
 
     if (gbl_sess_cache_sz == 0)
-        logmsg(LOGMSG_INFO, "Session Cache Size: unlimited\n");
+        logmsg(LOGMSG_USER, "Session Cache Size: unlimited\n");
     else if (gbl_sess_cache_sz < 0)
-        logmsg(LOGMSG_INFO, "Session Cache Size: %d\n",
+        logmsg(LOGMSG_USER, "Session Cache Size: %d\n",
                SSL_SESSION_CACHE_MAX_SIZE_DEFAULT);
     else
-        logmsg(LOGMSG_INFO, "Session Cache Size: %ld\n", gbl_sess_cache_sz);
+        logmsg(LOGMSG_USER, "Session Cache Size: %ld\n", gbl_sess_cache_sz);
 
-    logmsg(LOGMSG_INFO, "Cipher suites: %s\n", gbl_ciphers);
+    logmsg(LOGMSG_USER, "Cipher suites: %s\n", gbl_ciphers);
 
     if (gbl_nid_user == NID_undef)
-        logmsg(LOGMSG_INFO,
+        logmsg(LOGMSG_USER,
                "Mapping client certificates to database users: no\n");
     else
-        logmsg(LOGMSG_INFO,
+        logmsg(LOGMSG_USER,
                "Mapping client certificates to database users: YES (%s)\n",
                OBJ_nid2ln(gbl_nid_user));
 
-    logmsg(LOGMSG_INFO, "SSL/TLS protocols:\n");
+    logmsg(LOGMSG_USER, "SSL/TLS protocols:\n");
     for (int ii = 0;
          ii != sizeof(SSL_NO_PROTOCOLS) / sizeof(SSL_NO_PROTOCOLS[0]); ++ii) {
         int enabled = (SSL_NO_PROTOCOLS[ii].tlsver >= gbl_min_tls_ver);
-        logmsg(LOGMSG_INFO, "%s: %s\n", SSL_NO_PROTOCOLS[ii].name,
+        logmsg(LOGMSG_USER, "%s: %s\n", SSL_NO_PROTOCOLS[ii].name,
                enabled ? "ENABLED" : "disabled");
     }
 }

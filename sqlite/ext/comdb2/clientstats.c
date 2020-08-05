@@ -65,7 +65,7 @@ static int systblClientStatsConnect(sqlite3 *db, void *pAux, int argc,
     int rc;
 
     rc = sqlite3_declare_vtab(
-        db, "CREATE TABLE comdb2_clientstats(\"task\", \"stack\", \"host\", "
+        db, "CREATE TABLE comdb2_clientstats(\"task\", \"stack\", \"node\", "
             "\"ip\", \"finds\" INTEGER, \"rngexts\" INTEGER, "
             "\"writes\" INTEGER, \"other_fstsnds\" INTEGER, \"adds\" INTEGER, "
             "\"upds\" INTEGER, \"dels\" INTEGER, \"bsql\" INTEGER, \"recom\" "

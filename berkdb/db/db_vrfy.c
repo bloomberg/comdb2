@@ -64,6 +64,9 @@ static int   __db_vrfy_structure
 static int   __db_vrfy_walkpages __P((DB *, VRFY_DBINFO *,
 		void *, int (*)(void *, const void *), u_int32_t));
 
+static int   __db_vrfy_depthfirst __P((DB *, VRFY_DBINFO *,
+		void *, int (*)(void *, const void *), u_int32_t, u_int32_t));
+
 /*
  * __db_verify_pp --
  *	DB->verify public interface.
@@ -143,7 +146,7 @@ __db_verify_arg(dbp, dname, flags)
 
 #undef	OKFLAGS
 #define	OKFLAGS (DB_AGGRESSIVE | DB_NOORDERCHK | DB_ORDERCHKONLY | \
-    DB_PRINTABLE | DB_SALVAGE)
+    DB_PRINTABLE | DB_SALVAGE | DB_RECCNTCHK)
 	if ((ret = __db_fchk(dbenv, "DB->verify", flags, OKFLAGS)) != 0)
 		return (ret);
 
@@ -338,6 +341,14 @@ __db_verify(dbp, name, subdb, handle, callback, flags)
 
 	if ((ret =
 	    __db_vrfy_walkpages(dbp, vdp, handle, callback, flags)) != 0) {
+		if (ret == DB_VERIFY_BAD)
+			isbad = 1;
+		else if (ret != 0)
+			goto err;
+	}
+
+	if ((ret =
+		__db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, 1)) != 0) {
 		if (ret == DB_VERIFY_BAD)
 			isbad = 1;
 		else if (ret != 0)
@@ -584,6 +595,57 @@ __db_vrfy_pagezero(dbp, vdp, fhp, flags)
 	return (isbad ? DB_VERIFY_BAD : 0);
 }
 
+/* depthfirst search, starting at root go to leftmost page and do 
+ * a consistency search.
+ */
+static int
+__db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, pgno)
+	DB *dbp;
+	VRFY_DBINFO *vdp;
+	void *handle;
+	int (*callback) __P((void *, const void *));
+	u_int32_t flags;
+    db_pgno_t pgno;
+{
+	DB_ENV *dbenv;
+	DB_MPOOLFILE *mpf;
+	PAGE *h;
+	db_pgno_t i;
+	int ret, t_ret, isbad;
+
+	dbenv = dbp->dbenv;
+	mpf = dbp->mpf;
+	ret = isbad = t_ret = 0;
+
+	if ((t_ret = __memp_fget(mpf, &pgno, 0, &h)) != 0) {
+		return (t_ret);
+	}
+
+	if (TYPE(h) == P_IBTREE) {
+		VRFY_PAGEINFO *pip;
+		if ((ret = __db_vrfy_getpageinfo(vdp, pgno, &pip)) != 0)
+			return (ret);
+		u_int32_t nentries = pip->entries;
+		db_indx_t i;
+		for (i = 1; i < nentries; i+= O_INDX) {
+			BINTERNAL *bi;
+			bi = GET_BINTERNAL(dbp, h, i);
+
+			ret = __db_vrfy_depthfirst(dbp, vdp, handle, callback, flags, (u_long)bi->pgno);
+			if (ret) 
+				isbad = 1;
+		}
+	} else if (TYPE(h) == P_LBTREE) {
+		LF_SET(DB_IN_ORDER_CHECK);
+		ret = __bam_vrfy_itemorder(dbp, vdp, h, pgno, 0, 0, 0, flags);
+	}
+
+	if ((t_ret = __memp_fput(mpf, h, 0)) != 0) 
+		return t_ret;
+
+	return (ret || isbad) ? DB_VERIFY_BAD : 0;
+}
+
 /*
  * __db_vrfy_walkpages --
  *	Main loop of the verifier/salvager.  Walks through,
@@ -608,7 +670,7 @@ __db_vrfy_walkpages(dbp, vdp, handle, callback, flags)
 	ret = isbad = t_ret = 0;
 
 #define	OKFLAGS (DB_AGGRESSIVE | DB_NOORDERCHK | DB_ORDERCHKONLY | \
-    DB_PRINTABLE | DB_SALVAGE)
+    DB_PRINTABLE | DB_SALVAGE | DB_RECCNTCHK)
 	if ((ret = __db_fchk(dbenv,
 	    "__db_vrfy_walkpages", flags, OKFLAGS)) != 0)
 		return (ret);

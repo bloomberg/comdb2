@@ -1,0 +1,7 @@
+schema
+{
+   int a null=yes
+   int b dbstore=nextsequence null=yes
+   int c dbstore=nextsequence
+}
+

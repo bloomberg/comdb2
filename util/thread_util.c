@@ -82,8 +82,8 @@ void thread_started(char *name)
         hash_init_o(offsetof(struct thread_resource, resource), sizeof(void *));
     info->name = strdup(name);
     if (thread_debug)
-        printf("thd: started %s tid %" PRIx64 " archtid %u 0x%p\n", name,
-               info->tid, info->archtid, info);
+        printf("thd: started %s tid %p archtid %u 0x%p\n", name,
+               (void *)info->tid, info->archtid, info);
 }
 
 void thread_add_resource(int type, void *resource)
@@ -122,8 +122,8 @@ void thread_remove_resource(void *resource, void (*freefunc)(void *))
     }
     r = hash_find(info->resource_hash, &resource);
     if (r == NULL) {
-        printf("resource 0x%p not found, thread %" PRIu64 " archtid %u\n",
-               resource, info->tid, info->archtid);
+        printf("resource 0x%p not found, thread %p archtid %u\n", resource,
+               (void *)info->tid, info->archtid);
         return;
     }
     listc_rfl(&info->resource_list, r);
@@ -138,9 +138,9 @@ static void thread_ended(void *p)
     struct thread_info *info = p;
 
     if (thread_debug)
-        printf("thd: ended %s tid %" PRIu64
+        printf("thd: ended %s tid %p"
                " archtid %u 0x%p listsz %d hashsz %d\n",
-               info->name, info->tid, info->archtid, p,
+               info->name, (void *)info->tid, info->archtid, p,
                listc_size(&info->resource_list),
                hash_get_num_entries(info->resource_hash));
 
@@ -198,20 +198,18 @@ static void thread_util_donework_int(struct thread_info *info)
         LISTC_FOR_EACH(&info->resource_list, r, lnk)
         {
             if (r->type < 0 || r->type >= MAX_RESOURCE_TYPE) {
-                printf("thread %" PRIu64
-                       " archtid %u resource 0x%p unknown type %d\n",
-                       info->tid, info->archtid, r->resource, r->type);
+                printf("thread %p archtid %u resource 0x%p unknown type %d\n",
+                       (void *)info->tid, info->archtid, r->resource, r->type);
                 continue;
             }
             if (describe_func[r->type]) {
-                printf("thread %" PRIu64 " archtid %u:\n", info->tid,
+                printf("thread %p archtid %u:\n", (void *)info->tid,
                        info->archtid);
                 describe_func[r->type](r->resource);
             } else {
-                printf("thread %" PRIu64
-                       " archtid %u still holds a type %d resource "
+                printf("thread %p archtid %u still holds a type %d resource "
                        "0x%p at exit\n",
-                       info->tid, info->archtid, r->type, r->resource);
+                       (void *)info->tid, info->archtid, r->type, r->resource);
             }
             for (i = 3; i < r->nframes; i++) {
                 printf("0x%p ", r->stack[i]);

@@ -87,7 +87,6 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 {
 	DB_ENV *dbenv;
 	DB_MPOOLFILE *dbmfp;
-	DB_MPREG *mpreg;
 	int ret;
 
 	dbenv = dbmp->dbenv;
@@ -103,16 +102,17 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 					     bhps, numpages, 1));
 
 	/*
-	 * Walk the process' DB_MPOOLFILE list and find a file descriptor for
+	 * Walk the MPOOLFILE's list and find a file descriptor for
 	 * the file.  We also check that the descriptor is open for writing.
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-	for (dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
-	    dbmfp != NULL; dbmfp = TAILQ_NEXT(dbmfp, q))
+	for (dbmfp = LIST_FIRST(&mfp->dbmpf_list);
+	    dbmfp != NULL; dbmfp = LIST_NEXT(dbmfp, mpfq)) {
 		if (dbmfp->mfp == mfp && !F_ISSET(dbmfp, MP_READONLY)) {
 			++dbmfp->ref;
 			break;
 		}
+	}
 	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
 
 	if (dbmfp != NULL) {
@@ -175,23 +175,6 @@ __memp_bhwrite_multi(dbmp, hps, mfp, bhps, numpages, open_extents)
 	 */
 	if (F_ISSET(mfp, MP_TEMP))
 		return (EPERM);
-
-	/*
-	 * It's not a page from a file we've opened.  If the file requires
-	 * input/output processing, see if this process has ever registered
-	 * information as to how to write this type of file.  If not, there's
-	 * nothing we can do.
-	 */
-	if (mfp->ftype != 0) {
-		MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-		for (mpreg = LIST_FIRST(&dbmp->dbregq);
-		    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q))
-			if (mpreg->ftype == mfp->ftype)
-				break;
-		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
-		if (mpreg == NULL)
-			return (EPERM);
-	}
 
 	/*
 	 * Try and open the file, attaching to the underlying shared area.
@@ -307,7 +290,6 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 
 	DB_ENV *dbenv;
 	DB_LSN page_lsn, largest_lsn;
-	DB_MPREG *mpreg;
 	MPOOLFILE *mfp;
 	DB_MPOOL *dbmp;
 	MPOOL *c_mp;
@@ -322,7 +304,7 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	mfp = dbmfp->mfp;
 	pagesize = mfp->stat.st_pagesize;
 	dbmp = dbenv->mp_handle;
-	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mf_offset, bhp->pgno);
+	n_cache = NCACHE(dbmp->reginfo[0].primary, bhp->mpf, bhp->pgno);
 	c_mp = dbmp->reginfo[n_cache].primary;
 
 	pgidx = -1;
@@ -337,21 +319,10 @@ __memp_recover_page(dbmfp, hp, bhp, pgno)
 	pginfo = &duminfo;
 	ftype = mfp->ftype;
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
-	/* Get the page-cookie. */
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q)) {
-		if (ftype != mpreg->ftype)
-			continue;
-		if (mfp->pgcookie_len > 0) {
-			pginfo = (DB_PGINFO *)R_ADDR(dbmp->reginfo,
-			    mfp->pgcookie_off);
-		}
-		break;
-	}
-
-	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+    if (mfp->pgcookie_len > 0) {
+        pginfo = (DB_PGINFO *)R_ADDR(dbmp->reginfo,
+                mfp->pgcookie_off);
+    }
 
 	/* Create a temporary pagecache. */
 	if (pagesize <= 4096) {
@@ -1094,7 +1065,7 @@ file_dead:
 
 			/* Best to do this in lock step with hash_page_dirty */
 			n_cache = NCACHE(dbmp->reginfo[0].primary,
-			    bhp->mf_offset, bhp->pgno);
+			    bhp->mpf, bhp->pgno);
 			c_mp = dbmp->reginfo[n_cache].primary;
 			ATOMIC_ADD32(hp->hash_page_dirty, -1);
 			ATOMIC_ADD32(c_mp->stat.st_page_dirty, -1);
@@ -1160,7 +1131,6 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	DBT dbt, *dbtp;
 	DB_ENV *dbenv;
 	DB_MPOOL *dbmp;
-	DB_MPREG *mpreg;
 	MPOOLFILE *mfp;
 	int ftype, ret;
 
@@ -1173,41 +1143,32 @@ __dir_pg(dbmfp, pgno, buf, is_pgin)
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
 		start_time_us = bb_berkdb_fasttime();
 
-	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
 	ftype = mfp->ftype;
-	for (mpreg = LIST_FIRST(&dbmp->dbregq);
-	    mpreg != NULL; mpreg = LIST_NEXT(mpreg, q)) {
-		if (ftype != mpreg->ftype)
-			continue;
-		if (mfp->pgcookie_len == 0)
-			dbtp = NULL;
-		else {
-			dbt.size = mfp->pgcookie_len;
-			dbt.data = R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
-			dbtp = &dbt;
-		}
-		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+	if (ftype == DB_FTYPE_SET)
+		ftype =  DB_UNKNOWN;
 
-		if (is_pgin) {
-			if (mpreg->pgin != NULL &&
-			    (ret = mpreg->pgin(dbenv, pgno, buf, dbtp)) != 0)
-				goto err;
-		} else
-		    if (mpreg->pgout != NULL &&
-		    (ret = mpreg->pgout(dbenv, pgno, buf, dbtp)) != 0)
-			goto err;
-		break;
+	if (mfp->pgcookie_len == 0)
+		dbtp = NULL;
+	else {
+		dbt.size = mfp->pgcookie_len;
+		dbt.data = R_ADDR(dbmp->reginfo, mfp->pgcookie_off);
+		dbtp = &dbt;
 	}
-
-	if (mpreg == NULL)
-		MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+	if (is_pgin) {
+		if (dbmp->dbenv->pgin[ftype] != NULL &&
+			(ret = dbmp->dbenv->pgin[ftype](dbenv, pgno, buf, dbtp)) != 0)
+			goto err;
+	} else {
+		if (dbmp->dbenv->pgout[ftype] != NULL &&
+			(ret = dbmp->dbenv->pgout[ftype](dbenv, pgno, buf, dbtp)) != 0)
+			goto err;
+	}
 
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
 		bb_memp_pg_hit(start_time_us);
 	return (0);
 
-err:	MUTEX_THREAD_UNLOCK(dbenv, dbmp->mutexp);
+err:
 	__db_err(dbenv, "%s: %s failed for page %lu",
 	    __memp_fn(dbmfp), is_pgin ? "pgin" : "pgout", (u_long) pgno);
 	if (gbl_bb_berkdb_enable_memp_pg_timing)
@@ -1256,7 +1217,7 @@ __memp_bhfree(dbmp, hp, bhp, free_mem)
 	 */
 	dbenv = dbmp->dbenv;
 	mp = dbmp->reginfo[0].primary;
-	n_cache = NCACHE(mp, bhp->mf_offset, bhp->pgno);
+	n_cache = NCACHE(mp, bhp->mpf, bhp->pgno);
 
 	/*
 	 * Delete the buffer header from the hash bucket queue and reset
@@ -1278,7 +1239,7 @@ __memp_bhfree(dbmp, hp, bhp, free_mem)
 	 * Find the underlying MPOOLFILE and decrement its reference count.
 	 * If this is its last reference, remove it.
 	 */
-	mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+	mfp = bhp->mpf;
 	MUTEX_LOCK(dbenv, &mfp->mutex);
 	if (--mfp->block_cnt == 0 && mfp->mpf_cnt == 0)
 		(void)__memp_mf_discard(dbmp, mfp);

@@ -243,8 +243,6 @@ char *osql_breq2a(int op)
         return "OSQL_DELIDX";
     case OSQL_INSIDX:
         return "OSQL_INSIDX";
-    case OSQL_DBQ_CONSUME_UUID:
-        return "OSQL_DBQ_CONSUME_UUID";
     default:
         return "UNKNOWN";
     }
@@ -256,10 +254,10 @@ void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
     struct thr_handle *thr_self = thrman_self();
 
     if (iq->debug)
-        reqprintf(iq, "%s received from node %s", __func__, iq->sorese.host);
+        reqprintf(iq, "%s received from node %s", __func__, iq->sorese->host);
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
-                  breq2a(block2_type), iq->sorese.host, iq->sorese.rqid);
+                  breq2a(block2_type), iq->sorese->host, iq->sorese->rqid);
 }
 
 extern int gbl_early_verify;
@@ -556,9 +554,6 @@ int selectv_range_commit(struct sqlclntstate *clnt)
 int req2netreq(int reqtype)
 {
     switch (reqtype) {
-    case OSQL_BLOCK_REQ:
-        return NET_OSQL_BLOCK_REQ;
-
     case OSQL_SOCK_REQ:
         return NET_OSQL_SOCK_REQ;
 
@@ -587,9 +582,6 @@ int req2netreq(int reqtype)
 int req2netrpl(int reqtype)
 {
     switch (reqtype) {
-    case OSQL_BLOCK_REQ:
-        return NET_OSQL_BLOCK_RPL;
-
     case OSQL_SOCK_REQ:
         return NET_OSQL_SOCK_RPL;
 
@@ -679,10 +671,6 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         }
     }
 
-    /* fields we don't control, make sure they are 0 */
-    if (clnt->osql.sess_blocksock)
-        logmsg(LOGMSG_ERROR, "sess_blocksock field is not cleared!\n");
-
     if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
         clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
         logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
@@ -691,7 +679,7 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
             logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
     }
 
-    if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
+    if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid)) {
         uuidstr_t us;
         logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %lu\n", clnt,
                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
@@ -804,8 +792,20 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 }
             }
             broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
-            if (iq->sc->db)
-                sc_del_unused_files(iq->sc->db);
+            if (iq->sc->db) {
+                int rc;
+                tran_type *lock_trans = NULL;
+                if ((rc = trans_start(iq, NULL, &lock_trans)) == 0) {
+                    bdb_lock_tablename_read(thedb->bdb_env, iq->sc->tablename,
+                                            lock_trans);
+                    sc_del_unused_files_tran(iq->sc->db, lock_trans);
+                    trans_abort(iq, lock_trans);
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s failed to start lock_trans, rc=%d\n", __func__,
+                           rc);
+                }
+            }
             if (iq->sc->fastinit && !iq->sc->drop_table)
                 autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);
@@ -848,4 +848,14 @@ void osql_postcommit_handle(struct ireq *iq)
 void osql_postabort_handle(struct ireq *iq)
 {
     osql_scdone_abort_callback(iq);
+}
+
+inline bool osql_is_index_reorder_on(int osql_flags)
+{
+    return osql_flags & OSQL_FLAGS_REORDER_IDX_ON;
+}
+
+inline void osql_unset_index_reorder_bit(int *osql_flags)
+{
+    (*osql_flags) &= (~OSQL_FLAGS_REORDER_IDX_ON);
 }

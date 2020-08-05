@@ -189,6 +189,7 @@ const sqlite3_module systblTablesModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
+  .systable_lock = "comdb2_tables",
 };
 
 /* This initializes this table but also a bunch of other schema tables
@@ -279,11 +280,17 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
+    rc = systblScHistoryInit(db);
+  if (rc == SQLITE_OK)
     rc = systblConnectionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblViewsInit(db);
   if (rc == SQLITE_OK)
-    rc  = systblSQLClientStats(db);
+    rc = systblSQLClientStats(db);
+  if (rc == SQLITE_OK)
+    rc = systblSQLIndexStatsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTemporaryFileSizesModuleInit(db);
 #endif
   return rc;
 }

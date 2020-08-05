@@ -5926,7 +5926,7 @@ static char* sqlite3ExprDescribe_inner(
     }
     case TK_IN: {
       int  i;
-      char *left, *ret2, *ret = NULL;
+      char *left, *ret = NULL;
 
       if(!(pExpr->flags & EP_Subquery)) {
         if( pExpr->x.pList->nExpr == 0 ){
@@ -5938,8 +5938,14 @@ static char* sqlite3ExprDescribe_inner(
         if( !left ){
           return NULL;
         }
-        ret = sqlite3_mprintf(" %s IN ", left);
 
+        StrAccum acc;
+        char zBuf[512];
+        sqlite3StrAccumInit(&acc, 0, zBuf, sizeof(zBuf), SQLITE_MAX_LENGTH);
+
+        sqlite3_str_appendall(&acc, " ");
+        sqlite3_str_appendall(&acc, left);
+        sqlite3_str_appendall(&acc, " IN ");
         sqlite3_free(left);
 
         for(i =0; i< pExpr->x.pList->nExpr; i++){
@@ -5949,12 +5955,12 @@ static char* sqlite3ExprDescribe_inner(
             sqlite3_free(ret);
             return NULL;
           }
-          ret2 = sqlite3_mprintf("%s%s%s%s", ret, (i)?", ":"( ", left,
-                  (i==pExpr->x.pList->nExpr-1)?" )":"");
-          sqlite3_free(ret);
+          sqlite3_str_appendall(&acc, (i)?", ":"( ");
+          sqlite3_str_appendall(&acc, left);
+          sqlite3_str_appendall(&acc, (i==pExpr->x.pList->nExpr-1)?" )":"");
           sqlite3_free(left);
-          ret = ret2;
         }
+        ret = sqlite3StrAccumFinish(&acc);
       }
 
       return ret;

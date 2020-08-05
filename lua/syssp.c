@@ -18,7 +18,7 @@
 #include <bdb_api.h>
 #include <phys_rep.h>
 
-
+extern int comdb2DeleteFromScHistory(char *tablename, uint64_t seed);
 /* Wishes for anyone who wants to clean this up one day:
  * 1)  don't need boilerplate lua code for this, should have a fixed description
  *     of types/names for each call, and C code for emitting them. 
@@ -205,17 +205,23 @@ static int db_comdb_analyze(Lua L) {
 }
 
 
+/* verify() can take up to 3 parameters (table, mode, verbose):
+ * when we check we look for lua_isstring(L, 1), 2 and 3
+ * when we fetch the string we look for lua_tostring(L, -3), -2, -1
+ */
 static int db_comdb_verify(Lua L) {
     SP sp = getsp(L);
     sp->max_num_instructions = 1000000; //allow large number of steps
     char *tblname = NULL;
+
     if (lua_isstring(L, 1)) {
-        tblname = (char *) lua_tostring(L, -2);
+        tblname = (char *) lua_tostring(L, -3);
     }
-    verify_mode_t mode = VERIFY_DEFAULT;
+    verify_mode_t mode = VERIFY_SERIAL;
+    int verbose = 0;
 
     if (lua_isstring(L, 2)) {
-        char *m = (char *) lua_tostring(L, -1);
+        char *m = (char *) lua_tostring(L, -2);
         if (strcmp(m, "parallel") == 0) {
             mode = VERIFY_PARALLEL;
             logmsg(LOGMSG_INFO, "Verify in parallel mode table %s\n", tblname);
@@ -228,8 +234,23 @@ static int db_comdb_verify(Lua L) {
         } else if (strcmp(m, "blobs") == 0) {
             mode = VERIFY_BLOBS;
             logmsg(LOGMSG_INFO, "Verify ONLY blobs for table %s\n", tblname);
-        } else
-            logmsg(LOGMSG_INFO, "Verify table %s\n", tblname);
+        } else if (strcmp(m, "serial") == 0) {
+            mode = VERIFY_SERIAL;
+            logmsg(LOGMSG_INFO, "Verify in serial mode table %s\n", tblname);
+        } else if (strcmp(m, "verbose") == 0) {
+            verbose = 1;
+            logmsg(LOGMSG_DEBUG, "Verify verbose \n");
+        } else {
+            tblname = NULL; // garbage was passed in, mode invalid
+        }
+
+        if (lua_isstring(L, 3)) {
+            char *v = (char *) lua_tostring(L, -1);
+            if (strcmp(v, "verbose") == 0) {
+                verbose = 1;
+                logmsg(LOGMSG_DEBUG, "Verify verbose \n");
+            }
+        }
     }
 
     char *cols[] = {"out"};
@@ -239,7 +260,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"parallel\"|\"data\"|\"blobs\"|\"indices\"])");
+        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])");
         return luaL_error(L, "Verify failed.");
     }
 
@@ -247,7 +268,7 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table_mode(tblname, NULL, 1, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
+        rc = verify_table_mode(tblname, clnt->sb, verbose, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
@@ -433,7 +454,8 @@ static int db_send(Lua L) {
     if (gbl_uses_password) {
       if (sp && sp->clnt) {
           int bdberr;
-          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
+          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "",
+                                    sp->clnt->current_user.name, &bdberr)) {
               return luaL_error(L, "User doesn't have access to run this command.");
           }
       }
@@ -540,6 +562,23 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+// delete sc history by tablename and by seed
+static int db_comdb_delete_sc_history(Lua L)
+{
+    if (!lua_isstring(L, 1))
+        return luaL_error(L, "Expected string value for tablename.");
+    if (lua_isnil(L, 2)) 
+        return luaL_error(L, "Expected non null value for seed.");
+
+    uint64_t fseed = lua_tointeger(L, -1);
+    char *tbl = (char*) lua_tostring(L, -2);
+    int rc = comdb2DeleteFromScHistory(tbl, fseed);
+    if (rc)
+        return luaL_error(L, "Error deleting entry");
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -553,6 +592,7 @@ static const luaL_Reg sys_funcs[] = {
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
+    { "delete_sc_history", db_comdb_delete_sc_history },
     { NULL, NULL }
 }; 
 
@@ -654,8 +694,8 @@ static struct sp_source syssps[] = {
     ,{
         // to call verify for a table: cdb2sql adidb local 'exec procedure sys.cmd.verify("t1")'
         "sys.cmd.verify",
-        "local function main(tbl, mode)\n"
-        "    sys.comdb_verify(tbl, mode)\n"
+        "local function main(tbl, mode, verbose)\n"
+        "    sys.comdb_verify(tbl, mode, verbose)\n"
         "end\n",
         NULL
     }
@@ -724,6 +764,36 @@ static struct sp_source syssps[] = {
         "    end\n"
         "end\n",
         "register_replicant"
+    }
+    ,{
+        /* delete all but the last N rows from llmeta for this table */
+        "sys.cmd.trim_sc_history",
+        "local function main(t, n)\n"
+        "  if (n == nil) then \n"
+        "    n = 10 \n"
+        "  end \n"
+        "  db:begin()\n"
+        "  local resultset, rc = db:exec('select seed from comdb2_sc_history where seed not in "
+        "   (select seed from comdb2_sc_history where name = \"'..t..'\" order by seed desc limit '..n..') "
+        "   and name=\"'..t..'\"' )\n"
+        "  local c = 0\n"
+        "  local row = resultset:fetch()\n"
+        "  while row do\n"
+        "    sys.delete_sc_history(t, ' '..row.seed)\n"
+        //"    db:emit('Deleting '..row.seed)\n"
+        "    row = resultset:fetch()\n"
+        "    c = c + 1\n"
+        "  end\n"
+        "  local rc1 = db:commit()\n"
+        "  if (c > 0 and rc1 == 0) then\n"
+        "    db:emit('Deleted '..c..' rows from sc_history for tablename '..t)\n"
+        "  elseif (c == 0) then \n"
+        "    db:emit('No rows to delete from sc_history for tablename '..t)\n"
+        "  else\n"
+        "    db:emit('Failed to delete from sc_history for tablename '..t)\n"
+        "  end \n"
+        "end\n",
+        NULL
     }
 };
 

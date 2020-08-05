@@ -19,6 +19,7 @@ static const char revid[] = "$Id: bt_verify.c,v 1.87 2003/10/06 14:09:23 bostic 
 #include <string.h>
 #endif
 
+#include "tohex.h"
 #include "db_int.h"
 #include "dbinc/db_page.h"
 #include "dbinc/db_shash.h"
@@ -878,6 +879,9 @@ err:	if (nentriesp != NULL)
  *	and we run into an overflow page, carp and return DB_VERIFY_BAD;
  *	we shouldn't be called if any exist.
  *
+ *  COMDB2_MODIFICATION: if flag DB_IN_ORDER_CHECK is set we will compare
+ *  first record on leaf page with last record from prev pg.
+ *
  * PUBLIC: int __bam_vrfy_itemorder __P((DB *, VRFY_DBINFO *, PAGE *,
  * PUBLIC:     db_pgno_t, u_int32_t, int, int, u_int32_t));
  */
@@ -903,6 +907,7 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 	int (*dupfunc) __P((DB *, const DBT *, const DBT *));
 	int (*func) __P((DB *, const DBT *, const DBT *));
 	void *buf1, *buf2, *tmpbuf;
+	static DBT last_key_from_prev_pg = {0};
 
 	/*
 	 * We need to work in the ORDERCHKONLY environment where we might
@@ -949,6 +954,12 @@ __bam_vrfy_itemorder(dbp, vdp, h, pgno, nentries, ovflok, hasdups, flags)
 	 */
 	p1 = &dbta;
 	p2 = &dbtb;
+
+	if (last_key_from_prev_pg.data && (TYPE(h) == P_LBTREE)
+		&& LF_ISSET(DB_IN_ORDER_CHECK)) {
+		p2->data = last_key_from_prev_pg.data;
+		p2->size = last_key_from_prev_pg.size;
+	}
 
 	/*
 	 * Loop through the entries.  nentries ought to contain the
@@ -1072,9 +1083,13 @@ overflow:		if (!ovflok) {
 			/* comparison succeeded */
 			if (cmp > 0) {
 				isbad = 1;
+				char tmp1[p1->size * 2 + 1];
+				char tmp2[p2->size * 2 + 1];
+				util_tohex(tmp1, p1->data, p1->size);
+				util_tohex(tmp2, p2->data, p2->size);
 				EPRINT((dbenv,
-				    "Page %lu: out-of-order key at entry %lu",
-				    (u_long)pgno, (u_long)i));
+				    "Page %lu: out-of-order key at entry %lu *p1=%s *p2=%s",
+				    (u_long)pgno, (u_long)i, tmp1, tmp2));
 				/* proceed */
 			} else if (cmp == 0) {
 				/*
@@ -1156,6 +1171,16 @@ overflow:		if (!ovflok) {
 				}
 			}
 		}
+	}
+	if ((TYPE(h) == P_LBTREE) && LF_ISSET(DB_IN_ORDER_CHECK)) {
+		if (last_key_from_prev_pg.data && p2->size > last_key_from_prev_pg.size) {
+			last_key_from_prev_pg.data = realloc(last_key_from_prev_pg.data, p2->size);
+		} else 
+			last_key_from_prev_pg.data = malloc(p2->size);
+		if (!last_key_from_prev_pg.data)
+			abort();
+		memcpy(last_key_from_prev_pg.data, p2->data, p2->size);
+		last_key_from_prev_pg.size = p2->size;
 	}
 
 err:	if (pip != NULL && ((t_ret =
@@ -1848,7 +1873,7 @@ done:	if (F_ISSET(pip, VRFY_INCOMPLETE) && isbad == 0 && ret == 0) {
 	 * Internal pages below the top level do not store their own
 	 * record numbers, so we skip them.
 	 */
-	if (LF_ISSET(ST_RECNUM) && nrecs != pip->rec_cnt && toplevel) {
+	if (LF_ISSET(DB_RECCNTCHK) && LF_ISSET(ST_RECNUM) && nrecs != pip->rec_cnt && toplevel) {
 		isbad = 1;
 		EPRINT((dbenv,
 		    "Page %lu: bad record count: has %lu records, claims %lu",

@@ -3742,6 +3742,7 @@ SQLITE_API int sqlite3_limit(sqlite3*, int id, int newVal);
 #define SQLITE_PREPARE_NO_VTAB                 0x04
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_PREPARE_ONLY                    0x08
+#define SQLITE_PREPARE_SRCLIST_ONLY            0x10
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -4548,8 +4549,7 @@ SQLITE_API int sqlite3_data_count(sqlite3_stmt *pStmt);
 #define SQLITE_DATETIMEUS     9
 #define SQLITE_INTERVAL_DSUS 10
 #define SQLITE_DECIMAL       11
-
-#define comdb2_is_valid_type(tp) ((SQLITE_INTEGER <= tp) && (tp <= SQLITE_DECIMAL))
+#define SQLITE_NEXTSEQ       (SQLITE_MAX_U32-2)
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -4841,6 +4841,13 @@ SQLITE_API int sqlite3_reset(sqlite3_stmt *pStmt);
 SQLITE_API int sqlite3_resetclock(sqlite3_stmt *pStmt);
 char *stmt_tzname(sqlite3_stmt *);
 void stmt_set_dtprec(sqlite3_stmt *, int);
+
+int stmt_cached_column_count(sqlite3_stmt *);
+char *stmt_cached_column_name(sqlite3_stmt *, int);
+char *stmt_column_name(sqlite3_stmt *, int);
+void stmt_set_cached_columns(sqlite3_stmt *, char **, int);
+void stmt_set_vlock_tables(sqlite3_stmt *, char **, int);
+int stmt_do_column_names_match(sqlite3_stmt *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -5018,7 +5025,8 @@ SQLITE_API int sqlite3_create_window_function(
 ** to [sqlite3_create_function()], [sqlite3_create_function16()], or
 ** [sqlite3_create_function_v2()].
 */
-#define SQLITE_DETERMINISTIC    0x800
+#define SQLITE_DETERMINISTIC    0x000000800
+#define SQLITE_SUBTYPE          0x000100000
 
 /*
 ** CAPI3REF: Deprecated Functions
@@ -6496,6 +6504,7 @@ struct sqlite3_module {
   int (*xShadowName)(const char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int access_flag;
+  char *systable_lock;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

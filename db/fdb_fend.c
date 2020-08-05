@@ -53,10 +53,10 @@
 #include "ssl_support.h"
 #include "ssl_io.h"
 #include "ssl_bend.h"
+#include "comdb2_query_preparer.h"
 
 extern int gbl_fdb_resolve_local;
 extern int gbl_fdb_allow_cross_classes;
-
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
 
@@ -999,7 +999,7 @@ run:
         switch (rc) {
         case FDB_ERR_SSL:
 #if WITH_SSL
-            /* remote needs sql */
+            /* remote needs ssl */
             fdb_cursor_close_on_open(cur, 0);
             if (gbl_client_ssl_mode >= SSL_ALLOW) {
                 logmsg(LOGMSG_ERROR, "remote required SSl, switching to SSL\n");
@@ -1207,6 +1207,14 @@ static int __check_sqlite_stat(sqlite3 *db, fdb_tbl_ent_t *ent, Table *tab)
 
 static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (gbl_old_column_names && thd && thd->clnt && thd->clnt->thd &&
+        thd->clnt->thd->query_preparer_running) {
+        /* We're preparing query in sqlitex; let's pretend that
+         * everything is fine */
+        return SQLITE_OK;
+    }
+
     fdb_tbl_ent_t *stat_ent;
     Table *stat_tab;
 
@@ -1225,7 +1233,7 @@ static int _fdb_check_sqlite3_cached_stats(sqlite3 *db, fdb_t *fdb)
     return SQLITE_OK;
 }
 
-static int _failed_AddAndLockTable(sqlite3 *db, const char *dbname, int errcode,
+static int _failed_AddAndLockTable(const char *dbname, int errcode,
                                    const char *prefix)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1271,15 +1279,16 @@ int sqlite3AddAndLockTable(sqlite3 *db, const char *dbname, const char *table,
     lvl = get_fdb_class(&dbname, &local);
     if (lvl == CLASS_UNKNOWN || lvl == CLASS_DENIED) {
         return _failed_AddAndLockTable(
-            db, dbname, (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN
-                                               : FDB_ERR_CLASS_DENIED,
+            dbname,
+            (lvl == CLASS_UNKNOWN) ? FDB_ERR_CLASS_UNKNOWN
+                                   : FDB_ERR_CLASS_DENIED,
             (lvl == CLASS_UNKNOWN) ? "unrecognized class" : "denied access");
     }
 retry_fdb_creation:
     fdb = new_fdb(dbname, &created, lvl, local);
     if (!fdb) {
         /* we cannot really alloc a new memory string for sqlite here */
-        return _failed_AddAndLockTable(db, dbname, FDB_ERR_MALLOC,
+        return _failed_AddAndLockTable(dbname, FDB_ERR_MALLOC,
                                        "OOM allocating fdb object");
     }
     if (!created) {
@@ -1287,7 +1296,7 @@ retry_fdb_creation:
         rc = _validate_existing_table(fdb, lvl, local);
         if (rc != FDB_NOERR) {
             __fdb_rem_user(fdb, 1);
-            return _failed_AddAndLockTable(db, dbname, rc, "mismatching class");
+            return _failed_AddAndLockTable(dbname, rc, "mismatching class");
         }
     }
 
@@ -1302,9 +1311,7 @@ retry_fdb_creation:
     }
 
     if (!local) {
-        Pthread_mutex_lock(&fdb->dbcon_mtx);
-        rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc);
-        Pthread_mutex_unlock(&fdb->dbcon_mtx);
+        rc = fdb_locate(fdb->dbname, fdb->class, 0, &fdb->loc, &fdb->dbcon_mtx);
         if (rc != FDB_NOERR) {
             switch (rc) {
             case FDB_ERR_CLASS_UNKNOWN:
@@ -1388,7 +1395,7 @@ retry_fdb_creation:
             fdb = NULL;
         }
 
-        return _failed_AddAndLockTable(db, dbname, rc, perrstr);
+        return _failed_AddAndLockTable(dbname, rc, perrstr);
     }
 
     /* We have successfully created a shared fdb table on behalf of an sqlite3
@@ -1446,7 +1453,6 @@ static int __lock_wrlock_shared(fdb_t *fdb)
 static int __lock_wrlock_exclusive(char *dbname)
 {
     fdb_t *fdb = NULL;
-    struct sql_thread *thd;
     int rc = FDB_NOERR;
     int idx = -1;
     int len = strlen(dbname) + 1;
@@ -1477,19 +1483,16 @@ static int __lock_wrlock_exclusive(char *dbname)
             /* if we loop, make sure this is not a live lock
                deadlocking with another sqlite engine that waits
                for a bdb write lock to be processed */
-            if (bdb_lock_desired(thedb->bdb_env)) {
-                thd = pthread_getspecific(query_info_key);
-                if (thd) {
-                    rc = recover_deadlock(
-                        thedb->bdb_env, thd, NULL,
-                        100 * thd->clnt->deadlock_recovered++);
-                    if (rc) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s:%d recover_deadlock returned %d\n", __func__,
-                               __LINE__, rc);
-                        return FDB_ERR_GENERIC;
-                    }
-                }
+
+            struct sql_thread *thd = pthread_getspecific(query_info_key);
+            if (!thd)
+                continue;
+
+            rc = clnt_check_bdb_lock_desired(thd->clnt);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d recover_deadlock returned %d\n",
+                       __func__, __LINE__, rc);
+                return FDB_ERR_GENERIC;
             }
 
             continue;
@@ -1902,8 +1905,20 @@ void *fdb_get_sqlite_master_entry(fdb_t *fdb, fdb_tbl_ent_t *ent)
 
 int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
 {
-    sqlite3 *sqlite = pCur->sqlite;
-    const char *zTblName = sqlite->init.zTblName;
+    const char *zTblName;
+
+    if (gbl_old_column_names && pCur->clnt->thd &&
+        pCur->clnt->thd->query_preparer_running) {
+        /* We must have a query_preparer_plugin installed. */
+        assert(pCur->query_preparer_data != 0);
+        assert(query_preparer_plugin &&
+               query_preparer_plugin->sqlitex_table_name);
+        zTblName = query_preparer_plugin->sqlitex_table_name(
+            pCur->query_preparer_data);
+    } else {
+        sqlite3 *sqlite = pCur->sqlite;
+        zTblName = sqlite->init.zTblName;
+    }
     fdb_t *fdb = pCur->bt->fdb;
     fdb_tbl_t *tbl = NULL;
     int step = 0;
@@ -2112,10 +2127,12 @@ static int _fdb_remote_reconnect(fdb_t *fdb, SBUF2 **psb, char *host, int use_ca
         then = gettimeofday_ms();
 
         if (old == 0ULL) {
-            logmsg(LOGMSG_USER, "TTTTTT now=%ld 0 %ld\n", now, then - now);
+            logmsg(LOGMSG_USER, "TTTTTT now=%" PRId64 " 0 %" PRId64 "\n", now,
+                   then - now);
         } else {
-            logmsg(LOGMSG_USER, "TTTTTT now=%ld delta=%ld %ld\n", now,
-                   now - old, then - now);
+            logmsg(LOGMSG_USER,
+                   "TTTTTT now=%" PRId64 " delta=%" PRId64 " %" PRId64 "\n",
+                   now, now - old, then - now);
         }
         old = now;
     }
@@ -2166,7 +2183,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         op = FDB_LOCATION_INITIAL;
 
     refresh:
-        host = fdb_select_node(&fdb->loc, op, 0, &avail_nodes, &lcl_nodes);
+        host = fdb_select_node(&fdb->loc, op, 0, &avail_nodes, &lcl_nodes,
+                               &fdb->dbcon_mtx);
 
         if (avail_nodes <= 0) {
             clnt->fdb_state.preserve_err = 1;
@@ -2178,9 +2196,20 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
             return clnt->fdb_state.xerr.errval;
         }
     } else if (was_bad) {
+        char *bad_host = host;
+
         /* we failed earlier on this one, we need the next node */
         op = FDB_LOCATION_NEXT;
-        host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
+        host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes,
+                               &fdb->dbcon_mtx);
+
+        /* Also, whitelist the node - assuming it's back healthy again. */
+        if (was_bad == FDB_ERR_TRANSIENT_IO) {
+            if (gbl_fdb_track)
+                logmsg(LOGMSG_USER, "%s:%d whitelisting %s\n", __func__,
+                       __LINE__, bad_host);
+            _fdb_set_affinity_node(clnt, fdb, bad_host, FDB_NOERR);
+        }
     }
     if (host == NULL) {
         clnt->fdb_state.preserve_err = 1;
@@ -2241,7 +2270,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 /*fprintf(stderr, "READ Y\n");*/
 
                 if (sslio_connect(*psb, gbl_ssl_ctx, fdb->ssl, NULL,
-                                  gbl_nid_dbname, NULL, 0, 1) != 1) {
+                                  gbl_nid_dbname, 1) != 1) {
                 failed:
                     sbuf2close(*psb);
                     *psb = NULL;
@@ -2267,21 +2296,10 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
         /* FAIL on current node, NEED to get the next node */
         if (!tried_nodes && op == FDB_LOCATION_REFRESH) {
             op = FDB_LOCATION_INITIAL;
-            host =
-                fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
+            host = fdb_select_node(&fdb->loc, op, host, &avail_nodes,
+                                   &lcl_nodes, &fdb->dbcon_mtx);
             continue; /* try again with the selected node, can be the same */
         }
-#if 0
-
-      host = fdb_select_node(&fdb->loc, op, host, NULL, NULL);
-      if (host == NULL)
-      {
-         /* we need to retrieve the location information if
-            the first try was using the cached node */
-         host = fdb_select_node(&fdb->loc, op, host, &avail_nodes, &lcl_nodes);
-         continue;   /* try again with the selected node, can be the same */
-      }
-#endif
         else {
             /* either this is the first node, and
                   have location info (avail_nodes, lcl_nodes),
@@ -2304,7 +2322,8 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                 op |= FDB_LOCATION_IGNORE_LCL;
             }
 
-            host = fdb_select_node(&fdb->loc, op, host, NULL, NULL);
+            host = fdb_select_node(&fdb->loc, op, host, NULL, NULL,
+                                   &fdb->dbcon_mtx);
             if (host == NULL) {
                 break;
             }
@@ -2951,6 +2970,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     unsigned long long end_rpc;
 
     if (fdbc) {
+retry:
         start_rpc = osql_log_time();
 
         /* this is a rewind, lets make sure the pipe is clean */
@@ -3055,6 +3075,20 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
 #endif
+                } else if (rc == FDB_ERR_READ_IO &&
+                           (how == CFIRST || how == CLAST) &&
+                           !pCur->clnt->intrans) {
+                    /* I/O error. Let's retry the query on some other node by
+                     * temporarily blacklisting this node (only when we haven't
+                     * read any rows and not in a transaction). */
+                    fdbc->streaming = FDB_CUR_ERROR;
+                    _fdb_set_affinity_node(pCur->clnt, pCur->bt->fdb,
+                                           fdbc->node, FDB_ERR_TRANSIENT_IO);
+                    if (gbl_fdb_track)
+                        logmsg(LOGMSG_USER,
+                               "%s:%d blacklisting %s, retrying..\n", __func__,
+                               __LINE__, fdbc->node);
+                    goto retry;
                 } else {
                     if (rc != FDB_ERR_SSL) {
                         if (state) {
@@ -3359,19 +3393,11 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 #       endif
         if (rc) {
             if (rc == ETIMEDOUT) {
-                if (thd && bdb_lock_desired(thedb->bdb_env)) {
-                    int irc;
-
-                    int sleepms = 100 * ((clnt) ? clnt->deadlock_recovered : 1);
-                    if (sleepms > 10000)
-                        sleepms = 10000;
-
-                    irc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
-                    if (irc) {
-                        logmsg(LOGMSG_ERROR, "%s: recover_deadlock returned %d\n",
-                                __func__, irc);
-                        return NULL;
-                    }
+                int irc = clnt_check_bdb_lock_desired(clnt);
+                if (irc) {
+                    logmsg(LOGMSG_ERROR, "%s: recover_deadlock returned %d\n",
+                           __func__, irc);
+                    return NULL;
                 }
                 continue;
             }
@@ -3470,31 +3496,32 @@ static fdb_tbl_ent_t *fdb_cursor_table_entry(BtCursor *pCur)
 const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
                                            const char **fqDbname)
 {
-    const char *dbName = NULL;
+    const char *dbName;
     const char *temp_dbname = "temp";
     const char *local_dbname = "main";
 
+    if (!zDatabase) {
+        *fqDbname = NULL;
+        return NULL;
+    }
+
     dbName = zDatabase;
 
-    if (zDatabase) {
-        if ((strcasecmp(zDatabase, temp_dbname) == 0)) {
-            dbName = temp_dbname;
-        }
-        /* extract location hint, if any */
-        else if ((*fqDbname = strchr(dbName, '_')) != NULL) {
-            dbName = (++(*fqDbname));
-            *fqDbname = zDatabase;
-        } else {
-            *fqDbname = zDatabase;
-        }
-
-        /* NOTE: _ notation is invalidated if dbname is the saem as local */
-        if (strcasecmp(thedb->envname, dbName) == 0) /* local name */
-        {
-            dbName = local_dbname;
-            *fqDbname = NULL;
-        }
+    if ((strcasecmp(zDatabase, temp_dbname) == 0)) {
+        dbName = temp_dbname;
+    }
+    /* extract location hint, if any */
+    else if ((*fqDbname = strchr(dbName, '_')) != NULL) {
+        dbName = (++(*fqDbname));
+        *fqDbname = zDatabase;
     } else {
+        *fqDbname = zDatabase;
+    }
+
+    /* NOTE: _ notation is invalidated if dbname is the same as local */
+    if (strcasecmp(thedb->envname, dbName) == 0) /* local name */
+    {
+        dbName = local_dbname;
         *fqDbname = NULL;
     }
 
@@ -3506,6 +3533,12 @@ const char *fdb_parse_comdb2_remote_dbname(const char *zDatabase,
  *
  */
 const char *fdb_dbname_name(fdb_t *fdb) { return fdb->dbname; }
+const char *fdb_dbname_class_routing(fdb_t *fdb)
+{
+    if (fdb->local)
+        return "LOCAL";
+    return mach_class_class2name(fdb->class);
+}
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent)
 {
     return ent->tbl->name;
@@ -4049,6 +4082,8 @@ int fdb_is_sqlite_stat(fdb_t *fdb, int rootpage)
     fdb_tbl_ent_t *ent;
 
     ent = get_fdb_tbl_ent_by_rootpage_from_fdb(fdb, rootpage);
+    if (!ent)
+        return 1;
 
     return strncasecmp(ent->tbl->name, "sqlite_stat", strlen("sqlite_stat")) ==
            0;
@@ -4059,8 +4094,11 @@ char *fdb_get_alias(const char **p_tablename)
     char *errstr = NULL;
     char *alias = NULL;
     const char *tablename = *p_tablename;
+    tran_type *trans;
 
-    alias = llmeta_get_tablename_alias(tablename, &errstr);
+    trans = curtran_gettran();
+    alias = llmeta_get_tablename_alias_tran(trans, tablename, &errstr);
+    curtran_puttran(trans);
     if (!alias) {
         if (errstr) {
             logmsg(LOGMSG_ERROR, "%s: error retrieving fdb alias for %s\n", __func__,
@@ -4157,6 +4195,18 @@ int fdb_master_is_local(BtCursor *pCur)
         return 1;
     /* this is looking at a remote pBt; check if this is schema initializing
        or a remote lookup */
+    if (gbl_old_column_names && pCur->clnt->thd &&
+        pCur->clnt->thd->query_preparer_running) {
+        /* We must have a query_preparer_plugin installed. */
+        assert(pCur->query_preparer_data != 0);
+        /* Since query_preparer plugin only prepares the query, the 'init.busy'
+         * flag must be set at this point. */
+        assert(query_preparer_plugin &&
+               query_preparer_plugin->sqlitex_is_initializing &&
+               query_preparer_plugin->sqlitex_is_initializing(
+                   pCur->query_preparer_data));
+        return 1;
+    }
     return pCur->sqlite && pCur->sqlite->init.busy == 1;
 }
 
@@ -4553,6 +4603,13 @@ void fdb_clear_sqlclntstate(struct sqlclntstate *clnt)
 void fdb_clear_sqlite_cache(sqlite3 *sqldb, const char *dbname,
                             const char *tblname)
 {
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    if (gbl_old_column_names && thd && thd->clnt && thd->clnt->thd &&
+        thd->clnt->thd->query_preparer_running) {
+        /* No need to reset sqlitex stat tables */
+        return;
+    }
+
     /* clear the sqlite stored schemas */
     if (tblname)
         sqlite3ResetOneSchemaByName(sqldb, tblname, dbname);

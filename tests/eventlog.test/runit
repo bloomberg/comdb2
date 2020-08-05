@@ -3,22 +3,7 @@ bash -n "$0" | exit 1
 
 set -x
 
-assertres ()
-{
-    if [ $# != 2 ] ; then 
-        failexit "number of parameters passed is $# but expecting 2"
-    fi
-    res=$1
-    target=$2
-    if [ "$res" != "$target" ] ; then
-        failexit "res is $res but should be $target"
-    fi
-}
-failexit()
-{
-    echo $1
-    exit 1
-}
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 function waitfordb() {
     sleep 1
@@ -87,30 +72,31 @@ fi
 wc $logfl
 zcat $logfl > $logflunziped
 
-getmembers()
-{
-    echo $1 | sed -e 's/[{}]/''/g' | awk -v k="text" '{n=split($0,a,","); for (i=1; i<=n; i++) print a[i]}' | grep "fingerprint\|error" | sed 's/[^:]*: //; s/^"//; s/"$//; s/\\"/"/g'
+function getfingerprint {
+    jq -r 'if has("fingerprint") then .fingerprint else empty end ' <<< $1
+}
+
+function getmembers {
+    jq -r 'if has("error_code") then .error_code else empty end ' <<< $1
+    jq -r 'if has("error") then .error else empty end ' <<< $1
+    getfingerprint "$1"
 }
 
 SAVIFS=$IFS
+IFS=$'\n'
 echo check all .*sql entries for fingerprint
 echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
-IFS=$'\n'
-for line in `grep 'sql","sql": "select 1"' $logflunziped ` ; do
+for line in $(jq -rc 'if (.type == "sql") and (.sql == "select 1") then . else empty end' < $logflunziped); do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi 
 done
 
-
 echo check all .*sql entries for fingerprint
 echo '4f16a8ec9db90f803e406659938b2602' > exp.txt
-IFS=$'\n'
-for line in `grep 'sql","sql": "select 2"' $logflunziped ` ; do
+for line in $(jq -c 'if (.type == "sql") and (.sql == "select 2") then . else empty end' < $logflunziped); do
     getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['fingerprint']" >> dbg.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi 
@@ -118,10 +104,8 @@ done
 
 echo check all .*sql entries for fingerprint
 echo '00000000000000000000000000000000' > exp.txt
-grep 'sql","sql": "nonsense"' $logflunziped | while read line ;
-do
-    getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
+for line in $(jq -c 'if (.type == "sql") and (.sql == "nonsense") then . else empty end' < $logflunziped); do
+    getfingerprint $line > out.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi
@@ -131,19 +115,16 @@ echo check the sql parameter now
 echo '1
 near "nonsense": syntax error
 00000000000000000000000000000000' > exp.txt
-line=`grep '"sql","sql": "nonsense"' $logflunziped`
+line=$(jq -c 'if (.type == "sql") and (.sql == "nonsense") then . else empty end' < $logflunziped)
 getmembers $line > out.txt
-#grep '"sql","sql": "nonsense"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
 if ! diff out.txt exp.txt ; then
     failexit 'output is different from expected'
 fi
 
 echo check all .*sql entries for fingerprint
 echo '00000000000000000000000000000000' > exp.txt
-grep 'sql","sql": "select \* from nonexistent"' $logflunziped | while read line ; 
-do
-    getmembers $line > out.txt
-    #echo $line | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
+for line in $(jq -c 'if (.type == "sql") and (.sql == "select * from nonexistent") then . else empty end' < $logflunziped); do
+    getfingerprint $line > out.txt
     if ! diff out.txt exp.txt ; then
         failexit 'output is different from expected'
     fi
@@ -153,13 +134,11 @@ echo check the sql parameter now
 echo '1
 no such table: nonexistent
 00000000000000000000000000000000' > exp.txt
-line=`grep '"sql","sql": "select \* from nonexistent"' $logflunziped`
+line=$(jq -c 'if (.type == "sql") and (.sql == "select * from nonexistent") then . else empty end' < $logflunziped)
 getmembers $line > out.txt
-#grep '"sql","sql": "select \* from nonexistent"' $logflunziped | python -c "import sys, json; txt=json.load(sys.stdin); print txt['error_code']; print txt['error']; print txt['fingerprint']" >> dbg.txt
 if ! diff out.txt exp.txt ; then
     failexit 'output is different from expected'
 fi
-
 
 mv $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.2
 
@@ -177,13 +156,11 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql event
 
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t1(i int)"
 
-for i in `seq 1 2000` ; do 
-    cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t1 values($i)"
-done
+NUM=2000
+for ((i=1;i<=$NUM;++i)); do echo "insert into t1 values($i)"; done | cdb2sql ${CDB2_OPTIONS} $DBNAME default -
 
-sleep 3
-
-COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+# need to flush to get correct stmts in logfile
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events flush')"
 
 find $TESTDIR/var/log/cdb2/ | grep "/$DBNAME" | grep '.events.' > logfls.txt
 echo logfls
@@ -194,12 +171,44 @@ logflcnt=$(wc -l logfls.txt | cut -f1 -d' ')
 echo make sure we have $((NKEEP+1)) as per the lrl option
 assertres $logflcnt $((NKEEP+1))
 
-echo "make sure string 'insert into t1 values(2000)' is in the last 2 eventlog files:"
-cat logfls.txt | xargs ls -1t | head -2 > lastfls.txt
-echo lastfls 
-cat lastfls.txt
-
-res=$(cat lastfls.txt | xargs zgrep 'insert into t1 values(2000)' | grep -c '"type": "sql"')
+echo "make sure string 'insert into t1 values($NUM)' is in the last 2 eventlog files:"
+res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.* | head -2); do
+    zcat $f | jq -c 'if (.type == "sql") and (.sql == "insert into t1 values('"$NUM"')") then . else empty end'
+done | wc -l)
 assertres $res 1
+
+
+# test setting custom file for event logging
+myevfl=$TESTDIR/var/log/cdb2/$DBNAME.myfile.events
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events file $myevfl')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 2"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events dir $TESTDIR/var/log')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events roll')"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 3"
+d=`cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g" | xargs dirname`
+
+COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+
+if [ ! -f $myevfl ] ; then
+    failexit "$myevfl was not created"
+fi
+cnt=`zgrep "select 2" $myevfl  | jq -c 'if (.type == "sql") then . else empty end' | wc -l`
+# assert setting the event log file
+assertres $cnt 1
+
+# assert setting the event log dir works
+assertres $d $TESTDIR/var/log
+
+#This would be a nice test to have but we're only keeping 4000 bytes around..
+#
+#echo "make sure string 'insert into t1 ...' is logged $NUM times"
+#res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.*); do
+#zcat $f | jq -c 'if (.type == "sql") and (.sql | startswith("insert into t1 values")) then . else empty end'
+#done | wc -l)
+#assertres $res $NUM
+
+valgrind --error-exitcode=1 --leak-check=full --trace-children=yes --quiet ${TESTSBUILDDIR}/cson_test
+res=$?
+assertres $res 0
 
 exit 0

@@ -20,6 +20,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 
 #include <sys/types.h>
 #include <pthread.h>
+#include <limits.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
@@ -35,7 +36,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */
 
-	roff_t	  track_off;		/* Page file offset. */
+	MPOOLFILE *track_mfp;       /* File. */
 	db_pgno_t track_pgno;		/* Page number. */
 	u_int32_t track_prio;		/* Priority. */
 	DB_LSN    track_tx_begin_lsn;	/* first dirty txn begin LSN. */
@@ -546,7 +547,13 @@ struct writable_range {
 static struct thdpool *trickle_thdpool;
 static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
+int gbl_ref_sync_pollms = 250;
+int gbl_ref_sync_iterations = 4;
+int gbl_ref_sync_wait_txnlist = 0;
 
+#define MAX_TXNARRAY 64
+void collect_txnids(DB_ENV *dbenv, u_int32_t *txnarray, int max, int *count);
+int still_running(DB_ENV *dbenv, u_int32_t *txnarray, int count);
 
 static void
 trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
@@ -562,9 +569,11 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	DB_MPOOL_HASH **hparray;
 	DB_MUTEX *mutexp;
 	MPOOLFILE *mfp;
+	u_int32_t txnarray[MAX_TXNARRAY];
+	int txncnt = 0;
 	int ar_cnt, hb_lock, i, j, pass, remaining, ret;
 	int wait_cnt, write_cnt, wrote;
-	int sgio, gathered, delay_write;
+	int sgio, gathered, delay_write, total_txns = 0;
 	db_pgno_t off_gather;
 
 	ret = 0;
@@ -594,11 +603,10 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		 * write out the gather queue immediately. 
 		 */
 		if (gathered > 0 &&
-		    (bharray[off_gather].track_off != bharray[i].track_off ||
+		    (bharray[off_gather].track_mfp != bharray[i].track_mfp ||
 		     bharray[off_gather].track_pgno + gathered !=
 		     bharray[i].track_pgno)){
-			mfp = R_ADDR(dbmp->reginfo,
-			    bhparray[off_gather]->mf_offset);
+			mfp = bhparray[off_gather]->mpf;
 
 			if (op == DB_SYNC_REMOVABLE_QEXTENT) {
 				mfp = NULL;
@@ -656,7 +664,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		for (bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
 		    bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh))
 			if (bhp->pgno == bharray[i].track_pgno &&
-			    bhp->mf_offset == bharray[i].track_off)
+			    bhp->mpf == bharray[i].track_mfp)
 				break;
 
 		/*
@@ -721,18 +729,16 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		 */
 		MUTEX_UNLOCK(dbenv, mutexp);
 
-#ifdef REF_SYNC_TEST
-		while (bhp->ref_sync != 0) {
-			fprintf(stderr,
-		    "... bhp->ref_sync is %d (waiting for it to go to 0)\n",
-			    bhp->ref_sync);
-			(void)__os_sleep(dbenv, 1, 0);
-		}
-#else
-		for (wait_cnt = 1;
-		    bhp->ref_sync != 0 && wait_cnt < 4; ++wait_cnt)
-			(void)__os_sleep(dbenv, 1, 0);
-#endif
+		int rs_iters = gbl_ref_sync_iterations;
+		int rs_pollms = gbl_ref_sync_pollms;
+
+		rs_iters = (rs_iters > 0 ? rs_iters : 4);
+		rs_pollms = (rs_pollms > 0 ? rs_pollms : 250);
+
+		for (wait_cnt = 0; bhp->ref_sync != 0 && wait_cnt < rs_iters;
+				++wait_cnt) {
+			poll(NULL, 0, rs_pollms);
+ 		}
 
 		MUTEX_LOCK(dbenv, mutexp);
 		hb_lock = 1;
@@ -744,6 +750,9 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 		if (bhp->ref_sync == 0) {
 			--remaining;
 			bharray[i].track_hp = NULL;
+		} else if (gbl_ref_sync_wait_txnlist){
+			collect_txnids(dbenv, txnarray, MAX_TXNARRAY, &txncnt);
+			total_txns += txncnt;
 		}
 
 		/*
@@ -764,7 +773,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 			 * one I/O.
 			 */
 			if (sgio && i < ar_cnt - 1 &&
-			    bharray[i + 1].track_off == bhp->mf_offset &&
+			    bharray[i + 1].track_mfp == bhp->mpf &&
 			    bharray[i + 1].track_pgno == bhp->pgno + 1) {
 				bhparray[i] = bhp;
 				hparray[i] = hp;
@@ -785,8 +794,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 				 * Check to see if this buffer is part
 				 * of the current queue. If so, add it.
 				 */
-				if (bharray[off_gather].track_off ==
-				    bhp->mf_offset &&
+				if (bharray[off_gather].track_mfp ==
+				    bhp->mpf &&
 				    bharray[off_gather].track_pgno + gathered
 				    == bhp->pgno) {
 
@@ -809,8 +818,8 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 				 * Check if this is the last buffer in
 				 * the queue.
 				 */
-				if (bharray[off_gather].track_off ==
-				    bhp->mf_offset &&
+				if (bharray[off_gather].track_mfp ==
+				    bhp->mpf &&
 				    bharray[off_gather].track_pgno + gathered
 				    == bhp->pgno && 
 					hp->hash_page_dirty == 1) {
@@ -822,8 +831,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 					delay_write = 1;
 				}
 
-				mfp = R_ADDR(dbmp->reginfo,
-				    bhparray[off_gather]->mf_offset);
+				mfp = bhparray[off_gather]->mpf;
 			} else {
 				/* One buffer gather queue. */
 				bhparray[i] = bhp;
@@ -831,7 +839,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 				off_gather = i;
 				gathered = 1;
 
-				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+				mfp = bhp->mpf;
 			}
 
 			/* 
@@ -962,6 +970,24 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 
 		if (ret != 0)
 			break;
+
+		if (txncnt) {
+			int c = 0, cnt;
+			while(gbl_ref_sync_wait_txnlist &&
+                    (cnt = still_running(dbenv, txnarray, txncnt)) > 0) {
+				c++;
+				if (c > 2) {
+					fprintf(stderr, "%s: waiting for %d txns to complete, cnt %d\n",
+							__func__, cnt, c);
+				}
+				__os_sleep(dbenv, 1, 0);
+			}
+			txncnt = 0;
+			if (total_txns > 20) {
+				fprintf(stderr, "%s: waited on %d total txns so far\n",
+						__func__, total_txns);
+			}
+		}
 	}
 
 	/* 
@@ -970,7 +996,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	 * buffers in the gather queue.
 	 */
 	if (ret == 0 && gathered > 0) {
-		mfp = R_ADDR(dbmp->reginfo, bhparray[off_gather]->mf_offset);
+		mfp = bhparray[off_gather]->mpf;
 
 		if (op == DB_SYNC_REMOVABLE_QEXTENT) {
 			mfp = NULL;
@@ -1205,7 +1231,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				    !F_ISSET(bhp, BH_DIRTY))
 					continue;
 
-				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+				mfp = bhp->mpf;
 
 				/*
 				 * Ignore temporary files -- this means you
@@ -1256,7 +1282,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				/* Track the buffer, we want it. */
 				bharray[ar_cnt].track_hp = hp;
 				bharray[ar_cnt].track_pgno = bhp->pgno;
-				bharray[ar_cnt].track_off = bhp->mf_offset;
+				bharray[ar_cnt].track_mfp = bhp->mpf;
 				bharray[ar_cnt].track_prio = bhp->priority;
 				bharray[ar_cnt].track_tx_begin_lsn = bhp->first_dirty_tx_begin_lsn;
 				ar_cnt++;
@@ -1381,7 +1407,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 		op == DB_SYNC_CACHE)) {
 
 		for (i = 1, j = 0; i < ar_cnt; ++i) {
-			if (bharray[j].track_off != bharray[i].track_off) {
+			if (bharray[j].track_mfp != bharray[i].track_mfp) {
 				Pthread_mutex_lock(&pgpool_lk);
 				range = pool_getablk(pgpool);
 				Pthread_mutex_unlock(&pgpool_lk);
@@ -2248,12 +2274,12 @@ __memp_dump(dbenv, s, max_pages, pagecount)
 			for (bhp = SH_TAILQ_FIRST(&hp->hash_bucket, __bh);
 				bhp != NULL; bhp = SH_TAILQ_NEXT(bhp, hq, __bh)) {
 
-				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+				mfp = bhp->mpf;
 
 				if (F_ISSET(mfp, MP_TEMP) || mfp->lsn_off == -1)
 					continue;
 
-				mfp = R_ADDR(dbmp->reginfo, bhp->mf_offset);
+				mfp = bhp->mpf;
 				fileid = R_ADDR(dbmp->reginfo, mfp->fileid_off);
 
 				if ((ret = add_fileid_page(dbenv, fileid_pages, &pagearray,
@@ -2319,7 +2345,7 @@ __memp_load_default(dbenv)
 {
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	u_int32_t lines;
-	u_int64_t cnt;
+	u_int64_t cnt = 0;
 	int fd, ret;
 	SBUF2 *s;
 
@@ -2380,7 +2406,7 @@ __memp_dump_default(dbenv, force)
 	static int count = 0;
 	int fd, ret = 0;
 	u_int32_t lines;
-	u_int64_t cnt;
+	u_int64_t cnt = 0;
 	int thresh = gbl_memp_dump_cache_threshold;
 	char path[PATH_MAX], pathbuf[PATH_MAX], *rpath;
 	char tmppath[PATH_MAX], tmppathbuf[PATH_MAX], *rtmppath;
@@ -2451,9 +2477,9 @@ __bhcmp(p1, p2)
 	bhp2 = (BH_TRACK *)p2;
 
 	/* Sort by file (shared memory pool offset). */
-	if (bhp1->track_off < bhp2->track_off)
+	if (bhp1->track_mfp < bhp2->track_mfp)
 		return (-1);
-	if (bhp1->track_off > bhp2->track_off)
+	if (bhp1->track_mfp > bhp2->track_mfp)
 		return (1);
 
 	/*

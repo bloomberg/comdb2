@@ -255,13 +255,13 @@ out:
 void update(cdb2_hndl_tp **indb, char *readnode, int threadnum)
 {
     cdb2_hndl_tp *db = (*indb);
-    int rc, op, newval = (rand() % 5), curval = (rand() % 5),
-                newuid = (rand() % 100000);
+    int rc, op, newval = (random() % 5), curval = (random() % 5),
+                newuid = (random() % 100000);
     int foundval, founduid;
     unsigned long long begintm, endtm;
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
-    op = (rand() % 3);
+    op = (random() % 3);
 
     if (is_hasql) {
         rc = cdb2_run_statement(db, "set hasql on");
@@ -384,7 +384,7 @@ void *thd(void *arg)
     char *readnode;
     cdb2_hndl_tp *db;
     int rc, iter = 0;
-    int threadnum = (unsigned long long)arg;
+    int threadnum = *(int*)arg;
     fprintf(stdout, "Thread %d starting\n", threadnum);
 
     rc = cdb2_open(&db, dbname, cltype, CDB2_RANDOM);
@@ -542,7 +542,7 @@ int main(int argc, char *argv[])
         fprintf(stderr, "NO TESTS SPECIFIED .. THIS SHOULD BE AN EASY RUN..\n");
     }
 
-    srand(time(NULL) ^ getpid());
+    srandom(time(NULL) ^ getpid());
 
     uint32_t flags = 0;
     if (partition_master) flags |= NEMESIS_PARTITION_MASTER;
@@ -574,8 +574,10 @@ int main(int argc, char *argv[])
     }
 
     threads = malloc(sizeof(pthread_t) * nthreads);
-    for (unsigned long long i = 0; i < nthreads; i++) {
-        rc = pthread_create(&threads[i], NULL, thd, (void *)i);
+    int t_ids[nthreads];
+    for (unsigned int i = 0; i < nthreads; i++) {
+        t_ids[i] = i;
+        rc = pthread_create(&threads[i], NULL, thd, (void *)&t_ids[i]);
     }
 
     int sleeptime = (runtime / 2 - 1);

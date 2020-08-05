@@ -32,7 +32,6 @@
 
 extern int yyparse(void);
 extern int compute_key_data(void);
-extern void init_globals(void);
 extern int compute_all_data(int tidx);
 
 char *revision = "$Revision: 1.24 $";
@@ -76,9 +75,6 @@ static int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims,
                                         int ndims, int *nodims);
 static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
                                  int ndpthsinfo, int *ndpthout);
-static int dyns_get_field_option_comn(char *tag, int fidx, int option,
-                                      int *value_type, int *value_sz,
-                                      void *valuebuf, int vbsz);
 
 int gbl_legacy_schema = 0;
 
@@ -115,18 +111,18 @@ int dyns_used_bools(void) { return used_bools; }
 
 void start_constraint_list(char *keyname)
 {
-    ++nconstraints;
+    ++macc_globals->nconstraints;
 
-    if (nconstraints >= MAXCNSTRTS) {
+    if (macc_globals->nconstraints >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY CONSTRAINTS SPECIFIED. MAX %d\n",
                    MAXCNSTRTS);
         any_errors++;
         return;
     }
-
-    constraints[nconstraints].flags = 0;
-    constraints[nconstraints].ncnstrts = 0;
-    constraints[nconstraints].lclkey = keyname;
+    struct constraint *constraints = macc_globals->constraints;
+    constraints[macc_globals->nconstraints].flags = 0;
+    constraints[macc_globals->nconstraints].ncnstrts = 0;
+    constraints[macc_globals->nconstraints].lclkey = keyname;
 }
 
 void set_constraint_mod(int start, int op, int type)
@@ -134,21 +130,26 @@ void set_constraint_mod(int start, int op, int type)
     if (type == 0)
         return;
     if (op == 0)
-        constraints[nconstraints].flags |= CT_UPD_CASCADE;
+        macc_globals->constraints[macc_globals->nconstraints].flags |=
+            CT_UPD_CASCADE;
     else if (op == 1)
-        constraints[nconstraints].flags |= CT_DEL_CASCADE;
+        macc_globals->constraints[macc_globals->nconstraints].flags |=
+            CT_DEL_CASCADE;
 }
 
 void set_constraint_name(char *name, enum ct_type type)
 {
     int i;
-    for (i = 0; i < nconstraints; i++) {
+    struct constraint *constraints = macc_globals->constraints;
+    for (i = 0; i < macc_globals->nconstraints; i++) {
         if (constraints[i].consname &&
-            !strcasecmp(constraints[i].consname, name)) {
+            !strcasecmp(macc_globals->constraints[i].consname, name)) {
             DUP_CONSTRAINT_NAME_ERR(name);
         }
     }
-    for (i = 0; i < n_check_constraints; i++) {
+    struct check_constraint *check_constraints =
+        macc_globals->check_constraints;
+    for (i = 0; i < macc_globals->n_check_constraints; i++) {
         if (check_constraints[i].consname &&
             !strcasecmp(check_constraints[i].consname, name)) {
             DUP_CONSTRAINT_NAME_ERR(name);
@@ -157,10 +158,10 @@ void set_constraint_name(char *name, enum ct_type type)
 
     switch (type) {
     case CT_FKEY:
-        constraints[nconstraints].consname = name;
+        constraints[macc_globals->nconstraints].consname = name;
         break;
     case CT_CHECK:
-        check_constraints[n_check_constraints].consname = name;
+        check_constraints[macc_globals->n_check_constraints].consname = name;
         break;
     default:
         abort();
@@ -171,35 +172,38 @@ void set_constraint_name(char *name, enum ct_type type)
 
 void add_constraint(char *tbl, char *key)
 {
-    int cidx = constraints[nconstraints].ncnstrts;
+    struct constraint *constraints = macc_globals->constraints;
+    int cidx = constraints[macc_globals->nconstraints].ncnstrts;
     if (cidx >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
                    "(MAX: %d)\n",
-                   constraints[nconstraints].lclkey, MAXCNSTRTS);
+                   macc_globals->constraints[macc_globals->nconstraints].lclkey,
+                   MAXCNSTRTS);
         any_errors++;
         return;
     }
-    constraints[nconstraints].ncnstrts++;
-    constraints[nconstraints].table[cidx] = tbl;
-    constraints[nconstraints].keynm[cidx] = key;
+    constraints[macc_globals->nconstraints].ncnstrts++;
+    constraints[macc_globals->nconstraints].table[cidx] = tbl;
+    constraints[macc_globals->nconstraints].keynm[cidx] = key;
 }
 
 void add_check_constraint(char *expr)
 {
     CHECK_LEGACY_SCHEMA(1);
-    ++n_check_constraints;
+    ++macc_globals->n_check_constraints;
     /* We have to move past "where" and subsequent spaces. */
     expr += sizeof("where");
     while (*expr && isspace(*expr)) {
         expr++;
     }
-    check_constraints[n_check_constraints].expr = expr;
+    macc_globals->check_constraints[macc_globals->n_check_constraints].expr =
+        expr;
 }
 
 int constant(char *var)
 {
     int i;
-    for (i = 0; i < ncnst; i++) {
+    for (i = 0; i < macc_globals->ncnst; i++) {
         if (strcmp(var, constants[i].nm) == 0)
             return i;
     }
@@ -209,17 +213,20 @@ int constant(char *var)
 int numix() /* count # of indices */
 {
     int i, nix;
-    for (i = 0, nix = 0; i < nkeys; i++) {
-        if (keyixnum[i] > nix)
-            nix = keyixnum[i];
+    for (i = 0, nix = 0; i < macc_globals->nkeys; i++) {
+        if (macc_globals->keyixnum[i] > nix)
+            nix = macc_globals->keyixnum[i];
     }
     /* special case for no keys */
-    if (nkeys == 0)
+    if (macc_globals->nkeys == 0)
         return 0;
     return nix + 1;
 }
 
-int numkeys() /* count # of conditional keys */ { return nkeys; }
+int numkeys() /* count # of conditional keys */
+{
+    return macc_globals->nkeys;
+}
 
 int numdim(int dm[6]) /* COUNTS # OF DIMS IN A DM ARRAY */
 {
@@ -374,10 +381,11 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
     int ii, jj = 0;
     int ondisktag = 0, numnormtags = 0;
+    struct table *tables = macc_globals->tables;
 
     /* current restriction on SQL is that it does not support arrays, nor any
      * unions, cases, etc */
-    for (jj = 0; jj < ntables; jj++) {
+    for (jj = 0; jj < macc_globals->ntables; jj++) {
         int lcldsktag = 0;
         if (!strcmp(tables[jj].table_tag, ONDISKTAG)) {
             ondisktag = 1;
@@ -420,12 +428,13 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
             if (!lcldsktag) {
                 int ondskidx = 0, k = 0;
 
-                for (ondskidx = 0; ondskidx < ntables; ondskidx++) {
+                for (ondskidx = 0; ondskidx < macc_globals->ntables;
+                     ondskidx++) {
                     if (!strcmp(tables[ondskidx].table_tag, ONDISKTAG)) {
                         break;
                     }
                 }
-                if (ondskidx == ntables) {
+                if (ondskidx == macc_globals->ntables) {
                     csc2_error("ERROR \"%s\" TAG DOES NOT EXIST IN SCHEMA!\n",
                                ONDISKTAG);
                     any_errors++;
@@ -484,7 +493,7 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
     }
 
     for (ii = 0; ii < numkeys(); ii++) {
-        struct key *ck = keys[ii];
+        struct key *ck = macc_globals->keys[ii];
         int jj = 0, cnt = 0, goterr = 0;
         while (ck) {
             /* skip indexes on expressions */
@@ -528,8 +537,8 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
 int gettable(char *tabletag)
 {
     int i = 0;
-    for (i = 0; i < ntables; i++) {
-        if (!strcmp(tables[i].table_tag, tabletag))
+    for (i = 0; i < macc_globals->ntables; i++) {
+        if (!strcmp(macc_globals->tables[i].table_tag, tabletag))
             return i;
     }
     return -1;
@@ -544,11 +553,11 @@ int getsymbol(char *tabletag, char *nm, int *tblidx) /* GETS A SYMBOL BY NAME */
         return -1;
     }
     *tblidx = tbl;
-    for (i = 0; i < tables[tbl].nsym; i++) {
-        if (strcmp(nm, tables[tbl].sym[i].nm) == 0)
+    for (i = 0; i < macc_globals->tables[tbl].nsym; i++) {
+        if (strcmp(nm, macc_globals->tables[tbl].sym[i].nm) == 0)
             break;
     }
-    if (i < tables[tbl].nsym)
+    if (i < macc_globals->tables[tbl].nsym)
         return i;
     *tblidx = -1;
     return -1;
@@ -557,11 +566,11 @@ int getsymbol(char *tabletag, char *nm, int *tblidx) /* GETS A SYMBOL BY NAME */
 int getexpr(char *nm) /* GET EXPRESSION BY NAME  */
 {
     int i;
-    for (i = 0; i < et_p; i++) {
-        if (strcmp(nm, exprtab[i].name) == 0)
+    for (i = 0; i < macc_globals->et_p; i++) {
+        if (strcmp(nm, macc_globals->exprtab[i].name) == 0)
             break;
     }
-    if (i < et_p)
+    if (i < macc_globals->et_p)
         return i;
     return -1;
 }
@@ -571,13 +580,15 @@ int arroff(int s, int el[6], int rg[2])
 { /* GIVEN ELEMENT# and CHAR RG  */
     int i, j, mul;
 
-    for (i = (6 - 1), j = 0, mul = tables[ntables].sym[s].size; i >= 0; i--) {
-        if (tables[ntables].sym[s].dim[i] == -1)
+    for (i = (6 - 1), j = 0,
+        mul = macc_globals->tables[macc_globals->ntables].sym[s].size;
+         i >= 0; i--) {
+        if (macc_globals->tables[macc_globals->ntables].sym[s].dim[i] == -1)
             continue;
 
         if (el[i] == -1) {
             csc2_error("ERROR CALCULATING ARRAY OFFSET FOR SYMBOL %s!\n",
-                       tables[ntables].sym[s].nm);
+                       macc_globals->tables[macc_globals->ntables].sym[s].nm);
             any_errors++;
             return -1;
         }
@@ -585,13 +596,13 @@ int arroff(int s, int el[6], int rg[2])
             j += mul * (el[i]);
         else
             j += mul * (el[i] - 1);
-        mul *= tables[ntables].sym[s].dim[i];
+        mul *= macc_globals->tables[macc_globals->ntables].sym[s].dim[i];
     }
     if (rg[0] || rg[1]) {
         if (rg[0] == -1)
             rg[0] = 1;
         if (rg[1] == -1)
-            rg[1] = tables[ntables].sym[s].size;
+            rg[1] = macc_globals->tables[macc_globals->ntables].sym[s].size;
         j += rg[0] - 1;
     }
     return j;
@@ -613,12 +624,13 @@ int addtokey(int sym, int tbl, int dim[6],
     memcpy(nk->rg, rg, sizeof(int) * 2);
     nk->sym = sym;
     nk->stbl = tbl;
-    nk->keyflags = workkeypieceflag;
+    nk->keyflags = macc_globals->workkeypieceflag;
     nk->expr = NULL;
-    if (!workkey) {
-        workkey = nk; /* empty list */
+    if (!macc_globals->workkey) {
+        macc_globals->workkey = nk; /* empty list */
     } else {
-        for (kp = workkey; kp->cmp; kp = kp->cmp) { /* add to end of list */
+        for (kp = macc_globals->workkey; kp->cmp;
+             kp = kp->cmp) { /* add to end of list */
             keyfields++;
         }
         if (keyfields >= MAX_FIELDS_PER_KEY) {
@@ -646,12 +658,11 @@ int keysize(struct key *ck) /* CALCULATES SIZE OF A STRUCT KEY */
         any_errors++;
         return 0;
     }
+    struct table *tables = macc_globals->tables;
     arr = (tables[ondtidx].sym[ck->sym].dim[0] != -1); /* is this an array? */
     rng = (ck->rg[0] > 0 && ck->rg[1] > 0); /* is an element specified?  */
-    chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) ||
-           (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
-           (tables[ondtidx].sym[ck->sym].type ==
-            T_CSTR)); /* is this a character type? */
+    chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) || (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
+           (tables[ondtidx].sym[ck->sym].type == T_CSTR)); /* is this a character type? */
 
     if (rng < 0) { /* report this odd error     */
         csc2_error("ERROR: BAD RANGE FOR %s(%d:%d), SYMBOL #%d\n",
@@ -713,14 +724,14 @@ int add_cluster_node(int node)
         any_errors++;
         return -1;
     }
-    if (ncluster >= MAX_CLUSTER) {
+    if (macc_globals->ncluster >= MAX_CLUSTER) {
         csc2_error("ERROR at line %3d: CLUSTER LIMIT REACHED, MAX=%d\n",
                    current_line, MAX_CLUSTER);
         any_errors++;
         return -1;
     }
-    for (i = 0; i < ncluster; i++) {
-        if (cluster_nodes[i] == node) {
+    for (i = 0; i < macc_globals->ncluster; i++) {
+        if (macc_globals->cluster_nodes[i] == node) {
             csc2_error(
                 "ERROR at line %3d: NODE %d ALREADY INCLUDED IN CLUSTER\n",
                 current_line, node);
@@ -728,7 +739,7 @@ int add_cluster_node(int node)
             return -1;
         }
     }
-    cluster_nodes[ncluster++] = node;
+    macc_globals->cluster_nodes[macc_globals->ncluster++] = node;
     return 0;
 }
 
@@ -737,18 +748,20 @@ int get_union_size(int un)
     int i, largest = -1;
     if (un == -1)
         return 0;
-    for (i = 0; i < nsym; i++) {
-        if (symb[i].un_idx == un) {
-            if (symb[i].caseno == -1) {
-                if (symb[i].szof > largest)
-                    largest = symb[i].szof;
+    for (i = 0; i < macc_globals->nsym; i++) {
+        if (macc_globals->symb[i].un_idx == un) {
+            if (macc_globals->symb[i].caseno == -1) {
+                if (macc_globals->symb[i].szof > largest)
+                    largest = macc_globals->symb[i].szof;
             } else {
-                int cs = symb[i].caseno, csize = 0, j = 0, first = -1;
-                for (j = 0; j < nsym; j++) {
-                    if (symb[j].caseno == cs && symb[j].un_member == un) {
-                        csize += symb[j].szof;
+                int cs = macc_globals->symb[i].caseno, csize = 0, j = 0,
+                    first = -1;
+                for (j = 0; j < macc_globals->nsym; j++) {
+                    if (macc_globals->symb[j].caseno == cs &&
+                        macc_globals->symb[j].un_member == un) {
+                        csize += macc_globals->symb[j].szof;
                         if (first != -1)
-                            csize += symb[j].padb;
+                            csize += macc_globals->symb[j].padb;
                         first = j;
                     }
                 }
@@ -764,19 +777,25 @@ int get_prev_sym(int idx)
 {
     int i;
     if (idx > 0) {
-        if (symb[idx - 1].un_member == -1)
+        if (macc_globals->symb[idx - 1].un_member == -1)
             return (idx - 1);
-        else if (symb[idx].un_member != -1 && symb[idx].caseno == -1) {
+        else if (macc_globals->symb[idx].un_member != -1 &&
+                 macc_globals->symb[idx].caseno == -1) {
             int decr = idx - 1;
-            while (symb[decr].un_member == symb[idx].un_member && decr >= 0)
+            while (macc_globals->symb[decr].un_member ==
+                       macc_globals->symb[idx].un_member &&
+                   decr >= 0)
                 decr--;
             if (decr < 0)
                 return -1;
             return decr;
-        } else if (symb[idx].caseno != -1) {
+        } else if (macc_globals->symb[idx].caseno != -1) {
             for (i = idx; i >= 0; i--) {
-                if (symb[i].un_member == symb[idx].un_member &&
-                    symb[i].caseno == symb[idx].caseno && i != idx) {
+                if (macc_globals->symb[i].un_member ==
+                        macc_globals->symb[idx].un_member &&
+                    macc_globals->symb[i].caseno ==
+                        macc_globals->symb[idx].caseno &&
+                    i != idx) {
                     return i;
                 }
             }
@@ -787,14 +806,17 @@ int get_prev_sym(int idx)
 
 int get_case_size(int csn)
 {
-    int cs = symb[csn].caseno, csize = 0, j, first = -1;
-    for (j = 0; j < nsym; j++) {
-        if ((symb[csn].un_member == symb[j].un_member) &&
-            (symb[j].caseno == cs) && (symb[j].caseno != -1)) {
-            /*printf(" %s %d %d\n", symb[j].nm, symb[j].szof, symb[j].padb);*/
-            csize += symb[j].szof;
-            if (first != -1 && symb[j].padb != -1)
-                csize += symb[j].padb;
+    int cs = macc_globals->symb[csn].caseno, csize = 0, j, first = -1;
+    for (j = 0; j < macc_globals->nsym; j++) {
+        if ((macc_globals->symb[csn].un_member ==
+             macc_globals->symb[j].un_member) &&
+            (macc_globals->symb[j].caseno == cs) &&
+            (macc_globals->symb[j].caseno != -1)) {
+            /*printf(" %s %d %d\n", macc_globals->symb[j].nm,
+             * macc_globals->symb[j].szof, macc_globals->symb[j].padb);*/
+            csize += macc_globals->symb[j].szof;
+            if (first != -1 && macc_globals->symb[j].padb != -1)
+                csize += macc_globals->symb[j].padb;
             first = j;
         }
     }
@@ -823,37 +845,47 @@ void set_split(int ix, int percnt)
         lo = hi = percnt;
     }
     for (ix = lo; ix <= hi; ix++) {
-        spltpercnt[ix] = percnt;
+        macc_globals->spltpercnt[ix] = percnt;
     }
 }
 
 void key_setdup() /* used by parser, sets duplicate flag */
 {
-    workkeyflag |= DUPKEY;
+    macc_globals->workkeyflag |= DUPKEY;
 }
 
-void key_setrecnums(void) { workkeyflag |= RECNUMS; }
+void key_setrecnums(void)
+{
+    macc_globals->workkeyflag |= RECNUMS;
+}
 
-void key_setprimary(void) { workkeyflag |= PRIMARY; }
+void key_setprimary(void)
+{
+    macc_globals->workkeyflag |= PRIMARY;
+}
 
-void key_setdatakey(void) { workkeyflag |= DATAKEY; }
+void key_setdatakey(void)
+{
+    macc_globals->workkeyflag |= DATAKEY;
+}
 
 void key_setuniqnulls(void)
 {
     CHECK_LEGACY_SCHEMA(1);
-    workkeyflag |= UNIQNULLS;
+    macc_globals->workkeyflag |= UNIQNULLS;
 }
 
 void key_piece_clear() /* used by parser, clears work key */
 {
-    workkey = 0;          /* clear work key */
-    workkeyflag = 0;      /* clear flag for work key */
-    workkeypieceflag = 0; /* clear key piece's flags */
+    macc_globals->workkey = 0;          /* clear work key */
+    macc_globals->workkeyflag = 0;      /* clear flag for work key */
+    macc_globals->workkeypieceflag = 0; /* clear key piece's flags */
 }
 
 void key_piece_setdescend()
 {
-    workkeypieceflag |= DESCEND; /* set DESCEND flag for key piece */
+    macc_globals->workkeypieceflag |=
+        DESCEND; /* set DESCEND flag for key piece */
 }
 
 void key_add_tag(char *tag, char *exprname, char *where)
@@ -861,32 +893,19 @@ void key_add_tag(char *tag, char *exprname, char *where)
     key_add_comn(-1, tag, exprname, where);
 }
 
-void key_add(int ix, char *exprname) /* used by parser, adds a completed key */
-{
-    if (ix < 0 || ix >= MAX_KEY_INDEX) {
-        csc2_error("Error at line %3d: ILLEGAL INDEX #%d, VALID=0-%d\n",
-                current_line, ix, MAX_KEY_INDEX - 1);
-        csc2_syntax_error("Error at line %3d: ILLEGAL INDEX #%d, VALID=0-%d",
-                          current_line, ix, MAX_KEY_INDEX - 1);
-        any_errors++;
-        return;
-    }
-    key_add_comn(ix, NULL, exprname, NULL);
-}
-
 static void key_add_comn(int ix, char *tag, char *exprname,
                          char *where) /* used by parser, adds a completed key */
 {
     int exprnum, ii, loweridx = 0;
 
-    if (!workkey) {
+    if (!macc_globals->workkey) {
         csc2_error("ERROR: KEY FAILED\n");
         any_errors++;
         return;
     }
 
-    for (ii = 0; ii < ntables; ii++) {
-        if (strcasecmp(tag, tables[ii].table_tag) == 0) {
+    for (ii = 0; ii < macc_globals->ntables; ii++) {
+        if (strcasecmp(tag, macc_globals->tables[ii].table_tag) == 0) {
             csc2_error("ERROR: NAME CLASH BETWEEN TAG AND KEY NAME '%s'.\n",
                        tag);
             any_errors++;
@@ -894,12 +913,14 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         }
     }
 #if 1
-    if ((workkeyflag & DUPKEY) && (workkeyflag & PRIMARY)) {
+    if ((macc_globals->workkeyflag & DUPKEY) &&
+        (macc_globals->workkeyflag & PRIMARY)) {
         csc2_error("ERROR: DUPLICATES NOT ALLOWED ON PRIMARY KEY\n");
         any_errors++;
         return;
     }
-    if ((workkeyflag & DUPKEY) && (workkeyflag & UNIQNULLS)) {
+    if ((macc_globals->workkeyflag & DUPKEY) &&
+        (macc_globals->workkeyflag & UNIQNULLS)) {
         csc2_error("ERROR: DUPLICATES NOT ALLOWED ON UNIQUE NULLS\n");
         any_errors++;
         return;
@@ -908,12 +929,13 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     if (ix == -1) {
         int lastix = -1;
 
-        for (ii = 0; ii < nkeys; ii++) {
-            if (keyixnum[ii] > lastix)
-                lastix = keyixnum[ii];
-            ix = keyixnum[ii];
+        for (ii = 0; ii < macc_globals->nkeys; ii++) {
+            if (macc_globals->keyixnum[ii] > lastix)
+                lastix = macc_globals->keyixnum[ii];
+            ix = macc_globals->keyixnum[ii];
 #if 1
-            if (ixflags[ix] & PRIMARY && workkeyflag & PRIMARY) {
+            if (macc_globals->ixflags[ix] & PRIMARY &&
+                macc_globals->workkeyflag & PRIMARY) {
                 csc2_error("ERROR: PRIMARY KEY ALREADY SPECIFIED.  CANNOT HAVE "
                            ">1 PRIMARY KEYS (%s)\n",
                            tag);
@@ -922,10 +944,10 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             }
 #endif
         }
-        if (ii == nkeys) {
+        if (ii == macc_globals->nkeys) {
             ix = lastix + 1;
 #if 0
-            if (workkeyflag&PRIMARY)
+            if (macc_globals->workkeyflag&PRIMARY)
             {
                 fprintf(stderr,"ERROR: PRIMARY KEY ALREADY SPECIFIED.  CANNOT HAVE >1 PRIMARY KEYS (%s)\n",tag);
                 any_errors++;
@@ -948,7 +970,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
             return;
         }
     }
-    int sz = keyondisksize(workkey);
+    int sz = keyondisksize(macc_globals->workkey);
     if (sz > MAX_KEY_SIZE) { /* COMDB2 CURRENTLY SUPPORTS 512 byte KEYS*/
         csc2_error(
             "Error at line %3d: KEY %s TOO BIG(%d)! VALID SIZE=1-%d BYTES\n",
@@ -962,8 +984,8 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     if (ix != 0) {
         int idxfnd = 0;
         loweridx = ix - 1;
-        for (ii = 0; ii < nkeys; ii++) {
-            if (keyixnum[ii] == loweridx) {
+        for (ii = 0; ii < macc_globals->nkeys; ii++) {
+            if (macc_globals->keyixnum[ii] == loweridx) {
                 idxfnd = 1;
                 break;
             }
@@ -980,56 +1002,62 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         }
     }
 
-    for (ii = 0; ii < nkeys; ii++) {
-        if (keyixnum[ii] > ix)
+    for (ii = 0; ii < macc_globals->nkeys; ii++) {
+        if (macc_globals->keyixnum[ii] > ix)
             break;
-        if (keyixnum[ii] < ix)
+        if (macc_globals->keyixnum[ii] < ix)
             continue;
         if (exprnum == -1) { /* no expression */
-            if (keyexprnum[ii] == -1) {
+            if (macc_globals->keyexprnum[ii] == -1) {
                 csc2_error("Error at line %3d: TWO KEYS FOR INDEX %d!\n",
-                        current_line, keyixnum[ii]);
+                           current_line, macc_globals->keyixnum[ii]);
                 csc2_syntax_error("Error at line %3d: TWO KEYS FOR INDEX %d!",
-                                  current_line, keyixnum[ii]);
+                                  current_line, macc_globals->keyixnum[ii]);
                 any_errors++;
                 return;
             }
         } else {
-            if (keyexprnum[ii] == -1)
+            if (macc_globals->keyexprnum[ii] == -1)
                 break;
         }
     }
 
-    if (ii < nkeys) { /* insert into proper slot */
-        memmove(keys + ii + 1, keys + ii, (nkeys - ii) * sizeof(keys[0]));
-        memmove(keyixnum + ii + 1, keyixnum + ii,
-                (nkeys - ii) * sizeof(keyixnum[0]));
-        memmove(keyexprnum + ii + 1, keyexprnum + ii,
-                (nkeys - ii) * sizeof(keyexprnum[0]));
+    if (ii < macc_globals->nkeys) { /* insert into proper slot */
+        memmove(macc_globals->keys + ii + 1, macc_globals->keys + ii,
+                (macc_globals->nkeys - ii) * sizeof(macc_globals->keys[0]));
+        memmove(macc_globals->keyixnum + ii + 1, macc_globals->keyixnum + ii,
+                (macc_globals->nkeys - ii) * sizeof(macc_globals->keyixnum[0]));
+        memmove(
+            macc_globals->keyexprnum + ii + 1, macc_globals->keyexprnum + ii,
+            (macc_globals->nkeys - ii) * sizeof(macc_globals->keyexprnum[0]));
     }
 
-    keys[ii] = workkey;        /* remember key */
-    keyixnum[ii] = ix;         /* remember ix number associated with key */
-    keyexprnum[ii] = exprnum;  /* remember expr assoc with key */
-    ixflags[ix] = workkeyflag; /* remember flags */
+    macc_globals->keys[ii] = macc_globals->workkey; /* remember key */
+    macc_globals->keyixnum[ii] =
+        ix; /* remember ix number associated with key */
+    macc_globals->keyexprnum[ii] = exprnum; /* remember expr assoc with key */
+    macc_globals->ixflags[ix] = macc_globals->workkeyflag; /* remember flags */
     if (tag != NULL) {
         int jj = 0;
         strupper(tag);
-        for (jj = 0; jj < nkeys; jj++) {
-            if (keyixnum[jj] != ix && !strcasecmp(tag, keys[jj]->keytag)) {
+        for (jj = 0; jj < macc_globals->nkeys; jj++) {
+            if (macc_globals->keyixnum[jj] != ix &&
+                !strcasecmp(tag, macc_globals->keys[jj]->keytag)) {
                 csc2_error("Error at line %3d: CANT HAVE SAME TAG '%s' "
-                                "FOR INDICES %d AND %d!\n",
-                        current_line, tag, ix, keyixnum[jj]);
+                           "FOR INDICES %d AND %d!\n",
+                           current_line, tag, ix, macc_globals->keyixnum[jj]);
                 csc2_syntax_error("Error at line %3d: CANT HAVE SAME TAG '%s' "
                                   "FOR INDICES %d AND %d!",
-                                  current_line, tag, ix, keyixnum[jj]);
+                                  current_line, tag, ix,
+                                  macc_globals->keyixnum[jj]);
                 any_errors++;
                 return;
             }
         }
-        strncpy0(keys[ii]->keytag, tag, sizeof(keys[ii]->keytag));
+        strncpy0(macc_globals->keys[ii]->keytag, tag,
+                 sizeof(macc_globals->keys[ii]->keytag));
     } else {
-        sprintf(keys[ii]->keytag, "DEFAULT_ix_%d", ix);
+        sprintf(macc_globals->keys[ii]->keytag, "DEFAULT_ix_%d", ix);
     }
     if (strlen(tag) >= MAXIDXNAMELEN) {
         csc2_error(
@@ -1038,11 +1066,11 @@ static void key_add_comn(int ix, char *tag, char *exprname,
     }
     if (where && strlen(where) != 0) {
         CHECK_LEGACY_SCHEMA(1);
-        keys[ii]->where = csc2_strdup(where);
+        macc_globals->keys[ii]->where = csc2_strdup(where);
     } else {
-        keys[ii]->where = NULL;
+        macc_globals->keys[ii]->where = NULL;
     }
-    nkeys++; /* next key */
+    macc_globals->nkeys++; /* next key */
 }
 
 void rng_add(int i) /* used by parser, adds a completed rng */
@@ -1055,9 +1083,9 @@ void rng_add(int i) /* used by parser, adds a completed rng */
         any_errors++;
         return;
     }
-    if (!rngs[i])
-        nrngs++;
-    rngs[i] = workkey;
+    if (!macc_globals->rngs[i])
+        macc_globals->nrngs++;
+    macc_globals->rngs[i] = macc_globals->workkey;
 }
 
 int expridx_type = 0;
@@ -1097,14 +1125,15 @@ void key_piece_add(char *buf,
             any_errors++;
             return;
         }
-        nk->keyflags = workkeypieceflag;
+        nk->keyflags = macc_globals->workkeypieceflag;
         nk->expr = csc2_strdup(buf);
         nk->exprtype = expridx_type;
         nk->exprarraysz = expridx_arraysz;
-        if (!workkey) {
-            workkey = nk; /* empty list */
+        if (!macc_globals->workkey) {
+            macc_globals->workkey = nk; /* empty list */
         } else {
-            for (kp = workkey; kp->cmp; kp = kp->cmp) { /* add to end of list */
+            for (kp = macc_globals->workkey; kp->cmp;
+                 kp = kp->cmp) { /* add to end of list */
                 keyfields++;
             }
             if (keyfields >= MAX_FIELDS_PER_KEY) {
@@ -1128,7 +1157,7 @@ void key_piece_add(char *buf,
     i = getsymbol(tag, buf, &tidx);
 
     if (i == -1) {
-        tag = (ntables > 1) ? ONDISKTAG : DEFAULTTAG;
+        tag = (macc_globals->ntables > 1) ? ONDISKTAG : DEFAULTTAG;
         i = getsymbol(tag, buf, &tidx);
     }
     if (i == -1) {
@@ -1141,6 +1170,7 @@ void key_piece_add(char *buf,
         any_errors++;
         return;
     } else {
+        struct table *tables = macc_globals->tables;
         if (rg[0] || rg[1]) {
             if (tables[tidx].sym[i].type != T_PSTR &&
                 tables[tidx].sym[i].type != T_UCHAR &&
@@ -1200,7 +1230,7 @@ void key_piece_add(char *buf,
         }
         addtokey(i, tidx, el, rg); /* add this key to compound key */
     }
-    workkeypieceflag = 0;
+    macc_globals->workkeypieceflag = 0;
 }
 
 void rec_c_add(int typ, int size, char *name, char *cmnt)
@@ -1344,6 +1374,8 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         return;
     }
 
+    struct table *tables = macc_globals->tables;
+    int ntables = macc_globals->ntables;
     if (tables[ntables].nsym >= MAX) {
         csc2_error( "Error at line %3d: SYMBOL TABLE FULL: %s\n",
                 current_line, name);
@@ -1431,12 +1463,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
             case T_ULONG:
             case T_UINTEGER4:
             case T_INTEGER4:
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_UINT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
+                if (tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_INT &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_UINT &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype != CLIENT_SEQUENCE &&
+                    tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype != FLDOPT_NULL) {
                     csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
                                     "SCHEMA MUST MATCH FIELD TYPE: %s\n",
                             current_line, name);
@@ -1604,9 +1634,11 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     if (cp)
         *cp = 0;
     if (unionflag) {
-        un_reset[tables[ntables].nsym]++;
-        tables[ntables].sym[tables[ntables].nsym].un_member = union_level;
-        tables[ntables].sym[tables[ntables].nsym].un_idx = union_index;
+        macc_globals->un_reset[tables[ntables].nsym]++;
+        tables[ntables].sym[tables[ntables].nsym].un_member =
+            macc_globals->union_level;
+        tables[ntables].sym[tables[ntables].nsym].un_idx =
+            macc_globals->union_index;
     } else {
         tables[ntables].sym[tables[ntables].nsym].un_member = -1;
         tables[ntables].sym[tables[ntables].nsym].un_idx = -1;
@@ -1625,15 +1657,18 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     lastidx = 0;
 
     tables[ntables].sym[tables[ntables].nsym].type = typ;
-    tables[ntables].sym[tables[ntables].nsym].caseno = current_case;
+    tables[ntables].sym[tables[ntables].nsym].caseno =
+        macc_globals->current_case;
     if (tables[ntables].sym[tables[ntables].nsym].caseno != -1) {
-        tables[ntables].sym[tables[ntables].nsym].un_member = union_level;
-        tables[ntables].sym[tables[ntables].nsym].un_idx = union_index;
+        tables[ntables].sym[tables[ntables].nsym].un_member =
+            macc_globals->union_level;
+        tables[ntables].sym[tables[ntables].nsym].un_idx =
+            macc_globals->union_index;
     }
 
-    memcpy(tables[ntables].sym[tables[ntables].nsym].dpth_tree, cur_dpth,
-           sizeof(short) * dpth_idx);
-    tables[ntables].sym[tables[ntables].nsym].dpth = dpth_idx;
+    memcpy(tables[ntables].sym[tables[ntables].nsym].dpth_tree,
+           macc_globals->cur_dpth, sizeof(short) * macc_globals->dpth_idx);
+    tables[ntables].sym[tables[ntables].nsym].dpth = macc_globals->dpth_idx;
 
     tables[ntables].sym[tables[ntables].nsym].dumped = 0;
     tables[ntables].sym[tables[ntables].nsym].padded = 0;
@@ -1736,7 +1771,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
 
 void add_constant(char *name, int value, short type)
 {
-    if (nsym >= MAX) {
+    if (macc_globals->nsym >= MAX) {
         csc2_error( "Error at line %3d: CONSTANTS TABLE FULL: %s\n",
                 current_line, name);
         csc2_syntax_error("Error at line %3d: CONSTANTS TABLE FULL: %s",
@@ -1752,12 +1787,12 @@ void add_constant(char *name, int value, short type)
         any_errors++;
         return;
     }
-    constants[ncnst].nm = name;
-    constants[ncnst].value = value;
+    constants[macc_globals->ncnst].nm = name;
+    constants[macc_globals->ncnst].value = value;
     if (type == 1)
-        prcnst++;
-    constants[ncnst].type = type;
-    ncnst++;
+        macc_globals->prcnst++;
+    constants[macc_globals->ncnst].type = type;
+    macc_globals->ncnst++;
 }
 
 void start_table(char *tag, int preset)
@@ -1794,7 +1829,8 @@ void start_table(char *tag, int preset)
         any_errors++;
         return;
     }
-    for (i = 0; i < ntables; i++) {
+    struct table *tables = macc_globals->tables;
+    for (i = 0; i < macc_globals->ntables; i++) {
         if (!strcmp(tables[i].table_tag, tag)) {
             csc2_error("TABLE ERROR: TABLE WITH TAG '%s' ALREADY DEFINED.\n",
                        tag);
@@ -1802,32 +1838,33 @@ void start_table(char *tag, int preset)
             return;
         }
     }
-    if (ntables >= MAXTBLS) {
+    if (macc_globals->ntables >= MAXTBLS) {
         csc2_error("TABLE ERROR: ONLY UP TO %d TABLES ALLOWED\n", MAXTBLS);
         any_errors++;
         return;
     }
-    strncpy(tables[ntables].table_tag, tag,
-            sizeof(tables[ntables].table_tag) - 1);
-    tables[ntables].table_tag[sizeof(tables[ntables].table_tag) - 1] = '\0';
+    strncpy(tables[macc_globals->ntables].table_tag, tag,
+            sizeof(tables[macc_globals->ntables].table_tag) - 1);
+    tables[macc_globals->ntables]
+        .table_tag[sizeof(tables[macc_globals->ntables].table_tag) - 1] = '\0';
 }
 
 void end_table()
 {
     if (any_errors == 0)
-        if (compute_all_data(ntables) != 0)
+        if (compute_all_data(macc_globals->ntables) != 0)
             ++any_errors;
-    ntables++;
+    macc_globals->ntables++;
     unionflag = 0;
-    current_union = 0;
-    union_index = -1;
-    union_level = -1;
-    un_init = 0;
-    memset(union_names, 0, sizeof(union_names));
-    memset(case_table, 0, sizeof(case_table));
-    dpth_idx = 0;
-    current_case = -1;
-    cn_p = 0;
+    macc_globals->current_union = 0;
+    macc_globals->union_index = -1;
+    macc_globals->union_level = -1;
+    macc_globals->un_init = 0;
+    memset(macc_globals->union_names, 0, sizeof(macc_globals->union_names));
+    memset(macc_globals->case_table, 0, sizeof(macc_globals->case_table));
+    macc_globals->dpth_idx = 0;
+    macc_globals->current_case = -1;
+    macc_globals->cn_p = 0;
 }
 
 void add_array(int dim, char *label)
@@ -1853,8 +1890,8 @@ void add_fldopt(int opttype, int valtype, void *value)
         reset_fldopt();
         return;
     }
-    if (valtype != CLIENT_INT && valtype != CLIENT_REAL &&
-        valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY) {
+    if (valtype != CLIENT_INT && valtype != CLIENT_REAL && valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY &&
+        valtype != CLIENT_SEQUENCE) {
         csc2_error("FIELD OPTION ERROR: INVALID VALUE TYPE %d\n", valtype);
         any_errors++;
         reset_fldopt();
@@ -1996,18 +2033,18 @@ int compar(int *a, int *b)
 }
 
 int calc_rng(int rng, int *ask)
-{ /* sets up rng offsets & sizes of rngs  */
+{ /* sets up rng offsets & sizes of macc_globals->rngs  */
     int i, j, ii, jj, off, roff, sadj, eadj, n;
     struct key *cr, *cl, *askrngpcs[512];
     int rcs[512], rce[512], srt[512];
     int ss, ee, s, e;
     memset(askrngpcs, 0, sizeof(askrngpcs));
     n = 0;
-    cr = rngs[rng];
+    cr = macc_globals->rngs[rng];
     while (cr) {
         j = cr->sym;
         /* get offset of this var in rec*/
-        roff = symb[j].off + arroff(j, cr->el, cr->rg);
+        roff = macc_globals->symb[j].off + arroff(j, cr->el, cr->rg);
         /* set offset (bytes) in record */
         cr->rcoff = roff;
         sadj = offpad(roff, 2);          /* start's adjustment for hw align*/
@@ -2054,7 +2091,7 @@ int calc_rng(int rng, int *ask)
         eadj = offpad(rce[i] + 1, 2); /* hw adjustment for end */
         off += ((rce[i] + eadj) - (rcs[i] - sadj)) + 1; /* new rbuf offset */
     }
-    rngrrnoff[rng] = off; /* store where the rrn will be */
+    macc_globals->rngrrnoff[rng] = off; /* store where the rrn will be */
     jj = 2;
     for (ii = 0, ask[2] = 0; ii < n; ii++) { /* now set up ask array */
         i = srt[ii];
@@ -2070,8 +2107,8 @@ int calc_rng(int rng, int *ask)
         ask[ask[2] * 2 + 2] = j;
         jj += j;
     }
-    if (jj > maxrngsz)
-        maxrngsz = jj;
+    if (jj > macc_globals->maxrngsz)
+        macc_globals->maxrngsz = jj;
     return jj;
 }
 
@@ -2081,16 +2118,17 @@ void start_union(char *name)
     char *dpth_info = NULL;
     unionflag = 1;
     if (name != NULL) {
-        union_names[current_union] = name;
+        macc_globals->union_names[macc_globals->current_union] = name;
     } else {
-        union_names[current_union] = NULL;
+        macc_globals->union_names[macc_globals->current_union] = NULL;
     }
-    current_union++;
-    if (union_index < (current_union - 1))
-        union_index = current_union - 1;
-    un_start[union_index] = tables[ntables].nsym;
+    macc_globals->current_union++;
+    if (macc_globals->union_index < (macc_globals->current_union - 1))
+        macc_globals->union_index = macc_globals->current_union - 1;
+    macc_globals->un_start[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym;
 
-    if (dpth_idx + 1 >= MAX_DEPTH) {
+    if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
                 current_line, name);
         csc2_syntax_error("Error at line %3d: PARSE TREE DEPTH TOO BIG %s",
@@ -2098,19 +2136,20 @@ void start_union(char *name)
         any_errors++;
         return;
     }
-    dpth_info = (char *)&cur_dpth[dpth_idx++];
+    dpth_info = (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx++];
     dpth_info[0] = 'u';
-    dpth_info[1] = (u_char)union_index;
-    union_level++;
+    dpth_info[1] = (u_char)macc_globals->union_index;
+    macc_globals->union_level++;
 }
 
 void end_union()
 {
     unionflag = 0;
-    un_end[union_index] = tables[ntables].nsym - 1;
-    union_index--;
-    union_level--;
-    dpth_idx--;
+    macc_globals->un_end[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym - 1;
+    macc_globals->union_index--;
+    macc_globals->union_level--;
+    macc_globals->dpth_idx--;
 }
 
 /*IN A RECTYPE{ CASE: } DECLARATION*/
@@ -2118,17 +2157,18 @@ void start_rectypedef(char *rtname)
 {
     char *dpth_info = NULL;
     if (rtname != NULL) {
-        union_names[current_union] = rtname;
+        macc_globals->union_names[macc_globals->current_union] = rtname;
     } else {
-        union_names[current_union] = NULL;
+        macc_globals->union_names[macc_globals->current_union] = NULL;
     }
-    current_union++;
+    macc_globals->current_union++;
 
-    if (union_index < (current_union - 1))
-        union_index = current_union - 1;
-    un_start[union_index] = tables[ntables].nsym;
+    if (macc_globals->union_index < (macc_globals->current_union - 1))
+        macc_globals->union_index = macc_globals->current_union - 1;
+    macc_globals->un_start[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym;
 
-    if (dpth_idx + 1 >= MAX_DEPTH) {
+    if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
                 current_line, rtname);
         csc2_syntax_error("Error at line %3d: PARSE TREE DEPTH TOO BIG %s",
@@ -2136,11 +2176,11 @@ void start_rectypedef(char *rtname)
         any_errors++;
         return;
     }
-    dpth_info = (char *)&cur_dpth[dpth_idx++];
+    dpth_info = (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx++];
     dpth_info[0] = 'u';
-    dpth_info[1] = (u_char)union_index;
+    dpth_info[1] = (u_char)macc_globals->union_index;
 
-    union_level++;
+    macc_globals->union_level++;
     if (ncases + 1 >= MAX_NESTED_RECTYPE || ncases < -1) {
         csc2_error( "MAXIMUM NESTED RECTYPE'S REACHED (16)");
         any_errors++;
@@ -2151,11 +2191,12 @@ void start_rectypedef(char *rtname)
 
 void end_rectypedef()
 {
-    un_end[union_index] = tables[ntables].nsym - 1;
-    union_index--;
-    union_level--;
-    dpth_idx -= 2;
-    current_case -= nested_rectype[ncases];
+    macc_globals->un_end[macc_globals->union_index] =
+        macc_globals->tables[macc_globals->ntables].nsym - 1;
+    macc_globals->union_index--;
+    macc_globals->union_level--;
+    macc_globals->dpth_idx -= 2;
+    macc_globals->current_case -= nested_rectype[ncases];
     if (ncases - 1 >= 0)
         nested_rectype[ncases - 1] += nested_rectype[ncases];
     nested_rectype[ncases--] = 0;
@@ -2179,13 +2220,15 @@ void start_case(char *txt)
     }
     /*	printf("CASE %s %d\n", txt, i);*/
 
-    case_table[cn_p] = i; /* add to case name table */
-    current_case = cn_p;
+    macc_globals->case_table[macc_globals->cn_p] =
+        i; /* add to case name table */
+    macc_globals->current_case = macc_globals->cn_p;
     nested_rectype[ncases]++;
-    cn_p++;
-    un_reset[tables[ntables].nsym]++; /* add to union reset table */
+    macc_globals->cn_p++;
+    macc_globals->un_reset[macc_globals->tables[macc_globals->ntables]
+                               .nsym]++; /* add to union reset table */
 
-    if (dpth_idx + 1 >= MAX_DEPTH) {
+    if (macc_globals->dpth_idx + 1 >= MAX_DEPTH) {
         csc2_error( "Error at line %3d: PARSE TREE DEPTH TOO BIG %s\n",
                 current_line, txt);
         csc2_syntax_error("Error at line %3d: PARSE TREE DEPTH TOO BIG %s",
@@ -2193,24 +2236,28 @@ void start_case(char *txt)
         any_errors++;
         return;
     }
-    if (dpth_idx - 1 >= 0) {
-        dpth_info = (char *)&cur_dpth[dpth_idx - 1];
+    if (macc_globals->dpth_idx - 1 >= 0) {
+        dpth_info = (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx - 1];
         if (dpth_info[0] == 'c') {
             dpth_info[0] = 'c';
-            dpth_info[1] = (u_char)current_case;
+            dpth_info[1] = (u_char)macc_globals->current_case;
         } else {
-            dpth_info = (char *)&cur_dpth[dpth_idx++];
+            dpth_info =
+                (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx++];
             dpth_info[0] = 'c';
-            dpth_info[1] = (u_char)current_case;
+            dpth_info[1] = (u_char)macc_globals->current_case;
         }
     } else {
-        dpth_info = (char *)&cur_dpth[dpth_idx++];
+        dpth_info = (char *)&macc_globals->cur_dpth[macc_globals->dpth_idx++];
         dpth_info[0] = 'c';
-        dpth_info[1] = (u_char)current_case;
+        dpth_info[1] = (u_char)macc_globals->current_case;
     }
 }
 
-void expr_clear() { ex_p = 0; }
+void expr_clear()
+{
+    macc_globals->ex_p = 0;
+}
 
 void expr_add_pc(char *sym, int op, int num)
 {
@@ -2227,7 +2274,8 @@ void expr_add_pc(char *sym, int op, int num)
         return;
     }
 
-    if (ex_p >= EXPRMAX) {
+    int ex_p = macc_globals->ex_p;
+    if (macc_globals->ex_p >= EXPRMAX) {
         csc2_error( "Error at line %3d: OUT OF EXPRESSION SPACE",
                 current_line);
         csc2_syntax_error("Error at line %3d: OUT OF EXPRESSION SPACE",
@@ -2241,17 +2289,18 @@ void expr_add_pc(char *sym, int op, int num)
     for (i = 0; i < 6 && el[i] != -1; i++)
         sprintf(eos(arrstr), "[%d]", el[i]);
 
+    struct expression *expr = macc_globals->expr;
     expr[ex_p].sym = sym;
     expr[ex_p].symarr = (char *)csc2_malloc(strlen(arrstr) + 1);
     strcpy(expr[ex_p].symarr, arrstr);
     expr[ex_p].opr = op;
     expr[ex_p].num = num;
-    ex_p++;
+    macc_globals->ex_p++;
 }
 
 void expr_assoc_name(char *name)
 {
-    if (et_p >= EXPRTABMAX) {
+    if (macc_globals->et_p >= EXPRTABMAX) {
         csc2_error( "Error at line %3d: OUT OF EXPRESSION TABLE "
                         "SPACE",
                 current_line);
@@ -2261,31 +2310,34 @@ void expr_assoc_name(char *name)
         any_errors++;
         return;
     }
-    exprtab[et_p].name = name;
-    exprtab[et_p].elen = ex_p;
-    exprtab[et_p].expr =
-        (struct expression *)csc2_malloc(sizeof(struct expression) * ex_p);
-    if (exprtab[et_p].expr == 0) {
+    struct expr_table *exprtab = macc_globals->exprtab;
+    exprtab[macc_globals->et_p].name = name;
+    exprtab[macc_globals->et_p].elen = macc_globals->ex_p;
+    exprtab[macc_globals->et_p].expr = (struct expression *)csc2_malloc(
+        sizeof(struct expression) * macc_globals->ex_p);
+    if (exprtab[macc_globals->et_p].expr == 0) {
         logmsgperror("expr_assoc_name(): saving expression");
         any_errors++;
         return;
     }
-    memcpy(exprtab[et_p].expr, expr, sizeof(struct expression) * ex_p);
-    et_p++;
+    memcpy(exprtab[macc_globals->et_p].expr, macc_globals->expr,
+           sizeof(struct expression) * macc_globals->ex_p);
+    macc_globals->et_p++;
 }
 
 void resolve_case_names()
 {
     int i, j, k, tidx = 0;
-    for (i = 0; i < et_p; i++) {
-        for (j = 0; j < exprtab[i].elen; j++) {
+    struct expr_table *exprtab = macc_globals->exprtab;
+    for (i = 0; i < macc_globals->et_p; i++) {
+        for (j = 0; j < macc_globals->exprtab[i].elen; j++) {
             if (exprtab[i].expr[j].sym) {
                 exprtab[i].expr[j].symnum =
                     getsymbol(ONDISKTAG, exprtab[i].expr[j].sym, &tidx);
                 if (exprtab[i].expr[j].symnum == -1) {
-                    exprtab[i].expr[j].symnum =
-                        getsymbol((ntables > 1) ? ONDISKTAG : DEFAULTTAG,
-                                  exprtab[i].expr[j].sym, &tidx);
+                    exprtab[i].expr[j].symnum = getsymbol(
+                        (macc_globals->ntables > 1) ? ONDISKTAG : DEFAULTTAG,
+                        exprtab[i].expr[j].sym, &tidx);
                 }
                 if (exprtab[i].expr[j].symnum == -1) {
                     csc2_error("ERROR: Unresolved variable: '%s"
@@ -2293,9 +2345,10 @@ void resolve_case_names()
                                exprtab[i].expr[j].sym, exprtab[i].name);
                     any_errors++;
                 }
-                for (k = exprtab[i].expr[j].symnum + 1; k < nsym; k++) {
+                for (k = exprtab[i].expr[j].symnum + 1; k < macc_globals->nsym;
+                     k++) {
                     if (strcmp(exprtab[i].expr[j].sym,
-                               tables[tidx].sym[k].nm) == 0) {
+                               macc_globals->tables[tidx].sym[k].nm) == 0) {
                         csc2_error("ERROR: Condition %s Symbol Name is Found "
                                    "More Than Once! '%s'\n",
                                    exprtab[i].name, exprtab[i].expr[j].sym);
@@ -2404,6 +2457,10 @@ int macc_ferror(FILE *fh)
     return 0;
 }
 
+/*  Make sure you call dyns_init_globals(); before calling this function
+ *  in order to initialize the global structure on which this and other dyns_
+ *  functions rely.
+ */
 static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
                                 char *tablename)
 {
@@ -2417,19 +2474,19 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     if (ifn)
         *ifn = 0;
 
-    init_globals();
-
-    flag_anyname = 1;
+    macc_globals->flag_anyname = 1;
     if (strlen(dbname) >= MAX_DBNAME_LENGTH || strlen(dbname) < 3) {
         csc2_error("ERROR: BAD DATABASE NAME '%s'. VALID=3-%d CHARACTERS\n",
                    dbname, MAX_DBNAME_LENGTH - 1);
         return -1;
     }
     sprintf(fullname, "%s_%s", dbname, tablename);
-    opt_dbname = fullname;
-    opt_copycsc = 0;
-    strncpy0(opt_maindbname, dbname, sizeof(opt_maindbname));
-    strncpy0(opt_tblname, tablename, sizeof(opt_tblname));
+    macc_globals->opt_dbname = fullname;
+    macc_globals->opt_copycsc = 0;
+    strncpy0(macc_globals->opt_maindbname, dbname,
+             sizeof(macc_globals->opt_maindbname));
+    strncpy0(macc_globals->opt_tblname, tablename,
+             sizeof(macc_globals->opt_tblname));
 
     /* check args for an input filename or any options */
     if (schematxt) {
@@ -2537,12 +2594,12 @@ static int dyns_is_idx_flagged(int index, int flags)
         return -1;
     }
     for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
+        if (lastix == macc_globals->keyixnum[i])
             continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
+        lastix = macc_globals->keyixnum[i];
+        if (macc_globals->keyixnum[i] != index)
             continue;
-        if (ixflags[keyixnum[i]] & flags)
+        if (macc_globals->ixflags[macc_globals->keyixnum[i]] & flags)
             return 1;
         break;
     }
@@ -2586,13 +2643,14 @@ int dyns_get_idx_tag(int index, char *tag, int tlen, char **where)
         return -1;
     }
     for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
+        if (lastix == macc_globals->keyixnum[i])
             continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
+        lastix = macc_globals->keyixnum[i];
+        if (macc_globals->keyixnum[i] != index)
             continue;
-        strncpy(tag, keys[i]->keytag, MIN(tlen, sizeof(keys[i]->keytag)));
-        *where = keys[i]->where;
+        strncpy(tag, macc_globals->keys[i]->keytag,
+                MIN(tlen, sizeof(macc_globals->keys[i]->keytag)));
+        *where = macc_globals->keys[i]->where;
         return 0;
     }
     return -1;
@@ -2608,12 +2666,12 @@ int dyns_get_idx_size(int index)
         return -1;
     }
     for (lastix = -1, i = 0; i < numkeys(); i++) {
-        if (lastix == keyixnum[i])
+        if (lastix == macc_globals->keyixnum[i])
             continue;
-        lastix = keyixnum[i];
-        if (keyixnum[i] != index)
+        lastix = macc_globals->keyixnum[i];
+        if (macc_globals->keyixnum[i] != index)
             continue;
-        return ixsize[keyixnum[i]];
+        return macc_globals->ixsize[macc_globals->keyixnum[i]];
     }
     return -1;
 }
@@ -2636,13 +2694,13 @@ int dyns_get_idx_piece(int index, int piece, char *sname, int slen, int *type,
     }
 
     for (lastix = -1, keynum = 0; keynum < numkeys(); keynum++) {
-        if (lastix == keyixnum[keynum])
+        if (lastix == macc_globals->keyixnum[keynum])
             continue;
-        lastix = keyixnum[keynum];
-        if (keyixnum[keynum] != index)
+        lastix = macc_globals->keyixnum[keynum];
+        if (macc_globals->keyixnum[keynum] != index)
             continue;
 
-        ck = keys[keynum];
+        ck = macc_globals->keys[keynum];
         while (ck) {
             if (pcnt == piece) {
                 int rofft = 0, esz = 0, fsz = 0, arr = 0;
@@ -2804,13 +2862,13 @@ int dyns_get_idx_piece_count(int index)
         return -1;
     }
     for (lastix = -1, keynum = 0; keynum < numkeys(); keynum++) {
-        if (lastix == keyixnum[keynum])
+        if (lastix == macc_globals->keyixnum[keynum])
             continue;
-        lastix = keyixnum[keynum];
-        if (keyixnum[keynum] != index)
+        lastix = macc_globals->keyixnum[keynum];
+        if (macc_globals->keyixnum[keynum] != index)
             continue;
 
-        ck = keys[keynum];
+        ck = macc_globals->keys[keynum];
         while (ck) {
             pcnt++;
             ck = ck->cmp;
@@ -2822,27 +2880,30 @@ int dyns_get_idx_piece_count(int index)
 }
 
 /* database number of this schema */
-int dyns_get_db_num(void) { return opt_dbnum; }
+int dyns_get_db_num(void)
+{
+    return macc_globals->opt_dbnum;
+}
 
 /* data directory of this schema */
 int dyns_get_dtadir(char *dir, int len)
 {
-    if (len <= strlen(opt_dtadir)) {
+    if (len <= strlen(macc_globals->opt_dtadir)) {
         return -1;
     }
     bzero(dir, len);
-    strcpy(dir, opt_dtadir);
+    strcpy(dir, macc_globals->opt_dtadir);
     return 0;
 }
 
 /* database name */
 int dyns_get_db_name(char *name, int len)
 {
-    if (len <= strlen(DBNAME)) {
+    if (len <= strlen(macc_globals->opt_dbname)) {
         return -1;
     }
     bzero(name, len);
-    strcpy(name, DBNAME);
+    strcpy(name, macc_globals->opt_dbname);
     return 0;
 }
 
@@ -2852,7 +2913,7 @@ int dyns_get_db_table_size(void)
     int tidx = gettable(DEFAULTTAG);
     if (tidx < 0)
         return -1;
-    return tables[tidx].table_size;
+    return macc_globals->tables[tidx].table_size;
 }
 
 /* number of fields in the record */
@@ -2861,7 +2922,7 @@ int dyns_get_field_count(void)
     int tidx = gettable(DEFAULTTAG);
     if (tidx < 0)
         return -1;
-    return tables[tidx].nsym;
+    return macc_globals->tables[tidx].nsym;
 }
 
 int dyns_is_field_array(int fidx)
@@ -2879,9 +2940,9 @@ static int dyns_is_field_array_comn(char *tag, int fidx)
     int tidx = gettable(tag == NULL ? DEFAULTTAG : tag);
     if (tidx < 0)
         return -1;
-    if (fidx < 0 || fidx >= tables[tidx].nsym)
+    if (fidx < 0 || fidx >= macc_globals->tables[tidx].nsym)
         return -1;
-    return (numdim(tables[tidx].sym[fidx].dim) > 0);
+    return (numdim(macc_globals->tables[tidx].sym[fidx].dim) > 0);
 }
 
 int dyns_get_field_arr_dims(int fidx, int *ldims, int ndims, int *nodims)
@@ -2906,10 +2967,10 @@ int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *ldims, int ndims,
     if (dyns_is_field_array(fidx) < 0)
         return -1;
     *nodims = 0;
-    for (i = 0;
-         tables[tidx].sym[fidx].dim[i] != -1 && i < ((6 > ndims) ? ndims : 6);
+    for (i = 0; macc_globals->tables[tidx].sym[fidx].dim[i] != -1 &&
+                i < ((6 > ndims) ? ndims : 6);
          i++) {
-        ldims[i] = tables[tidx].sym[fidx].dim[i];
+        ldims[i] = macc_globals->tables[tidx].sym[fidx].dim[i];
         *nodims = *nodims + 1;
     }
     return 0;
@@ -2917,9 +2978,9 @@ int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *ldims, int ndims,
 
 char *dyns_get_table_tag(int tidx)
 {
-    if (tidx < 0 || tidx >= ntables)
+    if (tidx < 0 || tidx >= macc_globals->ntables)
         return "";
-    return tables[tidx].table_tag;
+    return macc_globals->tables[tidx].table_tag;
 }
 /* get specific record field with its info. */
 int dyns_get_field_info(int fidx, char *name, int namelen, int *type,
@@ -2943,6 +3004,7 @@ static int dyns_get_field_info_comn(char *tag, int fidx, char *name,
                                     int use_server_types)
 {
     int tidx = gettable(tag == NULL ? DEFAULTTAG : tag);
+    struct table *tables = macc_globals->tables;
     if (tidx < 0)
         return -1;
     if (fidx < 0 || fidx >= tables[tidx].nsym)
@@ -2971,152 +3033,133 @@ static int dyns_get_field_info_comn(char *tag, int fidx, char *name,
 
 /* load field options */
 
-int dyns_get_field_option(int fidx, int option, int *value_type, int *value_sz,
-                          void *valuebuf, int vbsz)
-{
-    return dyns_get_field_option_comn(NULL, fidx, option, value_type, value_sz,
-                                      valuebuf, vbsz);
-}
-
 int dyns_get_table_field_option(char *tag, int fidx, int option,
                                 int *value_type, int *value_sz, void *valuebuf,
                                 int vbsz)
 {
-    return dyns_get_field_option_comn(tag, fidx, option, value_type, value_sz,
-                                      valuebuf, vbsz);
-}
+    if (strcmp(tag, ONDISKTAG))
+        return -1;
 
-static int dyns_get_field_option_comn(char *tag, int fidx, int option,
-                                      int *value_type, int *value_sz,
-                                      void *valuebuf, int vbsz)
-{
     int i = 0;
     /* int tidx=gettable(tag==NULL?DEFAULTTAG:tag);*/
     int tidx = gettable(ONDISKTAG);
-    if (strcmp(tag, ONDISKTAG))
-        return -1;
     if (tidx < 0)
         return -1;
+
+    struct table *tables = macc_globals->tables;
     if (fidx < 0 || fidx >= tables[tidx].nsym)
         return -1;
 
     assert((valuebuf != 0) && (vbsz > 0));
 
-    *value_type = field_type(tables[tidx].sym[fidx].type, 0);
-    for (i = 0; i < tables[tidx].sym[fidx].numfo; i++) {
-        if (tables[tidx].sym[fidx].fopts[i].opttype == option) {
-            if ((option == FLDOPT_NULL || option == FLDOPT_PADDING) &&
-                vbsz >= sizeof(int)) {
-                int tmpval = tables[tidx].sym[fidx].fopts[i].value.i4val;
-                *value_type = CLIENT_INT;
-                *value_sz = sizeof(int);
-                memcpy(valuebuf, &tmpval, sizeof(int));
+    struct symbol *sym = &tables[tidx].sym[fidx];
+    *value_type = field_type(sym->type, 0);
+    for (i = 0; i < sym->numfo; i++) {
+        struct fieldopt *f = &sym->fopts[i];
+        if (f->opttype != option)
+            continue;
+        if ((option == FLDOPT_NULL || option == FLDOPT_PADDING) && vbsz >= sizeof(int)) {
+            int tmpval = f->value.i4val;
+            *value_type = CLIENT_INT;
+            *value_sz = sizeof(int);
+            memcpy(valuebuf, &tmpval, sizeof(int));
+            return 0;
+        }
+
+        switch (f->valtype) {
+        case CLIENT_INT: {
+            if ((*value_type == CLIENT_INT || *value_type == CLIENT_UINT) && vbsz >= sizeof(uint64_t)) {
+                extern int gbl_broken_num_parser;
+                if (gbl_broken_num_parser) {
+                    int tmpval = htonl(f->value.i4val);
+                    memcpy(valuebuf, &tmpval, sizeof(tmpval));
+                    *value_sz = sizeof(tmpval);
+                } else {
+                    uint64_t tmpval = flibc_htonll(f->value.u8val);
+                    memcpy(valuebuf, &tmpval, sizeof(tmpval));
+                    *value_sz = sizeof(tmpval);
+                }
+                return 0;
+            } else if (*value_type == CLIENT_REAL && vbsz >= sizeof(double)) {
+                double tmpval = flibc_htond(((double)(f->value.i4val)));
+                memcpy(valuebuf, &tmpval, sizeof(double));
+                *value_sz = sizeof(double);
+                return 0;
+            } else if (*value_type == CLIENT_BYTEARRAY && vbsz >= sym->szof) {
+                /* construct a byte array memset with this value */
+                memset(valuebuf, f->value.i4val, sym->szof);
+                *value_sz = sym->szof;
                 return 0;
             }
+            return -1;
+        }
+        case CLIENT_REAL: {
+            if (*value_type == CLIENT_REAL && vbsz >= sizeof(double)) {
+                double tmpval = flibc_htond((double)(f->value.r8val));
+                memcpy(valuebuf, &tmpval, sizeof(double));
+                *value_sz = sizeof(double);
+                return 0;
+            }
+            return -1;
+        }
+        case CLIENT_BYTEARRAY: {
+            int *bytes;
+            int length;
+            bytes = (int *)f->value.byteval;
+            if (!bytes) {
+                csc2_error("dyns_get_table_field_option: null byteval\n");
+                return -1;
+            }
+            length = *bytes;
+            bytes++;
+            if (*value_type == CLIENT_BYTEARRAY && vbsz >= length) {
+                memcpy(valuebuf, bytes, length);
+                *value_sz = length;
+                return 0;
+            }
+            return -1;
+        }
 
-            switch (tables[tidx].sym[fidx].fopts[i].valtype) {
-            case CLIENT_INT: {
-                if ((*value_type == CLIENT_INT || *value_type == CLIENT_UINT) &&
-                    vbsz >= sizeof(uint64_t)) {
-                    extern int gbl_broken_num_parser;
-                    if (gbl_broken_num_parser) {
-                        int tmpval =
-                            htonl(tables[tidx].sym[fidx].fopts[i].value.i4val);
-                        memcpy(valuebuf, &tmpval, sizeof(tmpval));
-                        *value_sz = sizeof(tmpval);
-                    } else {
-                        uint64_t tmpval = flibc_htonll(
-                            tables[tidx].sym[fidx].fopts[i].value.u8val);
-                        memcpy(valuebuf, &tmpval, sizeof(tmpval));
-                        *value_sz = sizeof(tmpval);
-                    }
-                    return 0;
-                } else if (*value_type == CLIENT_REAL &&
-                           vbsz >= sizeof(double)) {
-                    double tmpval = flibc_htond((
-                        (double)(tables[tidx].sym[fidx].fopts[i].value.i4val)));
-                    memcpy(valuebuf, &tmpval, sizeof(double));
-                    *value_sz = sizeof(double);
-                    return 0;
-                } else if (*value_type == CLIENT_BYTEARRAY &&
-                           vbsz >= tables[tidx].sym[fidx].szof) {
-                    /* construct a byte array memset with this value */
-                    memset(valuebuf,
-                           tables[tidx].sym[fidx].fopts[i].value.i4val,
-                           tables[tidx].sym[fidx].szof);
-                    *value_sz = tables[tidx].sym[fidx].szof;
-                    return 0;
-                }
+        case CLIENT_SEQUENCE: {
+            if ((*value_type == CLIENT_INT)) {
+                *value_type = CLIENT_SEQUENCE;
+                *value_sz = (vbsz - 1);
+                memset(valuebuf, -1, *value_sz);
+                return 0;
+            }
+            return -1;
+        }
+
+        case CLIENT_CSTR: {
+            if (*value_type == CLIENT_BYTEARRAY && vbsz >= sym->szof) {
+                /* There are several production databases that try to
+                 * specify a default load/store for a byte array using a
+                 * string.  Previously we didn't catch this, so people put
+                 * in all kinds of wacky interpretations of how this
+                 * could work.  We want to disallow all of them, but can't
+                 * without breaking them.  So we silently ignore strings. */
+                *value_type = CLIENT_MINTYPE;
+                *value_sz = 0;
+                memset(valuebuf, 0, vbsz);
                 return -1;
             }
-            case CLIENT_REAL: {
-                if (*value_type == CLIENT_REAL && vbsz >= sizeof(double)) {
-                    double tmpval = flibc_htond(
-                        (double)(tables[tidx].sym[fidx].fopts[i].value.r8val));
-                    memcpy(valuebuf, &tmpval, sizeof(double));
-                    *value_sz = sizeof(double);
-                    return 0;
-                }
-                return -1;
+
+            int len = strlen(f->value.strval);
+            if ((*value_type == CLIENT_CSTR || *value_type == CLIENT_PSTR || *value_type == CLIENT_VUTF8) &&
+                vbsz > len) {
+                bzero(valuebuf, len + 1);
+                memcpy(valuebuf, f->value.strval, len);
+                *value_sz = len;
+                return 0;
+            } else if (*value_type == CLIENT_DATETIME || *value_type == CLIENT_DATETIMEUS) {
+                memcpy(valuebuf, f->value.strval, len);
+                *value_sz = len;
+                return 0;
             }
-            case CLIENT_BYTEARRAY: {
-                int *bytes;
-                int length;
-                bytes = (int *)tables[tidx].sym[fidx].fopts[i].value.byteval;
-                if (!bytes) {
-                    csc2_error(
-                            "dyns_get_field_option_comn: null byteval\n");
-                    return -1;
-                }
-                length = *bytes;
-                bytes++;
-                if (*value_type == CLIENT_BYTEARRAY && vbsz >= length) {
-                    memcpy(valuebuf, bytes, length);
-                    *value_sz = length;
-                    return 0;
-                }
-                return -1;
-            }
-            case CLIENT_CSTR: {
-                if ((*value_type == CLIENT_CSTR || *value_type == CLIENT_PSTR ||
-                     *value_type == CLIENT_VUTF8) &&
-                    vbsz >
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval)) {
-                    bzero(valuebuf,
-                          strlen(tables[tidx].sym[fidx].fopts[i].value.strval) +
-                              1);
-                    memcpy(
-                        valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval,
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval));
-                    *value_sz =
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
-                    return 0;
-                } else if (*value_type == CLIENT_DATETIME ||
-                           *value_type == CLIENT_DATETIMEUS) {
-                    memcpy(
-                        valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval,
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval));
-                    *value_sz =
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
-                    return 0;
-                } else if (*value_type == CLIENT_BYTEARRAY &&
-                           vbsz >= tables[tidx].sym[fidx].szof) {
-                    /* There are several production databases that try to
-                     * specify a default load/store for a byte array using a
-                     * string.  Previously we didn't catch this, so people put
-                     * in all kinds of wacky interpretations of how this
-                     * could work.  We want to disallow all of them, but can't
-                     * without breaking them.  So we silently ignore strings. */
-                    *value_type = CLIENT_MINTYPE;
-                    *value_sz = 0;
-                    memset(valuebuf, 0, vbsz);
-                    return -1;
-                }
-                return -1;
-            }
-            default:
-                return -1;
-            }
+            return -1;
+        }
+        default:
+            return -1;
         }
     }
 
@@ -3148,14 +3191,14 @@ static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
     if (tidx < 0)
         return -1;
     *ndpthout = 0;
-    if (fidx < 0 || fidx >= tables[tidx].nsym)
+    if (fidx < 0 || fidx >= macc_globals->tables[tidx].nsym)
         return -1;
-    for (i = 0; i < tables[tidx].sym[fidx].dpth; i++) {
+    for (i = 0; i < macc_globals->tables[tidx].sym[fidx].dpth; i++) {
         char *curdpth = NULL;
         if (i >= ndpthsinfo) {
             return 1;
         }
-        curdpth = (char *)(&(tables[tidx].sym[fidx].dpth_tree[i]));
+        curdpth = (char *)(&(macc_globals->tables[tidx].sym[fidx].dpth_tree[i]));
         memset(&dpthinfo[*ndpthout], 0, sizeof(dpth_t));
         dpthinfo[*ndpthout].struct_type =
             ((curdpth[0] == 'u') ? FLDDPTH_UNION : FLDDPTH_STRUCT);
@@ -3171,9 +3214,9 @@ int dyns_field_type(int fidx)
     int tidx = gettable(DEFAULTTAG);
     if (tidx < 0)
         return -1;
-    if (fidx < 0 || fidx >= tables[tidx].nsym)
+    if (fidx < 0 || fidx >= macc_globals->tables[tidx].nsym)
         return -1;
-    switch (tables[tidx].sym[fidx].type) {
+    switch (macc_globals->tables[tidx].sym[fidx].type) {
     case T_UINTEGER2:
         return COMDB2_USHORT;
     case T_UINTEGER4:
@@ -3221,12 +3264,16 @@ int dyns_field_type(int fidx)
     }
 }
 
-int dyns_get_table_count(void) { return ntables; }
+int dyns_get_table_count(void)
+{
+    return macc_globals->ntables;
+}
 
 int dyns_get_table_tag_size(char *tabletag)
 {
     int i = 0;
-    for (i = 0; i < ntables; i++) {
+    struct table *tables = macc_globals->tables;
+    for (i = 0; i < macc_globals->ntables; i++) {
         if (!strncmp(tabletag, tables[i].table_tag,
                      sizeof(tables[i].table_tag))) {
             return tables[i].table_size;
@@ -3238,8 +3285,9 @@ int dyns_get_table_tag_size(char *tabletag)
 int dyns_get_table_field_count(char *tabletag)
 {
     int i = 0;
+    struct table *tables = macc_globals->tables;
 
-    for (i = 0; i < ntables; i++) {
+    for (i = 0; i < macc_globals->ntables; i++) {
         if (!strncmp(tabletag, tables[i].table_tag,
                      sizeof(tables[i].table_tag))) {
             return tables[i].nsym;
@@ -3250,45 +3298,45 @@ int dyns_get_table_field_count(char *tabletag)
 
 int dyns_get_constraint_count(void)
 {
-    return nconstraints + 1;
+    return macc_globals->nconstraints + 1;
 }
 
 int dyns_get_constraint_at(int idx, char **consname, char **keyname,
                            int *rulecnt, int *flags)
 {
-    if (idx < 0 || idx > nconstraints)
+    if (idx < 0 || idx > macc_globals->nconstraints)
         return -1;
-    *consname = constraints[idx].consname;
-    *keyname = constraints[idx].lclkey;
-    *rulecnt = constraints[idx].ncnstrts;
-    *flags = constraints[idx].flags;
+    *consname = macc_globals->constraints[idx].consname;
+    *keyname = macc_globals->constraints[idx].lclkey;
+    *rulecnt = macc_globals->constraints[idx].ncnstrts;
+    *flags = macc_globals->constraints[idx].flags;
     return 0;
 }
 
 int dyns_get_constraint_rule(int cidx, int ridx, char **tblname, char **keynm)
 {
     int rcnt = 0;
-    if (cidx < 0 || cidx > nconstraints)
+    if (cidx < 0 || cidx > macc_globals->nconstraints)
         return -1;
-    rcnt = constraints[cidx].ncnstrts;
+    rcnt = macc_globals->constraints[cidx].ncnstrts;
     if (ridx < 0 || ridx > rcnt)
         return -1;
-    *tblname = constraints[cidx].table[ridx];
-    *keynm = constraints[cidx].keynm[ridx];
+    *tblname = macc_globals->constraints[cidx].table[ridx];
+    *keynm = macc_globals->constraints[cidx].keynm[ridx];
     return 0;
 }
 
 int dyns_get_check_constraint_count(void)
 {
-    return n_check_constraints + 1;
+    return macc_globals->n_check_constraints + 1;
 }
 
 int dyns_get_check_constraint_at(int idx, char **consname, char **expr)
 {
-    if (idx < 0 || idx > n_check_constraints)
+    if (idx < 0 || idx > macc_globals->n_check_constraints)
         return -1;
-    *consname = check_constraints[idx].consname;
-    *expr = check_constraints[idx].expr;
+    *consname = macc_globals->check_constraints[idx].consname;
+    *expr = macc_globals->check_constraints[idx].expr;
     return 0;
 }
 

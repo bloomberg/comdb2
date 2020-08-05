@@ -40,6 +40,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->compress_blobs = -1;
     sc->ip_updates = -1;
     sc->instant_sc = -1;
+    sc->persistent_seq = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
@@ -137,17 +138,18 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->force_rebuild) + sizeof(s->force_dta_rebuild) +
         sizeof(s->force_blob_rebuild) + sizeof(s->force) + sizeof(s->headers) +
         sizeof(s->header_change) + sizeof(s->compress) +
-        sizeof(s->compress_blobs) + sizeof(s->ip_updates) +
-        sizeof(s->instant_sc) + sizeof(s->preempted) + sizeof(s->use_plan) +
-        sizeof(s->commit_sleep) + sizeof(s->convert_sleep) +
-        sizeof(s->same_schema) + sizeof(s->dbnum) + sizeof(s->flg) +
-        sizeof(s->rebuild_index) + sizeof(s->index_to_rebuild) +
-        sizeof(s->drop_table) + sizeof(s->original_master_node) +
-        dests_field_packed_size(s) + sizeof(s->spname_len) + s->spname_len +
-        sizeof(s->addsp) + sizeof(s->delsp) + sizeof(s->defaultsp) +
-        sizeof(s->is_sfunc) + sizeof(s->is_afunc) + sizeof(s->rename) +
-        sizeof(s->newtable) + sizeof(s->usedbtablevers) + sizeof(s->add_view) +
-        sizeof(s->drop_view);
+        sizeof(s->compress_blobs) + sizeof(s->persistent_seq) +
+        sizeof(s->ip_updates) + sizeof(s->instant_sc) + sizeof(s->preempted) +
+        sizeof(s->use_plan) + sizeof(s->commit_sleep) +
+        sizeof(s->convert_sleep) + sizeof(s->same_schema) + sizeof(s->dbnum) +
+        sizeof(s->flg) + sizeof(s->rebuild_index) +
+        sizeof(s->index_to_rebuild) + sizeof(s->drop_table) +
+        sizeof(s->original_master_node) + dests_field_packed_size(s) +
+        sizeof(s->spname_len) + s->spname_len + sizeof(s->addsp) +
+        sizeof(s->delsp) + sizeof(s->defaultsp) + sizeof(s->is_sfunc) +
+        sizeof(s->is_afunc) + sizeof(s->rename) + sizeof(s->newtable) +
+        sizeof(s->usedbtablevers) + sizeof(s->add_view) + sizeof(s->drop_view) +
+        sizeof(s->add_qdb_file) + sizeof(s->del_qdb_file) + sizeof(s->qdb_file_ver);
 
     return s->packed_len;
 }
@@ -251,6 +253,9 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->compress_blobs, sizeof(s->compress_blobs), p_buf,
                     p_buf_end);
 
+    p_buf = buf_put(&s->persistent_seq, sizeof(s->persistent_seq), p_buf,
+                    p_buf_end);
+
     p_buf = buf_put(&s->ip_updates, sizeof(s->ip_updates), p_buf, p_buf_end);
 
     p_buf = buf_put(&s->instant_sc, sizeof(s->instant_sc), p_buf, p_buf_end);
@@ -299,6 +304,10 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
 
     p_buf = buf_put(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
     p_buf = buf_put(&s->drop_view, sizeof(s->drop_view), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->add_qdb_file, sizeof(s->add_qdb_file), p_buf, p_buf_end);
+    p_buf = buf_put(&s->del_qdb_file, sizeof(s->del_qdb_file), p_buf, p_buf_end);
+    p_buf = buf_put(&s->qdb_file_ver, sizeof(s->qdb_file_ver), p_buf, p_buf_end);
     return p_buf;
 }
 
@@ -463,6 +472,9 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = (uint8_t *)buf_get(&s->compress_blobs, sizeof(s->compress_blobs),
                                p_buf, p_buf_end);
 
+    p_buf = (uint8_t *)buf_get(&s->persistent_seq, sizeof(s->persistent_seq),
+                               p_buf, p_buf_end);
+
     p_buf = (uint8_t *)buf_get(&s->ip_updates, sizeof(s->ip_updates), p_buf,
                                p_buf_end);
 
@@ -526,6 +538,13 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
         (uint8_t *)buf_get(&s->add_view, sizeof(s->add_view), p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->drop_view, sizeof(s->drop_view), p_buf,
                                p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->add_qdb_file, sizeof(s->add_qdb_file),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->del_qdb_file, sizeof(s->del_qdb_file),
+                               p_buf, p_buf_end);
+    p_buf = (uint8_t *)buf_get(&s->qdb_file_ver, sizeof(s->qdb_file_ver),
+                               p_buf, p_buf_end);
 
     return p_buf;
 }
@@ -796,6 +815,118 @@ void set_schemachange_options(struct schema_change_type *s, struct dbtable *db,
     set_schemachange_options_tran(s, db, scinfo, NULL);
 }
 
+/* helper function to reload csc2 schema */
+static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
+                              const char *csc2, char *table)
+{
+    int bdberr;
+    void *old_bdb_handle, *new_bdb_handle;
+    struct dbtable *newdb;
+    int changed = 0;
+
+    int rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
+    if (rc != 0) {
+        return rc;
+    }
+
+    int foundix = getdbidxbyname_ll(table);
+    if (foundix == -1) {
+        logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
+        exit(1);
+    }
+
+    /* TODO remove NULL arg; pre-llmeta holdover */
+    newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix, 0);
+    if (newdb == NULL) {
+        /* shouldn't happen */
+        backout_schemas(table);
+        return 1;
+    }
+    newdb->dbnum = db->dbnum;
+    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
+        /* can happen if new schema has no .DEFAULT tag but needs one */
+        backout_schemas(table);
+        return 1;
+    }
+    newdb->meta = db->meta;
+    newdb->dtastripe = gbl_dtastripe;
+
+    changed = ondisk_schema_changed(table, newdb, NULL, NULL);
+    /* let this fly, which will be ok for fastinit;
+       master will catch early non-fastinit cases */
+    if (changed < 0 && changed != SC_BAD_NEW_FIELD) {
+        if (changed == -2) {
+            logmsg(LOGMSG_ERROR, "Error reloading schema!\n");
+        }
+        /* shouldn't happen */
+        backout_schemas(table);
+        return 1;
+    }
+
+    old_bdb_handle = db->handle;
+
+    logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
+           bdb_isopen(db->handle));
+
+    /* the master doesn't tell the replicants to close the db
+     * ahead of time */
+    rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
+    if (rc || bdberr != BDBERR_NOERROR) {
+        logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
+        return 1;
+    }
+
+    /* reopen db */
+    newdb->handle = bdb_open_more_tran(
+        table, thedb->basedir, newdb->lrl, newdb->nix,
+        (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
+        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
+    logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n", newdb->handle,
+           bdberr);
+    if (bdberr != 0 || newdb->handle == NULL)
+        return 1;
+
+    new_bdb_handle = newdb->handle;
+
+    rc = bdb_get_csc2_highest(tran, table, &newdb->schema_version, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
+        abort();
+    }
+
+    set_odh_options_tran(newdb, tran);
+    transfer_db_settings(db, newdb);
+    restore_constraint_pointers(db, newdb);
+
+    /* create new csc2 file and modify lrl to reflect that (takes
+     * llmeta into account and does the right thing ) */
+    rc = write_csc2_file(db, csc2);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "Failed to write table .csc2 file\n");
+        return -1;
+    }
+
+    free_db_and_replace(db, newdb);
+    fix_constraint_pointers(db, newdb);
+
+    rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__, __LINE__,
+               rc, bdberr);
+    db->handle = old_bdb_handle;
+
+    memset(newdb, 0xff, sizeof(struct dbtable));
+    free(newdb);
+
+    commit_schemas(table);
+    fix_lrl_ixlen_tran(tran);
+    update_dbstore(db);
+
+    free(new_bdb_handle);
+    return 0;
+}
+
 /* threads must be stopped for this to work
  * if there were changes on disk and we are NOT using low level meta table
  * this expects the table to be bdb_close_only already, if we are using the
@@ -805,9 +936,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
     struct dbtable *db;
     int rc;
     int bdberr;
-    int foundix = -1;
     int bthashsz;
-    void *old_bdb_handle, *new_bdb_handle;
 
     /* regardless of success, the fact that we are getting asked to do this is
      * enough to indicate that any backup taken during this period may be
@@ -822,109 +951,13 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
     if (csc2) {
         /* genuine schema change. */
-        struct dbtable *newdb;
-        int changed = 0;
-
-        rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
-        if (rc != 0) {
-            return rc;
-        }
-
-        foundix = getdbidxbyname(table);
-        if (foundix == -1) {
-            logmsg(LOGMSG_FATAL, "Couldn't find table <%s>\n", table);
-            exit(1);
-        }
-
-        /* TODO remove NULL arg; pre-llmeta holdover */
-        newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix, 0);
-        if (newdb == NULL) {
-            /* shouldn't happen */
-            backout_schemas(table);
-            return 1;
-        }
-        newdb->dbnum = db->dbnum;
-        if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
-            /* can happen if new schema has no .DEFAULT tag but needs one */
-            backout_schemas(table);
-            return 1;
-        }
-        newdb->meta = db->meta;
-        newdb->dtastripe = gbl_dtastripe;
-
-        changed = ondisk_schema_changed(table, newdb, NULL, NULL);
-        /* let this fly, which will be ok for fastinit;
-           master will catch early non-fastinit cases */
-        if (changed < 0 && changed != SC_BAD_NEW_FIELD) {
-            if (changed == -2) {
-                logmsg(LOGMSG_ERROR, "Error reloading schema!\n");
-            }
-            /* shouldn't happen */
-            backout_schemas(table);
-            return 1;
-        }
-
-        old_bdb_handle = db->handle;
-
-        logmsg(LOGMSG_DEBUG, "%s isopen %d\n", db->tablename,
-               bdb_isopen(db->handle));
-
-        /* the master doesn't tell the replicants to close the db
-         * ahead of time */
-        rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
-        if (rc || bdberr != BDBERR_NOERROR) {
-            logmsg(LOGMSG_ERROR, "Error closing old db: %s\n", db->tablename);
-            return 1;
-        }
-
-        /* reopen db */
-        newdb->handle = bdb_open_more_tran(
-            table, thedb->basedir, newdb->lrl, newdb->nix,
-            (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
-            newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-            newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
-        logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n",
-               newdb->handle, bdberr);
-        if (bdberr != 0 || newdb->handle == NULL) return 1;
-
-        new_bdb_handle = newdb->handle;
-
-        rc = bdb_get_csc2_highest(tran, table, &newdb->schema_version, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "bdb_get_csc2_highest() failed! PANIC!!\n");
-            abort();
-        }
-
-        set_odh_options_tran(newdb, tran);
-        transfer_db_settings(db, newdb);
-        restore_constraint_pointers(db, newdb);
-
-        /* create new csc2 file and modify lrl to reflect that (takes
-         * llmeta into account and does the right thing ) */
-        rc = write_csc2_file(db, csc2);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "Failed to write table .csc2 file\n");
-            return -1;
-        }
-
-        free_db_and_replace(db, newdb);
-        fix_constraint_pointers(db, newdb);
-
-        rc = bdb_free_and_replace(old_bdb_handle, new_bdb_handle, &bdberr);
+        dyns_init_globals();
+        int rc = reload_csc2_schema(db, tran, csc2, table);
+        dyns_cleanup_globals();
         if (rc)
-            logmsg(LOGMSG_ERROR, "%s:%d bdb_free rc %d %d\n", __FILE__,
-                   __LINE__, rc, bdberr);
-        db->handle = old_bdb_handle;
-
-        memset(newdb, 0xff, sizeof(struct dbtable));
-        free(newdb);
-
-        commit_schemas(table);
-        fix_lrl_ixlen_tran(tran);
-        update_dbstore(db);
-
-        free(new_bdb_handle);
+            return rc;
     } else {
+        void *old_bdb_handle, *new_bdb_handle;
         old_bdb_handle = db->handle;
         rc = bdb_close_only_sc(old_bdb_handle, tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
@@ -1018,9 +1051,10 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->use_new_genids = newsc->use_new_genids;
     newsc->finalize = sc->finalize;
     newsc->finalize_only = sc->finalize_only;
+    newsc->is_osql = sc->is_osql;
 
     if (!p_buf) {
-        free(newsc);
+        free_schema_change_type(newsc);
         free(buf);
         return NULL;
     }

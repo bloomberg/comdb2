@@ -7,37 +7,37 @@
 extern "C" {
 #endif /* __cplusplus */
 
-const sqlite3_module systblTablesModule;
-const sqlite3_module systblColumnsModule;
-const sqlite3_module systblKeysModule;
-const sqlite3_module systblFieldsModule;
-const sqlite3_module systblConstraintsModule;
-const sqlite3_module systblTblSizeModule;
-const sqlite3_module systblSPsModule;
-const sqlite3_module systblUsersModule;
-const sqlite3_module systblQueuesModule;
-const sqlite3_module systblTablePermissionsModule;
-const sqlite3_module systblTriggersModule;
-const sqlite3_module systblKeywordsModule;
-const sqlite3_module systblLimitsModule;
-const sqlite3_module systblTunablesModule;
-const sqlite3_module systblThreadPoolsModule;
-const sqlite3_module systblPluginsModule;
-const sqlite3_module systblAppsockHandlersModule;
-const sqlite3_module systblOpcodeHandlersModule;
-const sqlite3_module completionModule; // in ext/misc
-const sqlite3_module systblClientStatsModule;
-const sqlite3_module systblTimepartModule;
-const sqlite3_module systblTimepartShardsModule;
-const sqlite3_module systblTimepartEventsModule;
-const sqlite3_module systblCronSchedsModule;
-const sqlite3_module systblCronEventsModule;
-const sqlite3_module systblTransactionLogsModule;
-const sqlite3_module systblMetricsModule;
-const sqlite3_module systblTimeseriesModule;
-const sqlite3_module systblReplStatsModule;
-const sqlite3_module systblLogicalOpsModule;
-const sqlite3_module systblSystabsModule;
+extern const sqlite3_module systblTablesModule;
+extern const sqlite3_module systblColumnsModule;
+extern const sqlite3_module systblKeysModule;
+extern const sqlite3_module systblFieldsModule;
+extern const sqlite3_module systblConstraintsModule;
+extern const sqlite3_module systblTblSizeModule;
+extern const sqlite3_module systblSPsModule;
+extern const sqlite3_module systblUsersModule;
+extern const sqlite3_module systblQueuesModule;
+extern const sqlite3_module systblTablePermissionsModule;
+extern const sqlite3_module systblTriggersModule;
+extern const sqlite3_module systblKeywordsModule;
+extern const sqlite3_module systblLimitsModule;
+extern const sqlite3_module systblTunablesModule;
+extern const sqlite3_module systblThreadPoolsModule;
+extern const sqlite3_module systblPluginsModule;
+extern const sqlite3_module systblAppsockHandlersModule;
+extern const sqlite3_module systblOpcodeHandlersModule;
+extern const sqlite3_module completionModule; // in ext/misc
+extern const sqlite3_module systblClientStatsModule;
+extern const sqlite3_module systblTimepartModule;
+extern const sqlite3_module systblTimepartShardsModule;
+extern const sqlite3_module systblTimepartEventsModule;
+extern const sqlite3_module systblCronSchedsModule;
+extern const sqlite3_module systblCronEventsModule;
+extern const sqlite3_module systblTransactionLogsModule;
+extern const sqlite3_module systblMetricsModule;
+extern const sqlite3_module systblTimeseriesModule;
+extern const sqlite3_module systblReplStatsModule;
+extern const sqlite3_module systblLogicalOpsModule;
+extern const sqlite3_module systblSystabsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
@@ -52,10 +52,13 @@ int systblCronInit(sqlite3*db);
 int systblFingerprintsInit(sqlite3 *);
 int systblViewsInit(sqlite3 *);
 int systblSQLClientStats(sqlite3 *);
+int systblSQLIndexStatsInit(sqlite3 *);
+int systblTemporaryFileSizesModuleInit(sqlite3 *);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 
 int systblScStatusInit(sqlite3 *db);
+int systblScHistoryInit(sqlite3 *db);
 int systblConnectionsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */

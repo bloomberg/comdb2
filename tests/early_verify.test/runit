@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+db=$1
+
+set -e
+
+$CDB2SQL_EXE ${CDB2_OPTIONS} $db default "create table actions {`cat actions.csc2`}"
+
+for i in `seq 1 60`; do
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "insert into actions values($i, 'done')"
+done
+
+for i in `seq 1 60`; do
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update actions set status='done' where id=60 and status='done' limit 1" >> test.out &
+done
+
+sleep 10
+
+diff expected.out test.out
+if [[ $? -ne 0 ]]
+then
+exit 1
+fi

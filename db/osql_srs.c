@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <poll.h>
 #include <list.h>
 #include "comdb2.h"
 #include "sql.h"
@@ -168,7 +169,7 @@ int srs_tran_add_query(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = NULL;
 
-    if (clnt->verifyretry_off || clnt->isselect || clnt->trans_has_sp ||
+    if (clnt->verifyretry_off || clnt->isselect || clnt->dbtran.trans_has_sp ||
         clnt->has_recording) {
         return 0;
     }
@@ -254,6 +255,12 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         clnt->verify_retries++;
         gbl_verify_tran_replays++;
 
+        if (clnt->verify_retries % 10 == 0) {
+            // whoah slow down there pal
+            int ms = clnt->verify_retries / 10;
+            poll(NULL, 0, 10 * ms);
+        }
+
         /* Replays for SERIAL or SNAPISOL will never have select or selectv */
         if (clnt->dbtran.mode == TRANLEVEL_RECOM) {
             /* we need to free all the shadows but selectv table (recgenid) */
@@ -270,8 +277,6 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         }
 
         if (clnt->verify_retries == gbl_osql_verify_retries_max + 1) {
-            logmsg(LOGMSG_DEBUG, "%s line %d verify error after %d retries\n",
-                   __func__, __LINE__, clnt->verify_retries);
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
         }
 
@@ -313,7 +318,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
                     }
                 }
 
-                int type = tran2netreq(clnt->dbtran.mode);
+                int type = tran2req(clnt->dbtran.mode);
                 osql_sock_abort(clnt, type);
             }
             break;
@@ -332,22 +337,14 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     }
 
     /* replayed, free the session */
-    if (srs_tran_destroy(clnt))
+    if (srs_tran_destroy(clnt)) {
         logmsg(LOGMSG_ERROR, "%s Fail to destroy transaction replay session\n",
                __func__);
-    if (rc) {
-        if (clnt->verify_retries < gbl_osql_verify_retries_max)
-            logmsg(LOGMSG_ERROR,
-                   "Uncommitable transaction %d retried %d times, "
-                   "rc=%d [global retr=%lld] nq=%d tnq=%d\n",
-                   clnt->queryid, clnt->verify_retries, rc,
-                   gbl_verify_tran_replays, nq, tnq);
-        else
-            logmsg(LOGMSG_ERROR,
-                   "Replayed too many times, too high contention, "
-                   "failing id=%d rc=%d retries=%d [global retr=%lld]\n",
-                   clnt->queryid, rc, clnt->verify_retries,
-                   gbl_verify_tran_replays);
+    }
+    if (rc && clnt->verify_retries < gbl_osql_verify_retries_max) {
+        logmsg(LOGMSG_ERROR, "Uncommitable transaction %d retried %d times,  "
+               "rc=%d [global retr=%lld] nq=%d tnq=%d\n", clnt->queryid,
+               clnt->verify_retries, rc, gbl_verify_tran_replays, nq, tnq);
     }
 
     osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);

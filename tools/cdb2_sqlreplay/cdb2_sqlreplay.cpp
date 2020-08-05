@@ -38,7 +38,7 @@
 
 #include "assert.h"
 #include "cdb2api.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 
 static cdb2_hndl_tp *cdb2h = nullptr;
 std::map<std::string, std::string> sqltrack;
@@ -604,9 +604,7 @@ void process_events(cdb2_hndl_tp *db, std::istream &in) {
         linenum++;
 
         cson_value *event_val;
-        cson_parse_info pinfo = cson_parse_info_empty_m;
-
-        rc = cson_parse_string(&event_val, line.c_str(), line.length(), &cson_parse_opt_empty, &pinfo);
+        rc = cson_parse_string(&event_val, line.c_str(), line.length());
         if (rc) {
             std::cerr << "Malformed input on line " << linenum << std::endl;
             continue;

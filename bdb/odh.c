@@ -35,7 +35,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include "bdb_int.h"
 #include <locks.h>
@@ -166,6 +166,8 @@ int bdb_compr2algo(const char *a)
         return BDB_COMPRESS_CRLE;
     if (strncasecmp(a, "lz4", 3) == 0)
         return BDB_COMPRESS_LZ4;
+    if (strncasecmp(a, "none", 4) == 0)
+        return BDB_COMPRESS_NONE;
     return BDB_COMPRESS_NONE;
 }
 
@@ -585,9 +587,10 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                                  .outsz = odh->length};
                 rc = decompressComdb2RLE(&rle);
                 if (rc || rle.outsz != odh->length) {
-                    logmsg(LOGMSG_ERROR, "%s:ERROR decompressComdb2RLE rc: %d "
-                                    "outsz: %lu expected: %u\n",
-                            __func__, rc, rle.outsz, odh->length);
+                    logmsg(LOGMSG_ERROR,
+                           "%s:ERROR decompressComdb2RLE rc: %d "
+                           "outsz: %zu expected: %u\n",
+                           __func__, rc, rle.outsz, odh->length);
                     goto err;
                 }
             } else if (alg == BDB_COMPRESS_LZ4) {
@@ -663,7 +666,7 @@ static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
         logmsg(LOGMSG_FATAL, "%s:ERROR: data size %u too small for ODH\n", __func__,
                 (unsigned)buflen);
         abort();
-        return DB_ODH_CORRUPT;
+        // return DB_ODH_CORRUPT;
     }
 
     read_odh(buf, &odh);
@@ -689,7 +692,7 @@ int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
         logmsg(LOGMSG_FATAL, "%s:ERROR: data size %u too small for ODH\n", __func__,
                 (unsigned)fromlen);
         abort();
-        return DB_ODH_CORRUPT;
+        // return DB_ODH_CORRUPT;
     }
 
     read_odh(from, &odh_in);
@@ -766,7 +769,7 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
         fsnapf(stdout, odh.recptr, odh.length);
         */
         if (buf) {
-            if (data->flags & DB_DBT_MALLOC) {
+            if (data->flags & (DB_DBT_MALLOC | DB_DBT_REALLOC)) {
                 free(data->data);
                 data->data = odh.recptr;
             } else if (data->flags & DB_DBT_USERMEM) {
@@ -1279,6 +1282,18 @@ int bdb_cput_pack(bdb_state_type *bdb_state, int is_blob, DBC *dbcp, DBT *key,
     }
 
     return rc;
+}
+
+void bdb_set_queue_odh_options(bdb_state_type *bdb_state, int odh,
+                               int compression, int persistseq)
+{
+    print(bdb_state,
+          "BDB queue options set: ODH %d compression %d "
+          "persitent_seq %d\n",
+          odh, compression, persistseq);
+    bdb_state->ondisk_header = odh;
+    bdb_state->compress = compression;
+    bdb_state->persistent_seq = persistseq;
 }
 
 void bdb_set_odh_options(bdb_state_type *bdb_state, int odh, int compression,

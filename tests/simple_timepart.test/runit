@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Time partition testcase for comdb2
 ################################################################################
@@ -44,8 +45,8 @@ function timepart_stats
 
     #randomly we catch a drop event here; sleep to skip the deterministically
     sleep 6
-    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
-    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents" >> $OUT
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2" >> $OUT
+    cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2" >> $OUT
     if (( $? != 0 )) ; then
         echo "FAILURE"
         exit 1
@@ -177,6 +178,10 @@ for run in 1 2 3 4 5; do
    echo "Done waiting for ${partition_config[${run}]}"
    echo "Done waiting for ${partition_config[${run}]}" >> $OUT
 
+   if [[ "$run" == "4" && $dbname == *"reptimeout"* ]]; then
+       cdb2sql ${CDB2_OPTIONS} --host ${master} $dbname default  "PUT TUNABLE 'fake_sc_replication_timeout' 1"
+   fi
+
    timepart_stats
 done
 
@@ -194,6 +199,75 @@ cdb2sql ${CDB2_OPTIONS} $dbname default "select * from ${VIEW1}" >> $OUT 2>&1
 sleep 180
 
 timepart_stats
+
+echo "Test daily, weekly, mothly, yearly PERIOD"
+
+CNT=1000
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl1 (a int)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl1 select value from generate_series(1,$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl2 (a int)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl2 select value from generate_series(1,$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl3 (a int)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl3 select value from generate_series(1,$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE table tbl4 (a int)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl4 select value from generate_series(1,$CNT)"
+
+assertcnt tbl1 $CNT
+assertcnt tbl2 $CNT
+assertcnt tbl3 $CNT
+assertcnt tbl4 $CNT
+
+adayago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(24*3600 + 3600))'`
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl1 as tbl1v1 PERIOD 'DAILY' RETENTION 3 START '${adayago}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+aweekago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(7*24*3600 + 3600))'`
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl2 as tbl2v1 PERIOD 'WEEKLY' RETENTION 3 START '${aweekago}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+amonthago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(27*24*3600))'`
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl3 as tbl3v1 PERIOD 'MONTHLY' RETENTION 3 START '${amonthago}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+ayearago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(365*24*3600 +3600))'`
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl4 as tbl4v1 PERIOD 'YEARLY' RETENTION 3 START '${ayearago}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+
+sleep 60
+timepart_stats
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl1v1 select value from generate_series($CNT+1,2*$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl2v1 select value from generate_series($CNT+1,2*$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl3v1 select value from generate_series($CNT+1,2*$CNT)"
+cdb2sql ${CDB2_OPTIONS} $dbname default "insert into tbl4v1 select value from generate_series($CNT+1,2*$CNT)"
+
+assertcnt tbl1v1 $((2*CNT))
+assertcnt tbl2v1 $((2*CNT))
+assertcnt tbl3v1 $((2*CNT))
+assertcnt tbl4v1 $((2*CNT))
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl1v1"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl2v1"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl3v1"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop time partition tbl4v1"
+
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl1"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl2"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl3"
+cdb2sql ${CDB2_OPTIONS} $dbname default "drop table tbl4"
 
 
 # we need to scrub dbname from alpha

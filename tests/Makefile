@@ -9,7 +9,6 @@ export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
 include $(TESTSROOTDIR)/Makefile.common
 
-
 # List of disabled tests
 DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
 

@@ -16,7 +16,7 @@
 
 /* comdb index front end */
 
-#include "limit_fortify.h"
+#include <unistd.h> /* For usleep() */
 #include <ctype.h>
 #include <epochlib.h>
 #include "comdb2.h"
@@ -30,9 +30,11 @@
 #include "osqlblockproc.h"
 #include "osqlblkseq.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "plhash.h"
 #include "comdb2_plugin.h"
 #include "comdb2_opcode.h"
+#include "sc_util.h"
 
 static void pack_tail(struct ireq *iq);
 extern int glblroute_get_buffer_capacity(int *bf);
@@ -108,37 +110,60 @@ extern pthread_mutex_t delay_lock;
 extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_print_deadlock_cycles;
 
+static void adjust_maxwthreadpenalty(int *totpen_p,
+                                     double lcl_penaltyincpercent_d,
+                                     int retries)
+{
+    Pthread_mutex_lock(&delay_lock);
+
+    int penaltyinc;
+    penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
+                 (lcl_penaltyincpercent_d / retries);
+
+    if (penaltyinc <= 0) {
+        /* at least one less writer */
+        penaltyinc = 1;
+    }
+
+    if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxwthreads)
+        penaltyinc = gbl_maxwthreads - gbl_maxwthreadpenalty;
+
+    gbl_maxwthreadpenalty += penaltyinc;
+    *totpen_p += penaltyinc;
+
+    Pthread_mutex_unlock(&delay_lock);
+}
+
 static int handle_op_block(struct ireq *iq)
 {
     int rc;
-    int retries;
-    int totpen;
-    int penaltyinc;
-    double gbl_penaltyincpercent_d;
+    int64_t startus, stopus;
+    int deadlocksleepus;
+
+    static int avg_toblock_us;
 
     if (gbl_readonly || gbl_readonly_sc) {
         /* ERR_REJECTED will force a proxy retry. This is essential to make live
          * schema change work reliably. */
-        if (gbl_schema_change_in_progress)
+        if (get_schema_change_in_progress(__func__, __LINE__))
             rc = ERR_REJECTED;
         else
             rc = ERR_READONLY;
         return rc;
     }
     if (iq->frommach && !allow_write_from_remote(iq->frommach)) {
-        rc = ERR_READONLY;
-        return rc;
+        return ERR_READONLY;
     }
 
     iq->where = "toblock";
-
-    retries = 0;
-    totpen = 0;
-
-    gbl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
+    int retries = 0;
+    int totpen = 0;
+    double lcl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
 
 retry:
+    startus = comdb2_time_epochus();
     rc = toblock(iq);
+    stopus = comdb2_time_epochus();
 
     extern int gbl_test_blkseq_replay_code;
     if (gbl_test_blkseq_replay_code &&
@@ -147,43 +172,39 @@ retry:
         logmsg(LOGMSG_USER, "Test blkseq replay: returning "
                             "ERR_NOT_DURABLE to test replay:\n");
         logmsg(LOGMSG_USER, "rc=%d, errval=%d errstr='%s' rcout=%d\n", rc,
-               iq->errstat.errval, iq->errstat.errstr, iq->sorese.rcout);
+               iq->errstat.errval, iq->errstat.errstr,
+               iq->sorese ? iq->sorese->rcout : 0);
         rc = ERR_NOT_DURABLE;
     }
 
-    if (rc == RC_INTERNAL_RETRY) {
+    if (rc == 0) {
+        /* Calculate a moving average runtime of toblock calls, and cap it
+           at 25 milliseconds. The value is used to determine how much time we
+           sleep before retrying on a deadlock. It does not have to be 100%
+           accurate so we do not hold a lock here. We could make the number of
+           calls and the cap tunables but for now leave them hardcoded. */
+        avg_toblock_us += ((stopus - startus - avg_toblock_us) >> 4);
+        if (avg_toblock_us > 25000)
+            avg_toblock_us = 25000;
+    } else if (rc == RC_INTERNAL_RETRY) {
         iq->retries++;
         if (++retries < gbl_maxretries) {
             if (!bdb_attr_get(thedb->bdb_attr,
                               BDB_ATTR_DISABLE_WRITER_PENALTY_DEADLOCK)) {
-                Pthread_mutex_lock(&delay_lock);
-
-                penaltyinc = (double)(gbl_maxwthreads - gbl_maxwthreadpenalty) *
-                             (gbl_penaltyincpercent_d / iq->retries);
-
-                if (penaltyinc <= 0) {
-                    /* at least one less writer */
-                    penaltyinc = 1;
-                }
-
-                if (penaltyinc + gbl_maxwthreadpenalty > gbl_maxthreads)
-                    penaltyinc = gbl_maxthreads - gbl_maxwthreadpenalty;
-
-                gbl_maxwthreadpenalty += penaltyinc;
-                totpen += penaltyinc;
-
-                Pthread_mutex_unlock(&delay_lock);
+                adjust_maxwthreadpenalty(&totpen, lcl_penaltyincpercent_d,
+                                         iq->retries);
             }
-
             iq->usedb = iq->origdb;
 
             n_retries++;
-            poll(0, 0, (rand() % 25 + 1));
+            deadlocksleepus = (rand() % gbl_maxwthreads * avg_toblock_us);
+            /* usleep(0) will likely give up the CPU. Avoid it. */
+            if (deadlocksleepus != 0)
+                usleep(deadlocksleepus);
             goto retry;
         }
 
-        logmsg(LOGMSG_WARN, "*ERROR* toblock too much contention count %d\n",
-               retries);
+        logmsg(LOGMSG_WARN, "toblock too much contention count=%d\n", retries);
         thd_dump();
     }
 
@@ -192,13 +213,14 @@ retry:
        this ensures no requests replays will be left stuck
        papers around other short returns in toblock jic
        */
-    osql_blkseq_unregister(iq);
+    if (rc)
+        osql_blkseq_unregister(iq);
 
-    Pthread_mutex_lock(&delay_lock);
-
-    gbl_maxwthreadpenalty -= totpen;
-
-    Pthread_mutex_unlock(&delay_lock);
+    if (totpen) {
+        Pthread_mutex_lock(&delay_lock);
+        gbl_maxwthreadpenalty -= totpen;
+        Pthread_mutex_unlock(&delay_lock);
+    }
 
     /* return codes we think the proxy understands.  all other cases
        return proxy retry */
@@ -212,7 +234,7 @@ retry:
         rc != RC_INTERNAL_FORWARD && rc != RC_INTERNAL_RETRY &&
         rc != ERR_TRAN_TOO_BIG && /* THIS IS SENT BY BLOCKSQL WHEN TOOBIG */
         rc != 999 && rc != ERR_ACCESS && rc != ERR_UNCOMMITABLE_TXN &&
-        (rc != ERR_NOT_DURABLE || !iq->sorese.type)) {
+        (rc != ERR_NOT_DURABLE || !iq->sorese)) {
         /* XXX CLIENT_RETRY DOESNT ACTUALLY CAUSE A RETRY USUALLY, just
            a bad rc to the client! */
         /*rc = RC_TRAN_CLIENT_RETRY;*/
@@ -267,7 +289,7 @@ int handle_ireq(struct ireq *iq)
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
     if (gbl_print_deadlock_cycles)
-        osql_snap_info = &iq->snap_info;
+        osql_snap_info = IQ_SNAPINFO(iq);
 
     comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
     if (!opcode) {
@@ -303,7 +325,7 @@ int handle_ireq(struct ireq *iq)
         /* pack data at tail of reply */
         pack_tail(iq);
 
-        if (iq->sorese.type) {
+        if (iq->sorese) {
             /* we don't have a socket or a buffer for that matter,
              * instead, we need to send back the result of transaction from rc
              */
@@ -313,16 +335,16 @@ int handle_ireq(struct ireq *iq)
                override the extended code (which we don't care about, with
                the primary error code
                */
-            if (rc && (!iq->sorese.rcout || rc == ERR_NOT_DURABLE))
-                iq->sorese.rcout = rc;
+            if (rc && (!iq->sorese->rcout || rc == ERR_NOT_DURABLE))
+                iq->sorese->rcout = rc;
 
             int sorese_rc = rc;
-            if (rc == 0 && iq->sorese.rcout == 0 &&
+            if (rc == 0 && iq->sorese->rcout == 0 &&
                 iq->errstat.errval == COMDB2_SCHEMACHANGE_OK) {
                 // pretend error happend to get errstat shipped to replicant
                 sorese_rc = 1;
             } else {
-                iq->errstat.errval = iq->sorese.rcout;
+                iq->errstat.errval = iq->sorese->rcout;
             }
 
             if (iq->debug) {
@@ -330,32 +352,20 @@ int handle_ireq(struct ireq *iq)
                 reqprintf(iq,
                           "sorese returning rqid=%llu uuid=%s node=%s type=%d "
                           "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
-                          iq->sorese.rqid, comdb2uuidstr(iq->sorese.uuid, us),
-                          iq->sorese.host, iq->sorese.type, iq->sorese.nops,
-                          iq->sorese.rcout, iq->sorese.osql_retry, rc,
+                          iq->sorese->rqid, comdb2uuidstr(iq->sorese->uuid, us),
+                          iq->sorese->host, iq->sorese->type, iq->sorese->nops,
+                          iq->sorese->rcout, iq->sorese->verify_retries, rc,
                           iq->errstat.errval);
             }
 
-            if (iq->sorese.rqid == 0)
+            if (iq->sorese->rqid == 0)
                 abort();
-            osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, sorese_rc);
+            osql_comm_signal_sqlthr_rc(
+                iq->sorese->host, iq->sorese->rqid, iq->sorese->uuid,
+                iq->sorese->nops, &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();
 
-#if 0
-            /*
-                I don't wanna do this here, reloq_end_request() needs sql
-                details that are in the buffer; I am not gonna remalloc and copy
-                just to preserve code symmetry.
-                free the buffer, that was created by sorese_rcvreq()
-            */
-            if(iq->p_buf_out_start)
-            {
-                free(iq->p_buf_out_start);
-                iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-                iq->p_buf_in_end = iq->p_buf_in = NULL;
-            }
-#endif
         } else if (iq->is_dumpresponse) {
             signal_buflock(iq->request_data);
             if (rc != 0) {
@@ -368,7 +378,7 @@ int handle_ireq(struct ireq *iq)
             if (iq->is_socketrequest) {
                 if (iq->sb == NULL) {
                     rc = offload_comm_send_blockreply(
-                        iq->frommach, iq->rqid, iq->p_buf_out_start,
+                        iq->frommach, iq->fwd_tag_rqid, iq->p_buf_out_start,
                         iq->p_buf_out - iq->p_buf_out_start, rc);
                     free_bigbuf_nosignal(iq->p_buf_out_start);
                 } else {
@@ -421,21 +431,13 @@ int handle_ireq(struct ireq *iq)
     }
 
     /* Finish off logging. */
-    if (iq->blocksql_tran) {
-        osql_bplog_reqlog_queries(iq);
+    if (iq->sorese) {
+        osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     release_node_stats(NULL, NULL, iq->frommach);
     if (gbl_print_deadlock_cycles)
         osql_snap_info = NULL;
-
-    if (iq->sorese.type) {
-        if (iq->p_buf_out_start) {
-            free(iq->p_buf_out_start);
-            iq->p_buf_out_end = iq->p_buf_out_start = iq->p_buf_out = NULL;
-            iq->p_buf_in_end = iq->p_buf_in = NULL;
-        }
-    }
 
     /* Make sure we do not leak locks */
 

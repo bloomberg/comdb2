@@ -66,12 +66,15 @@
 #include "util.h"
 #include "tohex.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2uuid.h"
 #include "strbuf.h"
 #include "roll_file.h"
 
 #include "eventlog.h"
 #include "reqlog_int.h"
+
+#include <tohex.h>
 
 /*
 ** ugh - constants are variable
@@ -109,7 +112,7 @@ static struct list master_opcode_inv_list = {0};
 static int master_table_rules = 0;
 static char master_stmts[NUMSTMTS][MAXSTMT + 1];
 static int master_num_stmts = 0;
-int reqltruncate = 1;
+int reqltruncate = 0;
 
 /* sometimes you have to debug the debugger */
 static int verbose = 0;
@@ -653,6 +656,8 @@ static const char *help_text[] = {
     "       rollat N         - roll when log file size larger than N bytes",
     "       every N          - log only every Nth event, 0 logs all",
     "       verbose on/off   - turn on/off verbose mode",
+    "       dir <dir>        - set custom directory for event log files\n",
+    "       file <file>      - set log file to custom location\n",
     "       flush            - flush log file to disk",
     "reql [rulename] ...     - add/modify rules.  The default rule is '0'.",
     "                          Valid rule names begin with a digit or '.'.",
@@ -1606,6 +1611,111 @@ static void log_header(struct reqlogger *logger, struct output *out,
     Pthread_mutex_unlock(&rules_mutex);
 }
 
+static void print_str(const char *data, int len, char *s, int n)
+{
+    int need = len + 3; // space for ''
+    if (n < need) {
+        int half = (n - 5) / 2; /* minus '..' and NUL */
+        snprintf(s, n, "'%.*s..%.*s'", half, data, half, data + len - half);
+    } else {
+        snprintf(s, n, "'%.*s'", len, data);
+    }
+}
+
+static void print_blob(const char *data, int len, char *s, int n)
+{
+    int need = (len * 2) + 4; // space for x''
+
+    if (n < need) {
+        int half = (n - 6) / 2; /* minus x'..' and NULL */
+        char buf0[half + 1], buf1[half + 1];
+        half /= 2;
+        util_tohex(buf0, data, half);
+        util_tohex(buf1, data + len - half, half);
+        snprintf(s, n, "x'%s..%s'", buf0, buf1);
+    } else {
+        char buf[len * 2 + 1];
+        util_tohex(buf, data, len);
+        snprintf(s, n, "x'%s'", buf);
+    }
+}
+
+static void print_ym(const intv_t *tv,  char *s, int n)
+{
+    const intv_ym_t *ym = &tv->u.ym;
+    snprintf(s, n, "%s%u-%2.2u", tv->sign == -1 ? "-" : "", ym->years, ym->months);
+}
+
+static void print_ds(const intv_t *tv, char *s, int n)
+{
+    const intv_ds_t *ds = &tv->u.ds;
+    snprintf(s, n, "%s%u %2.2u:%2.2u:%2.2u.%.*u", tv->sign == -1 ? "- " : "",
+             ds->days, ds->hours, ds->mins, ds->sec, ds->prec, ds->frac);
+}
+
+
+static void log_params(struct reqlogger *logger)
+{
+    struct sqlclntstate *clnt = logger->clnt;
+    int n = param_count(clnt);
+    if (n <= 0) return;
+    reqlog_logf(logger, REQL_INFO, "params=%d\n", n);
+    struct param_data p = {0};
+    for (int i = 0; i < n; ++i) {
+        if (param_value(clnt, &p, i) != 0) {
+            continue;
+        }
+        int len;
+        char value[64];
+        char *type = CLIENT_TYPE_TO_STR(p.type);
+        if (p.null || p.type == COMDB2_NULL_TYPE) {
+            snprintf(value, sizeof(value), "null");
+        } else
+        switch (p.type) {
+        case CLIENT_UINT:
+        case CLIENT_INT:
+            snprintf(value, sizeof(value), "%"PRId64, p.u.i);
+            break;
+        case CLIENT_REAL:
+            snprintf(value, sizeof(value), "%f", p.u.r);
+            break;
+        case CLIENT_CSTR:
+        case CLIENT_PSTR:
+        case CLIENT_PSTR2:
+        case CLIENT_VUTF8:
+            print_str(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_BYTEARRAY:
+        case CLIENT_BLOB:
+        case CLIENT_BLOB2:
+            print_blob(p.u.p, p.len, value, sizeof(value));
+            break;
+        case CLIENT_DATETIME:
+        case CLIENT_DATETIMEUS: {
+            dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
+            break; }
+        case CLIENT_INTVYM:
+            print_ym(&p.u.tv, value, sizeof(value));
+            break;
+        case CLIENT_INTVDS:
+        case CLIENT_INTVDSUS:
+            print_ds(&p.u.tv, value, sizeof(value));
+            break;
+        default:
+            value[0] = 0;
+            break;
+        }
+        if (p.pos)
+            reqlog_logf(logger, REQL_INFO,
+                        "param%-3d type=%-12s len=%-3d indx=%-16d value=%s", i,
+                        type, p.len, p.pos, value);
+        else
+            reqlog_logf(logger, REQL_INFO,
+                        "param%-3d type=%-12s len=%-3d name=%-16s value=%s", i,
+                        type, p.len, p.name, value);
+    }
+}
+
 static void log_all_events(struct reqlogger *logger, struct output *out)
 {
     struct logevent *event;
@@ -1903,6 +2013,9 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
     }
 
     if (logger->durationus >= M2U(long_request_thresh)) {
+        if (logger->clnt) {
+            log_params(logger);
+        }
 
         log_header(logger, long_request_out, 1);
         long_reqs++;
@@ -1919,19 +2032,16 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             last_long_request_epoch = comdb2_time_epoch();
 
             if (long_request_out != default_out) {
-                char *sqlinfo;
 
-                if (logger->iq) {
-                    sqlinfo = osql_get_tran_summary(logger->iq);
-                } else {
-                    sqlinfo = NULL;
-                }
-                if (sqlinfo) {
+                if (logger->iq && logger->iq->sorese) {
+                    char *sqlinfo = osql_sess_info(logger->iq->sorese);
                     if (long_request_count == 1) {
                         logmsg(LOGMSG_USER,
-                               "LONG REQUEST %d MS logged in %s [%s]\n",
+                               "LONG REQUEST %d MS logged in %s [%s time %d]\n",
                                U2M(logger->durationus),
-                               long_request_out->filename, sqlinfo);
+                               long_request_out->filename, sqlinfo,
+                               U2M(logger->iq->sorese->sess_endus -
+                                   logger->iq->sorese->sess_startus));
                     } else {
                         logmsg(LOGMSG_USER,
                                "%d LONG REQUESTS %d MS - %d MS logged "
@@ -1963,10 +2073,13 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
         norm_reqs++;
     }
 
-    if (logger->iq && logger->iq->blocksql_tran) {
-        if (gbl_time_osql) osql_bplog_time_done(logger->iq);
+    if (logger->iq && logger->iq->sorese) {
+        if (gbl_time_osql)
+            osql_bplog_time_done(&logger->iq->timings);
 
-        osql_bplog_free(logger->iq, 1, __func__, callfunc, line);
+        /* here, closing the session doesn't destroy iq*/
+        logger->iq->sorese->iq = NULL;
+        osql_sess_close(&logger->iq->sorese, true);
     }
 out:
     reqlog_reset_logger(logger); //will reset which bzeros much of logger
@@ -2029,25 +2142,27 @@ void init_clientstats_table()
 }
 
 #define UNKNOWN_NAME "Unknown"
-#define NAME(s) ((s && strlen(s) > 0) ? s : UNKNOWN_NAME)
+#define GET_NAME_AND_LEN(s, s_len)                                             \
+    do {                                                                       \
+        if (!s || (s_len = strlen(s) + 1) <= 1) {                              \
+            s = UNKNOWN_NAME;                                                  \
+            s_len = sizeof(UNKNOWN_NAME);                                      \
+        }                                                                      \
+    } while (0);
 
 static int hash_free_element(void *elem, void *unused) {
     free(elem);
     return 0;
 }
 
-static nodestats_t *add_clientstats(const char *task, const char *stack,
-                                    int node, int fd)
+static nodestats_t *add_clientstats(unsigned checksum,
+                                    const char *task_and_stack, int task_len,
+                                    int stack_len, int node, int fd)
 {
-    int task_len, stack_len, nclntstats;
+    int nclntstats;
     nodestats_t *old_entry = NULL;
     nodestats_t *entry = NULL;
     nodestats_t *entry_chk = NULL;
-
-    task = NAME(task);
-    stack = NAME(stack);
-    task_len = strlen(task) + 1;
-    stack_len = strlen(stack) + 1;
 
     entry = calloc(1, offsetof(nodestats_t, mem) + task_len + stack_len);
     if (entry == NULL) {
@@ -2055,10 +2170,9 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
         return NULL;
     }
 
-    /* Construct our hashtable key: crc32c(task + stack) + nodeix. */
-    memcpy(entry->mem, task, task_len);
-    memcpy(entry->mem + task_len, stack, stack_len);
-    entry->checksum = crc32c((const uint8_t *)entry->mem, task_len + stack_len);
+    /* hashtable key is the checksum: crc32c(task + stack) + nodeix. */
+    memcpy(entry->mem, task_and_stack, task_len + stack_len);
+    entry->checksum = checksum;
     entry->node = node;
     Pthread_mutex_init(&entry->rawtotals.lk, NULL);
 
@@ -2104,7 +2218,7 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
             Pthread_mutex_lock(&clntlru_mtx);
             while ((nclntstats = hash_get_num_entries(clientstats) + 1) >
                    gbl_max_clientstats_cache) {
-                old_entry = listc_rtl(&clntlru);
+                old_entry = listc_rtl(&clntlru); // get+remove oldest from list
                 if (old_entry) {
                     hash_del(clientstats, old_entry);
                     Pthread_mutex_destroy(&old_entry->mtx);
@@ -2216,8 +2330,9 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
 
     host = intern(host);
     node = nodeix(host);
-    task_len = strlen(NAME(task)) + 1;
-    stack_len = strlen(NAME(stack)) + 1;
+    GET_NAME_AND_LEN(task, task_len);
+    GET_NAME_AND_LEN(stack, stack_len);
+
     namelen = task_len + stack_len;
     if (namelen < 1024)
         tmp = alloca(namelen);
@@ -2227,16 +2342,17 @@ struct rawnodestats *get_raw_node_stats(const char *task, const char *stack,
         logmsg(LOGMSG_ERROR, "%s: out of memory\n", __func__);
         return NULL;
     }
-    memcpy(tmp, NAME(task), task_len);
-    memcpy(tmp + task_len, NAME(stack), stack_len);
+    memcpy(tmp, task, task_len);
+    memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
     if ((nodestats = find_clientstats(checksum, node, fd)) == NULL) {
-        nodestats = add_clientstats(task, stack, node, fd);
+        nodestats =
+            add_clientstats(checksum, tmp, task_len, stack_len, node, fd);
         if (nodestats == NULL) {
             logmsg(
                 LOGMSG_ERROR,
                 "%s: failed to add client stats, task %s, stack %s, node %d\n",
-                __func__, NAME(task), NAME(stack), node);
+                __func__, task, stack, node);
         }
     }
 
@@ -2253,8 +2369,9 @@ int release_node_stats(const char *task, const char *stack, char *host)
     char *tmp;
 
     host = intern(host);
-    task_len = strlen(NAME(task)) + 1;
-    stack_len = strlen(NAME(stack)) + 1;
+    GET_NAME_AND_LEN(task, task_len);
+    GET_NAME_AND_LEN(stack, stack_len);
+
     namelen = task_len + stack_len;
     if (namelen < 1024)
         tmp = alloca(namelen);
@@ -2262,13 +2379,13 @@ int release_node_stats(const char *task, const char *stack, char *host)
         tmp = malloc(namelen);
     if (!tmp)
         return -1;
-    memcpy(tmp, NAME(task), task_len);
-    memcpy(tmp + task_len, NAME(stack), stack_len);
+    memcpy(tmp, task, task_len);
+    memcpy(tmp + task_len, stack, stack_len);
     checksum = crc32c((const uint8_t *)tmp, namelen);
     if (release_clientstats(checksum, nodeix(host)) != 0) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to release host=%s, node=%d, task=%s, stack=%s\n",
-               __func__, host, nodeix(host), NAME(task), NAME(stack));
+               __func__, host, nodeix(host), task, stack);
         cheap_stack_trace();
     }
 
@@ -2530,18 +2647,17 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                 summaries[ii].dels += n;
                 break;
 
-            case BLOCK2_SQL:
-                summaries[ii].bsql += n;
-                break;
-
             case BLOCK2_RECOM:
                 summaries[ii].recom += n;
+                break;
 
             case BLOCK2_SNAPISOL:
                 summaries[ii].snapisol += n;
+                break;
 
             case BLOCK2_SERIAL:
                 summaries[ii].serial += n;
+                break;
             }
         }
         ii++;
@@ -2555,6 +2671,7 @@ done:
     *nodes_cnt = max_clients;
     return summaries;
 }
+
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,
                            char *host)
 {
@@ -2736,9 +2853,9 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
     logger->have_fingerprint = 1;
 }
 
-inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
+inline void reqlog_set_event(struct reqlogger *logger, evtype_t ev)
 {
-    logger->event_type = evtype;
+    logger->event_type = ev;
 }
 
 void reqlog_add_table(struct reqlogger *logger, const char *table)

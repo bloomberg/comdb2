@@ -76,7 +76,7 @@ enum {
 };
 
 /* snapisol log ops */
-enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 };
+typedef enum log_ops { LOG_APPLY = 0, LOG_PRESCAN = 1, LOG_BACKFILL = 2 } log_ops_t;
 
 /* These are the fields of the ondisk header.  This is not the ondisk
  * representation but a convenient format for passing the header around in
@@ -290,6 +290,8 @@ struct tran_tag {
     tranclass_type tranclass;
     DB_TXN *tid;
     u_int32_t logical_lid;
+    u_int32_t original_lid;
+    int is_curtran;
 
     void *usrptr;
     DB_LSN savelsn;
@@ -849,7 +851,7 @@ struct bdb_state_tag {
 
     struct bdb_state_tag *parent; /* pointer to our parent */
     short numchildren;
-    struct bdb_state_tag *children[MAXTABLES];
+    struct bdb_state_tag *children[MAX_CHILDREN];
     pthread_rwlock_t *bdb_lock;   /* we need this to do safe upgrades.  fetch
                                      operations get a read lock, upgrade requires
                                      a write lock - this way we can close and
@@ -870,6 +872,10 @@ struct bdb_state_tag {
 
     /* One of the BDBTYPE_ constants */
     int bdbtype;
+
+    /* How many total queue/queuedb add/consume operations total (ever)? */
+    int qdb_adds;
+    int qdb_cons;
 
     /* Lite databases have no rrn cache, freerecs files, ix# files */
     int pagesize_override; /* 0, or a power of 2 */
@@ -894,7 +900,13 @@ struct bdb_state_tag {
 
     pthread_mutex_t pending_broadcast_lock;
 
-    unsigned long long gblcontext;
+    union {
+        unsigned long long orig; /* original time-based format */
+        struct {
+            uint16_t lo16; /* stripe + update-id in network byte order */
+            uint64_t hi48; /* incrementing rowid in host byte order */
+        } genid48;         /* GENID48 format */
+    } gblcontext;
 
     void (*signal_rtoff)(void);
 
@@ -962,6 +974,7 @@ struct bdb_state_tag {
     signed char ondisk_header; /* boolean: give each record an ondisk header? */
     signed char compress;      /* boolean: compress data? */
     signed char compress_blobs; /*boolean: compress blobs? */
+    signed char persistent_seq; /* boolean: persistent seq for queue? */
 
     signed char got_gblcontext;
     signed char need_to_upgrade;
@@ -1032,60 +1045,13 @@ struct bdb_state_tag {
     pthread_mutex_t durable_lsn_lk;
     uint16_t *fld_hints;
 
-    int hellofd;
-
     int logical_live_sc;
     pthread_mutex_t sc_redo_lk;
     pthread_cond_t sc_redo_wait;
     LISTC_T(struct sc_redo_lsn) sc_redo_list;
 };
 
-/* define our net user types */
-enum {
-    USER_TYPE_BERKDB_REP = 1,
-    USER_TYPE_BERKDB_NEWSEQ = 2,
-    USER_TYPE_BERKDB_FILENUM = 3,
-    USER_TYPE_TEST = 4,
-    USER_TYPE_ADD = 5,
-    USER_TYPE_DEL = 6,
-    USER_TYPE_DECOM_DEPRECATED = 7,
-    USER_TYPE_ADD_DUMMY = 8,
-    USER_TYPE_REPTRC = 9,
-    USER_TYPE_RECONNECT = 10,
-    USER_TYPE_LSNCMP = 11,
-    USER_TYPE_RESYNC = 12,
-    USER_TYPE_DOWNGRADEANDLOSE = 13,
-    USER_TYPE_INPROCMSG = 14,
-    USER_TYPE_COMMITDELAYMORE = 15,
-    USER_TYPE_COMMITDELAYNONE = 16,
-    USER_TYPE_MASTERCMPCONTEXTLIST = 18,
-    USER_TYPE_GETCONTEXT = 19,
-    USER_TYPE_HEREISCONTEXT = 20,
-    USER_TYPE_TRANSFERMASTER = 21,
-    USER_TYPE_GBLCONTEXT = 22,
-    USER_TYPE_YOUARENOTCOHERENT = 23,
-    USER_TYPE_YOUARECOHERENT = 24,
-    USER_TYPE_UDP_ACK,
-    USER_TYPE_UDP_PING,
-    USER_TYPE_UDP_TIMESTAMP,
-    USER_TYPE_UDP_TIMESTAMP_ACK,
-    USER_TYPE_UDP_PREFAULT,
-    USER_TYPE_TCP_TIMESTAMP,
-    USER_TYPE_TCP_TIMESTAMP_ACK,
-    USER_TYPE_PING_TIMESTAMP,
-    USER_TYPE_PING_TIMESTAMP_ACK,
-    USER_TYPE_ANALYZED_TBL,
-    USER_TYPE_COHERENCY_LEASE,
-    USER_TYPE_PAGE_COMPACT,
-
-    /* by hostname messages */
-    USER_TYPE_DECOM_NAME_DEPRECATED,
-    USER_TYPE_ADD_NAME,
-    USER_TYPE_DEL_NAME,
-    USER_TYPE_TRANSFERMASTER_NAME,
-    USER_TYPE_REQ_START_LSN,
-    USER_TYPE_TRUNCATE_LOG
-};
+#include <net_types.h>
 
 void print(bdb_state_type *bdb_state, char *format, ...);
 
@@ -1303,13 +1269,15 @@ extern void __bb_dbreg_print_dblist(DB_ENV *dbenv,
                                     void (*prncallback)(void *userptr,
                                                         const char *fmt, ...),
                                     void *userptr);
+extern void __bb_dbreg_print_all_dblist(DB_ENV *dbenv,
+                                    void (*prncallback)(void *userptr,
+                                                        const char *fmt, ...),
+                                    void *userptr);
 #if 0
 extern void __db_cprint(DB *db);
 #endif
 
 void bdb_queue_init_priv(bdb_state_type *bdb_state);
-
-unsigned long long bdb_get_gblcontext(bdb_state_type *bdb_state);
 
 int bdb_apprec(DB_ENV *dbenv, DBT *log_rec, DB_LSN *lsn, db_recops op);
 
@@ -1641,7 +1609,7 @@ int bdb_get_active_logical_transaction_lsns(bdb_state_type *bdb_state,
 
 unsigned long long get_lowest_genid_for_datafile(int file);
 
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
 
 DBC *get_cursor_for_cursortran_flags(cursor_tran_t *curtran, DB *db,
                                      u_int32_t flags, int *bdberr);
@@ -1728,7 +1696,7 @@ int bdb_lock_row_fromlid_int(bdb_state_type *bdb_state, int lid, int idx,
 /* we use this structure to create a dummy cursor to be used for all
  * non-transactional cursors. it is defined below */
 struct cursor_tran {
-    unsigned int lockerid;
+    uint32_t lockerid;
     int id; /* debugging */
 };
 
@@ -1784,6 +1752,8 @@ typedef struct udppf_rq {
 
 void start_udp_reader(bdb_state_type *bdb_state);
 void *udpbackup_and_autoanalyze_thd(void *arg);
+void udp_backup(int, short, void *);
+void auto_analyze(int, short, void *);
 
 int do_ack(bdb_state_type *bdb_state, DB_LSN permlsn, uint32_t generation);
 void berkdb_receive_rtn(void *ack_handle, void *usr_ptr, char *from_host,

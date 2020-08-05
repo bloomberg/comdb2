@@ -20,7 +20,8 @@
 #include <net_types.h>
 #include <trigger.h>
 #include <compat.h>
-#include "intern_strings.h"
+#include <intern_strings.h>
+#include <ctrace.h>
 
 /*
 ** Master node will maintain client subscription info.
@@ -120,6 +121,7 @@ add:    info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
         info->hbeat = now;
         strcpy(info->spname, t->spname);
         hash_add(trigger_hash, info);
+        ctrace("TRIGGER:%s %016" PRIx64 " ASSIGNED\n", info->spname, info->trigger_cookie);
         return CDB2_TRIG_REQ_SUCCESS;
     } else if (strcmp(info->host, trigger_hostname(t)) == 0 &&
                info->trigger_cookie == t->trigger_cookie) {
@@ -131,6 +133,7 @@ add:    info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
         logmsg(LOGMSG_USER,
                "Heartbeat timeout:%.0fs sp:%s host:%s trigger_cookie:%016" PRIx64
                "\n", diff, info->spname, info->host, info->trigger_cookie);
+        ctrace("TRIGGER:%s %016" PRIx64 " UNASSIGNED TIMEOUT\n", info->spname, info->trigger_cookie);
         trigger_hash_del(info);
         goto add;
     }
@@ -150,8 +153,9 @@ int trigger_register(trigger_reg_t *t)
 
 static int trigger_unregister_int(trigger_reg_t *t)
 {
-    if (trigger_hash == NULL)
-        return 0;
+    if (trigger_hash == NULL) {
+        return CDB2_TRIG_REQ_SUCCESS;
+    }
     GET_BDB_STATE(bdb_state);
     uint8_t buf[TRIGGER_REG_MAX];
     t = trigger_recv(t, buf);
@@ -160,6 +164,7 @@ static int trigger_unregister_int(trigger_reg_t *t)
         strcmp(info->host, trigger_hostname(t)) == 0 &&
         info->trigger_cookie == t->trigger_cookie) {
         trigger_hash_del(info);
+        ctrace("TRIGGER:%s %016" PRIx64 " UNASSIGNED\n", info->spname, info->trigger_cookie);
         return CDB2_TRIG_REQ_SUCCESS;
     }
     return CDB2_TRIG_ASSIGNED_OTHER;
@@ -189,7 +194,8 @@ static void *trigger_start_int(void *name_)
     strcpy(name, name_);
     free(name_);
     trigger_reg_t *reg;
-    trigger_reg_init(reg, name);
+    trigger_reg_init(reg, name, 0);
+    ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
     int rc, retry = 10;
     while (--retry > 0) {
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
@@ -202,11 +208,14 @@ static void *trigger_start_int(void *name_)
         sleep(1);
     }
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
+        ctrace("trigger:%s %016" PRIx64 " register failed rc:%d\n", reg->spname,
+               reg->trigger_cookie, rc);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
         force_unregister(NULL, reg);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
         return NULL;
     }
+    ctrace("trigger:%s %016" PRIx64 " register success\n", reg->spname, reg->trigger_cookie);
     exec_trigger(reg);
     return NULL;
 }

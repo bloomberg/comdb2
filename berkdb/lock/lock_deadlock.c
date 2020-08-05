@@ -1292,7 +1292,7 @@ obj_loop:
 
 			if (verbose_deadlocks)
 				logmsg(LOGMSG_USER, 
-					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%lx\n",
+					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%"PRIxPTR"\n",
 						lockerp, lockerp->id, lockerp->dd_id,
 						dd_id_array[lockerp->dd_id].count,
 						(has_master)? lockerp->master_locker : 0);
@@ -1360,7 +1360,7 @@ look_waiters:
 			dd_id_array[dd].valid = 1;
 
 			if (verbose_deadlocks)
-				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%lx\n",
+				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%"PRIxPTR"\n",
 					lockerp, lockerp->id, lockerp->dd_id,
 					dd_id_array[lockerp->dd_id].count,
 					(has_master)? lockerp->master_locker : 0);
@@ -1838,7 +1838,7 @@ __dd_abort(dbenv, info)
 
 	if (verbose_deadlocks)
 		logmsg(LOGMSG_USER, 
-			"%lu %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%ld parent_locker=%ld\n",
+			"%lu %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%"PRIxPTR" parent_locker=%"PRIxPTR"\n",
 			pthread_self(), __FILE__, __LINE__, lockerp->id,
 			info->count, lockerp->id, lockerp->dd_id, lockerp->nlocks,
 			lockerp->npagelocks, lockerp->nwrites,

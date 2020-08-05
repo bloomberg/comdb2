@@ -357,7 +357,7 @@ int bdb_osql_shadow_set_lastlog(bdb_cursor_ifn_t *pcur_ifn,
 int release_locks_int(const char *trace, const char *func, int line);
 
 int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
-                            int *dirty, enum log_ops log_op, int *bdberr)
+                            int *dirty, log_ops_t log_op, int *bdberr)
 {
     extern int gbl_sql_release_locks_in_update_shadows;
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
@@ -462,6 +462,9 @@ int bdb_osql_update_shadows(bdb_cursor_ifn_t *pcur_ifn, bdb_osql_trn_t *trn,
         if (gbl_sql_release_locks_in_update_shadows && !released_locks) {
             extern int gbl_sql_random_release_interval;
             if (bdb_curtran_has_waiters(cur->state, cur->curtran)) {
+                logmsg(LOGMSG_WARN,
+                       "%s: releasing locks while updating shadows\n",
+                       __func__);
                 rc = release_locks_int("update shadows", __func__, __LINE__);
                 released_locks = 1;
             } else if (gbl_sql_random_release_interval &&
@@ -696,7 +699,6 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
                                       int ignore_limit, int *bdberr, int check)
 {
     bdb_cursor_impl_t *cur = pcur_ifn->impl;
-    unsigned long long *pgenid;
     int rc = 0;
 
     /* we dont ever expect to get here with a synthetic genid */
@@ -760,17 +762,9 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
 
         if (cur->skip) {
             /* we have a skip cursor */
-            pgenid = (unsigned long long *)malloc(sizeof(*pgenid));
-            if (!pgenid) {
-                *bdberr = BDBERR_MALLOC;
-                return -1;
-            }
-            *pgenid = genid;
 
-            rc = bdb_temp_table_find_exact(cur->state, cur->skip, pgenid,
-                                           sizeof(*pgenid), bdberr);
-            if (rc != IX_FND)
-                free(pgenid);
+            rc = bdb_temp_table_find_exact(cur->state, cur->skip, &genid,
+                                           sizeof(genid), bdberr);
             if (rc < 0)
                 return rc;
 
@@ -991,7 +985,7 @@ static int bdb_free_shadows_table(bdb_state_type *bdb_state,
 }
 
 /* init bdb osql support for snapshot/serializable sql transactions */
-int bdb_osql_init(int *bdberr)
+inline int bdb_osql_init(int *bdberr)
 {
     int rc = 0;
 
@@ -1012,4 +1006,28 @@ int bdb_osql_destroy(int *bdberr)
     rc = bdb_osql_log_repo_destroy(bdberr);
 
     return rc;
+}
+
+int bdb_osql_cursor_reset(bdb_state_type *bdb_state, bdb_cursor_ifn_t *pcur_ifn)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+    int rc = 0;
+    int bdberr = 0;
+
+    if (cur->skip) {
+        rc = bdb_temp_table_close_cursor(bdb_state, cur->skip, &bdberr);
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: close cursor %d %d\n", __func__, rc,
+                   bdberr);
+        cur->skip = NULL;
+    }
+
+    return rc;
+}
+
+void bdb_osql_cursor_set(bdb_cursor_ifn_t *pcur_ifn, tran_type *shadow_tran)
+{
+    bdb_cursor_impl_t *cur = pcur_ifn->impl;
+
+    cur->shadow_tran = shadow_tran;
 }

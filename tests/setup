@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
 set -e
-set -x
+if [[ $CLEANUPDBDIR -eq 0 ]]; then
+    set -x
+fi
 
 failexit() {
     echo $1
@@ -84,6 +86,10 @@ if [[ -n ${DEBUGGER} ]]; then
         DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
         INTERACTIVE_DEBUG=0
         ;;    
+    mutrace)   # mutex contention detection tool
+        DEBUG_PREFIX="mutrace "
+        INTERACTIVE_DEBUG=0
+        ;;    
     *)
         DEBUG_PREFIX=${DEBUGGER}
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
@@ -146,7 +152,9 @@ setup_db() {
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 
-    echo "logmsg level debug" >> ${LRL}
+    if [[ -z $SKIPDEBUG ]] ; then
+        echo "logmsg level debug" >> ${LRL}
+    fi
     echo "eventlog_nkeep 0" >> ${LRL}
 
     if [[ -f lrl ]]; then
@@ -245,7 +253,7 @@ setup_db() {
         echo "!$TESTCASE: starting single node"
         ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
         dbpid=$!
-
+        sleep 2
         set +e
 
         if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
@@ -263,9 +271,9 @@ setup_db() {
         # wait until we can query it
         echo "!$TESTCASE: waiting until ready"
         while [[ "$out" != "1" ]]; do
-            sleep 1
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' &> $LOGDIR/${DBNAME}.conn
+            sleep 1
         done
     else
         echo "!$TESTCASE: copying to cluster"
@@ -387,38 +395,44 @@ fi
 if [[ $debug -eq 1 ]]; then
     set +x
     export PATH="$paths:${PATH}"
-    SETENV="${PWD}/setenv.sh "
-    RUNTEST="${PWD}/runtest.sh "
+    SETENV="${PWD}/setenv.sh"
+    RUNTEST="${PWD}/runtest.sh"
+    RUNDIR=${TESTSROOTDIR}/${TESTCASE}.test/
     echo "Once db is ready, please run: $RUNTEST"
-    echo "#!/usr/bin/env bash" > $RUNTEST
-    echo "#!/usr/bin/env bash" > $SETENV
-    #echo "set +x"  >> $RUNTEST
-    for env in $vars; do
-        echo "export $env=\"${!env}\"" >> $SETENV
-    done
-    if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
-        echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
-        echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
-        echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
-        echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
-        echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
-    fi
-    echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
-    echo "export PATH=${paths}"':${PATH}' >> $SETENV
-    [[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
-    [[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
-    echo ". $SETENV" >> $RUNTEST
-    echo "cd ${TESTSROOTDIR}/${TESTCASE}.test/" >> $RUNTEST
-    echo "./runit ${DBNAME} " >> $RUNTEST
-    echo "echo; echo; echo;" >> $RUNTEST
-    echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
     echo
     echo
-    chmod +x $SETENV
-    chmod +x $RUNTEST
+else
+    RUNDIR=${TESTDIR}/${TESTCASE}.test/
+    SETENV="${RUNDIR}/setenv.sh"
+    RUNTEST="${RUNDIR}/runtest.sh"
 fi
 
 
+#generate runtest and setenv scripts
+echo "#!/usr/bin/env bash" > $RUNTEST
+echo "#!/usr/bin/env bash" > $SETENV
+#echo "set +x"  >> $RUNTEST
+for env in $vars; do
+    echo "export $env=\"${!env}\"" >> $SETENV
+done
+if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
+    echo "export SECONDARY_DB_PREFIX=\"${SECONDARY_DB_PREFIX}\"" >> $SETENV
+    echo "export SECONDARY_DBNAME=\"${SECONDARY_DBNAME}\"" >> $SETENV
+    echo "export SECONDARY_DBDIR=\"${SECONDARY_DBDIR}\"" >> $SETENV
+    echo "export SECONDARY_CDB2_CONFIG=\"${SECONDARY_CDB2_CONFIG}\"" >> $SETENV
+    echo "export SECONDARY_CDB2_OPTIONS=\"${SECONDARY_CDB2_OPTIONS}\"" >> $SETENV
+fi
+echo "export SP_OPTIONS=\"-s --cdb2cfg ${CDB2_CONFIG} ${DBNAME} default\"" >> $SETENV
+echo "export PATH=${paths}"':${PATH}' >> $SETENV
+[[ -n "$CLUSTER" ]] && echo 'export CLUSTER="'$CLUSTER'"' >> $SETENV
+[[ -n "$SKIPSSL" ]] && echo 'export SKIPSSL="'$SKIPSSL'"' >> $SETENV
+echo ". $SETENV" >> $RUNTEST
+echo "cd $RUNDIR" >> $RUNTEST
+echo "./runit ${DBNAME} " >> $RUNTEST
+echo "echo; echo; echo;" >> $RUNTEST
+echo "${TESTSROOTDIR}/unsetup" >> $RUNTEST
+chmod +x $SETENV
+chmod +x $RUNTEST
 
 
 echo 'setup successful'

@@ -230,7 +230,7 @@ support_datetime_in_triggers|  on |Enable support for datetime/interval types in
 prefix_foreign_keys|  on |Allow foreign key to be a prefix of your key
 superset_foreign_keys|  on |Allow foreign key to be a superset of your key
 repverifyrecs|  off |Verify every berkeley log record received
-enable_osql_logging|  off |Log every osql packet received in a special file, per iq
+enable_osql_logging|  off |Log every osql packet and operation
 enable_osql_longreq_logging|  off |Log untruncated osql strings
 check_sparse_files|  off |When allocating a page, check that we aren't creating a sparse file
 core_on_sparse_file|  off |Generate a core if we catch berkeley creating a sparse file
@@ -715,6 +715,26 @@ pre-populated options to create the database
 |blobstripe                       |1           | Also stripe blob files (several physical files per blob field)
 |table                            |            | Multiple table options can be added to an lrl file to add tables at database init time.  Arguments are table name and path to .csc2 file.
 
+### Start time options
+These options are toggable at start time of the server.
+
+|Option                           |Default                                                | Description
+|---------------------------------|-------------------------------------------------------|------------
+|fullrecovery                     | Off, recovery runs from previous checkpoint | Attempt to run database recovery from the beginning of available logs
+|checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
+|nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
+|directio                         |On          | Bypass filesystem cache for page I/O
+|dir                              | `$COMDB2_ROOT/var/cdb2/$DBNAME` | Database directory
+|cache | 64 mb | Database cache size, see [cache size](#cache-size)
+|cachekb | | see [cache size](#cache-size)
+|cachekbmin | | see [cache size](#cache-size)
+|cachekbmax | | see [cache size](#cache-size)
+|cluster nodes | | List of nodes that comprise the cluster for this database.  See [setting up clusters](cluster.html)
+|largepages | 0 | Enables large pages.
+|dedicated_network_suffixes       |            | Suffix to append to node name when server has extra network interfaces that comdb2 is able to use to ensure resiliency when losing one network, example: if eth1 and eth2 are extra network cards on the server and the dns hostnames assigned to the ips of the respective cards are node1_eth1 and node1_eth2, then the option here should be set as: dedicated_network_suffixes _eth1 _eth2
+|remsql_whitelist databases       |            | If this option is set, when another DB makes a connection to this DB, we will only allown processing of that request if that other DB's name is in the whitelist, otherwise it will receive an error, example: `remsql_whitelist databases db1 db2 db3`.
+
+
 ### Runtime options
 
 These options are toggle-able at runtime.
@@ -722,18 +742,12 @@ These options are toggle-able at runtime.
 |Option                           |Default                                                | Description
 |---------------------------------|-------------------------------------------------------|------------
 |nullfkey                         | Constraints are enforced for all key values|Do not enforce foreign key constraints for null keys.
-|fullrecovery                     | Off, recovery runs from previous checkpoint | Attempt to run database recovery from the beginning of available logs
-|dir                              | `$COMDB2_ROOT/var/cdb2/$DBNAME` | Database directory
 |default_sql_mspace_kbsz          | 1024            | Default size of memory regions owned by SQL threads, in KB 
-|directio                         |On          | Bypass filesystem cache for page I/O
 |osync                            |Off         | Enables `O_SYNC` on data files (reads still go through FS cache) if `directio` isn't set
-|nonames                          |Off         | Use database name for some environment files (older setting, should remain off)
-|checksums                        |On          | Checksum data pages.  Turning this off is highly discouraged.
 |commitdelaymax                   |0           | Introduce a delay after each transaction before returning control to the application.  Occasionally useful to allow replicants to catch up on startup with a very busy system.
 |lock_conflict_trace              |Off         | Dump count of lock conflicts every second
 |no_lock_conflict_trace           |On          | Turns off `lock_conflict_trace`
-|blocksql_grace                   |10 sec      | Let block transactions run this long if db is exiting before being killed (and returning an error).
-|gbl_exit_on_pthread_create_fail |0            | If set, database will exit if thread pools aren't able to create threads.
+|gbl_exit_on_pthread_create_fail  |0           | If set, database will exit if thread pools aren't able to create threads.
 |enable_sql_stmt_caching | not set | Enable caching of query plans.  If followed by "all" will cache all queries, including those without parameters.
 |max_sqlcache_per_thread | 10 | Max number of plans to cache per sql thread (statement cache is per-thread, but see hints below)
 |max_sqlcache_hints | 100 | Max number of "hinted" query plans to keep (global) - see `cdb2_use_hints()`
@@ -746,17 +760,11 @@ These options are toggle-able at runtime.
 |disable_prefault_udp | | Disable `enable_prefault_udp`
 |sqlsortermem | 314572800 | maximum amount of memory to give the sqlite sorter
 |sqlsortermaxmmapsize | 2147418112 | maximum amount of file-backed mmap size in bytes to give the sqlite sorter
-|cache | 64 mb | Database cache size, see [cache size](#cache-size)
-|cachekb | | see [cache size](#cache-size)
-|cachekbmin | | see [cache size](#cache-size)
-|cachekbmax | | see [cache size](#cache-size)
-|cluster nodes | | List of nodes that comprise the cluster for this database.  See [setting up clusters](cluster.html)
 |appsockslimit | 500 | Start warning on this many connections to the database
 |maxappsockslimit | 1400 | Start dropping new connections on this many connections to the database 
 |maxsockcached | 500 | After this many connections, start requesting that further connections are no longer pooled.
 |maxlockers |256  | Initial size of the lockers table (there's no current maximum)
 |maxtxn | 128 | Maximum concurrent transactions.
-|largepages | 0 | Enables large pages.
 |maxosqltransfer | 50000 | Maximum number of records modifications allowed per transaction
 |heartbeat_send_time | 5 (seconds) | Send heartbeats this often. 
 |sc_del_unused_files_threshold |                             |
@@ -894,6 +902,7 @@ These options are toggle-able at runtime.
 |logmsg   |  | Controls the database logging level - accepts [logging commands](op.html#logging-commands).
 | pbkdf2_iterations | 4096 | Number of PBKDF2 iterations. PBKDF2 is used for password hashing. The higher the value, the more secure and the more computationally expensive. The mininum number of iterations is 4096.
 |clean_exit_on_sigterm | 1 | When enabled, SIGTERM will cause database to do an orderly shutdown.  When disabled follows system SIGTERM default (terminate, no core) 
+|delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
 
 <!-- TODO
 |enable_datetime_truncation | |
@@ -942,6 +951,7 @@ configurations:
     legacy_schema on
     logmsg level info
     logmsg notimestamp
+    logmsg skiplevel
     logput window 1
     noblobstripe
     nochecksums
@@ -958,7 +968,6 @@ configurations:
     on accept_on_child_nets
     on disable_etc_services_lookup
     online_recovery off
-    osql_check_replicant_numops off
     osql_send_startgen off
     queuedb_genid_filename off
     reorder_socksql_no_deadlock off

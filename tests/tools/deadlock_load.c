@@ -43,7 +43,7 @@ void usage(FILE *f)
 void *run_test(void *x)
 {
     cdb2_hndl_tp *insert_hndl, *update_hndl;
-    int64_t td = (int64_t)x;
+    int td = *(int*)x;
     int rc;
 
     if ((rc = cdb2_open(&insert_hndl, dbname, cltype, 0)) != 0) {
@@ -192,14 +192,15 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    srand(time(NULL));
+    srandom(time(NULL));
     drop_table();
     create_table();
 
     thds = (pthread_t *)calloc(numthds, sizeof(pthread_t));
+    int t_ids[numthds];
     for(int i = 0; i < numthds; i++) {
-        int64_t x = (int64_t)i;
-        rc = pthread_create(&thds[i], NULL, run_test, (void *)x);
+        t_ids[i] = i;
+        rc = pthread_create(&thds[i], NULL, run_test, (void *)&t_ids[i]);
         if (rc != 0) {
             fprintf(stderr, "pthread_create error, rc=%d errno=%d\n", rc,
                     errno);

@@ -92,7 +92,7 @@ Information about nodes in the cluster.
 Describes all the columns for all of the tables in the database.
 
     comdb2_columns(tablename, columnnname, type, size, sqltype,
-    varinlinesize, defaultvalue, dbload, isnullable)
+    varinlinesize, defaultvalue, dbload, isnullable, lastsequence)
 
 * `tablename` - Name of the table
 * `columnname` - Name of the column
@@ -102,6 +102,7 @@ Describes all the columns for all of the tables in the database.
 * `defaultvalue` - The default value for this column
 * `dbload` - `obsolete`
 * `isnullable` - `Y` if this column can hold nulls
+* `lastsequence` - Largest value the column has held (for autoincrement)
 
 ## comdb2_completion
 
@@ -297,12 +298,14 @@ List all stored procedures in the database.
 
 List all queues in the database.
 
-    comdb2_queues(queuename, spname, head_age, depth)
+    comdb2_queues(queuename, spname, head_age, depth, total_enqueued, total_dequeued)
 
 * `queuename` - Name of the queue
 * `spname` - Stored procedure attached to the queue
 * `head_age` - Age of the head element in the queue
 * `depth` - Number of elements in the queue
+* `total_enqueued` - Total number of elements added since process start
+* `total_dequeued` - Total number of elements removed since process start
 
 ## comdb2_repl_stats
 
@@ -417,6 +420,15 @@ Shows the sizes on disk of the tables.
 * `tablename` - Name of the table
 * `bytes` - Size of the table in bytes
 
+## comdb2_temporary_file_sizes
+
+Reports sizes of temporary files.
+
+    comdb2_temporary_file_sizes(type, bytes)
+
+* `type` - Temporary file type. Can be one of `temptables`, `sqlsorters`, `blkseqs` and `others`
+* `bytes` - Size in bytes
+
 ## comdb2_threadpools
 
 Information about thread pools in the database.
@@ -519,13 +531,14 @@ Lists all the transaction log records.
 
 Lists triggers in the database.
 
-    comdb2_triggers(name, type, tbl_name, event, col)
+    comdb2_triggers(name, type, tbl_name, event, col, seq)
 
 * `name` - Name of the trigger
 * `type` - Type of the trigger
 * `tbl_name` - Name of the table
 * `event` - Event to trigger on
 * `col` - Column to trigger on
+* `seq` - 'Y' if sequences are enabled, 'N' otherwise
 
 ## comdb2_tunables
 
@@ -565,11 +578,26 @@ Table of users for the database that do or do not have operator access.
 * `username` - Name of the user
 * `isOP` - 'Y' if 'username' has operator access
 
+## comdb2_sc_history
+
+System table containing history of the schemachanges done in the database. 
+
+    comdb2_sc_history(name, start, status, seed, last_updated,
+                      converted, error)
+
+* `name` - Name of the table.
+* `start` - Start time of the schema change.
+* `status` - Last/Final status of the schema change.
+* `seed` - Seed (ID) of schema change
+* `last_updated` - Time of the last status change.
+* `converted` - Number of records converted.
+* `error` - Error message of the schema change.
+
 ## comdb2_sc_status
 
-Information about recent schema changes.
+Information about current/most recent schema change per table.
 
-    comdb2_sc_status(name, type, newcsc2, start, status, last_updated,
+    comdb2_sc_status(name, type, newcsc2, start, status, seed, last_updated,
                      converted, error)
 
 * `name` - Name of the table.
@@ -577,6 +605,7 @@ Information about recent schema changes.
 * `newcsc2` - New schema in csc2 format.
 * `start` - Start time of the schema change.
 * `status` - Current status of the schema change.
+* `seed` - Seed (ID) of schema change running for this table (NULL if not currently running).
 * `last_updated` - Time of the last status change.
 * `converted` - Number of records converted.
 * `error` - Error message of the schema change.

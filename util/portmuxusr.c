@@ -82,8 +82,8 @@ enum {
 static int portmux_default_timeout = TIMEOUTMS;
 static int max_wait_timeoutms = MAX_WAIT_TIMEOUTMS;
 
-static const char *gbl_portmux_unix_socket_default = "/tmp/portmux.socket";
-char *gbl_portmux_unix_socket;
+static char gbl_portmux_unix_socket_default[] = "/tmp/portmux.socket";
+static char *gbl_portmux_unix_socket = gbl_portmux_unix_socket_default;
 
 static int (*reconnect_callback)(void *) = NULL;
 static void *reconnect_callback_arg;
@@ -193,8 +193,8 @@ int portmux_cmd(const char *cmd, const char *app, const char *service,
     return port;
 }
 
-inline int portmux_use(const char *app, const char *service,
-                       const char *instance, int port)
+int portmux_use(const char *app, const char *service, const char *instance,
+                int port)
 {
     char portstr[20];
     snprintf(portstr, sizeof(portstr), " %d", port);
@@ -202,8 +202,7 @@ inline int portmux_use(const char *app, const char *service,
 }
 
 /* returns port number, or -1 for error*/
-inline int portmux_register(const char *app, const char *service,
-                            const char *instance)
+int portmux_register(const char *app, const char *service, const char *instance)
 {
     return portmux_cmd("reg", app, service, instance, "");
 }
@@ -1756,9 +1755,15 @@ void portmux_set_max_wait_timeout(unsigned timeoutms)
     max_wait_timeoutms = timeoutms;
 }
 
-const char *portmux_fds_get_app(portmux_fd_t *fds) { return fds->app; }
+const char *portmux_fds_get_app(portmux_fd_t *fds)
+{
+    return fds->app;
+}
 
-const char *portmux_fds_get_service(portmux_fd_t *fds) { return fds->service; }
+const char *portmux_fds_get_service(portmux_fd_t *fds)
+{
+    return fds->service;
+}
 
 const char *portmux_fds_get_instance(portmux_fd_t *fds)
 {
@@ -1777,7 +1782,9 @@ void set_portmux_port(int port)
 
 void clear_portmux_bind_path()
 {
-    free(gbl_portmux_unix_socket);
+    if (gbl_portmux_unix_socket != gbl_portmux_unix_socket_default) {
+        free(gbl_portmux_unix_socket);
+    }
     gbl_portmux_unix_socket = NULL;
 }
 
@@ -1788,15 +1795,12 @@ char *get_portmux_bind_path(void)
 
 int set_portmux_bind_path(const char *path)
 {
-    path = (path) ? path : gbl_portmux_unix_socket_default;
-
     if (strlen(path) < sizeof(((struct sockaddr_un *)0)->sun_path)) {
-        free(gbl_portmux_unix_socket);
+        clear_portmux_bind_path();
         gbl_portmux_unix_socket = strdup(path);
         return (gbl_portmux_unix_socket) ? 0 : -1;
     }
-    logmsg(LOGMSG_ERROR, "%s:%d Portmux unix socket path too long.", __func__,
-           __LINE__);
+    logmsg(LOGMSG_ERROR, "%s bad unix socket path", __func__);
     return -1;
 }
 

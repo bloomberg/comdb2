@@ -1836,6 +1836,21 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
     while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
       const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+      char *coll = NULL;
+      // transform all the "collate DATACOPY" instances from:
+      // create index "$I1_792AC8AF" on "t1" ("i", "b" collate DATACOPY, "c");
+      // to 
+      // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") OPTION DATACOPY;
+      // note that there is enough space because 'collate' is 1 char longer than 'OPTION'
+      if ((coll = strstr(zSql, " collate DATACOPY"))) {
+        char *end = coll + sizeof(" collate DATACOPY") - 1;
+        while(*end != ';') {
+            *coll = *end;
+            ++coll;
+            ++end;
+        }
+        strcpy(coll, " OPTION DATACOPY;");
+      }
       int newLen = strlen(zSql) + 6;
       char *newSql = sqlite3_malloc(newLen);
       snprintf(newSql,newLen, "create temp %s", zSql+7);

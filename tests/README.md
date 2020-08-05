@@ -7,11 +7,11 @@ This is the comdb2 test suite. To run the test suite you need to:
   cmake ..
   make -j$(nproc) && make -j$(nproc) test-tools
 
-2) go to the tests/ directory where each test is a directory with a `.test`
+2) go to the `tests/` directory where each test is a directory with a `.test`
 ending.  To run a specific test, run `make testname`. For example `make
 cdb2api` will run the cdb2api test, which is stored in `cdb2api.test`.
 
-To run all tests in the tests/ directory just rn `make` -- any failure will
+To run all tests in the `tests/` directory just rn `make` -- any failure will
 stop the run, instead `make -k` will allow other tests to run.  `make -j5` will
 let 5 tests to run in parallel. `make -kj5` is a good setting, experiment with
 the number depending on your available hardware.
@@ -23,14 +23,22 @@ build a cluster on m1/m2/m3 and run the test there. Make can take argumests so
 the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
 are torn down after the test is over.
 
-`testrunner` in the tests directory is a wrapper script that shows you status
+`tests/testrunner` is a wrapper script that shows you status
 of running tests. It requires python 2.7 and the `blessings` module. It implies
 `-k` and takes an optional `-j` setting and a list of tests to run.
+
+Some of the tests require non standard tools to be installed, so here is a 
+list of packages needed to run all the tests:
+
+apt-get install bash coreutils jq
+
+Clustered tests also need ssh client and server setup.
+
 
 ## Adding new tests
 
 ### 4 *easy* steps
-1. Create `testname.test` directory in the tests directory.  All your test files
+1. Create `testname.test` directory in `tests/` directory.  All your test files
    (`Makefile`, `runit`, any testcases, etc.) go there.
 2. Create a `Makefile`.  The following minimal makefile is sufficient for most
    tests: `include $(TESTSROOTDIR)/testcase.mk`
@@ -239,6 +247,31 @@ you can issue:
   make testclean CLUSTER='node1 node2'
 ```
 
+## Debugging the tests
+
+Passing `DEBUGGER=` parameter will allow to run the comdb2 executable under
+that debugger:
+```sh
+  make basic DEBUGGER=perf
+```
+
+Currently the following debuggers get nice wrappers to produce
+useful trace in the db logfile or other files: gdb, valgrind, memcheck,
+callgrind, drd, helgrind, perf. The behavior of each tool is configured in
+`tests/setup`.
+
+Be aware that using a debugger assumes that you have ability run such debugger,
+for instance for perf to gather stats you need to have your userid able to collect
+kernel events which can be allowed by the following commands as root:
+```sh
+echo 1 > /proc/sys/kernel/sched_schedstats
+echo -1 > /proc/sys/kernel/perf_event_paranoid
+```
+
+Note that perf output will be redirected onto $TESTDIR/$TESTCASE.perfdata file.
+Callgrind output will go to $TESTDIR/$TESTCASE.callgrind file. You can see each
+individual debugger's output by studying the way it is called in `tests/setup`.
+
 ## Running a comdb2 cluster in lxc containers
 
 Here are some notes on how to setup lxc containers to run tests for clusters 
@@ -347,7 +380,7 @@ of comdb2 servers in those containers.
 
     You will also want to install inside the containers the required packages for comdb2 to run:
     ```sh
-      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0
+      apt-get install libprotobuf-c1 libunwind8 libsqlite3-0 libevent-core-2.1 libevent-pthreads-2.1
     ```
 
 4.  At this time you will want to make copies of this container:

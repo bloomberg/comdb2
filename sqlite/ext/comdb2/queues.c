@@ -23,9 +23,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comdb2.h"
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
+#include <comdb2.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
+#include <bdb_int.h>
+#include <sql.h>
+
+extern pthread_key_t query_info_key;
 
 /* systbl_queues_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -42,6 +46,8 @@ struct systbl_queues_cursor {
   unsigned long long     age;
   int           last_qid;
   int           is_last;
+  unsigned long long     tot_enqueued;
+  unsigned long long     tot_dequeued;
 };
 
 /* Column numbers */
@@ -49,6 +55,8 @@ struct systbl_queues_cursor {
 #define STQUEUE_SPNAME       1
 #define STQUEUE_HEADTIME     2
 #define STQUEUE_DEPTH        3
+#define STQUEUE_TOT_ENQUEUED 4
+#define STQUEUE_TOT_DEQUEUED 5
 
 static int systblQueuesConnect(
   sqlite3 *db,
@@ -62,7 +70,8 @@ static int systblQueuesConnect(
   int rc;
 
   rc = sqlite3_declare_vtab(db,
-     "CREATE TABLE comdb2_queues(queuename, spname, head_age, depth)");
+     "CREATE TABLE comdb2_queues(queuename, spname, head_age, depth, "
+     "total_enqueued, total_dequeued)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -83,9 +92,12 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   struct consumer_stat stats[MAXCONSUMERS] = {{0}};
   unsigned long long depth = 0;
   char *spname = NULL;
+  struct dbtable *qdb = thedb->qdbs[pCur->last_qid];
+  struct sql_thread *thd = pthread_getspecific(query_info_key);
+  uint32_t lockid = bdb_get_lid_from_cursortran(thd->clnt->dbtran.cursor_tran);
 
-  dbqueuedb_get_name(thedb->qdbs[pCur->last_qid], &spname);
-  strcpy(pCur->queue_name, thedb->qdbs[pCur->last_qid]->tablename);
+  dbqueuedb_get_name(qdb, &spname);
+  strcpy(pCur->queue_name, qdb->tablename);
   if (spname) {
       strcpy(pCur->spname, spname);
       free(spname);
@@ -93,7 +105,7 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
   else
       pCur->spname[0] = 0;
 
-  int rc = dbqueuedb_get_stats(thedb->qdbs[pCur->last_qid], stats);
+  int rc = dbqueuedb_get_stats(qdb, stats, lockid);
   if (rc) {
       /* TODO: signal error? */
   }
@@ -107,6 +119,8 @@ static int get_stats(struct systbl_queues_cursor *pCur) {
       pCur->age  = comdb2_time_epoch() - stats[0].epoch;
   else
       pCur->age  = 0;
+  pCur->tot_enqueued = bdb_get_qdb_adds(qdb->handle);
+  pCur->tot_dequeued = bdb_get_qdb_cons(qdb->handle);
   return 0;
 }
 
@@ -179,6 +193,14 @@ static int systblQueuesColumn(
       sqlite3_result_int64(ctx, (sqlite3_int64)pCur->depth);
       break;
     }    
+    case STQUEUE_TOT_ENQUEUED: {
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->tot_enqueued);
+      break;
+    }
+    case STQUEUE_TOT_DEQUEUED: {
+      sqlite3_result_int64(ctx, (sqlite3_int64)pCur->tot_dequeued);
+      break;
+    }
     case STQUEUE_HEADTIME: {
       sqlite3_result_int64(ctx, (sqlite3_int64)pCur->age);
       break;
@@ -259,6 +281,7 @@ const sqlite3_module systblQueuesModule = {
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
   .access_flag = CDB2_ALLOW_USER,
+  .systable_lock = "comdb2_queues",
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

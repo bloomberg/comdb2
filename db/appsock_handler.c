@@ -185,7 +185,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         return 0;
     }
 
-    arg.tab = &thedb->static_table;
+    arg.table_name = strdup(COMDB2_STATIC_TABLE);
     arg.conv_flags = 0;
 
     while (1) {
@@ -198,8 +198,6 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
             break;
 
         st = 0;
-
-        logmsg(LOGMSG_DEBUG, "%s:%s", __func__, line);
 
         tok = segtok(line, rc, &st, &ltok);
         if (ltok == 0)
@@ -241,6 +239,7 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
         if (rc != APPSOCK_RETURN_CONT)
             break;
     }
+    free(arg.table_name);
 
     thrman_where(thr_self, NULL);
 

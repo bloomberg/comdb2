@@ -7,10 +7,10 @@ set -e
 dbnm=$1
 
 # Try this many times to see an archive 
-seen_iter=${2:-200}
+seen_iter=${2:-300}
 
 # Try this many times to see an archive 
-clean_iter=${3:-5}
+clean_iter=${3:-10}
 
 # Let the testcase timeout fail us
 target=5

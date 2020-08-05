@@ -1,0 +1,225 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+
+[[ $debug == "1" ]] && set -x
+
+export TESTITERS=20
+export MAXTABLES=20
+export MAXVIEWS=20
+export MAXQUEUES=20
+export STOP_TRIGGERS_TEST_TOUCHFILE="stop_triggers_test.txt"
+export STOP_TABLES_TEST_TOUCHFILE="stop_tables_test.txt"
+
+function failexit
+{
+    [[ $debug == "1" ]] && set -x
+    typeset func="failexit"
+    typeset f=$1
+    write_prompt $func "$f failed: $2"
+    exit -1
+}
+
+# The test will pass this after all the "chunked" changes are checked in
+function stat_all_tables
+{
+    [[ $debug == "1" ]] && set -x
+    t=$($CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "SELECT * FROM COMDB2_SYSTABLES")
+    for x in $t; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM $x LIMIT 10" >/dev/null 2>&1
+    done
+}
+
+# List of systables as of the time this was written
+#
+# json_tree
+# json_each
+# generate_series
+# comdb2_index_usage
+# comdb2_views
+# comdb2_sc_status
+# comdb2_timeseries
+# comdb2_timepartitions
+# comdb2_tablesizes
+# comdb2_cron_events
+# comdb2_type_samples
+# comdb2_keycomponents
+# comdb2_timepartshards
+# comdb2_fingerprints
+# comdb2_sql_client_stats
+# comdb2_procedures
+# comdb2_keys
+# comdb2_queues
+# comdb2_constraints
+# comdb2_keywords
+# comdb2_columns
+# comdb2_threadpools
+# comdb2_triggers
+# comdb2_tables
+# comdb2_timepartevents
+# comdb2_connections
+# comdb2_cron_schedulers
+# comdb2_users
+# comdb2_limits
+# comdb2_plugins
+# comdb2_opcode_handlers
+# comdb2_completion
+# comdb2_transaction_logs
+# comdb2_logical_operations
+# comdb2_clientstats
+# comdb2_sqlpool_queue
+# comdb2_tunables
+# comdb2_appsock_handlers
+# comdb2_repl_stats
+# comdb2_replication_netqueue
+# comdb2_sc_history
+# comdb2_metrics
+# comdb2_systables
+# comdb2_cluster
+# comdb2_blkseq
+# comdb2_locks
+# comdb2_tablepermissions
+# comdb2_net_userfuncs
+# comdb2_active_osqls
+
+function write_tables
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXTABLES ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "INSERT INTO t$x SELECT * FROM generate_series LIMIT 10" >/dev/null 2>&1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "UPDATE t$x SET a=1 WHERE a=1 LIMIT 10" >/dev/null 2>&1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "SELECT * FROM t$x" >/dev/null 2>&1
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DELETE FROM t$x LIMIT 9" >/dev/null 2>&1
+    done
+}
+
+function write_tables_loop
+{
+    [[ $debug == "1" ]] && set -x
+    let count=0
+    while [[ ! -f $STOP_TABLES_TEST_TOUCHFILE ]];  do
+        let count=count+1
+        write_tables
+        [[ $(( count % 10 )) == 0 ]] && echo "Completed $count write_tables"
+    done
+}
+
+function drop_tables
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXTABLES ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop table t$x"
+    done
+}
+
+function drop_views
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXVIEWS ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop view v$x"
+    done
+}
+
+function create_views
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXVIEWS ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create view v$x as select a from t$x"
+    done
+}
+
+function create_tables
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXTABLES ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create table t$x (a int)"
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create index ix$x on t$x(a)"
+    done
+}
+
+function drop_triggers
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXQUEUES ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "drop lua trigger audit$x"
+    done
+}
+
+function create_triggers
+{
+    [[ $debug == "1" ]] && set -x
+    for (( x = 0 ; x < MAXQUEUES ; ++x )) ; do
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "create lua trigger audit$x on (table foraudit for insert and update and delete)"
+    done
+}
+
+function setup
+{
+    [[ $debug == "1" ]] && set -x
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create table foraudit {$(cat foraudit.csc2)}\$\$
+create table audit {$(cat audit.csc2)}\$\$
+EOF
+
+    for (( x = 0 ; x < MAXQUEUES ; ++x )) ; do
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default - <<EOF
+create procedure audit$x {$(cat audit.lua)}\$\$
+EOF
+    done
+
+}
+
+function stat_tables_loop
+{
+    [[ $debug == "1" ]] && set -x
+    let count=0
+    while [[ ! -f $STOP_TABLES_TEST_TOUCHFILE ]];  do
+        stat_all_tables
+        let count=count+1
+        [[ $(( count % 10 )) == 0 ]] && echo "Completed $count stat_all_tables"
+    done
+}
+
+function check_all_nodes
+{
+    if [[ -z "$CLUSTER" ]]; then
+        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('stat')" >/dev/null 2>&1
+        [[ $? != 0 ]] && failexit check_all_nodes
+    else
+        for m in $CLUSTER ; do 
+            $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $m "exec procedure sys.cmd.send('stat')" >/dev/null 2>&1
+            [[ $? != 0 ]] && failexit check_all_nodes
+        done
+    fi
+    return 0
+}
+
+function run_test
+{
+    [[ $debug == "1" ]] && set -x
+    rm -Rf $STOP_TABLES_TEST_TOUCHFILE
+
+    stat_tables_loop &
+    pid=$!
+    write_tables_loop &
+    writepid=$!
+    for (( i = 0; i < TESTITERS; ++i )); do
+        create_triggers
+        create_tables
+        create_views
+        drop_views
+        drop_tables
+        drop_triggers
+        [[ $(( i % 10 )) == 0 ]] && echo "Completed $i create and drop tables and views"
+    done
+    touch $STOP_TABLES_TEST_TOUCHFILE
+    wait
+    check_all_nodes
+}
+
+setup
+run_test
+echo "Success"

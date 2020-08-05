@@ -54,21 +54,22 @@ copy_files_to_node() {
     trap "close_master_ssh_session \"closing\"" INT EXIT
       
     ssh $SSH_OPT $SSH_MSTR -MNf $node   #start master ssh session for node
-    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $PMUX_DIR $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
+    ssh $SSH_OPT $SSH_MSTR $node "mkdir -p $d1 $d2 $d3 $d4 $TESTDIR/logs/ $TESTDIR/var/log/cdb2 $TESTDIR/tmp/cdb2" < /dev/null
 
     if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
         scp $SSH_OPT $SSH_MSTR $COMDB2AR_EXE $node:$COMDB2AR_EXE
         scp $SSH_OPT $SSH_MSTR $COMDB2_EXE $node:$COMDB2_EXE
-        if [ -n "$RESTARTPMUX" ] ; then
-            echo stop pmux on $node first before copying and starting it
-            ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
-        fi
-        set +e
-        scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
-        echo start pmux on $node if not running 
-        ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$PMUX_DIR/pmux.sqlite' $pmux_cmd" < /dev/null
     fi
-
+    if [ -n "$RESTARTPMUX" ] ; then
+        echo stop pmux on $node first before copying and starting it
+        ssh $SSH_OPT $SSH_MSTR $node "$stop_pmux" < /dev/null
+    fi
+    set +e
+    if [[ "$SKIP_COPY_EXE" != "1" ]] ; then
+        scp $SSH_OPT $SSH_MSTR $PMUX_EXE $node:$PMUX_EXE
+    fi
+    echo start pmux on $node if not running
+    ssh $SSH_OPT $SSH_MSTR $node "COMDB2_PMUX_FILE='$TESTDIR/pmux.sqlite' $pmux_cmd" < /dev/null
     ssh $SSH_OPT $SSH_MSTR -O exit $node #close master ssh session
     trap - INT EXIT  #Clear TRAP
     set -e
@@ -105,7 +106,7 @@ if [ -n "$RESTARTPMUX" ] ; then
     eval $stop_pmux
 fi
 echo start pmux on local host if not running
-COMDB2_PMUX_FILE="$TESTSROOTDIR/pmux.sqlite" $pmux_cmd 2>&1
+COMDB2_PMUX_FILE="$TESTDIR/pmux.sqlite" $pmux_cmd 2>&1
 
 # if CLUSTER is length is nonzero copy to cluster
 if [[ -n "$CLUSTER" ]] ; then 

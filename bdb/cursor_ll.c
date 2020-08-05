@@ -1301,7 +1301,7 @@ static int bdb_berkdb_find_shad(bdb_berkdb_t *pberkdb, void *key, int keylen,
                                  keylen, NULL, bdberr);
     }
 #if 0
-   bdb_temp_table_debug_dump( berkdb->cur->state, berkdb->u.sd.cur);
+   bdb_temp_table_debug_dump( berkdb->cur->state, berkdb->u.sd.cur, LOGMSG_USER);
 #endif
 
     if (berkdb->trak) {

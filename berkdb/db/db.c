@@ -39,6 +39,11 @@
 
 #include "db_config.h"
 #include <stdlib.h>
+#include "cheapstack.h"
+
+#if defined (DEBUG_STACK_AT_DB_OPEN_CLOSE)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 
 #ifndef lint
 static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $";
@@ -62,6 +67,7 @@ static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
 #include "logmsg.h"
+#include <tohex.h>
 
 static int __db_dbenv_mpool __P((DB *, const char *, u_int32_t));
 static int __db_disassociate __P((DB *));
@@ -453,6 +459,12 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 
 	dbenv = dbp->dbenv;
 
+	/* Set up peer pointers */
+	dbp->peer = NULL;
+	dbp->revpeer = NULL;
+	dbp->revpeer_count = 0;
+	dbp->is_free = 0;
+
 	/* If we don't yet have an environment, it's time to create it. */
 	if (!F_ISSET(dbenv, DB_ENV_OPEN_CALLED)) {
 		/* Make sure we have at least DB_MINCACHE pages in our cache. */
@@ -517,18 +529,27 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
 
-	/* set up peer pointer */
-	dbp->peer = NULL;
-
-	if (F_ISSET(dbp, DB_AM_HASH))
+	if (F_ISSET(dbp, DB_AM_HASH)) {
 		dbp->peer = dbp;
+	}
+
 	for (lldbp = LIST_FIRST(&dbenv->dblist);
 		lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
 		if (memcmp(lldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0) {
 			if (F_ISSET(dbp, DB_AM_HASH)) {
 				lldbp->peer = dbp;
+				dbp->revpeer_count++;
+				dbp->revpeer = realloc(dbp->revpeer, dbp->revpeer_count *
+						sizeof(DB *));
+				dbp->revpeer[dbp->revpeer_count-1] = lldbp;
 			} else {
-				dbp->peer = lldbp->peer;
+				if (lldbp->peer && F_ISSET(lldbp->peer, DB_AM_HASH)) {
+					dbp->peer = lldbp->peer;
+					lldbp->peer->revpeer_count++;
+					lldbp->peer->revpeer = realloc(lldbp->peer->revpeer,
+							lldbp->peer->revpeer_count * sizeof(DB *));
+					lldbp->peer->revpeer[lldbp->peer->revpeer_count-1] = dbp;
+				}
 				break;
 			}
 		}
@@ -581,16 +602,16 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 		aft = get_dblist_count(dbenv, dbp, "after-insert", __func__, __LINE__);
 		if (gbl_instrument_dblist && aft != (bef+1))
 			abort();
-        if (gbl_instrument_dblist)
-            logmsg(LOGMSG_DEBUG, "%s found match for dbp at adj_fileid %u\n",
-                    __func__, ldbp->adj_fileid);
+		if (gbl_instrument_dblist)
+			logmsg(LOGMSG_DEBUG, "%s found match for dbp at adj_fileid %u\n",
+					__func__, ldbp->adj_fileid);
 	}
 	dbp->inadjlist = 1;
 	listc_abl(&dbenv->dbs[dbp->adj_fileid], dbp);
-    if (gbl_instrument_dblist)
-        logmsg(LOGMSG_DEBUG, "%s putting dbp %p adj_fileid %u into %p list "
-                "%p\n", __func__, dbp, dbp->adj_fileid, dbenv, &dbenv->dbs[
-                dbp->adj_fileid]);
+	if (gbl_instrument_dblist)
+		logmsg(LOGMSG_DEBUG, "%s putting dbp %p adj_fileid %u into %p list "
+				"%p\n", __func__, dbp, dbp->adj_fileid, dbenv, &dbenv->dbs[
+				dbp->adj_fileid]);
 
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 
@@ -770,17 +791,38 @@ __db_close(dbp, txn, flags)
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbenv->dblist_mutexp);
 	db_ref = --dbenv->db_ref;
+
+    /* Nullify references to this dbp */
+	if (dbp->peer) {
+		for (int i = 0; i < dbp->peer->revpeer_count; i++) {
+			if (dbp->peer->revpeer[i] == dbp)
+				dbp->peer->revpeer[i] = NULL;
+		}
+	}
+
+	for (int i = 0; i < dbp->revpeer_count; i++) {
+		DB *lldbp = dbp->revpeer[i];
+		if (lldbp != NULL)
+			lldbp->peer = NULL;
+	}
 	MUTEX_THREAD_UNLOCK(dbenv, dbenv->dblist_mutexp);
 	if (F_ISSET(dbenv, DB_ENV_DBLOCAL) && db_ref == 0 &&
-	    (t_ret = __dbenv_close(dbenv, 0)) != 0 && ret == 0)
+		(t_ret = __dbenv_close(dbenv, 0)) != 0 && ret == 0)
 		ret = t_ret;
 
 	/* Free bthash. */
-	if (F_ISSET(dbp, DB_AM_HASH) && dbp->pg_hash)
+	if (F_ISSET(dbp, DB_AM_HASH) && dbp->pg_hash) {
 		genid_hash_free(dbenv, dbp->pg_hash);
+		if (dbp->revpeer) {
+			free(dbp->revpeer);
+			dbp->revpeer = NULL;
+		}
+		dbp->pg_hash = NULL;
+	}
 
 	/* Free the database handle. */
 	memset(dbp, CLEAR_BYTE, sizeof(*dbp));
+	dbp->is_free = 1;
 	__os_free(dbenv, dbp);
 
 	return (ret);
@@ -815,6 +857,13 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 
 	dbenv = dbp->dbenv;
 
+#if defined (DEBUG_STACK_AT_DB_OPEN_CLOSE)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld closed %s at %p txn=0x%x unopened=%u:",
+			pthread_self(), fid_str, dbp, txn ? txn->txnid : 0,
+			F_ISSET(dbp, DB_AM_OPEN_CALLED));
+#endif
 	/* If never opened, or not currently open, it's easy. */
 	if (!F_ISSET(dbp, DB_AM_OPEN_CALLED))
 		goto never_opened;
@@ -905,26 +954,33 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 		if (F_ISSET(dbp, DB_AM_RECOVER))
 			t_ret = __dbreg_revoke_id(dbp, 0, DB_LOGFILEID_INVALID);
 		else {
-			if ((t_ret = __dbreg_close_id(dbp, txn)) != 0 &&
-			    txn != NULL) {
-				/*
-				 * We're in a txn and the attempt to log the
-				 * close failed;  let the txn subsystem know
-				 * that we need to destroy this dbp once we're
-				 * done with the abort, then bail from the
-				 * close.
-				 *
-				 * Note that if the attempt to put off the
-				 * close -also- fails--which it won't unless
-				 * we're out of heap memory--we're really
-				 * screwed.  Panic.
-				 */
-				if ((ret =
-				    __txn_closeevent(dbenv, txn, dbp)) != 0)
-					return (__db_panic(dbenv, ret));
-				if (deferred_closep != NULL)
-					*deferred_closep = 1;
-				return (t_ret);
+			t_ret = __dbreg_close_id(dbp, txn);
+			if (t_ret != 0) { 
+					char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+					fileid_str(dbp->fileid, fid_str);
+					logmsg(LOGMSG_DEBUG, "dbreg_close failed for %s, "
+							"txn is %p\n", fid_str, txn);
+
+				if (txn != NULL) {
+					/*
+					 * We're in a txn and the attempt to log the
+					 * close failed;  let the txn subsystem know
+					 * that we need to destroy this dbp once we're
+					 * done with the abort, then bail from the
+					 * close.
+					 *
+					 * Note that if the attempt to put off the
+					 * close -also- fails--which it won't unless
+					 * we're out of heap memory--we're really
+					 * screwed.  Panic.
+					 */
+					if ((ret =
+								__txn_closeevent(dbenv, txn, dbp)) != 0)
+						return (__db_panic(dbenv, ret));
+					if (deferred_closep != NULL)
+						*deferred_closep = 1;
+					return (t_ret);
+				}
 			}
 		}
 

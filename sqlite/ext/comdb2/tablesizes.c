@@ -23,9 +23,12 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "comdb2.h"
-#include "comdb2systbl.h"
-#include "comdb2systblInt.h"
+#include <bdb_api.h>
+#include <bdb_int.h>
+#include <sql.h>
+#include <comdb2.h>
+#include <comdb2systbl.h>
+#include <comdb2systblInt.h>
 
 /* systbl_tblsize_cursor is a subclass of sqlite3_vtab_cursor which
 ** serves as the underlying cursor to enumerate the rows in this
@@ -117,16 +120,22 @@ static int systblTblSizeColumn(
   struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   char *x = pDb->tablename;
 
+  tran_type *trans = curtran_gettran();
+  if (!trans) {
+      logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+      return -1;
+  }
   switch( i ){
     case STTS_TABLE: {
       sqlite3_result_text(ctx, x, -1, NULL);
       break;
     }
     case STTS_SIZE: {
-      calc_table_size(pDb);
+      calc_table_size_tran(trans, pDb, 0);
       sqlite3_result_int64(ctx, (sqlite3_int64)pDb->totalsize);
     }
   }
+  curtran_puttran(trans);
   return SQLITE_OK;
 }
 
@@ -203,6 +212,7 @@ const sqlite3_module systblTblSizeModule = {
   0,                       /* xRollbackTo */
   0,                       /* xShadowName */
   .access_flag = CDB2_ALLOW_ALL,
+  .systable_lock = "comdb2_tables",
 };
 
 #endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) \

@@ -1,0 +1,7 @@
+Test reordering of deletes: deletes into table t1 in a random order will have
+indices conflicting in the order of page locks thus resulting in deadlocks
+(if not reordered).
+With reorder on there should many fewer deadlocks (< 100).
+
+With reorder off the conflicts arise in the indices, so we expect many more 
+( > 100) deadlocks.

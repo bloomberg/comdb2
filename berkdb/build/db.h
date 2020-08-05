@@ -351,6 +351,8 @@ struct __db_trigger_subscription;
 #define	DB_PR_RECOVERYTEST    0x0000010	/* Recovery test (-dr). */
 #define	DB_PRINTABLE	      0x0000020	/* Use printable format for salvage. */
 #define	DB_SALVAGE	      0x0000040	/* Salvage what looks like data. */
+#define	DB_IN_ORDER_CHECK   0x0000080	/* We are traversing in order so check intra page for out-of-order keys. */
+#define	DB_RECCNTCHK	      0x0000100	/* Perform record number check. */
 /*
  * !!!
  * These must not go over 0x8000, or they will collide with the flags
@@ -756,6 +758,12 @@ typedef enum {
 struct __db_mpoolfile {
 	DB_FH	  *fhp;		/* Underlying file handle. */
 	DB_FH     *recp;        /* Recovery page file handle. */
+
+/* Protected by mpoolfile mutex */
+	struct {								\
+		DB_MPOOLFILE *le_next;	/* next element */			\
+		DB_MPOOLFILE **le_prev;	/* address of previous next element */	\
+	} mpfq;
 
 	/* Lock-array for recovery pages. */
 	pthread_mutex_t *recp_lk_array;
@@ -1191,7 +1199,8 @@ typedef enum {
 	DB_HASH=2,
 	DB_RECNO=3,
 	DB_QUEUE=4,
-	DB_UNKNOWN=5			/* Figure it out on open. */
+	DB_UNKNOWN=5,			/* Figure it out on open. */
+	DB_TYPE_MAX=6
 } DBTYPE;
 
 #define	DB_RENAMEMAGIC	0x030800	/* File has been renamed. */
@@ -1511,7 +1520,9 @@ struct __db {
 					/* Methods. */
 	int  (*associate) __P((DB *, DB_TXN *, DB *, int (*)(DB *, const DBT *,
 		const DBT *, DBT *), u_int32_t));
+    int  (*get_fileid) __P((DB *, u_int8_t *fileid));
 	int  (*close) __P((DB *, u_int32_t));
+	int  (*closetxn) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	/* comdb2 addition */
 	int  (*cursor_ser) __P((DB *, DB_TXN *, DBCS *, DBC **, u_int32_t));
@@ -1664,6 +1675,15 @@ struct __db {
 	 */
 	DB *peer;
 
+	/* DB **revpeer points back to the recovery dbp.  It allows us
+	 * to set it's peer pointer to NULL if the table is closed.
+	 */
+
+	DB **revpeer;
+	int revpeer_count;
+
+	int is_free;
+
 	genid_hash *pg_hash;
 
 	dbp_bthash_stat pg_hash_stat;
@@ -1792,6 +1812,7 @@ struct __dbc {
 
 	u_int32_t lid;			/* Default process' locker id. */
 	u_int32_t locker;		/* Locker for this operation. */
+	u_int32_t origlocker;
 	DBT	  lock_dbt;		/* DBT referencing lock. */
 	DB_LOCK_ILOCK lock;		/* Object to be locked. */
 	DB_LOCK	  mylock;		/* CDB lock held on this cursor. */
@@ -1829,6 +1850,7 @@ struct __dbc {
 	int (*c_pget) __P((DBC *, DBT *, DBT *, DBT *, u_int32_t));
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
+	int (*c_replace_lockid) __P((DBC *, u_int32_t));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
@@ -2306,6 +2328,7 @@ struct __db_env {
 	int  (*lock_abort_logical_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
+    int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
 	int  (*lock_put) __P((DB_ENV *, DB_LOCK *));
 	int  (*lock_id) __P((DB_ENV *, u_int32_t *));
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
@@ -2359,6 +2382,7 @@ struct __db_env {
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
+	int  (*rep_deadlocks) __P((DB_ENV *, u_int64_t *));
 	int  (*set_logical_start) __P((DB_ENV *, int (*) (DB_ENV *, void *,
 		u_int64_t, DB_LSN *)));
 	int  (*set_logical_commit) __P((DB_ENV *, int (*) (DB_ENV *, void *,
@@ -2378,7 +2402,9 @@ struct __db_env {
 	int  (*set_tx_max) __P((DB_ENV *, u_int32_t));
 	int  (*get_tx_timestamp) __P((DB_ENV *, time_t *));
 	int  (*set_tx_timestamp) __P((DB_ENV *, time_t *));
+	int  (*debug_log) __P((DB_ENV *, DB_TXN *, const DBT *op, const DBT *key, const DBT *data));
 	int  (*txn_begin) __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
+	int  (*txn_assert_notran) __P((DB_ENV *));
 	int  (*txn_checkpoint) __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
@@ -2482,7 +2508,9 @@ struct __db_env {
 	pthread_mutex_t recover_lk;
 	pthread_cond_t recover_cond;
 	int recovery_memsize;  /* Use up to this much memory for log records */
-	pthread_rwlock_t ser_lk;
+	pthread_mutex_t ser_lk;
+	pthread_cond_t ser_cond;
+	int ser_count;
 	int lsn_chain;
 
 	/* overrides for minwrite deadlock */
@@ -2542,10 +2570,11 @@ struct __db_env {
 	/* Stable LSN: must be acked by majority of cluster. */
 	DB_LSN durable_lsn;
 	uint32_t durable_generation;
+    uint32_t rep_gen;
 
 	void (*set_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t));
 	void (*get_durable_lsn) __P((DB_ENV *, DB_LSN *, uint32_t *));
-
+    int (*replicant_generation) __P((DB_ENV *, uint32_t *));
 	int (*set_check_standalone) __P((DB_ENV *, int (*)(DB_ENV *)));
 	int (*check_standalone)(DB_ENV *);
 	int (*set_truncate_sc_callback) __P((DB_ENV *, int (*)(DB_ENV *, DB_LSN *lsn)));
@@ -2559,10 +2588,16 @@ struct __db_env {
 	int (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
-					 pthread_mutex_t **, const uint8_t **active));
+					 pthread_mutex_t **, const uint8_t **));
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
+	int(*trigger_ispaused) __P((DB_ENV *, const char *));
+	int(*trigger_pause) __P((DB_ENV *, const char *));
+	int(*trigger_unpause) __P((DB_ENV *, const char *));
+
+	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
+	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 };
 
 #ifndef DB_DBM_HSEARCH

@@ -50,9 +50,24 @@
 #include "locks.h"
 #include <logmsg.h>
 
-int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
-                             void *key, void *fnddta, int maxlen, int *fndlen,
-                             int *bdberr)
+static int get_cursor_lite(bdb_state_type *bdb_state, tran_type *tran, DBC **outdbcp)
+{
+    DB *db = bdb_state->dbp_data[0][0];
+    DBC *dbcp = NULL;
+    int rc;
+
+    if (tran && tran->is_curtran) {
+        rc = db->cursor(db, NULL, &dbcp, 0);
+        dbcp->c_replace_lockid(dbcp, tran->tid->txnid);
+    } else {
+        rc = db->cursor(db, tran ? tran->tid : NULL, &dbcp, 0);
+    }
+    (*outdbcp) = dbcp;
+    return rc;
+}
+
+static int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, void *fnddta,
+                                    int maxlen, int *fndlen, int *bdberr)
 {
     int rc, outrc = 0, ixlen;
     DBT dbt_key, dbt_data;
@@ -67,7 +82,7 @@ int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
     memset(&dbt_key, 0, sizeof(dbt_key));
     memset(&dbt_data, 0, sizeof(dbt_data));
 
-    ixlen = bdb_state->ixlen[0];
+    ixlen = keylen;
     dbt_key.data = key;
     dbt_key.size = ixlen;
     dbt_key.ulen = ixlen;
@@ -77,8 +92,14 @@ int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
     dbt_data.ulen = maxlen;
     dbt_data.flags |= DB_DBT_USERMEM;
 
-    rc = bdb_state->dbp_data[0][0]->get(bdb_state->dbp_data[0][0], tid,
-                                        &dbt_key, &dbt_data, 0);
+    DBC *dbcp;
+    if ((rc = get_cursor_lite(bdb_state, tran, &dbcp)) != 0) {
+        bdb_cursor_error(bdb_state, tran ? tran->tid : 0, rc, bdberr, __func__);
+        return -1;
+    }
+
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET);
+    dbcp->c_close(dbcp);
 
     if (rc == 0) {
         *fndlen = dbt_data.size;
@@ -98,6 +119,19 @@ int bdb_lite_exact_fetch_int(bdb_state_type *bdb_state, tran_type *tran,
     return outrc;
 }
 
+int bdb_lite_exact_fetch_full_tran(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, void *fnddta,
+                                   int maxlen, int *fndlen, int *bdberr)
+{
+    int rc;
+    BDB_READLOCK("bdb_lite_exact_fetch_full_tran");
+
+    rc = bdb_lite_exact_fetch_int(bdb_state, tran, key, keylen, fnddta, maxlen, fndlen, bdberr);
+
+    BDB_RELLOCK();
+
+    return rc;
+}
+
 /*allows you to pass a transaction if you want to (it can still be NULL)*/
 int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
                               void *key, void *fnddta, int maxlen, int *fndlen,
@@ -106,8 +140,7 @@ int bdb_lite_exact_fetch_tran(bdb_state_type *bdb_state, tran_type *tran,
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_fetch_tran");
-    rc = bdb_lite_exact_fetch_int(bdb_state, tran, key, fnddta, maxlen, fndlen,
-                                  bdberr);
+    rc = bdb_lite_exact_fetch_int(bdb_state, tran, key, bdb_state->ixlen[0], fnddta, maxlen, fndlen, bdberr);
     BDB_RELLOCK();
 
     return rc;
@@ -119,8 +152,7 @@ int bdb_lite_exact_fetch(bdb_state_type *bdb_state, void *key, void *fnddta,
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_fetch");
-    rc = bdb_lite_exact_fetch_int(bdb_state, NULL /*tran*/, key, fnddta, maxlen,
-                                  fndlen, bdberr);
+    rc = bdb_lite_exact_fetch_int(bdb_state, NULL /*tran*/, key, bdb_state->ixlen[0], fnddta, maxlen, fndlen, bdberr);
     BDB_RELLOCK();
 
     return rc;
@@ -144,8 +176,16 @@ int bdb_lite_exact_fetch_alloc_int(bdb_state_type *bdb_state, tran_type *tran,
     if (tran) {
         tid = tran->tid;
     }
-    rc = bdb_state->dbp_data[0][0]->get(bdb_state->dbp_data[0][0], tid,
-                                        &dbt_key, &dbt_data, 0);
+
+    DBC *dbcp;
+    if ((rc = get_cursor_lite(bdb_state, tran, &dbcp)) != 0) {
+        bdb_cursor_error(bdb_state, tran ? tran->tid : 0, rc, bdberr, __func__);
+        return -1;
+    }
+
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET);
+    dbcp->c_close(dbcp);
+
     if (rc == 0) {
         *fndlen = dbt_data.size;
         *fnddta = dbt_data.data;
@@ -163,11 +203,23 @@ int bdb_lite_exact_fetch_alloc(bdb_state_type *bdb_state, void *key,
 {
     int rc;
 
-    BDB_READLOCK("bdb_lite_exact_fetch");
+    BDB_READLOCK("bdb_lite_exact_fetch_alloc");
     rc = bdb_lite_exact_fetch_alloc_int(bdb_state, NULL /*tran*/, key, fnddta,
                                         fndlen, bdberr);
     BDB_RELLOCK();
 
+    return rc;
+}
+
+int bdb_lite_exact_fetch_alloc_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                    void *key, void **fnddta, int *fndlen,
+                                    int *bdberr)
+{
+    int rc;
+    BDB_READLOCK("bdb_lite_exact_fetch_alloc_tran");
+    rc = bdb_lite_exact_fetch_alloc_int(bdb_state, tran, key, fnddta, fndlen,
+                                        bdberr);
+    BDB_RELLOCK();
     return rc;
 }
 
@@ -198,8 +250,14 @@ static int bdb_lite_exact_var_fetch_int(bdb_state_type *bdb_state,
 
     dbt_data.flags = DB_DBT_MALLOC;
 
-    rc = bdb_state->dbp_data[0][0]->get(bdb_state->dbp_data[0][0], tid,
-                                        &dbt_key, &dbt_data, 0);
+    DBC *dbcp;
+    if ((rc = get_cursor_lite(bdb_state, tran, &dbcp)) != 0) {
+        bdb_cursor_error(bdb_state, tran ? tran->tid : 0, rc, bdberr, __func__);
+        return -1;
+    }
+
+    rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, DB_SET);
+    dbcp->c_close(dbcp);
 
     if (rc == 0) {
         *fndlen = dbt_data.size;
@@ -255,7 +313,6 @@ int bdb_lite_fetch_partial_tran(bdb_state_type *bdb_state, tran_type *tran,
 
 {
     DBT dbt_key = {0}, dbt_data = {0};
-    DB *db;
     DBC *dbcp = NULL;
     int rc;
     int ixlen = bdb_state->ixlen[0];
@@ -273,8 +330,7 @@ int bdb_lite_fetch_partial_tran(bdb_state_type *bdb_state, tran_type *tran,
     dbt_key.ulen = ixlen;
     dbt_data.flags = DB_DBT_PARTIAL;
 
-    db = bdb_state->dbp_data[0][0];
-    rc = db->cursor(db, tid, &dbcp, 0);
+    rc = get_cursor_lite(bdb_state, tran, &dbcp);
     if (rc != 0) {
         bdb_cursor_error(bdb_state, tid, rc, bdberr, __func__);
         return -1;
@@ -331,7 +387,6 @@ static int bdb_lite_fetch_keys_int(bdb_state_type *bdb_state, tran_type *tran,
                                    void *firstkey, int direction, void *fndkeys,
                                    int maxfnd, int *numfnd, int *bdberr)
 {
-    DB *db;
     DBT dbt_key, dbt_data;
     DBC *dbcp;
     int ixlen, rc = 0;
@@ -365,8 +420,7 @@ static int bdb_lite_fetch_keys_int(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
-    db = bdb_state->dbp_data[0][0];
-    rc = db->cursor(db, tid, &dbcp, 0);
+    rc = get_cursor_lite(bdb_state, tran, &dbcp);
     if (rc != 0) {
         bdb_cursor_error(bdb_state, tid, rc, bdberr, "bdb_lite_fetch_keys_int");
         return -1;
@@ -436,6 +490,12 @@ static int bdb_lite_fetch_keys_int(bdb_state_type *bdb_state, tran_type *tran,
         dbt_key.flags = DB_DBT_USERMEM;
 
         rc = dbcp->c_get(dbcp, &dbt_key, &dbt_data, flags);
+
+        /* SETRANGE allows us to read past the set of records we care about (which
+         * may have keys which are larger).  Coerce this to NOTFOUND. */
+        if (rc == ENOMEM) {
+            rc = DB_NOTFOUND;
+        }
 
         if (rc == DB_NOTFOUND) {
             /* no more data to be found */
@@ -511,8 +571,8 @@ int bdb_lite_fetch_keys_bwd(bdb_state_type *bdb_state, void *firstkey,
     return rc;
 }
 
-static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran,
-                            void *dtaptr, int dtalen, void *key, int *bdberr)
+static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr, int dtalen, void *key, int keylen,
+                            int *bdberr)
 {
     int rc;
     u_int32_t flags = 0;
@@ -541,7 +601,7 @@ static int bdb_lite_add_int(bdb_state_type *bdb_state, tran_type *tran,
     dbt_data.flags |= DB_DBT_USERMEM;
 
     dbt_key.data = key;
-    dbt_key.size = bdb_state->ixlen[0];
+    dbt_key.size = keylen;
 
     dbt_data.data = dtaptr;
     dbt_data.size = dtalen;
@@ -576,14 +636,25 @@ int bdb_lite_add(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr,
     int rc;
 
     BDB_READLOCK("bdb_lite_add");
-    rc = bdb_lite_add_int(bdb_state, tran, dtaptr, dtalen, key, bdberr);
+    rc = bdb_lite_add_int(bdb_state, tran, dtaptr, dtalen, key, bdb_state->ixlen[0], bdberr);
     BDB_RELLOCK();
 
     return rc;
 }
 
-static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran,
-                                  void *key, int *bdberr)
+int bdb_lite_full_add(bdb_state_type *bdb_state, tran_type *tran, void *dtaptr, int dtalen, void *key, int keylen,
+                      int *bdberr)
+{
+    int rc;
+
+    BDB_READLOCK("bdb_lite_add");
+    rc = bdb_lite_add_int(bdb_state, tran, dtaptr, dtalen, key, keylen, bdberr);
+    BDB_RELLOCK();
+
+    return rc;
+}
+
+static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, int *bdberr)
 {
     int rc;
     DBT dbt_key;
@@ -612,7 +683,7 @@ static int bdb_lite_exact_del_int(bdb_state_type *bdb_state, tran_type *tran,
 
     memset(&dbt_key, 0, sizeof(dbt_key));
     dbt_key.data = key;
-    dbt_key.size = bdb_state->ixlen[0];
+    dbt_key.size = keylen;
     dbt_key.flags |= DB_DBT_USERMEM;
 
     rc = bdb_state->dbp_data[0][0]->del(bdb_state->dbp_data[0][0], tid,
@@ -644,7 +715,18 @@ int bdb_lite_exact_del(bdb_state_type *bdb_state, tran_type *tran, void *key,
     int rc;
 
     BDB_READLOCK("bdb_lite_exact_del");
-    rc = bdb_lite_exact_del_int(bdb_state, tran, key, bdberr);
+    rc = bdb_lite_exact_del_int(bdb_state, tran, key, bdb_state->ixlen[0], bdberr);
+    BDB_RELLOCK();
+
+    return rc;
+}
+
+int bdb_lite_delete(bdb_state_type *bdb_state, tran_type *tran, void *key, int keylen, int *bdberr)
+{
+    int rc;
+
+    BDB_READLOCK("bdb_lite_exact_del");
+    rc = bdb_lite_exact_del_int(bdb_state, tran, key, keylen, bdberr);
     BDB_RELLOCK();
 
     return rc;
@@ -656,16 +738,13 @@ int bdb_lite_list_records(bdb_state_type *bdb_state,
                                           int *bdberr),
                           int *bdberr)
 {
-    DB *db;
     DBC *dbcp;
     DBT key, data;
     int rc = 0;
 
     *bdberr = 0;
 
-    db = bdb_state->dbp_data[0][0];
-
-    rc = db->cursor(db, NULL, &dbcp, 0);
+    rc = get_cursor_lite(bdb_state, NULL, &dbcp);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d: failed to open cursor rc=%d\n", __FILE__,
                 __LINE__, rc);

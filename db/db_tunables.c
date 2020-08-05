@@ -37,6 +37,7 @@
 /* Separator for composite tunable components. */
 #define COMPOSITE_TUNABLE_SEP '.'
 
+extern int gbl_waitalive_iterations;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int gbl_allow_pragma;
@@ -44,7 +45,6 @@ extern int gbl_berkdb_epochms_repts;
 extern int gbl_pmux_route_enabled;
 extern int gbl_allow_user_schema;
 extern int gbl_test_badwrite_intvl;
-extern int gbl_blocksql_grace;
 extern int gbl_broken_max_rec_sz;
 extern int gbl_broken_num_parser;
 extern int gbl_crc32c;
@@ -113,7 +113,6 @@ extern int gbl_use_appsock_as_sqlthread;
 extern int gbl_use_node_pri;
 extern int gbl_watchdog_watch_threshold;
 extern int portmux_port;
-extern int g_osql_blocksql_parallel_max;
 extern int g_osql_max_trans;
 extern int gbl_osql_max_throttle_sec;
 extern int gbl_osql_random_restart;
@@ -147,6 +146,7 @@ extern int gbl_dump_full_net_queue;
 extern int gbl_max_clientstats_cache;
 extern int gbl_decoupled_logputs;
 extern int gbl_apply_queue_memory;
+extern int gbl_inmem_repdb;
 extern int gbl_inmem_repdb_maxlog;
 extern int gbl_inmem_repdb_memory;
 extern int gbl_net_writer_thread_poll_ms;
@@ -197,6 +197,7 @@ extern int gbl_elect_priority_bias;
 extern int gbl_abort_on_reconstruct_failure;
 extern int gbl_rand_elect_timeout;
 extern int gbl_rand_elect_min_ms;
+extern int gbl_libevent;
 extern int gbl_rand_elect_max_ms;
 extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
@@ -237,6 +238,14 @@ extern int gbl_load_cache_max_pages;
 extern int gbl_dump_cache_max_pages;
 extern int gbl_max_pages_per_cache_thread;
 extern int gbl_memp_dump_cache_threshold;
+extern int gbl_disable_ckp;
+extern int gbl_abort_on_illegal_log_put;
+extern int gbl_sc_close_txn;
+extern int gbl_master_sends_query_effects;
+extern int gbl_dump_sql_on_repwait_sec;
+extern int gbl_client_queued_slow_seconds;
+extern int gbl_client_running_slow_seconds;
+extern int gbl_client_abort_on_slow;
 
 extern long long sampling_threshold;
 
@@ -251,8 +260,14 @@ extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
 extern char *gbl_exec_sql_on_new_connect;
-extern char *gbl_portmux_unix_socket;
+extern char *gbl_test_log_file;
+extern pthread_mutex_t gbl_test_log_file_mtx;
 extern char *gbl_machine_class;
+extern int gbl_ref_sync_pollms;
+extern int gbl_ref_sync_wait_txnlist;
+extern int gbl_ref_sync_iterations;
+extern int gbl_sc_pause_at_end;
+extern int gbl_sc_is_at_end;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;
@@ -286,6 +301,9 @@ extern int max_replication_trans_retries;
 /* net/net.c */
 extern int explicit_flush_trace;
 
+/* bdb/file.c */
+extern char *bdb_trans(const char infile[], char outfile[]);
+
 /* bdb/genid.c */
 unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
@@ -300,28 +318,36 @@ extern int gbl_reorder_socksql_no_deadlock;
 
 int gbl_ddl_cascade_drop = 1;
 extern int gbl_queuedb_genid_filename;
+extern int gbl_queuedb_file_threshold;
+extern int gbl_queuedb_file_interval;
 extern int gbl_queuedb_timeout_sec;
 
 extern int gbl_timeseries_metrics;
 extern int gbl_metric_maxpoints;
 extern int gbl_metric_maxage;
-extern int gbl_osql_check_replicant_numops;
-extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
 extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
-
-int gbl_debug_tmptbl_corrupt_mem;
-
+extern int gbl_reorder_idx_writes;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_pthread_locks;
+extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int eventlog_nkeep;
+extern int gbl_debug_systable_locks;
+extern int gbl_assert_systable_locks;
+extern int gbl_track_curtran_gettran_locks;
+extern int gbl_permit_small_sequences;
 
-int gbl_page_order_table_scan = 0;
+int gbl_debug_tmptbl_corrupt_mem;
+int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
+                                   sqlite's limit */
+int gbl_page_order_table_scan;
+int gbl_old_column_names = 1;
+size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
 /*
   =========================================================
@@ -349,6 +375,14 @@ static int init_with_compr_blobs_update(void *context, void *algo)
     gbl_init_with_compr_blobs = bdb_compr2algo((char *)algo);
     logmsg(LOGMSG_INFO, "Blobs in new tables will be compressed: %s\n",
            bdb_algo2compr(gbl_init_with_compr_blobs));
+    return 0;
+}
+
+static int init_with_queue_compr_update(void *context, void *algo)
+{
+    gbl_init_with_queue_compr = bdb_compr2algo((char *)algo);
+    logmsg(LOGMSG_INFO, "New queues will be compressed: %s\n",
+           bdb_algo2compr(gbl_init_with_queue_compr));
     return 0;
 }
 
@@ -391,21 +425,25 @@ static int enable_sql_stmt_caching_update(void *context, void *value)
     int len;
 
     tunable = (comdb2_tunable *)context;
-    len = strlen(value);
+    if ((tunable->flags & EMPTY) != 0) {
 
-    tok = segtok(value, len, &st, &ltok);
+        /* Backward compatibility */
+        *(int *)tunable->var = STMT_CACHE_PARAM;
 
-    for (int i = 0; i < (sizeof(enable_sql_stmt_caching_vals) /
-                         sizeof(struct enable_sql_stmt_caching_st));
-         i++) {
-        if (tokcmp(tok, ltok, enable_sql_stmt_caching_vals[i].name) == 0) {
-            *(int *)tunable->var = enable_sql_stmt_caching_vals[i].code;
-            return 0;
+    } else {
+        len = strlen(value);
+
+        tok = segtok(value, len, &st, &ltok);
+
+        for (int i = 0; i < (sizeof(enable_sql_stmt_caching_vals) /
+                             sizeof(struct enable_sql_stmt_caching_st));
+             i++) {
+            if (tokcmp(tok, ltok, enable_sql_stmt_caching_vals[i].name) == 0) {
+                *(int *)tunable->var = enable_sql_stmt_caching_vals[i].code;
+                break;
+            }
         }
     }
-
-    /* Backward compatibility */
-    *(int *)tunable->var = STMT_CACHE_PARAM;
 
     return 0;
 }
@@ -558,19 +596,6 @@ static int file_update(void *context, void *value)
     *(char **)tunable->var = getdbrelpath(file_tmp);
     free(file_tmp);
 
-    return 0;
-}
-
-extern char **qdbs;
-
-static int num_qdbs_update(void *context, void *value)
-{
-    comdb2_tunable *tunable = (comdb2_tunable *)context;
-    int val = *(int *)value;
-
-    *(int *)tunable->var = val;
-    thedb->qdbs = calloc(val, sizeof(struct dbtable *));
-    qdbs = calloc(val + 1, sizeof(char *));
     return 0;
 }
 
@@ -806,8 +831,6 @@ int ctrace_set_rollat(void *unused, void *value);
 static void *sql_tranlevel_default_value(void *context)
 {
     switch (gbl_sql_tranlevel_default) {
-    case SQL_TDEF_COMDB2: return "COMDB2";
-    case SQL_TDEF_BLOCK: return "BLOCK";
     case SQL_TDEF_SOCK: return "BLOCKSOCK";
     case SQL_TDEF_RECOM: return "RECOM";
     case SQL_TDEF_SNAPISOL: return "SNAPSHOT ISOLATION";
@@ -831,6 +854,10 @@ static int sql_tranlevel_default_update(void *context, void *value)
     if (tok == NULL) {
         logmsg(LOGMSG_USER, "expected transaction level\n");
         return 1;
+    } else if (tokcmp(tok, ltok, "comdb2") == 0 ||
+               tokcmp(tok, ltok, "block") == 0 ||
+               tokcmp(tok, ltok, "prefer_blocksock") == 0) {
+        return 0; /* nop */
     } else if (tokcmp(tok, ltok, "blocksock") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
     } else if (tokcmp(tok, ltok, "recom") == 0) {
@@ -840,12 +867,11 @@ static int sql_tranlevel_default_update(void *context, void *value)
     } else if (tokcmp(tok, ltok, "serial") == 0) {
         gbl_sql_tranlevel_default = SQL_TDEF_SERIAL;
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown transaction level requested\n");
-        gbl_sql_tranlevel_default = SQL_TDEF_SOCK;
+        logmsg(LOGMSG_ERROR, "bad transaction level:%s\n", tok);
         return 1;
     }
     gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-    logmsg(LOGMSG_USER, "Set default transaction level to %s\n",
+    logmsg(LOGMSG_USER, "default transaction level:%s\n",
            (char *)sql_tranlevel_default_value(NULL));
     return 0;
 }
@@ -867,6 +893,28 @@ static int page_order_table_scan_update(void *context, void *value)
                  gbl_page_order_table_scan);
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
+}
+
+static void *portmux_bind_path_get(void *dum)
+{
+    return get_portmux_bind_path();
+}
+
+static int portmux_bind_path_set(void *dum, void *path)
+{
+    return set_portmux_bind_path(path);
+}
+
+static int test_log_file_update(void *context, void *value)
+{
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    char newValue[PATH_MAX];
+    bdb_trans((char *)value, newValue);
+    Pthread_mutex_lock(&gbl_test_log_file_mtx);
+    free(*(char **)tunable->var);
+    *(char **)tunable->var = strdup(newValue);
+    Pthread_mutex_unlock(&gbl_test_log_file_mtx);
     return 0;
 }
 
@@ -1222,28 +1270,33 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     switch (t->type) {
     case TUNABLE_INTEGER: {
         int num;
-        PARSE_TOKEN;
 
-        if ((ret = parse_int(buf, &num))) {
-            logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return TUNABLE_ERR_INVALID_VALUE;
-        }
-
-        /*
-          Verify the validity of the specified argument. We perform this
-          check for all INTEGER types.
-        */
-        if ((t->flags & SIGNED) == 0) {
-            if (((t->flags & NOZERO) != 0) && (num <= 0)) {
-                logmsg(LOGMSG_ERROR,
-                       "Invalid argument for '%s' (should be > 0).\n", t->name);
-                return TUNABLE_ERR_INVALID_VALUE;
-            } else if (num < 0) {
-                logmsg(LOGMSG_ERROR,
-                       "Invalid argument for '%s' (should be >= 0).\n",
-                       t->name);
+        if ((t->flags & EMPTY) == 0) {
+            PARSE_TOKEN;
+            if ((ret = parse_int(buf, &num))) {
+                logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
                 return TUNABLE_ERR_INVALID_VALUE;
             }
+
+            /*
+              Verify the validity of the specified argument. We perform this
+              check for all INTEGER types.
+            */
+            if ((t->flags & SIGNED) == 0) {
+                if (((t->flags & NOZERO) != 0) && (num <= 0)) {
+                    logmsg(LOGMSG_ERROR,
+                           "Invalid argument for '%s' (should be > 0).\n",
+                           t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                } else if (num < 0) {
+                    logmsg(LOGMSG_ERROR,
+                           "Invalid argument for '%s' (should be >= 0).\n",
+                           t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                }
+            }
+        } else {
+            num = 1;
         }
 
         /* Inverse the value, if needed. */
@@ -1303,11 +1356,15 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
     }
     case TUNABLE_BOOLEAN: {
         int num;
-        PARSE_TOKEN;
+        if ((t->flags & EMPTY) == 0) {
+            PARSE_TOKEN;
 
-        if ((ret = parse_bool(buf, &num))) {
-            logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-            return TUNABLE_ERR_INVALID_VALUE;
+            if ((ret = parse_bool(buf, &num))) {
+                logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+                return TUNABLE_ERR_INVALID_VALUE;
+            }
+        } else {
+            num = 1;
         }
 
         /* Inverse the value, if needed. */
@@ -1463,10 +1520,10 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
           set for the tunable, in which case its ok.
         */
         if (((t->flags & NOARG) != 0) &&
-            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN))) {
-
-            strcpy(buf, "1");
-
+            ((t->type == TUNABLE_INTEGER) || (t->type == TUNABLE_BOOLEAN) ||
+             (t->type == TUNABLE_ENUM))) {
+            /* Empty the buffer */
+            buf[0] = '\0';
             /*
               Also set the EMPTY flags for lower functions
               to detect that no argument was supplied.

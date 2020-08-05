@@ -31,7 +31,7 @@
 #include <strings.h>
 #include "ctrace.h"
 #include <epochlib.h>
-#include <segstring.h>
+#include <segstr.h>
 #include "lockmacros.h"
 #include "list.h"
 #include "pool.h"
@@ -654,10 +654,10 @@ static void *thdpool_thd(void *voidarg)
     struct thdpool *pool = thd->pool;
 
     ATOMIC_ADD32(pool->nactthd, 1);
-
+#   ifndef NDEBUG
     logmsg(LOGMSG_DEBUG, "%s(%s): thread going active: %u active\n",
            __func__, pool->name, ATOMIC_LOAD32(pool->nactthd));
-
+#   endif
     int check_exit = 0;
     void *thddata = NULL;
 
@@ -686,6 +686,8 @@ static void *thdpool_thd(void *voidarg)
 
         LOCK(&pool->mutex)
         {
+            thd->persistent_info = "looking for work...";
+
             struct timespec timeout;
             struct timespec *ts = NULL;
             int thr_exit = 0;
@@ -783,7 +785,7 @@ static void *thdpool_thd(void *voidarg)
          * from the perspective of other threads that may need
          * to examine it. */
         LOCK(&pool->mutex) {
-            thd->persistent_info = NULL;
+            thd->persistent_info = "work completed.";
             if (work.persistent_info != NULL) {
                 free(work.persistent_info);
                 work.persistent_info = NULL;
@@ -809,6 +811,12 @@ static void *thdpool_thd(void *voidarg)
             UNLOCK(&pool->mutex);
         }
 
+        // ready to perform yield operation, update thread info again
+        LOCK(&pool->mutex) {
+            thd->persistent_info = "yielding...";
+        }
+        UNLOCK(&pool->mutex);
+
         // before acquiring next request, yield
         comdb2bma_yield_all();
     }
@@ -824,9 +832,10 @@ thread_exit:
 
     free(thd);
 
+#   ifndef NDEBUG
     logmsg(LOGMSG_DEBUG, "%s(%s): thread going inactive: %u active\n",
            __func__, pool->name, ATOMIC_LOAD32(pool->nactthd));
-
+#   endif
     ATOMIC_ADD32(pool->nactthd, -1);
     return NULL;
 }

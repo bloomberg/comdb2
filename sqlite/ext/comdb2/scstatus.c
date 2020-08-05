@@ -9,11 +9,14 @@
 #include "ezsystables.h"
 #include "cdb2api.h"
 #include "schemachange.h"
+#include "sc_schema.h"
+#include "sc_global.h"
 
 struct sc_status_ent {
     char *name;
     char *type;
     char *newcsc2;
+    char *seed;
     cdb2_client_datetime_t start;
     char *status;
     cdb2_client_datetime_t lastupdated;
@@ -40,15 +43,20 @@ static char *status_num2str(int s)
     return "UNKNOWN";
 }
 
-int get_status(void **data, int *npoints)
+static int get_status(void **data, int *npoints)
 {
     int rc, bdberr, nkeys;
-    llmeta_sc_status_data **status = NULL;
+    llmeta_sc_status_data *status = NULL;
     void **sc_data = NULL;
     struct sc_status_ent *sc_status_ents = NULL;
-    struct schema_change_type sc = {0};
+    tran_type *tran = curtran_gettran();
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+        return SQLITE_INTERNAL;
+    }
 
-    rc = bdb_llmeta_get_all_sc_status(&status, &sc_data, &nkeys, &bdberr);
+    rc = bdb_llmeta_get_all_sc_status(tran, &status, &sc_data, &nkeys, &bdberr);
+    curtran_puttran(tran);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to get all schema change status\n",
                __func__);
@@ -58,37 +66,40 @@ int get_status(void **data, int *npoints)
     sc_status_ents = calloc(nkeys, sizeof(struct sc_status_ent));
     if (sc_status_ents == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed to malloc\n", __func__);
-        return SQLITE_NOMEM;
+        rc = SQLITE_NOMEM;
+        goto cleanup;
     }
 
     for (int i = 0; i < nkeys; i++) {
         dttz_t d;
+        struct schema_change_type sc = {0}; // used for upacking
 
-        rc = unpack_schema_change_type(&sc, sc_data[i], status[i]->sc_data_len);
+        rc = unpack_schema_change_type(&sc, sc_data[i], status[i].sc_data_len);
         if (rc) {
             free(sc_status_ents);
             logmsg(LOGMSG_ERROR, "%s: failed to unpack schema change\n",
                    __func__);
-            return SQLITE_INTERNAL;
+            rc = SQLITE_INTERNAL;
+            goto cleanup;
         }
         sc_status_ents[i].name = strdup(sc.tablename);
         sc_status_ents[i].type = strdup(get_ddl_type_str(&sc));
         sc_status_ents[i].newcsc2 = strdup(get_ddl_csc2(&sc));
 
-        d = (dttz_t){.dttz_sec = status[i]->start / 1000,
+        d = (dttz_t){.dttz_sec = status[i].start / 1000,
                      .dttz_frac =
-                         status[i]->start - (status[i]->start / 1000 * 1000),
+                         status[i].start - (status[i].start / 1000 * 1000),
                      .dttz_prec = DTTZ_PREC_MSEC};
         dttz_to_client_datetime(
             &d, "UTC", (cdb2_client_datetime_t *)&(sc_status_ents[i].start));
-        d = (dttz_t){.dttz_sec = status[i]->last / 1000,
+        d = (dttz_t){.dttz_sec = status[i].last / 1000,
                      .dttz_frac =
-                         status[i]->last - (status[i]->last / 1000 * 1000),
+                         status[i].last - (status[i].last / 1000 * 1000),
                      .dttz_prec = DTTZ_PREC_MSEC};
         dttz_to_client_datetime(
             &d, "UTC",
             (cdb2_client_datetime_t *)&(sc_status_ents[i].lastupdated));
-        sc_status_ents[i].status = strdup(status_num2str(status[i]->status));
+        sc_status_ents[i].status = strdup(status_num2str(status[i].status));
 
         struct dbtable *db = get_dbtable_by_name(sc.tablename);
         if (db && db->doing_conversion)
@@ -96,23 +107,31 @@ int get_status(void **data, int *npoints)
         else
             sc_status_ents[i].converted = -1;
 
-        sc_status_ents[i].error = strdup(status[i]->errstr);
-
-        sc.onstack = 1;
-        free_schema_change_type(&sc);
-        free(status[i]);
-        free(sc_data[i]);
+        sc_status_ents[i].error = strdup(status[i].errstr);
+        if (status[i].status == BDB_SC_RUNNING || 
+            status[i].status == BDB_SC_PAUSED || 
+            status[i].status == BDB_SC_COMMIT_PENDING) {
+            uint64_t seed = sc_get_seed_table(sc.tablename);
+            char str[22];
+            sprintf(str, "%0#16" PRIx64, flibc_htonll(seed));
+            sc_status_ents[i].seed = strdup(str);
+        }
     }
-
-    free(status);
-    free(sc_data);
 
     *npoints = nkeys;
     *data = sc_status_ents;
-    return 0;
+
+cleanup:
+    for (int i = 0; i < nkeys; i++) {
+        free(sc_data[i]);
+    }
+    free(status);
+    free(sc_data);
+
+    return rc;
 }
 
-void free_status(void *p, int n)
+static void free_status(void *p, int n)
 {
     struct sc_status_ent *sc_status_ents = p;
     for (int i = 0; i < n; i++) {
@@ -144,6 +163,7 @@ int systblScStatusInit(sqlite3 *db)
         CDB2_CSTRING, "newcsc2", -1, offsetof(struct sc_status_ent, newcsc2),
         CDB2_DATETIME, "start", -1, offsetof(struct sc_status_ent, start),
         CDB2_CSTRING, "status", -1, offsetof(struct sc_status_ent, status),
+        CDB2_CSTRING, "seed", -1, offsetof(struct sc_status_ent, seed),
         CDB2_DATETIME, "last_updated", -1, offsetof(struct sc_status_ent,
                                                     lastupdated),
         CDB2_INTEGER, "converted", -1, offsetof(struct sc_status_ent,

@@ -26,7 +26,6 @@
 #include <sys/types.h>
 #include <sys/time.h>
 
-#include "limit_fortify.h"
 #include <arpa/inet.h>
 #include <errno.h>
 #include <netinet/in.h>
@@ -49,6 +48,7 @@
 #include "thread_util.h"
 #include "osqlrepository.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "str0.h"
 
 struct thr_handle {
@@ -542,7 +542,6 @@ void stop_threads(struct dbenv *dbenv)
 
     dbenv->stopped = 1;
     dbenv->no_more_sql_connections = 1;
-    osql_set_cancelall(1);
 
     if (gbl_appsock_thdpool)
         thdpool_stop(gbl_appsock_thdpool);
@@ -584,7 +583,6 @@ void resume_threads(struct dbenv *dbenv)
         thdpool_resume(gbl_osqlpfault_thdpool);
     dbenv->stopped = 0;
     dbenv->no_more_sql_connections = 0;
-    osql_set_cancelall(0);
     MEMORY_SYNC;
     if (!dbenv->purge_old_blkseq_is_running ||
         !dbenv->purge_old_files_is_running)

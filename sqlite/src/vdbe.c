@@ -80,7 +80,7 @@ void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
   if( p3==1 ){
     char *zRowId = 0;
     int nRowId = 0;
-    if( sqlite3BtreeGetGenId(pCursor, rowId, 0, &zRowId, &nRowId)!=SQLITE_OK ){
+    if( sqlite3BtreeGetGenId(rowId, 0, &zRowId, &nRowId)!=SQLITE_OK ){
       assert( zRowId==0 );
       assert( nRowId==0 );
       MemSetTypeFlag(pOut, MEM_Null);
@@ -94,7 +94,7 @@ void getRowid(BtCursor *pCursor, i64 rowId, u8 p3, Mem *pOut)
   }
   if( p3==2 ){
     unsigned long long genId = 0;
-    if( sqlite3BtreeGetGenId(pCursor, rowId, &genId, 0, 0)!=SQLITE_OK ){
+    if( sqlite3BtreeGetGenId(rowId, &genId, 0, 0)!=SQLITE_OK ){
       MemSetTypeFlag(pOut, MEM_Null);
       return;
     }
@@ -1923,6 +1923,16 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( pOut->db );
 
+  /* SQLite may reuse a Mem object. If the Mem object has dynamically allocated
+     memory (zMalloc), we free it here. If we do not free it here, zMalloc will
+     be overwritten to NULL by one of the arithmetic routines below and the memory
+     will be leaked. */
+  if( pOut->szMalloc>0 ){
+    sqlite3DbFreeNN(pOut->db, pOut->zMalloc);
+    pOut->szMalloc = 0;
+    pOut->z = pOut->zMalloc = NULL;
+  }
+
   if( (pIn1->flags & MEM_Interval) && pIn1->du.tv.type == INTV_DECIMAL_TYPE)
   {
     Mem res;
@@ -3100,7 +3110,9 @@ cooked_access:
       pC->aRow = sqlite3BtreePayloadFetch(pCrsr, &pC->szRow);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       assert( pC->szRow<=pC->payloadSize );
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       assert( pC->szRow<=65536 );  /* Maximum page size is 64KiB */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( pC->payloadSize > (u32)db->aLimit[SQLITE_LIMIT_LENGTH] ){
         goto too_big;
       }

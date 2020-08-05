@@ -313,8 +313,7 @@ int sqlite3BtreeData(BtCursor*, u32 offset, u32 amt, void*);
 /*
 ** Extract the rrn:genid of the record pointed to by cursor as a string.
 */
-int sqlite3BtreeGetGenId(BtCursor *,
-                         unsigned long long,
+int sqlite3BtreeGetGenId(unsigned long long,
                          unsigned long long *,
                          char **,
                          int* /* sizeof buf if already allocated */);

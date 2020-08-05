@@ -221,22 +221,16 @@ extern int gbl_rep_lockid;
 /* Throw a rowlock deadlock once every 1000 records or so */
 extern int gbl_simulate_rowlock_deadlock_interval;
 
+int berkdb_check_held(DB_ENV *dbenv, uint32_t lid, DBT *lkname, int mode)
+{
+    return dbenv->lock_query(dbenv, lid, lkname, mode);
+}
+
 /* Wrapper around berkeley lock call.  Makes debugging easier. */
 int berkdb_lock(DB_ENV *dbenv, int lid, int flags, DBT *lkname, int mode,
                 DB_LOCK *lk)
 {
     int rc;
-
-#if 0
-    char lock_description[100];
-    bdb_describe_lock(dbenv, lkname->data, lkname->size, lock_description,
-                      sizeof(lock_description));
-    printf("get: %s\n", lock_description);
-    if (lid && lid == gbl_rep_lockid && lkname->size == 30) {
-        printf("Replication thread getting row lock?\n");
-        abort();
-    }
-#endif
 
     if (lid == gbl_rep_lockid && (lkname->size == 30 || lkname->size > 32)) {
         logmsg(LOGMSG_WARN, "replication thread getting logical locks!\n");
@@ -685,6 +679,12 @@ int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
                               BDB_LOCK_READ);
 }
 
+int bdb_lock_table_write_fromlid(bdb_state_type *bdb_state, int lid)
+{
+    return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
+                              BDB_LOCK_WRITE);
+}
+
 int bdb_lock_table_read(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;
@@ -710,6 +710,11 @@ int bdb_lock_tablename_read(bdb_state_type *bdb_state, const char *name,
                               BDB_LOCK_READ);
 }
 
+int bdb_lock_tablename_read_fromlid(bdb_state_type *bdb_state, const char *name, int lid)
+{
+    return bdb_lock_table_int(bdb_state->dbenv, name, lid, BDB_LOCK_READ);
+}
+
 int bdb_lock_table_write(bdb_state_type *bdb_state, tran_type *tran)
 {
     int rc;
@@ -733,6 +738,24 @@ int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
     rc = bdb_lock_table_int(bdb_state->dbenv, name, resolve_locker_id(tran),
                             BDB_LOCK_WRITE);
     return rc;
+}
+
+int bdb_assert_tablename_locked(bdb_state_type *bdb_state, const char *tblname, uint32_t lockid,
+                                enum assert_lock_type type)
+{
+    int have_write = 0, have_read = 0;
+    char name[TABLELOCK_KEY_SIZE];
+    DBT lk;
+
+    form_tablelock_keyname(tblname, name, &lk);
+    if (type == ASSERT_TABLENAME_LOCKED_WRITE || type == ASSERT_TABLENAME_LOCKED_EITHER) {
+        have_write = berkdb_check_held(bdb_state->dbenv, lockid, &lk, DB_LOCK_WRITE);
+    }
+    if ((have_write == 0) && (type == ASSERT_TABLENAME_LOCKED_READ || type == ASSERT_TABLENAME_LOCKED_EITHER)) {
+        have_read = berkdb_check_held(bdb_state->dbenv, lockid, &lk, DB_LOCK_READ);
+    }
+    assert(have_write | have_read);
+    return have_write | have_read;
 }
 
 int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
@@ -785,8 +808,6 @@ int bdb_lock_row_write_getlock_fromlid(bdb_state_type *bdb_state, int lid,
                               lkname, 0);
     return rc;
 }
-
-extern int __lock_to_dbt(DB_ENV *dbenv, DB_LOCK *lock, void **ptr, int *sz);
 
 int bdb_release_lock(bdb_state_type *bdb_state, DB_LOCK *lk)
 {

@@ -21,39 +21,33 @@
 #include "comdb2uuid.h"
 
 /**
- *
- * This defines the osql repository
- * It is maintain on the master and contains
- * all pending blocksql/socksql/recom/snapisol/serial sessions
- */
-
-typedef struct osql_repository osql_repository_t;
-
-/**
  * Adds an osql session to the repository
- * Returns 0 on success
+ * Returns:
+ *   0 on success,
+ *   -1 generic error
+ *   -2 old session with same rqid already running
+ *
  */
-int osql_repository_add(osql_sess_t *sess, int *replaced);
+int osql_repository_add(osql_sess_t *sess);
 
 /**
  * Removes an osql session from the repository
  * Returns 0 on success
  */
-int osql_repository_rem(osql_sess_t *sess, int lock, const char *func, const char *callfunc, int line);
+void osql_repository_rem(osql_sess_t *sess);
 
 /**
  * Retrieves a session based on rqid
- * Increments the users to prevent premature
- * deletion
+ * Increments the users to prevent premature deletion
+ *
  */
-osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid,
-                                 int keep_repository_lock);
+osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid);
 
 /**
  * Decrements the number of users
  * Returns 0 if success
  */
-int osql_repository_put(osql_sess_t *sess, int release_repository_lock);
+int osql_repository_put(osql_sess_t *sess);
 
 /**
  * Init repository
@@ -68,24 +62,6 @@ int osql_repository_init(void);
 void osql_repository_destroy(void);
 
 /**
- * Disable temporarily replicant "node"
- * Lock the repository during update
- * "node" will receive no more offloading requests
- * until a blackout window will expire
- * It is used mainly with blocksql
- *
- */
-int osql_repository_blkout_node(char *node);
-
-/**
- * Returns true if all requests are being
- * cancelled (this is usually done because
- * of a schema change)
- *
- */
-int osql_repository_cancelled(void);
-
-/**
  * Go through all the sessions executing on node
  * "node" and mark them "terminate", which cancel
  * them.
@@ -94,12 +70,6 @@ int osql_repository_cancelled(void);
  *
  */
 int osql_repository_terminatenode(char *host);
-
-/**
- * Enable/disable osql sessions
- *
- */
-void osql_set_cancelall(int enable);
 
 /**
  * Print info about pending osql sessions

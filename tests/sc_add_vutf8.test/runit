@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
 dbnm=$1
@@ -20,96 +19,11 @@ nrecs=100
 # Max number of schema changes
 max_nusc=100
 
-function failexit
-{
-    echo "Failed $1"
-    touch failexit
-    exit -1
-}
-
 function checkfailexit
 {
-    if [[ -f failexit ]] ; then
+    if [[ -f ${DBNAME}.failexit ]] ; then
         exit 1
     fi
-}
-
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
-
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if cat verify.out | grep -i success > /dev/null ; then
-        failexit "failed verify"
-    fi
-}
-
-
-function do_rebuild_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            kill -9 $track_pid
-            exit 1
-        fi
-
-        do_verify $loc_dbnm $loc_tbl
-        let scnt=scnt+1
-    done
-
-    echo "Success!  Performed $scnt schema-changes."
-
-    return 0
-}
-
-
-
-
-function do_rebuild
-{
-    typeset max=$1
-    typeset scnt=0
-    while [[ $scnt -lt $max ]]; do 
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild t1"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            return 1
-        fi
-        let scnt=scnt+1
-        do_verify
-        assertcnt $nrecs
-    done
-
-    return 0
 }
 
 
@@ -125,7 +39,7 @@ function insert_records
             failexit "Inserting record $j "
         fi
         let j=j+1
-        assertcnt $j
+        assertcnt t1 $j
         if [ $1 -gt 0 ] ; then
             sleep 0.1
         fi
@@ -145,8 +59,8 @@ function run_test_one
     cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  {`cat t1_2.csc2 ` }"
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select a,b,c,d,e,f from t1" > out2.txt
-    assertcnt $nrecs
-    do_verify
+    assertcnt t1 $nrecs
+    do_verify t1
 
     if ! diff out1.txt out2.txt ; then
         failexit "out1 and out2 differ"
@@ -173,12 +87,39 @@ function run_test_two
     checkfailexit
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from t1" > out2.txt
-    assertcnt $nrecs
-    do_verify
+    assertcnt t1 $nrecs
+    do_verify t1
     mv insert.out insert2.out
 }
 
+# alter table several times adding vutf8 fields, we should only 
+# be able to add a max of 15 vutf8 fields
+function run_test_three
+{
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "create table t2 (i int)"
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "insert into t2 values(1)"
+    let i=1
 
+    > add_vutf8.out
+    echo 'i' > add_vutf8.expected
+
+    while [ $i -lt 16 ]; do 
+        $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "alter table t2 add v$i vutf8" &>> add_vutf8.out
+        echo "v$i" >> add_vutf8.expected
+        let i=i+1
+    done
+
+    # adding the 16th vutf8 field will fail
+    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $dbnm default 'select columnname from comdb2_columns where tablename = "t2"' >> add_vutf8.out
+    $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "alter table t2 add v$i vutf8" &>> add_vutf8.out
+    echo "[alter table t2 add v$i vutf8] failed with rc 240 " >> add_vutf8.expected
+
+    if ! diff add_vutf8.out add_vutf8.expected ; then
+        echo "diff $PWD/{add_vutf8.out,add_vutf8.expected}"
+        echo "Failed"
+        exit 1
+    fi
+}
 
 
 echo "running test in machine $(hostname):${PWD}"
@@ -203,5 +144,8 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1.csc2 ` }"
 run_test_two
 
 cleanup
+
+run_test_three
+
 
 echo "Success"

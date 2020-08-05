@@ -89,6 +89,7 @@
 #define GET_CDB2_HANDLE_BY_NAME_OR_FAIL(a)                      \
     do {                                                        \
 	const char *handleName = Tcl_GetString((a));            \
+	assert(handleName != NULL);                             \
 	pCdb2 = GetCdb2HandleByName(interp, handleName);        \
 	if (pCdb2 == NULL) {                                    \
 	    Tcl_AppendResult(interp,                            \
@@ -524,8 +525,11 @@ static int GetFlagsFromList(
     }
 
     for (index = 0; index < objc; index++) {
-	const char *name = Tcl_GetString(objv[index]);
+	const char *name;
 	int value;
+
+	name = Tcl_GetString(objv[index]);
+	assert(name != NULL);
 
 	if (GetValueFromName(interp, name, pairs, &value) != TCL_OK) {
 	    return TCL_ERROR;
@@ -603,6 +607,7 @@ static int ProcessStructFieldsFromElements(
 
     for (index = 0; index < elemCount; index += 2) {
 	Tcl_Obj *elemObj;
+	const char *elemStr;
 	const NameAndValue *pair;
 	const char *format;
 	size_t offset;
@@ -616,8 +621,10 @@ static int ProcessStructFieldsFromElements(
 	elemObj = elemPtrs[index];
 	assert(elemObj != NULL);
 
-	if (GetPairFromName(interp, Tcl_GetString(elemObj), fields,
-		&pair) != TCL_OK) {
+	elemStr = Tcl_GetString(elemObj);
+	assert(elemStr != NULL);
+
+	if (GetPairFromName(interp, elemStr, fields, &pair) != TCL_OK) {
 	    return TCL_ERROR;
 	}
 
@@ -662,14 +669,15 @@ static int ProcessStructFieldsFromElements(
 	    const char *stringValue;
 
 	    stringValue = Tcl_GetStringFromObj(elemObj, &length);
-
-	    assert(stringValue != NULL && length >= 0);
+	    assert(stringValue != NULL);
+	    assert(length >= 0); /* TODO: How do we know this? */
 
 	    if (strcmp(format, "%s") == 0) { /* SAFE: Literally "%s". */
 		assert(offset + length <= valueLength);
 		memcpy(valuePtr + offset, stringValue, (size_t)length);
 	    } else {
 		stringValue = Tcl_GetString(elemObj);
+		assert(stringValue != NULL);
 		assert(offset == 0);
 
 		if (strncmp(format, stringValue, length) != 0) {
@@ -873,7 +881,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_datetime_t));
-	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIME_MAX_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -895,7 +903,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ym_t));
-	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALYM_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -920,7 +928,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_ds_t));
-	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALDS_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -964,7 +972,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_datetimeus_t));
-	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_DATETIMEUS_MAX_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -992,7 +1000,7 @@ static int GetValueStructFromObj(
 	    };
 
 	    assert(valueLength >= sizeof(cdb2_client_intv_dsus_t));
-	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS);
+	    assert(COUNT_OF(fields) == CDB2_INTERVALDSUS_ELEMENTS + 1);
 
 	    code = ProcessStructFieldsFromElements(interp, elemPtrs,
 		elemCount, fields, valuePtr, valueLength);
@@ -1557,7 +1565,8 @@ static int tclcdb2ObjCmd(
     char buffer[FIXED_BUFFER_SIZE + 1];
     int code = TCL_OK;
     int option;
-    cdb2_hndl_tp *pCdb2;
+    const char *dbName = NULL;
+    cdb2_hndl_tp *pCdb2 = NULL;
     int rc;
     Tcl_HashTable *hTablePtr;
     Tcl_HashEntry *hPtr = NULL;
@@ -1643,6 +1652,8 @@ static int tclcdb2ObjCmd(
 		Tcl_ResetResult(interp); /* INTL: Expected error. */
 
 		bindName = Tcl_GetString(objv[3]);
+		assert(bindName != NULL);
+
 		pBoundValue->index = -1;
 
 		snprintf(buffer, sizeof(buffer), "name_%s", bindName);
@@ -1672,6 +1683,7 @@ static int tclcdb2ObjCmd(
 	    }
 
 	    typeName = Tcl_GetString(objv[4]);
+	    assert(typeName != NULL);
 
 	    code = GetValueFromName(interp, typeName, aColumnTypes,
 		&pBoundValue->type);
@@ -1728,6 +1740,7 @@ static int tclcdb2ObjCmd(
 		    }
 
 		    doubleString = Tcl_GetStringFromObj(objv[5], &length);
+		    assert(doubleString != NULL);
 
 		    if ((doubleString != NULL) && (length > 2) &&
 			    (strncmp(doubleString, "0x", 2) == 0)) {
@@ -1777,6 +1790,7 @@ static int tclcdb2ObjCmd(
 		    }
 
 		    cstringValue = Tcl_GetStringFromObj(objv[5], &length);
+		    assert(cstringValue != NULL);
 
 		    if (cstringValue != NULL) {
 			char *newCstringValue = malloc(
@@ -1984,7 +1998,10 @@ static int tclcdb2ObjCmd(
 		goto done;
 	    }
 
-	    code = RemoveCdb2HandleByName(interp, Tcl_GetString(objv[2]));
+	    dbName = Tcl_GetString(objv[2]);
+	    assert(dbName != NULL);
+
+	    code = RemoveCdb2HandleByName(interp, dbName);
 
 	    if (code != TCL_OK)
 		goto done;
@@ -2263,6 +2280,7 @@ static int tclcdb2ObjCmd(
 	    }
 
 	    config = Tcl_GetString(objv[2]);
+	    assert(config != NULL);
 
 	    if (useFile) {
 		cdb2_set_comdb2db_config(reset ? NULL : config);
@@ -2445,8 +2463,6 @@ static int tclcdb2ObjCmd(
 	    break;
 	}
 	case OPT_OPEN: {
-	    cdb2_hndl_tp *pCdb2 = NULL;
-	    const char *dbName = NULL;
 	    const char *type = "default"; /* TODO: Good default? */
 	    int flags = 0;                /* TODO: Good default? */
 
@@ -2457,9 +2473,12 @@ static int tclcdb2ObjCmd(
 	    }
 
 	    dbName = Tcl_GetString(objv[2]);
+	    assert(dbName != NULL);
 
-	    if (objc >= 4)
+	    if (objc >= 4) {
 		type = Tcl_GetString(objv[3]);
+		assert(type != NULL);
+	    }
 
 	    if (objc >= 5) {
 		code = GetFlagsFromList(interp, objv[4], aOpenFlags, &flags);
@@ -2494,7 +2513,9 @@ static int tclcdb2ObjCmd(
 	    }
 
 	    GET_CDB2_HANDLE_BY_NAME_OR_FAIL(objv[2]);
+
 	    sql = Tcl_GetString(objv[3]);
+	    assert(sql != NULL);
 
 	    if (objc == 5) {
 		int index, listObjc;
@@ -2511,11 +2532,14 @@ static int tclcdb2ObjCmd(
 		memset(types, 0, listObjc * sizeof(int));
 
 		for (index = 0; index < listObjc; index++) {
+		    const char *typeName;
 		    int type;
 
+		    typeName = Tcl_GetString(listObjv[index]);
+		    assert(typeName != NULL);
+
 		    code = GetValueFromName(
-			interp, Tcl_GetString(listObjv[index]),
-			aColumnTypes, &type);
+			interp, typeName, aColumnTypes, &type);
 
 		    if (code != TCL_OK)
 			goto done;

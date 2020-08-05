@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
 
@@ -9,12 +11,6 @@ debug=0
 
 dbnm=$1
 
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
 
 if [ "x$dbnm" == "x" ] ; then
     failexit "need a DB name"
@@ -28,20 +24,6 @@ fi
 nins=0
 nupd=0
 
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from t1")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
 
 
 function assert_vers 
@@ -67,6 +49,15 @@ function assert_schema
     if ! diff schema.out $schema ; then 
         cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select * from sqlite_master' > sqlite_master.out
         failexit "final schema is not same as $schema: diff schema.out $schema"
+    fi
+}
+
+function check_systable_sc_status
+{
+    seed1=$1
+    seed2=`cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm "select seed from comdb2_sc_status where name='t1'"`
+    if [ "$seed1" != "$seed2" ] ; then
+        failexit "sc_status does not contain the correct seed for t1 schemachange $seed1 vs $seed2"
     fi
 }
 
@@ -115,16 +106,6 @@ function assert_sc_seed
     echo "scseed is $scseed"
     if [ "$scseed" != "$target" ] ; then 
         failexit "scseed $scseed, but target is $target"
-    fi
-}
-
-
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
     fi
 }
 
@@ -298,7 +279,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1  { `cat t1_1.csc2 ` }"
 assert_vers t1 0
 assert_schema t1 t1_1.csc2
 insert_records 1 200
-assertcnt 200
+assertcnt t1 200
 
 #check via select * from t1 | make sure that a == b == c == 'test'$
 
@@ -321,6 +302,10 @@ echo "sleep 10 to let alter1 process some rows"
 sleep 10
 
 seed1=`get_sc_seed`
+
+# check that comdb2_sc_status table has the same seed
+check_systable_sc_status $seed1
+
 #if it is a cluster we can downgrade, if it is single node we can restart
 #we can add feature to send('restart') where it will cleanup then exec self
 echo "sending downgrade"
@@ -380,7 +365,7 @@ cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'select * from t1 limit 1'
 assert_sc_status 0
 assert_vers t1 1
 assert_schema t1 t1_2.csc2
-do_verify
+do_verify t1
 
 cdb2sql ${CDB2_OPTIONS} --host $master $dbnm 'exec procedure sys.cmd.send("flush")'
 echo restart master to make sure when it comes up we are still at version 1
@@ -390,7 +375,7 @@ master=`getmaster`
 assert_sc_status 0
 assert_vers t1 1
 assert_schema t1 t1_2.csc2
-do_verify
+do_verify t1
 
 
 echo "TESTING KILLING MASTER WHILE PERFORMING REBUILD"
@@ -445,7 +430,7 @@ if ! diff allrows_pre.out allrows_post.out ; then
 fi
 
 assert_vers t1 1
-do_verify
+do_verify t1
 
 
 
@@ -507,7 +492,7 @@ fi
 
 echo "version should now be 2"
 assert_vers t1 2
-do_verify
+do_verify t1
 
 
 
@@ -519,7 +504,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_2.csc2 ` }"
 
 echo "version should now be 3"
 assert_vers t1 3
-do_verify
+do_verify t1
 
 echo 'alter to t1_3 while interrupting by killing master node'
 
@@ -586,7 +571,7 @@ if [ $diff -gt 1 ] ; then
 fi
 
 assert_vers t1 4
-do_verify
+do_verify t1
 
 if [ ! -n "$CLUSTER" ] ; then
     echo "Success"
@@ -605,7 +590,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table t1  { `cat t1_1.csc2 ` }"
 
 echo "version should now be 5"
 assert_vers t1 5
-do_verify
+do_verify t1
 
 sleep 5
 master=`getmaster`
@@ -650,7 +635,7 @@ wait_for_sc
 
 assert_vers t1 6
 assert_schema t1 t1_2.csc2
-do_verify
+do_verify t1
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "select a, c from t1 order by a" > post.out 2>&1
 diff pre.out post.out > /dev/null

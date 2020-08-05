@@ -721,6 +721,18 @@ comdb2__db_c_skip_stat(dbc, nxtcnt, skpcnt)
 }
 
 static int
+comdb2__db_c_replace_lockid(dbc, lockid)
+    DBC *dbc;
+    u_int32_t lockid;
+{
+    assert(dbc->txn == NULL);
+    assert(dbc->origlocker == 0);
+    dbc->origlocker = dbc->locker;
+    dbc->locker = lockid;
+    return 0;
+}
+
+static int
 comdb2__bam_bulk(dbc, data, flags)
 	DBC *dbc;
 	DBT *data;
@@ -884,7 +896,7 @@ __bam_pgorder_next(dbc, pgno)
 	static int lastpr=0;
 	if (gbl_enable_pageorder_trace && time(NULL) > lastpr + 1) {
 		logmsg(LOGMSG_USER, "Berkdb cursor %p page-order next to page"
-			"%d, skip=%lu next=%lu\n",
+			"%d, skip=%"PRIu64" next=%"PRIu64"\n",
 			dbc, pgno + 1, dbc->skipcount, dbc->nextcount);
 		lastpr=time(NULL);
 	}
@@ -934,6 +946,7 @@ __bam_c_init(dbc, dbtype)
 	dbc->c_pget = comdb2__db_c_pget_pp;
 	dbc->c_put = comdb2__db_c_put_pp;
 	dbc->c_skip_stat = comdb2__db_c_skip_stat;
+	dbc->c_replace_lockid = comdb2__db_c_replace_lockid;
 	if (dbtype == DB_BTREE) {
 		dbc->c_am_bulk = comdb2__bam_bulk;
 		dbc->c_am_close = comdb2__bam_c_close;
@@ -1648,6 +1661,12 @@ done:	/*
 		if (t_ret != 0 && ret == 0)
 			ret = t_ret;
 	}
+
+    if (dbc->origlocker != 0) {
+        dbc->locker = dbc->origlocker;
+        dbc->origlocker = 0;
+    }
+
 	DISCARD_CUR(dbc, t_ret);
 	if (t_ret != 0 && ret == 0)
 		ret = t_ret;
@@ -3032,7 +3051,7 @@ split:	ret = stack = 0;
 		 * in order to adjust the record count.
 		 */
 		if ((ret = __bam_c_search(dbc,
-		    F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
+						F_ISSET(cp, C_RECNUM) ? cp->root : root_pgno, key,
 		    flags == DB_KEYFIRST || dbp->dup_compare != NULL ?
 		    DB_KEYFIRST : DB_KEYLAST, &exact)) != 0)
 			goto err;
@@ -3152,6 +3171,14 @@ split:	ret = stack = 0;
 		 * posistioned to a particular record.  This
 		 * is in the case where C_RECNUM is set.
 		 */
+		if(gbl_skip_cget_in_db_put) {
+			/* COMDB2_MODIFICATION since we are not calling cget before cput
+			 * then we need an extra lock on this page about to be split */
+			ret = __db_lget(dbc, LOCK_ISSET(cp->lock) ? LCK_COUPLE : 0,
+					cp->pgno, DB_LOCK_WRITE, 0, &cp->lock);
+			if (ret != 0)
+				goto err;
+		}
 
 		/* Invalidate the cursor before releasing the pagelock */
 		if (own == 0) {

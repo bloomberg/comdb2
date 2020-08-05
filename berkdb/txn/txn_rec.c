@@ -697,8 +697,10 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 #ifdef DEBUG_RECOVER
 	(void)__txn_child_print(dbenv, dbtp, lsnp, op, info);
 #endif
-	if ((ret = __txn_child_read(dbenv, dbtp->data, &argp)) != 0)
+	if ((ret = __txn_child_read(dbenv, dbtp->data, &argp)) != 0) {
+		abort();
 		return (ret);
+	}
 
 	/*
 	 * This is a record in a PARENT's log trail indicating that a
@@ -734,8 +736,8 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			if (ret) {
 				fprintf( stderr,
 "%s:%d failed to add lsn %d:%d for transaction %x to list\n",
-				    __FILE__, __LINE__, argp->prev_lsn.file,
-				    argp->prev_lsn.offset, argp->txnid->txnid);
+					__FILE__, __LINE__, argp->prev_lsn.file,
+					argp->prev_lsn.offset, argp->txnid->txnid);
 				goto err;
 			}
 		}
@@ -745,7 +747,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		 * parameter, so you cannot reuse the argp->c_lsn field.
 		 */
 		ret = __db_txnlist_lsnadd(dbenv, info,
-		    &argp->c_lsn, TXNLIST_NEW);
+			&argp->c_lsn, TXNLIST_NEW);
 	} else if (op == DB_TXN_BACKWARD_ROLL) {
 		/* Child might exist -- look for it. */
 		c_stat = __db_txnlist_find(dbenv, info, argp->child);
@@ -765,7 +767,7 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 				c_stat = TXN_ABORT;
 			}
 			ret = __db_txnlist_update(dbenv,
-			    info, argp->child, c_stat, NULL);
+				info, argp->child, c_stat, NULL);
 			if (ret > 0)
 				ret = 0;
 		} else if (c_stat == TXN_UNEXPECTED) {
@@ -777,8 +779,8 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 			 * are interested).
 			 */
 			ret = __db_txnlist_update(dbenv, info, argp->child,
-			    p_stat == TXN_COMMIT ? TXN_COMMIT : TXN_IGNORE,
-			    NULL);
+				p_stat == TXN_COMMIT ? TXN_COMMIT : TXN_IGNORE,
+				NULL);
 			if (ret > 0)
 				ret = 0;
 		} else if (c_stat != TXN_IGNORE) {
@@ -804,19 +806,23 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 		if (c_stat == TXN_NOTFOUND) {
 			p_stat =
 			     __db_txnlist_find(dbenv, info, argp->txnid->txnid);
-			if (p_stat == TXN_NOTFOUND)
+			if (p_stat == TXN_NOTFOUND) {
 				ret = __db_txnlist_add(dbenv, info,
-				     argp->txnid->txnid, TXN_IGNORE, NULL);
-			else
+					 argp->txnid->txnid, TXN_IGNORE, NULL);
+			}
+			else {
 				ret = __db_txnlist_update(dbenv, info,
-				     argp->txnid->txnid, TXN_IGNORE, NULL);
+					 argp->txnid->txnid, TXN_IGNORE, NULL);
+				if (ret > 0)
+					ret = 0;
+			}
 		}
 	} else if (DB_REDO(op)) {
 		/* Forward Roll */
 		if ((ret =
-		    __db_txnlist_remove(dbenv, info, argp->child)) != TXN_OK) {
+			__db_txnlist_remove(dbenv, info, argp->child)) != TXN_OK) {
 			__db_err(dbenv,
-			    "Transaction not in list %x", argp->child);
+				"Transaction not in list %x", argp->child);
 			ret = DB_NOTFOUND;
 		}
 	}
@@ -826,6 +832,10 @@ __txn_child_recover(dbenv, dbtp, lsnp, op, info)
 
 	__os_free(dbenv, argp);
 
+	if (ret) {
+		__log_flush(dbenv, NULL);
+		abort();
+	}
 	return (ret);
 }
 

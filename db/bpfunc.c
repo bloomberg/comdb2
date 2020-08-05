@@ -33,6 +33,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func,
                                 struct errstat *err);
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
+static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errstat *err);
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, struct errstat *err)
@@ -114,6 +115,11 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
     case BPFUNC_SET_SKIPSCAN:
         func->exec = exec_set_skipscan;
         break;
+
+    case BPFUNC_DELETE_FROM_SC_HISTORY:
+        func->exec = exec_delete_from_sc_history;
+        break;
+
 
     default:
         logmsg(LOGMSG_ERROR, "Unknown function_id in bplog function\n");
@@ -347,7 +353,7 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     int valid_user;
 
     if (auth->enabled)
-        bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
+        bdb_user_password_check(tran, DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
 
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);
@@ -520,3 +526,12 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err)
     return rc;
 }
 
+static int exec_delete_from_sc_history(void *tran, bpfunc_t *func,
+                                       struct errstat *err)
+{
+    BpfuncDeleteFromScHistory *tblseed = func->arg->tblseed;
+    int rc = bdb_del_schema_change_history(tran, tblseed->tablename, tblseed->seed);
+    if (rc)
+        errstat_set_rcstrf(err, rc, "%s failed delete", __func__);
+    return rc;
+}

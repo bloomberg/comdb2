@@ -51,6 +51,7 @@
 
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "util.h"
 #include "tohex.h"
 #include "str0.h"
@@ -3827,8 +3828,7 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
             memcpy(out, inblob->data, len);
             *outdtsz += len;
 
-            free(inblob->data);
-            bzero(inblob, sizeof(blob_buffer_t));
+            free_blob_buffers(inblob, 1);
 
             if (outblob) {
                 outblob->collected = 1;
@@ -6526,8 +6526,7 @@ static TYPES_INLINE int blob2_convert(int len, const void *in, int in_len,
             memcpy(out, inblob->data, len);
             *outdtsz += len;
 
-            free(inblob->data);
-            bzero(inblob, sizeof(blob_buffer_t));
+            free_blob_buffers(inblob, 1);
 
             if (outblob) {
                 outblob->collected = 1;
@@ -11778,6 +11777,35 @@ int CLIENT_INTVDSUS_to_SERVER_INTVDSUS(C2S_FUNKY_ARGS)
 #define SERVER_INTVDSUS_to_SERVER_DECIMAL SERVER_to_SERVER_NO_CONV
 #define SERVER_VUTF8_to_SERVER_DECIMAL SERVER_to_SERVER_NO_CONV
 
+#define SERVER_SEQ_to_SERVER_UINT SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_BREAL SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_BCSTR SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_BYTEARRAY SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_BLOB SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_DATETIME SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_INTVYM SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_INTVDS SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_VUTF8 SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_DECIMAL SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_BLOB2 SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_DATETIMEUS SERVER_to_SERVER_NO_CONV
+#define SERVER_SEQ_to_SERVER_INTVDSUS SERVER_to_SERVER_NO_CONV
+
+#define SERVER_UINT_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_BINT_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_BREAL_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_BCSTR_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_BYTEARRAY_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_BLOB_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_DATETIME_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_INTVYM_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_INTVDS_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_VUTF8_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_DECIMAL_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_BLOB2_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_DATETIMEUS_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+#define SERVER_INTVDSUS_to_SERVER_SEQ SERVER_to_SERVER_NO_CONV
+
 #define _SRV_TYPE_TO_CLT_TYPE(size, sfrom, cfrom)                              \
     void *tmpbuf;                                                              \
     int isnull;                                                                \
@@ -12133,6 +12161,24 @@ static TYPES_INLINE int SERVER_INTVDSUS_to_SERVER_INTVDSUS(S2S_FUNKY_ARGS)
 {
     return SERVER_INTVDS_to_SERVER_INTVDS(in, inlen, inopts, inblob, out,
                                           outlen, outdtsz, outopts, outblob);
+}
+
+static TYPES_INLINE int SERVER_SEQ_to_SERVER_BINT(S2S_FUNKY_ARGS)
+{
+    set_resolve_master(out, outlen);
+    *outdtsz = outlen;
+    return 0;
+}
+
+static TYPES_INLINE int SERVER_SEQ_to_SERVER_SEQ(S2S_FUNKY_ARGS)
+{
+    if (inlen != outlen)
+        return -1;
+
+    memcpy(out, in, outlen);
+    *outdtsz = outlen;
+
+    return 0;
 }
 
 #define SERVER_INTVDST_to_SERVER_INTVDST_func_body(                            \
@@ -12904,6 +12950,7 @@ const int server_to_server_convert_tbl[SERVER_MAXTYPE][SERVER_MAXTYPE] = {
     {0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1},
 };
 
+// clang-format off
 int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
     const void *in, int inlen, const struct field_conv_opts *inopts,
     blob_buffer_t *inblob, void *out, int outlen, int *outdtsz,
@@ -13058,48 +13105,48 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_VUTF8_to_SERVER_BLOB2,
                             SERVER_VUTF8_to_SERVER_DATETIMEUS,
                             SERVER_VUTF8_to_SERVER_INTVDSUS},
-    /* SERVER_DECIMAL       */ {NULL, SERVER_DECIMAL_to_SERVER_UINT,
-                                SERVER_DECIMAL_to_SERVER_BINT,
-                                SERVER_DECIMAL_to_SERVER_BREAL,
-                                SERVER_DECIMAL_to_SERVER_BCSTR,
-                                SERVER_DECIMAL_to_SERVER_BYTEARRAY,
-                                SERVER_DECIMAL_to_SERVER_BLOB,
-                                SERVER_DECIMAL_to_SERVER_DATETIME,
-                                SERVER_DECIMAL_to_SERVER_INTVYM,
-                                SERVER_DECIMAL_to_SERVER_INTVDS,
-                                SERVER_DECIMAL_to_SERVER_VUTF8,
-                                SERVER_DECIMAL_to_SERVER_DECIMAL,
-                                SERVER_DECIMAL_to_SERVER_BLOB2,
-                                SERVER_DECIMAL_to_SERVER_DATETIMEUS,
-                                SERVER_DECIMAL_to_SERVER_INTVDSUS},
-    /* SERVER_BLOB2       */ {NULL, SERVER_BLOB2_to_SERVER_UINT,
-                              SERVER_BLOB2_to_SERVER_BINT,
-                              SERVER_BLOB2_to_SERVER_BREAL,
-                              SERVER_BLOB2_to_SERVER_BCSTR,
-                              SERVER_BLOB2_to_SERVER_BYTEARRAY,
-                              SERVER_BLOB2_to_SERVER_BLOB,
-                              SERVER_BLOB2_to_SERVER_DATETIME,
-                              SERVER_BLOB2_to_SERVER_INTVYM,
-                              SERVER_BLOB2_to_SERVER_INTVDS,
-                              SERVER_BLOB2_to_SERVER_VUTF8,
-                              SERVER_BLOB2_to_SERVER_DECIMAL,
-                              SERVER_BLOB2_to_SERVER_BLOB2,
-                              SERVER_BLOB2_to_SERVER_DATETIMEUS,
-                              SERVER_BLOB_to_SERVER_INTVDSUS},
-    /* SERVER_DATETIMEUS  */ {NULL, SERVER_DATETIMEUS_to_SERVER_UINT,
-                              SERVER_DATETIMEUS_to_SERVER_BINT,
-                              SERVER_DATETIMEUS_to_SERVER_BREAL,
-                              SERVER_DATETIMEUS_to_SERVER_BCSTR,
-                              SERVER_DATETIMEUS_to_SERVER_BYTEARRAY,
-                              SERVER_DATETIMEUS_to_SERVER_BLOB,
-                              SERVER_DATETIMEUS_to_SERVER_DATETIME,
-                              SERVER_DATETIMEUS_to_SERVER_INTVYM,
-                              SERVER_DATETIMEUS_to_SERVER_INTVDS,
-                              SERVER_DATETIMEUS_to_SERVER_VUTF8,
-                              SERVER_DATETIMEUS_to_SERVER_DECIMAL,
-                              SERVER_DATETIMEUS_to_SERVER_BLOB2,
-                              SERVER_DATETIMEUS_to_SERVER_DATETIMEUS,
-                              SERVER_DATETIMEUS_to_SERVER_INTVDSUS},
+    /* SERVER_DECIMAL   */ {NULL, SERVER_DECIMAL_to_SERVER_UINT,
+                            SERVER_DECIMAL_to_SERVER_BINT,
+                            SERVER_DECIMAL_to_SERVER_BREAL,
+                            SERVER_DECIMAL_to_SERVER_BCSTR,
+                            SERVER_DECIMAL_to_SERVER_BYTEARRAY,
+                            SERVER_DECIMAL_to_SERVER_BLOB,
+                            SERVER_DECIMAL_to_SERVER_DATETIME,
+                            SERVER_DECIMAL_to_SERVER_INTVYM,
+                            SERVER_DECIMAL_to_SERVER_INTVDS,
+                            SERVER_DECIMAL_to_SERVER_VUTF8,
+                            SERVER_DECIMAL_to_SERVER_DECIMAL,
+                            SERVER_DECIMAL_to_SERVER_BLOB2,
+                            SERVER_DECIMAL_to_SERVER_DATETIMEUS,
+                            SERVER_DECIMAL_to_SERVER_INTVDSUS},
+    /* SERVER_BLOB2     */ {NULL, SERVER_BLOB2_to_SERVER_UINT,
+                            SERVER_BLOB2_to_SERVER_BINT,
+                            SERVER_BLOB2_to_SERVER_BREAL,
+                            SERVER_BLOB2_to_SERVER_BCSTR,
+                            SERVER_BLOB2_to_SERVER_BYTEARRAY,
+                            SERVER_BLOB2_to_SERVER_BLOB,
+                            SERVER_BLOB2_to_SERVER_DATETIME,
+                            SERVER_BLOB2_to_SERVER_INTVYM,
+                            SERVER_BLOB2_to_SERVER_INTVDS,
+                            SERVER_BLOB2_to_SERVER_VUTF8,
+                            SERVER_BLOB2_to_SERVER_DECIMAL,
+                            SERVER_BLOB2_to_SERVER_BLOB2,
+                            SERVER_BLOB2_to_SERVER_DATETIMEUS,
+                            SERVER_BLOB_to_SERVER_INTVDSUS},
+    /* SERVER_DATETIMEUS*/ {NULL, SERVER_DATETIMEUS_to_SERVER_UINT,
+                            SERVER_DATETIMEUS_to_SERVER_BINT,
+                            SERVER_DATETIMEUS_to_SERVER_BREAL,
+                            SERVER_DATETIMEUS_to_SERVER_BCSTR,
+                            SERVER_DATETIMEUS_to_SERVER_BYTEARRAY,
+                            SERVER_DATETIMEUS_to_SERVER_BLOB,
+                            SERVER_DATETIMEUS_to_SERVER_DATETIME,
+                            SERVER_DATETIMEUS_to_SERVER_INTVYM,
+                            SERVER_DATETIMEUS_to_SERVER_INTVDS,
+                            SERVER_DATETIMEUS_to_SERVER_VUTF8,
+                            SERVER_DATETIMEUS_to_SERVER_DECIMAL,
+                            SERVER_DATETIMEUS_to_SERVER_BLOB2,
+                            SERVER_DATETIMEUS_to_SERVER_DATETIMEUS,
+                            SERVER_DATETIMEUS_to_SERVER_INTVDSUS},
     /* SERVER_INTVDSUS  */ {NULL, SERVER_INTVDSUS_to_SERVER_UINT,
                             SERVER_INTVDSUS_to_SERVER_BINT,
                             SERVER_INTVDSUS_to_SERVER_BREAL,
@@ -13114,7 +13161,23 @@ int (*server_to_server_convert_map[SERVER_MAXTYPE][SERVER_MAXTYPE])(
                             SERVER_INTVDSUS_to_SERVER_BLOB2,
                             SERVER_INTVDSUS_to_SERVER_DATETIMEUS,
                             SERVER_INTVDSUS_to_SERVER_INTVDSUS},
+    /* SERVER_SEQUENCE */  {NULL, SERVER_SEQ_to_SERVER_UINT,
+                            SERVER_SEQ_to_SERVER_BINT,
+                            SERVER_SEQ_to_SERVER_BREAL,
+                            SERVER_SEQ_to_SERVER_BCSTR,
+                            SERVER_SEQ_to_SERVER_BYTEARRAY,
+                            SERVER_SEQ_to_SERVER_BLOB,
+                            SERVER_SEQ_to_SERVER_DATETIME,
+                            SERVER_SEQ_to_SERVER_INTVYM,
+                            SERVER_SEQ_to_SERVER_INTVDS,
+                            SERVER_SEQ_to_SERVER_VUTF8,
+                            SERVER_SEQ_to_SERVER_DECIMAL,
+                            SERVER_SEQ_to_SERVER_BLOB2,
+                            SERVER_SEQ_to_SERVER_DATETIMEUS,
+                            SERVER_SEQ_to_SERVER_INTVDSUS,
+                            SERVER_SEQ_to_SERVER_SEQ},
 };
+// clang-format on
 TYPES_INLINE int SERVER_to_SERVER(const void *in, int inlen, int intype,
                                   const struct field_conv_opts *inopts,
                                   blob_buffer_t *inblob, int iflags, void *out,

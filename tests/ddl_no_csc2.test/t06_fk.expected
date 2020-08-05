@@ -304,7 +304,7 @@ constraints
 ')
 ("drop self-referenced table"='drop self-referenced table')
 ("tests for nullfkey (enabled by default)"='tests for nullfkey (enabled by default)')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '$KEY_877B2989'
+[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key '$KEY_877B2989'
 (rows inserted=1)
 (rows inserted=1)
 [delete from t1 where i=1] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '0' key '$KEY_877B2989' -> table 't2' index '0' 
@@ -313,4 +313,59 @@ constraints
 (i=NULL)
 (i=1)
 (i=NULL)
+(i=1)
+("tests for FK order desc keys"='tests for FK order desc keys')
+(t1 schema='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "idx1" = <DESCEND> i 
+	}
+')
+(t2 schema='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		uniqnulls "$KEY_1E994F88" = i 
+	}
+constraints
+	{
+		"$KEY_1E994F88" -> <"t1":"IDX1"> 
+	}
+')
+[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key 'IDX1'
+(rows inserted=1)
+(rows inserted=1)
+(i=1)
+(i=1)
+(t1 schema='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "idx1" = <DESCEND> i 
+	}
+')
+(t2 schema='schema
+	{
+		int i null = yes 
+	}
+keys
+	{
+		dup "IDX2" = <DESCEND> i 
+	}
+constraints
+	{
+		"IDX2" -> <"t1":"IDX1"> 
+	}
+')
+[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key 'IDX2' -> table 't1' index '0' key 'IDX1'
+(rows inserted=1)
+(rows inserted=1)
+(i=1)
 (i=1)

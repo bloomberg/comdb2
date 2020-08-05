@@ -42,6 +42,7 @@ struct BtCursor;
 enum osql_rec_flags {
     OSQL_FORCE_VERIFY = 1 << 0,
     OSQL_IGNORE_FAILURE = 1 << 1,
+    OSQL_ITEM_REORDERED = 1 << 2,
 };
 
 struct schema_change_type; // TODO fix there is a cyclicinlclude
@@ -114,14 +115,6 @@ int get_osql_maxtransfer(void);
 int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype);
 
 /**
- * Called when all rows are retrieved
- * Informs block process that the sql processing is over
- * and it can start processing bloplog
- *
- */
-int osql_block_commit(struct sql_thread *thd);
-
-/**
  * Start a sosql session, which
  * creates a blockprocessor peer
  * if keep_rqid, this is a retry and we want to
@@ -129,6 +122,8 @@ int osql_block_commit(struct sql_thread *thd);
  *
  */
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid);
+
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_rqid);
 
 /**
  * Start a sosql session if not already started

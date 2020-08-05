@@ -45,7 +45,7 @@ pthread_mutex_t _crons_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 static void *_cron_runner(void *arg);
 static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
-                        void *arg2, void *arg3, uuid_t *source_id,
+                        void *arg2, void *arg3, void *arg4, uuid_t *source_id,
                         struct errstat *err);
 
 void init_cron(void)
@@ -61,7 +61,7 @@ void init_cron(void)
  */
 cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
                              FCRON func, void *arg1, void *arg2, void *arg3,
-                             uuid_t *source_id, struct errstat *err,
+                             void *arg4, uuid_t *source_id, struct errstat *err,
                              sched_if_t *impl)
 {
     int created;
@@ -110,7 +110,8 @@ cron_sched_t *cron_add_event(cron_sched_t *sched, const char *name, int epoch,
     }
 
     Pthread_mutex_lock(&sched->mtx);
-    rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, source_id, err);
+    rc = _queue_event(sched, epoch, func, arg1, arg2, arg3, arg4, source_id,
+                      err);
     Pthread_mutex_unlock(&sched->mtx);
 
     if (rc == CRON_NOERR) {
@@ -138,13 +139,14 @@ oom:
 }
 
 static void _set_event(cron_event_t *event, int epoch, FCRON func, void *arg1,
-                       void *arg2, void *arg3, cron_sched_t *sched)
+                       void *arg2, void *arg3, void *arg4, cron_sched_t *sched)
 {
     event->epoch = epoch;
     event->func = func;
     event->arg1 = arg1;
     event->arg2 = arg2;
     event->arg3 = arg3;
+    event->arg4 = arg4; /* NOT OWNED: NEVER FREED */
     event->schedif = &sched->impl;
 }
 
@@ -189,7 +191,7 @@ static void _insert_ordered_event(cron_sched_t *sched, cron_event_t *event)
 }
 
 static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
-                        void *arg2, void *arg3, uuid_t *source_id,
+                        void *arg2, void *arg3, void *arg4, uuid_t *source_id,
                         struct errstat *err)
 {
     cron_event_t *event;
@@ -206,7 +208,7 @@ static int _queue_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
     }
 
     /* A new event is born */
-    _set_event(event, epoch, func, arg1, arg2, arg3, sched);
+    _set_event(event, epoch, func, arg1, arg2, arg3, arg4, sched);
 
     if (source_id) {
         comdb2uuidcpy(event->source_id, *source_id);
@@ -228,6 +230,8 @@ static void _destroy_event(cron_sched_t *sched, cron_event_t *event)
         free(event->arg2);
     if (event->arg3)
         free(event->arg3);
+    if (event->arg4)
+        event->arg4 = NULL; /* NOT OWNED, DO NOT FREE */
     free(event);
 }
 
@@ -331,7 +335,7 @@ void cron_signal_worker(cron_sched_t *sched)
  *
  */
 int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
-                      void *arg2, void *arg3, uuid_t source_id,
+                      void *arg2, void *arg3, void *arg4, uuid_t source_id,
                       struct errstat *err)
 {
     cron_event_t *event = NULL, *tmp = NULL;
@@ -344,7 +348,7 @@ int cron_update_event(cron_sched_t *sched, int epoch, FCRON func, void *arg1,
         if (comdb2uuidcmp(event->source_id, source_id) == 0) {
 
             /* we can process this */
-            _set_event(event, epoch, func, arg1, arg2, arg3, sched);
+            _set_event(event, epoch, func, arg1, arg2, arg3, arg4, sched);
 
             /* remote the event, and reinsert it in the new position */
             listc_rfl(&sched->events, event);
@@ -437,7 +441,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
             nsize += 10;
             temparr = realloc(arr, sizeof(systable_cron_scheds_t) * nsize);
             if (!temparr) {
-                logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+                logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
                        sizeof(systable_cron_scheds_t) * nsize);
                 cron_systable_schedulers_free(arr, narr);
                 arr = NULL;
@@ -448,7 +452,7 @@ int cron_systable_schedulers_collect(void **data, int *nrecords)
             arr = temparr;
         }
         cron_lock(sched);
-        arr[narr].name = strdup(sched->impl.name);
+        arr[narr].name = sched->impl.name ? strdup(sched->impl.name) : strdup("");
         arr[narr].type = strdup(cron_type_to_name(sched->impl.type));
         arr[narr].running = sched->running;
         arr[narr].nevents = sched->events.count;
@@ -499,7 +503,7 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
             nsize += sched->events.count;
             temparr = realloc(arr, sizeof(systable_cron_events_t) * nsize);
             if (!temparr) {
-                logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+                logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
                        sizeof(systable_cron_events_t) * nsize);
                 cron_systable_events_free(arr, narr);
                 nsize = narr = 0;
@@ -512,11 +516,12 @@ int cron_systable_sched_events_collect(cron_sched_t *sched,
         arr[narr].name = sched->impl.event_describe
                              ? sched->impl.event_describe(&sched->impl, event)
                              : strdup("");
-        arr[narr].type = strdup(sched->impl.name);
+        arr[narr].type = sched->impl.name ? strdup(sched->impl.name) : strdup("");
         arr[narr].epoch = event->epoch;
         arr[narr].arg1 = event->arg1 ? strdup(event->arg1) : NULL;
         arr[narr].arg2 = event->arg2 ? strdup(event->arg2) : NULL;
         arr[narr].arg3 = event->arg3 ? strdup(event->arg3) : NULL;
+        arr[narr].arg4 = event->arg4; /* NOTE: May not be displayable str. */
         arr[narr].sourceid = strdup(comdb2uuidstr(event->source_id, us));
         narr++;
     }
@@ -566,6 +571,8 @@ void cron_systable_events_free(void *arr, int nrecords)
             free(parr[i].arg2);
         if (parr[i].arg3)
             free(parr[i].arg3);
+        if (parr[i].arg4)
+            parr[i].arg4 = NULL; /* NOT OWNED, DO NOT FREE */
         if (parr[i].sourceid)
             free(parr[i].sourceid);
     }

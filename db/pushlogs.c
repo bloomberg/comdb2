@@ -19,7 +19,6 @@
  * given lsn.
  */
 
-#include "limit_fortify.h"
 #include <errno.h>
 #include <pthread.h>
 #include <stdlib.h>
@@ -106,12 +105,6 @@ static void *pushlogs_thread(void *voidarg)
 
         Pthread_mutex_lock(&schema_change_in_progress_mutex);
 
-        if (gbl_schema_change_in_progress) {
-            Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-            sleep(1);
-            continue;
-        }
-
         /* put some junk into meta table */
         init_fake_ireq(thedb, &iq);
         db = &thedb->static_table;
@@ -137,7 +130,7 @@ static void *pushlogs_thread(void *voidarg)
             break;
         }
         Pthread_mutex_unlock(&schema_change_in_progress_mutex);
-        rc = trans_commit(&iq, trans, gbl_mynode);
+        rc = trans_commit(&iq, trans, gbl_myhostname);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "pushlogs_thread: cannot commit txn %d\n", rc);
             Pthread_mutex_lock(&mutex);

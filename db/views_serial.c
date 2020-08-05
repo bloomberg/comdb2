@@ -51,7 +51,7 @@
 #include <uuid/uuid.h>
 
 #include "comdb2.h"
-#include "cson_amalgamation_core.h"
+#include "cson.h"
 #include "views.h"
 #include "comdb2uuid.h"
 
@@ -253,7 +253,7 @@ timepart_view_t *timepart_deserialize_view(const char *str, struct errstat *err)
     }
 
     /* parse string */
-    rc = cson_parse_string(&cson_view, str, strlen(str), NULL, NULL);
+    rc = cson_parse_string(&cson_view, str, strlen(str));
     if (rc) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
@@ -302,7 +302,7 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err)
     }
 
     /* parse string */
-    rc = cson_parse_string(&cson, str, strlen(str), NULL, NULL);
+    rc = cson_parse_string(&cson, str, strlen(str));
     if (rc) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Parsing JSON error rc=%d err:%s\n", rc, cson_rc_string(rc));
@@ -478,13 +478,37 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
                  first_shard);
         goto error;
     }
+
+    /* constraints from time partition to other tables are only possible if the existing
+       reverse constraints for the other tables plus the total number of shards is less
+       then MAXCONSTRAINTS */
+    if (db->n_constraints > 0 ) {
+        struct dbtable *rev_db;
+        int i,j;
+        for (i = 0; i < db->n_constraints; i++) {
+            constraint_t * ct=&db->constraints[i];
+            for (j = 0; j < ct->nrules; j++) {
+                rev_db = get_dbtable_by_name(ct->table[j]);
+                assert(rev_db); /* schema change for the original table ensures this assert */
+                if (rev_db->n_rev_constraints - 1 /*this */ + view->retention > MAXCONSTRAINTS) {
+                    err->errval = VIEW_ERR_PARAM;
+                    snprintf(err->errstr, sizeof(err->errstr), "FKEY %s->%s, %s has too many rev constraints %d > %d",
+                            db->tablename, rev_db->tablename, rev_db->tablename,
+                            rev_db->n_rev_constraints + view->retention, MAXCONSTRAINTS);
+                    goto error;
+                }
+            }
+        }
+    }
+
+    /* reverse constraints from the time partition to other table not supported */
     if (db->n_rev_constraints > 0) {
         err->errval = VIEW_ERR_PARAM;
         snprintf(err->errstr, sizeof(err->errstr), "Table %s has constraints",
                  first_shard);
         goto error;
     }
-
+    
     check_columns_null_and_dbstore(view->name, db);
 
     /* check to see if the name exists either as a table, or part of a
@@ -602,7 +626,7 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
     int rc;
 
     /* string to conversion */
-    rc = cson_parse_string(&cson_cmd, cmd, strlen(cmd), NULL, NULL);
+    rc = cson_parse_string(&cson_cmd, cmd, strlen(cmd));
     if (rc) {
         snprintf(err->errstr, sizeof(err->errstr),
                  "Invalid JSON string \"%s\":\n\"%s\"\n", cson_rc_string(rc),
@@ -1284,7 +1308,7 @@ static timepart_views_t *_create_all_views(const char *views_str)
     int rc;
     struct errstat xerr = {0};
 
-    rc = cson_parse_string(&cson, views_str, strlen(views_str), NULL, NULL);
+    rc = cson_parse_string(&cson, views_str, strlen(views_str));
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: views incorrect llmeta format", __func__);
         return NULL;

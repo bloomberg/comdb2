@@ -28,6 +28,7 @@
 #include "logmsg.h"
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
+#include "sc_struct.h"
 
 extern void free_cached_idx(uint8_t **cached_idx);
 
@@ -72,15 +73,13 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     update_dbstore(db);
     create_sqlmaster_records(tran);
     create_sqlite_master();
-    ++gbl_dbopen_gen;
+    BDB_BUMP_DBOPEN_GEN(rename_table, NULL);
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (rc)
-        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__, rc);
-
-    sc_set_running((char *)name, 0 /*running*/, 0 /*seed*/, NULL, 0);
-
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
+               rc);
     return rc;
 }
 
@@ -291,8 +290,9 @@ int live_sc_post_update_delayed_key_adds_int(struct ireq *iq, void *trans,
     blob_buffer_t *add_idx_blobs = NULL;
     int rc = 0;
 
-    if (usedb->sc_downgrading)
+    if (usedb->sc_downgrading) {
         return ERR_NOMASTER;
+    }
 
     if (usedb->sc_from != iq->usedb) {
         return 0;
@@ -547,7 +547,7 @@ int schema_change_abort_callback(void)
 {
     Pthread_mutex_lock(&gbl_sc_lock);
     /* if a schema change is in progress */
-    if (gbl_schema_change_in_progress) {
+    if (get_schema_change_in_progress(__func__, __LINE__)) {
         /* we should safely stop the sc here, but until we find a good way to do
          * that, just kill us */
         exit(1);
@@ -672,6 +672,7 @@ static int bthash_callback(const char *table)
     }
 }
 
+extern int gbl_assert_systable_locks;
 static int replicant_reload_views(const char *name)
 {
     int rc;
@@ -680,6 +681,8 @@ static int replicant_reload_views(const char *name)
 
     return rc;
 }
+
+extern int gbl_assert_systable_locks;
 
 /* TODO fail gracefully now that inline? */
 /* called by bdb layer through a callback as a detached thread,
@@ -691,6 +694,24 @@ static int replicant_reload_views(const char *name)
 int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
                     scdone_t type)
 {
+    extern uint32_t gbl_rep_lockid;
+    if (gbl_assert_systable_locks) {
+        switch (type) {
+        case llmeta_queue_add:
+        case llmeta_queue_alter:
+        case llmeta_queue_drop:
+            bdb_assert_tablename_locked(bdb_state, "comdb2_queues", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            break;
+        case user_view:
+            bdb_assert_tablename_locked(bdb_state, "comdb2_views", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            break;
+        case add: // includes fastinit
+        case drop:
+        case alter:
+            bdb_assert_tablename_locked(bdb_state, "comdb2_tables", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            break;
+        }
+    }
     switch (type) {
     case luareload:
         return reload_lua();
@@ -729,7 +750,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     int highest_ver;
     int dbnum;
     uint32_t lid = 0;
-    extern uint32_t gbl_rep_lockid;
 
     struct dbtable *olddb = get_dbtable_by_name(table);
     tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
@@ -739,6 +759,12 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         rc = bdberr;
         goto done;
     }
+
+    /* This code runs on the replicant to handle an SC_DONE message.  The
+     * transaction will have updated (and hold locks for) records in llmeta
+     * which we need to look at in order to set up our data structures
+     * correctly.  This replaces the tran's lid with replication's lid so that
+     * we can query this information without self-deadlocking. */
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
@@ -751,7 +777,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    if (type != drop && type != user_view) {
+    if (type != drop && type != user_view &&
+        !IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
         if (get_csc2_file_tran(table, -1, &csc2text, NULL, tran)) {
             logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
                    table);
@@ -767,9 +794,17 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     if (type == setcompr) {
         logmsg(LOGMSG_INFO,
                "Replicant setting compression flags for table:%s\n", table);
+    } else if (IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
+        // TODO: How should we ideally handle failure cases here?
+        rc = reopen_qdb(table, 0, tran);
+        logmsg(LOGMSG_INFO, "Replicant %s queuedb '%s', rc %d\n",
+               (rc == 0) ? "reopened" : "failed to reopen", table, rc);
     } else if (type == add && add_new_db) {
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
-        if (add_table_to_environment(table_copy, csc2text, NULL, NULL, tran)) {
+        dyns_init_globals();
+        rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran);
+        dyns_cleanup_globals();
+        if (rc) {
             logmsg(LOGMSG_FATAL, "%s: error adding table "
                                  "%s.\n",
                    __func__, table);
@@ -827,7 +862,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
             exit(1);
         }
         create_sqlite_master(); /* create sql statements */
-        ++gbl_dbopen_gen;
+        BDB_BUMP_DBOPEN_GEN(type, NULL);
         if (type == drop || type == user_view)
             goto done;
     }
@@ -845,8 +880,10 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         }
     }
 
-    set_odh_options_tran(db, tran);
-    db->tableversion = table_version_select(db, tran);
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
+        set_odh_options_tran(db, tran);
+        db->tableversion = table_version_select(db, tran);
+    }
 
     /* Make sure to add a version 1 schema for instant-schema change tables */
     if (add_new_db && db->odh && db->instant_schema_change) {
@@ -871,29 +908,34 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_tag_schema(db->tablename, ver_one);
     }
 
-    llmeta_dump_mapping_tran(tran, thedb);
-    llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
+    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
+        llmeta_dump_mapping_tran(tran, thedb);
+        llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
+    }
 
     /* Fetch the correct dbnum for this table.  We need this step because db
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch
      * it from there. */
-    dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
-    if (dbnum == -1) {
-        logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
-               db->tablename);
-        rc = BDBERR_MISC;
-        goto done;
-    }
-    db->dbnum = dbnum;
+    if (db != NULL) {
+        dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
+        if (dbnum == -1) {
+            logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
+                   db->tablename);
+            rc = BDBERR_MISC;
+            goto done;
+        }
+        db->dbnum = dbnum;
 
-    fix_lrl_ixlen_tran(tran);
+        fix_lrl_ixlen_tran(tran);
+    }
 
     rc = 0;
 done:
     if (tran) {
         bdb_set_tran_lockerid(tran, lid);
-        /* TODO: (NC) Why abort? */
+        /* Replace this lid with the original lid so we don't leak it.  Because
+         * we haven't done any work with the original tran, just abort it. */
         rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         if (rc) {
             logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
@@ -902,6 +944,5 @@ done:
         }
     }
 
-    sc_set_running((char *)table, 0 /*running*/, 0 /*seed*/, NULL, 0);
     return rc; /* success */
 }

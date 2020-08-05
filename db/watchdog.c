@@ -82,6 +82,10 @@
 #include "views.h"
 #include <logmsg.h>
 
+int gbl_client_queued_slow_seconds = 0;
+int gbl_client_running_slow_seconds = 0;
+int gbl_client_abort_on_slow = 0;
+
 extern int gbl_watcher_thread_ran;
 
 static void *watchdog_thread(void *arg);
@@ -236,7 +240,7 @@ static void *watchdog_thread(void *arg)
    disabling for now. */
 #if 0             
              if ((thedb->rep_sync != REP_SYNC_NONE
-                         || thedb->master == gbl_mynode)
+                         || thedb->master == gbl_myhostname)
                      && coherent)
              {
                  rc = sqltest(thedb->envname);
@@ -273,7 +277,7 @@ static void *watchdog_thread(void *arg)
                         }
                     }
 
-                    if (!coherent && master > 0 && master != gbl_mynode) {
+                    if (!coherent && master > 0 && master != gbl_myhostname) {
                         bdb_get_cur_lsn_str(thedb->bdb_env, &curlsnbytes,
                                             curlsn, sizeof(curlsn));
                         bdb_get_cur_lsn_str_node(
@@ -346,12 +350,64 @@ static void *watchdog_thread(void *arg)
         
         if (gbl_trigger_timepart) {
             gbl_trigger_timepart = 0;
-            if(thedb->master == gbl_mynode) {
+            if (thedb->master == gbl_myhostname) {
                 rc = views_cron_restart(thedb->timepart_views);
                 if (rc) {
                     logmsg(LOGMSG_WARN, "Failed to restart timepartitions rc=%d!\n",
                             rc);
                 }
+            }
+        }
+
+        if ((gbl_client_queued_slow_seconds > 0) ||
+            (gbl_client_running_slow_seconds > 0)) {
+            struct connection_info *conn_infos = NULL;
+            int conn_count = 0;
+            if ((rc = gather_connection_info(&conn_infos, &conn_count)) == 0) {
+                int slow_count = 0;
+                int conn_time_now = comdb2_time_epochms();
+                for (int cid = 0; cid < conn_count; cid++) {
+                    struct connection_info *conn_info = &conn_infos[cid];
+                    const char *zState = NULL;
+                    int slow_seconds = 0;
+                    switch (conn_info->state_int) {
+                        case CONNECTION_QUEUED:
+                            zState = "QUEUED";
+                            slow_seconds = gbl_client_queued_slow_seconds;
+                            break;
+                        case CONNECTION_RUNNING:
+                            zState = "RUNNING";
+                            slow_seconds = gbl_client_running_slow_seconds;
+                            break;
+                    }
+                    if ((zState != NULL) && (slow_seconds > 0)) {
+                        int state_time = conn_info->time_in_state_int;
+                        int diff_seconds = (conn_time_now - state_time) / 1000;
+                        if ((diff_seconds < 0) || (diff_seconds > slow_seconds)) {
+                            logmsg((diff_seconds > 0) && gbl_client_abort_on_slow ?
+                                           LOGMSG_FATAL : LOGMSG_ERROR,
+                                   "%s: client #%lld has been in state %s for "
+                                   "%d seconds (>%d): connect_time %0.2f "
+                                   "seconds, raw_time_in_state %d, host {%s}, "
+                                   "pid %lld, sql {%s}\n", __func__,
+                                   (long long int)conn_info->connection_id,
+                                   zState, diff_seconds, slow_seconds,
+                                   difftime(conn_info->connect_time_int, (time_t)0),
+                                   conn_info->time_in_state_int, conn_info->host,
+                                   (long long int)conn_info->pid, conn_info->sql);
+                             /* NOTE: Do not count negative seconds here... */
+                             if (diff_seconds > 0) slow_count++;
+                        }
+                    }
+                }
+                free_connection_info(conn_infos, conn_count);
+                if (slow_count > 0) {
+                    bdb_dump_threads_and_maybe_abort(
+                        thedb->bdb_env, gbl_client_abort_on_slow);
+                }
+            } else {
+                logmsg(LOGMSG_ERROR, "%s: gather_connection_info rc=%d\n",
+                       __func__, rc);
             }
         }
 

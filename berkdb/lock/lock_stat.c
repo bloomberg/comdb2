@@ -5,7 +5,6 @@
  *	Sleepycat Software.  All rights reserved.
  */
 
-#include "limit_fortify.h"
 #include "db_config.h"
 
 #ifndef lint
@@ -1311,6 +1310,16 @@ int __lock_dump_active_locks(
 		FILE *fp)
 {
 	/* "o" will print all active objects in object order, including 
-	 * lockers that have onle one lock in WAIT status */
+	 * lockers that have only one lock in WAIT status */
 	return __lock_dump_region_int(dbenv, "o", fp, 1 /*just_active_locks*/);
+}
+
+// PUBLIC: int __lock_dump_all_locks __P((DB_ENV *, FILE *));
+int __lock_dump_all_locks(
+		DB_ENV *dbenv,
+		FILE *fp)
+{
+	/* "o" will print all active objects in object order, including 
+	 * lockers that have only one lock in WAIT status */
+	return __lock_dump_region_int(dbenv, "o", fp, 0 /*just_active_locks*/);
 }

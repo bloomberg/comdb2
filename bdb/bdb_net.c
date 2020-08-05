@@ -48,20 +48,15 @@
 #define TOSTR_(x) #x
 #define TOSTR(x) TOSTR_(x)
 
-#define trace(x, args...)                                                      \
-    printf("%-15s%-20s[" x "]\n", __FILE__ ":" TOSTR(__LINE__), __func__,      \
-           ##args)
-
 #ifdef UDP_TRACE
 #define debug_trace(x, args...)                                                \
-    printf("%-15s%-20s[" x "]\n", __FILE__ ":" TOSTR(__LINE__), __func__,      \
+    printf("%-15s %-20s[" x "]\n", __FILE__ ":" TOSTR(__LINE__), __func__,     \
            ##args)
 #else
 #define debug_trace(...)
 #endif
 
 extern void fsnapf(FILE *, void *, int);
-extern int db_is_stopped(void);
 extern int get_myseqnum(bdb_state_type *bdb_state, uint8_t *p_net_seqnum);
 extern int verify_master_leases_int(bdb_state_type *bdb_state,
                                     const char **comlist, int comcount,
@@ -281,7 +276,7 @@ void udp_ping(bdb_state_type *bdb_state, char *to)
 {
     /* udp_send_header(bdb_state, to, USER_TYPE_UDP_PING); */
     if (send_timestamp(bdb_state, to, USER_TYPE_UDP_TIMESTAMP) > 0) {
-        debug_trace("sent ping %s -> %s", bdb_state->repinfo->mynode, to);
+        debug_trace("sent ping %s -> %s", gbl_myhostname, to);
     }
 }
 
@@ -465,93 +460,98 @@ const uint8_t *rep_udp_filepage_type_get(filepage_type *p_filepage_type,
                                          const uint8_t *p_buf,
                                          const uint8_t *p_buf_end);
 
-static void *udp_reader(void *arg)
+static void udp_reader(int fd, short what, void *arg)
 {
-    bdb_state_type *bdb_state = (bdb_state_type *)arg;
-    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-
-    repinfo_type *repinfo = bdb_state->repinfo;
+    bdb_state_type *bdb_state = arg;
     void *data;
     uint8_t buff[1024] = {0};
-    ssize_t nrecv;
     ack_info *info = (ack_info *)buff;
-#ifdef UDP_DEBUG
-    netinfo_type *netinfo = repinfo->netinfo;
-    char straddr[256];
-#endif
-    char *from;
-    int type;
-    int fd = repinfo->udp_fd;
     uint8_t *p_buf, *p_buf_end;
     uint8_t *buff_end = buff + 1024;
+    ssize_t nrecv;
+    time_t now;
+    static time_t lastpr = 0;
+    char *from;
+    int type;
     filepage_type fp;
 
-    static time_t lastpr = 0;
-    time_t now;
+    struct pollfd pol;
+    pol.fd = fd;
+    pol.events = POLLIN;
 
-    while (1) {
+    // poll for any data on fd, if no data for one second, return to caller
+    int rc = poll(&pol, 1, 1000);
+    if (rc == 0 || (pol.revents & POLLIN) == 0)
+        return;
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "udp_reader:%d: poll err %d %s\n", __LINE__, errno, strerror(errno));
+        return;
+    }
+
 #ifdef UDP_DEBUG
-        struct sockaddr_in addr;
-        struct sockaddr_in *paddr = &addr;
-        struct sockaddr *ptr;
-        socklen_t socklen = sizeof(addr);
-        ptr = (struct sockaddr *)&addr;
-        nrecv = recvfrom(fd, &buff, sizeof(buff), 0, ptr, &socklen);
-        struct sockaddr_in *paddr = NULL;
+    repinfo_type *repinfo = bdb_state->repinfo;
+    netinfo_type *netinfo = repinfo->netinfo;
+    char straddr[256];
+    struct sockaddr_in addr;
+    struct sockaddr_in *paddr = &addr;
+    struct sockaddr *ptr;
+    socklen_t socklen = sizeof(addr);
+    ptr = (struct sockaddr *)&addr;
+    nrecv = recvfrom(fd, &buff, sizeof(buff), 0, ptr, &socklen);
 #else
-        nrecv = recvfrom(fd, &buff, sizeof(buff), 0, NULL, NULL);
+    nrecv = recvfrom(fd, &buff, sizeof(buff), 0, NULL, NULL);
 #endif
 
-        if (nrecv < 0) {
-            logmsgperror("udp_reader:recvfrom");
-            continue;
-        }
+    if (nrecv < 0) {
+        logmsgperror("udp_reader:recvfrom");
+        return;
+    }
 
-        ++recd_udp;
+    ++recd_udp;
 
-        if (udp_recv(info, &nrecv) == 0) {
-            continue;
-        }
+    if (udp_recv(info, &nrecv) == 0) {
+        return;
+    }
 
-        if (ack_info_size(info) != nrecv) {
-            if ((now = time(NULL)) > lastpr) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:invalid read of %zd (header suggests: %u)\n",
-                       __func__, nrecv, ack_info_size(info));
-                lastpr = now;
-            }
-            continue;
+    if (ack_info_size(info) != nrecv) {
+        if ((now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_ERROR,
+                   "%s:invalid read of %zd (header suggests: %u)\n", __func__,
+                   nrecv, ack_info_size(info));
+            lastpr = now;
         }
+        return;
+    }
 
-        /* Old format included source/dest node numbers - no longer have that
-         * luxury - read them from
-         * the packet past the data payload. */
-        if (info->to != 0 && info->from != 0) {
-            if ((now = time(NULL)) > lastpr) {
-                logmsg(LOGMSG_ERROR,
-                       "unexpected to/from setting: from=%d to=%d type=%d\n",
-                       info->from, info->to, info->type);
-                lastpr = now;
-            }
-            continue;
+    /* Old format included source/dest node numbers - no longer have that
+     * luxury - read them from
+     * the packet past the data payload. */
+    if (info->to != 0 && info->from != 0) {
+        if ((now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_ERROR,
+                   "unexpected to/from setting: from=%d to=%d type=%d\n",
+                   info->from, info->to, info->type);
+            lastpr = now;
         }
+        return;
+    }
 
-        from = ack_info_from_host(info);
-        /* sanity check? */
-        if (from == NULL || from <= (char *)buff ||
-            from + info->fromlen - 1 >= (char *)buff_end ||
-            from[info->fromlen - 1] != 0) {
-            if ((now = time(NULL)) > lastpr) {
-                logmsg(LOGMSG_ERROR,
-                       "invalid packet? hdrsz=%u fromlen=%d from=%p buff=%p "
-                       "buff_end=%p\n",
-                       info->hdrsz, info->fromlen, from, buff, buff_end);
-                fsnapf(stdout, info, 64);
-                lastpr = now;
-            }
-            continue;
+    from = ack_info_from_host(info);
+    /* sanity check? */
+    if (from == NULL || from <= (char *)buff ||
+        from + info->fromlen - 1 >= (char *)buff_end ||
+        from[info->fromlen - 1] != 0) {
+        if ((now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_ERROR,
+                   "invalid packet? hdrsz=%u fromlen=%d from=%p buff=%p "
+                   "buff_end=%p\n",
+                   info->hdrsz, info->fromlen, from, buff, buff_end);
+            fsnapf(stdout, info, 64);
+            lastpr = now;
         }
-        from = intern(from);
+        return;
+    }
+    from = intern(from);
 
 /* If to == 0 it was probably through udp_ping_ip */
 #if 0
@@ -562,90 +562,97 @@ static void *udp_reader(void *arg)
         }
 #endif
 
-        type = info->type;
-        switch (type) {
-        case USER_TYPE_BERKDB_NEWSEQ:
-            data = ack_info_data(info);
-            berkdb_receive_rtn(NULL, bdb_state, from, type, data, info->len, 0);
-            debug_trace("received lsn from: %d %s", from,
-                        print_addr(paddr, straddr));
+    type = info->type;
+    switch (type) {
+    case USER_TYPE_BERKDB_NEWSEQ:
+        data = ack_info_data(info);
+        berkdb_receive_rtn(NULL, bdb_state, from, type, data, info->len, 0);
+        debug_trace("received lsn from: %s %s", from,
+                    print_addr(paddr, straddr));
 #ifdef UDP_DEBUG
-            /* ack every received lsn. */
-            udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
-            debug_trace("sent ack %d -> %d", info->to, from);
+        /* ack every received lsn. */
+        udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
+        debug_trace("sent ack %d -> %s", info->to, from);
 #endif
-            break;
+        break;
 
-        case USER_TYPE_UDP_PREFAULT:
-            data = ack_info_data(info);
-            p_buf = data;
-            p_buf_end = ((uint8_t *)data + info->len);
-            p_buf = (uint8_t *)rep_udp_filepage_type_get(&fp, p_buf, p_buf_end);
-            enque_udppfault_filepage(bdb_state, fp.fileid, fp.pgno);
+    case USER_TYPE_UDP_PREFAULT:
+        data = ack_info_data(info);
+        p_buf = data;
+        p_buf_end = ((uint8_t *)data + info->len);
+        p_buf = (uint8_t *)rep_udp_filepage_type_get(&fp, p_buf, p_buf_end);
+        enque_udppfault_filepage(bdb_state, fp.fileid, fp.pgno);
 #ifdef UDP_DEBUG
-            /* ack every received lsn. */
-            udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
-            debug_trace("sent ack %d -> %d", info->to, from);
+        /* ack every received lsn. */
+        udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
+        debug_trace("sent ack %d -> %s", info->to, from);
 #endif
-            break;
+        break;
 
-        case USER_TYPE_UDP_ACK:
-            debug_trace("received ack from %d %s", from,
-                        print_addr(paddr, straddr));
-            break;
+    case USER_TYPE_UDP_ACK:
+        debug_trace("received ack from %s %s", from,
+                    print_addr(paddr, straddr));
+        break;
 
-        case USER_TYPE_UDP_PING: {
-            udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
-            debug_trace("sent ack %d -> %d", info->to, from);
-            break;
+    case USER_TYPE_UDP_PING: {
+        udp_send_header(bdb_state, from, USER_TYPE_UDP_ACK);
+        debug_trace("sent ack %d -> %s", info->to, from);
+        break;
+    }
+
+    case USER_TYPE_UDP_TIMESTAMP: {
+        /* Just send the packet back */
+        ack_info *ackrsp;
+        new_ack_info(ackrsp, info->len, bdb_state->repinfo->myhost);
+        ackrsp->type = USER_TYPE_UDP_TIMESTAMP_ACK;
+        memcpy(ack_info_data(ackrsp), ack_info_data(info), info->len);
+        udp_send(bdb_state, ackrsp, from);
+        debug_trace("recd timestamp from %s %s", from,
+                    print_addr(paddr, straddr));
+        break;
+    }
+
+    case USER_TYPE_COHERENCY_LEASE:
+        data = ack_info_data(info);
+        receive_coherency_lease(NULL, bdb_state, from,
+                                USER_TYPE_COHERENCY_LEASE, data, info->len, 0);
+        break;
+
+    case USER_TYPE_PAGE_COMPACT:
+        data = ack_info_data(info);
+        berkdb_receive_msg(NULL, bdb_state, from, USER_TYPE_PAGE_COMPACT, data,
+                           info->len, 0);
+        break;
+
+    case USER_TYPE_UDP_TIMESTAMP_ACK:
+    case USER_TYPE_PING_TIMESTAMP_ACK:
+        print_ping_rtt(info);
+        break;
+
+    default:
+        if ((now = time(NULL)) > lastpr) {
+            logmsg(LOGMSG_ERROR, "%s: recd unknown packet type:%d from:%s\n",
+                   __func__, type, from);
+            lastpr = now;
         }
-
-        case USER_TYPE_UDP_TIMESTAMP: {
-            /* Just send the packet back */
-            ack_info *ackrsp;
-            new_ack_info(ackrsp, info->len, bdb_state->repinfo->myhost);
-            ackrsp->type = USER_TYPE_UDP_TIMESTAMP_ACK;
-            memcpy(ack_info_data(ackrsp), ack_info_data(info), info->len);
-            udp_send(bdb_state, ackrsp, from);
-            debug_trace("recd timestamp from %d %s", from,
-                        print_addr(paddr, straddr));
-            break;
-        }
-
-        case USER_TYPE_COHERENCY_LEASE:
-            data = ack_info_data(info);
-            receive_coherency_lease(NULL, bdb_state, from,
-                                    USER_TYPE_COHERENCY_LEASE, data, info->len,
-                                    0);
-            break;
-
-        case USER_TYPE_PAGE_COMPACT:
-            data = ack_info_data(info);
-            berkdb_receive_msg(NULL, bdb_state, from, USER_TYPE_PAGE_COMPACT,
-                               data, info->len, 0);
-            break;
-
-        case USER_TYPE_UDP_TIMESTAMP_ACK:
-        case USER_TYPE_PING_TIMESTAMP_ACK:
-            print_ping_rtt(info);
-            break;
-
-
-        default:
-            if ((now = time(NULL)) > lastpr) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: recd unknown packet type:%d from:%s\n", __func__,
-                       type, from);
-                lastpr = now;
-            }
-            break;
-        }
+        break;
+    }
 
 #ifdef UDP_DEBUG
-        /* dont do this accounting unless in debug mode.
-         * it slows down because it needs to get a lock */
-        net_inc_recv_cnt_from(netinfo, from);
+    /* dont do this accounting unless in debug mode.
+     * it slows down because it needs to get a lock */
+    net_inc_recv_cnt_from(netinfo, from);
 #endif
+}
+
+static void *udp_reader_thd(void *arg)
+{
+    bdb_state_type *bdb_state = arg;
+    repinfo_type *repinfo = bdb_state->repinfo;
+    int fd = repinfo->udp_fd;
+    bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+    while (!db_is_stopped()) {
+        udp_reader(fd, 0, bdb_state);
     }
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
     return NULL;
@@ -658,16 +665,16 @@ void start_udp_reader(bdb_state_type *bdb_state)
     if (!is_real_netinfo(netinfo)) {
         return;
     }
-
     udp_bind(repinfo);
-
+#   if 0
+    if (gbl_libevent) {
+        add_udp_event(repinfo->udp_fd, udp_reader, bdb_state);
+        return;
+    }
+#   endif
     pthread_t *thread = &repinfo->udp_thread;
     extern pthread_attr_t gbl_pthread_attr;
-    int rc = pthread_create(thread, &gbl_pthread_attr, udp_reader, bdb_state);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "start_udp_reader:pthread_create udp_reader: %s", strerror(errno));
-        exit(1);
-    }
+    Pthread_create(thread, &gbl_pthread_attr, udp_reader_thd, bdb_state);
 }
 
 void udp_summary(void)
@@ -705,7 +712,7 @@ void tcp_ping_all(bdb_state_type *bdb_state)
 void tcp_ping(bdb_state_type *bdb_state, char *to)
 {
     if (send_timestamp(bdb_state, to, USER_TYPE_TCP_TIMESTAMP) > 0) {
-        debug_trace("sent ping %d -> %d", bdb_state->repinfo->mynode, to);
+        debug_trace("sent ping %s -> %s", gbl_myhostname, to);
     }
 }
 
@@ -779,8 +786,8 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
         static time_t lastpr = 0;
         time_t now;
         if ((now = time(NULL)) > lastpr) {
-            logmsg(LOGMSG_INFO, "%s: lease base time is %lu\n", __func__,
-                   colease.issue_time);
+            logmsg(LOGMSG_INFO, "%s: lease base time is %" PRIu64 "\n",
+                   __func__, colease.issue_time);
             lastpr = now;
         }
     }
@@ -875,8 +882,10 @@ void send_coherency_leases(bdb_state_type *bdb_state, int lease_time,
             time_t now;
             if (gbl_verbose_send_coherency_lease &&
                 (now = time(NULL)) - lastpr) {
-                logmsg(LOGMSG_ERROR, "%s: not sending to %s\n", __func__,
-                       hostlist[i]);
+                logmsg(LOGMSG_ERROR,
+                       "%s: not sending to %s: "
+                       "master_is_coherent=%d\n",
+                       __func__, hostlist[i], master_is_coherent);
                 lastpr = now;
             }
         }
@@ -900,7 +909,7 @@ void ping_all(bdb_state_type *bdb_state)
 void ping_node(bdb_state_type *bdb_state, char *to)
 {
     if (send_timestamp(bdb_state, to, USER_TYPE_TCP_TIMESTAMP) > 0) {
-        debug_trace("sent ping %d -> %d", bdb_state->repinfo->mynode, to);
+        debug_trace("sent ping %s -> %s", gbl_myhostname, to);
     }
 }
 

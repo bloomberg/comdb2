@@ -141,7 +141,7 @@ static int bdb_prim_addkey_int(bdb_state_type *bdb_state, tran_type *tran,
             assert(rec == (iptr + 2));
             keydata_len = sizeof(unsigned long long) + recsize;
         } else {
-            /* collattr or non-odh datacopy */
+            /* for decimal, collattr or non-odh datacopy */
             memcpy(iptr + 2, dta, dtalen);
         }
     }

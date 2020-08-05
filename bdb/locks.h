@@ -41,6 +41,10 @@ void bdb_get_readlock(bdb_state_type *bdb_state, const char *idstr,
  * actual lock if reference count hits zero). */
 void bdb_rellock(bdb_state_type *bdb_state, const char *funcname, int line);
 
+/* Assert that we hold the bdb writelock at this point in the code */
+void bdb_assert_wrlock(bdb_state_type *bdb_state, const char *funcname,
+                       int line);
+
 /* Catches thread specific lock info structs that were not released in the
  * proper way through a call to bdb_thread_event(). */
 void bdb_lock_destructor(void *ptr);
@@ -86,6 +90,8 @@ void bdb_checklock(bdb_state_type *bdb_state);
 int bdb_lock_table_read(bdb_state_type *, tran_type *);
 
 int bdb_lock_table_read_fromlid(bdb_state_type *, int lid);
+int bdb_lock_tablename_read_fromlid(bdb_state_type *, const char *name, int lid);
+int bdb_lock_table_write_fromlid(bdb_state_type *, int lid);
 int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
                                void *lkname, int mode, void *lk);
 int berkdb_lock_rowlock(bdb_state_type *bdb_state, int lid, int flags,

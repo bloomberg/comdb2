@@ -3331,11 +3331,19 @@ struct Parse {
   int recording[MAX_CURSOR_IDS/sizeof(int)]; /* which cursors are recording? */
   u8 write;                 /* Write transaction during sqlite3FinishCoding? */
   Cdb2DDL *comdb2_ddl_ctx;  /* Context for DDL commands */
-  int prepare_only;         /* Prepare-only mode, skip schema changes that
-                             * originate from DDL, etc.  This is primarily
-                             * of interest to the DDL integration code in
-                             * the "comdb2build.c" and "comdb2lua.c" files.
-                             */
+  int prepFlags;            /* Prepare-only mode flags, skip all schema changes
+                             * that originate from DDL, etc.  This is primarily
+                             * of interest to the DDL integration code in the
+                             * "comdb2build.c" and "comdb2lua.c" files.  It can
+                             * also be used to extract qualified table names
+                             * from an arbitrary SELECT query (useful for FDB
+                             * integration). */
+  int nSrcListOnly;         /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
+                             * enabled, this will contain the number of table
+                             * names in the azSrcListOnly array. */
+  char **azSrcListOnly;     /* When the SQLITE_PREPARE_SRCLIST_ONLY flag is
+                             * enabled, this will contain the table names
+                             * which were discovered in the SELECT query. */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4046,8 +4054,8 @@ void sqlite3ErrorMsg(Parse*, const char*, ...);
 int sqlite3ErrorToParser(sqlite3*,int);
 void sqlite3Dequote(char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-int sqlite3IsCorrectlyQuoted(char *);
-int sqlite3IsCorrectlyBraced(char *);
+int sqlite3IsCorrectlyQuoted(const char *);
+int sqlite3IsCorrectlyBraced(const char *);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3DequoteExpr(Expr*);
 void sqlite3TokenInit(Token*,char*);
@@ -5015,7 +5023,7 @@ struct Cdb2TrigTables {
 Cdb2TrigEvents *comdb2AddTriggerEvent(Parse*,Cdb2TrigEvents*,Cdb2TrigEvent*);
 void comdb2DropTrigger(Parse*,int,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
-void comdb2CreateTrigger(Parse*,int dynamic,Token*,Cdb2TrigTables*);
+void comdb2CreateTrigger(Parse*,int dynamic,int seq,Token*,Cdb2TrigTables*);
 
 void comdb2CreateScalarFunc(Parse *, Token *);
 void comdb2DropScalarFunc(Parse *, Token *);

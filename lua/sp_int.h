@@ -33,6 +33,8 @@ typedef struct stored_proc *SP;
 typedef struct dbstmt_t dbstmt_t;
 typedef struct dbthread_type dbthread_type;
 typedef struct tmptbl_info_t tmptbl_info_t;
+typedef struct dbconsumer_t dbconsumer_t;
+
 
 struct stored_proc {
     Lua lua;
@@ -65,10 +67,15 @@ struct stored_proc {
     LIST_HEAD(, dbthread_type) dbthds;
 
     dbstmt_t *prev_dbstmt; // for db_bind -- deprecated
+    dbconsumer_t *consumer; // commit/rollback need to clear
 
     unsigned initial           : 1;
-    unsigned pingpong          : 1;
-    unsigned have_consumer     : 1;
+    /*
+    pingpong = 0 -- not waiting to hear from client
+    pingpong = 1 -- waiting to hear from client, send heartbeat to master
+    pingpong = 2 -- timed-out waiting to hear from client, stop sending h/b
+    */
+    unsigned pingpong          : 2;
     unsigned in_parent_trans   : 1;
     unsigned make_parent_trans : 1;
 };
@@ -83,6 +90,13 @@ void luabb_tointervalds(Lua, int index, intv_t *);
 void luabb_tointervalym(Lua, int index, intv_t *);
 void luabb_toreal(Lua, int index, double *);
 void luabb_todecimal(Lua, int index, decQuad *);
+
+int luabb_tointeger_noerr(Lua, int index, long long *);
+int luabb_toreal_noerr(Lua, int index, double *);
+int luabb_todatetime_noerr(Lua, int index, datetime_t *);
+int luabb_tointervalym_noerr(Lua, int index, intv_t *);
+int luabb_tointervalds_noerr(Lua, int index, intv_t *);
+int luabb_toblob_noerr(Lua, int index, blob_t *);
 
 void luabb_pushblob(Lua, const blob_t *);
 void luabb_pushblob_dl(Lua, const blob_t *); //dl -> dup-less

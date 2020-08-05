@@ -255,23 +255,16 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
             rc2 = 0;
 
             if (use_shadow_table) {
-                unsigned long long *pgenid =
-                    (unsigned long long *)malloc(sizeof(genid));
-
-                if (!pgenid) {
-                    *bdberr = BDBERR_MALLOC;
-                    return -1;
-                }
+                unsigned long long shadblbgenid;
 
                 /* Shadow-blobs are stored with a masked genid. */
-                *pgenid = get_search_genid(bdb_state, genid);
+                shadblbgenid = get_search_genid(bdb_state, genid);
 
                 tmpcursor_t *cur = bdb_tran_open_shadow(
                     bdb_state, dbnum, parent->shadow_tran, dtafilenums[blobn],
                     BDBC_BL, 1, bdberr);
                 if (!cur) {
                     if (*bdberr) {
-                        free(pgenid);
                         return -1;
                     }
 
@@ -281,10 +274,10 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                      */
                     use_shadow_table = 0;
                 } else {
-                    rc2 = bdb_temp_table_find_exact(bdb_state, cur, pgenid,
-                                                    sizeof(*pgenid), bdberr);
+                    rc2 =
+                        bdb_temp_table_find_exact(bdb_state, cur, &shadblbgenid,
+                                                  sizeof(shadblbgenid), bdberr);
                     if (rc2 != IX_FND)
-                        free(pgenid);
                     if (rc2 < 0)
                         return -1;
 
@@ -2260,11 +2253,14 @@ static int bdb_fetch_int(int return_dta, int direction, int lookahead,
         }
     }
 
-    rc = bdb_lock_table_read(bdb_state, tran);
+    if (!args->for_write) {
+        rc = bdb_lock_table_read(bdb_state, tran);
 
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "bdb_fetch_int unable to get table read lock.\n");
-        return -1;
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "bdb_fetch_int unable to get table read lock.\n");
+            return -1;
+        }
     }
 
     /* if its not rowlocks mode, just run old way */

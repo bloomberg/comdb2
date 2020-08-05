@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 CNT=100
 i=0
@@ -14,17 +15,6 @@ while [ $i -lt $CNT ] ; do
  echo "insert into t1(a, b) values (1, '0123456789')"
 done | cdb2sql ${CDB2_OPTIONS} $dbnm default -
 
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
-
 
 master=`getmaster`
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
@@ -34,12 +24,12 @@ done
 
 out=$TMPDIR/t1_dump.txt
 
-myhostname=`hostname`
-if [ "$master" != "$myhostname" ] ; then
+hnamelist="`hostname -A` localhost"
+if [[ " $hnamelist " =~ .*\ $master\ .* ]] ; then 
+    find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} -f $out
+else
     ssh -o StrictHostKeyChecking=no $master "ln -f ${COMDB2_EXE} ${CDB2DUMP_EXE}"
     ssh -o StrictHostKeyChecking=no $master "find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} " > $out
-else
-    find $DBDIR | grep '/t1_.*.datas0' | xargs ${CDB2DUMP_EXE} -f $out
 fi
 
 lc=$(wc $out | awk '{print $1,$2,$3}')

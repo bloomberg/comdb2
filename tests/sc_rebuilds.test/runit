@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-# Debug variable
-debug=0
+set -x
 
+source ${TESTSROOTDIR}/tools/runit_common.sh
 # Grab my database name.
 dbnm=$1
 if [ "x$dbnm" == "x" ] ; then
@@ -26,32 +26,6 @@ nrecs=2000
 # Max number of schema changes
 max_nusc=1000
 
-function failexit
-{
-    echo "Failure: $1"
-    exit -1
-}
-
-function assertcnt 
-{
-    target=$1
-    cnt=$(cdb2sql ${CDB2_OPTIONS} --tabs $dbnm default "select count(*) from $tbl" )
-    #echo "count is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
-
-function do_verify
-{
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('$tbl')" &> verify.out
-
-    if ! grep succeeded verify.out > /dev/null ; then
-        failexit "Verify"
-    fi
-}
-
 
 function do_alter
 {
@@ -62,72 +36,6 @@ function do_alter
     if [[ $? -ne 0 ]]; then
         touch failedalter
     fi
-}
-
-
-function do_sc_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    typeset failed=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        v=$((scnt%2 + 2)) #2 or 3
-        csc=t${v}.csc2
-
-        echo "Running alter iteration $scnt: $loc_tbl $csc"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "alter table $loc_tbl { `cat $csc ` }"
-
-        if [[ $? != 0 ]]; then
-            print "Error schema-changing on iteration $scnt"
-            echo "NOTE: schemachange above CORRECTLY failed"
-            failed=1
-        fi
-
-        do_verify 
-        let scnt=scnt+1
-        #sleep 1
-    done
-
-    echo "Performed $scnt schema-changes."
-
-    if [ $failed -eq 0 ] ; then
-        echo "Testcase failed: SC succeeded $scnt times"
-        exit 1
-    fi
-
-    return 0
-}
-
-
-function do_rebuild_track_pid
-{
-    typeset loc_dbnm=$1
-    typeset loc_tbl=$2
-    typeset track_pid=$3
-    typeset scnt=0
-    while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
-
-        echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
-
-        if [[ $? != 0 ]]; then
-            echo "Error schema-changing on iteration $scnt"
-            echo "Testcase failed"
-            kill -9 $track_pid
-            exit 1
-        fi
-
-        do_verify 
-        let scnt=scnt+1
-        #sleep 1
-    done
-
-    echo "Performed $scnt schema-changes."
-
-    return 0
 }
 
 
@@ -148,9 +56,9 @@ function do_rebuild
             return 1
         fi
         let scnt=scnt+1
-        do_verify
+        do_verify $tbl
     done
-    assertcnt $nrecs
+    assertcnt $tbl $nrecs
 
     return 0
 }
@@ -171,7 +79,7 @@ function delete_records
          cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $foreigntbl where a = $j" >> delete_${foreigntbl}.out 2>&1 || $(echo "ERROR DELETING"; exit -1)
          let j=j+1
 	     let remaining=remaining-1
-         #assertcnt $remaining
+         #assertcnt $tbl $remaining
          #sleep 0.1
     done
     end=$(date +%s)
@@ -204,7 +112,7 @@ function insert_records
 
     while [[ $j -le $locnrecs ]]; do 
         cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$j, $((j*2)),$j)"  >> insert.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
@@ -237,7 +145,7 @@ function update_f
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=NULL where a=$j"    >> update.out 2>&1
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set extrablb=NULL where a=$j"    >> update.out 2>&1
         cdb2sql ${CDB2_OPTIONS} $dbnm default "update $tbl set c=x'3456' where a=$j"    >> update.out 2>&1
-        #assertcnt $j
+        #assertcnt $tbl $j
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
@@ -315,7 +223,7 @@ function run_plain_rebuilds
     EXTRA=$((nrecs*2)) 
 	echo "adding $EXTRA records to one stripe"
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
-    assertcnt $((EXTRA))
+    assertcnt $tbl $((EXTRA))
 
 	echo "adding $nrecs foreign records"
     insert_foreign $nrecs
@@ -329,45 +237,45 @@ function run_plain_rebuilds
         failexit "Failed rebuilding $loc_tbl"
     fi
 
-    assertcnt $((EXTRA+nrecs))
-    do_verify
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl A"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding index A on $loc_tbl"
     fi
 
-    assertcnt $((EXTRA+nrecs))
-    do_verify
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl D"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding index D on $loc_tbl"
     fi
 
-    assertcnt $((EXTRA+nrecs))
-    do_verify
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding index fd on $loc_tbl"
     fi
-    assertcnt $((EXTRA+nrecs))
-    do_verify
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding data on $loc_tbl"
     fi
-    assertcnt $((EXTRA+nrecs))
-    do_verify
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl"
     if [[ $? != 0 ]]; then
         failexit "Failed rebuilding blobs on $loc_tbl"
     fi
-    assertcnt $((EXTRA+nrecs))
-    do_verify
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
 
 }
 
@@ -385,8 +293,8 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order full rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
-    do_verify
+    assertcnt $tbl $cnt
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild data $loc_tbl options pageorder"
     if [[ $? == 0 ]]; then
@@ -396,8 +304,8 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order data rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
-    do_verify
+    assertcnt $tbl $cnt
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild datablob $loc_tbl options pageorder"
     if [[ $? == 0 ]]; then
@@ -408,8 +316,8 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order datablob rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
-    do_verify
+    assertcnt $tbl $cnt
+    do_verify $tbl
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild index $loc_tbl fd options pageorder"
     if [[ $? == 0 ]]; then
@@ -420,8 +328,8 @@ function run_pageorder_rebuilds
     if [[ $? != 0 ]]; then
         failexit "Page-order index rebuild in readonly mode should have succeeded"
     fi
-    assertcnt $cnt
-    do_verify
+    assertcnt $tbl $cnt
+    do_verify $tbl
 }
 
 
@@ -437,7 +345,38 @@ function rebuild_new_field_and_idx
     if [[ $? != 0 ]]; then
         failexit "Failed altering on $loc_tbl with $new_tbl"
     fi
-    do_verify
+    do_verify $tbl
+}
+
+function check_comdb2_sc_hist
+{
+    echo "check_comdb2_sc_hist"
+    if [[ -n "$CLUSTER" ]]; then
+        master=`getmaster`
+        ssh -o StrictHostKeyChecking=no $master "cat $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c" | grep "starting schema" | cut -f10 -d' ' > seeds_trc.txt
+    else
+        grep "starting schema" $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c | cut -f10 -d' ' > seeds_trc.txt
+    fi
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql.txt
+
+    # use tail -n +3 to skip first two entries which are creating t1 and t2 and dont show up in trc.c
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" | tail -n +3 > seeds_sql.txt
+    if ! diff seeds_trc.txt seeds_sql.txt ; then
+        failexit "Seed captured in sc_history is not the same as trc.c"
+    fi
+    # delete the aforementioned first two entries by truncating, and check again
+    d1=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'EXEC PROCEDURE sys.cmd.trim_sc_history("t1",0)'`
+    assertres "$d1" "Deleted 1 rows from sc_history for tablename t1"
+
+    d2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'EXEC PROCEDURE sys.cmd.trim_sc_history("t2",15)'`
+    assertres "$d2" "Deleted 1 rows from sc_history for tablename t2"
+
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" > seeds_sql2.txt
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql2.txt
+    if ! diff seeds_trc.txt seeds_sql2.txt ; then
+        failexit "Seed captured in sc_history is not the same as trc.c"
+    fi
+
 }
 
 
@@ -465,5 +404,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 run_plain_rebuilds 500
 run_pageorder_rebuilds
 rebuild_new_field_and_idx 
+
+check_comdb2_sc_hist
 
 echo Success
