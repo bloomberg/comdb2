@@ -21,7 +21,7 @@
 
 #include <akq.h>
 #include <dbinc/queue.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 
 #define CHUNK_CAPACITY 10000
 

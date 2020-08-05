@@ -42,7 +42,7 @@
 #include <compat.h>
 #include <dbinc/queue.h>
 #include <intern_strings.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <logmsg.h>
 #include <mem_net.h>
 #include <mem_override.h>
