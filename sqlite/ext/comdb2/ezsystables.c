@@ -1,3 +1,20 @@
+/*
+   Copyright 2020 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>
@@ -10,8 +27,8 @@
 #include <cdb2api.h>
 #include "strbuf.h"
 #include "ezsystables.h"
-#include "types.h"
 #include "comdb2systbl.h"
+#include "logmsg.h"
 
 /* This tries to make it easier to add system tables. There's usually lots of
  * boilerplate code. A common case though is that you have an array of
@@ -368,7 +385,7 @@ int create_system_table(sqlite3 *db, char *name, sqlite3_module *module,
     int rc = sqlite3_create_module_v2(db, name, module, sys,
                                       destroy_system_table);
     if (rc) {
-        fprintf(stderr, "create rc %d %s\n", rc, sqlite3_errmsg(db));
+        logmsg(LOGMSG_ERROR, "%s: create %s rc %d %s\n", __func__, name, rc, sqlite3_errmsg(db));
         return rc;
     }
 

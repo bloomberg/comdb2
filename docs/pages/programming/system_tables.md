@@ -155,6 +155,14 @@ Information about schedulers running.
 * `description` - Details the purpose of the scheduler; for example, there is
                   a time partition scheduler, or a memory modules stat scheduler
 
+## comdb2_functions
+
+The functions available to call from sql.
+
+    comdb2_functions(name)
+
+* `name` - Name of the function
+
 ## comdb2_keycomponents
 
 Describes all the components of the keys.

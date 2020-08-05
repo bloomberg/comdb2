@@ -2797,3 +2797,32 @@ void sqlite3RegisterBuiltinFunctions(void){
   }
 #endif
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static int strptrcmp(const void *p1, const void *p2) {
+      return strcmp(*(char *const *)p1, *(char *const *)p2);
+}
+
+void sqlite3GetAllBuiltinFunctions(void **data, int *tot)
+{
+    int cnt = 100;
+    int num = 0;
+    char **arr = malloc((cnt * sizeof(char *)));
+    int i;
+    FuncDef *p;
+    for(i=0; i<SQLITE_FUNC_HASH_SZ; i++){
+        for(p=sqlite3BuiltinFunctions.a[i]; p; p=p->u.pHash){
+            if (num >= cnt) {
+                cnt *= 2;
+                arr = realloc(arr, cnt * sizeof(char*));
+            }
+            arr[num++] = sqlite3_mprintf("%s()", p->zName);
+        }
+    }
+    arr[num++] = sqlite3_mprintf("sys.cmd.send()");
+    arr[num++] = sqlite3_mprintf("sys.cmd.verify()");
+    qsort(arr, num, sizeof(char *), strptrcmp);
+    *tot = num;
+    *data = arr;
+}
+#endif

@@ -4439,6 +4439,7 @@ int sqlite3VListNameToNum(VList*,const char*,int);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 VList *sqlite3VListClone(const VList*, void* (*)(size_t));
 void sqlite3VListPrint(loglvl lvl, const VList *pIn);
+void sqlite3GetAllBuiltinFunctions(void **data, int *tot);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
