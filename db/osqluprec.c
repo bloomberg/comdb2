@@ -325,7 +325,7 @@ int offload_comm_send_upgrade_records(const dbtable *db,
     }
 
     if (db == uprec->owner) {
-        rc = pthread_mutex_trylock(uprec->lk);
+        rc = Pthread_mutex_trylock(uprec->lk);
         if (rc == 0) {
             if (db == uprec->owner) {
                 // can't pass db and genid to cron scheduler because

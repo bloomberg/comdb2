@@ -223,7 +223,7 @@ __db_pthread_mutex_lock(dbenv, mutexp)
 
 	/* Attempt to acquire the resource for N spins. */
 	for (nspins = dbenv->tas_spins; nspins > 0; --nspins)
-		if (pthread_mutex_trylock(&mutexp->mutex) == 0)
+		if (Pthread_mutex_trylock(&mutexp->mutex) == 0)
 			break;
 
 	if (nspins == 0) { 
