@@ -5359,8 +5359,6 @@ void *watcher_thread(void *arg)
                    "%s: coring, rep thread blocked too long (%d ms)\n",
                    __func__, elapsed);
 
-            lock_info_lockers(stdout, bdb_state);
-
 #if defined(DBG_PTHREAD_LOCKS)
             dbg_pthread_dump(stdout, "watcher_thread rep_lock_wait_time_ms", 0);
 #endif
@@ -5476,8 +5474,6 @@ void *watcher_thread(void *arg)
                                 "dumping thread pool\n");
 
                 bdb_state->repinfo->rep_process_message_start_time = 0;
-
-                lock_info_lockers(stdout, bdb_state);
 
 #if defined(DBG_PTHREAD_LOCKS)
                 dbg_pthread_dump(stdout, "watcher_thread rep_process_message_start_time", 0);
