@@ -1,4 +1,4 @@
-find_package(SQLite3 REQUIRED)
+find_package(SQLite REQUIRED)
 add_executable(pmux
   pmux.cpp
   ${PROJECT_SOURCE_DIR}/util/bb_daemon.c
