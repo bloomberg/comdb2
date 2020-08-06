@@ -148,7 +148,7 @@ static int dbg_pthread_dump_inner_pair(
     logmsgf(LOGMSG_USER,
             out, "[%s @ %s:%d] [%s / %s @ obj:%p, thd:%p] [refs:%d, pair:%p]\n",
             ipair->func, ipair->file, ipair->line, zBuf1, zBuf2, ipair->key.obj,
-            (void *)ipair->key.thread, ipair->nRef, (void *)ipair);
+            (void *)ipair->key.thread,ATOMIC_LOAD32(ipair->nRef),(void *)ipair);
 
     fflush(out);
   }
@@ -283,7 +283,7 @@ static void dbg_pthread_new_inner_pair(
   assert( ipair->key.obj==NULL );
   assert( ipair->key.thread==(pthread_t)0 );
   assert( ipair->key.type==DBG_LOCK_PTHREAD_TYPE_NONE );
-  assert( ipair->nRef==0 );
+  assert( ATOMIC_LOAD32(ipair->nRef)==0 );
   ipair->key.obj = obj;
   ipair->key.thread = self;
   ipair->key.type = type;
@@ -305,7 +305,7 @@ static void dbg_pthread_addref_inner_pair(
   assert( ipair->key.obj==obj );
   assert( ipair->key.thread==self );
   assert( ipair->key.type==type );
-  assert( ipair->nRef>=0 );
+  assert( ATOMIC_LOAD32(ipair->nRef)>=0 );
   ATOMIC_ADD32(ipair->nRef, 1);
   ipair->flags = flags;
   ipair->file = file;
@@ -417,7 +417,7 @@ static void dbg_pthread_remove_self(
     assert( ipair->key.obj==obj );
     assert( ipair->key.thread==self );
     assert( ipair->key.type==type );
-    assert( ipair->nRef>0 );
+    assert( ATOMIC_LOAD32(ipair->nRef)>0 );
   }
 done:
   pthread_mutex_unlock(&dbg_locks_lk);
