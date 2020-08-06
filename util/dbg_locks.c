@@ -305,8 +305,8 @@ static void dbg_pthread_addref_inner_pair(
   assert( ipair->key.obj==obj );
   assert( ipair->key.thread==self );
   assert( ipair->key.type==type );
-  assert( ipair->nRef>0 );
-  ipair->nRef++;
+  assert( ipair->nRef>=0 );
+  ATOMIC_ADD32(ipair->nRef, 1);
   ipair->flags = flags;
   ipair->file = file;
   ipair->func = func;
@@ -359,7 +359,6 @@ static void dbg_pthread_add_self(
     if( ipair==NULL ) abort();
     DBG_MORE_MEMORY(sizeof(inner_pair_t));
     dbg_pthread_new_inner_pair(ipair, obj, self, type);
-    ipair->nRef = 1;
     dbg_pthread_addref_inner_pair(
       ipair, obj, self, type, flags, file, func, line
     );
@@ -402,7 +401,7 @@ static void dbg_pthread_remove_self(
   DBG_SET_IKEY(ikey, obj, self, type);
   inner_pair_t *ipair = hash_find(opair->locks, &ikey);
   if( ipair==NULL ) goto done;
-  if( --ipair->nRef==0 ){
+  if( ATOMIC_ADD32(ipair->nRef, -1)==0 ){
     if( hash_del(opair->locks, ipair)!=0 ) abort();
     pthread_mutex_unlock(&dbg_locks_lk);
     free(ipair);
