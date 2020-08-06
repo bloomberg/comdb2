@@ -105,6 +105,7 @@ struct thdpool {
     unsigned minnthd;   /* desired number of threads */
     unsigned maxnthd;   /* max threads - queue after this point */
     unsigned nactthd;   /* current number of active threads */
+    unsigned nwrkthd;   /* current number of working threads */
     unsigned nwaitthd;  /* current number of wait/consumer threads */
     unsigned peaknthd;  /* maximum num threads ever */
     unsigned maxqueue;  /* maximum work items to queue */
@@ -418,6 +419,7 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Desired num threads       : %u\n", pool->minnthd);
         logmsgf(LOGMSG_USER, fh, "  Maximum num threads       : %u\n", pool->maxnthd);
         logmsgf(LOGMSG_USER, fh, "  Num active threads        : %u\n", pool->nactthd);
+        logmsgf(LOGMSG_USER, fh, "  Num working threads       : %u\n", pool->nwrkthd);
         logmsgf(LOGMSG_USER, fh, "  Num waiting threads       : %u\n", pool->nwaitthd);
         logmsgf(LOGMSG_USER, fh, "  Work queue peak size      : %u\n", pool->peakqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue maximum size   : %u\n", pool->maxqueue);
@@ -776,7 +778,9 @@ static void *thdpool_thd(void *voidarg)
                     diffms);
         }
 
+        ATOMIC_ADD32(pool->nwrkthd, 1);
         work.work_fn(pool, work.work, thddata, THD_RUN);
+        ATOMIC_ADD32(pool->nwrkthd, -1);
         ATOMIC_ADD32(pool->num_completed, 1);
 
         /* work is no longer pending, reset thread state for
