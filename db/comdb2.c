@@ -4291,6 +4291,23 @@ int cpu_throttle_threshold = 100000;
 double gbl_cpupercent;
 #include <sc_util.h>
 
+
+static inline void log_tbl_item(int curr, unsigned int *prev, const char *(*type_to_str)(int), int type, char *string,
+                                int *hdr_p, struct reqlogger *statlogger, dbtable *tbl, bool first) 
+{
+    int diff = curr - *prev;
+    if (diff > 0) {
+        if (*hdr_p == 0) {
+            const char hdr_fmt[] = "DIFF REQUEST STATS FOR TABLE '%s'\n";
+            reqlog_logf(statlogger, REQL_INFO, hdr_fmt, tbl->tablename);
+            *hdr_p = 1;
+        }
+        reqlog_logf(statlogger, REQL_INFO, "%s%-22s %u\n", (first ? "" : "    "),
+                    (type_to_str ? type_to_str(type) : string), diff);
+    }
+    *prev = curr;
+}
+
 void *statthd(void *p)
 {
     struct dbenv *dbenv;
@@ -4369,11 +4386,7 @@ void *statthd(void *p)
     uint64_t lastlsnbytes = 0, curlsnbytes;
     int ii;
     int jj;
-    int hdr;
-    int diff;
     int thresh;
-    dbtable *tbl;
-    char hdr_fmt[] = "DIFF REQUEST STATS FOR DB %d '%s'\n";
     int have_scon_header = 0;
     int have_scon_stats = 0;
     int64_t rw_evicts;
@@ -4560,88 +4573,55 @@ void *statthd(void *p)
                     reqlog_logl(statlogger, REQL_INFO, strbuf_buf(logstr));
                 }
 
+                int aa_include_updates = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_AA_COUNT_UPD);
+                rdlock_schema_lk();
                 for (ii = 0; ii < dbenv->num_dbs; ++ii) {
-                    tbl = dbenv->dbs[ii];
-                    hdr = 0;
+                    dbtable *tbl = dbenv->dbs[ii];
+                    int hdr = 0;
 
                     for (jj = 0; jj <= MAXTYPCNT; jj++) {
-                        diff = tbl->typcnt[jj] - tbl->prev_typcnt[jj];
-                        if (diff > 0) {
-                            if (hdr == 0) {
-                                reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            tbl->dbnum, tbl->tablename);
-                                hdr = 1;
-                            }
-                            reqlog_logf(statlogger, REQL_INFO, "%-20s %u\n",
-                                        req2a(jj), diff);
-                        }
-                        tbl->prev_typcnt[jj] = tbl->typcnt[jj];
+                        log_tbl_item(tbl->typcnt[jj], &tbl->prev_typcnt[jj], req2a, 
+                                     jj, NULL, &hdr, statlogger, tbl, 1);
                     }
 
                     for (jj = 0; jj < BLOCK_MAXOPCODE; jj++) {
-                        diff = tbl->blocktypcnt[jj] - tbl->prev_blocktypcnt[jj];
-                        if (diff) {
-                            if (hdr == 0) {
-                                reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            tbl->dbnum, tbl->tablename);
-                                hdr = 1;
-                            }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
-                                        breq2a(jj), diff);
-                        }
-                        tbl->prev_blocktypcnt[jj] = tbl->blocktypcnt[jj];
+                        log_tbl_item(tbl->blocktypcnt[jj], &tbl->prev_blocktypcnt[jj],
+                                     breq2a, jj, NULL, &hdr, statlogger, tbl, 0);
                     }
                     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
-                        diff = tbl->blockosqltypcnt[jj] -
-                               tbl->prev_blockosqltypcnt[jj];
-                        if (diff) {
-                            if (hdr == 0) {
-                                reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                            tbl->dbnum, tbl->tablename);
-                                hdr = 1;
-                            }
-                            reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
-                                        osql_breq2a(jj), diff);
-                        }
-                        tbl->prev_blockosqltypcnt[jj] = tbl->blockosqltypcnt[jj];
+                        log_tbl_item(tbl->blockosqltypcnt[jj], &tbl->prev_blockosqltypcnt[jj],
+                                     osql_breq2a, jj, NULL, &hdr, statlogger, tbl, 0);
                     }
 
-                    diff = dbenv->txns_committed - dbenv->prev_txns_committed;
-                    if (diff) {
-                        if (hdr == 0) {
-                            reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        tbl->dbnum, tbl->tablename);
-                            hdr = 1;
-                        }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
-                                    "txns committed", diff);
-                    }
-                    dbenv->prev_txns_committed = dbenv->txns_committed;
+                    log_tbl_item(dbenv->txns_committed, &dbenv->prev_txns_committed,
+                                 NULL, 0, "txns committed", &hdr, statlogger, tbl, 0);
 
-                    diff = dbenv->txns_aborted - dbenv->prev_txns_aborted;
-                    if (diff) {
-                        if (hdr == 0) {
-                            reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        tbl->dbnum, tbl->tablename);
-                            hdr = 1;
-                        }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
-                                    "txns aborted", diff);
-                    }
-                    dbenv->prev_txns_aborted = dbenv->txns_aborted;
+                    log_tbl_item(dbenv->txns_aborted, &dbenv->prev_txns_aborted, NULL,
+                                 0, "txns aborted", &hdr, statlogger, tbl, 0);
 
-                    diff = tbl->nsql - tbl->prev_nsql;
-                    if (diff) {
-                        if (hdr == 0) {
-                            reqlog_logf(statlogger, REQL_INFO, hdr_fmt,
-                                        tbl->dbnum, tbl->tablename);
-                            hdr = 1;
-                        }
-                        reqlog_logf(statlogger, REQL_INFO, "    %-20s %u\n",
-                                    "nsql", diff);
+                    log_tbl_item(tbl->nsql, &tbl->prev_nsql, NULL, 0, "nsql",
+                                 &hdr, statlogger, tbl, 0);
+
+                    // log write_count, save in saved_write_count, compute autoanalyze delta
+                    unsigned prev = tbl->saved_write_count[RECORD_WRITE_DEL] +
+                                    tbl->saved_write_count[RECORD_WRITE_INS];
+                    unsigned curr = tbl->write_count[RECORD_WRITE_DEL] +
+                                    tbl->write_count[RECORD_WRITE_INS];
+
+                    if (aa_include_updates) {
+                        prev += tbl->saved_write_count[RECORD_WRITE_UPD];
+                        curr += tbl->write_count[RECORD_WRITE_UPD];
                     }
-                    tbl->prev_nsql = tbl->nsql;
+
+                    ATOMIC_ADD32(tbl->aa_saved_counter, (curr - prev));
+                    log_tbl_item(tbl->write_count[RECORD_WRITE_INS], &tbl->saved_write_count[RECORD_WRITE_INS],
+                                 NULL, 0, "inserted rows", &hdr, statlogger, tbl, 0);
+                    log_tbl_item(tbl->write_count[RECORD_WRITE_UPD], &tbl->saved_write_count[RECORD_WRITE_UPD],
+                                 NULL, 0, "updated rows", &hdr, statlogger, tbl, 0);
+                    log_tbl_item(tbl->write_count[RECORD_WRITE_DEL], &tbl->saved_write_count[RECORD_WRITE_DEL],
+                                 NULL, 0, "deleted rows", &hdr, statlogger, tbl, 0);
                 }
+                unlock_schema_lk();
 
                 pstats = bdb_get_process_stats();
                 cur_bdb_stats = *pstats;

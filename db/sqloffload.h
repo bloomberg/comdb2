@@ -57,7 +57,7 @@ void osql_cleanup(void);
 void set_osql_maxtransfer(int limit);
 int get_osql_maxtransfer(void);
 
-char *osql_breq2a(int op);
+const char *osql_breq2a(int op);
 
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen,
                    int block2_type);

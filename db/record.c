@@ -49,6 +49,7 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "indices.h"
+#include "comdb2_atomic.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -600,7 +601,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (!is_event_from_sc(flags)) {
-        iq->usedb->write_count[RECORD_WRITE_INS]++;
+        ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_INS], 1);
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
@@ -1505,7 +1506,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    iq->usedb->write_count[RECORD_WRITE_UPD]++;
+    ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
@@ -1799,7 +1800,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    iq->usedb->write_count[RECORD_WRITE_DEL]++;
+    ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:

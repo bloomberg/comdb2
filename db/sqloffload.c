@@ -189,63 +189,43 @@ void osql_cleanup(void)
     bdb_osql_destroy(&bdberr);
 }
 
-char *osql_breq2a(int op)
-{
+const char *osql_tp_str[] = {
+    "OSQL_RPLINV",
+    "OSQL_DONE",
+    "OSQL_USEDB",
+    "OSQL_DELREC",
+    "OSQL_INSREC",
+    "OSQL_CLRTBL",
+    "OSQL_QBLOB",
+    "OSQL_UPDREC",
+    "OSQL_XERR",
+    "OSQL_UPDCOLS",
+    "OSQL_DONE_STATS",
+    "OSQL_DBGLOG",
+    "OSQL_RECGENID",
+    "OSQL_UPDSTAT",
+    "OSQL_EXISTS",
+    "OSQL_SERIAL",
+    "OSQL_SELECTV",
+    "OSQL_DONE_SNAP",
+    "OSQL_SCHEMACHANGE",
+    "OSQL_BPFUNC",
+    "OSQL_DBQ_CONSUME",
+    "OSQL_DELETE",
+    "OSQL_INSERT",
+    "OSQL_UPDATE",
+    "OSQL_DELIDX",
+    "OSQL_INSIDX",
+    "OSQL_STARTGEN",
+    "OSQL_DONE_WITH_EFFECTS",
+};
 
-    switch (op) {
-    case OSQL_RPLINV:
-        return "INVALID";
-    case OSQL_DONE:
-        return "OSQL_DONE";
-    case OSQL_DONE_STATS:
-        return "OSQL_DONE_STATS";
-    case OSQL_DONE_SNAP:
-        return "OSQL_DONE_SNAP";
-    case OSQL_USEDB:
-        return "OSQL_USEDB";
-    case OSQL_DELREC:
-        return "OSQL_DELREC";
-    case OSQL_INSREC:
-        return "OSQL_INSREC";
-    case OSQL_QBLOB:
-        return "OSQL_QBLOB";
-    case OSQL_UPDREC:
-        return "OSQL_UPDREC";
-    case OSQL_XERR:
-        return "OSQL_XERR";
-    case OSQL_UPDCOLS:
-        return "OSQL_UPDCOLS";
-    case OSQL_SERIAL:
-        return "OSQL_SERIAL";
-    case OSQL_SELECTV:
-        return "OSQL_SELECTV";
-    case OSQL_DBGLOG:
-        return "OSQL_DBGLOG";
-    case OSQL_RECGENID:
-        return "OSQL_RECGENID";
-    case OSQL_UPDSTAT:
-        return "OSQL_UPDSTAT";
-    case OSQL_EXISTS:
-        return "OSQL_EXISTS";
-    case OSQL_DBQ_CONSUME:
-        return "OSQL_DBQ_CONSUME";
-    case OSQL_INSERT:
-        return "OSQL_INSERT";
-    case OSQL_DELETE:
-        return "OSQL_DELETE";
-    case OSQL_UPDATE:
-        return "OSQL_UPDATE";
-    case OSQL_SCHEMACHANGE:
-        return "OSQL_SCHEMACHANGE";
-    case OSQL_BPFUNC:
-        return "OSQL_BPFUNC";
-    case OSQL_DELIDX:
-        return "OSQL_DELIDX";
-    case OSQL_INSIDX:
-        return "OSQL_INSIDX";
-    default:
+const char *osql_breq2a(int op)
+{
+    if (0 < op && op < MAX_OSQL_TYPES)
+        return osql_tp_str[op];
+    else
         return "UNKNOWN";
-    }
 }
 
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
