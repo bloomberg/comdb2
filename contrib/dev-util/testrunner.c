@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <ctype.h>
 
+#include <getopt.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <regex.h>
@@ -317,7 +318,7 @@ void update_test_line(char *testname, char *status) {
         add_test(testname, status);
     }
     else {
-        regmatch_t matches[2] = {0};
+        regmatch_t matches[2] = {{0}};
         int rc;
         if ((rc=regexec(&line_with_timeout, rest, 2, matches, 0)) == 0) {
             char *tmout = regmatch_to_str(rest, &matches[1]);

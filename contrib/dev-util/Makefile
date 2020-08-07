@@ -1,7 +1,7 @@
 OBJS=testrunner.o #plhash.o pool.o
 BINARY=testrunner
 
-CFLAGS=-pthread -Wall -g -Wextra -Wno-unused-parameter
+CFLAGS=-std=c99 -pthread -Wall -g -U__STRICT_ANSI__ -Wextra -Wno-unused-parameter
 
 $(BINARY): $(OBJS)
 	gcc -o $(BINARY) $(OBJS) $(LDFLAGS)
