@@ -38,6 +38,7 @@ const sqlite3_module systblTimeseriesModule;
 const sqlite3_module systblReplStatsModule;
 const sqlite3_module systblLogicalOpsModule;
 const sqlite3_module systblSystabsModule;
+const sqlite3_module systblTableTPPermissionsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);

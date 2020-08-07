@@ -248,6 +248,7 @@
 (candidate='comdb2_threadpools')
 (candidate='comdb2_timepartevents')
 (candidate='comdb2_timepartitions')
+(candidate='comdb2_timepartpermissions')
 (candidate='comdb2_timepartshards')
 (candidate='comdb2_timeseries')
 (candidate='comdb2_transaction_logs')

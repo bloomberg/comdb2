@@ -304,6 +304,16 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
+    /* Update table permissions for this new shard. */
+    if (s->is_timepart) {
+        if ((rc = timepart_copy_access(thedb->bdb_env, tran, s->tablename,
+                                       s->timepartname, 0)) != 0) {
+            sc_errf(s, "Failed to set user permissions for time partition %s\n",
+                    s->timepartname);
+            return rc;
+        }
+    }
+
     if ((rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,
                                        &bdberr)) != 0) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);

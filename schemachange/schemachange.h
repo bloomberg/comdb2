@@ -69,12 +69,15 @@ struct schema_change_type {
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
     size_t tablename_len;
-    char tablename[MAXTABLELEN]; /* name of table/queue */
-    int rename;              /* new table name */
-    char newtable[MAXTABLELEN]; /* rename table */
+    char tablename[MAXTABLELEN];    /* name of table/queue */
+    int rename;                     /* rename table? */
+    char newtable[MAXTABLELEN];     /* new table name */
+    int is_timepart;                /* Is this a time partition? */
+    char timepartname[MAXTABLELEN]; /* time partition name that this shard
+                                       belongs to */
     size_t fname_len;
-    char fname[256];         /* name of schema file for table schema change
-                                or client provided SP version */
+    char fname[256];                /* name of schema file for table schema
+                                       change or client provided SP version */
     size_t aname_len;
     char aname[256];         /* advised file name for .csc2 */
     int avgitemsz;           /* average item size for queue creation */

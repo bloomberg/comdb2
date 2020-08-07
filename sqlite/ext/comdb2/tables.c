@@ -286,6 +286,9 @@ int comdb2SystblInit(
     rc = systblConnectionsInit(db);
   if (rc == SQLITE_OK)
     rc  = systblSQLClientStats(db);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_timepartpermissions",
+                               &systblTableTPPermissionsModule, 0);
 #endif
   return rc;
 }

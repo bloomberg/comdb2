@@ -236,8 +236,9 @@ void bdb_access_tbl_invalidate(bdb_state_type *bdb_state)
 int gbl_allow_user_schema;
 int gbl_uses_password;
 
-int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
-                              char *table, int access_type, int *bdberr)
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                   char *user, char *table, int access_type,
+                                   int *bdberr)
 {
     int rc = 0;
     if (gbl_uses_password) {
@@ -249,19 +250,19 @@ int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
             }
         }
         if (access_type == ACCESS_READ) {
-            rc = bdb_tbl_access_read_get(bdb_state, NULL, table, user, bdberr);
+            rc = bdb_tbl_access_read_get(bdb_state, tran, table, user, bdberr);
         }
         if (rc != 0 &&
             (access_type == ACCESS_WRITE || access_type == ACCESS_READ)) {
-            rc = bdb_tbl_access_write_get(bdb_state, NULL, table, user, bdberr);
+            rc = bdb_tbl_access_write_get(bdb_state, tran, table, user, bdberr);
         }
         if (rc != 0 &&
             (access_type == ACCESS_DDL || access_type == ACCESS_WRITE ||
              access_type == ACCESS_READ)) {
-            rc = bdb_tbl_op_access_get(bdb_state, NULL, 0, table, user, bdberr);
+            rc = bdb_tbl_op_access_get(bdb_state, tran, 0, table, user, bdberr);
         }
         if (rc != 0) {
-            rc = bdb_tbl_op_access_get(bdb_state, NULL, 0, "", user, bdberr);
+            rc = bdb_tbl_op_access_get(bdb_state, tran, 0, "", user, bdberr);
         }
     }
     return rc;
@@ -342,4 +343,11 @@ int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     return rc;
+}
+
+int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
+                              char *table, int access_type, int *bdberr)
+{
+    return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table,
+                                          access_type, bdberr);
 }

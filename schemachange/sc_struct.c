@@ -42,6 +42,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->instant_sc = -1;
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
+    sc->is_timepart = 0;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
