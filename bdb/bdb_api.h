@@ -2170,7 +2170,8 @@ int bdb_get_versioned_sps_tran(tran_type *tran, char ***names, int *num);
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                               char *table, int access_type, int *bdberr);
-int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran, char *user, char *table, int access_type,
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                   char *user, char *table, int access_type,
                                    int *bdberr);
 int bdb_first_user_get(bdb_state_type *bdb_state, tran_type *tran,
                        char *key_out, char *user_out, int *isop, int *bdberr);

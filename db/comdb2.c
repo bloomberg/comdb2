@@ -2328,7 +2328,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
 int llmeta_load_timepart(struct dbenv *dbenv)
 {
-    /* We need to do this before resuming schema change , if any */
+    /* We need to do this before resuming schema change, if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
     dbenv->timepart_views = timepart_views_init(dbenv);
 

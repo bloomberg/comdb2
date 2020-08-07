@@ -153,3 +153,60 @@ void timepart_systable_timepartevents_free(void *arr, int nrecords)
 {
     cron_systable_events_free(arr, nrecords);
 }
+
+int timepart_systable_timepartpermissions_collect(void **data, int *nrecords)
+{
+    timepart_views_t *views = thedb->timepart_views;
+    timepart_view_t *view;
+    char **arr = NULL;
+    int narr = 0;
+    int err;
+    int rc = 0;
+
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    char *usr = thd->clnt->current_user.name;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    arr = calloc(views->nviews, sizeof(char *));
+    if (!arr) {
+        logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+               sizeof(char *) * views->nviews);
+        rc = -1;
+        goto done;
+    }
+    for (narr = 0; narr < views->nviews; narr++) {
+        view = views->views[narr];
+
+        if (bdb_check_user_tbl_access(NULL, usr, view->name, ACCESS_READ,
+                                      &err) != 0) {
+            continue;
+        }
+
+        arr[narr] = strdup(view->name);
+        if (!arr[narr]) {
+            logmsg(LOGMSG_ERROR, "%s OOM!\n", __func__);
+            timepart_systable_timepartpermissions_free(arr, narr);
+            narr = 0;
+            arr = NULL;
+            rc = -1;
+            goto done;
+        }
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    *data = arr;
+    *nrecords = narr;
+    return rc;
+}
+
+void timepart_systable_timepartpermissions_free(void *arr, int nrecords)
+{
+    char **parr = (char **)arr;
+    int i;
+
+    for (i = 0; i < nrecords; i++) {
+        if (parr[i])
+            free(parr[i]);
+    }
+    free(arr);
+}

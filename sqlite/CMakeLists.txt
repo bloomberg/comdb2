@@ -44,6 +44,7 @@ add_library(sqlite
   ext/comdb2/temporary_file_sizes.c
   ext/comdb2/threadpools.c
   ext/comdb2/timepartitions.c
+  ext/comdb2/timepartpermissions.c
   ext/comdb2/timeseries.c
   ext/comdb2/tranlog.c
   ext/comdb2/triggers.c

@@ -241,8 +241,7 @@ static int prepare_drop_timepart(bpfunc_t *tp)
     return 0;
 }
 
-/*********************************** GRANT
- * ***********************************************/
+/*********************** GRANT ****************************/
 
 static int grantAuth(void *tran, int permission, int command_type,
                      char *tablename, char *userschema, char *username)
@@ -254,10 +253,18 @@ static int grantAuth(void *tran, int permission, int command_type,
     case AUTH_READ:
         rc = bdb_tbl_access_read_set(bdb_state, tran, tablename, username,
                                      &bdberr);
+        if (!rc) {
+            rc = timepart_shards_grant_access(bdb_state, tran, tablename,
+                                              username, ACCESS_READ);
+        }
         break;
     case AUTH_WRITE:
         rc = bdb_tbl_access_write_set(bdb_state, tran, tablename, username,
                                       &bdberr);
+        if (!rc) {
+            rc = timepart_shards_grant_access(bdb_state, tran, tablename,
+                                              username, ACCESS_WRITE);
+        }
         break;
     case AUTH_USERSCHEMA:
         rc = bdb_tbl_access_userschema_set(bdb_state, tran, userschema,
@@ -266,6 +273,10 @@ static int grantAuth(void *tran, int permission, int command_type,
     case AUTH_OP:
         rc = bdb_tbl_op_access_set(bdb_state, tran, command_type, tablename,
                                    username, &bdberr);
+        if (!rc) {
+            rc = timepart_shards_grant_access(bdb_state, tran, tablename,
+                                              username, ACCESS_DDL);
+        }
         break;
     default:
         rc = SQLITE_INTERNAL;
@@ -288,14 +299,26 @@ static int revokeAuth(void *tran, int permission, int command_type,
     case AUTH_READ:
         rc = bdb_tbl_access_read_delete(bdb_state, tran, tablename, username,
                                         &bdberr);
+        if (!rc) {
+            rc = timepart_shards_revoke_access(bdb_state, tran, tablename,
+                                               username, ACCESS_READ);
+        }
         break;
     case AUTH_WRITE:
         rc = bdb_tbl_access_write_delete(bdb_state, tran, tablename, username,
                                          &bdberr);
+        if (!rc) {
+            rc = timepart_shards_revoke_access(bdb_state, tran, tablename,
+                                               username, ACCESS_WRITE);
+        }
         break;
     case AUTH_OP:
         rc = bdb_tbl_op_access_delete(bdb_state, tran, command_type, tablename,
                                       username, &bdberr);
+        if (!rc) {
+            rc = timepart_shards_revoke_access(bdb_state, tran, tablename,
+                                               username, ACCESS_DDL);
+        }
         break;
     case AUTH_USERSCHEMA:
         rc = bdb_tbl_access_userschema_delete(bdb_state, tran, userschema,

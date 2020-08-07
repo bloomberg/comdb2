@@ -15,7 +15,6 @@
  */
 
 #include <stdlib.h>
-#include <pthread.h>
 #include <string.h>
 #include <limits.h>
 #include <string.h>
@@ -52,7 +51,7 @@ typedef struct timepart_shard timepart_shard_t;
 struct timepart_view {
     char *name;                       /* name of the view, visible in sql */
     enum view_partition_period period; /* when do we rotate to a new shard */
-    int retention;                    /* how many shard are preserves */
+    int retention;                    /* how many shards are preserved */
     int nshards;                      /* how many shards */
     timepart_shard_t *shards;         /* array of shard pointers */
     int version;      /* in-memory versioning, allowing single view refreshes */
@@ -61,7 +60,7 @@ struct timepart_view {
     int starttime;    /* info about the beginning of the rollout */
     int purge_time;   /* set if there is a purger thread assigned */
     int roll_time;    /* cached time for next rollout */
-    uuid_t source_id; /* identifier for view, unique as compare to name */
+    uuid_t source_id; /* identifier for view, unique as compared to name */
 };
 
 struct timepart_views {
@@ -74,11 +73,6 @@ struct timepart_views {
                                 one is removed, if past retention */
 };
 
-/*
-   NOTE: for now, since views access is done only when sqlite engines are
-   created,
-   when shards are rolled, or when db starts, we can use a mutex
-*/
 pthread_rwlock_t views_lk;
 
 /*
@@ -228,7 +222,7 @@ int timepart_is_shard(const char *name, int lock, char **viewname)
    return rc;
 }
 
-/** 
+/**
  * Check if a name is a timepart
  *
  */

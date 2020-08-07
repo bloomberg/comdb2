@@ -120,7 +120,6 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
-
     /* Delete all access permissions related to this table. */
     if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename)) != 0)
     {

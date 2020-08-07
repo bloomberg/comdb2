@@ -44,6 +44,7 @@ extern const sqlite3_module systblAppsockHandlersModule;
 extern const sqlite3_module systblOpcodeHandlersModule;
 extern const sqlite3_module completionModule; // in ext/misc
 extern const sqlite3_module systblClientStatsModule;
+extern const sqlite3_module systblTableTPPermissionsModule;
 extern const sqlite3_module systblTimepartModule;
 extern const sqlite3_module systblTimepartShardsModule;
 extern const sqlite3_module systblTimepartEventsModule;

@@ -236,7 +236,8 @@ void bdb_access_tbl_invalidate(bdb_state_type *bdb_state)
 extern int gbl_allow_user_schema;
 extern int gbl_uses_password;
 
-int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran, char *user, char *table, int access_type,
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                   char *user, char *table, int access_type,
                                    int *bdberr)
 {
     int rc = 0;
@@ -265,11 +266,6 @@ int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran, c
         }
     }
     return rc;
-}
-
-int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user, char *table, int access_type, int *bdberr)
-{
-    return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table, access_type, bdberr);
 }
 
 static int bdb_del_user_tbl_access(bdb_state_type *bdb_state, tran_type *tran,
@@ -347,4 +343,11 @@ int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     return rc;
+}
+
+int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
+                              char *table, int access_type, int *bdberr)
+{
+    return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table,
+                                          access_type, bdberr);
 }
