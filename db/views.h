@@ -379,5 +379,9 @@ char *timepart_describe(sched_if_t *impl);
  */
 char *timepart_event_describe(sched_if_t *impl, cron_event_t *event);
 
+int timepart_shards_grant_access(bdb_state_type *bdb_state, void *tran, char
+                                 *name, char *user, int access_type);
+int timepart_shards_revoke_access(bdb_state_type *bdb_state, void *tran, char
+                                  *name, char *user, int access_type);
 #endif
 

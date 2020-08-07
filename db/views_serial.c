@@ -54,6 +54,7 @@
 #include "cson_amalgamation_core.h"
 #include "views.h"
 #include "comdb2uuid.h"
+#include "bdb_access.h"
 
 static char *_concat(char *str, int *len, const char *fmt, ...);
 
@@ -538,7 +539,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
     if (rc != VIEW_NOERR) {
         goto error;
     }
-    
+
     /* assign a uuid */
     comdb2uuid(view->source_id);
 
@@ -585,7 +586,7 @@ static int _views_do_partition_destroy(void *tran, timepart_views_t *views,
         goto error;
     }
 
-    /* time to add the view */
+    /* time to delete the view */
     rc = timepart_del_view(NULL /*tran -- I want this commit independent!!! */,
                            views, viewname);
     if (rc != VIEW_NOERR) {
@@ -600,6 +601,352 @@ static int _views_do_partition_destroy(void *tran, timepart_views_t *views,
 
 error:
     return err->errval;
+}
+
+static int timepart_get_access_type(bdb_state_type *bdb_state, void *tran,
+                                    char *tab, char *user, int access_type,
+                                    int *bdberr)
+{
+    int rc = 0;
+
+    switch (access_type) {
+    case ACCESS_READ:
+        rc = bdb_tbl_access_read_get(bdb_state, tran, tab, user, bdberr);
+        break;
+    case ACCESS_WRITE:
+        rc = bdb_tbl_access_write_get(bdb_state, tran, tab, user, bdberr);
+        break;
+    case ACCESS_DDL:
+        rc = bdb_tbl_op_access_get(bdb_state, tran, 0, tab, user, bdberr);
+        break;
+    default:
+        logmsg(LOGMSG_ERROR, "%s:%d invalid access type '%d'\n", __func__,
+               __LINE__, access_type);
+        return 1;
+    }
+
+    if ((rc != 0) && (*bdberr != BDBERR_FETCH_DTA)) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to set user access information (rc: %d, bdberr: "
+               "%d)\n",
+               __func__, __LINE__, rc, *bdberr);
+    }
+    return rc;
+}
+
+static int timepart_set_access_type(bdb_state_type *bdb_state, void *tran,
+                                    char *tab, char *user, int access_type,
+                                    int *bdberr)
+{
+    int rc = 0;
+
+    switch (access_type) {
+    case ACCESS_READ:
+        rc = bdb_tbl_access_read_set(bdb_state, tran, tab, user, bdberr);
+        break;
+    case ACCESS_WRITE:
+        rc = bdb_tbl_access_write_set(bdb_state, tran, tab, user, bdberr);
+        break;
+    case ACCESS_DDL:
+        rc = bdb_tbl_op_access_set(bdb_state, tran, 0, tab, user, bdberr);
+        break;
+    default:
+        logmsg(LOGMSG_ERROR, "%s:%d invalid access type '%d'\n", __func__,
+               __LINE__, access_type);
+        return 1;
+    }
+
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to set user access information (rc: %d, bdberr: "
+               "%d)\n",
+               __func__, __LINE__, rc, *bdberr);
+    }
+    return rc;
+}
+
+static int timepart_delete_access_type(bdb_state_type *bdb_state, void *tran,
+                                       char *tab, char *user, int access_type,
+                                       int *bdberr)
+{
+    int rc = 0;
+
+    switch (access_type) {
+    case ACCESS_READ:
+        rc = bdb_tbl_access_read_delete(bdb_state, tran, tab, user, bdberr);
+        break;
+    case ACCESS_WRITE:
+        rc = bdb_tbl_access_write_delete(bdb_state, tran, tab, user, bdberr);
+        break;
+    case ACCESS_DDL:
+        rc = bdb_tbl_op_access_delete(bdb_state, tran, 0, tab, user, bdberr);
+        break;
+    default:
+        logmsg(LOGMSG_ERROR, "%s:%d invalid access type '%d'\n", __func__,
+               __LINE__, access_type);
+        return 1;
+    }
+
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to delete user access information (rc: %d, "
+               "bdberr: %d)\n",
+               __func__, __LINE__, rc, *bdberr);
+    }
+    return rc;
+}
+
+/* Copy the current 'src' table permission for the specified user to the 'dst'
+ * table. */
+static int timepart_copy_access_type(bdb_state_type *bdb_state, void *tran,
+                                     char *dst, char *src, char *user,
+                                     int access_type)
+{
+    int rc = 0;
+    int bdberr;
+
+    rc = timepart_get_access_type(bdb_state, tran, src, user, access_type,
+                                  &bdberr);
+    if (rc) {
+        if (bdberr == BDBERR_FETCH_DTA) {
+            return 0;
+        }
+    } else {
+        rc = timepart_delete_access_type(bdb_state, tran, dst, user,
+                                         access_type, &bdberr);
+        if (!rc) {
+            rc = timepart_set_access_type(bdb_state, tran, dst, user,
+                                          access_type, &bdberr);
+        }
+    }
+
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error setting user access information (rc: %d, bdberr: %d)\n",
+               rc, bdberr);
+        return rc;
+    }
+    return rc;
+}
+
+/* Copy the current 'src' table permissions for the specified user to the
+ * newly created 'dst' table. */
+int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
+                         char *src, int acquire_schema_lk)
+{
+    char **users;
+    int nUsers;
+    int rc = 0;
+
+    logmsg(LOGMSG_INFO, "setting access permissions for time partition %s\n",
+           dst);
+
+    if (acquire_schema_lk) {
+        wrlock_schema_lk();
+    }
+
+    /* Retrieve all access permissions for all existing users for the dst
+     * table. */
+    bdb_user_get_all_tran(tran, &users, &nUsers);
+
+    for (int i = 0; i < nUsers; ++i) {
+        // read access
+        if ((rc = timepart_copy_access_type(bdb_state, tran, dst, src, users[i],
+                                            ACCESS_READ)))
+            goto err;
+
+        // write access
+        if ((rc = timepart_copy_access_type(bdb_state, tran, dst, src, users[i],
+                                            ACCESS_WRITE)))
+            goto err;
+
+        // DDL access
+        if ((rc = timepart_copy_access_type(bdb_state, tran, dst, src, users[i],
+                                            ACCESS_DDL)))
+            goto err;
+    }
+
+err:
+    if (acquire_schema_lk) {
+        unlock_schema_lk();
+    }
+
+    for (int i = 0; i < nUsers; ++i) {
+        free(users[i]);
+    }
+
+    return rc;
+}
+
+int timepart_delete_access(bdb_state_type *bdb_state, void *tran,
+                           const char *name, bool acquire_schema_lk)
+{
+    char **users;
+    int nUsers;
+    int rc = 0;
+    int bdberr;
+
+    logmsg(LOGMSG_INFO, "deleting access permissions for time partition %s\n",
+           name);
+
+    if (acquire_schema_lk) {
+        wrlock_schema_lk();
+    }
+
+    /* Delete all access permissions for all existing users for the time
+       partitions. */
+    bdb_user_get_all_tran(tran, &users, &nUsers);
+
+    for (int i = 0; i < nUsers; ++i) {
+        // read access
+        if ((rc = bdb_tbl_access_read_delete(bdb_state, tran, name, users[i],
+                                             &bdberr)))
+            goto err;
+
+        // write access
+        if ((rc = bdb_tbl_access_write_delete(bdb_state, tran, name, users[i],
+                                              &bdberr)))
+            goto err;
+
+        // DDL access
+        if ((rc = bdb_tbl_op_access_delete(bdb_state, tran, 0, name, users[i],
+                                           &bdberr)))
+            goto err;
+    }
+
+    if (acquire_schema_lk) {
+        unlock_schema_lk();
+    }
+
+    for (int i = 0; i < nUsers; ++i) {
+        free(users[i]);
+    }
+
+err:
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error deleting user access information (rc: %d, bdberr: %d)\n",
+               rc, bdberr);
+    }
+
+    return rc;
+}
+
+static int timepart_copy_shard_names(char *view_name, char ***shard_names,
+                                     int *nshards)
+{
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int rc = 0;
+    char **shards;
+
+    views = thedb->timepart_views;
+
+    Pthread_rwlock_wrlock(&views_lk);
+    for (int i = 0; i < views->nviews; i++) {
+        view = views->views[i];
+        if (!strcasecmp(view_name, view->name)) {
+            *nshards = view->nshards;
+            if (view->nshards == 0) {
+                break;
+            }
+            shards = (char **)malloc(view->nshards * sizeof(char *));
+            if (!shards) {
+                logmsg(LOGMSG_ERROR, "%s:%d out-of-memory\n", __func__,
+                       __LINE__);
+                rc = 1;
+                goto done;
+            }
+            for (int j = 0; j < view->nshards; j++) {
+                shards[j] = strdup(view->shards[j].tblname);
+                if (!shards[j]) {
+                    logmsg(LOGMSG_ERROR, "%s:%d out-of-memory\n", __func__,
+                           __LINE__);
+                    for (int k = 0; k < j; k++) {
+                        free(shards[k]);
+                    }
+                    free(shards);
+                    rc = 1;
+                    goto done;
+                }
+            }
+            *shard_names = shards;
+            break;
+        }
+    }
+done:
+    Pthread_rwlock_unlock(&views_lk);
+    return rc;
+}
+
+int timepart_shards_grant_access(bdb_state_type *bdb_state, void *tran,
+                                 char *name, char *user, int access_type)
+{
+    int rc = 0;
+    int bdberr;
+    char **shard_names = 0;
+    int nshards = 0;
+
+    rc = timepart_copy_shard_names(name, &shard_names, &nshards);
+    if (rc) {
+        return 1;
+    }
+
+    wrlock_schema_lk();
+    for (int i = 0; i < nshards; i++) {
+        rc = timepart_delete_access_type(bdb_state, tran, shard_names[i], user,
+                                         access_type, &bdberr);
+        if (!rc) {
+            rc = timepart_set_access_type(bdb_state, tran, shard_names[i], user,
+                                          access_type, &bdberr);
+        }
+        if (rc) {
+            break;
+        }
+    }
+    unlock_schema_lk();
+
+    for (int i = 0; i < nshards; i++) {
+        if (shard_names[i]) {
+            free(shard_names[i]);
+        }
+    }
+    free(shard_names);
+
+    return rc;
+}
+
+int timepart_shards_revoke_access(bdb_state_type *bdb_state, void *tran,
+                                  char *name, char *user, int access_type)
+{
+    int rc = 0;
+    int bdberr;
+    char **shard_names = 0;
+    int nshards = 0;
+
+    rc = timepart_copy_shard_names(name, &shard_names, &nshards);
+    if (rc) {
+        return 1;
+    }
+
+    wrlock_schema_lk();
+    for (int i = 0; i < nshards; i++) {
+        rc = timepart_delete_access_type(bdb_state, tran, shard_names[i], user,
+                                         access_type, &bdberr);
+        if (rc) {
+            break;
+        }
+    }
+    unlock_schema_lk();
+
+    for (int i = 0; i < nshards; i++) {
+        if (shard_names[i]) {
+            free(shard_names[i]);
+        }
+    }
+    free(shard_names);
+
+    return rc;
 }
 
 /**
@@ -648,6 +995,20 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
     }
 
     if (!strcasecmp(op, "CREATE")) {
+        /* Time partition inherits shard0's permissions. */
+        const char *shard0 = _cson_extract_str(cson_obj, "SHARD0NAME", err);
+        if (!shard0) {
+            rc = err->errval;
+            goto error;
+        } else if (timepart_copy_access(thedb->bdb_env, NULL, (char *)name,
+                                        (char *)shard0,
+                                        1 /* acquire schema_lk */) != 0) {
+            logmsg(LOGMSG_ERROR,
+                   "failed to set table permissions for time partition\n");
+            rc = 1;
+            goto error;
+        }
+
         rc = _views_do_partition_create(tran, views, name, cson_cmd, cmd, err);
         if (rc != VIEW_NOERR) {
             goto error;
@@ -657,6 +1018,11 @@ int views_do_partition(void *tran, timepart_views_t *views, const char *name,
         if (rc != VIEW_NOERR) {
             goto error;
         }
+
+        /* Delete access permissions related to this time partition from llmeta.
+         */
+        timepart_delete_access(thedb->bdb_env, NULL, name,
+                               1 /* acquire schema_lk */);
     } else {
         err->errval = VIEW_ERR_UNIMPLEMENTED;
         logmsg(LOGMSG_ERROR, "Unrecognized command \"%s\" in:\n\"%s\"\n", op,

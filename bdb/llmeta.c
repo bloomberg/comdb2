@@ -8747,8 +8747,8 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
 }
 
 // get full keys for all matching partial keys
-static int kv_get_keys_tran(tran_type *tran, void *k, size_t klen,
-                            void ***ret, int *num, int *bdberr)
+static int kv_get_keys_tran(tran_type *tran, void *k, size_t klen, void ***ret,
+                            int *num, int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -8756,9 +8756,8 @@ static int kv_get_keys_tran(tran_type *tran, void *k, size_t klen,
     int alloc = 0;
     uint8_t out[LLMETA_IXLEN];
     void **names = NULL;
-    int rc =
-        bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, k, klen, out, &fnd,
-                                    bdberr);
+    int rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, k, klen, out,
+                                         &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
@@ -9441,8 +9440,9 @@ int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num)
     return 0;
 }
 
-int bdb_user_get_all(char ***users, int *num) {
-    return bdb_user_get_all_tran(NULL, users, num);
+int bdb_user_get_all(char ***users, int *num)
+{
+  return bdb_user_get_all_tran(NULL, users, num);
 }
 
 /*

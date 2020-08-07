@@ -1115,6 +1115,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->appsock_id = getarchtid();
     init_sqlclntstate(conn->clnt, (char *)conn->clnt->osql.uuid, 1);
     conn->clnt->origin = clnt->origin;
+    conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);
     plugin_set_callbacks(conn->clnt, dohsql);
     conn->clnt->plugin.state = conn;
