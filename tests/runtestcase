@@ -9,6 +9,9 @@ is_release_build() {
 }
 
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
+CHECK_TIMEOUT=${CHECK_TIMEOUT:-1m}
+VERIFY_TIMEOUT=${TEST_TIMEOUT:-3m}
+
 if [[ "$(uname -m)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
@@ -21,6 +24,8 @@ elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]
 elif is_release_build == 0; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 7 + 2))m
+    t=${VERIFY_TIMEOUT%%m}
+    VERIFY_TIMEOUT=$(($t * 7 + 2))m
 fi
 if [[ "${DEBUGGER}" == "valgrind" ]] ; then
     t=${TEST_TIMEOUT%%m}
@@ -223,18 +228,18 @@ check_db_at_finish() {
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     if [[ -z "$CLUSTER" ]] ; then
-        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
+        out=$(timeout $CHECK_TIMEOUT $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
-            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
+            timeout $CHECK_TIMEOUT $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
             echo $out
             return
         fi
 
     fi
     for node in ${CLUSTER} ; do
-        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' 2>&1)
+        out=$(timeout $CHECK_TIMEOUT $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
-            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
+            timeout $CHECK_TIMEOUT $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
             echo $out
             return
         fi
@@ -246,11 +251,11 @@ verify_db_at_finish() {
     local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
-    node=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select comdb2_host()' )
-    tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables')
-    for t in $tables ; do 
+    node=$(timeout $CHECK_TIMEOUT $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select comdb2_host()' )
+    tables=$(timeout $CHECK_TIMEOUT $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables')
+    for t in $tables ; do
         outfl=${t}_verify.out
-        timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --verbose --tabs $LCLDBNM --host $node "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
+        timeout $VERIFY_TIMEOUT $CDB2SQL_EXE ${LCLOPTIONS} --verbose --tabs $LCLDBNM --host $node "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
         if ! grep "^Verify succeeded.$" $outfl > /dev/null ; then
             echo "Table $t"
             return
