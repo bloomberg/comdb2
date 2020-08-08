@@ -81,6 +81,9 @@ extern void *listc_maybe_rfl(void *list, void *obj);
 /* remove from list. returns item removed*/
 extern void *listc_rfl(void *list, void *obj);
 
+/* Find the first item for which functions returns success*/
+extern void *listc_findl(void *list, int (*func)(void *), void *, int);
+
 /* remove from bottom of list */
 extern void *listc_rbl(void *list);
 
