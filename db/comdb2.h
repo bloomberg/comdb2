@@ -3538,6 +3538,8 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
 
 int db_is_stopped(void);
 
+int close_lru_client(int, struct sqlclntstate *, int);
+
 int is_tablename_queue(const char *);
 
 int rename_table_options(void *tran, struct dbtable *db, const char *newname);

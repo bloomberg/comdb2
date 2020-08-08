@@ -4643,60 +4643,61 @@ errors:
 
 */
 
+static int check_done_func(void *obj)
+{
+    struct sqlclntstate *clnt = (struct sqlclntstate *)obj;
+    /* Don't find the client which we already killed */
+    if (clnt->done && !in_client_trans(clnt) && !clnt->statement_timedout) {
+        return 0;
+    }
+    return -1;
+}
+
+int close_lru_client(int curr_conns, struct sqlclntstate *clnt, int max_iteration)
+{
+    int rc = -1;
+    Pthread_mutex_lock(&clnt_lk);
+    struct sqlclntstate *lru_clnt = listc_findl(&clntlist, check_done_func, clnt, max_iteration);
+    if (lru_clnt) {
+        if (lru_clnt == clnt) {
+            /* This is a new client however its one of the  first 'max_iteration' connections. */
+            rc = 0;
+        } else {
+            lru_clnt->statement_timedout = 1; /* disallow any new query */
+            int fd = sbuf2fileno(lru_clnt->sb);
+            shutdown(fd, SHUT_RD);
+            logmsg(LOGMSG_WARN,
+                   "%s: Closing least recently used connection fd %d , total "
+                   "%d \n",
+                   __func__, fd, curr_conns);
+            rc = 0;
+        }
+    }
+    Pthread_mutex_unlock(&clnt_lk);
+    return rc;
+}
+
 int check_active_appsock_connections(struct sqlclntstate *clnt)
 {
-    int max_appsock_conns =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
-    if (active_appsock_conns > max_appsock_conns) {
-        int num_retry = 0;
-        int rc = -1;
-    retry:
-        Pthread_mutex_lock(&clnt_lk);
-        Pthread_mutex_lock(&appsock_conn_lk);
-        num_retry++;
-        if (active_appsock_conns <= max_appsock_conns) {
-            Pthread_mutex_unlock(&appsock_conn_lk);
-            Pthread_mutex_unlock(&clnt_lk);
-            return 0;
-        }
-        struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
-        listc_abl(&clntlist, lru_clnt);
-        while (lru_clnt != clnt) {
-            if (lru_clnt->done && !in_client_trans(lru_clnt)) {
-                lru_clnt->statement_timedout = 1; /* disallow any new query */
-                break;
-            }
-            lru_clnt = listc_rtl(&clntlist);
-            listc_abl(&clntlist, lru_clnt);
-        }
-
-        if (lru_clnt == clnt || !lru_clnt->done) {
-            /* All clients have transactions, wait for 1 second */
-            if (num_retry <= 5) {
+    int rc = 0;
+    int num_retry = 0;
+retry:
+    num_retry++;
+    Pthread_mutex_lock(&appsock_conn_lk);
+    if (active_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
+        /* We might be a new connection or else try to close an old connection */
+        if (close_lru_client(active_appsock_conns, clnt, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) !=
+            0) {
+            if (num_retry < 5) {
                 Pthread_mutex_unlock(&appsock_conn_lk);
-                Pthread_mutex_unlock(&clnt_lk);
                 sleep(1);
                 goto retry;
             }
             rc = -1;
-        } else {
-            int fd = sbuf2fileno(lru_clnt->sb);
-            if (lru_clnt->done) {
-                // lru_clnt->statement_timedout = 1; already done
-                shutdown(fd, SHUT_RD);
-                logmsg(
-                    LOGMSG_WARN,
-                    "%s: Closing least recently used connection fd %d , total "
-                    "%d \n",
-                    __func__, fd, active_appsock_conns - 1);
-                rc = 0;
-            }
         }
-        Pthread_mutex_unlock(&appsock_conn_lk);
-        Pthread_mutex_unlock(&clnt_lk);
-        return rc;
     }
-    return 0;
+    Pthread_mutex_unlock(&appsock_conn_lk);
+    return rc;
 }
 
 /**
