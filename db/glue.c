@@ -6338,3 +6338,19 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
     }
     return SQLITE_OK;
 }
+
+int comdb2_is_user_op(char *user, char *password)
+{
+    int bdberr;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    if (bdb_user_password_check(user, password, NULL)) {
+        return 0;
+    }
+
+    if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", user, &bdberr)) {
+        return 0;
+    }
+
+    return 1;
+}
