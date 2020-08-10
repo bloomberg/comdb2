@@ -36,7 +36,7 @@ static void free_functions(void *p, int n)
 {
     char **arr = p;
     for (int i = 0; i < n; i++) {
-        free(arr[i]);
+        sqlite3_free(arr[i]); /* sqlite3_mprintf() */
     }
     free(arr);
 }
