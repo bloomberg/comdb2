@@ -302,6 +302,8 @@ int client_type_to_server_type(int type)
         return SERVER_VUTF8;
     case CLIENT_SEQUENCE:
         return SERVER_SEQUENCE;
+    case CLIENT_FUNCTION:
+        return SERVER_FUNCTION;
     default:
         abort();
     }
@@ -823,6 +825,8 @@ int server_type_to_csc2_type_len(int type, int inlen, int *csc2type,
     }
 }
 
+#define MAX_SERVER_FUNCTION_LEN 256
+
 int max_type_size(int type, int len)
 {
     switch (type) {
@@ -849,6 +853,8 @@ int max_type_size(int type, int len)
         return sizeof(server_intv_ds_t);
     case SERVER_INTVDSUS:
         return sizeof(server_intv_dsus_t);
+    case SERVER_FUNCTION:
+        return MAX_SERVER_FUNCTION_LEN;
     default:
         return len;
     }
@@ -5268,16 +5274,17 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
     if (fld->type == SERVER_VUTF8) {
         mastersz = 16 * 1024;
     } else if (fld->type == SERVER_DATETIME || fld->type == SERVER_DATETIMEUS) {
-        mastersz =
-            CLIENT_DATETIME_EXT_LEN; /* We want to get back cstring here. */
+        mastersz = CLIENT_DATETIME_EXT_LEN; /* We want to get back cstring here. */
     } else {
         mastersz = max_type_size(fld->type, fld->len);
     }
 
     if (mastersz > 0)
         typebuf = calloc(1, mastersz);
+
+    char *func_str = NULL;
     rc = dyns_get_table_field_option(".ONDISK", fldn, loadstore, &opttype,
-                                     &optsz, typebuf, mastersz);
+                                     &optsz, typebuf, mastersz, &func_str);
 
     *p_default = NULL;
     *p_default_len = 0;
@@ -5302,6 +5309,13 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
             *p_default_len = fld->len;
 
         *p_default_type = client_type_to_server_type(opttype);
+
+        if(opttype  == CLIENT_FUNCTION) {
+            *p_default = strdup(func_str);
+            outrc = 0;
+            goto out;
+        }
+
         *p_default = calloc(1, *p_default_len);
 
         if (opttype == CLIENT_DATETIME || opttype == CLIENT_DATETIMEUS) {
@@ -5340,6 +5354,7 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
         }
     }
 
+out:
     if (typebuf)
         free(typebuf);
 
@@ -5557,7 +5572,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
             if (strcmp(rtag, ".ONDISK") == 0) {
                 /* field allowed to be null? */
                 rc = dyns_get_table_field_option(
-                    rtag, field, FLDOPT_NULL, &type, &sz, &isnull, sizeof(int));
+                    rtag, field, FLDOPT_NULL, &type, &sz, &isnull, sizeof(int), NULL);
                 if (rc == 0 && isnull)
                     schema->member[field].flags &= ~NO_NULL;
 
@@ -5566,15 +5581,14 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                  * then type must be integer. */
                 rc = dyns_get_table_field_option(rtag, field, FLDOPT_PADDING,
                                                  &type, &sz, &padval,
-                                                 sizeof(padval));
+                                                 sizeof(padval), NULL);
                 if (rc == 0 && CLIENT_INT == type) {
                     schema->member[field].convopts.flags |= FLD_CONV_DBPAD;
                     schema->member[field].convopts.dbpad = padval;
                 }
 
                 /* input default */
-                rc = init_default_value(&schema->member[field], field,
-                                        FLDOPT_DBSTORE);
+                rc = init_default_value(&schema->member[field], field, FLDOPT_DBSTORE);
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
@@ -5582,8 +5596,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 }
 
                 /* output default  */
-                rc = init_default_value(&schema->member[field], field,
-                                        FLDOPT_DBLOAD);
+                rc = init_default_value(&schema->member[field], field, FLDOPT_DBLOAD);
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
@@ -7038,7 +7051,9 @@ void update_dbstore(dbtable *db)
                 /* column not seen before */
                 db->dbstore[position].ver = v;
 
-                if (from->in_default_len && from->in_default_type != SERVER_SEQUENCE) {
+                if (from->in_default_type == SERVER_FUNCTION)
+                    continue;
+                else if (from->in_default_len && from->in_default_type != SERVER_SEQUENCE) {
                     db->dbstore[position].len = to->len;
                     db->dbstore[position].data = calloc(1, to->len);
                     if (db->dbstore[position].data == NULL) {

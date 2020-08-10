@@ -1546,7 +1546,6 @@ char *sql_field_default_trans(struct field *f, int is_out)
         break;
     }
     case SERVER_BYTEARRAY: {
-        /* ... */
         bval = sqlite3_malloc(this_default_len - 1);
         rc = SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
             this_default, this_default_len, NULL, NULL, bval,
@@ -1596,15 +1595,18 @@ char *sql_field_default_trans(struct field *f, int is_out)
         }
         break;
     }
+    case SERVER_FUNCTION: {
+        dstr = sqlite3_mprintf("%s", this_default);
+        break;
+    }
     case SERVER_SEQUENCE: {
         dstr = sqlite3_mprintf("%q", "nextsequence");
         break;
     }
     /* no defaults for blobs or vutf8 */
     default:
-        logmsg(LOGMSG_ERROR, "Unknown type in schema: column '%s' "
-                        "type %d\n",
-                f->name, f->type);
+        logmsg(LOGMSG_ERROR, "Unknown default type %d in schema: column '%s' of type %d\n",
+               default_type, f->name, f->type);
         return NULL;
     }
 
@@ -1851,6 +1853,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         }
     }
 
+    logmsg(LOGMSG_DEBUG, "sql: %s\n", strbuf_buf(sql));
     strbuf_free(sql);
     return 0;
 }

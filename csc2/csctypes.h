@@ -8,7 +8,7 @@
 
 // clang-format off
 
-#define CLIENT_TYPES                                                                                                   \
+#define CLIENT_TYPES                                                           \
 XMACRO_CLIENT_TYPE(CLIENT_MINTYPE,     0, "min")                               \
 XMACRO_CLIENT_TYPE(CLIENT_UINT,        1, "uint")                              \
 XMACRO_CLIENT_TYPE(CLIENT_INT,         2, "int")                               \
@@ -25,8 +25,9 @@ XMACRO_CLIENT_TYPE(CLIENT_VUTF8,      12, "vutf8")                             \
 XMACRO_CLIENT_TYPE(CLIENT_BLOB2,      13, "blob2")                             \
 XMACRO_CLIENT_TYPE(CLIENT_DATETIMEUS, 14, "datetimeus")                        \
 XMACRO_CLIENT_TYPE(CLIENT_INTVDSUS,   15, "intervaldsus")                      \
-XMACRO_CLIENT_TYPE(CLIENT_SEQUENCE,   16, "nextsequence")                                                            \
-XMACRO_CLIENT_TYPE(CLIENT_MAXTYPE,    17, "max")
+XMACRO_CLIENT_TYPE(CLIENT_SEQUENCE,   16, "nextsequence")                      \
+XMACRO_CLIENT_TYPE(CLIENT_FUNCTION,   17, "function")                          \
+XMACRO_CLIENT_TYPE(CLIENT_MAXTYPE,    18, "max")
 
 // clang-format on
 
@@ -66,6 +67,7 @@ enum {
     SERVER_DATETIMEUS = 113,
     SERVER_INTVDSUS = 114,
     SERVER_SEQUENCE = 115,
+    SERVER_FUNCTION = 116,
     SERVER_MAXTYPE
 };
 

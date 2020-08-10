@@ -423,7 +423,8 @@ ccons ::= DEFAULT scanpt(A) term(X) scanpt(Z).
 %endif !SQLITE_BUILDING_FOR_COMDB2
 ccons ::= DEFAULT LP(A) expr(X) RP(Z).
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-                            {comdb2AddDefaultValue(pParse,X,A.z+1,Z.z);}
+// include LP and RP
+                            {comdb2AddDefaultValue(pParse,X,A.z,Z.z+1);}
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
                             {sqlite3AddDefaultValue(pParse,X,A.z+1,Z.z);}

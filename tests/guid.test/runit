@@ -22,74 +22,275 @@ echo $CDB2_CONFIG
 CNT=10000
 
 
-echo 'part of a transaction'
+test_guid_function() {
+    echo 'part of a transaction'
 
-echo begin > ins.in
-for ((i=1;i<=$CNT;i++)) ; do
-    echo "insert into t1 values(guid(), randomblob(16), $i,$i)"
-done >> ins.in
-echo commit >> ins.in
+    echo begin > ins.in
+    for ((i=1;i<=$CNT;i++)) ; do
+        echo "insert into t1 values(guid(), randomblob(16), $i,$i)"
+    done >> ins.in
+    echo commit >> ins.in
 
-echo 'same as above but not part of a transaction'
+    echo 'same as above but not part of a transaction'
 
-for ((i=1;i<=$CNT;i++)) ; do
-    echo "insert into t1 values(guid(), randomblob(16), $i,$((2*i)))"
-done >> ins.in
+    for ((i=1;i<=$CNT;i++)) ; do
+        echo "insert into t1 values(guid(), randomblob(16), $i,$((2*i)))"
+    done >> ins.in
 
-echo 'using cte for kicks and gigles'
-echo "INSERT INTO t1 (id,rndm,i,j) WITH tblx(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM tblx where x < $CNT) SELECT guid(), randomblob(16), x,($CNT-x) FROM tblx" >> ins.in
-
-
-PARALLEL=20
-for ((j=1;j<=$PARALLEL;j++)) ; do
-   cdb2sql -f ins.in ${CDB2_OPTIONS} $dbnm default > ins_${j}.out &
-done
-
-echo wait for all above background inserts to complete
-wait
-
-set -x
-
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1' > content.out
-echo 'failure in transactions inserting will mean count will be off'
-assertcnt t1 $((CNT*PARALLEL*3))
-
-echo "make sure we can find all the ids (field 1) from content.out"
-cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1
-lines_per_part=$(((CNT*PARALLEL*3 + 20 - 1) / 20))
-split --lines=$lines_per_part sel1 sel1_in.
-
-for fl in `ls sel1_in.*`; do
-    cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
-done
+    echo 'using cte for speed'
+    echo "INSERT INTO t1 (id,rndm,i,j) WITH tblx(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM tblx where x < $CNT) SELECT guid(), randomblob(16), x,($CNT-x) FROM tblx" >> ins.in
 
 
-echo "make sure we can find all the rndm (field 2) from content.out"
-cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2
-split --lines=$lines_per_part sel2 sel2_in.
+    PARALLEL=20
+    for ((j=1;j<=$PARALLEL;j++)) ; do
+       cdb2sql -f ins.in ${CDB2_OPTIONS} $dbnm default > ins_${j}.out &
+    done
 
-for fl in `ls sel2_in.*`; do
-    cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
-done
+    echo wait for all above background inserts to complete
+    wait
 
-echo "Wait for the selects to be done"
-wait
-cat sel1_in*.out > sel1.out
-cat sel2_in*.out > sel2.out
+    set -x
 
-cnt=`grep "^(count" sel1.out | grep "=0" | wc -l`
-if [ $cnt != 0 ] ; then
-    failexit 'id not found'
-fi
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t1' > content.out
+    echo 'failure in transactions inserting will mean count will be off'
+    assertcnt t1 $((CNT*PARALLEL*3))
 
-cnt=`grep "^(count" sel2.out | grep "=0" | wc -l`
-if [ $cnt != 0 ] ; then
-    failexit 'rndm not found'
-fi
+    echo "make sure we can find all the ids (field 1) from content.out"
+    cut -f1 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel1
+    lines_per_part=$(((CNT*PARALLEL*3 + 20 - 1) / 20))
+    split --lines=$lines_per_part sel1 sel1_in.
 
-mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
-echo "found $mult with duplicate key for randomblob()"
+    for fl in `ls sel1_in.*`; do
+        cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
+    done
 
 
-rm *.out
+    echo "make sure we can find all the rndm (field 2) from content.out"
+    cut -f2 -d',' content.out | sed 's/,/ /g; s/(//; s/)$//; s/^/select count(*) from t1 where /; ' > sel2
+    split --lines=$lines_per_part sel2 sel2_in.
+
+    for fl in `ls sel2_in.*`; do
+        cdb2sql -f $fl ${CDB2_OPTIONS} $dbnm default > $fl.out &
+    done
+
+    echo "Wait for the selects to be done"
+    wait
+    cat sel1_in*.out > sel1.out
+    cat sel2_in*.out > sel2.out
+
+    cnt=`grep "^(count" sel1.out | grep "=0" | wc -l`
+    if [ $cnt != 0 ] ; then
+        failexit 'id not found'
+    fi
+
+    cnt=`grep "^(count" sel2.out | grep "=0" | wc -l`
+    if [ $cnt != 0 ] ; then
+        failexit 'rndm not found'
+    fi
+
+    mult=`grep "^count" sel2.out | grep -v "=1" | wc -l`
+    echo "found $mult with duplicate key for randomblob()"
+}
+
+
+test_guid_column() {
+    echo "Test that having guid as a column works"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(GUID int PRIMARY KEY, i int)'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(GUID, i) values(1,1),(2,2)'
+    assertcnt t2 2
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select count(*) from t2 where GUID=2'`
+    assertres $res 1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(guid int  PRIMARY KEY, i int)'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(guid, i) values(3,3),(4,4)'
+    assertcnt t2 2
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select count(*) from t2 where guid=4'`
+    assertres $res 1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+#sql is case insensitive so insert into t2(guid) is the same as insert into t2(GUID)
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { schema { int GUID  int i } }'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(GUID, i) values(5,5),(6,6)'
+    assertcnt t2 2
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select count(*) from t2 where GUID=6'`
+    assertres $res 1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { schema { int guid  int i } }'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(guid, i) values(7,7),(8,8)'
+    assertcnt t2 2
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select count(*) from t2 where guid=8'`
+    assertres $res 1
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+}
+
+
+test_guid_autofill() {
+    echo "Testing having guid(guid) as autoassigned colun via dbstore"
+
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2 { 
+    schema 
+    {
+        byte autoid[16] dbstore = {GUID()} null = no
+        byte bytfld1[16] dbstore = {randomblob(16)} null = yes
+        byte bytfld2[4] dbstore = x'00112233' null = yes
+        cstring strfld[5] dbstore = {hex('hi')} null = yes
+        int  i
+    }
+    keys
+    {
+            \"PK\"=autoid
+    }
+    }"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(1),(2)'
+    assertcnt t2 2
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { 
+    schema 
+    {
+        byte autoid[16] dbstore={guid()} null=no
+        datetime dt     dbstore={current_timestamp} null=no
+        datetime dtnow  dbstore={now()} null=no
+        int  i
+    }
+    keys
+    {
+            "PK"=autoid
+    }
+    }'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(3),(4)'
+    assertcnt t2 2
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(autoid byte(16) DEFAULT(GUID() )  PRIMARY KEY, i int)'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(5),(6)'
+    assertcnt t2 2
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(autoid byte(16)   DEFAULT( guid()) PRIMARY KEY, i int)'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(7),(8)'
+    assertcnt t2 2
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { 
+    schema 
+    {
+        cstring id[33] dbstore={hex(GUID())} null=no
+        int  i
+    }
+    keys
+    {
+            "PK"=id
+    }
+    }'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(i) values(9),(10)'
+    assertcnt t2 2
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t2'
+
+
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { 
+    schema 
+    {
+        byte  autoid[16] dbstore={ GUID ( ) }
+        short i   
+        int   j
+    }
+
+    keys 
+    {
+            "PK"=autoid
+    }
+    }'
+
+
+    echo 'part of a transaction'
+
+    echo begin > ins2.in
+    for ((i=1;i<=$CNT;i++)) ; do
+        echo "insert into t2(i,j) values($i,$i)"
+    done >> ins2.in
+    echo commit >> ins2.in
+
+    echo 'same as above but not part of a transaction'
+
+    for ((i=1;i<=$CNT;i++)) ; do
+        echo "insert into t2(i,j) values($i,$((2*i)))"
+    done >> ins2.in
+
+    echo 'using cte for speed'
+    echo "INSERT INTO t2 (i,j) WITH tblx(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM tblx where x < $CNT) SELECT x,($CNT-x) FROM tblx" >> ins2.in
+
+
+    PARALLEL=10
+    for ((j=1;j<=$PARALLEL;j++)) ; do
+       cdb2sql -f ins2.in ${CDB2_OPTIONS} $dbnm default > ins2_${j}.out &
+    done
+
+    echo wait for all above background inserts to complete
+    wait
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'select * from t2' > content2.out
+    echo 'failure in transactions inserting will mean count will be off'
+    assertcnt t2 $((CNT*PARALLEL*3))
+
+}
+
+test_guid_errors() {
+
+    set +e 
+
+    echo 'create table t3 { 
+    schema 
+    {
+        byte autoid[17] dbstore={GUID()}
+        int  i
+    }
+    }' > t3.in
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "`cat t3.in`" &> t3.err
+
+    echo "[`cat t3.in`] failed with rc 240 Error at line   4: CAN ONLY HAVE BYTE[16] FOR GUID() DBSTORE: autoid
+    " > t3.expected
+
+    if ! diff -w t3.err t3.expected ; then
+        failexit "t3.err not as expected diff $PWD/{t3.err,t3.expected}"
+    fi
+
+#    echo "Note that there is no check at table creation time for size mismatch, only at insert time"
+#    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t4 { 
+#    schema 
+#    {
+#        byte autoid[16] dbstore={hex(GUID())}
+#        int  i
+#    }
+#    }'
+#    cdb2sql ${CDB2_OPTIONS} $dbnm 'insert into t4(i) values(1),(2)' &> t4.err
+#    echo "[insert into t4(i) values(1),(2)] failed with rc 113 incompatible values from SQL string of length 32 to bbytearray field 'autoid' for table 't4'" > t4.expected
+#    if ! diff -w t4.err t4.expected ; then
+#        failexit "t4.err not as expected diff $PWD/{t4.err,t4.expected}"
+#    fi
+#    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table t4'
+
+    set -e
+
+    
+}
+
+test_guid_function
+
+test_guid_column
+
+test_guid_autofill
+
+test_guid_errors
+
+rm -f *.out
 echo "Success"
