@@ -1762,11 +1762,9 @@ static int is_system_table(Parse *pParse, Token *nm, char *dst)
     if (!nm)
         return 0;
 
-    if ((strncpy0(tablename, nm->z,
-                  (nm->n < MAXTABLELEN) ? nm->n + 1 : MAXTABLELEN)) == NULL)
+    if (comdb2TokenToStr(nm, tablename, sizeof(tablename))) {
         return 0;
-
-    sqlite3Dequote(tablename);
+    }
 
     db = pParse->db;
 
