@@ -30,7 +30,7 @@ On every machine in the cluster:
 
 2. Install prerequisites: 
    
-   **Ubuntu 16.04, 16.10, 17.04, 20.04, Debian 10, Windows Subsystem for Linux (WSL)**
+   **Debian/Ubuntu**
         
    ```
    sudo apt-get install -y  \
@@ -127,7 +127,6 @@ On every machine in the cluster:
    ```
    pmux -n
    ```
-   Note: on WSL this needs to be run elevated, such as: `sudo /opt/bb/bin/pmux -n` 
 
 6. _(optional)_ Comdb2 nodes identify each other by their hostnames.  If the hostname 
    of each node isn't resolvable from other nodes, we should tell Comdb2 the full 
