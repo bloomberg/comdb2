@@ -8747,7 +8747,8 @@ static int kv_get(void *k, size_t klen, void ***ret, int *num, int *bdberr)
 }
 
 // get full keys for all matching partial keys
-static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
+static int kv_get_keys_tran(tran_type *tran, void *k, size_t klen,
+                            void ***ret, int *num, int *bdberr)
 {
     int fnd;
     int n = 0;
@@ -8756,7 +8757,8 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
     uint8_t out[LLMETA_IXLEN];
     void **names = NULL;
     int rc =
-        bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, out, &fnd, bdberr);
+        bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, k, klen, out, &fnd,
+                                    bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, out, klen) != 0) {
             break;
@@ -8769,13 +8771,18 @@ static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
         memcpy(names[n], out, LLMETA_IXLEN);
         ++n;
         uint8_t nxt[LLMETA_IXLEN];
-        rc = bdb_lite_fetch_keys_fwd(llmeta_bdb_state, out, nxt, 1, &fnd,
-                                     bdberr);
+        rc = bdb_lite_fetch_keys_fwd_tran(llmeta_bdb_state, tran, out, nxt, 1,
+                                          &fnd, bdberr);
         memcpy(out, nxt, sizeof(out));
     }
     *num = n;
     *ret = names;
     return rc;
+}
+
+static int kv_get_keys(void *k, size_t klen, void ***ret, int *num, int *bdberr)
+{
+    return kv_get_keys_tran(NULL, k, klen, ret, num, bdberr);
 }
 
 static int kv_del(tran_type *tran, void *k, int *bdberr)
@@ -8793,7 +8800,8 @@ static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v,
 {
     int rc, fnd;
     uint8_t fndk[LLMETA_IXLEN];
-    rc = bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, fndk, &fnd, bdberr);
+    rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, k, klen, fndk,
+                                     &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, fndk, klen) != 0) {
             break;
@@ -9411,14 +9419,15 @@ int bdb_user_password_delete(tran_type *tran, char *user)
         return 0;
     return rc;
 }
-int bdb_user_get_all(char ***users, int *num)
+
+int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num)
 {
     void **u1, **u2;
     int key, n1, n2, bdberr;
     key = htonl(LLMETA_USER_PASSWORD);
-    kv_get_keys(&key, sizeof(key), &u1, &n1, &bdberr);
+    kv_get_keys_tran(tran, &key, sizeof(key), &u1, &n1, &bdberr);
     key = htonl(LLMETA_USER_PASSWORD_HASH);
-    kv_get_keys(&key, sizeof(key), &u2, &n2, &bdberr);
+    kv_get_keys_tran(tran, &key, sizeof(key), &u2, &n2, &bdberr);
     int n = n1 + n2;
     u1 = realloc(u1, sizeof(void *) * n);
     memcpy(u1 + n1, u2, sizeof(void *) * n2);
@@ -9430,6 +9439,10 @@ int bdb_user_get_all(char ***users, int *num)
     *users = (char **)u1;
     *num = n;
     return 0;
+}
+
+int bdb_user_get_all(char ***users, int *num) {
+    return bdb_user_get_all_tran(NULL, users, num);
 }
 
 /*

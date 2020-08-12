@@ -1663,6 +1663,11 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
                              int command_type, const char *tblname, const char *username,
                              int *bdberr);
 
+int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
+                             const char *table_name);
+int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
+                            const char *user);
+
 int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, int enable,
                            int *bdberr);
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
@@ -1674,6 +1679,7 @@ int bdb_user_password_set(tran_type *, char *user, char *passwd);
 int bdb_user_password_check(char *user, char *passwd, int *valid_user);
 int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
+int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num);
 
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);
