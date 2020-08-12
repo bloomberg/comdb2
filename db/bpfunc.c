@@ -333,11 +333,19 @@ static int exec_password(void *tran, bpfunc_t *func, struct errstat *err)
 {
     int rc;
     BpfuncPassword *pwd = func->arg->pwd;
+    bdb_state_type *bdb_state = thedb->bdb_env;
+
     rc = pwd->disable ? bdb_user_password_delete(tran, pwd->user)
                       : bdb_user_password_set(tran, pwd->user, pwd->password);
 
-    if (rc == 0)
+    if (rc == 0 && pwd->disable) {
+        /* Also delete all the table accesses for this user. */
+        rc = bdb_del_all_user_access(bdb_state, tran, pwd->user);
+    }
+
+    if (rc == 0) {
         rc = net_send_authcheck_all(thedb->handle_sibling);
+    }
 
     ++gbl_bpfunc_auth_gen;
 

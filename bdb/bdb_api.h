@@ -1765,6 +1765,11 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
                              int command_type, const char *tblname, const char *username,
                              int *bdberr);
 
+int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
+                             const char *table_name);
+int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
+                            const char *user);
+
 int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, int enable,
                            int *bdberr);
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,

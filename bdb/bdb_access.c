@@ -19,6 +19,7 @@
 #include <assert.h>
 #include "bdb_int.h"
 #include "bdb_access.h"
+#include "cdb2_constants.h"
 
 #include <logmsg.h>
 
@@ -269,4 +270,81 @@ int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran, c
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user, char *table, int access_type, int *bdberr)
 {
     return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table, access_type, bdberr);
+}
+
+static int bdb_del_user_tbl_access(bdb_state_type *bdb_state, tran_type *tran,
+                                   const char *user, const char *table_name)
+{
+    int rc = 0;
+    int bdberr;
+
+    if ((rc = bdb_tbl_access_read_delete(bdb_state, tran, table_name, user,
+                                         &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error deleting user access information (user: %s, table: %s, "
+               "rc: %d, bdberr: %d)\n",
+               user, table_name, rc, bdberr);
+        return rc;
+    }
+    if ((rc = bdb_tbl_access_write_delete(bdb_state, tran, table_name, user,
+                                          &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error deleting user access information (user: %s, table: %s, "
+               "rc: %d, bdberr: %d)\n",
+               user, table_name, rc, bdberr);
+        return rc;
+    }
+
+    return rc;
+}
+
+/* Delete all access permissions related to a specific table. */
+int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
+                             const char *table_name)
+{
+    int rc = 0;
+    char **users;
+    int nUsers;
+
+    if ((rc = bdb_user_get_all_tran(tran, &users, &nUsers)) != 0) {
+        logmsg(LOGMSG_ERROR, "error retrieving user list (rc: %d)\n", rc);
+        return rc;
+    }
+
+    for (int i = 0; i < nUsers; ++i) {
+        if ((rc = bdb_del_user_tbl_access(bdb_state, tran, users[i],
+                                          table_name))) {
+            break;
+        }
+    }
+
+    return rc;
+}
+
+/* Delete all access permissions for a specific user. */
+int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
+                            const char *user)
+{
+    int rc = 0;
+    int dbnums[MAX_NUM_TABLES];
+    char *tblnames[MAX_NUM_TABLES];
+    int numtbls;
+    int bdberr;
+
+    if ((rc = bdb_llmeta_get_tables(tran, tblnames, dbnums, MAX_NUM_TABLES,
+                                    &numtbls, &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error retrieving table list (rc: %d, bdberr: %d)\n", rc,
+               bdberr);
+        return rc;
+    }
+
+    for (int i = 0; i < numtbls; ++i) {
+        if ((rc =
+                 bdb_del_user_tbl_access(bdb_state, tran, user, tblnames[i]))) {
+            break;
+        }
+    }
+
+    return rc;
 }
