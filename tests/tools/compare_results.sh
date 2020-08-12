@@ -67,7 +67,7 @@ for sqlfile in $sqlfiles; do
 
     cmd="cdb2sql ${CDB2_OPTIONS} $script_mode -f $sqlfile $dbname default "
     echo $cmd "> $testname.output"
-    $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
+    eval $cmd 2>&1 | perl -pe "s/.n_writeops_done=([0-9]+)/rows inserted='\1'/;
                           s/BLOCK2_SEQV2\(824\)/BLOCK_SEQ(800)/;
                           s/OP #2 BLOCK_SEQ/OP #3 BLOCK_SEQ/;
                           s/rrn ([0-9]+) genid 0x([a-zA-Z0-9]+)/rrn xx genid xx/;"\
@@ -82,6 +82,8 @@ for sqlfile in $sqlfiles; do
         echo "failed $testname"
         echo "see diffs here: $HOSTNAME"
         echo "> diff -u ${PWD}/{$testname.$exp_extn,$testname.output}"
+        echo "first 10 lines of the diff:"
+        $cmd | head -10
         echo
         exit 1
     fi

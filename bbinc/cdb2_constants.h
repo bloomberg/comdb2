@@ -58,6 +58,8 @@
 #define MAXDTASTRIPE 16
 #define MAX_USERNAME_LEN 16
 #define MAX_PASSWORD_LEN 19
+#define MAX_NUM_TABLES 1024
+#define MAX_NUM_QUEUES 1024
 
 /*
   Print at the given offset, detect overflow and update offset
