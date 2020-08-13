@@ -38,6 +38,7 @@ function run_tests
 {
     typeset func="run_tests"
     start=$(date +%s)
+    [ ! -f $deadlock_load ] && failexit $func "$deadlock_load missing"
     $deadlock_load -d $DBNAME -T $threads -r $records -i $iterations -c $CDB2_CONFIG
     stop=$(date +%s)
     export r=$?
@@ -46,7 +47,19 @@ function run_tests
     deadlocks=$($CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME -host $master "select value from comdb2_metrics where name='deadlocks'")
     elapsed=$(( stop - start ))
     echo "Number of deadlocks: $deadlocks, elapsed-time: $elapsed seconds"
-    [[ $deadlocks -gt 50 ]] && failexit $func "too many deadlocks: $deadlocks"
+    if [ -n "${CLUSTER}" ] ; then
+      if [[ $DBNAME == *"noreordergenerated"* ]] ; then
+        [[ $deadlocks -lt 1000 ]] && failexit $func "too few deadlocks: $deadlocks"
+      else
+        [[ $deadlocks -gt 50 ]] && failexit $func "too many deadlocks: $deadlocks"
+      fi
+    else
+      if [[ $DBNAME == *"noreordergenerated"* ]] ; then
+        [[ $deadlocks -lt 4000 ]] && failexit $func "too few deadlocks: $deadlocks"
+      else
+        [[ $deadlocks -gt 4000 ]] && failexit $func "too many deadlocks: $deadlocks"
+      fi
+    fi
 }
 
 run_tests
