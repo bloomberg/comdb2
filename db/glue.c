@@ -6355,17 +6355,20 @@ int comdb2_next_allowed_table(sqlite3_int64 *tabId)
 int comdb2_is_user_op(char *user, char *password)
 {
     int bdberr;
+    int rc = 1;
+
     bdb_state_type *bdb_state = thedb->bdb_env;
 
-    if (bdb_user_password_check(user, password, NULL)) {
-        return 0;
+    tran_type *trans = curtran_gettran();
+
+    if ((bdb_user_password_check(trans, user, password, NULL)) ||
+        (bdb_tbl_op_access_get(bdb_state, trans, 0, "", user, &bdberr))) {
+      rc = 0;
     }
 
-    if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "", user, &bdberr)) {
-        return 0;
-    }
+    curtran_puttran(trans);
 
-    return 1;
+    return rc;
 }
 
 tran_type *curtran_gettran(void)

@@ -326,11 +326,19 @@ static int revokeAuth(void *tran, int permission, int command_type,
     return rc;
 }
 
+int gbl_lock_dba_user = 0;
+
 static int exec_grant(void *tran, bpfunc_t *func, struct errstat *err)
 {
-
     BpfuncGrant *grant = func->arg->grant;
     int rc = 0;
+
+    if (gbl_lock_dba_user &&
+        (strcasecmp(grant->username, DEFAULT_DBA_USER) == 0)) {
+        rc = 1;
+        errstat_set_rcstrf(err, rc, "dba user is locked!");
+        return rc;
+    }
 
     if (!grant->yesno)
         rc = grantAuth(tran, grant->perm, 0, grant->table, grant->userschema,
@@ -350,14 +358,19 @@ static int exec_password(void *tran, bpfunc_t *func, struct errstat *err)
 {
     int rc;
     BpfuncPassword *pwd = func->arg->pwd;
-    bdb_state_type *bdb_state = thedb->bdb_env;
+
+    if (gbl_lock_dba_user && (strcasecmp(pwd->user, DEFAULT_DBA_USER) == 0)) {
+        rc = 1;
+        errstat_set_rcstrf(err, rc, "dba user is locked!");
+        return rc;
+    }
 
     rc = pwd->disable ? bdb_user_password_delete(tran, pwd->user)
                       : bdb_user_password_set(tran, pwd->user, pwd->password);
 
     if (rc == 0 && pwd->disable) {
         /* Also delete all the table accesses for this user. */
-        rc = bdb_del_all_user_access(bdb_state, tran, pwd->user);
+        rc = bdb_del_all_user_access(thedb->bdb_env, tran, pwd->user);
     }
 
     if (rc == 0) {
@@ -378,7 +391,8 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     int valid_user;
 
     if (auth->enabled)
-        bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
+        bdb_user_password_check(tran, DEFAULT_USER, DEFAULT_PASSWORD,
+                                &valid_user);
 
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);

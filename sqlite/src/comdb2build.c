@@ -431,27 +431,32 @@ int comdb2AuthenticateUserOp(Parse* pParse)
 static int comdb2AuthenticateOpPassword(Parse* pParse)
 {
      struct sql_thread *thd = pthread_getspecific(query_info_key);
+     tran_type *tran = curtran_gettran();
      bdb_state_type *bdb_state = thedb->bdb_env;
-     int bdberr; 
+     int bdberr;
 
      if (thd->clnt)
      {
          /* Authenticate the password first, as we haven't been doing it so far. */
          struct sqlclntstate *s = thd->clnt;
-         if (bdb_user_password_check(s->current_user.name,
+         if (bdb_user_password_check(tran, s->current_user.name,
                                      s->current_user.password, NULL))
          {
+            curtran_puttran(tran);
             return SQLITE_AUTH;
          }
 
          /* Check if the user is OP user. */
-         if (bdb_tbl_op_access_get(bdb_state, NULL, 0, "",
-                                   thd->clnt->current_user.name,
-                                   &bdberr))
+         int rc = bdb_tbl_op_access_get(bdb_state, tran, 0, "",
+                                        thd->clnt->current_user.name,
+                                        &bdberr);
+         curtran_puttran(tran);
+         if (rc)
              return SQLITE_AUTH;
          else
              return SQLITE_OK;
      }
+     curtran_puttran(tran);
 
      return SQLITE_AUTH;
 }

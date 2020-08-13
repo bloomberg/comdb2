@@ -1,3 +1,4 @@
+(username='dba', isOP='Y')
 (username='foo', isOP='N')
 (username='root', isOP='Y')
 (sleep(5)=5)
@@ -7,8 +8,10 @@
 (name='t2_tp', shardname='$0_B1ED0A83', low=1577854800, high=2147483647)
 (name='t2_tp', shardname='$2_FE82588E', low=-2147483648, high=1577854800)
 (rows='time partition shard permissions')
+(name='t1_tp', username='dba', READ='Y', WRITE='Y', DDL='Y')
 (name='t1_tp', username='foo', READ='Y', WRITE='N', DDL='N')
 (name='t1_tp', username='root', READ='Y', WRITE='Y', DDL='Y')
+(name='t2_tp', username='dba', READ='Y', WRITE='Y', DDL='Y')
 (name='t2_tp', username='foo', READ='Y', WRITE='Y', DDL='Y')
 (name='t2_tp', username='root', READ='Y', WRITE='Y', DDL='Y')
 (rows='table permissions')
@@ -28,3 +31,4 @@
 [alter table t2_tp { schema { int i int j null=yes } }] failed with rc -3 User does not have OP credentials
 (i=1, j=NULL)
 (i=2, j=2)
+(username='dba', isOP='Y')
