@@ -761,6 +761,8 @@ extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+extern int gbl_create_dba_user;
+
 int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
@@ -5499,6 +5501,20 @@ int main(int argc, char **argv)
 
     if (bdb_queuedb_create_cron(thedb) != 0)
         abort();
+
+    /* Create DBA user if it does not already exist */
+    if ((thedb->master == gbl_myhostname) && (gbl_create_dba_user == 1)) {
+        /*
+          Skip if authentication is enabled, as we do not want to open a
+          backdoor by automatically creating an OP user with no password
+          (the default DBA user attributes).
+        */
+        if (gbl_uses_password == 0) {
+            bdb_create_dba_user(thedb->bdb_env);
+        } else {
+            logmsg(LOGMSG_USER, "authentication enabled, DBA user not created\n");
+        }
+    }
 
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");

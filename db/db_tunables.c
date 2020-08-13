@@ -243,6 +243,8 @@ extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
 extern int gbl_master_sends_query_effects;
+extern int gbl_create_dba_user;
+extern int gbl_lock_dba_user;
 extern int gbl_dump_sql_on_repwait_sec;
 extern int gbl_client_queued_slow_seconds;
 extern int gbl_client_running_slow_seconds;

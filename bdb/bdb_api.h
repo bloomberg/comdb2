@@ -41,6 +41,9 @@
 
 #include <compile_time_assert.h>
 
+#define DEFAULT_DBA_USER "dba"
+#define DEFAULT_DBA_PASSWORD ""
+
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
@@ -2168,6 +2171,9 @@ int bdb_get_all_for_versioned_sp_tran(tran_type *tran, char *name, char ***versi
 int bdb_get_default_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps_tran(tran_type *tran, char ***names, int *num);
+
+int bdb_user_exists(tran_type *tran, char *user);
+int bdb_create_dba_user(bdb_state_type *bdb_state);
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                               char *table, int access_type, int *bdberr);

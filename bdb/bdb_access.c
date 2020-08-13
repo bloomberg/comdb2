@@ -259,9 +259,11 @@ int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
         if (rc != 0 &&
             (access_type == ACCESS_DDL || access_type == ACCESS_WRITE ||
              access_type == ACCESS_READ)) {
+            /* Check for DDL privilege on table */
             rc = bdb_tbl_op_access_get(bdb_state, tran, 0, table, user, bdberr);
         }
         if (rc != 0) {
+            /* Check for OP privilege */
             rc = bdb_tbl_op_access_get(bdb_state, tran, 0, "", user, bdberr);
         }
     }
@@ -350,4 +352,52 @@ int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
 {
     return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table,
                                           access_type, bdberr);
+}
+
+int gbl_create_dba_user = 1;
+
+int bdb_create_dba_user(bdb_state_type *bdb_state)
+{
+    int rc;
+    int bdberr;
+
+    if (!gbl_create_dba_user) {
+        return 0;
+    }
+
+    rc = bdb_user_exists(NULL, DEFAULT_DBA_USER);
+    if (rc == -1) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to retrieve user information\n",
+               __func__, __LINE__);
+        return 1;
+    } else if (rc == 1) {
+        logmsg(LOGMSG_USER, "DBA user '%s' already exists\n", DEFAULT_DBA_USER);
+        return 0;
+    }
+
+    /* Set the user */
+    rc = bdb_user_password_set(NULL, DEFAULT_DBA_USER, DEFAULT_DBA_PASSWORD);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to create the DBA user\n", __func__,
+               __LINE__);
+        rc = 1;
+        goto done;
+    }
+
+    /* Give them OP privilege */
+    rc = bdb_tbl_op_access_set(bdb_state, NULL, 0, NULL, DEFAULT_DBA_USER,
+                               &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to grant OP privileges to the DBA user\n",
+               __func__, __LINE__);
+        rc = 1;
+        goto done;
+    }
+
+    logmsg(LOGMSG_USER, "DBA user '%s' created\n", DEFAULT_DBA_USER);
+    rc = 0;
+
+done:
+    return rc;
 }
