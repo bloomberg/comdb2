@@ -1,3 +1,4 @@
+(username='dba', isOP='Y')
 [create table t2(i int, i int)] failed with rc -3 Duplicate column name 'i'.
 (tablename='sqlite_stat1')
 (tablename='sqlite_stat4')
@@ -16,5 +17,6 @@
 [drop table t1] failed with rc -3 no such table: t1
 [drop table t2] failed with rc -3 no such table: t2
 [drop table t3] failed with rc -3 no such table: t3
+(username='dba', isOP='Y')
 (tablename='sqlite_stat1')
 (tablename='sqlite_stat4')
