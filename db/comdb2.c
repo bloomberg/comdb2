@@ -4590,7 +4590,7 @@ void *statthd(void *p)
                     }
                     for (jj = 0; jj < MAX_OSQL_TYPES; jj++) {
                         log_tbl_item(tbl->blockosqltypcnt[jj], &tbl->prev_blockosqltypcnt[jj],
-                                     osql_breq2a, jj, NULL, &hdr, statlogger, tbl, 0);
+                                     osql_reqtype_str, jj, NULL, &hdr, statlogger, tbl, 0);
                     }
 
                     log_tbl_item(dbenv->txns_committed, &dbenv->prev_txns_committed,

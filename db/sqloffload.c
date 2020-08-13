@@ -189,45 +189,6 @@ void osql_cleanup(void)
     bdb_osql_destroy(&bdberr);
 }
 
-const char *osql_tp_str[] = {
-    "OSQL_RPLINV",
-    "OSQL_DONE",
-    "OSQL_USEDB",
-    "OSQL_DELREC",
-    "OSQL_INSREC",
-    "OSQL_CLRTBL",
-    "OSQL_QBLOB",
-    "OSQL_UPDREC",
-    "OSQL_XERR",
-    "OSQL_UPDCOLS",
-    "OSQL_DONE_STATS",
-    "OSQL_DBGLOG",
-    "OSQL_RECGENID",
-    "OSQL_UPDSTAT",
-    "OSQL_EXISTS",
-    "OSQL_SERIAL",
-    "OSQL_SELECTV",
-    "OSQL_DONE_SNAP",
-    "OSQL_SCHEMACHANGE",
-    "OSQL_BPFUNC",
-    "OSQL_DBQ_CONSUME",
-    "OSQL_DELETE",
-    "OSQL_INSERT",
-    "OSQL_UPDATE",
-    "OSQL_DELIDX",
-    "OSQL_INSIDX",
-    "OSQL_STARTGEN",
-    "OSQL_DONE_WITH_EFFECTS",
-};
-
-const char *osql_breq2a(int op)
-{
-    if (0 < op && op < MAX_OSQL_TYPES)
-        return osql_tp_str[op];
-    else
-        return "UNKNOWN";
-}
-
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
 
