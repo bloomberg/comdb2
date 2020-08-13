@@ -2825,4 +2825,13 @@ void sqlite3GetAllBuiltinFunctions(void **data, int *tot)
     *tot = num;
     *data = arr;
 }
+
+void sqlite3FreeAllBuiltinFunctions(void **data, int tot)
+{
+    char **arr = (char **)data;
+    for (int i = 0; i < tot; i++) {
+        sqlite3_free(arr[i]);
+    }
+    free(arr);
+}
 #endif

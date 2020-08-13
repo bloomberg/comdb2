@@ -34,11 +34,7 @@ static int get_functions(void **data, int *npoints)
 
 static void free_functions(void *p, int n)
 {
-    char **arr = p;
-    for (int i = 0; i < n; i++) {
-        sqlite3_free(arr[i]); /* sqlite3_mprintf() */
-    }
-    free(arr);
+    sqlite3FreeAllBuiltinFunctions(p, n);
 }
 
 sqlite3_module systblFunctionsModule = {
