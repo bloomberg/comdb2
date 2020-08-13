@@ -9292,7 +9292,9 @@ typedef struct {
     } u;
     int niterations;
 } passwd_hash;
-static int llmeta_get_user_passwd(char *user, llmetakey_t type, void ***out)
+
+static int llmeta_get_user_passwd(tran_type *tran, char *user, llmetakey_t type,
+                                  void ***out)
 {
     int bdberr;
     int num = 0;
@@ -9329,7 +9331,47 @@ int set_pbkdf2_iterations(int val)
     return 0;
 }
 
-int bdb_user_password_check(char *user, char *passwd, int *valid_user)
+/*
+  Check whether the user exists.
+
+  @return:
+    1        user exists
+    0        user does not exist
+    -1       error
+*/
+int bdb_user_exists(tran_type *tran, char *user)
+{
+    int rc = 0;
+    void **data = NULL;
+    size_t ulen = strlen(user) + 1;
+    if (ulen > LLMETA_USER_LEN) {
+        rc = -1;
+        goto out;
+    }
+
+    /* Check cleartext password */
+    if (llmeta_get_user_passwd(tran, user, LLMETA_USER_PASSWORD, &data) == 0) {
+        rc = 1;
+        goto out;
+    }
+
+    /* Check password hash */
+    if (llmeta_get_user_passwd(tran, user, LLMETA_USER_PASSWORD_HASH, &data) ==
+        0) {
+        rc = 1;
+        goto out;
+    }
+
+out:
+    if (data) {
+        free(*data);
+        free(data);
+    }
+    return rc;
+}
+
+int bdb_user_password_check(tran_type *tran, char *user, char *passwd,
+                            int *valid_user)
 {
     int passwd_rc = 1;
     void **data = NULL;
@@ -9341,14 +9383,15 @@ int bdb_user_password_check(char *user, char *passwd, int *valid_user)
         goto out;
     }
     // check cleartext password
-    if (llmeta_get_user_passwd(user, LLMETA_USER_PASSWORD, &data) == 0) {
+    if (llmeta_get_user_passwd(tran, user, LLMETA_USER_PASSWORD, &data) == 0) {
         passwd_rc = strcmp(data[0], passwd);
         if (valid_user)
             *valid_user = 1;
         goto out;
     }
     // check password hash
-    if (llmeta_get_user_passwd(user, LLMETA_USER_PASSWORD_HASH, &data) != 0) {
+    if (llmeta_get_user_passwd(tran, user, LLMETA_USER_PASSWORD_HASH, &data)
+        != 0) {
         goto out;
     }
     unsigned iterations;

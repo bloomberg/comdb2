@@ -758,6 +758,8 @@ extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+extern int gbl_create_dba_user;
+
 int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
@@ -1519,7 +1521,6 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
-    free(gbl_myhostname);
 
     cleanresources(); // list of lrls
     // TODO: would be nice but other threads need to exit first:
@@ -5111,9 +5112,7 @@ static void getmyid(void)
         gbl_myhostname = "UNKNOWN";
         gbl_mynode = "localhost";
     } else {
-        name[1023] = '\0'; /* paranoia, just in case of truncation */
-
-        gbl_myhostname = strdup(name);
+        gbl_myhostname = intern(name);
         gbl_mynode = intern(gbl_myhostname);
     }
 
@@ -5350,6 +5349,20 @@ int main(int argc, char **argv)
     if (run_init_plugins(COMDB2_PLUGIN_INITIALIZER_POST)) {
         logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
         exit(1);
+    }
+
+    /* Create DBA user if it does not already exist */
+    if ((thedb->master == gbl_myhostname) && (gbl_create_dba_user == 1)) {
+        /*
+          Skip if authentication is enabled, as we do not want to open a
+          backdoor by automatically creating an OP user with no password
+          (the default DBA user attributes).
+        */
+        if (gbl_uses_password == 0) {
+            bdb_create_dba_user(thedb->bdb_env);
+        } else {
+            logmsg(LOGMSG_USER, "authentication enabled, DBA user not created\n");
+        }
     }
 
     gbl_ready = 1;

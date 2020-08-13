@@ -138,6 +138,11 @@ REGISTER_TUNABLE("crc32c",
                  "different checksums) for page checksums. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_crc32c, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("create_dba_user",
+                 "Automatically create 'dba' user if it does not exist already "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_create_dba_user, READONLY | NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("create_default_user",
                  "Automatically create 'default' user when authentication is "
                  "enabled. (Default: off)",
@@ -579,6 +584,11 @@ REGISTER_TUNABLE("lock_conflict_trace",
                  "Dump count of lock conflicts every second. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lock_conflict_trace, NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("lock_dba_user",
+                 "When enabled, 'dba' user cannot be removed and its access "
+                 "permissions cannot be modified. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_lock_dba_user, READONLY | NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("log_delete_age", "Log deletion policy", TUNABLE_INTEGER,
                  &db->log_delete_age, READONLY, NULL, NULL, NULL, NULL);
 /* The following 3 tunables have been marked internal as we do not want them
