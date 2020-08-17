@@ -2528,6 +2528,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (APPDATA->query) {
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
+            /*
+             * clnt.sql points into the protobuf unpacked buffer, which becomes
+             * invalid after cdb2__query__free_unpacked. Reset the pointer here.
+             */
+            clnt.sql = NULL;
         }
 
         query = read_newsql_query(dbenv, &clnt, sb);
