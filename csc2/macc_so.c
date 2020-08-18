@@ -3148,7 +3148,7 @@ int dyns_get_table_field_option(char *tag, int fidx, int option,
         }
 
         case CLIENT_SEQUENCE: {
-            if ((*value_type == CLIENT_INT)) {
+            if (*value_type == CLIENT_INT) {
                 *value_type = CLIENT_SEQUENCE;
                 *value_sz = (vbsz - 1);
                 memset(valuebuf, -1, *value_sz);

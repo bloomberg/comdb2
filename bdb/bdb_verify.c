@@ -204,7 +204,7 @@ ret:
  */
 static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 {
-    int last = par->last_connection_check; // get a copy of the last timestamp
+    unsigned int last = par->last_connection_check; // get a copy of the last timestamp
 
     // do the comparison with t_ms, we want to check connection every 1s
     if ((t_ms - last) < 1000)
