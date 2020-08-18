@@ -55,7 +55,7 @@ replog=$DEST_DBDIR/$destdb.log
 if [[ -n "$repalive" ]]; then
     ( $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
 else
-    ( timeout $TEST_TIMEOUT $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+    ( timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $destdb -lrl $DEST_DBDIR/${destdb}.lrl -pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
 fi
 
 out=

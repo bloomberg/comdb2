@@ -213,18 +213,18 @@ rm ./testcase.done
 ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "DROP TABLE load"
 ${CDB2SQL_EXE} ${CDB2_OPTIONS} $DBNAME default "CREATE TABLE load  { `cat load.csc2 ` }" || failexit "create failed"
 
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
-( timeout ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./inserter.sh ) &
 sleep 1
-( timeout ${TEST_TIMEOUT} ./updater.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./updater.sh ) &
 sleep 1
-( timeout ${TEST_TIMEOUT} ./deleter.sh ) &
+( timeout --kill-after=5s ${TEST_TIMEOUT} ./deleter.sh ) &
 
 # BASIC FUNCTIONALITY TEST
 resetdb

@@ -252,10 +252,10 @@ set -e
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into parent_t values (1)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (2, 2, x'bb')"
 
-tables=$(timeout 1m cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master 'select * from comdb2_tables')
+tables=$(timeout --kill-after=5s 1m cdb2sql ${CDB2_OPTIONS} --tabs $dbnm --host $master 'select * from comdb2_tables')
 for t in $tables ; do
     outfl=${t}_verify.out
-    timeout 3m cdb2sql ${CDB2_OPTIONS} --verbose --tabs $dbnm --host $master "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
+    timeout --kill-after=5s 3m cdb2sql ${CDB2_OPTIONS} --verbose --tabs $dbnm --host $master "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
     if ! grep "^Verify succeeded.$" $outfl > /dev/null ; then
         failexit "Failed verify: Table $t"
     fi
