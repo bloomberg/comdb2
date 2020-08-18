@@ -526,10 +526,17 @@ static void roundFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
   ** handle the rounding directly,
   ** otherwise use printf.
   */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( n==0 && r>=0 && r<(double)(LARGEST_INT64-1) ){
+    r = (double)((sqlite_int64)(r+0.5));
+  }else if( n==0 && r<0 && (-r)<(double)(LARGEST_INT64-1) ){
+    r = -(double)((sqlite_int64)((-r)+0.5));
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( n==0 && r>=0 && r<LARGEST_INT64-1 ){
     r = (double)((sqlite_int64)(r+0.5));
   }else if( n==0 && r<0 && (-r)<LARGEST_INT64-1 ){
     r = -(double)((sqlite_int64)((-r)+0.5));
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     zBuf = sqlite3_mprintf("%.*f",n,r);
     if( zBuf==0 ){

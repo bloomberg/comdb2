@@ -4323,8 +4323,8 @@ static uint8_t num_dedicated_subnets = 0;
 static time_t subnet_disabled[MAXSUBNETS + 1] = {0};
 static int last_bad_subnet_idx = -1;
 static time_t last_bad_subnet_time = 0;
+static pthread_mutex_t subnet_mtx = PTHREAD_MUTEX_INITIALIZER;
 uint8_t _non_dedicated_subnet = 0;
-pthread_mutex_t subnet_mtx = PTHREAD_MUTEX_INITIALIZER;
 
 int net_check_bad_subnet_lk(int ii)
 {
