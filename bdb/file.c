@@ -4172,7 +4172,7 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int pagesize;
     bdbtype_t bdbtype = bdb_state->bdbtype;
     int tmp_tid;
-    tran_type tran;
+    tran_type tran = {0};
 
     assert_wrlock_schema_lk();
 

@@ -465,7 +465,7 @@ static void *apply_thread(void *arg)
 	uint32_t more_behind_count = 0;
 	LOG *lp;
 	DB_LOG *dblp;
-	DB_LSN master_lsn, my_lsn, my_last_lsn, first_repdb_lsn;
+	DB_LSN master_lsn, my_lsn = {0}, my_last_lsn = {0}, first_repdb_lsn;
 	int last_lsn_change_time = 0;
 	DB_ENV *dbenv = (DB_ENV *)arg;
 	struct queued_log *q;
