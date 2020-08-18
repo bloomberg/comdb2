@@ -730,7 +730,6 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
                     void *usr_ptr)
 {
     bdb_state_type *bdb_state;
-    char *buf;
     int bufsz;
     int rc;
     int outrc;
@@ -815,19 +814,12 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
             rec->size +     /* recbuf */
             sizeof(int) +   /* controlsz */
             sizeof(int) +   /* controlcrc */
-            control->size + /* controlbuf */
-            16;             /* some fluff */
+            control->size;  /* controlbuf */
 
-    /*fprintf(stderr, "malloc(%d)\n", bufsz);*/
-    /* use the heap if we are allocating a lot of memory.  in general we only
-     * need ~pagesize bytes - but queues might have large page sizes, so we
-     * better make sure we can allocate enough memory for them. */
     if (bufsz > 1024 * 65)
         useheap = 1;
-    if (useheap)
-        buf = malloc(bufsz);
-    else
-        buf = alloca(bufsz);
+
+    char *buf = useheap ? malloc(bufsz) : alloca(bufsz);
 
     bytecount += bufsz;
 
@@ -836,40 +828,9 @@ int berkdb_send_rtn(DB_ENV *dbenv, const DBT *control, const DBT *rec,
 
     /* not included in the buf headers as it's set multiple times */
     seqnum = (int *)p_buf;
+    *seqnum = 0;
     p_buf += sizeof(int);
 
-    /*
-       char *controlbuf;
-       char *recbuf;
-       ptr = buf;
-
-       seqnum = (int *)ptr;
-       ptr += sizeof(int);
-
-       recsz = (int *)ptr;
-       ptr += sizeof(int);
-
-       reccrc = (int *)ptr;
-       ptr += sizeof(int);
-
-       recbuf = ptr;
-       ptr += rec->size;
-
-       controlsz = (int *)ptr;
-       ptr += sizeof(int);
-
-       controlcrc = (int *)ptr;
-       ptr += sizeof(int);
-
-       controlbuf = ptr;
-       ptr += control->size;
-
-       if (ptr > (   (char *)buf) + bufsz )
-       {
-          fprintf(stderr, "send_rtn: ptr>buf+bufsz\n");
-          exit(1);
-       }
-    */
     if (bdb_state->rep_trace) {
         char str[80];
         DB_LSN tmp;
@@ -5259,8 +5220,6 @@ void *watcher_thread(void *arg)
     int j;
     int time_now, time_then;
     int rc;
-    int last_behind = INT_MAX;
-    int num_times_behind = 0;
     int master_is_bad = 0;
     int done = 0;
     char *rep_master = 0;
@@ -5358,7 +5317,9 @@ void *watcher_thread(void *arg)
         /* are we incoherent?  see how we're doing, let's send commitdelay
            if we are falling far behind */
         if (!bdb_am_i_coherent_int(bdb_state)) {
-            DB_LSN my_lsn, master_lsn;
+            int last_behind = INT_MAX;
+            int num_times_behind = 0;
+            DB_LSN my_lsn = {0}, master_lsn = {0};
             get_my_lsn(bdb_state, &my_lsn);
             get_master_lsn(bdb_state, &master_lsn);
             int behind = subtract_lsn(bdb_state, &master_lsn, &my_lsn);
