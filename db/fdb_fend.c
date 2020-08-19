@@ -3210,7 +3210,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
         }
 
         if (pCur->ixnum == -1) {
-            if (bias != OP_NotExists && bias != OP_SeekRowid) {
+            if (bias != OP_NotExists && bias != OP_SeekRowid && bias != OP_DeferredSeek) {
                 logmsg(LOGMSG_FATAL, "%s: not supported op %d\n", __func__, bias);
                 abort();
             }
