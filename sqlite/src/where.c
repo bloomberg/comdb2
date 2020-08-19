@@ -4196,7 +4196,12 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
           ** extra encouragment to the query planner to select a plan
           ** where the rows emerge in the correct order without any sorting
           ** required. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          extern int gbl_sqlite_sorterpenalty;
+          rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + gbl_sqlite_sorterpenalty;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + 5;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
           WHERETRACE(0x002,
               ("---- sort cost=%-3d (%d/%d) increases cost %3d to %-3d\n",

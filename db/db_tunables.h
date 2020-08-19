@@ -1082,6 +1082,9 @@ REGISTER_TUNABLE("sqlsortermem", "Maximum amount of memory to be "
                  NULL, NULL);
 REGISTER_TUNABLE("sqlsortermult", NULL, TUNABLE_INTEGER, &gbl_sqlite_sortermult,
                  READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sqlsorterpenalty",
+                 "Sets the sorter penalty for query planner to prefer plans without explicit sort (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_sqlite_sorterpenalty, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_time_threshold",
                  "Sets the threshold time in ms after which queries are "
                  "reported as running a long time. (Default: 5000 ms)",
