@@ -871,6 +871,13 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_tag_schema(db->tablename, ver_one);
     }
 
+    if (type == add || type == alter) {
+        if (create_datacopy_array(db)) {
+            logmsg(LOGMSG_FATAL, "create_datacopy_array failed for %s.\n", table);
+            exit(1);
+        }
+    }
+
     llmeta_dump_mapping_tran(tran, thedb);
     llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
 

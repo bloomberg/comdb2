@@ -280,6 +280,12 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
+    rc = create_datacopy_array(db);
+    if (rc) {
+        sc_errf(s, "error initializing datacopy array\n");
+        return -1;
+    }
+
     /* Set instant schema-change */
     db->instant_schema_change = db->odh && s->instant_sc;
 
