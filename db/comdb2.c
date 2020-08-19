@@ -3685,8 +3685,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "Using override cache size of %dkb\n",
                thedb->override_cacheszkb);
     } else {
-        if (cacheszkb != 0) /*command line overrides.*/
-        {
+        if (cacheszkb != 0) { /*command line overrides.*/
             logmsg(LOGMSG_INFO, "command line cache size specified %dkb\n", cacheszkb);
             thedb->cacheszkb = cacheszkb;
         } else if (thedb->cacheszkb <= 0) {
@@ -3708,14 +3707,6 @@ static int init(int argc, char **argv)
                 thedb->cacheszkbmin);
         thedb->cacheszkb = thedb->cacheszkbmin;
     }
-
-    /* 040407dh: crash 32bits or run on 64bits
-    else if (thedb->cacheszkb > 1500000)
-    {
-        thedb->cacheszkb=2000000;
-        printf("too much cache, adjusted to %d kb\n",thedb->cacheszkb);
-    }
-    */
 
     if (thedb->dbnum == 0) {
         logmsg(LOGMSG_DEBUG, "No db number set (missing/invalid dbnum lrl entry?)\n");

@@ -2548,7 +2548,9 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     Pthread_mutex_init(&(ptr->lock), NULL);
     Pthread_mutex_init(&(ptr->timestamp_lock), NULL);
 
-    ptr->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
+    if (!gbl_libevent) {
+        ptr->user_data_buf = malloc(netinfo_ptr->user_data_buf_size);
+    }
 
     Pthread_mutex_init(&(ptr->enquelk), NULL);
     Pthread_mutex_init(&(ptr->wait_mutex), NULL);
