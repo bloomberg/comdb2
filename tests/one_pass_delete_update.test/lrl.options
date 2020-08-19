@@ -1,0 +1,2 @@
+disable_partial_indexes
+logmsg level info
