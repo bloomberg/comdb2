@@ -34,8 +34,10 @@
 ** Every new master clears subscription info.
 */
 
-int gbl_queuedb_timeout_sec = 10;
+static pthread_mutex_t trig_thd_cnt_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_max_trigger_threads = 1000;
 
+int gbl_queuedb_timeout_sec = 10;
 static pthread_mutex_t trighash_lk = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     char *host;
@@ -189,11 +191,25 @@ int trigger_unregister(trigger_reg_t *t)
 
 static void *trigger_start_int(void *name_)
 {
-    GET_BDB_STATE_CAST(bdb_state, void *);
+    static int num_trigger_threads = 0;
+    int allow_new_thread = 1;
     char name[strlen(name_) + 1];
+    trigger_reg_t *reg;
+
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    num_trigger_threads++;
+    if (num_trigger_threads > gbl_max_trigger_threads)
+        allow_new_thread = 0;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
+
+    if (!allow_new_thread) {
+        free(name_);
+        goto done;
+    }
+
+    GET_BDB_STATE_CAST(bdb_state, void *);
     strcpy(name, name_);
     free(name_);
-    trigger_reg_t *reg;
     trigger_reg_init(reg, name, 0);
     ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
     int rc, retry = 10;
@@ -204,7 +220,7 @@ static void *trigger_start_int(void *name_)
         if (rc == CDB2_TRIG_REQ_SUCCESS)
             break;
         if (rc == CDB2_TRIG_ASSIGNED_OTHER)
-            return NULL;
+            goto done;
         sleep(1);
     }
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
@@ -213,10 +229,13 @@ static void *trigger_start_int(void *name_)
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
         force_unregister(NULL, reg);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        return NULL;
+        goto done;
     }
-    ctrace("trigger:%s %016" PRIx64 " register success\n", reg->spname, reg->trigger_cookie);
     exec_trigger(reg);
+done:
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    num_trigger_threads--;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
     return NULL;
 }
 
