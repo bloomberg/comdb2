@@ -76,7 +76,7 @@
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
-int gbl_libevent = 1;
+int gbl_libevent = 0;
 
 extern char *gbl_myhostname;
 extern int gbl_create_mode;
