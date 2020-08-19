@@ -3325,10 +3325,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     } else {
         clnt->verify_remote_schemas = 0;
     }
-    if (tail && *tail) {
-        logmsg(LOGMSG_INFO,
-               "TRAILING CHARACTERS AFTER QUERY TERMINATION: \"%s\"\n", tail);
-    }
     return rc;
 }
 
