@@ -3843,6 +3843,11 @@ static int init(int argc, char **argv)
     unlock_schema_lk();
 
     sqlinit();
+    rc = create_datacopy_arrays();
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "create_datacopy_arrays rc %d\n", rc);
+        return -1;
+    }
     rc = create_sqlmaster_records(NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "create_sqlmaster_records rc %d\n", rc);
@@ -5795,6 +5800,7 @@ retry_tran:
         thd->sqldb = NULL;
     }
 
+    create_datacopy_arrays();
     create_sqlmaster_records(tran);
     create_sqlite_master();
     oldfile_list_clear();
