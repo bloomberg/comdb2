@@ -1963,8 +1963,8 @@ search:
     //__lock_wrlock_shared(fdb);
 
     /* At this point fdb->users already is increased to 2 by this thread and
-     * there can be multiple threads waiting for users to decrease. 
-     * One of them gets write lock while others wait for the write lock, 
+     * there can be multiple threads waiting for users to decrease.
+     * One of them gets write lock while others wait for the write lock,
      * so this thread will never get a read lock */
     Pthread_rwlock_wrlock(&fdb->h_rwlock);
     tbl = hash_find_readonly(fdb->h_tbls_name, &zTblName);

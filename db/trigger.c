@@ -36,6 +36,7 @@
 
 static pthread_mutex_t trig_thd_cnt_lk = PTHREAD_MUTEX_INITIALIZER;
 int gbl_max_trigger_threads = 1000;
+static int num_trigger_threads = 0;
 
 int gbl_queuedb_timeout_sec = 10;
 static pthread_mutex_t trighash_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -191,25 +192,11 @@ int trigger_unregister(trigger_reg_t *t)
 
 static void *trigger_start_int(void *name_)
 {
-    static int num_trigger_threads = 0;
-    int allow_new_thread = 1;
-    char name[strlen(name_) + 1];
-    trigger_reg_t *reg;
-
-    Pthread_mutex_lock(&trig_thd_cnt_lk);
-    num_trigger_threads++;
-    if (num_trigger_threads > gbl_max_trigger_threads)
-        allow_new_thread = 0;
-    Pthread_mutex_unlock(&trig_thd_cnt_lk);
-
-    if (!allow_new_thread) {
-        free(name_);
-        goto done;
-    }
-
     GET_BDB_STATE_CAST(bdb_state, void *);
+    char name[strlen(name_) + 1];
     strcpy(name, name_);
     free(name_);
+    trigger_reg_t *reg;
     trigger_reg_init(reg, name, 0);
     ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
     int rc, retry = 10;
@@ -244,7 +231,19 @@ void trigger_start(const char *name)
 {
     if (!gbl_ready) return;
     pthread_t t;
-    pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    if (num_trigger_threads >= gbl_max_trigger_threads) {
+        Pthread_mutex_unlock(&trig_thd_cnt_lk);
+        return;
+    }
+    num_trigger_threads++;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
+
+    if (pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name))) {
+        Pthread_mutex_lock(&trig_thd_cnt_lk);
+        num_trigger_threads--;
+        Pthread_mutex_unlock(&trig_thd_cnt_lk);
+    }
 }
 
 // FIXME TODO XXX: KEEP TWO HASHES (1) by spname (2) by node num
