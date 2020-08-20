@@ -456,6 +456,27 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   sqlite3_result_int(context, i);
 }
 
+static void usleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]) {
+  int total, remain, us;
+  if( argc != 1 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  total = remain = sqlite3_value_int(argv[0]);
+  if( total < 0 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  while( remain > 0 ){
+    us = ( remain > 1000000 ) ? 1000000 : remain;
+    remain -= us;
+    usleep(us);
+    if( comdb2_sql_tick() )
+      break;
+  }
+  sqlite3_result_int(context, (total - remain));
+}
+
 static void tableNamesFunc(
   sqlite3_context *context,
   int argc,
@@ -2680,6 +2701,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
+    VFUNCTION(usleep,            1, 0, 0, usleepFunc       ),
     VFUNCTION(comdb2_extract_table_names,
                                  1, 0, 0, tableNamesFunc   ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

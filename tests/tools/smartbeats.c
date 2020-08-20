@@ -58,10 +58,15 @@ static int TEST_heartbeat_events()
                             processing_heartbeat, NULL, 1, CDB2_QUERY_STATE);
 
     /*************************************************
-     *           Testcase 1: SELECT SLEEP(N)         *
+     *           Testcase 1: SELECT SLEEP/USLEEP(N)  *
      *************************************************/
 
     rc = cdb2_run_statement(h, "SELECT SLEEP(10)");
+    if (rc != 0)
+        return rc;
+    while ((rc = cdb2_next_record(h)) == CDB2_OK);
+
+    rc = cdb2_run_statement(h, "SELECT USLEEP(12345678)");
     if (rc != 0)
         return rc;
     while ((rc = cdb2_next_record(h)) == CDB2_OK);
