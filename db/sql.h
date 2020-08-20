@@ -866,6 +866,7 @@ struct sqlclntstate {
     LINKC_T(struct sqlclntstate) lnk;
     int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
                               desired */
+    int8_t rowbuffer;
 };
 
 /* Query stats. */

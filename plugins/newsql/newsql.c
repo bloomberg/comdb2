@@ -855,7 +855,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING,
                                    1);
     }
-    return newsql_response(clnt, &r, 0);
+    return newsql_response(clnt, &r, !clnt->rowbuffer);
 }
 
 static int newsql_row_last(struct sqlclntstate *clnt)
@@ -1896,6 +1896,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 }
             } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
                 rc = handle_set_querylimits(sqlstr, clnt);
+            } else if (strncasecmp(sqlstr, "rowbuffer", 9) == 0) {
+                sqlstr += 9;
+                sqlstr = skipws(sqlstr);
+                clnt->rowbuffer = (strncasecmp(sqlstr, "on", 2) == 0);
             } else {
                 rc = ii + 1;
             }
