@@ -6144,7 +6144,7 @@ const void *sqlite3BtreePayloadFetch(BtCursor *pCur, u32 *pAmt)
 }
 
 /* add the costs of the sorter to the thd costs */
-void addVdbeToThdCost(int type)
+void addVdbeToThdCost(int type, int *data)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd == NULL)
@@ -6154,6 +6154,8 @@ void addVdbeToThdCost(int type)
         thd->cost += 0.2;
     else if (type == VDBESORTER_MOVE || type == VDBESORTER_FIND)
         thd->cost += 0.1;
+
+    ++(*data);
 }
 
 /* append the costs of the sorter to the thd query stats */
