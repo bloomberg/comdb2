@@ -185,7 +185,7 @@ Suppose you have a database of the members of a large organization where each
 person is assigned to a particular "team". Each team has a "leader" who is also
 a member of that team.
 
-The `team_id` field cannot be unique because there usually
+The `team_id` field cannot be unique because there are usually
 multiple people on the same team. One cannot make the combination of `team_id`
 and `is_leader` unique since there are usually multiple non-leaders on each
 team.
