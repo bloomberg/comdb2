@@ -3855,6 +3855,12 @@ static int flattenSubquery(
   ** See also tickets #306, #350, and #3300.
   */
   if( (pSubitem->fg.jointype & JT_OUTER)!=0 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    extern int gbl_enable_sq_flattening_optimization;
+    if (!gbl_enable_sq_flattening_optimization) {
+      return 0;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     isLeftJoin = 1;
     if( pSubSrc->nSrc>1 || isAgg || IsVirtual(pSubSrc->a[0].pTab) ){
       /*  (3a)             (3c)     (3b) */

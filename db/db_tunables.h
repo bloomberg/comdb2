@@ -408,6 +408,11 @@ REGISTER_TUNABLE("enable_sparse_lockerid_map",
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE(
+    "enable_sq_flattening_optimization",
+    "Enable subquery flattening optimization for OUTER JOINS (Default: off)",
+    TUNABLE_BOOLEAN, &gbl_enable_sq_flattening_optimization,
+    READONLY | NOARG | INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sql_stmt_caching",
                  "Enable caching of query plans. If followed by \"all\" will "
                  "cache all queries, including those without parameters. "

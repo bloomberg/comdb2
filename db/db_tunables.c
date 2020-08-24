@@ -319,6 +319,7 @@ extern int eventlog_nkeep;
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
+int gbl_enable_sq_flattening_optimization;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
