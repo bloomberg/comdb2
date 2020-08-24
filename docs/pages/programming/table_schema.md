@@ -350,4 +350,4 @@ in the referenced index.
 Indexes on expressions are allowed in key constraints. However, if the local key
 of a constraint is an index on expressions, then cascading update is NOT
 supported on the constraint.
-```
+
