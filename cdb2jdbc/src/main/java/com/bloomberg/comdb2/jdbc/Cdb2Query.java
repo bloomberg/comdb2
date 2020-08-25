@@ -35,6 +35,7 @@ public class Cdb2Query implements Serializable {
     }
 
     static class Cdb2BindValue {
+        int index;
         String varName;
         int type;
         byte[] value;
