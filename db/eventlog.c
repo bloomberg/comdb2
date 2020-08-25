@@ -49,6 +49,7 @@ extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 int eventlog_nkeep = 2; // keep only last 2 event log files
+#define EVENTLOG_ROLLAT_MINSIZE 1024 * 2        // need minsize to avoid cleanup flood
 static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
@@ -563,7 +564,7 @@ void eventlog_add(const struct reqlogger *logger)
         Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-    if (bytes_written > eventlog_rollat) {
+    if (eventlog_rollat > 0 && bytes_written > eventlog_rollat) {
         eventlog_roll();
     }
     Pthread_mutex_unlock(&eventlog_lk);
@@ -708,12 +709,13 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         }
         rollat = strtol(s, NULL, 10);
         free(s);
-        if (rollat < 0) {
-            return;
-        }
         if (rollat == 0)
             logmsg(LOGMSG_USER, "Turned off rolling\n");
-        else {
+        else if (rollat < 0 || rollat < EVENTLOG_ROLLAT_MINSIZE) {
+            logmsg(LOGMSG_USER, "Invalid size to roll (Must be greater than %d or 0 to stop rolling)\n",
+                   EVENTLOG_ROLLAT_MINSIZE);
+            return;
+        } else {
             logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
         }
         eventlog_rollat = rollat;
