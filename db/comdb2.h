@@ -1760,6 +1760,8 @@ extern int gbl_dohsql_max_threads;
 
 extern int gbl_logical_live_sc;
 
+extern int gbl_test_io_errors;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);

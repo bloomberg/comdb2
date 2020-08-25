@@ -11216,6 +11216,10 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
         }
         fld++;
     }
+    if (fld < 7) {
+        /* we received an non-version answer */
+        *version = 0;
+    }
 }
 
 int fdb_add_remote_time(BtCursor *pCur, unsigned long long start,
