@@ -1213,23 +1213,21 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     param->name = val->varname;
     param->pos = val->has_index ? val->index : 0;
     param->type = newsql_to_client_type(val->type);
-
+    int len = val->value.len;
     void *p = val->value.data;
 
-    if (val->has_isnull && val->isnull) {
+    /* The bound parameter is from an old client which does not send isnull,
+       and its length is 0. Treat it as a NULL to keep backward-compatible. */
+    if (len == 0 && !val->has_isnull) {
         param->null = 1;
         return 0;
     }
 
-    if (val->value.data == NULL) {
-        if (param->type != CLIENT_BLOB) {
-            param->null = 1;
-            return 0;
-        }
-        p = (void *)"";
+    if (val->isnull) {
+        param->null = 1;
+        return 0;
     }
 
-    int len = val->value.len;
     int little = appdata->sqlquery->little_endian;
 
     return get_type(param, p, len, param->type, clnt->tzname, little);
