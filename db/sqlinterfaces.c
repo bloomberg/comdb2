@@ -3164,8 +3164,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if ((prepFlags & PREPARE_ONLY) == 0) {
             int rc = sqlite3LockStmtTables(rec->stmt);
             if (rc) {
+                remove_stmt_entry(thd, rec->stmt_entry, 1);
                 cleanup_stmt_entry(rec->stmt_entry);
+
+                rec->stmt_entry = NULL;
                 rec->stmt = NULL;
+                rec->status = CACHE_DISABLED;
             }
         }
     }
@@ -3222,8 +3226,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         goto cleanup;
     }
     if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
-        if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
+        if (requeue_stmt_entry(thd,
+                               rec->stmt_entry)) /* put back in queue... */ {
             cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
+        }
 
         return 0;
     }

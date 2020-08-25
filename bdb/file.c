@@ -123,6 +123,8 @@ static const char NEW_PREFIX[] = "new.";
 
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;
 
+static int notclosingdta_trace = 0;
+
 int rep_caught_up(bdb_state_type *bdb_state);
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr);
@@ -1379,7 +1381,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
                            bdb_state->name, dtanum, strnum, rc,
                            db_strerror(rc));
                 }
-            } else {
+            } else if (notclosingdta_trace) {
                 logmsg(LOGMSG_DEBUG,
                        "%s:%d not closing dtafile %d stripe %d "
                        "(NULL ptr)\n",

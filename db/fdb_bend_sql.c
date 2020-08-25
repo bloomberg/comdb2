@@ -484,7 +484,12 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
+       NOTE: this can get called also for out-of-order rollbacks, for example
+       when I/O errors happen.  The sequencing is always inline in this case,
+       but new cursors can arrive afterwards.  Mark the session rollbacked,
+       so that new cursors can detect and fail gracefully
      */
+    clnt->dbtran.rollbacked = true;
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
@@ -492,6 +497,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
         poll(NULL, 0, 10);
         Pthread_mutex_lock(&clnt->dtran_mtx);
     }
+
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     switch (clnt->dbtran.mode) {

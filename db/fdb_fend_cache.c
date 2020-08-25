@@ -104,15 +104,12 @@ static int insert_sqlstat_row_from_packedsqlite(fdb_t *fdb,
 
     rc = bdb_temp_table_put(thedb->bdb_env, tbl->tbl, &key, sizeof(key), row,
                             rowlen, NULL, &bdberr);
-    if (rc) {
-        fprintf(stderr, "%s: failed temp table insert rc=%d bdberr=%d\n",
-                __func__, rc, bdberr);
-    }
     tbl->nrows++;
 
     return rc;
 }
 
+#define RETRY_GET_STATS_PER_STAT 3
 static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
                                       BtCursor *cur, const char *tblname,
                                       const char *sql,
@@ -124,70 +121,115 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
     char *row;
     int rowlen;
     int irc;
+    int retry = 0;
 
     bzero(tbl, sizeof(*tbl));
-    tbl->name = strdup(tblname);
-    Pthread_mutex_init(&tbl->mtx, NULL);
-
     tbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
     if (!tbl->tbl) {
-        fprintf(stderr, "%s: failed to create temp table bdberr=%d\n", __func__,
-                bdberr);
-        free(tbl->name);
-        tbl->name = NULL;
+        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
+               __func__, bdberr);
         return -1;
     }
+    tbl->name = strdup(tblname);
+    Pthread_mutex_init(&tbl->mtx, NULL);
 
     fdbc_if = cur->fdbc;
     fdbc_if->set_sql(cur, sql);
 
-    /* for schema changed sqlite stats, we really need to provide the version!
-     */
+    /* for schema changed sqlite stats, we need to provide the version! */
     fdb_cursor_use_table(fdbc_if->impl, fdb, tblname);
 
-    rc = fdbc_if->move(cur, CFIRST);
-    if (rc != IX_FND && rc != IX_FNDMORE) {
-        if (rc == FDB_ERR_FDB_VERSION) {
-            /* TODO: downgrade protocol */
-            abort();
-        }
-        if (rc != IX_EMPTY) {
-            fprintf(stderr,
-                    "%s: unable to retrieve sqlstat rows from %s.%s rc =%d\n",
-                    __func__, cache->fdbname, tbl->name, rc);
-        } else {
-            rc = 0;
-        }
-        goto close;
-    }
-
+    /* try a few times here */
     do {
-        /* rows ! */
-        row = fdbc_if->data(cur);
-        rowlen = fdbc_if->datalen(cur);
-
-        irc = insert_sqlstat_row_from_packedsqlite(fdb, tbl, row, rowlen);
-        if (irc) {
-            rc = irc;
+        rc = fdbc_if->move(cur, CFIRST);
+        if (rc != IX_FND && rc != IX_FNDMORE) {
+            if (rc == FDB_ERR_FDB_VERSION) {
+                /* TODO: downgrade protocol */
+                abort();
+            }
+            if (rc != IX_EMPTY) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s: failed to read first row from %s.%s rc=%d retry %d\n",
+                    __func__, cache->fdbname, tbl->name, rc, retry);
+                /* error, try again, tbl untouched */
+                goto retry_io;
+            }
+            /* empty stats */
+            rc = 0;
             goto close;
         }
 
-        if (rc == IX_FNDMORE) {
-            rc = fdbc_if->move(cur, CNEXT);
-        } else {
+        do {
+            /* rows ! */
+            row = fdbc_if->data(cur);
+            rowlen = fdbc_if->datalen(cur);
+
+            irc = insert_sqlstat_row_from_packedsqlite(fdb, tbl, row, rowlen);
+            if (irc) {
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s: failed temp table insert for %s.%s rc=%d bdberr=%d\n",
+                    __func__, cache->fdbname, tbl->name, rc, bdberr);
+                rc = irc;
+                goto retry_io;
+            }
+
+            if (rc == IX_FNDMORE) {
+                rc = fdbc_if->move(cur, CNEXT);
+            } else {
+                break;
+            }
+        } while (rc == IX_FNDMORE || rc == IX_FND);
+
+        if (rc == IX_FND) {
+            rc = 0;
+            /* success, get out of here */
             break;
         }
-    } while (rc == IX_FNDMORE || rc == IX_FND);
+        /* fall-through if error to retry */
+    retry_io:
+        if (tbl->nrows > 0) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to read all rows from %s.%s rc=%d retry %d\n",
+                   __func__, cache->fdbname, tbl->name, rc, retry);
 
-    if (rc == IX_FND) {
-        rc = 0;
-    }
+            irc = bdb_temp_table_truncate(thedb->bdb_env, tbl->tbl, &bdberr);
+            if (irc) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: truncating the temp table also failed rc %d bdberr "
+                       "%d\n",
+                       __func__, irc, bdberr);
+                goto close;
+            }
+            tbl->nrows = 0;
+        }
+    } while ((retry++) < RETRY_GET_STATS_PER_STAT);
 
 close:
-
     fdbc_if->set_sql(cur, NULL); /* not owner of sql hint */
 
-    return rc;
+#if 0
+    FOR NOW, LETS LEAVE THE TABLE IN PLACE WITH INCOMPLETE STATS, RATHER THAN FAIL REQUEST
+    if (rc) {
+        /* return a clean slate */
+        logmsg(LOGMSG_ERROR, "%s: failed to retrieve stats from %s.%s rc=%d retry %d\n",
+                __func__, cache->fdbname, tbl->name, rc, retry);
+        if (tbl->tbl) {
+            irc = bdb_temp_table_close(thedb->bdb_env, tbl->tbl, &bdberr):
+            if (irc) {
+                logmsg(LOGMSG_ERROR, "%s: failed to close temp table too for %s.%s rc=%d retry %d\n",
+                        __func__, cache->fdbname, tbl->name, irc, retry);
+            }
+            tbl->tbl = NULL;
+            free(tbl->name);
+            Pthread_mutex_destroy(&tbl->mtx);
+        }
+    }
+#endif
+
+    /* we retried a few times, return with partial stats */
+    return 0;
 }
 
 static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
@@ -203,20 +245,20 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     cur = calloc(1, sizeof(BtCursor) + sizeof(Btree));
     if (!cur) {
         rc = FDB_ERR_MALLOC;
-        fprintf(stderr, "%s: malloc\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: malloc\n", __func__);
         goto done;
     }
     init_cursor(cur, NULL, (Btree *)(cur + 1));
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
+    cur->rootpage = -1; /*not really used for sqlite_stats*/
     assert(cur->clnt == clnt);
 
     fdbc_if =
-        fdb_cursor_open(clnt, cur, -1 /*not really used for sqlite_stats*/,
-                        NULL, NULL, 0 /* TODO */);
+        fdb_cursor_open(clnt, cur, cur->rootpage, NULL, NULL, 0 /* TODO */);
     if (!fdbc_if) {
-        fprintf(stderr, "%s: failed to connect remote to get stats\n",
-                __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to connect remote to get stats\n",
+               __func__);
         rc = -1;
         goto done;
     }
@@ -227,16 +269,16 @@ static int fdb_sqlstat_cache_populate(struct sqlclntstate *clnt, fdb_t *fdb,
     rc = fdb_sqlstat_populate_table(fdb, cache, cur, "sqlite_stat1", sql_stat1,
                                     &cache->arr[0]);
     if (rc) {
-        fprintf(stderr, "%s: failed to populate sqlite_stat1 rc=%d\n", __func__,
-                rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to populate sqlite_stat1 rc=%d\n",
+               __func__, rc);
         goto close;
     }
 
     rc = fdb_sqlstat_populate_table(fdb, cache, cur, "sqlite_stat4", sql_stat4,
                                     &cache->arr[1]);
     if (rc) {
-        fprintf(stderr, "%s: failed to populate sqlite_stat4 rc=%d\n", __func__,
-                rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to populate sqlite_stat4 rc=%d\n",
+               __func__, rc);
         goto close;
     }
 
@@ -244,7 +286,8 @@ close:
     /* close cursor */
     rc = fdbc_if->close(cur);
     if (rc) {
-        fprintf(stderr, "%s: failed to close cursor rc=%d\n", __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to close cursor rc=%d\n", __func__,
+               rc);
     }
 
     rc = 0;
@@ -264,7 +307,7 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
 
     cache = (fdb_sqlstat_cache_t *)calloc(1, sizeof(fdb_sqlstat_cache_t));
     if (!cache) {
-        fprintf(stderr, "%s: malloc!\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: malloc!\n", __func__);
         rc = -1;
         goto done;
     }
@@ -276,7 +319,7 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
                                                sizeof(fdb_sqlstat_table_t));
     if (!cache->arr) {
         free(cache);
-        fprintf(stderr, "%s: malloc!\n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: malloc!\n", __func__);
         cache = NULL;
         rc = -1;
         goto done;
@@ -286,8 +329,9 @@ int fdb_sqlstat_cache_create(struct sqlclntstate *clnt, fdb_t *fdb,
 
     rc = fdb_sqlstat_cache_populate(clnt, fdb, cache);
     if (rc) {
-        fprintf(stderr, "%s: failed to populate sqlite_stat tables, rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed to populate sqlite_stat tables, rc=%d\n", __func__,
+               rc);
         free(cache->arr);
         free(cache);
         cache = NULL;
@@ -309,8 +353,8 @@ static int fdb_sqlstat_depopulate_table(fdb_sqlstat_table_t *tbl)
 
     rc = bdb_temp_table_close(thedb->bdb_env, tbl->tbl, &bdberr);
     if (rc) {
-        fprintf(stderr, "%s: failed to create temp table bdberr=%d\n", __func__,
-                bdberr);
+        logmsg(LOGMSG_ERROR, "%s: failed to create temp table bdberr=%d\n",
+               __func__, bdberr);
     }
 
     free(tbl->name);
@@ -329,14 +373,14 @@ static void fdb_sqlstat_cache_depopulate(fdb_sqlstat_cache_t *cache)
     /* retrieve records */
     rc = fdb_sqlstat_depopulate_table(&cache->arr[0]);
     if (rc) {
-        fprintf(stderr, "%s: failed to depopulate sqlite_stat1 rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to depopulate sqlite_stat1 rc=%d\n",
+               __func__, rc);
     }
 
     rc = fdb_sqlstat_depopulate_table(&cache->arr[1]);
     if (rc) {
-        fprintf(stderr, "%s: failed to depopulate sqlite_stat4 rc=%d\n",
-                __func__, rc);
+        logmsg(LOGMSG_ERROR, "%s: failed to depopulate sqlite_stat4 rc=%d\n",
+               __func__, rc);
     }
 }
 
@@ -404,8 +448,9 @@ fdb_cursor_if_t *fdb_sqlstat_cache_cursor_open(struct sqlclntstate *clnt,
     fdbc->name = strdup(name);
     fdbc->cur = bdb_temp_table_cursor(thedb->bdb_env, tbl->tbl, NULL, &bdberr);
     if (!fdbc->cur) {
-        fprintf(stderr, "%s: creating temp table cursor failed bdberr=%d\n",
-                __func__, bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s: creating temp table cursor failed bdberr=%d\n", __func__,
+               bdberr);
         free(fdbc->name);
         free(fdbc_if);
         fdb_sqlstats_put(fdb);
@@ -460,9 +505,9 @@ static int fdb_sqlstat_cursor_close(BtCursor *cur)
     bdberr = 0;
     rc = bdb_temp_table_close_cursor(thedb->bdb_env, fdbc->cur, &bdberr);
     if (rc) {
-        fprintf(stderr,
-                "%s: failed closing temp table cursor rc=%d bdberr=%d\n",
-                __func__, rc, bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s: failed closing temp table cursor rc=%d bdberr=%d\n",
+               __func__, rc, bdberr);
     }
 
     free(fdbc->name);
@@ -540,9 +585,9 @@ static int fdb_sqlstat_cursor_move(BtCursor *pCur, int how)
         rc = IX_EMPTY;
 
     if (rc && rc != IX_EMPTY) {
-        fprintf(stderr,
-                "%s: error moving sql stat cursor how=%d rc=%d bdberr=%d\n",
-                __func__, how, rc, bdberr);
+        logmsg(LOGMSG_ERROR,
+               "%s: error moving sql stat cursor how=%d rc=%d bdberr=%d\n",
+               __func__, how, rc, bdberr);
     }
 
     return rc;
