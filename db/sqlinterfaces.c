@@ -6587,3 +6587,4 @@ int64_t comdb2_last_stmt_cost(void) {
 
    return thd->clnt ? thd->clnt->last_cost : -1;
 }
+
