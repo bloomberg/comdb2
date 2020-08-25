@@ -652,7 +652,7 @@ static const char *help_text[] = {
     "       roll             - roll over log file",
     "       keep N           - keep N log files",
     "       detailed on/off  - turn on/off detailed mode (ex. sql bound param)",
-    "       rollat N         - roll when log file size larger than N bytes",
+    "       rollat N         - roll when log file size larger than N MB",
     "       every N          - log only every Nth event, 0 logs all",
     "       verbose on/off   - turn on/off verbose mode",
     "       dir <dir>        - set custom directory for event log files\n",

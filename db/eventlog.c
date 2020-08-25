@@ -49,8 +49,7 @@ extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 int eventlog_nkeep = 2; // keep only last 2 event log files
-#define EVENTLOG_ROLLAT_MINSIZE 1024 * 2        // need minsize to avoid cleanup flood
-static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
+static uint64_t eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
@@ -639,6 +638,11 @@ void eventlog_stop(void)
     eventlog_disable();
 }
 
+static inline void eventlog_set_rollat(uint64_t rollat_bytes) 
+{
+    eventlog_rollat = rollat_bytes;
+}
+
 static void eventlog_help(void)
 {
     logmsg(LOGMSG_USER, "Event logging framework commands:\n"
@@ -647,7 +651,7 @@ static void eventlog_help(void)
                         "events roll              - roll the event log file\n"
                         "events keep N            - keep N files\n"
                         "events detailed <on|off> - turn on/off detailed mode (ex. sql bound param)\n"
-                        "events rollat N          - roll when log file size larger than N bytes\n"
+                        "events rollat N          - roll when log file size larger than N MB\n"
                         "events every N           - log only every Nth event, 0 logs all\n"
                         "events verbose on/off    - turn on/off verbose mode\n"
                         "events dir <dir>         - set custom directory for event log files\n"
@@ -695,7 +699,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         else if (tokcmp(tok, ltok, "off") == 0)
             eventlog_detailed = 0;
     } else if (tokcmp(tok, ltok, "rollat") == 0) {
-        off_t rollat;
+        int rollat;
         char *s;
         tok = segtok(line, lline, toff, &ltok);
         if (ltok == 0) {
@@ -709,16 +713,18 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         }
         rollat = strtol(s, NULL, 10);
         free(s);
-        if (rollat == 0)
-            logmsg(LOGMSG_USER, "Turned off rolling\n");
-        else if (rollat < 0 || rollat < EVENTLOG_ROLLAT_MINSIZE) {
-            logmsg(LOGMSG_USER, "Invalid size to roll (Must be greater than %d or 0 to stop rolling)\n",
-                   EVENTLOG_ROLLAT_MINSIZE);
+
+        if (rollat < 0) {
+            logmsg(LOGMSG_USER, "Invalid size to roll (%d); set to 0 to stop rolling)\n", rollat);
             return;
-        } else {
-            logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
         }
-        eventlog_rollat = rollat;
+
+        if (rollat == 0) {
+            logmsg(LOGMSG_USER, "Turned off rolling\n");
+        } else {
+            logmsg(LOGMSG_USER, "Rolling logs after %d MB\n", rollat);
+        }
+        eventlog_set_rollat(rollat * 1024 * 1024);  // we perform check in bytes
     } else if (tokcmp(tok, ltok, "every") == 0) {
         int every;
         tok = segtok(line, lline, toff, &ltok);
