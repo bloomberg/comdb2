@@ -205,12 +205,13 @@ void test_03()
     char c1[] = {0};
     const char *c2 = "";
     int row_count;
-    int expected_row_count = 1;
+    int expected_row_count = 2;
 
     const char *drop_table = "DROP TABLE IF EXISTS t1";
     const char *create_table_cmd =
         "CREATE TABLE t1 {schema {blob c1 null=yes cstring c2[10] null=yes}}";
     const char *insert_cmd = "INSERT INTO t1 VALUES (@c1, @c2)";
+    const char *insert_index_cmd = "INSERT INTO t1 VALUES (?, ?)";
     const char *select_empty_cmd =
         "SELECT COUNT(*) FROM t1 WHERE c1 = x'' AND c2 = ''";
     const char *select_null_cmd =
@@ -221,11 +222,17 @@ void test_03()
     test_exec(hndl, drop_table);
     test_exec(hndl, create_table_cmd);
 
-    // Test empty values
+    // Test empty values using bind_param
     test_bind_param(hndl, "c1", CDB2_BLOB, (void *)c1, 0);
     test_bind_param(hndl, "c2", CDB2_CSTRING, c2, strlen(c2));
 
     test_exec(hndl, insert_cmd);
+    cdb2_clearbindings(hndl);
+
+    // Test empty values using bind_index
+    test_bind_index(hndl, 1, CDB2_BLOB, (void *)c1, 0);
+    test_bind_index(hndl, 2, CDB2_CSTRING, c2, strlen(c2));
+    test_exec(hndl, insert_index_cmd);
     cdb2_clearbindings(hndl);
 
     test_exec(hndl, select_empty_cmd);
@@ -243,6 +250,12 @@ void test_03()
     test_bind_param(hndl, "c2", CDB2_CSTRING, 0, 0);
 
     test_exec(hndl, insert_cmd);
+    cdb2_clearbindings(hndl);
+
+    // Test NULL values using bind_index
+    test_bind_index(hndl, 1, CDB2_BLOB, NULL, 0);
+    test_bind_index(hndl, 2, CDB2_CSTRING, NULL, 0);
+    test_exec(hndl, insert_index_cmd);
     cdb2_clearbindings(hndl);
 
     test_exec(hndl, select_null_cmd);
