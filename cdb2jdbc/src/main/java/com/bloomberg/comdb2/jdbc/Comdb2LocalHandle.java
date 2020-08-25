@@ -46,10 +46,16 @@ class Comdb2LocalHandle extends AbstractConnection {
     public void clearParameters() {
     }
 
+    public void bindParameter(int index, int type, byte[] data) {
+    }
+
     public void bindParameter(String name, int type, byte[] data) {
     }
 
-    public void bindParameters(Map<String, Cdb2Query.Cdb2BindValue> bindVars) {
+    public void bindNamedParameters(Map<String, Cdb2Query.Cdb2BindValue> bindVars) {
+    }
+
+    public void bindIndexedParameters(Map<Integer, Cdb2Query.Cdb2BindValue> aBindVars) {
     }
 
     public int runStatement(String sql) {
