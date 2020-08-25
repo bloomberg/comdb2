@@ -4926,20 +4926,21 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
     bindval->type = type;
     bindval->varname = (char *)varname;
     bindval->value.data = (void *)varaddr;
-    if (varaddr == NULL) {
-        bindval->value.len = 0;
+    bindval->value.len = length;
+    if (length == 0) {
+        /* protobuf-c discards `data' if `len' is 0. A NULL value and a 0-length
+           value would look the same from the server's perspective. Hence we
+           need an addtional isnull flag to tell them apart. */
         bindval->has_isnull = 1;
-        bindval->isnull = 1;
-    } else if (type == CDB2_CSTRING && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 1;
-    } else if (type == CDB2_BLOB && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 0;
-        bindval->has_isnull = 1;
-        bindval->isnull = 0;
-    } else {
-        bindval->value.len = length;
+        bindval->isnull = (varaddr == NULL);
+
+        /* R6 and old R7 ignore isnull for cstring and treat a 0-length string
+           as NULL. So we send 1 dummy byte here to be backward compatible with
+           an old backend. */
+        if (type == CDB2_CSTRING && !bindval->isnull) {
+            bindval->value.data = (unsigned char *)"";
+            bindval->value.len = 1;
+        }
     }
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
     if (log_calls)
@@ -4969,22 +4970,17 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
     bindval->type = type;
     bindval->varname = NULL;
     bindval->value.data = (void *)varaddr;
+    bindval->value.len = length;
     bindval->has_index = 1;
     bindval->index = index;
-    if (varaddr == NULL) {
-        bindval->value.len = 0;
+    if (length == 0) {
+        /* See comments in cdb2_bind_param(). */
         bindval->has_isnull = 1;
-        bindval->isnull = 1;
-    } else if (type == CDB2_CSTRING && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 1;
-    } else if (type == CDB2_BLOB && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 0;
-        bindval->has_isnull = 1;
-        bindval->isnull = 0;
-    } else {
-        bindval->value.len = length;
+        bindval->isnull = (varaddr == NULL);
+        if (type == CDB2_CSTRING && !bindval->isnull) {
+            bindval->value.data = (unsigned char *)"";
+            bindval->value.len = 1;
+        }
     }
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
 
