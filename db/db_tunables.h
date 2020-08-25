@@ -1838,4 +1838,7 @@ REGISTER_TUNABLE("json_escape_control_characters",
                  TUNABLE_BOOLEAN, &gbl_json_escape_control_chars, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_test_io_errors, INTERNAL, NULL, NULL,
+                 NULL, NULL);
 #endif /* _DB_TUNABLES_H */
