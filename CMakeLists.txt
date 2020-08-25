@@ -21,6 +21,13 @@ else()
   add_definitions(-DWITH_SSL=0)
 endif()
 
+option(WITH_TINFO "Turn ON on platforms where tinfo library is required for cdb2sql" OFF)
+if(WITH_TINFO)
+  add_definitions(-DWITH_TINFO=1)
+else()
+  add_definitions(-DWITH_TINFO=0)
+endif()
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   # Homebrew will install here by default
   list(APPEND CMAKE_PREFIX_PATH
