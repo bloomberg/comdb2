@@ -177,8 +177,18 @@ res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.* | head -2); do
 done | wc -l)
 assertres $res 1
 
+echo "Test having no limit for logfiles (turning off rolling)"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events rollat 0')"
+NUM=2000
+for ((i=1;i<=$NUM;++i)); do echo "insert into t1 values($i)"; done | cdb2sql ${CDB2_OPTIONS} $DBNAME default -
 
-# test setting custom file for event logging
+find $TESTDIR/var/log/cdb2/ | grep "/$DBNAME" | grep '.events.' > logfls2.txt
+if ! diff logfls.txt logfls2.txt ; then
+    failexit "Should not have rolled: logfls.txt vs. logfls2.txt"
+fi
+
+
+echo "test setting custom file for event logging"
 myevfl=$TESTDIR/var/log/cdb2/$DBNAME.myfile.events
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events file $myevfl')"
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 2"
