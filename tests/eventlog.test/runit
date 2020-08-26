@@ -142,10 +142,10 @@ fi
 
 mv $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.2
 
-NKEEP=4
+NKEEP=5
 IFS=$SAVIFS
 
-echo "start db again, make sure that we keep only $((NKEEP+1)) event log files of size 1 MB"
+echo "start db again, make sure that we keep only $NKEEP event log files of size 1 MB"
 $DEBUGGER ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
 
 waitfordb $DBNAME
@@ -172,8 +172,8 @@ cat logfls.txt
 
 logflcnt=$(wc -l logfls.txt | cut -f1 -d' ')
 
-echo make sure we have $((NKEEP+1)) as per the lrl option
-assertres $logflcnt $((NKEEP+1))
+echo make sure we have $NKEEP as per the lrl option
+assertres $logflcnt $NKEEP
 
 echo "make sure string 'insert into t1 values(10001, 'abc')' is in the last 2 eventlog files:"
 res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.* | head -2); do

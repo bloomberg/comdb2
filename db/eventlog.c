@@ -109,8 +109,7 @@ static void eventlog_roll_cleanup()
     int len = strlen(fname);
 
     // SANITY CHECK; last part of fname should match postfix
-    if (len < sizeof(postfix) ||
-        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
+    if (len < sizeof(postfix) || strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
         abort();
 
     // Delete all except the most recent files
@@ -130,7 +129,6 @@ static void eventlog_roll_cleanup()
 
 static gzFile eventlog_open(char *fname)
 {
-    eventlog_roll_cleanup();
     gbl_eventlog_fname = fname;
     gzFile f = gzopen(fname, "2w");
     if (f == NULL) {
@@ -532,19 +530,26 @@ void eventlog_add(const struct reqlogger *logger)
     cson_value *val = cson_value_new_object();
     cson_object *obj = cson_value_get_object(val);
     populate_obj(obj, logger);
+    int call_roll_cleanup = 0;
 
     Pthread_mutex_lock(&eventlog_lk);
 
     if (eventlog != NULL && eventlog_enabled) {
         if (eventlog_rollat > 0 && bytes_written > eventlog_rollat) {
             eventlog_roll();
+            call_roll_cleanup = 1;
         }
         add_to_fingerprints(logger);
         cson_output(val, write_json, eventlog);
     }
     Pthread_mutex_unlock(&eventlog_lk);
 
-    if (eventlog_verbose) cson_output_FILE(val, stdout);
+    if (call_roll_cleanup) {
+        eventlog_roll_cleanup();
+    }
+
+    if (eventlog_verbose)
+        cson_output_FILE(val, stdout);
 
     cson_value_free(val);
 }
@@ -564,6 +569,8 @@ void eventlog_status(void)
         logmsg(LOGMSG_USER, "Eventlog disabled\n");
 }
 
+// roll the log: close existing file open a new one
+// this function must be called while holding eventlog_lk
 static void eventlog_roll(void)
 {
     eventlog_close();
@@ -572,18 +579,15 @@ static void eventlog_roll(void)
     eventlog = eventlog_open(fname);
 }
 
+// this function must be called while holding eventlog_lk
 static void eventlog_usefile(const char *fname)
 {
     eventlog_close();
 
     char *d = strdup(fname);
     eventlog = eventlog_open(d); // passes responsibility to free d
-    if (eventlog) // success
-        return;
-
-    // failed to open fname, so open from default location
-    char *defaultname = eventlog_fname(thedb->envname);
-    eventlog = eventlog_open(defaultname);
+    if (!eventlog)               // failed to open fname, so open from default location
+        eventlog_roll();
 }
 
 static void eventlog_enable(void)
@@ -595,14 +599,14 @@ static void eventlog_enable(void)
 static void eventlog_disable(void)
 {
     eventlog_close();
-    eventlog = NULL;
     eventlog_enabled = 0;
-    bytes_written = 0;
 }
 
 void eventlog_stop(void)
 {
+    Pthread_mutex_lock(&eventlog_lk);
     eventlog_disable();
+    Pthread_mutex_unlock(&eventlog_lk);
 }
 
 static inline void eventlog_set_rollat(uint64_t rollat_bytes) 
@@ -627,7 +631,7 @@ static void eventlog_help(void)
                         "events help              - this help message\n");
 }
 
-static void eventlog_process_message_locked(char *line, int lline, int *toff)
+static void eventlog_process_message_locked(char *line, int lline, int *toff, int *call_roll_cleanup)
 {
     char *tok;
     int ltok;
@@ -635,14 +639,24 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
     tok = segtok(line, lline, toff, &ltok);
     if (ltok == 0) {
         logmsg(LOGMSG_ERROR, "Expected option for reql events\n");
+        eventlog_help();
         return;
     }
-    if (tokcmp(tok, ltok, "on") == 0)
-        eventlog_enable();
-    else if (tokcmp(tok, ltok, "off") == 0)
-        eventlog_disable();
-    else if (tokcmp(tok, ltok, "roll") == 0) {
+
+    if (tokcmp(tok, ltok, "on") == 0) {
+        if (!eventlog_enabled) {
+            eventlog_enable();
+            *call_roll_cleanup = 1;
+        } else
+            logmsg(LOGMSG_USER, "Event logging is already enabled\n");
+    } else if (tokcmp(tok, ltok, "off") == 0) {
+        if (eventlog_enabled)
+            eventlog_disable();
+        else
+            logmsg(LOGMSG_USER, "Event logging is already disbled\n");
+    } else if (tokcmp(tok, ltok, "roll") == 0) {
         eventlog_roll();
+        *call_roll_cleanup = 1;
     } else if (tokcmp(tok, ltok, "keep") == 0) {
         int nfiles;
         tok = segtok(line, lline, toff, &ltok);
@@ -700,13 +714,15 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             return;
         }
         every = toknum(tok, ltok);
-        if (every == 0) {
-            logmsg(LOGMSG_USER, "Logging all events\n");
-        } else if (every < 0) {
+        if (every < 0) {
             logmsg(LOGMSG_ERROR, "Invalid count for 'every'\n");
             return;
-        } else
+        }
+        if (every == 0) {
+            logmsg(LOGMSG_USER, "Logging all events\n");
+        } else {
             logmsg(LOGMSG_USER, "Logging every %d queries\n", eventlog_every_n);
+        }
         eventlog_every_n = every;
     } else if (tokcmp(tok, ltok, "verbose") == 0) {
         tok = segtok(line, lline, toff, &ltok);
@@ -714,20 +730,21 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
             return;
         }
-        if (tokcmp(tok, ltok, "on") == 0)
+        if (tokcmp(tok, ltok, "on") == 0) {
             eventlog_verbose = 1;
-        else if (tokcmp(tok, ltok, "off") == 0)
+        } else if (tokcmp(tok, ltok, "off") == 0) {
             eventlog_verbose = 0;
-        else {
+        } else {
             logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
-            return;
         }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
-        gzflush(eventlog, 1);
+        if (eventlog)
+            gzflush(eventlog, 1);
     } else if (tokcmp(tok, ltok, "file") == 0) {
-        // use given file for logging, when we roll, we go back to the original scheme
+        // use given file for logging; when we roll, we go back to the original scheme
         tok = segtok(line, lline, toff, &ltok);
         eventlog_usefile(tok);
+        *call_roll_cleanup = 1;
     } else if (tokcmp(tok, ltok, "dir") == 0) {
         // set directory for event file logging
         tok = segtok(line, lline, toff, &ltok);
@@ -738,19 +755,24 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             closedir(pd);
             update_file_location("eventlog", tok);
         }
-    } else if (tokcmp(tok, ltok, "help") == 0) {
-        eventlog_help();
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown eventlog command '%s'\n", line);
+        if (tokcmp(tok, ltok, "help") != 0) {
+            logmsg(LOGMSG_ERROR, "Unknown eventlog command '%s'\n", line);
+        }
         eventlog_help();
     }
 }
 
 void eventlog_process_message(char *line, int lline, int *toff)
 {
+    int call_roll_cleanup = 0;
     Pthread_mutex_lock(&eventlog_lk);
-    eventlog_process_message_locked(line, lline, toff);
+    eventlog_process_message_locked(line, lline, toff, &call_roll_cleanup);
     Pthread_mutex_unlock(&eventlog_lk);
+
+    if (call_roll_cleanup) {
+        eventlog_roll_cleanup();
+    }
 }
 
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
