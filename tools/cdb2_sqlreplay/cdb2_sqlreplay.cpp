@@ -225,13 +225,14 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
         cson_value *bp = cson_array_get(bound_parameters, i);
         const char *name = get_strprop(bp, "name");
         const char *type = get_strprop(bp, "type");
+        int cdb2_type = 0;
+        int length = 0;
+        void *varaddr = NULL;
         int ret;
-        if(get_ispropnull(bp, "value")) {
-            /* bind null value as type INT for simplicity */
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, NULL, 0)) != 0) {
-                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                return false;
-            }
+        if(get_ispropnull(bp, "value")) {   /* bind null value as type INT for simplicity */
+            cdb2_type = CDB2_INTEGER;
+            varaddr = NULL;
+            length = 0;
             std::cout << "binding "<< type << " column " << name << " to NULL " << std::endl;
         }
         else if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
@@ -241,10 +242,9 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_INTEGER, iv, sizeof(*iv))) != 0) {
-                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                return false;
-            }
+            cdb2_type = CDB2_INTEGER;
+            varaddr = iv;
+            length = sizeof(*iv);
             std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
         } 
         else if (strcmp(type, "float") == 0 || strcmp(type, "doublefloat") == 0) {
@@ -254,27 +254,23 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_REAL, dv, sizeof(*dv))) != 0) {
-                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                return false;
-            }
+            cdb2_type = CDB2_REAL;
+            varaddr = dv;
+            length = sizeof(*dv);
             std::cout << "binding "<< type << " column " << name << " to value " << *dv << std::endl;
         }
         else if (strcmp(type, "char") == 0 || strcmp(type, "datetime") == 0 ||
-                 strcmp(type, "datetimeus") == 0 ||
-                 strcmp(type, "interval month") == 0 ||
-                 strcmp(type, "interval sec") == 0 ||
-                 strcmp(type, "interval usec") == 0 
+                 strcmp(type, "datetimeus") == 0 || strcmp(type, "interval month") == 0 ||
+                 strcmp(type, "interval sec") == 0 || strcmp(type, "interval usec") == 0 
                  ) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
                 std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_CSTRING, strp, strlen(strp) )) != 0) {
-                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                return false;
-            }
+            cdb2_type = CDB2_CSTRING;
+            varaddr = strdup(strp);
+            length = strlen(strp);
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
         else if( strcmp(type, "byte") == 0 || strcmp(type, "blob") == 0) {
@@ -293,17 +289,31 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
             fromhex(unexpanded, (const uint8_t *) strp + 2, slen); /* no x' */
             unexpanded[unexlen] = '\0';
 
-            if ((ret = cdb2_bind_param(cdb2h, name, CDB2_BLOB, unexpanded, unexlen)) != 0) {
-                std::cerr << "error binding column " << name << ", ret=" << ret << std::endl;
-                free(unexpanded);
-                return false;
-            }
+            cdb2_type = CDB2_BLOB;
+            varaddr = unexpanded;
+            length = unexlen;
 
             blobs_vect.push_back(unexpanded);
             std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
-        else
+        else {
             std::cout << "error binding unknown "<< type << " column " << name << std::endl;
+            return false;
+        }
+
+        if (name[0] == '?') {
+            int idx = atoi(name + 1);
+            if ((ret = cdb2_bind_index(cdb2h, idx, cdb2_type, varaddr, length)) != 0) {
+                std::cerr << "error from cdb2_bind_index() column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+        }
+        else {
+            if ((ret = cdb2_bind_param(cdb2h, name, cdb2_type, varaddr, length)) != 0) {
+                std::cerr << "error from cdb2_bind_param column " << name << ", ret=" << ret << std::endl;
+                return false;
+            }
+        }
     }
 
     return true;
