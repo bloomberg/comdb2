@@ -275,6 +275,46 @@ void test_03()
     test_close(hndl);
 }
 
+void test_04()
+{
+    cdb2_hndl_tp *hndl = NULL;
+    char str_buf[] = {'h', 'e', 'l', 'l', 'o', '\0', 'f', 'o', 'o'};
+    const char *hello = "hello";
+    const char *drop_table = "DROP TABLE IF EXISTS t1";
+    const char *create_table_cstring = "CREATE TABLE t1 {schema {cstring a[20]}}";
+    const char *insert_cmd = "INSERT INTO t1 (a) VALUES (@1);";
+    const char *select_cmd = "SELECT * FROM t1 WHERE a=@1;";
+    size_t value_size;
+    void *buffer;
+
+    test_open(&hndl, db);
+
+    /* Test with bind name "1" */
+    test_exec(hndl, drop_table);
+    test_exec(hndl, create_table_cstring);
+    test_bind_param(hndl, "1", CDB2_CSTRING, str_buf, sizeof(str_buf));
+    test_exec(hndl, insert_cmd);
+    test_exec(hndl, select_cmd);
+    test_next_record(hndl);
+
+    /* Check the column value */
+    value_size = cdb2_column_size(hndl, 0);
+    buffer = malloc(value_size);
+    memcpy(buffer, cdb2_column_value(hndl, 0), value_size);
+    if ((strncmp((char *)buffer, hello, value_size) != 0)) {
+        fprintf(stderr, "column value didn't match got:%s expected:%s\n",
+                (char *)buffer, hello);
+        exit(1);
+    }
+    free(buffer);
+    cdb2_clearbindings(hndl);
+    test_exec(hndl, drop_table);
+
+    /* Close the handle */
+    test_close(hndl);
+}
+
+
 int main(int argc, char *argv[])
 {
     db = argv[1];
@@ -282,6 +322,7 @@ int main(int argc, char *argv[])
     test_01();
     test_02();
     test_03();
+    test_04();
 
     return 0;
 }
