@@ -263,7 +263,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_name_from_fdb(fdb_t *fdb,
                                                        const char *name);
 
 static int __free_fdb_tbl(void *obj, void *arg);
-static int __lock_wrlock_exclusive(char *dbname);
+static int __lock_wrlock_exclusive(char *dbname, int adduser);
 
 /* Node affinity functions: a clnt tries to stick to one node, unless error in
    which
@@ -768,7 +768,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
         __fdb_rem_user(fdb, 0);
 
-        rc = __lock_wrlock_exclusive(tmpname);
+        rc = __lock_wrlock_exclusive(tmpname, 1);
         free(tmpname);
         if (rc) {
             if (rc == FDB_ERR_FDB_NOTFOUND) {
@@ -780,7 +780,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
         }
 
         /* add ourselves back */
-        __fdb_add_user(fdb, 0);
+        // __fdb_add_user(fdb, 0); done during taking exclusive lock
 
         /* remove the stale table here */
         /* ok, stale; we need to garbage this one out */
@@ -1450,7 +1450,7 @@ static int __lock_wrlock_shared(fdb_t *fdb)
     return rc;
 }
 
-static int __lock_wrlock_exclusive(char *dbname)
+static int __lock_wrlock_exclusive(char *dbname, int adduser)
 {
     fdb_t *fdb = NULL;
     int rc = FDB_NOERR;
@@ -1473,11 +1473,13 @@ static int __lock_wrlock_exclusive(char *dbname)
             return FDB_ERR_FDB_NOTFOUND;
         }
 
-        Pthread_rwlock_wrlock(&fdb->h_rwlock);
+        //Pthread_rwlock_wrlock(&fdb->h_rwlock);
 
+        Pthread_mutex_lock(&fdb->users_mtx);
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
-            Pthread_rwlock_unlock(&fdb->h_rwlock);
+            //Pthread_rwlock_unlock(&fdb->h_rwlock);
+            Pthread_mutex_unlock(&fdb->users_mtx);
             Pthread_rwlock_unlock(&fdbs.arr_lock);
 
             /* if we loop, make sure this is not a live lock
@@ -1497,6 +1499,10 @@ static int __lock_wrlock_exclusive(char *dbname)
 
             continue;
         } else {
+            if (adduser)
+                fdb->users++;
+            Pthread_rwlock_wrlock(&fdb->h_rwlock);
+            Pthread_mutex_unlock(&fdb->users_mtx);
             rc = FDB_NOERR;
             break; /* own fdb */
         }
@@ -4317,7 +4323,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
    return;
 #endif
 
-    if (__lock_wrlock_exclusive(fdb->dbname)) {
+    if (__lock_wrlock_exclusive(fdb->dbname, 0)) {
         return;
     }
 
