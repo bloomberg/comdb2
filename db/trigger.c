@@ -234,8 +234,7 @@ void trigger_start(const char *name)
     Pthread_mutex_lock(&trig_thd_cnt_lk);
     if (num_trigger_threads >= gbl_max_trigger_threads) {
         Pthread_mutex_unlock(&trig_thd_cnt_lk);
-        logmsg(LOGMSG_ERROR, "%s: Exhausted max trigger threads. Max:%d \n",
-               __func__, gbl_max_trigger_threads);
+        logmsg(LOGMSG_ERROR, "%s: Exhausted max trigger threads. Max:%d \n", __func__, gbl_max_trigger_threads);
         return;
     }
     num_trigger_threads++;
