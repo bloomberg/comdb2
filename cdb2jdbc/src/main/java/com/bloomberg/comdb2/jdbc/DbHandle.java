@@ -43,7 +43,12 @@ public interface DbHandle extends Closeable {
     void clearParameters();
 
     /**
-     * Bind a parameter.
+     * Bind a parameter to a position.
+     */
+    void bindParameter(int index, int type, byte[] data);
+
+    /**
+     * Bind a parameter to a name.
      * 
      * @param name
      * @param type
@@ -52,9 +57,14 @@ public interface DbHandle extends Closeable {
     void bindParameter(String name, int type, byte[] data);
 
     /**
-     * Bind parameters.
+     * Bind a list of named parameters.
      */
-    void bindParameters(Map<String, Cdb2Query.Cdb2BindValue> bindVars);
+    void bindNamedParameters(Map<String, Cdb2Query.Cdb2BindValue> bindVars);
+
+    /**
+     * Bind a list of indexed parameters.
+     */
+    void bindIndexedParameters(Map<Integer, Cdb2Query.Cdb2BindValue> bindVars);
 
     /**
      * Run @sql.

@@ -2336,10 +2336,20 @@ static u_int strhashfunc_stmt(u_char *keyp, int len)
     return hash;
 }
 
+static int query_data_func(struct sqlclntstate *clnt, void **data, int *sz, int type, int op)
+{
+    if (clnt->plugin.query_data_func)
+        return clnt->plugin.query_data_func(clnt, data, sz, type, op);
+    else
+        return 0;
+}
+
 static int finalize_stmt_hash(void *stmt_entry, void *args)
 {
     stmt_hash_entry_type *entry = (stmt_hash_entry_type *)stmt_entry;
     sqlite3_finalize(entry->stmt);
+    if (entry->qd_func && entry->stmt_data)
+        entry->qd_func(NULL, &entry->stmt_data, NULL, QUERY_STMT_DATA, QUERY_DATA_DELETE);
     if (entry->query && gbl_debug_temptables) {
         free(entry->query);
         entry->query = NULL;
@@ -2418,6 +2428,8 @@ static void cleanup_stmt_entry_only(stmt_hash_entry_type *entry)
 static void cleanup_stmt_entry(stmt_hash_entry_type *entry)
 {
     sqlite3_finalize(entry->stmt);
+    if (entry->qd_func && entry->stmt_data)
+        entry->qd_func(NULL, &entry->stmt_data, NULL, QUERY_STMT_DATA, QUERY_DATA_DELETE);
     cleanup_stmt_entry_only(entry);
 }
 
@@ -2463,8 +2475,8 @@ static void remove_stmt_entry(struct sqlthdstate *thd,
  * On error will return non zero and
  * caller will need to finalize_stmt() in that case
  */
-static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
-                          const char *actual_sql, sqlite3_stmt *stmt)
+static int add_stmt_table(struct sqlthdstate *thd, const char *sql, const char *actual_sql, sqlite3_stmt *stmt,
+                          struct sqlclntstate *clnt)
 {
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
         return -1;
@@ -2492,6 +2504,10 @@ static int add_stmt_table(struct sqlthdstate *thd, const char *sql,
     stmt_hash_entry_type *entry = sqlite3_malloc(sizeof(stmt_hash_entry_type));
     strcpy(entry->sql, sql); /* sql is at most MAX_HASH_SQL_LENGTH - 1 */
     entry->stmt = stmt;
+    query_data_func(clnt, &entry->stmt_data, &entry->stmt_data_sz, QUERY_STMT_DATA, QUERY_DATA_GET);
+    /* Take ownership of stmt data */
+    query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
+    entry->qd_func = clnt->plugin.query_data_func;
 
     if (actual_sql && gbl_debug_temptables)
         entry->query = strdup(actual_sql);
@@ -2546,6 +2562,8 @@ lrucache *sql_hints = NULL;
 typedef struct {
     char *sql_hint;
     char *sql_str;
+    void *dta;
+    int dta_sz;
     lrucache_link lnk;
     char mem[0];
 } sql_hint_hash_entry_type;
@@ -2592,11 +2610,11 @@ void reinit_sql_hint_table()
     Pthread_mutex_unlock(&gbl_sql_lock);
 }
 
-static void add_sql_hint_table(char *sql_hint, char *sql_str)
+static void add_sql_hint_table(char *sql_hint, char *sql_str, void *dta, int dta_sz)
 {
     int sql_hint_len = strlen(sql_hint) + 1;
     int sql_len = strlen(sql_str) + 1;
-    int len = sql_hint_len + sql_len;
+    int len = sql_hint_len + sql_len + dta_sz;
     sql_hint_hash_entry_type *entry = malloc(sizeof(*entry) + len);
 
     entry->sql_hint = entry->mem;
@@ -2604,6 +2622,10 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str)
 
     entry->sql_str = entry->sql_hint + sql_hint_len;
     memcpy(entry->sql_str, sql_str, sql_len);
+
+    entry->dta_sz = dta_sz;
+    entry->dta = entry->sql_hint + sql_hint_len + sql_len;
+    memcpy(entry->dta, dta, dta_sz);
 
     Pthread_mutex_lock(&gbl_sql_lock);
     {
@@ -2617,7 +2639,7 @@ static void add_sql_hint_table(char *sql_hint, char *sql_str)
     Pthread_mutex_unlock(&gbl_sql_lock);
 }
 
-static int find_sql_hint_table(char *sql_hint, char **sql_str)
+static int find_sql_hint_table(char *sql_hint, char **sql_str, void **dta, int *dta_sz)
 {
     sql_hint_hash_entry_type *entry;
     Pthread_mutex_lock(&gbl_sql_lock);
@@ -2627,6 +2649,10 @@ static int find_sql_hint_table(char *sql_hint, char **sql_str)
     Pthread_mutex_unlock(&gbl_sql_lock);
     if (entry) {
         *sql_str = entry->sql_str;
+        if (dta) {
+            *dta = entry->dta;
+            *dta_sz = entry->dta_sz;
+        }
         return 0;
     }
     return -1;
@@ -3146,11 +3172,16 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (find_stmt_table(thd, rec->cache_hint, &rec->stmt_entry) == 0) {
             rec->status |= CACHE_FOUND_STMT;
             rec->stmt = rec->stmt_entry->stmt;
+            query_data_func(clnt, &rec->stmt_entry->stmt_data, &rec->stmt_entry->stmt_data_sz, QUERY_STMT_DATA,
+                            QUERY_DATA_SET);
         } else {
             /* We are not able to find the statement in cache, and this is a
              * partial statement. Try to find sql string stored in hash table */
-            if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql) == 0) {
+            void *data;
+            int data_sz;
+            if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql, &data, &data_sz) == 0) {
                 rec->status |= CACHE_FOUND_STR;
+                query_data_func(clnt, &data, &data_sz, QUERY_HINT_DATA, QUERY_DATA_SET);
             }
         }
     } else {
@@ -3164,8 +3195,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if ((prepFlags & PREPARE_ONLY) == 0) {
             int rc = sqlite3LockStmtTables(rec->stmt);
             if (rc) {
+                remove_stmt_entry(thd, rec->stmt_entry, 1);
                 cleanup_stmt_entry(rec->stmt_entry);
+
+                rec->stmt_entry = NULL;
                 rec->stmt = NULL;
+                rec->status = CACHE_DISABLED;
             }
         }
     }
@@ -3222,9 +3257,12 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         goto cleanup;
     }
     if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
-        if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
+        /* Leave the ownership of stmt data. */
+        query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
+        if (requeue_stmt_entry(thd,
+                               rec->stmt_entry)) /* put back in queue... */ {
             cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
-
+        }
         return 0;
     }
 
@@ -3232,15 +3270,16 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
     const char *sqlptr = clnt->sql;
     if (rec->sql)
         sqlptr = rec->sql;
-
     if (rec->status & CACHE_HAS_HINT) {
         sqlptr = rec->cache_hint;
         if (!(rec->status & CACHE_FOUND_STR)) {
-            add_sql_hint_table(rec->cache_hint, clnt->sql);
+            void *data;
+            int data_sz;
+            query_data_func(clnt, &data, &data_sz, QUERY_HINT_DATA, QUERY_DATA_GET);
+            add_sql_hint_table(rec->cache_hint, clnt->sql, data, data_sz);
         }
     }
-    return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL,
-                          stmt);
+    return add_stmt_table(thd, sqlptr, gbl_debug_temptables ? rec->sql : NULL, stmt, clnt);
 cleanup:
     if (rec->stmt_entry != NULL) {
         remove_stmt_entry(thd, rec->stmt_entry, 1);
@@ -3731,9 +3770,18 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             rc = SQLITE_ERROR;
             goto out;
         }
+
+        char *name;
+        if (strlen(p.name) <= 0) { // name is blank because this was from cdb2_bind_index()
+            name = alloca(12);     // enough space to fit string representation of integer
+            sprintf(name, "?%d", p.pos);
+        }
+        else 
+            name = p.name;
+
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             rc = sqlite3_bind_null(stmt, p.pos);
-            eventlog_bind_null(arr, p.name);
+            eventlog_bind_null(arr, name);
             if (rc) { /* position out-of-bounds, etc? */
                 goto out;
             }
@@ -3743,11 +3791,11 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_INT:
         case CLIENT_UINT:
             rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
-            eventlog_bind_int64(arr, p.name, p.u.i, p.len);
+            eventlog_bind_int64(arr, name, p.u.i, p.len);
             break;
         case CLIENT_REAL:
             rc = sqlite3_bind_double(stmt, p.pos, p.u.r);
-            eventlog_bind_double(arr, p.name, p.u.r, p.len);
+            eventlog_bind_double(arr, name, p.u.r, p.len);
             break;
         case CLIENT_CSTR:
         case CLIENT_PSTR:
@@ -3757,27 +3805,27 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
              */
             p.len = strnlen((char *)p.u.p, p.len);
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
-            eventlog_bind_text(arr, p.name, p.u.p, p.len);
+            eventlog_bind_text(arr, name, p.u.p, p.len);
             break;
         case CLIENT_VUTF8:
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
-            eventlog_bind_varchar(arr, p.name, p.u.p, p.len);
+            eventlog_bind_varchar(arr, name, p.u.p, p.len);
             break;
         case CLIENT_BLOB:
         case CLIENT_BYTEARRAY:
             rc = sqlite3_bind_blob(stmt, p.pos, p.u.p, p.len, NULL);
-            eventlog_bind_blob(arr, p.name, p.u.p, p.len);
+            eventlog_bind_blob(arr, name, p.u.p, p.len);
             break;
         case CLIENT_DATETIME:
         case CLIENT_DATETIMEUS:
             rc = sqlite3_bind_datetime(stmt, p.pos, &p.u.dt, clnt->tzname);
-            eventlog_bind_datetime(arr, p.name, &p.u.dt, clnt->tzname);
+            eventlog_bind_datetime(arr, name, &p.u.dt, clnt->tzname);
             break;
         case CLIENT_INTVYM:
         case CLIENT_INTVDS:
         case CLIENT_INTVDSUS:
             rc = sqlite3_bind_interval(stmt, p.pos, &p.u.tv);
-            eventlog_bind_interval(arr, p.name, &p.u.tv);
+            eventlog_bind_interval(arr, name, &p.u.tv);
             break;
         default:
             rc = SQLITE_ERROR;

@@ -729,7 +729,7 @@ static void guidStrFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void guidFromStrFunc(
@@ -781,7 +781,7 @@ static void guidFromByteFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid_blob, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void comdb2TestLogFunc(

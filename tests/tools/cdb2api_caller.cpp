@@ -84,6 +84,185 @@ void add_param(std::string &sp, std::string &sql, std::vector<int> &types, std::
     types.push_back(CDB2_CSTRING);
 }
 
+
+void insert_records_with_bind_params(cdb2_hndl_tp *db, std::string table) 
+{
+    // insert records with bind index
+    for (int j = 2000; j < 3000; j++) {
+        std::ostringstream ss;
+        time_t rawtime;
+        struct tm * timeinfo;
+        char buffer [80];
+
+        time (&rawtime);
+        timeinfo = localtime (&rawtime);
+        std::vector<int> types;
+
+        strftime (buffer,80,"'%FT%T'",timeinfo);
+
+        short palltypes_short = (1-2*(j%2))*j;
+        int palltypes_int = (1-2*(j%2))*j;
+        unsigned short palltypes_u_short = j;
+        float palltypes_float = (1-2*(j%2)) * (100.0 + ((float) j)/1000.0);
+        double palltypes_double = (1-2*(j%2)) * (100000.0 + ((double) j)/1000000.0);
+        unsigned char palltypes_byte[17] = "1234567890123456";
+        unsigned char palltypes_cstring[16] = "123456789012345";
+        unsigned char palltypes_pstring[16] = "123456789012345";
+        unsigned char palltypes_blob[1025];
+        {
+            for(unsigned int i = 0 ; i < sizeof(palltypes_blob) - 1; i++)
+                palltypes_blob[i] = 'a' + (i % 26);
+             palltypes_blob[sizeof(palltypes_blob)] = '\0';
+        }
+        time_t t = 1386783296; //2013-12-11T123456
+        cdb2_client_datetime_t datetime = {0};
+        gmtime_r(&t, (struct tm *)&datetime.tm); //corrupts memory past the tm member
+        datetime.msec = 123; // should not be larger than 999
+        datetime.tzname[0] = '\0';
+
+        cdb2_client_datetimeus_t datetimeus = {0};
+        gmtime_r(&t, (struct tm *)&datetimeus.tm);
+        datetimeus.usec = 123456; // should not be larger than 999999
+        datetimeus.tzname[0] = '\0'; // gmtime_r corrupts past member tm
+        cdb2_client_intv_ym_t ym = {1, 5, 2};
+
+        cdb2_client_intv_ds_t ci = {1, 12, 23, 34, 45, 456 };
+        
+        cdb2_client_intv_dsus_t cidsus = {1, 12, 23, 34, 45, 456789 };
+
+        if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_u_short", CDB2_INTEGER, &palltypes_u_short, sizeof(palltypes_u_short)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &palltypes_int, sizeof(palltypes_int)) )
+            fprintf(stderr, "Error binding palltypes_short.\n");
+        if(cdb2_bind_param(db, "palltypes_float", CDB2_REAL, &palltypes_float, sizeof(palltypes_float)) )
+            fprintf(stderr, "Error binding palltypes_float.\n");
+        if(cdb2_bind_param(db, "palltypes_double", CDB2_REAL, &palltypes_double, sizeof(palltypes_double)) )
+            fprintf(stderr, "Error binding palltypes_double.\n");
+        if(cdb2_bind_param(db, "palltypes_byte", CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
+            fprintf(stderr, "Error binding palltypes_byte.\n");
+        if(j == 2000) {
+          if(cdb2_bind_param(db, "palltypes_blob", CDB2_INTEGER, NULL, 0))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        }
+        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob) - 1))
+            fprintf(stderr, "Error binding palltypes_blob.\n");
+        if(cdb2_bind_param(db, "palltypes_cstring", CDB2_CSTRING, palltypes_cstring, sizeof(palltypes_cstring) - 1))
+            fprintf(stderr, "Error binding palltypes_cstring.\n");
+        if(cdb2_bind_param(db, "palltypes_pstring", CDB2_CSTRING, palltypes_pstring, sizeof(palltypes_pstring) - 1))
+            fprintf(stderr, "Error binding palltypes_cstring.\n");
+        if(cdb2_bind_param(db, "palltypes_datetime", CDB2_DATETIME, &datetime, sizeof(datetime)))
+            fprintf(stderr, "Error binding palltypes_datetime.\n");
+        if(cdb2_bind_param(db, "palltypes_datetimeus", CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
+            fprintf(stderr, "Error binding palltypes_datetimeus.\n");
+        if(cdb2_bind_param(db, "palltypes_intervalym", CDB2_INTERVALYM, &ym, sizeof(ym)))
+            fprintf(stderr, "Error binding p alltypes_intervalym.\n");
+        if(cdb2_bind_param(db, "palltypes_intervalds", CDB2_INTERVALDS, &ci, sizeof(ci)))
+            fprintf(stderr, "Error binding p alltypes_intervalds.\n");
+        if(cdb2_bind_param(db, "palltypes_intervaldsus", CDB2_INTERVALDSUS, &cidsus, sizeof(cidsus)))
+            fprintf(stderr, "Error binding p alltypes_intervaldsus.\n");
+
+        ss << "insert into " << table 
+           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym,   alltypes_intervalds,   alltypes_intervaldsus) values "
+              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus, @palltypes_intervalym, @palltypes_intervalds, @palltypes_intervaldsus)" ;
+        
+        //this works too?? runsql(db, s);
+        std::string s = ss.str();
+        if(runtag(db, s, types) != 0) {
+            fprintf(stderr, "insert_records_with_bind_params: err for j=%d\n", j);
+            exit(1);
+        }
+        cdb2_clearbindings(db);
+    }
+}
+
+// insert records with bind params
+void insert_records_with_bind_index(cdb2_hndl_tp *db, std::string table) 
+{
+    std::ostringstream ss;
+    std::vector<int> types;
+
+    short palltypes_short;
+    int palltypes_int;
+    unsigned short palltypes_u_short;
+    float palltypes_float;
+    double palltypes_double;
+    unsigned char palltypes_byte[17] = "1234567890123456";
+    unsigned char palltypes_cstring[16] = "123456789012345";
+    unsigned char palltypes_pstring[16] = "123456789012345";
+    unsigned char blob[1025];
+    unsigned char *palltypes_blob = blob;
+    time_t t = 1386783296; //2013-12-11T123456
+    cdb2_client_datetime_t datetime = {0};
+    gmtime_r(&t, (struct tm *)&datetime.tm); //corrupts memory past the tm member
+    datetime.msec = 123; // should not be larger than 999
+    datetime.tzname[0] = '\0';
+
+    cdb2_client_datetimeus_t datetimeus = {0};
+    gmtime_r(&t, (struct tm *)&datetimeus.tm);
+    datetimeus.usec = 123456; // should not be larger than 999999
+    datetimeus.tzname[0] = '\0'; // gmtime_r corrupts past member tm
+    cdb2_client_intv_ym_t ym = {1, 5, 2};
+
+    cdb2_client_intv_ds_t ci = {1, 12, 23, 34, 45, 456 };
+    
+    cdb2_client_intv_dsus_t cidsus = {1, 12, 23, 34, 45, 456789 };
+
+    int idx = 1;
+    if(cdb2_bind_index(db, idx++, CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
+        fprintf(stderr, "Error binding palltypes_short.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_INTEGER, &palltypes_u_short, sizeof(palltypes_u_short)) )
+        fprintf(stderr, "Error binding palltypes_short.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_INTEGER, &palltypes_int, sizeof(palltypes_int)) )
+        fprintf(stderr, "Error binding palltypes_short.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_REAL, &palltypes_float, sizeof(palltypes_float)) )
+        fprintf(stderr, "Error binding palltypes_float.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_REAL, &palltypes_double, sizeof(palltypes_double)) )
+        fprintf(stderr, "Error binding palltypes_double.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
+        fprintf(stderr, "Error binding palltypes_byte.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_BLOB, palltypes_blob, sizeof(blob) - 1))
+        fprintf(stderr, "Error binding palltypes_blob.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_CSTRING, palltypes_cstring, sizeof(palltypes_cstring) - 1))
+        fprintf(stderr, "Error binding palltypes_cstring.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_CSTRING, palltypes_pstring, sizeof(palltypes_pstring) - 1))
+        fprintf(stderr, "Error binding palltypes_cstring.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_DATETIME, &datetime, sizeof(datetime)))
+        fprintf(stderr, "Error binding palltypes_datetime.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
+        fprintf(stderr, "Error binding palltypes_datetimeus.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_INTERVALYM, &ym, sizeof(ym)))
+        fprintf(stderr, "Error binding p alltypes_intervalym.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_INTERVALDS, &ci, sizeof(ci)))
+        fprintf(stderr, "Error binding p alltypes_intervalds.\n");
+    if(cdb2_bind_index(db, idx++, CDB2_INTERVALDSUS, &cidsus, sizeof(cidsus)))
+        fprintf(stderr, "Error binding p alltypes_intervaldsus.\n");
+
+    ss << "insert into " << table 
+       << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_blob,  alltypes_cstring,   alltypes_pstring,    alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym,   alltypes_intervalds,   alltypes_intervaldsus) values "
+          "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)" ;
+    
+    //this works too?? runsql(db, s);
+    std::string s = ss.str();
+
+    for (int j = 3000; j < 4000; j++) {
+        palltypes_short = (1-2*(j%2))*j;
+        palltypes_int = (1-2*(j%2))*j;
+        palltypes_u_short = j;
+        palltypes_float = (1-2*(j%2)) * (100.0 + ((float) j)/1000.0);
+        palltypes_double = (1-2*(j%2)) * (100000.0 + ((double) j)/1000000.0);
+
+        if(runtag(db, s, types) != 0) {
+            fprintf(stderr, "insert_records_with_bind_index: err for j=%d\n", j);
+            exit(1);
+        }
+    }
+
+    cdb2_clearbindings(db);
+}
+
+
 int main(int argc, char *argv[])
 {
     cdb2_hndl_tp *db;
@@ -203,95 +382,10 @@ int main(int argc, char *argv[])
         runsql(db, s);
     }
 
-    // insert records with bind params
-    for (int j = 2000; j < 3000; j++) {
-        std::ostringstream ss;
-        time_t rawtime;
-        struct tm * timeinfo;
-        char buffer [80];
+    insert_records_with_bind_params(db, table);
 
-        time (&rawtime);
-        timeinfo = localtime (&rawtime);
-        std::vector<int> types;
+    insert_records_with_bind_index(db, table);
 
-        strftime (buffer,80,"'%FT%T'",timeinfo);
-
-        short palltypes_short = (1-2*(j%2))*j;
-        int palltypes_int = (1-2*(j%2))*j;
-        unsigned short palltypes_u_short = j;
-        float palltypes_float = (1-2*(j%2)) * (100.0 + ((float) j)/1000.0);
-        double palltypes_double = (1-2*(j%2)) * (100000.0 + ((double) j)/1000000.0);
-        unsigned char palltypes_byte[17] = "1234567890123456";
-        unsigned char palltypes_cstring[16] = "123456789012345";
-        unsigned char palltypes_pstring[16] = "123456789012345";
-        unsigned char palltypes_blob[1025];
-        {
-            for(unsigned int i = 0 ; i < sizeof(palltypes_blob) - 1; i++)
-                palltypes_blob[i] = 'a' + (i % 26);
-             palltypes_blob[sizeof(palltypes_blob)] = '\0';
-        }
-        time_t t = 1386783296; //2013-12-11T123456
-        cdb2_client_datetime_t datetime = {0};
-        gmtime_r(&t, (struct tm *)&datetime.tm); //corrupts memory past the tm member
-        datetime.msec = 123; // should not be larger than 999
-        datetime.tzname[0] = '\0';
-
-        cdb2_client_datetimeus_t datetimeus = {0};
-        gmtime_r(&t, (struct tm *)&datetimeus.tm);
-        datetimeus.usec = 123456; // should not be larger than 999999
-        datetimeus.tzname[0] = '\0'; // gmtime_r corrupts past member tm
-        cdb2_client_intv_ym_t ym = {1, 5, 2};
-
-        cdb2_client_intv_ds_t ci = {1, 12, 23, 34, 45, 456 };
-        
-        cdb2_client_intv_dsus_t cidsus = {1, 12, 23, 34, 45, 456789 };
-
-        if(cdb2_bind_param(db, "palltypes_short", CDB2_INTEGER, &palltypes_short, sizeof(palltypes_short)) )
-            fprintf(stderr, "Error binding palltypes_short.\n");
-        if(cdb2_bind_param(db, "palltypes_u_short", CDB2_INTEGER, &palltypes_u_short, sizeof(palltypes_u_short)) )
-            fprintf(stderr, "Error binding palltypes_short.\n");
-        if(cdb2_bind_param(db, "palltypes_int", CDB2_INTEGER, &palltypes_int, sizeof(palltypes_int)) )
-            fprintf(stderr, "Error binding palltypes_short.\n");
-        if(cdb2_bind_param(db, "palltypes_float", CDB2_REAL, &palltypes_float, sizeof(palltypes_float)) )
-            fprintf(stderr, "Error binding palltypes_float.\n");
-        if(cdb2_bind_param(db, "palltypes_double", CDB2_REAL, &palltypes_double, sizeof(palltypes_double)) )
-            fprintf(stderr, "Error binding palltypes_double.\n");
-        if(cdb2_bind_param(db, "palltypes_byte", CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
-            fprintf(stderr, "Error binding palltypes_byte.\n");
-        if(j == 2000) {
-          if(cdb2_bind_param(db, "palltypes_blob", CDB2_INTEGER, NULL, 0))
-            fprintf(stderr, "Error binding palltypes_blob.\n");
-        }
-        else if(cdb2_bind_param(db, "palltypes_blob", CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob) - 1))
-            fprintf(stderr, "Error binding palltypes_blob.\n");
-        if(cdb2_bind_param(db, "palltypes_cstring", CDB2_CSTRING, palltypes_cstring, sizeof(palltypes_cstring) - 1))
-            fprintf(stderr, "Error binding palltypes_cstring.\n");
-        if(cdb2_bind_param(db, "palltypes_pstring", CDB2_CSTRING, palltypes_pstring, sizeof(palltypes_pstring) - 1))
-            fprintf(stderr, "Error binding palltypes_cstring.\n");
-        if(cdb2_bind_param(db, "palltypes_datetime", CDB2_DATETIME, &datetime, sizeof(datetime)))
-            fprintf(stderr, "Error binding palltypes_datetime.\n");
-        if(cdb2_bind_param(db, "palltypes_datetimeus", CDB2_DATETIMEUS, &datetimeus, sizeof(datetimeus)))
-            fprintf(stderr, "Error binding palltypes_datetimeus.\n");
-        if(cdb2_bind_param(db, "palltypes_intervalym", CDB2_INTERVALYM, &ym, sizeof(ym)))
-            fprintf(stderr, "Error binding p alltypes_intervalym.\n");
-        if(cdb2_bind_param(db, "palltypes_intervalds", CDB2_INTERVALDS, &ci, sizeof(ci)))
-            fprintf(stderr, "Error binding p alltypes_intervalds.\n");
-        if(cdb2_bind_param(db, "palltypes_intervaldsus", CDB2_INTERVALDSUS, &cidsus, sizeof(cidsus)))
-            fprintf(stderr, "Error binding p alltypes_intervaldsus.\n");
-
-        ss << "insert into " << table 
-           << "(  alltypes_short,   alltypes_u_short,   alltypes_int,   alltypes_float,   alltypes_double,   alltypes_byte,   alltypes_cstring,   alltypes_pstring,   alltypes_blob,   alltypes_datetime,   alltypes_datetimeus,   alltypes_intervalym,   alltypes_intervalds,   alltypes_intervaldsus) values "
-              "(@palltypes_short, @palltypes_u_short, @palltypes_int, @palltypes_float, @palltypes_double, @palltypes_byte, @palltypes_cstring, @palltypes_pstring, @palltypes_blob, @palltypes_datetime, @palltypes_datetimeus, @palltypes_intervalym, @palltypes_intervalds, @palltypes_intervaldsus)" ;
-        
-        //this works too?? runsql(db, s);
-        printf("float param: %f\n", palltypes_float);
-        printf("double param: %lf\n", palltypes_double);
-        std::string s = ss.str();
-        if(runtag(db, s, types) != 0) {
-            exit(1);
-        }
-        cdb2_clearbindings(db);
-    }
 
     cdb2_close(db);
     return 0;
