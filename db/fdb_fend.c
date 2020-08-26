@@ -1475,7 +1475,7 @@ static int __lock_wrlock_exclusive(char *dbname, int adduser)
 
         //Pthread_rwlock_wrlock(&fdb->h_rwlock);
 
-        Pthread_mutex_lock(&fdb->users_mtx);
+        Pthread_mutex_lock(&fdb->users_mtx); /* needed before we check for users */
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
             //Pthread_rwlock_unlock(&fdb->h_rwlock);
