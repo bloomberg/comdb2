@@ -1,4 +1,5 @@
 add_library(net
+  akbufferevent.c
   akq.c
   event.c
   info.c
