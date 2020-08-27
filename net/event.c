@@ -36,6 +36,7 @@
 #include <event2/thread.h>
 #include <event2/util.h>
 
+#include <akbufferevent.h>
 #include <akq.h>
 #include <bb_oscompat.h>
 #include <comdb2_atomic.h>
@@ -191,10 +192,11 @@ struct connect_info;
 struct event_info;
 struct net_info;
 
-static void init_base(pthread_t *, struct event_base **, void *(*)(void *), const char *);
+static void do_open(int, short, void *);
+static void errorcb(int, short, void *);
 static void event_info_free(struct event_info *);
 static void flushcb(int, short, void *);
-static void do_open(int, short, void *);
+static void init_base(pthread_t *, struct event_base **, void *(*)(void *), const char *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
 static struct akq *setup_akq(char *);
@@ -346,15 +348,12 @@ struct event_info {
     int decomissioned;
     int got_hello;
 
+    struct akbufferevent *flush_buf;
+
     /* Write ops guarded by wr_lk */
     pthread_mutex_t wr_lk;
     struct evbuffer *wr_buf;
     int wr_full;
-
-    /* Flush ops guarded by flush_lk */
-    pthread_mutex_t flush_lk;
-    struct evbuffer *flush_buf;
-    struct event *flush_pending;
 
     /* Read ops happen on read base */
     struct evbuffer *rd_evbuf;
@@ -636,7 +635,7 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     e->host_info = h;
     e->net_info = n;
     Pthread_mutex_init(&e->wr_lk, NULL);
-    Pthread_mutex_init(&e->flush_lk, NULL);
+    e->flush_buf = akbufferevent_new(wr_base, errorcb, flushcb, e);
     setup_wire_hdrs(e);
     struct event_hash_entry *entry = malloc(sizeof(struct event_hash_entry));
     make_event_hash_key(entry->key, n->service, h->host);
@@ -937,27 +936,19 @@ static void disable_write(int dummyfd, short what, void *data)
     check_wr_thd();
     free(i);
     Pthread_mutex_lock(&e->wr_lk);
-    Pthread_mutex_lock(&e->flush_lk);
+    akbufferevent_disable(e->flush_buf);
     if (e->wr_buf) {
         evbuffer_free(e->wr_buf);
         e->wr_buf = NULL;
     }
     e->got_hello = 0;
 
-    if (e->flush_buf) {
-        evbuffer_free(e->flush_buf);
-        e->flush_buf = NULL;
-    }
-    if (e->flush_pending) {
-        event_del(e->flush_pending);
-        e->flush_pending = NULL;
-    }
+
     if (e->fd != -1) {
         hprintf("CLOSING CONNECTION fd:%d\n", e->fd);
         shutdown_close(e->fd);
         e->fd = -1;
     }
-    Pthread_mutex_unlock(&e->flush_lk);
     Pthread_mutex_unlock(&e->wr_lk);
     event_once(base, func, e);
 }
@@ -1066,6 +1057,28 @@ static void reconnect(struct event_info *e)
         return;
     }
     do_close(e, do_reconnect);
+}
+
+static void errorcb(int what, short fd, void *arg)
+{
+    reconnect(arg);
+}
+
+static void flushcb(int total_flushed, short fd, void *arg)
+{
+    struct event_info *e = arg;
+    if (total_flushed > 0) {
+        e->sent_at = time(NULL);
+    }
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    uint64_t max_bytes = netinfo_ptr->max_bytes;
+    if (e->wr_full && max_bytes) {
+        size_t outstanding = akbufferevent_get_length(e->flush_buf);
+        if (outstanding <= max_bytes * resume_lvl) {
+            e->wr_full = 0;
+            hprintf("RESUMING WR bytes:%zu (max:%" PRIu64 ")\n", outstanding, max_bytes);
+        }
+    }
 }
 
 static void send_decom_all(int dummyfd, short what, void *data)
@@ -1702,20 +1715,14 @@ static void enable_write(int dummyfd, short what, void *data)
     struct event_info *e = info->event_info;
     check_base_thd();
     Pthread_mutex_lock(&e->wr_lk);
-    Pthread_mutex_lock(&e->flush_lk);
-    if (e->flush_buf || e->flush_pending) {
-        /* should be cleaned up prior i think */
-        abort();
-    }
-    e->flush_buf = evbuffer_new();
-    e->fd = info->fd;
+    update_event_fd(e, info->fd);
+    akbufferevent_enable(e->flush_buf, e->fd);
     if (e->wr_buf) {
         /* should be cleaned up prior i think */
         abort();
     }
     e->wr_buf = evbuffer_new();
     e->wr_full = 0;
-    Pthread_mutex_unlock(&e->flush_lk);
     Pthread_mutex_unlock(&e->wr_lk);
     event_once(rd_base, enable_read, info);
 }
@@ -2538,75 +2545,9 @@ static void check_wr_full(struct event_info *e)
     }
 }
 
-static void flush_evbuffer_int(struct event_info *e)
-{
-    int rc;
-    int want = 0;
-    int total = 0;
-    do {
-        rc = evbuffer_write(e->flush_buf, e->fd);
-        if (rc > 0) total += rc;
-        want = evbuffer_get_length(e->flush_buf);
-    } while (want && rc > 0);
-    if (rc <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-        hprintf("writev failed %d:%s\n", errno, strerror(errno));
-        evbuffer_free(e->flush_buf);
-        e->flush_buf = NULL;
-        if (e->flush_pending) {
-            event_del(e->flush_pending);
-            e->flush_pending = NULL;
-        }
-        reconnect(e);
-        return;
-    }
-    if (total > 0) {
-        e->sent_at = time(NULL);
-    }
-    if (want) {
-       if (!e->flush_pending) {
-            e->flush_pending = event_new(wr_base, e->fd, EV_WRITE|EV_PERSIST, flushcb, e);
-            event_add(e->flush_pending, NULL);
-       }
-    } else if (e->flush_pending) {
-        event_del(e->flush_pending);
-        e->flush_pending = NULL;
-    }
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    uint64_t max_bytes = netinfo_ptr->max_bytes;
-    if (e->wr_full && max_bytes) {
-        if (want <= max_bytes * resume_lvl) {
-            e->wr_full = 0;
-            hprintf("RESUMING WR bytes:%d (max:%" PRIu64 ")\n", want,
-                    max_bytes);
-        }
-    }
-}
-
 static void flush_evbuffer(struct event_info *e)
 {
-    Pthread_mutex_lock(&e->flush_lk);
-    if (e->fd != -1 && e->flush_buf) {
-        evbuffer_add_buffer(e->flush_buf, e->wr_buf);
-        if (!e->flush_pending) {
-            e->flush_pending = event_new(wr_base, e->fd, EV_WRITE | EV_PERSIST, flushcb, e);
-            event_add(e->flush_pending, NULL);
-        }
-    }
-    Pthread_mutex_unlock(&e->flush_lk);
-}
-
-static void flushcb(int fd, short what, void *data)
-{
-    struct event_info *e = data;
-    Pthread_mutex_lock(&e->flush_lk);
-    if (!e->flush_buf) {
-        abort();
-    }
-    if (fd != e->fd) {
-        abort();
-    }
-    flush_evbuffer_int(e);
-    Pthread_mutex_unlock(&e->flush_lk);
+    akbufferevent_add_buffer(e->flush_buf, e->wr_buf);
 }
 
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
