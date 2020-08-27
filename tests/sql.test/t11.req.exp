@@ -1,0 +1,12 @@
+(rows inserted=1)
+(rows inserted=1)
+[insert into ulltest(a) values(9223372036854775808)] failed with rc 113 incompatible values for table 'ulltest'
+[insert into ulltest(a) values('9223372036854775808')] failed with rc 113 incompatible values for table 'ulltest'
+(rows inserted=1)
+(rows inserted=1)
+(a=0)
+(a=1)
+(a=9223372036854775807)
+(a=9223372036854775807)
+(rows inserted=1)
+[select a from ulltest order by a] failed with rc -5 unknown error
