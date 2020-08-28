@@ -471,6 +471,17 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
     int rc = 0;
     fdb_t *fdb;
 
+    Pthread_rwlock_rdlock(&fdbs.arr_lock);
+    fdb = __cache_fnd_fdb(dbname, NULL);
+    if (fdb) {
+        assert(class == fdb->class);
+        __fdb_add_user(fdb, 0);
+
+        *created = 0;
+        goto done;
+    }
+    Pthread_rwlock_unlock(&fdbs.arr_lock);
+
     Pthread_rwlock_wrlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbname, NULL);
     if (fdb) {
