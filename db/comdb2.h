@@ -3499,6 +3499,7 @@ extern int gbl_no_env;
 int gbl_hostname_refresh_time;
 
 extern int gbl_noenv_messages;
+extern int gbl_fdb_use_rqid;
 
 extern int gbl_bbenv;
 

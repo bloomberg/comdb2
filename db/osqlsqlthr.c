@@ -683,6 +683,10 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
             assert(osql->rqid);
         }
     }
+    if (gbl_fdb_use_rqid)
+        osql->rmtqid = comdb2fastseed();
+    else
+        osql->rmtqid = OSQL_RQID_USE_UUID;
 
     osql->is_reorder_on = gbl_reorder_socksql_no_deadlock;
 

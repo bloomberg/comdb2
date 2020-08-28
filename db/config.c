@@ -333,6 +333,7 @@ static char *legacy_options[] = {
     "enable_sql_stmt_caching none",
     "enable_tagged_api",
     "env_messages",
+    "fdb_use_rqid on",
     "init_with_time_based_genids",
     "legacy_schema on",
     "logmsg level info",

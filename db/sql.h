@@ -141,6 +141,7 @@ typedef struct osqlstate {
     /* == sql_thread == */
     char *host;              /* matching remote node */
     unsigned long long rqid; /* per node offload request session */
+    unsigned long long rmtqid; /* per node offload request session */
     uuid_t uuid;             /* session id, take 2 */
     char *tablename;         /* malloc-ed cache of send tablename for usedb */
     int tablenamelen;        /* tablename length */

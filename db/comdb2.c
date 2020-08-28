@@ -660,6 +660,7 @@ char *gbl_recovery_options = NULL;
 bool gbl_rcache = true;
 
 int gbl_noenv_messages = 1;
+int gbl_fdb_use_rqid = 0;
 
 int gbl_check_sql_source = 0;
 int skip_clear_queue_extents = 0;

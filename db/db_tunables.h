@@ -1838,4 +1838,10 @@ REGISTER_TUNABLE("json_escape_control_characters",
                  TUNABLE_BOOLEAN, &gbl_json_escape_control_chars, 0, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("fdb_use_rqid", "Use rqid-based messages for foreign db access"
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_fdb_use_rqid, INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */
