@@ -462,6 +462,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_SCHEMA_REMOTE      50 /* distributed schema has inconsistent 
                                       * local cache */
 #define SQLITE_SCHEMA_DOHSQL      51 /* see dohsql */
+#define SQLITE_EARLYSTOP_DOHSQL   52 /* see dohsql */
 #define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
 #define SQLITE_ACCESS            201 /* failed permissions */
 #define SQLITE_LIMIT             202 /* query hit configured max cost */

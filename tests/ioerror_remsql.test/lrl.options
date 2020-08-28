@@ -1,0 +1,7 @@
+table t t.csc2
+dtastripe 4
+blobstripe
+round_robin_stripes
+ssl_allow_remsql 1
+test_fdb_io on
+fdbdebg 1
