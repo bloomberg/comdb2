@@ -994,6 +994,7 @@ run:
     fdbc->sql_hint = sql;
 
     rc = fdbc_if->move(cur, CFIRST);
+    fdbc_if = cur->fdbc; /* retry might get another cursor */
     if (rc != IX_FND && rc != IX_FNDMORE) {
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
