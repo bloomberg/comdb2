@@ -4266,6 +4266,10 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 #endif
 
 postprocessing:
+    /* if we get this message, it means we had to stop the sqlite early
+       and we must reset the state */
+    if (rc == SQLITE_EARLYSTOP_DOHSQL)
+        sqlite3_reset(stmt);
     /* closing: error codes, postponed write result and so on*/
     rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
 
@@ -6783,6 +6787,9 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     }
 
 done:
+    /* for distributed queries, it is possible that this
+       particular shard to succeed, but still have an error
+       in another shard; check that */
     if (rc == 0 && unlikely(clnt->conns)) {
         return dohsql_error(clnt, errstr);
     }
