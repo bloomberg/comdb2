@@ -260,7 +260,7 @@ fi
 
 
 count=$(jq -rc 'if (.type == "sql") or (.type == "txn") then . else empty end' < $logflunziped | wc -l)
-CSHOULDBE=8252 # number of lines that should be in the log when single node
+CSHOULDBE=10252 # number of lines that should be in the log when single node
 if [[ $count -ne $CSHOULDBE ]] ; then
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
 fi
