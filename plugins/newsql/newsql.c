@@ -855,7 +855,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING,
                                    1);
     }
-    return newsql_response(clnt, &r, 0);
+    return newsql_response(clnt, &r, !clnt->rowbuffer);
 }
 
 static int newsql_row_last(struct sqlclntstate *clnt)
@@ -1225,23 +1225,21 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     param->name = val->varname;
     param->pos = val->has_index ? val->index : 0;
     param->type = newsql_to_client_type(val->type);
-
+    int len = val->value.len;
     void *p = val->value.data;
 
-    if (val->has_isnull && val->isnull) {
+    /* The bound parameter is from an old client which does not send isnull,
+       and its length is 0. Treat it as a NULL to keep backward-compatible. */
+    if (len == 0 && !val->has_isnull) {
         param->null = 1;
         return 0;
     }
 
-    if (val->value.data == NULL) {
-        if (param->type != CLIENT_BLOB) {
-            param->null = 1;
-            return 0;
-        }
-        p = (void *)"";
+    if (val->isnull) {
+        param->null = 1;
+        return 0;
     }
 
-    int len = val->value.len;
     int little = appdata->sqlquery->little_endian;
 
     return get_type(param, p, len, param->type, clnt->tzname, little);
@@ -1896,6 +1894,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 }
             } else if (strncasecmp(sqlstr, "querylimit", 10) == 0) {
                 rc = handle_set_querylimits(sqlstr, clnt);
+            } else if (strncasecmp(sqlstr, "rowbuffer", 9) == 0) {
+                sqlstr += 9;
+                sqlstr = skipws(sqlstr);
+                clnt->rowbuffer = (strncasecmp(sqlstr, "on", 2) == 0);
             } else {
                 rc = ii + 1;
             }
@@ -2528,6 +2530,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (APPDATA->query) {
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
+            /*
+             * clnt.sql points into the protobuf unpacked buffer, which becomes
+             * invalid after cdb2__query__free_unpacked. Reset the pointer here.
+             */
+            clnt.sql = NULL;
         }
 
         query = read_newsql_query(dbenv, &clnt, sb);

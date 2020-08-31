@@ -91,6 +91,7 @@ public class Comdb2Handle extends AbstractConnection {
     private String driverErrStr = null;
 
     HashMap<String, Cdb2BindValue> bindVars;
+    HashMap<Integer, Cdb2BindValue> bindVarsByIndex;
     private List<String> sets;
 
     private boolean ack = false;
@@ -239,6 +240,7 @@ public class Comdb2Handle extends AbstractConnection {
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
+        bindVarsByIndex = new HashMap<Integer, Cdb2BindValue>();
         queryList = new ArrayList<QueryItem>();
     }
 
@@ -657,6 +659,7 @@ public class Comdb2Handle extends AbstractConnection {
         sqlQuery.sqlQuery = sql;
 
         sqlQuery.bindVars.addAll(bindVars.values());
+        sqlQuery.bindVars.addAll(bindVarsByIndex.values());
         if (debug)
             tdlog(Level.FINEST, "starting sendQuery");
         sqlQuery.setFlags.addAll(sets.subList(nSetsSent, sets.size()));
@@ -2193,6 +2196,21 @@ readloop:
     @Override
     public void clearParameters() {
         bindVars.clear();
+        bindVarsByIndex.clear();
+    }
+
+    @Override
+    public void bindParameter(int index, int type, byte[] data) {
+        /* index is 1-based. */
+        if (index <= 0)
+            return;
+
+        Cdb2BindValue newVal = new Cdb2BindValue();
+        newVal.index = index;
+        newVal.type = type;
+        newVal.value = data;
+
+        bindVarsByIndex.put(index, newVal);
     }
 
     @Override
@@ -2210,8 +2228,13 @@ readloop:
     }
 
     @Override
-    public void bindParameters(Map<String, Cdb2Query.Cdb2BindValue> aBindVars) {
+    public void bindNamedParameters(Map<String, Cdb2Query.Cdb2BindValue> aBindVars) {
         bindVars.putAll(aBindVars);
+    }
+
+    @Override
+    public void bindIndexedParameters(Map<Integer, Cdb2Query.Cdb2BindValue> aBindVars) {
+        bindVarsByIndex.putAll(aBindVars);
     }
 
     @Override

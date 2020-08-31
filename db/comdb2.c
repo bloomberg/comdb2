@@ -3685,8 +3685,7 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_INFO, "Using override cache size of %dkb\n",
                thedb->override_cacheszkb);
     } else {
-        if (cacheszkb != 0) /*command line overrides.*/
-        {
+        if (cacheszkb != 0) { /*command line overrides.*/
             logmsg(LOGMSG_INFO, "command line cache size specified %dkb\n", cacheszkb);
             thedb->cacheszkb = cacheszkb;
         } else if (thedb->cacheszkb <= 0) {
@@ -3708,14 +3707,6 @@ static int init(int argc, char **argv)
                 thedb->cacheszkbmin);
         thedb->cacheszkb = thedb->cacheszkbmin;
     }
-
-    /* 040407dh: crash 32bits or run on 64bits
-    else if (thedb->cacheszkb > 1500000)
-    {
-        thedb->cacheszkb=2000000;
-        printf("too much cache, adjusted to %d kb\n",thedb->cacheszkb);
-    }
-    */
 
     if (thedb->dbnum == 0) {
         logmsg(LOGMSG_DEBUG, "No db number set (missing/invalid dbnum lrl entry?)\n");
@@ -4002,6 +3993,11 @@ static int init(int argc, char **argv)
     unlock_schema_lk();
 
     sqlinit();
+    rc = create_datacopy_arrays();
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "create_datacopy_arrays rc %d\n", rc);
+        return -1;
+    }
     rc = create_sqlmaster_records(NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "create_sqlmaster_records rc %d\n", rc);
@@ -6004,6 +6000,7 @@ retry_tran:
         sqlite3_close_serial(&thd->sqldb);
     }
 
+    create_datacopy_arrays();
     create_sqlmaster_records(tran);
     create_sqlite_master();
     oldfile_list_clear();

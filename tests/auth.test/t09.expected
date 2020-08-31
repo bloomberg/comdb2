@@ -341,6 +341,7 @@
 (candidate='unicode()')
 (candidate='unlikely()')
 (candidate='upper()')
+(candidate='usleep()')
 (candidate='zeroblob()')
 (username='user1')
 (username='user2')
