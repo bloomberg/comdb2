@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 #include <dirent.h>
+#include <bb_oscompat.h>
 
 #include <comdb2.h>
 #if defined(_IBM_SOURCE)
@@ -90,39 +91,67 @@ static inline void free_gbl_eventlog_fname()
     gbl_eventlog_fname = NULL;
 }
 
+static int strptrcmp(const void *p1, const void *p2) {
+      return strcmp(*(char *const *)p1, *(char *const *)p2);
+}
+
 static void eventlog_roll_cleanup()
 {
     if (eventlog_nkeep == 0)
         return;
 
-    char cmd[512] = {0};
-    const char postfix[] = ".events.";
-    char *fname = comdb2_location("eventlog", "%s%s", thedb->envname, postfix);
-
-    if (fname == NULL)
+    char eventflstok[256];
+    int ret = snprintf(eventflstok, sizeof(eventflstok), "%s.events.", thedb->envname);
+    if (ret >= sizeof(eventflstok)) {
+        logmsg(LOGMSG_ERROR, "eventlog_roll_cleanup: File name token truncated to %s\n", eventflstok);
         abort();
-
-    // fname should look like '/dir/<dbname>.events.' : see eventlog_fname()
-    int len = strlen(fname);
-
-    // SANITY CHECK; last part of fname should match postfix
-    if (len < sizeof(postfix) ||
-        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
-        abort();
-
-    // Delete all except the most recent files
-    // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
-    // IN THE CALL TO ls IN NEXT LINE
-    snprintf(
-        cmd, sizeof(cmd) - 1,
-        "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
-        fname, thedb->envname, eventlog_nkeep);
-    free(fname);
-
-    int rc = system(cmd);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
     }
+
+    char *dname = comdb2_location("eventlog", NULL);
+    if (dname == NULL)
+        abort();
+
+    int cnt = 100;
+    int num = 0;
+    char **arr = malloc((cnt * sizeof(char *)));
+
+    /* must be large enough to hold a dirent struct with the longest possible
+     * filename */
+    struct dirent *buf = alloca(4096);
+    struct dirent *de;
+    DIR *d = opendir(dname);
+    if (!d) {
+        logmsg(LOGMSG_ERROR, "%s: opendir %s failed\n", __func__, dname);
+        return;
+    }
+
+    while (bb_readdir(d, buf, &de) == 0 && de) {
+        if (strstr(de->d_name, eventflstok) == NULL) {
+            continue;
+        }
+
+        if (num >= cnt) {
+            cnt *= 2;
+            arr = realloc(arr, cnt * sizeof(char*));
+        }
+
+        arr[num++] = strdup(de->d_name);
+    }
+    qsort(arr, num, sizeof(char *), strptrcmp); // files sorted by time
+    
+    int dfd = dirfd(d);
+    for(int i = 0; i < num; i++) {
+        if (i < num - eventlog_nkeep) {
+            int rc = unlinkat(dfd, arr[i], 0);
+            if (rc) 
+                logmsg(LOGMSG_ERROR,
+                       "eventlog_roll_cleanup: Error while deleting eventlog file %s, rc=%d\n",
+                       arr[i], rc);
+        }
+        free(arr[i]);
+    }
+    free(arr);
+    closedir(d);
 }
 
 static gzFile eventlog_open(char *fname)
