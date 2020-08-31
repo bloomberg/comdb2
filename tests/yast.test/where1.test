@@ -475,7 +475,7 @@ ifcapable subquery {
     count {
       SELECT * FROM t1 WHERE x=6 AND y IN (6400,8100) ORDER BY 1;
     }
-  } {79 6 6400 89 6 8100 6}
+  } {79 6 6400 89 6 8100 8}
   do_test where-5.13 {
     count {
       SELECT * FROM t1 WHERE x IN (1,7) AND y NOT IN (6400,8100) ORDER BY 1;
@@ -485,12 +485,12 @@ ifcapable subquery {
     count {
       SELECT * FROM t1 WHERE x IN (1,7) AND y IN (9,10) ORDER BY 1;
     }
-  } {2 1 9 7}
+  } {2 1 9 8}
   do_test where-5.15 {
     count {
       SELECT * FROM t1 WHERE x IN (1,7) AND y IN (9,16) ORDER BY 1;
     }
-  } {2 1 9 3 1 16 8}
+  } {2 1 9 3 1 16 10}
   do_test where-5.100 {
     db eval {
       SELECT w, x, y FROM t1 WHERE x IN (1,5) AND y IN (9,8,3025,1000,3969)
