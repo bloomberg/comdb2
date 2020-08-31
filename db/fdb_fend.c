@@ -213,7 +213,7 @@ static int insert_table_entry_from_packedsqlite(fdb_t *fdb, fdb_tbl_t *tbl,
                                                 fdb_tbl_ent_t **found_ent,
                                                 int versioned);
 static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                           fdb_tbl_ent_t **found_ent);
+                           fdb_tbl_ent_t **found_ent, int is_sqlite_master);
 
 static int fdb_num_entries(fdb_t *fdb);
 
@@ -831,7 +831,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
      */
     is_sqlite_master = (strcasecmp(table_name, "sqlite_master") == 0);
     found_ent = NULL;
-    rc = check_table_fdb(fdb, tbl, initial, &found_ent);
+    rc = check_table_fdb(fdb, tbl, initial, &found_ent, is_sqlite_master);
 
     if (rc != FDB_NOERR || (!found_ent && !is_sqlite_master)) {
         *version = 0;
@@ -917,7 +917,7 @@ static int fdb_num_entries(fdb_t *fdb)
  * NOTE:
  */
 static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                           fdb_tbl_ent_t **found_ent)
+                           fdb_tbl_ent_t **found_ent, int is_sqlite_master)
 {
     BtCursor *cur;
     int rc = FDB_NOERR;
@@ -1045,8 +1045,9 @@ run:
             break;
         }
 
-        logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n",
-                __func__, fdb->dbname, tbl->name, rc);
+        if (!is_sqlite_master)
+            logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n",
+                   __func__, fdb->dbname, tbl->name, rc);
 
         if (*found_ent)
             *found_ent = NULL;
@@ -1241,7 +1242,8 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
-    logmsg(LOGMSG_WARN, "Error \"%s\" for db \"%s\"\n", prefix, dbname);
+    logmsg(LOGMSG_WARN, "Error rc %d \"%s\" for db \"%s\"\n", errcode, prefix,
+           dbname);
 
     if (clnt->fdb_state.xerr.errval && clnt->fdb_state.preserve_err) {
         logmsg(LOGMSG_ERROR, "Ignored error rc=%d str=\"%s\", got new rc=%d new prefix=\"%s\"\n",
@@ -1956,8 +1958,16 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
         will need to position on the current table; given the order
         chosen {table, stat1, stat4, done}, if table is stat4, we
         end up skipping stat1.  To fix this, we replace stat4 with
-        stat1 since we will get stat4 after this */
+        stat1 since we will get stat4 after this.
+        */
         if (strncasecmp(zTblName, "sqlite_stat4", 12) == 0)
+            zTblName = "sqlite_stat1";
+        /* In addition, if the first remote table from this fdb
+        is sqlite_master, we only get stats tables, and the follow-up
+        hash_find_readonly returns no entry, since we don't have an
+        entry for sqlite_master;  fix this by pointing to sqlite_stat1
+        as well */
+        if (strncasecmp(zTblName, "sqlite_master", 13) == 0)
             zTblName = "sqlite_stat1";
     }
 
@@ -3009,7 +3019,6 @@ retry:
                     flags = FDB_RUN_SQL_SCHEMA;
                 }
             } else {
-                assert(!fdbc->is_schema);
                 sql = _build_run_sql_from_hint(
                     pCur, NULL, 0, (how == CLAST) ? OP_Prev : OP_Next, &sqllen,
                     &error);
@@ -5006,10 +5015,18 @@ done:
 static int _validate_existing_table(fdb_t *fdb, int cls, int local)
 {
     if (fdb->local != local) {
+        logmsg(LOGMSG_ERROR,
+               "Failed local match fdb %s class %d local %d, asked for class "
+               "%d local %d\n",
+               fdb->dbname, fdb->class, fdb->local, cls, local);
         /* follow-up instances don't specify LOCAL mode */
         return FDB_ERR_CLASS_DENIED;
     }
     if (fdb->class != cls) {
+        logmsg(
+            LOGMSG_ERROR,
+            "Failed class match fdb %s class %d, asked for class %d local %d\n",
+            fdb->dbname, fdb->class, cls, local);
         /* follow-up instances don't specify same class */
         return FDB_ERR_CLASS_DENIED;
     }
