@@ -1940,7 +1940,8 @@ void bdb_berkdb_dump_attrs(bdb_state_type *bdb_state, FILE *out);
 
 int bdb_berkdb_blobmem_yield(bdb_state_type *bdb_state);
 
-void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int fatal);
+void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
+                                      int fatal);
 
 int calc_pagesize(int recsize);
 
