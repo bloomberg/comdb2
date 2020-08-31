@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 #include <dirent.h>
+#include <bb_oscompat.h>
 
 #include <comdb2.h>
 #if defined(_IBM_SOURCE)
@@ -115,10 +116,18 @@ static void eventlog_roll_cleanup()
     int cnt = 100;
     int num = 0;
     char **arr = malloc((cnt * sizeof(char *)));
- 
-    DIR *d = opendir(dname);
+
+    /* must be large enough to hold a dirent struct with the longest possible
+     * filename */
+    struct dirent *buf = alloca(4096);
     struct dirent *de;
-    while ( (de = readdir(d)) ) {
+    DIR *d = opendir(dname);
+    if (!d) {
+        logmsg(LOGMSG_ERROR, "%s: opendir %s failed\n", __func__, dname);
+        return;
+    }
+
+    while (bb_readdir(d, buf, &de) == 0 && de) {
         if (strstr(de->d_name, eventflstok) == NULL) {
             continue;
         }
@@ -137,7 +146,9 @@ static void eventlog_roll_cleanup()
         if (i < num - eventlog_nkeep) {
             int rc = unlinkat(dfd, arr[i], 0);
             if (rc) 
-                logmsg(LOGMSG_ERROR, "eventlog_roll_cleanup: Error while deleting eventlog file %s, rc=%d\n", arr[i], rc);
+                logmsg(LOGMSG_ERROR,
+                       "eventlog_roll_cleanup: Error while deleting eventlog file %s, rc=%d\n",
+                       arr[i], rc);
         }
         free(arr[i]);
     }
