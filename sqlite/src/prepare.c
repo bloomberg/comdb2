@@ -385,11 +385,9 @@ int sqlite3InitOne(sqlite3 *db, int iDb, char **pzErrMsg, u32 mFlags){
     sqlite3DbFree(db, zSql);
 #ifndef SQLITE_OMIT_ANALYZE
     if( rc==SQLITE_OK ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-      rc = sqlite3AnalysisLoad(db, iDb);
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if !defined(SQLITE_BUILDING_FOR_COMDB2)
       sqlite3AnalysisLoad(db, iDb);
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 #endif
   }

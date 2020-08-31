@@ -4815,7 +4815,6 @@ check_version:
         if (!thd->sqldb) {
             /* cache analyze gen first because gbl_analyze_gen is NOT protected
              * by schema_lk */
-            thd->analyze_gen = gbl_analyze_gen;
             int rc = sqlite3_open_serial("db", &thd->sqldb, thd);
             if (rc != 0) {
                 logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n", __func__,
@@ -4825,6 +4824,17 @@ check_version:
                 abort();
             }
             thd->dbopen_gen = bdb_get_dbopen_gen();
+
+            unlock_schema_lk();
+            sqlite3_mutex_enter(sqlite3_db_mutex(thd->sqldb));
+            if (sqlite3AnalysisLoad(thd->sqldb, 0) == SQLITE_OK) {
+                thd->analyze_gen = gbl_analyze_gen;
+            } else {
+                logmsg(LOGMSG_ERROR, "%s sqlite3AnalysisLoad rc:%d\n",
+                       __func__, rc);
+            }
+            sqlite3_mutex_leave(sqlite3_db_mutex(thd->sqldb));
+            rdlock_schema_lk();
         }
 
         comdb2_reset_authstate(thd);
