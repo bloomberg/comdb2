@@ -70,6 +70,7 @@ public class Comdb2Handle extends AbstractConnection {
     int age = 180; /* default max age 180 seconds */
     boolean pmuxrte = false;
     boolean verifyretry = true;
+    boolean stmteffects = true;
     int soTimeout = 5000;
     boolean hasComdb2dbTimeout;
     int comdb2dbTimeout = 5000;
@@ -206,21 +207,22 @@ public class Comdb2Handle extends AbstractConnection {
         /* CDB2JDBC_STATEMENT_QUERYEFFECTS and CDB2JDBC_VERIFY_RETRY
            are used by the Jepsen tests to change the driver's behaviors. */
 
-        /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
+        /* default                                  -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
          */
         String queryeffectsEnv = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
-        if (queryeffectsEnv != null && !queryeffectsEnv.equals("0"))
-            sets.add("set queryeffects statement");
+        setStatementQueryEffects((queryeffectsEnv == null || !queryeffectsEnv.equals("0")));
 
         /*
+         * default                        -> enable
          * export CDB2JDBC_VERIFY_RETRY   -> enable
          * export CDB2JDBC_VERIFY_RETRY=1 -> enable
          * export CDB2JDBC_VERIFY_RETRY=0 -> disable
          */
         String verifyRetryEnv = System.getenv("CDB2JDBC_VERIFY_RETRY");
-        verifyretry = (verifyRetryEnv != null && !verifyRetryEnv.equals("0"));
+        setVerifyRetry((verifyRetryEnv == null || !verifyRetryEnv.equals("0")));
 
         String userEnv = System.getenv("COMDB2_USER");
         if (userEnv != null) {
@@ -231,11 +233,6 @@ public class Comdb2Handle extends AbstractConnection {
         if (passwordEnv != null) {
             sets.add("set password " + passwordEnv);
         }
-
-        if (verifyretry)
-            sets.add("set verifyretry on");
-        else
-            sets.add("set verifyretry off");
 
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
@@ -369,6 +366,21 @@ public class Comdb2Handle extends AbstractConnection {
     public void setTcpBufSize(int sz) {
         tcpbufsz = sz;
         hasUserTcpSz = true;
+    }
+
+    public void setStatementQueryEffects(boolean val) {
+        if (val == stmteffects)
+            return;
+
+        if (val) {
+            sets.remove("set queryeffects transaction");
+            sets.add("set queryeffects statement");
+        } else {
+            sets.remove("set queryeffects statement");
+            sets.add("set queryeffects transaction");
+        }
+
+        stmteffects = val;
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{

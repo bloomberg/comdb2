@@ -24,6 +24,25 @@ public class StatementQueryEffectsTest {
         conn.close();
     }
 
+    /* by default,
+       executeUpdate() returns the query effects made by the statement. */
+    @Test public void defaultQueryEffects() throws SQLException {
+        conn = DriverManager.getConnection(String.format(
+                    "jdbc:comdb2://%s/%s", cluster, db));
+        conn.setAutoCommit(false);
+        Statement stmt = conn.createStatement();
+
+        int nupd;
+        nupd = stmt.executeUpdate("UPDATE t_stmteffects SET i = 2 WHERE i = 1");
+        Assert.assertEquals("Updated 1 record.", 1, nupd);
+        nupd = stmt.executeUpdate("UPDATE t_stmteffects SET i = 4 WHERE i = 3");
+        Assert.assertEquals("Updated 0 record.", 0, nupd);
+
+        conn.rollback();
+        stmt.close();
+        conn.close();
+    }
+
     /* Under statement query effects,
        executeUpdate() returns the query effects made by the statement. */
     @Test public void statementQueryEffects() throws SQLException {
