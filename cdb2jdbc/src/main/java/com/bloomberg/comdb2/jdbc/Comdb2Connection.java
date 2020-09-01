@@ -263,6 +263,7 @@ public class Comdb2Connection implements Connection {
 
     public void setStatementQueryEffects(boolean stmtEffects) {
         statement_effects = stmtEffects;
+        hndl.setStatementQueryEffects(stmtEffects);
     }
 
     public void setVerifyRetry(boolean vrfyRetry) {
