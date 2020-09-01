@@ -226,6 +226,48 @@ delete_records()
     echo "done updating round $nout"
 }
 
+insert_rollback_tran()
+{
+    echo "Entering insert_records()"
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    insfl=insert${nout}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    echo "begin" > in.sql
+    while [[ $j -le $nstop ]]; do 
+        echo "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  >> in.sql
+        let j=j+1
+    done
+    echo "rollback" >> in.sql
+    cdb2sql --host $node $dbnm -f in.sql &>> $insfl
+    assertres $? 0
+    echo "done inserting round $nout"
+}
+
+insert_commit_tran()
+{
+    echo "Entering insert_records()"
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    insfl=insert${nout}.out
+    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $insfl
+
+    echo "begin" > in.sql
+    while [[ $j -le $nstop ]]; do 
+        echo "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  >> in.sql
+        let j=j+1
+    done
+    echo "commit" >> in.sql
+    cdb2sql --host $node $dbnm -f in.sql &>> $insfl
+    assertres $? 0
+    echo "done inserting round $nout"
+}
+
 # Make sure we talk to the same host
 node=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "SELECT comdb2_host()"`
 export CDB2_HOST="$node"
@@ -259,6 +301,13 @@ assertcnt $NEWNUMREC
 
 update_records_with_bind_index $((NEWSTRT+10)) $((NEWSTRT+19))
 assertcnt $NEWNUMREC
+
+insert_rollback_tran $((NEWNUMREC+1)) $((NEWNUMREC+10))
+assertcnt t1 $NEWNUMREC
+
+insert_commit_tran $((NEWNUMREC+1)) $((NEWNUMREC+10))
+assertcnt t1 $((NEWNUMREC+10))
+
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"

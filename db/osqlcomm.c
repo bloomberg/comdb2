@@ -7887,8 +7887,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
     if (osql_nettype_is_uuid(usertype)) {
         osql_uuid_rpl_t uuid_hdr;
         /* unpack */
-        p_buf =
-            (uint8_t *)osqlcomm_uuid_rpl_type_get(&uuid_hdr, p_buf, p_buf_end);
+        p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(&uuid_hdr, p_buf, p_buf_end);
         comdb2uuidcpy(uuid, uuid_hdr.uuid);
         rqid = OSQL_RQID_USE_UUID;
         type = uuid_hdr.type;
@@ -7920,8 +7919,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
 
             osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL);
         } else {
-            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL,
-                                        p_effects);
+            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects);
         }
 
     } else {
