@@ -1635,6 +1635,24 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
     reqlog_set_rows(logger, rows);
 }
 
+static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
+{
+    query_stats_setup(thd, clnt);
+    reqlog_set_event(thd->logger, EV_SQL);
+    reqlog_new_sql_request(thd->logger, clnt->sql);
+    size_t len;
+    unsigned char fp[FINGERPRINTSZ];
+
+    char stmt[7];
+    int i = 0;
+    for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
+        stmt[i] = (char) tolower(*s);
+    }
+    calc_fingerprint(stmt, &len, fp);
+    reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
+    log_queue_time(thd->logger, clnt);
+}
+
 /* begin; send return code */
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                      enum trans_clntcomm sideeffects)
@@ -1644,8 +1662,7 @@ int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     if (sideeffects != TRANS_CLNTCOMM_CHUNK)
         clnt->ready_for_heartbeats = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->sql);
-    log_queue_time(thd->logger, clnt);
+    reqlog_setup_begin_commit_rollback(thd, clnt);
 
     /* this is a good "begin", just say "ok" */
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_STRT_STATE);
@@ -2156,8 +2173,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     int rc = 0;
     int outrc = 0;
 
-    reqlog_new_sql_request(thd->logger, clnt->sql);
-    log_queue_time(thd->logger, clnt);
+    reqlog_setup_begin_commit_rollback(thd, clnt);
 
     int64_t rows = clnt->log_effects.num_updated +
                    clnt->log_effects.num_deleted +
@@ -2207,7 +2223,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
        if this is a user rollback or an sqlite engine error */
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
-/* we are out of transaction, mark this here */
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
         logmsg(LOGMSG_USER, "%p (U) commits transaction %d %d intran=%d\n",
@@ -2215,6 +2230,7 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     }
 #endif
 
+    /* we are out of transaction, mark this here */
     clnt->intrans = 0;
     clnt->dbtran.shadow_tran = NULL;
 

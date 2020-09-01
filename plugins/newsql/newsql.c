@@ -2432,12 +2432,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
                 clnt.rawnodestats = NULL;
             }
-            if (clnt.conninfo.pid &&
-                clnt.conninfo.pid != sql_query->client_info->pid) {
+            if (clnt.conninfo.pid && clnt.conninfo.pid != sql_query->client_info->pid) {
                 /* Different pid is coming without reset. */
                 logmsg(LOGMSG_WARN,
-                       "Multiple processes using same socket PID 1 %d "
-                       "PID 2 %d Host %.8x\n",
+                       "Multiple processes using same socket PID 1 %d PID 2 %d Host %.8x\n",
                        clnt.conninfo.pid, sql_query->client_info->pid,
                        sql_query->client_info->host_id);
             }

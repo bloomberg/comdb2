@@ -191,8 +191,12 @@ void insert_records_with_bind_index(cdb2_hndl_tp *db, std::string table)
     unsigned char palltypes_byte[17] = "1234567890123456";
     unsigned char palltypes_cstring[16] = "123456789012345";
     unsigned char palltypes_pstring[16] = "123456789012345";
-    unsigned char blob[1025];
-    unsigned char *palltypes_blob = blob;
+    unsigned char palltypes_blob[1025];
+    {
+        for(unsigned int i = 0 ; i < sizeof(palltypes_blob) - 1; i++)
+            palltypes_blob[i] = 'a' + (i % 26);
+        palltypes_blob[sizeof(palltypes_blob)] = '\0';
+    }
     time_t t = 1386783296; //2013-12-11T123456
     cdb2_client_datetime_t datetime = {0};
     gmtime_r(&t, (struct tm *)&datetime.tm); //corrupts memory past the tm member
@@ -222,7 +226,7 @@ void insert_records_with_bind_index(cdb2_hndl_tp *db, std::string table)
         fprintf(stderr, "Error binding palltypes_double.\n");
     if(cdb2_bind_index(db, idx++, CDB2_BLOB, palltypes_byte, sizeof(palltypes_byte)-1))
         fprintf(stderr, "Error binding palltypes_byte.\n");
-    if(cdb2_bind_index(db, idx++, CDB2_BLOB, palltypes_blob, sizeof(blob) - 1))
+    if(cdb2_bind_index(db, idx++, CDB2_BLOB, palltypes_blob, sizeof(palltypes_blob) - 1))
         fprintf(stderr, "Error binding palltypes_blob.\n");
     if(cdb2_bind_index(db, idx++, CDB2_CSTRING, palltypes_cstring, sizeof(palltypes_cstring) - 1))
         fprintf(stderr, "Error binding palltypes_cstring.\n");
