@@ -71,18 +71,13 @@ THRDS=20
 CNT=10000
 ITERATIONS=5
 TRANSIZE=0
+if [[ $DBNAME == *"largetrangenerated"* ]] ; then
+    TRANSIZE=2800
+fi
 
 gen_series_test
 
-time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
-assertcnt t1 $((THRDS * CNT * ITERATIONS))
-do_verify t1
-
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
-
-#TODO: split this test in two via testopts
-TRANSIZE=2800
-time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
+time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
 do_verify t1
 
