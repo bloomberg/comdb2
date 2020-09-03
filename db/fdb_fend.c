@@ -263,7 +263,7 @@ static fdb_tbl_ent_t *get_fdb_tbl_ent_by_name_from_fdb(fdb_t *fdb,
                                                        const char *name);
 
 static int __free_fdb_tbl(void *obj, void *arg);
-static int __lock_wrlock_exclusive(char *dbname, int adduser);
+static int __lock_wrlock_exclusive(char *dbname);
 
 /* Node affinity functions: a clnt tries to stick to one node, unless error in
    which
@@ -470,17 +470,6 @@ static fdb_t *new_fdb(const char *dbname, int *created, enum mach_class class,
 {
     int rc = 0;
     fdb_t *fdb;
-
-    Pthread_rwlock_rdlock(&fdbs.arr_lock);
-    fdb = __cache_fnd_fdb(dbname, NULL);
-    if (fdb) {
-        assert(class == fdb->class);
-        __fdb_add_user(fdb, 0);
-
-        *created = 0;
-        goto done;
-    }
-    Pthread_rwlock_unlock(&fdbs.arr_lock);
 
     Pthread_rwlock_wrlock(&fdbs.arr_lock);
     fdb = __cache_fnd_fdb(dbname, NULL);
@@ -779,7 +768,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
         /* new_fdb bumped this up, we need exclusive lock, get ourselves out */
         __fdb_rem_user(fdb, 0);
 
-        rc = __lock_wrlock_exclusive(tmpname, 1);
+        rc = __lock_wrlock_exclusive(tmpname);
         free(tmpname);
         if (rc) {
             if (rc == FDB_ERR_FDB_NOTFOUND) {
@@ -791,7 +780,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
         }
 
         /* add ourselves back */
-        // __fdb_add_user(fdb, 0); done during taking exclusive lock
+        __fdb_add_user(fdb, 0);
 
         /* remove the stale table here */
         /* ok, stale; we need to garbage this one out */
@@ -1461,7 +1450,7 @@ static int __lock_wrlock_shared(fdb_t *fdb)
     return rc;
 }
 
-static int __lock_wrlock_exclusive(char *dbname, int adduser)
+static int __lock_wrlock_exclusive(char *dbname)
 {
     fdb_t *fdb = NULL;
     int rc = FDB_NOERR;
@@ -1484,13 +1473,11 @@ static int __lock_wrlock_exclusive(char *dbname, int adduser)
             return FDB_ERR_FDB_NOTFOUND;
         }
 
-        // Pthread_rwlock_wrlock(&fdb->h_rwlock);
+        Pthread_rwlock_wrlock(&fdb->h_rwlock);
 
-        Pthread_mutex_lock(&fdb->users_mtx); /* needed before we check for users */
         /* we got the lock, are there any lockless users ? */
         if (fdb->users > 1) {
-            // Pthread_rwlock_unlock(&fdb->h_rwlock);
-            Pthread_mutex_unlock(&fdb->users_mtx);
+            Pthread_rwlock_unlock(&fdb->h_rwlock);
             Pthread_rwlock_unlock(&fdbs.arr_lock);
 
             /* if we loop, make sure this is not a live lock
@@ -1510,10 +1497,6 @@ static int __lock_wrlock_exclusive(char *dbname, int adduser)
 
             continue;
         } else {
-            if (adduser)
-                fdb->users++;
-            Pthread_rwlock_wrlock(&fdb->h_rwlock);
-            Pthread_mutex_unlock(&fdb->users_mtx);
             rc = FDB_NOERR;
             break; /* own fdb */
         }
@@ -1978,14 +1961,6 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
 
 search:
     __lock_wrlock_shared(fdb);
-
-#if 0 // Changes done in __lock_wrlock_exclusive instead
-    /* At this point fdb->users already is increased to 2 by this thread and
-     * there can be multiple threads waiting for users to decrease.
-     * One of them gets write lock while others wait for the write lock,
-     * so this thread will never get a read lock */
-    Pthread_rwlock_wrlock(&fdb->h_rwlock);
-#endif
     tbl = hash_find_readonly(fdb->h_tbls_name, &zTblName);
 
     if (!tbl) {
@@ -4336,7 +4311,7 @@ static void fdb_clear_schema(const char *dbname, const char *tblname,
    return;
 #endif
 
-    if (__lock_wrlock_exclusive(fdb->dbname, 0)) {
+    if (__lock_wrlock_exclusive(fdb->dbname)) {
         return;
     }
 
