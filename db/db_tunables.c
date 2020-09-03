@@ -246,6 +246,7 @@ extern int gbl_dump_sql_on_repwait_sec;
 extern int gbl_client_queued_slow_seconds;
 extern int gbl_client_running_slow_seconds;
 extern int gbl_client_abort_on_slow;
+extern int gbl_max_trigger_threads;
 
 extern long long sampling_threshold;
 
