@@ -3,7 +3,6 @@
 entries:
 - title: sidebar
   product: Comdb2
-  version: 7.0pre
   folders:
 
   - title: Overview

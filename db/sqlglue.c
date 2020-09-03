@@ -1655,6 +1655,75 @@ static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
     tbl->ix_blob = 0;
 }
 
+int create_datacopy_arrays()
+{
+    int rc;
+    for (int table = 0; table < thedb->num_dbs && rc == 0; table++) {
+        rc = create_datacopy_array(thedb->dbs[table]);
+        if (rc)
+            return rc;
+    }
+
+    return 0;
+}
+
+int create_datacopy_array(struct dbtable *tbl)
+{
+    struct schema *schema = tbl->schema;
+
+    if (schema == NULL) {
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
+        return -1;
+    }
+
+    if (is_sqlite_stat(tbl->tablename)) {
+        return 0;
+    }
+
+    for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
+
+        schema = tbl->schema->ix[ixnum];
+        struct schema *ondisk = tbl->schema;
+        if (schema == NULL) {
+            logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum, tbl->tablename);
+            return -1;
+        }
+
+        if (!(schema->flags & SCHEMA_DATACOPY)) {
+            continue;
+        }
+
+        int datacopy_pos = 0;
+        for (int ondisk_i = 0; ondisk_i < ondisk->nmembers; ++ondisk_i) {
+            int skip = 0;
+            struct field *ondisk_field = &ondisk->member[ondisk_i];
+
+            for (int schema_i = 0; schema_i < schema->nmembers; ++schema_i) {
+                if (strcmp(ondisk_field->name, schema->member[schema_i].name) == 0) {
+                    skip = 1;
+                    break;
+                }
+            }
+            if (skip)
+                continue;
+
+            if (datacopy_pos == 0) {
+                size_t need = ondisk->nmembers * sizeof(schema->datacopy[0]);
+                if (schema->datacopy)
+                    free(schema->datacopy);
+                schema->datacopy = (int *)malloc(need);
+                if (schema->datacopy == NULL) {
+                    logmsg(LOGMSG_ERROR, "Could not allocate memory for datacopy array\n");
+                    return -1;
+                }
+            }
+            schema->datacopy[datacopy_pos] = ondisk_i;
+            ++datacopy_pos;
+        }
+    }
+    return 0;
+}
+
 /* This creates SQL statements that correspond to a table's schema. These
    statements are used to bootstrap sqlite. */
 static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
@@ -1790,8 +1859,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
         if (schema->flags & SCHEMA_DATACOPY) {
             struct schema *ondisk = tbl->schema;
-            int datacopy_pos = 0;
-            size_t need;
+            int first = 1;
             /* Add all fields from ONDISK to index */
             for (int ondisk_i = 0; ondisk_i < ondisk->nmembers; ++ondisk_i) {
                 int skip = 0;
@@ -1811,20 +1879,10 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
                 strbuf_appendf(sql, ", \"%s\"", ondisk_field->name);
                 /* stop optimizer by adding dummy collation */
-                if (datacopy_pos == 0) {
+                if (first == 1) {
                     strbuf_append(sql, " collate DATACOPY");
-                    need = ondisk->nmembers * sizeof(schema->datacopy[0]);
-                    schema->datacopy = (int *)malloc(need);
-                    if (schema->datacopy == NULL) {
-                        logmsg(LOGMSG_ERROR, 
-                                "Could not malloc for datacopy lookup array\n");
-                        strbuf_free(sql);
-                        return -1;
-                    }
+                    first = 0;
                 }
-                /* datacopy_pos is i-th ondisk */
-                schema->datacopy[datacopy_pos] = ondisk_i;
-                ++datacopy_pos;
             }
         }
 
@@ -11157,6 +11215,10 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
             abort();
         }
         fld++;
+    }
+    if (fld < 7) {
+        /* we received an non-version answer */
+        *version = 0;
     }
 }
 

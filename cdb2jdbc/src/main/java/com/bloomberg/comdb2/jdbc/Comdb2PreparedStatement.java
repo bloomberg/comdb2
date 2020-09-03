@@ -36,76 +36,28 @@ import com.bloomberg.comdb2.jdbc.Cdb2Types.DatetimeUs;
 public class Comdb2PreparedStatement extends Comdb2Statement implements PreparedStatement {
 
     String sql;
-    protected String[] paramNames;
     protected int[] types;
 
     /* my own bound paramters */
-    protected HashMap<String, Cdb2BindValue> intBindVars = new HashMap<String, Cdb2BindValue>();
-    protected List<HashMap<String, Cdb2BindValue>> batch;
-
-    private String replaceQuestionMarks(String sql, ArrayList<String> params) {
-        StringBuilder sb = new StringBuilder();
-        char[] arr = sql.toCharArray();
-        int param, i, j, len, nDouble, nSingle;
-        String genParam;
-
-        for (param = 0, i = 0, nSingle = 0, nDouble = 0, len = arr.length; i < len; ++i) {
-
-            if (arr[i] == '\'' || arr[i] == '\"') { // got a quote
-                if (i == 0 || arr[i - 1] != '\\') // and it isn't a literal
-                    j = (arr[i] == '\'') ? ++nSingle : ++nDouble;
-                sb.append(arr[i]);
-            } else if (arr[i] == '?') {
-                if ((nDouble & 1) == 1 || (nSingle & 1) == 1)
-                    sb.append(arr[i]);
-                else {
-                    genParam = "__jdbc_generated_param_" + param + "__";
-                    sb.append("@").append(genParam);
-                    params.add(genParam);
-                    ++param;
-                }
-            } else if (arr[i] == '@') {
-                sb.append(arr[i]);
-                if ((nSingle & 1) == 0) {
-                    for (j = ++i; i < len; ++i) {
-                        sb.append(arr[i]);
-                        if (arr[i] != '_' && !Character.isLetterOrDigit(arr[i]))
-                            break;
-                    }
-                    if (i > j)
-                        params.add(sql.substring(j, i));
-                }
-            } else
-                sb.append(arr[i]);
-        }
-        return sb.toString();
-    }
+    protected HashMap<Integer, Cdb2BindValue> intBindVars = new HashMap<Integer, Cdb2BindValue>();
+    protected List<HashMap<Integer, Cdb2BindValue>> batch;
 
     public Comdb2PreparedStatement(DbHandle hndl, Comdb2Connection conn, String sqlstr) {
         super(hndl, conn);
         ArrayList<String> names = new ArrayList<String>();
-        this.sql = replaceQuestionMarks(sqlstr, names);
-        paramNames = names.toArray(new String[] {});
+        sql = sqlstr;
     }
 
-    private void bindParameter(String name, int type, byte[] data) {
-
-        // if the same name has been set multiple times, only the
-        // lastest value will be kept and be sent to server.
+    public void bindParameter(int index, int type, byte[] data) {
+        /* index is 1-based. */
+        if (index <= 0)
+            return;
 
         Cdb2BindValue newVal = new Cdb2BindValue();
-        newVal.varName = name;
+        newVal.index = index;
         newVal.type = type;
         newVal.value = data;
-
-        intBindVars.put(name, newVal);
-    }
-
-    private String getParamNameByIndex(int index) {
-        --index;
-        if (paramNames == null || index >= paramNames.length)
-            return null;
-        return paramNames[index];
+        intBindVars.put(index, newVal);
     }
 
     @Override
@@ -114,7 +66,7 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
         hndl.clearParameters();
         ResultSet ret;
         try {
-            hndl.bindParameters(intBindVars);
+            hndl.bindIndexedParameters(intBindVars);
             ret = executeQuery(sql);
         } finally {
             hndl.clearParameters();
@@ -128,7 +80,7 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
         hndl.clearParameters();
         int ret;
         try {
-            hndl.bindParameters(intBindVars);
+            hndl.bindIndexedParameters(intBindVars);
             ret = executeUpdate(sql);
         } finally {
             hndl.clearParameters();
@@ -138,9 +90,7 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
 
     @Override
     public void setNull(int parameterIndex, int sqlType) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null)
-            bindParameter(pname, Constants.Types.CDB2_INTEGER, null);
+        bindParameter(parameterIndex, Constants.Types.CDB2_INTEGER, null);
     }
 
     @Override
@@ -165,12 +115,9 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
 
     @Override
     public void setLong(int parameterIndex, long x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            ByteBuffer bb = ByteBuffer.allocate(8);
-            bb.putLong(x);
-            bindParameter(pname, Constants.Types.CDB2_INTEGER, bb.array());
-        }
+        ByteBuffer bb = ByteBuffer.allocate(8);
+        bb.putLong(x);
+        bindParameter(parameterIndex, Constants.Types.CDB2_INTEGER, bb.array());
     }
 
     @Override
@@ -180,12 +127,9 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
 
     @Override
     public void setDouble(int parameterIndex, double x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            ByteBuffer bb = ByteBuffer.allocate(8);
-            bb.putDouble(x);
-            bindParameter(pname, Constants.Types.CDB2_REAL, bb.array());
-        }
+        ByteBuffer bb = ByteBuffer.allocate(8);
+        bb.putDouble(x);
+        bindParameter(parameterIndex, Constants.Types.CDB2_REAL, bb.array());
     }
 
     @Override
@@ -195,64 +139,60 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
 
     @Override
     public void setString(int parameterIndex, String x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            /* "\0" needs to be sent to srv to indicate this is an empty string */
-            if (x == null)
-                bindParameter(pname, Constants.Types.CDB2_CSTRING, null);
-            else if (x.length() == 0)
-                bindParameter(pname, Constants.Types.CDB2_CSTRING, new byte[1]);
-            else
-                bindParameter(pname, Constants.Types.CDB2_CSTRING, x.getBytes());
-        }
+        byte[] data;
+        if (x == null)
+            data = null;
+        else if (x.length() == 0)
+            /* R6 and old R7 ignore the isnull flag for cstring and hence always
+               treat a 0-length string as NULL. We have to send a zero byte here
+               to be backward compatible. */
+            data = new byte[1];
+        else
+            data = x.getBytes();
+        bindParameter(parameterIndex, Constants.Types.CDB2_CSTRING, data);
     }
 
     @Override
     public void setBytes(int parameterIndex, byte[] x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null)
-            bindParameter(pname, Constants.Types.CDB2_BLOB, x);
+        bindParameter(parameterIndex, Constants.Types.CDB2_BLOB, x);
     }
 
     @Override
     public void setDate(int parameterIndex, Date x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            if (!usemicrodt)
-                bindParameter(pname, Constants.Types.CDB2_DATETIME,
-                        Cdb2Types.Datetime.fromLong(x.getTime()).toBytes());
-            else
-                bindParameter(pname, Constants.Types.CDB2_DATETIMEUS,
-                        Cdb2Types.DatetimeUs.fromLong(x.getTime() * 1000L).toBytes());
-        }
+        if (x == null)
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME, null);
+        else if (!usemicrodt)
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME,
+                    Cdb2Types.Datetime.fromLong(x.getTime()).toBytes());
+        else
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIMEUS,
+                    Cdb2Types.DatetimeUs.fromLong(x.getTime() * 1000L).toBytes());
     }
 
     @Override
     public void setTime(int parameterIndex, Time x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            if (!usemicrodt)
-                bindParameter(pname, Constants.Types.CDB2_DATETIME,
-                        Cdb2Types.Datetime.fromLong(x.getTime()).toBytes());
-            else
-                bindParameter(pname, Constants.Types.CDB2_DATETIMEUS,
-                        Cdb2Types.DatetimeUs.fromLong(x.getTime() * 1000L).toBytes());
-        }
+        if (x == null)
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME, null);
+        else if (!usemicrodt)
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME,
+                    Cdb2Types.Datetime.fromLong(x.getTime()).toBytes());
+        else
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIMEUS,
+                    Cdb2Types.DatetimeUs.fromLong(x.getTime() * 1000L).toBytes());
     }
 
     @Override
     public void setTimestamp(int parameterIndex, Timestamp x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            if (!usemicrodt)
-                bindParameter(pname, Constants.Types.CDB2_DATETIME,
-                        Cdb2Types.Datetime.fromLong(x.getTime()).toBytes());
-            else
-                bindParameter(pname, Constants.Types.CDB2_DATETIMEUS,
-                        Cdb2Types.DatetimeUs.fromLong(
-                                x.getTime() / 1000L * 1000000L + x.getNanos() / 1000L
-                            ).toBytes());
-        }
+        if (x == null)
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME, null);
+        else if (!usemicrodt)
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME,
+                    Cdb2Types.Datetime.fromLong(x.getTime()).toBytes());
+        else
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIMEUS,
+                    Cdb2Types.DatetimeUs.fromLong(
+                        x.getTime() / 1000L * 1000000L + x.getNanos() / 1000L
+                        ).toBytes());
     }
 
     @Override
@@ -307,91 +247,88 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
 
     @Override
     public void setObject(int parameterIndex, Object x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null) {
-            if (x == null) {
-                setNull(parameterIndex, Types.NULL);
-            } else if (x instanceof Cdb2Types.IntervalYearMonth) {
-                Cdb2Types.IntervalYearMonth ym = (Cdb2Types.IntervalYearMonth) x;
-                bindParameter(pname, Constants.Types.CDB2_INTERVALYM, ym.toBytes());
-            } else if (x instanceof Cdb2Types.IntervalDaySecond) {
-                Cdb2Types.IntervalDaySecond ym = (Cdb2Types.IntervalDaySecond) x;
-                bindParameter(pname, Constants.Types.CDB2_INTERVALDS, ym.toBytes());
-            } else if (x instanceof Cdb2Types.IntervalDaySecondUs) {
-                Cdb2Types.IntervalDaySecondUs ym = (Cdb2Types.IntervalDaySecondUs) x;
-                bindParameter(pname, Constants.Types.CDB2_INTERVALDSUS, ym.toBytes());
-            } else if (x instanceof Cdb2Types.Datetime) {
-                Cdb2Types.Datetime dt = (Cdb2Types.Datetime) x;
-                bindParameter(pname, Constants.Types.CDB2_DATETIME, dt.toBytes());
-            } else if (x instanceof Cdb2Types.DatetimeUs) {
-                Cdb2Types.DatetimeUs dt = (Cdb2Types.DatetimeUs) x;
-                bindParameter(pname, Constants.Types.CDB2_DATETIMEUS, dt.toBytes());
-            } else if (x instanceof Cdb2Types.Blob) {
-                Cdb2Types.Blob binary = (Cdb2Types.Blob) x;
-                bindParameter(pname, Constants.Types.CDB2_BLOB, binary.toBytes());
-            } else if (x instanceof Cdb2Types.CString) {
-                Cdb2Types.CString str = (Cdb2Types.CString) x;
-                bindParameter(pname, Constants.Types.CDB2_CSTRING, str.toBytes());
-            } else if (x instanceof Cdb2Types.Real) {
-                Cdb2Types.Real real = (Cdb2Types.Real) x;
-                bindParameter(pname, Constants.Types.CDB2_REAL, real.toBytes());
-            } else if (x instanceof Cdb2Types.Int64) {
-                Cdb2Types.Int64 int64 = (Cdb2Types.Int64) x;
-                bindParameter(pname, Constants.Types.CDB2_INTEGER, int64.toBytes());
-            } else if (x instanceof java.util.Calendar) {
-                Calendar cal = (Calendar) x;
-                Datetime dt = new Datetime(
-                        cal.get(Calendar.SECOND),
-                        cal.get(Calendar.MINUTE),
-                        cal.get(Calendar.HOUR_OF_DAY),
-                        cal.get(Calendar.DAY_OF_MONTH),
-                        cal.get(Calendar.MONTH),
-                        cal.get(Calendar.YEAR) - 1900,
-                        cal.get(Calendar.DAY_OF_WEEK),
-                        cal.get(Calendar.DAY_OF_YEAR),
-                        (cal.get(Calendar.DST_OFFSET) == 0) ? 0 : 1,
-                        cal.get(Calendar.MILLISECOND),
-                        cal.getTimeZone().getID()
-                        );
-                bindParameter(pname, Constants.Types.CDB2_DATETIME, dt.toBytes());
-            } else if (x instanceof Array) {
-                setArray(parameterIndex, (Array) x);
-            } else if (x instanceof BigDecimal) {
-                setBigDecimal(parameterIndex, (BigDecimal) x);
-            } else if (x instanceof Byte) {
-                setByte(parameterIndex, (Byte) x);
-            } else if (x instanceof byte[]) {
-                setBytes(parameterIndex, (byte[]) x);
-            } else if (x instanceof Date) {
-                setDate(parameterIndex, (Date) x);
-            } else if (x instanceof Double) {
-                setDouble(parameterIndex, (Double) x);
-            } else if (x instanceof Float) {
-                setFloat(parameterIndex, (Float) x);
-            } else if (x instanceof Integer) {
-                setInt(parameterIndex, (Integer) x);
-            } else if (x instanceof Long) {
-                setLong(parameterIndex, (Long) x);
-            } else if (x instanceof Time) {
-                setTime(parameterIndex, (Time) x);
-            } else if (x instanceof Timestamp) {
-                setTimestamp(parameterIndex, (Timestamp) x);
-            } else if (x instanceof java.util.Date) {
-                setDate(parameterIndex, new Date(((java.util.Date) x).getTime()));
-            } else if (x instanceof Short) {
-                setShort(parameterIndex, (Short) x);
-            } else if (x instanceof String) {
-                setString(parameterIndex, (String) x);
-            } else if (x instanceof Blob) {
-                setBlob(parameterIndex, (Blob) x);
-            } else if (x instanceof NClob) {
-                setNClob(parameterIndex, (NClob) x);
-            } else if (x instanceof Clob) {
-                setClob(parameterIndex, (Clob) x);
-            } else {
-                // Default to string representation for unknown types
-                setString(parameterIndex, x.toString());
-            }
+        if (x == null) {
+            setNull(parameterIndex, Types.NULL);
+        } else if (x instanceof Cdb2Types.IntervalYearMonth) {
+            Cdb2Types.IntervalYearMonth ym = (Cdb2Types.IntervalYearMonth) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_INTERVALYM, ym.toBytes());
+        } else if (x instanceof Cdb2Types.IntervalDaySecond) {
+            Cdb2Types.IntervalDaySecond ym = (Cdb2Types.IntervalDaySecond) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_INTERVALDS, ym.toBytes());
+        } else if (x instanceof Cdb2Types.IntervalDaySecondUs) {
+            Cdb2Types.IntervalDaySecondUs ym = (Cdb2Types.IntervalDaySecondUs) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_INTERVALDSUS, ym.toBytes());
+        } else if (x instanceof Cdb2Types.Datetime) {
+            Cdb2Types.Datetime dt = (Cdb2Types.Datetime) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME, dt.toBytes());
+        } else if (x instanceof Cdb2Types.DatetimeUs) {
+            Cdb2Types.DatetimeUs dt = (Cdb2Types.DatetimeUs) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIMEUS, dt.toBytes());
+        } else if (x instanceof Cdb2Types.Blob) {
+            Cdb2Types.Blob binary = (Cdb2Types.Blob) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_BLOB, binary.toBytes());
+        } else if (x instanceof Cdb2Types.CString) {
+            Cdb2Types.CString str = (Cdb2Types.CString) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_CSTRING, str.toBytes());
+        } else if (x instanceof Cdb2Types.Real) {
+            Cdb2Types.Real real = (Cdb2Types.Real) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_REAL, real.toBytes());
+        } else if (x instanceof Cdb2Types.Int64) {
+            Cdb2Types.Int64 int64 = (Cdb2Types.Int64) x;
+            bindParameter(parameterIndex, Constants.Types.CDB2_INTEGER, int64.toBytes());
+        } else if (x instanceof java.util.Calendar) {
+            Calendar cal = (Calendar) x;
+            Datetime dt = new Datetime(
+                    cal.get(Calendar.SECOND),
+                    cal.get(Calendar.MINUTE),
+                    cal.get(Calendar.HOUR_OF_DAY),
+                    cal.get(Calendar.DAY_OF_MONTH),
+                    cal.get(Calendar.MONTH),
+                    cal.get(Calendar.YEAR) - 1900,
+                    cal.get(Calendar.DAY_OF_WEEK),
+                    cal.get(Calendar.DAY_OF_YEAR),
+                    (cal.get(Calendar.DST_OFFSET) == 0) ? 0 : 1,
+                    cal.get(Calendar.MILLISECOND),
+                    cal.getTimeZone().getID()
+                    );
+            bindParameter(parameterIndex, Constants.Types.CDB2_DATETIME, dt.toBytes());
+        } else if (x instanceof Array) {
+            setArray(parameterIndex, (Array) x);
+        } else if (x instanceof BigDecimal) {
+            setBigDecimal(parameterIndex, (BigDecimal) x);
+        } else if (x instanceof Byte) {
+            setByte(parameterIndex, (Byte) x);
+        } else if (x instanceof byte[]) {
+            setBytes(parameterIndex, (byte[]) x);
+        } else if (x instanceof Date) {
+            setDate(parameterIndex, (Date) x);
+        } else if (x instanceof Double) {
+            setDouble(parameterIndex, (Double) x);
+        } else if (x instanceof Float) {
+            setFloat(parameterIndex, (Float) x);
+        } else if (x instanceof Integer) {
+            setInt(parameterIndex, (Integer) x);
+        } else if (x instanceof Long) {
+            setLong(parameterIndex, (Long) x);
+        } else if (x instanceof Time) {
+            setTime(parameterIndex, (Time) x);
+        } else if (x instanceof Timestamp) {
+            setTimestamp(parameterIndex, (Timestamp) x);
+        } else if (x instanceof java.util.Date) {
+            setDate(parameterIndex, new Date(((java.util.Date) x).getTime()));
+        } else if (x instanceof Short) {
+            setShort(parameterIndex, (Short) x);
+        } else if (x instanceof String) {
+            setString(parameterIndex, (String) x);
+        } else if (x instanceof Blob) {
+            setBlob(parameterIndex, (Blob) x);
+        } else if (x instanceof NClob) {
+            setNClob(parameterIndex, (NClob) x);
+        } else if (x instanceof Clob) {
+            setClob(parameterIndex, (Clob) x);
+        } else {
+            // Default to string representation for unknown types
+            setString(parameterIndex, x.toString());
         }
     }
 
@@ -408,12 +345,11 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
     @Override
     public void addBatch() throws SQLException {
         if (batch == null) {
-            batch = new ArrayList<HashMap<String, Cdb2BindValue>>();
+            batch = new ArrayList<HashMap<Integer, Cdb2BindValue>>();
         }
 
         batch.add(intBindVars);
-        intBindVars = new HashMap<String, Cdb2BindValue>();
-
+        intBindVars = new HashMap<Integer, Cdb2BindValue>();
     }
 
     @Override
@@ -463,9 +399,8 @@ public class Comdb2PreparedStatement extends Comdb2Statement implements Prepared
 
     @Override
     public void setBlob(int parameterIndex, Blob x) throws SQLException {
-        String pname = getParamNameByIndex(parameterIndex);
-        if (pname != null)
-            bindParameter(pname, Constants.Types.CDB2_BLOB, x.getBytes(1, (int) x.length()));
+        bindParameter(parameterIndex, Constants.Types.CDB2_BLOB,
+                ((x == null) ? null : x.getBytes(1, (int) x.length())));
     }
 
     @Override

@@ -456,6 +456,27 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   sqlite3_result_int(context, i);
 }
 
+static void usleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]) {
+  int total, remain, us;
+  if( argc != 1 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  total = remain = sqlite3_value_int(argv[0]);
+  if( total < 0 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  while( remain > 0 ){
+    us = ( remain > 1000000 ) ? 1000000 : remain;
+    remain -= us;
+    usleep(us);
+    if( comdb2_sql_tick() )
+      break;
+  }
+  sqlite3_result_int(context, (total - remain));
+}
+
 static void tableNamesFunc(
   sqlite3_context *context,
   int argc,
@@ -526,10 +547,17 @@ static void roundFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
   ** handle the rounding directly,
   ** otherwise use printf.
   */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( n==0 && r>=0 && r<(double)(LARGEST_INT64-1) ){
+    r = (double)((sqlite_int64)(r+0.5));
+  }else if( n==0 && r<0 && (-r)<(double)(LARGEST_INT64-1) ){
+    r = -(double)((sqlite_int64)((-r)+0.5));
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( n==0 && r>=0 && r<LARGEST_INT64-1 ){
     r = (double)((sqlite_int64)(r+0.5));
   }else if( n==0 && r<0 && (-r)<LARGEST_INT64-1 ){
     r = -(double)((sqlite_int64)((-r)+0.5));
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     zBuf = sqlite3_mprintf("%.*f",n,r);
     if( zBuf==0 ){
@@ -701,7 +729,7 @@ static void guidStrFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void guidFromStrFunc(
@@ -753,7 +781,7 @@ static void guidFromByteFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid_blob, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void comdb2TestLogFunc(
@@ -2680,6 +2708,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
+    VFUNCTION(usleep,            1, 0, 0, usleepFunc       ),
     VFUNCTION(comdb2_extract_table_names,
                                  1, 0, 0, tableNamesFunc   ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

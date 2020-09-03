@@ -913,6 +913,13 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
     }
 
+    if (type == add || type == alter) {
+        if (create_datacopy_array(db)) {
+            logmsg(LOGMSG_FATAL, "create_datacopy_array failed for %s.\n", table);
+            exit(1);
+        }
+    }
+
     /* Fetch the correct dbnum for this table.  We need this step because db
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch

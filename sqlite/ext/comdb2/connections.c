@@ -42,7 +42,7 @@ int get_connections(void **data, int *num_points) {
         dttz_t d = {.dttz_sec = info[i].connect_time_int, .dttz_frac = 0, .dttz_prec = DTTZ_PREC_MSEC};
         dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].connect_time);
 
-        d = (dttz_t) { .dttz_sec = info[i].last_reset_time_int, .dttz_frac = 0, .dttz_frac = DTTZ_PREC_MSEC };
+        d = (dttz_t) { .dttz_sec = info[i].last_reset_time_int, .dttz_frac = 0, .dttz_prec = DTTZ_PREC_MSEC };
         dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].last_reset_time);
 
         info[i].time_in_state.sign = 1;

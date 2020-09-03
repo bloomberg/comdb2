@@ -274,7 +274,7 @@ static int luabb_tointeger_int(Lua lua, int idx, long long *val)
     case DBTYPES_REAL:
         darg = ((lua_real_t *)lua_topointer(lua, idx))->val;
     dbl:
-        if (darg >= LLONG_MIN && darg <= LLONG_MAX) {
+        if (darg >= (double)LLONG_MIN && darg <= (double)LLONG_MAX) {
             *val= (long long) darg;
             return 0;
         }

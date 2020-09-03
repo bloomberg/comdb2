@@ -62,6 +62,7 @@ extern int gbl_expressions_indexes;
 
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
+int gbl_test_io_errors = 0;
 
 struct fdb_tbl;
 struct fdb;
@@ -940,6 +941,7 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
     struct sqlclntstate *clnt = cur->clnt;
+    cur->rootpage = 1;
 
 run:
     /* if we have already learnt that fdb is older, do not try newer versioned
@@ -949,7 +951,7 @@ run:
     else
         versioned = 1;
 
-    fdbc_if = fdb_cursor_open(clnt, cur, 1, NULL, NULL, need_ssl);
+    fdbc_if = fdb_cursor_open(clnt, cur, cur->rootpage, NULL, NULL, need_ssl);
     if (!fdbc_if) {
         rc = clnt->fdb_state.xerr.errval;
         logmsg(LOGMSG_ERROR, 
@@ -2926,6 +2928,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
     int rc;
     fdb_tran_t *tran;
     int need_ssl = 0;
+    char *sql_hint;
 
     thd = pthread_getspecific(query_info_key);
 
@@ -2940,6 +2943,9 @@ static int fdb_cursor_reopen(BtCursor *pCur)
     if (tran)
         Pthread_mutex_lock(&clnt->dtran_mtx);
 
+    /* preserve the hint */
+    sql_hint = pCur->fdbc->impl->sql_hint;
+
     rc = pCur->fdbc->close(pCur);
     if (rc) {
         /*rc = -1;*/
@@ -2952,6 +2958,8 @@ static int fdb_cursor_reopen(BtCursor *pCur)
         rc = clnt->fdb_state.xerr.errval;
         goto done;
     }
+
+    pCur->fdbc->impl->sql_hint = sql_hint;
 
 done:
     if (tran)
@@ -3001,6 +3009,7 @@ retry:
                     flags = FDB_RUN_SQL_SCHEMA;
                 }
             } else {
+                assert(!fdbc->is_schema);
                 sql = _build_run_sql_from_hint(
                     pCur, NULL, 0, (how == CLAST) ? OP_Prev : OP_Next, &sqllen,
                     &error);

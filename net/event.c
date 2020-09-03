@@ -606,17 +606,17 @@ static void setup_wire_hdrs(struct event_info *e)
         char *name = (char *)e->wirehdr[i] + NET_WIRE_HEADER_TYPE_LEN;
         if (fromlen > HOSTNAME_LEN) {
             sprintf(e->wirehdr[i]->fromhost, ".%d", fromlen);
-            strcpy(name, gbl_myhostname);
+            memcpy(name, gbl_myhostname, fromlen);
             name += fromlen;
         } else {
-            strcpy(e->wirehdr[i]->fromhost, gbl_myhostname);
+            memcpy(e->wirehdr[i]->fromhost, gbl_myhostname, fromlen);
         }
         e->wirehdr[i]->fromport = htonl(e->net_info->port);
         if (tolen > HOSTNAME_LEN) {
             sprintf(e->wirehdr[i]->tohost, ".%d", tolen);
-            strcpy(name, e->host);
+            memcpy(name, e->host, tolen);
         } else {
-            strcpy(e->wirehdr[i]->tohost, e->host);
+            memcpy(e->wirehdr[i]->tohost, e->host, tolen);
         }
         e->wirehdr[i]->toport = htonl(e->port);
         e->wirehdr[i]->type = htonl(i);

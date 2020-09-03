@@ -582,6 +582,17 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     int rc = 0;
     int bdberr = 0;
 
+    /*
+     * Warn of any invalid engine state.  Do it before srs_tran_destroy() as
+     * clnt->sql will be pointing at free memory after that.
+     */
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS && clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n", clnt, clnt->ctrl_sqlengine,
+               clnt->osql.rqid, pthread_self());
+        if (clnt->sql)
+            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
+    }
+
     /* TODO: once Dr. Hipp fixes the plan, this should be moved
        to sqlite3BtreeCloseCursor */
     clearClientSideRow(clnt);
@@ -610,14 +621,6 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
             logmsg(LOGMSG_ERROR, "%s:%d: abort shadow failed rc=%d bdberr=%d\n",
                     __FILE__, __LINE__, rc, bdberr);
         }
-    }
-
-    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
-        clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
-               clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
-        if (clnt->sql)
-            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid)) {

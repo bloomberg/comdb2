@@ -45,6 +45,7 @@ assert_schema()
 
 insert_records()
 {
+    echo "Entering insert_records()"
     j=$1
     nstop=$2
     let nout=nout+1
@@ -54,19 +55,16 @@ insert_records()
 
     while [[ $j -le $nstop ]]; do 
         cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
-        if [ $? -ne 0 ]; then 
-            sleep 1
-            continue
-        fi
+        assertres $? 0
         # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
-        sleep 0.01
     done
     echo "done inserting round $nout"
 }
 
 insert_records_with_bind()
 {
+    echo "Entering insert_records_with_bind()"
     j=$1
     nstop=$2
     let nout=nout+1
@@ -95,18 +93,15 @@ insert_records_with_bind()
 @bind CDB2_CSTRING v_alltypes_decimal64 $((1-2*(j%2)))0000000$j
 @bind CDB2_CSTRING v_alltypes_decimal128 $((1-2*(j%2)))000000000000000$j
 insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_cstring, alltypes_pstring, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values (@v_alltypes_short, @v_alltypes_u_short, @v_alltypes_int, @v_alltypes_u_int, @v_alltypes_longlong, @v_alltypes_float, @v_alltypes_double, @v_alltypes_cstring, @v_alltypes_pstring, @v_alltypes_datetime, @v_alltypes_datetimeus, @v_alltypes_vutf8, @v_alltypes_intervalym, @v_alltypes_intervalds, @v_alltypes_decimal32, @v_alltypes_decimal64, @v_alltypes_decimal128)" | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - &>> $insfl
-        if [ $? -ne 0 ]; then 
-            sleep 1
-            continue
-        fi
+        assertres $? 0
         let j=j+1
-        sleep 0.01
     done
     echo "done inserting round $nout"
 }
 
 update_records()
 {
+    echo "Entering update_records()"
     j=$1
     nstop=$2
     let nout=nout+1
@@ -116,18 +111,15 @@ update_records()
 
     while [[ $j -le $nstop ]]; do 
         cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
-        if [ $? -ne 0 ]; then 
-            sleep 1
-            continue
-        fi
+        assertres $? 0
         let j=j+1
-        sleep 0.01
     done
     echo "done updating round $nout"
 }
 
 update_records_with_bind()
 {
+    echo "Entering update_records_with_bind()"
     j=$1
     nstop=$2
     let nout=nout+1
@@ -136,21 +128,41 @@ update_records_with_bind()
     echo "" > $updfl
 
     while [[ $j -le $nstop ]]; do 
-        jpone=$j+1
-        echo "
+       let jpone=$j+1
+       # update will effectively make col v_alltypes_int+2
+       echo "
 @bind CDB2_INTEGER v_alltypes_u_short $j
 @bind CDB2_INTEGER v_alltypes_int $jpone
-update t1 set alltypes_u_int=1+@v_alltypes_u_int where alltypes_u_short=@v_alltypes_u_short" | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - &>> $updfl
-        if [ $? -ne 0 ]; then 
-            sleep 1
-            continue
-        fi
+update t1 set alltypes_u_int=1+@v_alltypes_int where alltypes_u_short=@v_alltypes_u_short" | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - &>> $updfl
+        assertres $? 0
         let j=j+1
-        sleep 0.01
     done
     echo "done updating round $nout"
 }
 
+update_records_with_bind_index()
+{
+    j=$1
+    nstop=$2
+    let nout=nout+1
+    updfl=update${nout}.out
+    echo "Updating $((nstop-j+1)) records ($j to $nstop)."
+    echo "" > $updfl
+    let k=0
+
+    while [[ $j -le $nstop ]]; do 
+       let jpone=$j+1
+       let k=$k+1
+       # update will increase alltypes_u_int by 1,2,3...N
+       echo "
+@bind CDB2_INTEGER 1 $k
+@bind CDB2_INTEGER 2 $j
+update t1 set alltypes_u_int=alltypes_u_int+? where alltypes_u_short=?" | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default - &>> $updfl
+        assertres $? 0
+        let j=j+1
+    done
+    echo "done updating round $nout"
+}
 
 delete_records()
 {
@@ -201,14 +213,21 @@ let NEWSTRT=$((INITNUMREC+1))
 insert_records_with_bind $NEWSTRT $NEWNUMREC
 assertcnt t1 $NEWNUMREC
 
-#update_records_with_bind $NEWSTRT $NEWNUMREC
+update_records_with_bind $NEWSTRT $((NEWSTRT+9))
+assertcnt t1 $NEWNUMREC
+
+#insert_records_with_bind $NEWSTRT $NEWNUMREC
+#cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > a1.txt
 #assertcnt t1 $NEWNUMREC
+
+update_records_with_bind_index $((NEWSTRT+10)) $((NEWSTRT+19))
+assertcnt t1 $NEWNUMREC
 
 set -e
 #echo "Now call task that uses cdb2api to ins/upd/del"
 ${TESTSBUILDDIR}/cdb2api_caller ${DBNAME} t1 > cdb2api_caller.out
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > orig.txt
 
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "select * from t1 order by alltypes_u_short" > orig.txt
 
 
 logflunziped=events.unzipped
@@ -241,7 +260,7 @@ fi
 
 
 count=$(jq -rc 'if (.type == "sql") or (.type == "txn") then . else empty end' < $logflunziped | wc -l)
-CSHOULDBE=8210 # number of lines that should be in the log when single node
+CSHOULDBE=8252 # number of lines that should be in the log when single node
 if [[ $count -ne $CSHOULDBE ]] ; then
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
 fi
@@ -287,7 +306,7 @@ if ! diff orig.txt replayed.txt ; then
 fi
 
 if [ $success != 1 ] ; then
-    failexit "replayed.txt content is not the same as original.txt"
+    failexit "replayed.txt content is not the same as orig.txt"
 fi
 
 
