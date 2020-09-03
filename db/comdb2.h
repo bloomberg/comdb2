@@ -3234,9 +3234,6 @@ int access_control_check_write(struct ireq *iq, tran_type *tran, int *bdberr);
 /* tcm test case enums */
 enum { TCM_PARENT_DEADLOCK = 1, TCM_MAX = 1 };
 
-/* return non-zero if this test is enabled */
-int tcm_testpoint(int tcmtestid);
-
 /* tagged api big or little endian. */
 enum { TAGGED_API_BIG_ENDIAN = 1, TAGGED_API_LITTLE_ENDIAN = 2 };
 
