@@ -34,8 +34,11 @@
 ** Every new master clears subscription info.
 */
 
-int gbl_queuedb_timeout_sec = 10;
+static pthread_mutex_t trig_thd_cnt_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_max_trigger_threads = 1000;
+static int num_trigger_threads = 0;
 
+int gbl_queuedb_timeout_sec = 10;
 static pthread_mutex_t trighash_lk = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     char *host;
@@ -208,7 +211,7 @@ static void *trigger_start_int(void *name_)
         if (rc == CDB2_TRIG_REQ_SUCCESS)
             break;
         if (rc == CDB2_TRIG_ASSIGNED_OTHER)
-            return NULL;
+            goto done;
         sleep(1);
     }
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
@@ -217,11 +220,15 @@ static void *trigger_start_int(void *name_)
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
         force_unregister(NULL, reg);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        return NULL;
+        goto done;
     }
     ctrace("trigger:%s %016" PRIx64 " register success\n", reg->spname,
            reg->trigger_cookie);
     exec_trigger(reg);
+done:
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    num_trigger_threads--;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
     return NULL;
 }
 
@@ -230,7 +237,22 @@ void trigger_start(const char *name)
 {
     if (!gbl_ready) return;
     pthread_t t;
-    pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    if (num_trigger_threads >= gbl_max_trigger_threads) {
+        Pthread_mutex_unlock(&trig_thd_cnt_lk);
+        logmsg(LOGMSG_ERROR, "%s: Exhausted max trigger threads. Max:%d \n",
+               __func__, gbl_max_trigger_threads);
+        return;
+    }
+    num_trigger_threads++;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
+
+    if (pthread_create(&t, &gbl_pthread_attr_detached,
+                       trigger_start_int, strdup(name))) {
+        Pthread_mutex_lock(&trig_thd_cnt_lk);
+        num_trigger_threads--;
+        Pthread_mutex_unlock(&trig_thd_cnt_lk);
+    }
 }
 
 // FIXME TODO XXX: KEEP TWO HASHES (1) by spname (2) by node num
