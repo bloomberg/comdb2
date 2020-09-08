@@ -631,6 +631,7 @@
 (name='pgcompactpool.stacksz', description='Thread stack size.', type='INTEGER', value='1048576', read_only='N')
 (name='physical_ack_interval', description='For logical transactions, have the slave send an 'ack' after this many physical operations.', type='INTEGER', value='0', read_only='N')
 (name='physical_commit_interval', description='Force a physical commit after this many physical operations.', type='INTEGER', value='512', read_only='N')
+(name='physrep_exit_on_invalid_logstream', description='Exit physreps on invalid logstream.  (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='physrep_reconnect_penalty', description='Physrep wait seconds before retry to the same node.  (Default: 5)', type='INTEGER', value='5', read_only='N')
 (name='physrep_register_interval', description='Interval for physical replicant re-registration.  (Default: 3600)', type='INTEGER', value='3600', read_only='N')
 (name='plannedsc', description='Use planned schema change by default', type='BOOLEAN', value='ON', read_only='N')
