@@ -2016,4 +2016,8 @@ REGISTER_TUNABLE("max_trigger_threads", "Maximum number of trigger threads allow
 REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_test_io_errors, INTERNAL, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
