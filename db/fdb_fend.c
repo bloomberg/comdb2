@@ -2250,8 +2250,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                     tran_flags = 0;
 
                 rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, tran_flags,
-                                    clnt->osql.rqid == OSQL_RQID_USE_UUID,
-                                    trans->sb);
+                                    trans->isuuid, trans->sb);
                 if (rc == FDB_NOERR) {
                     trans->host = host;
                 }
@@ -2369,7 +2368,8 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdb_cursor_t *fdbc;
     int rc;
     char *tid;
-    int isuuid = gbl_noenv_messages;
+    int isuuid =
+        (gbl_noenv_messages) & (fdb->server_version > FDB_VER_WR_NAMES);
     uuid_t zerouuid;
     char zerotid[8] = {0};
 
@@ -3793,7 +3793,8 @@ static fdb_distributed_tran_t *fdb_trans_create_dtran(struct sqlclntstate *clnt)
 
 static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
                                                fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb, int use_ssl)
+                                               fdb_t *fdb, int use_ssl,
+                                               int isuuid)
 {
     fdb_tran_t *tran;
     fdb_msg_t *msg;
@@ -3816,8 +3817,8 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         }
         tran->tid = (char *)tran->tiduuid;
 
-        tran->isuuid = clnt->osql.rqid == OSQL_RQID_USE_UUID;
-        if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+        tran->isuuid = isuuid;
+        if (tran->isuuid) {
             comdb2uuid((unsigned char *)tran->tid);
         } else
             *(unsigned long long *)tran->tid = comdb2fastseed();
@@ -3843,7 +3844,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         free(msg);
 
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
@@ -3855,7 +3856,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         }
     } else {
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
@@ -3875,6 +3876,8 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
+    int isuuid = (clnt->osql.rqid == OSQL_RQID_USE_UUID) &&
+                 (fdb->server_version > FDB_VER_WR_NAMES);
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -3887,9 +3890,9 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl);
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, isuuid);
     if (tran) {
-        if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+        if (tran->isuuid) {
             comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
         } else
             *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
@@ -3908,7 +3911,7 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
     if (dtran) {
         tran = fdb_get_subtran(dtran, fdb);
         if (tran) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
+            if (tran->isuuid)
                 comdb2uuidcpy((unsigned char *)ptid,
                               (unsigned char *)tran->tid);
             else
@@ -3950,8 +3953,8 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode,
-                             clnt->osql.rqid == OSQL_RQID_USE_UUID, tran->sb);
+        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->isuuid,
+                             tran->sb);
 
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n",
@@ -3964,7 +3967,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
         rc = fdb_recv_rc(msg, tran);
 
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%s db=\"%s\"\n",
                        __func__, rc,
@@ -4754,11 +4757,10 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_heartbeat(
-            msg, tran->tid, clnt->osql.rqid == OSQL_RQID_USE_UUID, tran->sb);
+        rc = fdb_send_heartbeat(msg, tran->tid, tran->isuuid, tran->sb);
 
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 comdb2uuidstr((unsigned char *)tran->tid, us);
                 logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
