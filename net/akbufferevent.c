@@ -167,8 +167,6 @@ void akbufferevent_add_buffer(struct akbufferevent *a, struct evbuffer *buf)
             a->pending = event_new(a->base, a->fd, EV_WRITE | EV_PERSIST, flushcb, a);
             event_add(a->pending, NULL);
         }
-    } else {
-        abort();
     }
     Pthread_mutex_unlock(&a->lk);
 }
