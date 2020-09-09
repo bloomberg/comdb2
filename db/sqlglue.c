@@ -105,6 +105,7 @@
 #include "sc_util.h"
 #include "comdb2_query_preparer.h"
 #include <portmuxapi.h>
+#include "cdb2_constants.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -6153,10 +6154,17 @@ void addVdbeToThdCost(int type, int *data)
     if (thd == NULL)
         return;
 
-    if (type == VDBESORTER_WRITE)
-        thd->cost += 0.2;
-    else if (type == VDBESORTER_MOVE || type == VDBESORTER_FIND)
-        thd->cost += 0.1;
+    switch (type) {
+      case VDBESORTER_WRITE:
+        thd->cost += CDB2_TEMP_WRITE_COST;
+        break;
+      case VDBESORTER_FIND:
+        thd->cost += CDB2_TEMP_FIND_COST;
+        break;
+      case VDBESORTER_MOVE:
+        thd->cost += CDB2_TEMP_MOVE_COST;
+        break;
+    }
 
     ++(*data);
 }
@@ -8201,15 +8209,16 @@ int sqlite3BtreeCursor(
                                               temp_table_cmp, pKeyInfo, cur,
                                               thd);
         }
-        cur->find_cost = cur->move_cost = 0.1;
-        cur->write_cost = 0.2;
+        cur->find_cost = CDB2_TEMP_FIND_COST;
+        cur->move_cost = CDB2_TEMP_MOVE_COST;
+        cur->write_cost = CDB2_TEMP_WRITE_COST;
     }
     /* sqlite_master table */
     else if (iTable == RTPAGE_SQLITE_MASTER && fdb_master_is_local(cur)) {
         rc = sqlite3BtreeCursor_master(
             pBt, iTable, wrFlag & BTREE_CUR_WR, sqlite3VdbeCompareRecordPacked,
             pKeyInfo, cur, thd, clnt->keyDdl, clnt->dataDdl, clnt->nDataDdl);
-        cur->find_cost = cur->move_cost = cur->write_cost = 0.0;
+        cur->find_cost = cur->move_cost = cur->write_cost = CDB2_SQLITE_STAT_COST;
     }
     /* remote cursor? */
     else if (pBt->is_remote) {
@@ -8222,8 +8231,9 @@ int sqlite3BtreeCursor(
         rc = sqlite3BtreeCursor_analyze(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                         sqlite3VdbeCompareRecordPacked,
                                         pKeyInfo, cur, thd);
-        cur->find_cost = cur->move_cost = 0.1;
-        cur->write_cost = 0.2;
+        cur->find_cost = CDB2_TEMP_FIND_COST;
+        cur->move_cost = CDB2_TEMP_MOVE_COST;
+        cur->write_cost = CDB2_TEMP_WRITE_COST;
     }
     /* real table */
     else {
@@ -8232,14 +8242,12 @@ int sqlite3BtreeCursor(
                                        cur, thd);
         /* treat sqlite_stat1 as free */
         if (is_sqlite_stat(cur->db->tablename)) {
-            cur->find_cost = 0.0;
-            cur->move_cost = 0.0;
-            cur->write_cost = 0.0;
+            cur->find_cost = cur->move_cost = cur->write_cost = CDB2_SQLITE_STAT_COST;
         } else {
-            cur->blob_cost = 10.0;
-            cur->find_cost = 10.0;
-            cur->move_cost = 1.0;
-            cur->write_cost = 100;
+            cur->blob_cost = CDB2_BLOB_FETCH_COST;
+            cur->find_cost = CDB2_FIND_COST;
+            cur->move_cost = CDB2_MOVE_COST;
+            cur->write_cost = CDB2_WRITE_COST;
         }
     }
 
