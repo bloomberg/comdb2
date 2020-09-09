@@ -2582,7 +2582,8 @@ enum {
     KEY_DUP = 1 << 0,
     KEY_DATACOPY = 1 << 1,
     KEY_DELETED = 1 << 2,
-    KEY_UNIQNULLS = 1 << 3
+    KEY_UNIQNULLS = 1 << 3,
+    KEY_RECNUM = 1 << 4,
 };
 
 struct comdb2_key {
@@ -3308,6 +3309,10 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     /* DUP */
     if (key->flags & KEY_DUP)
         SNPRINTF(buf, sizeof(buf), pos, "%s", "DUP")
+
+    /* RECNUM */
+    if (key->flags & KEY_RECNUM)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "RECNUM")
 
     /* UNIQNULLS */
     if (key->flags & KEY_UNIQNULLS)
@@ -4124,6 +4129,9 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         }
 
         /* Key flags */
+        if (schema->ix[i]->flags & SCHEMA_RECNUM) {
+            key->flags |= KEY_RECNUM;
+        }
         if (schema->ix[i]->flags & SCHEMA_DUP) {
             key->flags |= KEY_DUP;
         }

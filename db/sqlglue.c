@@ -1435,6 +1435,9 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
     if (schema->flags & SCHEMA_RECNUM)
         SNPRINTF(buf, sizeof(buf), current, "%s", "RECNUM")
 
+    if (schema->flags & SCHEMA_UNIQNULLS)
+        SNPRINTF(buf, sizeof(buf), current, "%s", "UNIQNULLS")
+
     for (fieldctr = 0; fieldctr < schema->nmembers; ++fieldctr) {
         SNPRINTF(buf, sizeof(buf), current, "%s", schema->member[fieldctr].name)
         if (schema->member[fieldctr].flags & INDEX_DESCEND)
