@@ -783,7 +783,7 @@ DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10,
      one again to the master
 
   BDB_ATTR_SQL_QUEUEING_DISABLE_TRACE
-     disables the Queuing sql trace, which detects sql overload cases
+     disables the Queuing sql trace, which detects sql override cases
 
   BDB_ATTR_SQL_QUEUEING_CRITICAL_TRACE
      maximum number of sql queries we can queue without alerting when

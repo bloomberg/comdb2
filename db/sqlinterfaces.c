@@ -5392,6 +5392,14 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     if (gbl_thdpool_queue_only) {
         flags |= THDPOOL_QUEUE_ONLY;
     }
+    if ((thedb->nsiblings <= 1) && (clnt->queue_me == 0)) {
+        /*
+        ** NOTE: For a single-node cluster, always attempt to enter the queue
+        **       if needed, because we know there are no other nodes available
+        **       that can service requests immediately (i.e. without queueing).
+        */
+        clnt->queue_me = 1;
+    }
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sqlcpy, flags,
                               clnt->priority)) != 0) {

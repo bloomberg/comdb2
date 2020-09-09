@@ -430,7 +430,7 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
                 pool->lingersecs);
         logmsgf(LOGMSG_USER, fh, "  Thread stack size         : %zu bytes\n",
                 pool->stack_sz);
-        logmsgf(LOGMSG_USER, fh, "  Maximum queue overload    : %u\n",
+        logmsgf(LOGMSG_USER, fh, "  Maximum queue override    : %u\n",
                 pool->maxqueueoverride);
         logmsgf(LOGMSG_USER, fh, "  Maximum queue age         : %u ms\n",
                 pool->maxqueueagems);
