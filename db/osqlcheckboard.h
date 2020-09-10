@@ -106,7 +106,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt);
  */
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
                                 void *data, struct errstat *errstat,
-                                struct query_effects *effects);
+                                struct query_effects *effects,
+                                struct query_effects *fk_effects);
 
 /**
  * Wait the default time for the session to complete

@@ -1476,6 +1476,7 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
          * blkseq on master because replicant will retry */
         snap_info.replicant_is_able_to_retry = replicant_is_able_to_retry(clnt);
         snap_info.effects = clnt->effects;
+        snap_info.fk_effects = clnt->fk_effects;
         comdb2uuidcpy(snap_info.uuid, osql->uuid);
         snap_info_p = &snap_info;
     }

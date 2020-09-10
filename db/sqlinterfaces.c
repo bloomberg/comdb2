@@ -1701,8 +1701,9 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
 
 void reset_query_effects(struct sqlclntstate *clnt)
 {
-    bzero(&clnt->effects, sizeof(clnt->effects));
-    bzero(&clnt->log_effects, sizeof(clnt->effects));
+    bzero(&clnt->effects, sizeof(struct query_effects));
+    bzero(&clnt->fk_effects, sizeof(struct query_effects));
+    bzero(&clnt->log_effects, sizeof(struct query_effects));
 }
 
 static char *sqlenginestate_tostr(int state)

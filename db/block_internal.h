@@ -635,7 +635,7 @@ BB_COMPILE_TIME_ASSERT(fstblk_rspkl_size,
         FSTBLK_RSPERR_LEN + FSTBLK_RSPOK_LEN + (BLOCK_ERR_LEN * MAXBLOCKOPS) + \
         sizeof(int) /* snapinfo_outrc */ + ERRSTAT_LEN /* iq->errstat */ +     \
         sizeof(int) /* ? */ + sizeof(int) /* comdb2_time_epoch() */ +          \
-        sizeof(struct query_effects) /* query effects */
+        (2 * sizeof(struct query_effects)) /* query effects */
 
 typedef struct block_state {
     /* ptrs into the main fstsnd buf */

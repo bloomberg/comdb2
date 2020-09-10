@@ -705,6 +705,7 @@ struct sqlclntstate {
     struct query_limits limits;
 
     struct query_effects effects;
+    struct query_effects fk_effects;
     struct query_effects log_effects;
     int64_t nsteps;
 

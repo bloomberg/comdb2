@@ -67,7 +67,8 @@ int offload_comm_send_blockreply(char *host, unsigned long long rqid, void *buf,
  */
 int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
                       int hasuuid, struct errstat **xerr,
-                      struct query_effects *effects);
+                      struct query_effects *effects,
+                      struct query_effects *fk_effects);
 
 /**
  * Send a "POKE" message to "tonode" inquering about session "rqid"

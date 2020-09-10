@@ -201,6 +201,8 @@ int cdb2_clone(cdb2_hndl_tp **hndl, cdb2_hndl_tp *c_hndl);
 int cdb2_next_record(cdb2_hndl_tp *hndl);
 
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);
+int cdb2_get_effects_v2(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects,
+                        cdb2_effects_tp *fk_effects);
 
 int cdb2_close(cdb2_hndl_tp *hndl);
 
