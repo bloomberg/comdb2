@@ -14,6 +14,8 @@
 #include "util.h"
 #include "segstr.h"
 
+#define LOGMSG_STACK_BUFFER_SIZE 1024
+
 static loglvl level = LOGMSG_WARN;
 static int do_syslog = 0;
 static int do_time = 1;
@@ -80,11 +82,41 @@ static char *logmsg_level_str(int lvl)
     }
 }
 
-static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
+static int sprintf_auto_resize(char **headp, int *offp, int len, const char *fmt, const char *content)
+{
+    char *head = *headp;
+    int off = *offp;
+    char dummy[1];
+    int size = snprintf(dummy, 1, fmt, content);
+    int need = off + size + 1;
+
+    if (need > len) {    /* Resize the buffer to fit more content. */
+        if (off < len) { /* The buffer on the stack isn't wide enough. Switch to malloc. */
+            head = malloc(need);
+            memcpy(head, *headp, off);
+        } else {
+            head = realloc(head, need);
+        }
+        if (head == NULL)
+            return 0;
+    }
+
+    off += snprintf(head + off, size + 1, fmt, content);
+
+    *headp = head;
+    *offp = off;
+    return size;
+}
+
+int logmsgv(loglvl lvl, const char *fmt, va_list args)
 {
     if (!fmt) return 0;
 
     char *msg, *savmsg;
+    char buffer[LOGMSG_STACK_BUFFER_SIZE];
+    char *head = buffer;
+    int off = 0;
+
     char timestamp[200];
     va_list argscpy;
     FILE *f;
@@ -106,7 +138,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     int len = vsnprintf(buf, 1, fmt, argscpy);
     va_end(argscpy);
 
-    if (len < 1024) {
+    if (len < LOGMSG_STACK_BUFFER_SIZE) {
         msg = alloca(len + 1);
         savmsg = NULL;
     } else {
@@ -140,7 +172,7 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     }
     while (do_time && ! override && ended_with_newline && *msg != 0) {
         char *s;
-        ret += fprintf(f, "%s", timestamp);
+        ret += sprintf_auto_resize(&head, &off, sizeof(buffer), "%s", timestamp);
         s = strchr(msg, '\n');
         if (s) {
             *s = 0;
@@ -148,9 +180,9 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
             /* Add a prefix for ERROR/FATAL messages. */
             if (do_prefix_level &&
                 (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL)) {
-                ret += fprintf(f, "[%s] ", logmsg_level_str(lvl));
+                ret += sprintf_auto_resize(&head, &off, sizeof(buffer), "[%s] ", logmsg_level_str(lvl));
             }
-            ret += fprintf(f, "%s\n", msg);
+            ret += sprintf_auto_resize(&head, &off, sizeof(buffer), "%s\n", msg);
             msg = s+1;
         }
         else {
@@ -161,24 +193,19 @@ static int logmsgv_lk(loglvl lvl, const char *fmt, va_list args)
     if (*msg != 0) {
         /* Add a prefix for ERROR/FATAL messages. */
         if (do_prefix_level && (lvl == LOGMSG_ERROR || lvl == LOGMSG_FATAL)) {
-            ret += fprintf(f, "[%s] ", logmsg_level_str(lvl));
+            ret += sprintf_auto_resize(&head, &off, sizeof(buffer), "[%s] ", logmsg_level_str(lvl));
         }
-        ret += fprintf(f, "%s", msg);
+        ret += sprintf_auto_resize(&head, &off, sizeof(buffer), "%s", msg);
         if (msg[strlen(msg)-1] == '\n')
             ended_with_newline = 1;
         else
             ended_with_newline = 0;
     }
+    fprintf(f, "%s", head);
+    /* If `head' is different from `buffer', it's malloc'd and thus needs freed. */
+    if (head != buffer)
+        free(head);
     free(savmsg);
-    return ret;
-}
-
-static pthread_mutex_t logmsg_lk = PTHREAD_MUTEX_INITIALIZER;
-int logmsgv(loglvl lvl, const char *fmt, va_list args) {
-    int ret;
-    pthread_mutex_lock(&logmsg_lk);
-    ret = logmsgv_lk(lvl, fmt, args);
-    pthread_mutex_unlock(&logmsg_lk);
     return ret;
 }
 
