@@ -787,6 +787,12 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         BACKOUT;
     }
 
+    rc = create_datacopy_array(newdb);
+    if (rc) {
+        sc_errf(s, "error initializing datacopy array\n");
+        return -1;
+    }
+
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
         BACKOUT;
 

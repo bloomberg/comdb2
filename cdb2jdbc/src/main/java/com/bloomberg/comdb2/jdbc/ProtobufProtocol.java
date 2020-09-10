@@ -122,7 +122,7 @@ public class ProtobufProtocol implements Protocol {
                     ret.value.add(
                             new Column(
                                 col.hasType() ? col.getType().getNumber() : -1,
-                                col.getValue().toByteArray()
+                                (col.hasIsnull() && col.getIsnull()) ? null : col.getValue().toByteArray()
                                 )
                             );
                 }
@@ -185,10 +185,29 @@ public class ProtobufProtocol implements Protocol {
                 _sqlquery.addFlag(CDB2_FLAG.newBuilder().setOption(flag.option)
                         .setValue(flag.value).build());
 
-            for (Cdb2BindValue bindVar : cdb2SqlQuery.bindVars)
-                _sqlquery.addBindvars(bindvalue.newBuilder()
-                        .setVarname(bindVar.varName).setType(bindVar.type)
-                        .setValue(ByteString.copyFrom(bindVar.value == null ? new byte[]{} : bindVar.value)).build());
+            for (Cdb2BindValue bindVar : cdb2SqlQuery.bindVars) {
+                bindvalue.Builder param = bindvalue.newBuilder();
+
+                /* varname is a required field. always set it. Unlike protobuf-c, protobuf-java does
+                   not serialize a null value. So we serialize an empty payload instead. */
+                param.setVarname((bindVar.varName == null) ? "" : bindVar.varName);
+                /* Handle parameter index. */
+                if (bindVar.index > 0)
+                    param.setIndex(bindVar.index);
+
+                /* Handle isnull. */
+                if (bindVar.value == null) {
+                    param.setIsnull(true);
+                    param.setValue(ByteString.copyFrom(new byte[]{}));
+                } else if (bindVar.value.length == 0) {
+                    param.setIsnull(false);
+                    param.setValue(ByteString.copyFrom(new byte[]{}));
+                } else {
+                    param.setValue(ByteString.copyFrom(bindVar.value));
+                }
+
+                _sqlquery.addBindvars(param.setType(bindVar.type).build());
+            }
 
             for (String setFlag : cdb2SqlQuery.setFlags)
                 _sqlquery.addSetFlags(setFlag);

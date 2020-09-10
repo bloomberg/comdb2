@@ -5550,12 +5550,6 @@ add_blkseq:
                                        &replay_data, &replay_len);
             }
 
-            /* force a parent-deadlock for cdb2tcm */
-            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry\n");
-                rc = RC_INTERNAL_RETRY;
-            }
-
             if (rc == 0 && have_blkseq) {
                 if (iq->tranddl) {
                     if (backed_out) {
@@ -5690,23 +5684,6 @@ add_blkseq:
             }
         } else /* rowlocks */
         {
-            /* force a parent-deadlock for cdb2tcm */
-            if ((tcm_testpoint(TCM_PARENT_DEADLOCK)) && (0 == (rand() % 20))) {
-                logmsg(LOGMSG_DEBUG, "tcm forcing parent retry in rowlocks\n");
-                if (hascommitlock) {
-                    Pthread_rwlock_unlock(&commit_lock);
-                    hascommitlock = 0;
-                }
-                if (iq->tranddl)
-                    backout_and_abort_tranddl(iq, trans, 1);
-                trans_abort_logical(iq, trans, NULL, 0, NULL, 0);
-                rc = RC_INTERNAL_RETRY;
-                if (block_state_restore(iq, p_blkstate))
-                    return ERR_INTERNAL;
-                outrc = RC_INTERNAL_RETRY;
-                fromline = __LINE__;
-                goto cleanup;
-            }
             /* commit or abort the trasaction as appropriate,
                and write the blkseq */
             if (!backed_out) {

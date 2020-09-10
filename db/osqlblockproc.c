@@ -417,44 +417,6 @@ void osql_bplog_close(blocksql_tran_t **ptran)
     free(tran);
 }
 
-
-const char *osql_reqtype_str(int type)
-{   
-    assert(0 < type && type < MAX_OSQL_TYPES);
-    // copied from enum OSQL_RPL_TYPE
-    static const char *typestr[] = {
-        "RPLINV",
-        "DONE",
-        "USEDB",
-        "DELREC",
-        "INSREC",
-        "CLRTBL",
-        "QBLOB",
-        "UPDREC",
-        "XERR",
-        "UPDCOLS",
-        "DONE_STATS",
-        "DBGLOG",
-        "RECGENID",
-        "UPDSTAT",
-        "EXISTS",
-        "SERIAL",
-        "SELECTV",
-        "DONE_SNAP",
-        "SCHEMACHANGE",
-        "BPFUNC",
-        "DBQ_CONSUME",
-        "DELETE",
-        "INSERT",
-        "UPDATE",
-        "DELIDX",
-        "INSIDX",
-        "DBQ_CONSUME_UUID",
-        "STARTGEN",
-    };
-    return typestr[type];
-}
-
 static void setup_reorder_key(blocksql_tran_t *tran, int type,
                               osql_sess_t *sess, unsigned long long rqid,
                               char *rpl, oplog_key_t *key)
@@ -608,8 +570,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
     logmsg(LOGMSG_DEBUG, "REORDER: saving for sess %p\n", sess);
     uuidstr_t us;
     comdb2uuidstr(sess->uuid, us);
-    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", us, type,
-             osql_reqtype_str(type), tran->seq);
+    DEBUGMSG("uuid=%s type=%d (%s) seq=%lld\n", us, type, osql_reqtype_str(type), tran->seq);
 #endif
 
     _pre_process_saveop(sess, tran, rpl, rplen, type);

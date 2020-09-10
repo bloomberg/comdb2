@@ -3164,8 +3164,12 @@ static void get_cached_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if ((prepFlags & PREPARE_ONLY) == 0) {
             int rc = sqlite3LockStmtTables(rec->stmt);
             if (rc) {
+                remove_stmt_entry(thd, rec->stmt_entry, 1);
                 cleanup_stmt_entry(rec->stmt_entry);
+
+                rec->stmt_entry = NULL;
                 rec->stmt = NULL;
+                rec->status = CACHE_DISABLED;
             }
         }
     }
@@ -3222,8 +3226,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         goto cleanup;
     }
     if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
-        if (requeue_stmt_entry(thd, rec->stmt_entry)) /* put back in queue... */
+        if (requeue_stmt_entry(thd,
+                               rec->stmt_entry)) /* put back in queue... */ {
             cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
+        }
 
         return 0;
     }
@@ -3663,11 +3669,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     } else {
         clnt->verify_remote_schemas = 0;
     }
-    if (tail && *tail) {
-        logmsg(LOGMSG_INFO,
-               "TRAILING CHARACTERS AFTER QUERY TERMINATION (%d): \"%s\"\n",
-               rc, tail);
-    }
     return rc;
 }
 
@@ -3736,9 +3737,18 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             rc = SQLITE_ERROR;
             goto out;
         }
+
+        char *name;
+        if (strlen(p.name) <= 0) { // name is blank because this was from cdb2_bind_index()
+            name = alloca(12);     // enough space to fit string representation of integer
+            sprintf(name, "?%d", p.pos);
+        }
+        else 
+            name = p.name;
+
         if (p.null || p.type == COMDB2_NULL_TYPE) {
             rc = sqlite3_bind_null(stmt, p.pos);
-            eventlog_bind_null(arr, p.name);
+            eventlog_bind_null(arr, name);
             if (rc) { /* position out-of-bounds, etc? */
                 goto out;
             }
@@ -3748,11 +3758,11 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
         case CLIENT_INT:
         case CLIENT_UINT:
             rc = sqlite3_bind_int64(stmt, p.pos, p.u.i);
-            eventlog_bind_int64(arr, p.name, p.u.i, p.len);
+            eventlog_bind_int64(arr, name, p.u.i, p.len);
             break;
         case CLIENT_REAL:
             rc = sqlite3_bind_double(stmt, p.pos, p.u.r);
-            eventlog_bind_double(arr, p.name, p.u.r, p.len);
+            eventlog_bind_double(arr, name, p.u.r, p.len);
             break;
         case CLIENT_CSTR:
         case CLIENT_PSTR:
@@ -3762,27 +3772,27 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
              */
             p.len = strnlen((char *)p.u.p, p.len);
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
-            eventlog_bind_text(arr, p.name, p.u.p, p.len);
+            eventlog_bind_text(arr, name, p.u.p, p.len);
             break;
         case CLIENT_VUTF8:
             rc = sqlite3_bind_text(stmt, p.pos, p.u.p, p.len, NULL);
-            eventlog_bind_varchar(arr, p.name, p.u.p, p.len);
+            eventlog_bind_varchar(arr, name, p.u.p, p.len);
             break;
         case CLIENT_BLOB:
         case CLIENT_BYTEARRAY:
             rc = sqlite3_bind_blob(stmt, p.pos, p.u.p, p.len, NULL);
-            eventlog_bind_blob(arr, p.name, p.u.p, p.len);
+            eventlog_bind_blob(arr, name, p.u.p, p.len);
             break;
         case CLIENT_DATETIME:
         case CLIENT_DATETIMEUS:
             rc = sqlite3_bind_datetime(stmt, p.pos, &p.u.dt, clnt->tzname);
-            eventlog_bind_datetime(arr, p.name, &p.u.dt, clnt->tzname);
+            eventlog_bind_datetime(arr, name, &p.u.dt, clnt->tzname);
             break;
         case CLIENT_INTVYM:
         case CLIENT_INTVDS:
         case CLIENT_INTVDSUS:
             rc = sqlite3_bind_interval(stmt, p.pos, &p.u.tv);
-            eventlog_bind_interval(arr, p.name, &p.u.tv);
+            eventlog_bind_interval(arr, name, &p.u.tv);
             break;
         default:
             rc = SQLITE_ERROR;
@@ -4256,6 +4266,10 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
 #endif
 
 postprocessing:
+    /* if we get this message, it means we had to stop the sqlite early
+       and we must reset the state */
+    if (rc == SQLITE_EARLYSTOP_DOHSQL)
+        sqlite3_reset(stmt);
     /* closing: error codes, postponed write result and so on*/
     rc = post_sqlite_processing(thd, clnt, rec, postponed_write, row_id);
 
@@ -4643,60 +4657,61 @@ errors:
 
 */
 
+static int check_done_func(void *obj)
+{
+    struct sqlclntstate *clnt = (struct sqlclntstate *)obj;
+    /* Don't find the client which we already killed */
+    if (clnt->done && !in_client_trans(clnt) && !clnt->statement_timedout) {
+        return 0;
+    }
+    return -1;
+}
+
+int close_lru_client(int curr_conns, struct sqlclntstate *clnt, int max_iteration)
+{
+    int rc = -1;
+    Pthread_mutex_lock(&clnt_lk);
+    struct sqlclntstate *lru_clnt = listc_findl(&clntlist, check_done_func, clnt, max_iteration);
+    if (lru_clnt) {
+        if (lru_clnt == clnt) {
+            /* This is a new client however its one of the  first 'max_iteration' connections. */
+            rc = 0;
+        } else {
+            lru_clnt->statement_timedout = 1; /* disallow any new query */
+            int fd = sbuf2fileno(lru_clnt->sb);
+            shutdown(fd, SHUT_RD);
+            logmsg(LOGMSG_WARN,
+                   "%s: Closing least recently used connection fd %d , total "
+                   "%d \n",
+                   __func__, fd, curr_conns);
+            rc = 0;
+        }
+    }
+    Pthread_mutex_unlock(&clnt_lk);
+    return rc;
+}
+
 int check_active_appsock_connections(struct sqlclntstate *clnt)
 {
-    int max_appsock_conns =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
-    if (active_appsock_conns > max_appsock_conns) {
-        int num_retry = 0;
-        int rc = -1;
-    retry:
-        Pthread_mutex_lock(&clnt_lk);
-        Pthread_mutex_lock(&appsock_conn_lk);
-        num_retry++;
-        if (active_appsock_conns <= max_appsock_conns) {
-            Pthread_mutex_unlock(&appsock_conn_lk);
-            Pthread_mutex_unlock(&clnt_lk);
-            return 0;
-        }
-        struct sqlclntstate *lru_clnt = listc_rtl(&clntlist);
-        listc_abl(&clntlist, lru_clnt);
-        while (lru_clnt != clnt) {
-            if (lru_clnt->done && !in_client_trans(lru_clnt)) {
-                lru_clnt->statement_timedout = 1; /* disallow any new query */
-                break;
-            }
-            lru_clnt = listc_rtl(&clntlist);
-            listc_abl(&clntlist, lru_clnt);
-        }
-
-        if (lru_clnt == clnt || !lru_clnt->done) {
-            /* All clients have transactions, wait for 1 second */
-            if (num_retry <= 5) {
+    int rc = 0;
+    int num_retry = 0;
+retry:
+    num_retry++;
+    Pthread_mutex_lock(&appsock_conn_lk);
+    if (active_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) {
+        /* We might be a new connection or else try to close an old connection */
+        if (close_lru_client(active_appsock_conns, clnt, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT)) !=
+            0) {
+            if (num_retry < 5) {
                 Pthread_mutex_unlock(&appsock_conn_lk);
-                Pthread_mutex_unlock(&clnt_lk);
                 sleep(1);
                 goto retry;
             }
             rc = -1;
-        } else {
-            int fd = sbuf2fileno(lru_clnt->sb);
-            if (lru_clnt->done) {
-                // lru_clnt->statement_timedout = 1; already done
-                shutdown(fd, SHUT_RD);
-                logmsg(
-                    LOGMSG_WARN,
-                    "%s: Closing least recently used connection fd %d , total "
-                    "%d \n",
-                    __func__, fd, active_appsock_conns - 1);
-                rc = 0;
-            }
         }
-        Pthread_mutex_unlock(&appsock_conn_lk);
-        Pthread_mutex_unlock(&clnt_lk);
-        return rc;
     }
-    return 0;
+    Pthread_mutex_unlock(&appsock_conn_lk);
+    return rc;
 }
 
 /**
@@ -5381,6 +5396,14 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     if (gbl_thdpool_queue_only) {
         flags |= THDPOOL_QUEUE_ONLY;
     }
+    if ((thedb->nsiblings <= 1) && (clnt->queue_me == 0)) {
+        /*
+        ** NOTE: For a single-node cluster, always attempt to enter the queue
+        **       if needed, because we know there are no other nodes available
+        **       that can service requests immediately (i.e. without queueing).
+        */
+        clnt->queue_me = 1;
+    }
     if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sqlcpy, flags,
                               clnt->priority)) != 0) {
@@ -5900,6 +5923,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     set_sent_data_to_client(clnt, 0, __func__, __LINE__);
     set_asof_snapshot(clnt, 0, __func__, __LINE__);
     clnt->sqltick = 0;
+    clnt->rowbuffer = 1;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -6772,6 +6796,9 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
     }
 
 done:
+    /* for distributed queries, it is possible that this
+       particular shard to succeed, but still have an error
+       in another shard; check that */
     if (rc == 0 && unlikely(clnt->conns)) {
         return dohsql_error(clnt, errstr);
     }

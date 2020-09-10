@@ -69,8 +69,8 @@ public class Comdb2Handle extends AbstractConnection {
     int tcpbufsz;
     int age = 180; /* default max age 180 seconds */
     boolean pmuxrte = false;
-    boolean statement_effects = false;
-    boolean verifyretry = false;
+    boolean verifyretry = true;
+    boolean stmteffects = true;
     int soTimeout = 5000;
     boolean hasComdb2dbTimeout;
     int comdb2dbTimeout = 5000;
@@ -92,6 +92,7 @@ public class Comdb2Handle extends AbstractConnection {
     private String driverErrStr = null;
 
     HashMap<String, Cdb2BindValue> bindVars;
+    HashMap<Integer, Cdb2BindValue> bindVarsByIndex;
     private List<String> sets;
 
     private boolean ack = false;
@@ -171,7 +172,6 @@ public class Comdb2Handle extends AbstractConnection {
         ret.tcpbufsz = tcpbufsz;
         ret.age = age;
         ret.pmuxrte = pmuxrte;
-        ret.statement_effects = statement_effects;
         ret.verifyretry = verifyretry;
         ret.soTimeout = soTimeout;
         ret.hasComdb2dbTimeout = hasComdb2dbTimeout;
@@ -204,14 +204,25 @@ public class Comdb2Handle extends AbstractConnection {
         super(new ProtobufProtocol(), null);
         sets = new ArrayList<String>();
 
-        /* export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
+        /* CDB2JDBC_STATEMENT_QUERYEFFECTS and CDB2JDBC_VERIFY_RETRY
+           are used by the Jepsen tests to change the driver's behaviors. */
+
+        /* default                                  -> enable
+         * export CDB2JDBC_STATEMENT_QUERYEFFECTS   -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=1 -> enable
          * export CDB2JDBC_STATEMENT_QUERYEFFECTS=0 -> disable
          */
         String queryeffectsEnv = System.getenv("CDB2JDBC_STATEMENT_QUERYEFFECTS");
-        statement_effects = (queryeffectsEnv != null && !queryeffectsEnv.equals("0"));
-        if (statement_effects)
-            sets.add("set queryeffects statement");
+        setStatementQueryEffects((queryeffectsEnv == null || !queryeffectsEnv.equals("0")));
+
+        /*
+         * default                        -> enable
+         * export CDB2JDBC_VERIFY_RETRY   -> enable
+         * export CDB2JDBC_VERIFY_RETRY=1 -> enable
+         * export CDB2JDBC_VERIFY_RETRY=0 -> disable
+         */
+        String verifyRetryEnv = System.getenv("CDB2JDBC_VERIFY_RETRY");
+        setVerifyRetry((verifyRetryEnv == null || !verifyRetryEnv.equals("0")));
 
         String userEnv = System.getenv("COMDB2_USER");
         if (userEnv != null) {
@@ -223,14 +234,10 @@ public class Comdb2Handle extends AbstractConnection {
             sets.add("set password " + passwordEnv);
         }
 
-        if (verifyretry)
-            sets.add("set verifyretry on");
-        else
-            sets.add("set verifyretry off");
-
         uuid = UUID.randomUUID().toString();
         tdlog(Level.FINEST, "Created handle with uuid %s", uuid);
         bindVars = new HashMap<String, Cdb2BindValue>();
+        bindVarsByIndex = new HashMap<Integer, Cdb2BindValue>();
         queryList = new ArrayList<QueryItem>();
     }
 
@@ -308,18 +315,6 @@ public class Comdb2Handle extends AbstractConnection {
             overriddenPort = portMuxPort;
     }
 
-    public void setStatementQueryEffects(boolean val) {
-        if (val == statement_effects)
-            return;
-
-        if (val)
-            sets.add("set queryeffects statement");
-        else
-            sets.remove("set queryeffects statement");
-
-        statement_effects = val;
-    }
-
     public void setVerifyRetry(boolean val) {
         if (val == verifyretry)
             return;
@@ -371,6 +366,21 @@ public class Comdb2Handle extends AbstractConnection {
     public void setTcpBufSize(int sz) {
         tcpbufsz = sz;
         hasUserTcpSz = true;
+    }
+
+    public void setStatementQueryEffects(boolean val) {
+        if (val == stmteffects)
+            return;
+
+        if (val) {
+            sets.remove("set queryeffects transaction");
+            sets.add("set queryeffects statement");
+        } else {
+            sets.remove("set queryeffects statement");
+            sets.add("set queryeffects transaction");
+        }
+
+        stmteffects = val;
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
@@ -661,6 +671,7 @@ public class Comdb2Handle extends AbstractConnection {
         sqlQuery.sqlQuery = sql;
 
         sqlQuery.bindVars.addAll(bindVars.values());
+        sqlQuery.bindVars.addAll(bindVarsByIndex.values());
         if (debug)
             tdlog(Level.FINEST, "starting sendQuery");
         sqlQuery.setFlags.addAll(sets.subList(nSetsSent, sets.size()));
@@ -2197,6 +2208,21 @@ readloop:
     @Override
     public void clearParameters() {
         bindVars.clear();
+        bindVarsByIndex.clear();
+    }
+
+    @Override
+    public void bindParameter(int index, int type, byte[] data) {
+        /* index is 1-based. */
+        if (index <= 0)
+            return;
+
+        Cdb2BindValue newVal = new Cdb2BindValue();
+        newVal.index = index;
+        newVal.type = type;
+        newVal.value = data;
+
+        bindVarsByIndex.put(index, newVal);
     }
 
     @Override
@@ -2214,8 +2240,13 @@ readloop:
     }
 
     @Override
-    public void bindParameters(Map<String, Cdb2Query.Cdb2BindValue> aBindVars) {
+    public void bindNamedParameters(Map<String, Cdb2Query.Cdb2BindValue> aBindVars) {
         bindVars.putAll(aBindVars);
+    }
+
+    @Override
+    public void bindIndexedParameters(Map<Integer, Cdb2Query.Cdb2BindValue> aBindVars) {
+        bindVarsByIndex.putAll(aBindVars);
     }
 
     @Override

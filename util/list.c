@@ -250,6 +250,26 @@ void *listc_maybe_rfl(listc_t *l, void *obj)
     return listc_rfl(l, obj);
 }
 
+/* Starting from top, find first item for which function gives success or until we find current object */
+void *listc_findl(listc_t *l, int (*func)(void *), void *curr_obj, int max_iterations)
+{
+    linkc_t *obj = l->top;
+    int itr = 0;
+    if (!obj)
+        return NULL;
+    do {
+        if (func(obj) == 0)
+            return obj;
+        itr++;
+        if (itr >= max_iterations)
+            break;
+        obj = ((linkc_t *)((intptr_t)obj + l->diff))->next;
+    } while (obj && obj != curr_obj);
+    if (obj == curr_obj)
+        return obj;
+    return NULL;
+}
+
 void *listc_rfl(listc_t *l, void *obj)
 {
     linkc_t *it = (linkc_t *)((intptr_t)obj + l->diff);

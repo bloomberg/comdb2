@@ -7087,6 +7087,7 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)
 {
+    clnt->ready_for_heartbeats = 1;
     int rc = exec_procedure_int(thd, clnt, err);
     if (clnt->sp) {
         reset_sp(clnt->sp);

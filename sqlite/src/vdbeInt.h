@@ -72,7 +72,7 @@ typedef struct SortSubtask SortSubtask;
 typedef struct SorterFile SorterFile;
 
 void addVdbeSorterCost(const VdbeSorter *);
-void addVdbeToThdCost(int type);
+void addVdbeToThdCost(int type, int *data);
 
 struct SorterFile {
   sqlite3_file *pFd;              /* File handle */

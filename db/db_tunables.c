@@ -216,6 +216,7 @@ extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
 extern int gbl_verbose_physrep;
+extern int gbl_physrep_exit_on_invalid_logstream;
 extern int gbl_blocking_physrep;
 extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_send_failed_dispatch_message;
@@ -246,6 +247,7 @@ extern int gbl_dump_sql_on_repwait_sec;
 extern int gbl_client_queued_slow_seconds;
 extern int gbl_client_running_slow_seconds;
 extern int gbl_client_abort_on_slow;
+extern int gbl_max_trigger_threads;
 
 extern long long sampling_threshold;
 
@@ -347,6 +349,8 @@ int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
                                    sqlite's limit */
 int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
+int gbl_enable_sq_flattening_optimization = 1;
+
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 
 /*

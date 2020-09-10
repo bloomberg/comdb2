@@ -265,7 +265,6 @@ static void appsock_work(struct thdpool *pool, void *work, void *thddata)
     struct appsock_thd_state *state = thddata;
     appsock_work_args_t *w = (appsock_work_args_t *)work;
     int keepsocket = 0;
-
     thrman_setfd(state->thr_self, sbuf2fileno(w->sb));
     thd_appsock_int(w, &keepsocket, state->thr_self);
     thrman_setfd(state->thr_self, -1);
@@ -314,6 +313,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     static int last_thread_dump_time = 0;
     static int last_thread_dump_warn_time = 0;
     int nconns = 0;
+    int curr_appsock_conns = 0;
     int maxconns;
     time_t now;
 
@@ -385,11 +385,11 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     total_appsock_conns++;
     Pthread_mutex_lock(&appsock_conn_lk);
     active_appsock_conns++;
+    curr_appsock_conns = active_appsock_conns;
     Pthread_mutex_unlock(&appsock_conn_lk);
-    if (active_appsock_conns >
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
-        logmsg(LOGMSG_WARN,
-               "TOO many active socket connections. current limit %d\n",
+
+    if (curr_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
+        logmsg(LOGMSG_WARN, "TOO many active socket connections. current limit %d\n",
                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED));
     }
 }

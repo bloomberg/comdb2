@@ -100,6 +100,7 @@ typedef long long tranid_t;
 #include <schema_lk.h>
 #include "perf.h"
 #include "constraints.h"
+#include "osqlrpltypes.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -309,44 +310,6 @@ enum BLOCK_OPS {
      * opcodes that there actually really are. */
     ,
     NUM_BLOCKOP_OPCODES = 45
-};
-
-const char *osql_reqtype_str(int type); // used for printing string of type
-
-/*
-   type will identify if there is a new record and type the new record is *
-   PLEASE update osql_reqtype_str() when adding to this structure
-*/
-enum OSQL_RPL_TYPE {
-    OSQL_RPLINV = 0,
-    OSQL_DONE = 1,
-    OSQL_USEDB = 2,
-    OSQL_DELREC = 3,
-    OSQL_INSREC = 4, /* R7 uses OSQL_INSERT */
-    OSQL_CLRTBL = 5,
-    OSQL_QBLOB = 6,
-    OSQL_UPDREC = 7,
-    OSQL_XERR = 8,
-    OSQL_UPDCOLS = 9,
-    OSQL_DONE_STATS = 10, /* just like OSQL_DONE, but have additional stats */
-    OSQL_DBGLOG = 11,
-    OSQL_RECGENID = 12,
-    OSQL_UPDSTAT = 13,
-    OSQL_EXISTS = 14,
-    OSQL_SERIAL = 15,
-    OSQL_SELECTV = 16,
-    OSQL_DONE_SNAP = 17,
-    OSQL_SCHEMACHANGE = 18,
-    OSQL_BPFUNC = 19,
-    OSQL_DBQ_CONSUME = 20,
-    OSQL_DELETE = 21, /* new osql type to support partial indexes */
-    OSQL_INSERT = 22, /* new osql type to support partial indexes */
-    OSQL_UPDATE = 23, /* new osql type to support partial indexes */
-    OSQL_DELIDX = 24, /* new osql type to support indexes on expressions */
-    OSQL_INSIDX = 25, /* new osql type to support indexes on expressions */
-    OSQL_STARTGEN = 27,
-    OSQL_DONE_WITH_EFFECTS = 28,
-    MAX_OSQL_TYPES = 29,
 };
 
 enum DEBUGREQ { DEBUG_METADB_PUT = 1 };
@@ -1797,6 +1760,8 @@ extern int gbl_dohsql_max_threads;
 
 extern int gbl_logical_live_sc;
 
+extern int gbl_test_io_errors;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -2537,6 +2502,8 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
                                   int *oldnentries, int lock);
 void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
                            int nents);
+int create_datacopy_arrays(void);
+int create_datacopy_array(struct dbtable *db);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           hash_t *view_hash, int *nents);
 void cleanup_sqlite_master();
@@ -3267,9 +3234,6 @@ int access_control_check_write(struct ireq *iq, tran_type *tran, int *bdberr);
 /* tcm test case enums */
 enum { TCM_PARENT_DEADLOCK = 1, TCM_MAX = 1 };
 
-/* return non-zero if this test is enabled */
-int tcm_testpoint(int tcmtestid);
-
 /* tagged api big or little endian. */
 enum { TAGGED_API_BIG_ENDIAN = 1, TAGGED_API_LITTLE_ENDIAN = 2 };
 
@@ -3537,6 +3501,8 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
+
+int close_lru_client(int, struct sqlclntstate *, int);
 
 int is_tablename_queue(const char *);
 

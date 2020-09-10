@@ -27,7 +27,7 @@ public class VerifyRetryTest {
     /* One transaction will fail if verifyretry is off. */
     @Test public void verifyRetryOff() throws SQLException {
         conn1 = DriverManager.getConnection(String.format(
-                    "jdbc:comdb2://%s/%s", cluster, db));
+                    "jdbc:comdb2://%s/%s?verify_retry=0", cluster, db));
         conn1.setAutoCommit(false);
         Statement stmt1 = conn1.createStatement();
 
@@ -60,7 +60,7 @@ public class VerifyRetryTest {
         conn2.close();
     }
 
-    /* One transaction will fail if verifyretry is off. */
+    /* Both transactions will succeed if verifyretry is on. */
     @Test public void verifyRetryOn() throws SQLException {
         conn1 = DriverManager.getConnection(String.format(
                     "jdbc:comdb2://%s/%s?verify_retry=1", cluster, db));
@@ -96,6 +96,44 @@ public class VerifyRetryTest {
         stmt2.close();
         conn2.close();
     }
+
+    /* Both transactions will succeed by default. */
+    @Test public void verifyRetryDefault() throws SQLException {
+        conn1 = DriverManager.getConnection(String.format(
+                    "jdbc:comdb2://%s/%s", cluster, db));
+        conn1.setAutoCommit(false);
+        Statement stmt1 = conn1.createStatement();
+
+        conn2 = DriverManager.getConnection(String.format(
+                    "jdbc:comdb2://%s/%s", cluster, db));
+        Statement stmt2 = conn2.createStatement();
+
+        stmt1.executeUpdate("UPDATE t_verifyretry SET i = 2 WHERE 1=1");
+        stmt2.executeUpdate("UPDATE t_verifyretry SET i = 3 WHERE 1=1");
+
+        boolean gotError = false;
+        try {
+            conn1.commit(); /* <-- Should not get an exception here */
+        } catch (SQLException sqle) {
+            gotError = true;
+        }
+
+        Assert.assertFalse("Commit should succeed.", gotError);
+
+        boolean isTwo = false;
+        ResultSet rs = stmt1.executeQuery("SELECT i FROM t_verifyretry");
+        while (rs.next()) {
+            isTwo = (rs.getInt(1) == 2);
+        }
+
+        Assert.assertTrue("Should get back 2", isTwo);
+
+        stmt1.close();
+        conn1.close();
+        stmt2.close();
+        conn2.close();
+    }
+
 
     @After public void unsetup() throws SQLException {
         DriverManager.getConnection(String.format(

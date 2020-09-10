@@ -456,6 +456,27 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   sqlite3_result_int(context, i);
 }
 
+static void usleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]) {
+  int total, remain, us;
+  if( argc != 1 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  total = remain = sqlite3_value_int(argv[0]);
+  if( total < 0 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  while( remain > 0 ){
+    us = ( remain > 1000000 ) ? 1000000 : remain;
+    remain -= us;
+    usleep(us);
+    if( comdb2_sql_tick() )
+      break;
+  }
+  sqlite3_result_int(context, (total - remain));
+}
+
 static void tableNamesFunc(
   sqlite3_context *context,
   int argc,
@@ -526,10 +547,17 @@ static void roundFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
   ** handle the rounding directly,
   ** otherwise use printf.
   */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( n==0 && r>=0 && r<(double)(LARGEST_INT64-1) ){
+    r = (double)((sqlite_int64)(r+0.5));
+  }else if( n==0 && r<0 && (-r)<(double)(LARGEST_INT64-1) ){
+    r = -(double)((sqlite_int64)((-r)+0.5));
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( n==0 && r>=0 && r<LARGEST_INT64-1 ){
     r = (double)((sqlite_int64)(r+0.5));
   }else if( n==0 && r<0 && (-r)<LARGEST_INT64-1 ){
     r = -(double)((sqlite_int64)((-r)+0.5));
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     zBuf = sqlite3_mprintf("%.*f",n,r);
     if( zBuf==0 ){
@@ -701,7 +729,7 @@ static void guidStrFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void guidFromStrFunc(
@@ -753,7 +781,7 @@ static void guidFromByteFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid_blob, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void comdb2TestLogFunc(
@@ -2680,6 +2708,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
+    VFUNCTION(usleep,            1, 0, 0, usleepFunc       ),
     VFUNCTION(comdb2_extract_table_names,
                                  1, 0, 0, tableNamesFunc   ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2797,3 +2826,41 @@ void sqlite3RegisterBuiltinFunctions(void){
   }
 #endif
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static int strptrcmp(const void *p1, const void *p2) {
+      return strcmp(*(char *const *)p1, *(char *const *)p2);
+}
+
+void sqlite3GetAllBuiltinFunctions(void **data, int *tot)
+{
+    int cnt = 100;
+    int num = 0;
+    char **arr = malloc((cnt * sizeof(char *)));
+    int i;
+    FuncDef *p;
+    for(i=0; i<SQLITE_FUNC_HASH_SZ; i++){
+        for(p=sqlite3BuiltinFunctions.a[i]; p; p=p->u.pHash){
+            if (num >= cnt) {
+                cnt *= 2;
+                arr = realloc(arr, cnt * sizeof(char*));
+            }
+            arr[num++] = sqlite3_mprintf("%s()", p->zName);
+        }
+    }
+    arr[num++] = sqlite3_mprintf("sys.cmd.send()");
+    arr[num++] = sqlite3_mprintf("sys.cmd.verify()");
+    qsort(arr, num, sizeof(char *), strptrcmp);
+    *tot = num;
+    *data = arr;
+}
+
+void sqlite3FreeAllBuiltinFunctions(void **data, int tot)
+{
+    char **arr = (char **)data;
+    for (int i = 0; i < tot; i++) {
+        sqlite3_free(arr[i]);
+    }
+    free(arr);
+}
+#endif

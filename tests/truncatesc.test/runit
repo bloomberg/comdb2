@@ -154,7 +154,7 @@ function make_phys_rep
     if [[ -n "$replive" ]]; then
         ( $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1) &
     else
-        ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1) &
+        ( timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1) &
     fi
 }
 

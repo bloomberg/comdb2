@@ -769,6 +769,11 @@ Sets a tunable that determines how hard the query planner will work to estimate 
 setting is a number from 1 (least effort, quickly formed plans) to 10 (most effort, possibly better plans).  The 
 default setting is 1.
 
+### SET ROWBUFFER
+
+Configures row-buffering. The default is `ON`, where a server writes a row into a buffer and does not flush the buffer
+immediately. When off, a server flushes on every single row and hence it may reduce latency.
+
 ### SET SSL_MODE
 
 Sets client-side SSL mode. See [SSL Mode Summary](ssl.html#ssl-mode-summary) for details.

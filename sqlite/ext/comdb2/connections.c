@@ -1,3 +1,20 @@
+/*
+   Copyright 2020 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -25,7 +42,7 @@ int get_connections(void **data, int *num_points) {
         dttz_t d = {.dttz_sec = info[i].connect_time_int, .dttz_frac = 0, .dttz_prec = DTTZ_PREC_MSEC};
         dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].connect_time);
 
-        d = (dttz_t) { .dttz_sec = info[i].last_reset_time_int, .dttz_frac = 0, .dttz_frac = DTTZ_PREC_MSEC };
+        d = (dttz_t) { .dttz_sec = info[i].last_reset_time_int, .dttz_frac = 0, .dttz_prec = DTTZ_PREC_MSEC };
         dttz_to_client_datetime(&d, "UTC", (cdb2_client_datetime_t*) &info[i].last_reset_time);
 
         info[i].time_in_state.sign = 1;

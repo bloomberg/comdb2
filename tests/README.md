@@ -1,14 +1,24 @@
 ## Overview
 
-This is the comdb2 test suite. To run the test suite you need to:
+This is the comdb2 test suite.
 
-1) build comdb2 by doing the following from the top level dir:
+Some of the tests require non standard tools to be installed, so here is a 
+list of packages needed to run all the tests:
+
+`apt-get install bash coreutils jq`
+
+Clustered tests also need ssh-client and ssh-server setup.
+
+To run the test suite you need to:
+
+1) Build comdb2 by doing the following from the top level dir:
   mkdir build
   cmake ..
   make -j$(nproc) && make -j$(nproc) test-tools
 
-2) go to the `tests/` directory where each test is a directory with a `.test`
-ending.  To run a specific test, run `make testname`. For example `make
+2) To run tests manually, go to the `tests/` directory where each test resides
+in its own directory with a `.test` ending.
+To run a specific test, run `make testname`. For example `make
 cdb2api` will run the cdb2api test, which is stored in `cdb2api.test`.
 
 To run all tests in the `tests/` directory just rn `make` -- any failure will
@@ -23,17 +33,15 @@ build a cluster on m1/m2/m3 and run the test there. Make can take argumests so
 the same can be achieved via `make cdb2api CLUSTER="m1 m2 m3"`. The databases
 are torn down after the test is over.
 
-`tests/testrunner` is a wrapper script that shows you status
-of running tests. It requires python 2.7 and the `blessings` module. It implies
-`-k` and takes an optional `-j` setting and a list of tests to run.
+3) We also have a GUI tool in `contrib/dev-util/testrunner` which will run 
+tests in the background and show you a progress-board with no clutter.To use it 
+`cd contrib/dev-util/` run `make` then run the tool from the comdb2 rood directory
+like this (will run 4 tests in parallel):
 
-Some of the tests require non standard tools to be installed, so here is a 
-list of packages needed to run all the tests:
+`contrib/dev-util/testrunner -j 4 tests/`
 
-apt-get install bash coreutils jq
-
-Clustered tests also need ssh client and server setup.
-
+or to run a subset of tests:
+`contrib/dev-util/testrunner tests/ basic auth decimal`
 
 ## Adding new tests
 

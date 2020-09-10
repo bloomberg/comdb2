@@ -403,6 +403,11 @@ REGISTER_TUNABLE("enable_sparse_lockerid_map",
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE(
+    "enable_sq_flattening_optimization",
+    "Enable subquery flattening optimization for OUTER JOINS (Default: off)",
+    TUNABLE_BOOLEAN, &gbl_enable_sq_flattening_optimization,
+    NOARG | INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sql_stmt_caching",
                  "Enable caching of query plans. If followed by \"all\" will "
                  "cache all queries, including those without parameters. "
@@ -2007,5 +2012,15 @@ REGISTER_TUNABLE("track_curtran_gettran_locks", "Stack-trace curtran_gettran thr
 
 REGISTER_TUNABLE("permit_small_sequences", "Allow int32 and int16 length sequences.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_permit_small_sequences, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("max_trigger_threads", "Maximum number of trigger threads allowed", TUNABLE_INTEGER,
+                 &gbl_max_trigger_threads, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_test_io_errors, INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

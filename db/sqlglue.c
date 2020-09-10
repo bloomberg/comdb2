@@ -105,6 +105,7 @@
 #include "sc_util.h"
 #include "comdb2_query_preparer.h"
 #include <portmuxapi.h>
+#include "cdb2_constants.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -1435,6 +1436,9 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
     if (schema->flags & SCHEMA_RECNUM)
         SNPRINTF(buf, sizeof(buf), current, "%s", "RECNUM")
 
+    if (schema->flags & SCHEMA_UNIQNULLS)
+        SNPRINTF(buf, sizeof(buf), current, "%s", "UNIQNULLS")
+
     for (fieldctr = 0; fieldctr < schema->nmembers; ++fieldctr) {
         SNPRINTF(buf, sizeof(buf), current, "%s", schema->member[fieldctr].name)
         if (schema->member[fieldctr].flags & INDEX_DESCEND)
@@ -1546,7 +1550,6 @@ char *sql_field_default_trans(struct field *f, int is_out)
         break;
     }
     case SERVER_BYTEARRAY: {
-        /* ... */
         bval = sqlite3_malloc(this_default_len - 1);
         rc = SERVER_BYTEARRAY_to_CLIENT_BYTEARRAY(
             this_default, this_default_len, NULL, NULL, bval,
@@ -1596,15 +1599,18 @@ char *sql_field_default_trans(struct field *f, int is_out)
         }
         break;
     }
+    case SERVER_FUNCTION: {
+        dstr = sqlite3_mprintf("%s", this_default);
+        break;
+    }
     case SERVER_SEQUENCE: {
         dstr = sqlite3_mprintf("%q", "nextsequence");
         break;
     }
     /* no defaults for blobs or vutf8 */
     default:
-        logmsg(LOGMSG_ERROR, "Unknown type in schema: column '%s' "
-                        "type %d\n",
-                f->name, f->type);
+        logmsg(LOGMSG_ERROR, "Unknown default type %d in schema: column '%s' of type %d\n",
+               default_type, f->name, f->type);
         return NULL;
     }
 
@@ -1651,6 +1657,75 @@ static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
     tbl->ix_expr = 0;
     tbl->ix_partial = 0;
     tbl->ix_blob = 0;
+}
+
+int create_datacopy_arrays()
+{
+    int rc;
+    for (int table = 0; table < thedb->num_dbs && rc == 0; table++) {
+        rc = create_datacopy_array(thedb->dbs[table]);
+        if (rc)
+            return rc;
+    }
+
+    return 0;
+}
+
+int create_datacopy_array(struct dbtable *tbl)
+{
+    struct schema *schema = tbl->schema;
+
+    if (schema == NULL) {
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
+        return -1;
+    }
+
+    if (is_sqlite_stat(tbl->tablename)) {
+        return 0;
+    }
+
+    for (int ixnum = 0; ixnum < tbl->nix; ixnum++) {
+
+        schema = tbl->schema->ix[ixnum];
+        struct schema *ondisk = tbl->schema;
+        if (schema == NULL) {
+            logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum, tbl->tablename);
+            return -1;
+        }
+
+        if (!(schema->flags & SCHEMA_DATACOPY)) {
+            continue;
+        }
+
+        int datacopy_pos = 0;
+        for (int ondisk_i = 0; ondisk_i < ondisk->nmembers; ++ondisk_i) {
+            int skip = 0;
+            struct field *ondisk_field = &ondisk->member[ondisk_i];
+
+            for (int schema_i = 0; schema_i < schema->nmembers; ++schema_i) {
+                if (strcmp(ondisk_field->name, schema->member[schema_i].name) == 0) {
+                    skip = 1;
+                    break;
+                }
+            }
+            if (skip)
+                continue;
+
+            if (datacopy_pos == 0) {
+                size_t need = ondisk->nmembers * sizeof(schema->datacopy[0]);
+                if (schema->datacopy)
+                    free(schema->datacopy);
+                schema->datacopy = (int *)malloc(need);
+                if (schema->datacopy == NULL) {
+                    logmsg(LOGMSG_ERROR, "Could not allocate memory for datacopy array\n");
+                    return -1;
+                }
+            }
+            schema->datacopy[datacopy_pos] = ondisk_i;
+            ++datacopy_pos;
+        }
+    }
+    return 0;
 }
 
 /* This creates SQL statements that correspond to a table's schema. These
@@ -1788,8 +1863,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
         if (schema->flags & SCHEMA_DATACOPY) {
             struct schema *ondisk = tbl->schema;
-            int datacopy_pos = 0;
-            size_t need;
+            int first = 1;
             /* Add all fields from ONDISK to index */
             for (int ondisk_i = 0; ondisk_i < ondisk->nmembers; ++ondisk_i) {
                 int skip = 0;
@@ -1809,20 +1883,10 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 
                 strbuf_appendf(sql, ", \"%s\"", ondisk_field->name);
                 /* stop optimizer by adding dummy collation */
-                if (datacopy_pos == 0) {
+                if (first == 1) {
                     strbuf_append(sql, " collate DATACOPY");
-                    need = ondisk->nmembers * sizeof(schema->datacopy[0]);
-                    schema->datacopy = (int *)malloc(need);
-                    if (schema->datacopy == NULL) {
-                        logmsg(LOGMSG_ERROR, 
-                                "Could not malloc for datacopy lookup array\n");
-                        strbuf_free(sql);
-                        return -1;
-                    }
+                    first = 0;
                 }
-                /* datacopy_pos is i-th ondisk */
-                schema->datacopy[datacopy_pos] = ondisk_i;
-                ++datacopy_pos;
             }
         }
 
@@ -1851,6 +1915,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         }
     }
 
+    logmsg(LOGMSG_DEBUG, "sql: %s\n", strbuf_buf(sql));
     strbuf_free(sql);
     return 0;
 }
@@ -6083,16 +6148,25 @@ const void *sqlite3BtreePayloadFetch(BtCursor *pCur, u32 *pAmt)
 }
 
 /* add the costs of the sorter to the thd costs */
-void addVdbeToThdCost(int type)
+void addVdbeToThdCost(int type, int *data)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     if (thd == NULL)
         return;
 
-    if (type == VDBESORTER_WRITE)
-        thd->cost += 0.2;
-    else if (type == VDBESORTER_MOVE || type == VDBESORTER_FIND)
-        thd->cost += 0.1;
+    switch (type) {
+      case VDBESORTER_WRITE:
+        thd->cost += CDB2_TEMP_WRITE_COST;
+        break;
+      case VDBESORTER_FIND:
+        thd->cost += CDB2_TEMP_FIND_COST;
+        break;
+      case VDBESORTER_MOVE:
+        thd->cost += CDB2_TEMP_MOVE_COST;
+        break;
+    }
+
+    ++(*data);
 }
 
 /* append the costs of the sorter to the thd query stats */
@@ -8135,15 +8209,16 @@ int sqlite3BtreeCursor(
                                               temp_table_cmp, pKeyInfo, cur,
                                               thd);
         }
-        cur->find_cost = cur->move_cost = 0.1;
-        cur->write_cost = 0.2;
+        cur->find_cost = CDB2_TEMP_FIND_COST;
+        cur->move_cost = CDB2_TEMP_MOVE_COST;
+        cur->write_cost = CDB2_TEMP_WRITE_COST;
     }
     /* sqlite_master table */
     else if (iTable == RTPAGE_SQLITE_MASTER && fdb_master_is_local(cur)) {
         rc = sqlite3BtreeCursor_master(
             pBt, iTable, wrFlag & BTREE_CUR_WR, sqlite3VdbeCompareRecordPacked,
             pKeyInfo, cur, thd, clnt->keyDdl, clnt->dataDdl, clnt->nDataDdl);
-        cur->find_cost = cur->move_cost = cur->write_cost = 0.0;
+        cur->find_cost = cur->move_cost = cur->write_cost = CDB2_SQLITE_STAT_COST;
     }
     /* remote cursor? */
     else if (pBt->is_remote) {
@@ -8156,8 +8231,9 @@ int sqlite3BtreeCursor(
         rc = sqlite3BtreeCursor_analyze(pBt, iTable, wrFlag & BTREE_CUR_WR,
                                         sqlite3VdbeCompareRecordPacked,
                                         pKeyInfo, cur, thd);
-        cur->find_cost = cur->move_cost = 0.1;
-        cur->write_cost = 0.2;
+        cur->find_cost = CDB2_TEMP_FIND_COST;
+        cur->move_cost = CDB2_TEMP_MOVE_COST;
+        cur->write_cost = CDB2_TEMP_WRITE_COST;
     }
     /* real table */
     else {
@@ -8166,14 +8242,12 @@ int sqlite3BtreeCursor(
                                        cur, thd);
         /* treat sqlite_stat1 as free */
         if (is_sqlite_stat(cur->db->tablename)) {
-            cur->find_cost = 0.0;
-            cur->move_cost = 0.0;
-            cur->write_cost = 0.0;
+            cur->find_cost = cur->move_cost = cur->write_cost = CDB2_SQLITE_STAT_COST;
         } else {
-            cur->blob_cost = 10.0;
-            cur->find_cost = 10.0;
-            cur->move_cost = 1.0;
-            cur->write_cost = 100;
+            cur->blob_cost = CDB2_BLOB_FETCH_COST;
+            cur->find_cost = CDB2_FIND_COST;
+            cur->move_cost = CDB2_MOVE_COST;
+            cur->write_cost = CDB2_WRITE_COST;
         }
     }
 
@@ -11154,6 +11228,10 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
             abort();
         }
         fld++;
+    }
+    if (fld < 7) {
+        /* we received an non-version answer */
+        *version = 0;
     }
 }
 

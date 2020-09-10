@@ -74,6 +74,28 @@ int db_is_stopped();
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
                                    int is_uuid);
+
+
+#ifdef XMACRO_OSQL_RPL_TYPES
+#   undef XMACRO_OSQL_RPL_TYPES
+#endif
+#define XMACRO_OSQL_RPL_TYPES(a, b, c) case a: osql_rpl_type_to_str = c; break;
+#define OSQL_RPL_TYPE_TO_STR(type)                                             \
+({                                                                             \
+    char *osql_rpl_type_to_str  = "UNKNOWN";                                   \
+    switch (type) {                                                            \
+    OSQL_RPL_TYPES                                                             \
+    }                                                                          \
+    osql_rpl_type_to_str;                                                      \
+})
+
+
+const char *osql_reqtype_str(int type)
+{   
+    assert(0 <= type && type < MAX_OSQL_TYPES);
+    return OSQL_RPL_TYPE_TO_STR(type);
+}
+
 typedef struct osql_blknds {
     char *nds[MAX_CLUSTER];        /* list of nodes to blackout in offloading */
     time_t times[MAX_CLUSTER];     /* time of blacking out */

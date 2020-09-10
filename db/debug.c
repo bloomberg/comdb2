@@ -40,29 +40,9 @@ enum { NETINFO_NONE = 0, NETINFO_OSQL = 1, NETINFO_REP = 2 };
 /* which event */
 enum { NETTEST_NONE = 0, NETTEST_ENABLE = 1, NETTEST_DISABLE = 2 };
 
-/* keep track of any tcm-test state that we need */
-static int tcmtest_flag = 0;
-
-/* check if a tcm test is enabled */
-int tcm_testpoint(int tcmtestid)
-{
-    if (tcmtestid < 0 || tcmtestid > TCM_MAX) {
-        logmsg(LOGMSG_ERROR, "invalid tcm testid %d\n", tcmtestid);
-        return 0;
-    }
-
-    if (tcmtest_flag == tcmtestid) {
-        return 1;
-    }
-
-    return 0;
-}
-
 /* print a description of each tcm test */
 static void tcmtest_printlist()
 {
-    logmsg(LOGMSG_USER, "ptranfail <on|off>         - enable/disable toblock "
-                    "parenttran deadlock test\n");
     logmsg(LOGMSG_USER, "routecpu <node>            - set routecpu test-node to "
                     "<node> (routes off the node)\n");
     logmsg(LOGMSG_USER, "nettest <opts>             - enable net debugging - use "
@@ -202,44 +182,6 @@ void debug_trap(char *line, int lline)
                 }
             }
         }
-
-        /* ptranfail test */
-        else if (tokcmp(tok, ltok, "ptranfail") == 0) {
-            tok = segtok(line, lline, &st, &ltok);
-
-            /* no tail */
-            if (ltok <= 0) {
-                logmsg(LOGMSG_ERROR, "ptranfail command requires 'on' or 'off' argument\n");
-                logmsg(LOGMSG_USER, "ptranfail test is %s\n",
-                       (TCM_PARENT_DEADLOCK == tcmtest_flag) ? "*enabled*"
-                                                             : "*disabled*");
-            }
-
-            /* enable this test */
-            else if (tokcmp(tok, ltok, "on") == 0) {
-                tcmtest_flag = TCM_PARENT_DEADLOCK;
-                logmsg(LOGMSG_USER, "enabled tcm parent-tran deadlock test\n");
-            }
-
-            /* disable this test */
-            else if (tokcmp(tok, ltok, "off") == 0) {
-                if (TCM_PARENT_DEADLOCK == tcmtest_flag) {
-                    tcmtest_flag = 0;
-                    logmsg(LOGMSG_USER, "disabled tcm parent-tran deadlock test\n");
-                } else {
-                    logmsg(LOGMSG_USER, "tcm parent-tran deadlock test is not enabled\n");
-                }
-            }
-
-            /* garbage tail */
-            else {
-                logmsg(LOGMSG_ERROR, "ptranfail command requires 'on' or 'off' argument\n");
-                logmsg(LOGMSG_USER, "ptranfail test is %s\n",
-                       (TCM_PARENT_DEADLOCK == tcmtest_flag) ? "*enabled*"
-                                                             : "*disabled*");
-            }
-        }
-
     } else if (tokcmp(tok, ltok, "nodeix") == 0) {
         const char *hosts[REPMAX];
         int numnodes;

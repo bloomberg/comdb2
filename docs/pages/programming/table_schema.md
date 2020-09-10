@@ -70,8 +70,13 @@ schema {
     int          userid
     longlong     sequence    dbstore=nextsequence
     double       balance     dbstore=100.00 null=yes
-    datetime     paydate     dbstore="CURRENT_TIMESTAMP"
+    datetime     paydate     dbstore={CURRENT_TIMESTAMP}
+    byte         autoid[16]  dbstore={GUID()}
     byte         permissions[12]
+}
+
+keys {
+    "PK" = autoid
 }
 
 ```
@@ -89,10 +94,10 @@ The field keywords are:
 The dbstore value must have the same datatype as the column they are attached to, with these exceptions:
 
 * Blob fields cannot have dbstore values.
-* For datetime fields you can specify a string such as "2017-03-08T235959.987 America/New_York" or "CURRENT_TIMESTAMP"
-for current database system timestamp.
+* For datetime fields you can specify a string such as "2017-03-08T235959.987 America/New_York" or dbstore={CURRENT_TIMESTAMP} to autofill with current database system timestamp.
 * For longlong integer fields may specify a dbstore of nextsequence.  This will populate the column with a value one greater than the largest value which has ever been seen for the column.
-* For byte arrays you can specify dbstore=0 to indicate that it should be zeroed be default.
+* For byte arrays you can specify dbstore=0 to indicate that zero should be default if not specified.
+* If the type is byte[16], you can also specify `dbstore={GUID()}` and that will allow the field to be autofilled by the database at the time of record insertion.
 
 The schema section is required - it's the only required section.
 
@@ -180,7 +185,7 @@ Suppose you have a database of the members of a large organization where each
 person is assigned to a particular "team". Each team has a "leader" who is also
 a member of that team.
 
-The `team_id` field cannot be unique because there usually
+The `team_id` field cannot be unique because there are usually
 multiple people on the same team. One cannot make the combination of `team_id`
 and `is_leader` unique since there are usually multiple non-leaders on each
 team.
@@ -345,4 +350,4 @@ in the referenced index.
 Indexes on expressions are allowed in key constraints. However, if the local key
 of a constraint is an index on expressions, then cascading update is NOT
 supported on the constraint.
-```
+

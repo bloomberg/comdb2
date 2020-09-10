@@ -873,10 +873,14 @@ done:
 static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
 {
     int rc, bdberr;
-    struct dbtable *db;
     SBUF2 *sb = s->sb;
-
-    db = getqueuebyname(s->tablename);
+    /* NOTE: The file number is hard-coded to 1 here because a queuedb is
+    **       limited to having either one or two files -AND- we are adding
+    **       a file, which implies there should only be one file for this
+    **       queuedb at the moment, with file number 0. */
+    int file_num = 1;
+    unsigned long long file_version = 0;
+    struct dbtable *db = getqueuebyname(s->tablename);
     if (db == NULL) {
         logmsg(LOGMSG_ERROR, "%s: no such queuedb %s\n",
                __func__, s->tablename);
@@ -885,12 +889,6 @@ static int add_qdb_file(struct schema_change_type *s, tran_type *tran)
         goto done;
     }
 
-    /* NOTE: The file number is hard-coded to 1 here because a queuedb is
-    **       limited to having either one or two files -AND- we are adding
-    **       a file, which implies there should only be one file for this
-    **       queuedb at the moment, with file number 0. */
-    int file_num = 1;
-    unsigned long long file_version = 0;
     bdberr = 0;
     rc = bdb_get_file_version_qdb(db->handle, tran, file_num, &file_version,
                                   &bdberr);

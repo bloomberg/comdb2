@@ -119,7 +119,7 @@ function insertforever
     j=0
 
     while [[ $j -lt $2 ]]; do 
-        timeout $TEST_TIMEOUT yes "$(cat $sql)" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
+        timeout --kill-after=5s $TEST_TIMEOUT yes "$(cat $sql)" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
         addtopidlist $!
         let j=j+1
     done

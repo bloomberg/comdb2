@@ -247,6 +247,7 @@ typedef struct {
 
     fdb_distributed_tran_t *
         dtran; /* remote transactions, contain each remote cluster tran */
+    bool rollbacked; /* mark this to catch out-of-order errors */
 
     sqlite3_stmt *pStmt; /* if sql is in progress, points at the engine */
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
@@ -866,6 +867,7 @@ struct sqlclntstate {
     LINKC_T(struct sqlclntstate) lnk;
     int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
                               desired */
+    int8_t rowbuffer;
 };
 
 /* Query stats. */

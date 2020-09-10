@@ -58,6 +58,7 @@ public class Comdb2Connection implements Connection {
     private String password;
 
     private boolean usemicrodt = true;
+    private boolean statement_effects = true;
 
     /**
      * -1 indicates the default txn mode.
@@ -78,6 +79,7 @@ public class Comdb2Connection implements Connection {
         ret.user = user;
         ret.password = password;
         ret.usemicrodt = usemicrodt;
+        ret.statement_effects = statement_effects;
         ret.hndl = hndl.duplicate();
         return ret;
     }
@@ -260,6 +262,7 @@ public class Comdb2Connection implements Connection {
     }
 
     public void setStatementQueryEffects(boolean stmtEffects) {
+        statement_effects = stmtEffects;
         hndl.setStatementQueryEffects(stmtEffects);
     }
 
@@ -325,6 +328,7 @@ public class Comdb2Connection implements Connection {
             stmt.setQueryTimeout(querytimeout);
 
         stmt.setUseMicroDt(usemicrodt);
+        stmt.setStatementEffects(statement_effects);
         stmts.add(stmt);
         return stmt;
     }
@@ -343,6 +347,7 @@ public class Comdb2Connection implements Connection {
             stmt.setQueryTimeout(querytimeout);
 
         stmt.setUseMicroDt(usemicrodt);
+        stmt.setStatementEffects(statement_effects);
         stmts.add(stmt);
         return stmt;
     }

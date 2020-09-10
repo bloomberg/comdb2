@@ -78,3 +78,17 @@
     }
 
 #endif
+
+/* Access to base tables/indices */
+#define CDB2_WRITE_COST 100.0
+#define CDB2_FIND_COST 10.0
+#define CDB2_BLOB_FETCH_COST 10.0
+#define CDB2_MOVE_COST 1.0
+
+/* Access to temporary tables (& VDBE sorter) */
+#define CDB2_TEMP_WRITE_COST 0.2
+#define CDB2_TEMP_FIND_COST 0.1
+#define CDB2_TEMP_MOVE_COST 0.1
+
+/* Access to sqlite_statN & sqlite_master tables is considered free */
+#define CDB2_SQLITE_STAT_COST 0.0

@@ -263,7 +263,7 @@ get_autoanalyze_stat $master
 echo ""; cat stat.out | grep "Table t1" 
 stats_should_be $savedCnt $lastRun 10 $prevDate
 
-sleep 5 
+sleep $T_TO_SLEEP
 
 echo "Testing that manually running analyze zeros out counters"
 date

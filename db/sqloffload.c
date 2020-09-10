@@ -189,65 +189,6 @@ void osql_cleanup(void)
     bdb_osql_destroy(&bdberr);
 }
 
-char *osql_breq2a(int op)
-{
-
-    switch (op) {
-    case OSQL_RPLINV:
-        return "INVALID";
-    case OSQL_DONE:
-        return "OSQL_DONE";
-    case OSQL_DONE_STATS:
-        return "OSQL_DONE_STATS";
-    case OSQL_DONE_SNAP:
-        return "OSQL_DONE_SNAP";
-    case OSQL_USEDB:
-        return "OSQL_USEDB";
-    case OSQL_DELREC:
-        return "OSQL_DELREC";
-    case OSQL_INSREC:
-        return "OSQL_INSREC";
-    case OSQL_QBLOB:
-        return "OSQL_QBLOB";
-    case OSQL_UPDREC:
-        return "OSQL_UPDREC";
-    case OSQL_XERR:
-        return "OSQL_XERR";
-    case OSQL_UPDCOLS:
-        return "OSQL_UPDCOLS";
-    case OSQL_SERIAL:
-        return "OSQL_SERIAL";
-    case OSQL_SELECTV:
-        return "OSQL_SELECTV";
-    case OSQL_DBGLOG:
-        return "OSQL_DBGLOG";
-    case OSQL_RECGENID:
-        return "OSQL_RECGENID";
-    case OSQL_UPDSTAT:
-        return "OSQL_UPDSTAT";
-    case OSQL_EXISTS:
-        return "OSQL_EXISTS";
-    case OSQL_DBQ_CONSUME:
-        return "OSQL_DBQ_CONSUME";
-    case OSQL_INSERT:
-        return "OSQL_INSERT";
-    case OSQL_DELETE:
-        return "OSQL_DELETE";
-    case OSQL_UPDATE:
-        return "OSQL_UPDATE";
-    case OSQL_SCHEMACHANGE:
-        return "OSQL_SCHEMACHANGE";
-    case OSQL_BPFUNC:
-        return "OSQL_BPFUNC";
-    case OSQL_DELIDX:
-        return "OSQL_DELIDX";
-    case OSQL_INSIDX:
-        return "OSQL_INSIDX";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
 
@@ -641,6 +582,17 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     int rc = 0;
     int bdberr = 0;
 
+    /*
+     * Warn of any invalid engine state.  Do it before srs_tran_destroy() as
+     * clnt->sql will be pointing at free memory after that.
+     */
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS && clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n", clnt, clnt->ctrl_sqlengine,
+               clnt->osql.rqid, pthread_self());
+        if (clnt->sql)
+            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
+    }
+
     /* TODO: once Dr. Hipp fixes the plan, this should be moved
        to sqlite3BtreeCloseCursor */
     clearClientSideRow(clnt);
@@ -669,14 +621,6 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
             logmsg(LOGMSG_ERROR, "%s:%d: abort shadow failed rc=%d bdberr=%d\n",
                     __FILE__, __LINE__, rc, bdberr);
         }
-    }
-
-    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
-        clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
-               clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
-        if (clnt->sql)
-            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
     }
 
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid)) {

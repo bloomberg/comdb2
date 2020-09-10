@@ -119,7 +119,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_877B2989', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_877B2989" on "t1" ("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -130,7 +130,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_1E994F88', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_1E994F88" on "t2" ("i");', csc2=NULL)
 (type='table', name='t5', tbl_name='t5', rootpage=8, sql='create table "t5"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -140,7 +140,7 @@ keys
 		uniqnulls "$KEY_37A25A0B" = i 
 	}
 ')
-(type='index', name='$$KEY_37A25A0B_3AE602D4', tbl_name='t5', rootpage=9, sql='create index "$$KEY_37A25A0B_3AE602D4" on "t5" ("i");', csc2=NULL)
+(type='index', name='$$KEY_37A25A0B_37A25A0B', tbl_name='t5', rootpage=9, sql='create index "$$KEY_37A25A0B_37A25A0B" on "t5" ("i");', csc2=NULL)
 (type='table', name='t6', tbl_name='t6', rootpage=10, sql='create table "t6"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -152,8 +152,8 @@ keys
 		uniqnulls "$KEY_37496DB0" = j 
 	}
 ')
-(type='index', name='$COMDB2_PK_11CB5117', tbl_name='t6', rootpage=11, sql='create index "$COMDB2_PK_11CB5117" on "t6" ("i");', csc2=NULL)
-(type='index', name='$$KEY_37496DB0_88C200AD', tbl_name='t6', rootpage=12, sql='create index "$$KEY_37496DB0_88C200AD" on "t6" ("j");', csc2=NULL)
+(type='index', name='$COMDB2_PK_AE403C0A', tbl_name='t6', rootpage=11, sql='create index "$COMDB2_PK_AE403C0A" on "t6" ("i");', csc2=NULL)
+(type='index', name='$$KEY_37496DB0_37496DB0', tbl_name='t6', rootpage=12, sql='create index "$$KEY_37496DB0_37496DB0" on "t6" ("j");', csc2=NULL)
 (type='table', name='t9', tbl_name='t9', rootpage=13, sql='create table "t9"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -164,7 +164,7 @@ keys
 		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
-(type='index', name='$COMDB2_PK_F7FB6E60', tbl_name='t9', rootpage=14, sql='create index "$COMDB2_PK_F7FB6E60" on "t9" ("i", "j");', csc2=NULL)
+(type='index', name='$COMDB2_PK_ED8A5198', tbl_name='t9', rootpage=14, sql='create index "$COMDB2_PK_ED8A5198" on "t9" ("i", "j");', csc2=NULL)
 (type='table', name='t10', tbl_name='t10', rootpage=15, sql='create table "t10"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -175,7 +175,7 @@ keys
 		uniqnulls "$KEY_FD8D4AAA" = i + j 
 	}
 ')
-(type='index', name='$$KEY_FD8D4AAA_BFD493EE', tbl_name='t10', rootpage=16, sql='create index "$$KEY_FD8D4AAA_BFD493EE" on "t10" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_FD8D4AAA_FD8D4AAA', tbl_name='t10', rootpage=16, sql='create index "$$KEY_FD8D4AAA_FD8D4AAA" on "t10" ("i", "j");', csc2=NULL)
 (part='---------------------------------- PART #06 ----------------------------------')
 [DROP TABLE t3] failed with rc -3 no such table: t3
 [DROP TABLE t4] failed with rc -3 no such table: t4
@@ -224,8 +224,8 @@ keys
 		uniqnulls "$KEY_2E3CF7EF" = j + i 
 	}
 ')
-(type='index', name='$$KEY_9C18F596_FBAE8181', tbl_name='t2', rootpage=5, sql='create index "$$KEY_9C18F596_FBAE8181" on "t2" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_2E3CF7EF_498A83F8', tbl_name='t2', rootpage=6, sql='create index "$$KEY_2E3CF7EF_498A83F8" on "t2" ("j", "i");', csc2=NULL)
+(type='index', name='$$KEY_9C18F596_9C18F596', tbl_name='t2', rootpage=5, sql='create index "$$KEY_9C18F596_9C18F596" on "t2" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_2E3CF7EF_2E3CF7EF', tbl_name='t2', rootpage=6, sql='create index "$$KEY_2E3CF7EF_2E3CF7EF" on "t2" ("j", "i");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=7, sql='create table "t3"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -241,7 +241,7 @@ keys
 		uniqnulls "$KEY_167DCD0B" = <DESCEND> i 
 	}
 ')
-(type='index', name='$$KEY_167DCD0B_92E6E53D', tbl_name='t4', rootpage=9, sql='create index "$$KEY_167DCD0B_92E6E53D" on "t4" ("i" DESC);', csc2=NULL)
+(type='index', name='$$KEY_167DCD0B_167DCD0B', tbl_name='t4', rootpage=9, sql='create index "$$KEY_167DCD0B_167DCD0B" on "t4" ("i" DESC);', csc2=NULL)
 (type='table', name='t5', tbl_name='t5', rootpage=10, sql='create table "t5"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -252,7 +252,7 @@ keys
 		uniqnulls "$KEY_37A25A0B" = i 
 	}
 ')
-(type='index', name='$$KEY_37A25A0B_3AE602D4', tbl_name='t5', rootpage=11, sql='create index "$$KEY_37A25A0B_3AE602D4" on "t5" ("i");', csc2=NULL)
+(type='index', name='$$KEY_37A25A0B_37A25A0B', tbl_name='t5', rootpage=11, sql='create index "$$KEY_37A25A0B_37A25A0B" on "t5" ("i");', csc2=NULL)
 (type='table', name='t6', tbl_name='t6', rootpage=12, sql='create table "t6"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -263,7 +263,7 @@ keys
 		uniqnulls "$KEY_B9974512" = i + <DESCEND> j 
 	}
 ')
-(type='index', name='$$KEY_B9974512_66967FE9', tbl_name='t6', rootpage=13, sql='create index "$$KEY_B9974512_66967FE9" on "t6" ("i", "j" DESC);', csc2=NULL)
+(type='index', name='$$KEY_B9974512_B9974512', tbl_name='t6', rootpage=13, sql='create index "$$KEY_B9974512_B9974512" on "t6" ("i", "j" DESC);', csc2=NULL)
 (type='table', name='t7', tbl_name='t7', rootpage=14, sql='create table "t7"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -274,7 +274,7 @@ keys
 		uniqnulls "$KEY_152B02D9" = <DESCEND> i + <DESCEND> j 
 	}
 ')
-(type='index', name='$$KEY_152B02D9_C62EE9BB', tbl_name='t7', rootpage=15, sql='create index "$$KEY_152B02D9_C62EE9BB" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
+(type='index', name='$$KEY_152B02D9_152B02D9', tbl_name='t7', rootpage=15, sql='create index "$$KEY_152B02D9_152B02D9" on "t7" ("i" DESC, "j" DESC);', csc2=NULL)
 (type='table', name='t8', tbl_name='t8', rootpage=16, sql='create table "t8"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -287,9 +287,9 @@ keys
 		uniqnulls "$KEY_9915B3B9" = i + <DESCEND> j 
 	}
 ')
-(type='index', name='$$KEY_4F831046_E03FA74B', tbl_name='t8', rootpage=17, sql='create index "$$KEY_4F831046_E03FA74B" on "t8" ("i" DESC, "j");', csc2=NULL)
-(type='index', name='$$KEY_762F1DF7_F6390457', tbl_name='t8', rootpage=18, sql='create index "$$KEY_762F1DF7_F6390457" on "t8" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_9915B3B9_36A904B4', tbl_name='t8', rootpage=19, sql='create index "$$KEY_9915B3B9_36A904B4" on "t8" ("i", "j" DESC);', csc2=NULL)
+(type='index', name='$$KEY_4F831046_4F831046', tbl_name='t8', rootpage=17, sql='create index "$$KEY_4F831046_4F831046" on "t8" ("i" DESC, "j");', csc2=NULL)
+(type='index', name='$$KEY_762F1DF7_762F1DF7', tbl_name='t8', rootpage=18, sql='create index "$$KEY_762F1DF7_762F1DF7" on "t8" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_9915B3B9_9915B3B9', tbl_name='t8', rootpage=19, sql='create index "$$KEY_9915B3B9_9915B3B9" on "t8" ("i", "j" DESC);', csc2=NULL)
 (part='---------------------------------- PART #09 ----------------------------------')
 [DROP TABLE t1] failed with rc -3 no such table: t1
 (part='---------------------------------- PART #10 ----------------------------------')
@@ -328,7 +328,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_877B2989', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_877B2989" on "t1" ("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
 	{
 		int i 
@@ -342,7 +342,7 @@ constraints
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
 	}
 ')
-(type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_1E994F88', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_1E994F88" on "t2" ("i");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -375,7 +375,7 @@ constraints
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
 	}
 ')
-(type='index', name='$COMDB2_PK_11CB5117', tbl_name='t6', rootpage=12, sql='create index "$COMDB2_PK_11CB5117" on "t6" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_AE403C0A', tbl_name='t6', rootpage=12, sql='create index "$COMDB2_PK_AE403C0A" on "t6" ("i");', csc2=NULL)
 (type='table', name='t7', tbl_name='t7', rootpage=13, sql='create table "t7"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -386,7 +386,7 @@ keys
 		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
-(type='index', name='$COMDB2_PK_FD65436A', tbl_name='t7', rootpage=14, sql='create index "$COMDB2_PK_FD65436A" on "t7" ("i", "j");', csc2=NULL)
+(type='index', name='$COMDB2_PK_4BB8286', tbl_name='t7', rootpage=14, sql='create index "$COMDB2_PK_4BB8286" on "t7" ("i", "j");', csc2=NULL)
 (type='table', name='t8', tbl_name='t8', rootpage=15, sql='create table "t8"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -401,7 +401,7 @@ constraints
 		"COMDB2_PK" -> <"t7":"COMDB2_PK"> 
 	}
 ')
-(type='index', name='$COMDB2_PK_F6390457', tbl_name='t8', rootpage=16, sql='create index "$COMDB2_PK_F6390457" on "t8" ("i", "j");', csc2=NULL)
+(type='index', name='$COMDB2_PK_762F1DF7', tbl_name='t8', rootpage=16, sql='create index "$COMDB2_PK_762F1DF7" on "t8" ("i", "j");', csc2=NULL)
 (type='table', name='t9', tbl_name='t9', rootpage=17, sql='create table "t9"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -417,7 +417,7 @@ constraints
 		"$KEY_827A0A22" -> <"t7":"COMDB2_PK"> 
 	}
 ')
-(type='index', name='$COMDB2_PK_96534DD8', tbl_name='t9', rootpage=18, sql='create index "$COMDB2_PK_96534DD8" on "t9" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_3DB8C8CC', tbl_name='t9', rootpage=18, sql='create index "$COMDB2_PK_3DB8C8CC" on "t9" ("i");', csc2=NULL)
 (type='index', name='$$KEY_827A0A22_827A0A22', tbl_name='t9', rootpage=19, sql='create index "$$KEY_827A0A22_827A0A22" on "t9" ("i", "j");', csc2=NULL)
 (part='---------------------------------- PART #12 ----------------------------------')
 [DROP TABLE t5] failed with rc -3 no such table: t5
@@ -588,7 +588,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_877B2989', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_877B2989" on "t1" ("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
 	{
 		int i 
@@ -602,7 +602,7 @@ constraints
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
 	}
 ')
-(type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_1E994F88', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_1E994F88" on "t2" ("i");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
 	{
 		int i 
@@ -616,7 +616,7 @@ constraints
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> on delete cascade 
 	}
 ')
-(type='index', name='$COMDB2_PK_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_6CBCA552" on "t3" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_DF179048', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_DF179048" on "t3" ("i");', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
 	{
 		int i 
@@ -630,7 +630,7 @@ constraints
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> on update cascade on delete cascade 
 	}
 ')
-(type='index', name='$COMDB2_PK_23FD3395', tbl_name='t4', rootpage=11, sql='create index "$COMDB2_PK_23FD3395" on "t4" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_F62C85CB', tbl_name='t4', rootpage=11, sql='create index "$COMDB2_PK_F62C85CB" on "t4" ("i");', csc2=NULL)
 (type='table', name='t5', tbl_name='t5', rootpage=12, sql='create table "t5"("i" int);', csc2='schema
 	{
 		int i 
@@ -644,7 +644,7 @@ constraints
 		"COMDB2_PK" -> <"t1":"COMDB2_PK"> 
 	}
 ')
-(type='index', name='$COMDB2_PK_3AE602D4', tbl_name='t5', rootpage=13, sql='create index "$COMDB2_PK_3AE602D4" on "t5" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_37A25A0B', tbl_name='t5', rootpage=13, sql='create index "$COMDB2_PK_37A25A0B" on "t5" ("i");', csc2=NULL)
 (part='---------------------------------- PART #28 ----------------------------------')
 (part='---------------------------------- PART #29 ----------------------------------')
 (part='---------------------------------- PART #30 ----------------------------------')
@@ -674,7 +674,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_877B2989', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_877B2989" on "t1" ("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
 	{
 		int i 
@@ -684,7 +684,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_75A79413', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_75A79413" on "t2" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_1E994F88', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_1E994F88" on "t2" ("i");', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int, "j" int);', csc2='schema
 	{
 		int i 
@@ -695,7 +695,7 @@ keys
 		uniqnulls "COMDB2_PK" = i + j 
 	}
 ')
-(type='index', name='$COMDB2_PK_FA6CEBB6', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
+(type='index', name='$COMDB2_PK_7BDB9F9', tbl_name='t3', rootpage=9, sql='create index "$COMDB2_PK_7BDB9F9" on "t3" ("i", "j");', csc2=NULL)
 (part='---------------------------------- PART #33 ----------------------------------')
 (part='---------------------------------- PART #34 ----------------------------------')
 (rows inserted=1)
@@ -789,8 +789,8 @@ keys
 		uniqnulls "$KEY_B599BB80" = j + i 
 	}
 ')
-(type='index', name='$$KEY_7BDB9F9_FA6CEBB6', tbl_name='t3', rootpage=11, sql='create index "$$KEY_7BDB9F9_FA6CEBB6" on "t3" ("i", "j");', csc2=NULL)
-(type='index', name='$$KEY_B599BB80_4848E9CF', tbl_name='t3', rootpage=12, sql='create index "$$KEY_B599BB80_4848E9CF" on "t3" ("j", "i");', csc2=NULL)
+(type='index', name='$$KEY_7BDB9F9_7BDB9F9', tbl_name='t3', rootpage=11, sql='create index "$$KEY_7BDB9F9_7BDB9F9" on "t3" ("i", "j");', csc2=NULL)
+(type='index', name='$$KEY_B599BB80_B599BB80', tbl_name='t3', rootpage=12, sql='create index "$$KEY_B599BB80_B599BB80" on "t3" ("j", "i");', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=13, sql='create table "t4"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -802,8 +802,8 @@ keys
 		uniqnulls "uniq2" = j + i 
 	}
 ')
-(type='index', name='$UNIQ1_FF23FD33', tbl_name='t4', rootpage=14, sql='create index "$UNIQ1_FF23FD33" on "t4" ("i", "j");', csc2=NULL)
-(type='index', name='$UNIQ2_4D07FF4A', tbl_name='t4', rootpage=15, sql='create index "$UNIQ2_4D07FF4A" on "t4" ("j", "i");', csc2=NULL)
+(type='index', name='$UNIQ1_73255076', tbl_name='t4', rootpage=14, sql='create index "$UNIQ1_73255076" on "t4" ("i", "j");', csc2=NULL)
+(type='index', name='$UNIQ2_C101520F', tbl_name='t4', rootpage=15, sql='create index "$UNIQ2_C101520F" on "t4" ("j", "i");', csc2=NULL)
 (type='table', name='t5', tbl_name='t5', rootpage=16, sql='create table "t5"("i" int, "j" int);', csc2='schema
 	{
 		int i null = yes 
@@ -818,9 +818,9 @@ keys
 		dup "dup_key" = i + j 
 	}
 ')
-(type='index', name='$$KEY_37A25A0B_3AE602D4', tbl_name='t5', rootpage=17, sql='create index "$$KEY_37A25A0B_3AE602D4" on "t5" ("i");', csc2=NULL)
-(type='index', name='$$KEY_E8801C19_FEE19704', tbl_name='t5', rootpage=18, sql='create index "$$KEY_E8801C19_FEE19704" on "t5" ("i", "j");', csc2=NULL)
-(type='index', name='$UNIQUE_KEY_4CC5957D', tbl_name='t5', rootpage=19, sql='create index "$UNIQUE_KEY_4CC5957D" on "t5" ("j", "i");', csc2=NULL)
+(type='index', name='$$KEY_37A25A0B_37A25A0B', tbl_name='t5', rootpage=17, sql='create index "$$KEY_37A25A0B_37A25A0B" on "t5" ("i");', csc2=NULL)
+(type='index', name='$$KEY_E8801C19_E8801C19', tbl_name='t5', rootpage=18, sql='create index "$$KEY_E8801C19_E8801C19" on "t5" ("i", "j");', csc2=NULL)
+(type='index', name='$UNIQUE_KEY_5AA41E60', tbl_name='t5', rootpage=19, sql='create index "$UNIQUE_KEY_5AA41E60" on "t5" ("j", "i");', csc2=NULL)
 (type='index', name='$T5_IJ_F5B8CA59', tbl_name='t5', rootpage=20, sql='create index "$T5_IJ_F5B8CA59" on "t5" ("i", "j");', csc2=NULL)
 (type='index', name='$DUP_KEY_F5B8CA59', tbl_name='t5', rootpage=21, sql='create index "$DUP_KEY_F5B8CA59" on "t5" ("i", "j");', csc2=NULL)
 (type='table', name='t6', tbl_name='t6', rootpage=22, sql='create table "t6"("i" int);', csc2='schema
@@ -879,7 +879,7 @@ keys
 		uniqnulls "COMDB2_PK" = i 
 	}
 ')
-(type='index', name='$COMDB2_PK_5E8AC7D0', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_5E8AC7D0" on "t1" ("i");', csc2=NULL)
+(type='index', name='$COMDB2_PK_877B2989', tbl_name='t1', rootpage=5, sql='create index "$COMDB2_PK_877B2989" on "t1" ("i");', csc2=NULL)
 (type='table', name='t2', tbl_name='t2', rootpage=6, sql='create table "t2"("i" int);', csc2='schema
 	{
 		int i 
@@ -889,7 +889,7 @@ keys
 		uniqnulls "COMDB2_PK" = <DESCEND> i 
 	}
 ')
-(type='index', name='$COMDB2_PK_44BF0620', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_44BF0620" on "t2" ("i" DESC);', csc2=NULL)
+(type='index', name='$COMDB2_PK_348719F9', tbl_name='t2', rootpage=7, sql='create index "$COMDB2_PK_348719F9" on "t2" ("i" DESC);', csc2=NULL)
 (type='table', name='t3', tbl_name='t3', rootpage=8, sql='create table "t3"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -899,7 +899,7 @@ keys
 		uniqnulls "$KEY_DF179048" = i 
 	}
 ')
-(type='index', name='$$KEY_DF179048_6CBCA552', tbl_name='t3', rootpage=9, sql='create index "$$KEY_DF179048_6CBCA552" on "t3" ("i");', csc2=NULL)
+(type='index', name='$$KEY_DF179048_DF179048', tbl_name='t3', rootpage=9, sql='create index "$$KEY_DF179048_DF179048" on "t3" ("i");', csc2=NULL)
 (type='table', name='t4', tbl_name='t4', rootpage=10, sql='create table "t4"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -936,7 +936,7 @@ keys
 		uniqnulls "$KEY_A513E531" = unique 
 	}
 ')
-(type='index', name='$$KEY_A513E531_424C1931', tbl_name='t1', rootpage=5, sql='create index "$$KEY_A513E531_424C1931" on "t1" ("unique");', csc2=NULL)
+(type='index', name='$$KEY_A513E531_A513E531', tbl_name='t1', rootpage=5, sql='create index "$$KEY_A513E531_A513E531" on "t1" ("unique");', csc2=NULL)
 (part='---------------------------------- PART #50 ----------------------------------')
 (part='---------------------------------- PART #51 ----------------------------------')
 [CREATE TABLE t3(i INT REFERENCES t1(i DESC))] failed with rc -3 syntax error after column name "i"

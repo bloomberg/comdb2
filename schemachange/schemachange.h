@@ -408,4 +408,6 @@ unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
 char *get_ddl_type_str(struct schema_change_type *s);
 char *get_ddl_csc2(struct schema_change_type *s);
 
+int comdb2_is_user_op(char *user, char *password);
+
 #endif

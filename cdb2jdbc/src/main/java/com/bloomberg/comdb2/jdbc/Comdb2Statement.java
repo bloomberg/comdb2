@@ -45,6 +45,7 @@ public class Comdb2Statement implements Statement {
     protected String user;
     protected String password;
     protected boolean usemicrodt = true;
+    protected boolean statement_effects;
 
     public Comdb2Statement(DbHandle hndl, Comdb2Connection conn) {
         this(hndl, conn, -1, -1);
@@ -162,7 +163,13 @@ public class Comdb2Statement implements Statement {
                     Constants.Errors.CDB2ERR_PREPARE_ERROR, sql, hndl.getLastThrowable());
 
         ResultSet rs = executeQuery(sql);
-        int count = ((Comdb2Handle)hndl).rowsAffected();
+        int count = 0;
+        if (statement_effects) {
+            while (rs.next())
+                count = rs.getInt(1);
+        } else {
+            count = hndl.rowsAffected();
+        }
         return count;
     }
 
@@ -410,6 +417,10 @@ public class Comdb2Statement implements Statement {
 
     public void setUseMicroDt(boolean use) {
         usemicrodt = use;
+    }
+
+    public void setStatementEffects(boolean stmteffects) {
+        statement_effects = stmteffects;
     }
 }
 /* vim: set sw=4 ts=4 et: */

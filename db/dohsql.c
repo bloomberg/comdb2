@@ -367,6 +367,19 @@ cleanup:
     }
 }
 
+static int inner_error(struct sqlclntstate *clnt, int rc, char *errstr)
+{
+    dohsql_connector_t *conn = (dohsql_connector_t *)clnt->plugin.state;
+
+    Pthread_mutex_lock(&conn->mtx);
+    clnt->saved_rc = rc;
+    clnt->saved_errstr = strdup(errstr);
+    conn->rc = rc;
+    Pthread_mutex_unlock(&conn->mtx);
+
+    return 0;
+}
+
 static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
                      int postpone)
 {
@@ -675,6 +688,8 @@ static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
         if (conns->conns[0].rc != SQLITE_DONE) {
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_DEBUG, "RESET STMT!\n");
+            /* here we already send some rows, and columns, so it is safe to
+             * reset */
             sqlite3_reset(stmt);
         }
 
@@ -745,8 +760,12 @@ wait_for_others:
         /* it seems some shard failed, reset current since we are bailing out */
         if (conns->conns[0].rc != SQLITE_DONE) {
             if (gbl_dohsql_verbose)
-                logmsg(LOGMSG_DEBUG, "RESET STMT CLIENT FAILED!\n");
-            sqlite3_reset(stmt);
+                logmsg(LOGMSG_DEBUG, "%s Child %d return error %d!\n", __func__,
+                       conns->child_err, rc);
+            /* we cannot reset stmt here since caller will need that to send
+            back columns, if this is the first row; send proper rc so we reset
+            stmt in caller */
+            return SQLITE_EARLYSTOP_DOHSQL;
         }
 
         return rc;
@@ -809,25 +828,15 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_DEBUG:
         return 0 /*newsql_debug(c, a)*/;
     case RESPONSE_ERROR:
-        c->saved_rc = i;
-        c->saved_errstr = strdup((char *)a);
-        return 0;
+        return inner_error(c, i, (char *)a);
     case RESPONSE_ERROR_ACCESS:
-        c->saved_rc = CDB2ERR_ACCESS;
-        c->saved_errstr = strdup((char *)a);
-        return 0;
+        return inner_error(c, CDB2ERR_ACCESS, (char *)a);
     case RESPONSE_ERROR_BAD_STATE:
-        c->saved_rc = CDB2ERR_BADSTATE;
-        c->saved_errstr = strdup((char *)a);
-        return 0;
+        return inner_error(c, CDB2ERR_BADSTATE, (char *)a);
     case RESPONSE_ERROR_PREPARE:
-        c->saved_rc = CDB2ERR_PREPARE_ERROR;
-        c->saved_errstr = strdup((char *)a);
-        return 0;
+        return inner_error(c, CDB2ERR_PREPARE_ERROR, (char *)a);
     case RESPONSE_ERROR_REJECT:
-        c->saved_rc = CDB2ERR_REJECTED;
-        c->saved_errstr = strdup((char *)a);
-        return 0;
+        return inner_error(c, CDB2ERR_REJECTED, (char *)a);
     case RESPONSE_FLUSH:
         return 0 /*newsql_flush(c)*/;
     case RESPONSE_HEARTBEAT:
@@ -1792,8 +1801,17 @@ retry_row:
                     i--;
                     unready--;
                 } else if (conns->conns[que_idx].rc != SQLITE_ROW) {
+                    /* detected an error from a child, stop processing */
                     rc = conns->conns[que_idx].rc;
-                    continue;
+                    if (gbl_dohsql_verbose)
+                        logmsg(LOGMSG_DEBUG, "%s Child %d return error %d!\n",
+                               __func__, conns->child_err, rc);
+                    Q_UNLOCK(que_idx);
+                    _signal_children_master_is_done(conns);
+                    /* we cannot reset stmt here since caller will need that to
+                       send back columns, if this is the first row; send proper
+                       rc so we reset stmt in caller */
+                    return SQLITE_EARLYSTOP_DOHSQL;
                 }
             }
             Q_UNLOCK(que_idx);

@@ -1786,11 +1786,9 @@ static int is_system_table(Parse *pParse, Token *nm, char *dst)
     if (!nm)
         return 0;
 
-    if ((strncpy0(tablename, nm->z,
-                  (nm->n < MAXTABLELEN) ? nm->n + 1 : MAXTABLELEN)) == NULL)
+    if (comdb2TokenToStr(nm, tablename, sizeof(tablename))) {
         return 0;
-
-    sqlite3Dequote(tablename);
+    }
 
     db = pParse->db;
 
@@ -2584,7 +2582,8 @@ enum {
     KEY_DUP = 1 << 0,
     KEY_DATACOPY = 1 << 1,
     KEY_DELETED = 1 << 2,
-    KEY_UNIQNULLS = 1 << 3
+    KEY_UNIQNULLS = 1 << 3,
+    KEY_RECNUM = 1 << 4,
 };
 
 struct comdb2_key {
@@ -3153,7 +3152,12 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
               Check whether the default value needs to be quoted. Note: CSC2
               does not allow single quoted value.
             */
-            if ((type_flags[column->type] & FLAG_QUOTE_DEFAULT) != 0) {
+            if (*column->def == '(') {
+                /* turn DEFAULT(funct()) into dbstore={func()} */
+                int len = strlen(column->def);
+                assert(column->def[len - 1] == ')');
+                strbuf_appendf(csc2, "dbstore = {%.*s} ", len - 2, column->def + 1);
+            } else if ((type_flags[column->type] & FLAG_QUOTE_DEFAULT) != 0) {
                 strbuf_appendf(csc2, "dbstore = \"%s\" ", column->def);
             } else {
                 strbuf_appendf(csc2, "dbstore = %s ", column->def);
@@ -3305,6 +3309,10 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     /* DUP */
     if (key->flags & KEY_DUP)
         SNPRINTF(buf, sizeof(buf), pos, "%s", "DUP")
+
+    /* RECNUM */
+    if (key->flags & KEY_RECNUM)
+        SNPRINTF(buf, sizeof(buf), pos, "%s", "RECNUM")
 
     /* UNIQNULLS */
     if (key->flags & KEY_UNIQNULLS)
@@ -4121,6 +4129,9 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         }
 
         /* Key flags */
+        if (schema->ix[i]->flags & SCHEMA_RECNUM) {
+            key->flags |= KEY_RECNUM;
+        }
         if (schema->ix[i]->flags & SCHEMA_DUP) {
             key->flags |= KEY_DUP;
         }
@@ -4683,22 +4694,26 @@ static void comdb2ColumnSetDefault(
     struct comdb2_column *column, /* Set the default value of this column */
     Expr *pExpr,        /* The parsed expression of the default value */
     const char *zStart, /* Start of the default value text */
-    const char *zEnd    /* First character past end of defaut value
-                           text */
+    const char *zEnd    /* First character past end of defaut value text */
 )
 {
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
     char *def;
     int def_len;
 
+    /* need to remove space at the end: zStart is beggining of next word */
+    while (zEnd - 1 != zStart && *(zEnd - 1) == ' ')
+        --zEnd;
+
     /* Add DEFAULT to the specified column. */
     def_len = zEnd - zStart;
+    assert(def_len > 0);
+
     def = comdb2_strndup(ctx->mem, zStart, def_len);
     if (def == 0)
         goto oom;
     /* Remove the quotes around the default value (if any). */
     sqlite3Dequote(def);
-
     column->def = def;
 
     return;

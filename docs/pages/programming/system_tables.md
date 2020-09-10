@@ -155,6 +155,14 @@ Information about schedulers running.
 * `description` - Details the purpose of the scheduler; for example, there is
                   a time partition scheduler, or a memory modules stat scheduler
 
+## comdb2_functions
+
+The functions available to call from sql.
+
+    comdb2_functions(name)
+
+* `name` - Name of the function
+
 ## comdb2_keycomponents
 
 Describes all the components of the keys.
@@ -460,7 +468,7 @@ Information about thread pools in the database.
 * `long_wait_ms` - Long wait alarm threshold
 * `linger_secs` - Thread linger time
 * `stack_size` - Thread stack size
-* `max_queue_override` - Maximum queue overload
+* `max_queue_override` - Maximum queue override
 * `max_queue_age_ms` - Maximum queue age
 * `exit_on_create_fail` - If 'Y', exit on failure to create thread
 * `dump_on_full` - If 'Y', dump on queue full
