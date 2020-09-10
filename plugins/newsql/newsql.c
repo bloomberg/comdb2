@@ -2116,9 +2116,10 @@ retry_read:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-    if (!query) return NULL;
-    if (errno != 0) {
-        cdb2__query__free_unpacked(query, &pb_alloc);
+    if (!query || (errno != 0)) {
+        logmsg(LOGMSG_ERROR, "%s:%d Error unpacking query error: %s\n", __func__, __LINE__, strerror(errno));
+        if (query)
+            cdb2__query__free_unpacked(query, &pb_alloc);
         return NULL;
     }
 
