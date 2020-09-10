@@ -468,7 +468,7 @@ Information about thread pools in the database.
 * `long_wait_ms` - Long wait alarm threshold
 * `linger_secs` - Thread linger time
 * `stack_size` - Thread stack size
-* `max_queue_override` - Maximum queue overload
+* `max_queue_override` - Maximum queue override
 * `max_queue_age_ms` - Maximum queue age
 * `exit_on_create_fail` - If 'Y', exit on failure to create thread
 * `dump_on_full` - If 'Y', dump on queue full

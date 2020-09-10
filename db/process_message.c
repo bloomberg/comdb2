@@ -394,6 +394,7 @@ void replication_stats(struct dbenv *dbenv)
 {
     logmsg(LOGMSG_USER, "Replication statistics:-\n");
     logmsg(LOGMSG_USER, "   Num commits      %d\n", dbenv->num_txns);
+    logmsg(LOGMSG_USER, "   Num siblings     %d\n", dbenv->nsiblings);
     if (dbenv->num_txns > 0) {
         logmsg(LOGMSG_USER, "   Avg txn sz           %" PRIu64 "\n",
                dbenv->total_txn_sz / dbenv->num_txns);
