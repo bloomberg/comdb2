@@ -19,7 +19,7 @@
 #include <stdlib.h>
 
 #include <akbufferevent.h>
-#include <locks_wrap.h>
+#include <pthread_wrap.h>
 #include <logmsg.h>
 
 struct akbufferevent {
