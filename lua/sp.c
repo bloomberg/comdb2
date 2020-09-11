@@ -472,11 +472,15 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
     while (retry > 0) {
         --retry;
         rc = trigger_unregister_req(&q->info);
+        /* See comments in luabb_trigger_register(). */
+        comdb2_sql_tick();
         if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
             return;
         if (L)
             check_retry_conditions(L, 1);
         sleep(1);
+        /* See comments in luabb_trigger_register(). */
+        comdb2_sql_tick();
     }
 }
 
