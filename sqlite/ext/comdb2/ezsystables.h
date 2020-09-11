@@ -32,11 +32,23 @@ typedef struct {
     size_t size;
 } systable_blobtype;
 
+typedef struct {
+  sqlite3_vtab base;
+  struct systable *t;
+  sqlite3 *db;
+} ez_systable_vtab;
+
 int create_system_table(sqlite3 *db, char *name, sqlite3_module *module,
         int(*init_callback)(void **data, int *npoints),
         void(*release_callback)(void *data, int npoints),
         size_t struct_size,
-        // type, name, offset,  type2, name2, offset2, ..., SYSTABLE_END_OF_FIELDS
+        // type, name, offset, type2, name2, offset2, ..., SYSTABLE_END_OF_FIELDS
+        ...);
+int create_system_table_v2(sqlite3 *db, char *name, sqlite3_module *module,
+        int(*init_callback)(ez_systable_vtab *vtab, void **data, int *npoints),
+        void(*release_callback)(void *data, int npoints),
+        size_t struct_size,
+        // type, name, offset, type3, name2, offset2, ..., SYSTABLE_END_OF_FIELDS
         ...);
 
 #endif

@@ -33,7 +33,6 @@ extern const sqlite3_module systblTblSizeModule;
 extern const sqlite3_module systblSPsModule;
 extern const sqlite3_module systblUsersModule;
 extern const sqlite3_module systblQueuesModule;
-extern const sqlite3_module systblTablePermissionsModule;
 extern const sqlite3_module systblTriggersModule;
 extern const sqlite3_module systblKeywordsModule;
 extern const sqlite3_module systblLimitsModule;
@@ -44,7 +43,6 @@ extern const sqlite3_module systblAppsockHandlersModule;
 extern const sqlite3_module systblOpcodeHandlersModule;
 extern const sqlite3_module completionModule; // in ext/misc
 extern const sqlite3_module systblClientStatsModule;
-extern const sqlite3_module systblTableTPPermissionsModule;
 extern const sqlite3_module systblTimepartModule;
 extern const sqlite3_module systblTimepartShardsModule;
 extern const sqlite3_module systblTimepartEventsModule;
@@ -56,6 +54,9 @@ extern const sqlite3_module systblTimeseriesModule;
 extern const sqlite3_module systblReplStatsModule;
 extern const sqlite3_module systblLogicalOpsModule;
 extern const sqlite3_module systblSystabsModule;
+extern sqlite3_module systblTablePermissionsModule;
+extern sqlite3_module systblSystabPermissionsModule;
+extern sqlite3_module systblTimepartPermissionsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
@@ -79,6 +80,9 @@ int systblScStatusInit(sqlite3 *db);
 int systblScHistoryInit(sqlite3 *db);
 int systblConnectionsInit(sqlite3 *db);
 int systblFunctionsInit(sqlite3 *db);
+int systblTablePermissionsInit(sqlite3 *db);
+int systblSystabPermissionsInit(sqlite3 *db);
+int systblTimepartPermissionsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

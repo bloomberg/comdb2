@@ -399,6 +399,18 @@ List all available system tables in Comdb2.
 
 * `name` - Name of the system table
 
+## comdb2_systablepermissions
+
+Table of permissions for system tables in the database.
+
+    comdb2_systablepermissions(tablename, username, READ, WRITE, DDL)
+
+* `tablename` - Name of the system table
+* `username` - Name of the user
+* `READ` - `Y` if `username` has read access to `tablename`
+* `WRITE` - `Y` if `username` has write access to `tablename`
+* `DDL` - `Y` if `username` can modify `tablename` schema
+
 ## comdb2_tablepermissions
 
 Table of permissions for tables in the database.
@@ -501,6 +513,19 @@ Information about time partitions.
 * `shard0name` - Name of the initial table used to seed the time partition
 * `start` - "epoch" seconds when the first rollout happens/happened
 * `sourceid` - UUID identifying the partition
+
+## comdb2_timepartpermissions
+
+Table of permissions for time partitions in the database.
+
+    comdb2_timepartpermissions(tablename, username, READ, WRITE, DDL)
+
+* `tablename` - Name of the time partition
+* `username` - Name of the user
+* `READ` - `Y` if `username` has read access to `tablename`
+* `WRITE` - `Y` if `username` has write access to `tablename`
+* `DDL` - `Y` if `username` can modify `tablename` schema
+
 
 ## comdb2_timepartshards
 
