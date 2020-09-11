@@ -54,13 +54,10 @@ struct systable {
     int size;
     int (*init)(void **data, int *npoints);
     void (*release)(void *data, int npoints);
-};
 
-struct ez_systable_vtab {
-    sqlite3_vtab base;
-    struct systable *t;
+    int (*init_v2)(ez_systable_vtab *vtab, void **data, int *npoints);
+    void (*release_v2)(ez_systable_vtab *vtab, void *data, int npoints);
 };
-typedef struct ez_systable_vtab ez_systable_vtab;
 
 struct ez_systable_cursor {
     sqlite3_vtab_cursor base;
@@ -105,6 +102,7 @@ static int systbl_connect(
     if (rc == SQLITE_OK) {
         ez_systable_vtab *vtab = calloc(1, sizeof(ez_systable_vtab));
         vtab->t = pAux;
+        vtab->db = db;
         *ppVtab = (sqlite3_vtab*) vtab;
     }
     return rc;
@@ -120,11 +118,15 @@ static int systbl_best_index(
 static int systbl_open(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     int rc;
     struct ez_systable_cursor *pCur = calloc(1, sizeof(struct ez_systable_cursor));
-    struct ez_systable_vtab *vtab = (struct ez_systable_vtab*) p;
+    ez_systable_vtab *vtab = (ez_systable_vtab*) p;
     struct systable *t = vtab->t;
     pCur->rowid = 0;
     pCur->t = t;
-    rc = t->init(&pCur->data, &pCur->npoints);
+    if (t->init_v2) {
+        rc = t->init_v2(vtab, &pCur->data, &pCur->npoints);
+    } else {
+        rc = t->init(&pCur->data, &pCur->npoints);
+    }
     *ppCursor = (sqlite3_vtab_cursor*) pCur;
     return rc;
 }
@@ -342,36 +344,27 @@ void destroy_system_table(void *p) {
     free(t);
 }
 
-int create_system_table(sqlite3 *db, char *name, sqlite3_module *module,
-        int(*init_callback)(void **data, int *npoints),
-        void(*release_callback)(void *data, int npoints),
-        size_t struct_size, ...) {
-    struct systable *sys;
-
-    init_module(module);
-
-    sys = malloc(sizeof(struct systable));
+static int create_system_tableV(struct systable *sys, sqlite3 *db, char *name,
+                                sqlite3_module *module, size_t struct_size,
+                                va_list args)
+{
     sys->name = strdup(name);
     sys->size = struct_size;
     sys->nfields = 0;
-    sys->init = init_callback;
-    sys->release = release_callback;
     sys->fields = NULL;
-
-    va_list args;
-    va_start(args, struct_size);
 
     int nalloc = 0;
 
     int type = va_arg(args, int);
     while (type != SYSTABLE_END_OF_FIELDS) {
-        char *vname = va_arg(args, char*);
+        char *vname = va_arg(args, char *);
         int nulloffset = va_arg(args, size_t);
         int offset = va_arg(args, size_t);
 
         if (sys->nfields >= nalloc) {
             nalloc = nalloc * 2 + 10;
-            sys->fields = realloc(sys->fields, nalloc * sizeof(struct sysfield));
+            sys->fields =
+                realloc(sys->fields, nalloc * sizeof(struct sysfield));
         }
 
         sys->fields[sys->nfields].name = strdup(vname);
@@ -382,13 +375,53 @@ int create_system_table(sqlite3 *db, char *name, sqlite3_module *module,
         type = va_arg(args, int);
     }
 
-    int rc = sqlite3_create_module_v2(db, name, module, sys,
-                                      destroy_system_table);
+    init_module(module);
+
+    int rc =
+        sqlite3_create_module_v2(db, name, module, sys, destroy_system_table);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: create %s rc %d %s\n", __func__, name, rc, sqlite3_errmsg(db));
+        logmsg(LOGMSG_ERROR, "%s: create %s rc %d %s\n", __func__, name, rc,
+               sqlite3_errmsg(db));
         return rc;
     }
 
+    return 0;
+}
+
+int create_system_table(sqlite3 *db, char *name, sqlite3_module *module,
+                        int (*init_callback)(void **data, int *npoints),
+                        void (*release_callback)(void *data, int npoints),
+                        size_t struct_size, ...)
+{
+    struct systable *sys = malloc(sizeof(struct systable));
+
+    sys->init = init_callback;
+    sys->init_v2 = NULL;
+    sys->release = release_callback;
+
+    va_list args;
+    va_start(args, struct_size);
+    create_system_tableV(sys, db, name, module, struct_size, args);
+    va_end(args);
+
+    return 0;
+}
+
+int create_system_table_v2(sqlite3 *db, char *name, sqlite3_module *module,
+                           int (*init_callback)(ez_systable_vtab *vtab,
+                                                void **data, int *npoints),
+                           void (*release_callback)(void *data, int npoints),
+                           size_t struct_size, ...)
+{
+    struct systable *sys = malloc(sizeof(struct systable));
+
+    sys->init = NULL;
+    sys->init_v2 = init_callback;
+    sys->release = release_callback;
+
+    va_list args;
+    va_start(args, struct_size);
+    create_system_tableV(sys, db, name, module, struct_size, args);
     va_end(args);
 
     return 0;

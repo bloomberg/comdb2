@@ -6508,8 +6508,10 @@ struct sqlite3_module {
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 enum {
-  CDB2_ALLOW_ALL,  /* Allow access to all */
-  CDB2_ALLOW_USER, /* Limit access only to permitted users */
+  CDB2_ALLOW_ALL  = 1<<0, /* Allow access to all */
+  CDB2_ALLOW_USER = 1<<1, /* Limit access only to permitted users */
+  CDB2_HIDDEN     = 1<<2, /* Remove it from system table list
+                             (comdb2_systables) */
 };
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
