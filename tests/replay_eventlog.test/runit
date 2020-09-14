@@ -303,10 +303,10 @@ update_records_with_bind_index $((NEWSTRT+10)) $((NEWSTRT+19))
 assertcnt $NEWNUMREC
 
 insert_rollback_tran $((NEWNUMREC+1)) $((NEWNUMREC+10))
-assertcnt t1 $NEWNUMREC
+assertcnt $NEWNUMREC
 
 insert_commit_tran $((NEWNUMREC+1)) $((NEWNUMREC+10))
-assertcnt t1 $((NEWNUMREC+10))
+assertcnt $((NEWNUMREC+10))
 
 
 set -e
@@ -342,11 +342,11 @@ else
     zcat $logfl > $logflunziped
 fi
 
-count=`wc -l $logflunziped | cut -f 1 -d' '`
-CSHOULDBE=8286 # number of lines that should be in the log when single node
+count=`grep '"sql": ' $logflunziped | wc -l | cut -f 1 -d' '`
+CSHOULDBE=4192 # number of "sql" lines that should be in the log when single node
 if [[ -z "$CLUSTER" ]] && [[ $count -ne $CSHOULDBE ]] ; then 
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
-elif [ $count -lt 4142 ] ; then
+elif [ $count -lt 4197 ] ; then
     failexit "$logflunziped contains $count which is too few entries"
 fi
 

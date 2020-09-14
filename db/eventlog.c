@@ -572,15 +572,6 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     eventlog_path(obj, logger);
 }
 
-static inline void add_to_fingerprints(const struct reqlogger *logger)
-{
-    bool isSqlErr = logger->error && logger->stmt;
-
-    if ((EV_SQL == logger->event_type || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
-        eventlog_add_newsql(logger);
-    }
-}
-
 void eventlog_add(const struct reqlogger *logger)
 {
     int call_roll_cleanup = 0;

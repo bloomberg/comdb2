@@ -1415,18 +1415,20 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     query_stats_setup(thd, clnt);
-    reqlog_set_event(thd->logger, EV_SQL);
     reqlog_new_sql_request(thd->logger, clnt->sql);
     size_t len;
     unsigned char fp[FINGERPRINTSZ];
 
-    char stmt[7];
-    int i = 0;
-    for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
-        stmt[i] = (char) tolower(*s);
+    const char * ev = reqlog_get_event(thd->logger);
+    if (ev && strcmp(ev, "sql") == 0) {
+        char stmt[7];
+        int i = 0;
+        for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
+            stmt[i] = (char) tolower(*s);
+        }
+        calc_fingerprint(stmt, &len, fp);
+        reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
     }
-    calc_fingerprint(stmt, &len, fp);
-    reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
     log_queue_time(thd->logger, clnt);
 }
 
@@ -3654,6 +3656,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     switch (clnt->ctrl_sqlengine) {
 
     case SQLENG_PRE_STRT_STATE:
+        reqlog_set_event(thd->logger, "sql");
         *outrc = handle_sql_begin(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
@@ -3663,6 +3666,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
+        reqlog_set_event(thd->logger, "sql");
         *outrc = handle_sql_commitrollback(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 

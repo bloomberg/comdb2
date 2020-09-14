@@ -2860,6 +2860,11 @@ inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
     logger->event_type = evtype;
 }
 
+inline const char *reqlog_get_event(struct reqlogger *logger)
+{
+    return logger->event_type;
+}
+
 void reqlog_add_table(struct reqlogger *logger, const char *table)
 {
     if (logger->ntables == logger->alloctables) {
