@@ -1638,18 +1638,19 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     query_stats_setup(thd, clnt);
-    reqlog_set_event(thd->logger, EV_SQL);
     reqlog_new_sql_request(thd->logger, clnt->sql);
     size_t len;
     unsigned char fp[FINGERPRINTSZ];
 
-    char stmt[7];
-    int i = 0;
-    for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
-        stmt[i] = (char) tolower(*s);
+    if (reqlog_get_event(thd->logger) == EV_SQL) {
+        char stmt[7];
+        int i = 0;
+        for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
+            stmt[i] = (char) tolower(*s);
+        }
+        calc_fingerprint(stmt, &len, fp);
+        reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
     }
-    calc_fingerprint(stmt, &len, fp);
-    reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
     log_queue_time(thd->logger, clnt);
 }
 
@@ -3961,6 +3962,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
     switch (clnt->ctrl_sqlengine) {
 
     case SQLENG_PRE_STRT_STATE:
+        reqlog_set_event(thd->logger, EV_SQL);
         *outrc = handle_sql_begin(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
@@ -3970,6 +3972,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
 
     case SQLENG_FNSH_STATE:
     case SQLENG_FNSH_RBK_STATE:
+        reqlog_set_event(thd->logger, EV_SQL);
         *outrc = handle_sql_commitrollback(thd, clnt, TRANS_CLNTCOMM_NORMAL);
         return 1;
 
@@ -5558,46 +5561,41 @@ done:
     return clnt->query_rc;
 }
 
-static int verify_dispatch_sql_query(
-    struct sqlclntstate *clnt,
-    priority_t *pPriority)
+static int verify_dispatch_sql_query(struct sqlclntstate *clnt, priority_t *pPriority)
 {
     memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
 
-    if (!clnt->admin && gbl_prioritize_queries && (gbl_ruleset != NULL)) {
-        if (gbl_fingerprint_queries &&
-            comdb2_ruleset_fingerprints_allowed()) {
-            /* IGNORED */
-            preview_and_calc_fingerprint(clnt);
-        }
-
-        int ruleNo = 0;
-        int bRejected = 0;
-        int bTryAgain = 0;
-
-        *pPriority = PRIORITY_T_INITIAL; /* TODO: Tunable default priority? */
-
-        if (!can_execute_sql_query_now(
-                clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain, pPriority)) {
-            if (bRejected) {
-                int rc = bTryAgain ? CDB2ERR_REJECTED: ERR_QUERY_REJECTED;
-                char zRuleRes[100];
-                memset(zRuleRes, 0, sizeof(zRuleRes));
-                snprintf0(zRuleRes, sizeof(zRuleRes),
-                          "Rejected due to rule #%d", ruleNo);
-                if (gbl_verbose_prioritize_queries) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s: REJECTED seqNo=%llu, rc=%d {%s}: %s\n",
-                           __func__, (long long unsigned int)clnt->seqNo,
-                           rc, clnt->sql, zRuleRes);
-                }
-                send_run_error(clnt, zRuleRes, rc);
-                return rc;
-            }
-        }
+    if (clnt->admin || !gbl_prioritize_queries || !gbl_ruleset) {
+        return 0;
     }
 
-    return 0;
+    if (gbl_fingerprint_queries &&
+        comdb2_ruleset_fingerprints_allowed()) {
+        /* IGNORED */
+        preview_and_calc_fingerprint(clnt);
+    }
+
+    int ruleNo = 0;
+    int bRejected = 0;
+    int bTryAgain = 0;
+
+    *pPriority = PRIORITY_T_INITIAL; /* TODO: Tunable default priority? */
+
+    int ret = can_execute_sql_query_now(clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain, pPriority);
+    if (ret || !bRejected) {
+        return 0;
+    }
+
+    int rc = bTryAgain ? CDB2ERR_REJECTED: ERR_QUERY_REJECTED;
+    char zRuleRes[100];
+    memset(zRuleRes, 0, sizeof(zRuleRes));
+    snprintf0(zRuleRes, sizeof(zRuleRes), "Rejected due to rule #%d", ruleNo);
+    if (gbl_verbose_prioritize_queries) {
+        logmsg(LOGMSG_ERROR, "%s: REJECTED seqNo=%llu, rc=%d {%s}: %s\n",
+               __func__, (long long unsigned int)clnt->seqNo, rc, clnt->sql, zRuleRes);
+    }
+    send_run_error(clnt, zRuleRes, rc);
+    return rc;
 }
 
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
