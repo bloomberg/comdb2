@@ -2572,6 +2572,8 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
     return 0;
 }
 
+extern int gbl_is_physical_replicant;
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -2633,6 +2635,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     iq->oplog_numops = 0;
 
     num_reqs = p_blkstate->numreq;
+
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s client attempting write against physical replicant\n", __func__);
+        rc = ERR_NOMASTER;
+        return rc;
+    }
 
     /* reset queue hits stats so we don't accumulate them over several
      * retries */

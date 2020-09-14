@@ -975,6 +975,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
  * Returns the result of block processor commit
  *
  */
+extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type)
 {
     osqlstate_t *osql = &clnt->osql;
@@ -983,6 +984,12 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     int retries = 0;
     int bdberr = 0;
     int timeout = 0;
+
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
+        osql_sock_abort(clnt, type);
+        return SQLITE_READONLY;
+    }
 
     /* temp hook for sql transactions */
     /* is it distributed? */
