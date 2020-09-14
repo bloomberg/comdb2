@@ -2448,6 +2448,7 @@ static void unix_connect(int dummyfd, short what, void *data)
     struct sockaddr_un addr = {0};
     socklen_t len = sizeof(addr);
     addr.sun_family = AF_UNIX;
+    /* get_portmux_bind_path() doesn't return NULL. */
     strcpy(addr.sun_path, get_portmux_bind_path());
     int rc = connect(fd, (struct sockaddr *)&addr, len);
     if (rc == -1 && errno != EINPROGRESS) {

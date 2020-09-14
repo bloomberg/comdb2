@@ -497,6 +497,17 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
     socklen_t len;
     int listenfd;
 
+    /*
+    ** gbl_portmux_unix_socket may be changed by clean exit or 'PUT TUNABLE'. We
+    ** store its current value in a local variable and use the variable instead.
+    */
+    char *portmux_unix_socket = gbl_portmux_unix_socket;
+
+    if (portmux_unix_socket == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: socket path can't be null\n", __func__);
+        return -1;
+    }
+
     errno = 0;
     listenfd = socket(AF_UNIX, SOCK_STREAM, 0 /*default proto*/);
     if (listenfd < 0) {
@@ -536,14 +547,14 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
     /*connect to portmux unix socket*/
     memset(&addr, 0, sizeof(addr));
     addr.sun_family = AF_UNIX;
-    int uslen = strlen(gbl_portmux_unix_socket);
+    int uslen = strlen(portmux_unix_socket);
 
     if (uslen >= sizeof(addr.sun_path)) {
         logmsg(LOGMSG_ERROR, "%s:%d Portmux unix socket path too long.",
                __func__, __LINE__);
         return -1;
     } else {
-        strcpy(addr.sun_path, gbl_portmux_unix_socket);
+        strcpy(addr.sun_path, portmux_unix_socket);
     }
 
     len = offsetof(struct sockaddr_un, sun_path) + uslen;
@@ -552,7 +563,7 @@ static int portmux_get_unix_socket(const char *unix_bind_path)
         if ((errno != ENOENT) && (errno != ECONNREFUSED)) {
             logmsg(LOGMSG_ERROR, "%s:%d error connecting to portmux "
                                  "on %s errno[%d]=%s\n",
-                   __func__, __LINE__, gbl_portmux_unix_socket, errno,
+                   __func__, __LINE__, portmux_unix_socket, errno,
                    strerror(errno));
         }
         close(listenfd);
@@ -696,6 +707,7 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
     int max_retries = 60;
     int rc;
     time_t now;
+    char *portmux_unix_socket = gbl_portmux_unix_socket;
 
     if (!fds->recov_conn || (fds->listenfd >= 0)) {
         return 0; /*nothing to do, continue*/
@@ -743,7 +755,7 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
         /*recovered unix socket connection*/
         logmsg(LOGMSG_ERROR,
                "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n", __func__,
-               __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
+               __LINE__, portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
     } else {
@@ -755,7 +767,7 @@ static int portmux_handle_recover(portmux_fd_t *fds, int timeoutms)
              *connectivity drop it and only use tcp port*/
             logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
                                  "too many retries %d will only use port# %d\n",
-                   __func__, __LINE__, gbl_portmux_unix_socket, fds->app,
+                   __func__, __LINE__, portmux_unix_socket, fds->app,
                    fds->service, fds->instance, fds->nretries, fds->port);
             fds->recov_conn = 0 /*FALSE*/;
         }
@@ -1186,6 +1198,7 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
 {
     int max_retries = 60;
     int rc;
+    char *portmux_unix_socket = gbl_portmux_unix_socket;
 
     if (fds->listenfd >= 0) {
         return 0; /*nothing to do, continue*/
@@ -1231,7 +1244,7 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
         /*recovered unix socket connection*/
         logmsg(LOGMSG_WARN,
                "%s:%d reconnected to %s on fd# %d for <%s/%s/%s>\n", __func__,
-               __LINE__, gbl_portmux_unix_socket, fds->listenfd, fds->app,
+               __LINE__, portmux_unix_socket, fds->listenfd, fds->app,
                fds->service, fds->instance);
         fds->nretries = 0;
     } else {
@@ -1243,7 +1256,7 @@ static int portmux_handle_recover_v(portmux_fd_t *fds)
              *connectivity drop it and only use tcp port*/
             logmsg(LOGMSG_ERROR, "%s:%d dropping recovery on %s for <%s/%s/%s> "
                                  "too many retries %d will only use port# %d\n",
-                   __func__, __LINE__, gbl_portmux_unix_socket, fds->app,
+                   __func__, __LINE__, portmux_unix_socket, fds->app,
                    fds->service, fds->instance, fds->nretries, fds->port);
             fds->recov_conn = 0 /*FALSE*/;
             return 2;
@@ -1782,15 +1795,22 @@ void set_portmux_port(int port)
 
 void clear_portmux_bind_path()
 {
-    if (gbl_portmux_unix_socket != gbl_portmux_unix_socket_default) {
-        free(gbl_portmux_unix_socket);
+    char *portmux_unix_socket = gbl_portmux_unix_socket;
+    if (portmux_unix_socket != gbl_portmux_unix_socket_default) {
+        /*
+        ** Free gbl_portmux_unix_socket only if it's different from the literal.
+        ** Ensure that the pointer is set to NULL before we free its memory so
+        ** that other threads won't see an incomplete reference.
+        */
+        gbl_portmux_unix_socket = NULL;
+        free(portmux_unix_socket);
     }
-    gbl_portmux_unix_socket = NULL;
 }
 
 char *get_portmux_bind_path(void)
 {
-    return gbl_portmux_unix_socket;
+    /* Caller may use the return value without checking for NULL. */
+    return (gbl_portmux_unix_socket == NULL) ? "" : gbl_portmux_unix_socket;
 }
 
 int set_portmux_bind_path(const char *path)
