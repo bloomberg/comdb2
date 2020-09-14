@@ -219,7 +219,7 @@ int gbl_abort_on_clear_inuse_rqid = 1;
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
 
 /* lots of defaults. */
-int gbl_exit_on_pthread_create_fail = 0;
+int gbl_exit_on_pthread_create_fail = 1;
 int gbl_exit_on_internal_error = 1;
 int gbl_osql_blockproc_timeout_sec = 5;  /* wait for 5 seconds for a blocproc*/
 int gbl_osql_max_throttle_sec = 60 * 10; /* 10-minute default */

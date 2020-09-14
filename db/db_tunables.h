@@ -471,7 +471,7 @@ REGISTER_TUNABLE("fullrecovery", "Attempt to run database "
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("gbl_exit_on_pthread_create_fail",
                  "If set, database will exit if thread pools aren't able to "
-                 "create threads. (Default: 0)",
+                 "create threads. (Default: 1)",
                  TUNABLE_INTEGER, &gbl_exit_on_pthread_create_fail, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, NOARG, NULL,

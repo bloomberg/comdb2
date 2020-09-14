@@ -107,3 +107,17 @@ fi
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/rulesets/t02.ruleset')" 2>&1 | sed 's/file ".*"/file "t02.ruleset"/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')" | sed 's/ruleset 0x[0-9A-Fa-f]\+/ruleset 0x00000000/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
+
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 10' AS z;" 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/rulesets/t04.ruleset')" 2>&1 | sed 's/file ".*"/file "t04.ruleset"/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.thdpool_queue_only' 0"
+cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.force_thdpool_priority' 0"
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT sleep(1);" 2>&1
+cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_host();" 2>&1 | sed 's/\x27.*\x27/host_name_here/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')" | sed 's/ruleset 0x[0-9A-Fa-f]\+/ruleset 0x00000000/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('list_sql_pools')"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('destroy_sql_pool extra1')" | sed 's/[0-9]\+ microseconds/X microseconds/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('destroy_sql_pool extra2')" | sed 's/[0-9]\+ microseconds/X microseconds/g'
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('destroy_sql_pool extra3')"
+cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('destroy_sql_pool extra4')" | sed 's/[0-9]\+ microseconds/X microseconds/g'

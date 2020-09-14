@@ -136,7 +136,6 @@ typedef enum tsql_meta_command tsql_meta_command_t;
 extern char *gbl_exec_sql_on_new_connect;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern int gbl_allow_pragma;
-extern int gbl_use_appsock_as_sqlthread;
 extern int g_osql_max_trans;
 extern int gbl_fdb_track;
 extern int gbl_stable_rootpages_test;
@@ -187,7 +186,6 @@ int gbl_check_access_controls;
 int gbl_bpfunc_auth_gen = 1;
 
 uint64_t gbl_clnt_seq_no = 0;
-struct thdpool *gbl_sqlengine_thdpool = NULL;
 
 int gbl_thdpool_queue_only = 0;
 int gbl_debug_force_thdpool_priority = (int)PRIORITY_T_HIGHEST;
@@ -5099,6 +5097,7 @@ static int can_execute_sql_query_now(
   struct ruleset_item_criteria context = {0};
   struct ruleset_result result = {0};
   result.priority = *pPriority;
+  clnt->pPool = NULL; /* NOTE: By default, start with the "default" pool. */
   clnt_to_ruleset_item_criteria(clnt, &context);
   size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, &context, &result);
   comdb2_ruleset_result_to_str(
@@ -5132,6 +5131,7 @@ static int can_execute_sql_query_now(
     }
   }
   /* END FAULT INJECTION TEST CODE */
+  struct thdpool *pool = get_sql_pool(clnt);
   switch (result.action) {
     case RULESET_A_NONE: {
       /* do nothing */
@@ -5154,9 +5154,23 @@ static int can_execute_sql_query_now(
       break;
     }
     case RULESET_A_LOW_PRIO:
-    case RULESET_A_HIGH_PRIO: {
+    case RULESET_A_HIGH_PRIO:
+    case RULESET_A_SET_POOL: {
       *pRuleNo = result.ruleNo;
       *pPriority = result.priority;
+      if (result.zPool != NULL) {
+        pool = get_named_sql_pool(
+            result.zPool, result.flags & RULESET_F_DYN_POOL,
+            SQL_POOL_NAMED_MAX_THREADS
+        );
+        if (pool != NULL) {
+          clnt->pPool = pool;
+        } else {
+          logmsg(LOGMSG_ERROR,
+                 "%s: missing named pool '%s' for ruleset 0x%p\n",
+                 __func__, result.zPool, gbl_ruleset);
+        }
+      }
       break;
     }
     default: {
@@ -5176,7 +5190,7 @@ static int can_execute_sql_query_now(
     pool_priority = (priority_t)gbl_debug_force_thdpool_priority;
     if (pool_priority == PRIORITY_T_HIGHEST) {
       zPoolPriority = "fake ";
-      pool_priority = thdpool_get_highest_priority(gbl_sqlengine_thdpool);
+      pool_priority = thdpool_get_highest_priority(pool);
     } else {
       zPoolPriority = "actual ";
     }
@@ -5194,9 +5208,10 @@ static int can_execute_sql_query_now(
     char zPriority1[100] = {0};
     char zPriority2[100] = {0};
     logmsg(LOGMSG_INFO,
-      "%s: POST seqNo=%llu, count=%d, sql={%s} ==> ruleset work item priority "
-      "%s VS %spool work item priority %s: %s\n",
+      "%s: POST seqNo=%llu, count=%d, sql={%s}, pool={%s} ==> ruleset work "
+      "item priority %s VS %spool work item priority %s: %s\n",
       __func__, (long long unsigned int)clnt->seqNo, (int)count, clnt->sql,
+      thdpool_get_name(pool),
       comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
       zPoolPriority,
       comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0),
@@ -5433,16 +5448,22 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     if (fail_dispatch)
         return -1;
 
-    snprintf(msg, sizeof(msg), "%s \"%s\"", clnt->origin, clnt->sql);
+    struct thdpool *pool = get_sql_pool(clnt);
     clnt->enque_timeus = comdb2_time_epochus();
 
+    snprintf(msg, sizeof(msg), "%s {%s} ==> pool {%s} priority {%lld} at %llu",
+             clnt->origin, clnt->sql, (pool != NULL) ? thdpool_get_name(pool) :
+         "<null>", clnt->priority, (long long unsigned int)clnt->enque_timeus);
+
+    logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, msg);
+
     q_depth_tag_and_sql = thd_queue_depth();
-    if (thdpool_get_nthds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
-        q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
+    if (thdpool_get_nthds(pool) == thdpool_get_maxthds(pool))
+        q_depth_tag_and_sql += thdpool_get_queue_depth(pool) + 1;
 
     time_metric_add(thedb->concurrent_queries,
-                    thdpool_get_nthds(gbl_sqlengine_thdpool) -
-                        thdpool_get_nfreethds(gbl_sqlengine_thdpool));
+                    thdpool_get_nthds(pool) -
+                        thdpool_get_nfreethds(pool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     sqlcpy = strdup(msg);
@@ -5459,13 +5480,13 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
         */
         clnt->queue_me = 1;
     }
-    if ((rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_appsock_pp,
+    if ((rc = thdpool_enqueue(pool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sqlcpy, flags,
                               clnt->priority)) != 0) {
         if ((in_client_trans(clnt) || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
-            rc = thdpool_enqueue(gbl_sqlengine_thdpool,
+            rc = thdpool_enqueue(pool,
                                  sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
                                  flags | THDPOOL_FORCE_QUEUE,
                                  clnt->priority);
@@ -5649,76 +5670,6 @@ int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
     return wait_for_sql_query(clnt);
 }
 
-void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
-                         enum thrtype type)
-{
-    backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
-
-    sql_mem_init(NULL);
-
-    if (!gbl_use_appsock_as_sqlthread)
-        thd->thr_self = thrman_register(type);
-
-    thd->logger = thrman_get_reqlogger(thd->thr_self);
-    thd->sqldb = NULL;
-    thd->stmt_caching_table = NULL;
-    thd->have_lastuser = 0;
-
-    start_sql_thread();
-
-    thd->sqlthd = pthread_getspecific(query_info_key);
-    rcache_init(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_COUNT),
-                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_PGSZ));
-}
-
-void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
-{
-    rcache_destroy();
-    struct sql_thread *sqlthd;
-    if ((sqlthd = pthread_getspecific(query_info_key)) != NULL) {
-        /* sqlclntstate shouldn't be set: sqlclntstate is memory on another
-         * thread's stack that will not be valid at this point. */
-
-        if (sqlthd->clnt) {
-            logmsg(LOGMSG_ERROR,
-                   "%s:%d sqlthd->clnt set in thd-teardown\n", __FILE__,
-                   __LINE__);
-            if (gbl_abort_invalid_query_info_key) {
-                abort();
-            }
-            sqlthd->clnt = NULL;
-        }
-    }
-
-    if (thd->stmt_caching_table)
-        delete_stmt_caching_table(thd->stmt_caching_table);
-    sqlite3_close_serial(&thd->sqldb);
-
-    /* AZ moved after the close which uses thd for rollbackall */
-    done_sql_thread();
-
-    sql_mem_shutdown(NULL);
-
-    backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
-}
-
-static void thdpool_sqlengine_start(struct thdpool *pool, void *thd)
-{
-    sqlengine_thd_start(pool, (struct sqlthdstate *) thd, THRTYPE_SQLENGINEPOOL);
-}
-
-static void thdpool_sqlengine_end(struct thdpool *pool, void *thd)
-{
-    sqlengine_thd_end(pool, (struct sqlthdstate *) thd);
-}
-
-static void thdpool_sqlengine_dque(struct thdpool *pool, struct workitem *item,
-                                   int timeout)
-{
-    time_metric_add(thedb->sql_queue_time,
-                    comdb2_time_epochms() - item->queue_time_ms);
-}
-
 int tdef_to_tranlevel(int tdef)
 {
     switch (tdef) {
@@ -5838,6 +5789,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     clnt->seqNo = 0;
     clnt->priority = PRIORITY_T_INVALID;
+    clnt->pPool = NULL; /* REDUNDANT? */
 
     if (clnt->rawnodestats) {
         release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
@@ -6657,32 +6609,10 @@ done:
     return ret;
 }
 
-static void clnt_queued_event(void *p) {
-   struct sqlclntstate *clnt = (struct sqlclntstate*) p;
-   clnt_change_state(clnt, CONNECTION_QUEUED);
-}
-
 int sqlpool_init(void)
 {
-    gbl_sqlengine_thdpool =
-        thdpool_create("sqlenginepool", sizeof(struct sqlthdstate));
-
-    if (gbl_exit_on_pthread_create_fail)
-        thdpool_set_exit(gbl_sqlengine_thdpool);
-
-    /* big fat stack to handle big queries */
-    thdpool_set_stack_size(gbl_sqlengine_thdpool, 4 * 1024 * 1024);
-    thdpool_set_init_fn(gbl_sqlengine_thdpool, thdpool_sqlengine_start);
-    thdpool_set_delt_fn(gbl_sqlengine_thdpool, thdpool_sqlengine_end);
-    thdpool_set_minthds(gbl_sqlengine_thdpool, 4);
-    thdpool_set_maxthds(gbl_sqlengine_thdpool, 48);
-    thdpool_set_linger(gbl_sqlengine_thdpool, 30);
-    thdpool_set_maxqueueoverride(gbl_sqlengine_thdpool, 500);
-    thdpool_set_maxqueueagems(gbl_sqlengine_thdpool, 5 * 60 * 1000);
-    thdpool_set_dque_fn(gbl_sqlengine_thdpool, thdpool_sqlengine_dque);
-    thdpool_set_dump_on_full(gbl_sqlengine_thdpool, 1);
-    thdpool_set_queued_callback(gbl_sqlengine_thdpool, clnt_queued_event);
-
+    /* NOTE: Force creation of the default SQL engine thread pool. */
+    (void)get_default_sql_pool(1);
     return 0;
 }
 

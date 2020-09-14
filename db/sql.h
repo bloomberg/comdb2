@@ -582,7 +582,7 @@ struct sqlworkstate {
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
-    char zRuleRes[100];   /* Ruleset match result, if any. */
+    char zRuleRes[300];   /* Ruleset match result, if any. */
 };
 
 struct sql_hist_cost {
@@ -625,6 +625,11 @@ struct sqlclntstate {
                                 * be processed before lower priority SQL work
                                 * items.  This value should only be changed
                                 * by the dispatch_sql_query() function. */
+
+    struct thdpool *pPool;     /* When null, the default SQL thread pool is
+                                * being used to service the request; otherwise,
+                                * a specifically assigned SQL thread pool is
+                                * being used. */
 
     struct sqlworkstate work;  /* This is the primary data related to the SQL
                                 * client request in progress.  This includes
@@ -1242,6 +1247,39 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+void delete_stmt_caching_table(hash_t *stmt_caching_table);
+
+#define SQL_POOL_LEGACY_NAME          ("sqlenginepool")
+#define SQL_POOL_DEFLT_NAME           ("default")
+#define SQL_POOL_STACK_SIZE           (4 * 1024 * 1024) /* 4 MiB */
+#define SQL_POOL_DEFLT_MIN_THREADS    (4)
+#define SQL_POOL_DEFLT_MAX_THREADS    (48)
+#define SQL_POOL_NAMED_MAX_THREADS    (1)
+#define SQL_POOL_LINGER_SECS          (30) /* 30 seconds */
+#define SQL_POOL_DEFLT_MAXQ_OVERRIDE  (500)
+#define SQL_POOL_NAMED_MAXQ_OVERRIDE  (500)
+#define SQL_POOL_MAXQ_AGE_MS          (5 * 60 * 1000) /* 5 minutes */
+#define SQL_POOL_STOP_TIMEOUT_US      (5000000) /* 5 seconds */
+
+typedef struct pool_entry {
+    const char *zName;
+    long long int nThreads;
+    struct thdpool *pPool;
+} pool_entry_t;
+
+int get_default_sql_pool_max_threads(void);
+struct thdpool *get_default_sql_pool(int);
+struct thdpool *get_sql_pool(struct sqlclntstate *);
+struct thdpool *get_named_sql_pool(const char *, int, int);
+
+int64_t get_all_sql_pool_timeouts(void);
+int list_all_sql_pools(SBUF2 *);
+void print_all_sql_pool_stats(FILE *);
+void foreach_all_sql_pools(thdpool_foreach_fn, void *);
+void stop_all_sql_pools(void);
+void resume_all_sql_pools(void);
+int destroy_sql_pool(const char *, int);
+void destroy_all_sql_pools(void);
 
 int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
              uint8_t flip_orig, const char *tzname);

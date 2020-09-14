@@ -442,8 +442,6 @@ static int check_retry_conditions(Lua L, trigger_reg_t *reg,
     return 0;
 }
 
-extern struct thdpool *gbl_sqlengine_thdpool;
-
 pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
@@ -457,8 +455,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
         retry = 1;
     }
 
+    struct thdpool *pool = get_sql_pool(sp->clnt);
     Pthread_mutex_lock(&consumer_sqlthds_mutex);
-    thdpool_add_waitthd(gbl_sqlengine_thdpool);
+    thdpool_add_waitthd(pool);
     Pthread_mutex_unlock(&consumer_sqlthds_mutex);
 
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
@@ -487,7 +486,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
 
 out:
     Pthread_mutex_lock(&consumer_sqlthds_mutex);
-    thdpool_remove_waitthd(gbl_sqlengine_thdpool);
+    thdpool_remove_waitthd(pool);
     Pthread_mutex_unlock(&consumer_sqlthds_mutex);
 
     return rc;

@@ -25,6 +25,7 @@
 #include <alloca.h>
 #include <errno.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/time.h>
@@ -278,12 +279,35 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
     return pool;
 }
 
-void thdpool_destroy(struct thdpool **pool_p)
+int thdpool_destroy(struct thdpool **pool_p, int coopWaitUs)
 {
-    if (!*pool_p)
-        return;
-    struct thdpool *pool = *pool_p;
-    *pool_p = NULL;
+    struct thdpool *pool = pool_p ? *pool_p : NULL;
+
+    if (!pool) {
+        logmsg(LOGMSG_ERROR, "%s: invalid thread pool.\n", __func__);
+        return -1;
+    }
+
+    if (coopWaitUs != 0) {
+        const unsigned int waitUs = 50000; /* 50 milliseconds */
+        unsigned int elapsedUs = 0;
+        thdpool_stop(pool);
+        while (ATOMIC_LOAD32(pool->nactthd) > 0) {
+            usleep(waitUs);
+            elapsedUs += waitUs;
+            if ((coopWaitUs > 0) && (elapsedUs >= (unsigned int)coopWaitUs)) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: pool %s wait timeout (%d microseconds)\n",
+                       __func__, pool->name, elapsedUs);
+                return -2;
+            }
+        }
+        logmsg(LOGMSG_INFO,
+               "%s: pool %s wait done (%d microseconds)\n", __func__,
+               pool->name, elapsedUs);
+    }
+
+    *pool_p = NULL; /* OUT: Invalidate reference in caller. */
 
     Pthread_mutex_lock(&pool_list_lk);
     listc_rfl(&threadpools, pool);
@@ -299,6 +323,7 @@ void thdpool_destroy(struct thdpool **pool_p)
     pool_free(pool->pool);
     free(pool->name);
     free(pool);
+    return 0;
 }
 
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
@@ -319,7 +344,7 @@ void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
     UNLOCK(&pool->mutex);
 }
 
-void thdpool_set_exit(struct thdpool *pool) { pool->exit_on_create_fail = 1; }
+void thdpool_unset_exit(struct thdpool *pool) { pool->exit_on_create_fail = 0; }
 
 void thdpool_set_linger(struct thdpool *pool, unsigned lingersecs)
 {
