@@ -10,9 +10,6 @@ export repdir=${DBDIR}/$repname
 export replog=$repdir/log.txt
 export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
 
-export total_tries=60
-export begin_lsn=""
-
 function write_prompt
 {
     typeset func=$1
