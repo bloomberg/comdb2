@@ -863,6 +863,16 @@ static int page_order_table_scan_update(void *context, void *value)
     return 0;
 }
 
+static void *portmux_bind_path_get(void *dum)
+{
+    return get_portmux_bind_path();
+}
+
+static int portmux_bind_path_set(void *dum, void *path)
+{
+    return set_portmux_bind_path(path);
+}
+
 /* Routines for the tunable system itself - tunable-specific
  * routines belong above */
 

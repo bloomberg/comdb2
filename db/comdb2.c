@@ -1520,7 +1520,6 @@ void clean_exit(void)
     free(gbl_myhostname);
 
     cleanresources(); // list of lrls
-    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
