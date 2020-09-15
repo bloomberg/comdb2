@@ -74,11 +74,15 @@ struct fingerprint_track {
     int cachedColCount;     /* Cached column count from sqlitex */
 };
 
+typedef int(plugin_query_data_func)(struct sqlclntstate *, void **, int *, int, int);
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    //struct schema *params_to_bind;
+    void *stmt_data;
+    int stmt_data_sz;
+    plugin_query_data_func *qd_func; /* Function used for finalize */
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
@@ -397,6 +401,10 @@ typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 typedef int(override_type_func)(struct sqlclntstate *, int);
 
+enum query_data_ops { QUERY_DATA_SET = 1, QUERY_DATA_GET = 2, QUERY_DATA_DELETE = 3 };
+
+enum query_data_type { QUERY_STMT_DATA = 1, QUERY_HINT_DATA = 2 };
+
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
 
@@ -411,6 +419,7 @@ struct plugin_callbacks {
 
     // bound params
     plugin_func *param_count; /* newsql_param_count */
+    plugin_query_data_func *query_data_func;
     param_index_func *param_index; /* newsql_param_index */
     param_value_func *param_value; /* newsql_param_value */
 
@@ -506,6 +515,7 @@ struct plugin_callbacks {
         make_plugin_optional_null(clnt, interval);                             \
         (clnt)->plugin.state = NULL;                                           \
         (clnt)->plugin.next_row = NULL;                                        \
+        (clnt)->plugin.query_data_func = NULL;                                 \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -555,6 +565,7 @@ struct sql_state {
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
+    void *query_data;                  /* data associated with sql */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
     int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
