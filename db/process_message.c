@@ -470,9 +470,7 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 logmsg(LOGMSG_ERROR, "must specify a positive epoch time\n");
                 break;
             }
-            if (dbenv->log_delete_age > 0) {
-                dbenv->log_delete_age = epoch ? epoch : comdb2_time_epoch();
-            }
+            dbenv->log_delete_age = epoch;
         } else if (tokcmp(tok, ltok, "log-delete") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "on") == 0) {

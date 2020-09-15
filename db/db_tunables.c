@@ -814,10 +814,29 @@ static int simulate_rowlock_deadlock_update(void *context, void *value)
     return 0;
 }
 
+static int log_delete_after_backup_update(void *context, void *unused)
+{
+    logmsg(LOGMSG_USER, "Will delete log files after backup\n");
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /* Epoch time of 1; so we won't delete any logfiles until after backup.
+       NC: Copied old logic, not exactly sure what this means. */
+    *(int *)tunable->var = 1;
+    return 0;
+}
+
 static int log_delete_before_startup_update(void *context, void *unused)
 {
+    logmsg(LOGMSG_USER, "Will delete log files predating this startup\n");
     comdb2_tunable *tunable = (comdb2_tunable *)context;
     *(int *)tunable->var = (int)time(NULL);
+    return 0;
+}
+
+static int log_delete_now_update(void *context, void *unused)
+{
+    logmsg(LOGMSG_USER, "Will delete log files as soon as possible\n");
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    *(int *)tunable->var = 0;
     return 0;
 }
 
