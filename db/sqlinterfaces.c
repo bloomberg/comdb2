@@ -750,7 +750,7 @@ static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const 
     const char *vtable_lock = vtable_lockname(pAuthState->db, table);
     if (vtable_lock && !vtable_search(pAuthState->vTableLocks, pAuthState->numVTableLocks, vtable_lock)) {
         pAuthState->vTableLocks =
-            (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * pAuthState->numVTableLocks + 1);
+            (char **)realloc(pAuthState->vTableLocks, sizeof(char *) * (pAuthState->numVTableLocks + 1));
         pAuthState->vTableLocks[pAuthState->numVTableLocks++] = strdup(vtable_lock);
     }
 }
