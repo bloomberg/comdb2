@@ -590,6 +590,7 @@ static int is_sqlite_db_init(BtCursor *pCur)
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
  */
+int gbl_debug_sleep_in_sql_tick;
 static int sql_tick(struct sql_thread *thd)
 {
     struct sqlclntstate *clnt;
@@ -605,6 +606,9 @@ static int sql_tick(struct sql_thread *thd)
 
     /* Increment per-clnt sqltick */
     ++clnt->sqltick;
+
+    if (gbl_debug_sleep_in_sql_tick)
+        sleep(1);
 
     /* statement cancelled? done */
     if (clnt->stop_this_statement)

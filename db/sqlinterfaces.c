@@ -2689,6 +2689,10 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     extern int gbl_sql_random_release_interval;
     int rep_lock_time_ms = gbl_rep_lock_time_ms;
 
+    /* Release if we're emitting during a master change */
+    if (bdb_lock_desired(thedb->bdb_env))
+        return release_locks("release locks on emit-row for lock-desired");
+
     /* Short circuit if check-waiters is disabled */
     if (!gbl_locks_check_waiters)
         return 0;
