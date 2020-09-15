@@ -4481,7 +4481,6 @@ void net_cleanup()
         }
     }
     Pthread_mutex_unlock(&subnet_mtx);
-    clear_portmux_bind_path();
 }
 
 /* Dedicated subnets are specified in the lrl file:
