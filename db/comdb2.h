@@ -833,10 +833,10 @@ struct dbenv {
     /* the log delete filenum is the highest log file number that may
      * be removed.  set this to -1 if any log file may be removed. */
     int log_delete_filenum;
-    /* this is a linked list of log_delete_stat structs.  If the list is
-     * empty then log fil deletion can proceed as normal.  Otherwise we
+    /* this is a linked list of log_delete_stat structs. If the list is
+     * empty then log file deletion can proceed as normal. Otherwise we
      * have one or more clients that have requested log deletion to be
-     * held up, at least beyond a certain log number.  The log_delete_state
+     * held up, at least beyond a certain log number. The log_delete_state
      * structs themselves reside on the stacks of appsock threads. */
     LISTC_T(struct log_delete_state) log_delete_state_list;
 
