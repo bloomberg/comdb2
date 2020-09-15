@@ -316,6 +316,7 @@ extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int gbl_json_escape_control_chars;
+extern int gbl_debug_sleep_in_sql_tick;
 extern int eventlog_nkeep;
 
 int gbl_debug_tmptbl_corrupt_mem;

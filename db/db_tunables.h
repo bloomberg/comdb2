@@ -1853,4 +1853,7 @@ REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
 REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
