@@ -913,8 +913,8 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
-                 &gbl_portmux_unix_socket, READONLY | READEARLY, NULL, NULL,
-                 NULL, NULL);
+                 NULL, READONLY | READEARLY, portmux_bind_path_get, NULL,
+                 portmux_bind_path_set, NULL);
 REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port,
                  READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
