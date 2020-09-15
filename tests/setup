@@ -49,7 +49,7 @@ if [[ -n ${DEBUGGER} ]]; then
         fi
         ;;
     valgrind)
-        DEBUG_PREFIX="valgrind"
+        DEBUG_PREFIX="valgrind --track-origins=yes"
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
             INTERACTIVE_DEBUG=0
         fi

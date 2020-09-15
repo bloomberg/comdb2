@@ -1639,11 +1639,11 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
 {
     query_stats_setup(thd, clnt);
     reqlog_new_sql_request(thd->logger, clnt->sql);
-    size_t len;
-    unsigned char fp[FINGERPRINTSZ];
 
     if (reqlog_get_event(thd->logger) == EV_SQL) {
-        char stmt[7];
+        unsigned char fp[FINGERPRINTSZ];
+        size_t len;
+        char stmt[9] = {0}; // begin, commit, or rollback
         int i = 0;
         for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
             stmt[i] = (char) tolower(*s);
@@ -1706,13 +1706,13 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
     write_response(clnt, RESPONSE_ERROR_BAD_STATE,
                    "sqlinterfaces: wrong sql handle state\n", 0);
 
-    if (srs_tran_destroy(clnt))
-        logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
-
     clnt->intrans = 0;
     reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+
+    if (srs_tran_destroy(clnt))
+        logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
 
     return SQLITE_INTERNAL;
 }
@@ -2328,6 +2328,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     if (sideeffects == TRANS_CLNTCOMM_CHUNK)
         return outrc;
 
+done:
+    reset_clnt_flags(clnt);
+    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {
         if (srs_tran_destroy(clnt))
@@ -2335,10 +2339,6 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
                    "Fail to destroy transaction replay session\n");
     }
 
-done:
-    reset_clnt_flags(clnt);
-
-    reqlog_end_request(thd->logger, -1, __func__, __LINE__);
     return outrc;
 }
 

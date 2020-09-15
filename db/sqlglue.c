@@ -1665,7 +1665,7 @@ static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
 
 int create_datacopy_arrays()
 {
-    int rc;
+    int rc = 0;
     for (int table = 0; table < thedb->num_dbs && rc == 0; table++) {
         rc = create_datacopy_array(thedb->dbs[table]);
         if (rc)
