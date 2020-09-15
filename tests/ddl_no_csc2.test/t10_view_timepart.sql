@@ -28,5 +28,5 @@ select * from sqlite_master where name not like 'sqlite%' order by name;
 # cleanup
 drop table t2;
 drop view t2_v;
-# Can't schema change time partition
-#drop table time_part_t;
+drop time partition time_part_v;
+select * from sqlite_master where name not like 'sqlite%' order by name;
