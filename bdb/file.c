@@ -3510,7 +3510,9 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         return;
 
     /* dont delete log files during backups or hot copies */
-    if (bdb_state->attr->logdeleteage == LOGDELETEAGE_NEVER &&
+    time_t now = time(NULL);
+    if (((bdb_state->attr->logdeleteage == LOGDELETEAGE_NEVER) ||
+         (bdb_state->attr->logdeleteage > now)) &&
         !has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0))
         return;
 
@@ -3557,7 +3559,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     if (attrlowfilenum >= 0 && attrlowfilenum < lowfilenum)
         lowfilenum = attrlowfilenum;
 
-    /* get the filenum of our logical LWM.  we cant delete any log files
+    /* get the filenum of our logical LWM. We can delete any log files
        lower than that */
     if (gbl_rowlocks) {
         rc = bdb_get_file_lwm(bdb_state, NULL, &lwmlsn, &bdberr);
@@ -3568,7 +3570,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
 
         /* The file in lwm is the latest log file needed to run logical
-           recovery.  So the file before it is the newest log file that
+           recovery. So the file before it is the newest log file that
            can be deleted. */
         if (lwmlsn.file - 1 < lowfilenum)
             lowfilenum = lwmlsn.file - 1;
@@ -3592,8 +3594,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         } else {
             if (bdb_state->attr->debug_log_deletion) {
                 logmsg(LOGMSG_USER,
-                       "Ignoring snapylsn because %d:%d is already <= %d\n",
-                       snapylsn.file, snapylsn.offset, lowfilenum);
+                       "Ignoring snapylsn because %d is already <= %d:%d\n",
+                       lowfilenum, snapylsn.file, snapylsn.offset);
             }
         }
     }
@@ -3825,7 +3827,7 @@ low_headroom:
                 send_filenum = filenum;
 
             if ((filenum <= lowfilenum && delete_adjacent) || is_low_headroom) {
-                /* delete this file is we got this far AND it's under the
+                /* delete this file if we got this far AND it's under the
                  * replicated low number */
                 if (is_low_headroom) {
                     logmsg(LOGMSG_WARN, "LOW HEADROOM : delete_log_files: deleting "

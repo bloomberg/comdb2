@@ -3150,7 +3150,7 @@ void backend_sync_stat(struct dbenv *dbenv)
         localtime_r(&secs, &tm);
         snprintf(buf, sizeof(buf), "%02d/%02d %02d:%02d:%02d", tm.tm_mon + 1,
                  tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_mday);
-        logmsg(LOGMSG_USER, "LOG DELETE POLICY: delete log files predating %s\n", buf);
+        logmsg(LOGMSG_USER, "LOG DELETE POLICY: log file deletion suspended until %s\n", buf);
     } else {
         logmsg(LOGMSG_USER, "LOG DELETE POLICY: delete all eligible log files\n");
     }
