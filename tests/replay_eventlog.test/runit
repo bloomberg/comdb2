@@ -346,8 +346,8 @@ count=`grep '"sql": ' $logflunziped | wc -l | cut -f 1 -d' '`
 CSHOULDBE=4192 # number of "sql" lines that should be in the log when single node
 if [[ -z "$CLUSTER" ]] && [[ $count -ne $CSHOULDBE ]] ; then 
     failexit "$logflunziped contains $count rather than $CSHOULDBE entries"
-elif [ $count -lt 4197 ] ; then
-    failexit "$logflunziped contains $count which is too few entries"
+elif [ $count -ne 4197 ] ; then
+    failexit "$logflunziped contains $count rather than 4197"
 fi
 
 set -e
