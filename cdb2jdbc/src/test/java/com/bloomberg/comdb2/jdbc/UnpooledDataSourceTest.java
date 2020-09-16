@@ -22,13 +22,14 @@ public class UnpooledDataSourceTest {
         ResultSet rs = stmt.executeQuery("SELECT CAST(NOW() AS TEXT)");
         String zulu = rs.getString(1);
         Assert.assertTrue("Should get back a time in Zulu", zulu.contains("Zulu"));
+        rs.close();
 
         /* Also test URL options in UnpooledDataSource. */
-        long then = System.currentTimeMillis();
-        rs = stmt.executeQuery("SELECT SLEEP(5)");
-        long duration = System.currentTimeMillis() - then;
-        Assert.assertTrue("The query should take 1 to 2 seconds", duration >= 1000 && duration < 3000);
-        rs.close();
+        try {
+            stmt.executeQuery("SELECT SLEEP(5)");
+        } catch (SQLException e) {
+            Assert.assertTrue("Should exceed limit", e.getMessage().contains("Query exceeded set limits"));
+        }
         stmt.close();
         conn.close();
 
