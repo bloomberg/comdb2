@@ -2981,6 +2981,7 @@ done:
     return rc;
 }
 
+#define RETRY_GET_ROW 16
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
@@ -2989,6 +2990,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     enum run_sql_flags flags = FDB_RUN_SQL_NORMAL;
     unsigned long long start_rpc;
     unsigned long long end_rpc;
+    int retry = 0;
 
     if (fdbc) {
 retry:
@@ -2998,7 +3000,7 @@ retry:
         if ((how == CFIRST || how == CLAST) &&
             (fdbc->streaming != FDB_CUR_IDLE)) {
             rc = fdb_cursor_reopen(pCur);
-            if (rc) {
+            if (rc || !pCur->fdbc /*did we fail to pass error back */) {
                 logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
                         rc);
                 return rc;
@@ -3109,7 +3111,11 @@ retry:
                         logmsg(LOGMSG_USER,
                                "%s:%d blacklisting %s, retrying..\n", __func__,
                                __LINE__, fdbc->node);
-                    goto retry;
+                    if (retry++ < RETRY_GET_ROW)
+                        goto retry;
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to reconnect after %d retries\n",
+                           __func__, __LINE__, retry);
                 } else {
                     if (rc != FDB_ERR_SSL) {
                         if (state) {
