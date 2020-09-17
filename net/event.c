@@ -2584,7 +2584,7 @@ static void net_send_memcpy(struct event_info *e, int sz, int n, void **buf, int
 static void net_send_addref(struct event_info *e, struct net_msg *msg)
 {
     struct evbuffer *buf = e->wr_buf;
-    if (!e->wr_buf) {
+    if (!buf) {
         return;
     }
     int rc = 0;
@@ -2849,13 +2849,15 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf,
             continue;
         }
         Pthread_mutex_lock(&e->wr_lk);
-        if (msg) {
-            net_send_addref(e, msg);
-        } else {
-            net_send_memcpy(e, sz, n, buf, len, type);
-        }
-        if (nodelay) {
-            flush_evbuffer(e);
+        if (e->wr_buf) {
+            if (msg) {
+                net_send_addref(e, msg);
+            } else {
+                net_send_memcpy(e, sz, n, buf, len, type);
+            }
+            if (nodelay) {
+                flush_evbuffer(e);
+            }
         }
         Pthread_mutex_unlock(&e->wr_lk);
     }
@@ -2864,7 +2866,6 @@ int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf,
     }
     return 0;
 }
-
 
 int net_flush_evbuffer(host_node_type *host_node_ptr)
 {
