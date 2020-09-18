@@ -250,7 +250,10 @@ enum OPCODES {
     OP_UPGRADE = 132 /* dummy code for online upgrade */
 
     ,
-    MAXTYPCNT = 132
+    OP_SORESE = 133 /* no blk buffers here */
+    ,
+
+    MAXTYPCNT = 134
 
     ,
     OP_DEBUG = 200 /* for debugging (unused?) */
@@ -1187,6 +1190,17 @@ enum OSQL_REQ_TYPE {
 typedef struct blocksql_tran blocksql_tran_t;
 typedef struct sess_impl sess_impl_t;
 
+enum osql_target_type { OSQL_OVER_NET = 1, OSQL_OVER_SOCKET = 2 };
+struct osql_target {
+    enum osql_target_type type;
+    bool is_ondisk;
+    const char *host;
+    SBUF2 *sb;
+    int (*send)(struct osql_target *target, int usertype, void *data,
+                int datalen, int nodelay, void *tail, int tailen);
+};
+typedef struct osql_target osql_target_t;
+
 struct osql_sess {
 
     /* request part */
@@ -1216,7 +1230,7 @@ struct osql_sess {
     bool is_delayed : 1;
 
     /* from sorese */
-    const char *host; /* sql machine, 0 is local */
+    osql_target_t target; /* replicant machine; host is NULL if local */
     int nops;         /* if no error, how many updated rows were performed */
     int rcout;        /* store here the block proc main error */
 
@@ -1768,6 +1782,8 @@ extern int gbl_dohast_verbose;
 extern int gbl_dohsql_max_queued_kb_highwm;
 extern int gbl_dohsql_full_queue_poll_msec;
 extern int gbl_dohsql_max_threads;
+extern int gbl_sockbplog;
+extern int gbl_sockbplog_sockpool;
 
 extern int gbl_logical_live_sc;
 
@@ -2530,6 +2546,8 @@ struct dbtable *get_sqlite_db(struct sql_thread *thd, int iTable, int *ixnum);
 int schema_var_size(struct schema *sc);
 int handle_ireq(struct ireq *iq);
 int toblock(struct ireq *iq);
+int to_sorese_init(struct ireq *iq);
+int to_sorese(struct ireq *iq);
 void count_table_in_thread(const char *table);
 int findkl_enable_blob_verify(void);
 void sltdbt_get_stats(int *n_reqs, int *l_reqs);
@@ -3540,4 +3558,6 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err);
 
 extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;
+
+extern void global_sql_timings_print(void);
 #endif /* !INCLUDED_COMDB2_H */

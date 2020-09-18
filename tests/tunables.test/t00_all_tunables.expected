@@ -807,6 +807,8 @@
 (name='slowwrite', description='', type='INTEGER', value='0', read_only='Y')
 (name='snapisol', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='snapshot_serial_verify_retry', description='Automatic retries on verify errors for clients that haven't read results.  (Default: on)', type='BOOLEAN', value='ON', read_only='N')
+(name='sockbplog', description='Enable sending transactions over socket instead of net', type='BOOLEAN', value='OFF', read_only='Y')
+(name='sockbplog_sockpool', description='Enable sockpool when for sockbplog feature', type='BOOLEAN', value='OFF', read_only='Y')
 (name='sort_nulls_with_header', description='Using record headers in key sorting. (Default: on)', type='BOOLEAN', value='ON', read_only='Y')
 (name='sosql_ddl_max_commit_wait_sec', description='Wait for the master to commit a DDL transaction for up to this long.', type='INTEGER', value='259200', read_only='N')
 (name='sosql_max_commit_wait_sec', description='Wait for the master to commit a transaction for up to this long.', type='INTEGER', value='600', read_only='N')

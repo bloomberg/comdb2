@@ -77,6 +77,7 @@
 #include "reqlog.h"
 #include "comdb2_atomic.h"
 #include "str0.h"
+#include "schemachange.h"
 
 #if 0
 #define TEST_OSQL
@@ -1888,6 +1889,52 @@ static int toblock_fwd_int(struct ireq *iq, block_state_t *p_blkstate)
     return RC_OK;
 }
 
+int to_sorese_init(struct ireq *iq)
+{
+    return -1;
+}
+
+int to_sorese(struct ireq *iq)
+{
+    int rc = 0;
+    int gotlk = 0;
+
+    /* check that I am the master */
+    if (!gbl_local_mode) {
+        char *mstr = iq->dbenv->master;
+
+        if (mstr != gbl_myhostname) {
+            /* Ask the replicant to retry against the new master. */
+            if (iq->sorese) {
+                iq->sorese->rcout = ERR_NOMASTER;
+            }
+            return ERR_REJECTED;
+        }
+    }
+
+    iq->jsph = javasp_trans_start(iq->debug);
+
+    if (gbl_exclusive_blockop_qconsume) {
+        Pthread_rwlock_rdlock(&gbl_block_qconsume_lock);
+        gotlk = 1;
+    }
+
+    bdb_stripe_get(iq->dbenv->bdb_env);
+
+    /* TODO
+    rc = to_sorese_main(iq->jsph, iq); */
+    rc = -1;
+
+    bdb_stripe_done(iq->dbenv->bdb_env);
+
+    if (gotlk)
+        Pthread_rwlock_unlock(&gbl_block_qconsume_lock);
+
+    javasp_trans_end(iq->jsph);
+
+    return rc;
+}
+
 int toblock(struct ireq *iq)
 {
     int rc = 0;
@@ -2088,7 +2135,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
     else
         javasp_trans_set_trans(javasp_trans_handle, iq, NULL, *trans);
 
-    *osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
+    if (osql_needtransaction)
+        *osql_needtransaction = OSQL_BPLOG_RECREATEDTRANS;
 
     return rc;
 }
@@ -4833,8 +4881,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (osql_is_index_reorder_on(iq->osql_flags)) {
             if (iq->debug)
                 reqpushprefixf(iq, "process_defered_table:");
-            rc = process_defered_table(iq, p_blkstate, trans, &blkpos, &ixout,
-                                       &errout);
+            rc = process_defered_table(iq, trans, &blkpos, &ixout, &errout);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
 
@@ -4853,7 +4900,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             reqpushprefixf(iq, "delayed_key_adds: %p", trans);
 
         int verror = 0;
-        rc = delayed_key_adds(iq, p_blkstate, trans, &blkpos, &ixout, &errout);
+        rc = delayed_key_adds(iq, trans, &blkpos, &ixout, &errout);
 
         if (iq->debug)
             reqpopprefixes(iq, 1);
@@ -4873,7 +4920,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (iq->debug)
             reqpushprefixf(iq, "verify_del_constraints: %p", trans);
-        rc = verify_del_constraints(iq, p_blkstate, trans, blobs, &verror);
+        rc = verify_del_constraints(iq, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 
@@ -4890,7 +4937,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         if (iq->debug)
             reqpushprefixf(iq, "verify_add_constraints: %p", trans);
 
-        rc = verify_add_constraints(iq, p_blkstate, trans, &verror);
+        rc = verify_add_constraints(iq, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
 

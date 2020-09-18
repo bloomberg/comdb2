@@ -85,6 +85,7 @@ extern int __berkdb_read_alarm_ms;
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
 #include "osqluprec.h"
+#include "schemachange.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -1643,6 +1644,8 @@ clipper_usage:
         logmsg(LOGMSG_USER, "gbl_thrman_trace = %d\n", gbl_thrman_trace);
     } else if (tokcmp(tok, ltok, "long") == 0) {
         request_stats(dbenv);
+    } else if (tokcmp(tok, ltok, "totalsqltiming") == 0) {
+        global_sql_timings_print();
     } else if (tokcmp(tok, ltok, "dmpl") == 0) {
         thd_dump();
     } else if (tokcmp(tok, ltok, "dmptrn") == 0) {

@@ -53,6 +53,7 @@
 #include "ctrace.h"
 #include "intern_strings.h"
 #include "sc_global.h"
+#include "schemachange.h"
 
 extern int gbl_reorder_idx_writes;
 

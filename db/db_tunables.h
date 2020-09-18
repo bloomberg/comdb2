@@ -1121,7 +1121,7 @@ REGISTER_TUNABLE("surprise", NULL, TUNABLE_BOOLEAN, &gbl_surprise,
 REGISTER_TUNABLE("survive_n_master_swings",
                  "Have a node retry applying a transaction against a new "
                  "master this many times before giving up. (Default: 600)",
-                 TUNABLE_INTEGER, &gbl_survive_n_master_swings, READONLY, NULL,
+                 TUNABLE_INTEGER, &gbl_allow_bplog_restarts, READONLY, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("temptable_limit",
                  "Set the maximum number of temporary tables the database can "
@@ -2049,5 +2049,14 @@ REGISTER_TUNABLE("debug_consumer_lock",
 
 REGISTER_TUNABLE("protobuf_prealloc_buffer_size", "Size of protobuf preallocated buffer.  (Default: 8192)", TUNABLE_INTEGER,
                  &gbl_protobuf_prealloc_buffer_size, INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sockbplog",
+                 "Enable sending transactions over socket instead of net",
+                 TUNABLE_BOOLEAN, &gbl_sockbplog, READONLY | NOARG, NULL, NULL,
+                 NULL, NULL);
+REGISTER_TUNABLE("sockbplog_sockpool",
+                 "Enable sockpool when for sockbplog feature", TUNABLE_BOOLEAN,
+                 &gbl_sockbplog_sockpool, READONLY | NOARG, NULL, NULL, NULL,
+                 NULL);
 
 #endif /* _DB_TUNABLES_H */

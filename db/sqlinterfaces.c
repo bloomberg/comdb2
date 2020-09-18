@@ -112,6 +112,8 @@
 #include "dohsql.h"
 #include "comdb2_query_preparer.h"
 
+#include "osqlsqlsocket.h"
+
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
 **          indexes into the array of meta-command names contained in
@@ -5230,18 +5232,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     if (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)
         bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));
 
-    /* this could be done on sql_set_transaction_mode, but it
-       affects all code paths and I don't like it */
-    if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
-        clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-        clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-        /* socksql has special needs because of inlining */
-        (clnt->dbtran.mode == TRANLEVEL_SOSQL &&
-         (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
-          clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS))) {
-        clnt->osql.host = (thedb->master == gbl_myhostname) ? 0 : thedb->master;
-    }
-
     if (clnt->ctrl_sqlengine == SQLENG_STRT_STATE ||
         clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
         clnt->had_lease_at_begin = (thedb->master == gbl_myhostname)
@@ -5865,6 +5855,9 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     set_asof_snapshot(clnt, 0, __func__, __LINE__);
     clnt->sqltick = 0;
     clnt->rowbuffer = 1;
+    if (gbl_sockbplog) {
+        init_bplog_socket(clnt);
+    }
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
@@ -6943,6 +6936,21 @@ unsigned long long osql_log_time(void)
     }
 }
 
+struct global_sql_timings {
+    unsigned long long sql_time;
+    unsigned long long wait_time;
+    unsigned long long queued_time;
+} gbl_sql_tmng = {0};
+
+pthread_mutex_t gbl_sql_tmngs_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+void global_sql_timings_print(void)
+{
+    logmsg(LOGMSG_USER, "Total sql %lld\nTotal wait %lld\nTotal queued %lld\n",
+           gbl_sql_tmng.sql_time, gbl_sql_tmng.wait_time,
+           gbl_sql_tmng.queued_time);
+}
+
 void osql_log_time_done(struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
@@ -6973,12 +6981,20 @@ void osql_log_time_done(struct sqlclntstate *clnt)
             tms->commit_end -
                 tms->commit_start /*ship commit, replicate, received rc*/
             );
+
 fdb:
     if (!gbl_time_fdb)
-        return;
+        goto done;
 
     logmsg(LOGMSG_USER, "total=%llu msec (longest=%llu msec) calls=%llu\n",
             fdbtms->total_time, fdbtms->max_call, fdbtms->total_calls);
+
+done:
+    Pthread_mutex_lock(&gbl_sql_tmngs_mtx);
+    gbl_sql_tmng.queued_time += tms->query_dispatched - tms->query_received;
+    gbl_sql_tmng.sql_time += tms->query_finished - tms->query_dispatched;
+    gbl_sql_tmng.wait_time += tms->commit_end - tms->commit_start;
+    Pthread_mutex_unlock(&gbl_sql_tmngs_mtx);
 }
 
 static void sql_thread_describe(void *obj, FILE *out)

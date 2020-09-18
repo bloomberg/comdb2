@@ -82,6 +82,13 @@ char *osql_sess_info(osql_sess_t *sess);
 int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found);
 
+/**
+ * Same as osql_sess_rcvop, for socket protocol
+ *
+ */
+int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
+                           bool *is_msg_done);
+
 int osql_sess_queryid(osql_sess_t *sess);
 
 /**
