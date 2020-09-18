@@ -8477,6 +8477,7 @@ int sqlite3BtreeInsert(
     sqlite3_int64 nKey = pPayload->nKey;
     const void *pData = pPayload->pData;
     int nData = pPayload->nData;
+
     int rc = UNIMPLEMENTED;
     int bdberr;
     blob_buffer_t blobs[MAXBLOBS];
@@ -10885,6 +10886,9 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
     socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0,
                            0, NULL, NULL);
 
+    /*fprintf(stderr, "%s: donated socket %d to sockpool %s\n", __func__, fd,
+     * socket_type);*/
+
     sbuf2free(sb);
     *psb = NULL;
 }
@@ -10904,16 +10908,18 @@ SBUF2 *connect_remote_db(const char *protocol, const char *dbname, const char *s
         /* lets try to use sockpool, if available */
         sockfd = _sockpool_get(protocol, dbname, service, host);
         if (sockfd > 0) {
-            /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s fd=%d\n",
-              __func__, dbname, service, host);*/
+            /*fprintf(stderr, "%s: retrieved sockpool socket for %s.%s.%s.%s
+              fd=%d\n",
+              __func__, dbname, protocol, service, host, sockfd);*/
             goto sbuf;
         }
     }
-    /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s\n",
-      __func__, dbname, service, host);*/
+    /*fprintf(stderr, "%s: no sockpool socket for %s.%s.%s.%s\n",
+      __func__, dbname, protocol, service, host);*/
 
     retry = 0;
 retry:
+
     /* this could fail due to load */
     port = portmux_get(host, "comdb2", "replication", dbname);
     if (port == -1) {

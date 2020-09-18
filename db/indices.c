@@ -1299,8 +1299,8 @@ int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
 }
 #endif
 
-int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
-                          int *blkpos, int *ixout, int *errout)
+int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
+                          int *errout)
 {
     void *cur = get_defered_index_tbl_cursor(0);
 

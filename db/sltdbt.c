@@ -129,7 +129,8 @@ static void adjust_maxwthreadpenalty(int *totpen_p,
     Pthread_mutex_unlock(&delay_lock);
 }
 
-static int handle_op_block(struct ireq *iq)
+static int handle_op_local(struct ireq *iq, int (*init)(struct ireq *),
+                           int (*run)(struct ireq *))
 {
     int rc;
     int64_t startus, stopus;
@@ -155,9 +156,15 @@ static int handle_op_block(struct ireq *iq)
     int totpen = 0;
     double lcl_penaltyincpercent_d = (double)gbl_penaltyincpercent * .01;
 
+    if (init) {
+        rc = init(iq);
+        if (rc)
+            goto done;
+    }
+
 retry:
     startus = comdb2_time_epochus();
-    rc = toblock(iq);
+    rc = run(iq);
     stopus = comdb2_time_epochus();
 
     extern int gbl_test_blkseq_replay_code;
@@ -203,6 +210,7 @@ retry:
         thd_dump();
     }
 
+done:
     /* we need this in rare case when the request is retried
        500 times; this is happening due to other bugs usually
        this ensures no requests replays will be left stuck
@@ -241,11 +249,23 @@ retry:
     return rc;
 }
 
+static int handle_op_block(struct ireq *iq)
+{
+    return handle_op_local(iq, NULL, toblock);
+}
+
+int handle_op_sorese(struct ireq *iq)
+{
+    return handle_op_local(iq, to_sorese_init, to_sorese);
+}
+
 /* Builtin opcode handlers */
 static comdb2_opcode_t block_op_handler = {OP_BLOCK, "blockop",
                                            handle_op_block};
 static comdb2_opcode_t fwd_block_op_handler = {OP_FWD_BLOCK, "fwdblockop",
                                                handle_op_block};
+static comdb2_opcode_t sorese_op_handler = {OP_SORESE, "sorese",
+                                            handle_op_sorese};
 int init_opcode_handlers()
 {
     /* Initialize the opcode handler hash. */
@@ -255,6 +275,7 @@ int init_opcode_handlers()
     /* Also register the builtin opcode handlers. */
     hash_add(gbl_opcode_hash, &block_op_handler);
     hash_add(gbl_opcode_hash, &fwd_block_op_handler);
+    hash_add(gbl_opcode_hash, &sorese_op_handler);
 
     return 0;
 }
@@ -348,15 +369,15 @@ int handle_ireq(struct ireq *iq)
                           "sorese returning rqid=%llu uuid=%s node=%s type=%d "
                           "nops=%d rcout=%d retried=%d RC=%d errval=%d\n",
                           iq->sorese->rqid, comdb2uuidstr(iq->sorese->uuid, us),
-                          iq->sorese->host, iq->sorese->type, iq->sorese->nops,
-                          iq->sorese->rcout, iq->sorese->verify_retries, rc,
-                          iq->errstat.errval);
+                          iq->sorese->target.host, iq->sorese->type,
+                          iq->sorese->nops, iq->sorese->rcout,
+                          iq->sorese->verify_retries, rc, iq->errstat.errval);
             }
 
             if (iq->sorese->rqid == 0)
                 abort();
             osql_comm_signal_sqlthr_rc(
-                iq->sorese->host, iq->sorese->rqid, iq->sorese->uuid,
+                &iq->sorese->target, iq->sorese->rqid, iq->sorese->uuid,
                 iq->sorese->nops, &iq->errstat, IQ_SNAPINFO(iq), sorese_rc);
 
             iq->timings.req_sentrc = osql_log_time();

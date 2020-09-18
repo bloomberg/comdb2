@@ -576,7 +576,6 @@ int gbl_querylimits_tablescans_warn = 0;
 int gbl_querylimits_temptables_warn = 0;
 extern int gbl_empty_strings_dont_convert_to_numbers;
 
-extern int gbl_survive_n_master_swings;
 extern int gbl_master_retry_poll_ms;
 
 int gbl_check_schema_change_permissions = 1;

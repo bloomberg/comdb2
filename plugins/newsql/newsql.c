@@ -17,14 +17,19 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#include <newsql.h>
-#include <reqlog.h>
-#include <sp.h>
-#include <sql.h>
-#include <sqloffload.h>
-#include <sqlquery.pb-c.h>
-#include <sqlresponse.pb-c.h>
-#include <str0.h>
+#include "newsql.h"
+#include "comdb2_plugin.h"
+#include "pb_alloc.h"
+#include "sp.h"
+#include "sql.h"
+#include "reqlog.h"
+#include "comdb2_appsock.h"
+#include "comdb2_atomic.h"
+#include "str0.h"
+#include "sqloffload.h"
+#include "osqlsqlsocket.h"
+#include "sqlquery.pb-c.h"
+#include "sqlresponse.pb-c.h"
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
@@ -1766,6 +1771,9 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 9;
                 sqlstr = skipws(sqlstr);
                 clnt->rowbuffer = (strncasecmp(sqlstr, "on", 2) == 0);
+            } else if (strncasecmp(sqlstr, "sockbplog", 10) == 0) {
+                init_bplog_socket(clnt);
+                rc = 0;
             } else {
                 rc = ii + 1;
             }

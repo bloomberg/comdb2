@@ -89,6 +89,7 @@
 #include "logmsg.h"
 #include "reqlog.h"
 #include "time_accounting.h"
+#include "schemachange.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 

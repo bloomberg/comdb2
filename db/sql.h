@@ -149,7 +149,7 @@ typedef struct {
 typedef struct osqlstate {
 
     /* == sql_thread == */
-    char *host;              /* matching remote node */
+    osql_target_t target;    /* where to send the bplog */
     unsigned long long rqid; /* per node offload request session */
     uuid_t uuid;             /* session id, take 2 */
     char *tablename;         /* malloc-ed cache of send tablename for usedb */
@@ -663,6 +663,11 @@ struct sqlclntstate {
     /* appsock plugin specific data */
     void *appdata;
     struct plugin_callbacks plugin;
+
+    /* bplog write plugin */
+    int (*begin)(struct sqlclntstate *clnt, int retries, int keep_id);
+    int (*end)(struct sqlclntstate *clnt);
+    int (*wait)(struct sqlclntstate *clnt, int timeout, struct errstat *err);
 
     dbtran_type dbtran;
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,

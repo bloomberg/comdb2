@@ -38,7 +38,7 @@ struct osql_sqlthr {
     pthread_cond_t cond;
     unsigned long long rqid; /* osql rq id */
     uuid_t uuid;             /* request id, take 2 */
-    char *master;            /* who was the master I was talking to */
+    const char *master;      /* who was the master I was talking to */
     struct sqlclntstate *clnt; /* cache clnt */
     pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
     int done;            /* result of socksql, recom, snapisol and serial master
@@ -127,7 +127,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master);
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master);
 
 /**
  * Retrieve the sqlclntstate for a certain rqid

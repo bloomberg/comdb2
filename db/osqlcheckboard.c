@@ -112,17 +112,20 @@ void osql_checkboard_destroy(void) { /* TODO*/ }
 
 /* insert entry into checkerboard */
 static inline int insert_into_checkerboard(osql_checkboard_t *cb,
-                                           osql_sqlthr_t *entry)
+                                           osql_sqlthr_t *entry, int locked)
 {
     int rc = 0;
-    Pthread_mutex_lock(&cb->mtx);
+
+    if (!locked)
+        Pthread_mutex_lock(&cb->mtx);
 
     if (entry->rqid == OSQL_RQID_USE_UUID)
         rc = hash_add(cb->rqsuuid, entry);
     else
         rc = hash_add(cb->rqs, entry);
 
-    Pthread_mutex_unlock(&cb->mtx);
+    if (!locked)
+        Pthread_mutex_unlock(&cb->mtx);
     return rc;
 }
 
@@ -171,7 +174,7 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
 
     entry->rqid = clnt->osql.rqid;
     comdb2uuidcpy(entry->uuid, clnt->osql.uuid);
-    entry->master = clnt->osql.host;
+    entry->master = clnt->osql.target.host;
     entry->type = type;
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* initialize these to insert time */
@@ -189,7 +192,8 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
     /* making sure we're adding the correct master */
     if (entry->master != thedb->master) {
         int retry = 0;
-        while ((entry->master = clnt->osql.host = thedb->master) == 0 &&
+        while ((entry->master =
+                    (char *)(clnt->osql.target.host = thedb->master)) == 0 &&
                retry < 60) {
             poll(NULL, 0, 500);
             retry++;
@@ -201,25 +205,13 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
         }
     }
 
-    if (clnt->osql.host == gbl_myhostname) {
-        clnt->osql.host = 0;
-    }
-
-    if (entry->master == 0)
-        entry->master = gbl_myhostname;
-
     Pthread_mutex_init(&entry->mtx, NULL);
     Pthread_cond_init(&entry->cond, NULL);
     return entry;
 }
 
-/**
- * Register an osql thread with the checkboard
- * This allows block processor to query the status
- * of its sql peer
- *
- */
-int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
+static int _osql_register_sqlthr(struct sqlclntstate *clnt, int type,
+                                 int locked)
 {
     uuidstr_t us;
     osql_sqlthr_t *entry = get_new_entry(clnt, type);
@@ -229,7 +221,7 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
         return -1;
     }
 
-    int rc = insert_into_checkerboard(checkboard, entry);
+    int rc = insert_into_checkerboard(checkboard, entry, locked);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: error adding record %llx %s rc=%d\n",
                __func__, entry->rqid, comdb2uuidstr(entry->uuid, us), rc);
@@ -245,20 +237,10 @@ int _osql_register_sqlthr(struct sqlclntstate *clnt, int type, int is_remote)
  * of its sql peer
  *
  */
-inline int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
+int osql_register_sqlthr(struct sqlclntstate *clnt, int type)
 {
     return _osql_register_sqlthr(clnt, type, 0);
 }
-
-/**
- * TODO: This is unused? If so cleanup.
- * Register a remote transaction, part of a distributed transaction
- *
-int osql_register_remtran(struct sqlclntstate *clnt, int type, char *tid)
-{
-    return _osql_register_sqlthr(clnt, type, 1);
-}
- */
 
 /**
  * Unregister an osql thread from the checkboard
@@ -638,7 +620,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master)
 {
     if (clnt->osql.rqid == 0)
         return 0;
@@ -650,9 +632,11 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master)
     if (!entry) {
         Pthread_mutex_unlock(&checkboard->mtx);
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "%s: error unable to find record %llx %s\n", __func__,
-                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
-        return -1;
+        logmsg(LOGMSG_ERROR,
+               "%s: error unable to find record %llx %s, enter new\n", __func__,
+               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
+
+        return _osql_register_sqlthr(clnt, tran2req(clnt->dbtran.mode), 1);
     }
 
     Pthread_mutex_lock(&entry->mtx);

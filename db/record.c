@@ -50,6 +50,7 @@
 #include "logmsg.h"
 #include "indices.h"
 #include "comdb2_atomic.h"
+#include "schemachange.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;

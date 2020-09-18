@@ -48,6 +48,7 @@
 #include "osqlsqlthr.h"
 #include "osqlshadtbl.h"
 #include "osqlblkseq.h"
+#include "schemachange.h"
 #include <net_types.h>
 
 #include <logmsg.h>
@@ -195,10 +196,12 @@ void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
     struct thr_handle *thr_self = thrman_self();
 
     if (iq->debug)
-        reqprintf(iq, "%s received from node %s", __func__, iq->sorese->host);
+        reqprintf(iq, "%s received from node %s", __func__,
+                  iq->sorese->target.host);
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
-                  breq2a(block2_type), iq->sorese->host, iq->sorese->rqid);
+                  breq2a(block2_type), iq->sorese->target.host,
+                  iq->sorese->rqid);
 }
 
 extern int gbl_early_verify;
@@ -415,13 +418,6 @@ int recom_abort(struct sqlclntstate *clnt)
     }
 
     return sorese_abort(clnt, OSQL_RECOM_REQ);
-}
-
-inline int block2_serial(struct ireq *iq, const char *sql, int sqlen)
-{
-
-    block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
-    return 0;
 }
 
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,

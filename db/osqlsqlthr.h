@@ -177,16 +177,6 @@ int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
 
 
 /**
- * Restart a broken socksql connection by opening
- * a new blockproc on the provided master and
- * sending the cache rows to resume the current.
- * If keep_session is set, the same rqid is used for the replay
- *
- */
-int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
-                      int keep_session);
-
-/**
 *
 * Process a schema change request
 * Returns SQLITE_OK if successful.
