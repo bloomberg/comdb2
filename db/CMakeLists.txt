@@ -71,6 +71,7 @@ set(src
   sqllog.c
   sqlmaster.c
   sqloffload.c
+  sqlpool.c
   sqlstat1.c
   tag.c
   testcompr.c

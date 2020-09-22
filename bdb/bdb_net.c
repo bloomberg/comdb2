@@ -369,8 +369,6 @@ int udppfault_thdpool_init(void)
 {
     gbl_udppfault_thdpool = thdpool_create("udppfaultpool", 0);
 
-    thdpool_set_exit(gbl_udppfault_thdpool);
-
     thdpool_set_minthds(gbl_udppfault_thdpool, 0);
     thdpool_set_maxthds(gbl_udppfault_thdpool, 8);
     thdpool_set_maxqueue(gbl_udppfault_thdpool, 1000);

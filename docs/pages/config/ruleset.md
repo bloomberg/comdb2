@@ -10,9 +10,10 @@ permalink: ruleset.html
 Comdb2 ruleset files have a `.ruleset` extension.  Ruleset files are optional.
 By convention, ruleset files should be placed in the `rulesets` subdirectory
 within the database directory.  If no ruleset files are loaded, the database
-will assume all SQL queries have equal priority.  By default, no ruleset files
-are loaded when the database starts up.  If desired, one (or more) ruleset
-files may be automatically loaded on startup by using `do` directives in the
+will assume all SQL queries have equal priority and they will be handled only
+by its default thread pool.  By default, no ruleset files are loaded when the
+database is started.  If desired, one (or more) ruleset files may be loaded
+automatically on startup by using `do` directives in the
 [LRL file](config_files.md#lrl-files), e.g.:
 
 ```
@@ -25,13 +26,34 @@ however, it will permit loaded ruleset files to make use of the `fingerprint`
 property.
 
 A ruleset file consists of optional blank lines, optional comment lines, a
-required file header, and optional rule definition lines.
+required file header, optional thread pool definition lines, and optional
+rule definition lines.
 
 Blank lines are skipped.  Lines beginning with `#` are treated as comments
 and skipped.
 
 The file header line must be the first non-blank, non-comment line in the
-file.  Currently, it must consist of the literal string `version 1`.
+file.  It must consist of the literal string `version`, followed by one or
+more spaces, followed by the file format version.  The currently valid file
+format versions are `1` and `2`.
+
+### Thread pool syntax (file format version 2 or later)
+
+The syntax for thread pool definition lines is:
+
+    pool <poolName> [attrName1 attrValue1] ... [attrNameN attrValueN]
+
+A thread pool definition consists of a name and its associated attribute
+values.  The thread pool name should be alphanumeric and cannot contain
+any whitespace characters.  All attributes are optional; when absent, an
+attribute will retain its system assigned default value.  These system
+assigned default values are officially unspecified and may be changed at
+any time.  The `threads` attribute is used to specify the maximum number
+of threads for the thread pool.  It cannot be negative, nor can it exceed
+the maximum number of threads used by the default thread pool.  Thread
+pool definitions are optional.  When present, they must precede any rule
+definitions that refer to them unless a matching rule has the `DYN_POOL`
+flag set; otherwise, an error will be raised.
 
 ### Rule syntax
 
@@ -79,14 +101,15 @@ The supported set of property names and their required formats is:
 
 | Property Name | Property Value Format |
 |---------------|------------------------|
-|action         | One of `NONE`, `REJECT_ALL`, `REJECT`, `UNREJECT`, `LOW_PRIO`, or `HIGH_PRIO`. |
+|action         | One of `NONE`, `REJECT_ALL`, `REJECT`, `UNREJECT`, `LOW_PRIO`, `HIGH_PRIO`, or `SET_POOL`.  The `SET_POOL` action is only available in version 2 or later of the file format. |
 |adjustment     | An integer between zero (0) and one million (1000000). |
-|flags          | One or more of `NONE`, `DISABLE`, `PRINT`, and `STOP`, see [flags syntax](#flags-syntax). |
+|pool           | The name of a previously defined thread pool.  The literal string `default` refers to the default thread pool.  The `pool` property name is only available in version 2 or later of the file format. |
+|flags          | One or more of `NONE`, `DISABLE`, `PRINT`, `STOP`, and `DYN_POOL` see [flags syntax](#flags-syntax).  The `DYN_POOL` flag is only available in version 2 or later of the file format. |
 |mode           | One or more of `NONE`, `EXACT`, `GLOB`, `REGEXP`, and `NOCASE`, see [flags syntax](#flags-syntax). |
 |originHost     | Any pattern string suitable for match mode.  May not contain whitespace. |
-|originTask     | Any Pattern string suitable for match mode.  May not contain whitespace. |
-|user           | Any Pattern string suitable for match mode.  May not contain whitespace. |
-|sql            | Any Pattern string suitable for match mode.  May contain whitespace. |
+|originTask     | Any pattern string suitable for match mode.  May not contain whitespace. |
+|user           | Any pattern string suitable for match mode.  May not contain whitespace. |
+|sql            | Any pattern string suitable for match mode.  May contain whitespace. |
 |fingerprint    | SQLite compatible BLOB, with a size of exactly sixteen (16) bytes, as string literal, e.g. `x'0123456789abcdef0123456789abcdef'`. |
 
 ### SQL query fingerprints
@@ -122,7 +145,14 @@ error will be emitted to the client.  If the action is `LOW_PRIO`, the relative
 priority of the SQL query will be decreased by the amount specified by the
 associated `adjustment` property value.  If the action is `HIGH_PRIO`, the
 relative priority of the SQL query will be increased by the amount specified by
-the associated `adjustment` property value.
+the associated `adjustment` property value.  If the action is `LOW_PRIO`,
+`HIGH_PRIO`, or `SET_POOL`, the target thread pool for the SQL query will be
+changed to the one associated with the final rule that specified an action of
+`SET_POOL`.  The target thread pool can always be changed by a subsequently
+matched rule with an action of `SET_POOL` and only the final target thread pool
+for a given SQL query will be honored.  When processing the `SET_POOL` action,
+the final resulting relative priority of the SQL query value will be honored,
+i.e. even though the final resulting action is not `LOW_PRIO` or `HIGH_PRIO`.
 
 ### Rule flags
 
@@ -152,10 +182,21 @@ case-insensitive matching.
 #######################################################
 # The 'version' line is required and must be the first
 # line that is not blank and not a comment.  Currently,
-# the only valid version is '1'.
+# the only valid versions are '1' and '2'.  When using
+# thread pool definitions, the version must be '2'.
 #######################################################
 
-version 1
+version 2
+
+#######################################################
+# Each thread pool definition should occupy one line.
+# The name of the thread pool is specified immediately
+# after the 'pool' keyword.  The 'threads' keyword is
+# optional and is used to specify the maximum number
+# of threads in the thread pool.
+#######################################################
+
+pool extra1 threads 3
 
 #######################################################
 # Each rule definition may occupy multiple lines, with
@@ -202,7 +243,7 @@ rule 3 originTask */cdb2sql
 
 rule 4 action NONE
 rule 4 flags PRINT
-rule 4 mode REGEXP, NOCASE
+rule 4 mode REGEXP NOCASE
 rule 4 sql ^CREATE +.*$
 
 # The fifth rule is designed to allow SQL queries
@@ -214,4 +255,21 @@ rule 4 sql ^CREATE +.*$
 rule 5 action UNREJECT
 rule 5 mode EXACT NOCASE
 rule 5 user david
+
+# The six and seventh rules are designed to allow some
+# specific SQL queries to be serviced by a non-default
+# thread pool (e.g. they cannot wait for the default
+# thread pool, etc).
+
+rule 6 action SET_POOL
+rule 6 pool extra1
+rule 6 flags PRINT STOP
+rule 6 mode REGEXP NOCASE
+rule 6 sql sleep
+
+rule 7 action SET_POOL
+rule 7 flags PRINT STOP DYN_POOL
+rule 7 pool extra2
+rule 7 mode REGEXP NOCASE
+rule 7 sql comdb2_host
 ```

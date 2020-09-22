@@ -78,7 +78,7 @@ typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item,
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
 
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
-void thdpool_destroy(struct thdpool **pool_p);
+int thdpool_destroy(struct thdpool **pool_p, int coopWaitUs);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);
 void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn);
 void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn);
@@ -108,7 +108,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                     priority_t priority);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
-void thdpool_set_exit(struct thdpool *pool);
+void thdpool_unset_exit(struct thdpool *pool);
 void thdpool_set_wait(struct thdpool *pool, int wait);
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st);

@@ -40,8 +40,8 @@ void init_verify_thdpool(void)
         thdpool_create("verify_pool", sizeof(struct verify_thd_state));
     assert(gbl_verify_thdpool);
 
-    if (gbl_exit_on_pthread_create_fail)
-        thdpool_set_exit(gbl_verify_thdpool);
+    if (!gbl_exit_on_pthread_create_fail)
+        thdpool_unset_exit(gbl_verify_thdpool);
 
     // thdpool_set_stack_size(gbl_verify_thdpool, bdb_attr_get(thedb->bdb_attr,
     // BDB_ATTR_VERIFY_THREAD_STACKSZ));

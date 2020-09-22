@@ -1356,6 +1356,29 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "list_sql_pools") == 0) {
+        list_all_sql_pools(NULL);
+    }
+    else if (tokcmp(tok, ltok, "destroy_sql_pool") == 0) {
+        char zPoolName[PATH_MAX];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok != 0) {
+            tokcpy(tok, ltok, zPoolName);
+            rc = destroy_sql_pool(zPoolName, SQL_POOL_STOP_TIMEOUT_US);
+            if (rc > 0) {
+                logmsg(LOGMSG_USER, "Destroyed SQL pool \"%s\" (%d)\n",
+                       zPoolName, rc);
+                return 0;
+            } else {
+                logmsg(LOGMSG_USER, "Cannot destroy SQL pool \"%s\" (%d)\n",
+                       zPoolName, rc);
+                return -1;
+            }
+        } else {
+            logmsg(LOGMSG_ERROR, "Missing SQL engine pool name\n");
+            return -1;
+        }
+    }
     else if (tokcmp(tok, ltok, "free_ruleset") == 0) {
         comdb2_free_ruleset(gbl_ruleset);
         gbl_ruleset = NULL;
@@ -1446,6 +1469,15 @@ clipper_usage:
             if (rc == 0) {
                 logmsg(LOGMSG_USER, "Ruleset loaded from file \"%s\"\n",
                        zFileName);
+                if (gbl_ruleset != NULL) {
+                    long long int oldVersion = gbl_ruleset->version;
+                    if (oldVersion < RULESET_VERSION) {
+                        gbl_ruleset->version = RULESET_VERSION;
+                        logmsg(LOGMSG_USER,
+                               "Upgraded ruleset from version %lld to %lld\n",
+                               oldVersion, gbl_ruleset->version);
+                    }
+                }
             }
             return rc;
         } else {
@@ -1664,7 +1696,7 @@ clipper_usage:
             thrman_dump();
         } else if (tokcmp(tok, ltok, "sqlpool") == 0) {
             thdpool_print_stats(stdout, gbl_appsock_thdpool);
-            thdpool_print_stats(stdout, gbl_sqlengine_thdpool);
+            print_all_sql_pool_stats(stdout);
             thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
             thdpool_print_stats(stdout, gbl_udppfault_thdpool);
             thdpool_print_stats(stdout, gbl_pgcompact_thdpool);
@@ -3210,7 +3242,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "appsockpool") == 0) {
         thdpool_process_message(gbl_appsock_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
-        thdpool_process_message(gbl_sqlengine_thdpool, line, lline, st);
+        thdpool_process_message(get_default_sql_pool(0), line, lline, st);
     } else if (tokcmp(tok, ltok, "osqlpfaultpool") == 0) {
         thdpool_process_message(gbl_osqlpfault_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "udppfaultpool") == 0) {

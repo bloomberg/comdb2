@@ -1673,7 +1673,6 @@ extern int gbl_prefault_toblock_local;
 
 extern int gbl_appsock_pooling;
 extern struct thdpool *gbl_appsock_thdpool;
-extern struct thdpool *gbl_sqlengine_thdpool;
 extern struct thdpool *gbl_osqlpfault_thdpool;
 extern struct thdpool *gbl_udppfault_thdpool;
 

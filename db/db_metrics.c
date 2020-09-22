@@ -409,7 +409,7 @@ int refresh_metrics(void)
     stats.queue_depth = time_metric_average(thedb->queue_depth);
     stats.concurrent_sql = time_metric_average(thedb->concurrent_queries);
     stats.sql_queue_time = time_metric_average(thedb->sql_queue_time);
-    stats.sql_queue_timeouts = thdpool_get_timeouts(gbl_sqlengine_thdpool);
+    stats.sql_queue_timeouts = get_all_sql_pool_timeouts();
     stats.handle_buf_queue_time =
         time_metric_average(thedb->handle_buf_queue_time);
     stats.concurrent_connections = time_metric_average(thedb->connections);

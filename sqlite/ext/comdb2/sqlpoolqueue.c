@@ -18,6 +18,7 @@
 #include <string.h>
 #include <stddef.h>
 #include "comdb2.h"
+#include "sql.h"
 #include "bdb_int.h"
 #include "comdb2systblInt.h"
 #include "ezsystables.h"
@@ -60,12 +61,10 @@ static void collect(struct thdpool *pool, struct workitem *item, void *user)
     i->priority = item->priority;
 }
 
-extern struct thdpool *gbl_sqlengine_thdpool;
-
 static int get_sqlpoolqueue(void **data, int *records)
 {
     getsqlpoolqueue_t q = {0};
-    thdpool_foreach(gbl_sqlengine_thdpool, collect, &q);
+    foreach_all_sql_pools(collect, &q);
     *data = q.records;
     *records = q.count;
     return 0;
