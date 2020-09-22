@@ -186,15 +186,16 @@ void datetime_t_to_dttz(const datetime_t *datetime, dttz_t *dt)
 
 void dttz_to_datetime_t(const dttz_t *dt, const char *tz, datetime_t *datetime)
 {
-    cdb2_client_datetime_t cdt;
-    cdb2_client_datetimeus_t cdtus;
-
-    if (datetime->prec == DTTZ_PREC_MSEC) {
+    if (dt->dttz_prec == DTTZ_PREC_MSEC) {
+        cdb2_client_datetime_t cdt;
         dttz_to_client_datetime(dt, tz, &cdt);
         client_datetime_to_datetime_t(&cdt, datetime, 0);
-    } else {
+    } else if (dt->dttz_prec == DTTZ_PREC_USEC) {
+        cdb2_client_datetimeus_t cdtus;
         dttz_to_client_datetimeus(dt, tz, &cdtus);
         client_datetimeus_to_datetime_t(&cdtus, datetime, 0);
+    } else {
+        abort();
     }
 }
 
