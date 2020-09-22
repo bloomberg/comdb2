@@ -3715,6 +3715,12 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
 
     trans->seq++;
 
+    if (rc == 0) {
+        rc = fdb_set_genid_deleted(trans, genid);
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "%s: error marking genid deleted, rc %d\n", __func__, rc);
+    }
+
     return rc;
 }
 
@@ -3786,6 +3792,12 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
         datalen, data, trans->seq, fdbc->isuuid, trans->sb);
 
     trans->seq++;
+
+    if (rc == 0) {
+        rc = fdb_set_genid_deleted(trans, genid);
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "%s: error marking genid deleted, rc %d\n", __func__, rc);
+    }
 
     return rc;
 }
@@ -3953,7 +3965,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc = 0;
+    int rc = 0, bdberr;
 
     if (!dtran)
         return 0;
@@ -4033,6 +4045,14 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
             sbuf2close(tran->sb);
         if (tran->errstr)
             free(tran->errstr);
+
+        if (tran->dedup_tbl != NULL) {
+            /* tempcursors are automatically closed in bdb_temp_table_close. */
+            rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr);
+            if (rc != 0)
+                logmsg(LOGMSG_ERROR, "%s: error closing temptable, rc %d, bdberr %d\n", __func__, rc, bdberr);
+        }
+
         free(tran);
     }
     free(clnt->dbtran.dtran);
@@ -4050,7 +4070,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc;
+    int rc, bdberr;
 
     if (!dtran)
         return 0;
@@ -4101,6 +4121,14 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
             sbuf2close(tran->sb);
         if (tran->errstr)
             free(tran->errstr);
+
+        if (tran->dedup_tbl != NULL) {
+            /* tempcursors are automatically closed in bdb_temp_table_close. */
+            rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr);
+            if (rc != 0)
+                logmsg(LOGMSG_ERROR, "%s: error closing temptable, rc %d, bdberr %d\n", __func__, rc, bdberr);
+        }
+
         free(tran);
     }
     free(clnt->dbtran.dtran);
@@ -5067,4 +5095,53 @@ int fdb_validate_existing_table(const char *zDatabase)
        up code might actually establish a new fdb */
     Pthread_rwlock_unlock(&fdbs.arr_lock);
     return rc;
+}
+
+int fdb_set_genid_deleted(fdb_tran_t *tran, unsigned long long genid)
+{
+    int rc, bdberr;
+
+    if (tran->dedup_cur == NULL) {
+        tran->bdb_state = thedb->bdb_env;
+
+        tran->dedup_tbl = bdb_temp_table_create(tran->bdb_state, &bdberr);
+        if (tran->dedup_tbl == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: error creating a temptable, bdberr %d\n", __func__, bdberr);
+            return -1;
+        }
+
+        tran->dedup_cur = bdb_temp_table_cursor(tran->bdb_state, tran->dedup_tbl, NULL, &bdberr);
+        if (tran->dedup_cur == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: error creating a tempcursor, bdberr %d\n", __func__, bdberr);
+            return -1;
+        }
+    }
+
+    rc = bdb_temp_table_insert(tran->bdb_state, tran->dedup_cur, &genid, sizeof(genid), NULL, 0, &bdberr);
+    if (rc != 0)
+        logmsg(LOGMSG_ERROR, "%s: error inserting, rc %d, bdberr %d\n", __func__, rc, bdberr);
+
+    return rc;
+}
+
+int fdb_is_genid_deleted(fdb_tran_t *tran, unsigned long long genid)
+{
+    int rc, bdberr;
+    unsigned long long *pgenid;
+
+    if (tran->dedup_cur == NULL)
+        return 0;
+
+
+    pgenid = malloc(sizeof(*pgenid));
+    *pgenid = genid;
+
+    rc = bdb_temp_table_find_exact(tran->bdb_state, tran->dedup_cur, pgenid, sizeof(genid), &bdberr);
+    if (rc != IX_FND)
+        free(pgenid);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s: error looking up genid 0x%llx, rc %d, bdberr %d\n", __func__, genid, rc, bdberr);
+        return rc;
+    }
+    return (rc == IX_FND);
 }
