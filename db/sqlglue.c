@@ -3702,31 +3702,24 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             goto done;
         }
 
-        if ((queryOverlapsCursors(clnt, pCur) == 1) ||
-            /* We ignore the failure for REPLACE as same record could conflict
-             * for more that one unique indexes.
-             */
-            pCur->vdbe->oeFlag == OE_Replace) {
-            rc = bdb_tran_deltbl_isdeleted_dedup(pCur->bdbcur, pCur->genid, 0,
-                                                 &bdberr);
-            if (rc == 1) {
-#if 0
-            fprintf(stderr, "%s: genid is already deleted, skipping %llx\n", 
-                  __func__, pCur->genid);
-#endif
-                rc = SQLITE_OK;
-                goto done;
-            } else if (rc < 0) {
-                logmsg(LOGMSG_ERROR, "%s:bdb_tran_deltbl_isdeleted error rc = %d bdberr=%d\n",
-                       __func__, rc, bdberr);
-                rc = SQLITE_INTERNAL;
-                goto done;
-            }
-#if 0
-         fprintf(stderr, "%s: deleting genid %llx\n", __func__, pCur->genid);
-#endif
-        }
         if (pCur->bt == NULL || pCur->bt->is_remote == 0) {
+
+            if ((queryOverlapsCursors(clnt, pCur) == 1) ||
+                /* We ignore the failure for REPLACE as same record could conflict
+                 * for more that one unique indexes.
+                 */
+                pCur->vdbe->oeFlag == OE_Replace) {
+                rc = bdb_tran_deltbl_isdeleted_dedup(pCur->bdbcur, pCur->genid, 0, &bdberr);
+                if (rc == 1) {
+                    rc = SQLITE_OK;
+                    goto done;
+                } else if (rc < 0) {
+                    logmsg(LOGMSG_ERROR, "%s:bdb_tran_deltbl_isdeleted error rc = %d bdberr=%d\n", __func__, rc,
+                           bdberr);
+                    rc = SQLITE_INTERNAL;
+                    goto done;
+                }
+            }
 
             if (clnt->dbtran.maxchunksize > 0 &&
                 clnt->dbtran.mode == TRANLEVEL_SOSQL &&
@@ -3782,6 +3775,22 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
                        __func__, __LINE__);
                 return SQLITE_INTERNAL;
             }
+
+            if ((queryOverlapsCursors(clnt, pCur) == 1) ||
+                /* We ignore the failure for REPLACE as same record could conflict
+                 * for more that one unique indexes.
+                 */
+                pCur->vdbe->oeFlag == OE_Replace) {
+                rc = fdb_is_genid_deleted(trans, pCur->genid);
+                if (rc == 1) {
+                    rc = SQLITE_OK;
+                    goto done;
+                } else if (rc < 0) {
+                    rc = SQLITE_INTERNAL;
+                    goto done;
+                }
+            }
+
             if (gbl_expressions_indexes && pCur->ixnum != -1 &&
                 pCur->fdbc->tbl_has_expridx(pCur)) {
                 assert(clnt->idxDelete[pCur->ixnum] == NULL);

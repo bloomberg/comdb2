@@ -176,6 +176,15 @@ struct fdb_tran {
 
     int seq; /* sequencing tran begin/commit/rollback, writes, cursor open/close
                 */
+
+    /*
+    ** Genid deduplication. Nothing fancy. It's just a temptable recording
+    ** deleted or updated genid-s that have been sent to the remote database
+    ** (similar to osql's "skip shadow", but much simpler).
+    */
+    bdb_state_type *bdb_state;
+    struct temp_table *dedup_tbl;
+    struct temp_cursor *dedup_cur;
 };
 typedef struct fdb_tran fdb_tran_t;
 
@@ -408,6 +417,9 @@ int fdb_get_remote_version(const char *dbname, const char *table,
                            unsigned long long *version);
 
 int fdb_table_exists(int rootpage);
+
+int fdb_set_genid_deleted(fdb_tran_t *, unsigned long long);
+int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);
 
 #endif
 
