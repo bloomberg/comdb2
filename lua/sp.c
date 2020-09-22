@@ -6615,6 +6615,7 @@ static int lua_to_sqlite(Lua L, sqlite3_context *context)
     }
 
     all_types_t t;
+    dttz_t dt;
 
     switch (luabb_type(L, 1)) {
     case LUA_TBOOLEAN:
@@ -6632,6 +6633,27 @@ static int lua_to_sqlite(Lua L, sqlite3_context *context)
     case DBTYPES_INTEGER:
         luabb_tointeger(L, 1, &t.in);
         sqlite3_result_int64(context, t.in);
+        break;
+    case DBTYPES_BLOB:
+        luabb_toblob(L, 1, &t.bl);
+        sqlite3_result_blob(context, t.bl.data, t.bl.length, SQLITE_TRANSIENT);
+        break;
+    case DBTYPES_DATETIME:
+        luabb_todatetime(L, 1, &t.dt);
+        datetime_t_to_dttz(&t.dt, &dt);
+        sqlite3_result_datetime(context, &dt, t.dt.tzname);
+        break;
+    case DBTYPES_INTERVALDS:
+        luabb_tointervalds(L, 1, &t.iv);
+        sqlite3_result_interval(context, &t.iv);
+        break;
+    case DBTYPES_INTERVALYM:
+        luabb_tointervalym(L, 1, &t.iv);
+        sqlite3_result_interval(context, &t.iv);
+        break;
+    case DBTYPES_DECIMAL:
+        luabb_todecimal(L, 1, &t.dq);
+        sqlite3_result_decimal(context, &t.dq);
         break;
     default:
         sqlite3_result_error(context, "can't return that type, yet..", -1);
@@ -6795,11 +6817,8 @@ static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     int args = lua_gettop(L) - 1;
     int rc;
     char *err = NULL;
-
     if ((rc = begin_sp(clnt, &err)) != 0) return rc;
-
     if ((rc = run_sp(clnt, args, &err)) != 0) return rc;
-
     return commit_sp(L, &err);
 }
 
@@ -6953,6 +6972,8 @@ void lua_final(sqlite3_context *context)
     int rc = lua_final_int(spname, &err, thd, clnt, context);
     if (rc != 0) {
         sqlite3_result_error(context, err, -1);
+    } else {
+        emit_sqlite_result(clnt, context);
     }
     if (state->sp == clnt->sp) {
         reset_sp(clnt->sp);
@@ -7007,6 +7028,8 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
     int rc = lua_func_int(spname, &err, thd, clnt, context, argc, argv);
     if (rc != 0) {
         sqlite3_result_error(context, err, -1);
+    } else {
+        emit_sqlite_result(clnt, context);
     }
     if (state.sp) {
         close_sp(clnt);
