@@ -161,7 +161,8 @@ matched and the `STOP` rule flag is present, further rule matching is skipped
 and the current ruleset result is returned.  If all criteria specified for a
 rule are matched and the `PRINT` rule flag is present, a detailed diagnostic
 message will be emitted into the log file.  Rules with the `DISABLE` flag set
-will not be evaluated.
+will not be evaluated.  If the `DYN_POOL` flag is set, the final target thread
+pool, if any, will be created if it does not already exist.
 
 ### Match modes
 
