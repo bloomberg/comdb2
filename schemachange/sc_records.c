@@ -374,29 +374,26 @@ static void delay_sc_if_needed(struct convert_record_data *data,
     /* wait for replication on what we just committed */
     if ((data->nrecs % data->num_records_per_trans) == 0) {
         if ((rc = trans_wait_for_seqnum(&data->iq, gbl_myhostname, ss)) != 0) {
-            sc_errf(data->s, "delay_sc_if_needed: error waiting for "
-                             "replication rcode %d\n",
-                    rc);
+            sc_errf(data->s, "delay_sc_if_needed: error waiting for replication rcode %d\n", rc);
         } else if (gbl_sc_inco_chk) { /* committed successfully */
             int num;
             if ((num = bdb_get_num_notcoherent(thedb->bdb_env)) != 0) {
                 if (num > inco_delay) { /* only goes up, or resets to 0 */
                     inco_delay = num;
-                    sc_printf(data->s, "%d incoherent nodes - "
-                                       "throttle sc %dms\n",
+                    sc_printf(data->s, "%d incoherent nodes - throttle sc %dms\n",
                               num, inco_delay * mult);
                 }
             } else if (inco_delay != 0) {
                 inco_delay = 0;
-                sc_printf(data->s, "0 incoherent nodes - "
-                                   "pedal to the metal\n");
+                sc_printf(data->s, "0 incoherent nodes - pedal to the metal\n");
             }
         } else { /* no incoherent chk */
             inco_delay = 0;
         }
     }
 
-    if (inco_delay) poll(NULL, 0, inco_delay * mult);
+    if (inco_delay)
+        poll(NULL, 0, inco_delay * mult);
 
     /* if we're in commitdelay mode, magnify the delay by 5 here */
     int delay = bdb_attr_get(data->from->dbenv->bdb_attr, BDB_ATTR_COMMITDELAY);
@@ -592,8 +589,7 @@ static int convert_record(struct convert_record_data *data)
     if (data->s->sc_thd_failed) {
         if (!data->s->retry_bad_genids)
             sc_errf(data->s,
-                    "Stoping work on stripe %d because the thread for "
-                    "stripe %d failed\n",
+                    "Stoping work on stripe %d because the thread for stripe %d failed\n",
                     data->stripe, data->s->sc_thd_failed - 1);
         return -1;
     }
@@ -611,7 +607,7 @@ static int convert_record(struct convert_record_data *data)
         /* Schema-change writes are always page-lock, not rowlock */
         rc = trans_start_sc(&data->iq, NULL, &data->trans);
         if (rc) {
-            sc_errf(data->s, "error %d starting transaction\n", rc);
+            sc_errf(data->s, "Error %d starting transaction\n", rc);
             return -2;
         }
         set_tran_lowpri(&data->iq, data->trans);
@@ -909,8 +905,7 @@ static int convert_record(struct convert_record_data *data)
     rc = prepare_and_verify_newdb_record(data, dta, dtalen, &dirty_keys, 1);
     if (rc) {
         sc_errf(data->s,
-                "failed to prepare and verify newdb record rc %d, rrn %d, "
-                "genid 0x%llx\n",
+                "failed to prepare and verify newdb record rc %d, rrn %d, genid 0x%llx\n",
                 rc, rrn, genid);
         if (rc == -2)
             return -2; /* convertion failure */
@@ -1027,8 +1022,7 @@ err:
              * and the stored llmeta genid is stale, some of the records
              * will fail insertion, and that is ok */
 
-            sc_errf(data->s, "Skipping duplicate entry in index %d "
-                             "rrn %d genid 0x%llx\n",
+            sc_errf(data->s, "Skipping duplicate entry in index %d rrn %d genid 0x%llx\n",
                     ixfailnum, rrn, genid);
             data->sc_genids[data->stripe] = genid;
             trans_abort(&data->iq, data->trans);
@@ -1059,8 +1053,7 @@ err:
             reqerrstr(data->s->iq, ERR_SC,
                       "Error verifying partial indexes rrn %d genid 0x%llx",
                       rrn, genid);
-        sc_errf(data->s, "Error verifying partial indexes!"
-                         " rrn %d genid 0x%llx\n",
+        sc_errf(data->s, "Error verifying partial indexes! rrn %d genid 0x%llx\n",
                 rrn, genid);
         return -2;
     } else if (rc != 0) {
@@ -1069,8 +1062,7 @@ err:
                       "Error adding record rc %d rrn %d genid 0x%llx", rc, rrn,
                       genid);
         sc_errf(data->s,
-                "Error adding record rcode %d opfailcode %d "
-                "ixfailnum %d rrn %d genid 0x%llx, stripe %d\n",
+                "Error adding record rcode %d opfailcode %d ixfailnum %d rrn %d genid 0x%llx, stripe %d\n",
                 rc, opfailcode, ixfailnum, rrn, genid, data->stripe);
         return -2;
     }
@@ -1092,14 +1084,13 @@ err:
     data->trans = NULL;
 
     if (rc) {
-        sc_errf(data->s, "convert_record: trans_commit failed with "
-                         "rcode %d",
-                rc);
+        sc_errf(data->s, "convert_record: trans_commit failed with rcode %d", rc);
         /* If commit fail we are failing the whole operation */
         return -2;
     }
 
-    if (data->live) delay_sc_if_needed(data, &ss);
+    if (data->live)
+        delay_sc_if_needed(data, &ss);
 
     ATOMIC_ADD64(data->from->sc_nrecs, 1);
 

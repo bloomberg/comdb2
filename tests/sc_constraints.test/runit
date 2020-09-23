@@ -621,22 +621,26 @@ function run_tenth_test
 
     #SC_FORCE_DELAY is needed because "verify constraints" is very-very fast
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 20')"
 
     rm failedalter
     do_alter t2_10 &
 
 	echo "delay 2 sec, then start insert which should not fail"
-    sleep 2
+    sleep 1
 
     insert_records $nrecs 0
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t2 set a=a"
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 10')"
+
     wait
 
     if [ -f failedalter ] ; then
         failexit "SC should not fail"
     fi
     rm failedalter
-
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
 
     assertcnt $tbl $((EXTRA+nrecs))
     do_verify $tbl
@@ -736,6 +740,7 @@ function flushall
 
 echo "running test in machine $(hostname):${PWD}"
 master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 10')"
 
 #comdb2sc $dbnm delsp addrecs 2
 #comdb2sc $dbnm delsp addrecs 1
@@ -747,7 +752,7 @@ put default procedure addrecs 'sptest'
 EOF
 
 function dontrun {
-    echo "blah"
+    echo "enclose here tests not to run"
 }
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
