@@ -1,5 +1,5 @@
 /*
-   Copyright 2018-2020 Bloomberg Finance L.P.
+   Copyright 2018, 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -34,6 +34,7 @@
 typedef struct {
     sqlite3_vtab_cursor base; /* Base class - must be first */
     sqlite3_int64 rowid;      /* Row ID */
+    int modIdx;               /* Module index */
     Hash *tabs;               /* Registered system tables */
     HashElem *current;        /* Current system table */
 } systbl_systabs_cursor;
@@ -80,6 +81,35 @@ static int systblSystabsDisconnect(sqlite3_vtab *pVtab)
     return SQLITE_OK;
 }
 
+/* Returns the first module in the list that should be visible. */
+static HashElem *getFirstVisibleModule(systbl_systabs_cursor *pCur)
+{
+    HashElem *current = sqliteHashFirst(pCur->tabs);
+    while (current) {
+        struct Module *mod = sqliteHashData(current);
+        if (!(mod->pModule->access_flag & CDB2_HIDDEN)) {
+            break;
+        }
+        current = sqliteHashNext(current);
+        pCur->modIdx++;
+    }
+    return current;
+}
+
+/* Returns the next module in the list that should be visible. */
+static HashElem *getNextVisibleModule(systbl_systabs_cursor *pCur)
+{
+    HashElem *current = pCur->current;
+
+    while (++pCur->modIdx && (current = sqliteHashNext(current))) {
+        struct Module *mod = sqliteHashData(current);
+        if (!(mod->pModule->access_flag & CDB2_HIDDEN)) {
+            break;
+        }
+    }
+    return current;
+}
+
 static int systblSystabsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
     systbl_systabs_vtab *tab = (systbl_systabs_vtab *)p;
@@ -90,7 +120,7 @@ static int systblSystabsOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     }
     memset(cur, 0, sizeof(*cur));
     cur->tabs = &tab->db->aModule;
-    cur->current = sqliteHashFirst(cur->tabs);
+    cur->current = getFirstVisibleModule(cur);
 
     *ppCursor = &cur->base;
     return SQLITE_OK;
@@ -114,7 +144,7 @@ static int systblSystabsFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
 static int systblSystabsNext(sqlite3_vtab_cursor *cur)
 {
     systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)cur;
-    pCur->current = sqliteHashNext(pCur->current);
+    pCur->current = getNextVisibleModule(pCur);
     pCur->rowid++;
     return SQLITE_OK;
 }
@@ -122,7 +152,7 @@ static int systblSystabsNext(sqlite3_vtab_cursor *cur)
 static int systblSystabsEof(sqlite3_vtab_cursor *cur)
 {
     systbl_systabs_cursor *pCur = (systbl_systabs_cursor *)cur;
-    return (pCur->rowid >= pCur->tabs->count) ? 1 : 0;
+    return (pCur->modIdx >= pCur->tabs->count) ? 1 : 0;
 }
 
 static int systblSystabsColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,

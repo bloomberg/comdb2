@@ -386,6 +386,7 @@
 (name='comdb2_sc_status')
 (name='comdb2_sql_client_stats')
 (name='comdb2_sqlpool_queue')
+(name='comdb2_systablepermissions')
 (name='comdb2_systables')
 (name='comdb2_tablepermissions')
 (name='comdb2_tables')
@@ -394,6 +395,7 @@
 (name='comdb2_threadpools')
 (name='comdb2_timepartevents')
 (name='comdb2_timepartitions')
+(name='comdb2_timepartpermissions')
 (name='comdb2_timepartshards')
 (name='comdb2_timeseries')
 (name='comdb2_transaction_logs')
@@ -402,7 +404,4 @@
 (name='comdb2_type_samples')
 (name='comdb2_users')
 (name='comdb2_views')
-(name='generate_series')
-(name='json_each')
-(name='json_tree')
 [SELECT * FROM comdb2_systables ORDER BY name] rc 0

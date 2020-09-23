@@ -133,6 +133,11 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
     tbl->name = strdup(tblname);
     Pthread_mutex_init(&tbl->mtx, NULL);
 
+    /* if remote failed to provide stats already, done here; we are running
+       with empty stats to prevent trying to read stats for every query */
+    if (!cur->fdbc)
+        return 0;
+
     fdbc_if = cur->fdbc;
     fdbc_if->set_sql(cur, sql);
 
@@ -153,7 +158,11 @@ static int fdb_sqlstat_populate_table(fdb_t *fdb, fdb_sqlstat_cache_t *cache,
                     "%s: failed to read first row from %s.%s rc=%d retry %d\n",
                     __func__, cache->fdbname, tbl->name, rc, retry);
                 /* error, try again, tbl untouched */
-                goto retry_io;
+                if (cur->fdbc)
+                    goto retry_io;
+                /* in this case, the remote did not answer repeated calls
+                   and stats cursor is closed; we are done here */
+                return 0;
             }
             /* empty stats */
             rc = 0;

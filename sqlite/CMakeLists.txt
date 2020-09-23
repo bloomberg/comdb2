@@ -28,6 +28,7 @@ add_library(sqlite
   ext/comdb2/metrics.c
   ext/comdb2/netuserfunc.c
   ext/comdb2/opcode_handlers.c
+  ext/comdb2/permissions.c
   ext/comdb2/plugins.c
   ext/comdb2/procedures.c
   ext/comdb2/queues.c
@@ -38,7 +39,6 @@ add_library(sqlite
   ext/comdb2/sqlclientstats.c
   ext/comdb2/sqlpoolqueue.c
   ext/comdb2/systables.c
-  ext/comdb2/tablepermissions.c
   ext/comdb2/tables.c
   ext/comdb2/tablesizes.c
   ext/comdb2/temporary_file_sizes.c

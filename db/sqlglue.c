@@ -600,6 +600,7 @@ static int is_sqlite_db_init(BtCursor *pCur)
    This is called every time the db does something (find/next/etc. on a cursor).
    The query is aborted if this returns non-zero.
  */
+int gbl_debug_sleep_in_sql_tick;
 static int sql_tick(struct sql_thread *thd)
 {
     struct sqlclntstate *clnt;
@@ -615,6 +616,9 @@ static int sql_tick(struct sql_thread *thd)
 
     /* Increment per-clnt sqltick */
     ++clnt->sqltick;
+
+    if (gbl_debug_sleep_in_sql_tick)
+        sleep(1);
 
     /* statement cancelled? done */
     if (clnt->stop_this_statement)
@@ -1661,7 +1665,7 @@ static void create_sqlite_stat_sqlmaster_record(struct dbtable *tbl)
 
 int create_datacopy_arrays()
 {
-    int rc;
+    int rc = 0;
     for (int table = 0; table < thedb->num_dbs && rc == 0; table++) {
         rc = create_datacopy_array(thedb->dbs[table]);
         if (rc)
@@ -12518,7 +12522,8 @@ int comdb2_check_vtab_access(sqlite3 *db, sqlite3_module *module)
             int bdberr;
             int rc;
 
-            if (module->access_flag == CDB2_ALLOW_ALL) {
+            if ((module->access_flag == 0) ||
+                (module->access_flag & CDB2_ALLOW_ALL)) {
                 return SQLITE_OK;
             }
 

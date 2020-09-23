@@ -545,8 +545,7 @@ void stop_threads(struct dbenv *dbenv)
 
     if (gbl_appsock_thdpool)
         thdpool_stop(gbl_appsock_thdpool);
-    if (gbl_sqlengine_thdpool)
-        thdpool_stop(gbl_sqlengine_thdpool);
+    stop_all_sql_pools();
     if (gbl_osqlpfault_thdpool)
         thdpool_stop(gbl_osqlpfault_thdpool);
 
@@ -577,8 +576,7 @@ void resume_threads(struct dbenv *dbenv)
 {
     if (gbl_appsock_thdpool)
         thdpool_resume(gbl_appsock_thdpool);
-    if (gbl_sqlengine_thdpool)
-        thdpool_resume(gbl_sqlengine_thdpool);
+    resume_all_sql_pools();
     if (gbl_osqlpfault_thdpool)
         thdpool_resume(gbl_osqlpfault_thdpool);
     dbenv->stopped = 0;

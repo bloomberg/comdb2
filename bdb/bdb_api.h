@@ -1765,6 +1765,11 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
                              int command_type, const char *tblname, const char *username,
                              int *bdberr);
 
+int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
+                             const char *table_name);
+int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
+                            const char *user);
+
 int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, int enable,
                            int *bdberr);
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
@@ -2165,7 +2170,8 @@ int bdb_get_versioned_sps_tran(tran_type *tran, char ***names, int *num);
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                               char *table, int access_type, int *bdberr);
-int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran, char *user, char *table, int access_type,
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                   char *user, char *table, int access_type,
                                    int *bdberr);
 int bdb_first_user_get(bdb_state_type *bdb_state, tran_type *tran,
                        char *key_out, char *user_out, int *isop, int *bdberr);

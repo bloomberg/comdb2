@@ -471,7 +471,7 @@ REGISTER_TUNABLE("fullrecovery", "Attempt to run database "
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("gbl_exit_on_pthread_create_fail",
                  "If set, database will exit if thread pools aren't able to "
-                 "create threads. (Default: 0)",
+                 "create threads. (Default: 1)",
                  TUNABLE_INTEGER, &gbl_exit_on_pthread_create_fail, READONLY,
                  NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("goslow", NULL, TUNABLE_BOOLEAN, &gbl_goslow, NOARG, NULL,
@@ -585,22 +585,26 @@ REGISTER_TUNABLE("lock_conflict_trace",
                  "Dump count of lock conflicts every second. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lock_conflict_trace, NOARG, NULL, NULL,
                  NULL, NULL);
-/* TODO(Nirbhay): Merge the following 3 into a single (enum?) tunable. */
-REGISTER_TUNABLE("log_delete_after_backup",
-                 "Set log deletion policy to disable log deletion (can be set "
-                 "by backups). (Default: off)",
-                 TUNABLE_INTEGER, &db->log_delete_age, READONLY, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("log_delete_before_startup",
-                 "Set log deletion policy to disable logs older than database "
-                 "startup time. (Default: off)",
-                 TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG, NULL,
-                 NULL, log_delete_before_startup_update, NULL);
+REGISTER_TUNABLE("log_delete_age", "Log deletion policy", TUNABLE_INTEGER,
+                 &db->log_delete_age, READONLY, NULL, NULL, NULL, NULL);
+/* The following 3 tunables have been marked internal as we do not want them
+ * to be listed via comdb2_tunables system table. log_delete_age's value
+ * should be sufficient to reflect on the current log deletion policy. */
 REGISTER_TUNABLE(
-    "log_delete_now",
-    "Set log deletion policy to delete logs as soon as possible. (Default: 0)",
-    TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG | INVERSE_VALUE,
-    NULL, NULL, NULL, NULL);
+    "log_delete_after_backup",
+    "Set log deletion policy to disable log deletion (can be set by backups)",
+    TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG | INTERNAL, NULL,
+    NULL, log_delete_after_backup_update, NULL);
+REGISTER_TUNABLE(
+    "log_delete_before_startup",
+    "Set log deletion policy to disable logs older than database startup time.",
+    TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG | INTERNAL, NULL,
+    NULL, log_delete_before_startup_update, NULL);
+REGISTER_TUNABLE("log_delete_now",
+                 "Set log deletion policy to delete logs as soon as possible.",
+                 TUNABLE_INTEGER, &db->log_delete_age,
+                 READONLY | NOARG | INTERNAL, NULL, NULL, log_delete_now_update,
+                 NULL);
 REGISTER_TUNABLE("loghist", NULL, TUNABLE_INTEGER, &gbl_loghist,
                  READONLY | NOARG, NULL, NULL, loghist_update, NULL);
 REGISTER_TUNABLE("loghist_verbose", NULL, TUNABLE_BOOLEAN, &gbl_loghist_verbose,
@@ -2022,5 +2026,8 @@ REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
 
 REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

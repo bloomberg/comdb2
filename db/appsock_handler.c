@@ -91,8 +91,8 @@ int appsock_init(void)
     gbl_appsock_thdpool =
         thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
 
-    if (gbl_exit_on_pthread_create_fail)
-        thdpool_set_exit(gbl_appsock_thdpool);
+    if (!gbl_exit_on_pthread_create_fail)
+        thdpool_unset_exit(gbl_appsock_thdpool);
 
     /* Nice small stack so we can handle lots of connections */
     thdpool_set_stack_size(gbl_appsock_thdpool, GBL_APPSOCK_THDPOOL_STCKSZ);

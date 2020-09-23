@@ -46,8 +46,8 @@ int osqlpfthdpool_init(void)
     int i = 0;
     gbl_osqlpfault_thdpool = thdpool_create("osqlpfaultpool", 0);
 
-    if (gbl_exit_on_pthread_create_fail)
-        thdpool_set_exit(gbl_osqlpfault_thdpool);
+    if (!gbl_exit_on_pthread_create_fail)
+        thdpool_unset_exit(gbl_osqlpfault_thdpool);
 
     thdpool_set_minthds(gbl_osqlpfault_thdpool, 0);
     thdpool_set_maxthds(gbl_osqlpfault_thdpool, gbl_osqlpfault_threads);

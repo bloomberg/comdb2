@@ -306,8 +306,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         if (rc < 0) {
             if (clnt->osql.replay != OSQL_RETRY_NONE) {
                 logmsg(LOGMSG_ERROR,
-                       "%p Replaying failed abnormally, calling "
-                       "abort, nq=%d tnq=%d\n",
+                       "%p Replaying failed abnormally, calling abort, nq=%d tnq=%d\n",
                        clnt, nq, tnq);
                 if (debug_switch_osql_verbose_history_replay()) {
                     if (osql->history) {

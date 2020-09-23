@@ -4485,7 +4485,6 @@ int pgcompact_thdpool_init(void)
 {
     gbl_pgcompact_thdpool = thdpool_create("pgcompactpool", 0);
 
-    thdpool_set_exit(gbl_pgcompact_thdpool);
     thdpool_set_stack_size(gbl_pgcompact_thdpool, (1 << 20));
     thdpool_set_minthds(gbl_pgcompact_thdpool, 1);
     thdpool_set_maxthds(gbl_pgcompact_thdpool, 1);

@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -21,5 +21,4 @@ struct ireq;
 int do_drop_table(struct ireq *, struct schema_change_type *, tran_type *);
 int finalize_drop_table(struct ireq *, struct schema_change_type *,
                         tran_type *);
-
 #endif

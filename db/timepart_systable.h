@@ -71,4 +71,6 @@ int timepart_systable_timepartevents_collect(void **data, int *nrecords);
  */
 void timepart_systable_timepartevents_free(void *data, int nrecords);
 
+int timepart_systable_timepartpermissions_collect(void **data, int *nrecords);
+void timepart_systable_timepartpermissions_free(void *arr, int nrecords);
 #endif

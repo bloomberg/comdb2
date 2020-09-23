@@ -442,8 +442,6 @@ static int check_retry_conditions(Lua L, trigger_reg_t *reg,
     return 0;
 }
 
-extern struct thdpool *gbl_sqlengine_thdpool;
-
 pthread_mutex_t consumer_sqlthds_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
@@ -457,8 +455,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
         retry = 1;
     }
 
+    struct thdpool *pool = get_sql_pool(sp->clnt);
     Pthread_mutex_lock(&consumer_sqlthds_mutex);
-    thdpool_add_waitthd(gbl_sqlengine_thdpool);
+    thdpool_add_waitthd(pool);
     Pthread_mutex_unlock(&consumer_sqlthds_mutex);
 
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
@@ -487,7 +486,7 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
 
 out:
     Pthread_mutex_lock(&consumer_sqlthds_mutex);
-    thdpool_remove_waitthd(gbl_sqlengine_thdpool);
+    thdpool_remove_waitthd(pool);
     Pthread_mutex_unlock(&consumer_sqlthds_mutex);
 
     return rc;
@@ -507,11 +506,15 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
     while (retry > 0) {
         --retry;
         rc = trigger_unregister_req(&q->info);
+        /* See comments in luabb_trigger_register(). */
+        comdb2_sql_tick();
         if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
             return;
         if (L)
             check_retry_conditions(L, &q->info, 1);
         sleep(1);
+        /* See comments in luabb_trigger_register(). */
+        comdb2_sql_tick();
     }
 }
 

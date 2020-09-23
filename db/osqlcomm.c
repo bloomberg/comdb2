@@ -6886,8 +6886,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     if (osql_nettype_is_uuid(nettype)) {
         osql_uuid_req_t ureq;
-        sql =
-            (char *)osqlcomm_req_uuid_type_get(&ureq, p_req_buf, p_req_buf_end);
+        sql = (char *)osqlcomm_req_uuid_type_get(&ureq, p_req_buf, p_req_buf_end);
         rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(uuid, ureq.uuid);
         flags = ureq.flags;
@@ -6984,8 +6983,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
     if (osql_nettype_is_uuid(usertype)) {
         osql_uuid_rpl_t uuid_hdr;
         /* unpack */
-        p_buf =
-            (uint8_t *)osqlcomm_uuid_rpl_type_get(&uuid_hdr, p_buf, p_buf_end);
+        p_buf = (uint8_t *)osqlcomm_uuid_rpl_type_get(&uuid_hdr, p_buf, p_buf_end);
         comdb2uuidcpy(uuid, uuid_hdr.uuid);
         rqid = OSQL_RQID_USE_UUID;
         type = uuid_hdr.type;
@@ -7017,8 +7015,7 @@ static void net_sorese_signal(void *hndl, void *uptr, char *fromhost,
 
             osql_chkboard_sqlsession_rc(rqid, uuid, 0, NULL, &errstat, NULL);
         } else {
-            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL,
-                                        p_effects);
+            osql_chkboard_sqlsession_rc(rqid, uuid, done.nops, NULL, NULL, p_effects);
         }
 
     } else {

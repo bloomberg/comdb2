@@ -220,7 +220,7 @@ int gbl_abort_on_clear_inuse_rqid = 1;
 pthread_t gbl_invalid_tid; /* set this to our main threads tid */
 
 /* lots of defaults. */
-int gbl_exit_on_pthread_create_fail = 0;
+int gbl_exit_on_pthread_create_fail = 1;
 int gbl_exit_on_internal_error = 1;
 int gbl_osql_blockproc_timeout_sec = 5;  /* wait for 5 seconds for a blocproc*/
 int gbl_osql_max_throttle_sec = 60 * 10; /* 10-minute default */
@@ -2334,7 +2334,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
 int llmeta_load_timepart(struct dbenv *dbenv)
 {
-    /* We need to do this before resuming schema change , if any */
+    /* We need to do this before resuming schema change, if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
     dbenv->timepart_views = timepart_views_init(dbenv);
 

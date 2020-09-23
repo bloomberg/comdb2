@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 #include <dirent.h>
+#include <bb_oscompat.h>
 
 #include <comdb2.h>
 #if defined(_IBM_SOURCE)
@@ -76,8 +77,7 @@ static hash_t *seen_sql;
 
 void eventlog_init()
 {
-    seen_sql =
-        hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
+    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
     char *fname = eventlog_fname(thedb->envname);
     if (eventlog_enabled) eventlog = eventlog_open(fname);
@@ -116,10 +116,18 @@ static void eventlog_roll_cleanup()
     int cnt = 100;
     int num = 0;
     char **arr = malloc((cnt * sizeof(char *)));
- 
-    DIR *d = opendir(dname);
+
+    /* must be large enough to hold a dirent struct with the longest possible
+     * filename */
+    struct dirent *buf = alloca(4096);
     struct dirent *de;
-    while ( (de = readdir(d)) ) {
+    DIR *d = opendir(dname);
+    if (!d) {
+        logmsg(LOGMSG_ERROR, "%s: opendir %s failed\n", __func__, dname);
+        return;
+    }
+
+    while (bb_readdir(d, buf, &de) == 0 && de) {
         if (strstr(de->d_name, eventflstok) == NULL) {
             continue;
         }
@@ -138,7 +146,9 @@ static void eventlog_roll_cleanup()
         if (i < num - eventlog_nkeep) {
             int rc = unlinkat(dfd, arr[i], 0);
             if (rc) 
-                logmsg(LOGMSG_ERROR, "eventlog_roll_cleanup: Error while deleting eventlog file %s, rc=%d\n", arr[i], rc);
+                logmsg(LOGMSG_ERROR,
+                       "eventlog_roll_cleanup: Error while deleting eventlog file %s, rc=%d\n",
+                       arr[i], rc);
         }
         free(arr[i]);
     }
@@ -419,8 +429,7 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
 {
     struct sqltrack *st;
     st = malloc(sizeof(struct sqltrack));
-    memcpy(st->fingerprint, logger->fingerprint,
-            sizeof(logger->fingerprint));
+    memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
     hash_add(seen_sql, st);
     listc_abl(&sql_statements, st);
 
@@ -499,8 +508,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(obj, "fingerprint",
-                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+        cson_object_set(obj, "fingerprint", cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
     }
 
     if (logger->clnt) {
@@ -529,8 +537,7 @@ static inline void add_to_fingerprints(const struct reqlogger *logger)
 {
     bool isSqlErr = logger->error && logger->stmt;
 
-    if ((EV_SQL == logger->event_type || isSqlErr) && 
-        !hash_find(seen_sql, logger->fingerprint)) {
+    if ((EV_SQL == logger->event_type || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(logger);
     }
 }

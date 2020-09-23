@@ -27,3 +27,13 @@
 		int i null = yes 
 	}
 ')
+(type='table', name='$1_383D642F', tbl_name='$1_383D642F', rootpage=5, sql='create table "$1_383D642F"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')
+(type='table', name='time_part_t', tbl_name='time_part_t', rootpage=4, sql='create table "time_part_t"("i" int);', csc2='schema
+	{
+		int i null = yes 
+	}
+')

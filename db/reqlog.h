@@ -81,6 +81,7 @@ void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_event(struct reqlogger *logger, evtype_t evtype);
+evtype_t reqlog_get_event(struct reqlogger *logger);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);

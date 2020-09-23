@@ -18,10 +18,10 @@ if [ "x$2" == "xnorebuild" ] ; then
 fi
 
 tbl=t2
-newtbl=t3
-morecnstrttbl=t4
-failcnstrttbl=t5
-badcnstrttbl=t8
+newschema=t2_3
+morecnstrtschema=t2_4
+failcnstrtschema=t2_5
+badcnstrtschema=t2_8
 foreigntbl=t1
 
 
@@ -34,9 +34,9 @@ max_nusc=1000
 
 function do_alter
 {
-    locnewtbl=$1
-    echo "do alter $tbl -> ${locnewtbl}"
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table $tbl { `cat ${locnewtbl}.csc2 ` }"
+    locnewschema=$1
+    echo "do alter $tbl -> ${locnewschema}"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table $tbl { `cat ${locnewschema}.csc2 ` }"
 
     if [[ $? -ne 0 ]]; then
         touch failedalter
@@ -127,9 +127,9 @@ function insert_foreign
     echo "Inserting $locnrecs records to tbl $foreigntbl."
 
     while [[ $j -le $locnrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $foreigntbl(a) values ($j)"  >> insert_${foreigntbl}.out 2>&1
+        echo "insert into $foreigntbl(a) values ($j)"
         let j=j+1
-    done
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> insert_${foreigntbl}.out 2>&1
 }
 
 
@@ -144,13 +144,16 @@ function insert_records
     strt=$(date +%s)
 
     while [[ $j -le $locnrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$j, $((j*2)),$j)"  >> insert.out 2>&1
-        #assertcnt $tbl $j
+        echo "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$j, $((j*2)),$j)"
         let j=j+1
         if [ $slptm -gt 0 ] ; then
             sleep $slptm
         fi
-    done
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default - >> insert.out 2>&1
+    rc=$?
+    if [ $rc -ne 0 ] ; then
+        failexit "insert_records failed, rc=$rc"
+    fi
     end=$(date +%s)
     echo "insert_records took $((end - strt)) sec."
 }
@@ -225,7 +228,7 @@ function run_first_test
     assertcnt $tbl $nrecs
     do_verify $tbl
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${newtbl}.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${newschema}.csc2 ` }"
     if [ $? -eq 0 ] ; then
         failexit "SC should have failed due to foreign constraint viloation"
     fi
@@ -256,7 +259,7 @@ function run_second_test
     #SC_FORCE_DELAY is needed because "verify constraints" is very-very fast
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
 	echo "start rebuild for alter tbl in background"
-    do_alter $newtbl &
+    do_alter $newschema &
 
 	echo "delay 2 sec, then start insert which will conflict SC"
     sleep 2
@@ -278,7 +281,7 @@ function run_second_test
     cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a) select e from t2 where e not in t1"  
 
 	echo "start rebuild for alter tbl in background"
-    do_alter $newtbl &
+    do_alter $newschema &
 
 	echo "delay 2 sec, then start update which will conflict SC"
     sleep 2
@@ -365,7 +368,7 @@ function run_fourth_test
 
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
 	echo "adding a constraint but sc shoud not fail (cause we added foreign records first)"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${morecnstrttbl}.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${morecnstrtschema}.csc2 ` }"
 
     if [ $? -ne 0 ] ; then
         failexit "SC should NOT have failed due to foreign constraint viloation"
@@ -397,7 +400,7 @@ function run_fifth_test
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
 
 	echo "altering in a way that will fail"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${failcnstrttbl}.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${failcnstrtschema}.csc2 ` }"
 
     if [ $? -eq 0 ] ; then
         failexit "SC should have failed due to foreign constraint viloation"
@@ -438,7 +441,7 @@ function run_sixth_test
     insert_records $nrecs 0 &
 
 	echo "altering in a way that will fail"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${failcnstrttbl}.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${failcnstrtschema}.csc2 ` }"
     if [ $? -eq 0 ] ; then
         failexit "SC should have failed due to foreign constraint viloation"
     fi
@@ -479,7 +482,7 @@ function run_seventh_test
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
 
     echo "start rebuild for alter tbl in background"
-    do_alter $failcnstrttbl &
+    do_alter $failcnstrtschema &
 
 	echo "delay 2 sec, then start insert which will conflict SC"
     sleep 2
@@ -512,7 +515,7 @@ function run_seventh_test
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
 
     echo "start rebuild for alter tbl in background"
-    do_alter $failcnstrttbl &
+    do_alter $failcnstrtschema &
 
 	echo "delay 2 sec, then start update which will conflict SC"
     sleep 2
@@ -551,7 +554,7 @@ function run_eighth_test
     cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure addrecs($EXTRA)"  #add large numbers at offset > 0.1M
 
 	echo "altering in a way that will fail"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${badcnstrttbl}.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table $tbl { `cat ${badcnstrtschema}.csc2 ` }"
 
     if [ $? -eq 0 ] ; then
         failexit "SC should have failed due to nonexistent foreign constraint"
@@ -582,7 +585,7 @@ function run_ninth_test
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
 
     rm failedalter
-    do_alter t9 &
+    do_alter t2_9 &
 
 	echo "delay 2 sec, then start update which should not matter"
     sleep 2
@@ -609,67 +612,104 @@ function run_ninth_test
 
 function run_tenth_test
 {
-	echo "run_tenth_test: Make sure sc works with non-deferred key adds"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t10 { `cat t10.csc2 ` }"
+    typeset ipid=''
+    nrecs=$1
+	echo "run_tenth_test: SC to add new column, index (nullfkey) and constraint at the same time, SC should pass"
+
+    EXTRA=100
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "INSERT INTO $tbl (a,b,c,d,e,f) WITH tblx(x) AS ( VALUES(100001) UNION ALL SELECT x+1 FROM tblx where x < (100000+$EXTRA)) SELECT x,'test1',x'1234',x,2*x,x FROM tblx" >> insert10.out
+
+    #SC_FORCE_DELAY is needed because "verify constraints" is very-very fast
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
+
+    rm failedalter
+    do_alter t2_10 &
+
+	echo "delay 2 sec, then start insert which should not fail"
+    sleep 2
+
+    insert_records $nrecs 0
+    wait
+
+    if [ -f failedalter ] ; then
+        failexit "SC should not fail"
+    fi
+    rm failedalter
+
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 0')"
+
+    assertcnt $tbl $((EXTRA+nrecs))
+    do_verify $tbl
+    echo "rebuild tbl for verification"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "rebuild $tbl"
+    if [ $? -ne 0 ] ; then
+        failexit "SC should not fail rebuild"
+    fi
+}
+
+function run_eleventh_test
+{
+	echo "run_eleventh_test: Make sure sc works with non-deferred key adds"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t11 { `cat t11.csc2 ` }"
 
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 20"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('debg 600')"
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1 values (1)"
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t10 values (1, 1, x'aa')"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t11 values (1, 1, x'aa')"
 
-    do_alter t10_1 &
+    do_alter t11_1 &
 
     sleep 2
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
 update t1 set a = 2
-update t10 set a = 2, blb = x'aaaa'
+update t11 set a = 2, blb = x'aaaa'
 commit
 EOF
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
 update t1 set a = 3
-update t10 set a = 3, blb = NULL
+update t11 set a = 3, blb = NULL
 commit
 EOF
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
 update t1 set a = 4
-update t10 set a = 4, blb = x'1122334455'
+update t11 set a = 4, blb = x'1122334455'
 commit
 EOF
 
     wait
     if [ -f failedalter ] ; then
-        failexit "SC should not fail for t10.1"
+        failexit "SC should not fail for t11.1"
     fi
     rm failedalter
 
-    echo "rebuild t10 and make sure we dont mistakenly fail schemachange"
-    do_alter t10_1 &
+    echo "rebuild t11 and make sure we dont mistakenly fail schemachange"
+    do_alter t11_1 &
     sleep 10
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t10 set a = 2, blb = x'aaaa'"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "update t11 set a = 2, blb = x'aaaa'"
     wait
     if [ -f failedalter ] ; then
-        failexit "SC should not fail for rebuild t10.1"
+        failexit "SC should not fail for rebuild t11.1"
     fi
     rm failedalter
 
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 0"
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t10 { `cat t10.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "alter table t11 { `cat t11.csc2 ` }"
     cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "put schemachange convertsleep 20"
 
-    do_alter t10_1 &
+    do_alter t11_1 &
 
     sleep 2
 
 cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 begin
-update t10 set blb = x''
+update t11 set blb = x''
 commit
 EOF
 
@@ -781,7 +821,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat t2.csc2 ` }"
 run_seventh_test 1000
 flushall
 
-#run seventh test again but now with a different original newtbl
+#run seventh test again but now with a different original newschema
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $foreigntbl"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { `cat $foreigntbl.csc2 ` }"
@@ -808,12 +848,21 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat t2.csc2 ` }"
 run_ninth_test 1000
 flushall
 
+#run tenth test
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $foreigntbl"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { schema { longlong a } keys { \"A\" = a } }"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat t2.csc2 ` }"
+
+run_tenth_test 10000
+flushall
+
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $foreigntbl"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $foreigntbl  { `cat $foreigntbl.csc2 ` }"
 
-tbl=t10
-run_tenth_test
+tbl=t11
+run_eleventh_test
 tbl=t2
 flushall
 

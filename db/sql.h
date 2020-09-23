@@ -76,11 +76,15 @@ struct fingerprint_track {
     int cachedColCount;     /* Cached column count from sqlitex */
 };
 
+typedef int(plugin_query_data_func)(struct sqlclntstate *, void **, int *, int, int);
+
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    //struct schema *params_to_bind;
+    void *stmt_data;
+    int stmt_data_sz;
+    plugin_query_data_func *qd_func; /* Function used for finalize */
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
@@ -400,6 +404,10 @@ typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 typedef int(override_type_func)(struct sqlclntstate *, int);
 
+enum query_data_ops { QUERY_DATA_SET = 1, QUERY_DATA_GET = 2, QUERY_DATA_DELETE = 3 };
+
+enum query_data_type { QUERY_STMT_DATA = 1, QUERY_HINT_DATA = 2 };
+
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
 
@@ -414,6 +422,7 @@ struct plugin_callbacks {
 
     // bound params
     plugin_func *param_count; /* newsql_param_count */
+    plugin_query_data_func *query_data_func;
     param_index_func *param_index; /* newsql_param_index */
     param_value_func *param_value; /* newsql_param_value */
 
@@ -466,49 +475,50 @@ struct plugin_callbacks {
 #define make_plugin_optional_null(clnt, name)                                  \
     (clnt)->plugin.column_##name = NULL
 
-#define plugin_set_callbacks(clnt, name)                                       \
-    do {                                                                       \
-        make_plugin_callback(clnt, name, write_response);                      \
-        make_plugin_callback(clnt, name, read_response);                       \
-        make_plugin_callback(clnt, name, save_stmt);                           \
-        make_plugin_callback(clnt, name, restore_stmt);                        \
-        make_plugin_callback(clnt, name, destroy_stmt);                        \
-        make_plugin_callback(clnt, name, print_stmt);                          \
-        make_plugin_callback(clnt, name, param_count);                         \
-        make_plugin_callback(clnt, name, param_index);                         \
-        make_plugin_callback(clnt, name, param_value);                         \
-        make_plugin_callback(clnt, name, override_count);                      \
-        make_plugin_callback(clnt, name, override_type);                       \
-        make_plugin_callback(clnt, name, has_cnonce);                          \
-        make_plugin_callback(clnt, name, set_cnonce);                          \
-        make_plugin_callback(clnt, name, clr_cnonce);                          \
-        make_plugin_callback(clnt, name, get_cnonce);                          \
-        make_plugin_callback(clnt, name, get_snapshot);                        \
-        make_plugin_callback(clnt, name, upd_snapshot);                        \
-        make_plugin_callback(clnt, name, clr_snapshot);                        \
-        make_plugin_callback(clnt, name, has_high_availability);               \
-        make_plugin_callback(clnt, name, set_high_availability);               \
-        make_plugin_callback(clnt, name, clr_high_availability);               \
-        make_plugin_callback(clnt, name, get_high_availability);               \
-        make_plugin_callback(clnt, name, has_parallel_sql);                    \
-        make_plugin_callback(clnt, name, add_steps);                           \
-        make_plugin_callback(clnt, name, setup_client_info);                   \
-        make_plugin_callback(clnt, name, skip_row);                            \
-        make_plugin_callback(clnt, name, log_context);                         \
-        make_plugin_callback(clnt, name, get_client_starttime);                \
-        make_plugin_callback(clnt, name, get_client_retries);                  \
-        make_plugin_callback(clnt, name, send_intrans_response);               \
-        make_plugin_optional_null(clnt, count);                                \
-        make_plugin_optional_null(clnt, type);                                 \
-        make_plugin_optional_null(clnt, int64);                                \
-        make_plugin_optional_null(clnt, double);                               \
-        make_plugin_optional_null(clnt, text);                                 \
-        make_plugin_optional_null(clnt, bytes);                                \
-        make_plugin_optional_null(clnt, blob);                                 \
-        make_plugin_optional_null(clnt, datetime);                             \
-        make_plugin_optional_null(clnt, interval);                             \
-        (clnt)->plugin.state = NULL;                                           \
-        (clnt)->plugin.next_row = NULL;                                        \
+#define plugin_set_callbacks(clnt, name)                                                                               \
+    do {                                                                                                               \
+        make_plugin_callback(clnt, name, write_response);                                                              \
+        make_plugin_callback(clnt, name, read_response);                                                               \
+        make_plugin_callback(clnt, name, save_stmt);                                                                   \
+        make_plugin_callback(clnt, name, restore_stmt);                                                                \
+        make_plugin_callback(clnt, name, destroy_stmt);                                                                \
+        make_plugin_callback(clnt, name, print_stmt);                                                                  \
+        make_plugin_callback(clnt, name, param_count);                                                                 \
+        make_plugin_callback(clnt, name, param_index);                                                                 \
+        make_plugin_callback(clnt, name, param_value);                                                                 \
+        make_plugin_callback(clnt, name, override_count);                                                              \
+        make_plugin_callback(clnt, name, override_type);                                                               \
+        make_plugin_callback(clnt, name, has_cnonce);                                                                  \
+        make_plugin_callback(clnt, name, set_cnonce);                                                                  \
+        make_plugin_callback(clnt, name, clr_cnonce);                                                                  \
+        make_plugin_callback(clnt, name, get_cnonce);                                                                  \
+        make_plugin_callback(clnt, name, get_snapshot);                                                                \
+        make_plugin_callback(clnt, name, upd_snapshot);                                                                \
+        make_plugin_callback(clnt, name, clr_snapshot);                                                                \
+        make_plugin_callback(clnt, name, has_high_availability);                                                       \
+        make_plugin_callback(clnt, name, set_high_availability);                                                       \
+        make_plugin_callback(clnt, name, clr_high_availability);                                                       \
+        make_plugin_callback(clnt, name, get_high_availability);                                                       \
+        make_plugin_callback(clnt, name, has_parallel_sql);                                                            \
+        make_plugin_callback(clnt, name, add_steps);                                                                   \
+        make_plugin_callback(clnt, name, setup_client_info);                                                           \
+        make_plugin_callback(clnt, name, skip_row);                                                                    \
+        make_plugin_callback(clnt, name, log_context);                                                                 \
+        make_plugin_callback(clnt, name, get_client_starttime);                                                        \
+        make_plugin_callback(clnt, name, get_client_retries);                                                          \
+        make_plugin_callback(clnt, name, send_intrans_response);                                                       \
+        make_plugin_optional_null(clnt, count);                                                                        \
+        make_plugin_optional_null(clnt, type);                                                                         \
+        make_plugin_optional_null(clnt, int64);                                                                        \
+        make_plugin_optional_null(clnt, double);                                                                       \
+        make_plugin_optional_null(clnt, text);                                                                         \
+        make_plugin_optional_null(clnt, bytes);                                                                        \
+        make_plugin_optional_null(clnt, blob);                                                                         \
+        make_plugin_optional_null(clnt, datetime);                                                                     \
+        make_plugin_optional_null(clnt, interval);                                                                     \
+        (clnt)->plugin.state = NULL;                                                                                   \
+        (clnt)->plugin.next_row = NULL;                                                                                \
+        (clnt)->plugin.query_data_func = NULL;                                                                         \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -560,6 +570,7 @@ struct sql_state {
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
+    void *query_data;                  /* data associated with sql */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
     int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
@@ -571,7 +582,7 @@ struct sqlworkstate {
     char *zOrigNormSql;   /* Normalized version of original SQL query. */
     struct sql_state rec; /* Prepared statement for original SQL query. */
     unsigned char aFingerprint[FINGERPRINTSZ]; /* MD5 of normalized SQL. */
-    char zRuleRes[100];   /* Ruleset match result, if any. */
+    char zRuleRes[300];   /* Ruleset match result, if any. */
 };
 
 struct sql_hist_cost {
@@ -614,6 +625,11 @@ struct sqlclntstate {
                                 * be processed before lower priority SQL work
                                 * items.  This value should only be changed
                                 * by the dispatch_sql_query() function. */
+
+    struct thdpool *pPool;     /* When null, the default SQL thread pool is
+                                * being used to service the request; otherwise,
+                                * a specifically assigned SQL thread pool is
+                                * being used. */
 
     struct sqlworkstate work;  /* This is the primary data related to the SQL
                                 * client request in progress.  This includes
@@ -1231,6 +1247,39 @@ void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
                        struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
+void delete_stmt_caching_table(hash_t *stmt_caching_table);
+
+#define SQL_POOL_LEGACY_NAME          ("sqlenginepool")
+#define SQL_POOL_DEFLT_NAME           ("default")
+#define SQL_POOL_STACK_SIZE           (4 * 1024 * 1024) /* 4 MiB */
+#define SQL_POOL_DEFLT_MIN_THREADS    (4)
+#define SQL_POOL_DEFLT_MAX_THREADS    (48)
+#define SQL_POOL_NAMED_MAX_THREADS    (1)
+#define SQL_POOL_LINGER_SECS          (30) /* 30 seconds */
+#define SQL_POOL_DEFLT_MAXQ_OVERRIDE  (500)
+#define SQL_POOL_NAMED_MAXQ_OVERRIDE  (500)
+#define SQL_POOL_MAXQ_AGE_MS          (5 * 60 * 1000) /* 5 minutes */
+#define SQL_POOL_STOP_TIMEOUT_US      (5000000) /* 5 seconds */
+
+typedef struct pool_entry {
+    const char *zName;
+    long long int nThreads;
+    struct thdpool *pPool;
+} pool_entry_t;
+
+int get_default_sql_pool_max_threads(void);
+struct thdpool *get_default_sql_pool(int);
+struct thdpool *get_sql_pool(struct sqlclntstate *);
+struct thdpool *get_named_sql_pool(const char *, int, int);
+
+int64_t get_all_sql_pool_timeouts(void);
+int list_all_sql_pools(SBUF2 *);
+void print_all_sql_pool_stats(FILE *);
+void foreach_all_sql_pools(thdpool_foreach_fn, void *);
+void stop_all_sql_pools(void);
+void resume_all_sql_pools(void);
+int destroy_sql_pool(const char *, int);
+void destroy_all_sql_pools(void);
 
 int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
              uint8_t flip_orig, const char *tzname);

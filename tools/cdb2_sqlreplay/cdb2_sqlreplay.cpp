@@ -153,48 +153,47 @@ bool event_is_sql(cson_value *val) {
     return get_strprop(val, "type") == std::string("sql");
 }
 
-void replay_transaction(cdb2_hndl_tp *db, std::list<cson_value*> &list) {
-    cson_value *statement;
-
-    std::cout << "replay" << std::endl;
+void replay_transaction(cdb2_hndl_tp *db, cson_value *val)
+{
+    const char *cnonce = get_strprop(val, "cnonce");
+    assert(cnonce != nullptr);
+    auto jt = transactions.find(cnonce);
+    assert(jt != transactions.end());
+    auto &list = (*jt).second;
+    std::cout << "replay transaction " << cnonce << std::endl;
 
     auto it = list.begin();
     while (it != list.end()) {
-        std::cout << "replaying txn" << std::endl;
-        if (event_is_sql(*it))
-            replay(db, *it);
-        
+        assert(event_is_sql(*it));
+        replay(db, *it);
         cson_free_value(*it);
         it = list.erase(it);
     }
+    transactions.erase(jt);
+    replay(db, val); // finally 'commit' or 'rollback'
 }
 
-void add_to_transaction(cdb2_hndl_tp *db, cson_value *val) {
-    const char *s = get_strprop(val, "id");
+bool is_part_of_transaction(const char *cnonce)
+{
+    auto it = transactions.find(cnonce);
+    return (it != transactions.end());
+}
+
+void add_to_transaction(cson_value *val)
+{
+    const char *cnonce = get_strprop(val, "cnonce");
     const char *type = get_strprop(val, "type");
 
-    auto i = transactions.find(s);
-    if (i == transactions.end()) {
-        std::cout << "new transaction " << s << std::endl;
+    auto it = transactions.find(cnonce);
+    if (it == transactions.end()) {
+        std::cout << "new transaction " << cnonce << std::endl;
         std::list<cson_value*> statements;
         statements.push_back(val);
-        transactions.insert(std::pair<std::string, std::list<cson_value*>>(s, statements));
-    }
-    else {
-        auto &list = (*i).second;
-        std::cout << "add to existing transaction " << list.size() << " (" << event_is_txn(list.front()) <<  ") " << s << std::endl;
-        if (list.size() == 1 && event_is_txn(list.front())) {
-            /* This is a single statement, and we just saw it's transaction.  We can 
-               now replay the whole list. */
-            list.push_back(list.front());
-            list.pop_front();
-            replay_transaction(db, list);
-        }
-        else {
-            list.push_back(val);
-            if (event_is_txn(val))
-                replay_transaction(db, list);
-        }
+        transactions.insert(std::pair<std::string, std::list<cson_value*>>(cnonce, statements));
+    } else {
+        auto &list = (*it).second;
+        std::cout << "add to existing transaction " << cnonce << " size=" << list.size() << std::endl;
+        list.push_back(val);
     }
 }
 
@@ -239,7 +238,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
             int64_t *iv = new int64_t;
             bool succ = get_intprop(bp, "value", iv);
             if (!succ) {
-                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                std::cerr << "Error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
             cdb2_type = CDB2_INTEGER;
@@ -251,7 +250,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
             double *dv = new double;
             bool succ = get_doubleprop(bp, "value", dv);
             if (!succ) {
-                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                std::cerr << "Error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
             cdb2_type = CDB2_REAL;
@@ -265,7 +264,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                  ) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
-                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                std::cerr << "Error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
             cdb2_type = CDB2_CSTRING;
@@ -276,7 +275,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
         else if( strcmp(type, "byte") == 0 || strcmp(type, "blob") == 0) {
             const char *strp = get_strprop(bp, "value");
             if (strp == nullptr) {
-                std::cerr << "error getting " << type << " value of bound parameter " << name << std::endl;
+                std::cerr << "Error getting " << type << " value of bound parameter " << name << std::endl;
                 return false;
             }
             assert(strp[0] == 'x' && strp[1] == '\'' && "Blob field needs to be in x'123abc' format");
@@ -304,13 +303,13 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
         if (name[0] == '?') {
             int idx = atoi(name + 1);
             if ((ret = cdb2_bind_index(cdb2h, idx, cdb2_type, varaddr, length)) != 0) {
-                std::cerr << "error from cdb2_bind_index() column " << name << ", ret=" << ret << std::endl;
+                std::cerr << "Error from cdb2_bind_index() column " << name << ", ret=" << ret << std::endl;
                 return false;
             }
         }
         else {
             if ((ret = cdb2_bind_param(cdb2h, name, cdb2_type, varaddr, length)) != 0) {
-                std::cerr << "error from cdb2_bind_param column " << name << ", ret=" << ret << std::endl;
+                std::cerr << "Error from cdb2_bind_param column " << name << ", ret=" << ret << std::endl;
                 return false;
             }
         }
@@ -463,12 +462,12 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     if(sql == nullptr) {
 	    const char *fp = get_strprop(event_val, "fingerprint");
 	    if (fp == nullptr) {
-		    std::cerr << "No fingerprint logged?" << std::endl;
+		    std::cerr << "Error: No fingerprint logged?" << std::endl;
 		    return;
 	    }
 	    auto s = sqltrack.find(fp);
 	    if (s == sqltrack.end()) {
-		    std::cerr << "Unknown fingerprint? " << fp << std::endl;
+		    std::cerr << "Error: Unknown fingerprint? " << fp << std::endl;
 		    return;
 	    }
 	    sql = (*s).second.c_str();
@@ -487,7 +486,7 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     free_blobs(blobs_vect);
 
     if (rc != CDB2_OK) {
-        std::cerr << "run rc " << rc << ": " << cdb2_errstr(db) << std::endl;
+        std::cerr << "Error: run rc " << rc << ": " << cdb2_errstr(db) << std::endl;
         return;
     }
 
@@ -508,7 +507,7 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
         std::cout << std::endl;
     }
     if (rc != CDB2_OK_DONE) {
-        std::cerr << "next rc " << rc << ": " << cdb2_errstr(db) << std::endl;
+        std::cerr << "Error: next rc " << rc << ": " << cdb2_errstr(db) << std::endl;
         return;
     }
 }
@@ -525,38 +524,51 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
      eliminate it.
   */
 
+
+/* We can only replay if we have the full SQL, including parameters.
+   That means
+   1) event logged a bindings array
+   2) event logged a nbindings integer, and it's 0
+
+   If there's non-zero bindings and we don't have them, we can't replay.
+
+   Another complication is transactions - we don't want to play one back
+   until we have all the statements collected, and see a commit event.
+   Anything with a cnonce logged is part of a transaction - a commit
+   event will have the same cnonce.  SQL writes that are not part of
+   a transaction get logged before txn log entry.  SQL in BEGIN/COMMIT
+   blocks gets logged before the txn log entry as well.
+   */ 
 void handle_sql(cdb2_hndl_tp *db, cson_value *event_val) {
     int rc;
-    /* We can only replay if we have the full SQL, including parameters.
-       That means
-       1) event logged a bindings array
-       2) event logged a nbindings integer, and it's 0
-
-       If there's non-zero bindings and we don't have them, we can't replay.
-
-       Another complication is transactions - we don't want to play one back
-       until we have all the statements collected, and see a commit event.
-       Anything with an id logged is part of a transaction - a commit
-       event will have the same id.  SQL writes that are not part of
-       a transaction get logged after transaction.  SQL in BEGIN/COMMIT
-       blocks gets logged before the transaction.
-
-       */ 
-
     if (!is_replayable(event_val)) {
         cson_free_value(event_val);
         return;
     }
 
-#if 0
-    if (is_transactional(event_val)) {
-        add_to_transaction(db, event_val);
+    const char *cnonce = get_strprop(event_val, "cnonce");
+    if (cnonce == nullptr) { // no cnonce if comdb2api -- just replay it
+        replay(db, event_val);
+        cson_free_value(event_val);
         return;
     }
-#endif
-    
-    replay(db, event_val);
-    cson_free_value(event_val);
+
+    const char *sql = get_strprop(event_val, "sql");
+    assert(sql != nullptr);
+    if (strcmp(sql, "commit") == 0 || strcmp(sql, "rollback") == 0) {
+        if (!is_part_of_transaction(cnonce)) {
+            std::cerr << "Error: Commit/rollback record without cnonce in txn list (possibly already commited)"
+                      << std::endl;
+        } else {
+            replay_transaction(db, event_val);
+        }
+        cson_free_value(event_val);
+    } else if (strcmp(sql, "begin") == 0 || is_part_of_transaction(cnonce)) {
+        add_to_transaction(event_val); // new entry in list, or append
+    } else { // normal 'sql' statement entry which are not part of a transaction
+        replay(db, event_val); // replay immediately
+        cson_free_value(event_val);
+    }
 }
 
 /* TODO: error messages? */
@@ -583,7 +595,34 @@ void handle_newsql(cdb2_hndl_tp *db, cson_value *val) {
 
 
 void handle_txn(cdb2_hndl_tp *db, cson_value *val) {
-    add_to_transaction(db, val);
+    /* TODO: To achieve closer output to the original db,
+     * we should commit when we encounter 'txn' record, not upon 'commit'
+     * However, to have the sql within a txn replayed correctly we
+     * should run it immediately (instead of at commit time).
+     *
+     * Otherwise the results are different from the original db:
+     * create table t1 (i int);
+     * create table t2 (i int);
+     * txn1 begin
+     * txn2 begin
+     * txn1 insert into t1 select * from t2
+     * txn2 insert into t2 select * from t3
+     * txn1 commit
+     * txn2 commit
+     * 
+     * if we run the entire transaction txn1 and commit, then run txn2 
+     * then commit, the result will be different from the original
+     * run which read (when t2 was empty). 
+     *
+     * We could run different transactions in separate threads, 
+     * and issue sql at the correct time for the reads to be consistent
+     * with original db. tools/serial.c does something like this and
+     * could be an improvement in future.
+     *
+    const char *cnonce = get_strprop(val, "cnonce");
+    if (cnonce != nullptr && is_part_of_transaction(cnonce))
+        replay_transaction(db, val);
+    */
 }
 
 typedef void (*event_handler)(cdb2_hndl_tp *db, cson_value *val);
@@ -616,11 +655,11 @@ void process_events(cdb2_hndl_tp *db, std::istream &in) {
         cson_value *event_val;
         rc = cson_parse_string(&event_val, line.c_str(), line.length());
         if (rc) {
-            std::cerr << "Malformed input on line " << linenum << std::endl;
+            std::cerr << "Error: Malformed input on line " << linenum << std::endl;
             continue;
         }
         if (!cson_value_is_object(event_val)) {
-            std::cerr << "Not an object  on line " << linenum << std::endl;
+            std::cerr << "Error: Not an object  on line " << linenum << std::endl;
             continue;
         }
         const char *type = get_strprop(event_val, "type");
@@ -653,24 +692,22 @@ int main(int argc, char **argv) {
     if (conf) {
         cdb2_set_comdb2db_config(conf);
         rc = cdb2_open(&cdb2h, dbname, "default", 0);
-    }
-    else { 
+    } else { 
         rc = cdb2_open(&cdb2h, dbname, "local", 0);
     }
 
     if (rc) {
-        std::cerr << "cdb2_open() failed: " << cdb2_errstr(cdb2h) << std::endl;
+        std::cerr << "Error: cdb2_open() failed: " << cdb2_errstr(cdb2h) << std::endl;
         exit(EXIT_FAILURE);
     }
 
     if (filename == nullptr) {
         process_events(cdb2h, std::cin);
-    }
-    else {
+    } else {
         std::ifstream f;
         f.open(filename);
         if (!f.good()) {
-            std::cerr << "Can't open " << filename << ": " << strerror(errno) << std::endl;
+            std::cerr << "Error: Can't open " << filename << ": " << strerror(errno) << std::endl;
             return 1;
         }
 

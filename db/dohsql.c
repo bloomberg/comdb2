@@ -1119,6 +1119,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->appsock_id = getarchtid();
     init_sqlclntstate(conn->clnt, (char *)conn->clnt->osql.uuid, 1);
     conn->clnt->origin = clnt->origin;
+    conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);
     plugin_set_callbacks(conn->clnt, dohsql);
     conn->clnt->plugin.state = conn;
@@ -1262,7 +1263,7 @@ int dohsql_distribute(dohsql_node_t *node)
 
         if (i > 0) {
             /* launch the new sqlite engine a the next shard */
-            rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp,
+            rc = thdpool_enqueue(get_sql_pool(clnt), sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
                                  sqlcpy = strdup(node->nodes[i]->sql), flags,
                                  PRIORITY_T_DEFAULT);

@@ -23,6 +23,10 @@
 #define FPSZ 16 /* stolen from "sql.h" FINGERPRINTSZ */
 #endif
 
+#ifndef RULESET_VERSION
+#define RULESET_VERSION (2)
+#endif
+
 enum ruleset_action {
   RULESET_A_INVALID = -1,   /* Invalid action, this probably means parsing a
                              * string failed to result in a valid action. */
@@ -47,6 +51,8 @@ enum ruleset_action {
   RULESET_A_HIGH_PRIO = 16,  /* Raise the priority of the request by the value
                               * associated with this rule. */
 
+  RULESET_A_SET_POOL = 32,   /* Change the assigned SQL engine pool. */
+
   RULESET_A_REJECT_MASK = RULESET_A_REJECT | RULESET_A_REJECT_ALL
 };
 
@@ -61,9 +67,13 @@ enum ruleset_flags {
 
   RULESET_F_PRINT = 2,    /* Emit a trace message if the rule is matched. */
 
-  RULESET_F_STOP = 4      /* Stop if the associated rule is matched.  No more
+  RULESET_F_STOP = 4,     /* Stop if the associated rule is matched.  No more
                            * rules will be processed for this request -AND-
                            * the request will NOT be retried. TODO: ? */
+
+  RULESET_F_DYN_POOL = 8  /* Rule uses a "dynamic" SQL engine pool, which may
+                           * not exist when the rule is loaded; therefore,
+                           * create it on an as-needed basis. */
 };
 
 enum ruleset_match_mode {
@@ -170,6 +180,11 @@ struct ruleset_item {
                                    * amount the priority should be adjusted?
                                    */
 
+  char *zPool;                    /* For rules which change the SQL engine
+                                   * pool, what is the name of that SQL engine
+                                   * pool?  If this is NULL or "default", the
+                                   * default SQL engine pool will be used. */
+
   enum ruleset_flags flags;       /* The behavioral flags associated with the
                                    * rule, e.g. stop-on-match, etc. */
 
@@ -188,6 +203,9 @@ struct ruleset_item {
 };
 
 struct ruleset {
+  long long int version;          /* What version was seen when reading this
+                                   * ruleset into memory? */
+
   uint64_t generation;            /* When was this set of rules read into
                                    * memory?*/
 
@@ -203,9 +221,21 @@ struct ruleset_result {
   enum ruleset_action action;     /* What will the final action be for this
                                    * ruleset? */
 
+  enum ruleset_flags flags;       /* What are the final behavioral flags
+                                   * associated with ALL the rules that were
+                                   * matched? */
+
   priority_t priority;            /* What will the final priority be for this
                                    * ruleset?  Depending on the action, this
                                    * value may be ignored. */
+
+  char *zPool;                    /* What will the final SQL engine pool name
+                                   * be for this ruleset?  Depending on the
+                                   * action, this value may be ignored.  If
+                                   * this is NULL or "default", the default
+                                   * SQL engine pool will be used.  If this
+                                   * is not NULL, it must be freed by the
+                                   * owner of this structure. */
 
   int ruleNo;                     /* Which rule, if any, was the primary one
                                    * responsible for the result action? */

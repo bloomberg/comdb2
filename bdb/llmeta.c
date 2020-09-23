@@ -9350,6 +9350,7 @@ static int kv_get_kv(tran_type *t, void *k, size_t klen, void ***keys,
     *values = vals;
     return rc;
 }
+
 static int kv_del(tran_type *tran, void *k, int *bdberr)
 {
     return bdb_lite_exact_del(llmeta_bdb_state, tran, k, bdberr);
@@ -9365,7 +9366,8 @@ static int kv_del_by_value(tran_type *tran, void *k, size_t klen, void *v,
 {
     int rc, fnd;
     uint8_t fndk[LLMETA_IXLEN];
-    rc = bdb_lite_fetch_partial(llmeta_bdb_state, k, klen, fndk, &fnd, bdberr);
+    rc = bdb_lite_fetch_partial_tran(llmeta_bdb_state, tran, k, klen, fndk,
+                                     &fnd, bdberr);
     while (rc == 0 && fnd == 1) {
         if (memcmp(k, fndk, klen) != 0) {
             break;
@@ -10006,6 +10008,7 @@ int bdb_user_password_delete(tran_type *tran, char *user)
         return 0;
     return rc;
 }
+
 int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num)
 {
     void **u1, **u2;
