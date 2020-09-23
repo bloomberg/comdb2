@@ -3222,7 +3222,6 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
         osql_extract_snap_info(sess, rpl, rpllen, is_uuid);
         /* fall-through */
     case OSQL_DONE:
-    case OSQL_DONE_STATS:
         if (xerr)
             *xerr = NULL;
         rc = 1;
@@ -4418,6 +4417,10 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
     uint8_t *p_buf_end;
     int rc = xerr->errval;
 
+    /* Master does not read query_stats, since R5 maybe.  Do not send them
+    unless we decide to fix it first */
+    query_stats = NULL;
+
     /* Always 'commit' to release starthrottle.  Failure if master has swung. */
     if (check_master(tohost))
         return OSQL_SEND_ERROR_WRONGMASTER;
@@ -4456,8 +4459,7 @@ int osql_send_commit(char *tohost, unsigned long long rqid, uuid_t uuid,
         if (snap_info) {
             rpl_ok.hd.type = OSQL_DONE_SNAP;
         } else {
-            rpl_ok.hd.type = OSQL_DONE; /* OSQL_DONE_STATS is never set, so
-                                           query_stats never read by master.? */
+            rpl_ok.hd.type = OSQL_DONE;
         }
         rpl_ok.hd.sid = rqid;
         rpl_ok.dt.rc = rc;
@@ -4550,6 +4552,10 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
     uint8_t *p_buf_end;
     int rc = xerr->errval;
 
+    /* Master does not read query_stats, since R5 maybe.  Do not send them
+    unless we decide to fix it first */
+    query_stats = NULL;
+
     type = osql_net_type_to_net_uuid_type(type);
 
     /* Always 'commit' to release starthrottle.  Failure if master has swung. */
@@ -4590,11 +4596,7 @@ int osql_send_commit_by_uuid(char *tohost, uuid_t uuid, int nops,
         if (snap_info) {
             rpl_ok.hd.type = OSQL_DONE_SNAP;
         } else {
-            /* Send 'done' to master, no need to send OSQL_DONE_WITH_EFFECTS
-             * (which also includes query effects).
-             */
-            rpl_ok.hd.type = OSQL_DONE; /* OSQL_DONE_STATS is never set, so
-                                           query_stats never read by master.? */
+            rpl_ok.hd.type = OSQL_DONE;
         }
         comdb2uuidcpy(rpl_ok.hd.uuid, uuid);
         rpl_ok.dt.rc = rc;
@@ -6064,8 +6066,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
     switch (type) {
     case OSQL_DONE:
-    case OSQL_DONE_SNAP:
-    case OSQL_DONE_STATS: {
+    case OSQL_DONE_SNAP: {
         p_buf_end = p_buf + sizeof(osql_done_t);
         osql_done_t dt = {0};
 
@@ -6152,10 +6153,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             }
         }
 
+#if 0
+        Currently this flag is not set and we do not read the bytes from the buffer;
+        until we review and decide to either remove or fix the clients_query_stats
+        (right now we send the wrong one), leave this in place as a reminder 
         /* p_buf is pointing at client_query_stats if there is one */
-        if (type == OSQL_DONE_STATS) { /* Never set anywhere. */
+        if (type == OSQL_DONE_STATS) { 
             dump_client_query_stats_packed(iq->dbglog_file, p_buf);
         }
+#endif
 
         if (gbl_toblock_random_deadlock_trans && (rand() % 100) == 0) {
             rc = RC_INTERNAL_RETRY;
