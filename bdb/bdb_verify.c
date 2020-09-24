@@ -592,40 +592,40 @@ static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
         int rixlen;
         bdb_state_type *r_state;
         int skip = 0;
-        rc = convert_key_to_foreign_key(ct, lcl_tag, lcl_key, tblname, &r_state,
-                                        &ridx, &rixlen, rkey, &skip, ri);
-        if (rc)
-            return rc;
+        if ((rc = convert_key_to_foreign_key(ct, lcl_tag, lcl_key, tblname, &r_state,
+                                        &ridx, &rixlen, rkey, &skip, ri)))
+            break;
         
-        if (!skip) {
-            DB *ix_state = r_state->dbp_ix[ridx];
-            rc = ix_state->paired_cursor_from_lid(ix_state, lid, &ckey, 0);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "unexpected rc get cursor for ix %d: %d\n",
-                       ridx, rc);
-                continue; // so we continue to next rule
-            }
-
-            /* fetch the genid portion to verify existence */
-            unsigned long long verify_genid = 0;
-            DBT dbt_data = {.data = &verify_genid,
-                            .dlen = sizeof(verify_genid),
-                            .ulen = sizeof(verify_genid),
-                            .size = sizeof(verify_genid),
-                            .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
-            dbt_key.size = rixlen;
-
-            rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET_RANGE);
-            ckey->c_close(ckey); // close cursor, check rc below
+        if (skip) {
+            continue;
         }
+
+        DB *ix_state = r_state->dbp_ix[ridx];
+        rc = ix_state->paired_cursor_from_lid(ix_state, lid, &ckey, 0);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "unexpected rc get cursor for ix %d: %d\n",
+                   ridx, rc);
+            continue; // on to next rule
+        }
+
+        /* fetch the genid portion to verify existence */
+        unsigned long long verify_genid = 0;
+        DBT dbt_data = {.data = &verify_genid,
+                        .dlen = sizeof(verify_genid),
+                        .ulen = sizeof(verify_genid),
+                        .size = sizeof(verify_genid),
+                        .flags = DB_DBT_USERMEM | DB_DBT_PARTIAL};
+        dbt_key.size = rixlen;
+
+        rc = ckey->c_get(ckey, &dbt_key, &dbt_data, DB_SET_RANGE);
+        ckey->c_close(ckey); // first close cursor then check rc
 
         if (rc != IX_FND && rc != IX_FNDMORE) {
             if (remote_ri)
                 *remote_ri = ri;
-            goto done;
+            break;
         }
     }
-done:
     return rc;
 }
 

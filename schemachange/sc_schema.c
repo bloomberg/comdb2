@@ -27,13 +27,12 @@
 
 extern int gbl_partial_indexes;
 
-int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
+int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
     int rc = 0;
-    const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
     struct ireq ruleiq;
@@ -42,7 +41,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         return 0;
     }
 
-    od_dta = old_dta;
+    const void *od_dta;
     if (rebuild && convert) {
         /* .ONDISK -> .NEW..ONDISK */
         /* if record added while schema change is on */
@@ -61,13 +60,16 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         od_dta = new_dta;
         from = ".NEW..ONDISK";
     }
+    else {
+        od_dta = old_dta;
+    }
 
     init_fake_ireq(thedb, &ruleiq);
     ruleiq.opcode = OP_REBUILD;
     ruleiq.debug = gbl_who;
 
     for (int ci = 0; ci < db->n_constraints; ci++) {
-        constraint_t *ct = &(db->constraints[ci]);
+        const constraint_t *ct = &(db->constraints[ci]);
 
         char lcl_tag[MAXTAGLEN];
         char lcl_key[MAXKEYLEN];
@@ -82,11 +84,14 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
             rc = ERR_CONSTR;
             break;
         }
-        if (gbl_partial_indexes && db->ix_partial &&
-            !(ins_keys & (1ULL << lcl_idx))) {
+        if (gbl_partial_indexes && db->ix_partial && !(ins_keys & (1ULL << lcl_idx))) {
             continue;
         }
-        snprintf(lcl_tag, sizeof lcl_tag, ".NEW..ONDISK_IX_%d", lcl_idx);
+        int len = snprintf(lcl_tag, sizeof lcl_tag, ".NEW..ONDISK_IX_%d", lcl_idx);
+        if (len >= sizeof lcl_tag) {
+            rc = ERR_BUF_TOO_SMALL;
+            break;
+        }
 
         /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
         if (iq->idxInsert && !convert)
@@ -209,7 +214,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                        __func__);
                 continue;
             }
-            if (should_skip_constraint_for_index(cnstrt->lcltable, rixnum, nulls)) continue;
+            if (skip_lookup_for_nullfkey(cnstrt->lcltable, rixnum, nulls)) continue;
 
             if (cnstrt->lcltable->ix_collattr[rixnum]) {
                 rc = extract_decimal_quantum(cnstrt->lcltable, rixnum, rkey,

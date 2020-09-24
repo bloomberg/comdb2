@@ -4108,8 +4108,7 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
             if ((to_field->flags & NO_NULL) &&
                 !(flags & CONVERT_NULL_NO_ERROR)) {
                 if (fail_reason)
-                    fail_reason->reason =
-                        CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION;
+                    fail_reason->reason = CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION;
                 return -1;
             }
             rc = NULL_to_SERVER(outbuf + to_field->offset, to_field->len,
@@ -4273,13 +4272,11 @@ static int _stag_to_stag_buf_flags_blobs(
         if (same_tag) {
             field_idx = field;
         } else {
-            field_idx =
-                find_field_idx_in_tag(fromsch, tosch->member[field].name);
+            field_idx = find_field_idx_in_tag(fromsch, tosch->member[field].name);
         }
         int rc = stag_to_stag_field(inbuf, outbuf, flags, fail_reason, inblobs,
                                     outblobs, maxblobs, tzname, field_idx,
                                     field, fromsch, tosch);
-
         if (rc)
             return rc;
     }
@@ -4397,13 +4394,8 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
                           enum constraint_dir direction)
 {
     struct schema *from, *to;
-    int field;
-    struct field *from_field, *to_field = NULL;
-    int field_idx;
     int rc;
-    int iflags, oflags;
     int rec_srt_off = 1;
-    int nmembers;
 
     if (gbl_sort_nulls_correctly)
         rec_srt_off = 0;
@@ -4416,7 +4408,7 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
     if (to == NULL)
         return -1;
 
-    nmembers = to->nmembers;
+    int nmembers = to->nmembers;
 
     if (gbl_fk_allow_prefix_keys && gbl_fk_allow_superset_keys) {
         if (from->nmembers < to->nmembers)
@@ -4460,24 +4452,19 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
     if (nulls)
         *nulls = 0;
 
-    for (field = 0; field < nmembers; field++) {
+    struct field *to_field = NULL;
+    for (int field = 0; field < nmembers; field++) {
         int outdtsz = 0;
         to_field = &to->member[field];
-        field_idx = field; /* find_field_idx_in_tag(from, to_field->name);*/
-        from_field = &from->member[field_idx];
+        struct field *from_field = &from->member[field];
 
         if (nulls && field_is_null(from, from_field, inbuf)) {
             *nulls = 1;
         }
 
-        if ((to->flags & SCHEMA_INDEX) && (to_field->flags & INDEX_DESCEND))
-            oflags = INDEX_DESCEND;
-        else
-            oflags = 0;
-        if ((from->flags & SCHEMA_INDEX) && (from_field->flags & INDEX_DESCEND))
-            iflags = INDEX_DESCEND;
-        else
-            iflags = 0;
+        int oflags = ((to->flags & SCHEMA_INDEX) && (to_field->flags & INDEX_DESCEND)) ? INDEX_DESCEND : 0;
+        int iflags = ((from->flags & SCHEMA_INDEX) && (from_field->flags & INDEX_DESCEND)) ? INDEX_DESCEND : 0;
+
         if (from_field->flags & INDEX_DESCEND)
             xorbuf(((char *)inbuf) + from_field->offset + rec_srt_off,
                    from_field->len - rec_srt_off);

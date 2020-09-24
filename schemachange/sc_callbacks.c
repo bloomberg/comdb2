@@ -434,11 +434,9 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
                                       ins_keys, blobs, maxblobs, ".NEW..ONDISK",
                                       rebuild, 0);
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: verify_record_constraint "
-                                 "rcode %d, genid 0x%llx\n",
+            logmsg(LOGMSG_ERROR, "%s: verify_record_constraint rcode %d, genid 0x%llx\n",
                    __func__, rc, genid);
-            logmsg(LOGMSG_ERROR, "Aborting schema change due to constraint "
-                                 "violation in new schema\n");
+            logmsg(LOGMSG_ERROR, "Aborting schema change due to constraint violation in new schema\n");
 
             usedb->sc_abort = 1;
             MEMORY_SYNC;
@@ -454,8 +452,7 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
 
     iq->usedb = usedb->sc_to;
 
-    int addflags =
-        RECFLAGS_NO_TRIGGERS | RECFLAGS_NEW_SCHEMA | RECFLAGS_KEEP_GENID;
+    int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NEW_SCHEMA | RECFLAGS_KEEP_GENID;
 
     if (origflags & RECFLAGS_NO_CONSTRAINTS) {
         addflags |= RECFLAGS_NO_CONSTRAINTS;
@@ -471,10 +468,8 @@ int live_sc_post_add_record(struct ireq *iq, void *trans,
     iq->usedb = usedb;
 
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
-        logmsg(LOGMSG_ERROR, "%s: rcode %d, genid 0x%llx\n", __func__, rc,
-               genid);
-        logmsg(LOGMSG_ERROR,
-               "Aborting schema change due to unexpected error\n");
+        logmsg(LOGMSG_ERROR, "%s: rcode %d, genid 0x%llx\n", __func__, rc, genid);
+        logmsg(LOGMSG_ERROR, "Aborting schema change due to unexpected error\n");
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
@@ -526,8 +521,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
     if (rc != 0 && rc != RC_INTERNAL_RETRY) {
         logmsg(LOGMSG_ERROR, "%s: rcode %d for update genid 0x%llx to 0x%llx\n",
                __func__, rc, oldgenid, newgenid);
-        logmsg(LOGMSG_ERROR,
-               "Aborting schema change due to unexpected error\n");
+        logmsg(LOGMSG_ERROR, "Aborting schema change due to unexpected error\n");
         iq->usedb->sc_abort = 1;
         MEMORY_SYNC;
         rc = 0; // should just fail SC
@@ -572,9 +566,9 @@ void sc_del_unused_files_tran(struct dbtable *db, tran_type *tran)
     Pthread_mutex_unlock(&gbl_sc_lock);
 
     if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DELAYED_OLDFILE_CLEANUP)) {
-        if (bdb_list_unused_files_tran(db->handle, tran, &bdberr,
-                                       "schemachange") ||
-            bdberr != BDBERR_NOERROR)
+        if (bdb_list_unused_files_tran(
+                db->handle, tran, &bdberr, 
+                "schemachange") || bdberr != BDBERR_NOERROR)
             logmsg(LOGMSG_WARN, "%s: errors listing old files\n", __func__);
     } else {
         if (bdb_del_unused_files_tran(db->handle, tran, &bdberr) ||
@@ -805,16 +799,14 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran);
         dyns_cleanup_globals();
         if (rc) {
-            logmsg(LOGMSG_FATAL, "%s: error adding table "
-                                 "%s.\n",
+            logmsg(LOGMSG_FATAL, "%s: error adding table %s.\n",
                    __func__, table);
             exit(1);
         }
     } else if (type == drop) {
         logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", table);
         if (delete_table_rep((char *)table, tran)) {
-            logmsg(LOGMSG_FATAL, "%s: error deleting table "
-                                 " %s.\n",
+            logmsg(LOGMSG_FATAL, "%s: error deleting table  %s.\n",
                    __func__, table);
             exit(1);
         }
@@ -856,8 +848,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         type == bulkimport || type == user_view) {
         if (create_sqlmaster_records(tran)) {
             logmsg(LOGMSG_FATAL,
-                   "create_sqlmaster_records: error creating sqlite "
-                   "master records for %s.\n",
+                   "create_sqlmaster_records: error creating sqlite master records for %s.\n",
                    table);
             exit(1);
         }

@@ -40,7 +40,7 @@ int sc_request_disallowed(SBUF2 *sb);
 
 int sc_cmp_fileids(unsigned long long a, unsigned long long b);
 
-int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
+int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert);

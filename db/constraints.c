@@ -338,8 +338,7 @@ static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
     return 0;
 }
 
-inline int should_skip_constraint_for_index(struct dbtable *db, int ixnum,
-                                            int nulls)
+inline int skip_lookup_for_nullfkey(const struct dbtable *db, int ixnum, int nulls)
 {
     return (nulls && (gbl_nullfkey || db->ix_nullsallowed[ixnum]));
 }
@@ -510,7 +509,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 continue; /* just move on, there should be nothing to check */
             }
 
-            if (should_skip_constraint_for_index(iq->usedb, rixnum, nulls)) {
+            if (skip_lookup_for_nullfkey(iq->usedb, rixnum, nulls)) {
                 if (iq->debug)
                     reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
                                   "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
@@ -744,11 +743,10 @@ int verify_del_constraints(struct ireq *iq, block_state_t *blkstate,
         }
 
         /* Ignore records with null columns if nullfkey is set */
-        if (should_skip_constraint_for_index(iq->usedb, bct->sixnum, nullck)) {
+        if (skip_lookup_for_nullfkey(iq->usedb, bct->sixnum, nullck)) {
             if (iq->debug) {
                 reqprintf(iq,
-                          "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
-                          "REF %s INDEX %d.",
+                          "VERBKYCNSTRT NULL COLUMN PREVENTS FOREIGN REF %s INDEX %d.",
                           bct->tablename, bct->sixnum);
             }
             continue; /* TODO: why do we not get next? */
@@ -1518,8 +1516,7 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                     char fkey[MAXKEYLEN];
                     char fondisk_tag[MAXTAGLEN];
 
-                    struct dbtable *ftable =
-                        get_dbtable_by_name(ct->table[ridx]);
+                    struct dbtable *ftable = get_dbtable_by_name(ct->table[ridx]);
                     if (ftable == NULL) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT BAD TABLE %s\n",
@@ -1532,8 +1529,7 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                         close_constraint_table_cursor(cur);
                         return ERR_BADREQ;
                     }
-                    rc = getidxnumbyname(ftable->tablename, ct->keynm[ridx],
-                                         &fixnum);
+                    rc = getidxnumbyname(ftable->tablename, ct->keynm[ridx], &fixnum);
                     if (rc) {
                         if (iq->debug)
                             reqprintf(iq, "VERKYCNSTRT: UNKNOWN KEYTAG %s",
@@ -1591,8 +1587,7 @@ int verify_add_constraints(struct ireq *iq, block_state_t *blkstate,
                     currdb = iq->usedb;
                     iq->usedb = ftable;
 
-                    if (should_skip_constraint_for_index(iq->usedb, fixnum,
-                                                         nulls))
+                    if (skip_lookup_for_nullfkey(iq->usedb, fixnum, nulls))
                         rc = IX_FND;
                     else
                         rc = ix_find_by_key_tran(iq, fkey, fixlen, fixnum, key,
@@ -2163,16 +2158,19 @@ int populate_reverse_constraints(struct dbtable *db)
     return n_errors;
 }
 
-int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
-                                char *lcl_tag, char *lcl_key, char *tblname,
-                                void *trans, int *remote_ri)
+/* Iterate over all constraints which a key has 
+ * more of the time there is one such constraint but there
+ * can be multiple such rules */
+int check_single_key_constraint(struct ireq *ruleiq, const constraint_t *ct,
+                                const char *lcl_tag, const char *lcl_key,
+                                const char *tblname, void *trans, int *remote_ri)
 {
     int rc = 0;
     if (remote_ri)
         *remote_ri = 0;
+
     for (int ri = 0; ri < ct->nrules; ri++) {
         int ridx;
-        int rixlen;
         char rkey[MAXKEYLEN];
         char rtag[MAXTAGLEN];
         int nulls;
@@ -2184,14 +2182,16 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
         rc = getidxnumbyname(ct->table[ri], ct->keynm[ri], &ridx);
         if (rc != 0)
             return ERR_CONSTR;
-        snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", ridx);
+
+        int len = snprintf(rtag, sizeof rtag, ".ONDISK_IX_%d", ridx);
+        if (len >= sizeof rtag)
+            return ERR_BUF_TOO_SMALL;
 
         /* Key -> Key : local table -> referenced table */
-        rixlen = rc =
-            stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
-                                  rtag, rkey, &nulls, FK2PK);
+        int rixlen = stag_to_stag_buf_ckey(tblname, lcl_tag, lcl_key, ruledb->tablename,
+                                           rtag, rkey, &nulls, FK2PK);
 
-        if (-1 == rc)
+        if (-1 == rixlen)
             return ERR_CONSTR;
 
         if (ruledb->ix_collattr[ridx]) {
@@ -2202,15 +2202,15 @@ int check_single_key_constraint(struct ireq *ruleiq, constraint_t *ct,
             }
         }
 
-        if (should_skip_constraint_for_index(ruledb, ridx, nulls)) {
-            rc = IX_FND;
-        } else {
-            ruleiq->usedb = ruledb;
-            unsigned long long genid;
-            int fndrrn;
-            rc = ix_find_by_key_tran(ruleiq, rkey, rixlen, ridx, NULL, &fndrrn,
-                                     &genid, NULL, NULL, 0, trans);
+        if (skip_lookup_for_nullfkey(ruledb, ridx, nulls)) {
+            continue;
         }
+
+        ruleiq->usedb = ruledb;
+        unsigned long long genid;
+        int fndrrn;
+        rc = ix_find_by_key_tran(ruleiq, rkey, rixlen, ridx, NULL, &fndrrn,
+                                 &genid, NULL, NULL, 0, trans);
 
         if (rc != IX_FND && rc != IX_FNDMORE) {
             if (remote_ri)
@@ -2279,7 +2279,7 @@ int convert_key_to_foreign_key(constraint_t *ct, char *lcl_tag, char *lcl_key,
         }
     }
 
-    if (should_skip_constraint_for_index(ruledb, *ridx, nulls)) {
+    if (skip_lookup_for_nullfkey(ruledb, *ridx, nulls)) {
         *skip = 1;
     }
     return 0;
