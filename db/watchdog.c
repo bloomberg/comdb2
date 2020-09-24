@@ -403,7 +403,7 @@ static void *watchdog_thread(void *arg)
                 free_connection_info(conn_infos, conn_count);
                 if (slow_count > 0) {
                     bdb_dump_threads_and_maybe_abort(
-                        thedb->bdb_env, gbl_client_abort_on_slow);
+                        thedb->bdb_env, 0, gbl_client_abort_on_slow);
                 }
             } else {
                 logmsg(LOGMSG_ERROR, "%s: gather_connection_info rc=%d\n",
@@ -433,40 +433,10 @@ void watchdog_enable(void)
     gbl_nowatch = 0;
 }
 
-void lock_info_lockers(FILE *out, bdb_state_type *bdb_state);
-
 void comdb2_die(int aborat)
 {
-    pid_t pid;
-    char pstack_cmd[128];
-
-    /* we have 60 seconds to "print useful stuff" */
-    alarm(60);
-
-    logmsg(LOGMSG_FATAL, "Getting ready to die, printing useful debug info.\n");
-
-    lock_info_lockers(stderr, thedb->bdb_env);
-
-    /* print some useful stuff */
-
-    thd_dump();
-
-    pid = getpid();
-    if (snprintf(pstack_cmd, sizeof(pstack_cmd), "pstack %d", (int)pid) >=
-        sizeof(pstack_cmd)) {
-        logmsg(LOGMSG_WARN, "pstack cmd too long for buffer\n");
-    } else {
-        int lrc = system(pstack_cmd);
-        if (lrc) {
-            logmsg(LOGMSG_ERROR, "ERROR: %s:%d system() returns rc = %d\n",
-                   __FILE__,__LINE__, lrc);
-        }
-    }
-
-    if (aborat)
-        abort();
-    else
-        _exit(1);
+    bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 1, aborat);
+    _exit(1);
 }
 
 static void *watchdog_watcher_thread(void *arg)
