@@ -50,6 +50,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
     thd->sqldb = NULL;
     thd->stmt_caching_table = NULL;
     thd->have_lastuser = 0;
+    thd->query_preparer_running = 0;
 
     start_sql_thread();
 
