@@ -248,7 +248,10 @@ static const luaL_Reg tran_funcs[] = {
     {"begin", db_begin},
     {"commit", db_commit},
     {"rollback", db_rollback},
-    {"create_thread", db_create_thread}, // not tran func; same visibility
+    {NULL, NULL}};
+
+static const luaL_Reg thd_funcs[] = {
+    {"create_thread", db_create_thread},
     {NULL, NULL}};
 
 /*
@@ -3160,13 +3163,11 @@ static int process_src(Lua L, const char *src, char **err)
     return 0;
 }
 
-static int have_tran_funcs(Lua L)
+static void add_tran_funcs(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
-    lua_getfield(L, -1, "begin");
-    int have = !lua_isnil(L, -1);
-    lua_pop(L, 2);
-    return have;
+    luaL_openlib(L, NULL, tran_funcs, 0);
+    lua_pop(L, 1);
 }
 
 static void remove_tran_funcs(Lua L)
@@ -3179,11 +3180,19 @@ static void remove_tran_funcs(Lua L)
     lua_pop(L, 1);
 }
 
-static void remove_create_thread(Lua L)
+static void add_thd_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    luaL_openlib(L, NULL, thd_funcs, 0);
+    lua_pop(L, 1);
+}
+
+static void remove_thd_funcs(Lua L)
 {
     luaL_getmetatable(L, dbtypes.db);
     lua_pushnil(L);
     lua_setfield(L, -2, "create_thread");
+    lua_pop(L, 1);
 }
 
 static void remove_consumer(Lua L)
@@ -3191,6 +3200,7 @@ static void remove_consumer(Lua L)
     luaL_getmetatable(L, dbtypes.db);
     lua_pushnil(L);
     lua_setfield(L, -2, "consumer");
+    lua_pop(L, 1);
 }
 
 static void remove_emit(Lua L)
@@ -3198,23 +3208,21 @@ static void remove_emit(Lua L)
     luaL_getmetatable(L, dbtypes.db);
     lua_pushnil(L);
     lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
 
     luaL_getmetatable(L, dbtypes.dbstmt);
     lua_pushnil(L);
     lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
 }
 
 static void update_tran_funcs(Lua L, struct sqlclntstate *clnt)
 {
-    int have = have_tran_funcs(L);
     if (in_client_trans(clnt)) {
-        if (have) remove_tran_funcs(L);
-        return;
+        remove_tran_funcs(L);
+    } else {
+        add_tran_funcs(L);
     }
-    if (have) return;
-    luaL_getmetatable(L, dbtypes.db);
-    luaL_openlib(L, NULL, tran_funcs, 0);
-    lua_pop(L, 1);
 }
 
 static void drop_temp_tables(SP sp)
@@ -3334,8 +3342,9 @@ static int db_create_thread_int(Lua lua, const char *funcname)
         goto bad;
     }
     Lua newlua = newsp->lua;
-    update_tran_funcs(newlua, sp->clnt);
-    remove_create_thread(newlua);
+    remove_consumer(newlua);
+    remove_thd_funcs(newlua);
+    add_tran_funcs(newlua);
 
     lua_sethook(newlua, InstructionCountHook, 0, 1); /*This means no hook.*/
 
@@ -4881,54 +4890,54 @@ static int db_bootstrap(Lua L)
 }
 
 static const luaL_Reg db_funcs[] = {
-    {"exec", db_exec},
-    {"prepare", db_prepare},
-    {"table", db_table},
+    {"bind", db_bind},
     {"cast", db_cast},
-    {"csv_to_table", db_csv_to_table},
-    {"json_to_table", db_json_to_table},
-    {"table_to_json", db_table_to_json},
-    {"emit", db_emit},
-    {"emiterror", db_emiterror},
     {"column_name", db_column_name},
     {"column_type", db_column_type},
-    {"num_columns", db_num_columns},
-    {"reset", db_reset},
-    {"get_trans", db_get_trans},
     {"copyrow", db_copyrow},
-    {"print", db_print},
-    {"isnull", db_isnull},
-    {"setnull", db_setnull},
-    {"settyped", db_settyped},
-    {"setmaxinstructions", db_setmaxinstructions},
-    {"getinstructioncount", db_getinstructioncount},
-    {"now", db_now},
-    {"settimezone", db_settimezone},
-    {"gettimezone", db_gettimezone},
-    {"setdatetimeprecision", db_setdatetimeprecision},
+    {"csv_to_table", db_csv_to_table},
+    {"emit", db_emit},
+    {"emiterror", db_emiterror},
+    {"error", db_error},
+    {"exec", db_exec},
+    {"get_trans", db_get_trans},
     {"getdatetimeprecision", db_getdatetimeprecision},
     {"getdbname", db_getdbname},
-    {"bind", db_bind},
+    {"getinstructioncount", db_getinstructioncount},
+    {"gettimezone", db_gettimezone},
+    {"isnull", db_isnull},
+    {"json_to_table", db_json_to_table},
+    {"now", db_now},
     {"null", db_null},
     {"NULL", db_null}, // why upper-case? -- deprecate
+    {"num_columns", db_num_columns},
+    {"prepare", db_prepare},
+    {"print", db_print},
+    {"reset", db_reset},
+    {"setdatetimeprecision", db_setdatetimeprecision},
+    {"setmaxinstructions", db_setmaxinstructions},
+    {"setnull", db_setnull},
+    {"settimezone", db_settimezone},
+    {"settyped", db_settyped},
     {"sp", db_sp},
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
-    {"error", db_error},
+    {"table", db_table},
+    {"table_to_json", db_table_to_json},
     #ifdef WITH_RDKAFKA
-        {"kafka_publish", kafka_publish},
+    {"kafka_publish", kafka_publish},
     #endif
     /************ CONSUMER/TRIGGER ************/
     {"consumer", db_consumer},
-    {"get_event_tid", db_get_event_tid},
     {"get_event_epoch", db_get_event_epoch},
     {"get_event_sequence", db_get_event_sequence},
+    {"get_event_tid", db_get_event_tid},
     /************** DEBUG ***************/
-    {"debug", db_debug},
     {"db_debug", db_db_debug},
+    {"debug", db_debug},
     {"trace", db_trace},
     /************ INTERNAL **************/
-    {"sleep", db_sleep},
     {"bootstrap", db_bootstrap},
+    {"sleep", db_sleep},
     {NULL, NULL}
 };
 
@@ -5074,6 +5083,7 @@ static int create_sp_int(SP sp, char **err)
     init_dbthread_funcs(lua);
     init_dbconsumer_funcs(lua);
     init_dbtypes(lua);
+    add_thd_funcs(lua);
 
     lua_newtable(lua);
     lua_setglobal(lua, "_SP");
@@ -6680,16 +6690,42 @@ static int sqlite_to_lua(Lua L, const char *tz, int argc, sqlite3_value **argv)
     return 0;
 }
 
-static int emit_sqlite_result(Lua L, sqlite3_context *context)
+static int emit_sqlite_result(struct sqlclntstate *clnt, sqlite3_context *context)
 {
+    Lua L = clnt->sp->lua;
     if (lua_gettop(L) != 1) {
-        sqlite3_result_error(context, "attempt to return multiple values", -1);
+        sqlite3_result_error(context, "bad number of return values", -1);
         return -1;
     }
-
     return lua_to_sqlite(L, context);
 }
 
+/* This runs some Lua code in context of on-going SQL stmt. Should not
+ * start/commit/rollback ongoing transaction. Calling SQL stmt will cleanup on
+ * error. */
+static int run_func(struct sqlclntstate *clnt, int argcnt, char **err, int final)
+{
+    Lua L = clnt->sp->lua;
+    add_thd_funcs(L);
+    int rc = lua_pcall(L, argcnt, LUA_MULTRET, 0);
+    join_threads(clnt->sp);
+    if (final) {
+        reset_stmts(clnt->sp);
+        drop_temp_tables(clnt->sp);
+    }
+    if (rc) {
+        if (lua_gettop(L) > 0 && !lua_isnil(L, -1)) {
+            *err = strdup(luabb_tostring(L, -1));
+        } else {
+            *err = strdup("lua function failed");
+        }
+    }
+    return rc;
+}
+
+/* TODO: This needs to be more robust - perhaps a hash table of Lua VMs per UDF
+ * allowing us to invoke multiple UDFs per SQL statement. Also, test running
+ * SQL stmts in a UDF, which invoke other UDFs. Does nesting work? */
 static int lua_final_int(char *spname, char **err, struct sqlthdstate *thd,
                          struct sqlclntstate *clnt, sqlite3_context *context)
 {
@@ -6700,11 +6736,8 @@ static int lua_final_int(char *spname, char **err, struct sqlthdstate *thd,
         return -1;
     }
     Lua L = clnt->sp->lua;
-    get_func_by_name(L, "final", err);
-
-    if ((rc = run_sp(clnt, 0, err)) != 0) return rc;
-
-    return emit_sqlite_result(L, context);
+    if ((rc = get_func_by_name(L, "final", err)) != 0) return rc;
+    return run_func(clnt, 0, err, 1);
 }
 
 static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
@@ -6715,21 +6748,16 @@ static int lua_step_int(char *spname, char **err, struct sqlthdstate *thd,
     if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
-
     if (new_vm) {
-        if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+        remove_emit(L);
+        remove_consumer(L);
         remove_tran_funcs(L);
+        if ((rc = process_src(L, sp->src, err)) != 0) return rc;
     }
-
-    get_func_by_name(L, "step", err);
-
-    if ((rc = sqlite_to_lua(L, clnt->tzname, argc, argv)) != 0) {
-        return rc;
-    }
-
+    if ((rc = get_func_by_name(L, "step", err)) != 0) return rc;
+    if ((rc = sqlite_to_lua(L, clnt->tzname, argc, argv)) != 0) return rc;
     sp->num_instructions = 0;
-
-    return run_sp(clnt, argc, err);
+    return run_func(clnt, argc, err, 0);
 }
 
 static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
@@ -6740,18 +6768,14 @@ static int lua_func_int(char *spname, char **err, struct sqlthdstate *thd,
     if ((rc = setup_sp(spname, thd, clnt, &new_vm, err)) != 0) return rc;
     Lua L = clnt->sp->lua;
     SP sp = clnt->sp;
-    if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+    remove_emit(L);
+    remove_consumer(L);
     remove_tran_funcs(L);
-
-    get_func_by_name(L, spname, err);
-
+    if ((rc = process_src(L, sp->src, err)) != 0) return rc;
+    if ((rc = get_func_by_name(L, spname, err)) != 0) return rc;
     if ((rc = sqlite_to_lua(L, clnt->tzname, argc, argv)) != 0) return rc;
-
     sp->num_instructions = 0;
-
-    if ((rc = run_sp(clnt, argc, err)) != 0) return rc;
-
-    return emit_sqlite_result(L, context);
+    return run_func(clnt, argc, err, 1);
 }
 
 static int exec_thread_int(struct sqlthdstate *thd, struct sqlclntstate *clnt)
@@ -6849,6 +6873,7 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
     if (new_vm == 0) return 0;
 
     remove_tran_funcs(L);
+    remove_thd_funcs(L);
     remove_consumer(L);
     remove_emit(L);
 
@@ -6896,6 +6921,11 @@ int db_verify_table_callback(void *v, const char *buf)
     char *row[] = {(char*)buf};
     write_response(sp->clnt, RESPONSE_ROW_STR, row, 1);
     return 0;
+}
+
+int is_pingpong(struct sqlclntstate *clnt)
+{
+    return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
 }
 
 void close_sp(struct sqlclntstate *clnt)
@@ -7096,9 +7126,4 @@ int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **er
         reset_sp(clnt->sp);
     }
     return rc;
-}
-
-int is_pingpong(struct sqlclntstate *clnt)
-{
-    return ((clnt->sp == NULL) ? 0 : clnt->sp->pingpong);
 }
