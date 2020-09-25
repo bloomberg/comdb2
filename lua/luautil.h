@@ -24,9 +24,9 @@ const char *luabb_pushfstring(lua_State *lua, char *fmt, ...);
 void luabb_dumpcstack_(Lua);
 #define luabb_dumpcstack(L)                                                    \
     do {                                                                       \
-        logmsg(LOGMSG_DEBUG, "\n---- %s @ %s:%d ----\n", __func__, __FILE__, __LINE__);      \
+        logmsg(LOGMSG_USER, "\n---- %s @ %s:%d ----\n", __func__, __FILE__, __LINE__);      \
         luabb_dumpcstack_(L);                                                  \
-        logmsg(LOGMSG_DEBUG, "---- luabb_dumpcstack finished ----\n\n");                     \
+        logmsg(LOGMSG_USER, "---- luabb_dumpcstack finished ----\n\n");                     \
     } while (0)
 int luabb_istype(lua_State *lua, int index, dbtypes_enum);
 int luabb_error(lua_State *lua, struct stored_proc *sp, const char *fmt, ...);

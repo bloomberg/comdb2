@@ -116,48 +116,48 @@ void luabb_dumpcstack_(Lua lua)
     int top = lua_gettop(lua);
 
     for (i = top; i;  --i) {
-        logmsg(LOGMSG_DEBUG, "%2d: ", i);
+        logmsg(LOGMSG_USER, "%2d: ", i);
         switch (lua_type(lua, i)) {
         case LUA_TNIL:
-            logmsg(LOGMSG_DEBUG, "nil\n");
+            logmsg(LOGMSG_USER, "nil\n");
             break;
         case LUA_TBOOLEAN:
-            logmsg(LOGMSG_DEBUG, "boolean: %s\n", lua_toboolean(lua, i) == 0 ? "false" : "true");
+            logmsg(LOGMSG_USER, "boolean: %s\n", lua_toboolean(lua, i) == 0 ? "false" : "true");
             break;
         case LUA_TLIGHTUSERDATA:
-            logmsg(LOGMSG_DEBUG, "lightuserdata\n");
+            logmsg(LOGMSG_USER, "lightuserdata\n");
             break;
         case LUA_TNUMBER:
-            logmsg(LOGMSG_DEBUG, "number: %f\n", lua_tonumber(lua, i));
+            logmsg(LOGMSG_USER, "number: %f\n", lua_tonumber(lua, i));
             break;
         case LUA_TSTRING:
-            logmsg(LOGMSG_DEBUG, "string: \"%s\"\n", lua_tostring(lua, i));
+            logmsg(LOGMSG_USER, "string: \"%s\"\n", lua_tostring(lua, i));
             break;
         case LUA_TTABLE:
-            logmsg(LOGMSG_DEBUG, "table\n");
+            logmsg(LOGMSG_USER, "table\n");
             break;
         case LUA_TFUNCTION:
-            logmsg(LOGMSG_DEBUG, "function\n");
+            logmsg(LOGMSG_USER, "function\n");
             break;
         case LUA_TTHREAD:
-            logmsg(LOGMSG_DEBUG, "thread\n");
+            logmsg(LOGMSG_USER, "thread\n");
             break;
         case LUA_TUSERDATA: {
             dbtypes_enum luabb_dbtype(lua_State *, int index);
             dbtypes_enum t = luabb_dbtype(lua, i);
             if (t >= DBTYPES_MAXTYPE) {
-                logmsg(LOGMSG_DEBUG, "invalid type\n");
+                logmsg(LOGMSG_USER, "invalid type\n");
             } else {
                 if (dbtypes_tostring[t]) {
-                    logmsg(LOGMSG_DEBUG, "%s: %s\n", dbtypes_str[t], luabb_tostring(lua, i));
+                    logmsg(LOGMSG_USER, "%s: %s\n", dbtypes_str[t], luabb_tostring(lua, i));
                 } else {
-                    logmsg(LOGMSG_DEBUG, "%s\n", dbtypes_str[t]);
+                    logmsg(LOGMSG_USER, "%s\n", dbtypes_str[t]);
                 }
             }
             break;
         }
         default:
-            logmsg(LOGMSG_ERROR, "unknown type %d\n",lua_type(lua, i));
+            logmsg(LOGMSG_USER, "unknown type %d\n",lua_type(lua, i));
             break;
 
         }
