@@ -2403,11 +2403,13 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
     int rc = 0;
     if (rowlocks) {
         assert(parent);
-        rc = trans_abort(iq, bdb_get_physical_tran(parent));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
-                   __LINE__, rc);
-            comdb2_die(1);
+        /* Check if we started a physical transaction. */
+        if (bdb_get_physical_tran(parent) != NULL) {
+            rc = trans_abort(iq, bdb_get_physical_tran(parent));
+            if (rc != 0) {
+                logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__, __LINE__, rc);
+                comdb2_die(1);
+            }
         }
         parent = bdb_get_sc_parent_tran(parent);
     }
@@ -2445,6 +2447,12 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
             logmsg(LOGMSG_ERROR, "%s:%d TD %ld TRANS_ABORT FAILED RC %d\n",
                    __func__, __LINE__, pthread_self(), rc);
         }
+    } else if (parent && !rowlocks) {
+        /*
+        ** We didn't start an sc logical transaction.
+        ** Just abort the parent transcation here.
+        */
+        trans_abort(iq, parent);
     }
     iq->sc_logical_tran = NULL;
 }
@@ -2887,6 +2895,16 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                 GOTOBACKOUT;
             }
         }
+    }
+
+    if (debug_switch_test_ddl_backout_nomaster()) {
+        rc = ERR_NOMASTER;
+        GOTOBACKOUT;
+    }
+
+    if (debug_switch_test_ddl_backout_deadlock()) {
+        rc = RC_INTERNAL_RETRY;
+        GOTOBACKOUT;
     }
 
     if (irc != 0) {
@@ -5558,6 +5576,8 @@ add_blkseq:
                                        bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int),
                                        &replay_data, &replay_len);
+                if (debug_switch_test_ddl_backout_blkseq())
+                    rc = -1;
             }
 
             /* force a parent-deadlock for cdb2tcm */
