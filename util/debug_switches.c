@@ -71,6 +71,9 @@ static struct debug_switches {
     int net_delay;
     int scconvert_finish_delay;
     int fake_sc_replication_timeout;
+    int test_ddl_backout_nomaster;
+    int test_ddl_backout_deadlock;
+    int test_ddl_backout_blkseq;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -121,6 +124,9 @@ int init_debug_switches(void)
     debug_switches.net_delay = 0;
     debug_switches.scconvert_finish_delay = 0;
     debug_switches.fake_sc_replication_timeout = 0;
+    debug_switches.test_ddl_backout_nomaster = 0;
+    debug_switches.test_ddl_backout_deadlock = 0;
+    debug_switches.test_ddl_backout_blkseq = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -220,6 +226,12 @@ int init_debug_switches(void)
     register_int_switch("fake_sc_replication_timeout", "Fake a replication timeout on finalize schemachange. ",
                         &debug_switches.fake_sc_replication_timeout);
 
+    register_int_switch("test_ddl_backout_nomaster", "Force a NOMASTER error in toblock.",
+                        &debug_switches.test_ddl_backout_nomaster);
+    register_int_switch("test_ddl_backout_deadlock", "Force a deadlock in toblock.",
+                        &debug_switches.test_ddl_backout_deadlock);
+    register_int_switch("test_ddl_backout_blkseq", "Force a blkseq error in toblock.",
+                        &debug_switches.test_ddl_backout_blkseq);
     return 0;
 }
 
@@ -406,4 +418,16 @@ int debug_switch_scconvert_finish_delay(void)
 int debug_switch_fake_sc_replication_timeout(void)
 {
     return debug_switches.fake_sc_replication_timeout;
+}
+int debug_switch_test_ddl_backout_nomaster(void)
+{
+    return debug_switches.test_ddl_backout_nomaster;
+}
+int debug_switch_test_ddl_backout_deadlock(void)
+{
+    return debug_switches.test_ddl_backout_deadlock;
+}
+int debug_switch_test_ddl_backout_blkseq(void)
+{
+    return debug_switches.test_ddl_backout_blkseq;
 }
