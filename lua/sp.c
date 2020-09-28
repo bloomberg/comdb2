@@ -2342,16 +2342,21 @@ static void lua_another_step(struct sqlclntstate *clnt,
 static void lua_end_step(struct sqlclntstate *clnt, SP sp,
                          sqlite3_stmt *pStmt)
 {
-    int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
-    if ((sp != NULL) && (pVdbe != NULL)) {
+    /* Check whether fingerprint has already been computed. */
+    if ((pVdbe == NULL) || (pVdbe->fingerprint_added == 1)) {
+        return;
+    }
+
+    if (sp != NULL) {
         const char *zNormSql = sqlite3_normalized_sql(pStmt);
 
         if (zNormSql != NULL) {
             double cost = 0.0;
             int64_t prepMs = 0;
             int64_t timeMs;
+            int64_t time = comdb2_time_epochms();
 
             clnt_query_cost(sp->thd, &cost, &prepMs);
             timeMs = time - pVdbe->luaStartTime + prepMs;
@@ -2366,6 +2371,8 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
             clnt->spcost.time += timeMs;
             clnt->spcost.prepTime += prepMs;
             clnt->spcost.rows += pVdbe->luaRows;
+
+            pVdbe->fingerprint_added = 1;
         }
 
         restore_thd_cost_and_reset(sp->thd, pVdbe);
@@ -2468,6 +2475,8 @@ static int luatable_emit(Lua L)
     } else {
         return luaL_error(L, "attempt to emit row without defining columns");
     }
+    /* NC: Should we iterate over all the rows here and call lua_end_step()
+       (like dbstmt_emit()) ? */
     int rc = l_send_back_row(L, stmt, cols);
     lua_pushinteger(L, rc);
     return 1;
@@ -3452,7 +3461,13 @@ static int join_threads(SP sp)
 static int dbstmt_free(Lua L)
 {
     dbstmt_t *stmt = lua_touserdata(L, -1);
-    donate_stmt(getsp(L), stmt);
+    SP sp = getsp(L);
+
+    /* Compute and add fingerprint for this statement in case it wasn't
+       done already. */
+    lua_end_step(sp->clnt, sp, stmt->stmt);
+
+    donate_stmt(sp, stmt);
     return 0;
 }
 
