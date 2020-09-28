@@ -207,52 +207,12 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->status);
 }
 
-static int db_emiterror(lua_State *lua);
-static int db_emit(lua_State *lua);
-static int db_column_name(lua_State *lua);
-static int db_column_type(lua_State *lua);
-static int db_num_columns(lua_State *lua);
-static int db_trace(lua_State *lua);
-static int db_print(lua_State *lua);
-static int db_isnull(lua_State *lua);
-static int db_setnull(Lua);
-static int db_settyped(Lua);
-static int db_setmaxinstructions(lua_State *lua);
-static int db_getinstructioncount(lua_State *lua);
-static int db_now(Lua lua);
-static int db_copyrow(lua_State *lua);
-static int db_settimezone(lua_State *lua);
-static int db_gettimezone(Lua L);
-static int db_bind(Lua L);
 static int db_exec(Lua);
 static int dbstmt_emit(Lua);
-static int db_prepare(Lua lua);
-static int db_create_thread(Lua L);
-static int db_table(lua_State *lua);
-static int db_cast(Lua L);
-static int db_sleep(Lua lua);
-static int db_csv_to_table(Lua L);
-static int db_json_to_table(Lua lua);
-static int db_table_to_json(Lua L);
-static int db_get_trans(Lua lua);
-static int db_NULL(Lua L);
-static int db_sqlerror(lua_State *lua);
-static int db_debug(lua_State *lua);
-static int db_db_debug(Lua lua);
-static int db_begin(Lua L);
-static int db_commit(Lua L);
-static int db_rollback(Lua L);
-static int db_bootstrap(Lua);
 
-static const luaL_Reg tran_funcs[] = {
-    {"begin", db_begin},
-    {"commit", db_commit},
-    {"rollback", db_rollback},
-    {NULL, NULL}};
-
-static const luaL_Reg thd_funcs[] = {
-    {"create_thread", db_create_thread},
-    {NULL, NULL}};
+static void add_tran_funcs(Lua);
+static void remove_consumer(Lua);
+static void remove_thd_funcs(Lua);
 
 /*
 ** n1: namespace - main, temp, fdb ...
@@ -2732,8 +2692,7 @@ static void reset_stmt(SP sp, dbstmt_t *dbstmt)
 static void reset_stmts(SP sp)
 {
     dbstmt_t *dbstmt, *tmp;
-    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
-    {
+    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
         reset_stmt(sp, dbstmt);
     }
 }
@@ -2901,6 +2860,8 @@ static void *dispatch_lua_thread(void *arg)
     clnt.dbtran.trans_has_sp = 1;
     clnt.queue_me = 1;
     strcpy(clnt.tzname, parent_clnt->tzname);
+    /* TODO: This needs to be more robust - we shouldn't enqueue into SQL thd
+     * pool. Perhaps a dedicated pool for sp thds */
     int rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT); // --> exec_thread()
     /* Done running -- wake up anyone blocked on join */
     Pthread_mutex_lock(&thd->lua_thread_mutex);
@@ -3161,68 +3122,6 @@ static int process_src(Lua L, const char *src, char **err)
     // TODO FIXME XXX: HOW IS THERE CRAP ON THE STACK HERE??
     lua_settop(L, 0);
     return 0;
-}
-
-static void add_tran_funcs(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    luaL_openlib(L, NULL, tran_funcs, 0);
-    lua_pop(L, 1);
-}
-
-static void remove_tran_funcs(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    for (int i = 0; tran_funcs[i].name; ++i) {
-        lua_pushnil(L);
-        lua_setfield(L, -2, tran_funcs[i].name);
-    }
-    lua_pop(L, 1);
-}
-
-static void add_thd_funcs(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    luaL_openlib(L, NULL, thd_funcs, 0);
-    lua_pop(L, 1);
-}
-
-static void remove_thd_funcs(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "create_thread");
-    lua_pop(L, 1);
-}
-
-static void remove_consumer(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "consumer");
-    lua_pop(L, 1);
-}
-
-static void remove_emit(Lua L)
-{
-    luaL_getmetatable(L, dbtypes.db);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "emit");
-    lua_pop(L, 1);
-
-    luaL_getmetatable(L, dbtypes.dbstmt);
-    lua_pushnil(L);
-    lua_setfield(L, -2, "emit");
-    lua_pop(L, 1);
-}
-
-static void update_tran_funcs(Lua L, struct sqlclntstate *clnt)
-{
-    if (in_client_trans(clnt)) {
-        remove_tran_funcs(L);
-    } else {
-        add_tran_funcs(L);
-    }
 }
 
 static void drop_temp_tables(SP sp)
@@ -3636,32 +3535,6 @@ static int dbstmt_column_table_name(Lua L)
     return 1;
 }
 
-#if 0
-static int dbstmt_column_type(Lua L)
-{
-    GET_STMT_AND_COL();
-    const char *typestr = sqlite3_column_decltype(stmt, col);
-    int sqltype = typestr ? sqlite_str_to_type(typestr)
-                          : sqlite3_column_type(stmt, col);
-    char *type = NULL;
-    switch (sqltype) {
-    case SQLITE_INTEGER:        type = "int"; break;
-    case SQLITE_FLOAT:          type = "real"; break;
-    case SQLITE_BLOB:           type = "blob"; break;
-    case SQLITE_NULL:
-    case SQLITE_TEXT:           type = "text"; break;
-    case SQLITE_DATETIME:       type = "datetime"; break;
-    case SQLITE_INTERVAL_YM:    type = "intervalym"; break;
-    case SQLITE_INTERVAL_DS:    type = "intervalds"; break;
-    case SQLITE_DATETIMEUS:     type = "datetimeus"; break;
-    case SQLITE_INTERVAL_DSUS:  type = "intervaldsus"; break;
-    case SQLITE_DECIMAL:        type = "decimal"; break;
-    }
-    lua_pushstring(L, type);
-    return 1;
-}
-#endif
-
 static int dbstmt_rows_changed(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.dbstmt);
@@ -3978,13 +3851,40 @@ static int db_sleep(Lua lua)
     luaL_checknumber(lua, 2);
     int secs = lua_tonumber(lua, 2);
     while (secs > 0) {
-        --secs;
-        sleep(1);
         if (check_retry_conditions(lua, NULL, 1) != 0) {
             return luaL_error(lua, getsp(lua)->error);
         }
+        --secs;
+        sleep(1);
     }
     return 0;
+}
+
+static int db_sleepms(Lua lua)
+{
+    luaL_checkudata(lua, 1, dbtypes.db);
+    luaL_checknumber(lua, 2);
+    int ms = lua_tonumber(lua, 2);
+    while (ms > 1000) {
+        if (check_retry_conditions(lua, NULL, 1) != 0) {
+            return luaL_error(lua, getsp(lua)->error);
+        }
+        ms -= 1000;
+        sleep(1);
+    }
+    if (ms) {
+        struct timespec ts = {0};
+        ts.tv_nsec = ms * 1000 * 1000;
+        nanosleep(&ts, NULL);
+    }
+    return 0;
+}
+
+static int db_udf_error(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.db);
+    const char *err = luaL_checkstring(L, 2);
+    return luaL_error(L, err);
 }
 
 /*
@@ -4923,6 +4823,7 @@ static const luaL_Reg db_funcs[] = {
     {"sqlerror", db_error}, // every error isn't from SQL -- deprecate
     {"table", db_table},
     {"table_to_json", db_table_to_json},
+    {"udf_error", db_udf_error},
     #ifdef WITH_RDKAFKA
     {"kafka_publish", kafka_publish},
     #endif
@@ -4938,8 +4839,42 @@ static const luaL_Reg db_funcs[] = {
     /************ INTERNAL **************/
     {"bootstrap", db_bootstrap},
     {"sleep", db_sleep},
+    {"sleepms", db_sleepms},
     {NULL, NULL}
 };
+
+static const luaL_Reg tran_funcs[] = {
+    {"begin", db_begin},
+    {"commit", db_commit},
+    {"rollback", db_rollback},
+    {NULL, NULL}};
+
+static const luaL_Reg thd_funcs[] = {
+    {"create_thread", db_create_thread},
+    {NULL, NULL}};
+
+static const struct luaL_Reg dbtable_funcs[] = {
+    {"insert", dbtable_insert},
+    {"copyfrom", dbtable_copyfrom},
+    {"name", dbtable_name},
+    {"emit", dbtable_emit},
+    {"where", dbtable_where},
+    {NULL, NULL}
+};
+
+static const struct luaL_Reg dbstmt_funcs[] = {
+    {"__gc", dbstmt_free},
+    {"bind", dbstmt_bind},
+    {"close", dbstmt_close},
+    {"column_count", dbstmt_column_count},
+    {"column_name", dbstmt_column_name},
+    {"column_origin_name", dbstmt_column_origin_name},
+    {"column_table_name", dbstmt_column_table_name},
+    {"emit", dbstmt_emit},
+    {"exec", dbstmt_exec},
+    {"fetch", dbstmt_fetch},
+    {"rows_changed", dbstmt_rows_changed},
+    {NULL, NULL}};
 
 static void init_db_funcs(Lua L)
 {
@@ -4978,15 +4913,6 @@ static void init_db_funcs(Lua L)
     lua_setglobal(L, "db");
 }
 
-static const struct luaL_Reg dbtable_funcs[] = {
-    {"insert", dbtable_insert},
-    {"copyfrom", dbtable_copyfrom},
-    {"name", dbtable_name},
-    {"emit", dbtable_emit},
-    {"where", dbtable_where},
-    {NULL, NULL}
-};
-
 static void init_dbtable_funcs(Lua L)
 {
     luaL_newmetatable(L, dbtypes.dbtable);
@@ -4996,20 +4922,68 @@ static void init_dbtable_funcs(Lua L)
     lua_pop(L, 1);
 }
 
-static const struct luaL_Reg dbstmt_funcs[] = {
-    {"__gc", dbstmt_free},
-    {"bind", dbstmt_bind},
-    {"close", dbstmt_close},
-    {"column_count", dbstmt_column_count},
-    {"column_name", dbstmt_column_name},
-    {"column_origin_name", dbstmt_column_origin_name},
-    {"column_table_name", dbstmt_column_table_name},
-    /*{"column_type", dbstmt_column_type},*/
-    {"emit", dbstmt_emit},
-    {"exec", dbstmt_exec},
-    {"fetch", dbstmt_fetch},
-    {"rows_changed", dbstmt_rows_changed},
-    {NULL, NULL}};
+static void add_tran_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    luaL_openlib(L, NULL, tran_funcs, 0);
+    lua_pop(L, 1);
+}
+
+static void remove_tran_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    for (int i = 0; tran_funcs[i].name; ++i) {
+        lua_pushnil(L);
+        lua_setfield(L, -2, tran_funcs[i].name);
+    }
+    lua_pop(L, 1);
+}
+
+static void add_thd_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    luaL_openlib(L, NULL, thd_funcs, 0);
+    lua_pop(L, 1);
+}
+
+static void remove_thd_funcs(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "create_thread");
+    lua_pop(L, 1);
+}
+
+static void remove_consumer(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "consumer");
+    lua_pop(L, 1);
+}
+
+static void remove_emit(Lua L)
+{
+    luaL_getmetatable(L, dbtypes.db);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
+
+    luaL_getmetatable(L, dbtypes.dbstmt);
+    lua_pushnil(L);
+    lua_setfield(L, -2, "emit");
+    lua_pop(L, 1);
+}
+
+static void update_tran_funcs(Lua L, struct sqlclntstate *clnt)
+{
+    if (in_client_trans(clnt)) {
+        remove_tran_funcs(L);
+    } else {
+        add_tran_funcs(L);
+    }
+}
+
 
 static void init_dbstmt_funcs(Lua L)
 {
@@ -6728,10 +6702,9 @@ static int emit_sqlite_result(struct sqlclntstate *clnt, sqlite3_context *contex
 static int run_func(struct sqlclntstate *clnt, int argcnt, char **err, int final)
 {
     Lua L = clnt->sp->lua;
-    add_thd_funcs(L);
     int rc = lua_pcall(L, argcnt, LUA_MULTRET, 0);
     join_threads(clnt->sp);
-    if (final) {
+    if (final || rc) {
         reset_stmts(clnt->sp);
         drop_temp_tables(clnt->sp);
     }
@@ -6739,7 +6712,7 @@ static int run_func(struct sqlclntstate *clnt, int argcnt, char **err, int final
         if (lua_gettop(L) > 0 && !lua_isnil(L, -1)) {
             *err = strdup(luabb_tostring(L, -1));
         } else {
-            *err = strdup("lua function failed");
+            *err = strdup("UDF failed");
         }
     }
     return rc;
@@ -6975,6 +6948,7 @@ void lua_final(sqlite3_context *context)
     } else {
         emit_sqlite_result(clnt, context);
     }
+    free(err);
     if (state->sp == clnt->sp) {
         reset_sp(clnt->sp);
     } else {
@@ -7007,6 +6981,7 @@ void lua_step(sqlite3_context *context, int argc, sqlite3_value **argv)
     if (rc != 0) {
         sqlite3_result_error(context, err, -1);
     }
+    free(err);
     if (state->sp != clnt->sp) {
         if (state->sp) {
             swap_sp(&clnt->sp, &state->sp);
@@ -7031,6 +7006,7 @@ void lua_func(sqlite3_context *context, int argc, sqlite3_value **argv)
     } else {
         emit_sqlite_result(clnt, context);
     }
+    free(err);
     if (state.sp) {
         close_sp(clnt);
         restore_sp(clnt, &state);
