@@ -34,10 +34,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
         return -1;
     }
 
-    /* Stop everything */
-    stop_threads(thedb);
-    broadcast_quiesce_threads();
-
     /* Do the change.  If it works locally then assume that it will work
      * globally. */
     rc = dbqueuedb_add_consumer(db, consumern, method, 0);
@@ -45,10 +41,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     if (rc == 0) {
         rc = broadcast_add_consumer(queuename, consumern, method);
     }
-
-    /* Start up again. */
-    broadcast_resume_threads();
-    resume_threads(thedb);
 
     logmsg(LOGMSG_WARN, "consumer change %s-%d-%s %s\n", queuename, consumern,
            method, rc == 0 ? "SUCCESS" : "FAILED");

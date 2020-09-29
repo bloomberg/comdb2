@@ -1586,7 +1586,7 @@ dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
 
-    if (tbl->dbtype == DBTYPE_QUEUEDB) {
+    if (tbl->dbtype == DBTYPE_QUEUEDB || tbl->dbtype == DBTYPE_QUEUE) {
         Pthread_rwlock_init(&tbl->consumer_lk, NULL);
     }
 

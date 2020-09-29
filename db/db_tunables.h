@@ -1865,4 +1865,9 @@ REGISTER_TUNABLE("queue_walk_limit",
                  "(Default: 10000)",
                  TUNABLE_INTEGER, &gbl_queue_walk_limit, EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("debug_consumer_lock",
+                 "Enable debug-trace for consumer lock.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_consumer_lock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
