@@ -33,6 +33,7 @@ RUN apt-get update && \
     openssh-server \
     protobuf-c-compiler \
     psmisc \
+    pstack \
     socat \
     strace \
     tcl \
