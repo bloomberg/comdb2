@@ -3172,20 +3172,6 @@ void backend_update_sync(struct dbenv *dbenv)
     backend_sync_stat(dbenv);
 }
 
-void net_quiesce_threads(void *hndl, void *uptr, char *fromnode, int usertype,
-                         void *dta, int dtalen, uint8_t is_tcp)
-{
-    stop_threads(thedb);
-    net_ack_message(hndl, 0);
-}
-
-void net_resume_threads(void *hndl, void *uptr, char *fromnode, int usertype,
-                        void *dta, int dtalen, uint8_t is_tcp)
-{
-    resume_threads(thedb);
-    net_ack_message(hndl, 0);
-}
-
 /* yuk. */
 static int decode_schema_net_msg(void *hndl, void *dtap, int dtalen,
                                  char **table, char **csc2, char **fname,
@@ -3650,22 +3636,6 @@ int send_forgetmenot(void)
         return -1;
 }
 
-int broadcast_quiesce_threads(void)
-{
-    int dummy_msg = 0;
-
-    return send_to_all_nodes(&dummy_msg, sizeof(int), NET_QUIESCE_THREADS,
-                             MSGWAITTIME);
-}
-
-int broadcast_resume_threads(void)
-{
-    int dummy_msg = 0;
-
-    return send_to_all_nodes(&dummy_msg, sizeof(int), NET_RESUME_THREADS,
-                             MSGWAITTIME);
-}
-
 int broadcast_close_all_dbs(void)
 {
     return send_to_all_nodes(NULL, 0, NET_CLOSE_ALL_DBS, MSGWAITTIME);
@@ -3987,12 +3957,6 @@ int open_bdb_env(struct dbenv *dbenv)
         }
 
         /* callbacks for schema changes */
-        if (net_register_handler(dbenv->handle_sibling, NET_QUIESCE_THREADS,
-                                 "quiesce_threads", net_quiesce_threads))
-            return -1;
-        if (net_register_handler(dbenv->handle_sibling, NET_RESUME_THREADS,
-                                 "resume_threads", net_resume_threads))
-            return -1;
         if (net_register_handler(dbenv->handle_sibling, NET_NEW_QUEUE,
                                  "new_queue", net_new_queue))
             return -1;
@@ -4454,13 +4418,40 @@ void fix_blobstripe_genids(tran_type *tran)
     }
 }
 
+int gbl_instrument_consumer_lock = 0;
+
+void consumer_lock_read_int(dbtable *db, const char *func, int line)
+{
+    if (gbl_instrument_consumer_lock) {
+        logmsg(LOGMSG_USER, "%s:%d getting consumer readlock for %s\n", func, line, db->tablename);
+    }
+    Pthread_rwlock_rdlock(&db->consumer_lk);
+}
+
+void consumer_lock_write_int(dbtable *db, const char *func, int line)
+{
+    if (gbl_instrument_consumer_lock) {
+        logmsg(LOGMSG_USER, "%s:%d getting consumer writelock for %s\n", func, line, db->tablename);
+    }
+    Pthread_rwlock_wrlock(&db->consumer_lk);
+}
+
+void consumer_unlock_int(dbtable *db, const char *func, int line)
+{
+    if (gbl_instrument_consumer_lock) {
+        logmsg(LOGMSG_USER, "%s:%d unlocking consumer %s\n", func, line, db->tablename);
+    }
+    Pthread_rwlock_unlock(&db->consumer_lk);
+}
+
 /* after a consumer change, make sure bdblib knows what's going on. */
 int fix_consumers_with_bdblib(struct dbenv *dbenv)
 {
     int ii;
     for (ii = 0; ii < dbenv->num_qdbs; ii++) {
-        const dbtable *db = dbenv->qdbs[ii];
+        dbtable *db = dbenv->qdbs[ii];
         int consumern;
+        consumer_lock_read(db);
 
         /* register all consumers */
         for (consumern = 0; consumern < MAXCONSUMERS; consumern++) {
@@ -4472,9 +4463,11 @@ int fix_consumers_with_bdblib(struct dbenv *dbenv)
                     LOGMSG_ERROR,
                     "bdb_queue_consumer error for queue %s/%s/%d, rcode %d\n",
                     dbenv->basedir, db->tablename, consumern, bdberr);
+                consumer_unlock(db);
                 return -1;
             }
         }
+        consumer_unlock(db);
     }
     return 0;
 }
