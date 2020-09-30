@@ -586,8 +586,9 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
         parent = bdb_state;
 
     tbl = calloc(1, sizeof(struct temp_table));
-    if (tbl == NULL) {
-        *bdberr = ENOMEM;
+    if (!tbl) {
+        logmsg(LOGMSG_ERROR, "%s:%d: Failed calloc", __func__, __LINE__);
+        *bdberr = BDBERR_MALLOC;
         return NULL;
     }
 
@@ -624,15 +625,19 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
 
     tbl->elements = calloc(tbl->max_mem_entries, sizeof(arr_elem_t));
-    if (tbl->elements == NULL) {
-        bdb_temp_table_close(parent, tbl, bdberr);
-        if (tbl->sql) free(tbl->sql);
+    if (!tbl->elements) {
+        logmsg(LOGMSG_ERROR, "%s:%d: Failed calloc sz=%lld", __func__, __LINE__,
+               (long long int)tbl->max_mem_entries * sizeof(arr_elem_t));
+        int rc = bdb_temp_table_close(parent, tbl, bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s:%d: bdb_temp_table_close rc=%d, bdberr=%d",
+                   __func__, __LINE__, rc, *bdberr);
+        }
+        *bdberr = BDBERR_MALLOC;
+        free(tbl->sql);
         free(tbl);
         tbl = NULL;
-        goto done;
     }
-
-done:
 
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {

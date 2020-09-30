@@ -69,7 +69,6 @@ as long as there was a successful move in the past
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include <errno.h>
 #include <limits.h>
 #include <strings.h>
 #include <assert.h>
@@ -6061,6 +6060,10 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
         if (cur->vs_skip == NULL) {
             assert(cur->vs_stab == NULL);
             cur->vs_stab = bdb_temp_table_create(cur->state, bdberr);
+            if (!cur->vs_stab) {
+                logmsg(LOGMSG_FATAL, "bdb_temp_table_create returns NULL, bdberr=%d", *bdberr);
+                abort();
+            }
         }
         /* Otherwise truncate it. */
         else {
