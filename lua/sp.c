@@ -1136,12 +1136,6 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         goto out;
     }
 
-    // Run ddl stmt 'create temp table...' under schema lk
-    if (tryrdlock_schema_lk() != 0) {
-        sqlite3_finalize(stmt);
-        return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
-    }
-    // now, actually create the temp table
     *lk = malloc(sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
@@ -1151,7 +1145,6 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     }
     lua_end_step(sp->clnt, sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
-    unlock_schema_lk();
     sqlite3_finalize(stmt);
 
     if (rc == SQLITE_DONE) {
