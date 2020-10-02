@@ -597,6 +597,9 @@ static int sql_tick(struct sql_thread *thd)
     int rc;
     extern int gbl_epoch_time;
 
+    if (thd == NULL)
+        return 0;
+
     gbl_sqltick++;
 
     clnt = thd->clnt;
@@ -612,7 +615,7 @@ static int sql_tick(struct sql_thread *thd)
 
     /* statement cancelled? done */
     if (clnt->stop_this_statement)
-        return SQLITE_BUSY;
+        return SQLITE_ABORT;
 
     if (clnt->statement_timedout)
         return SQLITE_LIMIT;
@@ -657,7 +660,7 @@ static int sql_tick(struct sql_thread *thd)
         clnt->last_check_time = gbl_epoch_time;
         if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
             logmsg(LOGMSG_INFO, "Peer dropped connection\n");
-            return SQLITE_BUSY;
+            return SQLITE_ABORT;
         }
     }
 
