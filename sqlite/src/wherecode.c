@@ -568,7 +568,7 @@ static int codeEqualityTerm(
     if( pLevel->u.in.nIn==0 ){
       pLevel->addrNxt = sqlite3VdbeMakeLabel(pParse);
     }
-    if( iEq>0 ){
+    if( iEq>0 && (pLoop->wsFlags & WHERE_IN_SEEKSCAN)==0 ){
       pLoop->wsFlags |= WHERE_IN_EARLYOUT;
     }
 
@@ -606,7 +606,7 @@ static int codeEqualityTerm(
           pIn++;
         }
       }
-      if( iEq>0 ){
+      if( iEq>0 && (pLoop->wsFlags & WHERE_IN_SEEKSCAN)==0 ){
         sqlite3VdbeAddOp3(v, OP_SeekHit, pLevel->iIdxCur, 0, iEq);
       }
     }else{
@@ -1630,6 +1630,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     u8 bStopAtNull = 0;          /* Add condition to terminate at NULLs */
     int omitTable;               /* True if we use the index only */
 
+    int addrSeekScan = 0;        /* Opcode of the OP_SeekScan, if any */
 
     pIdx = pLoop->u.btree.pIndex;
     iIdxCur = pLevel->iIdxCur;
@@ -1769,6 +1770,19 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     }else{
       op = aStartOp[(start_constraints<<2) + (startEq<<1) + bRev];
       assert( op!=0 );
+      if( (pLoop->wsFlags & WHERE_IN_SEEKSCAN)!=0 && op==OP_SeekGE ){
+        /* TUNING:  The OP_SeekScan opcode seeks to reduce the number
+        ** of expensive seek operations by replacing a single seek with
+        ** 1 or more step operations.  The question is, how many steps
+        ** should we try before giving up and going with a seek.  The cost
+        ** of a seek is proportional to the logarithm of the of the number
+        ** of entries in the tree, so basing the number of steps to try
+        ** on the estimated number of rows in the btree seems like a good
+        ** guess. */
+        addrSeekScan = sqlite3VdbeAddOp1(v, OP_SeekScan, 
+                                         (pIdx->aiRowLogEst[0]+9)/10);
+        VdbeCoverage(v);
+      }
       sqlite3VdbeAddOp4Int(v, op, iIdxCur, addrNxt, regBase, nConstraint);
       VdbeCoverage(v);
       VdbeCoverageIf(v, op==OP_Rewind);  testcase( op==OP_Rewind );
@@ -1826,9 +1840,10 @@ Bitmask sqlite3WhereCodeOneLoopStart(
       testcase( op==OP_IdxGE );  VdbeCoverageIf(v, op==OP_IdxGE );
       testcase( op==OP_IdxLT );  VdbeCoverageIf(v, op==OP_IdxLT );
       testcase( op==OP_IdxLE );  VdbeCoverageIf(v, op==OP_IdxLE );
+      if( addrSeekScan ) sqlite3VdbeJumpHere(v, addrSeekScan);
     }
 
-    if( pLoop->wsFlags & WHERE_IN_EARLYOUT ){
+    if( (pLoop->wsFlags & WHERE_IN_EARLYOUT)!=0 ){
       sqlite3VdbeAddOp3(v, OP_SeekHit, iIdxCur, nEq, nEq);
     }
 

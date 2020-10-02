@@ -2563,7 +2563,7 @@ static int whereLoopAddBtreeIndex(
         assert( nIn>0 );  /* RHS always has 2 or more terms...  The parser
                           ** changes "x IN (?)" into "x=?". */
       }
-      if( pProbe->hasStat1 ){
+      if( pProbe->hasStat1 && rLogSize>=10 ){
         LogEst M, logK, safetyMargin;
         /* Let:
         **   N = the total number of rows in the table
@@ -2582,7 +2582,8 @@ static int whereLoopAddBtreeIndex(
         ** a safety margin of 2 (LogEst: 10) that favors using the IN operator
         ** with the index, as using an index has better worst-case behavior.
         ** If we do not have real sqlite_stat1 data, always prefer to use
-        ** the index.
+        ** the index.  Do not bother with this optimization on very small
+        ** tables (less than 2 rows) as it is pointless in that case.
         */
         M = pProbe->aiRowLogEst[saved_nEq];
         logK = estLog(nIn);
@@ -2591,7 +2592,7 @@ static int whereLoopAddBtreeIndex(
           WHERETRACE(0x40,
             ("Scan preferred over IN operator on column %d of \"%s\" (%d<%d)\n",
              saved_nEq, pProbe->zName, M+logK+10, nIn+rLogSize));
-          continue;
+          pNew->wsFlags |= WHERE_IN_SEEKSCAN;
         }else{
           WHERETRACE(0x40,
             ("IN operator preferred on column %d of \"%s\" (%d>=%d)\n",
@@ -5201,6 +5202,7 @@ WhereInfo *sqlite3WhereBegin(
         sqlite3VdbeSetP4KeyInfo(pParse, pIx);
         if( (pLoop->wsFlags & WHERE_CONSTRAINT)!=0
          && (pLoop->wsFlags & (WHERE_COLUMN_RANGE|WHERE_SKIPSCAN))==0
+         && (pLoop->wsFlags & WHERE_IN_SEEKSCAN)==0
          && (pWInfo->wctrlFlags&WHERE_ORDERBY_MIN)==0
          && pWInfo->eDistinct!=WHERE_DISTINCT_ORDERED
         ){
@@ -5358,11 +5360,15 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
         sqlite3VdbeJumpHere(v, pIn->addrInTop+1);
         if( pIn->eEndLoopOp!=OP_Noop ){
           if( pIn->nPrefix ){
-            assert( pLoop->wsFlags & WHERE_IN_EARLYOUT );
-            sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
-                              sqlite3VdbeCurrentAddr(v)+2,
-                              pIn->iBase, pIn->nPrefix);
-            VdbeCoverage(v);
+            int bEarlyOut = 
+                (pLoop->wsFlags & WHERE_VIRTUALTABLE)==0
+                 && (pLoop->wsFlags & WHERE_IN_EARLYOUT)!=0;
+            if( bEarlyOut ){
+              sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
+                  sqlite3VdbeCurrentAddr(v)+2,
+                  pIn->iBase, pIn->nPrefix);
+              VdbeCoverage(v);
+            }
           }
           sqlite3VdbeAddOp2(v, pIn->eEndLoopOp, pIn->iCur, pIn->addrInTop);
           VdbeCoverage(v);
