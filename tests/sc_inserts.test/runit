@@ -55,20 +55,14 @@ function insert_records
     echo "Inserting $nrecs records."
 
     while [[ $j -lt $nrecs ]]; do 
-        #insert next, if error continue to try again
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 2>&1
-        if [ $? -ne 0 ] ; then
-            continue
-        fi
+        echo "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"
         let j=j+1
-        assertcnt $tbl $j
         if [ $1 -gt 0 ] ; then
             sleep 0.1
         fi
-    done
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> insert.out || failexit "insert_records error"
     echo "Done inserting $nrecs records."
 }
-
 
 
 

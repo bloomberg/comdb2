@@ -63,15 +63,11 @@ delete_records()
     nrecs=$1
     j=0
     echo "deleting $nrecs records."
-    echo "" > deleted.out
 
     while [[ $j -lt $nrecs ]]; do 
-        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "delete from t1 where a == $j" >> deleted.out
-        if [ $? -ne 0 ] ; then
-            continue
-        fi
+        echo "delete from t1 where a == $j"
         let j=j+1
-    done
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> deleted.out || failexit 'failure to delete'
 }
 
 update_records()
@@ -79,15 +75,11 @@ update_records()
     nrecs=$1
     j=0
     echo "Updating $nrecs records."
-    echo "" > updated.out
 
     while [[ $j -lt $nrecs ]]; do 
-        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "update t1 set d=d+1 where a == $j" >> updated.out
-        if [ $? -ne 0 ] ; then
-            continue
-        fi
+        echo "update t1 set d=d+1 where a == $j"
         let j=j+1
-    done
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> updated.out || failexit 'failure to update'
 }
 
 
@@ -96,15 +88,11 @@ insert_records()
     j=0
     nrecs=$1
     echo "Inserting $nrecs records."
-    echo "" > inserted.out
 
     while [[ $j -lt $nrecs ]]; do 
-        cdb2sql -s ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d) values ($j,'test1',x'1234',$j)"  >> inserted.out
-        if [ $? -ne 0 ] ; then
-            continue
-        fi
+        echo "insert into t1(a,b,c,d) values ($j,'test1',x'1234',$j)"
         let j=j+1
-    done
+    done | cdb2sql -s ${CDB2_OPTIONS} $dbnm default &> inserted.out || failexit 'failure to insuert'
 }
 
 
@@ -120,15 +108,9 @@ insert_records_tran()
         let j=j+1
     done >> inserts.in
     echo "commit" >> inserts.in
-    let count=0
-    rc=1
-    while [ $rc -ne 0 ] && [ $count -lt 10 ] ; do
-        count=$((count+1))
-        cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < inserts.in >> inserted2.out 2>&1
-        rc=$?
-    done
-    if [ $rc -ne 0 ] ; then
-        failexit "couild not insert the records in a transaction"
+    cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < inserts.in >> inserted2.out 2>&1
+    if [ $? -ne 0 ] ; then
+        failexit "could not insert the records in a transaction"
     fi
 }
 

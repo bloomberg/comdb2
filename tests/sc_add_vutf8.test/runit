@@ -33,20 +33,13 @@ function insert_records
     echo "Inserting $nrecs records."
 
     while [[ $j -lt $nrecs ]]; do 
-        #insert next, if error continue to try again
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into t1(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 2>&1
-        if [ $? -ne 0 ] ; then
-            failexit "Inserting record $j "
-        fi
+        echo "insert into t1(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"
         let j=j+1
-        assertcnt t1 $j
         if [ $1 -gt 0 ] ; then
             sleep 0.1
         fi
-    done
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> insert.out || failexit "insert_records error"
 }
-
-
 
 
 #insert all records, alter aftewards, check content
@@ -105,6 +98,7 @@ function run_test_three
 
     while [ $i -lt 16 ]; do 
         $CDB2SQL_EXE $CDB2_OPTIONS $dbnm default "alter table t2 add v$i vutf8" &>> add_vutf8.out
+        assertres $? 0
         echo "v$i" >> add_vutf8.expected
         let i=i+1
     done

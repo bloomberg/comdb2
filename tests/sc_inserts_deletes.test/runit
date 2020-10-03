@@ -85,19 +85,13 @@ function delete_records
     remaining=$nrecs
     echo
     echo "Deleting $nrecs records."
-    echo "" > delete.out
     strt=$(date +%s)
 
     while [[ $j -le $nrecs ]]; do 
-         cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from $tbl where a = $j" >> delete.out 
-         if [ $? -ne 0 ] ; then
-            continue
-         fi
+         echo "delete from $tbl where a = $j"
          let j=j+1
 	     let remaining=remaining-1
-         #assertcnt $tbl $remaining
-         #sleep 0.1
-    done
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> delete.out || failexit "delete_records error"
     end=$(date +%s)
     echo "delete_records took $((end - strt)) sec."
 }
@@ -110,22 +104,15 @@ function insert_records
     strt=$(date +%s)
 
     while [[ $j -le $nrecs ]]; do 
-        cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"  >> insert.out 
-        if [ $? -ne 0 ] ; then
-            continue
-        fi
-
-        #assertcnt $tbl $j
+        echo "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"
         let j=j+1
         if [ $1 -gt 0 ] ; then
             sleep 0.1
         fi
-    done
+    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> insert.out || failexit "insert_records"
     end=$(date +%s)
     echo "insert_records took $((end - strt)) sec."
 }
-
-
 
 
 function run_test

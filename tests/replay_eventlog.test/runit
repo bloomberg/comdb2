@@ -51,14 +51,12 @@ insert_records()
     let nout=nout+1
     insfl=insert${nout}.out
     echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
-    echo "" > $insfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"  &>> $insfl
-        assertres $? 0
+        echo "insert into t1(alltypes_short, alltypes_u_short, alltypes_int, alltypes_u_int, alltypes_longlong, alltypes_float, alltypes_double, alltypes_byte, alltypes_cstring, alltypes_pstring, alltypes_blob, alltypes_datetime, alltypes_datetimeus, alltypes_vutf8, alltypes_intervalym, alltypes_intervalds, alltypes_intervaldsus, alltypes_decimal32, alltypes_decimal64, alltypes_decimal128) values ( $((1-2*(j%2)))$j ,$j ,$((1-2*(j%2)))0000$j ,10000$j ,$((1-2*(j%2)))000000000$j ,$((1-2*(j%2)))00.00$j ,$((1-2*(j%2)))0000$j.0000$j ,x'aabbccddeeffaabb$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))$((j%2))$((j%3))$((j%4))$((j%5))' ,'mycstring$j' ,'mypstring$j' ,x'$((j%2))$((j%3))$((j%4))$((j%5))' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'$(date +'%Y-%m-%dT%H:%M:%S')' ,'myvutf8$j' ,$((1-2*(j%2)))$j ,$((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))0000$j , $((1-2*(j%2)))00000000$j , $((1-2*(j%2)))000000000000000$j )"
         # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
         let j=j+1
-    done
+    done | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default &> $insfl || failexit "insert_records error"
     echo "done inserting round $nout"
 }
 
@@ -107,13 +105,11 @@ update_records()
     let nout=nout+1
     updfl=update${nout}.out
     echo "Updating $((nstop-j+1)) records ($j to $nstop)."
-    echo "" > $updfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"  &>> $updfl
-        assertres $? 0
+        echo "update t1 set alltypes_short=alltypes_short+1, alltypes_int=alltypes_int+1,alltypes_u_int=alltypes_u_int+1,alltypes_longlong=alltypes_longlong+1,alltypes_float=alltypes_float=1,alltypes_double=alltypes_double+1,alltypes_decimal32=alltypes_decimal32+1,alltypes_decimal64=alltypes_decimal64+1,alltypes_decimal128=alltypes_decimal128+1 where alltypes_u_short=$j"
         let j=j+1
-    done
+    done | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default &> $updfl || failexit "update_records error"
     echo "done updating round $nout"
 }
 
@@ -171,24 +167,19 @@ delete_records()
     let nout=nout+1
     delfl=delete${nout}.out
     echo "Updating $((nstop-j+1)) records ($j to $nstop)."
-    echo "" > $delfl
 
     while [[ $j -le $nstop ]]; do 
-        cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "delete from t1 where alltypes_u_short=$j"  &>> $delfl
-        if [ $? -ne 0 ]; then 
-            sleep 1
-            continue
-        fi
+        echo "delete from t1 where alltypes_u_short=$j"
         let j=j+1
         sleep 0.01
-    done
+    done | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default   &> $delfl || failexit "delete_records error"
     echo "done updating round $nout"
 }
 
 
 insert_rollback_tran()
 {
-    echo "Entering insert_records()"
+    echo "Entering insert_rollback_tran()"
     j=$1
     nstop=$2
     let nout=nout+1
@@ -209,7 +200,7 @@ insert_rollback_tran()
 
 insert_commit_tran()
 {
-    echo "Entering insert_records()"
+    echo "Entering insert_commit_tran()"
     j=$1
     nstop=$2
     let nout=nout+1
