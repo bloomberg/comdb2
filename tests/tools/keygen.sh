@@ -113,6 +113,47 @@ openssl ca -config $CADIR/ca.cnf -revoke $CADIR/revoked.crt \
 # Generate CRL
 openssl ca -config $CADIR/ca.cnf -gencrl -out $CADIR/root.crl
 
+# SAN config
+san="DNS:$(hostname), DNS: $(hostname -f)"
+for node in $CLUSTER; do
+  san="$san, DNS:$(ssh -o StrictHostKeyChecking=no $node 'hostname -f')"
+done
+
+echo "
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+x509_extensions = v3_ca
+prompt = no
+
+[req_distinguished_name]
+C = US
+ST = New York
+L = New York
+O = Bloomberg
+OU = Comdb2
+CN = *.bloomberg.com
+
+[v3_req]
+subjectAltName = $san
+
+[v3_ca]
+subjectAltName = DNS:*.bloomberg.com
+" >$CADIR/san.cnf
+
+# Create SAN key
+openssl genrsa -out $CADIR/san.key 4096
+# Create signing request
+openssl req -new -key $CADIR/san.key -out $CADIR/san.key.csr \
+            -subj "/C=US/ST=New York/L=New York/O=Bloomberg/OU=Comdb2/CN=www.example.com"
+# Sign SAN key
+openssl x509 -req -in $CADIR/san.key.csr -CA $CADIR/root.crt -CAkey $CADIR/root.key \
+             -CAcreateserial -out $CADIR/san.crt -days 10 -extensions v3_req -extfile $CADIR/san.cnf
+# Change key permissions
+chmod 700 $CADIR/san.key
+cp $CADIR/san.crt /tmp/san.crt
+cp $CADIR/san.key /tmp/san.key
+
 myhostname=`hostname`
 # copy over SSL certificate and change permission on private key
 for node in $CLUSTER; do
@@ -135,6 +176,8 @@ for node in $CLUSTER; do
 
   scp -o StrictHostKeyChecking=no $CADIR/server_$fqdn.crt $node:$CADIR/server.crt
   scp -o StrictHostKeyChecking=no $CADIR/server_$fqdn.key $node:$CADIR/server.key
+  scp -o StrictHostKeyChecking=no $CADIR/san.crt $node:/tmp/san.crt
+  scp -o StrictHostKeyChecking=no $CADIR/san.key $node:/tmp/san.key
   scp -o StrictHostKeyChecking=no $CADIR/root.crt $CADIR/root.crl $node:$CADIR
 done
 
