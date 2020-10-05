@@ -120,12 +120,6 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         return SC_INTERNAL_ERROR;
     }
 
-    /* why?  er... not sure.  this is copied off the pattern below, but we
-     * don't have much to do.   think this is still good as we'll get a
-     * memory sync in there. */
-    stop_threads(thedb);
-    resume_threads(thedb);
-
     if (newdb->dbenv->master == gbl_mynode) {
         /* I am master: create new db */
         newdb->handle =
