@@ -44,6 +44,8 @@ extern int gbl_nid_dbname;
 void ssl_set_clnt_user(struct sqlclntstate *clnt);
 #endif
 
+int gbl_protobuf_prealloc_buffer_size = 8192;
+
 int disable_server_sql_timeouts(void);
 int tdef_to_tranlevel(int tdef);
 int check_active_appsock_connections(struct sqlclntstate *clnt);
@@ -129,6 +131,8 @@ struct newsql_appdata {
     CDB2QUERY *query;
     CDB2SQLQUERY *sqlquery;
     struct newsql_postponed_data *postponed;
+
+    struct NewsqlProtobufCAllocator newsql_protobuf_allocator;
 
     /* columns */
     int count;
@@ -448,6 +452,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     return type;
 }
 
+
 #define APPDATA_MINCOLS 32
 static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int ncols)
 {
@@ -461,6 +466,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int 
             goto oom;
         appdata->capacity = ncols;
         appdata->send_intrans_response = 1;
+        newsql_protobuf_init(&appdata->newsql_protobuf_allocator, malloc, free);
     } else if (appdata->capacity < ncols) {
         size_t n = ncols + APPDATA_MINCOLS;
         alloc_sz = sizeof(struct newsql_appdata) + n * sizeof(appdata->type[0]);
@@ -490,6 +496,7 @@ static void free_newsql_appdata(struct sqlclntstate *clnt)
         free(appdata->postponed);
         appdata->postponed = NULL;
     }
+    newsql_protobuf_destroy(&appdata->newsql_protobuf_allocator);
     free(appdata);
     clnt->appdata = NULL;
 }
@@ -1176,7 +1183,7 @@ static void *newsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
     if (appdata->query == stmt->query) {
         appdata->query = NULL;
     }
-    cdb2__query__free_unpacked(stmt->query, &pb_alloc);
+    cdb2__query__free_unpacked(stmt->query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
     free(stmt);
     return NULL;
 }
@@ -2051,6 +2058,8 @@ retry_read:
         }
 
         reset_clnt(clnt, sb, 0);
+        struct newsql_appdata *appdata = clnt->appdata;
+        reset_protobuf_offset(&appdata->newsql_protobuf_allocator);
         clnt->tzname[0] = '\0';
         clnt->osql.count_changes = 1;
         clnt->heartbeat = 1;
@@ -2110,9 +2119,10 @@ retry_read:
         return NULL;
     }
 
+    struct newsql_appdata *appdata = clnt->appdata;
     while (1) {
         errno = 0; /* precondition: well-defined before call that may set */
-        query = cdb2__query__unpack(&pb_alloc, bytes, (uint8_t *)p);
+        query = cdb2__query__unpack(&appdata->newsql_protobuf_allocator.protobuf_allocator, bytes, (uint8_t *)p);
         // errno can be set by cdb2__query__unpack
         // we retry malloc on out of memory condition
 
@@ -2145,7 +2155,7 @@ retry_read:
 
     // one of dbinfo or sqlquery must be non-NULL
     if (unlikely(!query->dbinfo && !query->sqlquery)) {
-        cdb2__query__free_unpacked(query, &pb_alloc);
+        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         query = NULL;
         goto retry_read;
     }
@@ -2182,7 +2192,7 @@ retry_read:
         } else {
             send_dbinforesponse(dbenv, sb);
         }
-        cdb2__query__free_unpacked(query, &pb_alloc);
+        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         query = NULL;
         goto retry_read;
     }
@@ -2210,14 +2220,14 @@ retry_read:
 
         if (client_supports_ssl) {
             newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
-            cdb2__query__free_unpacked(query, &pb_alloc);
+            cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
             query = NULL;
             goto retry_read;
         } else {
             newsql_error(clnt, "The database requires SSL connections.",
                          CDB2ERR_CONNECT_ERROR);
         }
-        cdb2__query__free_unpacked(query, &pb_alloc);
+        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         return NULL;
     }
 #endif
@@ -2497,6 +2507,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             if (clnt.dbtran.trans_has_sp) {
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
+                struct newsql_appdata *appdata = clnt.appdata;
+                reset_protobuf_offset(&appdata->newsql_protobuf_allocator);
             } else {
                 rc = srs_tran_replay(&clnt, arg->thr_self);
             }
@@ -2510,6 +2522,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             */
             if (clnt.osql.history && clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
                 srs_tran_destroy(&clnt);
+                struct newsql_appdata *appdata = clnt.appdata;
+                reset_protobuf_offset(&appdata->newsql_protobuf_allocator);
                 query = APPDATA->query = NULL;
             }
         }
@@ -2520,7 +2534,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         if (clnt.added_to_hist) {
             clnt.added_to_hist = 0;
         } else if (APPDATA->query) {
-            cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
+            cdb2__query__free_unpacked(APPDATA->query, &APPDATA->newsql_protobuf_allocator.protobuf_allocator);
             APPDATA->query = NULL;
             /*
              * clnt.sql points into the protobuf unpacked buffer, which becomes
@@ -2564,7 +2578,7 @@ done:
     }
 
     if (query) {
-        cdb2__query__free_unpacked(query, &pb_alloc);
+        cdb2__query__free_unpacked(query, &APPDATA->newsql_protobuf_allocator.protobuf_allocator);
     }
 
     free_newsql_appdata(&clnt);
@@ -2576,6 +2590,7 @@ done:
 
     return APPSOCK_RETURN_OK;
 }
+
 
 comdb2_appsock_t newsql_plugin = {
     "newsql",             /* Name */

@@ -175,8 +175,8 @@ if [ $OSTYPE -eq "linux-gnu" ] ; then
     cat  /proc/sys/kernel/core_pattern
 fi
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debg 100")'
-cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("ndebg 100")'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("debg 2")'
+cdb2sql ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("ndebg 2")'
 
 echo "create, alter, drop table t2"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t2  { `cat alltypes.csc2 ` }"
