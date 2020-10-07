@@ -29,10 +29,18 @@ inline int have_schema_lock(void)
     return (have_readlock || have_writelock);
 }
 
+#ifdef DEBUG_SCHEMA_LK
+void bdb_thread_assert_nolocks(void *state);
+void *get_bdb_env(void);
+#endif
+
 /* We actually acquire the readlock recursively: change these asserts to
  * accommodate */
 inline void rdlock_schema_int(const char *file, const char *func, int line)
 {
+#ifdef DEBUG_SCHEMA_LK
+    bdb_thread_assert_nolocks(get_bdb_env());
+#endif
     assert(have_writelock == 0);
     Pthread_rwlock_rdlock(&schema_lk);
     have_readlock++;
@@ -71,6 +79,9 @@ inline void unlock_schema_int(const char *file, const char *func, int line)
 
 inline void wrlock_schema_int(const char *file, const char *func, int line)
 {
+#ifdef DEBUG_SCHEMA_LK
+    bdb_thread_assert_nolocks(get_bdb_env());
+#endif
     assert(have_readlock == 0 && have_writelock == 0);
     Pthread_rwlock_wrlock(&schema_lk);
     have_writelock = 1;

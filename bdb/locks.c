@@ -830,7 +830,35 @@ int bdb_release_row_lock(bdb_state_type *bdb_state, DB_LOCK *lk)
 }
 
 extern int __nlocks_for_locker(DB_ENV *dbenv, u_int32_t id);
+extern int __nlocks_for_thread(DB_ENV *dbenv, int *locks, int *lockers);
+
 int bdb_nlocks_for_locker(bdb_state_type *bdb_state, int lid)
 {
     return __nlocks_for_locker(bdb_state->dbenv, lid);
+}
+
+int bdb_nlocks_for_thread(bdb_state_type *bdb_state, int *locks, int *lockers)
+{
+    return __nlocks_for_thread(bdb_state->dbenv, locks, lockers);
+}
+
+void bdb_locker_assert_nolocks(bdb_state_type *bdb_state, int lid)
+{
+    int nlocks = bdb_nlocks_for_locker(bdb_state, lid);
+    if (nlocks > 0) {
+        logmsg(LOGMSG_ERROR, "%s lockid %u holds %d locks\n", __func__, lid, nlocks);
+        bdb_lock_stats_me(bdb_state, stderr);
+    }
+    assert(nlocks == 0);
+}
+
+void bdb_thread_assert_nolocks(bdb_state_type *bdb_state)
+{
+    int nlocks;
+    bdb_nlocks_for_thread(bdb_state, &nlocks, NULL);
+    if (nlocks > 0) {
+        logmsg(LOGMSG_ERROR, "%s this thread holds %d locks\n", __func__, nlocks);
+        bdb_lock_stats_me(bdb_state, stderr);
+    }
+    assert(nlocks == 0);
 }

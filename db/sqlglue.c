@@ -11422,8 +11422,6 @@ out:
     thread_memdestroy_and_restore(&thread_oldm);
 }
 
-void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out);
-
 void curtran_assert_nolocks(void)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -11433,12 +11431,7 @@ void curtran_assert_nolocks(void)
     if (!lockid)
         return;
 
-    int nlocks = bdb_nlocks_for_locker(thedb->bdb_env, lockid);
-    if (nlocks > 0) {
-        logmsg(LOGMSG_ERROR, "%s lockid %u holds %d locks\n", __func__, lockid, nlocks);
-        bdb_lock_stats_me(thedb->bdb_env, stderr);
-    }
-    assert(nlocks == 0);
+    bdb_locker_assert_nolocks(thedb->bdb_env, lockid);
 }
 
 __thread int track_thread_locks = 0;

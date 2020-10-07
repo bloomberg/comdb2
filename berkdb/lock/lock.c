@@ -763,6 +763,17 @@ is_pagelock(lockobj)
 	return (ilock->type == DB_PAGE_LOCK);
 }
 
+static inline int
+is_handlelock(lockobj)
+	DB_LOCKOBJ *lockobj;
+{
+	if (lockobj->lockobj.size != sizeof(struct __db_ilock))
+		return 0;
+	struct __db_ilock *ilock = lockobj->lockobj.data;
+	return (ilock->type == DB_HANDLE_LOCK);
+}
+
+
 int
 use_page_latches(dbenv)
 	DB_ENV *dbenv;
@@ -1496,6 +1507,10 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 					 */
 					if (is_pagelock(sh_obj))
 						sh_locker->npagelocks--;
+
+					if (is_handlelock(sh_obj))
+						sh_locker->nhandlelocks--;
+
 					sh_locker->nlocks--;
 					if (IS_WRITELOCK(lp->mode)) {
 						sh_locker->nwrites--;
@@ -2911,6 +2926,9 @@ expired:			obj_ndx = sh_obj->index;
 
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
+	if (is_handlelock(sh_obj))
+        sh_locker->nhandlelocks++;
+
 	if (IS_WRITELOCK(newl->mode))
 		sh_locker->nwrites++;
 	if (is_pagelock(sh_obj) && IS_WRITELOCK(lock->mode) &&
@@ -3480,6 +3498,8 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 			DB_LOCKOBJ *sh_obj;
 			sh_locker->nlocks--;
 			sh_obj = lockp->lockobj;
+			if (is_handlelock(sh_obj))
+				sh_locker->nhandlelocks--;
 			if (is_pagelock(sh_obj))
 				sh_locker->npagelocks--;
 			if (IS_WRITELOCK(lockp->mode))
@@ -4035,6 +4055,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		SH_LIST_INIT(&sh_locker->heldby);
 		sh_locker->nlocks = 0;
 		sh_locker->npagelocks = 0;
+		sh_locker->nhandlelocks = 0;
 		sh_locker->nwrites = 0;
 		sh_locker->has_waiters = 0;
 #if TEST_DEADLOCKS
@@ -4414,6 +4435,8 @@ __lock_inherit_locks(lt, locker, flags)
 				sh_parent->nwrites++;
 			if (is_pagelock(obj))
 				sh_parent->npagelocks++;
+			if (is_handlelock(obj))
+				sh_parent->nhandlelocks++;
 			lp->holderp = sh_parent;
 		}
 
@@ -4759,6 +4782,8 @@ __lock_trade(dbenv, lock, new_locker, create)
 	sh_obj = lp->lockobj;
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
+	if (is_handlelock(sh_obj))
+		sh_locker->nhandlelocks++;
 	if (IS_WRITELOCK(lp->mode))
 		sh_locker->nwrites++;
 	lp->holderp = sh_locker;
@@ -6278,6 +6303,47 @@ __lock_to_dbt_pp(dbenv, lock, dbt)
 	    dbenv->lk_handle, "DB_LOCK->lock_put", DB_INIT_LOCK);
 	ret = __lock_to_dbt(dbenv, lock, dbt);
 	return ret;
+}
+
+// this is heavy-weight
+int
+__nlocks_for_thread(DB_ENV *dbenv, int *locks, int *lockers)
+{
+	DB_LOCKTAB *lt;
+	DB_LOCKER *sh_locker;
+	DB_LOCKREGION *region;
+	u_int32_t locker_ndx;
+	int ret;
+	int nlocks = 0;
+	int nlockers = 0;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	LOCKREGION(dbenv, lt);
+	lock_lockers(region);
+	for (int i = 0; i < gbl_lkr_parts; ++i) {
+		lock_locker_partition(region, i);
+		for (int j = 0; j < region->locker_p_size; j++) {
+			DB_LOCKER *lip;
+			for (lip = SH_TAILQ_FIRST(&region->locker_tab[i][j], __db_locker);
+					lip != NULL; lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
+				if (lip->tid == pthread_self()) {
+					nlockers++;
+					// Don't count handle locks toward total
+					nlocks += (lip->nlocks - lip->nhandlelocks);
+				}
+			}
+		}
+		unlock_locker_partition(region, i);
+	}
+	unlock_lockers(region);
+	UNLOCKREGION(dbenv, lt);
+	if (locks)
+		(*locks) = nlocks;
+	if (lockers)
+		(*lockers) = nlockers;
+	return 0;
 }
 
 int
