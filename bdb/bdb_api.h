@@ -1908,6 +1908,12 @@ int bdb_have_unused_files(void);
 
 int bdb_nlocks_for_locker(bdb_state_type *bdb_state, int lid);
 
+void bdb_lock_stats_me(bdb_state_type *bdb_state, FILE *out);
+
+void bdb_locker_assert_nolocks(bdb_state_type *bdb_state, int lid);
+
+void bdb_thread_assert_nolocks(bdb_state_type *bdb_state);
+
 int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr);
 
 int bdb_have_ipu(bdb_state_type *bdb_state);

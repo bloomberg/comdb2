@@ -3698,6 +3698,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 int get_prepared_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                       struct sql_state *rec, struct errstat *err, int flags)
 {
+    curtran_assert_nolocks();
     rdlock_schema_lk();
     int rc = get_prepared_stmt_int(thd, clnt, rec, err,
                                    flags | PREPARE_RECREATE);

@@ -114,6 +114,12 @@ if(DEBUG_STACK_AT_DB_OPEN_CLOSE)
     add_definitions(-DDEBUG_STACK_AT_DB_OPEN_CLOSE)
 endif()
 
+option(DEBUG_SCHEMA_LK "Assert a thread isn't holding berkley locks when acquiring schemalk" OFF)
+mark_as_advanced(DEBUG_SCHEMA_LK)
+if(DEBUG_SCHEMA_LK)
+    add_definitions(-DDEBUG_SCHEMA_LK)
+endif()
+
 option(DEBUG_STACK_AT_DBREG_RECOVER "Print a cheapstack at dbreg recover operations" OFF)
 mark_as_advanced(DEBUG_STACK_AT_DBREG_RECOVER)
 if(DEBUG_STACK_AT_DBREG_RECOVER)

@@ -5135,7 +5135,9 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	int had_serializable_records = 0;
 	void *pglogs = NULL;
 	u_int32_t keycnt = 0;
-	int got_schema_lk = 0;
+	int get_schema_lk = 0;
+	int dontlock = 0;
+
 
 	Pthread_mutex_lock(&dbenv->recover_lk);
 	rp = listc_rtl(&dbenv->inactive_transactions);
@@ -5227,7 +5229,6 @@ bad_resize:	;
 	 */
 	LOGCOPY_32(&rectype, rec->data);
 	if (rectype == DB___txn_regop_rowlocks) {
-		int dontlock = 0;
 		if ((ret =
 			__txn_regop_rowlocks_read(dbenv, rec->data,
 				&txn_rl_args)) != 0)
@@ -5289,10 +5290,7 @@ bad_resize:	;
 		*ltrans = rp->ltrans = lt;
 
 		if (txn_rl_args->lflags & DB_TXN_SCHEMA_LOCK) {
-			if (!dontlock) {
-				wrlock_schema_lk();
-			}
-			got_schema_lk = 1;
+			get_schema_lk = 1;
 		}
 		prev_lsn = txn_rl_args->prev_lsn;
 		lock_dbt = &txn_rl_args->locks;
@@ -5353,6 +5351,20 @@ bad_resize:	;
 			return (ret);
 		prev_lsn = prep_args->prev_lsn;
 		lock_dbt = &prep_args->locks;
+	}
+
+	/* Serialize before acquiring schemalk so DEBUG_SCHEMA_LK works correctly */
+	if (get_schema_lk && !dontlock) {
+		ret = wait_for_running_transactions(dbenv);
+		if (ret) {
+			logmsg(LOGMSG_ERROR, "wait err %d\n", ret);
+#if defined ABORT_ON_CONCURRENT_ERROR
+			abort();
+#else
+			goto err;
+#endif
+		}
+		wrlock_schema_lk();
 	}
 
 	/* XXX new logic: collect the locks & commit context, and then send the ack */
@@ -5510,7 +5522,7 @@ bad_resize:	;
 	 * The solution: we grab the schema-lock rarely: just serialize for those cases.
 	 * */
 	int desired = 0;
-	if (had_serializable_records || got_schema_lk ||
+	if (had_serializable_records || get_schema_lk ||
 			(desired = (gbl_force_serial_on_writelock &&
 			 bdb_the_lock_desired()))) {
 

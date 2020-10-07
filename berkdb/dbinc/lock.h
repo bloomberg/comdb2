@@ -273,6 +273,7 @@ typedef struct __db_locker {
 	u_int32_t nlocks;		/* Number of locks held. */
 	u_int32_t npagelocks;		/* Number of pagelocks held. */
 	u_int32_t nwrites;		/* Number of write locks held. */
+	u_int32_t nhandlelocks;		/* Number of handle locks held. */
 	u_int32_t nretries;
 	u_int32_t partition;
 	u_int32_t ntrackedlocks;
