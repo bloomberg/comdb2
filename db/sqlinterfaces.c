@@ -2744,34 +2744,6 @@ void init_current_current_sql_key(void)
 
 extern int gbl_debug_temptables;
 
-static const char *type_to_typestr(int type)
-{
-    switch (type) {
-    case SQLITE_NULL:
-        return "null";
-    case SQLITE_INTEGER:
-        return "integer";
-    case SQLITE_FLOAT:
-        return "real";
-    case SQLITE_TEXT:
-        return "text";
-    case SQLITE_BLOB:
-        return "blob";
-    case SQLITE_DATETIME:
-        return "datetime";
-    case SQLITE_DATETIMEUS:
-        return "datetimeus";
-    case SQLITE_INTERVAL_YM:
-        return "year";
-    case SQLITE_INTERVAL_DSUS:
-        return "dayus";
-    case SQLITE_INTERVAL_DS:
-        return "day";
-    default:
-        return "???";
-    }
-}
-
 int typestr_to_type(const char *ctype)
 {
     if (ctype == NULL)
