@@ -3384,6 +3384,72 @@ static int dbstmt_close(Lua L)
     donate_stmt(sp, dbstmt);
     return 0;
 }
+static int dbstmt_column_count(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.dbstmt);
+    dbstmt_t *dbstmt = lua_touserdata(L, 1);
+    sqlite3_stmt *stmt = dbstmt->stmt;
+    if (stmt == NULL) return 0;
+    lua_pushinteger(L, sqlite3_column_count(stmt));
+    return 1;
+}
+
+#define GET_STMT_AND_COL()                                                     \
+    luaL_checkudata(L, 1, dbtypes.dbstmt);                                     \
+    luaL_checknumber(L, 2);                                                    \
+    dbstmt_t *dbstmt = lua_touserdata(L, 1);                                   \
+    sqlite3_stmt *stmt = dbstmt->stmt;                                         \
+    if (stmt == NULL) return 0;                                                \
+    int col = lua_tonumber(L, 2) - 1;                                          \
+    if (col > sqlite3_column_count(stmt)) return 0
+
+static int dbstmt_column_name(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_name(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_origin_name(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_origin_name(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_table_name(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_table_name(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_decltype(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_decltype(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_type(Lua L)
+{
+    GET_STMT_AND_COL();
+    switch (sqlite3_column_type(stmt, col)) {
+    case SQLITE_INTEGER:       lua_pushstring(L, "integer"); break;
+    case SQLITE_FLOAT:         lua_pushstring(L, "double"); break;
+    case SQLITE_TEXT:          lua_pushstring(L, "cstring"); break;
+    case SQLITE_BLOB:          lua_pushstring(L, "blob"); break;
+    case SQLITE_DATETIME:      lua_pushstring(L, "datetime"); break;
+    case SQLITE_INTERVAL_YM:   lua_pushstring(L, "intervalym"); break;
+    case SQLITE_INTERVAL_DS:   lua_pushstring(L, "intervalds"); break;
+    case SQLITE_DATETIMEUS:    lua_pushstring(L, "datetimeus"); break;
+    case SQLITE_INTERVAL_DSUS: lua_pushstring(L, "intervaldsus"); break;
+    case SQLITE_DECIMAL:       lua_pushstring(L, "decimal"); break;
+    default:                   lua_pushnil(L); break;
+    }
+    return 1;
+}
+
 
 static int dbstmt_rows_changed(Lua L)
 {
@@ -4685,6 +4751,12 @@ static const struct luaL_Reg dbstmt_funcs[] = {
     {"fetch", dbstmt_fetch},
     {"emit", dbstmt_emit},
     {"close", dbstmt_close},
+    {"column_count", dbstmt_column_count},
+    {"column_decltype", dbstmt_column_decltype},
+    {"column_name", dbstmt_column_name},
+    {"column_origin_name", dbstmt_column_origin_name},
+    {"column_table_name", dbstmt_column_table_name},
+    {"column_type", dbstmt_column_type},
     {"rows_changed", dbstmt_rows_changed},
     {NULL, NULL}
 };
