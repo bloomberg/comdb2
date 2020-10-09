@@ -3550,6 +3550,32 @@ static int dbstmt_column_table_name(Lua L)
     return 1;
 }
 
+static int dbstmt_column_decltype(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_decltype(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_type(Lua L)
+{
+    GET_STMT_AND_COL();
+    switch (sqlite3_column_type(stmt, col)) {
+    case SQLITE_INTEGER:       lua_pushstring(L, "integer"); break;
+    case SQLITE_FLOAT:         lua_pushstring(L, "double"); break;
+    case SQLITE_TEXT:          lua_pushstring(L, "cstring"); break;
+    case SQLITE_BLOB:          lua_pushstring(L, "blob"); break;
+    case SQLITE_DATETIME:      lua_pushstring(L, "datetime"); break;
+    case SQLITE_INTERVAL_YM:   lua_pushstring(L, "intervalym"); break;
+    case SQLITE_INTERVAL_DS:   lua_pushstring(L, "intervalds"); break;
+    case SQLITE_DATETIMEUS:    lua_pushstring(L, "datetimeus"); break;
+    case SQLITE_INTERVAL_DSUS: lua_pushstring(L, "intervaldsus"); break;
+    case SQLITE_DECIMAL:       lua_pushstring(L, "decimal"); break;
+    default:                   lua_pushnil(L); break;
+    }
+    return 1;
+}
+
 static int dbstmt_rows_changed(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.dbstmt);
@@ -4882,9 +4908,11 @@ static const struct luaL_Reg dbstmt_funcs[] = {
     {"bind", dbstmt_bind},
     {"close", dbstmt_close},
     {"column_count", dbstmt_column_count},
+    {"column_decltype", dbstmt_column_decltype},
     {"column_name", dbstmt_column_name},
     {"column_origin_name", dbstmt_column_origin_name},
     {"column_table_name", dbstmt_column_table_name},
+    {"column_type", dbstmt_column_type},
     {"emit", dbstmt_emit},
     {"exec", dbstmt_exec},
     {"fetch", dbstmt_fetch},
