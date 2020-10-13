@@ -385,8 +385,7 @@ int bdb_create_dba_user(bdb_state_type *bdb_state)
     }
 
     /* Give them OP privilege */
-    rc = bdb_tbl_op_access_set(bdb_state, NULL, 0, NULL, DEFAULT_DBA_USER,
-                               &bdberr);
+    rc = bdb_tbl_op_access_set(bdb_state, NULL, 0, "", DEFAULT_DBA_USER, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR,
                "%s:%d failed to grant OP privileges to the DBA user\n",
