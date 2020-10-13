@@ -144,6 +144,20 @@ void watchdog_cancel_alarm(void)
 
 int gbl_epoch_time; /* db has been up gbl_epoch_time - gbl_starttime seconds */
 
+static void watchdogsql(void)
+{
+    struct sqlclntstate clnt = {0};
+    int fd = open("/dev/null", O_RDWR);
+    SBUF2 *sb = sbuf2open(fd, 0);
+    start_internal_sql_clnt(&clnt);
+    clnt.dbtran.mode = TRANLEVEL_SOSQL;
+    clnt.sb = sb;
+    clnt.admin = 1;
+    run_internal_sql_clnt(&clnt, "select 1");
+    end_internal_sql_clnt(&clnt);
+    sbuf2close(sb);
+}
+
 static void *watchdog_thread(void *arg)
 {
     void *ptr;
@@ -331,6 +345,8 @@ static void *watchdog_thread(void *arg)
                 }
                 test_io_time = gbl_epoch_time;
             }
+
+            watchdogsql();
 
             /* if nothing was bad, update the timestamp */
             if (!its_bad && !its_bad_slow) {

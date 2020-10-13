@@ -645,6 +645,19 @@ void *clean_exit_thd(void *unused)
     return NULL;
 }
 
+static void *getschemalk(void *arg)
+{
+    int64_t holdtime = (int64_t)arg;
+    logmsg(LOGMSG_USER, "Locking the schemalk in write mode for %"PRId64" seconds", holdtime);
+    wrlock_schema_lk();
+    if (holdtime >= 0) {
+        sleep(holdtime);
+        logmsg(LOGMSG_USER, "Unlocking the schemalk\n");
+        unlock_schema_lk();
+    }
+    return NULL;
+}
+
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
     char *tok;
@@ -3139,6 +3152,15 @@ clipper_usage:
         } else
             print_help_page(HELP_MEMDEBUG);
         return 0;
+    } else if (tokcmp(tok, ltok, "getschemalk") == 0) {
+        /* Watchdog_sql test- spawns a thread to avoid the 'already-has-schemalk' assert */
+        int64_t holdtime = -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 0) {
+            holdtime = toknum(tok, ltok);
+        }
+        pthread_t tid;
+        Pthread_create(&tid, NULL, getschemalk, (void *)(holdtime));
     } else if (tokcmp(tok, ltok, "bdbscan") == 0) {
         char *tbl;
         tok = segtok(line, lline, &st, &ltok);
