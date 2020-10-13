@@ -626,21 +626,6 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
 
     tbl->max_mem_entries = bdb_state->attr->temptable_mem_threshold;
 
-    listc_init(&tbl->temp_tbl_list, offsetof(struct temp_list_node, lnk));
-
-    tbl->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
-
-    tbl->elements = calloc(tbl->max_mem_entries, sizeof(arr_elem_t));
-    if (tbl->elements == NULL) {
-        bdb_temp_table_close(parent, tbl, bdberr);
-        if (tbl->sql) free(tbl->sql);
-        free(tbl);
-        tbl = NULL;
-        goto done;
-    }
-
-done:
-
 #ifdef _LINUX_SOURCE
     if (gbl_debug_temptables) {
         char *zBacktrace = get_stack_backtrace();
@@ -784,16 +769,41 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
     }
 
     if (table != NULL) {
+        switch (temp_table_type) {
+        case TEMP_TABLE_TYPE_BTREE:
+            if (table->dbenv_temp == NULL) {
+                if (create_temp_db_env(bdb_state, table, bdberr) != 0) {
+                    bdb_temp_table_destroy_pool_wrapper(table, bdb_state);
+                    return NULL;
+                }
+            }
+            break;
+        case TEMP_TABLE_TYPE_HASH:
+            if (table->temp_hash_tbl == NULL) {
+                table->temp_hash_tbl = hash_init_user(hashfunc, hashcmpfunc, 0, 0);
+                if (table->temp_hash_tbl == NULL) {
+                    bdb_temp_table_destroy_pool_wrapper(table, bdb_state);
+                    return NULL;
+                }
+            }
+            break;
+        case TEMP_TABLE_TYPE_LIST:
+            listc_init(&table->temp_tbl_list, offsetof(struct temp_list_node, lnk));
+            break;
+        case TEMP_TABLE_TYPE_ARRAY:
+            if (table->elements == NULL) {
+                table->elements = calloc(table->max_mem_entries, sizeof(arr_elem_t));
+                if (table->elements == NULL) {
+                    bdb_temp_table_destroy_pool_wrapper(table, bdb_state);
+                    return NULL;
+                }
+            }
+            break;
+        }
+
         table->num_mem_entries = 0;
         table->cmpfunc = key_memcmp;
         table->temp_table_type = temp_table_type;
-
-        if (temp_table_type == TEMP_TABLE_TYPE_BTREE &&
-            table->dbenv_temp == NULL &&
-            create_temp_db_env(bdb_state, table, bdberr) != 0) {
-            bdb_temp_table_destroy_pool_wrapper(table, bdb_state);
-            return NULL;
-        }
     }
 
     return table;
@@ -1695,8 +1705,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
         break;
     }
 
-    hash_free(tbl->temp_hash_tbl);
-    tbl->temp_hash_tbl = NULL;
+    if (tbl->temp_hash_tbl != NULL)
+        hash_free(tbl->temp_hash_tbl);
     free(tbl->elements);
 
     /* close the environments*/
