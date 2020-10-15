@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <cdb2api.h>
-#include <malloc.h>
 #include <errno.h>
 #include <time.h>
 #include <inttypes.h>

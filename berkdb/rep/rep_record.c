@@ -6757,10 +6757,10 @@ get_committed_lsns(dbenv, inlsns, n_lsns, epoch, file, offset)
 						txn_gen_args->timestamp, epoch);
 #endif
 						if (gbl_extended_sql_debug_trace) {
-							logmsg(LOGMSG_USER, "td %lu %s line %d lsn %d:%d "
+							logmsg(LOGMSG_USER, "td %p %s line %d lsn %d:%d "
 												"break-loop because timestamp "
 												"(%ld) < epoch (%d)\n",
-								   pthread_self(), __func__, __LINE__,
+								   (void*)pthread_self(), __func__, __LINE__,
 								   lsn.file, lsn.offset,
 								   txn_gen_args->timestamp, epoch);
 						}

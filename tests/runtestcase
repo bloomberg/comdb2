@@ -65,6 +65,9 @@ warn_long_setup() {
 # in the cores directory (if not set then in TESTDIR) for core file 
 # containing comdb2 and pid in core filename.
 find_cores() {
+    if [ $OSTYPE != "linux-gnu" ] ; then
+        return
+    fi
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
     local LCLDBNM=$1

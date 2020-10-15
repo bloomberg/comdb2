@@ -169,7 +169,7 @@ int timepart_systable_timepartpermissions_collect(void **data, int *nrecords)
     Pthread_rwlock_rdlock(&views_lk);
     arr = calloc(views->nviews, sizeof(char *));
     if (!arr) {
-        logmsg(LOGMSG_ERROR, "%s OOM %lu!\n", __func__,
+        logmsg(LOGMSG_ERROR, "%s OOM %zu!\n", __func__,
                sizeof(char *) * views->nviews);
         rc = -1;
         goto done;

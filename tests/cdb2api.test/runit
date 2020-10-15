@@ -6,7 +6,7 @@ bash -n "$0" | exit 1
 # The driver will just add/alter tables as required.
 
 dbname=$1
-if [[ -z $dbname ]] ; then
+if [[ -z "$dbname" ]] ; then
     echo dbname missing
     exit 1
 fi
@@ -35,6 +35,10 @@ for testreq in `ls t*.req` ; do
         exit 1
     fi
 done
+
+if [ -z "$CLUSTER" ] ; then # test if CLUSTER is blank (not set) and exit when so
+    exit 0
+fi
 
 # This test checks that master host returned in dbinforesponse matches with
 # one in comdb2_cluster system table. List of nodes in dbinforesponse gets

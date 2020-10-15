@@ -661,7 +661,7 @@ struct sqlclntstate {
     int n_cmp_idx;
     sampled_idx_t *sampled_idx_tbl;
 
-    int debug_sqlclntstate;
+    pthread_t debug_sqlclntstate;
     int last_check_time;
     int query_timeout;
     int stop_this_statement;

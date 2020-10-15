@@ -750,6 +750,21 @@ typedef enum {
 	DB_PRIORITY_VERY_HIGH=5,
 	DB_PRIORITY_INDEX=6
 } DB_CACHE_PRIORITY;
+/*
+ * Mpool priorities from low to high.  Defined in terms of fractions of the
+ * buffers in the pool.
+ */
+typedef enum {
+	MPOOL_PRI_VERY_LOW=-1,	/* Dead duck.  Check and set to 0. */
+	MPOOL_PRI_LOW=-2,	/* Low. */
+	MPOOL_PRI_DEFAULT=0,	/* No adjustment -- special case.*/
+	MPOOL_PRI_HIGH=10,	/* With the dirty buffers. */
+	MPOOL_PRI_DIRTY=5,	/* Dirty gets a 20% boost. */
+	MPOOL_PRI_INDEX=2,   /* Index pages get a 50% boost. */
+	MPOOL_PRI_INTERNAL=4,   /* Internal pages get an additional 25% boost. */
+	MPOOL_PRI_VERY_HIGH=1,	/* Add number of buffers in pool. */
+} MPOOL_PRIORITY;
+
 
 /* Per-process DB_MPOOLFILE information. */
 struct __db_mpoolfile {
@@ -805,7 +820,7 @@ struct __db_mpoolfile {
 	int32_t		lsn_offset;	/* LSN offset in page. */
 	u_int32_t	gbytes, bytes;	/* Maximum file size. */
 	DBT	       *pgcookie;	/* Byte-string passed to pgin/pgout. */
-	DB_CACHE_PRIORITY		/* Cache priority. */
+	MPOOL_PRIORITY		/* Cache priority. */
 			priority;
 
 	void	       *addr;		/* Address of mmap'd region. */

@@ -224,6 +224,7 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 		ret = __qam_open(dbp, txn, fname, meta_pgno, mode, flags);
 		break;
 	case DB_UNKNOWN:
+	case DB_TYPE_MAX:
 		return (__db_unknown_type(dbenv, "__db_dbopen", dbp->type));
 	}
 	if (ret != 0)

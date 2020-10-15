@@ -4296,6 +4296,8 @@ deadlock_again:
         case BDBTYPE_LITE:
             snprintf(tmpname, sizeof(tmpname), "XXX.%s.dta", bdb_state->name);
             break;
+	default:
+            break;
         }
         if (rc) {
             if (tid)

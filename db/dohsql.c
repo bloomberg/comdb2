@@ -397,8 +397,8 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
 
     if (conn->status == DOH_MASTER_DONE) {
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "%lx %s master done q %d qf %d\n",
-                   pthread_self(), __func__, queue_count(conn->que),
+            logmsg(LOGMSG_USER, "%p %s master done q %d qf %d\n",
+                   (void *)pthread_self(), __func__, queue_count(conn->que),
                    queue_count(conn->que_free));
         /* work is done, need to clean-up */
         _track_que_free(conn);
@@ -416,7 +416,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
     /* try to steal an old row */
     oldrow = queue_next(conn->que_free);
     if (oldrow && gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%lx %s retrieved older row\n", pthread_self(),
+        logmsg(LOGMSG_USER, "%p %s retrieved older row\n", (void *)pthread_self(),
                __func__);
     Pthread_mutex_unlock(&conn->mtx);
 
@@ -435,7 +435,7 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
         abort();
 
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%lx XXX: %p added new row\n", pthread_self(),
+        logmsg(LOGMSG_USER, "%p XXX: %p added new row\n", (void *)pthread_self(),
                conn);
 
     _que_limiter(conn, stmt, row_size);
@@ -679,13 +679,13 @@ static int init_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     rc = sqlite3_maybe_step(clnt, stmt);
 
     if (gbl_dohsql_verbose) {
-        logmsg(LOGMSG_USER, "%lx %s: sqlite3_maybe_step rc %d\n", pthread_self(),
+        logmsg(LOGMSG_USER, "%p %s: sqlite3_maybe_step rc %d\n", (void *)pthread_self(),
                __func__, rc);
         if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0)
             logmsg(LOGMSG_USER,
-                   "%lx clnt %p conns %p limitMem %d:%d limit %d "
+                   "%p clnt %p conns %p limitMem %d:%d limit %d "
                    "offsetMem %d:%d offset %d\n",
-                   pthread_self(), clnt, conns,
+                   (void *)pthread_self(), clnt, conns,
                    conns->limitRegs[ILIMIT_MEM_IDX],
                    conns->limitRegs[ILIMIT_SAVED_MEM_IDX], conns->limit,
                    conns->limitRegs[IOFFSET_MEM_IDX],
@@ -709,7 +709,7 @@ static int _check_limit(sqlite3_stmt *stmt, dohsql_t *conns)
     if (conns->limitRegs[ILIMIT_SAVED_MEM_IDX] > 0 && conns->limit >= 0 &&
         conns->nrows >= conns->limit) {
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "%lx REACHED LIMIT rc =%d!\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%p REACHED LIMIT rc =%d!\n", (void *)pthread_self(),
                    conns->conns[0].rc);
         if (conns->conns[0].rc != SQLITE_DONE) {
             if (gbl_dohsql_verbose)
@@ -756,7 +756,7 @@ static int dohsql_dist_next_row(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     int rc;
 
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%lx %s: start\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "%p %s: start\n", (void *)pthread_self(), __func__);
     if (conns->nrows == 0) {
         rc = init_next_row(clnt, stmt);
         if (rc == SQLITE_ROW) {
@@ -844,7 +844,7 @@ got_row:
 static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s type %d code %d\n", pthread_self(),
+        logmsg(LOGMSG_WARN, "%p %s type %d code %d\n", (void *)pthread_self(),
                __func__, t, i);
     switch (t) {
     case RESPONSE_COLUMNS:
@@ -894,33 +894,33 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int dohsql_read_response(struct sqlclntstate *a, int b, void *c, int d)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s %d\n", pthread_self(), __func__, b);
+        logmsg(LOGMSG_WARN, "%p %s %d\n", (void *)pthread_self(), __func__, b);
     return -1;
 }
 static void *dohsql_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return strdup(clnt->sql);
 }
 static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     clnt->sql = arg;
     return NULL;
 }
 static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     free(arg);
     return NULL;
 }
 static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return arg;
 }
 
@@ -929,7 +929,7 @@ static int dohsql_param_count(struct sqlclntstate *c)
     dohsql_connector_t *conn = (dohsql_connector_t *)c->plugin.state;
 
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
 
     return conn->nparams;
 }
@@ -951,7 +951,7 @@ static int dohsql_param_index(struct sqlclntstate *a, const char *b, int64_t *c)
     dohsql_connector_t *conn = (dohsql_connector_t *)a->plugin.state;
 
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
 
     return _param_index(conn, b, c);
 }
@@ -974,7 +974,7 @@ static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b,
                               int c)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
 
     return _param_value((dohsql_connector_t *)a->plugin.state, b, c, __func__);
 }
@@ -982,7 +982,7 @@ static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b,
 static int dohsql_override_count(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
 
     /* children don't have overrides, they are only available in distributor */
     return 0;
@@ -991,86 +991,86 @@ static int dohsql_override_count(struct sqlclntstate *a)
 static int dohsql_override_type(struct sqlclntstate *a, int b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s TODO\n", (void *)pthread_self(), __func__);
     return 0;
 }
 
 static int dohsql_clr_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_has_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_set_cnonce(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_get_snapshot(struct sqlclntstate *a, int *b, int *c)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_upd_snapshot(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_clr_snapshot(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_has_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_set_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_clr_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return -1;
 }
 static int dohsql_get_high_availability(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_has_parallel_sql(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static void dohsql_add_steps(struct sqlclntstate *a, double b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
 }
 static void dohsql_setup_client_info(struct sqlclntstate *clnt,
                                      struct sqlthdstate *b, char *c)
@@ -1081,37 +1081,37 @@ static void dohsql_setup_client_info(struct sqlclntstate *clnt,
         thrman_wheref(thrman_self(), "%s", conn->thr_where);
 
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s %s\n", pthread_self(), __func__,
+        logmsg(LOGMSG_WARN, "%p %s %s\n", (void *)pthread_self(), __func__,
                (conn->thr_where) ? conn->thr_where : "NULL");
 }
 static int dohsql_skip_row(struct sqlclntstate *a, uint64_t b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s TODO\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s TODO\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static uint64_t dohsql_get_client_starttime(struct sqlclntstate *clnt)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_get_client_retries(struct sqlclntstate *clnt)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_send_intrans_response(struct sqlclntstate *a)
 {
     if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
 static int dohsql_needs_decltypes(struct sqlclntstate *a) {
@@ -1158,11 +1158,11 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->thr_where = strdup(where ? where : "");
     conn->nparams = nparams;
     conn->params = params;
-    logmsg(LOGMSG_USER, "%lx %p saved nparams %d\n", pthread_self(), __func__,
+    logmsg(LOGMSG_USER, "%p %p saved nparams %d\n", (void *)pthread_self(), __func__,
            conn->nparams);
     for (int i = 0; i < conn->nparams; i++) {
-        logmsg(LOGMSG_USER, "%lx %p saved params %d name \"%s\" pos %d\n",
-               pthread_self(), __func__, i, conn->params[i].name,
+        logmsg(LOGMSG_USER, "%p %p saved params %d name \"%s\" pos %d\n",
+               (void *)pthread_self(), __func__, i, conn->params[i].name,
                conn->params[i].pos);
     }
 
@@ -1472,8 +1472,8 @@ int comdb2_register_limit(int iLimit, int iSavedLimit)
         clnt->conns->limitRegs[ILIMIT_SAVED_MEM_IDX] = iSavedLimit;
         clnt->conns->limitRegs[ILIMIT_MEM_IDX] = iLimit;
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "%lx setting saved limit to %d limit is %d\n",
-                   pthread_self(), iSavedLimit, iLimit);
+            logmsg(LOGMSG_USER, "%p setting saved limit to %d limit is %d\n",
+                   (void *)pthread_self(), iSavedLimit, iLimit);
         return 1;
     }
     return 0;
@@ -1488,8 +1488,8 @@ void comdb2_register_offset(int iOffset, int iLimitOffset, int iSavedOffset)
         clnt->conns->limitRegs[IOFFSET_MEM_IDX] = iOffset;
         if (gbl_dohsql_verbose)
             logmsg(LOGMSG_USER,
-                   "%lx setting saved offset to %d offset is %d\n",
-                   pthread_self(), iSavedOffset, iOffset);
+                   "%p setting saved offset to %d offset is %d\n",
+                   (void *)pthread_self(), iSavedOffset, iOffset);
     }
 }
 
@@ -1512,8 +1512,8 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
         /* limit */
         conns->limit = sqlite3_value_int64(reg);
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "%lx found limit %d from register %d\n",
-                   pthread_self(), conns->limit, conns->limitRegs[0]);
+            logmsg(LOGMSG_USER, "%p found limit %d from register %d\n",
+                   (void *)pthread_self(), conns->limit, conns->limitRegs[0]);
     } else {
         if (m == &v->aMem[conns->limitRegs[IOFFSET_MEM_IDX]]) {
             reg = &v->aMem[conns->limitRegs[IOFFSET_SAVED_MEM_IDX]];
@@ -1522,10 +1522,10 @@ void comdb2_handle_limit(Vdbe *v, Mem *m)
 
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_USER,
-                       "%lx found offset %d from register %d, adjusting limit "
+                       "%p found offset %d from register %d, adjusting limit "
                        "to %d updating internal offset mems to %lld->0 and "
                        "%lld->%lld\n",
-                       pthread_self(), conns->offset, conns->limitRegs[1],
+                       (void *)pthread_self(), conns->offset, conns->limitRegs[1],
                        (conns->limit < 0) ? conns->limit
                                           : (conns->limit - conns->offset),
                        v->aMem[conns->limitRegs[IOFFSET_MEM_IDX]].u.i,
@@ -1639,8 +1639,8 @@ static void _print_order_info(dohsql_t *conns, const char *label)
         return;
 
     logmsg(LOGMSG_USER,
-           "%lx Order %s: top_idx=%d filling=%d active=%d nconns=%d\n[",
-           pthread_self(), label, conns->top_idx, conns->filling, conns->active,
+           "%p Order %s: top_idx=%d filling=%d active=%d nconns=%d\n[",
+           (void *)pthread_self(), label, conns->top_idx, conns->filling, conns->active,
            conns->nconns);
     for (i = 0; i < conns->nconns; i++) {
         logmsg(LOGMSG_USER, "(%d, %d, %d) ", order[i],
@@ -1703,7 +1703,7 @@ static void _move_client_done(dohsql_t *conns, int idx)
 
     last = (conns->top_idx + conns->active - 1) % conns->nconns;
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%lx %s: client %d done\n", pthread_self(),
+        logmsg(LOGMSG_USER, "%p %s: client %d done\n", (void *)pthread_self(),
                __func__, order[idx]);
     if (last != idx)
         order[idx] = order[last];
@@ -1763,7 +1763,7 @@ static int dohsql_dist_next_row_ordered(struct sqlclntstate *clnt,
     int que_idx;
 
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%lx %s: start\n", pthread_self(), __func__);
+        logmsg(LOGMSG_USER, "%p %s: start\n", (void *)pthread_self(), __func__);
     if (conns->nrows == 0) {
         rc = _local_step(clnt, stmt, 0);
         if (rc != SQLITE_OK)

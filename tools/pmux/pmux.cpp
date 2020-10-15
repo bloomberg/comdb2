@@ -55,6 +55,10 @@
 
 //#define VERBOSE
 
+#if defined(__APPLE__)
+#define HOST_NAME_MAX 64
+#endif
+
 #ifdef VERBOSE
 #define debug_log(...) syslog(LOG_DEBUG, __VA_ARGS__)
 #else
