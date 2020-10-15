@@ -59,7 +59,6 @@ static int eventlog_verbose = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static gzFile eventlog_open(char *fname);
 static int eventlog_every_n = 1;
 static int64_t eventlog_count = 0;
 
@@ -74,14 +73,6 @@ struct sqltrack {
 LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
-
-void eventlog_init()
-{
-    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
-    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
-    char *fname = eventlog_fname(thedb->envname);
-    if (eventlog_enabled) eventlog = eventlog_open(fname);
-}
 
 static inline void free_gbl_eventlog_fname()
 {
@@ -156,10 +147,11 @@ static void eventlog_roll_cleanup()
     closedir(d);
 }
 
-static gzFile eventlog_open(char *fname)
+static gzFile eventlog_open(char *fname, bool append)
 {
     gbl_eventlog_fname = fname;
-    gzFile f = gzopen(fname, "2w");
+    const char *mode = append ? "2a" : "2w";
+    gzFile f = gzopen(fname, mode);
     if (f == NULL) {
         logmsg(LOGMSG_ERROR, "Failed to open log file = %s\n", fname);
         eventlog_enabled = 0;
@@ -184,6 +176,15 @@ static void eventlog_close(void)
     }
     free_gbl_eventlog_fname();
 }
+
+void eventlog_init()
+{
+    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
+    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
+    char *fname = eventlog_fname(thedb->envname);
+    if (eventlog_enabled) eventlog = eventlog_open(fname, false);
+}
+
 
 static char *eventlog_fname(const char *dbname)
 {
@@ -602,7 +603,7 @@ static void eventlog_roll(void)
     eventlog_close();
 
     char *fname = eventlog_fname(thedb->envname);
-    eventlog = eventlog_open(fname);
+    eventlog = eventlog_open(fname, false);
 }
 
 // this function must be called while holding eventlog_lk
@@ -611,8 +612,8 @@ static void eventlog_usefile(const char *fname)
     eventlog_close();
 
     char *d = strdup(fname);
-    eventlog = eventlog_open(d); // passes responsibility to free d
-    if (!eventlog)               // failed to open fname, so open from default location
+    eventlog = eventlog_open(d, true); // passes responsibility to free d
+    if (!eventlog)                     // failed to open fname, so open from default location
         eventlog_roll();
 }
 
