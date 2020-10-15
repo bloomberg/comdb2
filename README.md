@@ -103,7 +103,7 @@ On every machine in the cluster:
    To run tests, install following:
 
    ```
-   brew install coreutils bash jq
+   brew install coreutils bash gawk jq
    export PATH="/usr/local/opt/coreutils/libexec/gnubin:$PATH"
    ```
 

@@ -971,7 +971,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         exit(1);
                 }
 
-                logmsg(LOGMSG_DEBUG, "CREATED %lu\n", thd->tid);
+                logmsg(LOGMSG_DEBUG, "CREATED %p\n", (void *)thd->tid);
 
                 listc_rfl(&pool->thdlist, thd);
                 pool->num_failed_dispatches++;

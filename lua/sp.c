@@ -79,7 +79,6 @@ extern int gbl_max_sqlcache;
 extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
-extern int gbl_break_lua;
 extern int gbl_notimeouts;
 extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
@@ -88,6 +87,8 @@ extern int gbl_lua_prepare_max_retries;
 extern int gbl_lua_prepare_retry_sleep;
 extern int comdb2_sql_tick();
 
+pthread_t gbl_break_lua;
+int gbl_break_all_lua = 0;
 char *gbl_break_spname;
 void *debug_clnt;
 
@@ -1534,7 +1535,7 @@ static int stmt_sql_step(Lua L, dbstmt_t *stmt)
 
 typedef struct client_info {
     struct sqlclntstate *clnt;
-    int thread_id;
+    pthread_t thread_id;
     char buffer[250];
     int has_buffer;
 } clnt_info;
@@ -1630,7 +1631,7 @@ static int db_debug(lua_State *lua)
         }
     }
 
-    if (gbl_break_lua == INT_MAX) {
+    if (gbl_break_all_lua) {
         char sp_info[128];
         int len;
         if (sp->spversion.version_num) {
@@ -1644,7 +1645,7 @@ static int db_debug(lua_State *lua)
         }
     }
 
-    if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
+    if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
         if (debug_clnt) {
             sp->debug_clnt = debug_clnt;
             sp->debug_clnt->sp = sp;
@@ -1657,6 +1658,7 @@ static int db_debug(lua_State *lua)
         }
         lua_settop(lua, 0); /* remove eventual returns */
         gbl_break_lua = 0;
+        gbl_break_all_lua = 0;
     }
 
     return 0;
@@ -2117,7 +2119,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         }
         sp->num_instructions++;
 
-        if (gbl_break_lua == INT_MAX) {
+        if (gbl_break_all_lua) {
             lua_getstack(lua, 1, debug);
             lua_getinfo(lua, "nSl", debug);
             char sp_info[128];
@@ -2135,7 +2137,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
             }
         }
 
-        if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
+        if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
             if (debug_clnt) {
                 char *err = NULL;
                 load_debugging_information(sp, &err);
@@ -5876,7 +5878,7 @@ static void debug_sp(struct sqlclntstate *clnt)
 halt_here:
     debug_clnt = clnt;
     if (arg1 == 0) {
-        gbl_break_lua = INT_MAX;
+        gbl_break_all_lua = 1;
         gbl_break_spname = carg1;
     } else {
         gbl_break_lua = arg1;
@@ -6193,9 +6195,10 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
         }
     }
 
-    if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
+    if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
         gbl_lua_version++;
         gbl_break_lua = 0;
+        gbl_break_all_lua = 0;
     }
 
     return rc;

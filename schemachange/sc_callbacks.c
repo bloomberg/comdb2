@@ -704,6 +704,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         case alter:
             bdb_assert_tablename_locked(bdb_state, "comdb2_tables", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
             break;
+	default:
+	    break;
         }
     }
     switch (type) {

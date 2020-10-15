@@ -1046,7 +1046,7 @@ static void do_reconnect(int dummyfd, short what, void *data)
         return;
     }
     struct timeval t = reconnect_time(e->distress_count);
-    hprintf("RECONNECT IN %lds.%ldus\n", t.tv_sec, t.tv_usec);
+    hprintf("RECONNECT IN %lds.%ldus\n", t.tv_sec, (long int)t.tv_usec);
     e->connect_ev = event_new(base, -1, EV_TIMEOUT, pmux_connect, e);
     event_add(e->connect_ev, &t);
 }

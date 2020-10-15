@@ -1062,7 +1062,7 @@ int sqlite3VdbeExec(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( gbl_debug_sql_opcodes ){
-      logmsg(LOGMSG_USER, "tid 0x%lx step %d pc %d op %d %s\n", pthread_self(), nVmStep,
+      logmsg(LOGMSG_USER, "tid 0x%p step %d pc %d op %d %s\n", (void *)pthread_self(), nVmStep,
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

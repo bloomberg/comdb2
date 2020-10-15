@@ -284,7 +284,7 @@ ast_t *ast_init(Parse *pParse, const char *caller)
         return pParse->ast->unsupported ? NULL : pParse->ast;
 
     if (gbl_dohast_verbose)
-        logmsg(LOGMSG_USER, "TTT: %lu %s from %s\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "TTT: %p %s from %s\n", (void *)pthread_self(), __func__,
                caller);
 
     if (!sqlite3IsToplevel(pParse)) {
@@ -713,7 +713,7 @@ int comdb2_check_parallel(Parse *pParse)
 
     if (node->type == AST_TYPE_SELECT) {
         if (gbl_dohast_verbose)
-            logmsg(LOGMSG_USER, "%lx Single query \"%s\"\n", pthread_self(),
+            logmsg(LOGMSG_USER, "%p Single query \"%s\"\n", (void *)pthread_self(),
                    node->sql);
         return 0;
     }
@@ -722,8 +722,8 @@ int comdb2_check_parallel(Parse *pParse)
         _save_params(pParse, node);
 
         if (gbl_dohast_verbose) {
-            logmsg(LOGMSG_USER, "%lx Parallelizable union %d threads:\n",
-                   pthread_self(), node->nnodes);
+            logmsg(LOGMSG_USER, "%p Parallelizable union %d threads:\n",
+                   (void *)pthread_self(), node->nnodes);
             for (i = 0; i < node->nnodes; i++) {
                 logmsg(LOGMSG_USER, "\t Thread %d: \"%s\"\n", i + 1,
                        node->nodes[i]->sql);
@@ -813,8 +813,8 @@ static void _save_params(Parse *pParse, dohsql_node_t *node)
         return;
 
     if (gbl_dohast_verbose) {
-        logmsg(LOGMSG_USER, "%lx Caching bound parameters length %p\n",
-                pthread_self(), v->pVList);
+        logmsg(LOGMSG_USER, "%p Caching bound parameters length %p\n",
+                (void *)pthread_self(), v->pVList);
         sqlite3VListPrint(LOGMSG_USER, v->pVList);
     }
 

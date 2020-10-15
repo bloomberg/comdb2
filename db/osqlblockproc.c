@@ -960,8 +960,8 @@ static int process_this_session(
         DEBUG_PRINT_TMPBL_READ();
 
         if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
-                   pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%p %s:%d blocksql session closing early\n",
+                   (void *)pthread_self(), __FILE__, __LINE__);
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;

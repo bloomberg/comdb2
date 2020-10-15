@@ -341,8 +341,8 @@ int fdb_svc_cursor_close(char *cid, int isuuid, struct sqlclntstate **pclnt)
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu: CLosing rem cursor cid=%llx autocommit=%d\n",
-               pthread_self(), *(unsigned long long *)cur->cid,
+        logmsg(LOGMSG_USER, "%p: CLosing rem cursor cid=%llx autocommit=%d\n",
+               (void *)pthread_self(), *(unsigned long long *)cur->cid,
                cur->autocommit);
 
     Pthread_rwlock_unlock(&center->cursors_rwlock);
@@ -515,8 +515,8 @@ again:
 
             if (recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %lu failed dd recovery\n",
-                           __func__, pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n",
+                           __func__, (void *)pthread_self());
                 return SQLITE_DEADLOCK;
             }
 

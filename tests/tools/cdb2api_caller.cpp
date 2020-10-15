@@ -112,7 +112,7 @@ void insert_records_with_bind_params(cdb2_hndl_tp *db, std::string table)
         {
             for(unsigned int i = 0 ; i < sizeof(palltypes_blob) - 1; i++)
                 palltypes_blob[i] = 'a' + (i % 26);
-             palltypes_blob[sizeof(palltypes_blob)] = '\0';
+             palltypes_blob[sizeof(palltypes_blob)-1] = '\0';
         }
         time_t t = 1386783296; //2013-12-11T123456
         cdb2_client_datetime_t datetime = {0};
@@ -195,7 +195,7 @@ void insert_records_with_bind_index(cdb2_hndl_tp *db, std::string table)
     {
         for(unsigned int i = 0 ; i < sizeof(palltypes_blob) - 1; i++)
             palltypes_blob[i] = 'a' + (i % 26);
-        palltypes_blob[sizeof(palltypes_blob)] = '\0';
+        palltypes_blob[sizeof(palltypes_blob)-1] = '\0';
     }
     time_t t = 1386783296; //2013-12-11T123456
     cdb2_client_datetime_t datetime = {0};

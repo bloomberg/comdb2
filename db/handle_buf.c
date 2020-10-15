@@ -279,15 +279,15 @@ static void thd_dump_nolock(void)
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
             opc = thd->iq->opcode;
-            logmsg(LOGMSG_USER, "busy  tid %lu  time %5d ms  %-6s (%-3d) "
+            logmsg(LOGMSG_USER, "busy  tid %p  time %5d ms  %-6s (%-3d) "
                                 "%-20s where %s %s\n",
-                   thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc,
+                   (void *)thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc,
                    getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
         }
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
             cnt++;
-            logmsg(LOGMSG_USER, "idle  tid %lu \n", thd->tid);
+            logmsg(LOGMSG_USER, "idle  tid %p \n", (void *)thd->tid);
         }
     }
 
@@ -353,16 +353,16 @@ void thd_dump(void)
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
             logmsg(LOGMSG_USER,
-                   "busy  tid %lu  time %5d ms  %-6s (%-3d) %-20s where %s "
+                   "busy  tid %p  time %5d ms  %-6s (%-3d) %-20s where %s "
                    "%s\n",
-                   thd->tid, U2M(nowus - thd->iq->nowus),
+                   (void *)thd->tid, U2M(nowus - thd->iq->nowus),
                    req2a(thd->iq->opcode), thd->iq->opcode, getorigin(thd->iq),
                    thd->iq->where, thd->iq->gluewhere);
         }
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
             cnt++;
-            logmsg(LOGMSG_USER, "idle  tid %lu \n", thd->tid);
+            logmsg(LOGMSG_USER, "idle  tid %p \n", (void *)thd->tid);
         }
     }
     UNLOCK(&lock);
@@ -429,8 +429,8 @@ static void *thd_req(void *vthd)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
-               pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n",
+               (void *)pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;
@@ -440,36 +440,35 @@ static void *thd_req(void *vthd)
     if (thdinfo->ct_add_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add table thd "
-               "%lu\n",
-               pthread_self());
+               "%p\n",
+               (void *)pthread_self());
         abort();
     }
     thdinfo->ct_del_table = create_constraint_table();
     if (thdinfo->ct_del_table == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint delete table "
-               "thd %lu\n",
-               pthread_self());
+               "thd %p\n",
+               (void *)pthread_self());
         abort();
     }
     thdinfo->ct_add_index = create_constraint_index_table();
     if (thdinfo->ct_add_index == NULL) {
         logmsg(LOGMSG_FATAL,
                "**aborting: cannot allocate constraint add index table "
-               "thd %lu\n",
-               pthread_self());
+               "thd %p\n",
+               (void *)pthread_self());
         abort();
     }
     Pthread_setspecific(unique_tag_key, thdinfo);
 
-    /*printf("started handler %ld thd %p thd->id %ld\n", pthread_self(), thd,
+    /*printf("started handler %ld thd %p thd->id %p\n", pthread_self(), thd,
      * thd->tid);*/
     do {
         if (thd->tid != pthread_self()) /*sanity check*/
         {
-            logmsg(LOGMSG_FATAL, "**aborting due thd_req mismatch thd id %ld (my "
-                            "thd %ld)\n",
-                    thd->tid, pthread_self());
+            logmsg(LOGMSG_FATAL, "**aborting due thd_req mismatch thd id %p (my thd %p)\n",
+                    (void *)thd->tid, (void *)pthread_self());
             abort();
         }
         thd->iq->startus = comdb2_time_epochus();
@@ -536,7 +535,7 @@ static void *thd_req(void *vthd)
             }
             thd->iq->vfy_genid_track = 0;
 #if 0
-            fprintf(stderr, "%s:%d: THD=%d relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
+            fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), thd->iq);
 #endif
             pool_relablk(p_reqs, thd->iq); /* this request is done, so release
                                             * resource. */
@@ -610,13 +609,12 @@ static void *thd_req(void *vthd)
                     nretire++;
                     listc_rfl(&idle, thd);
                     Pthread_cond_destroy(&thd->wakeup);
-                    thd->tid =
-                        -2; /*returned. this is just for info & debugging*/
+                    thd->tid = (pthread_t) -2; /*returned. this is just for info & debugging*/
                     pool_relablk(p_thds, thd); /*release this struct*/
                     /**/
                     retUNLOCK(&lock);
                     /**/
-                    /*printf("ending handler %ld\n", pthread_self());*/
+                    /*printf("ending handler %p\n", pthread_self());*/
                     delete_constraint_table(thdinfo->ct_add_table);
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
@@ -655,7 +653,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                     }
                 }
                 thd->iq = 0;
-                thd->tid = -1;
+                thd->tid = (pthread_t) -1;
                 pool_relablk(p_thds, thd);
             }
             if (iq) {
@@ -709,7 +707,7 @@ static int reterr_withfree(struct ireq *iq, int rc)
         LOCK(&lock)
         {
 #if 0
-           fprintf(stderr, "%s:%d: THD=%d relablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
+           fprintf(stderr, "%s:%d: THD=%p relablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
             pool_relablk(p_reqs, iq);
         }
@@ -924,7 +922,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 
 
 #if 0
-        fprintf(stderr, "%s:%d: THD=%d getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
+        fprintf(stderr, "%s:%d: THD=%p getablk iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
 
         /* allocate a request for later dispatch to available thread */
@@ -1039,7 +1037,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     NULL) /*try to find an idle thread*/
                 {
 #if 0
-                printf("%s:%d: thdpool FOUND THD=%d -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
+                printf("%s:%d: thdpool FOUND THD=%p -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
 #endif
                 thd->iq = iq;
                 iq->where = "dispatched";
@@ -1082,7 +1080,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 #endif
 
 #if 0
-                printf("%s:%d: thdpool CREATE THD=%d -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
+                printf("%s:%d: thdpool CREATE THD=%p -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);
 #endif
                 if (rc != 0) {
                     errUNLOCK(&lock);
@@ -1113,9 +1111,9 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
         if (qtype != REQ_OFFLOAD && rc > gbl_maxqueue) {
             struct dbq_entry_t *nextrq = NULL;
             logmsg(LOGMSG_ERROR,
-                   "THD=%lu handle_buf:rejecting requests queue too full %d "
+                   "THD=%p handle_buf:rejecting requests queue too full %d "
                    "(max %d)\n",
-                   pthread_self(), rc, gbl_maxqueue);
+                   (void *)pthread_self(), rc, gbl_maxqueue);
 
             comdb2bma_yield_all();
             /* Dequeue the request I just queued. */
