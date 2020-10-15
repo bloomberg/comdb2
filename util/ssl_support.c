@@ -391,6 +391,11 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     if (protocols != 0)
         SSL_CTX_set_options(myctx, protocols);
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+    /* Make sure ECDHE ciphers are enabled */
+    SSL_CTX_set_ecdh_auto(myctx, 1);
+#endif
+
     /* We need the flag to be able to write as fast as possible.
        We let sbuf2/comdb2buf take care of uncomplete writes. */
     SSL_CTX_set_mode(myctx, SSL_MODE_ENABLE_PARTIAL_WRITE |
