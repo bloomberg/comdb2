@@ -162,10 +162,8 @@ int logmsgv(loglvl lvl, const char *fmt, va_list args)
         struct tm tm;
         localtime_r(&t, &tm);
         if (do_thread) {
-            snprintf(timestamp, sizeof(timestamp),
-                     "%04d/%02d/%02d %02d:%02d:%02d 0x%p ", tm.tm_year + 1900,
-                     tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min,
-                     tm.tm_sec, (void *)pthread_self());
+            snprintf(timestamp, sizeof(timestamp), "%04d/%02d/%02d %02d:%02d:%02d 0x%p ", tm.tm_year + 1900,
+                     tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec, (void *)pthread_self());
         } else {
             snprintf(timestamp, sizeof(timestamp),
                      "%04d/%02d/%02d %02d:%02d:%02d ", tm.tm_year + 1900,

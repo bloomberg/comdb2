@@ -2164,9 +2164,8 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 
     rc = get_curtran(thedb->bdb_env, &clnt);
     if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "%s: td %p unable to get a CURSOR transaction, rc = %d!\n",
-               __func__, (void *)pthread_self(), rc);
+        logmsg(LOGMSG_ERROR, "%s: td %p unable to get a CURSOR transaction, rc = %d!\n", __func__,
+               (void *)pthread_self(), rc);
         goto done;
     }
     got_curtran = 1;
@@ -9232,9 +9231,8 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     }
 
     if (clnt->gen_changed) {
-        logmsg(LOGMSG_DEBUG,
-               "td %p %s line %d calling get_curtran on gen_changed\n",
-               (void *)pthread_self(), __func__, __LINE__);
+        logmsg(LOGMSG_DEBUG, "td %p %s line %d calling get_curtran on gen_changed\n", (void *)pthread_self(), __func__,
+               __LINE__);
     }
 
 retry:
@@ -9341,8 +9339,7 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     rc = bdb_put_cursortran(bdb_state, clnt->dbtran.cursor_tran, curtran_flags,
                             &bdberr);
     if (rc) {
-        logmsg(LOGMSG_DEBUG, "%s: %p rc %d bdberror %d\n", __func__,
-               (void *)pthread_self(), rc, bdberr);
+        logmsg(LOGMSG_DEBUG, "%s: %p rc %d bdberror %d\n", __func__, (void *)pthread_self(), rc, bdberr);
         ctrace("%s: rc %d bdberror %d\n", __func__, rc, bdberr);
         if (bdberr == BDBERR_BUG_KILLME) {
             /* should I panic? */
@@ -9497,8 +9494,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         if (!sleepms)
             sleepms = 2000;
 
-        logmsg(LOGMSG_ERROR, "THD %p:recover_deadlock, and lock desired\n",
-               (void *)pthread_self());
+        logmsg(LOGMSG_ERROR, "THD %p:recover_deadlock, and lock desired\n", (void *)pthread_self());
     } else if (ptrace)
         logmsg(LOGMSG_INFO, "THD %p:recover_deadlock\n", (void *)pthread_self());
 
@@ -9795,8 +9791,7 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n",
-                           __func__, (void *)pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n", __func__, (void *)pthread_self());
                 return -1;
             }
         }
@@ -9991,8 +9986,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else if (!gbl_rowlocks)
-                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n",
-                           __func__, (void *)pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n", __func__, (void *)pthread_self());
                 return -1;
             }
         }
@@ -10201,8 +10195,7 @@ static int ddguard_bdb_cursor_move(struct sql_thread *thd, BtCursor *pCur,
                 if (rc == SQLITE_CLIENT_CHANGENODE)
                     *bdberr = BDBERR_NOT_DURABLE;
                 else
-                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n",
-                           __func__, (void *)pthread_self());
+                    logmsg(LOGMSG_ERROR, "%s: %p failed dd recovery\n", __func__, (void *)pthread_self());
                 return -1;
             }
         }
@@ -10861,8 +10854,7 @@ static int _sockpool_get(const char *protocol, const char *dbname, const char *s
         socket_pool_get_ext(socket_type, 0, SOCKET_POOL_GET_GLOBAL, NULL, NULL);
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "%p: Asked socket for %s got %d\n",
-               (void *)pthread_self(), socket_type, fd);
+        logmsg(LOGMSG_ERROR, "%p: Asked socket for %s got %d\n", (void *)pthread_self(), socket_type, fd);
 
     return fd;
 }
@@ -10888,8 +10880,7 @@ void disconnect_remote_db(const char *protocol, const char *dbname, const char *
                           sizeof(socket_type));
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "%p: Donating socket for %s\n", (void *)pthread_self(),
-               socket_type);
+        logmsg(LOGMSG_ERROR, "%p: Donating socket for %s\n", (void *)pthread_self(), socket_type);
 
     /* this is used by fdb sql for now */
     socket_pool_donate_ext(socket_type, fd, IOTIMEOUTMS / 1000, 0,

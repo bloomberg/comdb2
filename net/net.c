@@ -1495,8 +1495,7 @@ static void net_throttle_wait_loop(netinfo_type *netinfo_ptr,
             logmsg(LOGMSG_ERROR,
                    "%s thread %p waiting for net count to drop"
                    " to %u enqueued buffers or %" PRIu64 " bytes (%d loops)\n",
-                   __func__, (void *)pthread_self(), queue_threshold, byte_threshold,
-                   loops);
+                   __func__, (void *)pthread_self(), queue_threshold, byte_threshold, loops);
         }
 
         host_ptr->stats.throttle_waits++;

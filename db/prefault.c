@@ -457,8 +457,7 @@ static void *prefault_io_thread(void *arg)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n",
-               (void *)pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n", (void *)pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;

@@ -279,10 +279,11 @@ static void thd_dump_nolock(void)
         for (thd = busy.top; thd; thd = thd->lnk.next) {
             cnt++;
             opc = thd->iq->opcode;
-            logmsg(LOGMSG_USER, "busy  tid %p  time %5d ms  %-6s (%-3d) "
-                                "%-20s where %s %s\n",
-                   (void *)thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc,
-                   getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
+            logmsg(LOGMSG_USER,
+                   "busy  tid %p  time %5d ms  %-6s (%-3d) "
+                   "%-20s where %s %s\n",
+                   (void *)thd->tid, U2M(nowus - thd->iq->nowus), req2a(opc), opc, getorigin(thd->iq), thd->iq->where,
+                   thd->iq->gluewhere);
         }
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
@@ -355,9 +356,8 @@ void thd_dump(void)
             logmsg(LOGMSG_USER,
                    "busy  tid %p  time %5d ms  %-6s (%-3d) %-20s where %s "
                    "%s\n",
-                   (void *)thd->tid, U2M(nowus - thd->iq->nowus),
-                   req2a(thd->iq->opcode), thd->iq->opcode, getorigin(thd->iq),
-                   thd->iq->where, thd->iq->gluewhere);
+                   (void *)thd->tid, U2M(nowus - thd->iq->nowus), req2a(thd->iq->opcode), thd->iq->opcode,
+                   getorigin(thd->iq), thd->iq->where, thd->iq->gluewhere);
         }
 
         for (thd = idle.top; thd; thd = thd->lnk.next) {
@@ -429,8 +429,7 @@ static void *thd_req(void *vthd)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n",
-               (void *)pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n", (void *)pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;
@@ -467,8 +466,8 @@ static void *thd_req(void *vthd)
     do {
         if (thd->tid != pthread_self()) /*sanity check*/
         {
-            logmsg(LOGMSG_FATAL, "**aborting due thd_req mismatch thd id %p (my thd %p)\n",
-                    (void *)thd->tid, (void *)pthread_self());
+            logmsg(LOGMSG_FATAL, "**aborting due thd_req mismatch thd id %p (my thd %p)\n", (void *)thd->tid,
+                   (void *)pthread_self());
             abort();
         }
         thd->iq->startus = comdb2_time_epochus();
@@ -609,7 +608,7 @@ static void *thd_req(void *vthd)
                     nretire++;
                     listc_rfl(&idle, thd);
                     Pthread_cond_destroy(&thd->wakeup);
-                    thd->tid = (pthread_t) -2; /*returned. this is just for info & debugging*/
+                    thd->tid = (pthread_t)-2;  /*returned. this is just for info & debugging*/
                     pool_relablk(p_thds, thd); /*release this struct*/
                     /**/
                     retUNLOCK(&lock);
@@ -653,7 +652,7 @@ static int reterr(intptr_t curswap, struct thd *thd, struct ireq *iq, int rc)
                     }
                 }
                 thd->iq = 0;
-                thd->tid = (pthread_t) -1;
+                thd->tid = (pthread_t)-1;
                 pool_relablk(p_thds, thd);
             }
             if (iq) {

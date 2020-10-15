@@ -693,8 +693,8 @@ static int osql_sock_start_int(struct sqlclntstate *clnt, int type, int start_fl
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
-        logmsg(LOGMSG_USER, "%p gets rqid %llx %s tid=0x%x\n", clnt, osql->rqid,
-                comdb2uuidstr(osql->uuid, us), (void *)pthread_self());
+        logmsg(LOGMSG_USER, "%p gets rqid %llx %s tid=0x%x\n", clnt, osql->rqid, comdb2uuidstr(osql->uuid, us),
+               (void *)pthread_self());
     }
 #endif
 
@@ -850,10 +850,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         if (!keep_session) {
             uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_USER,
-                       "0x%p Starting new session rqid=%llx, uuid=%s\n",
-                       (void *)pthread_self(), clnt->osql.rqid,
-                       comdb2uuidstr(clnt->osql.uuid, us));
+                logmsg(LOGMSG_USER, "0x%p Starting new session rqid=%llx, uuid=%s\n", (void *)pthread_self(),
+                       clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
             /* unregister this osql thread from checkboard */
             rc = osql_unregister_sqlthr(clnt);
             if (rc)
@@ -861,10 +859,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
         } else {
             uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_USER,
-                       "0x%p Restarting rqid=%llx uuid=%s against %s\n",
-                       (void *)pthread_self(), clnt->osql.rqid,
-                       comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
+                logmsg(LOGMSG_USER, "0x%p Restarting rqid=%llx uuid=%s against %s\n", (void *)pthread_self(),
+                       clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
             /* TODO: osql_sock_start will also call osql_reuse_sqlthr() */
             rc = osql_reuse_sqlthr(clnt, thedb->master);
             if (rc)
@@ -1019,8 +1015,7 @@ retry:
 
         /* trap */
         if (!osql->rqid) {
-            logmsg(LOGMSG_ERROR, "%s: !rqid %p %p???\n", __func__, clnt,
-                   (void *)pthread_self());
+            logmsg(LOGMSG_ERROR, "%s: !rqid %p %p???\n", __func__, clnt, (void *)pthread_self());
             /*cheap_stack_trace();*/
             abort();
         }

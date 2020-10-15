@@ -821,17 +821,17 @@ static void stripe(void)
     get_locks_wrapper(arraylen(arg), arg);
 }
 
-#define shuffle(x)                                                             \
-    do {                                                                       \
-        int i;                                                                 \
-        unsigned int seed = (int)pthread_self();                               \
-        for (i = 0; i < arraylen(x) - 1; ++i) {                                \
-            int j = i + (rand_r(&seed) % (arraylen(x) - i));                   \
-            uint8_t tmp[sizeof(x[0])];                                         \
-            memcpy(tmp, &x[i], sizeof(tmp));                                   \
-            memcpy(&x[i], &x[j], sizeof(tmp));                                 \
-            memcpy(&x[j], tmp, sizeof(tmp));                                   \
-        }                                                                      \
+#define shuffle(x)                                                                                                     \
+    do {                                                                                                               \
+        int i;                                                                                                         \
+        unsigned int seed = (int)pthread_self();                                                                       \
+        for (i = 0; i < arraylen(x) - 1; ++i) {                                                                        \
+            int j = i + (rand_r(&seed) % (arraylen(x) - i));                                                           \
+            uint8_t tmp[sizeof(x[0])];                                                                                 \
+            memcpy(tmp, &x[i], sizeof(tmp));                                                                           \
+            memcpy(&x[i], &x[j], sizeof(tmp));                                                                         \
+            memcpy(&x[j], tmp, sizeof(tmp));                                                                           \
+        }                                                                                                              \
     } while (0)
 #define NUMLOCKS 5
 static uint8_t p_lockdesc[NUMLOCKS][28];

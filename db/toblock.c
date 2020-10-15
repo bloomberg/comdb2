@@ -2025,9 +2025,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             iq->sc_logical_tran = NULL; // use trans in rowlocks
             if (sc_parent == NULL) {
                 irc = -1;
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d/%d td %p failed to get physical tran\n",
-                       __func__, __LINE__, line, (void *)pthread_self());
+                logmsg(LOGMSG_ERROR, "%s:%d/%d td %p failed to get physical tran\n", __func__, __LINE__, line,
+                       (void *)pthread_self());
             } else {
                 irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
                 if (irc == 0 && gbl_sc_close_txn)
@@ -2441,8 +2440,8 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_myhostname, 0, 1,
                                   NULL, 0, NULL, 0);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d TD %p TRANS_ABORT FAILED RC %d\n",
-                   __func__, __LINE__, (void *)pthread_self(), rc);
+            logmsg(LOGMSG_ERROR, "%s:%d TD %p TRANS_ABORT FAILED RC %d\n", __func__, __LINE__, (void *)pthread_self(),
+                   rc);
         }
     } else if (parent && !rowlocks) {
         /*
@@ -2882,9 +2881,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                logmsg(LOGMSG_USER, "%p %s:%d Using iq %p priority %d\n",
-                       (void *)pthread_self(), __FILE__, __LINE__, iq,
-                       iq->priority);
+                logmsg(LOGMSG_USER, "%p %s:%d Using iq %p priority %d\n", (void *)pthread_self(), __FILE__, __LINE__,
+                       iq, iq->priority);
 
             irc =
                 trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
