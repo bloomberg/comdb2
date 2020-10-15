@@ -2253,14 +2253,13 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
 retry:
     memset(&err, 0, sizeof(struct errstat));
     if (sp->initial) {
-        sp->rc = get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags);
-        assert(sp->rc != SQLITE_PERM);
+        sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags | PREPARE_RECREATE);
     } else if (flags & PREPARE_ALLOW_TEMP_DDL) {
         sp->rc = get_prepared_stmt_no_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
         assert(sp->rc != SQLITE_PERM);
     } else {
         /* NOTE: Only this call can return SQLITE_PERM. */
-        sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
+        sp->rc = get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags & ~PREPARE_RECREATE);
     }
     sp->initial = 0;
     if ((sp->rc == SQLITE_PERM) && (maxRetries != 0) &&

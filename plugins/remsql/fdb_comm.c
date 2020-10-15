@@ -1753,9 +1753,8 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     int isuuid;
     char prf[512];
 
-    snprintf(prf, sizeof(prf), "%p: %llu%s%s", (void *)pthread_self(),
-             (unsigned long long)gettimeofday_ms(), (prefix) ? " " : "",
-             (prefix) ? prefix : "");
+    snprintf(prf, sizeof(prf), "%p: %llu%s%s", (void *)pthread_self(), (unsigned long long)gettimeofday_ms(),
+             (prefix) ? " " : "", (prefix) ? prefix : "");
     prefix = prf;
 
     isuuid = msg->hd.type & FD_MSG_FLAGS_ISUUID;
@@ -3507,8 +3506,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
 
         rc = handle_remsql_session(sb, dbenv);
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%p: %s: executed session rc=%d\n",
-                   (void *)pthread_self(), __func__, rc);
+            logmsg(LOGMSG_USER, "%p: %s: executed session rc=%d\n", (void *)pthread_self(), __func__, rc);
 
         if (gbl_fdb_track_times) {
             then = gettimeofday_ms();
@@ -3545,8 +3543,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
         }
     }
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%p: %s: done processing\n", (void *)pthread_self(),
-               __func__);
+        logmsg(LOGMSG_USER, "%p: %s: done processing\n", (void *)pthread_self(), __func__);
 
     return rc;
 }

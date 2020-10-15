@@ -1269,12 +1269,10 @@ elect_again:
         strcat(hoststring, " ");
     }
 
-    logmsg(
-        LOGMSG_INFO,
-        "0x%p: calling for election with cluster"
-        " of %d nodes (%d connected) : %s,  %f secs timeout and priority %d\n",
-        (void *)pthread_self(), elect_count, num_connected, hoststring,
-        ((double)elect_time) / 1000000.00, rep_pri);
+    logmsg(LOGMSG_INFO,
+           "0x%p: calling for election with cluster"
+           " of %d nodes (%d connected) : %s,  %f secs timeout and priority %d\n",
+           (void *)pthread_self(), elect_count, num_connected, hoststring, ((double)elect_time) / 1000000.00, rep_pri);
 
     free(hoststring);
 
@@ -3710,8 +3708,7 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
     int flag[] = {nodelay};
     int rc = net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "0x%p %s:%d net_send rc=%d\n", (void *)pthread_self(),
-               __func__, __LINE__, rc);
+        logmsg(LOGMSG_ERROR, "0x%p %s:%d net_send rc=%d\n", (void *)pthread_self(), __func__, __LINE__, rc);
     }
 }
 
@@ -5664,8 +5661,8 @@ void *watcher_thread(void *arg)
             }
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
-                logmsg(LOGMSG_DEBUG, "0x%p %s:%d %s: calling for election\n",
-                       (void *)pthread_self(), __FILE__, __LINE__, __func__);
+                logmsg(LOGMSG_DEBUG, "0x%p %s:%d %s: calling for election\n", (void *)pthread_self(), __FILE__,
+                       __LINE__, __func__);
 
                 call_for_election(bdb_state, __func__, __LINE__);
             }

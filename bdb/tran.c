@@ -1614,9 +1614,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             if (iirc) {
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d td %p failed to log logical commit, rc %d\n",
-                       __func__, __LINE__, (void *)pthread_self(), iirc);
+                logmsg(LOGMSG_ERROR, "%s:%d td %p failed to log logical commit, rc %d\n", __func__, __LINE__,
+                       (void *)pthread_self(), iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
                 goto cleanup;

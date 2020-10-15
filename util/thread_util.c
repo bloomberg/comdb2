@@ -252,9 +252,12 @@ arch_tid getarchtid(void) { return syscall(__NR_gettid); }
 
 arch_tid getarchtid(void) { return thread_self(); }
 
-#elif defined (__APPLE__)
+#elif defined(__APPLE__)
 
-arch_tid getarchtid(void) { return (int)pthread_self(); }
+arch_tid getarchtid(void)
+{
+    return (int)pthread_self();
+}
 
 #else
 

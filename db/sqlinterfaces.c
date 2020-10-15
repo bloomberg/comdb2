@@ -1349,8 +1349,8 @@ void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
                              int newstate)
 {
     if (gbl_track_sqlengine_states)
-        logmsg(LOGMSG_USER, "%p: %p %s:%d %d->%d\n", (void *)pthread_self(), clnt,
-               file, line, clnt->ctrl_sqlengine, newstate);
+        logmsg(LOGMSG_USER, "%p: %p %s:%d %d->%d\n", (void *)pthread_self(), clnt, file, line, clnt->ctrl_sqlengine,
+               newstate);
 
     if (newstate == SQLENG_WRONG_STATE) {
         logmsg(LOGMSG_ERROR, "sqlengine entering wrong state from state %d file %s line %d.\n",
@@ -1988,18 +1988,14 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                     if (rc == SQLITE_ABORT) {
                         rc = blockproc2sql_error(clnt->osql.xerr.errval,
                                                  __func__, __LINE__);
-                        logmsg(
-                            LOGMSG_ERROR,
-                            "td=%p no-shadow-tran %s line %d, returning %d\n",
-                            (void *)pthread_self(), __func__, __LINE__, rc);
+                        logmsg(LOGMSG_ERROR, "td=%p no-shadow-tran %s line %d, returning %d\n", (void *)pthread_self(),
+                               __func__, __LINE__, rc);
                     } else if (rc == SQLITE_CLIENT_CHANGENODE) {
                         rc = has_high_availability(clnt)
                                  ? CDB2ERR_CHANGENODE
                                  : SQLHERR_MASTER_TIMEOUT;
-                        logmsg(
-                            LOGMSG_ERROR,
-                            "td=%p no-shadow-tran %s line %d, returning %d\n",
-                            (void *)pthread_self(), __func__, __LINE__, rc);
+                        logmsg(LOGMSG_ERROR, "td=%p no-shadow-tran %s line %d, returning %d\n", (void *)pthread_self(),
+                               __func__, __LINE__, rc);
                     }
                 }
             } else {
@@ -2224,8 +2220,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
 #ifdef DEBUG
     if (gbl_debug_sql_opcodes) {
-        logmsg(LOGMSG_USER, "%p (U) commits transaction %d %d intran=%d\n",
-               clnt, (void *)pthread_self(), clnt->dbtran.mode, clnt->intrans);
+        logmsg(LOGMSG_USER, "%p (U) commits transaction %d %d intran=%d\n", clnt, (void *)pthread_self(),
+               clnt->dbtran.mode, clnt->intrans);
     }
 #endif
 
@@ -3736,8 +3732,7 @@ int get_prepared_stmt_try_lock(struct sqlthdstate *thd,
                        "Returning SQLITE_PERM on tryrdlock failure\n");
         return SQLITE_PERM;
     }
-    int rc = get_prepared_stmt_int(thd, clnt, rec, err,
-                                   flags & ~PREPARE_RECREATE);
+    int rc = get_prepared_stmt_int(thd, clnt, rec, err, flags);
     unlock_schema_lk();
     return rc;
 }
@@ -4816,9 +4811,8 @@ check_version:
             if (!clnt->dbtran.cursor_tran) {
                 int ctrc = get_curtran(thedb->bdb_env, clnt);
                 if (ctrc) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s td %p: unable to get a CURSOR transaction, rc = %d!\n",
-                           __func__, (void *)pthread_self(), ctrc);
+                    logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc = %d!\n", __func__,
+                           (void *)pthread_self(), ctrc);
                     if (thd->sqldb) {
                         delete_prepared_stmts(thd);
                         sqlite3_close_serial(&thd->sqldb);
@@ -5220,9 +5214,8 @@ void sqlengine_work_appsock(void *thddata, void *work)
     /* everything going in is cursor based */
     int rc = get_curtran(thedb->bdb_env, clnt);
     if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "%s td %p: unable to get a CURSOR transaction, rc=%d!\n",
-               __func__, (void *)pthread_self(), rc);
+        logmsg(LOGMSG_ERROR, "%s td %p: unable to get a CURSOR transaction, rc=%d!\n", __func__, (void *)pthread_self(),
+               rc);
         send_run_error(clnt, "Client api should change nodes",
                        CDB2ERR_CHANGENODE);
         clnt->query_rc = -1;
