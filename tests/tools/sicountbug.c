@@ -392,7 +392,7 @@ void *update_records_thd(void *arg)
             fprintf(stderr, "sum and nacct is the result from the first select sum(bal) and count(bal).\n");
             fprintf(stderr, "sum2 and nacct2 is the result from the second select sum(bal) and count(bal) after first one failed.\n");
             fprintf(stderr, "sum3 and nacct3 is the result got by selecting each acct one by one. These are the correct sum and count\n");
-            fprintf(stderr, "Failed on iteration %d thread %lu\n", cnt, pthread_self());
+            fprintf(stderr, "Failed on iteration %d thread %p\n", cnt, (void *)pthread_self());
             //fprintf(stderr, "userid=%d account sum=%lld sum2=%lld, nacct=%d, nacct2=%d\n", id, sum, sum2, nacct, nacct2);
             exit(1);
         }

@@ -5103,8 +5103,8 @@ step1:
             if (cur->used_rl == 0) {
                 if (cur->trak) {
                     logmsg(LOGMSG_USER, 
-                        "%ld %s:%d tran %p skipping %llx, startgenid=%llx\n",
-                        pthread_self(), __FILE__, __LINE__, cur->shadow_tran,
+                        "%p %s:%d tran %p skipping %llx, startgenid=%llx\n",
+                        (void *)pthread_self(), __FILE__, __LINE__, cur->shadow_tran,
                         bdb_genid_to_host_order(genid_rl),
                         bdb_genid_to_host_order(cur->shadow_tran->startgenid));
                 }

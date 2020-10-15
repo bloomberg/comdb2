@@ -412,7 +412,7 @@ static void __fdb_add_user(fdb_t *fdb, int noTrace)
     fdb->users++;
 
     if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
     assert(fdb->users > 0);
@@ -429,7 +429,7 @@ static void __fdb_rem_user(fdb_t *fdb, int noTrace)
     fdb->users--;
 
     if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);

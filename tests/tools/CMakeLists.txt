@@ -10,6 +10,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROTOBUF-C_INCLUDE_DIR}
   ${SQLITE3_INCLUDE_DIR}
+  ${OPENSSL_INCLUDE_DIR}
   ${READLINE_INCLUDE_DIR}
 )
 
@@ -84,6 +85,7 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
   list(APPEND test-tools api_hello_world_lib)
   target_link_libraries(cdb2_client cdb2api_shared ${common-deps})
   target_link_libraries(cdb2api_unit cdb2api_shared ${common-deps})
+  target_link_libraries(api_hello_world_lib cdb2api_shared ${common-deps})
 endif()
 
 add_custom_target(test-tools DEPENDS ${test-tools})

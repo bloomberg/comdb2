@@ -29,6 +29,7 @@
 #endif
 
 extern int gbl_myroom;
+struct timeval;
 
 void perror_errnum(const char *s, int errnum);
 int strcmpfunc(char **a, char **b, int len);

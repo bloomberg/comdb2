@@ -2834,7 +2834,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     if (!hndl || !hndl->sent_client_info) {
         cinfo.pid = _PID;
-        cinfo.th_id = pthread_self();
+        cinfo.th_id = (uint64_t)pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
         if (hndl && hndl->send_stack)

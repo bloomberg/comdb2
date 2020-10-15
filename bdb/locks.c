@@ -271,7 +271,7 @@ int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
     static __thread int rowlock_rand_seq = 0;
     int *p = (int *)lkname->data;
 
-    (*p) = pthread_self();
+    (*p) = (int)pthread_self();
     p = (int *)(&((char *)lkname->data)[24]);
     (*p) = rowlock_rand_seq++;
 

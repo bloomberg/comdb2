@@ -33,7 +33,7 @@ done
 source $TESTSROOTDIR/setup.common
 
 # get full path
-DBDIR=$(readlink -f $DBDIR)
+DBDIR=$(readlink -f $DBDIR || realpath $DBDIR )
 
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
