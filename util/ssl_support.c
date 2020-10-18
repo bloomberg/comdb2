@@ -492,6 +492,20 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     }
 #endif /* HAVE_CRL */
 
+#ifndef OPENSSL_NO_ECDH
+#if OPENSSL_VERSION_NUMBER >= 0x10200000L
+    SSL_CTX_set_ecdh_auto(myctx, 1);
+#else
+    EC_KEY *ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+    if (ecdh == NULL) {
+        my_ssl_eprintln("prime256v1 isn't supported. ECDHE ciphers will be disabled.");
+    } else {
+        SSL_CTX_set_tmp_ecdh(myctx, ecdh);
+        EC_KEY_free(ecdh);
+    }
+#endif
+#endif /* OPENSSL_NO_ECDH */
+
     /* SSL success is 1. We want to return 0 upon success. */
     if (rc != 1) {
 error:  if (myctx != NULL) {
