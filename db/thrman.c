@@ -621,6 +621,7 @@ struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr)
     if (thr) {
         if (!thr->reqlogger)
             thr->reqlogger = reqlog_alloc();
+        reqlog_reset(thr->reqlogger);
         return thr->reqlogger;
     } else {
         return NULL;
