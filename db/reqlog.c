@@ -1004,6 +1004,12 @@ void reqlog_stat(void)
     Pthread_mutex_unlock(&rules_mutex);
 }
 
+void reqlog_reset(struct reqlogger *logger)
+{
+    if (logger)
+        logger->ncontext = 0;
+}
+
 struct reqlogger *reqlog_alloc(void)
 {
     struct reqlogger *logger;
