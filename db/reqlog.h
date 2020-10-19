@@ -38,6 +38,7 @@ typedef enum { EV_UNSET, EV_TXN, EV_SQL, EV_SP } evtype_t;
 
 int reqlog_init(const char *dbname);
 struct reqlogger *reqlog_alloc(void);
+void reqlog_reset(struct reqlogger *logger);
 void reqlog_process_message(char *line, int st, int lline);
 void reqlog_stat(void);
 void reqlog_help(void);
