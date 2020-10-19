@@ -2920,6 +2920,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
 
 struct reqlogger *reqlog_alloc(void);
+void reqlog_reset(struct reqlogger *logger);
 int peer_dropped_connection(struct sqlclntstate *clnt);
 
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,

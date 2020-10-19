@@ -5123,6 +5123,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         }
         free(clnt->context);
         clnt->context = NULL;
+        clnt->ncontext = 0;
     }
 
     if (clnt->selectv_arr) {
@@ -6541,6 +6542,7 @@ static int internal_skip_row(struct sqlclntstate *a, uint64_t b)
 }
 static int internal_log_context(struct sqlclntstate *a, struct reqlogger *b)
 {
+    reqlog_reset(b);
     return 0;
 }
 static uint64_t internal_get_client_starttime(struct sqlclntstate *a)
