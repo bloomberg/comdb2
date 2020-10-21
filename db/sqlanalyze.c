@@ -1036,7 +1036,8 @@ int get_analyze_abort_requested()
 
 
 /* analyze 'table' */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
+int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
+                  int bypass_auth)
 {
     if (check_stat1(sb))
         return -1;
@@ -1065,6 +1066,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     if (clnt) {
         td.current_user = clnt->current_user;
     }
+    td.current_user.bypass_auth = bypass_auth;
 
     /* dispatch */
     int rc = dispatch_table_thread(&td);
@@ -1416,7 +1418,7 @@ int do_analyze(char *tbl, int percent)
     if (tbl == NULL)
         rc = analyze_database(sb2, percent, overwrite_llmeta);
     else
-        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta);
+        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta, 0);
     sbuf2flush(sb2);
     sbuf2free(sb2);
     return rc;

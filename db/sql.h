@@ -600,6 +600,10 @@ struct user {
     uint8_t have_password;
     /* 1 if the user is retrieved from a client certificate */
     uint8_t is_x509_user;
+
+    /* Set to allow automatically triggered operations, like autoanalyze, to
+       go through. */
+    uint8_t bypass_auth;
 };
 
 
