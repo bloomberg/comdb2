@@ -1,8 +1,8 @@
-schema
-	{
-		int a
-	}
-keys
-    {
-        "a" = a
-    }
+schema {
+    int a
+    blob b
+}
+
+keys {
+    "a" = a
+}
