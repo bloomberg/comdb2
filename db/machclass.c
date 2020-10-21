@@ -1,5 +1,5 @@
 /*
-   Copyright 2017, Bloomberg Finance L.P.
+   Copyright 2017, 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include "plhash.h"
@@ -31,6 +32,7 @@ static pthread_mutex_t mach_mtx = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *classes;
 static hash_t *class_names;
 
+#define MAX_MACH_CLASS_NAME_LEN 10
 static machine_class_t default_classes[] = {
     {"unknown", 0}, /* 0 indexed! */
     {"test", 1},    /* CLASS_TEST == 1 */
@@ -119,9 +121,26 @@ int mach_class_name2class(const char *name)
     machine_class_t *class;
     int value = CLASS_UNKNOWN;
 
+    char buf[MAX_MACH_CLASS_NAME_LEN + 1];
+    size_t len = strlen(name);
+    int i;
+
+    if (!name || (len > MAX_MACH_CLASS_NAME_LEN)) {
+        logmsg(LOGMSG_ERROR, "%s:%d Invalid machine class\n", __func__,
+               __LINE__);
+        return value;
+    }
+
+    /* Convert machine class name to lower case. */
+    for (i = 0; i < len; i ++) {
+        buf[i] = tolower(name[i]);
+    }
+    buf[i] = '\0';
+    const char *lowercase_name = buf;
+
     Pthread_mutex_lock(&mach_mtx);
 
-    class = hash_find(classes, &name);
+    class = hash_find(classes, &lowercase_name);
     if (class)
         value = class->value;
 
