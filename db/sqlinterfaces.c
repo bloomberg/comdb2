@@ -5812,8 +5812,10 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* clear dbtran after aborting unfinished shadow transactions. */
     bzero(&clnt->dbtran, sizeof(dbtran_type));
 
-    if (initial)
-        clnt->origin = intern(get_origin_mach_by_buf(sb));
+    if (initial) {
+        char *origin = get_origin_mach_by_buf(sb);
+        clnt->origin = origin ? origin : "???";
+    }
 
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
     clnt->in_client_trans = 0;
@@ -7007,7 +7009,7 @@ static void sql_thread_describe(void *obj, FILE *out)
         logmsg(LOGMSG_USER, "%s \"%s\"\n", clnt->origin, clnt->sql);
     } else {
         host = get_origin_mach_by_buf(clnt->sb);
-        logmsg(LOGMSG_USER, "(old client) %s \"%s\"\n", host, clnt->sql);
+        logmsg(LOGMSG_USER, "(old client) %s \"%s\"\n", host ? host : "???", clnt->sql);
     }
 }
 
