@@ -556,13 +556,13 @@ inline int check_option_queue_coherency(struct schema_change_type *s,
 
 int sc_request_disallowed(SBUF2 *sb)
 {
-    char *from = intern(get_origin_mach_by_buf(sb));
+    char *from = get_origin_mach_by_buf(sb);
     /* Allow if we can't figure out where it came from - don't want this
        to break in production. */
     if (from == NULL) return 0;
     if (strcmp(from, "localhost") == 0) return 0;
-    if (!allow_write_from_remote(from)) return 1;
-    return 0;
+    if (allow_write_from_remote(from)) return 0;
+    return 1;
 }
 
 int sc_cmp_fileids(unsigned long long a, unsigned long long b)

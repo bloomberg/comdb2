@@ -60,6 +60,7 @@ as long as there was a successful move in the past
 #include <util.h>
 #endif
 
+#include <errno.h>
 #include <pthread.h>
 #include <sys/types.h>
 #include <sys/stat.h>

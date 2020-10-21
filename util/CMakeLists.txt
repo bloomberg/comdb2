@@ -16,6 +16,7 @@ set(src
   debug_switches.c
   flibc.c
   fsnapf.c
+  hostname_support.c
   int_overflow.c
   intern_strings.c
   list.c
@@ -36,8 +37,8 @@ set(src
   queuetest.c
   roll_file.c
   rtcpu.c
-  schema_lk.c
   sbuf2.c
+  schema_lk.c
   segstring.c
   sltpck.c
   str0.c

@@ -238,7 +238,6 @@ static int ssl_verify_ca(SBUF2 *sb)
     ** The forward DNS lookup is necessary in case an attacker is
     ** in control of reverse DNS for the source IP.
     */
-    const char *peerhost;
     struct sockaddr_in peeraddr;
     struct in_addr *peer_in_addr, **p_fwd_in_addr;
     socklen_t len = sizeof(struct sockaddr_in);
@@ -246,9 +245,8 @@ static int ssl_verify_ca(SBUF2 *sb)
     struct hostent *hp = NULL;
 
     /* Reverse lookup the hostname */
-    peerhost = get_origin_mach_by_buf(sb);
-
-    if (strcmp(peerhost, "???") == 0) {
+    char peerhost[NI_MAXHOST];
+    if (get_hostname_by_fileno_v2(sbuf2fileno(sb), peerhost, sizeof(peerhost))) {
         ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "Could not obtain peer host name.");
         return 1;

@@ -132,6 +132,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "time_accounting.h"
 #include <build/db.h>
 #include "comdb2_ruleset.h"
+#include <hostname_support.h>
 
 #define tokdup strndup
 
@@ -5359,6 +5360,8 @@ int main(int argc, char **argv)
        char *arg = strdup(argv[0]);
        exe = basename(arg);
     }
+
+    init_peer_hash();
 
     for (int i = 0; tool_callbacks[i].tool; i++) {
        if (strcmp(tool_callbacks[i].tool, exe) == 0)
