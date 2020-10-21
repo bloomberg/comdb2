@@ -3014,8 +3014,9 @@ static inline int check_user_password(struct sqlclntstate *clnt)
     int password_rc = 0;
     int valid_user;
 
-    if (!gbl_uses_password)
+    if (!gbl_uses_password || clnt->current_user.bypass_auth) {
         return 0;
+    }
 
     if (!clnt->current_user.have_name) {
         clnt->current_user.have_name = 1;
