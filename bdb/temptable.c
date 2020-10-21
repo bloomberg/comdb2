@@ -998,6 +998,36 @@ int bdb_temp_table_update(bdb_state_type *bdb_state, struct temp_cursor *cur,
 
 unsigned long long bdb_temp_table_new_rowid(struct temp_table *tbl)
 {
+    DBC *cur;
+    void *ent;
+    unsigned int bkt;
+
+    switch (tbl->temp_table_type) {
+    case TEMP_TABLE_TYPE_BTREE:
+        if (tbl->tmpdb->cursor(tbl->tmpdb, NULL, &cur, 0) == 0) {
+            DBT key, data;
+            memset(&key, 0, sizeof(DBT));
+            memset(&data, 0, sizeof(DBT));
+            key.flags = DB_DBT_USERMEM;
+            data.flags = DB_DBT_USERMEM;
+            if (cur->c_get(cur, &key, &data, DB_FIRST) == DB_NOTFOUND)
+                tbl->rowid = 0;
+            cur->c_close(cur);
+        }
+        break;
+    case TEMP_TABLE_TYPE_ARRAY:
+        if (tbl->num_mem_entries == 0)
+            tbl->rowid = 0;
+        break;
+    case TEMP_TABLE_TYPE_LIST:
+        if (listc_size(&tbl->temp_tbl_list) == 0)
+            tbl->rowid = 0;
+        break;
+    case TEMP_TABLE_TYPE_HASH:
+        if (hash_first(tbl->temp_hash_tbl, &ent, &bkt) == NULL)
+            tbl->rowid = 0;
+    }
+
     return ++tbl->rowid;
 }
 
@@ -1511,7 +1541,11 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                __func__, rc);
     }
 
-    if (tbl->dbenv_temp != NULL) {
+    /*
+    ** Check for type instead of dbenv. A temparray has a dbenv too if it's
+    ** previously spilled to a btree. Do not double-count the btree statistics.
+    */
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) {
         Pthread_mutex_lock(&(bdb_state->temp_list_lock));
 
         if ((tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
@@ -1608,7 +1642,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
 
     *last = 0;
 
-    if ((tbl->dbenv_temp != NULL) &&
+    /* See comments in bdb_temp_table_close(). */
+    if ((tbl->temp_table_type == TEMP_TABLE_TYPE_BTREE) &&
         (tbl->dbenv_temp->memp_stat(tbl->dbenv_temp, &tmp, NULL,
                                     DB_STAT_CLEAR)) == 0) {
         bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
