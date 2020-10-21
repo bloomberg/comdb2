@@ -170,7 +170,7 @@ static int db_comdb_analyze(Lua L) {
 
     if(tbl && strlen(tbl) > 0) {
         logmsg(LOGMSG_DEBUG, "db_comdb_analyze: analyze table '%s' at %d percent\n", tbl, percent);
-        analyze_table(tbl, sb, percent, ovr_percent);
+        analyze_table(tbl, sb, percent, ovr_percent, 0);
     }
     else {
         logmsg(LOGMSG_DEBUG, "db_comdb_analyze: analyze database\n");
