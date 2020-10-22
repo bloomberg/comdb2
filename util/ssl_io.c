@@ -242,9 +242,8 @@ static int ssl_verify_ca(SBUF2 *sb)
     struct sockaddr_in peeraddr;
     struct in_addr *peer_in_addr, **p_fwd_in_addr;
     socklen_t len = sizeof(struct sockaddr_in);
-    int rc, found_addr, herr;
-    char buf[8192];
-    struct hostent hostbuf, *hp = NULL;
+    int rc, found_addr;
+    struct hostent *hp = NULL;
 
     /* Reverse lookup the hostname */
     peerhost = get_origin_mach_by_buf(sb);
@@ -264,8 +263,14 @@ static int ssl_verify_ca(SBUF2 *sb)
 #if defined(__APPLE__)
     hp = gethostbyname(peerhost);
 #elif defined(_LINUX_SOURCE)
+    int herr;
+    char buf[8192];
+    struct hostent hostbuf;
     gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &hp, &herr);
 #elif defined(_SUN_SOURCE)
+    int herr;
+    char buf[8192];
+    struct hostent hostbuf;
     hp = gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &herr);
 #else
     hp = gethostbyname(peerhost);

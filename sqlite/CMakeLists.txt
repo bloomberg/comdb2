@@ -133,7 +133,7 @@ if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang
 endif()
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(src/trigger.c src/status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-but-set-variable -Wno-unused-const-variable")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set_source_files_properties(src/trigger.c src/status.c PROPERTIES COMPILE_FLAGS "-Wno-unused-const-variable")
 endif()
 

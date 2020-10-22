@@ -1,7 +1,7 @@
 add_library(dlmalloc dlmalloc.c)
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(dlmalloc.c PROPERTIES COMPILE_FLAGS "-Wno-unused-value -Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set_source_files_properties(dlmalloc.c PROPERTIES COMPILE_FLAGS "-Wno-unused-value -Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
 endif()
 include_directories(${PROJECT_SOURCE_DIR}/util)

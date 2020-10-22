@@ -3380,7 +3380,6 @@ static int fdb_cursor_find_last_sql(BtCursor *pCur, Mem *key, int nfields,
 fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
 {
     int rc = 0;
-    struct timespec ts;
     struct sql_thread *thd;
     struct sqlclntstate *clnt;
     int interval = bdb_attr_get(thedb->bdb_attr,
@@ -3406,6 +3405,7 @@ fdb_sqlstat_cache_t *fdb_sqlstats_get(fdb_t *fdb)
             rc = ETIMEDOUT;
         }
 #       else
+        struct timespec ts;
         clock_gettime(CLOCK_REALTIME, &ts);
         ts.tv_nsec += interval;
         if (ts.tv_nsec >= 1000000000) {

@@ -5880,7 +5880,7 @@ out:
 
 static void debug_sp(struct sqlclntstate *clnt)
 {
-    int arg1 = 0;
+    pthread_t arg1 = 0;
     char *carg1 = NULL;
 halt_here:
     debug_clnt = clnt;
