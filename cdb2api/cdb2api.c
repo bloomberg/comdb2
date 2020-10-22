@@ -697,10 +697,7 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
     in_addr_t inaddr;
 
     int len;
-    char tmp[8192];
-    int tmplen = 8192;
-    int herr;
-    struct hostent hostbuf, *hp = NULL;
+    struct hostent *hp = NULL;
     char tok[128], *cc;
     cc = strchr(host, (int)':');
     if (cc == 0) {
@@ -724,8 +721,16 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
 #ifdef __APPLE__
         hp = gethostbyname(tok);
 #elif _LINUX_SOURCE
+        int herr;
+        char tmp[8192];
+        int tmplen = 8192;
+        struct hostent hostbuf;
         gethostbyname_r(tok, &hostbuf, tmp, tmplen, &hp, &herr);
 #elif _SUN_SOURCE
+        int herr;
+        char tmp[8192];
+        int tmplen = 8192;
+        struct hostent hostbuf;
         hp = gethostbyname_r(tok, &hostbuf, tmp, tmplen, &herr);
 #else
         hp = gethostbyname(tok);
@@ -1589,10 +1594,7 @@ static int read_available_comdb2db_configs(
 static int get_host_by_name(const char *comdb2db_name,
                             char comdb2db_hosts[][64], int *num_hosts)
 {
-    char tmp[8192];
-    int tmplen = sizeof(tmp);
-    int herr;
-    struct hostent hostbuf, *hp = NULL;
+    struct hostent *hp = NULL;
     char dns_name[512];
 
     if (cdb2_default_cluster[0] == '\0') {
@@ -1604,8 +1606,16 @@ static int get_host_by_name(const char *comdb2db_name,
 #ifdef __APPLE__
     hp = gethostbyname(dns_name);
 #elif _LINUX_SOURCE
+    int herr;
+    char tmp[8192];
+    int tmplen = sizeof(tmp);
+    struct hostent hostbuf;
     gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &hp, &herr);
 #elif _SUN_SOURCE
+    int herr;
+    char tmp[8192];
+    int tmplen = sizeof(tmp);
+    struct hostent hostbuf;
     hp = gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &herr);
 #else
     hp = gethostbyname(dns_name);

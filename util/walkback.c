@@ -476,7 +476,7 @@ static int _AIX_stack_walkback(ucontext_t *context, unsigned maxframes,
 } /*    end of _AIX_stack_walkback()    */
 #endif
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__)
 
 /******************************************************************************
 *
@@ -508,6 +508,16 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
         }
     }
 #endif
+    return 0;
+}
+#endif
+
+#if defined(__APPLE__)
+static int __apple_stack_walkback(ucontext_t *context, unsigned maxframes,
+                                  void (*handler)(void *returnaddr,
+                                                  void *handlerarg),
+                                  void *handlerarg)
+{
     return 0;
 }
 #endif
@@ -693,21 +703,15 @@ int stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
 {
 
 #if defined(__sparc)
-
     return __sparc_stack_walkback(context, maxframes, handler, handlerarg);
-
 #elif defined(_AIX)
-
     return _AIX_stack_walkback(context, maxframes, handler, handlerarg);
-
-#elif defined(__linux__) || defined(__APPLE__)
-
+#elif defined(__linux__)
     return __linux_stack_walkback(context, maxframes, handler, handlerarg);
-
+#elif defined(__APPLE__)
+    return __apple_stack_walkback(context, maxframes, handler, handlerarg);
 #elif defined(__hpux)
-
     return __hpux_stack_walkback(context, maxframes, handler, handlerarg);
-
 #else
 
 #error Unsupported architecture
@@ -918,6 +922,7 @@ extern char **backtrace_symbols(void *const *, int);
 static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)
 {
     void *buf[MAXFRAMES];
+    (void)buf;
     unsigned int frames;
     char **strings;
 

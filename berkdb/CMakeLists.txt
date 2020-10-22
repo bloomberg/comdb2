@@ -274,7 +274,7 @@ include_directories(
 )
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-knr-promoted-parameter -Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
 endif()
 

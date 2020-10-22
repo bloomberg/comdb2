@@ -56,7 +56,9 @@ static size_t __page_size;
 static pthread_key_t memptr;
 static LISTC_T(struct thr_arg) stack_list;
 static pthread_mutex_t pthr_mutex;
+#ifdef M_MMAP_THRESHOLD
 static size_t pthr_mmap_threshold;
+#endif
 static pthread_t free_thr;
 static pthread_attr_t free_thr_attrs;
 static pthread_once_t init_key_once = PTHREAD_ONCE_INIT;

@@ -87,8 +87,12 @@ static pthread_mutex_t servbyname_lk = PTHREAD_MUTEX_INITIALIZER;
 
 void comdb2_getservbyname(const char *name, const char *proto, short *port)
 {
-    struct servent result_buf = {0}, *result = NULL;
+#   ifndef __APPLE__
+    struct servent result_buf = {0};
     char buf[1024] = {0};
+#   endif
+    struct servent *result = NULL;
+
 #   if defined(__APPLE__) // Should be first, as _LINUX_SOURCE is also defined.
     result = getservbyname(name, proto);
 #   elif defined(_LINUX_SOURCE)

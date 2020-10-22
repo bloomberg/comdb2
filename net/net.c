@@ -5394,7 +5394,6 @@ static void *accept_thread(void *arg)
     int rc;
     int listenfd = 0;
     int polltm;
-    int tcpbfsz;
     struct linger linger_data;
     struct sockaddr_in cliaddr;
     connect_and_accept_t *ca;
@@ -5515,7 +5514,7 @@ static void *accept_thread(void *arg)
         }
 
 #ifdef TCPBUFSZ
-        tcpbfsz = (8 * 1024 * 1024);
+        int tcpbfsz = (8 * 1024 * 1024);
         len = sizeof(tcpbfsz);
         rc = setsockopt(new_fd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
         if (rc < 0) {
@@ -6496,7 +6495,6 @@ int net_listen(int port)
 {
     struct sockaddr_in sin;
     int listenfd;
-    int tcpbfsz;
     int reuse_addr;
     socklen_t len;
     struct linger linger_data;
@@ -6532,7 +6530,7 @@ int net_listen(int port)
 #endif
 
 #ifdef TCPBUFSZ
-    tcpbfsz = (8 * 1024 * 1024);
+    int tcpbfsz = (8 * 1024 * 1024);
     len = sizeof(tcpbfsz);
     rc = setsockopt(listenfd, SOL_SOCKET, SO_SNDBUF, &tcpbfsz, len);
     if (rc < 0) {
