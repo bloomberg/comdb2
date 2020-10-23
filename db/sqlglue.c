@@ -1976,7 +1976,7 @@ char *sqltype(struct field *f, char *buf, int len)
             snprintf(buf, len, "smallfloat");
             break;
         case 8:
-            snprintf(buf, len, "float");
+            snprintf(buf, len, "double");
             break;
         default:
             return NULL;
@@ -2006,7 +2006,7 @@ char *sqltype(struct field *f, char *buf, int len)
 
     case CLIENT_VUTF8:
     case SERVER_VUTF8:
-        snprintf(buf, len, "varchar");
+        snprintf(buf, len, "text");
         return buf;
 
     case CLIENT_DATETIME:

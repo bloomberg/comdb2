@@ -2745,12 +2745,15 @@ int typestr_to_type(const char *ctype)
     if (ctype == NULL)
         return SQLITE_TEXT;
     if ((strcmp("smallint", ctype) == 0) || (strcmp("int", ctype) == 0) ||
-        (strcmp("largeint", ctype) == 0) || (strcmp("integer", ctype) == 0))
+        (strcmp("largeint", ctype) == 0) || (strcmp("integer", ctype) == 0) ||
+        (strcmp("bigint", ctype) == 0))
         return SQLITE_INTEGER;
     else if ((strcmp("smallfloat", ctype) == 0) ||
-             (strcmp("float", ctype) == 0))
+             (strcmp("float", ctype) == 0) ||
+             (strcmp("double", ctype) == 0))
         return SQLITE_FLOAT;
-    else if (strncmp("char", ctype, 4) == 0)
+    else if ((strncmp("char", ctype, 4) == 0) ||
+             (strncmp("varchar", ctype, 4) == 0))
         return SQLITE_TEXT;
     else if (strncmp("blob", ctype, 4) == 0)
         return SQLITE_BLOB;

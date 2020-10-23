@@ -2722,6 +2722,7 @@ enum {
     XMACRO_TYPE(SQL_TYPE_DECIMAL32, "decimal32", "decimal32", 0)               \
     XMACRO_TYPE(SQL_TYPE_DECIMAL64, "decimal64", "decimal64", 0)               \
     XMACRO_TYPE(SQL_TYPE_DECIMAL128, "decimal128", "decimal128", 0)            \
+    XMACRO_TYPE(SQL_TYPE_SMALLFLOAT, "smallfloat", "float", 0)                 \
     XMACRO_TYPE(SQL_TYPE_FLOAT, "float", "float", 0)                           \
     XMACRO_TYPE(SQL_TYPE_DOUBLE, "double", "double", 0)                        \
     /* Additional types mapped to a Comdb2 type. */                            \
@@ -2734,6 +2735,7 @@ enum {
     XMACRO_TYPE(SQL_TYPE_INTEGER, "integer", "int", 0)                         \
     XMACRO_TYPE(SQL_TYPE_SMALLINT, "smallint", "short", 0)                     \
     XMACRO_TYPE(SQL_TYPE_BIGINT, "bigint", "longlong", 0)                      \
+    XMACRO_TYPE(SQL_TYPE_LARGEINT, "largeint", "longlong", 0)                  \
     XMACRO_TYPE(SQL_TYPE_REAL, "real", "float", 0)                             \
     /* End marker */                                                           \
     XMACRO_TYPE(SQL_TYPE_LAST, 0, 0, 0)
@@ -2866,7 +2868,7 @@ static int comdb2_parse_sql_type(const char *type, int *size)
 
         if (strncasecmp(type, type_sql_str[i], type_sql_str_len[i]) == 0) {
             /* No size specified. */
-            if ((type_sql_str_len[i]) == strlen(type)) {
+            if ((type_sql_str_len[i]) == type_len) {
                 *size = 0;
                 return i;
             }
