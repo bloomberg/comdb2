@@ -23,6 +23,7 @@
 #include <netinet/in.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <epochlib.h>
 #include "analyze.h"
 #include "sql.h"
@@ -38,6 +39,7 @@
 #include <logmsg.h>
 #include "str0.h"
 #include "sc_util.h"
+#include "debug_switches.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -851,8 +853,18 @@ static int analyze_table_int(table_descriptor_t *td,
     if (rc)
         goto error;
 
+    if (debug_switch_test_delay_analyze_commit())
+        sleep(10);
+
     rc = run_internal_sql_clnt(&clnt, "COMMIT");
-    if (rc) snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+    if (rc) {
+        /*
+        ** Manually unregister the client from the checkboard,
+        ** if COMMIT or ROLLBACK fails.
+        */
+        osql_unregister_sqlthr(&clnt);
+        snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+    }
 
 cleanup:
     sbuf2flush(sb2);
@@ -863,7 +875,7 @@ cleanup:
                     td->table, zErrTab);
     } else {
         sbuf2printf(td->sb, "?Analyze completed table %s\n", td->table);
-       logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
+        logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
     end_internal_sql_clnt(&clnt);
@@ -874,7 +886,8 @@ cleanup:
     return rc;
 
 error:
-    run_internal_sql_clnt(&clnt, "ROLLBACK");
+    if (run_internal_sql_clnt(&clnt, "ROLLBACK") != 0)
+        osql_unregister_sqlthr(&clnt);
     goto cleanup;
 }
 
