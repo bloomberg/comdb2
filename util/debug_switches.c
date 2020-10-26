@@ -74,6 +74,7 @@ static struct debug_switches {
     int test_ddl_backout_nomaster;
     int test_ddl_backout_deadlock;
     int test_ddl_backout_blkseq;
+    int test_delay_analyze_commit;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -127,6 +128,7 @@ int init_debug_switches(void)
     debug_switches.test_ddl_backout_nomaster = 0;
     debug_switches.test_ddl_backout_deadlock = 0;
     debug_switches.test_ddl_backout_blkseq = 0;
+    debug_switches.test_delay_analyze_commit = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -232,6 +234,7 @@ int init_debug_switches(void)
                         &debug_switches.test_ddl_backout_deadlock);
     register_int_switch("test_ddl_backout_blkseq", "Force a blkseq error in toblock.",
                         &debug_switches.test_ddl_backout_blkseq);
+    register_int_switch("test_delay_analyze_commit", "Delay analyze commit", &debug_switches.test_delay_analyze_commit);
     return 0;
 }
 
@@ -430,4 +433,8 @@ int debug_switch_test_ddl_backout_deadlock(void)
 int debug_switch_test_ddl_backout_blkseq(void)
 {
     return debug_switches.test_ddl_backout_blkseq;
+}
+int debug_switch_test_delay_analyze_commit(void)
+{
+    return debug_switches.test_delay_analyze_commit;
 }
