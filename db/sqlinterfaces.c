@@ -1073,11 +1073,11 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(stmt, h->sql, clnt->work.zOrigNormSql, cost, time,
+                add_fingerprint(clnt, stmt, h->sql, clnt->work.zOrigNormSql, cost, time,
                                 prepTime, rows, logger, fingerprint);
                 have_fingerprint = 1;
             } else if (clnt->work.zNormSql && sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(stmt, h->sql, clnt->work.zNormSql, cost, time,
+                add_fingerprint(clnt, stmt, h->sql, clnt->work.zNormSql, cost, time,
                                 prepTime, rows, logger, fingerprint);
                 have_fingerprint = 1;
             } else {
@@ -3294,6 +3294,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             !sqlite3_stmt_isexplain(rec->stmt) &&
             (thd->authState.numDdls == 0)) {
             char **column_names;
+            char **column_decltypes;
             int column_count;
             struct fingerprint_track *t = NULL;
 
@@ -3318,8 +3319,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                         column_count = t->cachedColCount;
                         /* column_count is 0 if column names do match,
                            in which case we just set column_names to NULL */
-                        if (column_count == 0)
+                        if (column_count == 0) {
                             column_names = NULL;
+                            column_decltypes = NULL;
+                        }
                         else {
                             column_names =
                                 calloc(sizeof(char *), t->cachedColCount);
@@ -3332,6 +3335,20 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                     column_names[i] = strdup(t->cachedColNames[i]);
                                 }
                             }
+
+                            /* Do the same for types */
+                            column_decltypes =
+                                calloc(sizeof(char *), t->cachedColCount);
+                            if (column_decltypes == NULL) {
+                                logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
+                                       __func__, __LINE__);
+                                column_count = 0;
+                            } else {
+                                for (int i = 0; i < t->cachedColCount; i++) {
+                                    column_decltypes[i] = strdup(t->cachedColDeclTypes[i]);
+                                }
+                            }
+
                         }
                         logmsg(LOGMSG_DEBUG,
                                "%s:%d: using cached column names from "
@@ -3346,13 +3363,13 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
              * route of repreparing the query. */
             if (!t) {
                 rc = query_preparer_plugin->do_prepare(
-                    thd, clnt, rec->sql, &column_names, &column_count);
+                    thd, clnt, rec->sql, &column_names, &column_decltypes, &column_count);
                 if (rc)
                     return rc;
             }
 
             if (rec->stmt)
-                stmt_set_cached_columns(rec->stmt, column_names, column_count);
+                stmt_set_cached_columns(rec->stmt, column_names, column_decltypes, column_count);
         }
 
         thd->authState.flags = 0;
@@ -6558,6 +6575,11 @@ static int internal_send_intrans_response(struct sqlclntstate *a)
 {
     return 1;
 }
+static int internal_needs_decltypes(struct sqlclntstate *a) 
+{
+    return 0;
+}
+
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
     reset_clnt(clnt, NULL, 1);

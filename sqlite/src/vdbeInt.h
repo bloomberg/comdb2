@@ -585,6 +585,7 @@ struct Vdbe {
   i64 luaRows;            /* number of rows processed by Lua */
   double luaSavedCost;    /* saved cost for this Lua thread */
   char **oldColNames;     /* Column names returned by old-sqlite version */
+  char **oldColDeclTypes; /* Column decltypes returned by old-sqlite version */
   int oldColCount;        /* Column count (refer: sqlitex)*/
   u8 fingerprint_added;   /* Whether fingerprint was added? Only used in SP code */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
