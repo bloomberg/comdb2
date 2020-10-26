@@ -745,6 +745,18 @@ static int comdb2_authorizer_for_sqlite(
   }
 }
 
+static void comdb2_reset_authstate(struct sqlthdstate *thd)
+{
+    bzero(&thd->authState, sizeof(thd->authState));
+}
+
+static void comdb2_set_authstate(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
+{
+    thd->authState.clnt = clnt;
+    thd->authState.flags = flags;
+    thd->authState.numDdls = 0;
+}
+
 static void comdb2_setup_authorizer_for_sqlite(
   sqlite3 *db,
   struct sql_authorizer_state *pAuthState,
@@ -3278,9 +3290,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
         clnt->no_transaction = 1;
-        thd->authState.clnt = clnt;
-        thd->authState.flags = flags;
-        thd->authState.numDdls = 0;
+        comdb2_set_authstate(thd, clnt, flags);
         rec->prepFlags = flags;
 
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
@@ -3604,6 +3614,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
     rdlock_schema_lk();
     rc = sqlengine_prepare_engine(thd, clnt, 1);
     unlock_schema_lk();
+
     if (thd->sqldb == NULL) {
         *outrc = handle_bad_engine(clnt);
         return;
@@ -3612,6 +3623,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
         return;
     }
 
+    comdb2_set_authstate(thd, clnt, PREPARE_RECREATE);
     rc = -1;
     sqlite3expert *p = sqlite3_expert_new(thd->sqldb, &zErr);
 
@@ -4531,6 +4543,7 @@ check_version:
             thd->dbopen_gen = gbl_dbopen_gen;
         }
 
+        comdb2_reset_authstate(thd);
         get_copy_rootpages_nolock(thd->sqlthd);
         if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
