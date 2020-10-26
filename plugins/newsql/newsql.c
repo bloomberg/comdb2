@@ -2201,6 +2201,10 @@ retry_read:
     return query;
 }
 
+static int newsql_needs_decltypes(struct sqlclntstate *clnt) {
+    return 0;
+}
+
 extern int gbl_allow_incoherent_sql;
 static inline int incoh_reject(int admin, bdb_state_type *bdb_state)
 {

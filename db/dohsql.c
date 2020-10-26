@@ -1114,6 +1114,11 @@ static int dohsql_send_intrans_response(struct sqlclntstate *a)
         logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
     return 0;
 }
+static int dohsql_needs_decltypes(struct sqlclntstate *a) {
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%lx %s\n", pthread_self(), __func__);
+    return 0;
+}
 
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
                           const char *sql, int nparams,

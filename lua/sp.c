@@ -2163,7 +2163,7 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
 
             unsigned char fingerprint[FINGERPRINTSZ];
             add_fingerprint(
-                pStmt, sqlite3_sql(pStmt), zNormSql, cost,
+                clnt, pStmt, sqlite3_sql(pStmt), zNormSql, cost,
                 timeMs, prepMs, pVdbe->luaRows, NULL,
                 fingerprint
             );

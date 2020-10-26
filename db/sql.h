@@ -71,6 +71,7 @@ struct fingerprint_track {
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
     char ** cachedColNames; /* Cached column names from sqlitex */
+    char ** cachedColDeclTypes; /* Cached column types from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
 };
 
@@ -442,6 +443,8 @@ struct plugin_callbacks {
     plugin_func *get_high_availability; /* newsql_get_high_availability*/
     plugin_func *has_parallel_sql;      /* newsql_has_parallel_sql */
 
+
+
     add_steps_func *add_steps; /* newsql_add_steps */
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
     skip_row_func *skip_row; /* newsql_skip_row */
@@ -453,6 +456,7 @@ struct plugin_callbacks {
     void *state;
     int (*column_count)(struct sqlclntstate *,
                         sqlite3_stmt *); /* sqlite3_column_count */
+    plugin_func *needs_decltypes;
     int (*next_row)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_step */
     SQLITE_CALLBACK_API(int, type);                   /* sqlite3_column_type */
     SQLITE_CALLBACK_API(sqlite_int64, int64);         /* sqlite3_column_int64*/
@@ -504,6 +508,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
+        make_plugin_callback(clnt, name, needs_decltypes);                     \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
         make_plugin_optional_null(clnt, int64);                                \
@@ -1266,7 +1271,7 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(sqlite3_stmt *, const char *, const char *, int64_t,
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *, const char *, const char *, int64_t,
                      int64_t, int64_t, int64_t, struct reqlogger *logger,
                      unsigned char *fingerprint_out);
 
