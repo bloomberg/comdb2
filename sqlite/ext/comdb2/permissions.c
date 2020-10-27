@@ -154,8 +154,7 @@ static int polulate_rows(tran_type *trans, void **data, int *nrows,
 
     *nrows = 0;
 
-    table_entry_t *rows =
-        calloc(user_count * table_count, sizeof(table_entry_t));
+    table_entry_t *rows = calloc(((size_t)user_count) * table_count, sizeof(table_entry_t));
     if (!rows) {
         return -1;
     }

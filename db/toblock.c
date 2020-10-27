@@ -1699,7 +1699,7 @@ int tolongblock(struct ireq *iq)
                     blkstate.p_buf_req_end - blkstate.p_buf_req_end;
             else {
                 iq->dbenv->long_trn_stats.ltrn_avgsize =
-                    ((iq->dbenv->long_trn_stats.ltrn_avgsize *
+                    (((long)iq->dbenv->long_trn_stats.ltrn_avgsize *
                           (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
                       (blkstate.p_buf_req_end - blkstate.p_buf_req_end)) /
                      iq->dbenv->long_trn_stats.ltrn_fulltrans);
@@ -1714,7 +1714,7 @@ int tolongblock(struct ireq *iq)
                 iq->dbenv->long_trn_stats.ltrn_avgnreq = blkstate.numreq;
             else {
                 iq->dbenv->long_trn_stats.ltrn_avgnreq =
-                    ((iq->dbenv->long_trn_stats.ltrn_avgnreq *
+                    (((long)iq->dbenv->long_trn_stats.ltrn_avgnreq *
                           (iq->dbenv->long_trn_stats.ltrn_fulltrans - 1) +
                       blkstate.numreq) /
                      iq->dbenv->long_trn_stats.ltrn_fulltrans);

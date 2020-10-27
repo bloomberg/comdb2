@@ -3748,6 +3748,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
     int params = param_count(clnt);
     struct cson_array *arr = get_bind_array(logger, params);
     struct param_data p = {0};
+    char intspace[12]; // enough space to fit string representation of integer
     for (int i = 0; i < params; ++i) {
         if ((rc = param_value(clnt, &p, i)) != 0) {
             rc = SQLITE_ERROR;
@@ -3763,7 +3764,7 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
 
         char *name;
         if (strlen(p.name) <= 0) { // name is blank because this was from cdb2_bind_index()
-            name = alloca(12);     // enough space to fit string representation of integer
+            name = intspace;
             sprintf(name, "?%d", p.pos);
         }
         else 

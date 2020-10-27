@@ -4896,7 +4896,6 @@ static void register_all_int_switches()
     register_int_switch("bad_lrl_fatal",
                         "Unrecognised lrl options are fatal errors",
                         &gbl_bad_lrl_fatal);
-    register_int_switch("t2t", "New tag->tag conversion code", &gbl_use_t2t);
     register_int_switch("fix_cstr", "Fix validation of cstrings",
                         &gbl_fix_validate_cstr);
     register_int_switch("warn_cstr", "Warn on validation of cstrings",

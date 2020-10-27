@@ -118,6 +118,7 @@ extern size_t gbl_blobmem_cap;
     (gbl_queuedb_genid_filename || (gbl_queuedb_file_threshold > 0))
 
 extern int is_db_roomsync();
+extern int get_schema_change_in_progress(const char *func, int line);
 
 static const char NEW_PREFIX[] = "new.";
 
@@ -4368,8 +4369,6 @@ deadlock_again:
             }
 
             /* Don't print this trace during schemachange */
-            extern int get_schema_change_in_progress(const char *func,
-                                                     int line);
             if (!get_schema_change_in_progress(__func__, __LINE__)) {
                 int calc_pgsz = calc_pagesize(bdb_state->lrl);
                 if (calc_pgsz > x) {

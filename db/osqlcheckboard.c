@@ -111,38 +111,38 @@ int osql_checkboard_init(void)
 void osql_checkboard_destroy(void) { /* TODO*/ }
 
 /* insert entry into checkerboard */
-static inline int insert_into_checkerboard(osql_checkboard_t *checkboard,
+static inline int insert_into_checkerboard(osql_checkboard_t *cb,
                                            osql_sqlthr_t *entry)
 {
     int rc = 0;
-    Pthread_mutex_lock(&checkboard->mtx);
+    Pthread_mutex_lock(&cb->mtx);
 
     if (entry->rqid == OSQL_RQID_USE_UUID)
-        rc = hash_add(checkboard->rqsuuid, entry);
+        rc = hash_add(cb->rqsuuid, entry);
     else
-        rc = hash_add(checkboard->rqs, entry);
+        rc = hash_add(cb->rqs, entry);
 
-    Pthread_mutex_unlock(&checkboard->mtx);
+    Pthread_mutex_unlock(&cb->mtx);
     return rc;
 }
 
 /* delete entry from checkerboard -- called with checkerboard->mtx held */
 static inline osql_sqlthr_t *
-delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
+delete_from_checkerboard(osql_checkboard_t *cb, osqlstate_t *osql)
 {
-    Pthread_mutex_lock(&checkboard->mtx);
+    Pthread_mutex_lock(&cb->mtx);
     osql_sqlthr_t *entry =
         osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
     if (!entry) {
         goto done;
     }
     if (osql->rqid == OSQL_RQID_USE_UUID) {
-        int rc = hash_del(checkboard->rqsuuid, entry);
+        int rc = hash_del(cb->rqsuuid, entry);
         if (rc)
             logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx, rc=%d\n",
                    __func__, entry->rqid, rc);
     } else {
-        int rc = hash_del(checkboard->rqs, entry);
+        int rc = hash_del(cb->rqs, entry);
         if (rc) {
             uuidstr_t us;
             logmsg(LOGMSG_ERROR, "%s: unable to delete record %llx %s, rc=%d\n",
@@ -150,7 +150,7 @@ delete_from_checkerboard(osql_checkboard_t *checkboard, osqlstate_t *osql)
         }
     }
 done:
-    Pthread_mutex_unlock(&checkboard->mtx);
+    Pthread_mutex_unlock(&cb->mtx);
     return entry;
 }
 

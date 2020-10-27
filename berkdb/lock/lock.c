@@ -75,6 +75,7 @@ int gbl_berkdb_track_locks = 0;
 unsigned gbl_ddlk = 0;
 
 void comdb2_dump_blocker(unsigned int);
+extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
@@ -2196,7 +2197,6 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 
     extern __thread int track_thread_locks;
     if (track_thread_locks) {
-        extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
         comdb2_cheapstack_sym(stderr, "lockid %u", locker);
     }
 

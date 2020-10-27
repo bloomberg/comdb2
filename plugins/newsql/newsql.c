@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include <alloca.h>
 #include <pthread.h>
 #include <stdlib.h>
 
@@ -985,7 +984,6 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
             if (sp_column_val(arg, i, type, val)) {
                 return -1;
             }
-            cdb2_client_intv_ym_t *c = alloca(sizeof(*c));
             newsql_ym(cols, i, val, flip);
             break;
         }

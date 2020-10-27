@@ -111,6 +111,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
 static int req2blockop(int reqtype);
 extern const char *get_tablename_from_rpl(bool is_uuid, const char *rpl,
                                           int *tableversion);
+extern void live_sc_off(struct dbtable * db);
 
 #define CMP_KEY_MEMBER(k1, k2, var)                                            \
     if (k1->var < k2->var) {                                                   \
@@ -1258,7 +1259,6 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
         while (sc != NULL) {
             next = sc->sc_next;
             if (sc->newdb && sc->newdb->handle) {
-                void live_sc_off(struct dbtable * db);
                 int bdberr = 0;
                 live_sc_off(sc->db);
                 while (sc->logical_livesc) {

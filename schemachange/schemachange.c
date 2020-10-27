@@ -38,6 +38,8 @@
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
+int timepart_is_shard(const char *, int, char **);
+
 extern int gbl_test_sc_resume_race;
 
 /* If this is successful, it increments */
@@ -1148,7 +1150,6 @@ int sc_timepart_add_table(const char *existingTableName,
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", newTableName);
     sc.tablename[sizeof(sc.tablename) - 1] = '\0';
 
-    int timepart_is_shard(const char *, int, char **);
     char *tp_name;
     if (timepart_is_shard(existingTableName, 0, &tp_name)) {
         sc.is_timepart = 1;

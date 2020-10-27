@@ -325,41 +325,44 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     fi
 fi
 
-FAILCOL=""
-NORCOL=""
+RED=""
+GREEN=""
+YELLOW=""
+NEUTRAL=""
 #if we are outputing to a terminal, show failure in red text
 if [ -t 1 ] ; then
-    FAILCOL="\033[1;31m"
-    SUCCESSCOL="\033[0;32m"
-    NORCOL="\033[0m"
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    NEUTRAL="\033[0m"
 fi
 
 if [[ -n "$cr" ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} with core dumped ($cr)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
 elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
-    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
 elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
-    echo -e "!$TESTCASE: also ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
+    echo -e "!$TESTCASE: also ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: also failed verify ($verify_ret)" >> ${TEST_LOG}
 elif [[ -f "${DBNAME}.failexit" ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} (found ${DBNAME}.failexit, logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} (found ${DBNAME}.failexit, logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed (found ${DBNAME}.failexit)" >> ${TEST_LOG}
 elif [[ -n "$verify_ret" ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}
 elif [[ $rc -eq 0 ]] ; then
-    echo -e "!$TESTCASE: ${SUCCESSCOL}success${NORCOL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: success" >> ${TEST_LOG}
     successful=1
 else
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
 fi
 
