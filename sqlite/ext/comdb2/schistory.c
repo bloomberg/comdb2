@@ -68,14 +68,16 @@ static int get_status(void **data, int *npoints)
     tran_type *trans = curtran_gettran();
     if (trans == NULL) {
         logmsg(LOGMSG_ERROR, "%s: cannot create transaction object\n", __func__);
-        return SQLITE_INTERNAL;
+        rc = SQLITE_INTERNAL;
+        goto cleanup;
     }
 
     rc = bdb_llmeta_get_sc_history(trans, &hist, &nkeys, &bdberr, NULL);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to get all schema change hist\n",
                __func__);
-        return SQLITE_INTERNAL;
+        rc = SQLITE_INTERNAL;
+        goto cleanup;
     }
 
     sc_hist_ents = calloc(nkeys, sizeof(struct sc_hist_ent));
