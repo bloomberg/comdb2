@@ -2676,6 +2676,23 @@ static cron_sched_t *_get_sched_byname(enum view_partition_period period,
     abort();
 }
 
+/* Returns time partition name if the specified 'table_name' is a shard,
+  'table_name' otherwise. */
+char *resolve_table_name(char *table_name, char *buf, size_t buf_len)
+{
+    char *tp_name;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    if ((timepart_is_shard(table_name, 0, &tp_name))) {
+        strncpy(buf, tp_name, buf_len);
+        Pthread_rwlock_unlock(&views_lk);
+        return buf;
+    }
+    Pthread_rwlock_unlock(&views_lk);
+
+    return table_name;
+}
+
 #include "views_systable.c"
 
 #include "views_serial.c"

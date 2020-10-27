@@ -1721,9 +1721,12 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
             pCur->db->tablename, ACCESS_WRITE, &bdberr);
         if (rc != 0) {
             char msg[1024];
+            char buf[MAXTABLELEN];
+            char *table_name = resolve_table_name(pCur->db->tablename,
+                                                  (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->clnt->current_user.name, bdberr);
+                     table_name, thd->clnt->current_user.name, bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -1768,9 +1771,12 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             pCur->db->tablename, ACCESS_READ, &bdberr);
         if (rc != 0) {
             char msg[1024];
+            char buf[MAXTABLELEN];
+            char *table_name = resolve_table_name(pCur->db->tablename,
+                                                  (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->clnt->current_user.name, bdberr);
+                     table_name, thd->clnt->current_user.name, bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
