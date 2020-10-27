@@ -383,5 +383,7 @@ int timepart_shards_grant_access(bdb_state_type *bdb_state, void *tran, char
                                  *name, char *user, int access_type);
 int timepart_shards_revoke_access(bdb_state_type *bdb_state, void *tran, char
                                   *name, char *user, int access_type);
+
+char *resolve_table_name(char *table_name, char *buf, size_t buf_len);
 #endif
 
