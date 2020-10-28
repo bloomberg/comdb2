@@ -628,6 +628,7 @@ struct user {
 
 
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
+typedef struct string_ref_t string_ref_t;
 
 /* Client specific sql state */
 struct sqlclntstate {
@@ -677,6 +678,7 @@ struct sqlclntstate {
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
     char *sql;
+    string_ref_t *sql_ref;
     int recno;
     int client_understands_query_stats;
     char tzname[CDB2_MAX_TZNAME];
@@ -1107,7 +1109,7 @@ struct BtCursor {
 
 struct sql_hist {
     LINKC_T(struct sql_hist) lnk;
-    char *sql;
+    string_ref_t *sql_ref;
     struct sql_hist_cost cost;
     int when;
     int64_t txnid;

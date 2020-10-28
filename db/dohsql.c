@@ -24,6 +24,7 @@
 #include "dohsql.h"
 #include "sqlinterfaces.h"
 #include "memcompare.c"
+#include "string_ref.h"
 
 extern char *print_mem(Mem *m);
 
@@ -1101,7 +1102,6 @@ int dohsql_distribute(dohsql_node_t *node)
 {
     GET_CLNT;
     dohsql_t *conns;
-    char *sqlcpy;
     int i, rc;
     int clnt_nparams;
     int flags = 0;
@@ -1146,13 +1146,15 @@ int dohsql_distribute(dohsql_node_t *node)
             return rc;
 
         if (i > 0) {
+            string_ref_t * sr = create_string_ref(node->nodes[i]->sql);
+
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(get_sql_pool(clnt), sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
-                                 sqlcpy = strdup(node->nodes[i]->sql), flags,
+                                 sr, flags,
                                  PRIORITY_T_DEFAULT);
             if (rc) {
-                free(sqlcpy);
+                put_ref(&sr);
                 return SHARD_ERR_GENERIC;
             }
         }

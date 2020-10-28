@@ -847,7 +847,7 @@ static int analyze_table_int(table_descriptor_t *td,
     if (debug_switch_test_delay_analyze_commit())
         sleep(10);
 
-    rc = run_internal_sql_clnt(&clnt, "COMMIT");
+    rc = run_internal_sql_clnt(&clnt, "COMMIT /* from analyzesqlite main.... */");
     if (rc) {
         /*
         ** Manually unregister the client from the checkboard,
@@ -874,7 +874,7 @@ cleanup:
     return rc;
 
 error:
-    if (run_internal_sql_clnt(&clnt, "ROLLBACK") != 0)
+    if (run_internal_sql_clnt(&clnt, "ROLLBACK /* from analyzesqlite main.... */") != 0)
         osql_unregister_sqlthr(&clnt);
     goto cleanup;
 }
@@ -1317,12 +1317,12 @@ static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
         if (rc)
             goto error;
     }
-    rc = run_internal_sql_clnt(clnt, "COMMIT");
+    rc = run_internal_sql_clnt(clnt, "COMMIT /* from analyze backout stats */");
     return rc;
 
 error:
     logmsg(LOGMSG_ERROR, "backout error, rolling back transaction\n");
-    run_internal_sql_clnt(clnt, "ROLLBACK");
+    run_internal_sql_clnt(clnt, "ROLLBACK /* from analyze backout stats */");
     return rc;
 }
 

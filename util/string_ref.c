@@ -1,0 +1,154 @@
+/*
+   Copyright 2020 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+#include <assert.h>
+#include <pthread.h>
+#include "string_ref.h"
+#include "locks_wrap.h"
+#include "comdb2_atomic.h"
+#include "mem_util.h"
+#include "mem_override.h"
+#include "logmsg.h"
+
+#define TRACK_REFERENCES
+
+#ifdef TRACK_REFERENCES
+#include <plhash.h>
+
+static pthread_mutex_t srh_mtx = PTHREAD_MUTEX_INITIALIZER;
+static hash_t *sr_hash = NULL;
+extern u_int ptrhashfunc(u_char *keyp, int len);
+#endif
+
+static int gbl_creation_count;
+
+struct string_ref_t {
+    int cnt;
+    char str[1];
+};
+
+
+/* Makes a copy of the string passed and uses that as a reference counted object
+ */
+string_ref_t * create_string_ref(const char *str)
+{
+    assert(str);
+    int len = strlen(str);
+    string_ref_t *ref = malloc(sizeof(string_ref_t) + len);
+    ref->cnt = 1;
+    strcpy(ref->str, str);
+
+#ifdef TRACK_REFERENCES
+    Pthread_mutex_lock(&srh_mtx);
+    if(!sr_hash)
+        sr_hash = hash_init_user((hashfunc_t *)ptrhashfunc, (cmpfunc_t *)memcmp, 0, 0);
+    hash_add(sr_hash, ref);
+    gbl_creation_count += 1;
+    Pthread_mutex_unlock(&srh_mtx);
+#else
+    ATOMIC_ADD32(gbl_creation_count, 1);
+#endif
+    return ref;
+}
+
+
+
+/* Get a reference by increasing the count */
+string_ref_t * get_ref(string_ref_t *ref)
+{
+    assert(ref);
+    int cnt = ATOMIC_ADD32(ref->cnt, 1);
+    if(cnt <= 1) // create has a reference, this can only be > 1
+        abort();
+
+    return ref;
+}
+
+/* Release a reference and free if this is the last holder.
+ * set *ref to NULL so it can no longer access this obj
+ */
+void put_ref(string_ref_t **ref_p)
+{
+    string_ref_t *ref = *ref_p;
+    if (ref == NULL)
+        return; // nothing to do
+
+    int cnt = ATOMIC_ADD32(ref->cnt, -1);
+    if (cnt < 0)
+        abort();
+
+    if (cnt == 0) {
+#ifdef TRACK_REFERENCES
+        Pthread_mutex_lock(&srh_mtx);
+        int rc = hash_del(sr_hash, ref);
+        if (rc != 0) {
+            abort();
+        }
+        gbl_creation_count -= 1;
+        Pthread_mutex_unlock(&srh_mtx);
+#else
+        ATOMIC_ADD32(gbl_creation_count, -1);
+#endif
+        free(ref);
+    }
+    *ref_p = NULL;
+}
+
+
+/* Transfer ownership of the reference from pointer 'from' to 'to'
+ * use this instead of assigning 'to = from'
+ */
+void transfer_ref(string_ref_t **from, string_ref_t **to)
+{
+    *to = *from;
+    *from = NULL;
+}
+
+const char *get_string(string_ref_t *ref)
+{
+    return ref->str;
+}
+
+
+#ifdef TRACK_REFERENCES
+static int print_it(void *obj, void *arg)
+{
+    string_ref_t *ref = obj;
+    logmsg(LOGMSG_USER, "%s:%d\n", ref->str, ref->cnt);
+    return 0;
+}
+
+static void print_all_string_references()
+{
+    if (gbl_creation_count > 0) {
+        Pthread_mutex_lock(&srh_mtx);
+        logmsg(LOGMSG_USER, "Remaining not-cleaned-up string references:\n");
+        hash_for(sr_hash, print_it, NULL);
+        Pthread_mutex_unlock(&srh_mtx);
+    }
+}
+#endif
+
+
+int all_string_references_cleared()
+{
+    int res = (gbl_creation_count == 0);
+#ifdef TRACK_REFERENCES
+    if (!res)
+        print_all_string_references();
+#endif
+    return res;
+}

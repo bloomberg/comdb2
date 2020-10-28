@@ -133,6 +133,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <build/db.h>
 #include "comdb2_ruleset.h"
 #include <hostname_support.h>
+#include "string_ref.h"
 
 #define tokdup strndup
 
@@ -790,6 +791,7 @@ int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
 int run_init_plugins(int phase);
+extern void clear_sqlhist();
 
 inline int getkeyrecnums(const dbtable *tbl, int ixnum)
 {
@@ -1548,6 +1550,9 @@ void clean_exit(void)
     // comdb2ma_exit();
     free_tzdir();
     tz_hash_free();
+    clear_sqlhist();
+    if(!all_string_references_cleared())
+        abort();
 
     logmsg(LOGMSG_USER, "goodbye\n");
     exit(0);

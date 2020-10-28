@@ -32,6 +32,7 @@ extern "C" {
 #include <priority_queue.h>
 
 struct thdpool;
+typedef struct string_ref_t string_ref_t;
 
 enum thdpool_ioctl_op { THD_RUN, THD_FREE };
 
@@ -58,13 +59,14 @@ enum {
 
 typedef void (*thdpool_work_fn)(struct thdpool *pool, void *work, void *thddata,
                                 int op);
+
 struct workitem {
     void *work;
     thdpool_work_fn work_fn;
     int queue_time_ms;
     LINKC_T(struct workitem) linkv;
     int available;
-    char *persistent_info;
+    string_ref_t *ref_persistent_info;
     priority_t priority;
 };
 
@@ -104,7 +106,7 @@ enum {
     THDPOOL_QUEUE_ONLY = 0x8
 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags,
+                    int queue_override, string_ref_t *persistent_info, uint32_t flags,
                     priority_t priority);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);

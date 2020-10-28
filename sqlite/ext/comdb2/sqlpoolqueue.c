@@ -24,6 +24,7 @@
 #include "ezsystables.h"
 #include "thdpool.h"
 #include "cdb2api.h"
+#include "string_ref.h"
 
 typedef struct systable_sqlpoolqueue {
     int64_t                 time_in_queue_ms;
@@ -51,8 +52,8 @@ static void collect(struct thdpool *pool, struct workitem *item, void *user)
 
     i = &q->records[q->count - 1];
     i->time_in_queue_ms = comdb2_time_epochms() - item->queue_time_ms;
-    if (item->persistent_info) {
-        i->info = strdup(item->persistent_info);
+    if (item->ref_persistent_info) {
+        i->info = strdup(get_string(item->ref_persistent_info));
         i->info_is_null = 0;
     } else {
         i->info = NULL;

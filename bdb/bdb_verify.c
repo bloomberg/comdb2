@@ -24,6 +24,7 @@
 #include "blob_buffer.h"
 #include "comdb2_atomic.h"
 #include "constraints.h"
+#include "string_ref.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_expressions_indexes;
@@ -1215,16 +1216,15 @@ static inline void enqueue_work(td_processing_info_t *work, const char *desc,
     work->common_params->threads_spawned++;
 
     if (verify_thdpool) {
-        char *desc_copy = strdup(desc);
-        int rc =
-            thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp, work, 0,
-                            desc_copy, THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
+        string_ref_t * sr = create_string_ref(desc);
+        int rc = thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp, work, 0,
+                                 sr, THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
         if (rc) {
+            put_ref(&sr);
             logmsg(LOGMSG_ERROR,
                    "%s:thdpool_enqueue error, proceeding sequentially\n",
                    __func__);
             verify_thdpool = NULL;
-            free(desc_copy);
         }
     }
 

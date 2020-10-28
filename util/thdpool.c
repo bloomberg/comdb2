@@ -46,6 +46,7 @@
 #include "logmsg.h"
 #include "priority_queue.h"
 #include "comdb2_atomic.h"
+#include "string_ref.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -57,6 +58,7 @@ extern int gbl_throttle_sql_overload_dump_sec;
 extern int thdpool_alarm_on_queing(int len);
 extern int gbl_disable_exit_on_thread_error;
 extern comdb2bma blobmem;
+
 
 struct thd {
     pthread_t tid;
@@ -654,9 +656,8 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
                     pool->maxqueueagems)) {
                 if (pool->dque_fn)
                     pool->dque_fn(thd->pool, next, 1);
-                if (next->persistent_info) {
-                    free(next->persistent_info);
-                    next->persistent_info = NULL;
+                if (next->ref_persistent_info) {
+                    put_ref(&next->ref_persistent_info);
                 }
                 next->work_fn(pool, next->work, NULL, THD_FREE);
                 pool_relablk(pool->pool, next);
@@ -795,7 +796,10 @@ static void *thdpool_thd(void *voidarg)
              * current work in progress, obtained from get_work_ll, while
              * still holding the pool lock. */
 
-            thd->persistent_info = work.persistent_info;
+            if (work.ref_persistent_info)
+                thd->persistent_info = get_string(work.ref_persistent_info); // will reset this before put_ref() below
+            else
+                thd->persistent_info = "working on unknown";
         }
         UNLOCK(&pool->mutex);
 
@@ -817,9 +821,8 @@ static void *thdpool_thd(void *voidarg)
          * to examine it. */
         LOCK(&pool->mutex) {
             thd->persistent_info = "work completed.";
-            if (work.persistent_info != NULL) {
-                free(work.persistent_info);
-                work.persistent_info = NULL;
+            if (work.ref_persistent_info) {
+                put_ref(&work.ref_persistent_info);
             }
         }
         UNLOCK(&pool->mutex);
@@ -874,8 +877,8 @@ thread_exit:
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags,
-                    priority_t priority)
+                    int queue_override, string_ref_t *ref_persistent_info,
+                    uint32_t flags, priority_t priority)
 {
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
@@ -1064,6 +1067,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                             ctrace(" === Dumping current pool \"%s\" users:\n",
                                    pool->name);
 
+
                             LISTC_FOR_EACH(&pool->thdlist, thd, thdlist_linkv)
                             {
                                 crt++;
@@ -1119,7 +1123,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 
         item->work = work;
         item->work_fn = work_fn;
-        item->persistent_info = persistent_info;
+        transfer_ref(&ref_persistent_info, &item->ref_persistent_info); // item gets ownership of reference
         item->queue_time_ms = comdb2_time_epochms();
         item->available = 1;
         item->priority = priority;

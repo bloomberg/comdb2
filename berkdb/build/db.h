@@ -2966,8 +2966,9 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
+typedef struct string_ref_t string_ref_t;
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-	void *work, int queue_override, char *persistent_info, uint32_t flags,
+	void *work, int queue_override, struct string_ref_t *persistent_info, uint32_t flags,
         priority_t priority);
 
 

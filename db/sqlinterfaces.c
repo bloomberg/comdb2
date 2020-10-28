@@ -111,6 +111,7 @@
 
 #include "dohsql.h"
 #include "comdb2_query_preparer.h"
+#include "string_ref.h"
 
 #include "osqlsqlsocket.h"
 
@@ -1066,13 +1067,13 @@ void sql_dump_hist_statements(void)
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
                    (char *)h->conn.pename, h->conn.pid, h->conn.node,
                    (long long int)h->cost.time, (long long int)h->cost.prepTime,
-                   h->cost.cost, h->sql);
+                   h->cost.cost, get_string(h->sql_ref));
         } else {
             logmsg(LOGMSG_USER,
                    "%02d/%02d/%02d %02d:%02d:%02d %stime %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, (long long int)h->cost.time,
-                   (long long int)h->cost.prepTime, h->cost.cost, h->sql);
+                   (long long int)h->cost.prepTime, h->cost.cost, get_string(h->sql_ref));
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1201,11 +1202,12 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     LISTC_T(struct sql_hist) lst;
     listc_init(&lst, offsetof(struct sql_hist, lnk));
 
+    if (!clnt->sql_ref && clnt->sql) {
+        // incomming from dohast will not have sql_ref set
+        clnt->sql_ref = create_string_ref(clnt->sql);
+    }
     struct sql_hist *h = calloc(1, sizeof(struct sql_hist));
-    if (clnt->sql)
-        h->sql = strdup(clnt->sql);
-    else
-        h->sql = strdup("unknown");
+    h->sql_ref = get_ref(clnt->sql_ref);
     h->cost.cost = query_cost(thd);
     h->cost.time = comdb2_time_epochms() - thd->startms;
     h->cost.prepTime = thd->prepms;
@@ -1229,8 +1231,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     int64_t rows;
 
     if (gbl_fingerprint_queries) {
-        if (h->sql) {
-            if (is_stored_proc_sql(h->sql)) {
+        if (h->sql_ref) {
+            if (is_stored_proc_sql(get_string(h->sql_ref))) {
                 cost = clnt->spcost.cost;
                 time = clnt->spcost.time;
                 prepTime = clnt->spcost.prepTime;
@@ -1242,13 +1244,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(clnt, stmt, h->sql, clnt->work.zOrigNormSql,
+                add_fingerprint(clnt, stmt, get_string(h->sql_ref), clnt->work.zOrigNormSql,
                                 cost, time, prepTime, rows, logger,
                                 fingerprint);
                 have_fingerprint = 1;
             } else if (clnt->work.zNormSql &&
                        sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(clnt, stmt, h->sql, clnt->work.zNormSql, cost,
+                add_fingerprint(clnt, stmt, get_string(h->sql_ref), clnt->work.zNormSql, cost,
                                 time, prepTime, rows, logger, fingerprint);
                 have_fingerprint = 1;
             } else {
@@ -1325,7 +1327,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
     for (h = listc_rtl(&lst); h; h = listc_rtl(&lst)) {
-        free(h->sql);
+        put_ref(&h->sql_ref);
         free(h);
     }
 
@@ -1341,6 +1343,16 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
         query_preparer_plugin->do_cleanup) {
         query_preparer_plugin->do_cleanup(clnt);
     }
+}
+
+void clear_sqlhist()
+{
+    Pthread_mutex_lock(&gbl_sql_lock);
+    for (struct sql_hist *h = listc_rtl(&thedb->sqlhist); h; h = listc_rtl(&thedb->sqlhist)) {
+        put_ref(&h->sql_ref);
+        free(h);
+    }
+    Pthread_mutex_unlock(&gbl_sql_lock);
 }
 
 void sql_set_sqlengine_state(struct sqlclntstate *clnt, char *file, int line,
@@ -3962,8 +3974,6 @@ static void handle_expert_query(struct sqlthdstate *thd,
 static int handle_non_sqlite_requests(struct sqlthdstate *thd,
                                       struct sqlclntstate *clnt, int *outrc)
 {
-    int rc;
-
     sql_update_usertran_state(clnt);
 
     switch (clnt->ctrl_sqlengine) {
@@ -3996,7 +4006,7 @@ static int handle_non_sqlite_requests(struct sqlthdstate *thd,
         return 1;
     } else if (clnt->is_explain) { // only via newsql--cdb2api
         rdlock_schema_lk();
-        rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
+        int rc = sqlengine_prepare_engine(thd, clnt, PREPARE_RECREATE);
         unlock_schema_lk();
         if (thd->sqldb == NULL) {
             *outrc = handle_bad_engine(clnt);
@@ -5255,6 +5265,11 @@ void sqlengine_work_appsock(void *thddata, void *work)
         clnt->query_rc = execute_sql_query(thd, clnt);
     }
 
+    if (clnt->sql_ref) {
+        logmsg(LOGMSG_USER, "calling put_ref to rid clnt->ref %p\n", clnt->sql_ref);
+        put_ref(&clnt->sql_ref);
+    }
+
     osql_shadtbl_done_query(thedb->bdb_env, clnt);
     thrman_setfd(thd->thr_self, -1);
     sql_reset_sqlthread(sqlthd);
@@ -5312,6 +5327,7 @@ static int send_heartbeat(struct sqlclntstate *clnt)
     return 0;
 }
 
+    
 /* timeradd() for struct timespec*/
 #define TIMESPEC_ADD(a, b, result)                                             \
     do {                                                                       \
@@ -5358,7 +5374,6 @@ static priority_t combinePriorities(
 static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 {
     char msg[1024];
-    char *sqlcpy;
     int rc;
     int fail_dispatch = 0;
     int q_depth_tag_and_sql;
@@ -5397,6 +5412,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 
     /* keep track so we can display it in stat thr */
     clnt->appsock_id = getarchtid();
+    clnt->sql_ref = create_string_ref(clnt->sql);
 
     Pthread_mutex_unlock(&clnt->wait_mutex);
 
@@ -5421,7 +5437,6 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
                         thdpool_get_nfreethds(pool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
-    sqlcpy = strdup(msg);
     assert(clnt->dbtran.pStmt == NULL);
     uint32_t flags = (clnt->admin ? THDPOOL_FORCE_DISPATCH : 0);
     if (gbl_thdpool_queue_only) {
@@ -5435,21 +5450,23 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
         */
         clnt->queue_me = 1;
     }
+
+    string_ref_t *sr = get_ref(clnt->sql_ref);
     if ((rc = thdpool_enqueue(pool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sqlcpy, flags,
+                              clnt, clnt->queue_me, sr, flags,
                               clnt->priority)) != 0) {
         if ((in_client_trans(clnt) || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(pool,
-                                 sqlengine_work_appsock_pp, clnt, 1, sqlcpy,
+                                 sqlengine_work_appsock_pp, clnt, 1, sr,
                                  flags | THDPOOL_FORCE_QUEUE,
                                  clnt->priority);
         }
 
         if (rc) {
-            logmsg(LOGMSG_DEBUG, "%s: failed to enqueue: %s\n", __func__, sqlcpy);
-            free(sqlcpy);
+            logmsg(LOGMSG_DEBUG, "%s: failed to enqueue: %s\n", __func__, get_string(clnt->sql_ref));
+            put_ref(&sr); // failed to enqueue so we still own this reference
             /* say something back, if the client expects it */
             if (clnt->fail_dispatch) {
                 snprintf(msg, sizeof(msg), "%s: unable to dispatch sql query, rc=%d\n",
@@ -5685,6 +5702,10 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     if (clnt->query_stats) {
         free(clnt->query_stats);
         clnt->query_stats = NULL;
+    }
+
+    if (clnt->sql_ref) {
+        put_ref(&clnt->sql_ref);
     }
 
     if (gbl_expressions_indexes) {
