@@ -474,6 +474,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int 
         clnt->appdata = appdata;
         if (!appdata)
             goto oom;
+        newsql_protobuf_set_allocator_data(&appdata->newsql_protobuf_allocator); // needed after realloc
         appdata->capacity = n;
     }
     appdata->count = ncols;
@@ -2059,7 +2060,7 @@ retry_read:
 
         reset_clnt(clnt, sb, 0);
         struct newsql_appdata *appdata = clnt->appdata;
-        reset_protobuf_offset(&appdata->newsql_protobuf_allocator);
+        newsql_protobuf_reset_offset(&appdata->newsql_protobuf_allocator);
         clnt->tzname[0] = '\0';
         clnt->osql.count_changes = 1;
         clnt->heartbeat = 1;
@@ -2507,8 +2508,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             if (clnt.dbtran.trans_has_sp) {
                 osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
                 srs_tran_destroy(&clnt);
-                struct newsql_appdata *appdata = clnt.appdata;
-                reset_protobuf_offset(&appdata->newsql_protobuf_allocator);
+                newsql_protobuf_reset_offset(&APPDATA->newsql_protobuf_allocator);
             } else {
                 rc = srs_tran_replay(&clnt, arg->thr_self);
             }
@@ -2522,22 +2522,26 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             */
             if (clnt.osql.history && clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
                 srs_tran_destroy(&clnt);
-                struct newsql_appdata *appdata = clnt.appdata;
-                reset_protobuf_offset(&appdata->newsql_protobuf_allocator);
+                newsql_protobuf_reset_offset(&APPDATA->newsql_protobuf_allocator);
                 query = APPDATA->query = NULL;
             }
         }
 
-        if (rc && !in_client_trans(&clnt))
-            goto done;
+        if (!in_client_trans(&clnt)) {
+            /* minor detail: for in tran selects we cant reset offset to previous query's end
+             * because we don't know all the chunks that were collected for /this/ query */
+            newsql_protobuf_reset_offset(&APPDATA->newsql_protobuf_allocator);
+            if (rc)
+                goto done;
+        }
 
         if (clnt.added_to_hist) {
             clnt.added_to_hist = 0;
         } else if (APPDATA->query) {
+            /* cleanup if we did not add to history (single stmt or select inside a tran) */
             cdb2__query__free_unpacked(APPDATA->query, &APPDATA->newsql_protobuf_allocator.protobuf_allocator);
             APPDATA->query = NULL;
-            /*
-             * clnt.sql points into the protobuf unpacked buffer, which becomes
+            /* clnt.sql points into the protobuf unpacked buffer, which becomes
              * invalid after cdb2__query__free_unpacked. Reset the pointer here.
              */
             clnt.sql = NULL;

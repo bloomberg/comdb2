@@ -5,7 +5,7 @@ This is the comdb2 test suite.
 Some of the tests require non standard tools to be installed, so here is a 
 list of packages needed to run all the tests:
 
-`apt-get install bash coreutils jq`
+`apt-get install bash coreutils jq tcl-dev`
 
 Clustered tests also need ssh-client and ssh-server setup.
 
