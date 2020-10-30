@@ -14,13 +14,26 @@
    limitations under the License.
  */
 
-#ifndef INCLUDED_PB_ALLOC_H
-#define INCLUDED_PB_ALLOC_H
+#include <pb_alloc.h>
+#include <mem_protobuf.h>
 
-#include <google/protobuf-c/protobuf-c.h>
-extern ProtobufCAllocator pb_alloc;
-typedef void *(pb_alloc_func)(void *, size_t);
-typedef void(pb_free_func)(void *, void *);
-ProtobufCAllocator setup_pb_allocator(pb_alloc_func *, pb_free_func *, void *);
+static void* malloc_wrap(void *allocator_data, size_t n)
+{
+    return comdb2_malloc_protobuf (n);
+}
 
-#endif
+static void free_wrap(void *allocator_data, void *p)
+{
+    comdb2_free_protobuf(p);
+}
+
+ProtobufCAllocator pb_alloc = {
+    .alloc = malloc_wrap,
+    .free  = free_wrap
+};
+
+ProtobufCAllocator setup_pb_allocator(pb_alloc_func *af, pb_free_func *ff, void *arg)
+{
+    ProtobufCAllocator pb = { .alloc = af, .free  = ff, .allocator_data = arg };
+    return pb;
+}

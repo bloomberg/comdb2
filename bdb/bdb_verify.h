@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015-2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -19,7 +19,6 @@
 
 #include "verify.h"
 
-struct SBUF2;
 struct bdb_state_type;
 typedef struct thdpool thdpool;
 
@@ -32,7 +31,6 @@ typedef enum {
 
 // common data for all verify threads
 typedef struct {
-    SBUF2 *sb;
     bdb_state_type *bdb_state;
     struct dbtable *db_table;
     const char *tablename;
@@ -41,13 +39,9 @@ typedef struct {
     int (*get_blob_sizes_callback)(const struct dbtable *tbl, void *dta, int blobs[16],
                                    int bloboffs[16], int *nblobs);
     int (*vtag_callback)(void *parm, void *dta, int *dtasz, uint8_t ver);
-    int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz,
-                                    int blobno);
+    int (*add_blob_buffer_callback)(void *parm, void *dta, int dtasz, int blobno);
     void (*free_blob_buffer_callback)(void *parm);
-    unsigned long long (*verify_indexes_callback)(void *parm, void *dta,
-                                                  void *blob_parm);
-    int (*lua_callback)(void *, const char *);
-    void *lua_params;
+    unsigned long long (*verify_indexes_callback)(void *parm, void *dta, void *blob_parm);
     char *header; // header string for printing for prog rep in default mode
     uint64_t items_processed;             // atomic inc: for progres report
     uint64_t records_processed;           // progress report in default mode
@@ -62,6 +56,9 @@ typedef struct {
     verify_mode_t verify_mode;
     uint8_t client_dropped_connection;
     uint8_t verify_status; // 0 success, 1 failure
+    verify_peer_check_func *peer_check;
+    verify_response_func *verify_response;
+    void *arg;
 } verify_common_t;
 
 // verify per thread processing info
@@ -73,8 +70,6 @@ typedef struct td_processing_info {
     int8_t index;
 } td_processing_info_t;
 
-int bdb_verify(verify_common_t *par);
-int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool);
-int bdb_dropped_connection(SBUF2 *sb);
+int bdb_verify_enqueue(td_processing_info_t *, thdpool *);
 
 #endif

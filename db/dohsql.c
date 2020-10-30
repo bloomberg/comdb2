@@ -1112,11 +1112,65 @@ static int dohsql_get_client_retries(struct sqlclntstate *clnt)
         logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
 }
-static int dohsql_send_intrans_response(struct sqlclntstate *a)
+static int dohsql_send_intrans_response(struct sqlclntstate *clnt)
 {
     if (gbl_plugin_api_debug)
         logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
     return 0;
+}
+static int dohsql_fileno(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
+}
+static int dohsql_close(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
+}
+static int dohsql_set_timeout(struct sqlclntstate *clnt, int timeout)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
+}
+static int dohsql_local_check(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
+}
+static int dohsql_peer_check(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
+}
+static int dohsql_flush(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
+}
+static int dohsql_has_ssl(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return 0;
+}
+static int dohsql_has_x509(struct sqlclntstate *clnt)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return 0;
+}
+static int dohsql_get_x509_attr(struct sqlclntstate *clnt, int a, void *b, int c)
+{
+    if (gbl_plugin_api_debug)
+        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
+    return -1;
 }
 
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,

@@ -204,6 +204,28 @@ static int db_comdb_analyze(Lua L) {
     return 1;
 }
 
+static int db_verify_peer_check(void *arg)
+{
+    struct sqlclntstate *clnt = arg;
+    return clnt->plugin.peer_check(clnt);
+}
+
+static int db_verify_table_callback(char *msg, void *arg)
+{
+    struct sqlclntstate *clnt = arg;
+    if (!msg || !clnt) {
+        return 0;
+    }
+    if (peer_dropped_connection(clnt)) {
+        return -2;
+    }
+    if (msg[0] == '!' || msg[0] == '?') {
+        ++msg;
+    }
+    char *row[] = {msg};
+    write_response(clnt, RESPONSE_ROW_STR, row, 1);
+    return 0;
+}
 
 /* verify() can take up to 3 parameters (table, mode, verbose):
  * when we check we look for lua_isstring(L, 1), 2 and 3
@@ -260,7 +282,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])");
+        db_verify_table_callback("Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])", clnt);
         return luaL_error(L, "Verify failed.");
     }
 
@@ -268,21 +290,20 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table_mode(tblname, clnt->sb, verbose, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
+        rc = verify_table(tblname, verbose, 0, mode, db_verify_peer_check, db_verify_table_callback, clnt);
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
         char buf[128] = {0};
         snprintf(buf, sizeof(buf), "Table \"%s\" does not exist.", tblname);
-        db_verify_table_callback(L, buf);
+        db_verify_table_callback(buf, clnt);
         rc = 1;
     }
     if (rc) {
         return luaL_error(L, "Verify failed.");
+    } else {
+        db_verify_table_callback("Verify succeeded.", clnt);
     }
-    else
-        db_verify_table_callback(L, "Verify succeeded.");
-
     return 1;
 }
 
@@ -303,9 +324,7 @@ static int db_comdb_truncate_log(Lua L) {
     unsigned int file, offset;
   
     if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
-        // db_verify_table_callback(L, "Usage: truncate_log(\"{<file>:<offset>}\")");
-        return luaL_error(L, 
-                "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
+        return luaL_error(L, "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
     }
 
     logdelete_lock(__func__, __LINE__);

@@ -16,8 +16,8 @@
 
 #include <unistd.h>
 #include "comdb2.h"
-#include "verify.h"
 #include "bdb_verify.h"
+#include <sql.h>
 
 struct thdpool *gbl_verify_thdpool;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
@@ -291,113 +291,89 @@ static unsigned long long verify_indexes_callback(void *parm, void *dta,
 }
 
 // call this with schema lock
-static int get_tbl_and_lock_in_tran(const char *table, SBUF2 *sb,
+static int get_tbl_and_lock_in_tran(verify_common_t *par, const char *table,
                                     struct dbtable **db, tran_type **tran)
 {
     int bdberr;
     struct dbtable *locdb = get_dbtable_by_name(table);
     if (locdb == NULL) {
-        if (sb)
-            sbuf2printf(sb, "?Unknown table name '%s'\n", table);
+        char err[LINE_MAX];
+        snprintf(err, sizeof(err), "?Unknown table name '%s'", table);
+        logmsg(LOGMSG_ERROR, "%s\n", err + 1);
+        par->verify_response(err, par->arg);
         return -1;
     }
-
     void *loctran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
     if (!loctran) {
-        logmsg(LOGMSG_ERROR, "verify_table: bdb_trans_start bdberr %d\n",
-               bdberr);
-        if (sb)
-            sbuf2printf(sb, "?Error starting transaction rc %d\n", bdberr);
+        char err[LINE_MAX];
+        snprintf(err, sizeof(err), "?Error starting transaction rc:%d table:%s", bdberr, table);
+        logmsg(LOGMSG_ERROR, "%s\n", err + 1);
+        par->verify_response(err, par->arg);
         return -1;
     }
-
     *db = locdb;
     *tran = loctran;
-    return bdb_lock_tablename_read(thedb->bdb_env, table, loctran);
+    int rc;
+    if ((rc = bdb_lock_tablename_read(thedb->bdb_env, table, loctran)) != 0) {
+        char err[LINE_MAX];
+        snprintf(err, sizeof(err), "?Readlock rc:%d table:%s", rc, table);
+        logmsg(LOGMSG_ERROR, "%s\n", err + 1);
+        par->verify_response(err, par->arg);
+        return -1;
+    }
+    return 0;
 }
 
 /* verify table main entry point called both by lua/syssp.c
  * and by verify_table() which is called by bb plugins
  */
-int verify_table_mode(const char *table, SBUF2 *sb, int progress_report_seconds,
-                      int attempt_fix,
-                      int (*lua_callback)(void *, const char *),
-                      void *lua_params, verify_mode_t mode)
+int verify_table(const char *table, int progress_report_seconds,
+                 int attempt_fix, verify_mode_t mode,
+                 verify_peer_check_func *peer_check,
+                 verify_response_func *response, void *arg)
 {
-    int rc;
-    int bdberr;
-    tran_type *tran = NULL;
-    struct dbtable *db = NULL;
-
-    rdlock_schema_lk();
-    rc = get_tbl_and_lock_in_tran(table, sb, &db, &tran);
-    unlock_schema_lk();
-
-    if (rc) {
-        logmsg(LOGMSG_INFO, "Readlock table %s %d\n", table, rc);
-        if (sb && !lua_callback)
-            sbuf2printf(sb, "?Readlock table %s rc %d\n", table, rc);
-        rc = 1;
-        goto done;
-    }
-
     pthread_once(&once, init_verify_thdpool);
-
     verify_common_t par = {
-        .sb = sb,
-        .bdb_state = db->handle,
-        .db_table = db,
         .tablename = table,
         .formkey_callback = verify_formkey_callback,
         .get_blob_sizes_callback = verify_blobsizes_callback,
-        .vtag_callback =
-            (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
+        .vtag_callback = (int (*)(void *, void *, int *, uint8_t))vtag_to_ondisk_vermap,
         .add_blob_buffer_callback = verify_add_blob_buffer_callback,
         .free_blob_buffer_callback = verify_free_blob_buffer_callback,
         .verify_indexes_callback = verify_indexes_callback,
-        .lua_callback = lua_callback,
-        .lua_params = lua_params,
         .progress_report_seconds = progress_report_seconds,
         .attempt_fix = attempt_fix,
         .verify_mode = mode,
+        .peer_check = peer_check,
+        .verify_response = response,
+        .arg = arg,
     };
-
+    tran_type *tran = NULL;
+    struct dbtable *db = NULL;
+    rdlock_schema_lk();
+    int rc = get_tbl_and_lock_in_tran(&par, table, &db, &tran);
+    unlock_schema_lk();
+    if (rc) {
+        goto done;
+    }
+    par.bdb_state = db->handle;
+    par.db_table = db;
     td_processing_info_t info = {.common_params = &par};
-
-    // enqueue work to the threadpool queue
-    rc = bdb_verify_enqueue(&info, gbl_verify_thdpool);
-
-    // wait for all our enqueued work items to complete for this verify
+    if ((rc = bdb_verify_enqueue(&info, gbl_verify_thdpool)) != 0) {
+        goto done;
+    }
     while (par.threads_spawned > par.threads_completed) {
-        if (!par.client_dropped_connection &&
-            peer_dropped_connection_sb(par.sb)) {
+        if (!par.client_dropped_connection && par.peer_check(par.arg)){
             logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
             par.client_dropped_connection = 1;
         }
         sleep(1);
     }
+    rc = par.verify_status;
 done:
-    if (tran)
+    if (tran) {
+        int bdberr;
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-
-    if (rc) {
-        logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb && !lua_callback)
-            sbuf2printf(sb, "FAILED\n");
-    } else if (sb && !lua_callback)
-        sbuf2printf(sb, "SUCCESS\n");
-
-    if (!lua_callback)
-        sbuf2flush(sb);
-    return par.verify_status;
-}
-
-/* used by bb plugins */
-inline int verify_table(const char *table, SBUF2 *sb,
-                        int progress_report_seconds, int attempt_fix,
-                        int (*lua_callback)(void *, const char *),
-                        void *lua_params)
-{
-    return verify_table_mode(table, sb, progress_report_seconds, attempt_fix,
-                             lua_callback, lua_params, VERIFY_SERIAL);
+    }
+    return rc;
 }

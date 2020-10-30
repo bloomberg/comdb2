@@ -492,7 +492,7 @@ int authenticate_cursor(BtCursor *pCur, int how)
     return 0;
 }
 
-inline int peer_dropped_connection_sb(SBUF2 *sb)
+int peer_dropped_connection_sbuf(SBUF2 *sb)
 {
     if (!sb)
         return 0;
@@ -512,12 +512,12 @@ inline int peer_dropped_connection_sb(SBUF2 *sb)
     return 1;
 }
 
-inline int peer_dropped_connection(struct sqlclntstate *clnt)
+int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
+    if (clnt == NULL || clnt->skip_peer_chk) {
         return 0;
     }
-    return peer_dropped_connection_sb(clnt->sb);
+    return clnt->plugin.peer_check(clnt);
 }
 
 int throttle_num = 0;
@@ -2106,7 +2106,6 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
     sqlite3 *hndl = NULL;
-    struct sqlclntstate clnt;
     struct schema_mem sm = {0};
     const char *temp = "select 1 from sqlite_master limit 1";
     char *err = NULL;
@@ -2135,11 +2134,9 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
         return -1;
     }
 
-    reset_clnt(&clnt, NULL, 1);
-    clnt.sb = NULL;
+    struct sqlclntstate clnt;
+    start_internal_sql_clnt(&clnt);
     clnt.sql = (char *)temp;
-    sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
-    clnt.dbtran.mode = TRANLEVEL_SOSQL;
 
     /* schema_mems is used to pass db->schema to is_comdb2_index_blob so we can
      * mark db->schema->ix_blob if the index expression has blob fields */
@@ -2183,7 +2180,7 @@ done:
     if (hndl)
         sqlite3_close_serial(&hndl);
 
-    cleanup_clnt(&clnt);
+    end_internal_sql_clnt(&clnt);
     done_sql_thread();
     sql_mem_shutdown(NULL);
     return rc;
@@ -7848,7 +7845,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
         Pthread_mutex_lock(&clnt->dtran_mtx);
 
 #if WITH_SSL
-    int usessl = sslio_has_ssl(clnt->sb);
+    int usessl = clnt->plugin.has_ssl(clnt);
 #else
     int usessl = 0;
 #endif
@@ -11304,7 +11301,7 @@ void stat4dump(int more, char *table, int istrace)
     Pthread_setspecific(query_info_key, thd);
 
     struct sqlclntstate clnt;
-    reset_clnt(&clnt, NULL, 1);
+    start_internal_sql_clnt(&clnt);
     clnt.sql = "select * from sqlite_stat4"; //* from sqlite_master limit 1;";
     thd->clnt = &clnt;
 
@@ -11408,6 +11405,7 @@ close:
 put:
     put_curtran(thedb->bdb_env, &clnt);
 out:
+    end_internal_sql_clnt(&clnt);
     thd->clnt = NULL;
     done_sql_thread();
     Pthread_setspecific(query_info_key, old_thd);
@@ -12573,14 +12571,14 @@ long long run_sql_return_ll(const char *sql, struct errstat *err)
 long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                                 struct errstat *err)
 {
-    struct sqlclntstate clnt;
     sqlite3 *sqldb;
     int rc;
     int crc;
     char *msg;
     long long ret = LLONG_MIN;
 
-    reset_clnt(&clnt, NULL, 1);
+    struct sqlclntstate clnt;
+    start_internal_sql_clnt(&clnt);
     strncpy0(clnt.tzname, "UTC", sizeof(clnt.tzname));
     sql_set_sqlengine_state(&clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
@@ -12607,7 +12605,6 @@ long long run_sql_thd_return_ll(const char *query, struct sql_thread *thd,
                            query, rc, msg ? msg : "<unknown error>");
         goto cleanup;
     }
-    thd->clnt = NULL;
 
     if ((crc = sqlite3_close_serial(&sqldb)) != 0)
         errstat_set_rcstrf(err, -1, "close rc %d\n", crc);
@@ -12617,6 +12614,7 @@ cleanup:
     if (crc && !rc)
         errstat_set_rcstrf(err, -1, "%s: failed to close curtran", __func__);
 done:
+    end_internal_sql_clnt(&clnt);
     thd->clnt = NULL;
     return ret;
 }
