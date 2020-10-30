@@ -53,7 +53,7 @@ int mach_class_init(void)
     int rc = 0;
 
     Pthread_mutex_lock(&mach_mtx);
-    classes = hash_init_strptr(offsetof(struct machine_class, name));
+    classes = hash_init_strcaseptr(offsetof(struct machine_class, name));
     class_names = hash_init_i4(offsetof(struct machine_class, value));
     if (!classes || !class_names) {
         return -1;
@@ -121,26 +121,9 @@ int mach_class_name2class(const char *name)
     machine_class_t *class;
     int value = CLASS_UNKNOWN;
 
-    char buf[MAX_MACH_CLASS_NAME_LEN + 1];
-    size_t len = strlen(name);
-    int i;
-
-    if (!name || (len > MAX_MACH_CLASS_NAME_LEN)) {
-        logmsg(LOGMSG_ERROR, "%s:%d Invalid machine class\n", __func__,
-               __LINE__);
-        return value;
-    }
-
-    /* Convert machine class name to lower case. */
-    for (i = 0; i < len; i ++) {
-        buf[i] = tolower(name[i]);
-    }
-    buf[i] = '\0';
-    const char *lowercase_name = buf;
-
     Pthread_mutex_lock(&mach_mtx);
 
-    class = hash_find(classes, &lowercase_name);
+    class = hash_find(classes, &name);
     if (class)
         value = class->value;
 
