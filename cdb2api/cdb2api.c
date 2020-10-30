@@ -1037,8 +1037,6 @@ struct cdb2_hndl {
     void *user_arg;
     char *bind_list_string; /* string to replace with a list */
     char *bind_list_repl;
-    char *bind_array_name;
-    char *bind_array_repl;
     int gbl_event_version; /* Cached global event version */
     int api_call_timeout;
     int connect_timeout;
@@ -4809,18 +4807,20 @@ int cdb2_run_statement_typed(cdb2_hndl_tp *hndl, const char *sql, int ntypes,
     char *new_sql = NULL;
     const char *actual_sql = sql;
     if (hndl->bind_list_string && hndl->bind_list_repl) {
-        char *p = strstr(sql, hndl->bind_list_string);
+        // bind list looks like so: 'select ... in (@list1) '
+        char *p = strstr(sql, hndl->bind_list_string); // offset of '@list1'
         if (!p) {
             fprintf(stderr, "List bind parameter '%s' not found in sql '%s'\n", hndl->bind_list_string, sql);
             return -1;
         }
-        int p1len = p - sql; // part 1
+        int p1len = p - sql; // part 1 is up to '@list1'
 
         int list_len = strlen(hndl->bind_list_repl);
-        new_sql = malloc(strlen(sql) + list_len + 1);
+        int sql_len = strlen(sql);
+        new_sql = malloc(sql_len + list_len + 1);
         strncpy(new_sql, sql, p1len);
         strncpy(&new_sql[p1len], hndl->bind_list_repl, list_len);
-        strcat(&new_sql[p1len + list_len],
+        strcpy(&new_sql[p1len + list_len],
                &sql[p1len + strlen(hndl->bind_list_string)]);
         actual_sql = new_sql;
         /* replace ',' with \0 for the bind parameter name */
@@ -5121,10 +5121,12 @@ static int cdb2_bind_list_common(cdb2_hndl_tp *hndl, const char *varname,
     free(hndl->bind_list_string);
     free(hndl->bind_list_repl);
 
-    if (count > SQLITE_MAX_VARIABLE_NUMBER)
+    if (count > SQLITE_MAX_VARIABLE_NUMBER) {
         fprintf(stderr,
                 "Error binding list parameter %s: Can not bind more than %d elements\n",
                 varname, SQLITE_MAX_VARIABLE_NUMBER);
+        return -1;
+    }
 
     int len = strlen(varname);
     hndl->bind_list_string = malloc(len + 4); // will look for '@varname[]' in the sql
@@ -5144,7 +5146,8 @@ static int cdb2_bind_list_common(cdb2_hndl_tp *hndl, const char *varname,
 
         int tp = (listtype ? listtype[i] : arraytype);
         int len = (length ? length[i] : typelen);
-        int rc = cdb2_bind_param(hndl, end_ptr + ((i==0) ? 0 : 1) , tp, varaddr[i], len);
+        const void *mem_addr = (listtype ? varaddr[i] : ((char*)varaddr) + typelen * i);
+        int rc = cdb2_bind_param(hndl, end_ptr + ((i==0) ? 0 : 1), tp, mem_addr, len);
         if (rc) {
             fprintf(stderr, "Error binding list parameter %d for %s (err: %s)\n",
                     i, varname, cdb2_errstr(hndl));
@@ -5166,9 +5169,9 @@ int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *varname, unsigned int count,
 }
 
 int cdb2_bind_list(cdb2_hndl_tp *hndl, const char *varname, unsigned int count,
-                   int type[], const void *varaddr[], int length[])
+                   int type[], const void **array, int length[])
 {
-    return cdb2_bind_list_common(hndl, varname, count, type, 0, varaddr, length, 0);
+    return cdb2_bind_list_common(hndl, varname, count, type, 0, array, length, 0);
 }
 
 

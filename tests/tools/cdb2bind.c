@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <cdb2api.h>
 #include <string.h>
+#include <math.h>
 
 const char *db;
 
@@ -27,7 +28,7 @@ void test_open(cdb2_hndl_tp **hndl, const char *db)
     rc = cdb2_open(hndl, db, dest, 0);
     if (rc) {
         {
-            fprintf(stderr, "error opening connection handle for %s (rc: %d)\n",
+            fprintf(stderr, "%s:%d:error opening connection handle for %s (rc: %d)\n", __func__, __LINE__,
                     db, rc);
             exit(1);
         }
@@ -41,7 +42,7 @@ void test_bind_param(cdb2_hndl_tp *hndl, const char *name, int type,
     int rc;
     rc = cdb2_bind_param(hndl, name, type, varaddr, length);
     if (rc != 0) {
-        fprintf(stderr, "error binding parameter %s (err: %s)\n", name,
+        fprintf(stderr, "%s:%d:error binding parameter %s (err: %s)\n", __func__, __LINE__, name,
                 cdb2_errstr(hndl));
         exit(1);
     }
@@ -54,21 +55,21 @@ void test_bind_index(cdb2_hndl_tp *hndl, int index, int type,
     int rc;
     rc = cdb2_bind_index(hndl, index, type, varaddr, length);
     if (rc != 0) {
-        fprintf(stderr, "error binding parameter %d (err: %s)\n", index,
+        fprintf(stderr, "%s:%d:error binding parameter %d (err: %s)\n", __func__, __LINE__, index,
                 cdb2_errstr(hndl));
         exit(1);
     }
 }
 
 /* Execute a SQL query. */
-void test_exec(cdb2_hndl_tp *hndl, const char *cmd)
-{
-    int rc;
-    rc = cdb2_run_statement(hndl, cmd);
-    if (rc != 0) {
-        fprintf(stderr, "error execing %s (err: %s)\n", cmd, cdb2_errstr(hndl));
-        exit(1);
-    }
+#define test_exec(hndl, cmd) \
+{ \
+    int rc; \
+    rc = cdb2_run_statement(hndl, cmd); \
+    if (rc != 0) { \
+        fprintf(stdout, "%s:%d:error execing %s (err: %s)\n", __func__, __LINE__, cmd, cdb2_errstr(hndl)); \
+        exit(1); \
+    } \
 }
 
 /* Move to next record in the result set. */
@@ -77,8 +78,8 @@ void test_next_record(cdb2_hndl_tp *hndl)
     int rc;
     rc = cdb2_next_record(hndl);
     if (rc != 0) {
-        fprintf(stderr, "error in cdb2_next_record (err: %s)\n",
-                cdb2_errstr(hndl));
+        fprintf(stderr, "%s:%d:error rc=%d in cdb2_next_record (err: %s)\n",
+                __func__, __LINE__, rc, cdb2_errstr(hndl));
         exit(1);
     }
 }
@@ -89,7 +90,7 @@ void test_close(cdb2_hndl_tp *hndl)
     int rc;
     rc = cdb2_close(hndl);
     if (rc != 0) {
-        fprintf(stderr, "error closing handle (err: %s, rc: %d)\n",
+        fprintf(stderr, "%s:%d:error closing handle (err: %s, rc: %d)\n", __func__, __LINE__,
                 cdb2_errstr(hndl), rc);
         exit(1);
     }
@@ -112,7 +113,7 @@ void test_01()
         test_next_record(hndl);
         val = cdb2_column_value(hndl, 0);
         if (*val != id) {
-            fprintf(stderr, "error got:%lld expected:%lld\n", *val, id);
+            fprintf(stderr, "%s:%d:error got:%lld expected:%lld\n", __func__, __LINE__, *val, id);
             exit(1);
         }
     }
@@ -127,7 +128,7 @@ void test_01()
         test_next_record(hndl);
         val = cdb2_column_value(hndl, 0);
         if (*val != id) {
-            fprintf(stderr, "error got:%lld expected:%lld\n", *val, id);
+            fprintf(stderr, "%s:%d:error got:%lld expected:%lld\n", __func__, __LINE__, *val, id);
             exit(1);
         }
     }
@@ -165,7 +166,7 @@ void test_02()
     buffer = malloc(value_size);
     memcpy(buffer, cdb2_column_value(hndl, 0), value_size);
     if ((strncmp((char *)buffer, hello, value_size) != 0)) {
-        fprintf(stderr, "column value didn't match got:%s expected:%s\n",
+        fprintf(stderr, "%s:%d:column value didn't match got:%s expected:%s\n", __func__, __LINE__,
                 (char *)buffer, hello);
         exit(1);
     }
@@ -185,7 +186,7 @@ void test_02()
     buffer = malloc(value_size);
     memcpy(buffer, cdb2_column_value(hndl, 0), value_size);
     if ((strncmp((char *)buffer, hello, value_size) != 0)) {
-        fprintf(stderr, "column value didn't match got:%s expected:%s\n",
+        fprintf(stderr, "%s:%d:column value didn't match got:%s expected:%s\n", __func__, __LINE__,
                 (char *)buffer, hello);
         exit(1);
     }
@@ -240,7 +241,7 @@ void test_03()
     // Check row count
     row_count = (int)*((long long *)cdb2_column_value(hndl, 0));
     if (row_count != expected_row_count) {
-        fprintf(stderr, "invalid row count, got: %d, expected: %d", row_count,
+        fprintf(stderr, "%s:%d:invalid row count, got: %d, expected: %d", __func__, __LINE__, row_count,
                 expected_row_count);
         exit(1);
     }
@@ -263,7 +264,7 @@ void test_03()
     // Check row count
     row_count = (int)*((long long *)cdb2_column_value(hndl, 0));
     if (row_count != expected_row_count) {
-        fprintf(stderr, "invalid row count, got: %d, expected: %d", row_count,
+        fprintf(stderr, "%s:%d:invalid row count, got: %d, expected: %d", __func__, __LINE__, row_count,
                 expected_row_count);
         exit(1);
     }
@@ -302,7 +303,7 @@ void test_04()
     buffer = malloc(value_size);
     memcpy(buffer, cdb2_column_value(hndl, 0), value_size);
     if ((strncmp((char *)buffer, hello, value_size) != 0)) {
-        fprintf(stderr, "column value didn't match got:%s expected:%s\n",
+        fprintf(stderr, "%s:%d:column value didn't match got:%s expected:%s\n", __func__, __LINE__,
                 (char *)buffer, hello);
         exit(1);
     }
@@ -355,12 +356,12 @@ void test_05()
         test_next_record(hndl);
         long long *vala = cdb2_column_value(hndl, 0);
         if (*vala != a) {
-            fprintf(stderr, "error got:%lld expected:%d\n", *vala, a);
+            fprintf(stderr, "%s:%d:error got:%lld expected:%d\n", __func__, __LINE__, *vala, a);
             exit(1);
         }
         long long *valb = cdb2_column_value(hndl, 1);
         if (*valb != b) {
-            fprintf(stderr, "error got:%lld expected:%d\n", *valb, b);
+            fprintf(stderr, "%s:%d:error got:%lld expected:%d\n", __func__, __LINE__, *valb, b);
             exit(1);
         }
         /*
@@ -369,17 +370,17 @@ void test_05()
         */
         long long *valc = cdb2_column_value(hndl, 2);
         if (*valc != c) {
-            fprintf(stderr, "error got:%lld expected:%lld\n", *valc, c);
+            fprintf(stderr, "%s:%d:error got:%lld expected:%lld\n", __func__, __LINE__, *valc, c);
             exit(1);
         }        
         double *vald = cdb2_column_value(hndl, 3);
-        if (abs(*vald - d) > 0.000001) {
-            fprintf(stderr, "error got:%lf expected:%lf\n", *vald, d);
+        if (fabs(*vald - d) > 0.000001) {
+            fprintf(stderr, "%s:%d:error got:%lf expected:%lf\n", __func__, __LINE__, *vald, d);
             exit(1);
         }
         char *vale = cdb2_column_value(hndl, 4);
         if (strcmp(vale, e) != 0) {
-            fprintf(stderr, "error got: %s expected:%s\n", vale, e);
+            fprintf(stderr, "%s:%d:error got: %s expected:%s\n", __func__, __LINE__, vale, e);
             exit(1);
         }
         //printf("RESP %d %d %lld %lf %s\n", a, b, c, d, e);
@@ -388,8 +389,8 @@ void test_05()
 
 
     test_exec(hndl, "drop table if exists t2");
-    test_exec(hndl, "create table t2 (a int, b int)");
-    test_exec(hndl, "insert into t2 select value,value from generate_series(0,1000)");
+    test_exec(hndl, "create table t2 (a int, b float, c char(1))");
+    test_exec(hndl, "insert into t2 select value,value,cast(value%10 as char) from generate_series(0,1000)");
 
     {
         int N = 200;
@@ -409,49 +410,67 @@ void test_05()
             test_next_record(hndl);
             long long *vala = cdb2_column_value(hndl, 0);
             if (*vala != values[i]) {
-                fprintf(stderr, "error got:%lld expected:%d\n", *vala, values[i]);
+                fprintf(stderr, "%s:%d:error got:%lld expected:%d\n", __func__, __LINE__, *vala, values[i]);
                 exit(1);
             }
 
-            long long *valb = cdb2_column_value(hndl, 0);
-            if (*valb != values[i]) {
-                fprintf(stderr, "error got:%lld expected:%d\n", *valb, values[i]);
+            double *valb = cdb2_column_value(hndl, 1);
+            if (fabs(*valb - values[i]) > 0.000001) {
+                fprintf(stderr, "%s:%d:error got:%lf expected:%d\n", __func__, __LINE__, *valb, values[i]);
                 exit(1);
             }
 
             //printf("RESP %lld %lld\n", *vala, *valb);
         }
         cdb2_clearbindings(hndl);
+
     }
 
     {
-        int N = 200;
+        test_exec(hndl, "insert into t2 select value,value,cast(value%10 as char) from generate_series(1001,2999)");
+        int N = 2048;
         int values[N];
-        const void *vals[N];
         for (int i = 0; i < N; i++) {
             values[i] = i;
-            vals[i] = &values[i];
         }
-        cdb2_bind_array(hndl, "myarray", N, CDB2_INTEGER, vals, sizeof(values[0]), NULL);
+        cdb2_bind_array(hndl, "myarray", N, CDB2_INTEGER, (const void **)&values, sizeof(values[0]), NULL);
         test_exec(hndl, "select a,b from t2 where a in (@myarray[]) order by a");
         for (int i = 0; i < N; i++) {
             test_next_record(hndl);
             long long *vala = cdb2_column_value(hndl, 0);
             if (*vala != values[i]) {
-                fprintf(stderr, "error got:%lld expected:%d\n", *vala, values[i]);
+                fprintf(stderr, "%s:%d:error got:%lld expected:%d\n", __func__, __LINE__, *vala, values[i]);
                 exit(1);
             }
 
-            long long *valb = cdb2_column_value(hndl, 0);
-            if (*valb != values[i]) {
-                fprintf(stderr, "error got:%lld expected:%d\n", *valb, values[i]);
+            double *valb = cdb2_column_value(hndl, 1);
+            if (fabs(*valb - values[i]) > 0.000001) {
+                fprintf(stderr, "%s:%d:error got:%lf expected:%d\n", __func__, __LINE__, *valb, values[i]);
                 exit(1);
             }
 
             //printf("RESP %lld %lld\n", *vala, *valb);
         }
+
         cdb2_clearbindings(hndl);
     }
+    
+    {
+        char mystr[] = "01234";
+        int N = sizeof(mystr) - 1;
+        cdb2_bind_array(hndl, "myarray", N, CDB2_CSTRING, (const void **)&mystr, sizeof(mystr[0]), NULL);
+
+        test_exec(hndl, "select count(*) from t2 where c in (@myarray[])");
+        test_next_record(hndl);
+        long long *vala = cdb2_column_value(hndl, 0);
+        if (*vala != 1500) { // only half of the 3000 records: c==['0'-'4']
+            fprintf(stderr, "%s:%d:error got:%lld expected:1500\n", __func__, __LINE__, *vala);
+            exit(1);
+        }
+
+        cdb2_clearbindings(hndl);
+    }
+
     test_close(hndl);
 }
 

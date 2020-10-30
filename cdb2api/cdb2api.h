@@ -235,7 +235,7 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl);
 int cdb2_bind_list(cdb2_hndl_tp *hndl, const char *varname, unsigned int count,
                    int type[], const void *varaddr[], int length[]);
 int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *varname, unsigned int count,
-                    int type, const void *varaddr[], int typelen, int length[]);
+                    int type, const void **array, int typelen, int length[]);
 
 const char *cdb2_dbname(cdb2_hndl_tp *hndl);
 
