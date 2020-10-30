@@ -206,7 +206,6 @@ void cleanup_stats(SBUF2 *sb)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.sb = sb;
 
     if (get_dbtable_by_name("sqlite_stat1")) {
         run_internal_sql_clnt(&clnt,
@@ -732,17 +731,9 @@ static int analyze_table_int(table_descriptor_t *td,
         return TABLE_SKIPPED;
     }
 
-    /* pass flush_resp fsql_write_response in sqlinterfaces.c
-     * to catch where write to stdout is occurring put in gdb:
-     * b write if 1==$rdi
-     */
-    SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
-
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.osql_max_trans = 0; // allow large transactions
-    clnt.sb = sb2;
-    sbuf2settimeout(clnt.sb, 0, 0);
     int sampled_table = 0;
 
     clnt.current_user = td->current_user;
@@ -867,9 +858,6 @@ static int analyze_table_int(table_descriptor_t *td,
     }
 
 cleanup:
-    sbuf2flush(sb2);
-    sbuf2free(sb2);
-
     if (rc) { // send error to client
         sbuf2printf(td->sb, "?Analyze table %s. Error occurred with: %s\n",
                     td->table, zErrTab);
@@ -1343,12 +1331,9 @@ void handle_backout(SBUF2 *sb, char *table)
     if (check_stat1_and_flag(sb))
         return;
 
+    int rc = 0;
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
-
-    int rc = 0;
-    clnt.sb = sb2;
 
     rdlock_schema_lk();
 
@@ -1362,9 +1347,6 @@ void handle_backout(SBUF2 *sb, char *table)
         }
     }
     unlock_schema_lk();
-
-    sbuf2flush(sb2);
-    sbuf2free(sb2);
 
     if (rc == 0)
         sbuf2printf(sb, "SUCCESS\n");

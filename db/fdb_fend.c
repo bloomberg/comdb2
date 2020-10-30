@@ -4942,7 +4942,7 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
     if (fdb->server_version < FDB_VER_SSL) {
         *flags = FDB_MSG_CURSOR_OPEN_SQL_SID;
 #if WITH_SSL
-        if (sslio_has_ssl(clnt->sb)) {
+        if (clnt->plugin.has_ssl(clnt)) {
             /* Client has SSL, but remote doesn't support SSL */
             clnt->fdb_state.preserve_err = 1;
             clnt->fdb_state.xerr.errval = FDB_ERR_SSL;
@@ -4955,14 +4955,11 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
     } else {
         *flags = FDB_MSG_CURSOR_OPEN_SQL_SSL;
 #if WITH_SSL
-        if (sslio_has_ssl(clnt->sb) || fdb->ssl >= SSL_REQUIRE) {
+        if (clnt->plugin.has_ssl(clnt) || fdb->ssl >= SSL_REQUIRE) {
             *flags |= FDB_MSG_CURSOR_OPEN_FLG_SSL;
         }
 #endif
     }
-
-    /*fprintf(stderr, "%s: return flags=%d sb=%p has_ssl=%d\n", __func__,
-     * *flags, clnt->sb, sslio_has_ssl(clnt->sb));*/
 
     return 0;
 }

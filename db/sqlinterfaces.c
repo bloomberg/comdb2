@@ -200,7 +200,6 @@ void sql_reset_sqlthread(struct sql_thread *thd);
 int blockproc2sql_error(int rc, const char *func, int line);
 static int test_no_btcursors(struct sqlthdstate *thd);
 static void sql_thread_describe(void *obj, FILE *out);
-int watcher_warning_function(void *arg, int timeout, int gap);
 static char *get_query_cost_as_string(struct sql_thread *thd,
                                       struct sqlclntstate *clnt);
 
@@ -303,8 +302,6 @@ int disable_server_sql_timeouts(void)
 const char *WriteRespString[] = { RESPONSE_TYPES };
 #undef XRESPONSE
 
-int write_response(struct sqlclntstate *clnt, int R, void *D, int I);
-
 int gbl_client_heartbeat_ms = 100;
 int gbl_fail_client_write_lock = 0;
 
@@ -383,8 +380,7 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
 #ifdef DEBUG
-    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
-           I);
+    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
 #endif
     return clnt->plugin.write_response(clnt, R, D, I);
 }
@@ -4492,7 +4488,7 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 #   if WITH_SSL
     /* If 1) this is an SSL connection, 2) and client sends a certificate,
        3) and client does not override the user, let it through. */
-    if (sslio_has_x509(clnt->sb) && clnt->current_user.is_x509_user)
+    if (clnt->plugin.has_x509(clnt) && clnt->current_user.is_x509_user)
         rc = 0;
     else
 #   endif
@@ -4695,25 +4691,22 @@ static int check_done_func(void *obj)
     return -1;
 }
 
-int close_lru_client(int curr_conns, struct sqlclntstate *clnt, int max_iteration)
+static int close_lru_client(int curr_conns, struct sqlclntstate *clnt, int max_iteration)
 {
     int rc = -1;
     Pthread_mutex_lock(&clnt_lk);
     struct sqlclntstate *lru_clnt = listc_findl(&clntlist, check_done_func, clnt, max_iteration);
-    if (lru_clnt) {
-        if (lru_clnt == clnt) {
-            /* This is a new client however its one of the  first 'max_iteration' connections. */
-            rc = 0;
-        } else {
-            lru_clnt->statement_timedout = 1; /* disallow any new query */
-            int fd = sbuf2fileno(lru_clnt->sb);
-            shutdown(fd, SHUT_RD);
-            logmsg(LOGMSG_WARN,
-                   "%s: Closing least recently used connection fd %d , total "
-                   "%d \n",
-                   __func__, fd, curr_conns);
-            rc = 0;
-        }
+    if (lru_clnt == clnt) {
+        /* This is a new client however its one of the  first 'max_iteration' connections. */
+        rc = 0;
+    } else if (lru_clnt) {
+        lru_clnt->statement_timedout = 1; /* disallow any new query */
+        int fd = lru_clnt->plugin.get_fileno(lru_clnt);
+        shutdown(fd, SHUT_RD);
+        logmsg(LOGMSG_WARN,
+               "%s: Closing least recently used connection fd %d, total %d \n",
+               __func__, fd, curr_conns);
+        rc = 0;
     }
     Pthread_mutex_unlock(&clnt_lk);
     return rc;
@@ -4909,14 +4902,14 @@ void thr_set_user(const char *label, int id)
     thrman_setid(thrman_self(), thdinfo);
 }
 
-static void debug_close_sb(struct sqlclntstate *clnt)
+static void debug_close_clnt(struct sqlclntstate *clnt)
 {
     static int once = 0;
 
     if (debug_switch_sql_close_sbuf()) {
         if (!once) {
             once = 1;
-            sbuf2close(clnt->sb);
+            clnt->plugin.close(clnt);
         }
     } else
         once = 0;
@@ -4956,7 +4949,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
 
-    debug_close_sb(clnt);
+    debug_close_clnt(clnt);
     signal_clnt_as_done(clnt);
 
 
@@ -5260,7 +5253,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     sql_get_query_id(sqlthd);
 
     /* actually execute the query */
-    thrman_setfd(thd->thr_self, sbuf2fileno(clnt->sb));
+    thrman_setfd(thd->thr_self, clnt->plugin.get_fileno(clnt));
 
     osql_shadtbl_begin_query(thedb->bdb_env, clnt);
 
@@ -5288,7 +5281,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clnt->osql.timings.query_finished = osql_log_time();
     osql_log_time_done(clnt);
     clnt_change_state(clnt, CONNECTION_IDLE);
-    debug_close_sb(clnt);
+    debug_close_clnt(clnt);
     signal_clnt_as_done(clnt);
     thrman_setid(thrman_self(), "[done]");
 }
@@ -5465,9 +5458,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
         }
 
         if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: failed to enqueue: %s\n",
-                   __func__, sqlcpy);
-
+            logmsg(LOGMSG_DEBUG, "%s: failed to enqueue: %s\n", __func__, sqlcpy);
             free(sqlcpy);
             /* say something back, if the client expects it */
             if (clnt->fail_dispatch) {
@@ -5475,11 +5466,8 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
                          __func__, rc);
                 handle_failed_dispatch(clnt, msg);
             }
-
-            return rc;
         }
     }
-
     return rc;
 }
 
@@ -5497,7 +5485,7 @@ static void mark_clnt_as_recently_used(struct sqlclntstate *clnt)
     }
 }
 
-int wait_for_sql_query(struct sqlclntstate *clnt)
+static int wait_for_sql_query(struct sqlclntstate *clnt)
 {
     /* successful dispatch or queueing, enable heartbeats */
     Pthread_mutex_lock(&clnt->wait_mutex);
@@ -5569,11 +5557,7 @@ int wait_for_sql_query(struct sqlclntstate *clnt)
                         __LINE__, rc);
                 exit(1);
             }
-
-            if (lock_client_write_trylock(clnt) == 0) {
-                sbuf2flush(clnt->sb);
-                unlock_client_write_lock(clnt);
-            }
+            clnt->plugin.flush(clnt);
             Pthread_mutex_unlock(&clnt->wait_mutex);
         }
     } else {
@@ -5741,9 +5725,8 @@ void cleanup_clnt(struct sqlclntstate *clnt)
     Pthread_mutex_destroy(&clnt->state_lk);
 }
 
-void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
+void reset_clnt(struct sqlclntstate *clnt, int initial)
 {
-    int wrtimeoutsec, notimeout = disable_server_sql_timeouts();
     if (initial) {
         bzero(clnt, sizeof(*clnt));
         Pthread_mutex_init(&clnt->wait_mutex, NULL);
@@ -5758,6 +5741,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
        clnt->num_resets++;
        clnt->last_reset_time = comdb2_time_epoch();
        clnt_change_state(clnt, CONNECTION_RESET);
+       clnt->plugin.set_timeout(clnt, gbl_sqlwrtimeoutms);
     }
 
     clnt->seqNo = 0;
@@ -5772,8 +5756,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
         free(clnt->argv0);
         clnt->argv0 = NULL;
     }
-    clnt->sb = sb;
-    clnt->must_close_sb = 1;
     clnt->recno = 1;
     clnt->done = 1;
     strcpy(clnt->tzname, "America/New_York");
@@ -5818,11 +5800,6 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     /* clear dbtran after aborting unfinished shadow transactions. */
     bzero(&clnt->dbtran, sizeof(dbtran_type));
 
-    if (initial) {
-        char *origin = get_origin_mach_by_buf(sb);
-        clnt->origin = origin ? origin : "???";
-    }
-
     clnt->dbtran.crtchunksize = clnt->dbtran.maxchunksize = 0;
     clnt->in_client_trans = 0;
     clnt->had_errors = 0;
@@ -5854,19 +5831,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
 
     bzero(clnt->dirty, sizeof(clnt->dirty));
 
-    if (gbl_sqlwrtimeoutms == 0 || notimeout)
-        wrtimeoutsec = 0;
-    else
-        wrtimeoutsec = gbl_sqlwrtimeoutms / 1000;
-
-    if (sb && sbuf2fileno(sb) > 2) // if valid sb and sb->fd is not stdio
-    {
-        net_add_watch_warning(
-            clnt->sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME),
-            wrtimeoutsec, clnt, watcher_warning_function);
-    }
-    clnt->planner_effort =
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
+    clnt->planner_effort = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_PLANNER_EFFORT);
     clnt->osql_max_trans = g_osql_max_trans;
     clnt->group_concat_mem_limit = gbl_group_concat_mem_limit;
 
@@ -5921,6 +5886,21 @@ int sbuf_is_local(SBUF2 *sb)
     if (addr.sin_addr.s_addr == INADDR_LOOPBACK)
         return 1;
 
+    return 0;
+}
+
+int sbuf_set_timeout(struct sqlclntstate *clnt, SBUF2 *sb, int wr_timeout_ms)
+{
+    int no_timeout = disable_server_sql_timeouts();
+    int rd_timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME);
+    //sbuf2settimeout(sb, rd_timeout * 1000, no_timeout ? 0 : wr_timeout_ms);
+    sbuf2settimeout(sb, 0, no_timeout ? 0 : wr_timeout_ms);
+    if (wr_timeout_ms == 0) {
+        net_add_watch(sb, 0, 0);
+    } else {
+        int wr_timeout = no_timeout ? 0 : wr_timeout_ms / 1000;
+        net_add_watch_warning(sb, rd_timeout, wr_timeout, clnt, watcher_warning_function);
+    }
     return 0;
 }
 
@@ -7004,25 +6984,16 @@ fdb:
 static void sql_thread_describe(void *obj, FILE *out)
 {
     struct sqlclntstate *clnt = (struct sqlclntstate *)obj;
-    char *host;
-
     if (!clnt) {
         logmsg(LOGMSG_USER, "non sql thread ???\n");
         return;
     }
-
-    if (clnt->origin[0]) {
-        logmsg(LOGMSG_USER, "%s \"%s\"\n", clnt->origin, clnt->sql);
-    } else {
-        host = get_origin_mach_by_buf(clnt->sb);
-        logmsg(LOGMSG_USER, "(old client) %s \"%s\"\n", host ? host : "???", clnt->sql);
-    }
+    logmsg(LOGMSG_USER, "%s \"%s\"\n", clnt->origin, clnt->sql);
 }
 
 int watcher_warning_function(void *arg, int timeout, int gap)
 {
-    struct sqlclntstate *clnt = (struct sqlclntstate *)arg;
-
+    struct sqlclntstate *clnt = arg;
     logmsg(LOGMSG_WARN,
             "WARNING: appsock idle for %d seconds (%d), connected from %s\n",
             gap, timeout, (clnt->origin) ? clnt->origin : "(unknown)");
@@ -7290,9 +7261,46 @@ static int internal_send_intrans_response(struct sqlclntstate *a)
 {
     return 1;
 }
+static int internal_peer_check(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_local_check(struct sqlclntstate *a)
+{
+    return 1;
+}
+static int internal_get_fileno(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int internal_close(struct sqlclntstate *a)
+{
+    return -1;
+}
+static int internal_flush(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_has_ssl(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_has_x509(struct sqlclntstate *a)
+{
+    return 0;
+}
+static int internal_get_x509_attr(struct sqlclntstate *a, int b, void *c, int d)
+{
+    return -1;
+}
+static int internal_set_timeout(struct sqlclntstate *clnt, int timeout_ms)
+{
+    return -1;
+}
+
 void start_internal_sql_clnt(struct sqlclntstate *clnt)
 {
-    reset_clnt(clnt, NULL, 1);
+    reset_clnt(clnt, 1);
     plugin_set_callbacks(clnt, internal);
     clnt->dbtran.mode = TRANLEVEL_SOSQL;
     clr_high_availability(clnt);

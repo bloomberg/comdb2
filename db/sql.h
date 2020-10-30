@@ -372,6 +372,7 @@ enum WriteResponsesEnum { RESPONSE_TYPES };
 enum {
     RESPONSE_PING_PONG,
     RESPONSE_SP_CMD,
+    RESPONSE_BYTES,
 };
 
 struct response_data {
@@ -452,10 +453,21 @@ struct plugin_callbacks {
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
     plugin_func *get_client_retries;       /* newsql_get_client_retries */
     plugin_func *send_intrans_response; /* newsql_send_intrans_response */
+
+    /* These may change depending on underlying tranport (sbuf2 or libevent) */
+    plugin_func *close; /* newsql_close */
+    plugin_func *flush; /* newsql_flush */
+    plugin_func *get_fileno; /* newsql_get_fileno */
+    response_func *get_x509_attr; /* newsql_get_x509_attr */
+    plugin_func *has_ssl; /* newsql_has_ssl */
+    plugin_func *has_x509; /* newsql_has_x509 */
+    plugin_func *local_check; /* newsql_local_check */
+    plugin_func *peer_check; /* newsql_peer_check */
+    override_type_func *set_timeout; /* newsql_set_timeout */
+
     /* optional */
     void *state;
-    int (*column_count)(struct sqlclntstate *,
-                        sqlite3_stmt *); /* sqlite3_column_count */
+    int (*column_count)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_column_count */
     int (*next_row)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_step */
     SQLITE_CALLBACK_API(int, type);                   /* sqlite3_column_type */
     SQLITE_CALLBACK_API(sqlite_int64, int64);         /* sqlite3_column_int64*/
@@ -463,11 +475,9 @@ struct plugin_callbacks {
     SQLITE_CALLBACK_API(const unsigned char *, text); /* sqlite3_column_text */
     SQLITE_CALLBACK_API(int, bytes);                  /* sqlite3_column_bytes */
     SQLITE_CALLBACK_API(const void *, blob);          /* sqlite3_column_bytes */
-    SQLITE_CALLBACK_API(const dttz_t *, datetime); /* sqlite3_column_datetime */
-    const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int,
-                                     int); /* sqlite3_column_interval*/
-    int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *,
-                        const char **errstr); /* sqlite3_errcode */
+    SQLITE_CALLBACK_API(const dttz_t *, datetime);    /* sqlite3_column_datetime */
+    const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int, int); /* sqlite3_column_interval*/
+    int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *, const char **errstr); /* sqlite3_errcode */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
@@ -507,6 +517,15 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                                                        \
         make_plugin_callback(clnt, name, get_client_retries);                                                          \
         make_plugin_callback(clnt, name, send_intrans_response);                                                       \
+        make_plugin_callback(clnt, name, close);                                                                       \
+        make_plugin_callback(clnt, name, flush);                                                                       \
+        make_plugin_callback(clnt, name, get_fileno);                                                                  \
+        make_plugin_callback(clnt, name, get_x509_attr);                                                               \
+        make_plugin_callback(clnt, name, has_ssl);                                                                     \
+        make_plugin_callback(clnt, name, has_x509);                                                                    \
+        make_plugin_callback(clnt, name, local_check);                                                                 \
+        make_plugin_callback(clnt, name, peer_check);                                                                  \
+        make_plugin_callback(clnt, name, set_timeout);                                                                 \
         make_plugin_optional_null(clnt, count);                                                                        \
         make_plugin_optional_null(clnt, type);                                                                         \
         make_plugin_optional_null(clnt, int64);                                                                        \
@@ -648,8 +667,6 @@ struct sqlclntstate {
     pthread_mutex_t dtran_mtx; /* protect dbtran.dtran, if any,
                                   for races betweem sql thread created and
                                   other readers, like appsock */
-    SBUF2 *sb;
-    int must_close_sb;
 
     /* These are only valid while a query is in progress and will point into
      * the i/o thread's buf */
@@ -737,7 +754,6 @@ struct sqlclntstate {
     int extended_tm;
 
     char *origin;
-    char origin_space[255];
     uint8_t dirty[256]; /* We can track upto 2048 tables */
 
     int had_errors; /* to remain compatible with blocksql: if a user starts a
@@ -1173,7 +1189,6 @@ void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
                                    struct ruleset_item_criteria *context);
 
 int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
-int wait_for_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -1194,7 +1209,7 @@ void sql_mem_shutdown_and_restore(void *, void **);
 int sqlite3_open_serial(const char *filename, sqlite3 **, struct sqlthdstate *);
 int sqlite3_close_serial(sqlite3 **);
 
-void reset_clnt(struct sqlclntstate *, SBUF2 *, int initial);
+void reset_clnt(struct sqlclntstate *, int initial);
 void cleanup_clnt(struct sqlclntstate *);
 void reset_query_effects(struct sqlclntstate *);
 
@@ -1406,5 +1421,14 @@ tran_type *curtran_gettran(void);
 void curtran_assert_nolocks(void);
 
 void curtran_puttran(tran_type *tran);
+int watcher_warning_function(void *, int timeout, int gap);
+int sbuf_is_local(SBUF2 *);
+int sbuf_set_timeout(struct sqlclntstate *, SBUF2 *, int wr_timeout_ms);
+int tdef_to_tranlevel(int tdef);
+int check_active_appsock_connections(struct sqlclntstate *);
+int fdb_access_control_create(struct sqlclntstate *, char *str);
+int disable_server_sql_timeouts(void);
+int osql_clean_sqlclntstate(struct sqlclntstate *);
+void handle_failed_dispatch(struct sqlclntstate *, char *err);
 
 #endif /* _SQL_H_ */

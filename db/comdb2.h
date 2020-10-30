@@ -2826,8 +2826,8 @@ int release_node_stats(const char *task, const char *stack, char *host);
 struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
 
-int peer_dropped_connection_sb(SBUF2 *sb);
-int peer_dropped_connection(struct sqlclntstate *clnt);
+int peer_dropped_connection_sbuf(SBUF2 *);
+int peer_dropped_connection(struct sqlclntstate *);
 
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
                      int replay);
@@ -3510,8 +3510,6 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
-
-int close_lru_client(int, struct sqlclntstate *, int);
 
 int is_tablename_queue(const char *);
 

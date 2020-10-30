@@ -845,6 +845,8 @@ static void dbconsumer_getargs(Lua L, int *push_tid, int *register_timeoutms,
                 }
             }
             lua_pop(L, 1);
+        default:
+            continue;
         }
     }
 }
@@ -1577,7 +1579,7 @@ void *read_client_socket(void *in)
         free(info);
         return NULL;
     }
-    rc = sbuf2fread(info->buffer, 250, 1, clnt->sb);
+    rc = read_response(clnt, RESPONSE_BYTES, info->buffer, 250);
     if (rc && (strncmp(info->buffer, "HALT", 4) == 0)) {
         gbl_break_lua = info->thread_id;
         Pthread_mutex_unlock(&lua_debug_mutex);
@@ -1586,7 +1588,6 @@ void *read_client_socket(void *in)
         info_buf = *info;
         Pthread_mutex_unlock(&lua_debug_mutex);
     } else {
-        clnt->sb = NULL;
         Pthread_mutex_unlock(&lua_debug_mutex);
     }
     /* Socket is disconnected now. */
@@ -2860,14 +2861,14 @@ static void *dispatch_lua_thread(void *arg)
     dbthread_type *thd = arg;
     struct sqlclntstate *parent_clnt = thd->clnt;
     struct sqlclntstate clnt;
-    reset_clnt(&clnt, parent_clnt->sb, 1);
+    reset_clnt(&clnt, 1);
+    clnt.origin = parent_clnt->origin;
     clnt.want_stored_procedure_trace = parent_clnt->want_stored_procedure_trace;
     clnt.dbtran.mode = parent_clnt->dbtran.mode;
     clnt.appdata = parent_clnt->appdata;
     clnt.plugin = parent_clnt->plugin;
     clnt.sp = thd->sp;
     clnt.sql = thd->sql;
-    clnt.must_close_sb = 0;
     clnt.exec_lua_thread = 1;
     clnt.dbtran.trans_has_sp = 1;
     clnt.queue_me = 1;
@@ -4070,8 +4071,9 @@ static int process_json_conv(Lua L, json_conv *conv)
                 return -3;
             }
         }
+    default:
+        return -4;
     }
-    return -4;
 }
 
 static cson_value *table_to_cson(Lua, int, json_conv *);
@@ -5900,7 +5902,7 @@ do_continue:
     logmsg(LOGMSG_USER, "CoNtInUe \n");
     info_buf.has_buffer = 0;
     Pthread_mutex_lock(&lua_debug_mutex);
-    int rc = sbuf2fread(info_buf.buffer, 250, 1, clnt->sb);
+    int rc = read_response(clnt, RESPONSE_BYTES, info_buf.buffer, 250);
     if (rc && (strncmp(info_buf.buffer, "HALT", 4) == 0)) {
         Pthread_mutex_unlock(&lua_debug_mutex);
         goto halt_here;
@@ -6951,22 +6953,6 @@ static int setup_sp_for_trigger(trigger_reg_t *reg, char **err,
 ////////////////////////
 /// PUBLIC INTERFACE ///
 ////////////////////////
-
-int db_verify_table_callback(void *v, const char *buf)
-{
-    if (!buf || !v) return 0;
-
-    Lua L = v;
-    SP sp = getsp(L);
-
-    if (peer_dropped_connection(sp->clnt)) {
-        return -2;
-    }
-    if (buf[0] == '!' || buf[0] == '?') buf++;
-    char *row[] = {(char*)buf};
-    write_response(sp->clnt, RESPONSE_ROW_STR, row, 1);
-    return 0;
-}
 
 int is_pingpong(struct sqlclntstate *clnt)
 {

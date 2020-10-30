@@ -17,71 +17,18 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "comdb2_plugin.h"
-#include "pb_alloc.h"
-#include "sp.h"
-#include "sql.h"
-#include "reqlog.h"
-#include "comdb2_appsock.h"
-#include "comdb2_atomic.h"
-#include "str0.h"
-#include "sqloffload.h"
-
+#include <newsql.h>
+#include <reqlog.h>
+#include <sp.h>
+#include <sql.h>
+#include <sqloffload.h>
 #include <sqlquery.pb-c.h>
 #include <sqlresponse.pb-c.h>
-
-struct thr_handle;
-struct sbuf2;
-
-extern char gbl_dbname[MAX_DBNAME_LENGTH];
-extern int gbl_sqlwrtimeoutms;
-extern int active_appsock_conns;
-#if WITH_SSL
-extern ssl_mode gbl_client_ssl_mode;
-extern SSL_CTX *gbl_ssl_ctx;
-extern int gbl_nid_dbname;
-void ssl_set_clnt_user(struct sqlclntstate *clnt);
-#endif
-
-int gbl_protobuf_prealloc_buffer_size = 8192;
-
-int disable_server_sql_timeouts(void);
-int tdef_to_tranlevel(int tdef);
-int check_active_appsock_connections(struct sqlclntstate *clnt);
-
-int watcher_warning_function(void *arg, int timeout, int gap);
-void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
-int fdb_access_control_create(struct sqlclntstate *clnt, char *str);
-int handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr);
-int sbuf_is_local(SBUF2 *sb);
+#include <str0.h>
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
 static int newsql_has_parallel_sql(struct sqlclntstate *);
-
-struct newsqlheader {
-    int type;        /*  newsql request/response type */
-    int compression; /*  Some sort of compression done? */
-    int state;       /*  query state - whether it's progressing, etc. */
-    int length;      /*  length of response */
-};
-
-struct newsql_postponed_data {
-    size_t len;
-    struct newsqlheader hdr;
-    uint8_t *row;
-};
-
-struct pb_sbuf_writer {
-    ProtobufCBuffer base;
-    struct sbuf2 *sb;
-    int nbytes; /* bytes written */
-};
-
-#define PB_SBUF_WRITER_INIT(sb)                                                                                        \
-    {                                                                                                                  \
-        {.append = pb_sbuf_write}, (sb), 0                                                                             \
-    }
 
 /*                (SERVER)                                                */
 /*  Default --> (val: 1)                                                  */
@@ -123,21 +70,6 @@ struct pb_sbuf_writer {
 /*                                                                        */
 /*  --                                                                    */
 /*  Rivers                                                                */
-
-struct newsql_appdata {
-    int8_t send_intrans_response;
-
-    CDB2QUERY *query;
-    CDB2SQLQUERY *sqlquery;
-    struct newsql_postponed_data *postponed;
-
-    struct NewsqlProtobufCAllocator newsql_protobuf_allocator;
-
-    /* columns */
-    int count;
-    int capacity;
-    int type[0]; /* must be last */
-};
 
 static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
 {
@@ -370,62 +302,21 @@ static inline int newsql_to_client_type(int newsql_type)
         return -1;
     }
 }
-
-static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int state)
+static int newsql_response_int(struct sqlclntstate *clnt, const CDB2SQLRESPONSE *r, int h, int flush)
 {
-    struct newsqlheader hdr = {0};
-    hdr.type = ntohl(h);
-    hdr.state = ntohl(state);
-    int rc;
-    lock_client_write_lock(clnt);
-    if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
-        goto done;
-    if ((rc = sbuf2flush(clnt->sb)) < 0)
-        goto done;
-    rc = 0;
-done:
-    unlock_client_write_lock(clnt);
-    return rc;
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->write_impl(clnt, h, 0, r, flush);
 }
 
-static void pb_sbuf_write(ProtobufCBuffer *buffer, size_t len, const uint8_t *data)
-{
-    struct pb_sbuf_writer *writer = (struct pb_sbuf_writer *)buffer;
-    writer->nbytes += sbuf2write((char *)data, len, writer->sb);
-}
-
-static int newsql_response_int(struct sqlclntstate *clnt,
-                               const CDB2SQLRESPONSE *r, int h, int flush)
-{
-    size_t len = cdb2__sqlresponse__get_packed_size(r);
-
-    struct newsqlheader hdr = {0};
-    hdr.type = ntohl(h);
-    hdr.length = ntohl(len);
-
-    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(clnt->sb);
-
-    int rc;
-    lock_client_write_lock(clnt);
-    if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr))
-        goto done;
-    cdb2__sqlresponse__pack_to_buffer(r, (ProtobufCBuffer *)&writer);
-    if (writer.nbytes != len) {
-        rc = -1;
-        goto done;
-    }
-    if (flush && (rc = sbuf2flush(clnt->sb)) < 0)
-        goto done;
-    rc = 0;
-done:
-    unlock_client_write_lock(clnt);
-    return rc;
-}
-
-static int newsql_response(struct sqlclntstate *c, const CDB2SQLRESPONSE *r,
-                           int flush)
+static int newsql_response(struct sqlclntstate *c, const CDB2SQLRESPONSE *r, int flush)
 {
     return newsql_response_int(c, r, RESPONSE_HEADER__SQL_RESPONSE, flush);
+}
+
+static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int s)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->write_hdr_impl(clnt, h, s);
 }
 
 static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
@@ -452,8 +343,7 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 }
 
 
-#define APPDATA_MINCOLS 32
-static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int ncols)
+struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     size_t alloc_sz;
@@ -465,7 +355,6 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int 
             goto oom;
         appdata->capacity = ncols;
         appdata->send_intrans_response = 1;
-        newsql_protobuf_init(&appdata->newsql_protobuf_allocator, malloc, free);
     } else if (appdata->capacity < ncols) {
         size_t n = ncols + APPDATA_MINCOLS;
         alloc_sz = sizeof(struct newsql_appdata) + n * sizeof(appdata->type[0]);
@@ -473,7 +362,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int 
         clnt->appdata = appdata;
         if (!appdata)
             goto oom;
-        newsql_protobuf_set_allocator_data(&appdata->newsql_protobuf_allocator); // needed after realloc
+        appdata->newsql_protobuf_allocator.protobuf_allocator.allocator_data = &appdata->newsql_protobuf_allocator;
         appdata->capacity = n;
     }
     appdata->count = ncols;
@@ -483,22 +372,6 @@ oom:
            "%s:%d failed to (re)alloc %zu bytes (errno: %d, reason: %s)\n",
            __func__, __LINE__, alloc_sz, errno, strerror(errno));
     return NULL;
-}
-
-static void free_newsql_appdata(struct sqlclntstate *clnt)
-{
-    struct newsql_appdata *appdata = clnt->appdata;
-    if (appdata == NULL) {
-        return;
-    }
-    if (appdata->postponed) {
-        free(appdata->postponed->row);
-        free(appdata->postponed);
-        appdata->postponed = NULL;
-    }
-    newsql_protobuf_destroy(&appdata->newsql_protobuf_allocator);
-    free(appdata);
-    clnt->appdata = NULL;
 }
 
 extern int gbl_return_long_column_names;
@@ -618,31 +491,8 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
 
 static int newsql_flush(struct sqlclntstate *clnt)
 {
-    lock_client_write_lock(clnt);
-    int rc = sbuf2flush(clnt->sb);
-    unlock_client_write_lock(clnt);
-    return rc < 0;
-}
-
-static int newsql_heartbeat(struct sqlclntstate *clnt)
-{
-    int state;
-
-    if (!clnt->heartbeat)
-        return 0;
-    if (!clnt->ready_for_heartbeats)
-        return 0;
-
-    /* We're still in a good state if we're just waiting for the client to consume an event. */
-    if (is_pingpong(clnt))
-        state = 1;
-    else {
-        state = (clnt->sqltick > clnt->sqltick_last_seen);
-        clnt->sqltick_last_seen = clnt->sqltick;
-    }
-
-    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT,
-                           state);
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->flush_impl(clnt);
 }
 
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
@@ -664,20 +514,7 @@ static int newsql_save_postponed_row(struct sqlclntstate *clnt,
 static int newsql_send_postponed_row(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    char *hdr = (char *)&appdata->postponed->hdr;
-    size_t hdrsz = sizeof(struct newsqlheader);
-    char *row = (char *)appdata->postponed->row;
-    size_t len = appdata->postponed->len;
-    int rc;
-    lock_client_write_lock(clnt);
-    if ((rc = sbuf2write(hdr, hdrsz, clnt->sb)) != hdrsz)
-        goto done;
-    if ((rc = sbuf2write(row, len, clnt->sb)) != len)
-        goto done;
-    rc = 0;
-done:
-    unlock_client_write_lock(clnt);
-    return rc;
+    return appdata->write_postponed_impl(clnt);
 }
 
 #define newsql_null(cols, i)                                                   \
@@ -858,8 +695,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     if (postpone) {
         return newsql_save_postponed_row(clnt, &r);
     } else if (arg->pingpong) {
-        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING,
-                                   1);
+        return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_PING, 1);
     }
     return newsql_response(clnt, &r, !clnt->rowbuffer);
 }
@@ -1040,8 +876,7 @@ static int newsql_trace(struct sqlclntstate *clnt, char *info)
     CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
     r.response_type = RESPONSE_TYPE__SP_TRACE;
     r.info_string = info;
-    return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_TRACE,
-                               1);
+    return newsql_response_int(clnt, &r, RESPONSE_HEADER__SQL_RESPONSE_TRACE, 1);
 }
 
 static int newsql_cost(struct sqlclntstate *clnt)
@@ -1100,22 +935,14 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
-    struct newsqlheader hdr = {0};
-    int rc, r, w, timeout = 0;
-    sbuf2gettimeout(clnt->sb, &r, &w);
-    sbuf2settimeout(clnt->sb, 1000, w);
-    rc = sbuf2fread_timeout((void *)&hdr, sizeof(hdr), 1, clnt->sb, &timeout);
-    sbuf2settimeout(clnt->sb, r, w);
-    if (timeout) return -1;
-    if (rc != 1) return -2;
-    if (ntohl(hdr.type) != RESPONSE_HEADER__SQL_RESPONSE_PONG) return -3;
-    return 0;
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->ping_pong_impl(clnt);
 }
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 {
     struct newsqlheader hdr = {0};
-    if (sbuf2fread((void *)&hdr, sizeof(hdr), 1, clnt->sb) != 1) {
+    if (read_response(clnt, RESPONSE_BYTES, &hdr, sizeof(hdr)) != 1) {
         return -1;
     }
     if (ntohl(hdr.type) != CDB2_REQUEST_TYPE__CDB2QUERY) {
@@ -1126,7 +953,7 @@ static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
         return -3;
     }
     uint8_t buf[len];
-    if (sbuf2fread((char *)buf, len, 1, clnt->sb) != 1) {
+    if (read_response(clnt, RESPONSE_BYTES, buf, len) != 1) {
         return -4;
     }
     CDB2QUERY *query = cdb2__query__unpack(NULL, len, buf);
@@ -1140,11 +967,14 @@ static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
 
 static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
 {
+    struct newsql_appdata *appdata = c->appdata;
     switch (t) {
     case RESPONSE_PING_PONG:
         return newsql_ping_pong(c);
     case RESPONSE_SP_CMD:
         return newsql_sp_cmd(c, r, e);
+    case RESPONSE_BYTES:
+        return appdata->read_impl(c, r, e, 1);
     default:
         abort();
     }
@@ -1483,6 +1313,54 @@ static int newsql_send_intrans_response(struct sqlclntstate *clnt)
     return appdata->send_intrans_response;
 }
 
+static int newsql_peer_check(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->peer_check_impl(clnt);
+}
+
+static int newsql_local_check(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->local_check_impl(clnt);
+}
+
+static int newsql_get_fileno(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->get_fileno_impl(clnt);
+}
+
+static int newsql_close(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->close_impl(clnt);
+}
+
+static int newsql_has_ssl(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->has_ssl_impl(clnt);
+}
+
+static int newsql_has_x509(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->has_x509_impl(clnt);
+}
+
+static int newsql_get_x509_attr(struct sqlclntstate *clnt, int nid, void *out, int outsz)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->get_x509_attr_impl(clnt, nid, out, outsz);
+}
+
+static int newsql_set_timeout(struct sqlclntstate *clnt, int timeout_ms)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    return appdata->set_timeout_impl(clnt, timeout_ms);
+}
+
 int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
 {
     int iswarn = 0;
@@ -1546,9 +1424,7 @@ int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
         return 1;
 }
 
-/* Process sql query if it is a set command. */
-static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
-                                CDB2SQLQUERY *sql_query)
+int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     int num_commands = 0;
@@ -1619,20 +1495,7 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
-                int notimeout = disable_server_sql_timeouts();
-                sbuf2settimeout(
-                    clnt->sb,
-                    bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) *
-                        1000,
-                    notimeout ? 0 : timeout);
-                if (timeout == 0)
-                    net_add_watch(clnt->sb, 0, 0);
-                else
-                    net_add_watch_warning(
-                        clnt->sb, bdb_attr_get(dbenv->bdb_attr,
-                                               BDB_ATTR_MAX_SQL_IDLE_TIME),
-                        notimeout ? 0 : (timeout / 1000), clnt,
-                        watcher_warning_function);
+                appdata->set_timeout_impl(clnt, timeout);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
                 sqlstr += 12;
                 sqlstr = skipws(sqlstr);
@@ -1918,688 +1781,27 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
     return rc;
 }
 
-static void send_dbinforesponse(struct dbenv *dbenv, SBUF2 *sb)
+int newsql_heartbeat(struct sqlclntstate *clnt)
 {
-    CDB2DBINFORESPONSE *dbinfo_response = malloc(sizeof(CDB2DBINFORESPONSE));
-    cdb2__dbinforesponse__init(dbinfo_response);
-    fill_dbinfo(dbinfo_response, dbenv->bdb_env);
-    int len = cdb2__dbinforesponse__get_packed_size(dbinfo_response);
+    int state;
 
-    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(sb);
+    if (!clnt->heartbeat)
+        return 0;
+    if (!clnt->ready_for_heartbeats)
+        return 0;
 
-    struct newsqlheader hdr = {0};
-    hdr.type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
-    hdr.length = htonl(len);
-    sbuf2write((char *)&hdr, sizeof(hdr), sb);
-    cdb2__dbinforesponse__pack_to_buffer(dbinfo_response, (ProtobufCBuffer *)&writer);
-    sbuf2flush(sb);
-    cdb2__dbinforesponse__free_unpacked(dbinfo_response, &pb_alloc);
-}
-
-static int do_query_on_master_check(struct dbenv *dbenv,
-                                    struct sqlclntstate *clnt,
-                                    CDB2SQLQUERY *sql_query)
-{
-    int allow_master_exec = 0;
-    int allow_master_dbinfo = 0;
-    for (int ii = 0; ii < sql_query->n_features; ii++) {
-        if (CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC ==
-            sql_query->features[ii]) {
-            allow_master_exec = 1;
-        } else if (CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO ==
-                   sql_query->features[ii]) {
-            allow_master_dbinfo = 1;
-        } else if (CDB2_CLIENT_FEATURES__ALLOW_QUEUING ==
-                   sql_query->features[ii]) {
-            clnt->queue_me = 1;
-        }
-    }
-
-    int do_master_check;
-    if (dbenv->rep_sync == REP_SYNC_NONE || sbuf_is_local(clnt->sb))
-        do_master_check = 0;
-    else
-        do_master_check = 1;
-
-    if (do_master_check && bdb_master_should_reject(dbenv->bdb_env) &&
-        allow_master_exec == 0) {
-        ATOMIC_ADD32(gbl_masterrejects, 1);
-        /* Send sql response with dbinfo. */
-        if (allow_master_dbinfo)
-            send_dbinforesponse(dbenv, clnt->sb);
-
-        logmsg(LOGMSG_DEBUG, "Query on master, will be rejected\n");
-        return 1;
-    }
-    return 0;
-}
-
-int gbl_send_failed_dispatch_message = 0;
-
-static CDB2QUERY *read_newsql_query(struct dbenv *dbenv,
-                                    struct sqlclntstate *clnt, SBUF2 *sb)
-{
-    struct newsqlheader hdr = {0};
-    CDB2QUERY *query = NULL;
-    int rc;
-    int pre_enabled = 0;
-    int was_timeout = 0;
-
-retry_read:
-    rc = sbuf2fread_timeout((char *)&hdr, sizeof(hdr), 1, sb, &was_timeout);
-    if (rc != 1) {
-        if (was_timeout && gbl_send_failed_dispatch_message) {
-            handle_failed_dispatch(clnt, "Socket read timeout.");
-        }
-        return NULL;
-    }
-
-    hdr.type = ntohl(hdr.type);
-    hdr.compression = ntohl(hdr.compression);
-    hdr.length = ntohl(hdr.length);
-
-    if (hdr.type == CDB2_REQUEST_TYPE__SSLCONN) {
-#if WITH_SSL
-        /* If client requires SSL and we haven't done that,
-           do SSL_accept() now. handle_newsql_request()
-           will close the sb if SSL_accept() fails. */
-
-        /* Can't SSL_accept twice - probably a client API logic error.
-           Let it disconnect. */
-        if (sslio_has_ssl(sb)) {
-            logmsg(LOGMSG_WARN, "The connection is already SSL encrypted.\n");
-            return NULL;
-        }
-
-        /* Flush the SSL ability byte. We need to do this because:
-           1) The `require_ssl` field in dbinfo may not reflect the
-              actual status of this node;
-           2) Doing SSL_accept() immediately would cause too many
-              unnecessary EAGAIN/EWOULDBLOCK's for non-blocking BIO. */
-        char ssl_able = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
-        if ((rc = sbuf2putc(sb, ssl_able)) < 0 || (rc = sbuf2flush(sb)) < 0)
-            return NULL;
-
-        /* Don't close the connection if SSL verify fails so that we can
-           send back an error to the client. */
-        if (ssl_able == 'Y' &&
-            sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname,
-                         gbl_nid_dbname, 0) != 1) {
-            newsql_error(clnt, "Client certificate authentication failed.",
-                         CDB2ERR_CONNECT_ERROR);
-            /* Print the error message in the sbuf2. */
-            char err[256];
-            sbuf2lasterror(sb, err, sizeof(err));
-            logmsg(LOGMSG_ERROR, "%s\n", err);
-            return NULL;
-        }
-
-        /* Extract the user from the certificate. */
-        ssl_set_clnt_user(clnt);
-#else
-        /* Not compiled with SSL. Send back `N' to client and retry read. */
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0)
-            return NULL;
-#endif
-        goto retry_read;
-    } else if (hdr.type == CDB2_REQUEST_TYPE__RESET) { /* Reset from sockpool.*/
-
-        if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-            /* Discard the pending transaction when receiving RESET from the
-               sockpool. We reach here if
-               1) the handle is in a open transaction, and
-               2) the last statement is a SELECT, and
-               3) the client closes the handle and donates the connection
-                  to the sockpool, and then,
-               4) the client creates a new handle and reuses the connection
-                  from the sockpool. */
-            handle_sql_intrans_unrecoverable_error(clnt);
-        }
-
-        reset_clnt(clnt, sb, 0);
-        struct newsql_appdata *appdata = clnt->appdata;
-        newsql_protobuf_reset_offset(&appdata->newsql_protobuf_allocator);
-        clnt->tzname[0] = '\0';
-        clnt->osql.count_changes = 1;
-        clnt->heartbeat = 1;
-        clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
-        goto retry_read;
-    }
-
-    if (hdr.type > 2) {
-        logmsg(LOGMSG_ERROR, "%s: Invalid message  %d\n", __func__, hdr.type);
-        return NULL;
-    }
-
-    int bytes = hdr.length;
-    if (bytes <= 0) {
-        logmsg(LOGMSG_ERROR, "%s: Junk message  %d\n", __func__, bytes);
-        return NULL;
-    }
-
-    char *p;
-    if (bytes <= gbl_blob_sz_thresh_bytes)
-        p = malloc(bytes);
-    else
-        while (1) { // big buffer. most certainly it is a huge blob.
-            errno = 0; /* precondition: well-defined before call that may set */
-            p = comdb2_timedmalloc(blobmem, bytes, 1000);
-
-            if (p != NULL || errno != ETIMEDOUT)
-                break;
-
-            Pthread_mutex_lock(&clnt->wait_mutex);
-            clnt->heartbeat = 1;
-            if (clnt->ready_for_heartbeats == 0) {
-                pre_enabled = 1;
-                clnt->ready_for_heartbeats = 1;
-            }
-            newsql_heartbeat(clnt);
-            fdb_heartbeats(clnt);
-            Pthread_mutex_unlock(&clnt->wait_mutex);
-        }
-
-    if (pre_enabled) {
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
-        pre_enabled = 0;
-    }
-
-    if (!p) {
-        logmsg(LOGMSG_ERROR, "%s: out of memory malloc %d\n", __func__, bytes);
-        return NULL;
-    }
-
-    rc = sbuf2fread(p, bytes, 1, sb);
-    if (rc != 1) {
-        free(p);
-        logmsg(LOGMSG_DEBUG, "Error in sbuf2fread rc=%d\n", rc);
-        return NULL;
-    }
-
-    struct newsql_appdata *appdata = clnt->appdata;
-    while (1) {
-        errno = 0; /* precondition: well-defined before call that may set */
-        query = cdb2__query__unpack(&appdata->newsql_protobuf_allocator.protobuf_allocator, bytes, (uint8_t *)p);
-        // errno can be set by cdb2__query__unpack
-        // we retry malloc on out of memory condition
-
-        if (query || errno != ETIMEDOUT)
-            break;
-
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        if (clnt->heartbeat == 0)
-            clnt->heartbeat = 1;
-        if (clnt->ready_for_heartbeats == 0) {
-            pre_enabled = 1;
-            clnt->ready_for_heartbeats = 1;
-        }
-        newsql_heartbeat(clnt);
-        fdb_heartbeats(clnt);
-        Pthread_mutex_unlock(&clnt->wait_mutex);
-    }
-    free(p);
-
-    if (pre_enabled) {
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->ready_for_heartbeats = 0;
-        Pthread_mutex_unlock(&clnt->wait_mutex);
-    }
-
-    if (!query) {
-        logmsg(LOGMSG_ERROR, "%s:%d Error unpacking query error: %s\n", __func__, __LINE__, strerror(errno));
-        return NULL;
-    }
-
-    // one of dbinfo or sqlquery must be non-NULL
-    if (unlikely(!query->dbinfo && !query->sqlquery)) {
-        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-        query = NULL;
-        goto retry_read;
-    }
-
-    if (query->dbinfo) {
-        if (query->dbinfo->has_want_effects &&
-            query->dbinfo->want_effects == 1) {
-            CDB2SQLRESPONSE sql_response = CDB2__SQLRESPONSE__INIT;
-            CDB2EFFECTS effects = CDB2__EFFECTS__INIT;
-            sql_response.response_type =
-                RESPONSE_TYPE__COMDB2_INFO; /* Last Row. */
-            sql_response.n_value = 0;
-            if (clnt->verifyretry_off == 1 ||
-                clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
-                clnt->dbtran.mode == TRANLEVEL_SERIAL) {
-                clnt->effects.num_affected = clnt->effects.num_updated +
-                                             clnt->effects.num_deleted +
-                                             clnt->effects.num_inserted;
-                effects.num_affected = clnt->effects.num_affected;
-                effects.num_selected = clnt->effects.num_selected;
-                effects.num_updated = clnt->effects.num_updated;
-                effects.num_deleted = clnt->effects.num_deleted;
-                effects.num_inserted = clnt->effects.num_inserted;
-                set_sent_data_to_client(clnt, 1, __func__, __LINE__);
-                sql_response.effects = &effects;
-                sql_response.error_code = 0;
-            } else {
-                sql_response.error_code = -1;
-                sql_response.error_string = "Get effects not supported in "
-                                            "transaction with verifyretry on";
-            }
-            newsql_response_int(clnt, &sql_response,
-                                RESPONSE_HEADER__SQL_EFFECTS, 1);
-        } else {
-            send_dbinforesponse(dbenv, sb);
-        }
-        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-        query = NULL;
-        goto retry_read;
-    }
-
-#if WITH_SSL
-    /* Do security check before we return. We do it only after
-       the query has been unpacked so that we know whether
-       it is a new client (new clients have SSL feature).
-       The check must be done for every query, otherwise
-       attackers could bypass it by using pooled connections
-       from sockpool. The overhead of the check is negligible. */
-    if (gbl_client_ssl_mode >= SSL_REQUIRE && !sslio_has_ssl(sb)) {
-        /* The code block does 2 things:
-           1. Return an error to outdated clients;
-           2. Send dbinfo to new clients to trigger SSL.
-              It may happen when require_ssl is first time
-              enabled across the cluster. */
-        int client_supports_ssl = 0;
-        for (int ii = 0; ii < query->sqlquery->n_features; ++ii) {
-            if (CDB2_CLIENT_FEATURES__SSL == query->sqlquery->features[ii]) {
-                client_supports_ssl = 1;
-                break;
-            }
-        }
-
-        if (client_supports_ssl) {
-            newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
-            cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-            query = NULL;
-            goto retry_read;
-        } else {
-            newsql_error(clnt, "The database requires SSL connections.",
-                         CDB2ERR_CONNECT_ERROR);
-        }
-        cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-        return NULL;
-    }
-#endif
-    return query;
-}
-
-extern int gbl_allow_incoherent_sql;
-static inline int incoh_reject(int admin, bdb_state_type *bdb_state)
-{
-    /* If this isn't from an admin session and the node isn't coherent
-       and we disallow running queries on an incoherent node, reject */
-    return (!admin && !bdb_am_i_coherent(bdb_state) &&
-            !gbl_allow_incoherent_sql);
-}
-
-int64_t gbl_denied_appsock_connection_count = 0;
-
-#define APPDATA ((struct newsql_appdata *)(clnt.appdata))
-static int handle_newsql_request(comdb2_appsock_arg_t *arg)
-{
-    CDB2QUERY *query = NULL;
-    int rc = 0;
-    struct sqlclntstate clnt;
-    struct thr_handle *thr_self;
-    struct sbuf2 *sb;
-    struct dbenv *dbenv;
-
-    thr_self = arg->thr_self;
-    dbenv = arg->dbenv;
-    sb = arg->sb;
-
-    if (incoh_reject(arg->admin, dbenv->bdb_env)) {
-        logmsg(LOGMSG_DEBUG,
-               "%s:%d td %u new query on incoherent node, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
-        return APPSOCK_RETURN_OK;
-    }
-
-    /* There are points when we can't accept any more connections. */
-    if (dbenv->no_more_sql_connections) {
-        return APPSOCK_RETURN_OK;
-    }
-
-    /*
-      If we are NOT the master, and the db is set up for async replication, we
-      should return an error at this point rather than proceed with potentially
-      incoherent data.
-    */
-    if (!arg->admin && dbenv->rep_sync == REP_SYNC_NONE &&
-        dbenv->master != gbl_myhostname) {
-        logmsg(LOGMSG_DEBUG,
-               "%s:%d td %u new query on replicant with sync none, dropping\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
-        return APPSOCK_RETURN_OK;
-    }
-
-
-    /*
-      This flag cannot be set to non-zero until after all the early returns in
-      this function; otherwise, we may "leak" appsock connections.
-    */
-    if (arg->keepsocket)
-        *arg->keepsocket = 1;
-
-    /*
-      New way. Do the basic socket I/O in line in this thread (which has a very
-      small stack); the handle_fastsql_requests function will dispatch to a
-      pooled sql engine for performing queries.
-    */
-    thrman_change_type(thr_self, THRTYPE_APPSOCK_SQL);
-
-    reset_clnt(&clnt, sb, 1);
-    clnt_register(&clnt);
-
-    get_newsql_appdata(&clnt, APPDATA_MINCOLS);
-    plugin_set_callbacks(&clnt, newsql);
-    clnt.tzname[0] = '\0';
-    clnt.admin = arg->admin;
-
-    if (incoh_reject(clnt.admin, thedb->bdb_env)) {
-        logmsg(LOGMSG_ERROR,
-               "%s:%d td %u new query on incoherent node, dropping socket\n",
-               __func__, __LINE__, (uint32_t)pthread_self());
-        goto done;
-    }
-
-    query = read_newsql_query(dbenv, &clnt, sb);
-    if (query == NULL) {
-        goto done;
-    }
-
-    if (!clnt.admin && check_active_appsock_connections(&clnt)) {
-        static time_t pr = 0;
-        time_t now;
-
-        gbl_denied_appsock_connection_count++;
-        if ((now = time(NULL)) - pr) {
-            logmsg(LOGMSG_WARN,
-                   "%s: Exhausted appsock connections, total %d connections "
-                   "denied-connection count=%"PRId64"\n",
-                   __func__, active_appsock_conns,
-                   gbl_denied_appsock_connection_count);
-            pr = now;
-        }
-
-        newsql_error(&clnt, "Exhausted appsock connections.",
-                     CDB2__ERROR_CODE__APPSOCK_LIMIT);
-        goto done;
-    }
-
-#if 0
-    else
-        logmsg(LOGMSG_DEBUG, "New Query: %s\n", query->sqlquery->sql_query);
-#endif
-    if (query->sqlquery == NULL) {
-        logmsg(LOGMSG_DEBUG, "Malformed SQL request.\n");
-        goto done;
-    }
-
-    CDB2SQLQUERY *sql_query = query->sqlquery;
-
-    if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
-        goto done;
-
-    if (sql_query->client_info) {
-        clnt.conninfo.pid = sql_query->client_info->pid;
-        clnt.last_pid = sql_query->client_info->pid;
-    }
+    /* We're still in a good state if we're just waiting for the client to consume an event. */
+    if (is_pingpong(clnt))
+        state = 1;
     else {
-        clnt.conninfo.pid = 0;
-        clnt.last_pid = 0;
-    }
-    clnt.osql.count_changes = 1;
-    clnt.dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
-    newsql_clr_high_availability(&clnt);
-
-    int notimeout = disable_server_sql_timeouts();
-    sbuf2settimeout(
-        sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME) * 1000,
-        notimeout ? 0 : gbl_sqlwrtimeoutms);
-
-    sbuf2flush(sb);
-    net_set_writefn(sb, sql_writer);
-
-    int wrtimeoutsec;
-    if (gbl_sqlwrtimeoutms == 0 || notimeout)
-        wrtimeoutsec = 0;
-    else
-        wrtimeoutsec = gbl_sqlwrtimeoutms / 1000;
-
-    net_add_watch_warning(
-        sb, bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAX_SQL_IDLE_TIME),
-        wrtimeoutsec, &clnt, watcher_warning_function);
-
-    /* appsock threads aren't sql threads so for appsock pool threads
-     * sqlthd will be NULL */
-    struct sql_thread *sqlthd = pthread_getspecific(query_info_key);
-    if (sqlthd) {
-        bzero(&sqlthd->clnt->conn, sizeof(struct conninfo));
-        sqlthd->clnt->origin[0] = 0;
+        state = (clnt->sqltick > clnt->sqltick_last_seen);
+        clnt->sqltick_last_seen = clnt->sqltick;
     }
 
-    sbuf2setclnt(sb, &clnt);
-
-    while (query) {
-        sql_query = query->sqlquery;
-#ifdef EXTENDED_DEBUG
-#define MAXTOPRINT 200
-        int num = logmsg(LOGMSG_DEBUG, "Query is '%.*s", MAXTOPRINT, sql_query->sql_query);
-        if (num >= MAXTOPRINT)
-            logmsg(LOGMSG_DEBUG, "...'\n");
-        else
-            logmsg(LOGMSG_DEBUG, "'\n");
-#endif
-        APPDATA->query = query;
-        APPDATA->sqlquery = sql_query;
-        clnt.sql = sql_query->sql_query;
-        clnt.added_to_hist = 0;
-
-        if (!in_client_trans(&clnt)) {
-            bzero(&clnt.effects, sizeof(clnt.effects));
-            bzero(&clnt.log_effects, sizeof(clnt.log_effects));
-            clnt.had_errors = 0;
-            clnt.ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
-        }
-        if (clnt.dbtran.mode < TRANLEVEL_SOSQL) {
-            clnt.dbtran.mode = TRANLEVEL_SOSQL;
-        }
-        clnt.osql.sent_column_data = 0;
-        clnt.stop_this_statement = 0;
-
-        if (clnt.tzname[0] == '\0' && sql_query->tzname)
-            strncpy0(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
-
-        if (sql_query->dbname && dbenv->envname && strcasecmp(sql_query->dbname, dbenv->envname)) {
-            char errstr[64 + (2 * MAX_DBNAME_LENGTH)];
-            snprintf(errstr, sizeof(errstr),
-                     "DB name mismatch query:%s actual:%s", sql_query->dbname,
-                     dbenv->envname);
-            logmsg(LOGMSG_ERROR, "%s\n", errstr);
-            newsql_error(&clnt, errstr, CDB2__ERROR_CODE__WRONG_DB);
-            goto done;
-        }
-
-        if (sql_query->client_info) {
-            if (clnt.rawnodestats) {
-                release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
-                clnt.rawnodestats = NULL;
-            }
-            if (clnt.conninfo.pid && clnt.conninfo.pid != sql_query->client_info->pid) {
-                /* Different pid is coming without reset. */
-                logmsg(LOGMSG_WARN,
-                       "Multiple processes using same socket PID 1 %d PID 2 %d Host %.8x\n",
-                       clnt.conninfo.pid, sql_query->client_info->pid,
-                       sql_query->client_info->host_id);
-            }
-            clnt.conninfo.pid = sql_query->client_info->pid;
-            clnt.conninfo.node = sql_query->client_info->host_id;
-            if (clnt.argv0) {
-                free(clnt.argv0);
-                clnt.argv0 = NULL;
-            }
-            if (clnt.stack) {
-                free(clnt.stack);
-                clnt.stack = NULL;
-            }
-            if (sql_query->client_info->argv0) {
-                clnt.argv0 = strdup(sql_query->client_info->argv0);
-            }
-            if (sql_query->client_info->stack) {
-                clnt.stack = strdup(sql_query->client_info->stack);
-            }
-        }
-
-        if (clnt.rawnodestats == NULL) {
-            clnt.rawnodestats = get_raw_node_stats(
-                clnt.argv0, clnt.stack, clnt.origin, sbuf2fileno(clnt.sb));
-        }
-
-        if (process_set_commands(dbenv, &clnt, sql_query))
-            goto done;
-
-        if (gbl_rowlocks && clnt.dbtran.mode != TRANLEVEL_SERIAL)
-            clnt.dbtran.mode = TRANLEVEL_SNAPISOL;
-
-        /* avoid new accepting new queries/transaction on opened connections
-           if we are incoherent (and not in a transaction). */
-        if (incoh_reject(clnt.admin, thedb->bdb_env) &&
-            (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
-            logmsg(LOGMSG_ERROR,
-                   "%s line %d td %u new query on incoherent node, dropping socket\n",
-                   __func__, __LINE__, (uint32_t)pthread_self());
-            goto done;
-        }
-
-        clnt.heartbeat = 1;
-        ATOMIC_ADD32(gbl_nnewsql, 1);
-
-        bool isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0 ||
-                                 strncasecmp(clnt.sql, "rollback", 8) == 0)
-                                    ? true
-                                    : false;
-
-        if (!clnt.had_errors || isCommitRollback) {
-            /* tell blobmem that I want my priority back
-               when the sql thread is done */
-            comdb2bma_pass_priority_back(blobmem);
-            rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
-
-            if (clnt.had_errors && isCommitRollback) {
-                rc = -1;
-            }
-        }
-        clnt_change_state(&clnt, CONNECTION_IDLE);
-
-        if (clnt.osql.replay == OSQL_RETRY_DO) {
-            if (clnt.dbtran.trans_has_sp) {
-                osql_set_replay(__FILE__, __LINE__, &clnt, OSQL_RETRY_NONE);
-                srs_tran_destroy(&clnt);
-                newsql_protobuf_reset_offset(&APPDATA->newsql_protobuf_allocator);
-            } else {
-                rc = srs_tran_replay(&clnt, arg->thr_self);
-            }
-
-            if (clnt.osql.history == NULL) {
-                query = APPDATA->query = NULL;
-            }
-        } else {
-            /* if this transaction is done (marked by SQLENG_NORMAL_PROCESS),
-               clean transaction sql history
-            */
-            if (clnt.osql.history && clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
-                srs_tran_destroy(&clnt);
-                newsql_protobuf_reset_offset(&APPDATA->newsql_protobuf_allocator);
-                query = APPDATA->query = NULL;
-            }
-        }
-
-        if (!in_client_trans(&clnt)) {
-            /* minor detail: for in tran selects we cant reset offset to previous query's end
-             * because we don't know all the chunks that were collected for /this/ query */
-            newsql_protobuf_reset_offset(&APPDATA->newsql_protobuf_allocator);
-            if (rc)
-                goto done;
-        }
-
-        if (clnt.added_to_hist) {
-            clnt.added_to_hist = 0;
-        } else if (APPDATA->query) {
-            /* cleanup if we did not add to history (single stmt or select inside a tran) */
-            cdb2__query__free_unpacked(APPDATA->query, &APPDATA->newsql_protobuf_allocator.protobuf_allocator);
-            APPDATA->query = NULL;
-            /* clnt.sql points into the protobuf unpacked buffer, which becomes
-             * invalid after cdb2__query__free_unpacked. Reset the pointer here.
-             */
-            clnt.sql = NULL;
-        }
-
-        query = read_newsql_query(dbenv, &clnt, sb);
-    }
-
-done:
-    sbuf2setclnt(sb, NULL);
-    clnt_unregister(&clnt);
-
-    if (clnt.ctrl_sqlengine == SQLENG_INTRANS_STATE) {
-        handle_sql_intrans_unrecoverable_error(&clnt);
-    }
-
-    if (clnt.rawnodestats) {
-        release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
-        clnt.rawnodestats = NULL;
-    }
-
-    if (clnt.argv0) {
-        free(clnt.argv0);
-        clnt.argv0 = NULL;
-    }
-
-    if (clnt.stack) {
-        free(clnt.stack);
-        clnt.stack = NULL;
-    }
-
-    close_sp(&clnt);
-    osql_clean_sqlclntstate(&clnt);
-
-    if (clnt.dbglog) {
-        sbuf2close(clnt.dbglog);
-        clnt.dbglog = NULL;
-    }
-
-    if (query) {
-        cdb2__query__free_unpacked(query, &APPDATA->newsql_protobuf_allocator.protobuf_allocator);
-    }
-
-    free_newsql_appdata(&clnt);
-
-    /* XXX free logical tran?  */
-    close_appsock(sb);
-    arg->sb = NULL;
-    cleanup_clnt(&clnt);
-
-    return APPSOCK_RETURN_OK;
+    return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT, state);
 }
 
-
-comdb2_appsock_t newsql_plugin = {
-    "newsql",             /* Name */
-    "",                   /* Usage info */
-    0,                    /* Execution count */
-    APPSOCK_FLAG_IS_SQL,  /* Flags */
-    handle_newsql_request /* Handler function */
-};
-
-#include "plugin.h"
+void setup_newsql_clnt(struct sqlclntstate *clnt)
+{
+    plugin_set_callbacks(clnt, newsql);
+}

@@ -16,7 +16,6 @@
 
 #include "bdb_api.h"
 #include "bdb_verify.h"
-#include "sbuf2.h"
 #include "bdb_int.h"
 #include "locks.h"
 #include "endian_core.h"
@@ -34,44 +33,20 @@ extern int is_comdb2_index_expression(const char *dbname);
 extern void set_null_func(void *p, int len);
 extern void set_data_func(void *to, const void *from, int sz);
 extern void fsnapf(FILE *, void *, int);
-extern int peer_dropped_connection_sb(SBUF2 *sb);
 extern int __bam_defcmp(DB *dbp, const DBT *a, const DBT *b);
 
-/* use lua_callback if it is available to print
- * otherwise if sb is available print to sb and flush
- */
 static int locprint(verify_common_t *par, char *fmt, ...)
 {
-    char lbuf[1024];
+    char buf[LINE_MAX];
     va_list ap;
     va_start(ap, fmt);
-    int wrote = vsnprintf(lbuf, sizeof(lbuf), fmt, ap);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
-
-    if (par->client_dropped_connection)
+    if (par->client_dropped_connection) {
         return -1;
-
-    if (par->lua_callback) {
-        int rc = par->lua_callback(par->lua_params, lbuf);
-        if (rc) {
-            logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
-            par->client_dropped_connection = 1;
-        }
-        return rc;
     }
-
-    if (par->sb) {
-        if (wrote < sizeof(lbuf) - 1)
-            strcat(lbuf, "\n");
-        int rc = sbuf2printf(par->sb, lbuf) >= 0 ? 0 : -1;
-        if (rc)
-            return rc;
-        rc = sbuf2flush(par->sb) >= 0 ? 0 : -1;
-        return rc;
-    }
-    return -1;
+    return par->verify_response(buf, par->arg);
 }
-
 
 static int restore_cursor_at_genid(DB *db, DBC **cdata,
                                    unsigned long long genid, unsigned int lid)
@@ -215,7 +190,7 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
     if (!res)
         goto out; // another thread updated, nothing to do
 
-    if (peer_dropped_connection_sb(par->sb)) {
+    if (par->peer_check(par->arg)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
         par->client_dropped_connection = 1;
         goto out;

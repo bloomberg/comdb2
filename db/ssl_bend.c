@@ -339,11 +339,10 @@ static const char *ssl_mode_to_string(ssl_mode mode)
         return "UNKNOWN";
     }
 }
-
 void ssl_set_clnt_user(struct sqlclntstate *clnt)
 {
-    int rc = sslio_x509_attr(clnt->sb, gbl_nid_user, clnt->current_user.name,
-                             sizeof(clnt->current_user.name));
+    int sz = sizeof(clnt->current_user.name);
+    int rc = clnt->plugin.get_x509_attr(clnt, gbl_nid_user, clnt->current_user.name, sz);
     if (rc != 0)
         return;
     clnt->current_user.have_name = 1;
