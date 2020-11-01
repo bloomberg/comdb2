@@ -440,6 +440,49 @@ function rebuild_new_field_and_idx
     do_verify
 }
 
+assertres ()
+{
+    if [ $# != 2 ] ; then
+        failexit "Expecting 2 parameters but instead was passed $#"
+    fi
+    local expected=$1
+    local target=$2
+    if [ "$expected" != "$target" ] ; then
+        failexit "Expected is $expected but should be $target"
+    fi
+}
+
+
+function check_comdb2_sc_hist
+{
+    if [[ -n "$CLUSTER" ]]; then
+        master=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+        ssh -o StrictHostKeyChecking=no $master "cat $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c" | grep "starting schema" | cut -f10 -d' ' > seeds_trc.txt
+    else
+        grep "starting schema" $COMDB2_ROOT/var/log/cdb2/$DBNAME.trc.c | cut -f10 -d' ' > seeds_trc.txt
+    fi
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql.txt
+
+    # use tail -n +3 to skip first two entries which are creating t1 and t2 and dont show up in trc.c
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" | tail -n +3 > seeds_sql.txt
+    if ! diff seeds_trc.txt seeds_sql.txt ; then
+        failexit "Seed captured in sc_history is not the same as trc.c"
+    fi
+    # delete the aforementioned first two entries by truncating, and check again
+    d1=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'EXEC PROCEDURE sys.cmd.trim_sc_history("t1",0)'`
+    assertres "$d1" "Deleted 1 rows from sc_history for tablename t1"
+
+    d2=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'EXEC PROCEDURE sys.cmd.trim_sc_history("t2",15)'`
+    assertres "$d2" "Deleted 1 rows from sc_history for tablename t2"
+
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select seed from comdb2_sc_history order by seed" > seeds_sql2.txt
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from comdb2_sc_history order by seed"  > all_seeds_sql2.txt
+    if ! diff seeds_trc.txt seeds_sql2.txt ; then
+        failexit "Seed captured in sc_history is not the same as trc.c"
+    fi
+
+}
+
 
 echo "running test in machine $(hostname):${PWD}"
 
@@ -465,5 +508,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
 run_plain_rebuilds 500
 run_pageorder_rebuilds
 rebuild_new_field_and_idx 
+
+check_comdb2_sc_hist
 
 echo Success

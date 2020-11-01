@@ -1423,6 +1423,9 @@ err:
     setError(pParse, SQLITE_INTERNAL, "Internal Error");
 }
 
+/*
+  Implementation of PUT ANALYZE COVERAGE ...
+ */
 void comdb2analyzeCoverage(Parse* pParse, Token* nm, Token* lnm, int newscale)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -5748,7 +5751,7 @@ cleanup:
 }
 
 /*
-  Top-level implementation for DROP INDEX.
+  Top-level implementation for DROP INDEX
 */
 void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
 {
@@ -6025,6 +6028,9 @@ done:
     return rc;
 }
 
+/* 
+  Implementation of ALTER TABLE .. ALTER COLUMN .. 
+ */
 void comdb2AlterColumnStart(Parse *pParse /* Parser context */,
                             Token *pName /* Column name */)
 {
@@ -6091,6 +6097,9 @@ void comdb2AlterColumnEnd(Parse *pParse /* Parser context */)
     return;
 }
 
+/* 
+  Implementation of ALTER TABLE .. ALTER COLUMN .. TYPE .. 
+ */
 void comdb2AlterColumnType(Parse *pParse, /* Parser context */
                            Token *pType /* New type of the column */)
 {
@@ -6133,6 +6142,9 @@ cleanup:
     return;
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. SET DEFAULT .. 
+ */
 void comdb2AlterColumnSetDefault(
     Parse *pParse,      /* Parsing context */
     Expr *pExpr,        /* The parsed expression of the default value */
@@ -6159,6 +6171,9 @@ void comdb2AlterColumnSetDefault(
     return;
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. DROP DEFAULT .. 
+ */
 void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6181,6 +6196,9 @@ void comdb2AlterColumnDropDefault(Parse *pParse /* Parser context */)
     return;
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. SET NOT NULL .. 
+ */
 void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6202,6 +6220,9 @@ void comdb2AlterColumnSetNotNull(Parse *pParse /* Parser context */)
     comdb2ColumnSetNotNull(pParse, ctx->alter_column);
 }
 
+/*
+  Implementation of ALTER TABLE .. ALTER COLUMN .. DROP NOT NULL .. 
+ */
 void comdb2AlterColumnDropNotNull(Parse *pParse /* Parser context */)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -6260,4 +6281,31 @@ out:
     if (t_action)
         free(t_action);
     free_schema_change_type(sc);
+}
+
+/* delete entry by seed from comdb2_sc_history 
+ * called from stored procedure function db_comdb_delete_sc_history()
+ */
+int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
+{
+    BpfuncArg arg = {{0}};
+    bpfunc_arg__init(&arg);
+
+    BpfuncDeleteFromScHistory tblseed = {{0}};
+    bpfunc_delete_from_sc_history__init(&tblseed);
+
+    arg.tblseed = &tblseed;
+    arg.type = BPFUNC_DELETE_FROM_SC_HISTORY;
+    tblseed.tablename = tablename;
+    tblseed.seed = seed;
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = get_sql_clnt();
+    int rc = 0;
+    if(!clnt->intrans) {
+        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) == 0)
+            clnt->intrans = 1;
+    }
+    if (!rc)
+        rc = osql_bpfunc_logic(thd, &arg);
+    return rc;
 }

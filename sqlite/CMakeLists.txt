@@ -48,6 +48,7 @@ add_library(sqlite
   ext/comdb2/sqlclientstats.c
   ext/comdb2/timepartpermissions.c
   ext/comdb2/indexuse.c
+  ext/comdb2/schistory.c
   ext/misc/completion.c
   ext/misc/regexp.c
   ext/misc/json1.c

@@ -38,5 +38,6 @@ int sc_via_ddl_only();
 void set_schema_change_in_progress(const char *func, int line, int val);
 
 int get_schema_change_in_progress(const char *func, int line);
+int trim_sc_history_entries(tran_type *tran, const char *tablename);
 
 #endif
