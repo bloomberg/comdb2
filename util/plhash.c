@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2020, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -927,6 +928,19 @@ static unsigned int hash_default_strlen(const unsigned char *key,
     return hash;
 }
 
+static unsigned int hash_default_strcaselen(const unsigned char *key,
+                                            int len __attribute_unused__)
+{
+    unsigned hash = 0;
+    uint8_t k = *key;
+
+    while (k) {
+        hash = (((hash % PRIME) << 8) + tolower(k));
+        k = *(++key);
+    }
+    return hash;
+}
+
 /* This is the public domain FNV-1 hash function from
  * http://isthe.com/chongo/tech/comp/fnv/ */
 #define FNV_OFFSET_BASIS 2166136261U
@@ -955,6 +969,18 @@ static unsigned int hash_default_strptrlen(const unsigned char **keyp,
     for (hash = 0; *key; key++)
         hash = ((hash % PRIME) << 8) + (*key);
     return hash;
+}
+
+static int hash_default_strcaseptrcmp(const char **a, const char **b,
+                                      int len __attribute_unused__)
+{
+    return strcasecmp(*a, *b);
+}
+
+static unsigned int hash_default_strcaseptrlen(const unsigned char **keyp,
+                                               int len __attribute_unused__)
+{
+    return hash_default_strcaselen(*keyp, 0);
 }
 
 static int hash_default_key0cmp(const void *a, const void *b, int len)
@@ -1096,6 +1122,12 @@ hash_t *hash_init_strptr(int keyoff)
                           (cmpfunc_t *)hash_default_strptrcmp, keyoff, 0);
 }
 
+hash_t *hash_init_strcaseptr(int keyoff)
+{
+    return hash_init_user((hashfunc_t *)hash_default_strcaseptrlen,
+                          (cmpfunc_t *)hash_default_strcaseptrcmp, keyoff, 0);
+}
+
 hash_t *hash_init_str(int keyoff)
 {
     return hash_init_user((hashfunc_t *)hash_default_strlen,
@@ -1105,7 +1137,7 @@ hash_t *hash_init_str(int keyoff)
 /* case-insensitive */
 hash_t *hash_init_strcase(int keyoff)
 {
-    return hash_init_user((hashfunc_t *)hash_default_strlen,
+    return hash_init_user((hashfunc_t *)hash_default_strcaselen,
                           (cmpfunc_t *)hash_default_strcasecmp, keyoff, 0);
 }
 
