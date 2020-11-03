@@ -3034,9 +3034,7 @@ case OP_Column: {
   if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
     /* We may reuse a Mem structure.
        So delete any previously allocated memory in pDest. */
-    if( VdbeMemDynamic(pDest) ){
-      sqlite3VdbeMemSetNull(pDest);
-    }
+    sqlite3VdbeMemRelease(pDest); /* takes care of both z and zMalloc */
     if(cur_is_remote(pCrsr)) {
       goto cooked_access;
     }

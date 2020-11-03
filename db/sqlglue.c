@@ -6498,6 +6498,9 @@ again:
         rc = osql_fetch_shadblobs_by_genid(pCur, &blobnum, &blobs, &bdberr);
     } else {
         bdb_fetch_args_t args = {0};
+        /* Tell bdb to use sqlite's malloc routines. */
+        args.fn_malloc = sqlite3GlobalConfig.m.xMalloc;
+        args.fn_free = sqlite3GlobalConfig.m.xFree;
         rc = bdb_fetch_blobs_by_rrn_and_genid_cursor(
             pCur->db->handle, pCur->rrn, pCur->genid, 1, &blobnum,
             blobs.bloblens, blobs.bloboffs, (void **)blobs.blobptrs,
@@ -6556,17 +6559,16 @@ again:
         m->z = NULL;
         m->flags = MEM_Null;
     } else {
-        m->z = blobs.blobptrs[0];
-        m->n = blobs.bloblens[0];
-        m->flags = MEM_Dyn;
-        m->xDel = free;
+        m->zMalloc = m->z = blobs.blobptrs[0];
+        m->szMalloc = m->n = blobs.bloblens[0];
 
         if (f->type == SERVER_VUTF8) {
-            m->flags |= MEM_Str;
+            /* Already nul-terminated. */
+            m->flags = (MEM_Term | MEM_Str);
             if (m->n > 0)
                 --m->n; /* sqlite string lengths do not include NULL */
         } else
-            m->flags |= MEM_Blob;
+            m->flags = MEM_Blob;
     }
 
     return 0;
