@@ -43,25 +43,40 @@ static int is_delete_op(int op);
 extern int gbl_partial_indexes;
 
 /**
- * Checks to see if there are any cascading deleletes/updates pointing to this
+ * Checks to see if there are any cascading deletes/updates pointing to this
  * table
- * @param db    pointer to the db to check for cascading constraints
- * @param op    optype used to determine whether we care about update or delete
- *              constraints
- * @return 0 if there are no cascading constraints !0 otherwise
+ * @param table    pointer to the table to check for cascading constraints
+ * @return         0 if there are no cascading constraints, 1 otherwise
  */
-int has_cascading_reverse_constraints(struct dbtable *db)
+int has_cascading_reverse_constraints(struct dbtable *table)
 {
     int i;
 
-    /* for each of the constraints pointing to this db */
-    for (i = 0; i < db->n_rev_constraints; i++) {
-        constraint_t *cnstrt = db->rev_constraints[i];
+    /* for each of the constraints pointing to this table */
+    for (i = 0; i < table->n_rev_constraints; i++) {
+        constraint_t *cnstrt = table->rev_constraints[i];
 
-        if ((cnstrt->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE)
+        if ((cnstrt->flags & (CT_UPD_CASCADE | CT_DEL_CASCADE)))
             return 1;
+    }
 
-        if ((cnstrt->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE)
+    return 0;
+}
+
+/**
+ * Checks to see if there are any cascading deletes/updates from this table
+ * @param table    pointer to the table to check for cascading constraints
+ * @return         0 if there are no cascading constraints, 1 otherwise
+ */
+int has_cascading_forward_constraints(struct dbtable *table)
+{
+    int i;
+
+    /* for each of the constraints this table is pointing to */
+    for (i = 0; i < table->n_constraints; i++) {
+        constraint_t *cnstrt = &table->constraints[i];
+
+        if ((cnstrt->flags & (CT_UPD_CASCADE | CT_DEL_CASCADE)))
             return 1;
     }
 
@@ -247,6 +262,12 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
         logmsg(LOGMSG_ERROR, "insert_add_op: no thdinfo\n");
         return -1;
     }
+
+    /* Add the genid to hash for quick lookup. */
+    unsigned long long *genid_ptr =
+      pool_getablk(thdinfo->ct_add_table_genid_pool);
+    memcpy(genid_ptr, &genid, sizeof(unsigned long long));
+    hash_add(thdinfo->ct_add_table_genid_hash, genid_ptr);
 
     void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
     if (cur == NULL) {
@@ -1711,6 +1732,10 @@ int clear_constraints_tables(void)
     truncate_constraint_table(thdinfo->ct_add_table);
     truncate_constraint_table(thdinfo->ct_del_table);
     truncate_constraint_table(thdinfo->ct_add_index);
+    hash_clear(thdinfo->ct_add_table_genid_hash);
+    if (thdinfo->ct_add_table_genid_pool) {
+        pool_clear(thdinfo->ct_add_table_genid_pool);
+    }
 
     return 0;
 }
@@ -2115,4 +2140,155 @@ int populate_reverse_constraints(struct dbtable *db)
     }
 
     return n_errors;
+}
+
+/*
+ * In case of self-referencing constraint updates, check and update the
+ * genid added to ct_add_table in case record with that genid got updated.
+ */
+int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
+                            int rrn, unsigned long long ins_keys,
+                            unsigned long long new_genid,
+                            unsigned long long old_genid)
+{
+    int err;
+    int rc;
+
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    if (thdinfo == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d no thd_info\n", __func__, __LINE__);
+        return -1;
+    }
+
+    /* Nothing needs to be done if we haven't seen this genid before. */
+    if (!hash_find_readonly(thdinfo->ct_add_table_genid_hash, &old_genid)) {
+        return 0;
+    }
+
+    void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
+    if (!cur) {
+        logmsg(LOGMSG_ERROR, "%s:%d get_constraint_table_cursor() failed\n",
+               __func__, __LINE__);
+        return -1;
+    }
+
+    rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
+    if (rc == IX_EMPTY) {
+        /* The table is empty */
+        rc = 0;
+        goto done;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_first() failed\n", __func__,
+               __LINE__);
+        goto done;
+    }
+
+    do {
+        cte *ctrq = (cte *)bdb_temp_table_data(cur);
+        struct forward_ct *curop = NULL;
+        if (ctrq == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_data() failed\n",
+                   __func__, __LINE__);
+            goto done;
+        }
+        curop = &ctrq->ctop.fwdct;
+        if ((bdb_cmp_genids(curop->genid, old_genid)) == 0) {
+            logmsg(LOGMSG_DEBUG, "%s:%d found a matching genid %llu\n",
+                   __func__, __LINE__, old_genid);
+            rc = bdb_temp_table_delete(thedb->bdb_env, cur, &err);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_data() failed\n",
+                       __func__, __LINE__);
+                goto done;
+            }
+
+            rc = insert_add_op(iq, opcode, rrn, -1, new_genid, ins_keys, blkpos,
+                               flags);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d insert_add_op() failed\n", __func__,
+                       __LINE__);
+                goto done;
+            }
+
+            /* Now that insert_add_op() had added the new_genid to the hash,
+               let's drop the old one from the hash. */
+            hash_del(thdinfo->ct_add_table_genid_hash, &old_genid);
+
+            // TODO: (NC) break if duplicates not possible
+        }
+        rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
+        if (rc == IX_PASTEOF) {
+            rc = 0;
+            break;
+        }
+    } while (rc == 0);
+
+done:
+    close_constraint_table_cursor(cur);
+    return rc;
+}
+
+int delete_constraint_genid(unsigned long long genid)
+{
+    int err;
+    int rc;
+
+    struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
+    if (thdinfo == NULL) {
+        logmsg(LOGMSG_ERROR, "%s:%d no thd_info\n", __func__, __LINE__);
+        return -1;
+    }
+
+    /* Remove this genid from the hash. */
+    hash_del(thdinfo->ct_add_table_genid_hash, &genid);
+
+    void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
+    if (!cur) {
+        logmsg(LOGMSG_ERROR, "%s:%d get_constraint_table_cursor() failed\n",
+               __func__, __LINE__);
+        return -1;
+    }
+
+    rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
+    if (rc == IX_EMPTY) {
+        /* The table is empty */
+        rc = 0;
+        goto done;
+    } else if (rc != 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d bdb_temp_table_first() failed (rc=%d, err=%d)\n",
+               __func__, __LINE__, rc, err);
+        goto done;
+    }
+
+    do {
+        cte *ctrq = (cte *)bdb_temp_table_data(cur);
+        struct forward_ct *curop = NULL;
+        if (ctrq == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_data() failed\n",
+                   __func__, __LINE__);
+            rc = -1;
+            goto done;
+        }
+        curop = &ctrq->ctop.fwdct;
+        if ((bdb_cmp_genids(curop->genid, genid)) == 0) {
+            logmsg(LOGMSG_DEBUG, "%s:%d found a matching genid %llu\n",
+                   __func__, __LINE__, genid);
+            rc = bdb_temp_table_delete(thedb->bdb_env, cur, &err);
+            if (rc != 0) {
+                logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_data() failed\n",
+                       __func__, __LINE__);
+                goto done;
+            }
+            // TODO: (NC) break if duplicates not possible
+        }
+        rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
+        if (rc == IX_PASTEOF) {
+            rc = 0;
+            break;
+        }
+    } while (rc == 0);
+done:
+    close_constraint_table_cursor(cur);
+    return rc;
 }

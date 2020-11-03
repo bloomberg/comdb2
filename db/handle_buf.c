@@ -472,6 +472,10 @@ static void *thd_req(void *vthd)
                pthread_self());
         abort();
     }
+    thdinfo->ct_add_table_genid_hash = hash_init(sizeof(unsigned long long));
+    thdinfo->ct_add_table_genid_pool =
+        pool_setalloc_init(sizeof(unsigned long long), 0, malloc, free);
+
     Pthread_setspecific(unique_tag_key, thdinfo);
 
     /*printf("started handler %ld thd %p thd->id %ld\n", pthread_self(), thd,
@@ -636,6 +640,10 @@ static void *thd_req(void *vthd)
                     delete_constraint_table(thdinfo->ct_add_table);
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
+                    hash_clear(thdinfo->ct_add_table_genid_hash);
+                    if (thdinfo->ct_add_table_genid_pool) {
+                        pool_clear(thdinfo->ct_add_table_genid_pool);
+                    }
                     backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
                     return 0;
                 }
@@ -648,6 +656,10 @@ static void *thd_req(void *vthd)
         truncate_constraint_table(thdinfo->ct_add_table);
         truncate_constraint_table(thdinfo->ct_del_table);
         truncate_constraint_table(thdinfo->ct_add_index);
+        hash_clear(thdinfo->ct_add_table_genid_hash);
+        if (thdinfo->ct_add_table_genid_pool) {
+            pool_clear(thdinfo->ct_add_table_genid_pool);
+        }
     } while (1);
 }
 
