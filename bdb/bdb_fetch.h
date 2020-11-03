@@ -70,6 +70,8 @@ typedef struct {
     uint8_t ignore_incoherent;
     uint8_t page_order;
     uint8_t for_write;
+    void *(*fn_malloc)(int); /* user-specified malloc function */
+    void (*fn_free)(void *); /* user-specified free function */
 } bdb_fetch_args_t;
 
 int bdb_fetch(bdb_state_type *bdb_handle, void *ix, int ixnum, int ixlen,

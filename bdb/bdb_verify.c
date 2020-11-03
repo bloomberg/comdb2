@@ -389,8 +389,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
 
                 DBT dbt_blob_data = {.flags = DB_DBT_MALLOC, .data = NULL};
 
-                rc = bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key,
-                                          &dbt_blob_data, &ver, DB_SET);
+                rc = bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key, &dbt_blob_data, &ver, DB_SET, NULL, NULL);
                 if (rc == DB_NOTFOUND) {
                     realblobsz[blobno] = -1;
                     if (blobsizes[blobno] != -1 && blobsizes[blobno] != -2) {
@@ -796,8 +795,8 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
                     dbt_blob_data.flags = DB_DBT_MALLOC;
                     dbt_blob_data.data = NULL;
 
-                    rc = bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key,
-                                              &dbt_blob_data, &ver, DB_SET);
+                    rc =
+                        bdb_cget_unpack_blob(bdb_state, cblob, &dbt_blob_key, &dbt_blob_data, &ver, DB_SET, NULL, NULL);
                     if (rc == DB_NOTFOUND) {
                         realblobsz[blobno] = -1;
                         if (blobsizes[blobno] != -1 &&

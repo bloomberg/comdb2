@@ -195,8 +195,8 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
             /* for transactional mode, preserve the path;
                tid will have the needed lockid
                */
-            rc = bdb_get_unpack_blob(bdb_state, dbp, tid, &dbt_key, &dbt_data,
-                                     &args->ver, 0);
+            rc = bdb_get_unpack_blob(bdb_state, dbp, tid, &dbt_key, &dbt_data, &args->ver, 0, args->fn_malloc,
+                                     args->fn_free);
 
         } else {
 
@@ -363,8 +363,8 @@ static int bdb_fetch_blobs_by_rrn_and_genid_int_int(
                     }
                 }
 
-                rc = bdb_cget_unpack_blob(bdb_state, dbcp, &dbt_key, &dbt_data,
-                                          &args->ver, DB_SET);
+                rc = bdb_cget_unpack_blob(bdb_state, dbcp, &dbt_key, &dbt_data, &args->ver, DB_SET, args->fn_malloc,
+                                          args->fn_free);
 
                 if ((rc2 = dbcp->c_close(dbcp)) != 0) {
                     logmsg(LOGMSG_ERROR, "bdb_fetch_blobs_by_rrn_and_genid_int_int:"
