@@ -1056,6 +1056,8 @@ struct thread_info {
     void *ct_add_table;
     void *ct_del_table;
     void *ct_add_index;
+    hash_t *ct_add_table_genid_hash; // for quick lookups
+    pool_t *ct_add_table_genid_pool; // provides memory for the above hash
 };
 
 /* Unique id for a record.  Note that an RRN is sufficiently unique

@@ -778,9 +778,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
-            if (iq->debug)
-                reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                          iq->usedb->tablename);
+            reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
+                      iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -1416,6 +1415,21 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
+    if (has_cascading_forward_constraints(iq->usedb)) {
+        rc = update_constraint_genid(iq, opcode, blkpos, flags, rrn, ins_keys,
+                                     *genid, vgenid);
+        if (rc) {
+            if (iq->debug)
+                reqprintf(
+                    iq,
+                    "Failed to replace updated genid in ct_add_table (rc: %d)",
+                    rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
+    }
+
     /* For live schema change */
     rc = live_sc_post_update(iq, trans, vgenid, old_dta, *genid, od_dta,
                              ins_keys, del_keys, od_len, updCols, blobs, 
@@ -1709,6 +1723,20 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (rc != 0) {
             *opfailcode = OP_FAILED_INTERNAL + ERR_JAVASP_ABORT_OP;
             retrc = rc;
+            goto err;
+        }
+    }
+
+    if (has_cascading_forward_constraints(iq->usedb)) {
+        rc = delete_constraint_genid(genid);
+        if (rc) {
+            if (iq->debug)
+                reqprintf(iq,
+                          "Failed to remove deleted record's genid from "
+                          "ct_add_table (rc: %d)",
+                          rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
             goto err;
         }
     }

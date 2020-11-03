@@ -1,0 +1,44 @@
+drop table if exists c
+drop table if exists p
+
+create table p {schema{int i} keys{"pki" = i}} $$
+create table c {schema{int i} keys{dup "cki" = i} constraints{"cki" -> <"p" : "pki"> on update cascade on delete cascade }} $$
+
+insert into p values (1)
+insert into c values (1)
+
+select "test #1" as comment
+begin
+delete from p where i = 1
+insert into c values (1)
+commit
+select * from c
+select * from p
+
+select "test #2" as comment
+insert into p values (1)
+insert into c values (1)
+begin
+update p set i = i+i where i = 1
+insert into c values (1)
+commit
+select * from c
+select * from p
+exec procedure sys.cmd.verify("p")
+exec procedure sys.cmd.verify("c")
+
+
+select "test #3" as comment
+delete from c;
+delete from p;
+insert into p values (1)
+insert into c values (1)
+begin
+delete from p where i = 1
+insert into c values (1)
+commit
+select * from c order by i
+select * from p order by i
+
+exec procedure sys.cmd.verify("p")
+exec procedure sys.cmd.verify("c")
