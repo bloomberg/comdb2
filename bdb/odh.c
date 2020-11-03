@@ -475,10 +475,9 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
  *
  *    *freeptr!=NULL => *freeptr==odh->recptr
  */
-static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
-                               size_t fromlen, void *to, size_t tolen,
-                               struct odh *odh, int updateid, void **freeptr,
-                               int verify_updateid, int force_odh)
+static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from, size_t fromlen, void *to, size_t tolen,
+                               struct odh *odh, int updateid, void **freeptr, int verify_updateid, int force_odh,
+                               void *(*fn_malloc)(int), void (*fn_free)(void *))
 {
     void *mallocmem = NULL;
     const int ver_bytes = 2;
@@ -488,7 +487,7 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
         *freeptr = NULL;
     }
 
-    if (bdb_state->ondisk_header) {
+    if (bdb_state->ondisk_header || force_odh) {
 
         int alg;
 
@@ -534,9 +533,10 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
                 if (freeptr == NULL) {
                     do_uncompress = 0;
                 } else {
-                    if ((odh->length + ver_bytes) > bdb_state->bmaszthresh)
-                        to = comdb2_bmalloc(bdb_state->bma,
-                                            odh->length + ver_bytes);
+                    if (fn_malloc != NULL)
+                        to = fn_malloc((int)(odh->length + ver_bytes));
+                    else if ((odh->length + ver_bytes) > bdb_state->bmaszthresh)
+                        to = comdb2_bmalloc(bdb_state->bma, odh->length + ver_bytes);
                     else
                         to = malloc(odh->length + ver_bytes);
 
@@ -633,24 +633,23 @@ static int bdb_unpack_updateid(bdb_state_type *bdb_state, const void *from,
     return 0;
 
 err:
-    if (mallocmem)
-        free(mallocmem);
+    if (mallocmem) {
+        (fn_free != NULL) ? fn_free(mallocmem) : free(mallocmem);
+    }
     return DB_UNCOMPRESS_ERR;
 }
 
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr)
 {
-    return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
-                               freeptr, 1, 0);
+    return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1, freeptr, 1, 0, NULL, NULL);
 }
 
 int bdb_unpack_force_odh(bdb_state_type *bdb_state, const void *from,
                          size_t fromlen, void *to, size_t tolen,
                          struct odh *odh, void **freeptr)
 {
-    return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1,
-                               freeptr, 1, 1);
+    return bdb_unpack_updateid(bdb_state, from, fromlen, to, tolen, odh, -1, freeptr, 1, 1, NULL, NULL);
 }
 
 static int bdb_write_updateid(bdb_state_type *bdb_state, void *buf,
@@ -719,9 +718,8 @@ int bdb_retrieve_updateid(bdb_state_type *bdb_state, const void *from,
  *
  */
 
-static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
-                                          int *updateid, uint8_t *ver,
-                                          int flags, int verify_updateid)
+static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data, int *updateid, uint8_t *ver, int flags,
+                                          int verify_updateid, void *(*fn_malloc)(int), void (*fn_free)(void *))
 {
     int rc;
     struct odh odh = {0};
@@ -759,8 +757,8 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data,
     printf("Unpack %u bytes:\n", data->size);
     fsnapf(stdout, data->data, data->size);
     */
-    rc = bdb_unpack_updateid(bdb_state, data->data, data->size, NULL, 0, &odh,
-                             *updateid, &buf, verify_updateid, 0);
+    rc = bdb_unpack_updateid(bdb_state, data->data, data->size, NULL, 0, &odh, *updateid, &buf, verify_updateid, 0,
+                             fn_malloc, fn_free);
 
     if (rc == 0) {
         /*
@@ -982,9 +980,8 @@ int bdb_cget(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
     return rc;
 }
 
-static int bdb_cget_unpack_int(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
-                               DBT *data, uint8_t *ver, u_int32_t flags,
-                               int verify_updateid)
+static int bdb_cget_unpack_int(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
+                               int verify_updateid, void *(*fn_malloc)(int), void (*fn_free)(void *))
 {
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
     unsigned long long *genptr = NULL;
@@ -997,19 +994,37 @@ static int bdb_cget_unpack_int(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
         *genptr = get_search_genid(bdb_state, *genptr);
     }
 
-    rc = dbcp->c_get(dbcp, key, data, flags);
+    /* Allocate memory using caller-specified malloc function */
+    if ((data->flags == DB_DBT_MALLOC) && fn_malloc != NULL) {
+        /* Firstly, use USERMEM to get the length of the record. */
+        data->flags = DB_DBT_USERMEM;
+        rc = dbcp->c_get(dbcp, key, data, flags);
+        if (rc == ENOMEM) {
+            /* Secondly, allocate the needed size and get from the current cursor position. */
+            if ((data->data = fn_malloc((int)data->size)) == NULL)
+                rc = BDBERR_MALLOC;
+            else {
+                data->ulen = data->size;
+                rc = dbcp->c_get(dbcp, key, data, DB_CURRENT);
+            }
+        }
+        /* Lastly, restore the DBT flags. */
+        data->flags = DB_DBT_MALLOC;
+    } else {
+        rc = dbcp->c_get(dbcp, key, data, flags);
+    }
 
     if (rc == 0) {
         /* This uses the verify_update argument to determine whether it should
          * fail for mismatched updateids if updateid >= 0.  It will always
          * return
          * the ondisk-header updateid on success */
-        rc = bdb_unpack_dbt_verify_updateid(bdb_state, data, &updateid, ver,
-                                            flags, verify_updateid);
+        rc =
+            bdb_unpack_dbt_verify_updateid(bdb_state, data, &updateid, ver, flags, verify_updateid, fn_malloc, fn_free);
 
         /* bad rcode: free any memory the c_get allocated */
         if (rc != 0 && data->flags & DB_DBT_MALLOC) {
-            free(data->data);
+            (fn_free != NULL) ? fn_free(data->data) : free(data->data);
         }
     }
 
@@ -1034,20 +1049,19 @@ static int bdb_cget_unpack_int(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
 int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
                     uint8_t *ver, u_int32_t flags)
 {
-    return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 1);
+    return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 1, NULL, NULL);
 }
 
 /* The updateid-agnostic version of this code. */
-int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
-                         DBT *data, uint8_t *ver, u_int32_t flags)
+int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
+                         void *(*fn_malloc)(int), void (*fn_free)(void *))
 {
-    return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 0);
+    return bdb_cget_unpack_int(bdb_state, dbcp, key, data, ver, flags, 0, fn_malloc, fn_free);
 }
 
 /* as above, but for DB->get instead of DBC->c_get. */
-static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
-                              DBT *key, DBT *data, uint8_t *ver,
-                              u_int32_t flags, int verify_updateid)
+static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
+                              u_int32_t flags, int verify_updateid, void *(*fn_malloc)(int), void (*fn_free)(void *))
 {
     int rc, updateid = -1, ipu = ip_updates_enabled(bdb_state);
     unsigned long long *genptr = NULL;
@@ -1063,8 +1077,8 @@ static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
     if (rc == 0) {
         /* This will fail for mismatched updateids if updateid >= 0.
          * It will always return the correct updateid on success */
-        rc = bdb_unpack_dbt_verify_updateid(bdb_state, data, &updateid, ver,
-                                            flags, verify_updateid);
+        rc =
+            bdb_unpack_dbt_verify_updateid(bdb_state, data, &updateid, ver, flags, verify_updateid, fn_malloc, fn_free);
 
         /* bad rcode: free any memory the c_get allocated */
         if (rc != 0 && data->flags & DB_DBT_MALLOC) {
@@ -1093,13 +1107,13 @@ static int bdb_get_unpack_int(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
 int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
                    DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
 {
-    return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 1);
+    return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 1, NULL, NULL);
 }
 
-int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
-                        DBT *key, DBT *data, uint8_t *ver, u_int32_t flags)
+int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
+                        u_int32_t flags, void *(*fn_malloc)(int), void (*fn_free)(void *))
 {
-    return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0);
+    return bdb_get_unpack_int(bdb_state, db, tid, key, data, ver, flags, 0, fn_malloc, fn_free);
 }
 
 int bdb_prepare_put_pack_updateid(bdb_state_type *bdb_state, int is_blob,
