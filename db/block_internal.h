@@ -754,7 +754,8 @@ struct lockset_req {
     unsigned long long rows[1];
 };
 
-int has_cascading_reverse_constraints(struct dbtable *tbl);
+int has_cascading_reverse_constraints(struct dbtable *table);
+int has_cascading_forward_constraints(struct dbtable *table);
 
 int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   unsigned long long genid, unsigned long long ins_keys,
@@ -786,6 +787,12 @@ int check_update_constraints(struct ireq *iq, void *trans,
                              block_state_t *blkstate, int op, void *rec_dta,
                              void *newrec_dta, unsigned long long del_keys,
                              int *errout);
+int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
+                            int rrn, unsigned long long ins_keys,
+                            unsigned long long new_genid,
+                            unsigned long long old_genid);
+int delete_constraint_genid(unsigned long long genid);
+
 void dump_all_constraints(struct dbenv *env);
 void dump_constraints(struct dbtable *table);
 void dump_rev_constraints(struct dbtable *table);
