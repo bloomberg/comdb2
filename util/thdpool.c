@@ -750,8 +750,10 @@ static void *thdpool_thd(void *voidarg)
                 if (pool->stopped || thr_exit) {
                     /* Thread exiting - remove from pools lists */
                     listc_rfl(&pool->thdlist, thd);
-                    if (thd->on_freelist)
+                    if (thd->on_freelist) {
                         listc_rfl(&pool->freelist, thd);
+                        thd->on_freelist = 0;
+                    }
                     pool->num_exits++;
                     errUNLOCK(&pool->mutex);
 
@@ -830,8 +832,10 @@ static void *thdpool_thd(void *voidarg)
                 if (pool->maxnthd > 0 && listc_size(&pool->thdlist) >
                                              (pool->maxnthd + pool->nwaitthd)) {
                     listc_rfl(&pool->thdlist, thd);
-                    if (thd->on_freelist)
-                        abort();
+                    if (thd->on_freelist) {
+                        listc_rfl(&pool->freelist, thd);
+                        thd->on_freelist = 0;
+                    }
                     pool->num_exits++;
                     errUNLOCK(&pool->mutex);
                     goto thread_exit;
