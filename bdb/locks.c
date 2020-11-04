@@ -852,6 +852,12 @@ void bdb_locker_assert_nolocks(bdb_state_type *bdb_state, int lid)
     assert(nlocks == 0);
 }
 
+void bdb_tran_assert_nolocks(bdb_state_type *bdb_state, tran_type *tran)
+{
+    u_int32_t lid = resolve_locker_id(tran);
+    bdb_locker_assert_nolocks(bdb_state, lid);
+}
+
 void bdb_thread_assert_nolocks(bdb_state_type *bdb_state)
 {
     int nlocks;

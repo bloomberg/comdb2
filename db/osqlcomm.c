@@ -6015,6 +6015,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 /* Lock schema from now on before we finalize any schema changes
                  * and hold on to the lock until the transaction commits/aborts.
                  */
+                bdb_tran_assert_nolocks(thedb->bdb_env, trans);
                 wrlock_schema_lk();
                 iq->sc_locked = 1;
             }
