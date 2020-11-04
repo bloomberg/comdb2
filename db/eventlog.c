@@ -442,8 +442,10 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
     cson_object_set(newobj, "time", cson_new_int(logger->startus));
     cson_object_set(newobj, "type",
             cson_value_new_string("newsql", strlen("newsql")));
-    cson_object_set(newobj, "sql", cson_value_new_string(
-                logger->stmt, strlen(logger->stmt)));
+
+    /* logger->stmt is NULL if we fail to strdup the query. */
+    if (logger->stmt != NULL)
+        cson_object_set(newobj, "sql", cson_value_new_string(logger->stmt, strlen(logger->stmt)));
 
     char expanded_fp[2 * FINGERPRINTSZ + 1];
     util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
