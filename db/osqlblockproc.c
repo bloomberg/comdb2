@@ -1283,6 +1283,11 @@ int bplog_schemachange(struct ireq *iq, blocksql_tran_t *tran, void *err)
         iq->sc_pending = NULL;
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
+
+    assert(!iq->sc_locked);
+    iq->sc_locked = 1;
+    wrlock_schema_lk();
+
     return rc;
 }
 

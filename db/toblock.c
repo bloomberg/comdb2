@@ -2627,6 +2627,27 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
 
 extern int gbl_is_physical_replicant;
 
+static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
+{
+    int rc = 0;
+    /* Transactionally read the last sequence number.
+       This effectively serializes all updates.
+       There are probably riskier more clever schemes where we don't
+       need to do this. */
+    if (gbl_replicate_local_concurrent) {
+        unsigned long long useqno;
+        useqno = bdb_get_timestamp(thedb->bdb_env);
+        memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
+    } else {
+        long long seqno;
+        rc = get_next_seqno(trans, &seqno);
+        if (rc == 0)
+            p_blkstate->seqno = seqno;
+    }
+
+    return rc;
+}
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -2986,28 +3007,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
 
-    if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog")) {
-        /* Transactionally read the last sequence number.
-           This effectively serializes all updates.
-           There are probably riskier more clever schemes where we don't
-           need to do this. */
-        if (gbl_replicate_local_concurrent) {
-            unsigned long long useqno;
-            useqno = bdb_get_timestamp(thedb->bdb_env);
-            memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
-        } else {
-            long long seqno;
-            rc = get_next_seqno(trans, &seqno);
-
-            /* This can fail if we deadlock with another transaction.
-               ANYTHING in berkeley can deadlock.  Looking at the code
-               funny makes it deadlock.  */
-            if (rc) {
-                if (rc != RC_INTERNAL_RETRY)
-                    logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d\n", rc);
-                GOTOBACKOUT;
-            }
-            p_blkstate->seqno = seqno;
+    if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") && !iq->tranddl) {
+        rc = localrep_seqno(trans, p_blkstate);
+        if (rc) {
+            if (rc != RC_INTERNAL_RETRY)
+                logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d\n", rc);
+            GOTOBACKOUT;
         }
     }
 
@@ -4789,6 +4794,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;
+            } else if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog")) {
+                rc = localrep_seqno(trans, p_blkstate);
+                if (rc) {
+                    if (rc != RC_INTERNAL_RETRY)
+                        logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d for ddl\n", rc);
+                    needbackout = 1;
+                }
             }
         }
 
