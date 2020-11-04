@@ -1547,6 +1547,9 @@ static int osql_send_abort_logic(struct sqlclntstate *clnt, int nettype)
 static int check_osql_capacity_int(struct sqlclntstate *clnt)
 {
     osqlstate_t *osql = &clnt->osql;
+    /* Print the first 1024 characters of the SQL query. */
+    const static int maxwidth = 1024;
+    int nremain;
 
     osql->sentops++;
     osql->tran_ops++;
@@ -1554,10 +1557,17 @@ static int check_osql_capacity_int(struct sqlclntstate *clnt)
     if (clnt->osql_max_trans && osql->tran_ops > clnt->osql_max_trans) {
         /* This trace is used by ALMN 1779 to alert database owners.. please do
          * not change without reference to that almn. */
-        logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
-                        "(limit is %d) [\"%s\"]\n",
-                osql->tran_ops, clnt->osql_max_trans,
-                clnt->sql ? clnt->sql : "not_set");
+        nremain = strlen(clnt->sql) - maxwidth;
+        if (nremain <= 0)
+            logmsg(LOGMSG_ERROR,
+                   "check_osql_capacity: transaction size %d too big "
+                   "(limit is %d) [\"%s\"]\n",
+                   osql->tran_ops, clnt->osql_max_trans, clnt->sql ? clnt->sql : "not_set");
+        else
+            logmsg(LOGMSG_ERROR,
+                   "check_osql_capacity: transaction size %d too big "
+                   "(limit is %d) [\"%*s <%d more character(s)>\"]\n",
+                   osql->tran_ops, clnt->osql_max_trans, maxwidth, clnt->sql ? clnt->sql : "not_set", nremain);
 
         errstat_set_rc(&osql->xerr, SQLITE_TOOBIG);
         errstat_set_str(&osql->xerr, "transaction too big\n");
