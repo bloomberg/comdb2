@@ -102,10 +102,10 @@ void bdb_callback_set(bdb_callback_type *bdb_callback, int callback_type,
     case BDB_CALLBACK_SERIALCHECK:
         bdb_callback->serialcheck_rtn = (SERIALCHECK)callback_rtn;
         break;
-    /*
-        case BDB_CALLBACK_UNDOSHADOW:
-            bdb_callback->undoshadow_rtn = (UNDOSHADOWFP) callback_rtn;
-    */
+
+    case BDB_CALLBACK_SYNCMODE:
+        bdb_callback->syncmode_rtn = (SYNCMODE)callback_rtn;
+        break;
 
     default:
         break;

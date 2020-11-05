@@ -688,9 +688,9 @@ struct bdb_callback_tag {
     BDBSETFILELWMFP set_file_lwm_rtn;
     SCDONEFP scdone_rtn;
     SCABORTFP scabort_rtn;
-    UNDOSHADOWFP undoshadow_rtn;
     NODEDOWNFP nodedown_rtn;
     SERIALCHECK serialcheck_rtn;
+    SYNCMODE syncmode_rtn;
 };
 
 struct waiting_for_lsn {
