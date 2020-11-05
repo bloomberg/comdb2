@@ -689,6 +689,9 @@ void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
     cdb2__dbinforesponse__nodeinfo__init(master);
     int our_room = 0;
 
+    dbinfo_response->has_sync_mode = 1;
+    dbinfo_response->sync_mode = bdb_state->callback->syncmode_rtn(bdb_state);
+
     if (bdb_state->callback->getroom_rtn)
         our_room = (bdb_state->callback->getroom_rtn(
             bdb_state, bdb_state->repinfo->myhost));

@@ -95,6 +95,15 @@ enum ResponseType {
   SP_DEBUG      = 6;
 }
 
+enum CDB2SyncMode {
+    SYNC         = 1;
+    ASYNC        = 2;
+    SYNC_ROOM    = 3;
+    SYNC_N       = 4;
+    SYNC_SOURCE  = 5;
+    SYNC_UNKNOWN = 6;
+}
+
 enum CDB2ServerFeatures {
     SKIP_INTRANS_RESULTS = 1;
 }
@@ -110,6 +119,7 @@ message CDB2_DBINFORESPONSE {
     required nodeinfo master = 1;
     repeated nodeinfo nodes  = 2;     // These are replicants, we need to parse through these only.
     optional bool require_ssl = 3;
+    optional CDB2SyncMode sync_mode = 4;
 }
 
 message CDB2_EFFECTS {

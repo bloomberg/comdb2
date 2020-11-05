@@ -75,6 +75,8 @@
 #include <flibc.h>
 #include <cdb2_constants.h>
 #include <autoanalyze.h>
+#include <sqlresponse.pb-c.h>
+
 #include "util.h"
 #include "sc_global.h"
 
@@ -169,6 +171,8 @@ static int get_meta_int_tran(tran_type *tran, const char *table, int rrn,
                              int key);
 static int ix_find_check_blob_race(struct ireq *iq, char *inbuf, int numblobs,
                                    int *blobnums, void **blobptrs);
+
+static int syncmode_callback(bdb_state_type *bdb_state);
 
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
@@ -3612,11 +3616,8 @@ int open_bdb_env(struct dbenv *dbenv)
                      (BDB_CALLBACK_FP)osql_checkboard_check_down_nodes);
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_SERIALCHECK,
                      serial_check_callback);
-/*
-    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_UNDOSERIAL,
-            osql_checkboard_foreach_serial);
-*/
-
+    bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_SYNCMODE,
+                     syncmode_callback);
 #if 0
     bdb_callback_set(dbenv->bdb_callback, BDB_CALLBACK_CATCHUP, 
             catchup_callback);
@@ -6221,4 +6222,25 @@ int comdb2_is_user_op(char *user, char *password)
     curtran_puttran(trans);
 
     return rc;
+}
+
+static int sync_state_to_protobuf(int sync) {
+    switch (sync) {
+        case REP_SYNC_FULL:
+            return CDB2_SYNC_MODE__SYNC;
+        case REP_SYNC_SOURCE:
+            return CDB2_SYNC_MODE__SYNC_SOURCE;
+        case REP_SYNC_NONE:
+            return CDB2_SYNC_MODE__ASYNC;
+        case REP_SYNC_ROOM:
+            return CDB2_SYNC_MODE__SYNC_ROOM;
+        case REP_SYNC_N:
+            return CDB2_SYNC_MODE__SYNC_N;
+        default:
+            return 0;
+    }
+}
+
+static int syncmode_callback(bdb_state_type *bdb_state) {
+    return sync_state_to_protobuf(thedb->rep_sync);
 }
