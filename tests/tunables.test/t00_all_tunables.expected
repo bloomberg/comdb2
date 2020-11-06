@@ -862,7 +862,6 @@
 (name='survive_n_master_swings', description='Have a node retry applying a transaction against a new master this many times before giving up. (Default: 600)', type='INTEGER', value='600', read_only='Y')
 (name='sync_standalone', description='Force a log-sync at commit for standalone instances', type='BOOLEAN', value='OFF', read_only='N')
 (name='synctransactions', description='', type='BOOLEAN', value='OFF', read_only='N')
-(name='t2t', description='New tag->tag conversion code', type='BOOLEAN', value='OFF', read_only='N')
 (name='tablescan_cache_utilization', description='Attempt to keep no more than this percentage of the buffer pool for table scans.', type='INTEGER', value='20', read_only='N')
 (name='temptable_cachesz', description='Cache size for temporary tables. Temp tables do not share the database's main buffer pool.', type='INTEGER', value='262144', read_only='N')
 (name='temptable_limit', description='Set the maximum number of temporary tables the database can create. (Default: 8192)', type='INTEGER', value='8192', read_only='Y')
