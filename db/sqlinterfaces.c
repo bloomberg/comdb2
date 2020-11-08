@@ -3248,8 +3248,10 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
         goto cleanup;
     }
     if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
-        /* Leave the ownership of stmt data. */
-        query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
+        if (rec->status & CACHE_HAS_HINT) {
+            /* Leave the ownership of stmt data. */
+            query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
+        }
         if (requeue_stmt_entry(thd, rec->stmt_entry)) { /* put back in queue... */
             cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
         }
