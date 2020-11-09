@@ -465,10 +465,10 @@ struct plugin_callbacks {
     plugin_func *peer_check; /* newsql_peer_check */
     override_type_func *set_timeout; /* newsql_set_timeout */
 
-    /* optional */
+    /* Optional */
     void *state;
     int (*column_count)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_column_count */
-    int (*next_row)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_step */
+    int (*next_row)(struct sqlclntstate *, sqlite3_stmt *);     /* sqlite3_step */
     SQLITE_CALLBACK_API(int, type);                   /* sqlite3_column_type */
     SQLITE_CALLBACK_API(sqlite_int64, int64);         /* sqlite3_column_int64*/
     SQLITE_CALLBACK_API(double, double);              /* sqlite3_column_double*/
@@ -476,12 +476,13 @@ struct plugin_callbacks {
     SQLITE_CALLBACK_API(int, bytes);                  /* sqlite3_column_bytes */
     SQLITE_CALLBACK_API(const void *, blob);          /* sqlite3_column_bytes */
     SQLITE_CALLBACK_API(const dttz_t *, datetime);    /* sqlite3_column_datetime */
-    const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int, int); /* sqlite3_column_interval*/
-    int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *, const char **errstr); /* sqlite3_errcode */
+    const intv_t *(*column_interval)(struct sqlclntstate *, sqlite3_stmt *, int, int);  /* sqlite3_column_interval*/
+    int (*sqlite_error)(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);    /* sqlite3_errcode */
 };
 
 #define make_plugin_callback(clnt, name, func)                                 \
     (clnt)->plugin.func = name##_##func
+
 #define make_plugin_optional_null(clnt, name)                                  \
     (clnt)->plugin.column_##name = NULL
 

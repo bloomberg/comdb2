@@ -895,38 +895,6 @@ static int dohsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     }
     return 0;
 }
-static int dohsql_read_response(struct sqlclntstate *a, int b, void *c, int d)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s %d\n", (void *)pthread_self(), __func__, b);
-    return -1;
-}
-static void *dohsql_save_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return strdup(clnt->sql);
-}
-static void *dohsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    clnt->sql = arg;
-    return NULL;
-}
-static void *dohsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    free(arg);
-    return NULL;
-}
-static void *dohsql_print_stmt(struct sqlclntstate *clnt, void *arg)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return arg;
-}
 
 static int dohsql_param_count(struct sqlclntstate *c)
 {
@@ -983,99 +951,6 @@ static int dohsql_param_value(struct sqlclntstate *a, struct param_data *b,
     return _param_value((dohsql_connector_t *)a->plugin.state, b, c, __func__);
 }
 
-static int dohsql_override_count(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-
-    /* children don't have overrides, they are only available in distributor */
-    return 0;
-}
-
-static int dohsql_override_type(struct sqlclntstate *a, int b)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s TODO\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-
-static int dohsql_clr_cnonce(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_has_cnonce(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_set_cnonce(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_get_cnonce(struct sqlclntstate *a, snap_uid_t *b)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_get_snapshot(struct sqlclntstate *a, int *b, int *c)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_upd_snapshot(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_clr_snapshot(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_has_high_availability(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_set_high_availability(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_clr_high_availability(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_get_high_availability(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_has_parallel_sql(struct sqlclntstate *a)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static void dohsql_add_steps(struct sqlclntstate *a, double b)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-}
 static void dohsql_setup_client_info(struct sqlclntstate *clnt,
                                      struct sqlthdstate *b, char *c)
 {
@@ -1088,89 +963,14 @@ static void dohsql_setup_client_info(struct sqlclntstate *clnt,
         logmsg(LOGMSG_WARN, "%p %s %s\n", (void *)pthread_self(), __func__,
                (conn->thr_where) ? conn->thr_where : "NULL");
 }
-static int dohsql_skip_row(struct sqlclntstate *a, uint64_t b)
+
+static void make_dohsql_plugin(struct sqlclntstate *clnt)
 {
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_log_context(struct sqlclntstate *a, struct reqlogger *b)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s TODO\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static uint64_t dohsql_get_client_starttime(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_get_client_retries(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_send_intrans_response(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_fileno(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_close(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_set_timeout(struct sqlclntstate *clnt, int timeout)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_local_check(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_peer_check(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_flush(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
-}
-static int dohsql_has_ssl(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_has_x509(struct sqlclntstate *clnt)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return 0;
-}
-static int dohsql_get_x509_attr(struct sqlclntstate *clnt, int a, void *b, int c)
-{
-    if (gbl_plugin_api_debug)
-        logmsg(LOGMSG_WARN, "%p %s\n", (void *)pthread_self(), __func__);
-    return -1;
+    clnt->plugin.write_response = dohsql_write_response;
+    clnt->plugin.param_count = dohsql_param_count;
+    clnt->plugin.param_index = dohsql_param_index;
+    clnt->plugin.param_value = dohsql_param_value;
+    clnt->plugin.setup_client_info = dohsql_setup_client_info;
 }
 
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
@@ -1205,7 +1005,7 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->clnt->origin = clnt->origin;
     conn->clnt->current_user = clnt->current_user;
     conn->clnt->sql = strdup(sql);
-    plugin_set_callbacks(conn->clnt, dohsql);
+    make_dohsql_plugin(conn->clnt);
     conn->clnt->plugin.state = conn;
     where = thrman_get_where(thrman_self());
     conn->thr_where = strdup(where ? where : "");

@@ -80,6 +80,7 @@ contrib/docker/volumes
 # editor files
 *.swp
 .clangd
+.DS_Store
 tags
 compile_commands.json
 cscope.*
