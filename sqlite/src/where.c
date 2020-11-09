@@ -4059,6 +4059,9 @@ static LogEst whereSortingCost(
   ** Use the LIMIT for M if it is smaller */
   if( (pWInfo->wctrlFlags & WHERE_USE_LIMIT)!=0 && pWInfo->iLimit<nRow ){
     nRow = pWInfo->iLimit;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    nRow *= gbl_sqlite_sortermult;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   rSortCost += estLog(nRow);
   return rSortCost;
