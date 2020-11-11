@@ -3061,7 +3061,7 @@ void backend_sync_stat(struct dbenv *dbenv)
     else
         logmsg(LOGMSG_USER, "LOG DELETE ENABLED only up to and including log.%010d\n",
                dbenv->log_delete_filenum);
-    if (dbenv->log_delete_age > 0) {
+    if (dbenv->log_delete_age > comdb2_time_epoch()) {
         struct tm tm;
         time_t secs;
         char buf[64];
