@@ -382,12 +382,7 @@ done:
 
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb)
-            sbuf2printf(sb, "FAILED\n");
-    } else if (sb)
-        sbuf2printf(sb, "SUCCESS\n");
-
-    sbuf2flush(sb);
+    }
     return rc;
 }
 
@@ -498,6 +493,8 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
 
     // enqueue work to the threadpool queue
     rc = bdb_verify_enqueue(&info, gbl_verify_thdpool);
+    if (rc)
+        goto done;
 
     // wait for all our enqueued work items to complete for this verify
     while (par.threads_spawned > par.threads_completed) {
@@ -507,19 +504,16 @@ static int parallel_verify_table(const char *table, SBUF2 *sb,
         }
         sleep(1);
     }
+    rc = par.verify_status;
 done:
     if (tran)
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_INFO, "verify rc %d\n", rc);
-        if (sb)
-            sbuf2printf(sb, "FAILED\n");
-    } else if (sb)
-        sbuf2printf(sb, "SUCCESS\n");
+    }
 
-    sbuf2flush(sb);
-    return par.verify_status;
+    return rc;
 }
 
 inline int verify_table(const char *table, SBUF2 *sb,
