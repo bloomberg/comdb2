@@ -3550,6 +3550,7 @@ extern int gbl_disable_tpsc_tblvers;
 extern int gbl_osql_odh_blob;
 extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
+extern int gbl_sqlite_makerecord_for_comdb2;
 
 void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 

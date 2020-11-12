@@ -354,6 +354,7 @@ struct sqlite3_value {
 #define MEM_FromBind  0x00100  /* Value originates from sqlite3_bind() */
 #define MEM_Undefined 0x00200  /* Value is undefined */
 #define MEM_Cleared   0x00400  /* NULL set by OP_Null, not from data */
+#define MEM_Comdb2    0x00800  /* Value is already in comdb2 row format */
 #define MEM_TypeMask  0x306ff  /* Mask of type bits */
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #define MEM_AffMask   0x001f   /* Mask of affinity bits */

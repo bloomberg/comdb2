@@ -966,6 +966,7 @@ struct BtCursor {
     void *ondisk_buf;         /* ondisk data */
     void *ondisk_key; /* ondisk key. this is effectively also the pointer into
                          the index */
+    blob_buffer_t ondisk_blobs[MAXBLOBS]; /* ondisk blobs */
 
     void *lastkey; /* last key: swap with ondisk_key for subsequent lookups */
     void *fndkey;  /* this key is actually found */

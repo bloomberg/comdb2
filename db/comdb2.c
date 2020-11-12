@@ -5312,6 +5312,9 @@ static void register_all_int_switches()
                         "Delay release locks in cursor move if bdb lock "
                         "desired but client sends rows back",
                         &gbl_delay_sql_lock_release_sec);
+    register_int_switch("sqlite_makerecord_for_comdb2",
+                        "Enable MakeRecord optimization which converts Mem to comdb2 row data directly",
+                        &gbl_sqlite_makerecord_for_comdb2);
 }
 
 static void getmyid(void)
