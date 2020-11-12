@@ -17,6 +17,7 @@
 #include "cdb2_constants.h"
 int need_index_checks_for_upsert(Table *pTab, Upsert *pUpsert, int onError, int noConflict);
 int is_comdb2_index_unique(const char *tbl, char *idx);
+int gbl_sqlite_makerecord_for_comdb2 = 1;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2055,8 +2056,21 @@ void sqlite3CompleteInsertion(
   if( !HasRowid(pTab) ) return;
   regData = regNewData + 1;
   regRec = sqlite3GetTempReg(pParse);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( gbl_sqlite_makerecord_for_comdb2 ){
+    /* Store the cursor in P3 of OP_MakeRecord. */
+    sqlite3VdbeAddOp2(v, OP_Integer, iDataCur, regRec);
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3VdbeAddOp3(v, OP_MakeRecord, regData, pTab->nCol, regRec);
   sqlite3SetMakeRecordP5(v, pTab);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( gbl_sqlite_makerecord_for_comdb2 ){
+    /* Light the OPFLAG_MKREC_COMDB2 flag so that the VDBE knows that it needs to
+       convert Mem structures to comdb2 row data of the table of cursor P3 */
+    sqlite3VdbeChangeP5(v, (sqlite3VdbeGetOp(v, -1)->p5 | OPFLAG_MKREC_COMDB2));
+  }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( !bAffinityDone ){
     sqlite3TableAffinity(v, pTab, 0);
   }

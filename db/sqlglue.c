@@ -6327,22 +6327,15 @@ skip:
     } else {
         if (pCur->rootpage >= RTPAGE_START) {
             if (pCur->writeTransaction) {
-                if (pCur->ondisk_buf)
-                    free(pCur->ondisk_buf);
+                free(pCur->ondisk_buf);
+                free(pCur->fndkey);
             }
-            if (pCur->ondisk_key)
-                free(pCur->ondisk_key);
-            if (pCur->writeTransaction) {
-                if (pCur->fndkey)
-                    free(pCur->fndkey);
-            }
+            free(pCur->ondisk_key);
         }
         if (pCur->writeTransaction) {
-            if (pCur->dtabuf)
-                free(pCur->dtabuf);
+            free(pCur->dtabuf);
         }
-        if (pCur->keybuf)
-            free(pCur->keybuf);
+        free(pCur->keybuf);
 
         if (pCur->is_sampled_idx) {
             rc = sampler_close(pCur->sampler);
@@ -8472,24 +8465,39 @@ int sqlite3BtreeInsert(
     const BtreePayload *pPayload, /* The key and data of the new record */
     int bias, int seekResult, int flags)
 {
-    const void *pKey = pPayload->pKey;
-    sqlite3_int64 nKey = pPayload->nKey;
-    const void *pData = pPayload->pData;
-    int nData = pPayload->nData;
+    const void *pKey;
+    sqlite3_int64 nKey;
+    const void *pData;
+    int nData;
+    blob_buffer_t *pblobs;
 
     int rc = UNIMPLEMENTED;
     int bdberr;
-    blob_buffer_t blobs[MAXBLOBS];
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
+
+    /* If pPayload is NULL, ondisk_buf and ondisk_blobs contain comdb2 row data
+       and are ready to be inserted as is. */
+    if (pPayload == NULL) {
+        pblobs = pCur->ondisk_blobs;
+        pKey = NULL;
+        nKey = 0;
+        pData = NULL;
+        nData = 0;
+    } else {
+        pKey = pPayload->pKey;
+        nKey = pPayload->nKey;
+        pData = pPayload->pData;
+        nData = pPayload->nData;
+        pblobs = alloca(sizeof(blob_buffer_t) * MAXBLOBS);
+        memset(pblobs, 0, sizeof(blob_buffer_t) * MAXBLOBS);
+    }
 
     if (thd && pCur->db == NULL) {
         thd->nwrite++;
         thd->cost += pCur->write_cost;
         pCur->nwrite++;
     }
-
-    bzero(blobs, sizeof(blobs));
 
     assert(0 == pCur->is_sampled_idx);
 
@@ -8502,7 +8510,7 @@ int sqlite3BtreeInsert(
     }
 
     if (unlikely(pCur->cursor_class == CURSORCLASS_STAT24)) {
-        rc = make_stat_record(thd, pCur, pData, nData, blobs);
+        rc = make_stat_record(thd, pCur, pData, nData, pblobs);
         if (rc) {
             char errs[128];
             convert_failure_reason_str(&thd->clnt->fail_reason,
@@ -8632,10 +8640,8 @@ int sqlite3BtreeInsert(
             if (likely(pCur->cursor_class != CURSORCLASS_STAT24) &&
                 likely(pCur->bt == NULL || pCur->bt->is_remote == 0) &&
                 gbl_expressions_indexes && pCur->db->ix_expr) {
-                rc = sqlite_to_ondisk(pCur->db->ixschema[pCur->ixnum], pKey,
-                                      nKey, pCur->ondisk_key, clnt->tzname,
-                                      blobs, MAXBLOBS,
-                                      &thd->clnt->fail_reason, pCur);
+                rc = sqlite_to_ondisk(pCur->db->ixschema[pCur->ixnum], pKey, nKey, pCur->ondisk_key, clnt->tzname,
+                                      pblobs, MAXBLOBS, &thd->clnt->fail_reason, pCur);
                 if (rc != getkeysize(pCur->db, pCur->ixnum)) {
                     char errs[128];
                     convert_failure_reason_str(
@@ -8682,11 +8688,10 @@ int sqlite3BtreeInsert(
             bset(clnt->dirty, pCur->tblnum);
         }
 
-        if (likely(pCur->cursor_class != CURSORCLASS_STAT24) &&
-            likely(pCur->bt == NULL || pCur->bt->is_remote == 0)) {
-            rc = sqlite_to_ondisk(
-                pCur->db->schema, pData, nData, pCur->ondisk_buf, clnt->tzname,
-                blobs, MAXBLOBS, &thd->clnt->fail_reason, pCur);
+        if (likely(pCur->cursor_class != CURSORCLASS_STAT24) && likely(pCur->bt == NULL || pCur->bt->is_remote == 0) &&
+            pPayload != NULL) {
+            rc = sqlite_to_ondisk(pCur->db->schema, pData, nData, pCur->ondisk_buf, clnt->tzname, pblobs, MAXBLOBS,
+                                  &thd->clnt->fail_reason, pCur);
             if (rc < 0) {
                 char errs[128];
                 convert_failure_reason_str(&thd->clnt->fail_reason,
@@ -8746,16 +8751,13 @@ int sqlite3BtreeInsert(
             }
 
             if (is_update) { /* Updating an existing record. */
-                rc = osql_updrec(pCur, thd, pCur->ondisk_buf,
-                                 getdatsize(pCur->db), pCur->vdbe->updCols,
-                                 blobs, MAXBLOBS, rec_flags);
+                rc = osql_updrec(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), pCur->vdbe->updCols, pblobs,
+                                 MAXBLOBS, rec_flags);
                 clnt->effects.num_updated++;
                 clnt->log_effects.num_updated++;
                 clnt->nrows++;
             } else {
-                rc = osql_insrec(pCur, thd, pCur->ondisk_buf,
-                                 getdatsize(pCur->db), blobs, MAXBLOBS,
-                                 rec_flags);
+                rc = osql_insrec(pCur, thd, pCur->ondisk_buf, getdatsize(pCur->db), pblobs, MAXBLOBS, rec_flags);
                 clnt->effects.num_inserted++;
                 clnt->log_effects.num_inserted++;
                 clnt->nrows++;
@@ -8806,7 +8808,7 @@ int sqlite3BtreeInsert(
     }
 
 done:
-    free_blob_buffers(blobs, MAXBLOBS);
+    free_blob_buffers(pblobs, MAXBLOBS);
     reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Insert(pCur %d)      = %s\n",
                 pCur->cursorid, sqlite3ErrStr(rc));
     return rc;
@@ -9075,6 +9077,58 @@ i64 sqlite3BtreeNewRowid(BtCursor *pCur)
 char *sqlite3BtreeGetTblName(BtCursor *pCur)
 {
     return pCur->db->tablename;
+}
+
+int sqlite3MakeRecordForComdb2(BtCursor *pCur, Mem *head, int nf, int *optimized)
+{
+    struct sql_thread *thd = pCur->thd;
+    struct mem_info info;
+    struct field_conv_opts_tz convopts = {.flags = 0};
+    int nblobs = 0;
+    int rc = 0;
+    int i, min;
+
+    if (pCur->cursor_class != CURSORCLASS_TABLE || /* Data only */
+        pCur->rootpage == RTPAGE_SQLITE_MASTER ||  /* No DDL */
+        pCur->bt == NULL ||                        /* Must point to something */
+        pCur->bt->is_temporary ||                  /* No temptable */
+        pCur->bt->is_remote ||                     /* No fdb */
+        pCur->bt->is_hashtable /* No hashtable */) {
+        *optimized = 0;
+        return 0;
+    }
+
+    info.s = pCur->db->schema;
+    info.fail_reason = &thd->clnt->fail_reason;
+    info.tzname = thd->clnt->tzname;
+    info.nblobs = &nblobs;
+    info.convopts = &convopts;
+    info.outblob = pCur->ondisk_blobs;
+    info.maxblobs = MAXBLOBS;
+
+    memset(info.outblob, 0, sizeof(blob_buffer_t) * MAXBLOBS);
+    init_convert_failure_reason(info.fail_reason);
+
+    for (i = 0, min = (info.s->nmembers < nf) ? info.s->nmembers : nf; i != min; ++i) {
+        info.fldidx = i;
+        info.m = &head[i];
+        info.null = (info.m->uTemp == 0);
+        if ((rc = mem_to_ondisk(pCur->ondisk_buf, &info.s->member[i], &info, NULL)) < 0) {
+            char errs[128];
+            convert_failure_reason_str(&thd->clnt->fail_reason, pCur->db->tablename, "SQLite format", ".ONDISK", errs,
+                                       sizeof(errs));
+            reqlog_logf(pCur->bt->reqlogger, REQL_TRACE, "Moveto: sqlite_to_ondisk failed [%s]\n", errs);
+            sqlite3_mutex_enter(sqlite3_db_mutex(pCur->vdbe->db));
+            sqlite3VdbeError(pCur->vdbe, errs, (char *)0);
+            sqlite3_mutex_leave(sqlite3_db_mutex(pCur->vdbe->db));
+            rc = SQLITE_ERROR;
+            break;
+        }
+    }
+
+    if (rc == 0)
+        *optimized = 1;
+    return rc;
 }
 
 char *get_dbtable_name(struct dbtable *tbl)
