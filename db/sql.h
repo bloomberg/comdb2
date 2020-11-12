@@ -29,7 +29,6 @@
 #include "osqlcheckboard.h"
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
-#include "priority_queue.h"
 #include "comdb2_ruleset.h"
 
 #include "fdb_fend.h"
@@ -632,25 +631,6 @@ struct string_ref;
 
 /* Client specific sql state */
 struct sqlclntstate {
-    uint64_t seqNo;            /* Monotonically increasing sequence number
-                                * assigned during dispatch.  This value is
-                                * not allowed to be zero.  Further, it must
-                                * be based on a value that is never reset
-                                * while the server is running.  This value
-                                * will be used as a proxy for the original
-                                * time of the client request, which impacts
-                                * the relative priority of queued SQL work
-                                * items.  This value should only be changed
-                                * by the dispatch_sql_query() function. */
-
-    priority_t priority;       /* This is the (relative) priority assigned
-                                * to the SQL work item currently in progress.
-                                * Lower values indicate higher priority.  In
-                                * theory, higher priority SQL work items will
-                                * be processed before lower priority SQL work
-                                * items.  This value should only be changed
-                                * by the dispatch_sql_query() function. */
-
     struct thdpool *pPool;     /* When null, the default SQL thread pool is
                                 * being used to service the request; otherwise,
                                 * a specifically assigned SQL thread pool is
@@ -1196,7 +1176,7 @@ void osql_log_time_done(struct sqlclntstate *clnt);
 void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
                                    struct ruleset_item_criteria *context);
 
-int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority);
+int dispatch_sql_query(struct sqlclntstate *clnt);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -1376,7 +1356,6 @@ void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
 struct sqlclntstate *get_sql_clnt(void);
-uint64_t get_sql_clnt_seqno(void);
 
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);

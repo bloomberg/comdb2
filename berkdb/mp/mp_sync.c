@@ -1429,8 +1429,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 					Pthread_mutex_unlock(&pt->lk);
 					
 					t_ret = thdpool_enqueue(trickle_thdpool,
-					    trickle_do_work, range, 0, NULL, 0,
-					    PRIORITY_T_DEFAULT);
+					    trickle_do_work, range, 0, NULL, 0);
 					if (t_ret) {
 						pt->nwaits++;
 						poll(NULL, 0, 10);
@@ -1472,8 +1471,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				Pthread_mutex_unlock(&pt->lk);
 
 				t_ret = thdpool_enqueue(trickle_thdpool,
-				    trickle_do_work, range, 0, NULL, 0,
-				    PRIORITY_T_DEFAULT);
+				    trickle_do_work, range, 0, NULL, 0);
 				if (t_ret) {
 					pt->nwaits++;
 					poll(NULL, 0, 10);
@@ -2075,8 +2073,7 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
 	Pthread_mutex_lock(fileid_env->lk);
 	(*fileid_env->active_threads)++;
 	if ((ret = thdpool_enqueue(loadcache_thdpool, load_fileids,
-                                   fileid_env, 0, NULL, 0,
-                                   PRIORITY_T_DEFAULT)) != 0) {
+                                   fileid_env, 0, NULL, 0)) != 0) {
 		Pthread_mutex_unlock(fileid_env->lk);
 		load_fileids(NULL, fileid_env, NULL, 0);
 	} else {

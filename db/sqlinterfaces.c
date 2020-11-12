@@ -191,7 +191,6 @@ int gbl_bpfunc_auth_gen = 1;
 uint64_t gbl_clnt_seq_no = 0;
 
 int gbl_thdpool_queue_only = 0;
-int gbl_debug_force_thdpool_priority = (int)PRIORITY_T_HIGHEST;
 int gbl_random_sql_work_delayed = 0;
 int gbl_random_sql_work_rejected = 0;
 
@@ -312,12 +311,6 @@ struct sqlclntstate *get_sql_clnt(void){
   struct sql_thread *thd = pthread_getspecific(query_info_key);
   if (thd == NULL) return NULL;
   return thd->clnt;
-}
-
-uint64_t get_sql_clnt_seqno(void){
-  struct sqlclntstate *clnt = get_sql_clnt();
-  if (clnt == NULL) return 0;
-  return clnt->seqNo;
 }
 
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
@@ -5069,12 +5062,10 @@ static int can_execute_sql_query_now(
   struct sqlclntstate *clnt,
   int *pRuleNo,
   int *pbRejected,
-  int *pbTryAgain,
-  priority_t *pPriority
+  int *pbTryAgain
 ){
   struct ruleset_item_criteria context = {0};
   struct ruleset_result result = {0};
-  result.priority = *pPriority;
   clnt->pPool = NULL; /* NOTE: By default, start with the "default" pool. */
   clnt_to_ruleset_item_criteria(clnt, &context);
   size_t count = comdb2_evaluate_ruleset(NULL, gbl_ruleset, &context, &result);
@@ -5082,29 +5073,27 @@ static int can_execute_sql_query_now(
     &result, clnt->work.zRuleRes, sizeof(clnt->work.zRuleRes)
   );
   if (gbl_verbose_prioritize_queries) {
-    logmsg(LOGMSG_INFO, "%s: PRE seqNo=%llu, count=%d, sql={%s}, %s\n",
-           __func__, (long long unsigned int)clnt->seqNo, (int)count,
-           clnt->sql, clnt->work.zRuleRes);
+    logmsg(LOGMSG_INFO, "%s: PRE count=%d, sql={%s}, %s\n",
+           __func__, (int)count, clnt->sql, clnt->work.zRuleRes);
   }
   *pRuleNo = -1; /* no rule was specifically responsible */
   *pbRejected = 0; /* initially, SQL work item is always allowed */
   /* BEGIN FAULT INJECTION TEST CODE */
   if ((result.action != RULESET_A_REJECT) && /* skip already adverse actions */
-      (result.action != RULESET_A_REJECT_ALL) &&
-      (result.action != RULESET_A_LOW_PRIO)) {
+      (result.action != RULESET_A_REJECT_ALL)) {
     if (gbl_random_sql_work_rejected &&
         !(rand() % gbl_random_sql_work_rejected)) {
       logmsg(LOGMSG_WARN,
-             "%s: POST seqNo=%llu, forcing random SQL work item {%s} reject\n",
-             __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
+             "%s: POST forcing random SQL work item {%s} reject\n",
+             __func__, clnt->sql);
       *pbRejected = 1;
       *pbTryAgain = 0;
       return 0;
     } else if (gbl_random_sql_work_delayed &&
         !(rand() % gbl_random_sql_work_delayed)) {
       logmsg(LOGMSG_WARN,
-             "%s: POST seqNo=%llu, forcing random SQL work item {%s} delay\n",
-             __func__, (long long unsigned int)clnt->seqNo, clnt->sql);
+             "%s: POST forcing random SQL work item {%s} delay\n",
+             __func__, clnt->sql);
       return 0;
     }
   }
@@ -5131,11 +5120,8 @@ static int can_execute_sql_query_now(
       *pRuleNo = result.ruleNo;
       break;
     }
-    case RULESET_A_LOW_PRIO:
-    case RULESET_A_HIGH_PRIO:
     case RULESET_A_SET_POOL: {
       *pRuleNo = result.ruleNo;
-      *pPriority = result.priority;
       if (result.zPool != NULL) {
         pool = get_named_sql_pool(
             result.zPool, result.flags & RULESET_F_DYN_POOL,
@@ -5158,44 +5144,12 @@ static int can_execute_sql_query_now(
       break;
     }
   }
-  /*
-  ** WARNING: This code assumes that higher priority values have
-  **          lower numerical values.
-  */
-  const char *zPoolPriority = "unknown ";
-  priority_t pool_priority = PRIORITY_T_INVALID;
-  if (count > 0) {
-    pool_priority = (priority_t)gbl_debug_force_thdpool_priority;
-    if (pool_priority == PRIORITY_T_HIGHEST) {
-      zPoolPriority = "fake ";
-      pool_priority = thdpool_get_highest_priority(pool);
-    } else {
-      zPoolPriority = "actual ";
-    }
-  }
-  int rc;
-  if (pool_priority == PRIORITY_T_INVALID) {
-    rc = 1; /* empty pool -OR- no rules matched */
-  } else if (*pPriority <= pool_priority) {
-    rc = 1; /* query has priority */
-  } else {
-    rc = 0; /* query should wait */
-  }
-  const char *zResult = rc ? "NOW" : "LATER";
   if (gbl_verbose_prioritize_queries) {
-    char zPriority1[100] = {0};
-    char zPriority2[100] = {0};
     logmsg(LOGMSG_INFO,
-      "%s: POST seqNo=%llu, count=%d, sql={%s}, pool={%s} ==> ruleset work "
-      "item priority %s VS %spool work item priority %s: %s\n",
-      __func__, (long long unsigned int)clnt->seqNo, (int)count, clnt->sql,
-      thdpool_get_name(pool),
-      comdb2_priority_to_str(*pPriority, zPriority1, sizeof(zPriority1), 0),
-      zPoolPriority,
-      comdb2_priority_to_str(pool_priority, zPriority2, sizeof(zPriority2), 0),
-      zResult);
+      "%s: POST count=%d, sql={%s}, pool={%s}\n",
+      __func__, (int)count, clnt->sql, thdpool_get_name(pool));
   }
-  return rc;
+  return 1;
 }
 
 void sqlengine_work_appsock(void *thddata, void *work)
@@ -5349,41 +5303,12 @@ static int send_heartbeat(struct sqlclntstate *clnt)
         }                                                                      \
     } while (0)
 
-static priority_t combinePriorities(
-  priority_t priority1, /* base, second arg to dispatch_sql_query(). */
-  priority_t priority2  /* offset, calculated based on sequence number. */
-){
-  switch( priority1 ){
-    case PRIORITY_T_HEAD:
-    case PRIORITY_T_TAIL: {
-      return priority1;
-    }
-    case PRIORITY_T_DEFAULT: {
-      assert(priority_is_valid(priority2, 0));
-      return priority2;
-    }
-    default: {
-      priority_t priority3 = priority1 + priority2;
-      assert(priority_is_valid(priority3, 0));
-      return priority3;
-    }
-  }
-}
-
-static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
+static int enqueue_sql_query(struct sqlclntstate *clnt)
 {
     char msg[1024];
     int rc;
     int fail_dispatch = 0;
     int q_depth_tag_and_sql;
-
-    /*
-    ** WARNING: This code assumes that higher priority values have
-    **          lower numerical values.
-    */
-    priority_t localPriority = PRIORITY_T_HIGHEST + clnt->seqNo;
-    clnt->priority = combinePriorities(priority, localPriority);
-    assert(priority_is_valid(clnt->priority, 1));
 
     struct thr_handle *self = thrman_self();
     if (self) {
@@ -5421,11 +5346,11 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
     struct thdpool *pool = get_sql_pool(clnt);
     clnt->enque_timeus = comdb2_time_epochus();
 
-    snprintf(msg, sizeof(msg), "%s {%s} ==> pool {%s} priority {%lld} at %llu",
-             clnt->origin, clnt->sql, (pool != NULL) ? thdpool_get_name(pool) :
-         "<null>", clnt->priority, (long long unsigned int)clnt->enque_timeus);
+    if (gbl_verbose_normalized_queries) {
+        snprintf(msg, sizeof(msg), "%s {%s} ==> pool {%s} at %llu",
+                 clnt->origin, clnt->sql, (pool != NULL) ? thdpool_get_name(pool) :
+                 "<null>", (long long unsigned int)clnt->enque_timeus);
 
-    if (gbl_verbose_prioritize_queries) {
         logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, msg);
     }
 
@@ -5454,15 +5379,13 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
 
     struct string_ref *sr = get_ref(clnt->sql_ref);
     if ((rc = thdpool_enqueue(pool, sqlengine_work_appsock_pp,
-                              clnt, clnt->queue_me, sr, flags,
-                              clnt->priority)) != 0) {
+                              clnt, clnt->queue_me, sr, flags)) != 0) {
         if ((in_client_trans(clnt) || clnt->osql.replay == OSQL_RETRY_DO) &&
             gbl_requeue_on_tran_dispatch) {
             /* force this request to queue */
             rc = thdpool_enqueue(pool,
                                  sqlengine_work_appsock_pp, clnt, 1, sr,
-                                 flags | THDPOOL_FORCE_QUEUE,
-                                 clnt->priority);
+                                 flags | THDPOOL_FORCE_QUEUE);
         }
 
         if (rc) {
@@ -5582,7 +5505,7 @@ done:
     return clnt->query_rc;
 }
 
-static int verify_dispatch_sql_query(struct sqlclntstate *clnt, priority_t *pPriority)
+static int verify_dispatch_sql_query(struct sqlclntstate *clnt)
 {
     memset(clnt->work.zRuleRes, 0, sizeof(clnt->work.zRuleRes));
 
@@ -5600,9 +5523,7 @@ static int verify_dispatch_sql_query(struct sqlclntstate *clnt, priority_t *pPri
     int bRejected = 0;
     int bTryAgain = 0;
 
-    *pPriority = PRIORITY_T_INITIAL; /* TODO: Tunable default priority? */
-
-    int ret = can_execute_sql_query_now(clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain, pPriority);
+    int ret = can_execute_sql_query_now(clnt->thd, clnt, &ruleNo, &bRejected, &bTryAgain);
     if (ret || !bRejected) {
         return 0;
     }
@@ -5612,23 +5533,21 @@ static int verify_dispatch_sql_query(struct sqlclntstate *clnt, priority_t *pPri
     memset(zRuleRes, 0, sizeof(zRuleRes));
     snprintf0(zRuleRes, sizeof(zRuleRes), "Rejected due to rule #%d", ruleNo);
     if (gbl_verbose_prioritize_queries) {
-        logmsg(LOGMSG_ERROR, "%s: REJECTED seqNo=%llu, rc=%d {%s}: %s\n",
-               __func__, (long long unsigned int)clnt->seqNo, rc, clnt->sql, zRuleRes);
+        logmsg(LOGMSG_ERROR, "%s: REJECTED rc=%d {%s}: %s\n",
+               __func__, rc, clnt->sql, zRuleRes);
     }
     send_run_error(clnt, zRuleRes, rc);
     return rc;
 }
 
-int dispatch_sql_query(struct sqlclntstate *clnt, priority_t priority)
+int dispatch_sql_query(struct sqlclntstate *clnt)
 {
     mark_clnt_as_recently_used(clnt);
 
-    clnt->seqNo = ATOMIC_ADD64(gbl_clnt_seq_no, 1);
-    assert(clnt->seqNo > 0);
-    int rc = verify_dispatch_sql_query(clnt, &priority);
+    int rc = verify_dispatch_sql_query(clnt);
     if (rc != 0) return rc;
 
-    rc = enqueue_sql_query(clnt, priority);
+    rc = enqueue_sql_query(clnt);
     if (rc != 0) return rc;
 
     return wait_for_sql_query(clnt);
@@ -5756,8 +5675,6 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
        clnt->plugin.set_timeout(clnt, gbl_sqlwrtimeoutms);
     }
 
-    clnt->seqNo = 0;
-    clnt->priority = PRIORITY_T_INVALID;
     clnt->pPool = NULL; /* REDUNDANT? */
 
     if (clnt->rawnodestats) {
@@ -7091,7 +7008,7 @@ void run_internal_sql(char *sql)
     start_internal_sql_clnt(&clnt);
     clnt.sql = skipws(sql);
 
-    int rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT);
+    int rc = dispatch_sql_query(&clnt);
     if (rc || clnt.query_rc || clnt.saved_errstr) {
         if (clnt.query_rc)
             logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql, clnt.query_rc);
@@ -7350,7 +7267,7 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
     printf("run_internal_sql_clnt() sql '%s'\n", sql);
 #endif
     clnt->sql = skipws(sql);
-    int rc = dispatch_sql_query(clnt, PRIORITY_T_DEFAULT);
+    int rc = dispatch_sql_query(clnt);
     if (rc || clnt->query_rc || clnt->saved_errstr) {
         if (clnt->query_rc)
             logmsg(LOGMSG_ERROR, "%s: Error from query: '%s' (rc = %d) \n", __func__, sql, clnt->query_rc);

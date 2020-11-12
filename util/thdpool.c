@@ -44,7 +44,6 @@
 #include "locks_wrap.h"
 #include "debug_switches.h"
 #include "logmsg.h"
-#include "priority_queue.h"
 #include "comdb2_atomic.h"
 #include "string_ref.h"
 
@@ -136,7 +135,7 @@ struct thdpool {
     /* Work queue, and pool for allocating queued work items.  We only start
      * queueing if all threads are busy and we've hit max threads. */
     pool_t *pool;
-    priority_queue_t queue;
+    LISTC_T(struct workitem) queue;
 
     int exit_on_create_fail;
 
@@ -251,7 +250,7 @@ struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz)
 #endif
     listc_init(&pool->thdlist, offsetof(struct thd, thdlist_linkv));
     listc_init(&pool->freelist, offsetof(struct thd, freelist_linkv));
-    priority_queue_initialize(&pool->queue);
+    listc_init(&pool->queue, offsetof(struct workitem, linkv));
 
     Pthread_mutex_init(&pool->mutex, NULL);
     Pthread_attr_init(&pool->attrs);
@@ -319,7 +318,13 @@ int thdpool_destroy(struct thdpool **pool_p, int coopWaitUs)
     Pthread_mutex_destroy(&pool->mutex);
     Pthread_attr_destroy(&pool->attrs);
 
-    priority_queue_clear(&pool->queue);
+    struct workitem *tmp, *iter;
+
+    LISTC_FOR_EACH_SAFE(&pool->queue, iter, tmp, linkv)
+    {
+      listc_rfl(&pool->queue, iter);
+      free(iter);
+    }
 
     free(pool->busy_hist);
     pool_free(pool->pool);
@@ -333,15 +338,11 @@ void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn foreach_fn,
 {
     LOCK(&pool->mutex)
     {
-        /*
-        ** NOTE: This cast from thdpool_foreach_fn to
-        **       priority_queue_foreach_fn is "safe"
-        **       because they have more-or-less the
-        **       same type signature (i.e. they both
-        **       take three pointers).
-        */
-        priority_queue_foreach(&pool->queue, pool,
-                (priority_queue_foreach_fn)foreach_fn, user);
+        struct workitem *item;
+        LISTC_FOR_EACH(&pool->queue, item, linkv)
+        {
+            (foreach_fn)(pool, item, user);
+        }
     }
     UNLOCK(&pool->mutex);
 }
@@ -451,7 +452,7 @@ void thdpool_print_stats(FILE *fh, struct thdpool *pool)
         logmsgf(LOGMSG_USER, fh, "  Work queue peak size      : %u\n", pool->peakqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue maximum size   : %u\n", pool->maxqueue);
         logmsgf(LOGMSG_USER, fh, "  Work queue current size   : %u\n",
-                priority_queue_count(&pool->queue));
+                listc_size(&pool->queue));
         logmsgf(LOGMSG_USER, fh, "  Long wait alarm threshold : %u ms\n", pool->longwaitms);
         logmsgf(LOGMSG_USER, fh, "  Thread linger time        : %u seconds\n",
                 pool->lingersecs);
@@ -641,7 +642,7 @@ static int get_work_ll(struct thd *thd, struct workitem *work)
     } else {
         struct thdpool *pool = thd->pool;
         struct workitem *next;
-        while ((next = priority_queue_next(&pool->queue)) != NULL) {
+        while ((next = listc_rtl(&pool->queue)) != NULL) {
             int force_timeout = 0;
             if ((thd->pool->maxqueueagems > 0) &&
                 gbl_random_thdpool_work_timeout &&
@@ -878,17 +879,12 @@ thread_exit:
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                     int queue_override, struct string_ref *ref_persistent_info,
-                    uint32_t flags, priority_t priority)
+                    uint32_t flags)
 {
     static time_t last_dump = 0;
     int enqueue_front = (flags & THDPOOL_ENQUEUE_FRONT);
     int force_dispatch = (flags & THDPOOL_FORCE_DISPATCH);
     int queue_only = (flags & THDPOOL_QUEUE_ONLY);
-
-    /* If the special "enqueue at front" flag is set, only default priority
-     * to highest (i.e. using a[nother] specific priority overrides flag). */
-    if (enqueue_front && (priority == PRIORITY_T_DEFAULT))
-        priority = PRIORITY_T_HEAD;
 
     /* If queue_override is true, try to enqueue unless hitting maxqoverride;
        If force_queue is true, enqueue regardless. */
@@ -1020,7 +1016,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
             }
 #endif
             /* queue work */
-            int queue_count = priority_queue_count(&pool->queue);
+            int queue_count = listc_size(&pool->queue);
 
             if (queue_count >= pool->maxqueue) {
                 if (force_queue ||
@@ -1100,17 +1096,11 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         pool->name);
                 return -1;
             }
-            int queue_rc = priority_queue_add(&pool->queue, priority, item);
 
-            if (queue_rc != 0) {
-                pool_relablk(pool->pool, item);
-                pool->num_failed_dispatches++;
-                errUNLOCK(&pool->mutex);
-                logmsg(LOGMSG_ERROR, "%s(%s):priority_queue_add failed, rc=%d\n",
-                        __func__, pool->name, queue_rc);
-                return -1;
-            }
-
+            if (enqueue_front)
+                listc_atl(&pool->queue, item);
+            else
+                listc_abl(&pool->queue, item);
             pool->num_enqueued++;
 
             if (pool->queued_callback)
@@ -1126,7 +1116,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
         transfer_ref(&ref_persistent_info, &item->ref_persistent_info); // item gets ownership of reference
         item->queue_time_ms = comdb2_time_epochms();
         item->available = 1;
-        item->priority = priority;
 
         /* Now wake up the thread with work to do. */
         if (!thd) {
@@ -1145,11 +1134,6 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
 char *thdpool_get_name(struct thdpool *pool)
 {
     return pool->name;
-}
-
-priority_t thdpool_get_highest_priority(struct thdpool *pool)
-{
-    return priority_queue_highest(&pool->queue);
 }
 
 int thdpool_get_status(struct thdpool *pool)
@@ -1244,7 +1228,7 @@ int thdpool_get_maxqueue(struct thdpool *pool)
 
 int thdpool_get_nqueuedworks(struct thdpool *pool)
 {
-    return priority_queue_count(&pool->queue);
+    return listc_size(&pool->queue);
 }
 
 int thdpool_get_longwaitms(struct thdpool *pool)
@@ -1301,7 +1285,7 @@ struct thdpool *thdpool_next_pool(struct thdpool *pool)
 
 int thdpool_get_queue_depth(struct thdpool *pool)
 {
-    return priority_queue_count(&pool->queue);
+    return listc_size(&pool->queue);
 }
 
 void thdpool_set_queued_callback(struct thdpool *pool, void(*callback)(void*)) 

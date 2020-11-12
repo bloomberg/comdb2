@@ -10,11 +10,10 @@ permalink: ruleset.html
 Comdb2 ruleset files have a `.ruleset` extension.  Ruleset files are optional.
 By convention, ruleset files should be placed in the `rulesets` subdirectory
 within the database directory.  If no ruleset files are loaded, the database
-will assume all SQL queries have equal priority and they will be handled only
-by its default thread pool.  By default, no ruleset files are loaded when the
-database is started.  If desired, one (or more) ruleset files may be loaded
-automatically on startup by using `do` directives in the
-[LRL file](config_files.md#lrl-files), e.g.:
+will assume all SQL queries will be handled only by its default thread pool.
+By default, no ruleset files are loaded when the database is started.  If
+desired, one (or more) ruleset files may be loaded automatically on startup by
+using `do` directives in the [LRL file](config_files.md#lrl-files), e.g.:
 
 ```
 strict_double_quotes 1
@@ -101,7 +100,7 @@ The supported set of property names and their required formats is:
 
 | Property Name | Property Value Format |
 |---------------|------------------------|
-|action         | One of `NONE`, `REJECT_ALL`, `REJECT`, `UNREJECT`, `LOW_PRIO`, `HIGH_PRIO`, or `SET_POOL`.  The `SET_POOL` action is only available in version 2 or later of the file format. |
+|action         | One of `NONE`, `REJECT_ALL`, `REJECT`, `UNREJECT`, or `SET_POOL`.  The `SET_POOL` action is only available in version 2 or later of the file format. |
 |adjustment     | An integer between zero (0) and one million (1000000). |
 |pool           | The name of a previously defined thread pool.  The literal string `default` refers to the default thread pool.  The `pool` property name is only available in version 2 or later of the file format. |
 |flags          | One or more of `NONE`, `DISABLE`, `PRINT`, `STOP`, and `DYN_POOL` see [flags syntax](#flags-syntax).  The `DYN_POOL` flag is only available in version 2 or later of the file format. |
@@ -141,18 +140,11 @@ action of `REJECT` will not.  These marks of rejection can be removed by
 matching a subsequent rule with an action of `UNREJECT`.  If the SQL query is
 marked as rejected and the `STOP` rule flag is specified for the rule (**or**
 there are no further rules to process), the SQL query will be rejected and an
-error will be emitted to the client.  If the action is `LOW_PRIO`, the relative
-priority of the SQL query will be decreased by the amount specified by the
-associated `adjustment` property value.  If the action is `HIGH_PRIO`, the
-relative priority of the SQL query will be increased by the amount specified by
-the associated `adjustment` property value.  If the action is `LOW_PRIO`,
-`HIGH_PRIO`, or `SET_POOL`, the target thread pool for the SQL query will be
-changed to the one associated with the final rule that specified an action of
-`SET_POOL`.  The target thread pool can always be changed by a subsequently
-matched rule with an action of `SET_POOL` and only the final target thread pool
-for a given SQL query will be honored.  When processing the `SET_POOL` action,
-the final resulting relative priority of the SQL query value will be honored,
-i.e. even though the final resulting action is not `LOW_PRIO` or `HIGH_PRIO`.
+error will be emitted to the client.  If the action is `SET_POOL`, the target
+thread pool for the SQL query will be changed to the one associated with the
+final rule that specified an action of `SET_POOL`.  The target thread pool can
+always be changed by a subsequently matched rule with an action of `SET_POOL`
+and only the final target thread pool for a given SQL query will be honored.
 
 ### Rule flags
 
@@ -216,31 +208,10 @@ rule 1 action REJECT
 rule 1 fingerprint X'a9c8b6ddb5b9e55ee41b7f5a46ec4e45'
 rule 1 flags STOP
 
-# The second rule is designed to lower the priority of
-# SQL queries that originate from a database user with
-# the name 'Robert'.  The SQL query will be allowed to
-# run; however, other higher priority SQL queries may
-# run first even if they were submitted later.
-
-rule 2 action LOW_PRIO
-rule 2 adjustment 1000
-rule 2 user Robert
-
-# The third rule is designed to raise the priority of
-# SQL queries that originate from tasks with a name
-# matching the specified GLOB pattern.  In this case,
-# it refers to the command line SQL query tool.
-
-rule 3 action HIGH_PRIO
-rule 3 adjustment 1000
-rule 3 mode GLOB
-rule 3 originTask */cdb2sql
-
 # The fourth rule is designed to emit a trace when a
 # SQL query matching the specified regular expression
-# is seen.  In theory, subsequent rules could alter
-# the priority of this SQL query or prevent if from
-# executing.
+# is seen.  In theory, subsequent rules could prevent
+# this SQL query from executing.
 
 rule 4 action NONE
 rule 4 flags PRINT

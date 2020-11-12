@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+if [ $SP_HOST != `hostname` ]; then
+  ssh $SP_HOST mkdir -p $DBDIR/rulesets/
+  scp *.ruleset $SP_HOST:$DBDIR/rulesets/
+fi
+
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 0' AS z;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')"
@@ -8,12 +13,10 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 1' AS z;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 1;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1 ORDER BY x;" 2>&1
-cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1 ORDER BY x;" 2>&1 | sed 's/=[0-9][0-9]/=xx/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 2' AS z;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.thdpool_queue_only' 1"
-cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.force_thdpool_priority' 1"
 
 if [[ $DBNAME == *"nofpgenerated"* ]] ; then
   cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/rulesets/t01.ruleset')" 2>&1 | sed 's/\[ERROR\] .*t01.ruleset/\[ERROR\] t01.ruleset/g'
@@ -26,12 +29,6 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 3' AS z;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 2;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1 ORDER BY x;" 2>&1
-
-if [[ $DBNAME == *"nofpgenerated"* ]] ; then
-  cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1 ORDER BY x;" 2>&1 | sed 's/=[0-9][0-9]/=xx/g'
-else
-  cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1 ORDER BY x;" 2>&1 | sed 's/=[0-9][0-9][0-9][0-9][0-9][0-9]/=yyyy/g'
-fi
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "CREATE TABLE txx(bad TEXT);" 2>&1
@@ -68,7 +65,6 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 6' AS z;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 3;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT * FROM t1 ORDER BY x;" 2>&1
-cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_ctxinfo('priority'), x FROM t1 ORDER BY x;" 2>&1 | sed 's/=[0-9][0-9]/=zz/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT x FROM t1 ORDER BY x;" 2>&1
 
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('evaluate_ruleset')"
@@ -111,7 +107,6 @@ cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('free_ruleset')
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT 'phase 10' AS z;" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('reload_ruleset $DBDIR/rulesets/t04.ruleset')" 2>&1 | sed 's/file ".*"/file "t04.ruleset"/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.thdpool_queue_only' 0"
-cdb2sql --host $SP_HOST $SP_OPTIONS "PUT TUNABLE 'debug.force_thdpool_priority' 0"
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT sleep(1);" 2>&1
 cdb2sql --host $SP_HOST $SP_OPTIONS "SELECT comdb2_host();" 2>&1 | sed 's/\x27.*\x27/host_name_here/g'
 cdb2sql --host $SP_HOST $SP_OPTIONS "EXEC PROCEDURE sys.cmd.send('dump_ruleset')" | sed 's/ruleset 0x[0-9A-Fa-f]\+/ruleset 0x00000000/g'

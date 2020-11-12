@@ -2881,7 +2881,7 @@ static void *dispatch_lua_thread(void *arg)
     strcpy(clnt.tzname, parent_clnt->tzname);
     /* TODO: This needs to be more robust - we shouldn't enqueue into SQL thd
      * pool. Perhaps a dedicated pool for sp thds */
-    int rc = dispatch_sql_query(&clnt, PRIORITY_T_DEFAULT); // --> exec_thread()
+    int rc = dispatch_sql_query(&clnt); // --> exec_thread()
     /* Done running -- wake up anyone blocked on join */
     Pthread_mutex_lock(&thd->lua_thread_mutex);
     if (rc == 0) {
