@@ -78,9 +78,9 @@ struct pb_sbuf_writer {
     int nbytes; /* bytes written */
 };
 
-#define PB_SBUF_WRITER_INIT(sb)                                                                                        \
-    {                                                                                                                  \
-        {.append = pb_sbuf_write}, (sb), 0                                                                             \
+#define PB_SBUF_WRITER_INIT(sb)                                                \
+    {                                                                          \
+        {.append = pb_sbuf_write}, (sb), 0                                     \
     }
 
 /*                (SERVER)                                                */
@@ -864,8 +864,70 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     return newsql_response(clnt, &r, !clnt->rowbuffer);
 }
 
+/* Called by newsql_send_last_row when there are no effects to send
+ * Caches the response buffer for speed */
+static int newsql_send_last_row_no_effects(struct sqlclntstate *clnt)
+{
+    struct lastrow_t {
+        struct newsqlheader hdr;
+        int len;
+        char dta[1];
+    };
+    static struct lastrow_t *lastrow = NULL;
+    static pthread_mutex_t lastrow_lock = PTHREAD_MUTEX_INITIALIZER;
+
+    int rc = 0;
+    SBUF2 *sb = clnt->sb;
+    
+    if(!lastrow) {
+        Pthread_mutex_lock(&lastrow_lock);
+        if (!lastrow) {
+            printf("AZ: Creating LAST RESPONSE object\n");
+            CDB2SQLRESPONSE sql_response_last = CDB2__SQLRESPONSE__INIT;
+            sql_response_last.response_type = RESPONSE_TYPE__LAST_ROW;
+            sql_response_last.n_value = 0;
+            sql_response_last.value = NULL;
+            CDB2EFFECTS effects = CDB2__EFFECTS__INIT;
+            effects.num_selected = 1;
+            sql_response_last.effects = &effects;
+
+            int len = cdb2__sqlresponse__get_packed_size(&sql_response_last);
+            struct lastrow_t *lr = calloc(sizeof(struct lastrow_t) + len + 1, 1);
+            lr->len = len;
+            cdb2__sqlresponse__pack(&sql_response_last, (unsigned char *)&lr->dta);
+
+            lr->hdr.type = ntohl(RESPONSE_TYPE__LAST_ROW);
+            lr->hdr.length = ntohl(len);
+            lastrow = lr;
+        }
+        Pthread_mutex_unlock(&lastrow_lock);
+    }
+
+    lock_client_write_lock(clnt);
+
+    int len = sbuf2write((char *)&lastrow->hdr, sizeof(struct newsqlheader), sb);
+    if (len != sizeof(struct newsqlheader)) {
+        rc = -1; 
+        goto done;
+    }
+    len = sbuf2write((char *)&lastrow->dta, lastrow->len, sb);
+    if (len != lastrow->len) 
+        rc = -1;
+    if ( (rc = sbuf2flush(sb)) < 0)
+        goto done;
+    rc = 0;
+done:
+    unlock_client_write_lock(clnt);
+    return rc;
+}
+
 static int newsql_row_last(struct sqlclntstate *clnt)
 {
+    if (!(newsql_has_high_availability(clnt)) &&
+        clnt->effects.num_selected == 1 && (clnt->effects.num_updated + 
+            clnt->effects.num_deleted + clnt->effects.num_inserted) == 0) {
+        return newsql_send_last_row_no_effects(clnt);
+    }
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
     resp.response_type = RESPONSE_TYPE__LAST_ROW;
     _has_effects(clnt, resp);
