@@ -45,12 +45,6 @@ enum ruleset_action {
                              * the 'REJECT' action and the 'REJECT_ALL'
                              * action. */
 
-  RULESET_A_LOW_PRIO = 8,   /* Lower the priority of the request by the value
-                             * associated with this rule. */
-
-  RULESET_A_HIGH_PRIO = 16,  /* Raise the priority of the request by the value
-                              * associated with this rule. */
-
   RULESET_A_SET_POOL = 32,   /* Change the assigned SQL engine pool. */
 
   RULESET_A_REJECT_MASK = RULESET_A_REJECT | RULESET_A_REJECT_ALL
@@ -175,11 +169,6 @@ struct ruleset_item {
   enum ruleset_action action;     /* If this rule is matched, what should be
                                    * done in respone? */
 
-  priority_t adjustment;          /* For rules which adjust the priority of
-                                   * of the work item, what is the (absolute)
-                                   * amount the priority should be adjusted?
-                                   */
-
   char *zPool;                    /* For rules which change the SQL engine
                                    * pool, what is the name of that SQL engine
                                    * pool?  If this is NULL or "default", the
@@ -225,10 +214,6 @@ struct ruleset_result {
                                    * associated with ALL the rules that were
                                    * matched? */
 
-  priority_t priority;            /* What will the final priority be for this
-                                   * ruleset?  Depending on the action, this
-                                   * value may be ignored. */
-
   char *zPool;                    /* What will the final SQL engine pool name
                                    * be for this ruleset?  Depending on the
                                    * action, this value may be ignored.  If
@@ -246,13 +231,6 @@ typedef int (*xStrCmp)(const char *, const char *);
 typedef enum ruleset_string_match ruleset_string_match_t;
 typedef enum ruleset_match ruleset_match_t;
 typedef enum ruleset_match_mode ruleset_match_mode_t;
-
-const char *comdb2_priority_to_str(
-  priority_t priority,
-  char *zBuf,
-  size_t nBuf,
-  int bStrict
-);
 
 int comdb2_ruleset_fingerprints_allowed(void);
 

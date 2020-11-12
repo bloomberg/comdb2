@@ -922,14 +922,6 @@ static void comdb2CtxinfoFunc(
     if( clnt ){
       sqlite3_result_text(context, clnt->work.zRuleRes, -1, SQLITE_STATIC);
     }
-  }else if( sqlite3_stricmp(zName, "sequence")==0 ){
-    if( clnt ){
-      sqlite3_result_int64(context, clnt->seqNo);
-    }
-  }else if( sqlite3_stricmp(zName, "priority")==0 ){
-    if( clnt ){
-      sqlite3_result_int64(context, clnt->priority);
-    }
   }else if( sqlite3_stricmp(zName, "user")==0 ){
     sqlite3_result_text(context, get_current_user(clnt), -1, SQLITE_STATIC);
   }

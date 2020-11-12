@@ -30,7 +30,6 @@ typedef struct systable_sqlpoolqueue {
     int64_t                 time_in_queue_ms;
     char                    *info;
     int                     info_is_null;
-    priority_t              priority;
 } systable_sqlpoolqueue_t;
 
 typedef struct getsqlpoolqueue {
@@ -59,7 +58,6 @@ static void collect(struct thdpool *pool, struct workitem *item, void *user)
         i->info = NULL;
         i->info_is_null = 1;
     }
-    i->priority = item->priority;
 }
 
 static int get_sqlpoolqueue(void **data, int *records)
@@ -93,8 +91,6 @@ int systblSqlpoolQueueInit(sqlite3 *db) {
                                                        time_in_queue_ms),
         CDB2_CSTRING, "sql", offsetof(systable_sqlpoolqueue_t, info_is_null),
         offsetof(systable_sqlpoolqueue_t, info),
-        CDB2_INTEGER, "priority", -1, offsetof(systable_sqlpoolqueue_t,
-                                               priority),
         SYSTABLE_END_OF_FIELDS);
 }
 

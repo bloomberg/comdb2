@@ -1151,8 +1151,7 @@ int dohsql_distribute(dohsql_node_t *node)
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(get_sql_pool(clnt), sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
-                                 sr, flags,
-                                 PRIORITY_T_DEFAULT);
+                                 sr, flags);
             if (rc) {
                 put_ref(&sr);
                 return SHARD_ERR_GENERIC;

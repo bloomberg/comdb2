@@ -18,7 +18,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include "sqliteInt.h"
-#include "priority_queue.h"
 #include "sql.h"
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
@@ -116,10 +115,6 @@ static void comdb2_ruleset_str_to_action(
     *pAction = RULESET_A_REJECT_ALL;
   }else if( sqlite3_stricmp(zBuf, "UNREJECT")==0 ){
     *pAction = RULESET_A_UNREJECT;
-  }else if( sqlite3_stricmp(zBuf, "LOW_PRIO")==0 ){
-    *pAction = RULESET_A_LOW_PRIO;
-  }else if( sqlite3_stricmp(zBuf, "HIGH_PRIO")==0 ){
-    *pAction = RULESET_A_HIGH_PRIO;
   }else if( sqlite3_stricmp(zBuf, "SET_POOL")==0 ){
     *pAction = RULESET_A_SET_POOL;
   }else if( pzBad!=NULL ){
@@ -138,8 +133,6 @@ static const char *comdb2_ruleset_action_to_str(
     case RULESET_A_REJECT:     return "REJECT";
     case RULESET_A_REJECT_ALL: return "REJECT_ALL";
     case RULESET_A_UNREJECT:   return "UNREJECT";
-    case RULESET_A_LOW_PRIO:   return "LOW_PRIO";
-    case RULESET_A_HIGH_PRIO:  return "HIGH_PRIO";
     case RULESET_A_SET_POOL:   return "SET_POOL";
     default: {
       if( bStrict ){
@@ -298,78 +291,11 @@ static const char *comdb2_ruleset_match_mode_to_str(
   return zBuf;
 }
 
-const char *comdb2_priority_to_str(
-  priority_t priority,
-  char *zBuf,
-  size_t nBuf,
-  int bStrict
-){
-  /*
-  ** WARNING: This code assumes that higher priority values have
-  **          lower numerical values.
-  */
-  switch( priority ){
-    case PRIORITY_T_INVALID: return "INVALID";
-    case PRIORITY_T_HIGHEST: return "HIGHEST";
-    case PRIORITY_T_LOWEST:  return "LOWEST";
-    case PRIORITY_T_HEAD:    return "HEAD";
-    case PRIORITY_T_TAIL:    return "TAIL";
-    case PRIORITY_T_DEFAULT: return "DEFAULT";
-    default: {
-      if( bStrict ){
-        return NULL;
-      }else{
-        snprintf(zBuf, nBuf, "0x%llx", priority);
-        return zBuf;
-      }
-    }
-  }
-}
-
-static priority_t comdb2_clamp_priority(
-  priority_t priority
-){
-  /*
-  ** WARNING: This code assumes that higher priority values have
-  **          lower numerical values.
-  */
-  if( priority<PRIORITY_T_HIGHEST ){ return PRIORITY_T_HIGHEST; }
-  if( priority>PRIORITY_T_LOWEST ){ return PRIORITY_T_LOWEST; }
-  return priority;
-}
-
-static priority_t comdb2_adjust_priority(
-  enum ruleset_action action,
-  priority_t priority,
-  priority_t adjustment
-){
-  /*
-  ** WARNING: This code assumes that higher priority values have
-  **          lower numerical values.
-  */
-  if( action==RULESET_A_HIGH_PRIO ){
-    adjustment = -adjustment;
-  }
-  priority += adjustment;
-  return comdb2_clamp_priority(priority);
-}
-
-static void comdb2_adjust_result_priority(
-  enum ruleset_action action,
-  priority_t adjustment,
-  struct ruleset_result *result
-){
-  result->priority = comdb2_adjust_priority(
-    action, result->priority, adjustment
-  );
-}
-
 static void comdb2_dump_ruleset_item(
   loglvl level,
   char *zMessage,
   struct ruleset *rules,
-  struct ruleset_item *rule,
-  uint64_t seqNo
+  struct ruleset_item *rule
 ){
   const char *zAction;
   char zFlags[RULESET_MIN_BUF]; /* TODO: When more flags, increase this. */
@@ -392,15 +318,14 @@ static void comdb2_dump_ruleset_item(
     snprintf(zFingerprint, sizeof(zFingerprint), "<null>");
   }
 
-  logmsg(level, "%s: ruleset %p rule #%d %s seqNo %llu, action "
-         "{%s} (0x%llX), adjustment %lld, pool {%s}, flags {%s} (0x%llX), "
+  logmsg(level, "%s: ruleset %p rule #%d %s action "
+         "{%s} (0x%llX), pool {%s}, flags {%s} (0x%llX), "
          "mode {%s} (0x%llX), originHost {%s}, originTask {%s}, user {%s}, "
          "sql {%s}, fingerprint {%s}, evalCount %d, matchCount %d\n",
          __func__, rules, rule->ruleNo,
          zMessage ? zMessage : "<null>",
-         (unsigned long long int)seqNo,
          zAction ? zAction : "<null>",
-         (unsigned long long int)rule->action, rule->adjustment,
+         (unsigned long long int)rule->action,
          rule->zPool ? rule->zPool : "<null>", zFlags,
          (unsigned long long int)rule->flags,
          zMode, (unsigned long long int)rule->mode,
@@ -513,15 +438,6 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
       result->action &= ~RULESET_A_REJECT_MASK;
       break;
     }
-    case RULESET_A_LOW_PRIO:
-    case RULESET_A_HIGH_PRIO: {
-      if( (result->action&RULESET_A_REJECT_MASK)==0 ){
-        result->ruleNo = rule->ruleNo;
-      }
-      result->action = rule->action;
-      comdb2_adjust_result_priority(rule->action, rule->adjustment, result);
-      break;
-    }
     case RULESET_A_SET_POOL: {
       if( result->zPool!=NULL ){
         free(result->zPool);
@@ -552,7 +468,7 @@ static ruleset_match_t comdb2_evaluate_ruleset_item(
   rule->matchCount++;
   loglvl level = (rule->flags&RULESET_F_PRINT) ? LOGMSG_USER : LOGMSG_DEBUG;
   if( logmsg_level_ok(level) ){
-    comdb2_dump_ruleset_item(level,"MATCHED",rules,rule,get_sql_clnt_seqno());
+    comdb2_dump_ruleset_item(level,"MATCHED",rules,rule);
   }
   result->flags |= rule->flags; /* NOTE: OR matched rule flags together. */
   return (rule->flags&RULESET_F_STOP) ? RULESET_M_STOP : RULESET_M_TRUE;
@@ -605,12 +521,11 @@ size_t comdb2_ruleset_result_to_str(
 ){
   char zBuf2[RULESET_MIN_BUF] = {0};
   return (size_t)snprintf(zBuf, nBuf,
-      "ruleNo=%d, action=%s, flags=%s (0x%llX), priority=%s, pool=%s",
+      "ruleNo=%d, action=%s, flags=%s (0x%llX), pool=%s",
       result->ruleNo,
       comdb2_ruleset_action_to_str(result->action, NULL, 0, 1),
       comdb2_ruleset_flags_to_str(result->flags, zBuf2, sizeof(zBuf2)),
       (unsigned long long int)result->flags,
-      comdb2_priority_to_str(result->priority, zBuf2, sizeof(zBuf2), 0),
       result->zPool ? result->zPool : "<null>"
   );
 }
@@ -672,7 +587,7 @@ void comdb2_dump_ruleset(struct ruleset *rules){
   for(int i=0; i<rules->nRule; i++){
     struct ruleset_item *rule = &rules->aRule[i];
     if( rule->ruleNo==0 ){ continue; }
-    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, rule, 0);
+    comdb2_dump_ruleset_item(LOGMSG_USER, NULL, rules, rule);
   }
 }
 
@@ -1184,38 +1099,6 @@ int comdb2_load_ruleset(
             zTok = strtok_r(NULL, RULESET_DELIM, &zSav);
             continue;
           }
-          zField = "adjustment";
-          if( sqlite3_stricmp(zTok, zField)==0 ){
-            zTok = strtok_r(NULL, RULESET_DELIM, &zSav);
-            if( zTok==NULL ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, expected %s value after '%s'",
-                       zFileName, lineNo, zField, zField);
-              goto failure;
-            }
-            if( sqlite3Atoi64(zTok, &rule->adjustment, strlen(zTok),
-                              SQLITE_UTF8)!=0 ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s value '%s', not an integer",
-                       zFileName, lineNo, zField, zTok);
-              goto failure;
-            }
-            if( rule->adjustment<0 ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s value '%s', cannot be negative",
-                       zFileName, lineNo, zField, zTok);
-              goto failure;
-            }
-            if( rule->adjustment>PRIORITY_T_ADJUSTMENT_MAXIMUM ){
-              snprintf(zError, sizeof(zError),
-                       "%s:%d, bad %s value '%s', cannot exceed %lld",
-                       zFileName, lineNo, zField, zTok,
-                       PRIORITY_T_ADJUSTMENT_MAXIMUM);
-              goto failure;
-            }
-            zTok = strtok_r(NULL, RULESET_DELIM, &zSav);
-            continue;
-          }
           zField = "pool";
           if( sqlite3_stricmp(zTok, zField)==0 ){
             if( rules->version<2 ){
@@ -1519,10 +1402,6 @@ int comdb2_save_ruleset(
         if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
         sbuf2printf(sb, "rule %d action %s\n", ruleNo, zStr);
       }
-    }
-    if( rule->adjustment!=0 ){
-      if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }
-      sbuf2printf(sb, "rule %d adjustment %lld\n", ruleNo, rule->adjustment);
     }
     if( rules->version>=2 && rule->zPool!=NULL ){
       if( i>0 && mayNeedLf ){ sbuf2printf(sb, "\n"); mayNeedLf = 0; }

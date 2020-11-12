@@ -6,6 +6,7 @@
 #include <pthread.h>
 
 #include "thread_util.h"
+#include "list.h"
 #include "thdpool.h"
 #include "comdb2_atomic.h"
 #include "mem.h"
@@ -64,7 +65,7 @@ int main()
         work->c = &c;
         c.spawned_count++;
         int rc = thdpool_enqueue(my_thdpool, handler_work_pp, work, 0, NULL, 
-                THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
+                THDPOOL_FORCE_QUEUE);
         if (rc) {
             fprintf(stderr, "Error from thdpool_enqueue, rc=%d\n", rc);
             exit(1);
