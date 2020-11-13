@@ -77,11 +77,11 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
         here, the responsibility for handling the sess is delegated
         to the writer thread */
     if (gbl_sockbplog_debug)
-        logmsg(LOGMSG_ERROR, "%lu %s called\n", pthread_self(), __func__);
+        logmsg(LOGMSG_ERROR, "%p %s called\n", (void *)pthread_self(), __func__);
     return 0;
 
 err:
-    logmsg(LOGMSG_ERROR, "%lu %s called and failed rc %d\n", pthread_self(),
+    logmsg(LOGMSG_ERROR, "%p %s called and failed rc %d\n", (void *)pthread_self(),
            __func__, rc);
 err_nomsg:
     if (sql)

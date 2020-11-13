@@ -355,8 +355,8 @@ int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
         buflen = htonl(buflen);
 
         if (gbl_sockbplog_debug)
-            logmsg(LOGMSG_ERROR, "%lu Received a packet of length %d\n",
-                   pthread_self(), buflen);
+            logmsg(LOGMSG_ERROR, "%p Received a packet of length %d\n",
+                   (void *)pthread_self(), buflen);
 
         if (oldbuflen < buflen) {
             buf = realloc(buf, buflen);

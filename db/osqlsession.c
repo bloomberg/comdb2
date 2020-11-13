@@ -356,7 +356,7 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
     }
 
     if (gbl_sockbplog_debug)
-        logmsg(LOGMSG_ERROR, "%lu Dispatching transaction\n", pthread_self());
+        logmsg(LOGMSG_ERROR, "%p Dispatching transaction\n", (void *)pthread_self());
     /* IT WAS A DONE MESSAGE
        HERE IS THE DISPATCH */
     return handle_buf_sorese(sess);
