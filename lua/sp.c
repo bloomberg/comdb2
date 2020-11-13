@@ -2252,6 +2252,11 @@ static int lua_prepare_sql_int(SP sp, const char *sql, sqlite3_stmt **stmt,
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
+
+    /* Reset logger. This clears table names (see reqlog_add_table) and
+       print events (see reqlog_logv_int) in the logger. */
+    reqlog_reset_logger(sp->thd->logger);
+
 retry:
     memset(&err, 0, sizeof(struct errstat));
     if (sp->initial) {
