@@ -2104,6 +2104,11 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
+
+    /* Reset logger. This clears table names (see reqlog_add_table) and
+       print events (see reqlog_logv_int) in the logger. */
+    reqlog_reset_logger(sp->thd->logger);
+
     sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags)
                          : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
     sp->initial = 0;
