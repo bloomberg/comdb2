@@ -767,8 +767,10 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data, 
         fsnapf(stdout, odh.recptr, odh.length);
         */
         if (buf) {
+            if (fn_free == NULL)
+                fn_free = free;
             if (data->flags & (DB_DBT_MALLOC | DB_DBT_REALLOC)) {
-                free(data->data);
+                fn_free(data->data);
                 data->data = odh.recptr;
             } else if (data->flags & DB_DBT_USERMEM) {
                 if (odh.length > data->ulen) {
@@ -776,13 +778,13 @@ static int bdb_unpack_dbt_verify_updateid(bdb_state_type *bdb_state, DBT *data, 
                             "%s: record has length %u, supplied buffer is %u\n", __func__, 
                             (unsigned)odh.length,
                             (unsigned)data->ulen);
-                    free(buf);
+                    fn_free(buf);
                     return ENOMEM;
                 }
                 memcpy(data->data, odh.recptr, odh.length);
-                free(buf);
+                fn_free(buf);
             } else {
-                free(buf);
+                fn_free(buf);
                 logmsg(LOGMSG_FATAL, "%s: called with bad data->flags %u\n",
                         __func__, (unsigned)flags);
                 abort();
