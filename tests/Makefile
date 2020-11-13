@@ -12,14 +12,22 @@ include $(TESTSROOTDIR)/Makefile.common
 # List of disabled tests
 DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
 
+# When SKIPSSL is on, skip running tests which rely on SSL
 ifeq ($(SKIPSSL), 1)
 SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/' | sort -u)
 DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
 
+# Skip tests that need tcl
 ifeq ($(wildcard $(BUILDDIR)/tcl/libtclcdb2.so),)
 #if we have not compiled with tcl, skip tests that require tclcdb2
 SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/' | sort -u)
+DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+endif
+
+# Skip any tests that we specifically want by reading 'tests/excluded.txt'
+ifeq ($(wildcard excluded.txt),excluded.txt)
+SKIPS:=$(shell cat excluded.txt | sort -u)
 DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
 
