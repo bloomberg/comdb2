@@ -63,6 +63,7 @@
 #include <signal.h>
 #include <assert.h>
 #include <poll.h>
+#include <libgen.h>
 
 #include <str0.h>
 
@@ -111,6 +112,7 @@ extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern char *gbl_myhostname;
 extern size_t gbl_blobmem_cap;
+extern int gbl_backup_logfiles;
 
 #define FILENAMELEN 100
 
@@ -3855,19 +3857,16 @@ low_headroom:
             }
 
             /* If we have private blkseqs, make sure we don't delete logs that
-             * contain
-             * blkseqs newer than our threshold.  */
+             * contain blkseqs newer than our threshold.  */
             if (bdb_state->attr->private_blkseq_enabled &&
                 !bdb_blkseq_can_delete_log(bdb_state, filenum)) {
                 if (bdb_state->attr->debug_log_deletion) {
-                    logmsg(LOGMSG_USER, "skipping log %s filenm %d because it has recent "
-                           "blkseqs\n",
+                    logmsg(LOGMSG_USER, "skipping log %s filenm %d because it has recent blkseqs\n",
                            *file, filenum);
                     bdb_blkseq_dumplogs(bdb_state);
                 }
                 if (ctrace_info)
-                    ctrace("skipping log %s filenm %d because it has recent "
-                           "blkseqs\n",
+                    ctrace("skipping log %s filenm %d because it has recent blkseqs\n",
                            *file, filenum);
                 break;
             }
@@ -3942,24 +3941,51 @@ low_headroom:
                     print(bdb_state, "lwm at log delete time:  %u:%u\n",
                           lwmlsn.file, lwmlsn.offset);
 
-                if (bdb_state->attr->debug_log_deletion) {
-                    logmsg(LOGMSG_DEBUG, "deleting log %s %d\n", logname, filenum);
-                }
-
-                if (ctrace_info) {
-                    ctrace("deleting log %s %d\n", logname, filenum);
-                }
-
                 if (gbl_new_snapisol_asof) {
                     bdb_snapshot_asof_delete_log(bdb_state, filenum,
                                                  sb.st_mtime);
                 }
+                int deleted = 0;
 
-                rc = unlink(logname);
-                if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "delete_log_files: unlink for <%s>"
-                                    " returned %d %d\n",
-                            logname, rc, errno);
+                if (gbl_backup_logfiles && bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
+                    // logname includes directory so need just the filename
+                    char *base = basename(logname);
+                    char *newname = comdb2_location("backup_logfiles_dir", "%s", base);
+
+                    if (bdb_state->attr->debug_log_deletion) {
+                        logmsg(LOGMSG_DEBUG, "backingup log %s to %s\n", logname, newname);
+                    }
+
+                    if (ctrace_info) {
+                        ctrace("backingup log %s to %s\n", logname, newname);
+                    }
+
+                    char cmd[4048];
+                    int rc = snprintf(cmd, sizeof(cmd), "mv %s %s", logname, newname);
+                    if (rc < sizeof(cmd)) {
+                        rc = system(cmd);
+                        if (rc) 
+                            logmsg(LOGMSG_ERROR, "%s: Error system(\"%s\") rc = %d\n", __func__, cmd, rc);
+                        else
+                            deleted = 1;
+                    }
+                    free(newname);
+                } 
+                if (!deleted) {
+                    if (bdb_state->attr->debug_log_deletion) {
+                        logmsg(LOGMSG_DEBUG, "deleting log %s %d\n", logname, filenum);
+                    }
+
+                    if (ctrace_info) {
+                        ctrace("deleting log %s %d\n", logname, filenum);
+                    }
+
+                    rc = unlink(logname);
+                    if (rc) {
+                        logmsg(LOGMSG_ERROR,
+                               "delete_log_files: unlink for <%s> returned %d %d\n",
+                               logname, rc, errno);
+                    }
                 }
             } else {
                 /* Not done - we want to find the highest file we can delete

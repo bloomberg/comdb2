@@ -740,6 +740,7 @@ int gbl_stable_rootpages_test = 0;
 int gbl_allow_incoherent_sql = 0;
 
 char *gbl_dbdir = NULL;
+int gbl_backup_logfiles = 0;
 static int gbl_backend_opened = 0;
 
 extern int gbl_verbose_net;
@@ -3361,6 +3362,60 @@ static int create_db(char *dbname, char *dir) {
    return 0;
 }
 
+static void setup_backup_logfiles_dir()
+{
+    logmsg(LOGMSG_ERROR, "setup_backup_logfiles_dir: entering()\n");
+    char *backupdir = comdb2_location("backup_logfiles_dir", NULL);
+    if (!backupdir || strcmp(backupdir, "backup_logfiles_dir") == 0)
+        goto cleanup;
+
+    logmsg(LOGMSG_ERROR, "setup_backup_logfiles_dir: %s\n", backupdir);
+    /* if path like "..../%dbname" then substitute %dbname with thedb->envname
+     * char *newname = comdb2_location("backup_logfiles_dir", "%s/%s", thedb->envname);
+     * and update_location("backup_logfiles_dir", newname);
+     */
+    {
+        char *loc = strstr(backupdir, "%dbname");
+        if (loc) {
+            int dbnamelen = strlen(thedb->envname);
+            int diff = dbnamelen - sizeof("%dbname");
+            if (diff > 0) {
+                int newlen = (loc - backupdir) + dbnamelen + 1;
+                char *newd = realloc(backupdir, newlen);
+                if (!newd) {
+                    logmsg(LOGMSG_ERROR, "%s: Cannot realloc backupdir newlen %d\n",
+                           __func__, newlen);
+                    goto cleanup;
+                }
+                loc = newd + (loc - backupdir);
+                backupdir = newd;
+            }
+            strcpy(loc, thedb->envname);
+            update_file_location("backup_logfiles_dir", backupdir);
+        }
+    }
+    struct stat stats;
+    int rc = stat(backupdir, &stats);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s: Cannot stat directory %s: %d %s\n",
+               __func__, backupdir, errno, strerror(errno));
+    if (S_ISDIR(stats.st_mode)) {
+        gbl_backup_logfiles = 1;
+    } else {
+        int mask = umask(0);
+        umask(mask);
+        //try to create directory, if successful turn on feature
+        rc = mkdir(backupdir, 0777 & (~mask));
+        if (rc)
+            logmsg(LOGMSG_ERROR, "%s: Cannot create directory %s (bad path or parent directory): %d %s\n",
+                   __func__, backupdir, errno, strerror(errno));
+        else
+            gbl_backup_logfiles = 1;
+    }
+cleanup:
+    free(backupdir);
+}
+
 static int init(int argc, char **argv)
 {
     char *dbname, *lrlname = NULL, ctmp[64];
@@ -3592,6 +3647,7 @@ static int init(int argc, char **argv)
         ctrace_openlog_taskname(dir, dbname);
         free(dir);
     }
+    setup_backup_logfiles_dir();
 
     /* Don't startup if there exists a copylock file in the data directory.
      * This would indicate that a copycomdb2 was done but never completed.

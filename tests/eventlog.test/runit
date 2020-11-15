@@ -5,7 +5,13 @@ set -x
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
-function waitfordb() {
+function exiting {
+    COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+}
+
+trap exiting EXIT
+
+function waitfordb {
     sleep 1
     local count=0
 	sel=$(${CDB2SQL_EXE} --tabs ${CDB2_OPTIONS} $1 "select 1" 2>&1)
@@ -226,4 +232,7 @@ valgrind --error-exitcode=1 --leak-check=full --trace-children=yes --quiet ${TES
 res=$?
 assertres $res 0
 
-exit 0
+trap - INT EXIT
+exiting
+
+echo "Success"

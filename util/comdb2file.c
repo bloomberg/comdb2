@@ -255,7 +255,7 @@ void cleanup_file_locations()
     }
 }
 
-void update_file_location(char *type, const char *dir)
+void update_file_location(const char *type, const char *dir)
 {
     add_location(type, dir);
 }

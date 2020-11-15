@@ -161,7 +161,8 @@ setup_db() {
         cat lrl >> ${LRL}
     fi
     if [[ -f lrl.options ]]; then
-        cat lrl.options >> ${LRL}
+        # use sed to substitute in test specific variables into lrl
+        cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
     fi
 
     echo -e "name    ${DBNAME}\ndir     ${DBDIR}\n\nsetattr MASTER_REJECT_REQUESTS 0" >> ${LRL}
