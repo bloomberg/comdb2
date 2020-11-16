@@ -823,10 +823,14 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                            SQLENG_INTRANS_STATE);
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     return osql_dbq_consume_logic(clnt, q->info.spname, q->genid);
 }
+
+// _int variants don't modify lua stack, just return success/error code
+static const char * db_begin_int(Lua, int *);
+static const char * db_commit_int(Lua, int *);
+static const char * db_rollback_int(Lua, int *);
 
 /*
 ** (1) No explicit db:begin()
@@ -837,31 +841,38 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
 static int lua_consumer_impl(Lua L, dbconsumer_t *q)
 {
     int rc = 0;
+    const char *err = NULL;
     SP sp = getsp(L);
-    int start = in_parent_trans(sp);
     struct sqlclntstate *clnt = sp->clnt;
-    if (start || clnt->intrans == 0) {
-        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) != 0) {
-            luaL_error(L, "%s osql_sock_start rc:%d\n", __func__, rc);
+    int implicit_txn = in_parent_trans(sp);
+    if (implicit_txn) {
+        err = db_begin_int(L, &rc);
+        if (err || rc || clnt->intrans) {
+            luaL_error(L, "%s: begin intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
         }
-        clnt->intrans = 1;
+    }
+    if (!clnt->intrans) {
+        if ((rc = start_new_transaction(clnt, clnt->thd->sqlthd)) != 0) {
+            luaL_error(L, "%s: start_new_transaction intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
+        }
+        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) != 0) {
+            luaL_error(L, "%s: osql_sock_start intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
+        }
     }
     if ((rc = osql_dbq_consume_logic(clnt, q->info.spname, q->genid)) != 0) {
-        if (start) {
-            osql_sock_abort(clnt, OSQL_SOCK_REQ);
-            clnt->intrans = 0;
+        if (implicit_txn) {
+            err = db_rollback_int(L, &rc);
+            if (err || rc || clnt->intrans) {
+                luaL_error(L, "%s: rollback - unexpected intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
+            }
         }
         luaL_error(L, "%s osql_dbq_consume_logic rc:%d\n", __func__, rc);
     }
-    if (start) {
-        rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
-        clnt->intrans = 0;
-        if (rc) {
-            luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
+    if (implicit_txn) {
+        err = db_commit_int(L, &rc);
+        if (err || rc || clnt->intrans) {
+            luaL_error(L, "%s: commit failed intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
         }
-    } else {
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_INTRANS_STATE);
     }
     return rc;
 }
@@ -2555,11 +2566,6 @@ static void reset_stmts(SP sp)
     }
 }
 
-// _int variants don't modify lua stack, just return success/error code
-static const char * db_begin_int(Lua, int *);
-static const char * db_commit_int(Lua, int *);
-static const char * db_rollback_int(Lua, int *);
-
 static int db_begin(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -2606,12 +2612,10 @@ static const char *db_begin_int(Lua L, int *rc)
         reset_stmts(sp);
     }
     if (sp->clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
-        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                                SQLENG_WRONG_STATE);
+        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
         return "BEGIN in the middle of transaction";
     }
-    sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                            SQLENG_PRE_STRT_STATE);
+    sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_PRE_STRT_STATE);
     *rc = handle_sql_begin(sp->thd, sp->clnt, TRANS_CLNTCOMM_NOREPLY);
     sp->clnt->ready_for_heartbeats = 1;
     return NULL;
@@ -2622,8 +2626,7 @@ static const char *db_commit_int(Lua L, int *rc)
     SP sp = getsp(L);
     if (sp->clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
         sp->clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                                SQLENG_WRONG_STATE);
+        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
         return no_transaction();
     }
     reset_stmts(sp);
