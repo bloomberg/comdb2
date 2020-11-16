@@ -4517,8 +4517,7 @@ int initialize_shadow_trans(struct sqlclntstate *clnt, struct sql_thread *thd)
     return rc;
 }
 
-static int _start_new_transaction(struct sqlclntstate *clnt,
-                                  struct sql_thread *thd)
+int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
 {
     int rc;
 
@@ -4677,7 +4676,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
         clnt->dbtran.mode = TRANLEVEL_RECOM;
     }
 
-    rc = _start_new_transaction(clnt, thd);
+    rc = start_new_transaction(clnt, thd);
 
 done:
     if (rc == SQLITE_OK && pSchemaVersion) {
@@ -8391,7 +8390,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
             goto done;
         }
 
-        rc = _start_new_transaction(clnt, thd);
+        rc = start_new_transaction(clnt, thd);
 
         if (thd->bt) {
             LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
