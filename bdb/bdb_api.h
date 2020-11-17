@@ -1829,6 +1829,8 @@ int bdb_have_unused_files(void);
 
 int bdb_nlocks_for_locker(bdb_state_type *bdb_state, int lid);
 
+void bdb_tran_assert_nolocks(bdb_state_type *bdb_state, tran_type *tran);
+
 int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr);
 
 int bdb_have_ipu(bdb_state_type *bdb_state);

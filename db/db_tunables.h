@@ -1880,4 +1880,10 @@ REGISTER_TUNABLE("debug_consumer_lock",
                  "(Default: off)",
                  TUNABLE_BOOLEAN, &gbl_instrument_consumer_lock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("reject_mixed_ddl_dml", "Reject write schedules which mix DDL and DML.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_reject_mixed_ddl_dml, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_mixed_ddl_dml", "Reject write schedules which mix DDL and DML.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_mixed_ddl_dml, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

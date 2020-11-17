@@ -4019,7 +4019,7 @@ retry:
             goto backout;
 
         /* it's ok if no data was found, fail on all other errors*/
-        if (*bdberr != BDBERR_FETCH_DTA)
+        if (*bdberr != BDBERR_FETCH_DTA || status == BDB_SC_ABORTED)
             goto backout;
 
         new_sc = 1;

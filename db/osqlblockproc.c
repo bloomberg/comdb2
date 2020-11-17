@@ -331,6 +331,8 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
 
 void sc_set_downgrading(struct schema_change_type *s);
 
+int gbl_debug_mixed_ddl_dml = 0;
+
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -423,6 +425,12 @@ int osql_bplog_schemachange(struct ireq *iq)
         iq->sc_pending = NULL;
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
+
+    if (!gbl_debug_mixed_ddl_dml) {
+        assert(!iq->sc_locked);
+        iq->sc_locked = 1;
+        wrlock_schema_lk();
+    }
     return rc;
 }
 
