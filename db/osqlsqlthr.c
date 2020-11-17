@@ -1301,6 +1301,7 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 
 /********************** INTERNALS
  * ***********************************************/
+int gbl_reject_mixed_ddl_dml = 1;
 
 static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                                      int nettype)
@@ -1308,6 +1309,10 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int restarted;
+
+    if (gbl_reject_mixed_ddl_dml && osql->running_ddl) {
+        return SQLITE_DDL_MISUSE;
+    }
 
     if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tablename)) {
         return SQLITE_DDL_MISUSE;
@@ -1843,8 +1848,16 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     osqlstate_t *osql = &clnt->osql;
     int restarted;
     int rc = 0;
+    int count = 0;
 
     osql->running_ddl = 1;
+
+    if (gbl_reject_mixed_ddl_dml && clnt->dml_tables) {
+        hash_info(clnt->dml_tables, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+        if (count > 0) {
+            return SQLITE_DDL_MISUSE;
+        }
+    }
 
     if (clnt->dml_tables &&
         hash_find_readonly(clnt->dml_tables, sc->tablename)) {
