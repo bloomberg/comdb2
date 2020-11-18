@@ -3764,6 +3764,11 @@ __rep_apply(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled)
 	int rc, now;
 	bbtime_t start = {0}, end = {0};
 
+    int debug_switch_replicant_latency(void);
+    if (debug_switch_replicant_latency() && !(time(NULL) % 4)) {
+        return 0;
+    }
+
 	Pthread_mutex_lock(&apply_lk);
 	getbbtime(&start);
 	rc = __rep_apply_int(dbenv, rp, rec, ret_lsnp, commit_gen, decoupled);

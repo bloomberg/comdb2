@@ -348,6 +348,7 @@ extern int gbl_track_curtran_gettran_locks;
 extern int gbl_permit_small_sequences;
 extern int gbl_debug_sleep_in_sql_tick;
 extern int gbl_protobuf_prealloc_buffer_size;
+extern int gbl_replicant_retry_on_not_durable;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,

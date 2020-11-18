@@ -2875,7 +2875,8 @@ static inline int wait_for_seqnum_remove_node(bdb_state_type *bdb_state, int rc)
  */
 static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
                                              seqnum_type *seqnum,
-                                             const char *host, int timeoutms, int lineno)
+                                             const char *host, int timeoutms, int lineno,
+                                             int fakeincoherent)
 {
     int rc, reset_ts = 1, wakecnt = 0, remaining = timeoutms;
     int seqnum_wait_interval = bdb_state->attr->seqnum_wait_interval;
@@ -2889,6 +2890,9 @@ static int bdb_wait_for_seqnum_from_node_int(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
+    if (fakeincoherent) {
+        node_is_rtcpu = 1;
+    }
     if (bdb_state->callback->nodeup_rtn)
         if (!(bdb_state->callback->nodeup_rtn(bdb_state, host)))
             node_is_rtcpu = 1;
@@ -3064,7 +3068,7 @@ int bdb_wait_for_seqnum_from_node(bdb_state_type *bdb_state,
 {
     int timeoutms = bdb_state->attr->reptimeout * MILLISEC;
     return bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, host,
-                                             timeoutms, __LINE__);
+                                             timeoutms, __LINE__, 0);
 }
 
 int bdb_wait_for_seqnum_from_node_timeout(bdb_state_type *bdb_state,
@@ -3072,7 +3076,7 @@ int bdb_wait_for_seqnum_from_node_timeout(bdb_state_type *bdb_state,
                                           int timeoutms)
 {
     return bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, host,
-                                             timeoutms, __LINE__);
+                                             timeoutms, __LINE__, 0);
 }
 
 /* inside bdb_commit(), we get a seqnum from the log file,
@@ -3141,11 +3145,12 @@ static int node_in_list(int node, int list[], int listsz)
 
 /* ripped out ALL SUPPORT FOR ALL BROKEN CRAP MODES, aside from "newcoh" */
 
+int gbl_replicant_retry_on_not_durable = 1;
 static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                                             seqnum_type *seqnum, int *timeoutms,
                                             uint64_t txnsize, int newcoh)
 {
-    int i, j, now, cntbytes;
+    int i, now, cntbytes;
     const char *nodelist[REPMAX];
     const char *connlist[REPMAX];
     int durable_lsns;
@@ -3171,6 +3176,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     int num_successfully_acked = 0;
     int total_connected;
     int lock_desired = 0;
+    int fake_incoherent = 0;
 
     /* if we were passed a child, find his parent */
     assert(!bdb_state->parent);
@@ -3178,7 +3184,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         bdb_state = bdb_state->parent;
 
     /* Dereference from parent */
-    durable_lsns = bdb_state->attr->durable_lsns;
+    durable_lsns = (bdb_state->attr->durable_lsns || gbl_replicant_retry_on_not_durable);
     catchup_window = bdb_state->attr->catchup_window;
 
     /* short ciruit if we are waiting on lsn 0:0  */
@@ -3202,23 +3208,24 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         numwait = 0;
 
         if (durable_lsns) {
-            total_connected = j = net_get_sanctioned_replicants(
-                    bdb_state->repinfo->netinfo, REPMAX, connlist);
+            total_connected = net_get_sanctioned_replicants(bdb_state->repinfo->netinfo, REPMAX, connlist);
         } else {
-            total_connected = j = net_get_all_commissioned_nodes(
-                    bdb_state->repinfo->netinfo, connlist);
+            total_connected = net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, connlist);
         }
 
+        if ((debug_switch_all_incoherent() && (rand() % 2))) {
+            fake_incoherent = 1;
+        }
 
-        if (j == 0)
-            /* nobody is there to wait for! */
+        if (total_connected == 0) {
             goto done_wait;
+        }
 
         if (track_once && bdb_state->attr->track_replication_times) {
             track_once = 0;
 
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            for (int i = 0; i < j; i++)
+            for (int i = 0; i < total_connected; i++)
                 bdb_track_replication_time(bdb_state, seqnum, connlist[i]);
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
@@ -3242,7 +3249,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
             }
         }
 
-        for (i = 0; i < j; i++) {
+        for (i = 0; i < total_connected; i++) {
             int wait = 0;
             /* is_incoherent returns 0 for COHERENT & INCOHERENT_WAIT */
             if (!(is_incoherent_complete(bdb_state, connlist[i], &wait))) {
@@ -3267,7 +3274,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                        nodelist[i], lsn_to_str(str, &(seqnum->lsn)));
 
             rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum,
-                                                   nodelist[i], 1000, __LINE__);
+                    nodelist[i], 1000, __LINE__, fake_incoherent);
 
             if (bdb_lock_desired(bdb_state)) {
                 logmsg(LOGMSG_ERROR,
@@ -3359,7 +3366,7 @@ got_ack:
                    nodelist[i], lsn_to_str(str, &(seqnum->lsn)), waitms);
 
         rc = bdb_wait_for_seqnum_from_node_int(bdb_state, seqnum, nodelist[i],
-                                               waitms, __LINE__);
+                                               waitms, __LINE__, fake_incoherent);
 
         if (bdb_lock_desired(bdb_state)) {
             logmsg(LOGMSG_ERROR,
@@ -5387,6 +5394,8 @@ void *watcher_thread(void *arg)
                     bdb_state->attr->skipdelaybase) {
                     bdb_state->attr->commitdelay =
                         bdb_state->attr->skipdelaybase;
+                    if (bdb_state->attr->commitdelay > bdb_state->attr->commitdelaymax)
+                        bdb_state->attr->commitdelay = bdb_state->attr->commitdelaymax;
                     if (gbl_commit_delay_trace) {
                         logmsg(LOGMSG_USER,
                                "%s line %d setting commitdelay to "
