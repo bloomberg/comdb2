@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=936)
+(TUNABLES_COUNT=937)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -420,6 +420,7 @@
 (name='lsnerr_pgdump_all', description='Dump page on LSN errors on all nodes', type='BOOLEAN', value='OFF', read_only='N')
 (name='machine_class', description='override for the machine class from this db perspective.', type='STRING', value=NULL, read_only='Y')
 (name='make_slow_replicants_incoherent', description='Make slow replicants incoherent.', type='BOOLEAN', value='OFF', read_only='N')
+(name='mask_internal_tunables', description='When enabled, comdb2_tunables system table would not list INTERNAL tunables (Default: on)', type='BOOLEAN', value='ON', read_only='N')
 (name='master_lease', description='', type='INTEGER', value='500', read_only='N')
 (name='master_lease_renew_interval', description='', type='INTEGER', value='200', read_only='N')
 (name='master_lease_set_trace', description='', type='BOOLEAN', value='OFF', read_only='N')

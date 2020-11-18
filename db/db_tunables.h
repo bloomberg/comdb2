@@ -617,6 +617,12 @@ REGISTER_TUNABLE("loghist_verbose", NULL, TUNABLE_BOOLEAN, &gbl_loghist_verbose,
 REGISTER_TUNABLE("mallocregions", NULL, TUNABLE_INTEGER,
                  &gbl_malloc_regions, READONLY, NULL, NULL, NULL, NULL);
 */
+
+REGISTER_TUNABLE("mask_internal_tunables",
+                 "When enabled, comdb2_tunables system table would not list "
+                 "INTERNAL tunables (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_mask_internal_tunables, NOARG, NULL, NULL, NULL, NULL);
+
 /*
   Note: master_retry_poll_ms' value < 0 was previously ignored without
   any error.

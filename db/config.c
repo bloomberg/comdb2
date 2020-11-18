@@ -339,6 +339,7 @@ static char *legacy_options[] = {
     "logmsg notimestamp",
     "logmsg skiplevel",
     "logput window 1",
+    "mask_internal_tunables 0",
     "master_sends_query_effects 0",
     "noblobstripe",
     "nochecksums",
