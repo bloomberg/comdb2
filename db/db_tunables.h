@@ -2064,4 +2064,7 @@ REGISTER_TUNABLE("sockbplog_sockpool",
                  &gbl_sockbplog_sockpool, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
