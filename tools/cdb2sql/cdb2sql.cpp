@@ -1158,7 +1158,9 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
     val = cdb2_column_value(hndl, col);
 
     if (val == NULL) {
-        typeStr = "NULL";
+        if (printmode & DISP_COLTYPE) {
+            typeStr = "NULL";
+        }
         column = "NULL";
     } else {
         int type = cdb2_column_type(hndl, col);
@@ -1278,18 +1280,25 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
         }
     }
 
-    /* Append the column to the last row. */
-    if (typeStr.length() > 0) {
+    /* Append the type string to the last row */
+    if (printmode & DISP_COLTYPE) {
         result.back().push_back(typeStr);
+        /* "--coltype" implies twice as many columns */
+        col *= 2;
+
+        /* Update the max display size */
+        if (typeStr.length() > width[col]) {
+            width[col] = typeStr.length();
+        }
+        col ++;
     }
 
+    /* Append the column value to the last row */
     result.back().push_back(column);
 
-    /* Update the max display size. */
-    int colWidth = typeStr.length() + column.length();
-
-    if (colWidth > width[col]) {
-        width[col] = colWidth;
+    /* Update the max display size */
+    if (column.length() > width[col]) {
+        width[col] = column.length();
     }
 
     return 0;
