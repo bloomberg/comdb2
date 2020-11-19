@@ -106,6 +106,7 @@ cleanup_cluster() {
         if [ "$successful" != "1" ] ; then 
             echo copy $node:${DBDIR} content locally to $DBDIR/$node/ for investigation
             mkdir $DBDIR/$node/
+            # from the next line, scp may result in a an extra copy of the core
             scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
             scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
@@ -167,6 +168,11 @@ unsetup_db() {
         sleep 1
         timeout --kill-after=5s 10s cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
         sleep 1
+
+        if [[ -z "$SKIPDEBUG" ]] ; then
+            cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("exit")'
+            sleep 5
+        fi
         
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
     else
@@ -176,8 +182,16 @@ unsetup_db() {
             flush_node $node &
             build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
         done
+
         wait
 
+        for node in $CLUSTER; do
+            if [[ -z "$SKIPDEBUG" ]] ; then
+                cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("exit")'
+            fi
+        done
+        sleep 5
+ 
         # for clustered, killing ssh session which is running comdb2 cmd 
         # will kill server on that node
         if [ -n "$pidfilelist" ] ; then

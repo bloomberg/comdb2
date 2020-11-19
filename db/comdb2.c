@@ -3364,12 +3364,10 @@ static int create_db(char *dbname, char *dir) {
 
 static void setup_backup_logfiles_dir()
 {
-    logmsg(LOGMSG_ERROR, "setup_backup_logfiles_dir: entering()\n");
     char *backupdir = comdb2_location("backup_logfiles_dir", NULL);
     if (!backupdir || strcmp(backupdir, "backup_logfiles_dir") == 0)
         goto cleanup;
 
-    logmsg(LOGMSG_ERROR, "setup_backup_logfiles_dir: %s\n", backupdir);
     /* if path like "..../%dbname" then substitute %dbname with thedb->envname
      * char *newname = comdb2_location("backup_logfiles_dir", "%s/%s", thedb->envname);
      * and update_location("backup_logfiles_dir", newname);

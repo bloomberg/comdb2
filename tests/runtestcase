@@ -108,7 +108,9 @@ find_cores() {
     eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
     if [[ -n "$cr" ]] ; then
         echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
-        ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
+        if [ ! -f $cr ] ; then 
+            ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
+        fi
         which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
         which gdb > /dev/null && [ -f $cr ] && echo 't a a bt full' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace_long.$HOSTNAME.txt
         ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
@@ -373,6 +375,13 @@ call_unsetup
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
+
+if [[ "${DEBUGGER}" == "callgrind" ]]; then 
+   echo "callgrind files are located here:"
+   ls ${TESTDIR}/*.callgrind
+fi
+
+
 
 exit $rc
 
