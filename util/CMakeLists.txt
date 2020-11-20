@@ -16,6 +16,7 @@ set(src
   debug_switches.c
   flibc.c
   fsnapf.c
+  hashfuncs.c
   hostname_support.c
   int_overflow.c
   intern_strings.c
