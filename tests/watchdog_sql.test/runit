@@ -29,5 +29,7 @@ if [[ $? == 0 ]]; then
     exit 1
 fi
 
+COMDB2_UNITTEST=0 $TESTSROOTDIR/unsetup 1 &> $TESTDIR/logs/${DBNAME}.unsetup
+
 echo "Success"
 exit 0

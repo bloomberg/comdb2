@@ -52,9 +52,11 @@ if [[ -n "$CLUSTER" ]]; then
     fi
 else
     ls -al $BACKUPDIR > ls_out.txt
-    if [ "$CLEANUPDBDIR" != "0" ] ; then
-        rm -rf $BACKUPDIR
-    fi
+fi
+
+if [ "$CLEANUPDBDIR" != "0" ] ; then # clean locally (inited even in clustered)
+    rm -rf $BACKUPDIR
+    # may need to also rm ${TESTDIR}/backup_logfiles_dir
 fi
 
 cnt=`grep -c log.0000000001 ls_out.txt`

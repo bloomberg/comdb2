@@ -5,11 +5,13 @@ set -x
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
-function exiting {
-    COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+function call_unsetup {
+    # need to keep directory and not cleanup
+    echo "executing COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup"
+    COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 &> $TESTDIR/logs/${DBNAME}.unsetup
 }
 
-trap exiting EXIT
+trap call_unsetup EXIT
 
 function waitfordb {
     sleep 1
@@ -66,7 +68,7 @@ assertres "\"$res\"" "\"$exp\""
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "select * from nonexistent" 2>&1`
 assertres "\"$res\"" \""[select * from nonexistent] failed with rc -3 no such table: nonexistent\""
 
-COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+call_unsetup # unsetup without cleaning up
 
 ls -ltr $TESTDIR/var/log/cdb2/ | grep events
 logfl=`find $TESTDIR/var/log/cdb2/ -printf "%T@ %p\n" | grep "/$DBNAME" | grep events | sort -n | cut -f2 -d' ' | tail -1`
@@ -206,7 +208,7 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql event
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "select 3"
 d=`cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql stat')"  | grep Eventlog | sed "s/[^:]*:\(.*\)')/\1/g" | xargs dirname`
 
-COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
+call_unsetup # unsetup without cleaning up
 
 if [ ! -f $myevfl ] ; then
     failexit "$myevfl was not created"
@@ -226,13 +228,13 @@ assertres $d $TESTDIR/var/log
 #done | wc -l)
 #assertres $res $NUM
 
-COMDB2_UNITTEST=0 CLEANUPDBDIR=0 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
-
 valgrind --error-exitcode=1 --leak-check=full --trace-children=yes --quiet ${TESTSBUILDDIR}/cson_test
 res=$?
 assertres $res 0
 
+echo "cleanup=$CLEANUPDBDIR"
+
+COMDB2_UNITTEST=0 $TESTSROOTDIR/unsetup 1 &> $TESTDIR/logs/${DBNAME}.unsetup
 trap - INT EXIT
-exiting
 
 echo "Success"

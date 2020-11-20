@@ -82,6 +82,17 @@ core_all_nodes() {
     done
 }
 
+tail_and_error_file() {
+    fl=$1
+    if [ `wc -l $fl | cut -d' ' -f1` -lt 20 ] ; then
+        return
+    fi
+    echo ".....truncated...." > tail.txt
+    grep --context=3 -i "error\|failed" $fl >> tail.txt
+    tail -20 $fl >> tail.txt
+    mv tail.txt $fl # override with partial content
+}
+
 cleanup_cluster() {    
     local deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
     local dbport
@@ -122,11 +133,16 @@ cleanup_cluster() {
     if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
         rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
         if [ "$CLEANUPDBDIR" == "2" ] ; then
-            rm -f $TESTDIR/logs/${DBNAME}.* ${TESTDIR}/var/log/cdb2/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f ${TESTDIR}/var/log/cdb2/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f $TESTDIR/logs/${DBNAME}.{setup,init,conn,copy,arstatus} # non clustered
+            rm -f $TESTDIR/logs/${DBNAME}.*.{setup,init,conn,copy,arstatus} # clustered
+
+            for fl in $TESTDIR/logs/${DBNAME}.*db $TESTDIR/logs/${DBNAME}.testcase ; do
+                tail_and_error_file $fl
+            done
+
             #rm -f ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null
-            #if DBCLEANUP is 2 then we cleanup the logs/${DBNAME}.testcase, remark so we know
-            echo '$CLEANUPDBDIR == 2 and test was successful so we cleaned up all files related to this test' >> $TESTDIR/logs/${DBNAME}.testcase
         fi
     fi
 }
