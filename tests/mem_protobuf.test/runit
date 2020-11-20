@@ -1,0 +1,9 @@
+# Simple test to verify that protobuf memory is accounted for.
+#!/bin/sh
+
+bash -n "$0" | exit 1
+set -e
+
+dbnm=$1
+host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
+cdb2sql $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat")' | grep 'protobuf.*appsockpool'

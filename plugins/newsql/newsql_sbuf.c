@@ -20,6 +20,7 @@
 #include <intern_strings.h>
 #include <newsql.h>
 #include <pb_alloc.h>
+#include <mem_protobuf.h> /* comdb2_malloc_protobuf */
 #include <sql.h>
 #include <str0.h>
 
@@ -57,7 +58,7 @@ static void *newsql_protobuf_alloc(void *allocator_data, size_t size)
         p = npa->protobuf_data + npa->protobuf_offset;
         npa->protobuf_offset += size;
     } else {
-        p = malloc(size);
+        p = comdb2_malloc_protobuf(size);
         npa->alloced_outside_buffer++;
     }
     return p;
@@ -68,7 +69,7 @@ static void newsql_protobuf_free(void *allocator_data, void *ptr)
     uint8_t *p = ptr;
     struct NewsqlProtobufCAllocator *npa = allocator_data;
     if (p < npa->protobuf_data || p > (npa->protobuf_data + npa->protobuf_size)) {
-        free(p);
+        comdb2_free_protobuf(p);
         npa->alloced_outside_buffer--;
     }
 }
@@ -78,14 +79,14 @@ static void newsql_protobuf_init(struct NewsqlProtobufCAllocator *npa)
     npa->protobuf_size = gbl_protobuf_prealloc_buffer_size;
     npa->protobuf_offset = 0;
     npa->alloced_outside_buffer = 0;
-    npa->protobuf_data = malloc(npa->protobuf_size);
+    npa->protobuf_data = comdb2_malloc_protobuf(npa->protobuf_size);
     npa->protobuf_allocator = setup_pb_allocator(newsql_protobuf_alloc, newsql_protobuf_free, npa);
 }
 
 static void newsql_protobuf_destroy(struct NewsqlProtobufCAllocator *npa)
 {
     assert(npa->alloced_outside_buffer == 0);
-    free(npa->protobuf_data);
+    comdb2_free_protobuf(npa->protobuf_data);
 }
 
 static int newsql_read_sbuf(struct sqlclntstate *clnt, void *b, int l, int n)
