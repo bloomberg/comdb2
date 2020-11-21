@@ -5266,7 +5266,6 @@ void sqlengine_work_appsock(void *thddata, void *work)
     }
 
     if (clnt->sql_ref) {
-        logmsg(LOGMSG_USER, "calling put_ref to rid clnt->ref %p\n", clnt->sql_ref);
         put_ref(&clnt->sql_ref);
     }
 

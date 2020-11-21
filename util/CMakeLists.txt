@@ -18,7 +18,6 @@ set(src
   fsnapf.c
   hashfuncs.c
   hostname_support.c
-  hashfuncs.c
   int_overflow.c
   intern_strings.c
   list.c

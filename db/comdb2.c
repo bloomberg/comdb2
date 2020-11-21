@@ -3370,14 +3370,16 @@ static int create_db(char *dbname, char *dir) {
 static void setup_backup_logfiles_dir()
 {
     char *backupdir = comdb2_location("backup_logfiles_dir", NULL);
-    if (!backupdir || strcmp(backupdir, "backup_logfiles_dir") == 0)
+    if (!backupdir)
         goto cleanup;
 
-    /* if path like "..../%dbname" then substitute %dbname with thedb->envname
-     * char *newname = comdb2_location("backup_logfiles_dir", "%s/%s", thedb->envname);
-     * and update_location("backup_logfiles_dir", newname);
-     */
+    /* cant have the db called 'backup_logfiles_dir' */
+    char *loc = strstr(backupdir, "backup_logfiles_dir");
+    if (loc != 0 && *(loc + sizeof("backup_logfiles_dir") + 1) == '\0' && *(loc - 1) == '/')
+        goto cleanup;
+
     {
+        /* if path like "..../%dbname" then substitute %dbname with thedb->envname */
         char *loc = strstr(backupdir, "%dbname");
         if (loc) {
             int dbnamelen = strlen(thedb->envname);
