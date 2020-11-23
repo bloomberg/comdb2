@@ -1,6 +1,6 @@
 schema
 {
-    u_int           owner_id                    // UUID of owner
+    u_int           owner_id                    // UID of owner
     u_int           firm_id
     u_int           line_number                 // in input file
     u_int           error_id                    // type of error

@@ -1,11 +1,11 @@
 schema
 {
-  int uuid
+  int uid
   int value
 }
 
 keys
 {
-    "UUID"          = uuid
-    "UUID_WHERE"    = uuid {where value > 10}
+    "UID"          = uid
+    "UID_WHERE"    = uid {where value > 10}
 }
