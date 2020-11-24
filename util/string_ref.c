@@ -35,7 +35,7 @@ extern u_int ptrhashfunc(u_char *keyp, int len);
 
 static int gbl_creation_count;
 
-struct string_ref_t {
+struct string_ref {
     int cnt;
     char str[1];
 };
@@ -43,11 +43,11 @@ struct string_ref_t {
 
 /* Makes a copy of the string passed and uses that as a reference counted object
  */
-string_ref_t * create_string_ref(const char *str)
+struct string_ref * create_string_ref(const char *str)
 {
     assert(str);
     int len = strlen(str);
-    string_ref_t *ref = malloc(sizeof(string_ref_t) + len);
+    struct string_ref *ref = malloc(sizeof(struct string_ref) + len);
     ref->cnt = 1;
     strcpy(ref->str, str);
 
@@ -67,7 +67,7 @@ string_ref_t * create_string_ref(const char *str)
 
 
 /* Get a reference by increasing the count */
-string_ref_t * get_ref(string_ref_t *ref)
+struct string_ref * get_ref(struct string_ref *ref)
 {
     assert(ref);
     int cnt = ATOMIC_ADD32(ref->cnt, 1);
@@ -80,9 +80,9 @@ string_ref_t * get_ref(string_ref_t *ref)
 /* Release a reference and free if this is the last holder.
  * set *ref to NULL so it can no longer access this obj
  */
-void put_ref(string_ref_t **ref_p)
+void put_ref(struct string_ref **ref_p)
 {
-    string_ref_t *ref = *ref_p;
+    struct string_ref *ref = *ref_p;
     if (ref == NULL)
         return; // nothing to do
 
@@ -111,13 +111,13 @@ void put_ref(string_ref_t **ref_p)
 /* Transfer ownership of the reference from pointer 'from' to 'to'
  * use this instead of assigning 'to = from'
  */
-void transfer_ref(string_ref_t **from, string_ref_t **to)
+void transfer_ref(struct string_ref **from, struct string_ref **to)
 {
     *to = *from;
     *from = NULL;
 }
 
-const char *get_string(string_ref_t *ref)
+const char *get_string(struct string_ref *ref)
 {
     return ref->str;
 }
@@ -126,7 +126,7 @@ const char *get_string(string_ref_t *ref)
 #ifdef TRACK_REFERENCES
 static int print_it(void *obj, void *arg)
 {
-    string_ref_t *ref = obj;
+    struct string_ref *ref = obj;
     logmsg(LOGMSG_USER, "%s:%d\n", ref->str, ref->cnt);
     return 0;
 }

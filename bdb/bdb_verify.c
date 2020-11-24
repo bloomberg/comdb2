@@ -1216,7 +1216,7 @@ static inline void enqueue_work(td_processing_info_t *work, const char *desc,
     work->common_params->threads_spawned++;
 
     if (verify_thdpool) {
-        string_ref_t * sr = create_string_ref(desc);
+        struct string_ref * sr = create_string_ref(desc);
         int rc = thdpool_enqueue(verify_thdpool, bdb_verify_handler_work_pp, work, 0,
                                  sr, THDPOOL_FORCE_QUEUE, PRIORITY_T_DEFAULT);
         if (rc) {

@@ -5450,7 +5450,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
         clnt->queue_me = 1;
     }
 
-    string_ref_t *sr = get_ref(clnt->sql_ref);
+    struct string_ref *sr = get_ref(clnt->sql_ref);
     if ((rc = thdpool_enqueue(pool, sqlengine_work_appsock_pp,
                               clnt, clnt->queue_me, sr, flags,
                               clnt->priority)) != 0) {

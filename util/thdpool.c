@@ -877,7 +877,7 @@ thread_exit:
 }
 
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, string_ref_t *ref_persistent_info,
+                    int queue_override, struct string_ref *ref_persistent_info,
                     uint32_t flags, priority_t priority)
 {
     static time_t last_dump = 0;

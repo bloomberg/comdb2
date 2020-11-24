@@ -1146,7 +1146,7 @@ int dohsql_distribute(dohsql_node_t *node)
             return rc;
 
         if (i > 0) {
-            string_ref_t * sr = create_string_ref(node->nodes[i]->sql);
+            struct string_ref *sr = create_string_ref(node->nodes[i]->sql);
 
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(get_sql_pool(clnt), sqlengine_work_shard_pp,

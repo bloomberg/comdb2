@@ -40,15 +40,11 @@
  *
  */
 
-
-
-typedef struct string_ref_t string_ref_t;
-
-string_ref_t * create_string_ref(const char *str);
-string_ref_t * get_ref(string_ref_t *ref);
-void put_ref(string_ref_t **ref);
-void transfer_ref(string_ref_t **from, string_ref_t **to);
-const char *get_string(string_ref_t *ref);
+struct string_ref * create_string_ref(const char *str);
+struct string_ref * get_ref(struct string_ref *ref);
+void put_ref(struct string_ref **ref);
+void transfer_ref(struct string_ref **from, struct string_ref **to);
+const char *get_string(struct string_ref *ref);
 int all_string_references_cleared();
 
 #endif
