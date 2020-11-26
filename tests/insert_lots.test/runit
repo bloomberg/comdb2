@@ -52,7 +52,7 @@ fi
 
 gen_series_test
 
-time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins.out
+time ${TESTSBUILDDIR}/insert_lots_mt --dbname $dbnm --numthreads $THRDS --cntperthread $CNT --iterations $ITERATIONS --transize $TRANSIZE> ins.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
 do_verify t1
 

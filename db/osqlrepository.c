@@ -256,12 +256,19 @@ int osql_repository_printcrtsessions(void)
 
     Pthread_mutex_lock(&theosql->hshlck);
 
-    logmsg(LOGMSG_USER, "Begin osql session info:\n");
+    logmsg(LOGMSG_USER, "Begin osql session info (rqs):\n");
     if ((rc = hash_for(theosql->rqs, _getcrtinfo, NULL))) {
         logmsg(LOGMSG_USER, "hash_for failed with rc = %d\n", rc);
         rc = -1;
     } else
-        logmsg(LOGMSG_USER, "Done osql info.\n");
+        logmsg(LOGMSG_USER, "Done osql info (rqs).\n");
+    logmsg(LOGMSG_USER, "Begin osql session info (uuids):\n");
+
+    if ((rc = hash_for(theosql->rqsuuid, _getcrtinfo, NULL))) {
+        logmsg(LOGMSG_USER, "hash_for failed with rc = %d\n", rc);
+        rc = -1;
+    } else
+        logmsg(LOGMSG_USER, "Done osql info(uuids).\n");
 
     Pthread_mutex_unlock(&theosql->hshlck);
 

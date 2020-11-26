@@ -7,6 +7,7 @@
 #include <time.h>
 #include <sstream>
 #include <iostream>
+#include <getopt.h>
 
 static std::string quote("");
 static std::string comma(",");
@@ -14,7 +15,11 @@ static std::string space(" ");
 static std::string at("@");
 static std::string begin("begin");
 static std::string commit("commit");
-unsigned int transize;
+static std::string rollback("rollback");
+
+unsigned int gbl_transize;
+enum { G_COMMIT, G_ROLLBACK, G_DISCONNECT, G_CLOSEOPEN };
+unsigned int atcommit = G_COMMIT;
 
 int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
@@ -97,6 +102,8 @@ void *thr(void *arg)
 {
     cdb2_hndl_tp *db;
     int rc = cdb2_open(&db, dbname, "default", 0);
+    if (rc != 0)
+        rc = cdb2_open(&db, dbname, "local", 0);
     if (rc != 0) {
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
@@ -109,7 +116,7 @@ void *thr(void *arg)
     ss << "insert into " << table << "(i, j) values (@i, @j)" ;
     std::string s = ss.str();
 
-    if (transize > 0)
+    if (gbl_transize > 1)
         runsql(db, begin);
 
     // insert records with bind params
@@ -129,12 +136,29 @@ void *thr(void *arg)
         //runtag(db, s, types);
         cdb2_clearbindings(db);
         if((++count & 0xff) == 0) std::cout << "Thr " << i << " Items " << count << std::endl;
-        if (transize > 0 && (count % transize) == 0) {
-            runsql(db, commit);
+        if (gbl_transize > 1 && (count % gbl_transize) == 0) {
+            switch (atcommit) {
+            case G_COMMIT: runsql(db, commit); break;
+            case G_ROLLBACK: runsql(db, rollback); break;
+            case G_DISCONNECT: 
+                return NULL;
+            case G_CLOSEOPEN: 
+                cdb2_close(db);
+                rc = cdb2_open(&db, dbname, "default", 0);
+                if (rc != 0)
+                    rc = cdb2_open(&db, dbname, "local", 0);
+                if (rc != 0) {
+                    fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
+                    exit(1);
+                }
+                break;
+            default: abort();
+            }
+
             runsql(db, begin);
         }
     }
-    if (transize > 0)
+    if (gbl_transize > 1)
         runsql(db, commit);
 
     cdb2_close(db);
@@ -142,25 +166,75 @@ void *thr(void *arg)
     return NULL;
 }
 
+void usage(const char *p, const char *err) {
+    fprintf(stderr, err);
+    fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --cntperthread CNTPERTHREAD\n"
+                    "--iterations ITERATIONS [--transize TRANSIZE] [--atcommit commit|rollback|disconnect]\n", p);
+    exit(1);
+}
+
 int main(int argc, char *argv[])
 {
-    if(argc < 5) {
-        fprintf(stderr, "Usage %s DBNAME NUMTHREADS CNTPERTHREAD ITERATIONS TRANSIZE\n", argv[0]);
-        return 1;
+    int numthreads = 0;
+    int cntperthread = 0;
+    int iterations = 0;
+
+    if(argc < 5)
+        usage(argv[0], "Required parameters were NOT provided\n"); //exit too
+
+    static struct option long_options[] =
+    {
+        //{char *name; int has_arg; int *flag; int val;}
+        {"dbname", required_argument, NULL, 'd'},
+        {"numthreads", required_argument, NULL, 'n'},
+        {"cntperthread", required_argument, NULL, 'c'},
+        {"iterations", required_argument, NULL, 'i'},
+        {"transize", required_argument, NULL, 't'},
+        {"atcommit", required_argument, NULL, 'm'}, //rollback instead of commit
+        {NULL, 0, NULL, 0}
+    };
+
+    char c;
+    int index;
+    while ((c = getopt_long(argc, argv, "d:n:c:i:t:rd?", long_options, &index))!=EOF) {
+        //printf("c '%c' %d index %d optarg '%s'\n", c, c, index, optarg);
+        switch(c) {
+            case 'd': dbname = strdup(optarg); break;
+            case 'n': numthreads = atoi(optarg); break;
+            case 'c': cntperthread = atoi(optarg); break;
+            case 'i': iterations = atoi(optarg); break;
+            case 't': gbl_transize = atoi(optarg); break;
+            case 'm': 
+                  if (strcmp(optarg, "rollback") == 0)
+                      atcommit = G_ROLLBACK;
+                  else if (strcmp(optarg, "disconnect") == 0)
+                      atcommit = G_DISCONNECT;
+                  break;
+            case '?':  break;
+            default: break;
+        }
     }
 
-    dbname = argv[1];
-    unsigned int numthreads = atoi(argv[2]);
-    unsigned int cntperthread = atoi(argv[3]);
-    unsigned int iterations = atoi(argv[4]);
-    if (argv[5])
-        transize = atoi(argv[5]);
+    if (optind < argc) {
+        dbname = strdup(argv[optind]);
+    }
+
+    if (!dbname)
+        usage(argv[0], "Parameter dbname is not set\n"); //exit too
+    if (numthreads < 1)
+        usage(argv[0], "Parameter numthreads is not set\n"); //exit too
+    if (cntperthread < 1)
+        usage(argv[0], "Parameter cntperthread is not set\n"); //exit too
+    if (iterations < 1)
+        usage(argv[0], "Parameter iterations is not set\n"); //exit too
+
+    //printf("%s %d %d %d %d\n", dbname, numthreads, cntperthread, iterations, transize);//
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)
         cdb2_set_comdb2db_config(conf);
     else
-        fprintf(stderr, "Error: no config was set\n");
+        fprintf(stderr, "Warning: no config was set from getenv(\"CDB2_CONFIG\")\n");
 
     pthread_t *t = (pthread_t *) malloc(sizeof(pthread_t) * numthreads);
     thr_info_t *tinfo = (thr_info_t *) malloc(sizeof(thr_info_t) * numthreads);
