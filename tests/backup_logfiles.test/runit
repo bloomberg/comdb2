@@ -34,7 +34,7 @@ TRANSIZE=0
 gen_series_test
 
 cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'create table t1 {schema { short i  int j } keys { "PK"=i+j dup "j"=j } }'
-time ${TESTSBUILDDIR}/insert_lots_mt $DBNAME $THRDS $CNT $ITERATIONS $TRANSIZE> ins.out
+time ${TESTSBUILDDIR}/insert_lots_mt --dbname $DBNAME --numthreads $THRDS --cntperthread $CNT --iterations $ITERATIONS --transize $TRANSIZE> ins.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
 
 while [ $SECONDS -lt 120 ] ; do
