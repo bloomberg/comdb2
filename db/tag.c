@@ -5063,13 +5063,15 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
 
             extern int gbl_forbid_ulonglong;
             if (gbl_forbid_ulonglong &&
-                schema->member[field].type == CLIENT_UINT &&
+                (schema->member[field].type == SERVER_UINT ||
+                 schema->member[field].type == CLIENT_UINT) &&
                 schema->member[field].len == sizeof(unsigned long long) &&
                 strncasecmp(db->tablename, gbl_ver_temp_table,
                             sizeof(gbl_ver_temp_table) - 1) != 0) {
                 logmsg(LOGMSG_ERROR,
                        "Error in table %s: u_longlong is unsupported\n",
                        db->tablename);
+                reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
                 return -1;
             }
 
