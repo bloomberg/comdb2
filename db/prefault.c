@@ -739,7 +739,6 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                 }
 
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-                    char keytag[MAXTAGLEN];
                     char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
@@ -749,9 +748,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                                iq.usedb->tablename, ixnum);
                         break;
                     }
-                    snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-                    rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                          (char *)fnddta, keytag, key, NULL);
+                    rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)fnddta, key);
                     if (rc == -1) {
                         break;
                     }
@@ -861,7 +858,6 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
                 /* enqueue faults for old keys */
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-                    char keytag[MAXTAGLEN];
                     char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
@@ -871,9 +867,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                                iq.usedb->tablename, ixnum);
                         continue;
                     }
-                    snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-                    rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                          (char *)fnddta, keytag, key, NULL);
+                    rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)fnddta, key);
                     if (rc == -1) {
                         logmsg(LOGMSG_ERROR,
                                "prefault_thd:cannot convert .ONDISK to IDX"
@@ -916,7 +910,6 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
 
                 /* enqueue faults for new keys */
                 for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-                    char keytag[MAXTAGLEN];
                     char key[MAXKEYLEN];
                     int keysz = 0;
                     keysz = getkeysize(iq.usedb, ixnum);
@@ -926,9 +919,7 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
                                iq.usedb->tablename, ixnum);
                         continue;
                     }
-                    snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-                    rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                          (char *)od_dta, keytag, key, NULL);
+                    rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)od_dta, key);
                     if (rc == -1) {
                         logmsg(LOGMSG_ERROR,
                                "prefault_thd:cannot convert .ONDISK to IDX"

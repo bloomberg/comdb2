@@ -219,8 +219,6 @@ int stag_to_ctag_buf_tz(const char *table, const char *stag, const char *inbuf,
                         unsigned char *outnulls, int flags,
                         uint8_t **pp_flddtsz, const uint8_t *p_flddtsz_end,
                         const char *tzname);
-void *stag_to_ctag(const char *table, const char *stag, const char *inbuf,
-                   const char *ctag, unsigned char *outnulls, int flags);
 int stag_to_ctag_buf_blobs_tz(const char *table, const char *stag,
                               const char *inbuf, int len, const char *ctag,
                               void *outbufp, unsigned char *outnulls, int flags,
@@ -279,7 +277,6 @@ void del_tag_schema(const char *table, const char *tagname);
 void replace_tag_schema(struct dbtable *db, struct schema *schema);
 char *sqltype(struct field *f, char *buf, int len);
 char *csc2type(struct field *f);
-void debug_dump_schemas(void);
 void debug_dump_tags(const char *tblname);
 void fix_lrl_ixlen(void);
 struct tran_tag;
@@ -306,7 +303,6 @@ int get_schema_field_blob_idx(const char *table, const char *tag, int fldindex);
 void *get_field_ptr_in_buf(struct schema *sc, int idx, const void *buf);
 int is_tag_ondisk_sc(struct schema *sc);
 int is_tag_ondisk(const char *table, const char *tag);
-int fixup_verified_record(const char *dbname, const char *from, char *to);
 void backout_schemas(char *tblname);
 int broadcast_resume_threads(void);
 int have_all_schemas(void);
@@ -316,10 +312,7 @@ int resolve_tag_name(struct ireq *iq, const char *tagdescr, size_t taglen,
                      size_t tagnamelen);
 void printrecord(char *buf, struct schema *sc, int len);
 
-void *create_blank_record(struct dbtable *db, size_t *length);
-int validate_server_record(struct ireq *iq, const void *record, size_t reclen,
-                           const char *tag, const char *ondisktag,
-                           struct schema *schema);
+int validate_server_record(struct ireq *iq, const void *record, size_t reclen, const char *tag, struct schema *schema);
 void init_convert_failure_reason(struct convert_failure *fail_reason);
 
 /* I'm putting these functions in so that javasp.c code can query schema stuff
@@ -350,28 +343,18 @@ struct dbrecord {
 
 /* if tag is NULL, assume .ONDISK_new */
 struct dbrecord *allocate_db_record(const char *table, const char *tag);
+int stag_ondisk_to_ix(const struct dbtable *db, int ixnum, const char *inbuf, char *outbuf);
+int stag_ondisk_to_ix_blobs(const struct dbtable *db, int ixnum, const char *inbuf, char *outbuf, blob_buffer_t *blobs,
+                            int maxblobs);
 int stag_to_stag_buf(const char *table, const char *fromtag, const char *inbuf,
                      const char *totag, char *tobuf,
                      struct convert_failure *reason);
 
-int stag_to_stag_buf_tz(struct schema *fromsch, const char *table,
-                        const char *fromtag, const char *inbuf,
-                        const char *totag, char *tobuf,
+int stag_to_stag_buf_tz(struct schema *fromsch, const char *table, const char *inbuf, const char *totag, char *tobuf,
                         struct convert_failure *reason, const char *tzname);
 
-int stag_to_stag_buf_update(const char *table, const char *fromtag,
-                            const char *inbuf, const char *totag, char *tobuf,
-                            struct convert_failure *reason);
-
-int stag_to_stag_buf_update_tz(const char *table, const char *fromtag,
-                               const char *inbuf, const char *totag,
-                               char *tobuf, struct convert_failure *reason,
-                               const char *tzname);
-
-int stag_to_stag_buf_flags(const char *table, const char *fromtag,
-                           const char *inbuf, const char *totable,
-                           const char *totag, char *outbuf, int flags,
-                           struct convert_failure *reason);
+int stag_to_stag_buf_update_tz(struct schema *from, struct schema *to, const char *inbuf, char *tobuf,
+                               struct convert_failure *reason, const char *tzname);
 
 /* Primary key to foreign key enums */
 enum constraint_dir {
@@ -388,7 +371,7 @@ int server_type_to_csc2_type_len(int type, int inlen, int *csc2type,
                                  int *csc2len);
 int client_type_to_csc2_type(int type, int inlen, int *csc2type);
 
-int describe_update_columns(const char *table, const char *tag, int *updCols);
+int describe_update_columns(const struct ireq *iq, const struct schema *chk, int *updCols);
 int remap_update_columns(const char *table, const char *intag,
                          const int *incols, const char *outtag, int *outcols);
 void free_blob_buffers(blob_buffer_t *blobs, int nblobs);
@@ -400,9 +383,7 @@ void loadnullbmp(void *destbmp, size_t destbmpsz, const void *srcbmp,
 
 void update_dbstore(struct dbtable *db);
 
-int static_tag_blob_conversion(const char *table, const char *ctag,
-                               void *record, blob_buffer_t *blobs,
-                               size_t maxblobs);
+int static_tag_blob_conversion(const struct schema *scm, void *record, blob_buffer_t *blobs, size_t maxblobs);
 
 int compare_indexes(const char *table, FILE *out);
 
@@ -421,35 +402,14 @@ void free_db_and_replace(struct dbtable *db, struct dbtable *newdb);
 
 void err_print_rec(strbuf *buf, void *rec, char *table, char *tag);
 
-int create_key_from_ondisk(struct dbtable *db, int ixnum, char **tail, int *taillen,
-                           char *mangled_key, const char *fromtag,
-                           const char *inbuf, int inbuflen, const char *totag,
-                           char *outbuf, struct convert_failure *reason,
-                           const char *tzname);
+int create_key_from_ondisk(const struct dbtable *db, int ixnum, const char *inbuf, char *outbuf);
 
-int create_key_from_ondisk_blobs(const struct dbtable *db, int ixnum, char **tail,
-                                 int *taillen, char *mangled_key,
-                                 const char *fromtag, const char *inbuf,
-                                 int inbuflen, const char *totag, char *outbuf,
-                                 struct convert_failure *reason,
-                                 blob_buffer_t *inblobs, int maxblobs,
-                                 const char *tzname);
+int create_key_from_schema_simple(const struct dbtable *db, struct schema *schema, int ixnum, const char *inbuf,
+                                  char *outbuf, blob_buffer_t *inblobs, int maxblobs);
 
-int create_key_from_ondisk_sch(struct dbtable *db, struct schema *fromsch, int ixnum,
-                               char **tail, int *taillen, char *mangled_key,
-                               const char *fromtag, const char *inbuf,
-                               int inbuflen, const char *totag, char *outbuf,
-                               struct convert_failure *reason,
-                               const char *tzname);
-
-int create_key_from_ondisk_sch_blobs(const struct dbtable *db, struct schema *fromsch,
-                                     int ixnum, char **tail, int *taillen,
-                                     char *mangled_key, const char *fromtag,
-                                     const char *inbuf, int inbuflen,
-                                     const char *totag, char *outbuf,
-                                     struct convert_failure *reason,
-                                     blob_buffer_t *inblobs, int maxblobs,
-                                     const char *tzname);
+int create_key_from_schema(const struct dbtable *db, struct schema *schema, int ixnum, char **tail, int *taillen,
+                           char *mangled_key, const char *inbuf, int inbuflen, char *outbuf, blob_buffer_t *inblobs,
+                           int maxblobs, const char *tzname);
 
 int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
                          int *taillen, char *mangled_key, const char *inbuf,
@@ -457,4 +417,5 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
 
 char* typestr(int type, int len);
 
+struct schema *get_schema(const struct dbtable *db, int ix);
 #endif

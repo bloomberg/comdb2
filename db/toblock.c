@@ -6100,7 +6100,6 @@ static int keyless_range_delete_formkey(void *record, size_t record_len,
                                         void *index, size_t index_len,
                                         int index_num, void *userptr)
 {
-    char index_tag_name[MAXTAGLEN + 1];
     rngdel_info_t *rngdel_info = userptr;
     struct ireq *iq = rngdel_info->iq;
     int ixkeylen;
@@ -6117,11 +6116,7 @@ static int keyless_range_delete_formkey(void *record, size_t record_len,
         return -2;
     }
 
-    snprintf(index_tag_name, sizeof(index_tag_name), ".ONDISK_IX_%d",
-             index_num);
-
-    rc = stag_to_stag_buf(iq->usedb->tablename, ".ONDISK", record,
-                          index_tag_name, index, NULL);
+    rc = stag_ondisk_to_ix(iq->usedb, index_num, record, index);
     if (rc == -1) {
         if (iq->debug)
             reqprintf(iq, "%p:RNGDELKL CALLBACK CANT FORM INDEX %d",
