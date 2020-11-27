@@ -400,7 +400,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
         }
 
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
             char key[MAXKEYLEN];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
@@ -411,9 +410,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                        iq.usedb->tablename, ixnum);
                 break;
             }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)fnddta, keytag, key, NULL);
+            rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)fnddta, key);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
@@ -435,7 +432,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
         /* enqueue faults for new keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
             char key[MAXKEYLEN];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
@@ -446,9 +442,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                        iq.usedb->tablename, ixnum);
                 continue;
             }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)req->record, keytag, key, NULL);
+            rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)req->record, key);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
@@ -498,7 +492,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
         /* enqueue faults for old keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
             char key[MAXKEYLEN];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
@@ -509,9 +502,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                        iq.usedb->tablename, ixnum);
                 continue;
             }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)fnddta, keytag, key, NULL);
+            rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)fnddta, key);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"
@@ -528,7 +519,6 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
 
         /* enqueue faults for new keys */
         for (ixnum = 0; ixnum < iq.usedb->nix; ixnum++) {
-            char keytag[MAXTAGLEN];
             char key[MAXKEYLEN];
             int keysz = 0;
             keysz = getkeysize(iq.usedb, ixnum);
@@ -539,9 +529,7 @@ static void osqlpfault_do_work(struct thdpool *pool, void *work, void *thddata)
                        iq.usedb->tablename, ixnum);
                 continue;
             }
-            snprintf(keytag, sizeof(keytag), ".ONDISK_IX_%d", ixnum);
-            rc = stag_to_stag_buf(iq.usedb->tablename, ".ONDISK",
-                                  (char *)req->record, keytag, key, NULL);
+            rc = stag_ondisk_to_ix(iq.usedb, ixnum, (char *)req->record, key);
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR,
                        "osqlpfault_do_work:cannot convert .ONDISK to IDX"

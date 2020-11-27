@@ -418,17 +418,11 @@ int check_update_constraints(struct ireq *iq, void *trans,
             }
             ixlen = getkeysize(iq->usedb, ixnum);
             snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", ixnum);
-            /*
-            rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",rec_dta,
-               ondisk_tag, lkey, NULL);
-             */
             if (iq->idxDelete)
                 rc = create_key_from_ireq(iq, ixnum, 1, NULL, NULL, NULL,
                                           rec_dta, 0 /* not needed */, lkey);
             else
-                rc = create_key_from_ondisk(
-                    iq->usedb, ixnum, NULL, NULL, NULL, ".ONDISK", rec_dta,
-                    0 /* not needed */, ondisk_tag, lkey, NULL, NULL);
+                rc = create_key_from_ondisk(iq->usedb, ixnum, rec_dta, lkey);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq,
@@ -445,19 +439,12 @@ int check_update_constraints(struct ireq *iq, void *trans,
 
             /* this part is for update */
             if (newrec_dta != NULL) {
-                /*
-                rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",newrec_dta,
-                   ondisk_tag, nkey, NULL);
-                 */
                 if (iq->idxInsert)
                     rc = create_key_from_ireq(iq, ixnum, 0, NULL, NULL, NULL,
                                               newrec_dta, 0 /* not needed */,
                                               nkey);
                 else
-                    rc = create_key_from_ondisk(iq->usedb, ixnum, NULL, NULL,
-                                                NULL, ".ONDISK", newrec_dta,
-                                                0 /* not needed */, ondisk_tag,
-                                                nkey, NULL, NULL);
+                    rc = create_key_from_ondisk(iq->usedb, ixnum, newrec_dta, nkey);
                 if (rc == -1) {
                     if (iq->debug)
                         reqprintf(
@@ -1001,7 +988,6 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     int rc = 0, fndlen = 0, err = 0, limit = 0;
     int idx = 0, ixkeylen = -1;
     void *od_dta = NULL;
-    char ondisk_tag[MAXTAGLEN];
     char key[MAXKEYLEN];
     char *od_dta_tail = NULL;
     int od_tail_len = 0;
@@ -1189,7 +1175,6 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             }
 
             ixkeylen = getkeysize(iq->usedb, doidx);
-            snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", doidx);
             if (ixkeylen < 0) {
                 if (iq->debug)
                     reqprintf(iq, "%p:ADDKYCNSTRT BAD INDEX %d OR KEYLENGTH %d",
@@ -1203,19 +1188,13 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 free_cached_delayed_indexes(iq);
                 return ERR_BADREQ;
             }
-            /*
-            rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",od_dta,
-               ondisk_tag, key, NULL);
-             */
             if (iq->idxInsert)
                 rc = create_key_from_ireq(iq, doidx, 0, &od_dta_tail,
                                           &od_tail_len, mangled_key, od_dta,
                                           ondisk_size, key);
             else
-                rc = create_key_from_ondisk(iq->usedb, doidx, &od_dta_tail,
-                                            &od_tail_len, mangled_key,
-                                            ".ONDISK", od_dta, ondisk_size,
-                                            ondisk_tag, key, NULL, iq->tzname);
+                rc = create_key_from_schema(iq->usedb, NULL, doidx, &od_dta_tail, &od_tail_len, mangled_key, od_dta,
+                                            ondisk_size, key, NULL, 0, iq->tzname);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq, "%p:ADDKYCNSTRT CANT FORM INDEX %d", trans,
@@ -1501,17 +1480,11 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                 }
 
                 snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", lixnum);
-                /*
-                rc=stag_to_stag_buf(iq->usedb->tablename, ".ONDISK",od_dta,
-                   ondisk_tag, lkey, NULL);
-                 */
                 if (iq->idxInsert) {
                     rc = create_key_from_ireq(iq, lixnum, 0, NULL, NULL, NULL,
                                               od_dta, 0 /* not needed */, lkey);
                 } else
-                    rc = create_key_from_ondisk(
-                        iq->usedb, lixnum, NULL, NULL, NULL, ".ONDISK", od_dta,
-                        0 /* not needed */, ondisk_tag, lkey, NULL, NULL);
+                    rc = create_key_from_ondisk(iq->usedb, lixnum, od_dta, lkey);
 
                 if (rc == -1) {
                     if (iq->debug)

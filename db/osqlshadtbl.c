@@ -2173,7 +2173,6 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
     int ix;
     int rc = SQLITE_OK;
     char key[MAXKEYLEN];
-    char namebuf[MAXTAGLEN];
     char *datacopy;
     int datacopylen;
 
@@ -2187,15 +2186,13 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
             !(thd->clnt->ins_keys & (1ULL << ix)))
             continue;
 
-        snprintf(namebuf, sizeof(namebuf), ".ONDISK_IX_%d", ix);
         if (gbl_expressions_indexes && pCur->db->ix_expr) {
             memcpy(key, thd->clnt->idxInsert[ix],
                    pCur->db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(pCur->db->tablename, ".ONDISK",
-                                  pCur->ondisk_buf, namebuf, key, NULL);
+            rc = stag_ondisk_to_ix(pCur->db, ix, pCur->ondisk_buf, key);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, "insert_record:stag_to_stag_buf ix %d\n", ix);
+                logmsg(LOGMSG_ERROR, "insert_record:stag_ondisk_to_ix ix %d\n", ix);
                 return SQLITE_INTERNAL;
             }
         }
@@ -2254,7 +2251,6 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
 {
 
     int ix = 0;
-    char namebuf[MAXTAGLEN];
     struct dbtable *db = pCur->db;
     char *key;
     bdb_cursor_ifn_t *tmpcur = NULL;
@@ -2284,14 +2280,12 @@ static int delete_record_indexes(BtCursor *pCur, char *pdta, int dtasize,
             !(thd->clnt->del_keys & (1ULL << ix)))
             continue;
 
-        snprintf(namebuf, sizeof(namebuf), ".ONDISK_IX_%d", ix);
         if (gbl_expressions_indexes && db->ix_expr) {
             memcpy(key, thd->clnt->idxDelete[ix], db->ix_keylen[ix]);
         } else {
-            rc = stag_to_stag_buf(db->tablename, ".ONDISK", dta, namebuf, key,
-                                  NULL);
+            rc = stag_ondisk_to_ix(pCur->db, ix, dta, key);
             if (rc == -1) {
-                logmsg(LOGMSG_ERROR, "%s:stag_to_stag_buf ix %d\n", __func__, ix);
+                logmsg(LOGMSG_ERROR, "%s:stag_ondisk_to_ix ix %d\n", __func__, ix);
                 return -1;
             }
         }

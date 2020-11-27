@@ -124,8 +124,7 @@ int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->tablename, ".ONDISK", rec, ".ONDISK_IX_0", key,
-                          NULL);
+    rc = stag_ondisk_to_ix(sdb, 0, rec, key);
 
     if (rc)
         return ERR_CONVERT_IX;
@@ -227,8 +226,7 @@ int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->tablename, ".ONDISK", rec, ".ONDISK_IX_0", key,
-                          NULL);
+    rc = stag_ondisk_to_ix(sdb, 0, rec, key);
 
     if (rc)
         return ERR_CONVERT_IX;
