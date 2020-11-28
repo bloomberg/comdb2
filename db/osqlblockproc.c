@@ -778,15 +778,15 @@ int osql_bplog_build_sorese_req(uint8_t **pp_buf_start,
 
 /* initialize the ins tmp table pointer to the first item if any
  */
-static inline int init_ins_tbl(struct reqlogger *reqlogger,
-                               dyn_array_t *add_osql_rows,
-                               oplog_key_t **opkey_ins, uint8_t *add_stripe_p)
+static inline int init_ins_tbl_ptr(struct reqlogger *reqlogger,
+                                  dyn_array_t *add_osql_rows,
+                                  oplog_key_t **opkey_ins, uint8_t *add_stripe_p)
 {
     int rc_ins = dyn_array_first(add_osql_rows);
     if (rc_ins && rc_ins != IX_EMPTY && rc_ins != IX_NOTFND) {
-        reqlog_set_error(reqlogger, "bdb_temp_table_first failed", rc_ins);
+        reqlog_set_error(reqlogger, "dyn_array_first failed", rc_ins);
         logmsg(LOGMSG_ERROR,
-               "%s: bdb_temp_table_first failed rc_ins=%d\n",
+               "%s: dyn_array_first failed rc_ins=%d\n",
                __func__, rc_ins);
         return rc_ins;
     }
@@ -936,7 +936,7 @@ static int process_this_session(
     oplog_key_t *opkey_ins = NULL;
     uint8_t add_stripe = 0;
     bool drain_adds = false; // we always start by reading normal tmp tbl
-    rc = init_ins_tbl(iq->reqlogger, &tran->add_osql_rows, &opkey_ins, &add_stripe);
+    rc = init_ins_tbl_ptr(iq->reqlogger, &tran->add_osql_rows, &opkey_ins, &add_stripe);
     if (rc)
         return rc;
 

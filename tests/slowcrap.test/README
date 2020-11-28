@@ -1,3 +1,2 @@
-Basic testing of db actions.
-- test default snapshot isolation
-- test rowlocks on
+Insert/delete into a table in a large transaction and measure speed gain
+by using a dynamic array.
