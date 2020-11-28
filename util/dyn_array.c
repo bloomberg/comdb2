@@ -366,5 +366,5 @@ int test_dyn_array()
 
     dyn_array_sort(&arr);
     dyn_array_dump(&arr);
-    abort();
+    return 0;
 }
