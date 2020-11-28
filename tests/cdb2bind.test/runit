@@ -31,16 +31,19 @@ select 6
 @bind  CDB2_INTEGER   j     
 select 7
 @bind  CDB2_INTEGER   j     k
+select @j
 select 8
+@bind  CDB2_INTEGER   j     k
+select 9
 @bind  CDB2_INTEGER   k  30
 @bind  CDB2_REAL      l  31    
 @bind  CDB2_DATETIME  m  2019-06-18T19:33:26    
 @bind  CDB2_CSTRING   n x'aabb'
 select @k,@l,@m,@n
-select 9
+select 10
 @bind CDB2_BLOB  bb x'aabbc'
 @bind CDB2_BLOB  bb x'aabbgg'
-select 10
+select 11
 create table t123 (i int, r double, d datetime, c cstring(40), b blob)\$\$
 @bind  CDB2_INTEGER   k  30
 @bind  CDB2_REAL      l  31.3    
@@ -49,11 +52,22 @@ create table t123 (i int, r double, d datetime, c cstring(40), b blob)\$\$
 @bind  CDB2_BLOB      o x'aabb'
 insert into t123 (i, r, d, c, b) values (@k, @l, @m, @n, @o)
 select * from t123
+
+select @a
+select 12
+
+@bind CDB2_INTEGER a 3
+select @a, @b
+select 13
+
+@bind CDB2_DATETIMEUS d 2019-06-18T19:33:26.123456
+select @d
+select 14
 " > in.sql
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql &> out.sql 
-if ! diff out.sql out.expected ; then
-    echo "out.sql not same as out.expected"
+cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql &> out.out 
+if ! diff out.out out.expected ; then
+    echo "out.out not same as out.expected"
     exit 1
 fi
 set -e

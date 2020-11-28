@@ -724,6 +724,7 @@ create procedure audit version 'sptest' {$(cat audit.lua)}\$\$
 create procedure cons0 version 'sptest' {$(cat cons.lua)}\$\$
 create procedure cons1 version 'sptest' {$(cat cons.lua)}\$\$
 create procedure cons_with_tid version 'sptest' {$(cat cons_with_tid.lua)}\$\$
+create procedure cons_with_sequence_epoch version 'sptest' {$(cat cons_with_sequence_epoch.lua)}\$\$
 create lua trigger audit on (table foraudit for insert and update and delete)
 create lua consumer cons0 on (table foraudit for insert and update and delete)
 create lua consumer cons1 on (table foraudit for insert and update and delete)
@@ -1287,7 +1288,7 @@ cdb2sql $SP_OPTIONS - > /dev/null 2>&1 <<'EOF'
 create table no_ddl_t1(x INT)$$
 create table no_ddl_t2(x BLOB)$$
 create table no_ddl_t3(x INT)$$
-create index no_ddl_t1_i1 on no_ddl_t1(x)$$
+create index no_ddl_t1_i1 on no_ddl_t1(x)
 create procedure no_ddl_proc1 version 'sp_no_ddl_proc1' {}$$
 create procedure no_ddl_proc2 version 'sp_no_ddl_proc2' {}$$
 put password 'password' for 'auth_test_user'
@@ -1376,4 +1377,13 @@ local function main(emoji)
 end}$$
 EOF
 cdb2sql $SP_OPTIONS "exec procedure json_emoji('hello world 😁')"
-cdb2sql $SP_OPTIONS "execute procedure json_emoji('hello world 😁')"
+
+cdb2sql $SP_OPTIONS - > /dev/null <<'EOF'
+create procedure escape_controls version 'sptest' {
+local function main()
+    local tbl = {control=""}
+    local json = db:table_to_json(tbl)
+    db:emit(json)
+end}$$
+EOF
+cdb2sql $SP_OPTIONS "exec procedure escape_controls()"

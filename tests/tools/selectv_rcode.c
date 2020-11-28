@@ -763,7 +763,7 @@ int main(int argc, char *argv[]) {
 
     signal(SIGPIPE, SIG_IGN);
     setvbuf(stdout, NULL, _IOLBF, 0);
-    srand(time(NULL) * getpid());
+    srandom(time(NULL) * getpid());
 
     while((opt = getopt(argc, argv, "d:s:c:v:u:V:U:S:p:e:i:t:faARDh")) != EOF) {
         switch (opt) {

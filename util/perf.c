@@ -78,9 +78,6 @@ void time_metric_add(struct time_metric *t, int value) {
 
     time_t now = comdb2_time_epoch();
 
-    if (!gbl_timeseries_metrics)
-        return;
-
     Pthread_mutex_lock(&t->lk);
     averager_add(t->avg, value, now);
     Pthread_mutex_unlock(&t->lk);

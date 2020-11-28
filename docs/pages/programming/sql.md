@@ -5,11 +5,11 @@ sidebar: mydoc_sidebar
 permalink: sql.html
 ---
 
-This section defines the syntax of SQL as accepted by Comdb2.  Anyone familiar with [SQLite](http://sqlite.org) 
-will find the syntax diagrams familiar. Comdb2 uses SQLite as the query parser and query planner.  The SQL dialects 
-in Comdb2 and SQLite are not identical however.  Some things have been taken away (DDL syntax is different, 
-```OR REPLACE``` clauses are gone), and some have been added (stored procedures, time partitions).
-
+This section defines the syntax of SQL as accepted by Comdb2. Anyone familiar
+with [SQLite](http://sqlite.org) will find the syntax diagrams familiar. Comdb2
+uses SQLite as the query parser and query planner. The SQL dialects in Comdb2
+and SQLite are not identical however. Some things have been taken away and some
+have been added (stored procedures, time partitions).
 ## Transactions
 
 ### BEGIN
@@ -73,26 +73,21 @@ undone.
 
 ## Changing data
 
-### INSERT/REPLACE
+### INSERT
 
 #### insert
 
 ![insert](images/insert-stmt.gif)
 
-#### replace
-
-![replace](images/replace-stmt.gif)
-
 #### upsert-clause
 
 ![upsert-clause](images/upsert-clause.gif)
 
-
 The ```INSERT``` statement comes in three basic forms. The first form (with the "VALUES" keyword) creates a single new
 row in an existing table. If no column-list is specified then the number of values must be the same as the number 
 of columns in the table. If a column-list is specified, then the number of values must match the number of 
-specified columns. Columns of the table that do not appear in the column list are filled with the default value, 
-or with NULL if no default value is specified.
+specified columns. Columns of the table that do not appear in the column list are filled with the default value (which
+may be an AUTOINCREMENT for longlong fields), or with NULL if no default value is specified.
 
 The second form of the ```INSERT``` statement takes its data from a ```SELECT``` statement. The number of columns in the 
 result of the SELECT must exactly match the number of columns in the table if no column list is specified, or it 
@@ -354,7 +349,7 @@ care in Comdb2. The expression *must* be casted to a fixed-sized type.
 ```sql
 CREATE TABLE t1(`json` VUTF8(128),
                 UNIQUE (CAST(JSON_EXTRACT(`json`, '$.a') AS INT)),
-                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))$$
+                UNIQUE (CAST(JSON_EXTRACT(`json`, '$.b') AS CSTRING(10))))
 ```
 
 The list of allowed types that the expression in an index be casted to as well
@@ -646,6 +641,7 @@ are different, for example.  Consult the table below for a list.  New functions 
 |trim(X) <br/> ltrim(X, Y)         | <a id="trim"/>Return a string formed by removing any and all characters that appear in Y from the left side of X. If the Y argument is omitted, removes spaces from the left side of X. |
 |max(X,Y,...)                      | <a id="max"/>Return the argument with the maximum value. Arguments may be strings in addition to numbers. The maximum value is determined by the usual sort order. Note that max() is a simple function when it has 2 or more arguments but converts to an aggregate function if given only a single argument. |
 |min(X,Y,...)                      | <a id="min"/>Return the argument with the minimum value. Arguments may be strings in addition to numbers. The minimum value is determined by the usual sort order. Note that min() is a simple function when it has 2 or more arguments but converts to an aggregate function if given only a single argument. |
+|nextsequence                      | <a id="nextsequence" />Available as a default value of a longlong column.  If the column is unspecified in an insert, it will be filled with one larger than the largest value which the column has ever contained.  AUTOINCREMENT is an alias for 'DEFAULT NEXTSEQUENCE'.  |
 |nullif(X,Y)                       | <a id="nullif"/>Return the first argument if the arguments are different, otherwise return NULL. |
 |printf(FORMAT,...)                | <a id="printf"/>Works like the printf() function from the standard C library. The first argument is a format string that specifies how to construct the output string using values taken from subsequent arguments. If the FORMAT argument is missing or NULL then the result is NULL. The %n format is silently ignored and does not consume an argument. The %p format is an alias for %X. The %z format is interchangeable with %s. If there are too few arguments in the argument list, missing arguments are assumed to have a NULL value, which is translated into 0 or 0.0 for numeric formats or an empty string for %s. |
 |quote(X)                          | <a id="quote"/>This routine returns a string which is the value of its argument suitable for inclusion into another SQL statement. Strings are surrounded by single-quotes with escapes on interior quotes as needed. BLOBs are encoded as hexadecimal literals. |
@@ -772,6 +768,11 @@ that pass the limit are rejected.
 Sets a tunable that determines how hard the query planner will work to estimate the cost of possible query plans.  The
 setting is a number from 1 (least effort, quickly formed plans) to 10 (most effort, possibly better plans).  The 
 default setting is 1.
+
+### SET ROWBUFFER
+
+Configures row-buffering. The default is `ON`, where a server writes a row into a buffer and does not flush the buffer
+immediately. When off, a server flushes on every single row and hence it may reduce latency.
 
 ### SET SSL_MODE
 

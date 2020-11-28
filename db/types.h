@@ -197,6 +197,7 @@ enum {
     data_bit = 4,
     truncate_bit = 5, // won't actually make it to disk - in mem for search only
     null_bit_low = 6,
+    resolve_master_bit = 7,
 };
 
 extern int null_bit;
@@ -222,6 +223,15 @@ extern int null_bit;
     do {                                                                       \
         memset(p, 0, len);                                                     \
         bset(p, null_bit);                                                     \
+    } while (0)
+
+#define stype_is_resolve_master(p) btst(p, resolve_master_bit)
+
+#define set_resolve_master(p, len)                                                                                     \
+    do {                                                                                                               \
+        memset(p, 0, len);                                                                                             \
+        bset(p, null_bit);                                                                                             \
+        bset(p, resolve_master_bit);                                                                                   \
     } while (0)
 
 void comdb2_types_set_null_bit(int n);

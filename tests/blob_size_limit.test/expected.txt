@@ -11,6 +11,6 @@ run b 113 blob size exceeds max for table 't'
 (a=7, length(b)=1000000)
 (a=8, length(b)=10000000)
 (a=9, length(b)=100000000)
-(a=10, length(b)=267386880)
+(a=10, length(b)=268435455)
 (a=11, length(b)=0)
 (a=12, length(b)=0)

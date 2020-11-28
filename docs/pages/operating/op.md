@@ -79,7 +79,7 @@ Thread pool [memptrickle] stats
   Long wait alarm threshold : 30000 ms
   Thread linger time        : 10 seconds
   Thread stack size         : 1048576 bytes
-  Maximum queue overload    : 0
+  Maximum queue override    : 0
   Maximum queue age         : 0 ms
   Exit on thread errors     : yes
   Dump on queue full        : no

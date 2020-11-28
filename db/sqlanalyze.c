@@ -23,6 +23,7 @@
 #include <netinet/in.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <epochlib.h>
 #include "analyze.h"
 #include "sql.h"
@@ -37,6 +38,8 @@
 #include <ctrace.h>
 #include <logmsg.h>
 #include "str0.h"
+#include "sc_util.h"
+#include "debug_switches.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -123,6 +126,7 @@ typedef struct table_descriptor {
     int scale;
     int override_llmeta;
     index_descriptor_t index[MAXINDEX];
+    struct user current_user;
 } table_descriptor_t;
 
 /* loadStat4 (analyze.c) will ignore all stat entries
@@ -202,7 +206,6 @@ void cleanup_stats(SBUF2 *sb)
 {
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    clnt.sb = sb;
 
     if (get_dbtable_by_name("sqlite_stat1")) {
         run_internal_sql_clnt(&clnt,
@@ -537,7 +540,6 @@ static int local_replicate_write_analyze(char *table)
         return 0;
 
     init_fake_ireq(thedb, &iq);
-    iq.use_handle = thedb->bdb_env;
 
     iq.blkstate = &blkstate;
 again:
@@ -590,12 +592,12 @@ again:
         logmsg(LOGMSG_ERROR, "analyze: add_oplog_entry(commit) rc %d\n", rc);
         goto done;
     }
-    rc = trans_commit(&iq, trans, gbl_mynode);
+    rc = trans_commit(&iq, trans, gbl_myhostname);
+    trans = NULL;
     if (rc) {
         logmsg(LOGMSG_ERROR, "analyze: commit rc %d\n", rc);
         goto done;
     }
-    trans = NULL;
 
 done:
     if (trans) {
@@ -729,18 +731,12 @@ static int analyze_table_int(table_descriptor_t *td,
         return TABLE_SKIPPED;
     }
 
-    /* pass flush_resp fsql_write_response in sqlinterfaces.c
-     * to catch where write to stdout is occurring put in gdb:
-     * b write if 1==$rdi
-     */
-    SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
-
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.osql_max_trans = 0; // allow large transactions
-    clnt.sb = sb2;
-    sbuf2settimeout(clnt.sb, 0, 0);
     int sampled_table = 0;
+
+    clnt.current_user = td->current_user;
 
     logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
 
@@ -848,19 +844,26 @@ static int analyze_table_int(table_descriptor_t *td,
     if (rc)
         goto error;
 
-    rc = run_internal_sql_clnt(&clnt, "COMMIT");
-    if (rc) snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+    if (debug_switch_test_delay_analyze_commit())
+        sleep(10);
+
+    rc = run_internal_sql_clnt(&clnt, "COMMIT /* from analyzesqlite main.... */");
+    if (rc) {
+        /*
+        ** Manually unregister the client from the checkboard,
+        ** if COMMIT or ROLLBACK fails.
+        */
+        osql_unregister_sqlthr(&clnt);
+        snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+    }
 
 cleanup:
-    sbuf2flush(sb2);
-    sbuf2free(sb2);
-
     if (rc) { // send error to client
         sbuf2printf(td->sb, "?Analyze table %s. Error occurred with: %s\n",
                     td->table, zErrTab);
     } else {
         sbuf2printf(td->sb, "?Analyze completed table %s\n", td->table);
-       logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
+        logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
     end_internal_sql_clnt(&clnt);
@@ -871,7 +874,8 @@ cleanup:
     return rc;
 
 error:
-    run_internal_sql_clnt(&clnt, "ROLLBACK");
+    if (run_internal_sql_clnt(&clnt, "ROLLBACK /* from analyzesqlite main.... */") != 0)
+        osql_unregister_sqlthr(&clnt);
     goto cleanup;
 }
 
@@ -901,7 +905,7 @@ static void *table_thread(void *arg)
     /* mark the return */
     if (0 == rc) {
         td->table_state = TABLE_COMPLETE;
-        if (thedb->master == gbl_mynode) { // reset directly
+        if (thedb->master == gbl_myhostname) { // reset directly
             ctrace("analyze: Analyzed Table %s, reseting counter to 0\n", td->table);
             reset_aa_counter(td->table);
         } else {
@@ -1033,12 +1037,13 @@ int get_analyze_abort_requested()
 
 
 /* analyze 'table' */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
+int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
+                  int bypass_auth)
 {
     if (check_stat1(sb))
         return -1;
 
-    if (gbl_schema_change_in_progress) {
+    if (get_schema_change_in_progress(__func__, __LINE__)) {
         logmsg(LOGMSG_ERROR, 
                 "%s: Aborting Analyze because schema_change_in_progress\n",
                 __func__);
@@ -1055,6 +1060,14 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     td.scale = scale;
     td.override_llmeta = override_llmeta;
     strncpy0(td.table, table, sizeof(td.table));
+
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct sqlclntstate *clnt = (thd) ? thd->clnt : NULL;
+
+    if (clnt) {
+        td.current_user = clnt->current_user;
+    }
+    td.current_user.bypass_auth = bypass_auth;
 
     /* dispatch */
     int rc = dispatch_table_thread(&td);
@@ -1304,12 +1317,12 @@ static inline int analyze_backout_table(struct sqlclntstate *clnt, char *table)
         if (rc)
             goto error;
     }
-    rc = run_internal_sql_clnt(clnt, "COMMIT");
+    rc = run_internal_sql_clnt(clnt, "COMMIT /* from analyze backout stats */");
     return rc;
 
 error:
     logmsg(LOGMSG_ERROR, "backout error, rolling back transaction\n");
-    run_internal_sql_clnt(clnt, "ROLLBACK");
+    run_internal_sql_clnt(clnt, "ROLLBACK /* from analyze backout stats */");
     return rc;
 }
 
@@ -1318,12 +1331,9 @@ void handle_backout(SBUF2 *sb, char *table)
     if (check_stat1_and_flag(sb))
         return;
 
+    int rc = 0;
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
-    SBUF2 *sb2 = sbuf2open(fileno(stdout), 0);
-
-    int rc = 0;
-    clnt.sb = sb2;
 
     rdlock_schema_lk();
 
@@ -1337,9 +1347,6 @@ void handle_backout(SBUF2 *sb, char *table)
         }
     }
     unlock_schema_lk();
-
-    sbuf2flush(sb2);
-    sbuf2free(sb2);
 
     if (rc == 0)
         sbuf2printf(sb, "SUCCESS\n");
@@ -1406,7 +1413,7 @@ int do_analyze(char *tbl, int percent)
     if (tbl == NULL)
         rc = analyze_database(sb2, percent, overwrite_llmeta);
     else
-        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta);
+        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta, 0);
     sbuf2flush(sb2);
     sbuf2free(sb2);
     return rc;

@@ -1,0 +1,4 @@
+schema
+{
+	cstring s[65]
+}

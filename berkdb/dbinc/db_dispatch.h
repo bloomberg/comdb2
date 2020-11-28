@@ -38,6 +38,7 @@
 #ifndef _DB_DISPATCH_H_
 #define	_DB_DISPATCH_H_
 
+#include <plhash.h>
 /*
  * Declarations and typedefs for the list of transaction IDs used during
  * recovery.  This is a generic list used to pass along whatever information
@@ -65,33 +66,37 @@ struct __db_txnhead {
 		u_int32_t txn_max;
 	} *gen_array;		/* Array of txnids associated with a gen. */
 	u_int nslots;
+	hash_t *h;
 	LIST_HEAD(__db_headlink, __db_txnlist) head[1];
+};
+
+union __txnlist_union {
+    struct {
+        u_int32_t txnid;
+        u_int32_t generation;
+        int32_t status;
+    } t;
+    struct {
+        u_int32_t ntxns;
+        u_int32_t maxn;
+        DB_LSN *lsn_array;
+    } l;
+    struct {
+        u_int32_t nentries;
+        u_int32_t maxentry;
+        int32_t locked;
+        char *fname;
+        int32_t fileid;
+        db_pgno_t *pgno_array;
+        u_int8_t uid[DB_FILE_ID_LEN];
+    } p;
 };
 
 struct __db_txnlist {
 	db_txnlist_type type;
+	union __txnlist_union u;
+	struct __db_txnlist *next;
 	LIST_ENTRY(__db_txnlist) links;
-	union {
-		struct {
-			u_int32_t txnid;
-			u_int32_t generation;
-			int32_t status;
-		} t;
-		struct {
-			u_int32_t ntxns;
-			u_int32_t maxn;
-			DB_LSN *lsn_array;
-		} l;
-		struct {
-			u_int32_t nentries;
-			u_int32_t maxentry;
-			int32_t locked;
-			char *fname;
-			int32_t fileid;
-			db_pgno_t *pgno_array;
-			u_int8_t uid[DB_FILE_ID_LEN];
-		} p;
-	} u;
 };
 
 /*

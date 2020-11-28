@@ -1,0 +1,21 @@
+schema
+{
+   int a
+   int b
+   int c
+   int d
+}
+keys
+{
+   "a"  = a
+   "b"  = b
+   "c"  = c
+   "d"  = d
+}
+constraints
+{
+    "a" -> <"t":"a0"> <"t":"a1"> <"t":"a2">
+}
+
+
+

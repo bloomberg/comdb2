@@ -38,5 +38,7 @@ int luabb_eq(const TValue *, const TValue *, int *eq);
 int luabb_dbtype_from_tvalue(TValue *);
 int luabb_isnumber(struct lua_State *, int idx);
 double luabb_tonumber(struct lua_State *, int idx);
+int luabb_isnull(struct lua_State *, int idx);
+void luabb_tointeger(struct lua_State *, int idx, long long *val);
 
 #endif /* LUAGLUE_H */

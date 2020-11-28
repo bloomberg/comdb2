@@ -18,7 +18,7 @@
 #include <bdb_api.h>
 #include <phys_rep.h>
 
-
+extern int comdb2DeleteFromScHistory(char *tablename, uint64_t seed);
 /* Wishes for anyone who wants to clean this up one day:
  * 1)  don't need boilerplate lua code for this, should have a fixed description
  *     of types/names for each call, and C code for emitting them. 
@@ -170,7 +170,7 @@ static int db_comdb_analyze(Lua L) {
 
     if(tbl && strlen(tbl) > 0) {
         logmsg(LOGMSG_DEBUG, "db_comdb_analyze: analyze table '%s' at %d percent\n", tbl, percent);
-        analyze_table(tbl, sb, percent, ovr_percent);
+        analyze_table(tbl, sb, percent, ovr_percent, 0);
     }
     else {
         logmsg(LOGMSG_DEBUG, "db_comdb_analyze: analyze database\n");
@@ -204,6 +204,28 @@ static int db_comdb_analyze(Lua L) {
     return 1;
 }
 
+static int db_verify_peer_check(void *arg)
+{
+    struct sqlclntstate *clnt = arg;
+    return clnt->plugin.peer_check(clnt);
+}
+
+static int db_verify_table_callback(char *msg, void *arg)
+{
+    struct sqlclntstate *clnt = arg;
+    if (!msg || !clnt) {
+        return 0;
+    }
+    if (peer_dropped_connection(clnt)) {
+        return -2;
+    }
+    if (msg[0] == '!' || msg[0] == '?') {
+        ++msg;
+    }
+    char *row[] = {msg};
+    write_response(clnt, RESPONSE_ROW_STR, row, 1);
+    return 0;
+}
 
 /* verify() can take up to 3 parameters (table, mode, verbose):
  * when we check we look for lua_isstring(L, 1), 2 and 3
@@ -260,7 +282,7 @@ static int db_comdb_verify(Lua L) {
     int rc = 0;
 
     if (!tblname || strlen(tblname) < 1) {
-        db_verify_table_callback(L, "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])");
+        db_verify_table_callback("Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])", clnt);
         return luaL_error(L, "Verify failed.");
     }
 
@@ -268,21 +290,20 @@ static int db_comdb_verify(Lua L) {
     struct dbtable *db = get_dbtable_by_name(tblname);
     unlock_schema_lk();
     if (db) {
-        rc = verify_table_mode(tblname, clnt->sb, verbose, 0, db_verify_table_callback, L, mode); //progfreq 1, fix 0
+        rc = verify_table(tblname, verbose, 0, mode, db_verify_peer_check, db_verify_table_callback, clnt);
         logmsg(LOGMSG_USER, "db_comdb_verify: verify table '%s' rc=%d\n", tblname, rc);
     }
     else {
         char buf[128] = {0};
         snprintf(buf, sizeof(buf), "Table \"%s\" does not exist.", tblname);
-        db_verify_table_callback(L, buf);
+        db_verify_table_callback(buf, clnt);
         rc = 1;
     }
     if (rc) {
         return luaL_error(L, "Verify failed.");
+    } else {
+        db_verify_table_callback("Verify succeeded.", clnt);
     }
-    else
-        db_verify_table_callback(L, "Verify succeeded.");
-
     return 1;
 }
 
@@ -303,9 +324,7 @@ static int db_comdb_truncate_log(Lua L) {
     unsigned int file, offset;
   
     if ((rc = char_to_lsn(lsnstr, &file, &offset)) != 0) {
-        // db_verify_table_callback(L, "Usage: truncate_log(\"{<file>:<offset>}\")");
-        return luaL_error(L, 
-                "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
+        return luaL_error(L, "Usage: truncate_log(\"{<file>:<offset>}\"). Input not valid.");
     }
 
     logdelete_lock(__func__, __LINE__);
@@ -454,7 +473,8 @@ static int db_send(Lua L) {
     if (gbl_uses_password) {
       if (sp && sp->clnt) {
           int bdberr;
-          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "", sp->clnt->user, &bdberr)) {
+          if (bdb_tbl_op_access_get(thedb->bdb_env, NULL, 0, "",
+                                    sp->clnt->current_user.name, &bdberr)) {
               return luaL_error(L, "User doesn't have access to run this command.");
           }
       }
@@ -561,6 +581,23 @@ static int db_comdb_register_replicant(Lua L)
     return 1;
 }
 
+// delete sc history by tablename and by seed
+static int db_comdb_delete_sc_history(Lua L)
+{
+    if (!lua_isstring(L, 1))
+        return luaL_error(L, "Expected string value for tablename.");
+    if (lua_isnil(L, 2)) 
+        return luaL_error(L, "Expected non null value for seed.");
+
+    uint64_t fseed = lua_tointeger(L, -1);
+    char *tbl = (char*) lua_tostring(L, -2);
+    int rc = comdb2DeleteFromScHistory(tbl, fseed);
+    if (rc)
+        return luaL_error(L, "Error deleting entry");
+
+    return 1;
+}
+
 static const luaL_Reg sys_funcs[] = {
     { "cluster", db_cluster },
     { "comdbg_tables", db_comdbg_tables },
@@ -574,6 +611,7 @@ static const luaL_Reg sys_funcs[] = {
     { "start_replication", db_comdb_start_replication },
     { "stop_replication", db_comdb_stop_replication },
     { "register_replicant", db_comdb_register_replicant },
+    { "delete_sc_history", db_comdb_delete_sc_history },
     { NULL, NULL }
 }; 
 
@@ -745,6 +783,36 @@ static struct sp_source syssps[] = {
         "    end\n"
         "end\n",
         "register_replicant"
+    }
+    ,{
+        /* delete all but the last N rows from llmeta for this table */
+        "sys.cmd.trim_sc_history",
+        "local function main(t, n)\n"
+        "  if (n == nil) then \n"
+        "    n = 10 \n"
+        "  end \n"
+        "  db:begin()\n"
+        "  local resultset, rc = db:exec('select seed from comdb2_sc_history where seed not in "
+        "   (select seed from comdb2_sc_history where name = \"'..t..'\" order by seed desc limit '..n..') "
+        "   and name=\"'..t..'\"' )\n"
+        "  local c = 0\n"
+        "  local row = resultset:fetch()\n"
+        "  while row do\n"
+        "    sys.delete_sc_history(t, ' '..row.seed)\n"
+        //"    db:emit('Deleting '..row.seed)\n"
+        "    row = resultset:fetch()\n"
+        "    c = c + 1\n"
+        "  end\n"
+        "  local rc1 = db:commit()\n"
+        "  if (c > 0 and rc1 == 0) then\n"
+        "    db:emit('Deleted '..c..' rows from sc_history for tablename '..t)\n"
+        "  elseif (c == 0) then \n"
+        "    db:emit('No rows to delete from sc_history for tablename '..t)\n"
+        "  else\n"
+        "    db:emit('Failed to delete from sc_history for tablename '..t)\n"
+        "  end \n"
+        "end\n",
+        NULL
     }
 };
 

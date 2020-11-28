@@ -22,10 +22,6 @@ echo ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_
 ./writes_remsql_names.sh $DBNAME $CDB2_CONFIG $SECONDARY_DBNAME $SECONDARY_CDB2_CONFIG $DBDIR $TESTDIR
 result=$?
 
-if (( $result == 0 )) ; then
-   successful=1
-fi
-
 if (( $result != 0 )) ; then
    echo "FAILURE"
    exit 1

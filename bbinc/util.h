@@ -29,10 +29,12 @@
 #endif
 
 extern int gbl_myroom;
+struct timeval;
 
 void perror_errnum(const char *s, int errnum);
 int strcmpfunc(char **a, char **b, int len);
 unsigned int strhashfunc(unsigned char **keyp, int len);
+unsigned int ptrhashfunc(unsigned char *keyp, int len);
 
 void xorbufcpy(char *dest, const char *src, size_t len);
 #define xorbuf(p, len) xorbufcpy((void *)(p), (const void *)(p), (len))
@@ -71,4 +73,5 @@ char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
 void cleanup_file_locations();
+void update_file_location(const char *type, const char *dir);
 #endif

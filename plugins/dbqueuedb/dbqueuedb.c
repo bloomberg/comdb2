@@ -47,7 +47,6 @@
 #include <str0.h>
 #include <memory_sync.h>
 #include <rtcpu.h>
-#include <segstring.h>
 
 #include <bdb_api.h>
 #include <sbuf2.h>
@@ -55,7 +54,6 @@
 #include <tcputil.h>
 #include "dbdest.h"
 #include "comdb2.h"
-#include <portmuxapi.h>
 
 #include "util.h"
 
@@ -64,6 +62,8 @@
 #include <trigger.h>
 #include <intern_strings.h>
 #include "logmsg.h"
+#include <schema_lk.h>
+#include <locks.h>
 
 static void coalesce(struct dbenv *dbenv);
 static int wake_all_consumers_all_queues(struct dbenv *dbenv, int force);
@@ -168,7 +168,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
 
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
         for (consumern = 0; consumern < MAXCONSUMERS; consumern++) {
             struct consumer *consumer = db->consumers[consumern];
@@ -176,7 +176,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
                 wake_up_consumer(consumer, force);
         }
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
     return 0;
 }
 
@@ -199,8 +199,11 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     const char *opts;
     int rc = 0;
 
-    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_wrlock(&db->consumer_lk);
+    assert(!db || db->dbtype != DBTYPE_QUEUE);
+
+    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB) {
+        consumer_lock_write(db);
+    }
 
     if (checkonly) {
         if (strncmp(method, "lua:", 4) != 0 &&
@@ -299,8 +302,9 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     rc = 0;
 
 done:
-    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_unlock(&db->consumer_lk);
+    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB) {
+        consumer_unlock(db);
+    }
     return rc;
 }
 
@@ -363,10 +367,11 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     unsigned long long genid;
     int rc;
     struct ireq iq;
-    void *fnddta;
+    struct bdb_queue_found *fnddta;
     size_t fnddtalen;
     size_t fnddtaoff;
-    const uint8_t *open;
+    uint32_t lockid;
+    const uint8_t *status;
     pthread_mutex_t *mu;
     pthread_cond_t *cond;
 
@@ -374,7 +379,11 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     iq.usedb = table;
     genid = 0;
 
-    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &open);
+    lockid = bdb_readonly_lock_id(thedb->bdb_env);
+    assert(lockid > 0);
+    bdb_lock_table_read_fromlid(table->handle, lockid);
+
+    rc = bdb_trigger_subscribe(table->handle, &cond, &mu, &status);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR,
                "dbq_get_front_genid: bdb_trigger_subscribe "
@@ -384,12 +393,11 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     }
     Pthread_mutex_lock(mu);
 
-    if (*open != 1) {
+    if (*status != TRIGGER_SUBSCRIPTION_OPEN) {
         goto skip;
     }
 
-    rc = dbq_get(&iq, consumer, NULL, (void **)&fnddta, &fnddtalen, &fnddtaoff,
-                 NULL, NULL);
+    rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL, NULL, lockid);
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
     } else if (rc != IX_NOTFND) {
@@ -407,6 +415,7 @@ skip:
                "failed (rc: %d)\n",
                rc);
     }
+    bdb_free_lock_id(thedb->bdb_env, lockid);
     Pthread_mutex_unlock(mu);
 
     return genid;
@@ -447,8 +456,9 @@ static int dbqueuedb_admin_running = 0;
  * for each consumer. */
 static void admin(struct dbenv *dbenv, int type)
 {
-    int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
+    int iammaster = (dbenv->master == gbl_myhostname) ? 1 : 0;
 
+    assert_lock_schema_lk();
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     if (dbqueuedb_admin_running) {
         Pthread_mutex_unlock(&dbqueuedb_admin_lk);
@@ -464,7 +474,7 @@ static void admin(struct dbenv *dbenv, int type)
                 continue;
             if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
                 struct dbtable *db = dbenv->qdbs[ii];
-                Pthread_rwlock_rdlock(&db->consumer_lk);
+                consumer_lock_read(db);
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
                     struct consumer *consumer = db->consumers[consumern];
                     if (!consumer)
@@ -493,7 +503,7 @@ static void admin(struct dbenv *dbenv, int type)
                         break;
                     }
                 }
-                Pthread_rwlock_unlock(&db->consumer_lk);
+                consumer_unlock(db);
             }
         }
     }
@@ -501,6 +511,25 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_lock(&dbqueuedb_admin_lk);
     dbqueuedb_admin_running = 0;
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
+}
+
+static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
+                             unsigned int depth, void *userptr)
+{
+    struct consumer_stat *stats = userptr;
+
+    if (consumern < 0 || consumern >= MAXCONSUMERS) {
+        logmsg(LOGMSG_USER, "%s: consumern=%d length=%u epoch=%u\n", __func__,
+               consumern, (unsigned)length, epoch);
+    } else {
+        assert(!stats[consumern].has_stuff);
+        stats[consumern].has_stuff = 1;
+        stats[consumern].first_item_length = length;
+        stats[consumern].epoch = epoch;
+        stats[consumern].has_stuff = 1;
+        stats[consumern].depth = depth;
+    }
+    return BDB_QUEUE_WALK_CONTINUE;
 }
 
 static int stat_callback(int consumern, size_t length,
@@ -523,21 +552,19 @@ static int stat_callback(int consumern, size_t length,
     return BDB_QUEUE_WALK_CONTINUE;
 }
 
+static int get_stats(struct dbtable *, int, void *, struct consumer_stat *);
+
 static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 {
     if (db->dbtype != DBTYPE_QUEUE && db->dbtype != DBTYPE_QUEUEDB)
         logmsg(LOGMSG_ERROR, "'%s' is not a queue\n", db->tablename);
     else {
         int ii;
-        struct ireq iq;
         struct consumer_stat stats[MAXCONSUMERS] = {{0}};
         int flags = 0;
         const struct bdb_queue_stats *bdbstats;
 
         bdbstats = bdb_queue_get_stats(db->handle);
-
-        init_fake_ireq(db->dbenv, &iq);
-        iq.usedb = db;
 
         logmsg(LOGMSG_USER, "(scanning queue '%s' for stats, please wait...)\n",
                db->tablename);
@@ -545,7 +572,7 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             flags = BDB_QUEUE_WALK_FIRST_ONLY;
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
-        dbq_walk(&iq, flags, stat_callback, stats);
+        get_stats(db, flags, NULL, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
@@ -562,8 +589,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                bdbstats->n_new_way_geese_consumed,
                bdbstats->n_old_way_frags_consumed);
 
-        if (db->dbtype == DBTYPE_QUEUEDB)
-            Pthread_rwlock_rdlock(&db->consumer_lk);
+        if (db->dbtype == DBTYPE_QUEUEDB) {
+            consumer_lock_read(db);
+        }
         for (ii = 0; ii < MAXCONSUMERS; ii++) {
             struct consumer *consumer = db->consumers[ii];
 
@@ -606,8 +634,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
             } else if (consumer)
                 logmsg(LOGMSG_USER, "    empty\n");
         }
-        if (db->dbtype == DBTYPE_QUEUEDB)
-            Pthread_rwlock_unlock(&db->consumer_lk);
+        if (db->dbtype == DBTYPE_QUEUEDB) {
+            consumer_unlock(db);
+        }
 
         logmsg(LOGMSG_USER, "-----\n");
     }
@@ -691,13 +720,13 @@ static void queue_flush(struct dbtable *db, int consumern)
     logmsg(LOGMSG_INFO, "Beginning flush for queue '%s' consumer %d\n",
            db->tablename, consumern);
 
-    if (db->dbenv->master != gbl_mynode) {
+    if (db->dbenv->master != gbl_myhostname) {
         logmsg(LOGMSG_WARN, "... but I am not the master node, so I do nothing.\n");
         return;
     }
 
     while (1) {
-        void *item;
+        struct bdb_queue_found *item;
         int rc;
 
         if (!flush_thread_active) {
@@ -705,8 +734,7 @@ static void queue_flush(struct dbtable *db, int consumern)
             return;
         }
 
-        rc = dbq_get(&iq, consumern, NULL, (void **)&item, NULL, NULL, NULL,
-                     NULL);
+        rc = dbq_get(&iq, consumern, NULL, &item, NULL, NULL, NULL, NULL, 0);
 
         if (rc != 0) {
             if (rc != IX_NOTFND)
@@ -833,12 +861,12 @@ int stop_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             stop_consumer(db->consumers[i]);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
     return 0;
 }
 
@@ -846,12 +874,12 @@ int restart_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             restart_consumer(db->consumers[i]);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
 
     return 0;
 }
@@ -879,16 +907,40 @@ static int get_name(struct dbtable *db, char **spname) {
     return 0;
 }
 
-static int get_stats(struct dbtable *db, struct consumer_stat *st) {
+static int get_stats(struct dbtable *db, int flags, void *tran,
+                     struct consumer_stat *st) {
+    if (db->dbtype != DBTYPE_QUEUEDB) return -1;
+    int bdberr;
+    int made_tran = 0;
+    if (tran == NULL) {
+        bdberr = 0;
+        tran = bdb_tran_begin(db->handle, NULL, &bdberr);
+        if (tran == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to begin transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
+            return -1;
+        }
+        made_tran = 1;
+    }
     struct ireq iq;
-    if (db->dbtype != DBTYPE_QUEUEDB)
-        return -1;
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
-    int rc = dbq_walk(&iq, 0, stat_callback, st);
-    if (rc)
-        return rc;
-    return 0;
+    int rc;
+    if (db->odh) {
+        rc = dbq_odh_stats(&iq, stat_odh_callback, (tran_type *)tran, st);
+    } else {
+        rc = dbq_walk(&iq, flags, stat_callback, (tran_type *)tran, st);
+    }
+    if (made_tran) {
+        bdberr = 0;
+        int rc2 = bdb_tran_abort(db->handle, tran, &bdberr);
+        if (rc2) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
+            abort();
+        }
+    }
+    return rc;
 }
 
 comdb2_queue_consumer_t dbqueuedb_plugin_lua = {

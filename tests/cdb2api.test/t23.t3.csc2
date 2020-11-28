@@ -27,7 +27,7 @@ schema
     int       tier dbstore=2          // tier this was valued in. Tier 1 always shows prices, even if questioned
     int       snapshot_id dbstore=0   // snapshot id
     longlong  last_operation dbstore=0 // time of the last pricing operation 
-    int       admin_uuid dbstore=0      // uuid who executed the last pricing/validation
+    int       admin_uid dbstore=0      // uid who executed the last pricing/validation
     double    previous_value null=yes   // the previous price for a deal
     longlong  job_id         null=yes   // the group_id for bulk repricing 
     longlong  last_validation dbstore=0 // time when the deal was validated

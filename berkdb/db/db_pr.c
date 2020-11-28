@@ -1258,6 +1258,7 @@ __db_prheader(dbp, subname, pflag, keyflag, handle, callback, vdp, meta_pgno)
 		}
 		break;
 	case DB_UNKNOWN:
+	case DB_TYPE_MAX:
 		DB_ASSERT(0);			/* Impossible. */
 		__db_err(dbenv, "Impossible DB type in __db_prheader");
 		ret = EINVAL;

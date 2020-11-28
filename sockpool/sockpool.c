@@ -46,10 +46,12 @@
 
 #include <plhash.h>
 #include <list.h>
-#include <pool_c.h>
+#include <pool.h>
 #include <passfd.h>
 #include <syslog.h>
 #include <locks_wrap.h>
+
+//#define SOCKET_POOL_DEBUG
 
 #ifdef SOCKET_POOL_DEBUG
 #define DBG(x) printf x
@@ -126,7 +128,7 @@ static LISTC_T(struct item) lru_list;
 
 static unsigned max_active_fds = 16;
 
-static unsigned max_fds_per_typestr = 1;
+static unsigned max_fds_per_typestr = 10;
 
 /* Default on by now.  Whether or not comdb2 uses this will be controlled
  * at the comdb2 api level. */

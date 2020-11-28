@@ -38,6 +38,7 @@ function failexit
     typeset f=$1
     write_prompt $func "$f failed: $2"
     cleanup
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     exit -1
 }
 
@@ -212,7 +213,7 @@ function copy_test
 
     write_prompt $func "Starting replicant database, replog is $replog"
     if [[ -n "$TEST_TIMEOUT" ]] ; then
-        ( timeout $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
+        ( timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &
         reppid=$!
     else
         ( $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1 ) &

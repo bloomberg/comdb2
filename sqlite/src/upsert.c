@@ -145,10 +145,20 @@ int sqlite3UpsertAnalyzeTarget(
     int is_comdb2_unique = is_comdb2_index_unique(pIdx->pTable->zName,
                                                   pIdx->zName);
     if( !is_comdb2_unique && !IsUniqueIndex(pIdx) ) continue;
+
+    /* Test whether its a DATACOPY index. */
+    int nCol = pIdx->nKeyCol;
+    for(int i=0; i<pIdx->nKeyCol; ++i ){
+        if( strcmp(pIdx->azColl[i], "DATACOPY")==0 ){
+            nCol = i;
+            break;
+        }
+    }
+    if( pTarget->nExpr!=nCol ) continue;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( !IsUniqueIndex(pIdx) ) continue;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pTarget->nExpr!=pIdx->nKeyCol ) continue;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( pIdx->pPartIdxWhere ){
       if( pUpsert->pUpsertTargetWhere==0 ) continue;
       if( sqlite3ExprCompare(pParse, pUpsert->pUpsertTargetWhere,
@@ -156,7 +166,11 @@ int sqlite3UpsertAnalyzeTarget(
         continue;
       }
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    nn = nCol;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     nn = pIdx->nKeyCol;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     for(ii=0; ii<nn; ii++){
       Expr *pExpr;
       sCol[0].u.zToken = (char*)pIdx->azColl[ii];

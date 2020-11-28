@@ -92,7 +92,7 @@ Information about nodes in the cluster.
 Describes all the columns for all of the tables in the database.
 
     comdb2_columns(tablename, columnnname, type, size, sqltype,
-    varinlinesize, defaultvalue, dbload, isnullable)
+    varinlinesize, defaultvalue, dbload, isnullable, lastsequence)
 
 * `tablename` - Name of the table
 * `columnname` - Name of the column
@@ -102,6 +102,7 @@ Describes all the columns for all of the tables in the database.
 * `defaultvalue` - The default value for this column
 * `dbload` - `obsolete`
 * `isnullable` - `Y` if this column can hold nulls
+* `lastsequence` - Largest value the column has held (for autoincrement)
 
 ## comdb2_completion
 
@@ -153,6 +154,14 @@ Information about schedulers running.
 * `nevents` - How many events are queued in this scheduler?
 * `description` - Details the purpose of the scheduler; for example, there is
                   a time partition scheduler, or a memory modules stat scheduler
+
+## comdb2_functions
+
+The functions available to call from sql.
+
+    comdb2_functions(name)
+
+* `name` - Name of the function
 
 ## comdb2_keycomponents
 
@@ -297,12 +306,14 @@ List all stored procedures in the database.
 
 List all queues in the database.
 
-    comdb2_queues(queuename, spname, head_age, depth)
+    comdb2_queues(queuename, spname, head_age, depth, total_enqueued, total_dequeued)
 
 * `queuename` - Name of the queue
 * `spname` - Stored procedure attached to the queue
 * `head_age` - Age of the head element in the queue
 * `depth` - Number of elements in the queue
+* `total_enqueued` - Total number of elements added since process start
+* `total_dequeued` - Total number of elements removed since process start
 
 ## comdb2_repl_stats
 
@@ -388,6 +399,18 @@ List all available system tables in Comdb2.
 
 * `name` - Name of the system table
 
+## comdb2_systablepermissions
+
+Table of permissions for system tables in the database.
+
+    comdb2_systablepermissions(tablename, username, READ, WRITE, DDL)
+
+* `tablename` - Name of the system table
+* `username` - Name of the user
+* `READ` - `Y` if `username` has read access to `tablename`
+* `WRITE` - `Y` if `username` has write access to `tablename`
+* `DDL` - `Y` if `username` can modify `tablename` schema
+
 ## comdb2_tablepermissions
 
 Table of permissions for tables in the database.
@@ -416,6 +439,15 @@ Shows the sizes on disk of the tables.
 
 * `tablename` - Name of the table
 * `bytes` - Size of the table in bytes
+
+## comdb2_temporary_file_sizes
+
+Reports sizes of temporary files.
+
+    comdb2_temporary_file_sizes(type, bytes)
+
+* `type` - Temporary file type. Can be one of `temptables`, `sqlsorters`, `blkseqs` and `others`
+* `bytes` - Size in bytes
 
 ## comdb2_threadpools
 
@@ -448,7 +480,7 @@ Information about thread pools in the database.
 * `long_wait_ms` - Long wait alarm threshold
 * `linger_secs` - Thread linger time
 * `stack_size` - Thread stack size
-* `max_queue_override` - Maximum queue overload
+* `max_queue_override` - Maximum queue override
 * `max_queue_age_ms` - Maximum queue age
 * `exit_on_create_fail` - If 'Y', exit on failure to create thread
 * `dump_on_full` - If 'Y', dump on queue full
@@ -481,6 +513,19 @@ Information about time partitions.
 * `shard0name` - Name of the initial table used to seed the time partition
 * `start` - "epoch" seconds when the first rollout happens/happened
 * `sourceid` - UUID identifying the partition
+
+## comdb2_timepartpermissions
+
+Table of permissions for time partitions in the database.
+
+    comdb2_timepartpermissions(tablename, username, READ, WRITE, DDL)
+
+* `tablename` - Name of the time partition
+* `username` - Name of the user
+* `READ` - `Y` if `username` has read access to `tablename`
+* `WRITE` - `Y` if `username` has write access to `tablename`
+* `DDL` - `Y` if `username` can modify `tablename` schema
+
 
 ## comdb2_timepartshards
 
@@ -519,13 +564,14 @@ Lists all the transaction log records.
 
 Lists triggers in the database.
 
-    comdb2_triggers(name, type, tbl_name, event, col)
+    comdb2_triggers(name, type, tbl_name, event, col, seq)
 
 * `name` - Name of the trigger
 * `type` - Type of the trigger
 * `tbl_name` - Name of the table
 * `event` - Event to trigger on
 * `col` - Column to trigger on
+* `seq` - 'Y' if sequences are enabled, 'N' otherwise
 
 ## comdb2_tunables
 
@@ -565,9 +611,24 @@ Table of users for the database that do or do not have operator access.
 * `username` - Name of the user
 * `isOP` - 'Y' if 'username' has operator access
 
+## comdb2_sc_history
+
+System table containing history of the schemachanges done in the database. 
+
+    comdb2_sc_history(name, start, status, seed, last_updated,
+                      converted, error)
+
+* `name` - Name of the table.
+* `start` - Start time of the schema change.
+* `status` - Last/Final status of the schema change.
+* `seed` - Seed (ID) of schema change
+* `last_updated` - Time of the last status change.
+* `converted` - Number of records converted.
+* `error` - Error message of the schema change.
+
 ## comdb2_sc_status
 
-Information about recent schema changes.
+Information about current/most recent schema change per table.
 
     comdb2_sc_status(name, type, newcsc2, start, status, seed, last_updated,
                      converted, error)

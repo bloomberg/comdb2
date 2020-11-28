@@ -91,7 +91,7 @@ int main(int argc,char *argv[])
     }
 
     if(err) usage(stderr);
-    srand( time(NULL) * getpid() );
+    srandom( time(NULL) * getpid() );
 
     char *conf = getenv("CDB2_CONFIG");
     if (conf)

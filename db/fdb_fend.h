@@ -135,6 +135,8 @@ enum fdb_errors {
     FDB_ERR_SSL = -25 /* SSL configuration error */
     ,
     FDB_ERR_ACCESS = -26 /* Access error */
+    ,
+    FDB_ERR_TRANSIENT_IO = -27 /* Temporary IO failure */
 };
 
 #define fdb_is_error(n) ((n) < FDB_NOERR)
@@ -174,6 +176,15 @@ struct fdb_tran {
 
     int seq; /* sequencing tran begin/commit/rollback, writes, cursor open/close
                 */
+
+    /*
+    ** Genid deduplication. Nothing fancy. It's just a temptable recording
+    ** deleted or updated genid-s that have been sent to the remote database
+    ** (similar to osql's "skip shadow", but much simpler).
+    */
+    bdb_state_type *bdb_state;
+    struct temp_table *dedup_tbl;
+    struct temp_cursor *dedup_cur;
 };
 typedef struct fdb_tran fdb_tran_t;
 
@@ -294,6 +305,7 @@ void fdb_sqlstats_put(fdb_t *fdb);
  *
  */
 const char *fdb_dbname_name(fdb_t *fdb);
+const char *fdb_dbname_class_routing(fdb_t *fdb);
 const char *fdb_table_entry_tblname(fdb_tbl_ent_t *ent);
 const char *fdb_table_entry_dbname(fdb_tbl_ent_t *ent);
 
@@ -405,6 +417,9 @@ int fdb_get_remote_version(const char *dbname, const char *table,
                            unsigned long long *version);
 
 int fdb_table_exists(int rootpage);
+
+int fdb_set_genid_deleted(fdb_tran_t *, unsigned long long);
+int fdb_is_genid_deleted(fdb_tran_t *, unsigned long long);
 
 #endif
 

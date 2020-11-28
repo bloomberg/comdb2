@@ -71,7 +71,7 @@ int dyns_get_table_field_info(char *tabletag, int fidx, char *name, int namelen,
                               int *fullsize, int *arr, int use_server_types);
 int dyns_get_table_field_option(char *tag, int fidx, int option,
                                 int *value_type, int *value_sz, void *valuebuf,
-                                int vbsz);
+                                int vbsz, char **func_st);
 int dyns_table_field_depth(char *tabletag, int fidx, dpth_t *dpthinfo,
                            int ndpthsinfo, int *ndpthout);
 int dyns_get_table_count(void);

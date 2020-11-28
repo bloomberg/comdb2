@@ -255,8 +255,6 @@ run_locker(id)
 
 	(void)__os_sleep(&dbenv, 3, 0);		/* Let everyone catch up. */
 
-	srand((u_int)time(NULL) % getpid());	/* Initialize random numbers. */
-
 #if defined(MUTEX_THREAD_TEST)
 	/*
 	 * Spawn off threads.  We have nthreads all locking and going to
@@ -320,11 +318,11 @@ run_lthread(arg)
 				printf(
 				    "%03lu: map threads @ %#lx; locks @ %#lx\n",
 				    id, (u_long)tm_addr, (u_long)lm_addr);
-			remap = (rand() % 100) + 35;
+			remap = (random() % 100) + 35;
 		}
 
 		/* Select and acquire a data lock. */
-		lock = rand() % maxlocks;
+		lock = random() % maxlocks;
 		mp = (TM *)(lm_addr + lock * align);
 		if (verbose)
 			printf("%03lu: lock %d @ %#lx\n",
@@ -348,7 +346,7 @@ run_lthread(arg)
 		 * we still hold the mutex.
 		 */
 		for (i = 0; i < 3; ++i) {
-			(void)__os_sleep(&dbenv, 0, rand() % 3);
+			(void)__os_sleep(&dbenv, 0, random() % 3);
 			if (mp->id != id) {
 				fprintf(stderr,
 				    "RACE! (%03lu stole lock %d from %03lu)\n",
@@ -427,7 +425,7 @@ run_lthread(arg)
 			if (nl == 0)
 				break;
 
-			(void)__os_sleep(&dbenv, 0, rand() % 500);
+			(void)__os_sleep(&dbenv, 0, random() % 500);
 		}
 	}
 
@@ -444,8 +442,6 @@ run_wakeup(id)
 	void *retp;
 #endif
 	(void)__os_sleep(&dbenv, 3, 0);		/* Let everyone catch up. */
-
-	srand((u_int)time(NULL) % getpid());	/* Initialize random numbers. */
 
 #if defined(MUTEX_THREAD_TEST)
 	/*
@@ -543,7 +539,7 @@ run_wthread(arg)
 			return ((void *)EXIT_FAILURE);
 		}
 
-		(void)__os_sleep(&dbenv, 0, rand() % 3);
+		(void)__os_sleep(&dbenv, 0,random() % 3);
 	}
 	return (NULL);
 }

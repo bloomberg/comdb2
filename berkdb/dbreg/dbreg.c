@@ -25,6 +25,11 @@ static const char revid[] = "$Id: dbreg.c,v 11.81 2003/10/27 15:54:31 sue Exp $"
 #include "logmsg.h"
 #include "locks_wrap.h"
 
+#if defined (DEBUG_STACK_AT_DBREG_LOG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#include <tohex.h>
+#endif
+
 /*
  * The dbreg subsystem, as its name implies, registers database handles so
  * that we can associate log messages with them without logging a filename
@@ -250,7 +255,7 @@ __dbreg_get_id(dbp, txn, idp)
 	DBT fid_dbt, r_name;
 	DB_ENV *dbenv;
 	DB_LOG *dblp;
-	DB_LSN unused;
+	DB_LSN retlsn;
 	FNAME *fnp;
 	LOG *lp;
 	int32_t id;
@@ -297,11 +302,18 @@ __dbreg_get_id(dbp, txn, idp)
 	fid_dbt.data = dbp->fileid;
 	fid_dbt.size = DB_FILE_ID_LEN;
 
-	if ((ret = __dbreg_register_log(dbenv, txn, &unused,
+	if ((ret = __dbreg_register_log(dbenv, txn, &retlsn,
 					F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
                     DBREG_OPEN, r_name.size == 0 ? NULL : &r_name, &fid_dbt, id,
                     fnp->s_type, fnp->meta_pgno, fnp->create_txnid)) != 0)
         goto err;
+
+#if defined (DEBUG_STACK_AT_DBREG_LOG)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ",
+			pthread_self(), "open", id, fid_str, retlsn.file, retlsn.offset);
+#endif
+
 	/*
 	 * Once we log the create_txnid, we need to make sure we never
 	 * log it again (as might happen if this is a replication client 
@@ -491,7 +503,7 @@ __dbreg_close_id(dbp, txn)
 	DBT fid_dbt, r_name, *dbtp;
 	DB_ENV *dbenv;
 	DB_LOG *dblp;
-	DB_LSN r_unused;
+	DB_LSN rlsn;
 	FNAME *fnp;
 	LOG *lp;
 	int ret;
@@ -521,10 +533,18 @@ __dbreg_close_id(dbp, txn)
 	fid_dbt.size = DB_FILE_ID_LEN;
 
 	Pthread_rwlock_wrlock(&gbl_dbreg_log_lock);
-	ret = __dbreg_register_log(dbenv, txn, &r_unused,
+	ret = __dbreg_register_log(dbenv, txn, &rlsn,
 		F_ISSET(dbp, DB_AM_NOT_DURABLE) ? DB_LOG_NOT_DURABLE : 0,
 		DBREG_CLOSE, dbtp, &fid_dbt, fnp->id,
 		fnp->s_type, fnp->meta_pgno, TXN_INVALID);
+
+#if defined (DEBUG_STACK_AT_DBREG_LOG)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(fnp->ufid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld op %s ix:%d(%s) [%d:%d]: ", pthread_self(), "close",
+			fnp->id, fid_str, rlsn.file, rlsn.offset);
+#endif
+
 	Pthread_rwlock_unlock(&gbl_dbreg_log_lock);
     if (ret != 0)
 		goto err;

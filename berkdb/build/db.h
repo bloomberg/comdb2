@@ -352,6 +352,7 @@ struct __db_trigger_subscription;
 #define	DB_PRINTABLE	      0x0000020	/* Use printable format for salvage. */
 #define	DB_SALVAGE	      0x0000040	/* Salvage what looks like data. */
 #define	DB_IN_ORDER_CHECK   0x0000080	/* We are traversing in order so check intra page for out-of-order keys. */
+#define	DB_RECCNTCHK	      0x0000100	/* Perform record number check. */
 /*
  * !!!
  * These must not go over 0x8000, or they will collide with the flags
@@ -752,6 +753,21 @@ typedef enum {
 	DB_PRIORITY_VERY_HIGH=5,
 	DB_PRIORITY_INDEX=6
 } DB_CACHE_PRIORITY;
+/*
+ * Mpool priorities from low to high.  Defined in terms of fractions of the
+ * buffers in the pool.
+ */
+typedef enum {
+	MPOOL_PRI_VERY_LOW=-1,	/* Dead duck.  Check and set to 0. */
+	MPOOL_PRI_LOW=-2,	/* Low. */
+	MPOOL_PRI_DEFAULT=0,	/* No adjustment -- special case.*/
+	MPOOL_PRI_HIGH=10,	/* With the dirty buffers. */
+	MPOOL_PRI_DIRTY=5,	/* Dirty gets a 20% boost. */
+	MPOOL_PRI_INDEX=2,   /* Index pages get a 50% boost. */
+	MPOOL_PRI_INTERNAL=4,   /* Internal pages get an additional 25% boost. */
+	MPOOL_PRI_VERY_HIGH=1,	/* Add number of buffers in pool. */
+} MPOOL_PRIORITY;
+
 
 /* Per-process DB_MPOOLFILE information. */
 struct __db_mpoolfile {
@@ -807,7 +823,7 @@ struct __db_mpoolfile {
 	int32_t		lsn_offset;	/* LSN offset in page. */
 	u_int32_t	gbytes, bytes;	/* Maximum file size. */
 	DBT	       *pgcookie;	/* Byte-string passed to pgin/pgout. */
-	DB_CACHE_PRIORITY		/* Cache priority. */
+	MPOOL_PRIORITY		/* Cache priority. */
 			priority;
 
 	void	       *addr;		/* Address of mmap'd region. */
@@ -1519,7 +1535,9 @@ struct __db {
 					/* Methods. */
 	int  (*associate) __P((DB *, DB_TXN *, DB *, int (*)(DB *, const DBT *,
 		const DBT *, DBT *), u_int32_t));
+    int  (*get_fileid) __P((DB *, u_int8_t *fileid));
 	int  (*close) __P((DB *, u_int32_t));
+	int  (*closetxn) __P((DB *, DB_TXN *, u_int32_t));
 	int  (*cursor) __P((DB *, DB_TXN *, DBC **, u_int32_t));
 	/* comdb2 addition */
 	int  (*cursor_ser) __P((DB *, DB_TXN *, DBCS *, DBC **, u_int32_t));
@@ -1809,6 +1827,7 @@ struct __dbc {
 
 	u_int32_t lid;			/* Default process' locker id. */
 	u_int32_t locker;		/* Locker for this operation. */
+	u_int32_t origlocker;
 	DBT	  lock_dbt;		/* DBT referencing lock. */
 	DB_LOCK_ILOCK lock;		/* Object to be locked. */
 	DB_LOCK	  mylock;		/* CDB lock held on this cursor. */
@@ -1846,6 +1865,7 @@ struct __dbc {
 	int (*c_pget) __P((DBC *, DBT *, DBT *, DBT *, u_int32_t));
 	int (*c_put) __P((DBC *, DBT *, DBT *, u_int32_t));
 	int (*c_skip_stat) __P((DBC *, u_int64_t *nxtcnt, u_int64_t *skpcnt));
+	int (*c_replace_lockid) __P((DBC *, u_int32_t));
 
 					/* Methods: private. */
 	int (*c_am_bulk) __P((DBC *, DBT *, u_int32_t));
@@ -2323,6 +2343,7 @@ struct __db_env {
 	int  (*lock_abort_logical_waiters)__P((DB_ENV *, u_int32_t, u_int32_t));
 	int  (*lock_get) __P((DB_ENV *,
 		u_int32_t, u_int32_t, const DBT *, db_lockmode_t, DB_LOCK *));
+    int  (*lock_query) __P((DB_ENV *, u_int32_t, const DBT *, db_lockmode_t));
 	int  (*lock_put) __P((DB_ENV *, DB_LOCK *));
 	int  (*lock_id) __P((DB_ENV *, u_int32_t *));
 	int  (*lock_id_flags) __P((DB_ENV *, u_int32_t *, u_int32_t));
@@ -2376,6 +2397,7 @@ struct __db_env {
 	int  (*rep_truncate_repdb) __P((DB_ENV *));
 	int  (*rep_start) __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 	int  (*rep_stat) __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
+	int  (*rep_deadlocks) __P((DB_ENV *, u_int64_t *));
 	int  (*set_logical_start) __P((DB_ENV *, int (*) (DB_ENV *, void *,
 		u_int64_t, DB_LSN *)));
 	int  (*set_logical_commit) __P((DB_ENV *, int (*) (DB_ENV *, void *,
@@ -2395,7 +2417,9 @@ struct __db_env {
 	int  (*set_tx_max) __P((DB_ENV *, u_int32_t));
 	int  (*get_tx_timestamp) __P((DB_ENV *, time_t *));
 	int  (*set_tx_timestamp) __P((DB_ENV *, time_t *));
+	int  (*debug_log) __P((DB_ENV *, DB_TXN *, const DBT *op, const DBT *key, const DBT *data));
 	int  (*txn_begin) __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
+	int  (*txn_assert_notran) __P((DB_ENV *));
 	int  (*txn_checkpoint) __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
 	int  (*txn_recover) __P((DB_ENV *,
 		DB_PREPLIST *, long, long *, u_int32_t));
@@ -2579,10 +2603,13 @@ struct __db_env {
 	int (*unlock_recovery_lock)(DB_ENV *);
 	/* Trigger/consumer signalling support */
 	int(*trigger_subscribe) __P((DB_ENV *, const char *, pthread_cond_t **,
-					 pthread_mutex_t **, const uint8_t **active));
+					 pthread_mutex_t **, const uint8_t **));
 	int(*trigger_unsubscribe) __P((DB_ENV *, const char *));
 	int(*trigger_open) __P((DB_ENV *, const char *));
 	int(*trigger_close) __P((DB_ENV *, const char *));
+	int(*trigger_ispaused) __P((DB_ENV *, const char *));
+	int(*trigger_pause) __P((DB_ENV *, const char *));
+	int(*trigger_unpause) __P((DB_ENV *, const char *));
 
 	int (*pgin[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
 	int (*pgout[DB_TYPE_MAX]) __P((DB_ENV *, db_pgno_t, void *, DBT *));
@@ -2939,8 +2966,9 @@ int __recover_logfile_pglogs(DB_ENV *, void *);
 
 //#################################### THREAD POOL FOR LOADING PAGES ASYNCHRNOUSLY (WELL NO CALLBACK YET.....) 
 
+struct string_ref;
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn,
-	void *work, int queue_override, char *persistent_info, uint32_t flags,
+	void *work, int queue_override, struct string_ref *persistent_info, uint32_t flags,
         priority_t priority);
 
 

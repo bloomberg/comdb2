@@ -97,8 +97,7 @@ fi
 logflunziped=${logfl}.unzipped 
 zcat $logfl > $logflunziped
 
-cnt=`grep deadlock_cycle $logflunziped | head -1 | sed 's/}/}\n/' | grep -c cnonce`
-
+cnt=$(jq -cr 'if has("deadlock_cycle") then .deadlock_cycle | map(.cnonce) | join("\n") else empty end' < $logflunziped | wc -l)
 if [ $cnt != 2 ]; then
     failexit 'expected two cnonces reported part of deadlock_cycle in eventslog'
 fi

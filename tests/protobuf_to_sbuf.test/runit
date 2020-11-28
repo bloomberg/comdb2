@@ -1,0 +1,38 @@
+#### Verify that serializing protobuf directly to sbuf reduces memory footprint
+#### of the "uncategorized" subsystem.
+
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+dbnm=$1
+
+set -e
+
+# Make sure we talk to the same host
+host=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'SELECT comdb2_host()'`
+
+cdb2sql $dbnm --host $host 'CREATE TABLE t (b BLOB)'
+
+sleep 1
+
+# Insert a 16MB blob and read it back.
+cdb2sql $dbnm --host $host 'INSERT INTO t VALUES (randomblob(16777216))'
+
+# Peak memory before
+cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat uncategorized')"
+before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat uncategorized')" | grep total | tail -1 | awk '{print $NF}'`
+
+# 16MB * 8 = 256MB row data
+cdb2sql $dbnm --host $host 'SELECT b, b, b, b, b, b, b, b FROM t' >/dev/null
+
+# Peak memory after
+cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat uncategorized')"
+after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat uncategorized')" | grep total | awk '{print $NF}'`
+
+# Should be almost identical
+ratio=`echo "$after/$before" | bc`
+echo "$after/$before=$ratio"
+if [ $ratio -gt 1 ]; then
+  echo "Ratio is too high: $ratio" >&2
+  exit 1
+fi

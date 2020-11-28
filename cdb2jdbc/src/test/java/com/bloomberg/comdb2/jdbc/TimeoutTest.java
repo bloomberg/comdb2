@@ -14,15 +14,13 @@ public class TimeoutTest {
     @Test public void testMaxQueryTimeout() throws SQLException {
         db = System.getProperty("cdb2jdbc.test.database");
         cluster = System.getProperty("cdb2jdbc.test.cluster");
-
-        Connection conn = DriverManager.getConnection(String.format(
-                    "jdbc:comdb2://%s/%s?maxquerytime=1", cluster, db));
+        Connection conn = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s?maxquerytime=1", cluster, db));
         Statement stmt = conn.createStatement();
-        long then = System.currentTimeMillis();
-        ResultSet rs = stmt.executeQuery("SELECT SLEEP(5)");
-        long duration = System.currentTimeMillis() - then;
-        Assert.assertTrue("The query should take 1 to 2 seconds", duration >= 1000 && duration < 3000);
-        rs.close();
+        try {
+            stmt.executeQuery("SELECT SLEEP(5)");
+        } catch (SQLException e) {
+            Assert.assertTrue("Should exceed limit", e.getMessage().contains("Query exceeded set limits"));
+        }
         stmt.close();
         conn.close();
     }
@@ -50,15 +48,13 @@ public class TimeoutTest {
             Class.forName("com.bloomberg.system.comdb2.jdbc.Driver");
         } catch (Exception ex) {
         }
-
-        Connection conn = DriverManager.getConnection(String.format(
-                    "jdbc:comdb2://%s/%s?maxquerytime=1", cluster, db));
+        Connection conn = DriverManager.getConnection(String.format("jdbc:comdb2://%s/%s?maxquerytime=1", cluster, db));
         Statement stmt = conn.createStatement();
-        long then = System.currentTimeMillis();
-        ResultSet rs = stmt.executeQuery("SELECT SLEEP(5)");
-        long duration = System.currentTimeMillis() - then;
-        Assert.assertTrue("The query should take 1 to 2 seconds", duration >= 1000 && duration < 3000);
-        rs.close();
+        try {
+            stmt.executeQuery("SELECT SLEEP(5)");
+        } catch (SQLException e) {
+            Assert.assertTrue("Should exceed limit", e.getMessage().contains("Query exceeded set limits"));
+        }
         stmt.close();
         conn.close();
 

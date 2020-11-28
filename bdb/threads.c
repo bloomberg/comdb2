@@ -26,26 +26,30 @@
 #include "memory_sync.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
+#include <locks_wrap.h>
 
-extern int db_is_stopped(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);
+extern pthread_attr_t gbl_pthread_attr_detached;
 
-void *udp_backup(void *arg)
+void udp_backup(int dummyfd, short what, void *arg)
 {
-    unsigned pollms = 500; // factor of 1000
     bdb_state_type *bdb_state = arg;
     repinfo_type *repinfo = bdb_state->repinfo;
-    while (!db_is_stopped()) {
-        if (repinfo->master_host != repinfo->myhost && gbl_udp) {
-            send_myseqnum_to_master(bdb_state, 1);
-        }
-        poll(NULL, 0, pollms);
-    }
-    return NULL;
+    if (!gbl_udp) return;
+    if (repinfo->master_host == repinfo->myhost) return;
+    send_myseqnum_to_master(bdb_state, 1);
 }
 
-extern pthread_attr_t gbl_pthread_attr_detached;
+void auto_analyze(int dummyfd, short what, void *arg)
+{
+    bdb_state_type *bdb_state = arg;
+    repinfo_type *repinfo = bdb_state->repinfo;
+    if (!bdb_state->attr->autoanalyze) return;
+    if (repinfo->master_host != repinfo->myhost) return;
+    pthread_t t;
+    Pthread_create(&t, &gbl_pthread_attr_detached, auto_analyze_main, NULL);
+}
 
 /* this thread serves two purposes:
  * 1. on replicants it sends acks via tcp in case
@@ -57,20 +61,12 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     unsigned pollms = 500;
     unsigned count = 0;
     bdb_state_type *bdb_state = arg;
-    repinfo_type *repinfo = bdb_state->repinfo;
     while (!db_is_stopped()) {
         ++count;
-        if (repinfo->master_host != repinfo->myhost) { // not master
-            if (gbl_udp)
-                send_myseqnum_to_master(bdb_state, 1);
-        } else if (bdb_state->attr->autoanalyze &&
-                   count % ((bdb_state->attr->chk_aa_time * 1000) / pollms) ==
-                       0) { // do this is on master if autoanalyze on
-            pthread_t autoanalyze;
-            pthread_create(&autoanalyze, &gbl_pthread_attr_detached,
-                           auto_analyze_main, NULL);
+        udp_backup(-1, 0, bdb_state);
+        if (count % ((bdb_state->attr->chk_aa_time * 1000) / pollms) == 0) {
+            auto_analyze(-1, 0, bdb_state);
         }
-
         poll(NULL, 0, pollms);
     }
     return NULL;
@@ -342,7 +338,6 @@ void *logdelete_thread(void *arg)
 
 extern int gbl_rowlocks;
 extern unsigned long long osql_log_time(void);
-extern int db_is_stopped();
 
 int64_t gbl_last_checkpoint_ms;
 int64_t gbl_total_checkpoint_ms;

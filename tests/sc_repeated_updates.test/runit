@@ -30,7 +30,7 @@ upid=0
 function failexit
 {
     echo "Failed: $1"
-    touch failexit
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     if [[ $$ -eq $upid ]] ; then
         kill -9 $t_ppid
     else
@@ -41,8 +41,7 @@ function failexit
 
 function checkfailexit
 {
-    if [[ -f failexit ]] ; then
-        rm failexit
+    if [[ -f ${DBNAME}.failexit ]] ; then
         exit 1
     fi
 }

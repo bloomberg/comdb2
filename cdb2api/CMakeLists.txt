@@ -1,8 +1,9 @@
 set(src
   cdb2api.c
-  ${PROJECT_SOURCE_DIR}/util/sbuf2.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
+  ${PROJECT_SOURCE_DIR}/util/hostname_support.c
+  ${PROJECT_SOURCE_DIR}/util/sbuf2.c
 )
 
 list(APPEND src ${PROJECT_SOURCE_DIR}/util/walkback.c)
@@ -30,6 +31,7 @@ if (COMDB2_EXTRA_PLUGINS)
 endif()
 
 # common obj files for .so/.dylib and .a
+add_definitions(-DDISABLE_HOSTADDR_CACHE)
 add_definitions(-DSBUF2_SERVER=0)
 add_library(objlib OBJECT ${src})
 set_property(TARGET objlib PROPERTY POSITION_INDEPENDENT_CODE 1)

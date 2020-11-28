@@ -13,11 +13,6 @@ max_iter=10
 
 # Max number of schema changes
 max_nusc=100
-function failexit
-{
-    echo "Failed $@"
-    exit -1
-}
 
 
 insert_into_t1() {

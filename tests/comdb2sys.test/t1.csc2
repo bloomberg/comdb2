@@ -1,6 +1,6 @@
 schema
 {
-    int uuid
+    int uid
     int value
     int dup_value
     int allowed_null_value null=yes
@@ -8,7 +8,7 @@ schema
 
 keys
 {
-    "UUID"      = uuid
+    "UID"      = uid
     "VALUE" = value
 dup "DUP_VALUE" = value
 }

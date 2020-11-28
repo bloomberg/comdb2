@@ -21,6 +21,7 @@ struct comdb2_machine_info {
     int (*machine_is_up)(const char *host);
     int (*machine_status_init)(void);
     int (*machine_class)(const char *host);
+    int (*machine_my_class)(void);
     int (*machine_dc)(const char *host);
     int (*machine_num)(const char *host);
 };

@@ -138,7 +138,7 @@ int main(int argc, char *argv[])
     pthread_t *tids;
 
     argv0=argv[0];
-    srand(time(NULL)*getpid());
+    srandom(time(NULL)*getpid());
 
     while ((opt = getopt(argc,argv,"d:t:i:x:s:f:h"))!=EOF)
     {

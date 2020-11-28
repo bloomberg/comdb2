@@ -48,6 +48,7 @@
 #include "thread_util.h"
 #include "osqlrepository.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "str0.h"
 
 struct thr_handle {
@@ -541,12 +542,10 @@ void stop_threads(struct dbenv *dbenv)
 
     dbenv->stopped = 1;
     dbenv->no_more_sql_connections = 1;
-    osql_set_cancelall(1);
 
     if (gbl_appsock_thdpool)
         thdpool_stop(gbl_appsock_thdpool);
-    if (gbl_sqlengine_thdpool)
-        thdpool_stop(gbl_sqlengine_thdpool);
+    stop_all_sql_pools();
     if (gbl_osqlpfault_thdpool)
         thdpool_stop(gbl_osqlpfault_thdpool);
 
@@ -577,13 +576,11 @@ void resume_threads(struct dbenv *dbenv)
 {
     if (gbl_appsock_thdpool)
         thdpool_resume(gbl_appsock_thdpool);
-    if (gbl_sqlengine_thdpool)
-        thdpool_resume(gbl_sqlengine_thdpool);
+    resume_all_sql_pools();
     if (gbl_osqlpfault_thdpool)
         thdpool_resume(gbl_osqlpfault_thdpool);
     dbenv->stopped = 0;
     dbenv->no_more_sql_connections = 0;
-    osql_set_cancelall(0);
     MEMORY_SYNC;
     if (!dbenv->purge_old_blkseq_is_running ||
         !dbenv->purge_old_files_is_running)
@@ -620,6 +617,7 @@ struct reqlogger *thrman_get_reqlogger(struct thr_handle *thr)
     if (thr) {
         if (!thr->reqlogger)
             thr->reqlogger = reqlog_alloc();
+        reqlog_reset(thr->reqlogger);
         return thr->reqlogger;
     } else {
         return NULL;

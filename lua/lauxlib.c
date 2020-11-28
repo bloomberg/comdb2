@@ -227,7 +227,16 @@ LUALIB_API lua_Number luaL_optnumber (lua_State *L, int narg, lua_Number def) {
 LUALIB_API lua_Integer luaL_checkinteger (lua_State *L, int narg) {
   lua_Integer d = lua_tointeger(L, narg);
   if (d == 0 && !lua_isnumber(L, narg))  /* avoid extra test when d is not 0 */
+    /* COMDB2 MODIFICATION */
+  {
+    if (luabb_isnumber(L, narg) && !luabb_isnull(L, narg)) {
+        long long i;
+        luabb_tointeger(L, narg, &i);
+        d = i;
+    } else
+    /* COMDB2 MODIFICATION */
     tag_error(L, narg, LUA_TNUMBER);
+  }
   return d;
 }
 

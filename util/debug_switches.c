@@ -69,6 +69,12 @@ static struct debug_switches {
     int check_multiple_lockers;
     int dump_pool_on_full;
     int net_delay;
+    int scconvert_finish_delay;
+    int fake_sc_replication_timeout;
+    int test_ddl_backout_nomaster;
+    int test_ddl_backout_deadlock;
+    int test_ddl_backout_blkseq;
+    int test_delay_analyze_commit;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -117,6 +123,12 @@ int init_debug_switches(void)
     debug_switches.check_multiple_lockers = 1;
     debug_switches.dump_pool_on_full = 1;
     debug_switches.net_delay = 0;
+    debug_switches.scconvert_finish_delay = 0;
+    debug_switches.fake_sc_replication_timeout = 0;
+    debug_switches.test_ddl_backout_nomaster = 0;
+    debug_switches.test_ddl_backout_deadlock = 0;
+    debug_switches.test_ddl_backout_blkseq = 0;
+    debug_switches.test_delay_analyze_commit = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -207,7 +219,22 @@ int init_debug_switches(void)
                         &debug_switches.check_multiple_lockers);
     register_int_switch("dump_pool_on_full", "dump_pool_on_full",
                         &debug_switches.dump_pool_on_full);
+    register_int_switch(
+        "scconvert_finish_delay",
+        "Delay returning from convert_record when a stripe finishes. "
+        "This would create a scenario where scgenids are on the right "
+        "of any new genids to reproduce a vutf8 schema change bug. ",
+        &debug_switches.scconvert_finish_delay);
+    register_int_switch("fake_sc_replication_timeout", "Fake a replication timeout on finalize schemachange. ",
+                        &debug_switches.fake_sc_replication_timeout);
 
+    register_int_switch("test_ddl_backout_nomaster", "Force a NOMASTER error in toblock.",
+                        &debug_switches.test_ddl_backout_nomaster);
+    register_int_switch("test_ddl_backout_deadlock", "Force a deadlock in toblock.",
+                        &debug_switches.test_ddl_backout_deadlock);
+    register_int_switch("test_ddl_backout_blkseq", "Force a blkseq error in toblock.",
+                        &debug_switches.test_ddl_backout_blkseq);
+    register_int_switch("test_delay_analyze_commit", "Delay analyze commit", &debug_switches.test_delay_analyze_commit);
     return 0;
 }
 
@@ -386,4 +413,28 @@ int debug_switch_dump_pool_on_full(void)
 int debug_switch_net_delay(void)
 {
     return debug_switches.net_delay;
+}
+int debug_switch_scconvert_finish_delay(void)
+{
+    return debug_switches.scconvert_finish_delay;
+}
+int debug_switch_fake_sc_replication_timeout(void)
+{
+    return debug_switches.fake_sc_replication_timeout;
+}
+int debug_switch_test_ddl_backout_nomaster(void)
+{
+    return debug_switches.test_ddl_backout_nomaster;
+}
+int debug_switch_test_ddl_backout_deadlock(void)
+{
+    return debug_switches.test_ddl_backout_deadlock;
+}
+int debug_switch_test_ddl_backout_blkseq(void)
+{
+    return debug_switches.test_ddl_backout_blkseq;
+}
+int debug_switch_test_delay_analyze_commit(void)
+{
+    return debug_switches.test_delay_analyze_commit;
 }

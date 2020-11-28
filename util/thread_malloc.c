@@ -53,11 +53,24 @@ void thread_memcreate_notrace(size_t sz)
     thread_memcreate_int(sz);
 }
 
+void thread_memcreate_with_save(size_t sz, void **poldm)
+{
+    *poldm = m; m = NULL;
+    thread_memcreate_int(sz);
+}
+
 void thread_memdestroy(void)
 {
     if (m)
         comdb2ma_destroy(m);
     m = NULL;
+}
+
+void thread_memdestroy_and_restore(void **poldm)
+{
+    if (m)
+        comdb2ma_destroy(m);
+    m = *poldm; *poldm = NULL;
 }
 
 void *thread_malloc(size_t n) { return comdb2_malloc(m, n); }

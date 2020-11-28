@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+./portmux.py --failfast --verbose
+
+# To run a specific test called name:
+#./portmux.py --verbose Pmux.test_name

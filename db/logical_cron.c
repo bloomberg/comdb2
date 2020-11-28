@@ -170,7 +170,7 @@ int logical_cron_init(const char *sched_name, struct errstat *err)
 
     /* create a logical schedule */
     sched = cron_add_event(NULL, sched_name, INT_MIN, logical_cron_kickoff,
-                           name, NULL, NULL, &source_id, err, &intf);
+                           name, NULL, NULL, NULL, &source_id, err, &intf);
     if (!sched) {
         logmsg(LOGMSG_USER, "failed to create logical scheduler %s!\n",
                sched_name);

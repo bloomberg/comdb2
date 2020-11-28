@@ -1,3 +1,19 @@
+/*
+   Copyright 2020 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
 #include <stdlib.h>
 #include <string.h>
 #include <stddef.h>
@@ -10,6 +26,7 @@
 #include "cdb2api.h"
 #include "schemachange.h"
 #include "sc_schema.h"
+#include "sc_global.h"
 
 struct sc_status_ent {
     char *name;
@@ -42,14 +59,20 @@ static char *status_num2str(int s)
     return "UNKNOWN";
 }
 
-int get_status(void **data, int *npoints)
+static int get_status(void **data, int *npoints)
 {
     int rc, bdberr, nkeys;
     llmeta_sc_status_data *status = NULL;
     void **sc_data = NULL;
     struct sc_status_ent *sc_status_ents = NULL;
+    tran_type *tran = curtran_gettran();
+    if (!tran) {
+        logmsg(LOGMSG_ERROR, "%s cannot create transaction object\n", __func__);
+        return SQLITE_INTERNAL;
+    }
 
-    rc = bdb_llmeta_get_all_sc_status(&status, &sc_data, &nkeys, &bdberr);
+    rc = bdb_llmeta_get_all_sc_status(tran, &status, &sc_data, &nkeys, &bdberr);
+    curtran_puttran(tran);
     if (rc || bdberr) {
         logmsg(LOGMSG_ERROR, "%s: failed to get all schema change status\n",
                __func__);
@@ -104,13 +127,10 @@ int get_status(void **data, int *npoints)
         if (status[i].status == BDB_SC_RUNNING || 
             status[i].status == BDB_SC_PAUSED || 
             status[i].status == BDB_SC_COMMIT_PENDING) {
-            unsigned long long seed = 0;
-            unsigned int host = 0;
-            if ((rc = fetch_sc_seed(sc.tablename, thedb, &seed, &host)) == SC_OK) {
-                char str[22];
-                sprintf(str, "0x%llx", seed);
-                sc_status_ents[i].seed = strdup(str);
-            }
+            uint64_t seed = sc_get_seed_table(sc.tablename);
+            char str[22];
+            sprintf(str, "%0#16" PRIx64, flibc_htonll(seed));
+            sc_status_ents[i].seed = strdup(str);
         }
     }
 
@@ -127,7 +147,7 @@ cleanup:
     return rc;
 }
 
-void free_status(void *p, int n)
+static void free_status(void *p, int n)
 {
     struct sc_status_ent *sc_status_ents = p;
     for (int i = 0; i < n; i++) {

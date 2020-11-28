@@ -50,6 +50,7 @@ static void minuteFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
 static void secondFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void nowFunc(sqlite3_context *context, int argc, sqlite3_value **argv);
 static void currentTS(sqlite3_context *context, int argc, sqlite3_value **argv);
+static void nextSequence(sqlite3_context *context, int argc, sqlite3_value **argv);
 
 void register_date_functions(sqlite3 * db) {
     static const struct {
@@ -70,6 +71,9 @@ void register_date_functions(sqlite3 * db) {
         { "now",                     1, nowFunc          , NULL, NULL},
         { "months",                  1, monthsFunc       , NULL, NULL},
         { "current_timestamp",       0, currentTS        , NULL, NULL},
+
+        /* Piggy-back nextsequence */
+        { "nextsequence",            0, nextSequence     , NULL, NULL}
     };
 
     for (int i = 0; i < sizeof(aFuncs) / sizeof(aFuncs[0]); i++) {
@@ -317,6 +321,13 @@ static void daysFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
   }else{
       sqlite3_result_null(context);
   }
+}
+
+static void nextSequence(sqlite3_context *context, int argc, sqlite3_value **argv)
+{
+   assert(context->pVdbe);
+   bzero(context->pOut, sizeof(Mem));
+   sqlite3VdbeMemSetMasterResolve(context->pOut);
 }
 
 /* Seperate function with no args which gives microsecond precision for datetime. */

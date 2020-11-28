@@ -19,10 +19,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stddef.h>
-#include <string.h>
-#include <strings.h>
 #include <pthread.h>
-#include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -38,7 +35,6 @@
 #include <sbuf2.h>
 #include <str0.h>
 
-#include <plhash.h>
 #include "comdb2.h"
 #include "util.h" /* the .h file for this .c */
 
@@ -48,8 +44,6 @@
 #include <sys/resource.h>
 
 #include <logmsg.h>
-
-#define TOUPPER(x) (((x >= 'a') && (x <= 'z')) ? x - 32 : x)
 
 #ifdef _IBM_SOURCE
 extern char *sys_errlist[];
@@ -86,23 +80,6 @@ void perror_errnum(const char *s, int errnum)
         (void)logmsg(LOGMSG_ERROR, "%s\n", errmsg);
 
     fflush(stderr);
-}
-
-/* case-insensitive compare */
-int strcmpfunc(char **a, char **b, int len)
-{
-    int cmp;
-    cmp = strcasecmp(*a, *b);
-    return cmp;
-}
-
-u_int strhashfunc(u_char **keyp, int len)
-{
-    unsigned hash;
-    u_char *key = *keyp;
-    for (hash = 0; *key; key++)
-        hash = ((hash % 8388013) << 8) + (TOUPPER(*key));
-    return hash;
 }
 
 void xorbufcpy(char *dest, const char *src, size_t len)

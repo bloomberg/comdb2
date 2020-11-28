@@ -18,6 +18,7 @@ add_executable(comdb2ar
   serialiseerror.cpp
   tar_header.cpp
   util.cpp
+  ${PROJECT_SOURCE_DIR}/util/hostname_support.c
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
 )
 include_directories(
@@ -36,7 +37,8 @@ if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
 add_definitions(
-  -DSBUF2_SERVER=0
   -DBUILDING_TOOLS
+  -DDISABLE_HOSTADDR_CACHE
+  -DSBUF2_SERVER=0
 )
 install(TARGETS comdb2ar RUNTIME DESTINATION bin)

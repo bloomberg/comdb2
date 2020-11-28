@@ -34,15 +34,16 @@ struct errstat;
 struct sqlclntstate;
 
 struct osql_sqlthr {
+    struct errstat err;  /* valid if done = 1 */
+    pthread_cond_t cond;
     unsigned long long rqid; /* osql rq id */
     uuid_t uuid;             /* request id, take 2 */
-    char *master;            /* who was the master I was talking to */
+    const char *master;      /* who was the master I was talking to */
+    struct sqlclntstate *clnt; /* cache clnt */
+    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
     int done;            /* result of socksql, recom, snapisol and serial master
                             transactions*/
-    struct errstat err;  /* valid if done = 1 */
     int type;            /* type of the request, enum OSQL_REQ_TYPE */
-    pthread_mutex_t mtx; /* mutex and cond for commitrc sync */
-    pthread_cond_t cond;
     int master_changed; /* set if we detect that node we were waiting for was
                            disconnected */
     int nops;
@@ -54,7 +55,6 @@ struct osql_sqlthr {
     int last_updated; /* poking support: when was the last time I got info, 0 is
                          never */
     int last_checked; /* poking support: when was the loast poke sent */
-    struct sqlclntstate *clnt; /* cache clnt */
 };
 typedef struct osql_sqlthr osql_sqlthr_t;
 
@@ -105,7 +105,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt);
  *
  */
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
-                                void *data, struct errstat *errstat);
+                                void *data, struct errstat *errstat,
+                                struct query_effects *effects);
 
 /**
  * Wait the default time for the session to complete
@@ -126,7 +127,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
  * we're interested in things like master_changed
  *
  */
-int osql_reuse_sqlthr(struct sqlclntstate *clnt, char *master);
+int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master);
 
 /**
  * Retrieve the sqlclntstate for a certain rqid

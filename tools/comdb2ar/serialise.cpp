@@ -640,6 +640,8 @@ void parse_lrl_file(const std::string& lrlpath,
 
     if (!certdir.empty())
         certdir += "/";
+    else
+        certdir = *p_dbdir + "/";
 
     if (!cert.empty())
         p_support_files->push_back(cert);

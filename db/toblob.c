@@ -61,7 +61,8 @@
 #include <netinet/in.h>
 
 #include "debug_switches.h"
-#include <logmsg.h>
+#include "logmsg.h"
+#include "reqlog.h"
 
 /* ****************************************************************************
  *

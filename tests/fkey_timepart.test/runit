@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
+
+# Time partition testcase for comdb2
+################################################################################
+
+
+# args
+# <dbname>
+dbname=$1
+
+VIEW="testview1"
+OUT="run.log"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+function show_timepart() 
+{
+    echo cdb2sql ${CDB2_OPTIONS} $dbname default "select name, period, retention, nshards, version, shard0name from comdb2_timepartitions" 
+    cdb2sql ${CDB2_OPTIONS} $dbname default "select name, period, retention, nshards, version, shard0name from comdb2_timepartitions" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+}
+
+
+# create the partition at limit number of rev constraints
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tcon1 as ${VIEW} PERIOD 'daily' RETENTION 30 START '${starttime}'" 
+echo "Creating $VIEW 30 shards table has 1 constraint on t table with 1 existing rev constraints from tconadd" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tcon1 as ${VIEW} PERIOD 'daily' RETENTION 30 START '${starttime}'" 2>&1 >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to create $VIEW"
+   exit 1
+fi
+
+show_timepart
+
+VIEW="testview2"
+
+# create the partition at limit number of rev constraints
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
+echo cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tcon2 as ${VIEW} PERIOD 'daily' RETENTION 31 START '${starttime}'" 
+echo "FAIL TEST: Creating $VIEW 31 shards table has 1 constraint on t table with 1 existing rev constraints from tconadd" 
+cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tcon2 as ${VIEW} PERIOD 'daily' RETENTION 31 START '${starttime}'" 2>&1 >> $OUT
+if (( $? == 0 )) ; then
+   echo "FAILURE to stop creating $VIEW"
+   exit 1
+fi
+
+show_timepart
+
+difs=`diff $OUT $OUT.alpha`
+if (( $? != 0 )) ; then
+   echo "FAILURE diff"
+   exit 1
+fi
+if [[ ! -z "${difs}" ]] ; then
+   echo "diff $OUT $OUT.alpha.actual"
+   echo ${difs}
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"

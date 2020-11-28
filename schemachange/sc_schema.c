@@ -27,13 +27,12 @@
 
 extern int gbl_partial_indexes;
 
-int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
+int verify_record_constraint(const struct ireq *iq, const struct dbtable *db, void *trans,
                              const void *old_dta, unsigned long long ins_keys,
                              blob_buffer_t *blobs, int maxblobs,
                              const char *from, int rebuild, int convert)
 {
     int rc = 0;
-    const void *od_dta;
     void *new_dta = NULL;
     struct convert_failure reason;
     struct ireq ruleiq;
@@ -42,7 +41,7 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         return 0;
     }
 
-    od_dta = old_dta;
+    const void *od_dta;
     if (rebuild && convert) {
         /* .ONDISK -> .NEW..ONDISK */
         /* if record added while schema change is on */
@@ -61,13 +60,16 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
         od_dta = new_dta;
         from = ".NEW..ONDISK";
     }
+    else {
+        od_dta = old_dta;
+    }
 
     init_fake_ireq(thedb, &ruleiq);
     ruleiq.opcode = OP_REBUILD;
     ruleiq.debug = gbl_who;
 
     for (int ci = 0; ci < db->n_constraints; ci++) {
-        constraint_t *ct = &(db->constraints[ci]);
+        const constraint_t *ct = &(db->constraints[ci]);
 
         char lcl_tag[MAXTAGLEN];
         char lcl_key[MAXKEYLEN];
@@ -82,11 +84,14 @@ int verify_record_constraint(struct ireq *iq, struct dbtable *db, void *trans,
             rc = ERR_CONSTR;
             break;
         }
-        if (gbl_partial_indexes && db->ix_partial &&
-            !(ins_keys & (1ULL << lcl_idx))) {
+        if (gbl_partial_indexes && db->ix_partial && !(ins_keys & (1ULL << lcl_idx))) {
             continue;
         }
-        snprintf(lcl_tag, sizeof lcl_tag, ".NEW..ONDISK_IX_%d", lcl_idx);
+        int len = snprintf(lcl_tag, sizeof lcl_tag, ".NEW..ONDISK_IX_%d", lcl_idx);
+        if (len >= sizeof lcl_tag) {
+            rc = ERR_BUF_TOO_SMALL;
+            break;
+        }
 
         /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
         if (iq->idxInsert && !convert)
@@ -209,7 +214,7 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
                        __func__);
                 continue;
             }
-            if (should_skip_constraint_for_index(cnstrt->lcltable, rixnum, nulls)) continue;
+            if (skip_lookup_for_nullfkey(cnstrt->lcltable, rixnum, nulls)) continue;
 
             if (cnstrt->lcltable->ix_collattr[rixnum]) {
                 rc = extract_decimal_quantum(cnstrt->lcltable, rixnum, rkey,
@@ -538,15 +543,26 @@ inline int check_option_coherency(struct schema_change_type *s, struct dbtable *
     return SC_OK;
 }
 
+inline int check_option_queue_coherency(struct schema_change_type *s,
+                                        struct dbtable *db)
+{
+    if (s->ip_updates || s->instant_sc || s->compress_blobs) {
+        sc_errf(s, "unsupported option for queues.\n");
+        return SC_INVALID_OPTIONS;
+    }
+
+    return check_option_coherency(s, db, NULL);
+}
+
 int sc_request_disallowed(SBUF2 *sb)
 {
-    char *from = intern(get_origin_mach_by_buf(sb));
+    char *from = get_origin_mach_by_buf(sb);
     /* Allow if we can't figure out where it came from - don't want this
        to break in production. */
     if (from == NULL) return 0;
     if (strcmp(from, "localhost") == 0) return 0;
-    if (!allow_write_from_remote(from)) return 1;
-    return 0;
+    if (allow_write_from_remote(from)) return 0;
+    return 1;
 }
 
 int sc_cmp_fileids(unsigned long long a, unsigned long long b)
@@ -1166,6 +1182,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
         if (!strcasecmp(rdb->tablename, newdb->tablename)) {
             rdb = newdb;
         }
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (int j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1182,6 +1199,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                 }
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
         for (int j = 0; j < newdb->n_constraints; j++) {
             for (int k = 0; k < newdb->constraints[j].nrules; k++) {
                 int ridx = 0;
@@ -1347,6 +1365,7 @@ int remove_constraint_pointers(struct dbtable *db)
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1363,6 +1382,7 @@ int remove_constraint_pointers(struct dbtable *db)
                 }
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
     return 0;
 }
@@ -1372,6 +1392,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
     for (int i = 0; i < thedb->num_dbs; i++) {
         struct dbtable *rdb = thedb->dbs[i];
         int j = 0;
+        Pthread_mutex_lock(&rdb->rev_constraints_lk);
         for (j = 0; j < rdb->n_rev_constraints; j++) {
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
@@ -1379,6 +1400,7 @@ int rename_constraint_pointers(struct dbtable *db, const char *newname)
                 strcpy(ct->lcltable->tablename, newname);
             }
         }
+        Pthread_mutex_unlock(&rdb->rev_constraints_lk);
     }
     return 0;
 }
@@ -1396,6 +1418,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
         rdb = thedb->dbs[i];
         /* fix reverse references */
         if (rdb->n_rev_constraints > 0) {
+            Pthread_mutex_lock(&rdb->rev_constraints_lk);
             for (j = 0; j < rdb->n_rev_constraints; j++) {
                 ct = rdb->rev_constraints[j];
                 for (k = 0; k < MAXCONSTRAINTS; k++) {
@@ -1404,6 +1427,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
                     }
                 }
             }
+            Pthread_mutex_unlock(&rdb->rev_constraints_lk);
         }
         /* fix forward references */
         if (rdb->n_constraints) {

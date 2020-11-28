@@ -124,7 +124,7 @@ done
 if [[ $reproduced -ne 1 ]]; then
     let runs=$runs-1
     echo Number of retries remaining: $runs
-    continue
+    continue # we are in a loop here
 fi
 
 for onenode in `cdb2sql $CDB2_OPTIONS $TABS $dbnm $DEFAULT 'exec procedure sys.info.cluster()' | cut -d$'\t' -f1`; do

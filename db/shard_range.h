@@ -24,6 +24,7 @@ enum {
     SHARD_ERR_EXIST = -2,
     SHARD_ERR_MALLOC = -3,
     SHARD_ERR_PARAMS = -4,
+    SHARD_ERR_TOOMANYTHR = -5,
 };
 
 struct Expr;

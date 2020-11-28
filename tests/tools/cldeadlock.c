@@ -79,7 +79,7 @@ int select_and_update_orphan(const char *dbname, const char *type,
         int idx, int snapshot, int64_t count, int range, int pint)
 {
     int sel_rc, upd_rc;
-    int64_t target = (rand() % count) / 10, iter = 0;
+    int64_t target = (random() % count) / 10, iter = 0;
     int64_t *sel_val, upd_val, cnt=0;
     char *host;
     char upd_sql[80];
@@ -144,7 +144,7 @@ sel_again:
         if ((sel_val = (int64_t *)cdb2_column_value(sel_hndl, 0)) != NULL) {
             cnt++;
             if (range > 0)
-                upd_val = *sel_val + (rand() % range);
+                upd_val = *sel_val + (random() % range);
             else
                 upd_val = *sel_val;
 
@@ -242,7 +242,7 @@ int main(int argc,char *argv[])
 
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
-    srand(time(NULL) ^ getpid());
+    srandom(time(NULL) ^ getpid());
 
     while ((c = getopt(argc,argv,"hd:r:p:t:c:f:sT"))!=EOF) {
         switch(c) {

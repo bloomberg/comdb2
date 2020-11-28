@@ -29,6 +29,7 @@
 #include "sc_drop_table.h"
 #include "sc_add_table.h"
 #include "sc_alter_table.h"
+#include "sc_util.h"
 
 int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
@@ -106,7 +107,14 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
      * truncated prefix anyway */
     bdb_get_new_prefix(new_prefix, sizeof(new_prefix), &bdberr);
 
+    int local_lock = 0;
+    if (!iq->sc_locked) {
+        local_lock = 1;
+        wrlock_schema_lk();
+    }
     rc = open_temp_db_resume(newdb, new_prefix, 0, 0, tran);
+    if (local_lock)
+        unlock_schema_lk();
     if (rc) {
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");

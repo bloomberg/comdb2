@@ -1,4 +1,4 @@
-version 1
+version 2
 
 rule 1 action REJECT
 rule 1 mode {EXACT}

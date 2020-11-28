@@ -241,14 +241,58 @@ public class PreparedStatementTest {
         ps.setObject(1, null);
         ps.executeUpdate();
 
+        ps.setBytes(1, null);
+        ps.executeUpdate();
+
         ResultSet rs = ps.executeQuery("SELECT COUNT(*) FROM longlong");
-        assertEquals(rs.getInt(1), 3);
+        assertEquals(rs.getInt(1), 4);
 
         rs = ps.executeQuery("SELECT * FROM longlong");
         while (rs.next()) {
             rs.getObject(1);
             assertEquals(rs.wasNull(), true);
         }
+    }
+
+    /* Verify that binding NULL and empty text or blob works correctly. */
+    @Test
+    public void testBindNullAndEmptyTextAndBlob() throws SQLException{
+        Statement stmt = conn.createStatement();
+        stmt.execute("DROP TABLE IF EXISTS text_and_blob");
+        stmt.execute("CREATE TABLE text_and_blob (t text NULL, b blob NULL)");
+        PreparedStatement ps = conn.prepareStatement("INSERT INTO text_and_blob VALUES(?, ?)");
+        ResultSet rs;
+
+        /* null text and blob */
+        ps.setString(1, null);
+        ps.setBytes(2, null);
+        ps.executeUpdate();
+
+        rs = ps.executeQuery("SELECT * FROM text_and_blob");
+        while (rs.next()) {
+            rs.getObject(1);
+            assertEquals(rs.wasNull(), true);
+            rs.getObject(2);
+            assertEquals(rs.wasNull(), true);
+        }
+        rs.close();
+
+        ps.executeQuery("DELETE FROM text_and_blob");
+
+        /* empty text and blob */
+        ps.setString(1, "");
+        ps.setBytes(2,  new byte[]{});
+        ps.executeUpdate();
+
+        rs = ps.executeQuery("SELECT * FROM text_and_blob");
+        while (rs.next()) {
+            rs.getObject(1);
+            assertEquals(rs.wasNull(), false);
+            rs.getObject(2);
+            assertEquals(rs.wasNull(), false);
+        }
+        rs.close();
+        stmt.execute("drop table text_and_blob");
     }
 }
 /* vim: set sw=4 ts=4 et: */

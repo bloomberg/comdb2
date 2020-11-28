@@ -56,6 +56,7 @@ int fdb_appsock_work(const char *cid, struct sqlclntstate *clnt, int version,
     clnt->fdb_state.version = version;
     clnt->fdb_state.flags = flags;
     clnt->osql.timings.query_received = osql_log_time();
+    clnt->queue_me = 1;
 
     /*
        dispatch the sql
@@ -331,6 +332,7 @@ int fdb_svc_trans_begin(char *tid, enum transaction_level lvl, int flags,
     if (!clnt) {
         return -1;
     }
+    thd->clnt = clnt;
 
     init_sqlclntstate(clnt, tid, isuuid);
 
@@ -415,6 +417,7 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
                 logmsg(LOGMSG_ERROR, "%s: failed %s rc=%d bdberr=%d\n", __func__,
                         (rc == SQLITE_OK) ? "commit" : "abort", irc, bdberr);
             }
+            clnt->dbtran.shadow_tran = NULL;
         }
     }
 
@@ -437,11 +440,9 @@ int fdb_svc_trans_commit(char *tid, enum transaction_level lvl,
     if (gbl_fdb_track) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%lu commiting tid=%s\n", pthread_self(),
-                   comdb2uuidstr(clnt->osql.uuid, us));
+            logmsg(LOGMSG_USER, "%p commiting tid=%s\n", (void *)pthread_self(), comdb2uuidstr(clnt->osql.uuid, us));
         } else
-            logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(),
-                   clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%p commiting tid=%llx\n", (void *)pthread_self(), clnt->osql.rqid);
     }
 
     if (clnt->dbtran.mode == TRANLEVEL_RECOM ||
@@ -481,7 +482,12 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
 
     /* we need to wait for not yet arrived cursors, before we wait for them
        to finish!!!
+       NOTE: this can get called also for out-of-order rollbacks, for example
+       when I/O errors happen.  The sequencing is always inline in this case,
+       but new cursors can arrive afterwards.  Mark the session rollbacked,
+       so that new cursors can detect and fail gracefully
      */
+    clnt->dbtran.rollbacked = true;
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {
@@ -489,6 +495,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
         poll(NULL, 0, 10);
         Pthread_mutex_lock(&clnt->dtran_mtx);
     }
+
     Pthread_mutex_unlock(&clnt->dtran_mtx);
 
     switch (clnt->dbtran.mode) {
@@ -511,11 +518,9 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
     if (gbl_fdb_track) {
         if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
             uuidstr_t us;
-            logmsg(LOGMSG_USER, "%lu commiting tid=%s\n", pthread_self(),
-                   comdb2uuidstr(clnt->osql.uuid, us));
+            logmsg(LOGMSG_USER, "%p commiting tid=%s\n", (void *)pthread_self(), comdb2uuidstr(clnt->osql.uuid, us));
         } else
-            logmsg(LOGMSG_USER, "%lu commiting tid=%llx\n", pthread_self(),
-                   clnt->osql.rqid);
+            logmsg(LOGMSG_USER, "%p commiting tid=%llx\n", (void *)pthread_self(), clnt->osql.rqid);
     }
 
     if (osql_unregister_sqlthr(clnt)) {
@@ -570,14 +575,12 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
     }
 
     if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu getting a curtran\n",
-               pthread_self());
+        logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n", (void *)pthread_self());
 
     /* we need a curtran for this one */
     if (!clnt->dbtran.cursor_tran) {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu getting a curtran\n",
-                   pthread_self());
+            logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n", (void *)pthread_self());
 
         clnt->dbtran.cursor_tran =
             bdb_get_cursortran(thedb->bdb_env, 0, &bdberr);
@@ -589,9 +592,8 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
         *standalone = 1;
     } else {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_ERROR,
-                   "XYXYXY: thread %lu part of transaction %llu\n",
-                   pthread_self(), clnt->osql.rqid);
+            logmsg(LOGMSG_ERROR, "XYXYXY: thread %p part of transaction %llu\n", (void *)pthread_self(),
+                   clnt->osql.rqid);
 
         *standalone = 0;
     }
@@ -683,8 +685,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
     if (standalone) {
         if (clnt->dbtran.cursor_tran) {
             if (gbl_fdb_track)
-                logmsg(LOGMSG_ERROR, "XYXYXY: thread %lu releasing curtran\n",
-                       pthread_self());
+                logmsg(LOGMSG_ERROR, "XYXYXY: thread %p releasing curtran\n", (void *)pthread_self());
 
             rc = bdb_put_cursortran(thedb->bdb_env, clnt->dbtran.cursor_tran, 0,
                                     &bdberr);
@@ -702,9 +703,7 @@ static int _fdb_svc_cursor_end(BtCursor *pCur, struct sqlclntstate *clnt,
         }
     } else {
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER,
-                   "XYXYXY: thread %lu in transaction, keeping curtran\n",
-                   pthread_self());
+            logmsg(LOGMSG_USER, "XYXYXY: thread %p in transaction, keeping curtran\n", (void *)pthread_self());
     }
 
     if (pCur->ondisk_buf) {

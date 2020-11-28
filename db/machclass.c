@@ -1,5 +1,5 @@
 /*
-   Copyright 2017, Bloomberg Finance L.P.
+   Copyright 2017, 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@
    limitations under the License.
  */
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <pthread.h>
 #include "plhash.h"
@@ -31,6 +32,7 @@ static pthread_mutex_t mach_mtx = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *classes;
 static hash_t *class_names;
 
+#define MAX_MACH_CLASS_NAME_LEN 10
 static machine_class_t default_classes[] = {
     {"unknown", 0}, /* 0 indexed! */
     {"test", 1},    /* CLASS_TEST == 1 */
@@ -51,7 +53,7 @@ int mach_class_init(void)
     int rc = 0;
 
     Pthread_mutex_lock(&mach_mtx);
-    classes = hash_init_strptr(offsetof(struct machine_class, name));
+    classes = hash_init_strcaseptr(offsetof(struct machine_class, name));
     class_names = hash_init_i4(offsetof(struct machine_class, value));
     if (!classes || !class_names) {
         return -1;

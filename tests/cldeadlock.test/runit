@@ -46,6 +46,7 @@ function failexit
     typeset f=$1
     cleanup
     write_prompt $func "$f failed: $2"
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     exit -1
 }
 

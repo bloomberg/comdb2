@@ -1,0 +1,9 @@
+schema
+{
+   int a null=yes
+   int b null=yes
+}
+keys
+{
+   "ID"  = a
+}

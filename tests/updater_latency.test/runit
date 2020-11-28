@@ -16,6 +16,7 @@ function failexit
     write_prompt $func "Running $func"
     typeset f=$1
     write_prompt $func "$f failed: $2"
+    touch ${DBNAME}.failexit # runtestcase script looks for this file
     exit 1
 }
 

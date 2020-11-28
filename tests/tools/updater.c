@@ -2,7 +2,6 @@
 #include <string.h>
 #include <stdlib.h>
 #include <cdb2api.h>
-#include <malloc.h>
 #include <errno.h>
 #include <time.h>
 #include <inttypes.h>
@@ -131,7 +130,7 @@ void update(int iterations, int thresholdms)
     }
 
     for (int64_t i = 0; (iterations <= 0) || (i < iterations); i++) {
-        int ix = (rand() % rec_index);
+        int ix = (random() % rec_index);
         struct index_rec *rec = &rec_array[ix];
         cdb2_effects_tp effects;
         cdb2_clearbindings(hndl);
@@ -178,7 +177,7 @@ int main(int argc,char *argv[])
     argv0=argv[0];
     setvbuf(stdout, NULL, _IOLBF, 0);
     setvbuf(stderr, NULL, _IOLBF, 0);
-    srand(time(NULL) ^ getpid());
+    srandom(time(NULL) ^ getpid());
 
     while ((c = getopt(argc, argv, "hd:c:i:p:s:t:P:"))!=EOF) {
         switch(c) {

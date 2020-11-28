@@ -255,6 +255,7 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
     fill_mem_int(&mems[3], rootpage);
     fill_mem_str(&mems[4], sql);
     fill_mem_str(&mems[5], csc2_schema);
+    logmsg(LOGMSG_DEBUG, "sql = %s\n", sql);
 
     rc = serialize_mems(mems, 6, &rec, sz);
     if (rc)

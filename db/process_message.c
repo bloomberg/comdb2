@@ -81,8 +81,11 @@ extern int __berkdb_read_alarm_ms;
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"
+#include "reqlog.h"
 #include "comdb2_atomic.h"
 #include "comdb2_ruleset.h"
+#include "osqluprec.h"
+#include "schemachange.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -112,7 +115,7 @@ extern struct thdpool *gbl_verify_thdpool;
 void debug_bulktraverse_data(char *tbl);
 
 int gbl_track_sqlengine_states = 0;
-int gbl_break_lua;
+extern pthread_t gbl_break_lua;
 
 extern void reinit_sql_hint_table();
 
@@ -141,23 +144,22 @@ void commit_bench(void *, int, int);
 void bdb_detect(void *);
 void enable_ack_trace(void);
 void disable_ack_trace(void);
-void osql_send_test(SBUF2 *sb);
-extern unsigned long long get_genid(bdb_state_type *bdb_state,
-                                    unsigned int dtafile);
+void osql_send_test(void);
+unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 int bdb_dump_logical_tranlist(void *state, FILE *f);
 void replay_stat(void);
 void bdb_dump_freelist(FILE *out, int datafile, int stripe, int ixnum,
                        bdb_state_type *bdb_state);
-extern void delete_log_files(bdb_state_type *bdb_state);
+void comdb2_dump_blockers(DB_ENV *);
+void delete_log_files(bdb_state_type *bdb_state);
 void malloc_stats();
-extern int get_blkmax(void);
+int get_blkmax(void);
 void set_analyze_abort_requested();
-extern void dump_log_event_counts(void);
-extern void bdb_dumptrans(bdb_state_type *bdb_state);
+void dump_log_event_counts(void);
+void bdb_dumptrans(bdb_state_type *bdb_state);
 void bdb_locker_summary(void *_bdb_state);
-extern int printlog(bdb_state_type *bdb_state, int startfile, int startoff,
-                    int endfile, int endoff);
-extern void dump_remote_policy();
+int printlog(bdb_state_type *bdb_state, int startfile, int startoff, int endfile, int endoff);
+void dump_remote_policy();
 
 static const char *HELP_MAIN[] = {
     "stat           - status report",
@@ -219,7 +221,7 @@ static const char *HELP_STAT[] = {
     "stat signals               - signal handling setup",
     "stat csc2vers <table>      - get current schema version for table",
     "stat dumpcsc2 <table> #    - dump version # of schema for given table",
-    "stat rmtpol #              - remote policy for given machine number",
+    "stat rmtpol #              - remote policy for the given hostname",
     "stat thr                   - dump all registered threads",
     "stat dumpsql               - running sql statements",
     "stat size                  - database ondisk size info",
@@ -238,12 +240,15 @@ static const char *HELP_STAT[] = {
 static const char *HELP_SQL[] = {
     "sql ...",
     "dump               - dump currently running statements and cursor info",
+    "dump repblockers   - dump info on currently running statements that are"
+    "                     blocking replication thread",
     "keep N             - keep stats on last N statements",
     "hist               - show recently run statements",
     "cancel N           - cancel running statement with id N",
-    "cancelcnonce N      - cancel running statement with cnonce N",
+    "cancelcnonce N     - cancel running statement with cnonce N",
     "wrtimeout N        - set write timeout in ms",
-    "help               - this information", NULL,
+    "help               - this information",
+    NULL,
 };
 static const char *HELP_SCHEMA[] = {
     "Commands for inspecting and altering schema information:-",
@@ -390,6 +395,7 @@ void replication_stats(struct dbenv *dbenv)
 {
     logmsg(LOGMSG_USER, "Replication statistics:-\n");
     logmsg(LOGMSG_USER, "   Num commits      %d\n", dbenv->num_txns);
+    logmsg(LOGMSG_USER, "   Num siblings     %d\n", dbenv->nsiblings);
     if (dbenv->num_txns > 0) {
         logmsg(LOGMSG_USER, "   Avg txn sz           %" PRIu64 "\n",
                dbenv->total_txn_sz / dbenv->num_txns);
@@ -465,9 +471,7 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 logmsg(LOGMSG_ERROR, "must specify a positive epoch time\n");
                 break;
             }
-            if (dbenv->log_delete_age > 0) {
-                dbenv->log_delete_age = epoch ? epoch : comdb2_time_epoch();
-            }
+            dbenv->log_delete_age = epoch;
         } else if (tokcmp(tok, ltok, "log-delete") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "on") == 0) {
@@ -642,6 +646,19 @@ void *clean_exit_thd(void *unused)
     return NULL;
 }
 
+static void *getschemalk(void *arg)
+{
+    int64_t holdtime = (int64_t)arg;
+    logmsg(LOGMSG_USER, "Locking the schemalk in write mode for %"PRId64" seconds", holdtime);
+    wrlock_schema_lk();
+    if (holdtime >= 0) {
+        sleep(holdtime);
+        logmsg(LOGMSG_USER, "Unlocking the schemalk\n");
+        unlock_schema_lk();
+    }
+    return NULL;
+}
+
 int process_command(struct dbenv *dbenv, char *line, int lline, int st)
 {
     char *tok;
@@ -676,13 +693,8 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         /* Stack overflows with 128KiB stack size in Debug build.
            Slightly bump it up. */
         Pthread_attr_setstacksize(&thd_attr, PTHREAD_STACK_MIN + 256 * 1024);
-        pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
-
-        int rc = pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
-        if (rc != 0) {
-            logmsgperror("create exit thread: pthread_create");
-            exit(1);
-        }
+        Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
+        Pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         Pthread_attr_destroy(&thd_attr);
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
@@ -845,7 +857,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "synccluster") == 0) {
 
         int outrc = -1;
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_USER, "Not the master node. \n");
         } else {
             tok = segtok(line, lline, &st, &ltok);
@@ -1126,7 +1138,7 @@ clipper_usage:
             return -1;
         }
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "Can't delete files: I am not master\n");
             return -1;
         }
@@ -1356,6 +1368,29 @@ clipper_usage:
                 blkmax, gbl_maxwthreads);
     }
 
+    else if (tokcmp(tok, ltok, "list_sql_pools") == 0) {
+        list_all_sql_pools(NULL);
+    }
+    else if (tokcmp(tok, ltok, "destroy_sql_pool") == 0) {
+        char zPoolName[PATH_MAX];
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok != 0) {
+            tokcpy(tok, ltok, zPoolName);
+            rc = destroy_sql_pool(zPoolName, SQL_POOL_STOP_TIMEOUT_US);
+            if (rc > 0) {
+                logmsg(LOGMSG_USER, "Destroyed SQL pool \"%s\" (%d)\n",
+                       zPoolName, rc);
+                return 0;
+            } else {
+                logmsg(LOGMSG_USER, "Cannot destroy SQL pool \"%s\" (%d)\n",
+                       zPoolName, rc);
+                return -1;
+            }
+        } else {
+            logmsg(LOGMSG_ERROR, "Missing SQL engine pool name\n");
+            return -1;
+        }
+    }
     else if (tokcmp(tok, ltok, "free_ruleset") == 0) {
         comdb2_free_ruleset(gbl_ruleset);
         gbl_ruleset = NULL;
@@ -1446,6 +1481,15 @@ clipper_usage:
             if (rc == 0) {
                 logmsg(LOGMSG_USER, "Ruleset loaded from file \"%s\"\n",
                        zFileName);
+                if (gbl_ruleset != NULL) {
+                    long long int oldVersion = gbl_ruleset->version;
+                    if (oldVersion < RULESET_VERSION) {
+                        gbl_ruleset->version = RULESET_VERSION;
+                        logmsg(LOGMSG_USER,
+                               "Upgraded ruleset from version %lld to %lld\n",
+                               oldVersion, gbl_ruleset->version);
+                    }
+                }
             }
             return rc;
         } else {
@@ -1600,6 +1644,8 @@ clipper_usage:
         logmsg(LOGMSG_USER, "gbl_thrman_trace = %d\n", gbl_thrman_trace);
     } else if (tokcmp(tok, ltok, "long") == 0) {
         request_stats(dbenv);
+    } else if (tokcmp(tok, ltok, "totalsqltiming") == 0) {
+        global_sql_timings_print();
     } else if (tokcmp(tok, ltok, "dmpl") == 0) {
         thd_dump();
     } else if (tokcmp(tok, ltok, "dmptrn") == 0) {
@@ -1632,7 +1678,8 @@ clipper_usage:
         bdb_set_recovery(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "lua_break") == 0) {
         tok = segtok(line, lline, &st, &ltok);
-        int thread_id = toknum(tok, ltok);
+        pthread_t thread_id;
+        sscanf(tok, "%p", (void **)&thread_id);
         gbl_break_lua = thread_id;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -1664,7 +1711,7 @@ clipper_usage:
             thrman_dump();
         } else if (tokcmp(tok, ltok, "sqlpool") == 0) {
             thdpool_print_stats(stdout, gbl_appsock_thdpool);
-            thdpool_print_stats(stdout, gbl_sqlengine_thdpool);
+            print_all_sql_pool_stats(stdout);
             thdpool_print_stats(stdout, gbl_osqlpfault_thdpool);
             thdpool_print_stats(stdout, gbl_udppfault_thdpool);
             thdpool_print_stats(stdout, gbl_pgcompact_thdpool);
@@ -1739,7 +1786,7 @@ clipper_usage:
             free(dbname);
         } else if (tokcmp(tok, ltok, "rmtpol") == 0) {
             logmsg(LOGMSG_USER, "I am running on a %s machine\n",
-                   get_mach_class_str(gbl_mynode));
+                   get_my_mach_class_str());
             tok = segtok(line, lline, &st, &ltok);
             if (ltok != 0) {
                 char *m = tokdup(tok, ltok);
@@ -2119,7 +2166,7 @@ clipper_usage:
         char fname[128];
         char table[MAXTABLELEN];
         int odh = -1, compress = -1, compress_blobs = -1;
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2179,7 +2226,7 @@ clipper_usage:
                 logmsg(LOGMSG_ERROR, "error with schema change thread\n");
         }
     } else if (tokcmp(tok, ltok, "morestripe") == 0) {
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2225,7 +2272,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "init_with_bthash") == 0) {
         int szkb;
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2241,7 +2288,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "bthash") == 0) {
         char table[MAXTABLELEN];
         int szkb;
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2273,7 +2320,7 @@ clipper_usage:
         int idb;
         struct dbtable *db;
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2293,7 +2340,7 @@ clipper_usage:
 
     } else if (tokcmp(tok, ltok, "delbthash") == 0) {
         char table[MAXTABLELEN];
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2317,7 +2364,7 @@ clipper_usage:
         struct dbtable *db;
         int idb;
 
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2364,7 +2411,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "fastinit") == 0 ||
                tokcmp(tok, ltok, "reinit") == 0) {
         char table[MAXTABLELEN];
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not master\n");
             return -1;
         }
@@ -2421,7 +2468,7 @@ clipper_usage:
         MEMORY_SYNC;
     } else if (tokcmp(tok, ltok, "scforceabort") == 0) {
         logmsg(LOGMSG_USER, "Forcibly resetting schema change flat\n");
-        sc_set_running(NULL, 0, 0, NULL, 0);
+        wait_for_sc_to_stop("forceabort", __func__, __LINE__);
     } else if (tokcmp(tok, ltok, "get_db_dir")==0) {
         logmsg(LOGMSG_USER, "Database Base Directory: %s\n", thedb->basedir);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
@@ -2917,7 +2964,12 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "sql") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (tokcmp(tok, ltok, "dump") == 0) {
-            sql_dump_running_statements();
+            tok = segtok(line, lline, &st, &ltok);
+            if (ltok == 0) {
+                sql_dump_running_statements();
+            } else if (tokcmp(tok, ltok, "repblockers") == 0) {
+                comdb2_dump_blockers(thedb->bdb_env->dbenv);
+            }
         } else if (tokcmp(tok, ltok, "keep") == 0) {
             int n;
             tok = segtok(line, lline, &st, &ltok);
@@ -3103,6 +3155,15 @@ clipper_usage:
         } else
             print_help_page(HELP_MEMDEBUG);
         return 0;
+    } else if (tokcmp(tok, ltok, "getschemalk") == 0) {
+        /* Watchdog_sql test- spawns a thread to avoid the 'already-has-schemalk' assert */
+        int64_t holdtime = -1;
+        tok = segtok(line, lline, &st, &ltok);
+        if (ltok > 0) {
+            holdtime = toknum(tok, ltok);
+        }
+        pthread_t tid;
+        Pthread_create(&tid, NULL, getschemalk, (void *)(holdtime));
     } else if (tokcmp(tok, ltok, "bdbscan") == 0) {
         char *tbl;
         tok = segtok(line, lline, &st, &ltok);
@@ -3132,9 +3193,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "expected thread id\n");
             return 1;
         }
-        tid = toknum(tok, ltok);
+        sscanf(tok, "%p", (void **)&tid);
         rc = pthread_kill(tid, 0);
-        logmsg(LOGMSG_USER, "kill tid %lu rc %d\n", tid, rc);
+        logmsg(LOGMSG_USER, "kill tid %p rc %d\n", (void *)tid, rc);
     } else if (tokcmp(tok, ltok, "chkpoint_alarm_time") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {
@@ -3205,7 +3266,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "appsockpool") == 0) {
         thdpool_process_message(gbl_appsock_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "sqlenginepool") == 0) {
-        thdpool_process_message(gbl_sqlengine_thdpool, line, lline, st);
+        thdpool_process_message(get_default_sql_pool(0), line, lline, st);
     } else if (tokcmp(tok, ltok, "osqlpfaultpool") == 0) {
         thdpool_process_message(gbl_osqlpfault_thdpool, line, lline, st);
     } else if (tokcmp(tok, ltok, "udppfaultpool") == 0) {
@@ -3617,7 +3678,7 @@ clipper_usage:
         }
 
         if (ltok == 0) {
-            bdb_get_rep_stats(dbenv->dbs[0]->handle, &msgs_processed,
+            bdb_get_rep_stats(dbenv->static_table.handle, &msgs_processed,
                               &msgs_sent, &txns_applied, &rep_retry,
                               &max_retries);
             logmsg(LOGMSG_USER, "Retries: %lld, max %d, limit %d\n", rep_retry, max_retries,
@@ -4100,9 +4161,9 @@ clipper_usage:
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR, "usage: ping <all|node #>\n");
         } else if (tokcmp(tok, ltok, "all") == 0) {
-            ping_all(dbenv->dbs[0]->handle);
+            ping_all(dbenv->static_table.handle);
         } else {
-            ping_node(dbenv->dbs[0]->handle, internn(tok, ltok));
+            ping_node(dbenv->static_table.handle, internn(tok, ltok));
         }
     } else if (tokcmp(tok, ltok, "tcp") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -4111,9 +4172,9 @@ clipper_usage:
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "usage: tcp ping <all|node #>\n");
             } else if (tokcmp(tok, ltok, "all") == 0) {
-                tcp_ping_all(dbenv->dbs[0]->handle);
+                tcp_ping_all(dbenv->static_table.handle);
             } else {
-                tcp_ping(dbenv->dbs[0]->handle, internn(tok, ltok));
+                tcp_ping(dbenv->static_table.handle, internn(tok, ltok));
             }
         }
     } else if (tokcmp(tok, ltok, "udp") == 0) {
@@ -4149,13 +4210,13 @@ clipper_usage:
             if (ltok == 0) {
                 logmsg(LOGMSG_ERROR, "usage: udp ping <all|ip:port|node #>\n");
             } else if (tokcmp(tok, ltok, "all") == 0) {
-                udp_ping_all(dbenv->dbs[0]->handle);
+                udp_ping_all(thedb->static_table.handle);
             } else {
                 char *ip = tokdup(tok, ltok);
                 if (strstr(ip, ":") != NULL) {
-                    udp_ping_ip(dbenv->dbs[0]->handle, ip);
+                    udp_ping_ip(dbenv->static_table.handle, ip);
                 } else {
-                    udp_ping(dbenv->dbs[0]->handle, internn(tok, ltok));
+                    udp_ping(dbenv->static_table.handle, internn(tok, ltok));
                 }
                 free(ip);
             }
@@ -4435,7 +4496,7 @@ clipper_usage:
             if (ltok > 0)
                 cnt = toknum(tok, ltok);
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (tcnt <= 0 || cnt <= 0) {
             logmsg(LOGMSG_ERROR,
@@ -4455,7 +4516,7 @@ clipper_usage:
             if (ltok > 0)
                 pcnt = toknum(tok, ltok);
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
@@ -4478,7 +4539,7 @@ clipper_usage:
                 pcnt = toknum(tok, ltok);
             }
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
@@ -4503,7 +4564,7 @@ clipper_usage:
                 pcnt = toknum(tok, ltok);
             }
         }
-        if (thedb->master != gbl_mynode) {
+        if (thedb->master != gbl_myhostname) {
             logmsg(LOGMSG_ERROR, "I am not the master node\n");
         } else if (!gbl_rowlocks) {
             logmsg(LOGMSG_ERROR, "I am not in rowlocks mode\n");
@@ -4896,8 +4957,7 @@ clipper_usage:
             bdb_locktest(thedb->bdb_env);
             Pthread_mutex_unlock(&testguard);
         } else if (tokcmp(tok, ltok, "bad_osql") == 0) {
-            SBUF2 *sb = sbuf2open(fileno(stdout), 0);
-            osql_send_test(sb);
+            osql_send_test();
         } else if (tokcmp(tok, ltok, "rep") == 0) { // was testrep
             int nitems;
             int size;
@@ -5009,6 +5069,11 @@ static void dump_table_sizes(struct dbenv *dbenv)
     int ii, len;
     unsigned num_logs;
     uint64_t logsize;
+    uint64_t tmpsize;
+    uint64_t tmptbls;
+    uint64_t sqlsorters;
+    uint64_t blkseqs;
+    uint64_t others;
 
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
@@ -5026,6 +5091,9 @@ static void dump_table_sizes(struct dbenv *dbenv)
     }
     logsize = bdb_logs_size(dbenv->bdb_env, &num_logs);
     total += logsize;
+
+    tmpsize = bdb_tmp_size(dbenv->bdb_env, &tmptbls, &sqlsorters, &blkseqs, &others);
+    total += tmpsize;
 
     for (ndb = 0; ndb < dbenv->num_dbs; ndb++) {
         db = dbenv->dbs[ndb];
@@ -5058,12 +5126,25 @@ static void dump_table_sizes(struct dbenv *dbenv)
                maxtblname, db->tablename, fmt_size(b, sizeof(b), db->totalsize),
                (int)percent, db->numextents);
     }
+
     if (total > 0)
         percent = (logsize * 100ULL) / total;
     else
         percent = 0;
    logmsg(LOGMSG_USER, "%-*s sz %12s %3d%% (%u logs)\n", maxtblname + 6, "log files",
            fmt_size(b, sizeof(b), logsize), (int)percent, num_logs);
+
+   if (total > 0)
+       percent = (tmpsize * 100ULL) / total;
+   else
+       percent = 0;
+   logmsg(LOGMSG_USER, "%-*s sz %12s %3d%% (", maxtblname + 6, "temp files", fmt_size(b, sizeof(b), tmpsize),
+          (int)percent);
+   logmsg(LOGMSG_USER, "tmptbls %s", fmt_size(b, sizeof(b), tmptbls));
+   logmsg(LOGMSG_USER, ", sqlsorters %s", fmt_size(b, sizeof(b), sqlsorters));
+   logmsg(LOGMSG_USER, ", blkseqs %s", fmt_size(b, sizeof(b), blkseqs));
+   logmsg(LOGMSG_USER, ", others %s", fmt_size(b, sizeof(b), others));
+   logmsg(LOGMSG_USER, ")\n");
 
    logmsg(LOGMSG_USER, "GRAND TOTAL %s\n", fmt_size(b, sizeof(b), total));
 

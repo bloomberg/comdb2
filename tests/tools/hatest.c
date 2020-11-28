@@ -84,7 +84,7 @@ enum { MASSIVE_THREADS_NUM = 10 }; /* < MASSIVE_THREADS_MAX*/
 
 static void hexdump(FILE *f, void *datap, int len)
 {
-    u_char *data = (u_char *)datap;
+    unsigned char *data = (unsigned char *)datap;
     int i;
     for (i = 0; i < len; i++)
         fprintf(f, "%02x", (unsigned int)data[i]);

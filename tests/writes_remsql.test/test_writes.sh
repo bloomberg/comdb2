@@ -10,12 +10,16 @@ opt=
 a_remdbname=$1
 a_remcdb2config=$2
 a_dbname=$3
-a_dbdir=$4
-a_testdir=$5
+a_cdb2config=$4
+a_dbdir=$5
+a_testdir=$6
 
 if [[ ! -z $6 ]]; then
    opt=$6
 fi
+
+REM_CDB2_OPTIONS="--cdb2cfg ${a_remcdb2config}"
+SRC_CDB2_OPTIONS="--cdb2cfg ${a_cdb2config}"
 
 checkresult()
 {
@@ -65,17 +69,17 @@ run_test()
    sed "s/ t / LOCAL_${a_remdbname}.t /g" $input > $work_input
 
    # populate table on remote
-   cdb2sql --host $mach $a_dbname - < $work_input >> $output 2>&1
+   cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname - < $work_input >> $output 2>&1
    
 
    # retrieve data through remote sql
-   cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
+   cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
 
    a_cdb2config=${CDB2_OPTIONS}
    # get the version V2
    #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-   echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-   cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+   echo cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
+   cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
    work_exp_output=${exp_output}.actual
    sed "s/ t / LOCAL_${a_remdbname}.t /g" ${exp_output}  > ${work_exp_output}
@@ -84,7 +88,7 @@ run_test()
 }
 
 # Make sure we talk to the same host
-mach=`cdb2sql --tabs ${CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
+mach=`cdb2sql ${SRC_CDB2_OPTIONS} --tabs $a_dbname default "SELECT comdb2_host()"`
 
 if [[ -z $opt || "$opt" == "1" ]]; then
 
@@ -140,17 +144,17 @@ if [[ -z $opt || "$opt" == "6" ]]; then
    #TEST2 check remote writes with local reads
 
    #last test needs some prep 
-   cdb2sql --host $mach $a_dbname "truncate t2"
+   cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "truncate t2"
    if (( $? != 0 )) ; then
       echo "Failure to truncate remote db "
       exit 1
    fi
-   cdb2sql --host $mach $a_dbname "insert into t2 select * from LOCAL_${a_remdbname}.t"
+   cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "insert into t2 select * from LOCAL_${a_remdbname}.t"
    if (( $? != 0 )) ; then
       echo "Failure to populate remote db "
       exit 1
    fi
-   cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "truncate t"
+   cdb2sql ${REM_CDB2_OPTIONS} --cdb2cfg ${a_remcdb2config} $a_remdbname default "truncate t"
    if (( $? != 0 )) ; then
       echo "Failure to truncate local db "
       exit 1

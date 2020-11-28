@@ -31,7 +31,7 @@ struct comdb2_queue_consumer {
     int (*wake_all_consumers_all_queues)(struct dbenv *dbenv, int force);
     int (*handles_method)(const char *method);
     int (*get_name)(struct dbtable *db, char **spname);
-    int (*get_stats)(struct dbtable *db, struct consumer_stat *stat);
+    int (*get_stats)(struct dbtable *db, int flags, void *tran, struct consumer_stat *stat);
 };
 typedef struct comdb2_queue_consumer comdb2_queue_consumer_t;
 
@@ -57,12 +57,11 @@ typedef struct trigger_reg {
     int node;
     int elect_cookie;
     genid_t trigger_cookie;
+    char qdb_locked;
     int spname_len;
     char spname[0]; // spname_len + 1
     // hostname[]
 } trigger_reg_t;
-
-extern int gbl_queuedb_timeout_sec;
 
 struct consumer;
 enum consumer_t dbqueue_consumer_type(struct consumer *c);
@@ -82,17 +81,18 @@ void trigger_reg_to_cpu(trigger_reg_t *);
 #define trigger_hostname(t) ((t)->spname + (t)->spname_len + 1)
 
 #define trigger_reg_sz(sp_name)                                                \
-    sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_mynode) + 1
+    sizeof(trigger_reg_t) + strlen(sp_name) + 1 + strlen(gbl_myhostname) + 1
 
-#define trigger_reg_init(dest, sp_name)                                        \
+#define trigger_reg_init(dest, sp_name, have_lock)                             \
     do {                                                                       \
         dest = alloca(trigger_reg_sz(sp_name));                                \
         dest->node = 0;                                                        \
         dest->elect_cookie = gbl_master_changes;                               \
         dest->trigger_cookie = get_id(thedb->bdb_env);                         \
+        dest->qdb_locked = have_lock;                                          \
         dest->spname_len = strlen(sp_name);                                    \
         strcpy(dest->spname, sp_name);                                         \
-        strcpy(trigger_hostname(dest), gbl_mynode);                            \
+        strcpy(trigger_hostname(dest), gbl_myhostname);                        \
     } while (0)
 
 #define Q4SP(var, spname)                                                      \

@@ -8,6 +8,7 @@ setattr aa_count_upd  0
 setattr chk_aa_time  6
 setattr min_aa_time  20
 setattr aa_llmeta_save_freq  2
+do reql diffstat 19
 
 noudp
 ssl_client_mode OPTIONAL

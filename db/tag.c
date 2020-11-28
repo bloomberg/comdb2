@@ -28,6 +28,7 @@
 #include <poll.h>
 #include <flibc.h>
 #include <inttypes.h>
+#include "osqluprec.h"
 
 #include <str0.h>
 #include <epochlib.h>
@@ -35,7 +36,7 @@
 #include <netinet/in.h>
 #include <plbitlib.h>
 #include <segstr.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <netinet/in.h>
 #include "util.h"
@@ -64,7 +65,6 @@ extern pthread_mutex_t csc2_subsystem_mtx;
 
 pthread_key_t unique_tag_key;
 
-int gbl_use_t2t = 0;
 char gbl_ver_temp_table[] = ".COMDB2.TEMP.VER.";
 char gbl_ondisk_ver[] = ".ONDISK.VER.";
 char gbl_ondisk_ver_fmt[] = ".ONDISK.VER.%d";
@@ -82,9 +82,6 @@ hash_t *gbl_tag_hash;
 int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                     int strict);
 int compare_indexes(const char *table, FILE *out);
-
-extern int offload_comm_send_upgrade_records(const dbtable *,
-                                             unsigned long long);
 
 static inline void lock_taglock_read(void)
 {
@@ -154,11 +151,19 @@ int schema_init(void)
     return 0;
 }
 
-void add_tag_schema(const char *table, struct schema *schema)
+#if defined DEBUG_STACK_TAG_SCHEMA
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+#else
+#define backtrace(A, B) 1
+#endif
+#endif
+
+static void add_tag_schema_lk(const char *table, struct schema *schema)
 {
     struct dbtag *tag;
-
-    lock_taglock();
+    struct schema *fnd;
 
     tag = hash_find_readonly(gbl_tag_hash, &table);
     if (tag == NULL) {
@@ -175,47 +180,72 @@ void add_tag_schema(const char *table, struct schema *schema)
         hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
+    if ((fnd = hash_find_readonly(tag->tags, &schema->tag)) != NULL) {
+        listc_rfl(&tag->taglist, fnd);
+        hash_del(tag->tags, fnd);
+        free(fnd);
+    }
     hash_add(tag->tags, schema);
     listc_abl(&tag->taglist, schema);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          schema->tag);
+    schema->frames = backtrace(schema->buf, MAX_TAG_STACK_FRAMES);
+    schema->tid = pthread_self();
+#endif
+}
 
+void add_tag_schema(const char *table, struct schema *schema)
+{
+    lock_taglock();
+    add_tag_schema_lk(table, schema);
     unlock_taglock();
 }
 
-void del_tag_schema(const char *table, const char *tagname)
+static void del_tag_schema_lk(const char *table, const char *tagname)
 {
-    lock_taglock();
-
     struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (tag == NULL) {
-        unlock_taglock();
-        return; /* doesn't exist */
-    }
+    if (tag == NULL)
+        return;
+
     struct schema *sc = hash_find(tag->tags, &tagname);
+
     if (sc) {
         hash_del(tag->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+        comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                              table, tagname);
+#endif
         listc_rfl(&tag->taglist, sc);
         if (sc->datacopy) {
             free(sc->datacopy);
             sc->datacopy = NULL;
         }
     }
-    /* doesn't exist? */
+}
+
+void del_tag_schema(const char *table, const char *tagname)
+{
+    lock_taglock();
+    del_tag_schema_lk(table, tagname);
     unlock_taglock();
+}
+
+static struct schema *find_tag_schema_lk(const char *table, const char *tagname)
+{
+    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
+    if (unlikely(tag == NULL))
+        return NULL;
+    struct schema *s = hash_find_readonly(tag->tags, &tagname);
+    return s;
 }
 
 struct schema *find_tag_schema(const char *table, const char *tagname)
 {
+    struct schema *s;
     lock_taglock_read();
-
-    struct dbtag *tag = hash_find_readonly(gbl_tag_hash, &table);
-    if (unlikely(tag == NULL)) {
-        unlock_taglock();
-        return NULL;
-    }
-    struct schema *s = hash_find_readonly(tag->tags, &tagname);
-
+    s = find_tag_schema_lk(table, tagname);
     unlock_taglock();
-
     return s;
 }
 
@@ -269,8 +299,12 @@ int client_type_to_server_type(int type)
         return SERVER_INTVDSUS;
     case CLIENT_VUTF8:
         return SERVER_VUTF8;
+    case CLIENT_SEQUENCE:
+        return SERVER_SEQUENCE;
+    case CLIENT_FUNCTION:
+        return SERVER_FUNCTION;
     default:
-        return type;
+        abort();
     }
 }
 
@@ -790,6 +824,8 @@ int server_type_to_csc2_type_len(int type, int inlen, int *csc2type,
     }
 }
 
+#define MAX_SERVER_FUNCTION_LEN 256
+
 int max_type_size(int type, int len)
 {
     switch (type) {
@@ -816,6 +852,8 @@ int max_type_size(int type, int len)
         return sizeof(server_intv_ds_t);
     case SERVER_INTVDSUS:
         return sizeof(server_intv_dsus_t);
+    case SERVER_FUNCTION:
+        return MAX_SERVER_FUNCTION_LEN;
     default:
         return len;
     }
@@ -1420,6 +1458,12 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     }
 
     hash_add(tag->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__, table,
+                          name);
+    sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+    sc->tid = pthread_self();
+#endif
     unlock_taglock();
 }
 
@@ -1432,9 +1476,12 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
     struct field *from_field, *to_field;
     int rc;
 
-    from = find_tag_schema(table, fromtag);
-    if (from == NULL)
+    lock_taglock();
+    from = find_tag_schema_lk(table, fromtag);
+    if (from == NULL) {
+        unlock_taglock();
         return -1;
+    }
 
     to = calloc(1, sizeof(struct schema));
     to->tag = strdup(newtag);
@@ -1473,6 +1520,7 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
             }
             free(to->tag);
             free(to);
+            unlock_taglock();
             return -1;
         }
         to->member[field].offset = offset;
@@ -1483,7 +1531,11 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
         /* do not clone out_default/in_default - those are only used for
          * .ONDISK tag itself */
     }
-    add_tag_schema(table, to);
+
+    del_tag_schema_lk(table, newtag);
+    add_tag_schema_lk(table, to);
+
+    unlock_taglock();
     return 0;
 }
 
@@ -2149,367 +2201,6 @@ static void dump_t2t_plan(FILE *out, const struct t2t_plan *plan)
     }
 }
 
-/* XXX is this used?  can we delete it? */
-/* Do a pre-planned conversion from one tag format to another. */
-static int t2t_with_plan(const struct t2t_plan *plan, const void *from_buf,
-                         int from_len, const unsigned char *from_nulls,
-                         blob_buffer_t *from_blobs, void *to_buf, int to_len,
-                         unsigned char *to_nulls, blob_buffer_t *to_blobs,
-                         int maxblobs, int flags, const char *tzname,
-                         struct convert_failure *fail_reason)
-{
-    int to_field_idx;
-    struct field *to_field;
-    struct field_conv_opts_tz tzopts1;
-    struct field_conv_opts_tz tzopts2;
-    char *temp_buf = NULL;
-    int server_sort_off;
-    unsigned char *to_bufptr = to_buf;
-    int out_len = 0;
-
-    /* See if we're doomed before we even start.  The only reason this can
-     * happen right now is that we're missing a required column.  This is ok
-     * if we're doing an update. */
-    if ((plan->fail_reason.reason != CONVERT_OK) && !(flags & CONVERT_UPDATE)) {
-        if (fail_reason) {
-            memcpy(fail_reason, &plan->fail_reason, sizeof(*fail_reason));
-        }
-        return -1;
-    }
-
-    /* for server type fields that have INDEX_DESCEND set we shouldn't invert
-     * the first byte so that nulls will sort low. */
-    if (gbl_sort_nulls_correctly) {
-        server_sort_off = 0;
-    } else {
-        server_sort_off = 1;
-    }
-
-    if (tzname) {
-        if (tzname[0]) {
-            strncpy0(tzopts1.tzname, tzname, sizeof(tzopts1.tzname));
-            strncpy0(tzopts2.tzname, tzname, sizeof(tzopts2.tzname));
-        } else {
-            tzname = NULL;
-        }
-    }
-
-    if (from_len < 0) {
-        from_len = plan->max_from_len;
-    }
-    if (to_len < 0) {
-        to_len = plan->max_to_len;
-    }
-
-    for (to_field_idx = 0, to_field = plan->to->member;
-         to_field_idx < plan->to->nmembers; to_field_idx++, to_field++) {
-
-        const char *from_fieldbuf;
-        int from_fieldlen, from_field_idx;
-        blob_buffer_t *from_blob = NULL;
-        blob_buffer_t *to_blob;
-        int from_type;
-        const struct field_conv_opts *from_convopts;
-        const struct field_conv_opts *to_convopts;
-        unsigned long long seqno;
-        struct field_conv_opts seqno_convopts;
-        int to_fieldlen;
-        int exclude_len = 0;
-
-        if (to_blobs && to_field->blob_index >= 0) {
-            if (to_field->blob_index >= maxblobs) {
-                if (fail_reason) {
-                    memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(*fail_reason));
-                    fail_reason->target_field_idx = to_field_idx;
-                    fail_reason->reason = CONVERT_FAILED_BAD_BLOB_PROGRAMMER;
-                }
-                return -1;
-            }
-            to_blob = &to_blobs[to_field->blob_index];
-        } else {
-            to_blob = NULL;
-        }
-
-        to_fieldlen = to_field->len;
-        to_convopts = &to_field->convopts;
-
-        /**
-         ** Populate the from_ field variables
-         **/
-        from_field_idx = plan->fields[to_field_idx].from_field_idx;
-
-        if (from_field_idx == T2T_PLAN_COMDB2_SEQNO) {
-            /* Generate a sequence number for the comdb2_seqno field */
-            seqno = get_unique_longlong(thedb);
-            bzero(&seqno_convopts, sizeof(seqno_convopts));
-            from_fieldbuf = (const void *)&seqno;
-            from_fieldlen = sizeof(seqno);
-            from_blob = NULL;
-            from_type = CLIENT_INT;
-            from_convopts = &seqno_convopts;
-        } else if (from_field_idx == T2T_PLAN_IN_DEFAULT) {
-            /* If this is an update then do not overwrite destination schema in
-             * this situation. */
-            if (flags & CONVERT_UPDATE)
-                continue;
-
-            from_fieldbuf = to_field->in_default;
-            from_fieldlen = to_field->in_default_len;
-            from_type = to_field->in_default_type;
-            from_convopts = &to_field->convopts;
-        } else if (from_field_idx == T2T_PLAN_NULL) {
-            /* If this is an update then do not overwrite destination schema in
-             * this situation. */
-            if (flags & CONVERT_UPDATE)
-                continue;
-            from_fieldbuf = NULL;
-        } else {
-            const struct field *from_field;
-
-            from_field = &plan->from->member[from_field_idx];
-            from_fieldlen = from_field->len;
-            from_type = from_field->type;
-            from_convopts = &from_field->convopts;
-
-            if (from_nulls && btst(from_nulls, from_field_idx)) {
-                from_fieldbuf = NULL;
-            } else {
-
-                if (from_blobs && from_field->blob_index >= 0) {
-                    if (from_field->blob_index >= maxblobs) {
-                        if (fail_reason) {
-                            memcpy(fail_reason, &plan->fail_reason,
-                                   sizeof(*fail_reason));
-                            fail_reason->target_field_idx = to_field_idx;
-                            fail_reason->source_field_idx = from_field_idx;
-                            fail_reason->reason =
-                                CONVERT_FAILED_BAD_BLOB_PROGRAMMER;
-                        }
-                        return -1;
-                    }
-                    from_blob = &from_blobs[from_field->blob_index];
-                    /* There is a day one bug/feature here - the blob may be
-                     * null,
-                     * in which case we bypass the null checks.  One day I will
-                     * fix this since schema change does enforce these checks.
-                     */
-                } else {
-                    from_blob = NULL;
-                }
-
-                from_fieldbuf = ((const char *)from_buf) + from_field->offset;
-
-                /* For client -> server conversion we have special code to
-                 * handle partial input fields.  They must be either string
-                 * fields or byte arrays. */
-                if (from_field->offset + from_fieldlen > from_len) {
-                    exclude_len =
-                        (from_field->offset + from_fieldlen) - from_len;
-                    logmsg(LOGMSG_ERROR, "1 exclude_len=%d\n", exclude_len);
-                }
-                if (to_field->len > to_len) {
-                    int len = to_field->len - to_len;
-                    if (len > exclude_len) {
-                        exclude_len = len;
-                    }
-                }
-                if (exclude_len) {
-                    if (!CLIENT_TYPE_CAN_BE_PARTIAL(from_field->type)) {
-                        if (fail_reason) {
-                            memcpy(fail_reason, &plan->fail_reason,
-                                   sizeof(*fail_reason));
-                            fail_reason->target_field_idx = to_field_idx;
-                            fail_reason->source_field_idx = from_field_idx;
-                            fail_reason->reason =
-                                CONVERT_FAILED_INVALID_PARTIAL_TYPE;
-                        }
-                        return -1;
-                    }
-                    from_fieldlen -= exclude_len;
-                    to_fieldlen -= exclude_len;
-                }
-
-                /* If converting from a descending index field then we must
-                 * create a
-                 * flipped version so that the conversion routines can read it
-                 * correctly.  This could happen for example when SQL reads from
-                 * an
-                 * index. */
-                if (from_field->flags & INDEX_DESCEND) {
-                    if (!temp_buf) {
-                        temp_buf = alloca(from_len);
-                    }
-                    if (server_sort_off == 1) {
-                        temp_buf[0] = from_fieldbuf[0];
-                    }
-                    xorbufcpy(temp_buf + server_sort_off,
-                              from_fieldbuf + server_sort_off,
-                              from_fieldlen - server_sort_off);
-                    from_fieldbuf = temp_buf;
-                }
-            }
-
-            /* If the from field data is null then check if the from_field has
-             * an
-             * out_default set for clients that can't handle nulls.  If it has
-             * then use that as the data to copy across but make sure this still
-             * gets recorded as null in the nulls bitmap. */
-            if (from_fieldbuf && IS_SERVER_TYPE(from_type) &&
-                stype_is_null(from_fieldbuf)) {
-                from_fieldbuf = from_field->out_default;
-                from_fieldlen = from_field->out_default_len;
-                from_type = from_field->out_default_type;
-                from_blob = NULL;
-                if (to_nulls) {
-                    bset(to_nulls, to_field_idx);
-                }
-            }
-        }
-
-        /**
-         ** Now we know where we're getting the data from, convert/copy
-         ** into the to_ field
-         **/
-
-        if (!from_fieldbuf) {
-            /* Output a NULL */
-            if (to_field->flags & NO_NULL) {
-                if (fail_reason) {
-                    memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(*fail_reason));
-                    fail_reason->target_field_idx = to_field_idx;
-                    fail_reason->source_field_idx = from_field_idx;
-                    fail_reason->reason =
-                        CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION;
-                }
-                return -1;
-            }
-
-            if (IS_CLIENT_TYPE(to_field->type)) {
-                bzero(to_bufptr, to_fieldlen);
-                if (to_nulls) {
-                    bset(to_nulls, to_field_idx);
-                }
-            } else {
-                NULL_to_SERVER(to_bufptr, to_fieldlen, to_field->type);
-            }
-        } else {
-            /* Write a non-null value into the buffer */
-            int rc = 0, outdtsz;
-
-            /* Client type fields need timezone information.  Server type fields
-             * don't since time in the server format is absolute. */
-            if (tzname) {
-                if (IS_CLIENT_TYPE(from_type)) {
-                    memcpy(&tzopts1, from_convopts, sizeof(*from_convopts));
-                    tzopts1.flags |= FLD_CONV_TZONE;
-                    from_convopts = (const struct field_conv_opts *)&tzopts1;
-                }
-                if (IS_CLIENT_TYPE(to_field->type)) {
-                    memcpy(&tzopts2, from_convopts, sizeof(*from_convopts));
-                    tzopts2.flags |= FLD_CONV_TZONE;
-                    from_convopts = (const struct field_conv_opts *)&tzopts2;
-                }
-            }
-
-            if (IS_CLIENT_TYPE(from_type)) {
-                if (IS_CLIENT_TYPE(to_field->type)) {
-                    /* client -> client */
-                    rc = CLIENT_to_CLIENT(
-                        from_fieldbuf, from_fieldlen, from_type, from_convopts,
-                        from_blob, to_bufptr, to_fieldlen, to_field->type,
-                        &outdtsz, to_convopts, to_blob);
-                } else if (exclude_len > 0) {
-                    /* partial field client -> server */
-                    /* This has special handling primarily for C strings;
-                     * without
-                     * this the traditional conversion functions fail because
-                     * the
-                     * C string isn't null terminated. */
-                    rc = copy_partial_client_buf(from_fieldbuf, from_fieldlen,
-                                                 0, /* it isn't null */
-                                                 (char *)to_bufptr);
-                } else {
-                    /* client -> server */
-                    rc = CLIENT_to_SERVER(
-                        from_fieldbuf, from_fieldlen, from_type,
-                        0 /*not null, we already know this*/, from_convopts,
-                        from_blob, to_bufptr, to_fieldlen, to_field->type,
-                        0, /*flags are unused */
-                        &outdtsz, to_convopts, to_blob);
-                }
-            } else {
-                if (IS_CLIENT_TYPE(to_field->type)) {
-                    /* server -> client */
-                    int isnull;
-                    rc = SERVER_to_CLIENT(
-                        from_fieldbuf, from_fieldlen, from_type, from_convopts,
-                        from_blob, 0, /* flags are unused */
-                        to_bufptr, to_fieldlen, to_field->type, &isnull,
-                        &outdtsz, to_convopts, to_blob);
-                } else {
-                    /* server -> server */
-                    rc = SERVER_to_SERVER(
-                        from_fieldbuf, from_fieldlen, from_type, from_convopts,
-                        from_blob, 0, /* flags are unused */
-                        to_bufptr, to_fieldlen, to_field->type,
-                        0, /*flags are unused */
-                        &outdtsz, to_convopts, to_blob);
-                }
-            }
-            if (rc != 0) {
-                if (fail_reason) {
-                    memcpy(fail_reason, &plan->fail_reason,
-                           sizeof(*fail_reason));
-                    fail_reason->target_field_idx = to_field_idx;
-                    fail_reason->source_field_idx = from_field_idx;
-                    fail_reason->reason = CONVERT_FAILED_INCOMPATIBLE_VALUES;
-                }
-                return rc;
-            }
-        }
-
-        /* Bitwise invert this field to force it to sort in the opposite
-         * direction.  Only server fields have INDEX_DESCEND set. */
-        if (to_field->flags & INDEX_DESCEND) {
-            if (IS_SERVER_TYPE(to_field->type)) {
-                xorbuf(to_bufptr + server_sort_off,
-                       to_fieldlen - server_sort_off);
-            } else {
-                xorbuf(to_bufptr, to_fieldlen);
-            }
-        }
-
-        to_bufptr += to_field->len;
-        to_len -= to_field->len;
-        out_len += to_field->len;
-
-        if (to_len <= 0) {
-            break;
-        }
-    }
-
-    return out_len;
-}
-
-static int t2t_without_plan(const struct schema *from, const void *from_buf,
-                            int from_len, const unsigned char *from_nulls,
-                            blob_buffer_t *from_blobs, const struct schema *to,
-                            void *to_buf, int to_len, unsigned char *to_nulls,
-                            blob_buffer_t *to_blobs, int maxblobs, int flags,
-                            const char *tzname,
-                            struct convert_failure *fail_reason)
-{
-    struct t2t_plan *plan;
-
-    plan = alloca(offsetof(struct t2t_plan, fields) +
-                  sizeof(struct t2t_field) * to->nmembers);
-    populate_t2t_plan(from, to, plan);
-    return t2t_with_plan(plan, from_buf, from_len, from_nulls, from_blobs,
-                         to_buf, to_len, to_nulls, to_blobs, maxblobs, flags,
-                         tzname, fail_reason);
-}
 
 /*
  * Detect which blobs appear in this static tag, and set them to 'exists', and
@@ -2659,13 +2350,6 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
     if (fail_reason)
         fail_reason->target_schema = to;
 
-    /* Sam's been refactoring again.  May the Lord save us. */
-    if (gbl_use_t2t) {
-        return t2t_without_plan(from, inbuf, len, innulls, inblobs, to, outbufp,
-                                ondisk_lim, NULL, outblobs, maxblobs, flags,
-                                tzname, fail_reason);
-    }
-
     if (len == 0)
         return 0;
 
@@ -2775,8 +2459,8 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
             if (flags & CONVERT_UPDATE) /* this is an update, so don't touch the
                                          * output buffer */
                 continue;
-            if (to_field->in_default == NULL ||
-                stype_is_null(to_field->in_default)) {
+            if (to_field->in_default_type != SERVER_SEQUENCE &&
+                (to_field->in_default == NULL || stype_is_null(to_field->in_default))) {
                 if (to_field->flags & NO_NULL) {
                     if (fail_reason)
                         fail_reason->reason =
@@ -3511,6 +3195,132 @@ void *create_blank_record(dbtable *db, size_t *length)
     return record;
 }
 
+int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen)
+{
+    tran_type *tran = (tran_type *)intrans;
+    char *crec = record;
+    int rc = 0, bdberr = 0;
+    int64_t val;
+    struct schema *schema = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    for (int nfield = 0; nfield < schema->nmembers; nfield++) {
+        const struct field *field = &schema->member[nfield];
+
+        switch (field->in_default_type) {
+        case SERVER_SEQUENCE: {
+            struct field_conv_opts inopts = {0};
+            struct field_conv_opts outopts = {0};
+            int outsz, isnull;
+#ifdef _LINUX_SOURCE
+            outopts.flags |= FLD_CONV_LENDIAN;
+#endif
+            rc = SERVER_to_CLIENT(crec + field->offset, field->len, field->type,
+                                  (const struct field_conv_opts *)&inopts, NULL, 0, &val, sizeof(val), CLIENT_INT,
+                                  &isnull, &outsz, (const struct field_conv_opts *)&outopts, NULL);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "Failed to convert field to client?\n");
+                abort();
+            }
+            if (!isnull) {
+                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename, field->name, val, &bdberr);
+                if (rc) {
+                    if (bdberr == BDBERR_DEADLOCK) {
+                        rc = bdberr;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error writing sequence %d bdberr %d\n", __func__, rc, bdberr);
+                    }
+                }
+            }
+            break;
+        }
+        }
+    }
+    return 0;
+}
+
+int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen)
+{
+    tran_type *tran = (tran_type *)intrans;
+    char *crec = record;
+    int rc = 0, bdberr = 0;
+    int64_t seq;
+    struct schema *schema = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    for (int nfield = 0; nfield < schema->nmembers; nfield++) {
+        const struct field *field = &schema->member[nfield];
+        int outsz;
+        // switch on the dbstore value, invoke handler to fill
+        switch (field->in_default_type) {
+        case SERVER_SEQUENCE:
+            if (stype_is_resolve_master(crec + field->offset)) {
+                struct field_conv_opts inopts = {0};
+                struct field_conv_opts outopts = {0};
+#ifdef _LINUX_SOURCE
+                inopts.flags |= FLD_CONV_LENDIAN;
+#endif
+                rc = bdb_increment_and_set_sequence(tran, iq->usedb->tablename, field->name, &seq, &bdberr);
+                if (rc) {
+                    if (bdberr == BDBERR_DEADLOCK || bdberr == BDBERR_MAX_SEQUENCE) {
+                        rc = bdberr;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error incrementing sequence %d bdberr %d\n", __func__, rc, bdberr);
+                    }
+                    return rc;
+                }
+                rc = CLIENT_to_SERVER(&seq, sizeof(seq), CLIENT_INT, 0, (const struct field_conv_opts *)&inopts, NULL,
+                                      crec + field->offset, field->len, field->type, 0, &outsz, &outopts, NULL);
+                if (rc) {
+                    switch (field->len) {
+                    case 3:
+                        if (seq > INT16_MAX)
+                            rc = BDBERR_MAX_SEQUENCE;
+                        break;
+                    case 5:
+                        if (seq > INT32_MAX)
+                            rc = BDBERR_MAX_SEQUENCE;
+                        break;
+                    case 9:
+                        if (seq > INT64_MAX)
+                            rc = BDBERR_MAX_SEQUENCE;
+                        break;
+                    }
+                    logmsg(LOGMSG_ERROR, "Failed to convert seq %" PRId64 " to %s %s\n", seq, iq->usedb->tablename,
+                           field->name);
+                    return rc;
+                }
+            } else if (!stype_is_null(crec + field->offset)) {
+                struct field_conv_opts inopts = {0};
+                struct field_conv_opts outopts = {0};
+                int isnull = 0;
+                int64_t val;
+#ifdef _LINUX_SOURCE
+                outopts.flags |= FLD_CONV_LENDIAN;
+#endif
+                rc = SERVER_to_CLIENT(crec + field->offset, field->len, field->type,
+                                      (const struct field_conv_opts *)&inopts, NULL, 0, &val, sizeof(val), CLIENT_INT,
+                                      &isnull, &outsz, (const struct field_conv_opts *)&outopts, NULL);
+                if (rc) {
+                    logmsg(LOGMSG_ERROR, "Failed to convert field to client?\n");
+                    abort();
+                }
+                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename, field->name, val, &bdberr);
+                if (rc) {
+                    if (bdberr == BDBERR_DEADLOCK) {
+                        rc = bdberr;
+                    } else {
+                        logmsg(LOGMSG_ERROR, "%s error writing sequence %d bdberr %d\n", __func__, rc, bdberr);
+                    }
+                }
+            }
+
+            break;
+
+        /* other master resolved types here */
+        default:
+            break;
+        }
+    }
+    return 0;
+}
+
 /*
  * Scan a server format record and make sure that all fields validate for
  * null constraints.
@@ -3929,8 +3739,7 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
             if ((to_field->flags & NO_NULL) &&
                 !(flags & CONVERT_NULL_NO_ERROR)) {
                 if (fail_reason)
-                    fail_reason->reason =
-                        CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION;
+                    fail_reason->reason = CONVERT_FAILED_NULL_CONSTRAINT_VIOLATION;
                 return -1;
             }
             rc = NULL_to_SERVER(outbuf + to_field->offset, to_field->len,
@@ -4094,13 +3903,11 @@ static int _stag_to_stag_buf_flags_blobs(
         if (same_tag) {
             field_idx = field;
         } else {
-            field_idx =
-                find_field_idx_in_tag(fromsch, tosch->member[field].name);
+            field_idx = find_field_idx_in_tag(fromsch, tosch->member[field].name);
         }
         int rc = stag_to_stag_field(inbuf, outbuf, flags, fail_reason, inblobs,
                                     outblobs, maxblobs, tzname, field_idx,
                                     field, fromsch, tosch);
-
         if (rc)
             return rc;
     }
@@ -4218,13 +4025,8 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
                           enum constraint_dir direction)
 {
     struct schema *from, *to;
-    int field;
-    struct field *from_field, *to_field = NULL;
-    int field_idx;
     int rc;
-    int iflags, oflags;
     int rec_srt_off = 1;
-    int nmembers;
 
     if (gbl_sort_nulls_correctly)
         rec_srt_off = 0;
@@ -4237,7 +4039,7 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
     if (to == NULL)
         return -1;
 
-    nmembers = to->nmembers;
+    int nmembers = to->nmembers;
 
     if (gbl_fk_allow_prefix_keys && gbl_fk_allow_superset_keys) {
         if (from->nmembers < to->nmembers)
@@ -4281,24 +4083,19 @@ int stag_to_stag_buf_ckey(const char *table, const char *fromtag,
     if (nulls)
         *nulls = 0;
 
-    for (field = 0; field < nmembers; field++) {
+    struct field *to_field = NULL;
+    for (int field = 0; field < nmembers; field++) {
         int outdtsz = 0;
         to_field = &to->member[field];
-        field_idx = field; /* find_field_idx_in_tag(from, to_field->name);*/
-        from_field = &from->member[field_idx];
+        struct field *from_field = &from->member[field];
 
         if (nulls && field_is_null(from, from_field, inbuf)) {
             *nulls = 1;
         }
 
-        if ((to->flags & SCHEMA_INDEX) && (to_field->flags & INDEX_DESCEND))
-            oflags = INDEX_DESCEND;
-        else
-            oflags = 0;
-        if ((from->flags & SCHEMA_INDEX) && (from_field->flags & INDEX_DESCEND))
-            iflags = INDEX_DESCEND;
-        else
-            iflags = 0;
+        int oflags = ((to->flags & SCHEMA_INDEX) && (to_field->flags & INDEX_DESCEND)) ? INDEX_DESCEND : 0;
+        int iflags = ((from->flags & SCHEMA_INDEX) && (from_field->flags & INDEX_DESCEND)) ? INDEX_DESCEND : 0;
+
         if (from_field->flags & INDEX_DESCEND)
             xorbuf(((char *)inbuf) + from_field->offset + rec_srt_off,
                    from_field->len - rec_srt_off);
@@ -4550,6 +4347,13 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                          fold->in_default_type != fnew->in_default_type) {
                     snprintf(buf, sizeof(buf), "dbstore");
                     change = SC_DBSTORE_CHANGE;
+                    if (fnew->in_default_type == SERVER_SEQUENCE && fold->in_default_type != SERVER_SEQUENCE &&
+                        (fnew->flags & NO_NULL)) {
+                        if (out) {
+                            logmsg(LOGMSG_INFO, "tag %s field %s new sequence requires null\n", old->tag, fold->name);
+                        }
+                        return SC_BAD_NEW_FIELD;
+                    }
                 } else {
                     assert(fold->in_default_len == fnew->in_default_len);
                     int len = fold->in_default_len;
@@ -4690,7 +4494,7 @@ int compare_tag_int(struct schema *old, struct schema *new, FILE *out,
                             old->tag, nidx, fnew->name);
                 }
                 break;
-            } else if (fnew->in_default || allow_null) {
+            } else if (allow_null || (fnew->in_default && fnew->in_default_type != SERVER_SEQUENCE)) {
                 rc = SC_COLUMN_ADDED;
                 if (out) {
                     logmsg(LOGMSG_INFO, "tag %s has new field %d (named %s)\n",
@@ -5088,16 +4892,17 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
     if (fld->type == SERVER_VUTF8) {
         mastersz = 16 * 1024;
     } else if (fld->type == SERVER_DATETIME || fld->type == SERVER_DATETIMEUS) {
-        mastersz =
-            CLIENT_DATETIME_EXT_LEN; /* We want to get back cstring here. */
+        mastersz = CLIENT_DATETIME_EXT_LEN; /* We want to get back cstring here. */
     } else {
         mastersz = max_type_size(fld->type, fld->len);
     }
 
     if (mastersz > 0)
         typebuf = calloc(1, mastersz);
+
+    char *func_str = NULL;
     rc = dyns_get_table_field_option(".ONDISK", fldn, loadstore, &opttype,
-                                     &optsz, typebuf, mastersz);
+                                     &optsz, typebuf, mastersz, &func_str);
 
     *p_default = NULL;
     *p_default_len = 0;
@@ -5122,6 +4927,13 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
             *p_default_len = fld->len;
 
         *p_default_type = client_type_to_server_type(opttype);
+
+        if(opttype  == CLIENT_FUNCTION) {
+            *p_default = strdup(func_str);
+            outrc = 0;
+            goto out;
+        }
+
         *p_default = calloc(1, *p_default_len);
 
         if (opttype == CLIENT_DATETIME || opttype == CLIENT_DATETIMEUS) {
@@ -5130,6 +4942,7 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
                 is_null = 1; /* use isnull flag for current timestamp since
                                 null=yes is used for dbstore null */
         }
+
         if (*p_default == NULL) {
             logmsg(LOGMSG_ERROR, "init_default_value: out of memory\n");
             outrc = -1;
@@ -5138,10 +4951,15 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
              * system does and will balk if no \0 is found. */
             if (opttype == CLIENT_CSTR)
                 optsz++;
-            rc = CLIENT_to_SERVER(typebuf, optsz, opttype, is_null /*isnull*/,
-                                  NULL /*convopts*/, NULL /*blob*/, *p_default,
-                                  *p_default_len, *p_default_type, 0, &outdtsz,
-                                  &fld->convopts, NULL /*blob*/);
+
+            if (opttype == CLIENT_SEQUENCE && loadstore == FLDOPT_DBSTORE) {
+                set_resolve_master(*p_default, *p_default_len);
+                rc = 0;
+            } else {
+                rc = CLIENT_to_SERVER(typebuf, optsz, opttype, is_null /*isnull*/, NULL /*convopts*/, NULL /*blob*/,
+                                      *p_default, *p_default_len, *p_default_type, 0, &outdtsz, &fld->convopts,
+                                      NULL /*blob*/);
+            }
             if (rc == -1) {
                 logmsg(LOGMSG_ERROR, "%s initialisation failed for field %s\n", name,
                         fld->name);
@@ -5151,16 +4969,10 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
                 *p_default_type = 0;
                 outrc = -1;
             }
-            /*
-            else
-            {
-               printf("%s opt for %s is:\n", name, fld->name);
-               fsnapf(stdout, *p_default, outdtsz);
-            }
-            */
         }
     }
 
+out:
     if (typebuf)
         free(typebuf);
 
@@ -5378,7 +5190,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
             if (strcmp(rtag, ".ONDISK") == 0) {
                 /* field allowed to be null? */
                 rc = dyns_get_table_field_option(
-                    rtag, field, FLDOPT_NULL, &type, &sz, &isnull, sizeof(int));
+                    rtag, field, FLDOPT_NULL, &type, &sz, &isnull, sizeof(int), NULL);
                 if (rc == 0 && isnull)
                     schema->member[field].flags &= ~NO_NULL;
 
@@ -5387,15 +5199,14 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                  * then type must be integer. */
                 rc = dyns_get_table_field_option(rtag, field, FLDOPT_PADDING,
                                                  &type, &sz, &padval,
-                                                 sizeof(padval));
+                                                 sizeof(padval), NULL);
                 if (rc == 0 && CLIENT_INT == type) {
                     schema->member[field].convopts.flags |= FLD_CONV_DBPAD;
                     schema->member[field].convopts.dbpad = padval;
                 }
 
                 /* input default */
-                rc = init_default_value(&schema->member[field], field,
-                                        FLDOPT_DBSTORE);
+                rc = init_default_value(&schema->member[field], field, FLDOPT_DBSTORE);
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
@@ -5403,8 +5214,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 }
 
                 /* output default  */
-                rc = init_default_value(&schema->member[field], field,
-                                        FLDOPT_DBLOAD);
+                rc = init_default_value(&schema->member[field], field, FLDOPT_DBLOAD);
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
@@ -6297,13 +6107,6 @@ void commit_schemas(const char *tblname)
     }
 
     sc = dbt->taglist.top;
-    while (sc != NULL) {
-        tmp = sc->lnk.next;
-        /* printf("]]]]]] %p %s\n", sc, sc->tag); */
-        sc = tmp;
-    }
-
-    sc = dbt->taglist.top;
     hash_clear(dbt->tags);
     while (sc != NULL) {
         tmp = sc->lnk.next;
@@ -6381,6 +6184,12 @@ void commit_schemas(const char *tblname)
             sc = NULL;
         } else {
             hash_add(dbt->tags, sc);
+#if defined DEBUG_STACK_TAG_SCHEMA
+            comdb2_cheapstack_sym(stderr, "%s:%d -> %s:%s ", __func__, __LINE__,
+                                  tblname, sc->tag);
+            sc->frames = backtrace(sc->buf, MAX_TAG_STACK_FRAMES);
+            sc->tid = pthread_self();
+#endif
         }
         sc = tmp;
     }
@@ -6393,11 +6202,13 @@ void commit_schemas(const char *tblname)
         int i = 0;
         int count = to_be_freed.count;
 
-        s = malloc(sizeof(struct schema *) * count);
+        s = calloc(sizeof(struct schema *), count);
         sc = listc_rtl(&to_be_freed);
         while (sc) {
             if (db->schema != sc)
                 s[i++] = sc;
+            else
+                count--;
             sc = listc_rtl(&to_be_freed);
         }
 
@@ -6659,6 +6470,137 @@ void set_bdb_option_flags(dbtable *tbl, int odh, int ipu, int isc, int ver,
     bdb_set_key_compression(handle);
 }
 
+void set_bdb_queue_option_flags(dbtable *tbl, int odh, int compr, int persist)
+{
+    bdb_state_type *handle = tbl->handle;
+    bdb_set_queue_odh_options(handle, odh, compr, persist);
+}
+
+int delete_table_sequences(tran_type *tran, struct dbtable *db)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr) != 0)) {
+                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
+int gbl_permit_small_sequences = 0;
+
+int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbtable *newdb)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < olddb->schema->nmembers; i++) {
+        struct field *f = &olddb->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int fn = find_field_idx_in_tag(newdb->schema, f->name);
+            if (fn == -1 || newdb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
+                if ((rc = bdb_del_sequence(tran, olddb->tablename, f->name, &bdberr))) {
+
+                    logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__,
+                           olddb->tablename, f->name, rc, bdberr);
+                    return rc;
+                }
+            }
+        }
+    }
+
+    for (int i = 0; i < newdb->schema->nmembers; i++) {
+        struct field *f = &newdb->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int fn = find_field_idx_in_tag(olddb->schema, f->name);
+            if (fn == -1) {
+                if ((rc = bdb_set_sequence(tran, olddb->tablename, f->name, 0, &bdberr))) {
+                    logmsg(LOGMSG_ERROR, "%s error creating sequence %s %s rc=%d bdberr=%d\n", __func__,
+                           olddb->tablename, f->name, rc, bdberr);
+                    return rc;
+                }
+            }
+
+            // TODO: Scan for highest value?
+            else if (olddb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
+                logmsg(LOGMSG_ERROR, "%s cannot set nextsequence for existing column %s\n", __func__, f->name);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "cannot set sequence for existing column");
+                }
+                return -1;
+            }
+            if (!gbl_permit_small_sequences && f->len < 9) {
+                logmsg(LOGMSG_ERROR, "%s failing sc, permit-small-sequences is disabled\n", __func__);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                }
+                return -1;
+            }
+        }
+    }
+    return 0;
+}
+
+int rename_table_sequences(tran_type *tran, dbtable *db, const char *newname)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            int64_t s;
+            if ((rc = bdb_get_sequence(tran, db->tablename, f->name, &s, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error getting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+            if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+            if ((rc = bdb_set_sequence(tran, newname, f->name, s, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, newname, f->name, rc,
+                       bdberr);
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
+int init_table_sequences(struct ireq *iq, tran_type *tran, dbtable *db)
+{
+    int rc = 0, bdberr = 0;
+    for (int i = 0; i < db->schema->nmembers; i++) {
+        struct field *f = &db->schema->member[i];
+        if (f->in_default_type == SERVER_SEQUENCE) {
+            if (f->type != SERVER_BINT) {
+                logmsg(LOGMSG_ERROR, "%s sequences only supported for int types\n", __func__);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                }
+                return -1;
+            }
+            if (!gbl_permit_small_sequences && f->len < 9) {
+                logmsg(LOGMSG_ERROR, "%s failing sc, permit-small-sequences is disabled\n", __func__);
+                if (iq) {
+                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                }
+                return -1;
+            }
+            if ((rc = bdb_set_sequence(tran, db->tablename, f->name, 0, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+                       f->name, rc, bdberr);
+                return rc;
+            }
+        }
+    }
+    return 0;
+}
+
 /* Compute map of dbstores used in vtag_to_ondisk */
 void update_dbstore(dbtable *db)
 {
@@ -6727,7 +6669,9 @@ void update_dbstore(dbtable *db)
                 /* column not seen before */
                 db->dbstore[position].ver = v;
 
-                if (from->in_default_len) {
+                if (from->in_default_type == SERVER_FUNCTION)
+                    continue;
+                else if (from->in_default_len && from->in_default_type != SERVER_SEQUENCE) {
                     db->dbstore[position].len = to->len;
                     db->dbstore[position].data = calloc(1, to->len);
                     if (db->dbstore[position].data == NULL) {
@@ -6786,6 +6730,10 @@ void delete_schema(const char *tblname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &tblname);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d -> %s", __func__, __LINE__, tblname);
+#endif
+    assert(dbt != NULL);
     hash_del(gbl_tag_hash, dbt);
     unlock_taglock();
     struct schema *schema = dbt->taglist.top;
@@ -6809,6 +6757,10 @@ void rename_schema(const char *oldname, char *newname)
     struct dbtag *dbt;
     lock_taglock();
     dbt = hash_find(gbl_tag_hash, &oldname);
+#if defined DEBUG_STACK_TAG_SCHEMA
+    comdb2_cheapstack_sym(stderr, "%s:%d rename %s to %s\n", __func__, __LINE__,
+                          oldname, newname);
+#endif
     hash_del(gbl_tag_hash, dbt);
     free(dbt->tblname);
     dbt->tblname = newname;
@@ -7075,12 +7027,15 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
-    /* reopen db no tran - i.e. auto commit */
-    newdb->handle = bdb_open_more(
+    extern int gbl_rowlocks;
+    tran_type *arg_tran = gbl_rowlocks ? NULL : tran;
+
+    /* Must use tran or this can cause deadlocks */
+    newdb->handle = bdb_open_more_tran(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
         newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
-        newdb->numblobs + 1, thedb->bdb_env, &bdberr);
+        newdb->numblobs + 1, thedb->bdb_env, arg_tran, 0, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "reload_schema handle %p bdberr %d\n",

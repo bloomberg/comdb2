@@ -31,12 +31,12 @@ extern "C" {
  */
 
 void comdb2_linux_cheap_stack_trace(void);
-#define cheap_stack_trace()                                                    \
-    do {                                                                       \
-        pthread_t pid = pthread_self();                                        \
-        logmsg(LOGMSG_USER, "Comdb2's Linux Cheap Stack Trace :: pthread_self:%lu @ %s:%d\n",  \
-            pid, __FILE__, __LINE__);                                          \
-        comdb2_linux_cheap_stack_trace();                                      \
+#define cheap_stack_trace()                                                                                            \
+    do {                                                                                                               \
+        pthread_t pid = pthread_self();                                                                                \
+        logmsg(LOGMSG_USER, "Comdb2's Linux Cheap Stack Trace :: pthread_self:%p @ %s:%d\n", (void *)pid, __FILE__,    \
+               __LINE__);                                                                                              \
+        comdb2_linux_cheap_stack_trace();                                                                              \
     } while (0)
 
 #if defined __cplusplus

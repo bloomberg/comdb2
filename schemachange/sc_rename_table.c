@@ -93,6 +93,13 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
         goto tran_error;
     }
 
+    /* Update table sequences */
+    rc = rename_table_sequences(tran, db, newname);
+    if (rc) {
+        sc_errf(s, "Failed to rename table sequences for %s\n", db->tablename);
+        goto tran_error;
+    }
+
     /* fragile, handle with care */
     oldname = db->tablename;
     rc = rename_db(db, newname);

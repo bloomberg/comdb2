@@ -13,7 +13,7 @@ Time partitioning is a convenient way to add a retention policy to persistent da
 NAME = a name under which rows will be accessed, in the same way a regular table name is used
 SHARD0 = an existing table to be used as first shard
 START = a datetime string identifying the absolute time at which the first rollout will happen
-PERIODICITY = 'daily'|'weekly'|'yearly'
+PERIODICITY = 'daily'|'weekly'|'monthly'|'yearly'
 RETENTION = the maximum number of shards the partition will contain
 ```
 
@@ -28,7 +28,7 @@ Creating a partition with `manual` period allows client to control the rollout u
 
 Creating a partition syntax is:
 
-`CREATE TIME PARTITION ON shard0 as name PERIOD ['daily'|'weekly'|'yearly'|'manual'] RETENTION n START 'datetime string|integer'`
+`CREATE TIME PARTITION ON shard0 as name PERIOD ['daily'|'weekly'|'monthly'|'yearly'|'manual'] RETENTION n START 'datetime string|integer'`
 
 Dropping an existing partition syntax is:
 

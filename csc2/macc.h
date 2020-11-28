@@ -104,8 +104,7 @@ struct check_constraint {
 struct symbol {
     char *nm;   /* symbol name                     */
     int dim[6]; /* # of elements in each dimension */
-    char *
-        dim_cnst[6]; /* if we have any constants in the symbol specs, store it*/
+    char *dim_cnst[6]; /* if we have any constants in the symbol specs, store it */
     int arr;         /* if this is an array, is it C or Fortran */
     int size;        /* base size of variable           */
     int szof;        /* size of whole varaible/array    */

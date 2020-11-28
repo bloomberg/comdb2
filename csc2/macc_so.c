@@ -33,6 +33,7 @@
 extern int yyparse(void);
 extern int compute_key_data(void);
 extern int compute_all_data(int tidx);
+extern int gbl_ready;
 
 char *revision = "$Revision: 1.24 $";
 int unionflag = 0;
@@ -75,9 +76,6 @@ static int dyns_get_field_arr_dims_comn(char *tag, int fidx, int *dims,
                                         int ndims, int *nodims);
 static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
                                  int ndpthsinfo, int *ndpthout);
-static int dyns_get_field_option_comn(char *tag, int fidx, int option,
-                                      int *value_type, int *value_sz,
-                                      void *valuebuf, int vbsz);
 
 int gbl_legacy_schema = 0;
 
@@ -664,10 +662,8 @@ int keysize(struct key *ck) /* CALCULATES SIZE OF A STRUCT KEY */
     struct table *tables = macc_globals->tables;
     arr = (tables[ondtidx].sym[ck->sym].dim[0] != -1); /* is this an array? */
     rng = (ck->rg[0] > 0 && ck->rg[1] > 0); /* is an element specified?  */
-    chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) ||
-           (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
-           (tables[ondtidx].sym[ck->sym].type ==
-            T_CSTR)); /* is this a character type? */
+    chr = ((tables[ondtidx].sym[ck->sym].type == T_PSTR) || (tables[ondtidx].sym[ck->sym].type == T_UCHAR) ||
+           (tables[ondtidx].sym[ck->sym].type == T_CSTR)); /* is this a character type? */
 
     if (rng < 0) { /* report this odd error     */
         csc2_error("ERROR: BAD RANGE FOR %s(%d:%d), SYMBOL #%d\n",
@@ -1252,11 +1248,9 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
 
     if (typ == T_LOGICAL) {
         used_bools = 1;
-        csc2_error("Error at line %3d: 'bool' DATATYPE IS DEPRECATED - "
-                        "USE INT INSTEAD\n",
-                current_line);
-        csc2_syntax_error("Error at line %3d: 'bool' DATATYPE IS DEPRECATED - "
-                          "USE INT INSTEAD",
+        csc2_error("Error at line %3d: 'bool' DATATYPE IS DEPRECATED - USE INT INSTEAD\n",
+                   current_line);
+        csc2_syntax_error("Error at line %3d: 'bool' DATATYPE IS DEPRECATED - USE INT INSTEAD",
                           current_line);
         if (!allow_bools)
             any_errors++;
@@ -1328,7 +1322,7 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                    * your platform.. and we can't have that, because this code has
                    * to be consistent regardless of the memory model.  aln=8 would
                    * be the most appropriate choice here, but it looks like on day
-                   * one we went for aln=16 for blobs, so it wil have to stay that
+                   * one we went for aln=16 for blobs, so it will have to stay that
                    * way.  aln cannot be 4 because then on 64 bit platforms the]
                    * compiler may start adding its own padding to ensure correct
                    * alignment of the struct members. */
@@ -1340,18 +1334,14 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         aln = 4;  /*largest element of the struct is an int */
         break;
     case T_INTERVALYM:
-        siz =
-            3 *
-            sizeof(
-                int); /*this is HARDCODED to the size of cdb2_client_intv_ym_t*/
+        /*this is HARDCODED to the size of cdb2_client_intv_ym_t*/
+        siz = 3 * sizeof(int);
         aln = 4;      /*largest element of the struct is an int */
         break;
     case T_INTERVALDS:
     case T_INTERVALDSUS:
-        siz =
-            6 *
-            sizeof(
-                int); /*this is HARDCODED to the size of cdb2_client_intv_ds_t*/
+        /*this is HARDCODED to the size of cdb2_client_intv_ds_t*/
+        siz = 6 * sizeof(int);
         aln = 4;      /*largest element of the struct is an int */
         break;
     case T_DECIMAL32:
@@ -1371,72 +1361,56 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         break;
     default:
         /*huh?*/
-        csc2_error( "%d Error at line %3d: UNKNOWN TYPE: %s\n", __LINE__,
-                current_line, name);
-        csc2_syntax_error("%d Error at line %3d: UNKNOWN TYPE: %s", __LINE__,
-                          current_line, name);
+        csc2_error("%d Error at line %3d: UNKNOWN TYPE: %s\n", __LINE__, current_line, name);
+        csc2_syntax_error("%d Error at line %3d: UNKNOWN TYPE: %s", __LINE__, current_line, name);
         any_errors++;
         return;
     }
 
-    struct table *tables = macc_globals->tables;
     int ntables = macc_globals->ntables;
-    if (tables[ntables].nsym >= MAX) {
-        csc2_error( "Error at line %3d: SYMBOL TABLE FULL: %s\n",
-                current_line, name);
-        csc2_syntax_error("Error at line %3d: SYMBOL TABLE FULL: %s",
+    struct table *tbl = &macc_globals->tables[ntables];
+    if (tbl->nsym >= MAX) {
+        csc2_error("Error at line %3d: SYMBOL TABLE FULL: %s\n", current_line, name);
+        csc2_syntax_error("Error at line %3d: SYMBOL TABLE FULL: %s", current_line, name);
+        any_errors++;
+        return;
+    }
+
+    if (tbl->nsym >= COMDB2_MAX) {
+        csc2_error("Error at line %3d: TOO MANY SYMBOLS. MAX %d. AT SYM %s\n",
+                   current_line, COMDB2_MAX, name);
+        csc2_syntax_error("Error at line %3d: TOO MANY SYMBOLS. MAX %d. AT SYM %s",
+                          current_line, COMDB2_MAX, name);
+        any_errors++;
+        return;
+    }
+
+    struct symbol *sym = &tbl->sym[tbl->nsym];
+    if (process_array_(&sym->dim[0], rg, name, &(sym->arr), &sym->dim_cnst[0])) { /* fill dimension array */
+        csc2_error("Error at line %3d: BAD ARRAY SPECIFIER: %s\n",
+                   current_line, name);
+        csc2_syntax_error("Error at line %3d: BAD ARRAY SPECIFIER: %s",
                           current_line, name);
         any_errors++;
         return;
     }
 
-    if (tables[ntables].nsym >= COMDB2_MAX) {
-        csc2_error(
-                "Error at line %3d: TOO MANY SYMBOLS. MAX %d. AT SYM %s\n",
-                current_line, COMDB2_MAX, name);
-        csc2_syntax_error(
-            "Error at line %3d: TOO MANY SYMBOLS. MAX %d. AT SYM %s",
-            current_line, COMDB2_MAX, name);
-        any_errors++;
-        return;
-    }
-
-    if (process_array_(&(tables[ntables].sym[tables[ntables].nsym].dim[0]), rg,
-                       name, &(tables[ntables].sym[tables[ntables].nsym].arr),
-                       &tables[ntables]
-                            .sym[tables[ntables].nsym]
-                            .dim_cnst[0])) { /* fill dimension array */
-        csc2_error( "Error at line %3d: BAD ARRAY "
-                        "SPECIFIER: %s\n",
-                current_line, name);
-        csc2_syntax_error("Error at line %3d: BAD ARRAY "
-                          "SPECIFIER: %s",
-                          current_line, name);
-        any_errors++;
-        return;
-    }
-
-    tables[ntables].sym[tables[ntables].nsym].numfo = nfieldopt;
-    memcpy(tables[ntables].sym[tables[ntables].nsym].fopts, fieldopts,
-           nfieldopt * sizeof(struct fieldopt));
+    sym->numfo = nfieldopt;
+    memcpy(sym->fopts, fieldopts, nfieldopt * sizeof(struct fieldopt));
     for (i = 0; i < nfieldopt; i++) {
-
+        struct fieldopt *fopt = &sym->fopts[i];
         int j = 0;
         /*printf("%d(%d) option %d==%d type %d tag: %s\n
          * ",nfieldopt,opt_schematype,
-         * tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype,FLDOPT_NULL,tables[ntables].sym[tables[ntables].nsym].fopts[i].valtype,tables[ntables].table_tag);*/
-        if (((tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype) ==
-             FLDOPT_NULL) &&
-            strcmp(tables[ntables].table_tag, ONDISKTAG)) {
-            csc2_error( "Error at line %3d: SYMBOL '%s' MAY NOT HAVE NULL "
-                            "OPTION SET.\n",
-                    current_line, name);
-            csc2_syntax_error(
-                "Error at line %3d: SYMBOL '%s' MAY NOT HAVE NULL "
-                "OPTION SET.",
-                current_line, name);
-            csc2_error( "Error at line %3d: MUST BE IN %s SCHEMA.\n",
-                    current_line, ONDISKTAG);
+         * fopt->opttype,FLDOPT_NULL,fopt->valtype,tbl->table_tag);*/
+        if ((fopt->opttype == FLDOPT_NULL) &&
+            strcmp(tbl->table_tag, ONDISKTAG)) {
+            csc2_error("Error at line %3d: SYMBOL '%s' MAY NOT HAVE NULL OPTION SET.\n",
+                       current_line, name);
+            csc2_syntax_error("Error at line %3d: SYMBOL '%s' MAY NOT HAVE NULL OPTION SET.",
+                              current_line, name);
+            csc2_error("Error at line %3d: MUST BE IN %s SCHEMA.\n",
+                       current_line, ONDISKTAG);
             csc2_syntax_error("Error at line %3d: MUST BE IN %s SCHEMA.",
                               current_line, ONDISKTAG);
             any_errors++;
@@ -1445,16 +1419,12 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
 
         /* only byte arrays may have a padding value, and it must be specified
          * as an int */
-        if (FLDOPT_PADDING ==
-            tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype) {
+        if (FLDOPT_PADDING == fopt->opttype) {
             if (typ != T_UCHAR) {
-                csc2_error( "Error at line %3d: DBPAD MAY ONLY BE APPLIED "
-                                "TO BYTE ARRAYS\n",
-                        current_line);
-                csc2_syntax_error(
-                    "Error at line %3d: DBPAD MAY ONLY BE APPLIED "
-                    "TO BYTE ARRAYS",
-                    current_line);
+                csc2_error("Error at line %3d: DBPAD MAY ONLY BE APPLIED TO BYTE ARRAYS\n",
+                           current_line);
+                csc2_syntax_error("Error at line %3d: DBPAD MAY ONLY BE APPLIED TO BYTE ARRAYS",
+                                  current_line);
                 any_errors++;
                 return;
             }
@@ -1468,17 +1438,11 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
             case T_ULONG:
             case T_UINTEGER4:
             case T_INTEGER4:
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_UINT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
-                    csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
-                                    "SCHEMA MUST MATCH FIELD TYPE: %s\n",
-                            current_line, name);
-                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN "
-                                      "SCHEMA MUST MATCH FIELD TYPE: %s",
+                if (fopt->valtype != CLIENT_INT && fopt->valtype != CLIENT_UINT &&
+                    fopt->valtype != CLIENT_SEQUENCE && fopt->opttype != FLDOPT_NULL) {
+                    csc2_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: %s\n",
+                               current_line, name);
+                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: %s",
                                       current_line, name);
                     any_errors++;
                     return;
@@ -1487,15 +1451,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
 
             case T_REAL4:
             case T_REAL8:
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_REAL &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
-                    csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
-                                    "SCHEMA MUST MATCH FIELD TYPE: %s\n",
-                            current_line, name);
-                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN "
-                                      "SCHEMA MUST MATCH FIELD TYPE: %s",
+                if (fopt->valtype != CLIENT_REAL && fopt->opttype != FLDOPT_NULL) {
+                    csc2_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: %s\n",
+                               current_line, name);
+                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: %s",
                                       current_line, name);
                     any_errors++;
                     return;
@@ -1507,75 +1466,62 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                  * Sadly we have to allow cstring as well because a bunch of
                  * people have it in their production databases.  cstring is a
                  * noop and gets ignored. */
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_BYTEARRAY &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_CSTR &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
-                    csc2_error(
-                            "Error at line %3d: FIELD OPTION TYPE IN "
-                            "SCHEMA MUST BE AN INTEGER OR HEX FOR THIS FIELD "
-                            "TYPE: %s\n",
-                            current_line, name);
-                    csc2_syntax_error(
-                        "Error at line %3d: FIELD OPTION TYPE IN "
-                        "SCHEMA MUST BE AN INTEGER OR HEX FOR THIS FIELD "
-                        "TYPE: %s",
-                        current_line, name);
+                if (fopt->valtype != CLIENT_INT && fopt->valtype != CLIENT_BYTEARRAY &&
+                    fopt->valtype != CLIENT_CSTR && fopt->valtype != CLIENT_FUNCTION &&
+                    fopt->opttype != FLDOPT_NULL) {
+                    csc2_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST BE AN INTEGER OR HEX FOR THIS FIELD TYPE: %s\n",
+                               current_line, name);
+                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST BE AN INTEGER OR HEX FOR THIS FIELD TYPE: %s",
+                                      current_line, name);
                     any_errors++;
                     return;
                 }
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype == CLIENT_CSTR &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
-                    csc2_error(
-                            "Warning at line %3d: STRING DEFAULT OPTION "
-                            "WILL BE IGNORED FOR FIELD: %s\n",
-                            current_line, name);
+                if (fopt->valtype == CLIENT_FUNCTION && fopt->opttype != FLDOPT_NULL &&
+                    strcasecmp(fopt->value.strval, "(GUID())") == 0) {
+                    /* special case check for guid() which can only go into a byte[16] field */
+                    if (siz != 16) {
+                        csc2_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID() DBSTORE: %s\n",
+                                   current_line, name);
+                        csc2_syntax_error("Error at line %3d: CAN ONLY HAVE BYTE[16] FOR GUID() DBSTORE: %s\n",
+                                          current_line, name);
+                        any_errors++;
+                        return;
+                    } else {
+                        CHECK_LEGACY_SCHEMA(1);
+                    }
                 }
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype == CLIENT_INT &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].value.i8val != 0) {
-                    csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
-                                    "SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: "
-                                    "%s\n",
-                            current_line, name);
-                    csc2_syntax_error(
-                        "Error at line %3d: FIELD OPTION TYPE IN "
-                        "SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: "
-                        "%s",
-                        current_line, name);
+                if (fopt->valtype == CLIENT_CSTR && fopt->opttype != FLDOPT_NULL) {
+                    if (gbl_ready) {
+                        csc2_error("Error at line %3d: STRING DEFAULT OPTION NOT ALLOWED FOR FIELD: %s\n",
+                                   current_line, name);
+                        csc2_syntax_error("Error at line %3d: STRING DEFAULT OPTION NOT ALLOWED FOR FIELD: %s\n",
+                                          current_line, name);
+                        any_errors++;
+                        return;
+                    }
+                    csc2_error("Warning at line %3d: STRING DEFAULT OPTION WILL BE IGNORED FOR FIELD: %s\n",
+                               current_line, name);
+                }
+                if (fopt->valtype == CLIENT_INT && fopt->opttype != FLDOPT_NULL && fopt->value.i8val != 0) {
+                    csc2_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: %s\n",
+                               current_line, name);
+                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST BE ZERO FOR THIS FIELD TYPE: %s",
+                                      current_line, name);
                     any_errors++;
                     return;
                 }
                 break;
             case T_DATETIME:
             case T_DATETIMEUS:
-                CHECK_LEGACY_SCHEMA((tables[ntables]
-                                         .sym[tables[ntables].nsym]
-                                         .fopts[i]
-                                         .opttype != FLDOPT_NULL));
+                CHECK_LEGACY_SCHEMA((fopt->opttype != FLDOPT_NULL));
             case T_PSTR:
             case T_CSTR:
             case T_VUTF8:
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_CSTR &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].valtype != CLIENT_PSTR &&
-                    tables[ntables].sym[tables[ntables].nsym].fopts
-                            [i].opttype != FLDOPT_NULL) {
-                    csc2_error( "Error at line %3d: FIELD OPTION TYPE IN "
-                                    "SCHEMA MUST MATCH FIELD TYPE: %s\n",
-                            current_line, name);
-                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN "
-                                      "SCHEMA MUST MATCH FIELD TYPE: %s",
+                if (fopt->valtype != CLIENT_CSTR && fopt->valtype != CLIENT_PSTR &&
+                    fopt->valtype != CLIENT_FUNCTION && fopt->opttype != FLDOPT_NULL) {
+                    csc2_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: %s\n",
+                               current_line, name);
+                    csc2_syntax_error("Error at line %3d: FIELD OPTION TYPE IN SCHEMA MUST MATCH FIELD TYPE: %s",
                                       current_line, name);
                     any_errors++;
                     return;
@@ -1589,13 +1535,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
             case T_DECIMAL128:
             case T_BLOB:
             case T_BLOB2:
-                if (tables[ntables].sym[tables[ntables].nsym].fopts
-                        [i].opttype != FLDOPT_NULL) {
-                    csc2_error( "Error at line %3d: CANNOT SPECIFY "
-                                    "LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS\n",
+                if (fopt->opttype != FLDOPT_NULL) {
+                    csc2_error("Error at line %3d: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS\n",
                             current_line);
-                    csc2_syntax_error("Error at line %3d: CANNOT SPECIFY "
-                                      "LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS",
+                    csc2_syntax_error("Error at line %3d: CANNOT SPECIFY LOAD/STORE OPTIONS FOR BLOB/DATE FIELDS",
                                       current_line);
                     any_errors++;
                     return;
@@ -1603,10 +1546,8 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
                 break;
             default:
                 /*huh?*/
-                csc2_error( "%d Error at line %3d: UNKNOWN TYPE: %s\n",
-                        __LINE__, current_line, name);
-                csc2_syntax_error("%d Error at line %3d: UNKNOWN TYPE: %s",
-                                  __LINE__, current_line, name);
+                csc2_error("%d Error at line %3d: UNKNOWN TYPE: %s\n", __LINE__, current_line, name);
+                csc2_syntax_error("%d Error at line %3d: UNKNOWN TYPE: %s", __LINE__, current_line, name);
                 any_errors++;
                 return;
             }
@@ -1614,13 +1555,10 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
         for (j = 0; j < nfieldopt; j++) {
             if (j == i)
                 continue;
-            if (tables[ntables].sym[tables[ntables].nsym].fopts[i].opttype ==
-                tables[ntables].sym[tables[ntables].nsym].fopts[j].opttype) {
-                csc2_error( "Error at line %3d: FIELD IN SCHEMA CANNOT "
-                                "HAVE OPTIONS REPEATED: %s\n",
-                        current_line, name);
-                csc2_syntax_error("Error at line %3d: FIELD IN SCHEMA CANNOT "
-                                  "HAVE OPTIONS REPEATED: %s",
+            if (fopt->opttype == sym->fopts[j].opttype) {
+                csc2_error("Error at line %3d: FIELD IN SCHEMA CANNOT HAVE OPTIONS REPEATED: %s\n",
+                           current_line, name);
+                csc2_syntax_error("Error at line %3d: FIELD IN SCHEMA CANNOT HAVE OPTIONS REPEATED: %s",
                                   current_line, name);
                 any_errors++;
             }
@@ -1628,11 +1566,9 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     }
 
     if (rg[0] || rg[1]) {
-        csc2_error( "Error at line %3d: CHARACTER RANGE "
-                        "NOT ALLOWED IN RECORD{}: %s\n",
+        csc2_error( "Error at line %3d: CHARACTER RANGE NOT ALLOWED IN RECORD{}: %s\n",
                 current_line, name);
-        csc2_syntax_error("Error at line %3d: CHARACTER RANGE "
-                          "NOT ALLOWED IN RECORD{}: %s",
+        csc2_syntax_error("Error at line %3d: CHARACTER RANGE NOT ALLOWED IN RECORD{}: %s",
                           current_line, name);
         any_errors++;
         return;
@@ -1641,139 +1577,110 @@ void rec_c_add(int typ, int size, char *name, char *cmnt)
     if (cp)
         *cp = 0;
     if (unionflag) {
-        macc_globals->un_reset[tables[ntables].nsym]++;
-        tables[ntables].sym[tables[ntables].nsym].un_member =
-            macc_globals->union_level;
-        tables[ntables].sym[tables[ntables].nsym].un_idx =
-            macc_globals->union_index;
+        macc_globals->un_reset[tbl->nsym]++;
+        sym->un_member = macc_globals->union_level;
+        sym->un_idx = macc_globals->union_index;
     } else {
-        tables[ntables].sym[tables[ntables].nsym].un_member = -1;
-        tables[ntables].sym[tables[ntables].nsym].un_idx = -1;
+        sym->un_member = -1;
+        sym->un_idx = -1;
     }
-    if (tables[ntables].sym[tables[ntables].nsym].arr != 1 &&
-        tables[ntables].sym[tables[ntables].nsym].arr != 0)
-        tables[ntables].sym[tables[ntables].nsym].arr = -1;
-    tables[ntables].sym[tables[ntables].nsym].nm = name;
+    if (sym->arr != 1 &&
+        sym->arr != 0)
+        sym->arr = -1;
+    sym->nm = name;
 
     if (siz != -1) {
-        tables[ntables].sym[tables[ntables].nsym].size = siz;
-        tables[ntables].sym[tables[ntables].nsym].szof_cnst = sizcn;
+        sym->size = siz;
+        sym->szof_cnst = sizcn;
     } else
-        tables[ntables].sym[tables[ntables].nsym].size = aln;
+        sym->size = aln;
 
     lastidx = 0;
 
-    tables[ntables].sym[tables[ntables].nsym].type = typ;
-    tables[ntables].sym[tables[ntables].nsym].caseno =
-        macc_globals->current_case;
-    if (tables[ntables].sym[tables[ntables].nsym].caseno != -1) {
-        tables[ntables].sym[tables[ntables].nsym].un_member =
-            macc_globals->union_level;
-        tables[ntables].sym[tables[ntables].nsym].un_idx =
-            macc_globals->union_index;
+    sym->type = typ;
+    sym->caseno = macc_globals->current_case;
+    if (sym->caseno != -1) {
+        sym->un_member = macc_globals->union_level;
+        sym->un_idx = macc_globals->union_index;
     }
 
-    memcpy(tables[ntables].sym[tables[ntables].nsym].dpth_tree,
-           macc_globals->cur_dpth, sizeof(short) * macc_globals->dpth_idx);
-    tables[ntables].sym[tables[ntables].nsym].dpth = macc_globals->dpth_idx;
+    memcpy(sym->dpth_tree, macc_globals->cur_dpth, sizeof(short) * macc_globals->dpth_idx);
+    sym->dpth = macc_globals->dpth_idx;
 
-    tables[ntables].sym[tables[ntables].nsym].dumped = 0;
-    tables[ntables].sym[tables[ntables].nsym].padded = 0;
-    tables[ntables].sym[tables[ntables].nsym].align = aln;
-    tables[ntables].sym[tables[ntables].nsym].padb = -1;
-    tables[ntables].sym[tables[ntables].nsym].padex = 0;
-    tables[ntables].sym[tables[ntables].nsym].padaf = 0;
-    tables[ntables].sym[tables[ntables].nsym].padcs = -1;
+    sym->dumped = 0;
+    sym->padded = 0;
+    sym->align = aln;
+    sym->padb = -1;
+    sym->padex = 0;
+    sym->padaf = 0;
+    sym->padcs = -1;
 
     if (siz != -1)
-        tables[ntables].sym[tables[ntables].nsym].szof =
-            arroff(tables[ntables].nsym,
-                   tables[ntables].sym[tables[ntables].nsym].dim, rg) +
-            siz;
+        sym->szof = arroff(tbl->nsym, sym->dim, rg) + siz;
     /* vutf8 strings that don't have a specified length need to be treated
      * specially later on, everything else defaults to it's alignment */
     else if (typ != T_VUTF8)
-        tables[ntables].sym[tables[ntables].nsym].szof =
-            arroff(tables[ntables].nsym,
-                   tables[ntables].sym[tables[ntables].nsym].dim, rg) +
-            aln;
+        sym->szof = arroff(tbl->nsym, sym->dim, rg) + aln;
 /* This never belonged here anyway. */
 #if 0
     /* ondisk schema has different size rules.  I feel dirty hacking this kind
      * of database internals information in here. -- Sam J */
-    if (strcmp(tables[ntables].table_tag, ONDISKTAG) == 0) {
-        switch(tables[ntables].sym[tables[ntables].nsym].type)
+    if (strcmp(tbl->table_tag, ONDISKTAG) == 0) {
+        switch(sym->type)
         {
             case T_CSTR:
                 /* C string needs no adjustment - ondisk length is numchars - 1 + 1. */
                 break;
             case T_BLOB:
                 /* server side blob is 5 bytes */
-                tables[ntables].sym[tables[ntables].nsym].szof=5;
-                tables[ntables].sym[tables[ntables].nsym].size=5;
+                sym->szof=5;
+                sym->size=5;
             default:
                 /* All other types have an extra byte ondisk - the null/not null byte */
-                tables[ntables].sym[tables[ntables].nsym].szof++;
-                tables[ntables].sym[tables[ntables].nsym].size++;
+                sym->szof++;
+                sym->size++;
                 break;
         }
     }
 #endif
     if (strlen(cmnt) == 0) {
-        tables[ntables].sym[tables[ntables].nsym].com = blankchar;
+        sym->com = blankchar;
     } else {
-        tables[ntables].sym[tables[ntables].nsym].com =
-            (char *)csc2_malloc(strlen(cmnt) + 1);
-        if (tables[ntables].sym[tables[ntables].nsym].com == NULL) {
-            csc2_error("ERROR: OUT OF MEMORY, SYMBOL %s!!!\n",
-                       tables[ntables].sym[tables[ntables].nsym].nm);
+        sym->com = (char *)csc2_malloc(strlen(cmnt) + 1);
+        if (sym->com == NULL) {
+            csc2_error("ERROR: OUT OF MEMORY, SYMBOL %s!!!\n", sym->nm);
             csc2_error("ABORTING\n");
             return;
         }
-        strcpy(tables[ntables].sym[tables[ntables].nsym].com, cmnt);
+        strcpy(sym->com, cmnt);
     }
-    for (i = 0; i < tables[ntables].nsym; i++) {
-        if (!strcmp(tables[ntables].sym[i].nm,
-                    tables[ntables].sym[tables[ntables].nsym].nm)) {
-            csc2_error( "Error at line %3d: DUPLICATE VARIABLE NAMES ARE "
-                            "NOT ALLOWED (variable '%s')\n",
+    for (i = 0; i < tbl->nsym; i++) {
+        if (!strcmp(tbl->sym[i].nm, sym->nm)) {
+            csc2_error("Error at line %3d: DUPLICATE VARIABLE NAMES ARE NOT ALLOWED (variable '%s')\n",
                     current_line, name);
-            csc2_syntax_error("Error at line %3d: DUPLICATE VARIABLE NAMES ARE "
-                              "NOT ALLOWED (variable '%s')",
+            csc2_syntax_error("Error at line %3d: DUPLICATE VARIABLE NAMES ARE NOT ALLOWED (variable '%s')",
                               current_line, name);
             any_errors++;
         }
     }
 
     /* Check for pointlessly short strings */
-    if (T_CSTR == typ && tables[ntables].sym[tables[ntables].nsym].size < 2) {
-        csc2_error( "Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO "
-                        "MUST BE AT LEAST 2 BYTES IN SIZE\n",
+    if (T_CSTR == typ && sym->size < 2) {
+        csc2_error("Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO MUST BE AT LEAST 2 BYTES IN SIZE\n",
                 current_line);
-        csc2_syntax_error("Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO "
-                          "MUST BE AT LEAST 2 BYTES IN SIZE",
+        csc2_syntax_error("Error at line %3d: CSTRINGS ARE \\0 TERMINATED SO MUST BE AT LEAST 2 BYTES IN SIZE",
                           current_line);
         any_errors++;
-    } else if (T_PSTR == typ &&
-               tables[ntables].sym[tables[ntables].nsym].size < 1) {
-        csc2_error(
-                "Error at line %3d: ZERO LENGTH PSTRINGS ARE NOT ALLOWED\n",
-                current_line);
-        csc2_syntax_error(
-            "Error at line %3d: ZERO LENGTH PSTRINGS ARE NOT ALLOWED",
-            current_line);
+    } else if (T_PSTR == typ && sym->size < 1) {
+        csc2_error("Error at line %3d: ZERO LENGTH PSTRINGS ARE NOT ALLOWED\n", current_line);
+        csc2_syntax_error("Error at line %3d: ZERO LENGTH PSTRINGS ARE NOT ALLOWED", current_line);
         any_errors++;
-    } else if (T_UCHAR == typ &&
-               tables[ntables].sym[tables[ntables].nsym].size < 1) {
-        csc2_error(
-                "Error at line %3d: ZERO LENGTH BYTE ARRAYS ARE NOT ALLOWED\n",
-                current_line);
-        csc2_syntax_error(
-            "Error at line %3d: ZERO LENGTH BYTE ARRAYS ARE NOT ALLOWED",
-            current_line);
+    } else if (T_UCHAR == typ && sym->size < 1) {
+        csc2_error("Error at line %3d: ZERO LENGTH BYTE ARRAYS ARE NOT ALLOWED\n", current_line);
+        csc2_syntax_error("Error at line %3d: ZERO LENGTH BYTE ARRAYS ARE NOT ALLOWED", current_line);
         any_errors++;
     }
-    tables[ntables].nsym++;
+    tbl->nsym++;
 }
 
 void add_constant(char *name, int value, short type)
@@ -1897,8 +1804,8 @@ void add_fldopt(int opttype, int valtype, void *value)
         reset_fldopt();
         return;
     }
-    if (valtype != CLIENT_INT && valtype != CLIENT_REAL &&
-        valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY) {
+    if (valtype != CLIENT_INT && valtype != CLIENT_REAL && valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY &&
+        valtype != CLIENT_SEQUENCE && valtype != CLIENT_FUNCTION) {
         csc2_error("FIELD OPTION ERROR: INVALID VALUE TYPE %d\n", valtype);
         any_errors++;
         reset_fldopt();
@@ -1959,10 +1866,12 @@ void add_fldopt(int opttype, int valtype, void *value)
     }
     if (valtype == CLIENT_REAL) /* floating point numeric */
         fieldopts[nfieldopt].value.r8val = *(double *)value;
-    if (valtype == CLIENT_CSTR) /* string */
+    else if (valtype == CLIENT_CSTR) /* string */
         fieldopts[nfieldopt].value.strval = (char *)value;
-    if (valtype == CLIENT_BYTEARRAY) /* string */
+    else if (valtype == CLIENT_BYTEARRAY) /* string */
         fieldopts[nfieldopt].value.byteval = (char *)value;
+    else if (valtype == CLIENT_FUNCTION) /* function */
+        fieldopts[nfieldopt].value.strval = (char *)value;
     nfieldopt++;
 }
 
@@ -2520,6 +2429,7 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
 
     if (yyparse() || any_errors || check_options()) {
         csc2_error("FOUND ERRORS IN SCHEMA. ABORTING!\n");
+        /* AZ: to debug csc2_error("%s\n", schematxt); */
         if (fhopen)
             fclose((FILE *)yyin);
         return -1;
@@ -3042,144 +2952,139 @@ static int dyns_get_field_info_comn(char *tag, int fidx, char *name,
 
 int dyns_get_table_field_option(char *tag, int fidx, int option,
                                 int *value_type, int *value_sz, void *valuebuf,
-                                int vbsz)
+                                int vbsz, char **func_str)
 {
-    return dyns_get_field_option_comn(tag, fidx, option, value_type, value_sz,
-                                      valuebuf, vbsz);
-}
+    if (strcmp(tag, ONDISKTAG))
+        return -1;
 
-static int dyns_get_field_option_comn(char *tag, int fidx, int option,
-                                      int *value_type, int *value_sz,
-                                      void *valuebuf, int vbsz)
-{
     int i = 0;
     /* int tidx=gettable(tag==NULL?DEFAULTTAG:tag);*/
     int tidx = gettable(ONDISKTAG);
-    if (strcmp(tag, ONDISKTAG))
-        return -1;
     if (tidx < 0)
         return -1;
+
     struct table *tables = macc_globals->tables;
     if (fidx < 0 || fidx >= tables[tidx].nsym)
         return -1;
 
-    assert((valuebuf != 0) && (vbsz > 0));
+    assert(valuebuf != 0 && vbsz > 0);
 
-    *value_type = field_type(tables[tidx].sym[fidx].type, 0);
-    for (i = 0; i < tables[tidx].sym[fidx].numfo; i++) {
-        if (tables[tidx].sym[fidx].fopts[i].opttype == option) {
-            if ((option == FLDOPT_NULL || option == FLDOPT_PADDING) &&
-                vbsz >= sizeof(int)) {
-                int tmpval = tables[tidx].sym[fidx].fopts[i].value.i4val;
-                *value_type = CLIENT_INT;
-                *value_sz = sizeof(int);
-                memcpy(valuebuf, &tmpval, sizeof(int));
+    struct symbol *sym = &tables[tidx].sym[fidx];
+    *value_type = field_type(sym->type, 0);
+    for (i = 0; i < sym->numfo; i++) {
+        struct fieldopt *f = &sym->fopts[i];
+        if (f->opttype != option)
+            continue;
+        if ((option == FLDOPT_NULL || option == FLDOPT_PADDING) && vbsz >= sizeof(int)) {
+            int tmpval = f->value.i4val;
+            *value_type = CLIENT_INT;
+            *value_sz = sizeof(int);
+            memcpy(valuebuf, &tmpval, sizeof(int));
+            return 0;
+        }
+
+        switch (f->valtype) {
+        case CLIENT_INT: {
+            if ((*value_type == CLIENT_INT || *value_type == CLIENT_UINT) && vbsz >= sizeof(uint64_t)) {
+                extern int gbl_broken_num_parser;
+                if (gbl_broken_num_parser) {
+                    int tmpval = htonl(f->value.i4val);
+                    memcpy(valuebuf, &tmpval, sizeof(tmpval));
+                    *value_sz = sizeof(tmpval);
+                } else {
+                    uint64_t tmpval = flibc_htonll(f->value.u8val);
+                    memcpy(valuebuf, &tmpval, sizeof(tmpval));
+                    *value_sz = sizeof(tmpval);
+                }
+                return 0;
+            } else if (*value_type == CLIENT_REAL && vbsz >= sizeof(double)) {
+                double tmpval = flibc_htond(((double)(f->value.i4val)));
+                memcpy(valuebuf, &tmpval, sizeof(double));
+                *value_sz = sizeof(double);
+                return 0;
+            } else if (*value_type == CLIENT_BYTEARRAY && vbsz >= sym->szof) {
+                /* construct a byte array memset with this value */
+                memset(valuebuf, f->value.i4val, sym->szof);
+                *value_sz = sym->szof;
                 return 0;
             }
+            return -1;
+        }
+        case CLIENT_REAL: {
+            if (*value_type == CLIENT_REAL && vbsz >= sizeof(double)) {
+                double tmpval = flibc_htond((double)(f->value.r8val));
+                memcpy(valuebuf, &tmpval, sizeof(double));
+                *value_sz = sizeof(double);
+                return 0;
+            }
+            return -1;
+        }
+        case CLIENT_BYTEARRAY: {
+            int *bytes;
+            int length;
+            bytes = (int *)f->value.byteval;
+            if (!bytes) {
+                csc2_error("dyns_get_table_field_option: null byteval\n");
+                return -1;
+            }
+            length = *bytes;
+            bytes++;
+            if (*value_type == CLIENT_BYTEARRAY && vbsz >= length) {
+                memcpy(valuebuf, bytes, length);
+                *value_sz = length;
+                return 0;
+            }
+            return -1;
+        }
 
-            switch (tables[tidx].sym[fidx].fopts[i].valtype) {
-            case CLIENT_INT: {
-                if ((*value_type == CLIENT_INT || *value_type == CLIENT_UINT) &&
-                    vbsz >= sizeof(uint64_t)) {
-                    extern int gbl_broken_num_parser;
-                    if (gbl_broken_num_parser) {
-                        int tmpval =
-                            htonl(tables[tidx].sym[fidx].fopts[i].value.i4val);
-                        memcpy(valuebuf, &tmpval, sizeof(tmpval));
-                        *value_sz = sizeof(tmpval);
-                    } else {
-                        uint64_t tmpval = flibc_htonll(
-                            tables[tidx].sym[fidx].fopts[i].value.u8val);
-                        memcpy(valuebuf, &tmpval, sizeof(tmpval));
-                        *value_sz = sizeof(tmpval);
-                    }
-                    return 0;
-                } else if (*value_type == CLIENT_REAL &&
-                           vbsz >= sizeof(double)) {
-                    double tmpval = flibc_htond((
-                        (double)(tables[tidx].sym[fidx].fopts[i].value.i4val)));
-                    memcpy(valuebuf, &tmpval, sizeof(double));
-                    *value_sz = sizeof(double);
-                    return 0;
-                } else if (*value_type == CLIENT_BYTEARRAY &&
-                           vbsz >= tables[tidx].sym[fidx].szof) {
-                    /* construct a byte array memset with this value */
-                    memset(valuebuf,
-                           tables[tidx].sym[fidx].fopts[i].value.i4val,
-                           tables[tidx].sym[fidx].szof);
-                    *value_sz = tables[tidx].sym[fidx].szof;
-                    return 0;
-                }
+        case CLIENT_SEQUENCE: {
+            if (*value_type == CLIENT_INT) {
+                *value_type = CLIENT_SEQUENCE;
+                *value_sz = (vbsz - 1);
+                memset(valuebuf, -1, *value_sz);
+                return 0;
+            }
+            return -1;
+        }
+
+        case CLIENT_CSTR: {
+            if (*value_type == CLIENT_BYTEARRAY && vbsz >= sym->szof) {
+                /* There are several production databases that try to
+                 * specify a default load/store for a byte array using a
+                 * string.  Previously we didn't catch this, so people put
+                 * in all kinds of wacky interpretations of how this
+                 * could work.  We want to disallow all of them, but can't
+                 * without breaking them.  So we silently ignore strings. */
+                *value_type = CLIENT_MINTYPE;
+                *value_sz = 0;
+                memset(valuebuf, 0, vbsz);
                 return -1;
             }
-            case CLIENT_REAL: {
-                if (*value_type == CLIENT_REAL && vbsz >= sizeof(double)) {
-                    double tmpval = flibc_htond(
-                        (double)(tables[tidx].sym[fidx].fopts[i].value.r8val));
-                    memcpy(valuebuf, &tmpval, sizeof(double));
-                    *value_sz = sizeof(double);
-                    return 0;
-                }
-                return -1;
+
+            int len = strlen(f->value.strval);
+            if ((*value_type == CLIENT_CSTR || *value_type == CLIENT_PSTR || *value_type == CLIENT_VUTF8) &&
+                vbsz > len) {
+                bzero(valuebuf, len + 1);
+                memcpy(valuebuf, f->value.strval, len);
+                *value_sz = len;
+                return 0;
+            } else if (*value_type == CLIENT_DATETIME || *value_type == CLIENT_DATETIMEUS) {
+                memcpy(valuebuf, f->value.strval, len);
+                *value_sz = len;
+                return 0;
             }
-            case CLIENT_BYTEARRAY: {
-                int *bytes;
-                int length;
-                bytes = (int *)tables[tidx].sym[fidx].fopts[i].value.byteval;
-                if (!bytes) {
-                    csc2_error(
-                            "dyns_get_field_option_comn: null byteval\n");
-                    return -1;
-                }
-                length = *bytes;
-                bytes++;
-                if (*value_type == CLIENT_BYTEARRAY && vbsz >= length) {
-                    memcpy(valuebuf, bytes, length);
-                    *value_sz = length;
-                    return 0;
-                }
-                return -1;
-            }
-            case CLIENT_CSTR: {
-                if ((*value_type == CLIENT_CSTR || *value_type == CLIENT_PSTR ||
-                     *value_type == CLIENT_VUTF8) &&
-                    vbsz >
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval)) {
-                    bzero(valuebuf,
-                          strlen(tables[tidx].sym[fidx].fopts[i].value.strval) +
-                              1);
-                    memcpy(
-                        valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval,
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval));
-                    *value_sz =
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
-                    return 0;
-                } else if (*value_type == CLIENT_DATETIME ||
-                           *value_type == CLIENT_DATETIMEUS) {
-                    memcpy(
-                        valuebuf, tables[tidx].sym[fidx].fopts[i].value.strval,
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval));
-                    *value_sz =
-                        strlen(tables[tidx].sym[fidx].fopts[i].value.strval);
-                    return 0;
-                } else if (*value_type == CLIENT_BYTEARRAY &&
-                           vbsz >= tables[tidx].sym[fidx].szof) {
-                    /* There are several production databases that try to
-                     * specify a default load/store for a byte array using a
-                     * string.  Previously we didn't catch this, so people put
-                     * in all kinds of wacky interpretations of how this
-                     * could work.  We want to disallow all of them, but can't
-                     * without breaking them.  So we silently ignore strings. */
-                    *value_type = CLIENT_MINTYPE;
-                    *value_sz = 0;
-                    memset(valuebuf, 0, vbsz);
-                    return -1;
-                }
-                return -1;
-            }
-            default:
-                return -1;
-            }
+            return -1;
+        }
+        case CLIENT_FUNCTION: {
+            int len = strlen(f->value.strval);
+            if (func_str)
+                *func_str = f->value.strval;
+            *value_type = CLIENT_FUNCTION;
+            *value_sz = len;
+            return 0;
+        } 
+        default:
+            return -1;
         }
     }
 
@@ -3218,8 +3123,7 @@ static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
         if (i >= ndpthsinfo) {
             return 1;
         }
-        curdpth =
-            (char *)(&(macc_globals->tables[tidx].sym[fidx].dpth_tree[i]));
+        curdpth = (char *)(&(macc_globals->tables[tidx].sym[fidx].dpth_tree[i]));
         memset(&dpthinfo[*ndpthout], 0, sizeof(dpth_t));
         dpthinfo[*ndpthout].struct_type =
             ((curdpth[0] == 'u') ? FLDDPTH_UNION : FLDDPTH_STRUCT);

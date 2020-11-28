@@ -153,7 +153,7 @@ public class Comdb2ResultSet implements ResultSet {
 
             byte[] bytes = hndl.columnValue(columnIndex);
 
-            if (bytes == null || bytes.length == 0) {
+            if (bytes == null) {
                 wasNull = true;
                 return null;
             }

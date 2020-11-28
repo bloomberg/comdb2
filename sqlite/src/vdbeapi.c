@@ -91,6 +91,114 @@ static SQLITE_NOINLINE void invokeProfileCallback(sqlite3 *db, Vdbe *p){
 # define checkProfileCallback(DB,P)  /*no-op*/
 #endif
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+extern int gbl_old_column_names;
+
+char *stmt_column_name(sqlite3_stmt *pStmt, int index) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  return (char *) sqlite3_value_text((sqlite3_value*)&vdbe->aColName[index]);
+}
+
+char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
+  char **column_names;
+  Vdbe *vdbe = (Vdbe *)pStmt;
+
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  column_names = vdbe->oldColNames;
+  return column_names[index];
+}
+
+int stmt_cached_column_count(sqlite3_stmt *pStmt) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  return (vdbe) ? vdbe->oldColCount : 0;
+}
+
+static void stmt_free_column_names(sqlite3_stmt *pStmt) {
+  Vdbe *vdbe;
+  int column_count;
+  int i;
+  char **column_names;
+
+  vdbe = (Vdbe *)pStmt;
+  if (!vdbe)
+    return;
+
+  column_names = vdbe->oldColNames;
+  column_count = vdbe->oldColCount;
+  for(i=0; i<column_count; i++) {
+    free(column_names[i]);
+  }
+  free(column_names);
+
+  vdbe->oldColNames = 0;
+  vdbe->oldColCount = 0;
+}
+
+static void stmt_free_vtable_locks(sqlite3_stmt *pStmt) {
+  Vdbe *vdbe;
+  int i;
+  vdbe = (Vdbe *)pStmt;
+  if (!vdbe)
+      return;
+  for (i=0; i<vdbe->numVTableLocks; i++) {
+      free(vdbe->vTableLocks[i]);
+  }
+  free(vdbe->vTableLocks);
+  vdbe->vTableLocks = 0;
+  vdbe->numVTableLocks = 0;
+}
+
+void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks,
+        int numVTableLocks) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  stmt_free_vtable_locks(pStmt);
+  vdbe->numVTableLocks = numVTableLocks;
+  vdbe->vTableLocks = vTableLocks;
+}
+
+void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
+                             int column_count) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+
+  /* Free current cached names (if any) */
+  stmt_free_column_names(pStmt);
+
+  vdbe->oldColNames = column_names;
+  vdbe->oldColCount = column_count;
+}
+
+int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
+  Vdbe *p;
+  int cached_column_count;
+  int i;
+
+  if( gbl_old_column_names==0 || (stmt_cached_column_count(pStmt)==0) ||
+      (sqlite3_column_count(pStmt)==0) ){
+    return 1;
+  }
+
+  cached_column_count = stmt_cached_column_count(pStmt);
+  assert(cached_column_count == sqlite3_column_count(pStmt));
+
+  p = (Vdbe *)pStmt;
+  for(i=0; i<cached_column_count; i++){
+    if( (strcmp((const char *)sqlite3_value_text((sqlite3_value*)&p->aColName[i]),
+                stmt_cached_column_name(pStmt, i)))!=0 ) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 /*
 ** The following routine destroys a virtual machine that is created by
 ** the sqlite3_compile() routine. The integer returned is an SQLITE_
@@ -108,6 +216,12 @@ int sqlite3_finalize(sqlite3_stmt *pStmt){
     rc = SQLITE_OK;
   }else{
     Vdbe *v = (Vdbe*)pStmt;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if (gbl_old_column_names && (stmt_cached_column_count(pStmt)>0)){
+      stmt_free_column_names(pStmt);
+    }
+    stmt_free_vtable_locks(pStmt);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3 *db = v->db;
     if( vdbeSafety(v) ) return SQLITE_MISUSE_BKPT;
     sqlite3_mutex_enter(db->mutex);
@@ -369,6 +483,8 @@ int sqlite3_value_type(sqlite3_value* pVal){
   }else if( pVal->flags&MEM_Datetime ){
     return (pVal->du.dt.dttz_prec==DTTZ_PREC_USEC) ?
         SQLITE_DATETIMEUS : SQLITE_DATETIME;
+  }else if( pVal->flags&MEM_Master ) {
+    return SQLITE_NEXTSEQ;
   }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return aType[pVal->flags&MEM_AffMask];
@@ -1334,6 +1450,13 @@ static const void *columnName(
     N += useType*n;
     sqlite3_mutex_enter(db->mutex);
     assert( db->mallocFailed==0 );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( gbl_old_column_names && useUtf16 == 0 && useType == COLNAME_NAME &&
+        stmt_cached_column_count(pStmt)>0 ){
+      assert(N<=stmt_cached_column_count(pStmt));
+      ret = stmt_cached_column_name(pStmt, N);
+    }else
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_OMIT_UTF16
     if( useUtf16 ){
       ret = sqlite3_value_text16((sqlite3_value*)&p->aColName[N]);

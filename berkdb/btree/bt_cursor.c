@@ -721,6 +721,18 @@ comdb2__db_c_skip_stat(dbc, nxtcnt, skpcnt)
 }
 
 static int
+comdb2__db_c_replace_lockid(dbc, lockid)
+    DBC *dbc;
+    u_int32_t lockid;
+{
+    assert(dbc->txn == NULL);
+    assert(dbc->origlocker == 0);
+    dbc->origlocker = dbc->locker;
+    dbc->locker = lockid;
+    return 0;
+}
+
+static int
 comdb2__bam_bulk(dbc, data, flags)
 	DBC *dbc;
 	DBT *data;
@@ -934,6 +946,7 @@ __bam_c_init(dbc, dbtype)
 	dbc->c_pget = comdb2__db_c_pget_pp;
 	dbc->c_put = comdb2__db_c_put_pp;
 	dbc->c_skip_stat = comdb2__db_c_skip_stat;
+	dbc->c_replace_lockid = comdb2__db_c_replace_lockid;
 	if (dbtype == DB_BTREE) {
 		dbc->c_am_bulk = comdb2__bam_bulk;
 		dbc->c_am_close = comdb2__bam_c_close;
@@ -1648,6 +1661,12 @@ done:	/*
 		if (t_ret != 0 && ret == 0)
 			ret = t_ret;
 	}
+
+    if (dbc->origlocker != 0) {
+        dbc->locker = dbc->origlocker;
+        dbc->origlocker = 0;
+    }
+
 	DISCARD_CUR(dbc, t_ret);
 	if (t_ret != 0 && ret == 0)
 		ret = t_ret;

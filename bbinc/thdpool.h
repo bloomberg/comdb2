@@ -32,6 +32,7 @@ extern "C" {
 #include <priority_queue.h>
 
 struct thdpool;
+struct string_ref;
 
 enum thdpool_ioctl_op { THD_RUN, THD_FREE };
 
@@ -58,13 +59,14 @@ enum {
 
 typedef void (*thdpool_work_fn)(struct thdpool *pool, void *work, void *thddata,
                                 int op);
+
 struct workitem {
     void *work;
     thdpool_work_fn work_fn;
     int queue_time_ms;
     LINKC_T(struct workitem) linkv;
     int available;
-    char *persistent_info;
+    struct string_ref *ref_persistent_info;
     priority_t priority;
 };
 
@@ -78,14 +80,14 @@ typedef void (*thdpool_foreach_fn)(struct thdpool *pool, struct workitem *item,
 void thdpool_foreach(struct thdpool *pool, thdpool_foreach_fn, void *user);
 
 struct thdpool *thdpool_create(const char *name, size_t per_thread_data_sz);
-void thdpool_destroy(struct thdpool **pool_p);
+int thdpool_destroy(struct thdpool **pool_p, int coopWaitUs);
 void thdpool_set_stack_size(struct thdpool *pool, size_t sz_bytes);
 void thdpool_set_init_fn(struct thdpool *pool, thdpool_thdinit_fn init_fn);
 void thdpool_set_delt_fn(struct thdpool *pool, thdpool_thddelt_fn delt_fn);
 void thdpool_set_dque_fn(struct thdpool *pool, thdpool_thddque_fn dque_fn);
 void thdpool_set_linger(struct thdpool *pool, unsigned lingersecs);
 void thdpool_set_minthds(struct thdpool *pool, unsigned minnthd);
-void thdpool_set_maxthds(struct thdpool *pool, unsigned minnthd);
+void thdpool_set_maxthds(struct thdpool *pool, unsigned maxnthd);
 void thdpool_set_maxqueue(struct thdpool *pool, unsigned maxqueue);
 void thdpool_set_longwaitms(struct thdpool *pool, unsigned longwaitms);
 void thdpool_set_maxqueueagems(struct thdpool *pool, unsigned maxqueueagems);
@@ -104,11 +106,11 @@ enum {
     THDPOOL_QUEUE_ONLY = 0x8
 };
 int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
-                    int queue_override, char *persistent_info, uint32_t flags,
+                    int queue_override, struct string_ref *persistent_info, uint32_t flags,
                     priority_t priority);
 void thdpool_stop(struct thdpool *pool);
 void thdpool_resume(struct thdpool *pool);
-void thdpool_set_exit(struct thdpool *pool);
+void thdpool_unset_exit(struct thdpool *pool);
 void thdpool_set_wait(struct thdpool *pool, int wait);
 void thdpool_process_message(struct thdpool *pool, char *line, int lline,
                              int st);

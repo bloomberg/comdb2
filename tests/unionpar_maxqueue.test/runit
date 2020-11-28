@@ -10,19 +10,31 @@ a_dbn=$1
 r="cdb2sql -s ${CDB2_OPTIONS} $a_dbn default"
 
 echo "Inserting rows"
-$r "insert into t select value from generate_series(-99, 0)"
+$r "insert into t1 select value from generate_series(-99, 0)"
 
 $r << "EOF"
 set maxtransize 1000000000
 insert into t2 select value from generate_series(1, 1000000)
 EOF
 
-$r "alter table t add b cstring(1000) default '          '"
+echo "Testing limit on max threads"
+$r << "EOF"
+select * from t1 union all select * from t1 union all select * from t1 union all select * from t1 union all select * from t1 union all select * from t1 union all select * from t1 union all select * from t1 union all select * from t1
+EOF
+
+maxreqs=`$r "exec procedure sys.cmd.send('stat dohsql')"| grep requests| awk '{ print $3;}'`
+
+if (( $maxreqs != 0 )); then
+    echo "Failure to stop more than 8 parallel threads"
+    exit 1
+fi
+
+$r "alter table t1 add b cstring(1000) default '          '"
 $r "alter table t2 add b cstring(1000) default '          '"
 
 $r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 2000')"
 
-$r "select a,b from t union all select a,b from t2 order by a" | wc -l
+$r "select a,b from t1 union all select a,b from t2 order by a" | wc -l
 
 maxsize=`$r "exec procedure sys.cmd.send('stat dohsql')"| grep bytes| awk '{ print $4;}'`
 
@@ -34,5 +46,18 @@ if (( $maxsize > 2000000 )) ; then
     exit 1
 else
     echo "Limited queue size $maxsize"
+fi
+
+echo "Testing single rows taking over whole quota"
+$r "exec procedure sys.cmd.send('dohsql_max_queued_kb_highwm 100')"
+${TESTSBUILDDIR}/comdb2_blobtest $a_dbn 1 1000000
+$r << "EOF"
+select * from t union all select * from t
+EOF
+
+if (( $? != 0 )) ; then
+    echo "Failure to process single large rows"
+else
     echo "Testcase passed."
 fi
+

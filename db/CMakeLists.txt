@@ -43,6 +43,8 @@ set(src
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
+  osqlsqlnet.c
+  osqlsqlsocket.c
   phys_rep.c
   plugin_handler.c
   prefault.c
@@ -71,6 +73,7 @@ set(src
   sqllog.c
   sqlmaster.c
   sqloffload.c
+  sqlpool.c
   sqlstat1.c
   tag.c
   testcompr.c
@@ -93,6 +96,7 @@ set(src
   dohsql.c
   dohast.c
   machclass.c
+  osqluprec.c
   ${PROJECT_BINARY_DIR}/protobuf/bpfunc.pb-c.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_dump/cdb2_dump.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_load/cdb2_load.c
@@ -229,6 +233,7 @@ target_link_libraries(comdb2
   ${UNWIND_LIBRARY}
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
+  ${LIBEVENT_LIBRARIES}
   ${COMDB2_ROBO_LINK_FLAGS}
 )
 

@@ -49,6 +49,8 @@
 #include "debug_switches.h"
 #include "logmsg.h"
 #include "indices.h"
+#include "comdb2_atomic.h"
+#include "schemachange.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -377,6 +379,25 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ondisktagsc = find_tag_schema(iq->usedb->tablename, ondisktag);
     }
 
+    rc = set_master_columns(iq, trans, od_dta, od_len);
+    if (rc == BDBERR_DEADLOCK) {
+        if (iq->debug)
+            reqprintf(iq, "SET MASTER COLUMNS DEADLOCK");
+        retrc = RC_INTERNAL_RETRY;
+        ERR;
+    } else if (rc == BDBERR_MAX_SEQUENCE) {
+        reqerrstr(iq, ERR_INTERNAL, "Exhausted column sequence");
+        *opfailcode = ERR_INTERNAL;
+        retrc = ERR_INTERNAL;
+        ERR;
+    } else if (rc) {
+        if (iq->debug)
+            reqprintf(iq, "SET MASTER COLUMNS ERROR %d", rc);
+        *opfailcode = ERR_INTERNAL;
+        retrc = ERR_INTERNAL;
+        ERR;
+    }
+
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 1);
     if (rc < 0) {
         reqerrstr(iq, ERR_INTERNAL, "Internal error during CHECK constraint");
@@ -581,7 +602,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (!is_event_from_sc(flags)) {
-        iq->usedb->write_count[RECORD_WRITE_INS]++;
+        ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_INS], 1);
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
         /* For live schema change */
@@ -805,9 +826,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     struct schema *dbname_schema = find_tag_schema(iq->usedb->tablename, tag);
     if (dbname_schema == NULL) {
         if (iq->debug)
-            if (iq->debug)
-                reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
-                          iq->usedb->tablename);
+            reqprintf(iq, "UNKNOWN TAG %s TABLE %s\n", tag,
+                      iq->usedb->tablename);
         *opfailcode = OP_FAILED_BAD_REQUEST;
         retrc = ERR_BADREQ;
         ERR;
@@ -1159,6 +1179,19 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         del_idx_blobs = del_blobs_buf;
         add_idx_blobs = add_blobs_buf;
     }
+    rc = upd_master_columns(iq, trans, od_dta, od_len);
+    if (rc == BDBERR_DEADLOCK) {
+        if (iq->debug)
+            reqprintf(iq, "UPD MASTER COLUMNS DEADLOCK");
+        retrc = RC_INTERNAL_RETRY;
+        ERR;
+    } else if (rc) {
+        if (iq->debug)
+            reqprintf(iq, "SET MASTER COLUMNS ERROR %d", rc);
+        *opfailcode = ERR_INTERNAL;
+        retrc = ERR_INTERNAL;
+        ERR;
+    }
 
     rc = verify_check_constraints(iq->usedb, od_dta, blobs, maxblobs, 0);
     if (rc < 0) {
@@ -1466,6 +1499,21 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
+    if (has_cascading_forward_constraints(iq->usedb)) {
+        rc = update_constraint_genid(iq, opcode, blkpos, flags, rrn, ins_keys,
+                                     *genid, vgenid);
+        if (rc) {
+            if (iq->debug)
+                reqprintf(
+                    iq,
+                    "Failed to replace updated genid in ct_add_table (rc: %d)",
+                    rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
+    }
+
     /* For live schema change */
     rc = live_sc_post_update(iq, trans, vgenid, old_dta, *genid, od_dta,
                              ins_keys, del_keys, od_len, updCols, blobs, 
@@ -1476,7 +1524,7 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    iq->usedb->write_count[RECORD_WRITE_UPD]++;
+    ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
@@ -1763,6 +1811,20 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         }
     }
 
+    if (has_cascading_forward_constraints(iq->usedb)) {
+        rc = delete_constraint_genid(genid);
+        if (rc) {
+            if (iq->debug)
+                reqprintf(iq,
+                          "Failed to remove deleted record's genid from "
+                          "ct_add_table (rc: %d)",
+                          rc);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
+    }
+
     /* For live schema change */
     rc = live_sc_post_delete(iq, trans, genid, od_dta, del_keys, del_idx_blobs);
     if (rc != 0) {
@@ -1770,7 +1832,7 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    iq->usedb->write_count[RECORD_WRITE_DEL]++;
+    ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:
@@ -2767,7 +2829,7 @@ void testrep(int niter, int recsz)
             logmsg(LOGMSG_ERROR, "bdb_add_rep_blob rc %d bdberr %d\n", rc, bdberr);
             goto done;
         }
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        rc = trans_commit(&iq, tran, gbl_myhostname);
         if (rc) {
             logmsg(LOGMSG_ERROR, "commit rc %d\n", rc);
             goto done;

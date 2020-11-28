@@ -5,7 +5,7 @@
 # exit after displaying error message
 failexit()
 {
-    echo "Failed $1"
+    echo "Failed $@" | tee ${DBNAME}.failexit # runtestcase script looks for this file
     exit -1
 }
 

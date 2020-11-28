@@ -330,8 +330,6 @@ static void *fstdump_thread2(void *voidarg)
     return NULL;
 }
 
-extern int db_is_stopped(void);
-
 static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
                                   void *databuf, size_t buffer_length)
 {

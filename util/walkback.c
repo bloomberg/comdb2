@@ -476,7 +476,7 @@ static int _AIX_stack_walkback(ucontext_t *context, unsigned maxframes,
 } /*    end of _AIX_stack_walkback()    */
 #endif
 
-#if defined(__linux__) || defined(__APPLE__)
+#if defined(__linux__)
 
 /******************************************************************************
 *
@@ -508,6 +508,16 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
         }
     }
 #endif
+    return 0;
+}
+#endif
+
+#if defined(__APPLE__)
+static int __apple_stack_walkback(ucontext_t *context, unsigned maxframes,
+                                  void (*handler)(void *returnaddr,
+                                                  void *handlerarg),
+                                  void *handlerarg)
+{
     return 0;
 }
 #endif
@@ -693,21 +703,15 @@ int stack_pc_walkback(ucontext_t *context, /* or NULL for current context */
 {
 
 #if defined(__sparc)
-
     return __sparc_stack_walkback(context, maxframes, handler, handlerarg);
-
 #elif defined(_AIX)
-
     return _AIX_stack_walkback(context, maxframes, handler, handlerarg);
-
-#elif defined(__linux__) || defined(__APPLE__)
-
+#elif defined(__linux__)
     return __linux_stack_walkback(context, maxframes, handler, handlerarg);
-
+#elif defined(__APPLE__)
+    return __apple_stack_walkback(context, maxframes, handler, handlerarg);
 #elif defined(__hpux)
-
     return __hpux_stack_walkback(context, maxframes, handler, handlerarg);
-
 #else
 
 #error Unsupported architecture
@@ -903,4 +907,44 @@ int comdb2_cheapstack_char_array(char *str, int maxln)
         }
     }
     return 0;
+}
+
+#include <stdlib.h>
+#include <stdarg.h>
+#ifdef __GLIBC__
+extern int backtrace(void **, int);
+extern char **backtrace_symbols(void *const *, int);
+#else
+#define backtrace(A, B) 0
+#define backtrace_symbols(A, B) NULL
+#endif
+
+static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)
+{
+    void *buf[MAXFRAMES];
+    (void)buf;
+    unsigned int frames;
+    char **strings;
+
+    vfprintf(f, fmt, args);
+    frames = backtrace(buf, MAXFRAMES);
+    strings = backtrace_symbols(buf, frames);
+    for (int j = 0; j < frames; j++) {
+        char *p = strchr(strings[j], '('), *q = strchr(strings[j], '+');
+        if (p && q) {
+            (*p) = (*q) = '\0';
+            fprintf(f, " %s", &p[1]);
+        }
+    }
+    fprintf(f, "\n");
+    if (strings)
+        free(strings);
+}
+
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    comdb2_cheapstack_sym_valist(f, fmt, args);
+    va_end(args);
 }

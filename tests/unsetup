@@ -82,6 +82,17 @@ core_all_nodes() {
     done
 }
 
+tail_and_error_file() {
+    fl=$1
+    if [ `wc -l $fl | cut -d' ' -f1` -lt 20 ] ; then
+        return
+    fi
+    echo ".....truncated...." > tail.txt
+    grep --context=3 -i "error\|failed" $fl >> tail.txt
+    tail -20 $fl >> tail.txt
+    mv tail.txt $fl # override with partial content
+}
+
 cleanup_cluster() {    
     local deregister_db_port="pgrep pmux > /dev/null && (exec 3<>/dev/tcp/localhost/${pmux_port}; echo del comdb2/replication/${DBNAME} >&3 )"
     local dbport
@@ -106,6 +117,7 @@ cleanup_cluster() {
         if [ "$successful" != "1" ] ; then 
             echo copy $node:${DBDIR} content locally to $DBDIR/$node/ for investigation
             mkdir $DBDIR/$node/
+            # from the next line, scp may result in a an extra copy of the core
             scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
             scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
@@ -121,27 +133,37 @@ cleanup_cluster() {
     if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
         rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
         if [ "$CLEANUPDBDIR" == "2" ] ; then
-            rm -f $TESTDIR/logs/${DBNAME}.* ${TESTDIR}/var/log/cdb2/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f ${TESTDIR}/var/log/cdb2/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
+            rm -f $TESTDIR/logs/${DBNAME}.{setup,init,conn,copy,arstatus} # non clustered
+            rm -f $TESTDIR/logs/${DBNAME}.*.{setup,init,conn,copy,arstatus} # clustered
+
+            for fl in $TESTDIR/logs/${DBNAME}.*db $TESTDIR/logs/${DBNAME}.testcase ; do
+                tail_and_error_file $fl
+            done
+
             #rm -f ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.*
             rmdir ${TMPDIR}/cdb2 ${TMPDIR} 2> /dev/null
-            #if DBCLEANUP is 2 then we cleanup the logs/${DBNAME}.testcase, remark so we know
-            echo '$CLEANUPDBDIR == 2 and test was successful so we cleaned up all files related to this test' >> $TESTDIR/logs/${DBNAME}.testcase
         fi
     fi
 }
 
 flush_node() {
     local node=$1
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")' &
+    timeout --kill-after=5s 10s cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("flush")'
     sleep 1
-    cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")' &
-    sleep 1
+    timeout --kill-after=5s 10s cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("stat")'
+    timeout --kill-after=5s 10s cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("reql events off")'
 }
 
 
 unsetup_db() {
     if [[ "$NOKILL_ON_TIMEOUT" -eq 1 && "$successful" -eq "-1" ]]; then
         echo "Unsetup deferred"
+        exit 0
+    fi
+
+    if [[ "$NOKILL_ON_FAILURE" -eq 1 && "$successful" -ne "1" ]]; then
+        echo "Not killing on failed test"
         exit 0
     fi
 
@@ -158,10 +180,15 @@ unsetup_db() {
 
 
     if [[ -z "$CLUSTER" ]]; then
-        cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")' &
+        timeout --kill-after=5s 10s cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("flush")' &
         sleep 1
-        cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
+        timeout --kill-after=5s 10s cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("reql events off")' &
         sleep 1
+
+        if [[ -z "$SKIPDEBUG" ]] ; then
+            cdb2sql ${CDB2_OPTIONS} $DBNAME default 'exec procedure sys.cmd.send("exit")'
+            sleep 5
+        fi
         
         kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
     else
@@ -171,8 +198,16 @@ unsetup_db() {
             flush_node $node &
             build_pidfilelist ${TMPDIR}/${DBNAME}.${node}.pid
         done
+
         wait
 
+        for node in $CLUSTER; do
+            if [[ -z "$SKIPDEBUG" ]] ; then
+                cdb2sql ${CDB2_OPTIONS} $DBNAME --host $node 'exec procedure sys.cmd.send("exit")'
+            fi
+        done
+        sleep 5
+ 
         # for clustered, killing ssh session which is running comdb2 cmd 
         # will kill server on that node
         if [ -n "$pidfilelist" ] ; then

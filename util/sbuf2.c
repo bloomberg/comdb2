@@ -16,9 +16,10 @@
 
 /* simple buffering for stream */
 
-#include <sbuf2.h>
-
+#include <arpa/inet.h>
 #include <errno.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <poll.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -27,10 +28,9 @@
 #include <strings.h>
 #include <sys/uio.h>
 #include <unistd.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <arpa/inet.h>
-#include "locks_wrap.h"
+
+#include <hostname_support.h>
+#include <sbuf2.h>
 
 #if SBUF2_SERVER
 #  ifndef SBUF2_DFL_SIZE
@@ -48,6 +48,18 @@
 
 #if SBUF2_UNGETC
 #  define SBUF2UNGETC_BUF_MAX 4
+#endif
+
+#if WITH_SSL
+#ifdef my_ssl_println
+#undef my_ssl_println
+#endif
+#ifdef my_ssl_eprintln
+#undef my_ssl_eprintln
+#endif
+#define my_ssl_println(fmt, ...) ssl_println("SBUF2", fmt, ##__VA_ARGS__)
+#define my_ssl_eprintln(fmt, ...)                                              \
+    ssl_eprintln("SBUF2", "%s: " fmt, __func__, ##__VA_ARGS__)
 #endif
 
 struct sbuf2 {
@@ -86,6 +98,8 @@ struct sbuf2 {
     /* Server always supports SSL. */
     SSL *ssl;
     X509 *cert;
+    int protocolerr;
+    char sslerr[120];
 #endif
 };
 
@@ -345,8 +359,9 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
 ssl_downgrade:
         ssl = sb->ssl;
         rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
-        if (rc == 0 && sb->ssl != ssl)
+        if (rc == 0 && sb->ssl != ssl) {
             goto ssl_downgrade;
+        }
 #else
         rc = sb->read(sb, (char *)sb->rbuf, sb->lbuf - 1);
 #endif
@@ -573,9 +588,11 @@ ssl_downgrade:
             int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_WANT_WRITE:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_ZERO_RETURN:
@@ -589,11 +606,30 @@ ssl_downgrade:
                 }
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
-                if (n == 0)
+                sb->protocolerr = 0;
+                if (n == 0) {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "Unexpected EOF observed.");
                     errno = ECONNRESET;
+                } else {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "IO error. errno %d.", errno);
+                }
+                break;
+            case SSL_ERROR_SSL:
+                errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr),
+                                  my_ssl_eprintln,
+                                  "A failure in SSL library occured");
                 break;
             default:
                 errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "Failed to establish connection with peer. "
+                             "SSL error = %d.",
+                             ioerr);
                 break;
             }
         }
@@ -654,9 +690,11 @@ ssl_downgrade:
             int ioerr = SSL_get_error(sb->ssl, n);
             switch (ioerr) {
             case SSL_ERROR_WANT_READ:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_WANT_WRITE:
+                sb->protocolerr = 0;
                 errno = EAGAIN;
                 break;
             case SSL_ERROR_ZERO_RETURN:
@@ -670,11 +708,30 @@ ssl_downgrade:
                 }
                 goto ssl_downgrade;
             case SSL_ERROR_SYSCALL:
-                if (n == 0)
+                sb->protocolerr = 0;
+                if (n == 0) {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "Unexpected EOF observed.");
                     errno = ECONNRESET;
+                } else {
+                    ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr),
+                                 my_ssl_eprintln, "IO error. errno %d.", errno);
+                }
+                break;
+            case SSL_ERROR_SSL:
+                errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr),
+                                  my_ssl_eprintln,
+                                  "A failure in SSL library occured");
                 break;
             default:
                 errno = EIO;
+                sb->protocolerr = 1;
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "Failed to establish connection with peer. "
+                             "SSL error = %d.",
+                             ioerr);
                 break;
             }
         }
@@ -754,11 +811,10 @@ SBUF2 *SBUF2_FUNC(sbuf2open)(int fd, int flags)
     SBUF2 dummy = {.allocator = alloc};
     sb = &dummy;
 #endif
-    sb = malloc(sizeof(SBUF2));
+    sb = calloc(1, sizeof(SBUF2));
     if (sb == NULL) {
         goto error;
     }
-    memset(sb, 0, sizeof(SBUF2));
     sb->fd = fd;
     sb->flags = flags;
 #if SBUF2_SERVER
@@ -854,200 +910,26 @@ void SBUF2_FUNC(sbuf2nextline)(SBUF2 *sb)
         ;
 }
 
-#if SBUF2_SERVER
-#include <lockmacros.h> /* LOCK & UNLOCK */
-#include <plhash.h>    /* hash_t */
-#include <logmsg.h>    /* logmsg */
-#define logi(...) logmsg(LOGMSG_INFO, ##__VA_ARGS__)
-#define loge(...) logmsg(LOGMSG_ERROR, ##__VA_ARGS__)
-static pthread_mutex_t peer_lk = PTHREAD_MUTEX_INITIALIZER;
-static hash_t *peer_hash = NULL;
-struct peer_info {
-    /* Key (must come first in struct) */
-    struct in_addr addr;
-    short family;
-    /* (don't forget to bzero the key area as the member fields may not
-     * be aligned) */
-
-    /* Data */
-    char *host;
-};
-#else
-/* Keep quiet in client mode. */
-#define logi(...)
-#define loge(...)
-/* Don't cache host info in client mode. */
-#ifdef LOCK
-#undef LOCK
-#endif /* LOCK */
-#define LOCK(arg)
-#ifdef UNLOCK
-#undef UNLOCK
-#endif /* UNLOCK */
-#define UNLOCK(arg)
-#endif /* SBUF2_SERVER */
-
 char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 {
-    int fd;
-    char *host = NULL;
-#if SBUF2_SERVER
-    struct peer_info *info;
-    char *funcname;
-#else
-    void *info = NULL;
-#endif
-
-    if (sb == NULL)
-        return "???";
-
-    fd = sb->fd;
-
-    if (fd == -1)
-        return "???";
-
-    struct sockaddr_in peeraddr = {0};
-    socklen_t len = sizeof(peeraddr);
-    if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-        loge("%s:getpeername failed fd %d: %d %s\n", __func__, fd, errno,
-             strerror(errno));
-        return "???";
+    if (sb == NULL || sb->fd == -1) {
+        return NULL;
     }
-
-#if SBUF2_SERVER
-    struct peer_info key = {.family = peeraddr.sin_family};
-    memcpy(&key.addr, &peeraddr.sin_addr, sizeof(key.addr));
-#endif
-
-    LOCK(&peer_lk)
-    {
-#if SBUF2_SERVER
-        if (!peer_hash) {
-            peer_hash = hash_init(offsetof(struct peer_info, host));
-            if (!peer_hash) {
-                loge("%s:hash_init failed\n", __func__);
-                errUNLOCK(&peer_lk);
-                return "???";
-            }
-        }
-
-        info = hash_find(peer_hash, &key);
-#endif
-        if (!info) {
-            /* Do a slow lookup of this internet address in the host database
-             * to get a hostname, and then search the bigsnd node list to
-             * map this to a node number. */
-            char hnm[256] = {0};
-            char *h_name = NULL;
-            int rc;
-            int error_num = 0;
-            int goodrc = 0;
-
-#ifdef _LINUX_SOURCE
-#if SBUF2_SERVER
-            funcname = "getnameinfo";
-#endif
-            rc = getnameinfo((struct sockaddr *)&peeraddr, sizeof(peeraddr),
-                             hnm, sizeof(hnm), NULL, 0, 0);
-
-            if (0 == rc) {
-                goodrc = 1;
-                h_name = hnm;
-            } else {
-                error_num = errno;
-            }
-#else
-#if SBUF2_SERVER
-            funcname = "getipnodebyaddr";
-#endif
-            struct hostent *hp = NULL;
-            hp = getipnodebyaddr(&peeraddr.sin_addr, sizeof(peeraddr.sin_addr),
-                                 peeraddr.sin_family, &error_num);
-            if (hp) {
-                goodrc = 1;
-                h_name = hp->h_name;
-            }
-#endif
-
-            if (0 == goodrc) {
-                char addrstr[64] = "";
-                inet_ntop(peeraddr.sin_family, &peeraddr.sin_addr, addrstr,
-                          sizeof(addrstr));
-                loge("%s:%s failed fd %d (%s): error_num %d", __func__,
-                     funcname, fd, addrstr, error_num);
-                switch (error_num) {
-                case HOST_NOT_FOUND:
-                    loge(" HOST_NOT_FOUND\n");
-                    break;
-                case NO_DATA:
-                    loge(" NO_DATA\n");
-                    break;
-                case NO_RECOVERY:
-                    loge(" NO_RECOVERY\n");
-                    break;
-                case TRY_AGAIN:
-                    loge(" TRY_AGAIN\n");
-                    break;
-                default:
-                    loge(" ???\n");
-                    break;
-                }
-                host = strdup(addrstr);
-            } else {
-                host = strdup(h_name);
-            }
-
-#if SBUF2_SERVER
-            info = calloc(1, sizeof(struct peer_info));
-            if (!info) {
-                errUNLOCK(&peer_lk);
-                loge("%s: out of memory\n", __func__);
-                free(host);
-                host = NULL;
-                return "???";
-            }
-
-            memcpy(info, &key, sizeof(key));
-            info->host = host;
-            if (hash_add(peer_hash, info) != 0) {
-                errUNLOCK(&peer_lk);
-                loge("%s: hash_add failed\n", __func__);
-                free(info);
-                return host;
-            }
-#endif
-        }
-    }
-    UNLOCK(&peer_lk);
-
-#if SBUF2_SERVER
-    return (info != NULL) ? info->host : "???";
-#else
-    return (host != NULL) ? host : "???";
-#endif
+    return get_hostname_by_fileno(sb->fd);
 }
 
-void SBUF2_FUNC(cleanup_peer_hash)()
+int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n)
 {
-#if SBUF2_SERVER
-    if (peer_hash) {
-        hash_clear(peer_hash);
-        hash_free(peer_hash);
-        peer_hash = NULL;
-    }
+#if WITH_SSL
+    if (err != NULL)
+        strncpy(err, sb->sslerr,
+                n > sizeof(sb->sslerr) ? sizeof(sb->sslerr) : n);
+    return sb->protocolerr;
+#else
+    return 0;
 #endif
 }
 
 #if WITH_SSL
-#  ifdef my_ssl_println
-#    undef my_ssl_println
-#  endif
-#  ifdef my_ssl_eprintln
-#    undef my_ssl_eprintln
-#  endif
-#  define my_ssl_println(fmt, ...)    \
-      ssl_println("SBUF2", fmt, ##__VA_ARGS__)
-#  define my_ssl_eprintln(fmt, ...)   \
-      ssl_eprintln("SBUF2", "%s: " fmt, __func__, ##__VA_ARGS__)
 #  include "ssl_io.c"
 #endif

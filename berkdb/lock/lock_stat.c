@@ -735,7 +735,7 @@ __collect_lock(DB_LOCKTAB *lt, DB_LOCKER *lip, struct __db_lock *lp,
 	if (namep && memcmp(namep, "XXX.", 4) == 0)
 		namep += 4;
 
-	(*func)(arg, lip->tid, lip->id, mode, status, namep, page, rectype);
+	(*func)(arg, (uint64_t)lip->tid, lip->id, mode, status, namep, page, rectype);
 	if (hexdump)
 		free(hexdump);
 	return 0;
@@ -894,9 +894,9 @@ __lock_dump_locker_int(lt, lip, fp, just_active_locks)
 		return;
 
 	if (!just_active_locks)
-		logmsgf(LOGMSG_USER, fp, "%8lx dd=%2ld locks held %-4d write locks %-4d waiters %s thread %lu (0x%lx)",
+		logmsgf(LOGMSG_USER, fp, "%8lx dd=%2ld locks held %-4d write locks %-4d waiters %s thread 0x%p",
 			(u_long)lip->id, (long)lip->dd_id, lip->nlocks,
-			lip->nwrites, have_waiters ? "Y" : "N", lip->tid, lip->tid);
+			lip->nwrites, have_waiters ? "Y" : "N", (void *)lip->tid);
 
 	logmsgf(LOGMSG_USER, fp, "%s", F_ISSET(lip, DB_LOCKER_DELETED) ? "(D)" : "   ");
 
@@ -1024,8 +1024,8 @@ __lock_printlock_int(lt, lp, ispgno, fp, just_active_locks)
 	        mode, (u_long)lp->refcount, status);
 #else
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, lp->holderp->master_locker);
-	logmsgf(LOGMSG_USER, fp, "0x%lx %8x %8x %-10s %4lu %-7s ",
-			lp->holderp->tid, mlockerp->id, lp->holderp->id, mode, (u_long)lp->refcount, status);
+	logmsgf(LOGMSG_USER, fp, "0x%p %8x %8x %-10s %4lu %-7s ",
+			(void *)lp->holderp->tid, mlockerp->id, lp->holderp->id, mode, (u_long)lp->refcount, status);
 #endif
 
 	lockobj = lp->lockobj;
@@ -1310,7 +1310,7 @@ int __lock_dump_active_locks(
 		FILE *fp)
 {
 	/* "o" will print all active objects in object order, including 
-	 * lockers that have onle one lock in WAIT status */
+	 * lockers that have only one lock in WAIT status */
 	return __lock_dump_region_int(dbenv, "o", fp, 1 /*just_active_locks*/);
 }
 
@@ -1320,6 +1320,6 @@ int __lock_dump_all_locks(
 		FILE *fp)
 {
 	/* "o" will print all active objects in object order, including 
-	 * lockers that have onle one lock in WAIT status */
+	 * lockers that have only one lock in WAIT status */
 	return __lock_dump_region_int(dbenv, "o", fp, 0 /*just_active_locks*/);
 }

@@ -63,6 +63,31 @@ enum { NET_WIRE_HEADER_TYPE_LEN = 16 + 4 + 4 + 16 + 4 + 4 + 4 };
 BB_COMPILE_TIME_ASSERT(net_write_header_type,
                        sizeof(wire_header_type) == NET_WIRE_HEADER_TYPE_LEN);
 
+/* We can't change the on-wire protocol easily.  So it
+ * retains node numbers, but they're unused for now */
+/* type 0 is internal connect message.
+   type >0 is for applications */
+typedef struct {
+    char to_hostname[HOSTNAME_LEN];
+    int to_portnum;
+    int flags; /* was `int to_nodenum` */
+    char my_hostname[HOSTNAME_LEN];
+    int my_portnum;
+    int my_nodenum;
+} connect_message_type;
+
+/* flags for connect_message_typs */
+#define CONNECT_MSG_SSL 0x80000000
+#define CONNECT_MSG_TONODE 0x0000ffff /* backwards compatible */
+
+enum {
+    NET_CONNECT_MESSAGE_TYPE_LEN = HOSTNAME_LEN + sizeof(int) + sizeof(int) +
+                                   HOSTNAME_LEN + sizeof(int) + sizeof(int)
+};
+
+BB_COMPILE_TIME_ASSERT(net_connect_message_type,
+                       sizeof(connect_message_type) ==
+                           NET_CONNECT_MESSAGE_TYPE_LEN);
 typedef struct write_node_data {
     int flags;
     int enque_time;
@@ -124,7 +149,36 @@ typedef struct {
     unsigned long long reorders;
 } stats_type;
 
+typedef struct net_send_message_header {
+    int usertype;
+    int seqnum;
+    int waitforack;
+    int datalen;
+} net_send_message_header;
+enum { NET_SEND_MESSAGE_HEADER_LEN = 4 + 4 + 4 + 4 };
+BB_COMPILE_TIME_ASSERT(net_send_message_header,
+        sizeof(net_send_message_header) == NET_SEND_MESSAGE_HEADER_LEN);
+
+typedef struct net_ack_message_type {
+    int seqnum;
+    int outrc;
+} net_ack_message_type;
+enum { NET_ACK_MESSAGE_TYPE_LEN = 4 + 4 };
+BB_COMPILE_TIME_ASSERT(net_ack_message_type,
+        sizeof(net_ack_message_type) == NET_ACK_MESSAGE_TYPE_LEN);
+
+typedef struct net_ack_message_payload_type {
+    int seqnum;
+    int outrc;
+    int paylen;
+} net_ack_message_payload_type;
+enum { NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN = 4 + 4 + 4 };
+BB_COMPILE_TIME_ASSERT(net_ack_message_payload_type,
+        sizeof(net_ack_message_payload_type) == NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN);
+
+struct event_info;
 struct host_node_tag {
+    struct event_info *event_info;
     int fd;
     SBUF2 *sb;
     char *host;
@@ -255,7 +309,7 @@ struct netinfo_struct {
     int ischild;
     int accept_on_child;
 
-    userfunc_t userfuncs[MAX_USER_TYPE + 1];
+    userfunc_t userfuncs[USER_TYPE_MAX];
     decom_type *decomhead;
     pthread_mutex_t seqlock;
     pthread_rwlock_t lock;
@@ -365,4 +419,31 @@ void host_node_errf(loglvl lvl, host_node_type *host_node_ptr, const char *fmt, 
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_nid_dbname;
 #endif
+
+const uint8_t *net_ack_message_payload_type_get(net_ack_message_payload_type *, const uint8_t *, const uint8_t *);
+const uint8_t *net_ack_message_type_get(net_ack_message_type *, const uint8_t *, const uint8_t *);
+const uint8_t *net_connect_message_get(connect_message_type *, const uint8_t *, const uint8_t *);
+const uint8_t *net_send_message_header_get(net_send_message_header *, const uint8_t *, const uint8_t *);
+uint8_t *net_send_message_header_put(const net_send_message_header *, uint8_t *, const uint8_t *);
+const uint8_t *net_wire_header_get(wire_header_type *, const uint8_t *, const uint8_t *);
+uint8_t *net_wire_header_put(const wire_header_type *, uint8_t *, const uint8_t *);
+
+void add_host(host_node_type *);
+void decom(char *);
+void do_appsock(netinfo_type *, struct sockaddr_in *, SBUF2 *, uint8_t);
+int findpeer(int, char *, int);
+int get_dedicated_conhost(host_node_type *, struct in_addr *);
+host_node_type *get_host_node_by_name_ll(netinfo_type *, const char *);
+int net_flush_evbuffer(host_node_type *);
+int net_send_all_evbuffer(netinfo_type *, int, void **, int *, int *, int *);
+void rem_from_netinfo(netinfo_type *, host_node_type *);
+int write_connect_message(netinfo_type *, host_node_type *, SBUF2 *);
+int write_connect_message_evbuffer(host_node_type *, const struct iovec *, int);
+int write_decom(netinfo_type *, host_node_type *, const char *, int, const char *);
+int write_heartbeat(netinfo_type *, host_node_type *);
+int write_hello(netinfo_type *, host_node_type *);
+int write_hello_reply(netinfo_type *, host_node_type *);
+int write_list_evbuffer(host_node_type *, int, const struct iovec *, int, int);
+int net_send_evbuffer(netinfo_type *, const char *, int, void *, int, int, void **, int *, int);
+
 #endif /* INCLUDED__NET_INT_H */

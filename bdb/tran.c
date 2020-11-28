@@ -261,6 +261,12 @@ void *bdb_get_physical_tran(tran_type *ltran)
     return ltran->physical_tran;
 }
 
+void bdb_reset_physical_tran(tran_type *ltran)
+{
+    assert(ltran->tranclass == TRANCLASS_LOGICAL);
+    ltran->physical_tran = NULL;
+}
+
 void *bdb_get_sc_parent_tran(tran_type *ltran)
 {
     assert(ltran->tranclass == TRANCLASS_LOGICAL);
@@ -1608,9 +1614,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             if (iirc) {
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
-                logmsg(LOGMSG_ERROR, 
-                        "%s:%d failed to log logical commit, rc %d\n", __func__,
-                       __LINE__, iirc);
+                logmsg(LOGMSG_ERROR, "%s:%d td %p failed to log logical commit, rc %d\n", __func__, __LINE__,
+                       (void *)pthread_self(), iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
                 goto cleanup;
@@ -1629,7 +1634,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
-                return -1;
+                outrc = -1;
+                goto cleanup;
             }
 
             if (!isabort && tran->committed_child &&
@@ -2520,6 +2526,11 @@ int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran)
                                                  curtran->lockerid);
 }
 
+unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran)
+{
+    return curtran->lockerid;
+}
+
 int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                            int *bdberr)
 {
@@ -2659,7 +2670,7 @@ int bdb_get_lsn_lwm(bdb_state_type *bdb_state, DB_LSN *lsnout)
     return rc;
 }
 
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran)
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran)
 {
     return curtran->lockerid;
 }

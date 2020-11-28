@@ -84,7 +84,7 @@ int main()
     printf("Done waiting for thdpool, now cleanup\n");
     thdpool_stop(my_thdpool);
     sleep(1);
-    thdpool_destroy(&my_thdpool);
+    thdpool_destroy(&my_thdpool, 0);
     // this will remove the mspace and we won't be able to see any leaks,
     // so keep this commented out:
     //comdb2ma_exit();

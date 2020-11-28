@@ -20,7 +20,8 @@
 #include <net_types.h>
 #include <trigger.h>
 #include <compat.h>
-#include "intern_strings.h"
+#include <intern_strings.h>
+#include <ctrace.h>
 
 /*
 ** Master node will maintain client subscription info.
@@ -33,8 +34,11 @@
 ** Every new master clears subscription info.
 */
 
-int gbl_queuedb_timeout_sec = 10;
+static pthread_mutex_t trig_thd_cnt_lk = PTHREAD_MUTEX_INITIALIZER;
+int gbl_max_trigger_threads = 1000;
+static int num_trigger_threads = 0;
 
+int gbl_queuedb_timeout_sec = 10;
 static pthread_mutex_t trighash_lk = PTHREAD_MUTEX_INITIALIZER;
 typedef struct {
     char *host;
@@ -120,6 +124,7 @@ add:    info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
         info->hbeat = now;
         strcpy(info->spname, t->spname);
         hash_add(trigger_hash, info);
+        ctrace("TRIGGER:%s %016" PRIx64 " ASSIGNED\n", info->spname, info->trigger_cookie);
         return CDB2_TRIG_REQ_SUCCESS;
     } else if (strcmp(info->host, trigger_hostname(t)) == 0 &&
                info->trigger_cookie == t->trigger_cookie) {
@@ -131,6 +136,7 @@ add:    info = malloc(sizeof(trigger_info_t) + t->spname_len + 1);
         logmsg(LOGMSG_USER,
                "Heartbeat timeout:%.0fs sp:%s host:%s trigger_cookie:%016" PRIx64
                "\n", diff, info->spname, info->host, info->trigger_cookie);
+        ctrace("TRIGGER:%s %016" PRIx64 " UNASSIGNED TIMEOUT\n", info->spname, info->trigger_cookie);
         trigger_hash_del(info);
         goto add;
     }
@@ -150,8 +156,9 @@ int trigger_register(trigger_reg_t *t)
 
 static int trigger_unregister_int(trigger_reg_t *t)
 {
-    if (trigger_hash == NULL)
-        return 0;
+    if (trigger_hash == NULL) {
+        return CDB2_TRIG_REQ_SUCCESS;
+    }
     GET_BDB_STATE(bdb_state);
     uint8_t buf[TRIGGER_REG_MAX];
     t = trigger_recv(t, buf);
@@ -160,6 +167,7 @@ static int trigger_unregister_int(trigger_reg_t *t)
         strcmp(info->host, trigger_hostname(t)) == 0 &&
         info->trigger_cookie == t->trigger_cookie) {
         trigger_hash_del(info);
+        ctrace("TRIGGER:%s %016" PRIx64 " UNASSIGNED\n", info->spname, info->trigger_cookie);
         return CDB2_TRIG_REQ_SUCCESS;
     }
     return CDB2_TRIG_ASSIGNED_OTHER;
@@ -189,7 +197,8 @@ static void *trigger_start_int(void *name_)
     strcpy(name, name_);
     free(name_);
     trigger_reg_t *reg;
-    trigger_reg_init(reg, name);
+    trigger_reg_init(reg, name, 0);
+    ctrace("trigger:%s %016" PRIx64 " register req\n", reg->spname, reg->trigger_cookie);
     int rc, retry = 10;
     while (--retry > 0) {
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
@@ -198,16 +207,23 @@ static void *trigger_start_int(void *name_)
         if (rc == CDB2_TRIG_REQ_SUCCESS)
             break;
         if (rc == CDB2_TRIG_ASSIGNED_OTHER)
-            return NULL;
+            goto done;
         sleep(1);
     }
     if (rc != CDB2_TRIG_REQ_SUCCESS) {
+        ctrace("trigger:%s %016" PRIx64 " register failed rc:%d\n", reg->spname,
+               reg->trigger_cookie, rc);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
         force_unregister(NULL, reg);
         bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
-        return NULL;
+        goto done;
     }
+    ctrace("trigger:%s %016" PRIx64 " register success\n", reg->spname, reg->trigger_cookie);
     exec_trigger(reg);
+done:
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    num_trigger_threads--;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
     return NULL;
 }
 
@@ -216,7 +232,20 @@ void trigger_start(const char *name)
 {
     if (!gbl_ready) return;
     pthread_t t;
-    pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name));
+    Pthread_mutex_lock(&trig_thd_cnt_lk);
+    if (num_trigger_threads >= gbl_max_trigger_threads) {
+        Pthread_mutex_unlock(&trig_thd_cnt_lk);
+        logmsg(LOGMSG_ERROR, "%s: Exhausted max trigger threads. Max:%d \n", __func__, gbl_max_trigger_threads);
+        return;
+    }
+    num_trigger_threads++;
+    Pthread_mutex_unlock(&trig_thd_cnt_lk);
+
+    if (pthread_create(&t, &gbl_pthread_attr_detached, trigger_start_int, strdup(name))) {
+        Pthread_mutex_lock(&trig_thd_cnt_lk);
+        num_trigger_threads--;
+        Pthread_mutex_unlock(&trig_thd_cnt_lk);
+    }
 }
 
 // FIXME TODO XXX: KEEP TWO HASHES (1) by spname (2) by node num
@@ -291,9 +320,12 @@ int trigger_stat()
     time_t now = time(NULL);
     for (int i = 0; i < thedb->num_qdbs; ++i) {
         struct dbtable *qdb = thedb->qdbs[i];
+        consumer_lock_read(qdb);
         int ctype = dbqueue_consumer_type(qdb->consumers[0]);
-        if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA)
+        if (ctype != CONSUMER_TYPE_LUA && ctype != CONSUMER_TYPE_DYNLUA) {
+            consumer_unlock(qdb);
             continue;
+        }
         const char *type = ctype == CONSUMER_TYPE_LUA ? "trigger" : "consumer";
         char *spname = SP4Q(qdb->tablename);
         trigger_info_t *info =
@@ -308,6 +340,7 @@ int trigger_stat()
             logmsg(LOGMSG_USER, "%s: %8s:%s UNASSIGNED\n", __func__, type,
                    spname);
         }
+        consumer_unlock(qdb);
     }
     Pthread_mutex_unlock(&trighash_lk);
     return 0;

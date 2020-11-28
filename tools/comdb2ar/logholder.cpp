@@ -9,7 +9,7 @@
 #include <signal.h>
 #include <unistd.h>
 
-#include <portmuxusr.h>
+#include <portmuxapi.h>
 #include <sbuf2.h>
 
 

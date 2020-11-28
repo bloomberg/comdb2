@@ -25,6 +25,7 @@ static const char revid[] = "$Id: log.c,v 11.133 2003/09/13 19:20:37 bostic Exp 
 #include "dbinc/log.h"
 #include "dbinc/db_swap.h"
 #include "dbinc/txn.h"
+#include <logmsg.h>
 
 static int	__log_init __P((DB_ENV *, DB_LOG *));
 static int	__log_recover __P((DB_LOG *));
@@ -1158,8 +1159,10 @@ __log_is_outdated(dbenv, fnum, outdatedp)
 	dblp = dbenv->lg_handle;
 	*outdatedp = 0;
 
-	if ((ret = __log_name(dblp, fnum, &name, NULL, 0)) != 0)
+	if ((ret = __log_name(dblp, fnum, &name, NULL, 0)) != 0) {
+		abort();
 		return (ret);
+	}
 
 	/* If the file exists, we're just fine. */
 	if (__os_exists(name, NULL) == 0)
@@ -1175,8 +1178,10 @@ __log_is_outdated(dbenv, fnum, outdatedp)
 	cfile = lp->lsn.file;
 	R_UNLOCK(dbenv, &dblp->reginfo);
 
-	if (cfile > fnum)
+	if (cfile > fnum) {
+		logmsg(LOGMSG_INFO, "%s returning outdated for %s\n", __func__, name);
 		*outdatedp = 1;
+	}
 out:	__os_free(dbenv, name);
 	return (ret);
 }

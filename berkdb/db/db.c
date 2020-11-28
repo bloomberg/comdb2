@@ -39,6 +39,11 @@
 
 #include "db_config.h"
 #include <stdlib.h>
+#include "cheapstack.h"
+
+#if defined (DEBUG_STACK_AT_DB_OPEN_CLOSE)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
 
 #ifndef lint
 static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $";
@@ -62,6 +67,7 @@ static const char revid[] = "$Id: db.c,v 11.283 2003/11/14 05:32:29 ubell Exp $"
 #include "dbinc/qam.h"
 #include "dbinc/txn.h"
 #include "logmsg.h"
+#include <tohex.h>
 
 static int __db_dbenv_mpool __P((DB *, const char *, u_int32_t));
 static int __db_disassociate __P((DB *));
@@ -851,6 +857,13 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 
 	dbenv = dbp->dbenv;
 
+#if defined (DEBUG_STACK_AT_DB_OPEN_CLOSE)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%ld closed %s at %p txn=0x%x unopened=%u:",
+			pthread_self(), fid_str, dbp, txn ? txn->txnid : 0,
+			F_ISSET(dbp, DB_AM_OPEN_CALLED));
+#endif
 	/* If never opened, or not currently open, it's easy. */
 	if (!F_ISSET(dbp, DB_AM_OPEN_CALLED))
 		goto never_opened;
@@ -941,26 +954,33 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 		if (F_ISSET(dbp, DB_AM_RECOVER))
 			t_ret = __dbreg_revoke_id(dbp, 0, DB_LOGFILEID_INVALID);
 		else {
-			if ((t_ret = __dbreg_close_id(dbp, txn)) != 0 &&
-			    txn != NULL) {
-				/*
-				 * We're in a txn and the attempt to log the
-				 * close failed;  let the txn subsystem know
-				 * that we need to destroy this dbp once we're
-				 * done with the abort, then bail from the
-				 * close.
-				 *
-				 * Note that if the attempt to put off the
-				 * close -also- fails--which it won't unless
-				 * we're out of heap memory--we're really
-				 * screwed.  Panic.
-				 */
-				if ((ret =
-				    __txn_closeevent(dbenv, txn, dbp)) != 0)
-					return (__db_panic(dbenv, ret));
-				if (deferred_closep != NULL)
-					*deferred_closep = 1;
-				return (t_ret);
+			t_ret = __dbreg_close_id(dbp, txn);
+			if (t_ret != 0) { 
+					char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+					fileid_str(dbp->fileid, fid_str);
+					logmsg(LOGMSG_DEBUG, "dbreg_close failed for %s, "
+							"txn is %p\n", fid_str, txn);
+
+				if (txn != NULL) {
+					/*
+					 * We're in a txn and the attempt to log the
+					 * close failed;  let the txn subsystem know
+					 * that we need to destroy this dbp once we're
+					 * done with the abort, then bail from the
+					 * close.
+					 *
+					 * Note that if the attempt to put off the
+					 * close -also- fails--which it won't unless
+					 * we're out of heap memory--we're really
+					 * screwed.  Panic.
+					 */
+					if ((ret =
+								__txn_closeevent(dbenv, txn, dbp)) != 0)
+						return (__db_panic(dbenv, ret));
+					if (deferred_closep != NULL)
+						*deferred_closep = 1;
+					return (t_ret);
+				}
 			}
 		}
 

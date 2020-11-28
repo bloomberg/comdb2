@@ -27,6 +27,9 @@
 #include "md5.h"
 #include "tohex.h"
 
+pthread_mutex_t gbl_test_log_file_mtx = PTHREAD_MUTEX_INITIALIZER;
+char *gbl_test_log_file = NULL;
+
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -113,6 +116,7 @@ static void typeofFunc(
   assert( SQLITE_DATETIMEUS==9 );
   assert( SQLITE_INTERVAL_DSUS==10 );
   assert( SQLITE_DECIMAL==11 );
+  assert( SQLITE_NEXTSEQ==(SQLITE_MAX_U32-2) );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* EVIDENCE-OF: R-01470-60482 The sqlite3_value_type(V) interface returns
   ** the datatype code for the initial datatype of the sqlite3_value object
@@ -140,6 +144,7 @@ static void lengthFunc(
     case SQLITE_DATETIME:
     case SQLITE_DATETIMEUS:
     case SQLITE_DECIMAL:
+    case SQLITE_NEXTSEQ:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     case SQLITE_BLOB:
     case SQLITE_INTEGER:
@@ -443,12 +448,34 @@ static void sleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[])
   int i;
   for(i = 0; i < n; i++) {
     sleep(1);
-    if( comdb2_sql_tick() )
-      break;  
-    /* We could also return error by doing
-     * sqlite3_result_error(context, "Interrupted", -1); */
+    int rc = comdb2_sql_tick();
+    if( rc ) {
+      sqlite3_result_error_code(context, rc);
+      return;
+    }
   }
   sqlite3_result_int(context, i);
+}
+
+static void usleepFunc(sqlite3_context *context, int argc, sqlite3_value *argv[]) {
+  int total, remain, us;
+  if( argc != 1 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  total = remain = sqlite3_value_int(argv[0]);
+  if( total < 0 ){
+    sqlite3_result_int(context, -1);
+    return;
+  }
+  while( remain > 0 ){
+    us = ( remain > 1000000 ) ? 1000000 : remain;
+    remain -= us;
+    usleep(us);
+    if( comdb2_sql_tick() )
+      break;
+  }
+  sqlite3_result_int(context, (total - remain));
 }
 
 static void tableNamesFunc(
@@ -521,10 +548,17 @@ static void roundFunc(sqlite3_context *context, int argc, sqlite3_value **argv){
   ** handle the rounding directly,
   ** otherwise use printf.
   */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( n==0 && r>=0 && r<(double)(LARGEST_INT64-1) ){
+    r = (double)((sqlite_int64)(r+0.5));
+  }else if( n==0 && r<0 && (-r)<(double)(LARGEST_INT64-1) ){
+    r = -(double)((sqlite_int64)((-r)+0.5));
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( n==0 && r>=0 && r<LARGEST_INT64-1 ){
     r = (double)((sqlite_int64)(r+0.5));
   }else if( n==0 && r<0 && (-r)<LARGEST_INT64-1 ){
     r = -(double)((sqlite_int64)((-r)+0.5));
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }else{
     zBuf = sqlite3_mprintf("%.*f",n,r);
     if( zBuf==0 ){
@@ -696,7 +730,7 @@ static void guidStrFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
 }
 
 static void guidFromStrFunc(
@@ -748,7 +782,34 @@ static void guidFromByteFunc(
   char guid_str[GUID_STR_LENGTH];
   uuid_unparse(guid_blob, guid_str);
 
-  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH, SQLITE_TRANSIENT);
+  sqlite3_result_text(context, guid_str, GUID_STR_LENGTH - 1, SQLITE_TRANSIENT);
+}
+
+static void comdb2TestLogFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  assert( argc==1 );
+  if( sqlite3_value_type(argv[0])==SQLITE_TEXT ){
+    const unsigned char *zMsg = sqlite3_value_text(argv[0]);
+    if( zMsg ){
+      Pthread_mutex_lock(&gbl_test_log_file_mtx);
+      if( gbl_test_log_file!=NULL ){
+        FILE *file = fopen(gbl_test_log_file, "a+");
+        if( file!=NULL ){
+          size_t nLen = strlen((char*)zMsg);
+          size_t nRet = 0;
+          if( nLen>0 ){
+            nRet = fwrite(zMsg, sizeof(char), nLen, file);
+          }
+          fflush(file); fclose(file);
+          sqlite3_result_int64(context, (i64)nRet);
+        }
+      }
+      Pthread_mutex_unlock(&gbl_test_log_file_mtx);
+    }
+  }
 }
 
 static void comdb2DoubleToBlobFunc(
@@ -821,6 +882,8 @@ static void comdb2SysinfoFunc(
     }else{
       sqlite3_result_error(context, "unable to obtain host name", -1);
     }
+  }else if( sqlite3_stricmp(zName, "class")==0 ){
+    sqlite3_result_text(context, get_my_mach_class_str(), -1, SQLITE_TRANSIENT);
   }else if( sqlite3_stricmp(zName, "version")==0 ){
     char *zVersion = sqlite3_mprintf("[%s] [%s] [%s] [%s] [%s]", gbl_db_version,
                                      gbl_db_codename, gbl_db_semver,
@@ -2628,12 +2691,7 @@ void sqlite3RegisterBuiltinFunctions(void){
                                                      SQLITE_FUNC_TYPEOF),
 #endif
     FUNCTION(ltrim,              1, 1, 0, trimFunc         ),
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* TODO: Why is a 3 argument version of ltrim needed? */
-    FUNCTION(ltrim,              3, 1, 0, trimFunc         ),
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(ltrim,              2, 1, 0, trimFunc         ),
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(rtrim,              1, 2, 0, trimFunc         ),
     FUNCTION(rtrim,              2, 2, 0, trimFunc         ),
     FUNCTION(trim,               1, 3, 0, trimFunc         ),
@@ -2651,6 +2709,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     FUNCTION(instr,              2, 0, 0, instrFunc        ),
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     VFUNCTION(sleep,             1, 0, 0, sleepFunc        ),
+    VFUNCTION(usleep,            1, 0, 0, usleepFunc       ),
     VFUNCTION(comdb2_extract_table_names,
                                  1, 0, 0, tableNamesFunc   ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2709,6 +2768,7 @@ void sqlite3RegisterBuiltinFunctions(void){
     LIKEFUNC(like, 3, &likeInfoNorm, SQLITE_FUNC_LIKE),
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+    FUNCTION(comdb2_test_log,       1, 0, 0, comdb2TestLogFunc),
     FUNCTION(comdb2_double_to_blob, 1, 0, 0, comdb2DoubleToBlobFunc),
     FUNCTION(comdb2_blob_to_double, 1, 0, 0, comdb2BlobToDoubleFunc),
     FUNCTION(comdb2_sysinfo,        1, 0, 0, comdb2SysinfoFunc),
@@ -2767,3 +2827,41 @@ void sqlite3RegisterBuiltinFunctions(void){
   }
 #endif
 }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+static int strptrcmp(const void *p1, const void *p2) {
+      return strcmp(*(char *const *)p1, *(char *const *)p2);
+}
+
+void sqlite3GetAllBuiltinFunctions(void **data, int *tot)
+{
+    int cnt = 100;
+    int num = 0;
+    char **arr = malloc((cnt * sizeof(char *)));
+    int i;
+    FuncDef *p;
+    for(i=0; i<SQLITE_FUNC_HASH_SZ; i++){
+        for(p=sqlite3BuiltinFunctions.a[i]; p; p=p->u.pHash){
+            if (num >= cnt) {
+                cnt *= 2;
+                arr = realloc(arr, cnt * sizeof(char*));
+            }
+            arr[num++] = sqlite3_mprintf("%s()", p->zName);
+        }
+    }
+    arr[num++] = sqlite3_mprintf("sys.cmd.send()");
+    arr[num++] = sqlite3_mprintf("sys.cmd.verify()");
+    qsort(arr, num, sizeof(char *), strptrcmp);
+    *tot = num;
+    *data = arr;
+}
+
+void sqlite3FreeAllBuiltinFunctions(void **data, int tot)
+{
+    char **arr = (char **)data;
+    for (int i = 0; i < tot; i++) {
+        sqlite3_free(arr[i]);
+    }
+    free(arr);
+}
+#endif

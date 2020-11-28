@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-# set -x
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
@@ -8,6 +7,9 @@ TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(uname -m)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 3 + 2))m
+elif [[ "$(uname -m)" == "aarch64" ]] ; then
+    t=${TEST_TIMEOUT%%m}
+    TEST_TIMEOUT=$(($t * 2 + 2))m
 elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m
@@ -69,12 +71,16 @@ warn_long_setup() {
 # in the cores directory (if not set then in TESTDIR) for core file 
 # containing comdb2 and pid in core filename.
 find_cores() {
+    if [ $OSTYPE != "linux-gnu" ] ; then
+        return
+    fi
     # assumes core location and pattern is the same as local machine
     # for all machines in cluster 
     local LCLDBNM=$1
     local LCLDBDIR=$2
-    local COREAGE=60
+    local COREAGE=${FINDCOREAGE:-60}
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
+    [[ ${CPAT:0:1} == '|' ]] && return #TODO: handle cores controled by coredumpctl
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
         COREDIR=$LCLDBDIR
@@ -102,7 +108,9 @@ find_cores() {
     eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
     if [[ -n "$cr" ]] ; then
         echo "Core file $HOSTNAME:${cr} copied to $LCLDBDIR" > $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
-        ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
+        if [ ! -f $cr ] ; then 
+            ln ${cr} -t $LCLDBDIR || cp ${cr} $LCLDBDIR #if can't hardlink then just copy
+        fi
         which gdb > /dev/null && [ -f $cr ] && echo 'where' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace.$HOSTNAME.txt
         which gdb > /dev/null && [ -f $cr ] && echo 't a a bt full' | gdb -q $COMDB2_EXE $cr &>> $LCLDBDIR/core_stacktrace_long.$HOSTNAME.txt
         ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
@@ -178,7 +186,7 @@ call_setup() {
          warn_long_setup
          rc=$?
     else
-        { timeout ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!"
+        { timeout --kill-after=5s ${SETUP_TIMEOUT} ${TESTSROOTDIR}/setup 2>&1 || echo $?; } | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.setup | cut -c11- | grep "^!"
     fi
     sleep 0.8 # wait a bit for any cores
     #last line of .setup file will contain the error rc if any
@@ -212,18 +220,18 @@ check_db_at_finish() {
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     if [[ -z "$CLUSTER" ]] ; then
-        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
+        out=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
-            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
+            timeout --kill-after=5s 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
             echo $out
             return
         fi
 
     fi
     for node in ${CLUSTER} ; do
-        out=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' 2>&1)
+        out=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
-            timeout 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
+            timeout --kill-after=5s 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
             echo $out
             return
         fi
@@ -235,17 +243,28 @@ verify_db_at_finish() {
     local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
-    node=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select comdb2_host()' )
-    tables=$(timeout 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables')
+    node=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select comdb2_host()' )
+    tables=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables')
     for t in $tables ; do 
         outfl=${t}_verify.out
-        timeout 3m $CDB2SQL_EXE ${LCLOPTIONS} --verbose --tabs $LCLDBNM --host $node "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
+        timeout --kill-after=5s 3m $CDB2SQL_EXE ${LCLOPTIONS} --verbose --tabs $LCLDBNM --host $node "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl
         if ! grep "^Verify succeeded.$" $outfl > /dev/null ; then
             echo "Table $t"
             return
         fi
     done
 }
+
+exit_if_above_max_test_failures () {
+    MAX_TEST_FAILURES=10    # stop running if more that this number of failures in test.log
+    F=`grep failed ${TESTDIR}/test.log | wc -l`
+    if [ "$F" -ge "$MAX_TEST_FAILURES" ] ; then 
+        echo "$TESTCASE: Max number of allowed test failures ($MAX_TEST_FAILURES) reached" >> ${TESTDIR}/test.log
+        exit 1; 
+    fi
+}
+
+exit_if_above_max_test_failures
 
 
 # start the testing: setup, runit, check cores, unsetup
@@ -259,7 +278,7 @@ if [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
     callgrind_control -i on
 fi
 
-timeout ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
+timeout --kill-after=5s ${TEST_TIMEOUT} ./runit ${DBNAME} 2>&1  | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' &> ${TESTDIR}/logs/${DBNAME}.testcase
 rc=${PIPESTATUS[0]}
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
@@ -308,37 +327,44 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     fi
 fi
 
-FAILCOL=""
-NORCOL=""
+RED=""
+GREEN=""
+YELLOW=""
+NEUTRAL=""
 #if we are outputing to a terminal, show failure in red text
 if [ -t 1 ] ; then
-    FAILCOL="\033[1;31m"
-    NORCOL="\033[0m"
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    NEUTRAL="\033[0m"
 fi
 
 if [[ -n "$cr" ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} with core dumped ($cr)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} with core dumped ($cr)"
     echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
 elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
-    echo "!$TESTCASE: timeout (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
 elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
-    echo -e "!$TESTCASE: also ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
+    echo -e "!$TESTCASE: also ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: also failed verify ($verify_ret)" >> ${TEST_LOG}
+elif [[ -f "${DBNAME}.failexit" ]] ; then
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} (found ${DBNAME}.failexit, logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo "!$TESTCASE: failed (found ${DBNAME}.failexit)" >> ${TEST_LOG}
 elif [[ -n "$verify_ret" ]] ; then
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} verify ($verify_ret)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}
 elif [[ $rc -eq 0 ]] ; then
-    echo "!$TESTCASE: success (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: success" >> ${TEST_LOG}
     successful=1
 else
-    echo -e "!$TESTCASE: ${FAILCOL}failed${NORCOL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
 fi
 
@@ -349,6 +375,13 @@ call_unsetup
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
+
+if [[ "${DEBUGGER}" == "callgrind" ]]; then 
+   echo "callgrind files are located here:"
+   ls ${TESTDIR}/*.callgrind
+fi
+
+
 
 exit $rc
 

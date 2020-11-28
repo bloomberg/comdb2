@@ -305,7 +305,7 @@ static inline int wait_to_resume(struct schema_change_type *s)
             sleep(1);
             stm--;
             /* give a chance for sc to stop */
-            if (stopsc) {
+            if (get_stopsc(__func__, __LINE__)) {
                 sc_errf(s, "master downgrading\n");
                 return SC_MASTER_DOWNGRADE;
             }
@@ -399,13 +399,21 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
-    sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
+    sc_printf(s, "starting schema update with seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
 
+    int local_lock = 0;
+    if (!iq->sc_locked) {
+        wrlock_schema_lk();
+        local_lock = 1;
+    }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     dyns_init_globals();
     if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        if (local_lock)
+            unlock_schema_lk();
         return rc;
     }
 
@@ -419,6 +427,8 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Internal error\n");
+        if (local_lock)
+            unlock_schema_lk();
         return SC_INTERNAL_ERROR;
     }
     newdb->schema_version = get_csc2_version(newdb->tablename);
@@ -431,10 +441,16 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Failed to process schema!\n");
+        if (local_lock)
+            unlock_schema_lk();
         return -1;
     }
 
     if ((rc = sql_syntax_check(iq, newdb))) {
+        Pthread_mutex_unlock(&csc2_subsystem_mtx);
+        if (local_lock)
+            unlock_schema_lk();
+        sc_errf(s, "Sqlite syntax check failed\n");
         backout(newdb);
         cleanup_newdb(newdb);
         dyns_cleanup_globals();
@@ -451,6 +467,8 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
+        if (local_lock)
+            unlock_schema_lk();
         backout(newdb);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
@@ -461,6 +479,8 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
         prepare_changes(s, db, newdb, &s->plan, &scinfo);
     if (changed == SC_UNKNOWN_ERROR) {
         backout(newdb);
+        if (local_lock)
+            unlock_schema_lk();
         cleanup_newdb(newdb);
         sc_errf(s, "Internal error");
         return SC_INTERNAL_ERROR;
@@ -488,6 +508,8 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
         /* todo: clean up db */
         sc_errf(s, "failed opening new db\n");
         change_schemas_recover(s->tablename);
+        if (local_lock)
+            unlock_schema_lk();
         return -1;
     }
 
@@ -505,8 +527,13 @@ logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->
                        "the new master can sort it out\n");
         }
 
+        if (local_lock)
+            unlock_schema_lk();
         clean_exit();
     }
+
+    if (local_lock)
+        unlock_schema_lk();
 
     /* we can resume sql threads at this point */
 
@@ -551,7 +578,7 @@ convert_records:
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
     if (s->resume && s->alteronly && !s->finalize_only) {
-        if (gbl_test_sc_resume_race && !stopsc) {
+        if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
             sleep(5);
@@ -562,14 +589,14 @@ convert_records:
     MEMORY_SYNC;
 
     /* give a chance for sc to stop */
-    if (stopsc) {
+    if (get_stopsc(__func__, __LINE__)) {
         sc_errf(s, "master downgrading\n");
         change_schemas_recover(s->tablename);
         return SC_MASTER_DOWNGRADE;
     }
     reset_sc_stat();
     rc = wait_to_resume(s);
-    if (rc || stopsc) {
+    if (rc || get_stopsc(__func__, __LINE__)) {
         sc_errf(s, "master downgrading\n");
         return SC_MASTER_DOWNGRADE;
     }
@@ -604,7 +631,7 @@ convert_records:
     if (s->preempted != prev_preempted || rc == SC_PREEMPTED) {
         sc_errf(s, "SCHEMACHANGE PREEMPTED\n");
         return SC_PREEMPTED;
-    } else if (stopsc || rc == SC_MASTER_DOWNGRADE)
+    } else if (get_stopsc(__func__, __LINE__) || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;
     else if (rc)
         rc = SC_CONVERSION_FAILED;
@@ -665,6 +692,12 @@ errout:
     return SC_OK;
 }
 
+#define BACKOUT                                                                \
+    do {                                                                       \
+        sc_errf(s, "%s:%d backing out\n", __func__, __LINE__);                 \
+        goto backout;                                                          \
+    } while (0);
+
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
 {
@@ -676,16 +709,28 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     iq->usedb = db;
 
+    new_bdb_handle = newdb->handle;
+    old_bdb_handle = db->handle;
+
+    if ((rc = bdb_lock_tablename_write(db->handle, "comdb2_tables", transac)) != 0) {
+        sc_errf(s, "Error getting comdb2_tables lock: %d\n", rc);
+        BACKOUT;
+    }
+
+    if ((rc = bdb_lock_table_write(db->handle, transac)) != 0) {
+        sc_errf(s, "Error getting tablelock: %d\n", rc);
+        BACKOUT;
+    }
+
     if (iq && iq->tranddl > 1 &&
         verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
-        goto backout;
+        BACKOUT;
     }
 
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;
 
-    bdb_lock_table_write(db->handle, transac);
     sc_printf(s, "[%s] Got table write lock OK\n", s->tablename);
 
     s->got_tablelock = 1;
@@ -702,7 +747,9 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort) {
         sc_errf(s, "Aborting schema change %s\n", s->tablename);
-        goto backout;
+        sc_errf(s, "gbl_sc_abort=%d db->sc_abort=%d iq->sc_should_abort=%d\n",
+                gbl_sc_abort, db->sc_abort, iq->sc_should_abort);
+        BACKOUT;
     }
 
     /* All records converted ok.  Whether this is live schema change or
@@ -719,7 +766,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     rc = restore_constraint_pointers(db, newdb);
     if (rc != 0) {
         sc_errf(s, "Error restoring constraing pointers!\n");
-        goto backout;
+        BACKOUT;
     }
 
     /* from this point on failures should goto either backout if recoverable
@@ -736,11 +783,22 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         bdberr =
             bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
         if (bdberr != BDBERR_NOERROR)
-            goto backout;
+            BACKOUT;
+    }
+
+    if ((rc = alter_table_sequences(iq, transac, db, newdb))) {
+        sc_errf(s, "Failed alter_table_sequences: %d\n", rc);
+        BACKOUT;
+    }
+
+    rc = create_datacopy_array(newdb);
+    if (rc) {
+        sc_errf(s, "error initializing datacopy array\n");
+        return -1;
     }
 
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
-        goto backout;
+        BACKOUT;
 
     /* load new csc2 data */
     rc = load_new_table_schema_tran(thedb, transac,
@@ -748,11 +806,11 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (rc != 0) {
         sc_errf(s, "Error loading new schema into meta tables, "
                    "trying again\n");
-        goto backout;
+        BACKOUT;
     }
 
     if ((rc = set_header_and_properties(transac, newdb, s, 1, olddb_bthashsz)))
-        goto backout;
+        BACKOUT;
 
     /*update necessary versions and delete unnecessary files from newdb*/
     if (gbl_use_plan && newdb->plan) {
@@ -765,13 +823,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     if (rc)
-        goto backout;
+        BACKOUT;
 
     /* delete any new file versions this table has */
     if (bdb_del_file_versions(newdb->handle, transac, &bdberr) ||
         bdberr != BDBERR_NOERROR) {
         sc_errf(s, "%s: bdb_del_file_versions failed\n", __func__);
-        goto backout;
+        BACKOUT;
     }
 
     s->already_finalized = 1;
@@ -784,9 +842,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb->plan = NULL;
     db->schema = clone_schema(newdb->schema);
-
-    new_bdb_handle = newdb->handle;
-    old_bdb_handle = db->handle;
 
     free_db_and_replace(db, newdb);
     fix_constraint_pointers(db, newdb);
@@ -805,7 +860,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (s->finalize) {
         if (create_sqlmaster_records(transac)) {
             sc_errf(s, "create_sqlmaster_records failed\n");
-            goto backout;
+            BACKOUT;
         }
         create_sqlite_master();
     }
@@ -830,14 +885,15 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     sc_printf(s, "Schema change ok\n");
 
-    rc = bdb_close_only_sc(old_bdb_handle, transac, &bdberr);
+    rc = bdb_close_only_sc(old_bdb_handle, NULL, &bdberr);
     if (rc) {
         sc_errf(s, "Failed closing old db, bdberr %d\n", bdberr);
         goto failed;
     }
     sc_printf(s, "Close old db ok\n");
 
-    bdb_handle_reset_tran(new_bdb_handle, transac);
+    bdb_handle_reset_tran(new_bdb_handle, transac, iq->sc_close_tran);
+    iq->sc_closed_files = 1;
 
     if (!s->same_schema ||
         (!s->fastinit &&
@@ -890,13 +946,15 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     free(newdb);
     free(new_bdb_handle);
 
-    sc_printf(s, "Schema change finished, seed %llx\n", iq->sc_seed);
+    sc_printf(s, "Schema change finished, seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
     return 0;
 
 backout:
     live_sc_off(db);
     backout_constraint_pointers(newdb, db);
     change_schemas_recover(/*s->tablename*/ db->tablename);
+    bdb_close_only_sc(new_bdb_handle, NULL, &bdberr);
 
     logmsg(LOGMSG_WARN,
            "##### BACKOUT #####   %s v: %d sc:%d lrl: %d odh:%d bdb:%p\n",
@@ -953,7 +1011,7 @@ int do_upgrade_table_int(struct schema_change_type *s)
     rc = upgrade_all_records(db, db->sc_genids, s);
     db->doing_upgrade = 0;
 
-    if (stopsc)
+    if (get_stopsc(__func__, __LINE__))
         rc = SC_MASTER_DOWNGRADE;
     else if (rc) {
         rc = SC_CONVERSION_FAILED;
@@ -993,7 +1051,8 @@ int finalize_upgrade_table(struct schema_change_type *s)
         rc = mark_schemachange_over_tran(s->db->tablename, tran);
         if (rc != 0) continue;
 
-        rc = trans_commit(&iq, tran, gbl_mynode);
+        rc = trans_commit(&iq, tran, gbl_myhostname);
+        tran = NULL;
     }
 
     return rc;

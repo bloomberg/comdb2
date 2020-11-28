@@ -225,15 +225,13 @@ alloc:			if ((ret = __os_realloc(dbenv,
 		if (array->mpfarray[offset].pinref) {
 			if (debug_switch_verbose_fix_pinref()) {
 				logmsg(LOGMSG_WARN, 
-                    "*** %lu *** fixing pinref %d %d %d %p  %s [%d-%d]\n",
-				    pthread_self(),
+				    "*** %p *** fixing pinref %d %d %d %p  %s [%d-%d]\n",
+				    (void *)pthread_self(),
 				    array->mpfarray[offset].pinref,
 				    offset + array->low_extent, offset,
 				    array->mpfarray[offset].mpf,
-				    (array ==
-					&qp->array1) ? "array1" : "array2",
+				    (array == &qp->array1) ? "array1" : "array2",
 				    array->low_extent, array->hi_extent);
-
 			}
 			if (debug_switch_fix_pinref()) {
 				array->mpfarray[offset].pinref = 0;

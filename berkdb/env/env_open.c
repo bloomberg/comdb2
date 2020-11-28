@@ -462,7 +462,8 @@ __dbenv_open(dbenv, db_home, flags, mode)
 				__txn_regop_rowlocks_args *regoprowlocks;
 				u_int32_t rectype;
 				int32_t timestamp=0;
-				DBT data;
+				DBT data = {0};
+				data.flags = DB_DBT_REALLOC;
 
 				if ((ret = __log_cursor(dbenv, &logc)) != 0)
 					goto err;
@@ -514,6 +515,7 @@ __dbenv_open(dbenv, db_home, flags, mode)
 							break;
 					}
 				}
+				free(data.data);
 foundlsn:
 				if ((ret = __log_c_close(logc)) != 0)
 					goto err;

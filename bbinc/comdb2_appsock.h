@@ -17,6 +17,9 @@
 #ifndef __INCLUDED_COMDB2_APPSOCK_H
 #define __INCLUDED_COMDB2_APPSOCK_H
 
+#include <inttypes.h>
+struct sbuf2;
+
 enum {
     /* Whether it's an SQL handler? */
     APPSOCK_FLAG_IS_SQL = 1 << 0,
@@ -32,9 +35,10 @@ enum {
 struct comdb2_appsock_arg {
     struct thr_handle *thr_self;
     struct dbenv *dbenv;
-    struct dbtable *tab; /* Changed on the execution of 'use' */
+    char *table_name;       /* Changed on the execution of 'use' */ 
+    int table_num;          /* Also for 'use' */
     int conv_flags;      /* Changed on the execution of 'lendian' */
-    SBUF2 *sb;
+    struct sbuf2 *sb;
     char *cmdline;
     int *keepsocket;
     int error; /* internal error code */

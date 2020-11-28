@@ -139,7 +139,13 @@ set all_graphs {
   insert-stmt {
     stack
        {line {opt with-clause}
-          INSERT INTO
+         {or
+           {line INSERT}
+           {line REPLACE}
+           {line INSERT OR REPLACE}
+           {line INSERT OR IGNORE}
+         }
+         {line INTO}
        }
        {line {optx /db-name .} /qualified-table-name
              {optx ( {loop /column-name ,} )}}
@@ -167,19 +173,6 @@ set all_graphs {
               {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
           }
       }
-  }
-
-  replace-stmt {
-    stack
-       {line {opt with-clause}
-          REPLACE INTO
-       }
-       {line {optx /db-name .} /qualified-table-name
-             {optx ( {loop /column-name ,} )}}
-       {or
-         {line VALUES {loop {line ( {loop expr ,} )} ,}}
-         select-stmt
-       }
   }
 
   select-stmt {
@@ -360,8 +353,8 @@ set all_graphs {
       {line IPU OFF}
       {line ISC OFF}
       {line REBUILD}
-      {line REC {or CRLE LZ4 RLE ZLIB}}
-      {line BLOBFIELD {or LZ4 RLE ZLIB}}
+      {line REC {or NONE CRLE LZ4 RLE ZLIB}}
+      {line BLOBFIELD {or NONE LZ4 RLE ZLIB}}
     } ,} 
   }
 
@@ -371,8 +364,9 @@ set all_graphs {
     {line lbrc /lua-src rbrc}
   }
   create-trigger {stack
-    {line CREATE LUA {or TRIGGER CONSUMER}}
-    {line /procedure-name ON {loop {line ( table-event )} ,}}
+    {line CREATE LUA {or TRIGGER CONSUMER} /procedure-name}
+    {opt {line {or WITH WITHOUT} SEQUENCE}}
+    {line ON {loop {line ( table-event )} ,}}
   }
   table-event {stack
     {line TABLE /table-name FOR }
@@ -564,7 +558,9 @@ stack
               }
           }
           {line
-              {opt dbstore = /literal-value}
+              {opt dbstore = {or
+                      {line nextsequence}
+                      {line /literal-value}}}
               {opt null = {or yes no}}
           }
       }
@@ -686,6 +682,7 @@ stack
 
   column-constraint {
       or
+      {line AUTOINCREMENT }
       {line DEFAULT expr }
       {line NULL }
       {line NOT NULL }
@@ -715,7 +712,7 @@ stack
       {stack
           {line {opt CONSTRAINT constraint-name } }
           {or
-              {line FOREIGN KEY ( index-column-list ) foreign-key-def}
+              {line FOREIGN KEY ( {loop /column-name ,} ) foreign-key-def}
               {line CHECK ( expr ) }
           }
       }
@@ -723,7 +720,7 @@ stack
 
   foreign-key-def {
       stack
-      {line REFERENCES table-name ( index-column-list ) }
+      {line REFERENCES table-name ( {loop /column-name ,} ) }
       {opt
           {loop
               {line ON
@@ -766,7 +763,7 @@ stack
                               }
                               {stack
                                   {line {opt CONSTRAINT constraint-name } }
-                                  {line FOREIGN KEY ( index-column-list ) foreign-key-def }
+                                  {line FOREIGN KEY ( {loop /column-name ,} ) foreign-key-def }
                               }
                           }
                       }
@@ -776,6 +773,7 @@ stack
                               {line {opt SET DATA} TYPE column-type }
                               {line SET DEFAULT expr }
                               {line DROP DEFAULT }
+                              {line DROP AUTOINCREMENT }
                               {line
                                   {or
                                       {line SET }

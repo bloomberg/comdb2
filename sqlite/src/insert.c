@@ -633,8 +633,15 @@ void sqlite3Insert(
   v = sqlite3GetVdbe(pParse);
   if( v==0 ) goto insert_cleanup;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  if( onError==OE_Ignore ) comdb2SetIgnore(v);
-  else if( onError==OE_Replace ) comdb2SetReplace(v);
+  if ((onError != OE_None && onError != OE_Default) || pUpsert) {
+    extern int gbl_noenv_messages;
+    if (gbl_noenv_messages == 0) {
+      sqlite3ErrorMsg(pParse, "UPSERT not enabled");
+      goto insert_cleanup;
+    }
+    if( onError==OE_Ignore ) comdb2SetIgnore(v);
+    else if( onError==OE_Replace ) comdb2SetReplace(v);
+  }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( pParse->nested==0 ) sqlite3VdbeCountChanges(v);
   sqlite3BeginWriteOperation(pParse, pSelect || pTrigger, iDb);
@@ -860,13 +867,6 @@ void sqlite3Insert(
   }
 #ifndef SQLITE_OMIT_UPSERT
   if( pUpsert ){
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    extern int gbl_noenv_messages;
-    if (gbl_noenv_messages == 0) {
-      sqlite3ErrorMsg(pParse, "UPSERT not enabled");
-      goto insert_cleanup;
-    }
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     if( IsVirtual(pTab) ){
       sqlite3ErrorMsg(pParse, "UPSERT not implemented for virtual table \"%s\"",
               pTab->zName);

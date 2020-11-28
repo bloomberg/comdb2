@@ -104,7 +104,7 @@ Add the key                             ll_key_add (same call)
 #include <stddef.h>
 
 #include <build/db.h>
-#include <fsnap.h>
+#include <fsnapf.h>
 
 #include <ctrace.h>
 

@@ -144,7 +144,7 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 }
 
 // dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
+void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
                          Cdb2TrigTables *tbl)
 {
     if (comdb2IsPrepareOnly(parse))
@@ -224,6 +224,7 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, Token *proc,
 	struct schema_change_type *sc = new_schemachange_type();
 	sc->is_trigger = 1;
 	sc->addonly = 1;
+    sc->persistent_seq = seq;
 	strcpy(sc->tablename, qname);
 	struct dest *d = malloc(sizeof(struct dest));
 	d->dest = strdup(method);

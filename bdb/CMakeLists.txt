@@ -77,7 +77,7 @@ add_custom_command(
 
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
   set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-but-set-variable -Wno-unused-label")
-elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang)
+elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL AppleClang)
   set_source_files_properties(llog_auto.c count.c PROPERTIES COMPILE_FLAGS "-Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
 endif()
 
@@ -93,14 +93,20 @@ include_directories(
   ${PROJECT_BINARY_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/comdb2rle
   ${PROJECT_SOURCE_DIR}/crc32c
+  ${PROJECT_SOURCE_DIR}/csc2
   ${PROJECT_SOURCE_DIR}/cson
+  ${PROJECT_SOURCE_DIR}/datetime
   ${PROJECT_SOURCE_DIR}/db
+  ${PROJECT_BINARY_DIR}/db
+  ${PROJECT_SOURCE_DIR}/dfp/decNumber
+  ${PROJECT_SOURCE_DIR}/dfp/dfpal
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_BINARY_DIR}/protobuf
+  ${PROJECT_SOURCE_DIR}/schemachange
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )

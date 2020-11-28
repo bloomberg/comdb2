@@ -68,7 +68,7 @@ static void *prefault_helper_thread(void *arg)
     struct dbtable *db = NULL;
     int numreadahead = 0;
     struct thr_handle *thr_self;
-    int working_for;
+    pthread_t working_for;
 
     thr_self = thrman_register(THRTYPE_PREFAULT);
     thread_started("prefault helper");
@@ -81,9 +81,7 @@ static void *prefault_helper_thread(void *arg)
     dbenv = prefault_helper_thread_arg.dbenv;
     i = prefault_helper_thread_arg.instance;
 
-    logmsg(LOGMSG_INFO,
-           "prefault_helper_thread instance %d started as tid %lu\n", i,
-           pthread_self());
+    logmsg(LOGMSG_INFO, "prefault_helper_thread instance %d started as tid %p\n", i, (void *)pthread_self());
 
     backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
 
@@ -91,8 +89,7 @@ static void *prefault_helper_thread(void *arg)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
-               pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n", (void *)pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;
@@ -172,10 +169,8 @@ static void *prefault_helper_thread(void *arg)
             MEMORY_SYNC;
             */
 
-            if (dbenv->prefault_helper.threads[i].working_for ==
-                gbl_invalid_tid) {
-                fprintf(stderr, "PREFAULT ERROR!  working_for was %d\n",
-                        working_for);
+            if (dbenv->prefault_helper.threads[i].working_for == gbl_invalid_tid) {
+                fprintf(stderr, "PREFAULT ERROR!  working_for was %p\n", (void *)working_for);
                 break;
             }
 
@@ -229,8 +224,8 @@ static void *prefault_helper_thread(void *arg)
    dbenv = prefault_helper_thread_arg.dbenv;
    i = prefault_helper_thread_arg.instance;
    
-   fprintf(stderr, "prefault_helper_thread instance %d started as tid %d\n",
-      i, pthread_self());
+   fprintf(stderr, "prefault_helper_thread instance %d started as tid %p\n",
+      i, (void *)pthread_self());
 
    backend_thread_event(dbenv, COMDB2_THR_EVENT_START_RDWR);
 
@@ -343,8 +338,7 @@ int readaheadpf(struct ireq *iq, struct dbtable *db, int ixnum, unsigned char *k
     Pthread_mutex_lock(&(iq->dbenv->prefault_helper.mutex));
 
     for (i = 0; i < iq->dbenv->prefault_helper.numthreads; i++) {
-        if (iq->dbenv->prefault_helper.threads[i].working_for ==
-            gbl_invalid_tid) {
+        if (iq->dbenv->prefault_helper.threads[i].working_for == gbl_invalid_tid) {
             /* found an idle thread to give this to! */
             /*fprintf(stderr, "dispatching to processor %d\n", i);*/
             Pthread_mutex_lock(&(iq->dbenv->prefault_helper.threads[i].mutex));

@@ -44,8 +44,8 @@ function timepart_stats
     sleep 6
     gorun_master "select name, arg1, arg2, arg3 from comdb2_timepartevents"
 
-    gorun_master "select * from comdb2_cron_schedulers"
-    gorun_master "select name,type,epoch,arg1,arg2,arg3 from comdb2_cron_events"
+    gorun_master "select * from comdb2_cron_schedulers where name not like 'QueueDB %'"
+    gorun_master "select name,type,epoch,arg1,arg2,arg3 from comdb2_cron_events where name not like 'QueueDB %'"
     gorun "select * from comdb2_logical_cron"
 }
 

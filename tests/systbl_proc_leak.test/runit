@@ -11,20 +11,34 @@ echo "target machine is $mach"
 
 # Create dummy SP-s;
 for i in `seq 1 100`; do
-  cdb2sql -s --host $mach $dbnm "create procedure sp$i { local function main (e) end }" >/dev/null
+  cdb2sql -s ${CDB2_OPTIONS} --host $mach $dbnm "create procedure sp$i { local function main (e) end }" >/dev/null
 done
 
+# Sleep more than the lingering time to ensure we start with 0 SQL thread in the database below.
+sleep 5
+
 # Warm up
-yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s --host $mach $dbnm ->/dev/null
+yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s ${CDB2_OPTIONS} --host $mach $dbnm ->/dev/null
+
+# allow a bit of time for the SQL thread to clean up itself.
+sleep 2
 
 # Get memory snapshot
-cdb2sql --tabs -s --host $mach $dbnm 'exec procedure sys.cmd.send("memstat bdb")' >expected
+before=`cdb2sql --tabs $dbnm --host $mach "EXEC PROCEDURE sys.cmd.send('memstat bdb')" | grep total | tail -1 | awk '{print $6}'`
 
 # Run the leak reproducer
-yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s --host $mach $dbnm ->/dev/null
+yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s ${CDB2_OPTIONS} --host $mach $dbnm ->/dev/null
+
+# allow a bit of time for the SQL thread to clean up itself.
+sleep 2
 
 # Get memory snapshot again
-cdb2sql --tabs -s --host $mach $dbnm 'exec procedure sys.cmd.send("memstat bdb")' >actual
+after=`cdb2sql --tabs $dbnm --host $mach "EXEC PROCEDURE sys.cmd.send('memstat bdb')" | grep total | tail -1 | awk '{print $6}'`
 
-# Should have the same memory snapshot as before
-diff actual expected
+# Should be almost identical
+ratio=`echo "$after/$before" | bc`
+echo "$after/$before=$ratio"
+if [ $ratio -gt 1 ]; then
+  echo "ratio is too high: $ratio" >&2
+  exit 1
+fi

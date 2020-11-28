@@ -893,6 +893,7 @@ __db_c_get_dup(dbc_arg, dbc_dup, key, data, flags)
 	u_int8_t type;
 	int ret, t_ret;
 	int dontmove;
+	int failed;
 
 	/*F_SET(dbc_arg, DBC_TRANSIENT); */
 
@@ -1209,8 +1210,14 @@ err:	/* Don't pass DB_DBT_ISSET back to application level, error or no. */
 	if (dbc_dup && !ret) {
 		*dbc_dup = dbc_n;
 	} else {
-		if ((t_ret = __db_c_cleanup(dbc_arg, dbc_n, ret ||
-			    dontmove)) != 0 && ret == 0)
+		/*
+		** If the user-supplied memory is too small for the specified entry, return an
+        ** error but still preserve the cursor position. This way the caller can
+        ** immediately reallocate as needed and c_get using DB_CURRENT, without
+        ** searching the key again.
+		*/
+		failed = (ret && !(ret == ENOMEM && F_ISSET(data, DB_DBT_USERMEM))) || dontmove;
+		if ((t_ret = __db_c_cleanup(dbc_arg, dbc_n, failed)) != 0 && ret == 0)
 			ret = t_ret;
 	}
 

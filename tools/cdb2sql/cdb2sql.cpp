@@ -14,11 +14,7 @@
    limitations under the License.
  */
 
-/*
- * Comdb2 sql command line client.
- *
- * $Id: client.c 88379 2013-12-11 20:11:12Z mkhullar $
- */
+/* Comdb2 sql command line client */
 
 #include <ctype.h>
 #include <errno.h>
@@ -50,6 +46,11 @@ static char main_prompt[MAX_DBNAME_LENGTH + 2];
 static unsigned char gbl_in_stmt = 0;
 static unsigned char gbl_sent_cancel_cnonce = 0;
 
+static char *delimstr = (char *)"\n";
+
+// For performance
+static int delim_len = 1;
+
 /* display modes */
 enum {
     DISP_CLASSIC = 1 << 0, /* default output */
@@ -58,7 +59,26 @@ enum {
     DISP_GENSQL  = 1 << 3, /* generate insert statements */
     DISP_TABULAR = 1 << 4, /* display result in tabular format */
     DISP_STDERR  = 1 << 5, /* print to stderr */
+    DISP_COLTYPE = 1 << 6, /* emit column type as well */
 };
+
+const char *col_type_names[] = {
+    "NONE_0",       /*  0 (?) */
+    "INTEGER",      /*  1 (CDB2_INTEGER) */
+    "REAL",         /*  2 (CDB2_REAL) */
+    "CSTRING",      /*  3 (CDB2_CSTRING) */
+    "BLOB",         /*  4 (CDB2_BLOB) */
+    "INVALID_5",    /*  5 (??) */
+    "DATETIME",     /*  6 (CDB2_DATETIME) */
+    "INTERVALYM",   /*  7 (CDB2_INTERVALYM) */
+    "INTERVALDS",   /*  8 (CDB2_INTERVALDS) */
+    "DATETIMEUS",   /*  9 (CDB2_DATETIMEUS) */
+    "INTERVALDSUS", /* 10 (CDB2_INTERVALDSUS) */
+    NULL
+};
+
+#define MIN_COL_TYPE_NAME (1)
+#define MAX_COL_TYPE_NAME (10)
 
 static int show_ports = 0;
 static int debug_trace = 0;
@@ -129,8 +149,11 @@ static const char *usage_text =
     "\n"
     "Options:\n"
     " -c, --cdb2cfg FL    Set the config file to FL\n"
+    "     --coltype       Prefix column output with associated type\n"
     "     --cost          Log the cost of query in db trace files\n"
     "     --debugtrace    Set debug trace flag on api handle\n"
+    " -d, --delim str     Set string used to separate two sql statements read "
+    "from a file or input stream\n"
     " -f, --file FL       Read queries from the specified file FL\n"
     " -h, --help          Help on usage \n"
     " -n, --host HOST     Host to connect to and run query.\n"
@@ -472,6 +495,20 @@ static bool skip_history(const char *line)
     return true;
 }
 
+static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
+{
+    if (dlen > len)
+        return false;
+    while (dlen > 0) {
+        if (delimiter[dlen - 1] != line[len - 1]) {
+            return false;
+        }
+        len--;
+        dlen--;
+    }
+    return true;
+}
+
 static char *read_line()
 {
     static char *line = NULL;
@@ -486,17 +523,33 @@ static char *read_line()
             add_history(line);
         return line;
     }
+    int total_len = 0;
+    int n = -1;
     static size_t sz = 0;
-    ssize_t n = getline(&line, &sz, stdin);
-    if (n == -1) {
+    static char *getline = NULL;
+    while ((n = getdelim(&getline, &sz, delimstr[delim_len - 1], stdin)) !=
+           -1) {
+        if (n > 0) {
+            total_len += n;
+            line = (char *)realloc(line, total_len + 1);
+            strcpy(line + total_len - n, getline);
+            if (has_delimiter(line, total_len, delimstr, delim_len) == true) {
+                line[total_len - delim_len] = 0;
+                return line;
+            }
+        }
+    }
+    if (n == -1 && total_len == 0) {
         if (line) {
             free(line);
             line = NULL;
         }
+        if (getline) {
+            free(getline);
+            getline = NULL;
+        }
         return NULL;
     }
-    if (line[n - 1] == '\n')
-        line[n - 1] = 0;
     return line;
 }
 
@@ -521,8 +574,10 @@ int get_type(const char **sqlstr)
     checkfortype(*sqlstr, "REAL", CDB2_REAL);
     checkfortype(*sqlstr, "CSTRING", CDB2_CSTRING);
     checkfortype(*sqlstr, "BLOB", CDB2_BLOB);
+    checkfortype(*sqlstr, "DATETIMEUS", CDB2_DATETIMEUS);
     checkfortype(*sqlstr, "DATETIME", CDB2_DATETIME);
     checkfortype(*sqlstr, "INTERVALYM", CDB2_INTERVALYM);
+    checkfortype(*sqlstr, "INTERVALDSUS", CDB2_INTERVALDSUS);
     checkfortype(*sqlstr, "INTERVALDS", CDB2_INTERVALDS);
     return -1;
 }
@@ -559,6 +614,26 @@ int fromhex(uint8_t *out, const uint8_t *in, size_t len)
     return 0;
 }
 
+const char *cdb2_tp_str[] = {"???",
+                             "CDB2_INTEGER",
+                             "CDB2_REAL",
+                             "CDB2_CSTRING",
+                             "CDB2_BLOB",
+                             "???",
+                             "CDB2_DATETIME",
+                             "CDB2_INTERVALYM",
+                             "CDB2_INTERVALDS",
+                             "CDB2_DATETIMEUS",
+                             "CDB2_INTERVALDSUS"};
+
+inline const char *cdb2_type_str(int type)
+{
+    if (type < 1 || type > CDB2_INTERVALDSUS)
+        return "???";
+
+    return cdb2_tp_str[type];
+}
+
 void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
@@ -591,16 +666,39 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         cdb2_client_datetime_t *dt =
             (cdb2_client_datetime_t *) calloc(sizeof(cdb2_client_datetime_t),
                                               1);
-        int rc = sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d", &dt->tm.tm_year,
-                        &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
-                        &dt->tm.tm_min, &dt->tm.tm_sec);
+        int rc =
+            sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d.%03d", &dt->tm.tm_year,
+                   &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                   &dt->tm.tm_min, &dt->tm.tm_sec, &dt->msec);
         /* timezone not supported for now */
-        if (rc != 6) {
+        if (rc != 6 && rc != 7) {
             fprintf(stderr,
-                    "Invalid datetime (need format YYYY-MM-ddThh:mm:ss\n");
+                    "Invalid datetime (need format yyyy-mm-ddTHH:MM:SS[.fff], "
+                    "rc=%d)\n",
+                    rc);
             return NULL;
         }
-        dt->msec = 0;
+        dt->tzname[0] = 0;
+        dt->tm.tm_year -= 1900;
+        dt->tm.tm_mon--;
+
+        *vallen = sizeof(*dt);
+        return dt;
+    } else if (type == CDB2_DATETIMEUS) {
+        cdb2_client_datetimeus_t *dt = (cdb2_client_datetimeus_t *)calloc(
+            sizeof(cdb2_client_datetimeus_t), 1);
+        int rc =
+            sscanf(str, "%04d-%02d-%02dT%02d:%02d:%02d.%06d", &dt->tm.tm_year,
+                   &dt->tm.tm_mon, &dt->tm.tm_mday, &dt->tm.tm_hour,
+                   &dt->tm.tm_min, &dt->tm.tm_sec, &dt->usec);
+        /* timezone not supported for now */
+        if (rc != 6 && rc != 7) {
+            fprintf(stderr,
+                    "Invalid datetime (need format "
+                    "yyyy-mm-ddTHH:MM:SS[.ffffff], rc=%d\n)",
+                    rc);
+            return NULL;
+        }
         dt->tzname[0] = 0;
         dt->tm.tm_year -= 1900;
         dt->tm.tm_mon--;
@@ -634,7 +732,7 @@ void *get_val(const char **sqlstr, int type, int *vallen)
         *vallen = unexlen;
         return unexpanded;
     } else {
-        fprintf(stderr, "Type %d not yet supported\n", type);
+        fprintf(stderr, "Type %s not yet supported\n", cdb2_type_str(type));
     }
     return NULL;
 }
@@ -857,6 +955,10 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
     val = cdb2_column_value(hndl, col);
 
     if (val == NULL) {
+        if (printmode & DISP_COLTYPE) {
+            fprintf(f, "NULL ");
+        }
+
         if (printmode & DISP_CLASSIC) {
             fprintf(f, "%s=NULL", cdb2_column_name(hndl, col));
         } else {
@@ -865,31 +967,52 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
         return;
     }
 
-    switch (cdb2_column_type(hndl, col)) {
+    int type = cdb2_column_type(hndl, col);
+    std::string typeStr;
+
+    if (printmode & DISP_COLTYPE) {
+        if (type >= MIN_COL_TYPE_NAME && type <= MAX_COL_TYPE_NAME) {
+            typeStr = col_type_names[type];
+            typeStr.push_back(' ');
+        } else {
+            typeStr = "UNKNOWN ";
+        }
+    } else {
+        typeStr = "";
+    }
+
+    switch (type) {
     case CDB2_INTEGER:
         if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=%lld", cdb2_column_name(hndl, col),
+            fprintf(f, "%s%s=%lld", typeStr.c_str(), cdb2_column_name(hndl, col),
                     *(long long *)val);
         else
-            fprintf(f, "%lld", *(long long *)val);
+            fprintf(f, "%s%lld", typeStr.c_str(), *(long long *)val);
         break;
     case CDB2_REAL:
+        fprintf(f, "%s", typeStr.c_str());
         if (printmode & DISP_CLASSIC)
             fprintf(f, "%s=", cdb2_column_name(hndl, col));
         fprintf(f, doublefmt, *(double *)val);
         break;
     case CDB2_CSTRING:
         if (printmode & DISP_CLASSIC) {
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
             dumpstring(f, (char *)val, 1, 0);
-        } else if (printmode & DISP_TABS)
+        } else if (printmode & DISP_TABS) {
+            fprintf(f, "%s", typeStr.c_str());
             dumpstring(f, (char *)val, 0, 0);
-        else
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
             dumpstring(f, (char *)val, 1, 1);
+        }
         break;
     case CDB2_BLOB:
-        if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
+        }
         if (string_blobs) {
             char *c = (char *) val;
             int len = cdb2_column_size(hndl, col);
@@ -919,8 +1042,11 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
         break;
     case CDB2_DATETIME: {
         cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
-        if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
+        }
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
                 cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->msec,
@@ -929,8 +1055,11 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
     }
     case CDB2_DATETIMEUS: {
         cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
-        if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
+        }
         fprintf(f, "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
                 cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1, cdt->tm.tm_mday,
                 cdt->tm.tm_hour, cdt->tm.tm_min, cdt->tm.tm_sec, cdt->usec,
@@ -939,16 +1068,22 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
     }
     case CDB2_INTERVALYM: {
         cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
-        if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
+        }
         fprintf(f, "\"%s%u-%u\"", (ym->sign < 0) ? "- " : "", ym->years,
                 ym->months);
         break;
     }
     case CDB2_INTERVALDS: {
         cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
-        if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
+        }
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
                 ds->sec, ds->msec);
@@ -956,8 +1091,11 @@ static void print_column(FILE *f, cdb2_hndl_tp *hndl, int col)
     }
     case CDB2_INTERVALDSUS: {
         cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
-        if (printmode & DISP_CLASSIC)
-            fprintf(f, "%s=", cdb2_column_name(hndl, col));
+        if (printmode & DISP_CLASSIC) {
+            fprintf(f, "%s%s=", typeStr.c_str(), cdb2_column_name(hndl, col));
+        } else {
+            fprintf(f, "%s", typeStr.c_str());
+        }
         fprintf(f, "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
                 (ds->sign < 0) ? "- " : "", ds->days, ds->hours, ds->mins,
                 ds->sec, ds->usec);
@@ -992,6 +1130,12 @@ int Result_buffer::append_header(cdb2_hndl_tp *hndl) {
 
     for (int i = 0; i < ncols; i ++) {
         col = (char *) cdb2_column_name(cdb2h, i);
+        if (printmode & DISP_COLTYPE) {
+            std::string typeStr(col);
+            typeStr.append(" COLTYPE");
+            header.push_back(typeStr);
+            width.push_back(typeStr.length());
+        }
         header.push_back(std::string(col));
         width.push_back(strlen(col));
     }
@@ -1006,27 +1150,40 @@ int Result_buffer::append_row(cdb2_hndl_tp *hndl) {
 }
 
 int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
+    std::string typeStr;
     std::string column;
     char buffer[512];
     void *val;
-    int len;
 
     val = cdb2_column_value(hndl, col);
 
     if (val == NULL) {
+        typeStr = "NULL";
         column = "NULL";
     } else {
-        switch (cdb2_column_type(hndl, col)) {
+        int type = cdb2_column_type(hndl, col);
+
+        if (printmode & DISP_COLTYPE) {
+            if (type >= MIN_COL_TYPE_NAME && type <= MAX_COL_TYPE_NAME) {
+                typeStr = col_type_names[type];
+            } else {
+                typeStr = "UNKNOWN";
+            }
+        }
+
+        switch (type) {
         case CDB2_INTEGER:
             column = std::to_string(*(long long *)val);
             break;
-        case CDB2_REAL:
-            len = snprintf(buffer, sizeof(buffer), doublefmt, *(double *)val);
+        case CDB2_REAL: {
+            int len =
+                snprintf(buffer, sizeof(buffer), doublefmt, *(double *)val);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
+        }
         case CDB2_CSTRING: {
-            char *c = (char *) val;
+            char *c = (char *)val;
             column += "'";
 
             while (*c) {
@@ -1043,7 +1200,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
             int len = cdb2_column_size(cdb2h, col);
 
             if (string_blobs) {
-                char *c = (char *) val;
+                char *c = (char *)val;
                 column += '\'';
                 while (len > 0) {
                     if (isprint(*c) || *c == '\n' || *c == '\t') {
@@ -1058,7 +1215,7 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
                 column += '\'';
             } else {
                 column += "x'";
-                for (int i = 0; i < len; i ++) {
+                for (int i = 0; i < len; i++) {
                     snprintf(buffer, sizeof(buffer), "%02x",
                              (unsigned int)((char *)val)[i]);
                     column += buffer;
@@ -1069,50 +1226,51 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
         }
         case CDB2_DATETIME: {
             cdb2_client_datetime_t *cdt = (cdb2_client_datetime_t *)val;
-            snprintf(buffer, sizeof(buffer),
-                     "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
-                     cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
-                     cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
-                     cdt->tm.tm_sec, cdt->msec, cdt->tzname);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s\"",
+                               cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
+                               cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
+                               cdt->tm.tm_sec, cdt->msec, cdt->tzname);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_DATETIMEUS: {
             cdb2_client_datetimeus_t *cdt = (cdb2_client_datetimeus_t *)val;
-            snprintf(buffer, sizeof(buffer),
-                     "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
-                     cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
-                     cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
-                     cdt->tm.tm_sec, cdt->usec, cdt->tzname);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s\"",
+                               cdt->tm.tm_year + 1900, cdt->tm.tm_mon + 1,
+                               cdt->tm.tm_mday, cdt->tm.tm_hour, cdt->tm.tm_min,
+                               cdt->tm.tm_sec, cdt->usec, cdt->tzname);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_INTERVALYM: {
             cdb2_client_intv_ym_t *ym = (cdb2_client_intv_ym_t *)val;
-            len = snprintf(buffer, sizeof(buffer), "\"%s%u-%u\"",
-                           (ym->sign < 0) ? "- " : "", ym->years, ym->months);
+            int len =
+                snprintf(buffer, sizeof(buffer), "\"%s%u-%u\"",
+                         (ym->sign < 0) ? "- " : "", ym->years, ym->months);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_INTERVALDS: {
             cdb2_client_intv_ds_t *ds = (cdb2_client_intv_ds_t *)val;
-            len = snprintf(buffer, sizeof(buffer),
-                           "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
-                           (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
-                           ds->mins, ds->sec, ds->msec);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%s%u %2.2u:%2.2u:%2.2u.%3.3u\"",
+                               (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
+                               ds->mins, ds->sec, ds->msec);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
         }
         case CDB2_INTERVALDSUS: {
             cdb2_client_intv_dsus_t *ds = (cdb2_client_intv_dsus_t *)val;
-            len = snprintf(buffer, sizeof(buffer),
-                           "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
-                           (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
-                           ds->mins, ds->sec, ds->usec);
+            int len = snprintf(buffer, sizeof(buffer),
+                               "\"%s%u %2.2u:%2.2u:%2.2u.%6.6u\"",
+                               (ds->sign < 0) ? "- " : "", ds->days, ds->hours,
+                               ds->mins, ds->sec, ds->usec);
             assert(len < sizeof(buffer));
             column = buffer;
             break;
@@ -1121,11 +1279,17 @@ int Result_buffer::append_column(cdb2_hndl_tp *hndl, int col) {
     }
 
     /* Append the column to the last row. */
+    if (typeStr.length() > 0) {
+        result.back().push_back(typeStr);
+    }
+
     result.back().push_back(column);
 
     /* Update the max display size. */
-    if (column.length() > width[col]) {
-        width[col] = column.length();
+    int colWidth = typeStr.length() + column.length();
+
+    if (colWidth > width[col]) {
+        width[col] = colWidth;
     }
 
     return 0;
@@ -1191,7 +1355,7 @@ int Result_buffer::print_result() {
 
 int process_bind(const char *sql)
 {
-    if (!strncasecmp(sql, "@bind", 5) == 0)
+    if (strncasecmp(sql, "@bind", 5) != 0)
         return process_escape(sql);
 
     const char *copy_sql = sql;
@@ -1203,8 +1367,9 @@ int process_bind(const char *sql)
     if (type < 0 || !isspace(*sql)) {
         fprintf(stderr, "Usage: @bind <type> <paramname> <value>, with type "
                         "one of the following:\n"
-                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME,INTERVALYM,"
-                        "INTERVALDS}\n");
+                        "CDB2_{INTEGER,REAL,CSTRING,BLOB,DATETIME[,US]"
+                        // uncomment when supported: ",INTERVAL[YM,DS,DSUS]"
+                        "}\n");
         fprintf(stderr, "[%s] rc %d\n", copy_sql, type);
         return type;
     }
@@ -1377,7 +1542,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
         } else if (printmode & DISP_TABS) {
             fprintf(out, "\n");
         } else if (printmode & DISP_GENSQL) {
-            fprintf(out, ");\n");
+            fprintf(out, ");");
+            fprintf(out, "%s", delimstr);
         } else if (printmode & DISP_TABULAR) {
             /* Noop */
         }
@@ -1671,6 +1837,7 @@ int main(int argc, char *argv[])
     int opt_indx = 0;
     int c;
     int printtostderr = 0;
+    int printcoltype = 0;
 
     sighold(SIGPIPE);
 
@@ -1679,6 +1846,7 @@ int main(int argc, char *argv[])
         {"binary", no_argument, &printmode, DISP_BINARY},
         {"tabs", no_argument, &printmode, DISP_TABS},
         {"tabular", no_argument, &printmode, DISP_TABULAR},
+        {"coltype", no_argument, &printcoltype, 1},
         {"stderr", no_argument, &printtostderr, 1},
         {"verbose", no_argument, &verbose, 1},
         {"strblobs", no_argument, &string_blobs, 1},
@@ -1697,12 +1865,13 @@ int main(int argc, char *argv[])
         {"cdb2cfg", required_argument, NULL, 'c'},
         {"file", required_argument, NULL, 'f'},
         {"gensql", required_argument, NULL, 'g'},
+        {"delim", required_argument, NULL, 'd'},
         {"type", required_argument, NULL, 't'},
         {"host", required_argument, NULL, 'n'},
         {"minretries", required_argument, NULL, 'R'},
         {0, 0, 0, 0}};
 
-    while ((c = bb_getopt_long(argc, argv, (char *) "hsvr:p:c:f:g:t:n:R:",
+    while ((c = bb_getopt_long(argc, argv, (char *)"hsvr:p:d:c:f:g:t:n:R:",
                                long_options, &opt_indx)) != -1) {
         switch (c) {
         case 0:
@@ -1737,6 +1906,10 @@ int main(int argc, char *argv[])
             printmode = DISP_GENSQL;
             gensql_tbl = optarg;
             break;
+        case 'd':
+            delimstr = optarg;
+            delim_len = strlen(delimstr);
+            break;
         case 't':
             dbtype = optarg;
             break;
@@ -1751,6 +1924,9 @@ int main(int argc, char *argv[])
 
     if (printtostderr)
         printmode |= DISP_STDERR;
+
+    if (printcoltype)
+        printmode |= DISP_COLTYPE;
 
     if (getenv("COMDB2_IOLBF")) {
         setvbuf(stdout, 0, _IOLBF, 0);

@@ -15,7 +15,6 @@
  */
 
 #include <stdlib.h>
-#include <pthread.h>
 #include <string.h>
 #include <limits.h>
 #include <string.h>
@@ -35,6 +34,7 @@
 #include "cron_systable.h"
 #include "timepart_systable.h"
 #include "logical_cron.h"
+#include "sc_util.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -51,7 +51,7 @@ typedef struct timepart_shard timepart_shard_t;
 struct timepart_view {
     char *name;                       /* name of the view, visible in sql */
     enum view_partition_period period; /* when do we rotate to a new shard */
-    int retention;                    /* how many shard are preserves */
+    int retention;                    /* how many shards are preserved */
     int nshards;                      /* how many shards */
     timepart_shard_t *shards;         /* array of shard pointers */
     int version;      /* in-memory versioning, allowing single view refreshes */
@@ -60,7 +60,7 @@ struct timepart_view {
     int starttime;    /* info about the beginning of the rollout */
     int purge_time;   /* set if there is a purger thread assigned */
     int roll_time;    /* cached time for next rollout */
-    uuid_t source_id; /* identifier for view, unique as compare to name */
+    uuid_t source_id; /* identifier for view, unique as compared to name */
 };
 
 struct timepart_views {
@@ -73,11 +73,6 @@ struct timepart_views {
                                 one is removed, if past retention */
 };
 
-/*
-   NOTE: for now, since views access is done only when sqlite engines are
-   created,
-   when shards are rolled, or when db starts, we can use a mutex
-*/
 pthread_rwlock_t views_lk;
 
 /*
@@ -179,7 +174,8 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
 
     /* create the timepart scheduler */
     timepart_sched = cron_add_event(NULL, name, INT_MIN, timepart_cron_kickoff,
-                                    NULL, NULL, NULL, NULL, &xerr, &tpt_cron);
+                                    NULL, NULL, NULL, NULL, NULL, &xerr,
+                                    &tpt_cron);
 
     if (timepart_sched == NULL)
         return NULL;
@@ -226,7 +222,7 @@ int timepart_is_shard(const char *name, int lock, char **viewname)
    return rc;
 }
 
-/** 
+/**
  * Check if a name is a timepart
  *
  */
@@ -331,7 +327,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
     rc = _next_shard_exists(view, next_existing_shard,
                             sizeof(next_existing_shard));
     if (rc == VIEW_ERR_EXIST) {
-        errstat_set_strf(err, "Next shard %s verlaps existing table for %s",
+        errstat_set_strf(err, "Next shard %s overlaps existing table for %s",
                          next_existing_shard, view->name);
         errstat_set_rc(err, rc);
         goto done;
@@ -351,7 +347,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str = strdup(view->name),
-                             NULL, NULL, &view->source_id, err, NULL) == NULL)
+                             NULL, NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         if (rc != VIEW_NOERR) {
@@ -385,7 +381,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
        NOTE:
        As it is now, changing partitions doesn't update any global counters:
-          - gbl_dbopen_gen
+          - bdb_bump_dbopen_gen()
           - gbl_analyze_gen
           - gbl_views_gen (at least this one should get updated)
 
@@ -936,7 +932,7 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
+    if (run && (thedb->master != gbl_myhostname || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -982,7 +978,9 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
 done:
     if (run) {
         Pthread_rwlock_unlock(&views_lk);
-        unlock_schema_lk();
+        /* commit_adaptive unlocks the schema-lk */
+        if (rc != VIEW_NOERR)
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -997,7 +995,7 @@ done:
             if (cron_add_event(_get_sched_byname(view->period, view->name),
                                NULL, shardChangeTime, _view_cron_phase2,
                                tmp_str = strdup(name), pShardName, NULL,
-                               &view->source_id, err, NULL) == NULL) {
+                               NULL, &view->source_id, err, NULL) == NULL) {
                 logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                         err->errval, err->errstr);
                 if (tmp_str)
@@ -1035,7 +1033,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
         if (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                            tm, _view_cron_phase3, removeShardName, NULL, NULL,
-                           &view->source_id, err, NULL) == NULL) {
+                           NULL, &view->source_id, err, NULL) == NULL) {
             logmsg(LOGMSG_ERROR, "%s: failed rc=%d errstr=%s\n", __func__,
                     err->errval, err->errstr);
             free(removeShardName);
@@ -1051,7 +1049,7 @@ _view_cron_schedule_next_rollout(timepart_view_t *view, int timeCrtRollout,
 
     if (cron_add_event(_get_sched_byname(view->period, view->name), NULL, tm,
                        _view_cron_phase1, tmp_str = strdup(name), NULL, NULL,
-                       &view->source_id, err, NULL) == NULL) {
+                       NULL, &view->source_id, err, NULL) == NULL) {
         if (tmp_str) {
             free(tmp_str);
         }
@@ -1091,7 +1089,7 @@ void *_view_cron_phase2(struct cron_event *event, struct errstat *err)
     assert(arg3 == NULL);
 
     run = (!gbl_exit);
-    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
+    if (run && (thedb->master != gbl_myhostname || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -1205,7 +1203,7 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
     }
 
     run = (!gbl_exit);
-    if (run && (thedb->master != gbl_mynode || gbl_is_physical_replicant))
+    if (run && (thedb->master != gbl_myhostname || gbl_is_physical_replicant))
         run = 0;
 
     if (run) {
@@ -1221,7 +1219,8 @@ void *_view_cron_phase3(struct cron_event *event, struct errstat *err)
         }
 
         Pthread_rwlock_unlock(&views_lk);
-        unlock_schema_lk();
+        if (rc != VIEW_NOERR)
+            unlock_schema_lk();
         csc2_free_all();
         BDB_RELLOCK();
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_DONE_RDWR);
@@ -1673,7 +1672,7 @@ static int _schedule_drop_shard(timepart_view_t *view,
     rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                          evict_time, _view_cron_phase3,
                          tmp_str1 = strdup(evicted_shard), NULL, NULL, NULL,
-                         err, NULL) == NULL)
+                         NULL, err, NULL) == NULL)
              ? err->errval
              : VIEW_NOERR;
 
@@ -1863,7 +1862,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
         rc = (cron_add_event(_get_sched_byname(view->period, view->name), NULL,
                              view->roll_time - preemptive_rolltime,
                              _view_cron_phase1, tmp_str1 = strdup(view->name),
-                             NULL, NULL, &view->source_id, err, NULL) == NULL)
+                             NULL, NULL, NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
         tmp_str2 = NULL;
@@ -1877,7 +1876,7 @@ static int _view_restart(timepart_view_t *view, struct errstat *err)
                              view->roll_time, _view_cron_phase2,
                              tmp_str1 = strdup(view->name),
                              tmp_str2 = strdup(next_existing_shard), NULL,
-                             &view->source_id, err, NULL) == NULL)
+                             NULL, &view->source_id, err, NULL) == NULL)
                  ? err->errval
                  : VIEW_NOERR;
     }
@@ -1917,7 +1916,7 @@ int views_cron_restart(timepart_views_t *views)
        if this is the case, abort the schema change */
     rc = pthread_rwlock_trywrlock(&views_lk);
     if (rc == EBUSY) {
-        if (gbl_schema_change_in_progress) {
+        if (get_schema_change_in_progress(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "Schema change started too early for time "
                                  "partition: aborting\n");
             gbl_sc_abort = 1;
@@ -1931,7 +1930,7 @@ int views_cron_restart(timepart_views_t *views)
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
     BDB_READLOCK(__func__);
 
-    if (thedb->master == gbl_mynode && !gbl_is_physical_replicant) {
+    if (thedb->master == gbl_myhostname && !gbl_is_physical_replicant) {
         /* queue all the events required for this */
         for(i=0;i<views->nviews; i++)
         {
@@ -2486,7 +2485,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
                irc =
                    (cron_add_event(_get_sched_byname(view->period, view->name),
                                    NULL, 0, _view_cron_phase3, extra_shards[i],
-                                   NULL, NULL, NULL, err, NULL) == NULL)
+                                   NULL, NULL, NULL, NULL, err, NULL) == NULL)
                        ? err->errval
                        : VIEW_NOERR;
                if (irc != VIEW_NOERR) {
@@ -2675,6 +2674,23 @@ static cron_sched_t *_get_sched_byname(enum view_partition_period period,
     if (period == VIEW_PARTITION_MANUAL)
         return cron_sched_byname(sched_name);
     abort();
+}
+
+/* Returns time partition name if the specified 'table_name' is a shard,
+  'table_name' otherwise. */
+char *resolve_table_name(char *table_name, char *buf, size_t buf_len)
+{
+    char *tp_name;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    if ((timepart_is_shard(table_name, 0, &tp_name))) {
+        strncpy(buf, tp_name, buf_len);
+        Pthread_rwlock_unlock(&views_lk);
+        return buf;
+    }
+    Pthread_rwlock_unlock(&views_lk);
+
+    return table_name;
 }
 
 #include "views_systable.c"

@@ -4,8 +4,8 @@
 // This is the "ondisk" tag; it defines the data actually stored on disk
 schema
 {
-  cstring  alert_id[40]                    // alert ID, synthetic key, most likey python UUID
-  int      uuid                            // owner of the alert
+  cstring  alert_id[40]                    // alert ID, synthetic key, most likey python UID
+  int      uid                            // owner of the alert
   vutf8    name[100]                       // name of the alert
   vutf8    note[100]                       // custom note associated with the al
   short    active                          // Boolean which determines if an ale is active. 1 = Active 0 = Inactive
@@ -20,5 +20,5 @@ schema
 keys
 {
       "ALERT_ID" = alert_id
-  dup "UUID" = uuid
+  dup "UID" = uid
 }

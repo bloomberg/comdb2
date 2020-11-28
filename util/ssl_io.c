@@ -224,7 +224,7 @@ static int ssl_verify_cn(const char *hostname, const X509 *cert)
     return hostname_wildcard_match(hostname, cn);
 }
 
-static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
+static int ssl_verify_ca(SBUF2 *sb)
 {
     /*
     ** 1) Perform a reverse DNS lookup to get the hostname
@@ -238,19 +238,16 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
     ** The forward DNS lookup is necessary in case an attacker is
     ** in control of reverse DNS for the source IP.
     */
-    const char *peerhost;
     struct sockaddr_in peeraddr;
     struct in_addr *peer_in_addr, **p_fwd_in_addr;
     socklen_t len = sizeof(struct sockaddr_in);
-    int rc, found_addr, herr;
-    char buf[8192];
-    struct hostent hostbuf, *hp = NULL;
+    int rc, found_addr;
+    struct hostent *hp = NULL;
 
     /* Reverse lookup the hostname */
-    peerhost = get_origin_mach_by_buf(sb);
-
-    if (strcmp(peerhost, "???") == 0) {
-        ssl_sfeprint(err, n, my_ssl_eprintln,
+    char peerhost[NI_MAXHOST];
+    if (get_hostname_by_fileno_v2(sbuf2fileno(sb), peerhost, sizeof(peerhost))) {
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "Could not obtain peer host name.");
         return 1;
     }
@@ -264,15 +261,21 @@ static int ssl_verify_ca(SBUF2 *sb, char *err, size_t n)
 #if defined(__APPLE__)
     hp = gethostbyname(peerhost);
 #elif defined(_LINUX_SOURCE)
+    int herr;
+    char buf[8192];
+    struct hostent hostbuf;
     gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &hp, &herr);
 #elif defined(_SUN_SOURCE)
+    int herr;
+    char buf[8192];
+    struct hostent hostbuf;
     hp = gethostbyname_r(peerhost, &hostbuf, buf, sizeof(buf), &herr);
 #else
     hp = gethostbyname(peerhost);
 #endif
 
     if (hp == NULL) {
-        ssl_sfeprint(err, n, my_ssl_eprintln,
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "Failed to perform forward DNS lookup.");
         return 1;
     }
@@ -351,26 +354,24 @@ static int ssl_verify_dbname(SBUF2 *sb, const char *dbname, int nid)
     return dbname_wildcard_match(dbname, dbname_in_cert);
 }
 
-static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid,
-                      char *err, size_t n)
+static int ssl_verify(SBUF2 *sb, ssl_mode mode, const char *dbname, int nid)
 {
     int rc = 0;
     if (sb->ssl != NULL && mode >= SSL_VERIFY_CA) {
         sb->cert = SSL_get_peer_certificate(sb->ssl);
         if (sb->cert == NULL) {
-            ssl_sfeprint(err, n, my_ssl_eprintln,
+            ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Could not get peer certificate.");
             rc = EIO;
-        } else if (mode >= SSL_VERIFY_HOSTNAME &&
-                   ssl_verify_ca(sb, err, n) != 0) {
+        } else if (mode >= SSL_VERIFY_HOSTNAME && ssl_verify_ca(sb) != 0) {
             /* set rc to error out. */
             rc = EACCES;
-            ssl_sfeprint(err, n, my_ssl_eprintln,
+            ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Certificate does not match host name.");
         } else if (mode >= SSL_VERIFY_DBNAME &&
                    ssl_verify_dbname(sb, dbname, nid) != 0) {
             rc = EACCES;
-            ssl_sfeprint(err, n, my_ssl_eprintln,
+            ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Certificate does not match database name.");
         }
     }
@@ -411,23 +412,20 @@ static void my_apps_ssl_info_callback(const SSL *s, int where, int ret)
 
 static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
                                    int (*SSL_func)(SSL *), ssl_mode verify,
-                                   const char *dbname, int nid, char *err,
-                                   size_t n, SSL_SESSION *sess,
-                                   int *unrecoverable,
-                                   int close_on_verify_error)
+                                   const char *dbname, int nid,
+                                   SSL_SESSION *sess, int close_on_verify_error)
 {
     int rc, ioerr, fd, flags;
 
-    *unrecoverable = 1;
-
     /* If SSL does not exist, return an error. */
     if (ctx == NULL) {
-        ssl_sfeprint(err, n, my_ssl_eprintln, "SSL context does not exist.");
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                     "SSL context does not exist.");
         return EPERM;
     }
 
     if (sb->ssl != NULL) {
-        ssl_sfeprint(err, n, my_ssl_eprintln,
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "SSL connection has been established already.");
         return EPERM;
     }
@@ -435,7 +433,7 @@ static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
     /* Create an SSL connection. */
     sb->ssl = SSL_new(ctx);
     if (sb->ssl == NULL) {
-        ssl_sfliberrprint(err, n, my_ssl_eprintln,
+        ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                           "Failed to create SSL connection");
         rc = ERR_get_error();
         goto error;
@@ -445,14 +443,14 @@ static int sslio_accept_or_connect(SBUF2 *sb, SSL_CTX *ctx,
     fd = sbuf2fileno(sb);
     if ((flags = fcntl(fd, F_GETFL, 0)) < 0 ||
         (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0)) {
-        ssl_sfeprint(err, n, my_ssl_eprintln,
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "fcntl: (%d) %s", errno, strerror(errno));
         rc = -1;
         goto error;
     }
     rc = SSL_set_fd(sb->ssl, fd);
     if (rc != 1) {
-        ssl_sfliberrprint(err, n, my_ssl_eprintln,
+        ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                           "Failed to set fd");
         goto error;
     }
@@ -477,45 +475,49 @@ re_accept_or_connect:
             rc = sslio_pollin(sb);
             if (rc > 0)
                 goto re_accept_or_connect;
-            *unrecoverable = 0;
+            sb->protocolerr = 0;
             break;
         case SSL_ERROR_WANT_WRITE: /* Renegotiate */
             rc = sslio_pollout(sb);
             if (rc > 0)
                 goto re_accept_or_connect;
-            *unrecoverable = 0;
+            sb->protocolerr = 0;
             break;
         case SSL_ERROR_SYSCALL:
-            *unrecoverable = 0;
+            sb->protocolerr = 0;
             if (rc == 0) {
-                ssl_sfeprint(err, n, my_ssl_eprintln,
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "Unexpected EOF observed.");
                 errno = ECONNRESET;
             } else {
-                ssl_sfeprint(err, n, my_ssl_eprintln,
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                              "IO error. errno %d.", errno);
             }
             break;
         case SSL_ERROR_SSL:
             errno = EIO;
-            ssl_sfliberrprint(err, n, my_ssl_eprintln,
+            sb->protocolerr = 1;
+            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                               "A failure in SSL library occured");
             break;
         default:
             errno = EIO;
-            ssl_sfeprint(err, n, my_ssl_eprintln,
+            sb->protocolerr = 1;
+            ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                          "Failed to establish connection with peer. "
-                         "SSL error = %d.", ioerr);
+                         "SSL error = %d.",
+                         ioerr);
             break;
         }
-    } else if (ssl_verify(sb, verify, dbname, nid, err, n) != 0) {
+    } else if (ssl_verify(sb, verify, dbname, nid) != 0) {
+        sb->protocolerr = 1;
         rc = EACCES;
     } else {
-        *unrecoverable = 0;
+        sb->protocolerr = 0;
     }
     /* Put blocking back. */
     if (fcntl(fd, F_SETFL, flags) < 0) {
-        ssl_sfeprint(err, n, my_ssl_eprintln,
+        ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
                      "fcntl: (%d) %s", errno, strerror(errno));
         return -1;
     }
@@ -536,31 +538,27 @@ re_accept_or_connect:
 }
 
 int SBUF2_FUNC(sslio_accept)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
-                             const char *dbname, int nid, char *err, size_t n,
+                             const char *dbname, int nid,
                              int close_on_verify_error)
 {
-    int dummy;
-
-    return sslio_accept_or_connect(sb, ctx, SSL_accept, mode, dbname, nid, err,
-                                   n, NULL, &dummy, close_on_verify_error);
+    return sslio_accept_or_connect(sb, ctx, SSL_accept, mode, dbname, nid, NULL,
+                                   close_on_verify_error);
 }
 
 #if SBUF2_SERVER
 int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
-                              const char *dbname, int nid, char *err, size_t n,
+                              const char *dbname, int nid,
                               int close_on_verify_error)
 {
-    int dummy;
-    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid, err,
-                                   n, NULL, &dummy, close_on_verify_error);
+    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid,
+                                   NULL, close_on_verify_error);
 }
 #else
 int SBUF2_FUNC(sslio_connect)(SBUF2 *sb, SSL_CTX *ctx, ssl_mode mode,
-                              const char *dbname, int nid, char *err, size_t n,
-                              SSL_SESSION *sess, int *unrecoverable)
+                              const char *dbname, int nid, SSL_SESSION *sess)
 {
-    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid, err,
-                                   n, sess, unrecoverable, 1);
+    return sslio_accept_or_connect(sb, ctx, SSL_connect, mode, dbname, nid,
+                                   sess, 1);
 }
 #endif
 
@@ -581,10 +579,12 @@ reread:
         ioerr = SSL_get_error(sb->ssl, n);
         switch (ioerr) {
         case SSL_ERROR_WANT_READ:
+            sb->protocolerr = 0;
             errno = EAGAIN;
             wantread = 1;
             goto reread;
         case SSL_ERROR_WANT_WRITE:
+            sb->protocolerr = 0;
             errno = EAGAIN;
             wantread = 0;
             goto reread;
@@ -599,15 +599,29 @@ reread:
             }
             break;
         case SSL_ERROR_SYSCALL:
-            if (n == 0)
+            sb->protocolerr = 0;
+            if (n == 0) {
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "Unexpected EOF observed.");
                 errno = ECONNRESET;
+            } else {
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "IO error. errno %d.", errno);
+            }
             break;
         case SSL_ERROR_SSL:
-            PRINT_SSL_ERRSTR_MT(my_ssl_eprintln,
-                                "A failure in SSL library occured");
-            /* Fall through */
+            errno = EIO;
+            sb->protocolerr = 1;
+            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                              "A failure in SSL library occured");
+            break;
         default:
             errno = EIO;
+            sb->protocolerr = 1;
+            ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                         "Failed to establish connection with peer. "
+                         "SSL error = %d.",
+                         ioerr);
             break;
         }
     }
@@ -632,10 +646,12 @@ rewrite:
         ioerr = SSL_get_error(sb->ssl, n);
         switch (ioerr) {
         case SSL_ERROR_WANT_READ:
+            sb->protocolerr = 0;
             errno = EAGAIN;
             wantwrite = 0;
             goto rewrite;
         case SSL_ERROR_WANT_WRITE:
+            sb->protocolerr = 0;
             errno = EAGAIN;
             wantwrite = 1;
             goto rewrite;
@@ -650,15 +666,28 @@ rewrite:
             }
             break;
         case SSL_ERROR_SYSCALL:
-            if (n == 0)
+            sb->protocolerr = 0;
+            if (n == 0) {
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "Unexpected EOF observed.");
                 errno = ECONNRESET;
-            break;
+            } else {
+                ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                             "IO error. errno %d.", errno);
+            }
         case SSL_ERROR_SSL:
-            PRINT_SSL_ERRSTR_MT(my_ssl_eprintln,
-                                "A failure in SSL library occured");
-            /* Fall through */
+            errno = EIO;
+            sb->protocolerr = 1;
+            ssl_sfliberrprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                              "A failure in SSL library occured");
+            break;
         default:
             errno = EIO;
+            sb->protocolerr = 1;
+            ssl_sfeprint(sb->sslerr, sizeof(sb->sslerr), my_ssl_eprintln,
+                         "Failed to establish connection with peer. "
+                         "SSL error = %d.",
+                         ioerr);
             break;
         }
     }

@@ -296,7 +296,7 @@ void sqlite3DequoteExpr(Expr *p){
  * ie first and last char are a quote...
  * note that string should be null terminated
  */
-int sqlite3IsCorrectlyQuoted(char *z){
+int sqlite3IsCorrectlyQuoted(const char *z){
   char quote = z[0];
   int i = 1;
   if( !sqlite3Isquote(quote) ) return 1;
@@ -304,7 +304,7 @@ int sqlite3IsCorrectlyQuoted(char *z){
   if( i>1 ) return z[i-1]==quote;
   return 0;
 }
-int sqlite3IsCorrectlyBraced(char *z){
+int sqlite3IsCorrectlyBraced(const char *z){
   int i = 1;
   int q = 0;
   if( z[0]=='\0' ) return 0; /* empty string? */
@@ -1797,13 +1797,13 @@ void sqlite3VListPrint(loglvl lvl, const VList *pIn)
 
   mx = pIn[1];
   i = 2;
-  logmsg(lvl, "%lx VList info start:\n", pthread_self());
+  logmsg(lvl, "%p VList info start:\n", (void *)pthread_self());
   do{
     const char *z = (const char*)&pIn[i+2];
-    logmsg(lvl, "%lx %s %d\n", pthread_self(), z, pIn[i]);
+    logmsg(lvl, "%p %s %d\n", (void *)pthread_self(), z, pIn[i]);
     i += pIn[i+1];
   }while( i<mx );
-  logmsg(lvl, "%lx VList info done.\n", pthread_self());
+  logmsg(lvl, "%p VList info done.\n", (void *)pthread_self());
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

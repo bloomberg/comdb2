@@ -13,13 +13,13 @@ if [ "$mach" = "" ]; then
 fi
 
 # Setting long request threshold to 0 so we can easily get queries in longreqs.
-cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longreqfile <stdout>')"
-cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
-cdb2sql --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longreqfile <stdout>')"
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longrequest 0')"
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "EXEC PROCEDURE sys.cmd.send('reql longsqlrequest 0')"
 
 # Run queries
-cdb2sql --host $mach $dbnm "SELECT 1" &> sel1.out
-cdb2sql --host $mach $dbnm "SELECT 1+1" &> sel11.out
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "SELECT 1" &> sel1.out
+cdb2sql ${CDB2_OPTIONS} --host $mach $dbnm "SELECT 1+1" &> sel11.out
 
 logfile=
 if [ -n "$CLUSTER" ] ; then

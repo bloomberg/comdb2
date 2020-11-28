@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 
 set -e
-set -x
+if [[ $CLEANUPDBDIR -eq 0 ]]; then
+    set -x
+fi
 
 failexit() {
     echo $1
@@ -33,7 +35,7 @@ done
 source $TESTSROOTDIR/setup.common
 
 # get full path
-DBDIR=$(readlink -f $DBDIR)
+DBDIR=$(readlink -f $DBDIR || realpath $DBDIR )
 
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
@@ -42,19 +44,19 @@ if [[ -n ${DEBUGGER} ]]; then
     case ${DEBUGGER} in
     gdb)
         DEBUG_PREFIX="gdb --args"
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=1
         fi
         ;;
     valgrind)
-        DEBUG_PREFIX="valgrind"
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        DEBUG_PREFIX="valgrind --track-origins=yes"
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
     memcheck)
         DEBUG_PREFIX="valgrind  --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
@@ -64,19 +66,19 @@ if [[ -n ${DEBUGGER} ]]; then
             # collect info on $COLLECTFUNC only
             DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
         fi
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
     drd)
         DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
     helgrind)
         DEBUG_PREFIX="valgrind --tool=helgrind "
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
@@ -90,7 +92,7 @@ if [[ -n ${DEBUGGER} ]]; then
         ;;    
     *)
         DEBUG_PREFIX=${DEBUGGER}
-        if [[ -z ${INTERACTIVE_DEBUG} ]]; then
+        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
             INTERACTIVE_DEBUG=0
         fi
         ;;
@@ -146,11 +148,11 @@ setup_db() {
     LRL="$DBDIR/$DBNAME.lrl"
     > ${LRL}
 
-    if [[ -z $SKIPSSL ]] ; then
+    if [[ -z "$SKIPSSL" ]] ; then
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 
-    if [[ -z $SKIPDEBUG ]] ; then
+    if [[ -z "$SKIPDEBUG" ]] ; then
         echo "logmsg level debug" >> ${LRL}
     fi
     echo "eventlog_nkeep 0" >> ${LRL}
@@ -159,7 +161,8 @@ setup_db() {
         cat lrl >> ${LRL}
     fi
     if [[ -f lrl.options ]]; then
-        cat lrl.options >> ${LRL}
+        # use sed to substitute in test specific variables into lrl
+        cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
     fi
 
     echo -e "name    ${DBNAME}\ndir     ${DBDIR}\n\nsetattr MASTER_REJECT_REQUESTS 0" >> ${LRL}
@@ -251,7 +254,7 @@ setup_db() {
         echo "!$TESTCASE: starting single node"
         ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
         dbpid=$!
-
+        sleep 2
         set +e
 
         if [ ! -f ${TMPDIR}/${DBNAME}.pid ] ; then
@@ -269,9 +272,9 @@ setup_db() {
         # wait until we can query it
         echo "!$TESTCASE: waiting until ready"
         while [[ "$out" != "1" ]]; do
-            sleep 1
             out=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' 2> /dev/null)
-            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME 'select 1' &> $LOGDIR/${DBNAME}.conn
+            $CDB2SQL_EXE -v ${CDB2_OPTIONS} --tabs $DBNAME default 'select 1' &> $LOGDIR/${DBNAME}.conn
+            sleep 1
         done
     else
         echo "!$TESTCASE: copying to cluster"

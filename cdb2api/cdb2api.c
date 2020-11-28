@@ -106,6 +106,9 @@ static int CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
 #define CDB2_POLL_TIMEOUT_DEFAULT 250
 static int CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
 
+#define CDB2_PROTOBUF_SIZE_DEFAULT 4096
+static int CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
+
 #define CDB2_TCPBUFSZ_DEFAULT 0
 static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
@@ -149,6 +152,7 @@ static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
+static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl);
 #endif
 
 static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
@@ -285,6 +289,9 @@ static void reset_the_configuration(void)
     CDB2_POLL_TIMEOUT = CDB2_POLL_TIMEOUT_DEFAULT;
     CDB2_AUTO_CONSUME_TIMEOUT_MS = CDB2_AUTO_CONSUME_TIMEOUT_MS_DEFAULT;
     COMDB2DB_TIMEOUT = COMDB2DB_TIMEOUT_DEFAULT;
+    CDB2_API_CALL_TIMEOUT = CDB2_API_CALL_TIMEOUT_DEFAULT;
+    CDB2_SOCKET_TIMEOUT = CDB2_SOCKET_TIMEOUT_DEFAULT;
+    CDB2_PROTOBUF_SIZE = CDB2_PROTOBUF_SIZE_DEFAULT;
     cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
@@ -690,10 +697,7 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
     in_addr_t inaddr;
 
     int len;
-    char tmp[8192];
-    int tmplen = 8192;
-    int herr;
-    struct hostent hostbuf, *hp = NULL;
+    struct hostent *hp = NULL;
     char tok[128], *cc;
     cc = strchr(host, (int)':');
     if (cc == 0) {
@@ -717,8 +721,16 @@ static int cdb2_tcpresolve(const char *host, struct in_addr *in, int *port)
 #ifdef __APPLE__
         hp = gethostbyname(tok);
 #elif _LINUX_SOURCE
+        int herr;
+        char tmp[8192];
+        int tmplen = 8192;
+        struct hostent hostbuf;
         gethostbyname_r(tok, &hostbuf, tmp, tmplen, &hp, &herr);
 #elif _SUN_SOURCE
+        int herr;
+        char tmp[8192];
+        int tmplen = 8192;
+        struct hostent hostbuf;
         hp = gethostbyname_r(tok, &hostbuf, tmp, tmplen, &herr);
 #else
         hp = gethostbyname(tok);
@@ -1013,6 +1025,8 @@ struct cdb2_hndl {
     double min_tls_ver;
     cdb2_ssl_sess_list *sess_list;
     int nid_dbname;
+    /* 1 if it's a newly established session which needs to be cached. */
+    int newsess;
 #endif
     struct context_messages context_msgs;
     char *env_tz;
@@ -1026,7 +1040,36 @@ struct cdb2_hndl {
     int comdb2db_timeout;
     int socket_timeout;
     cdb2_event events;
+    // Protobuf allocator data used only for row data i.e. lastresponse
+    void *protobuf_data;
+    int protobuf_size;
+    int protobuf_offset;
+    int protobuf_used_sysmalloc;
+    ProtobufCAllocator allocator;
 };
+
+static void *cdb2_protobuf_alloc(void *allocator_data, size_t size)
+{
+    struct cdb2_hndl *hndl = allocator_data;
+    void *p = NULL;
+    if (size <= hndl->protobuf_size - hndl->protobuf_offset) {
+        p = hndl->protobuf_data + hndl->protobuf_offset;
+        hndl->protobuf_offset += size;
+    } else {
+        p = malloc(size);
+        hndl->protobuf_used_sysmalloc = 1;
+    }
+    return p;
+}
+void cdb2_protobuf_free(void *allocator_data, void *p)
+{
+    struct cdb2_hndl *hndl = allocator_data;
+    hndl->protobuf_used_sysmalloc = 0;
+    if (p < hndl->protobuf_data ||
+        p > (hndl->protobuf_data + hndl->protobuf_size)) {
+        free(p);
+    }
+}
 
 static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
                                int myport, int timeoutms)
@@ -1294,6 +1337,12 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                     hndl->socket_timeout = atoi(tok);
                 else if (tok)
                     CDB2_SOCKET_TIMEOUT = atoi(tok);
+            } else if (strcasecmp("protobuf_size", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (hndl)
+                    hndl->protobuf_size = atoi(tok);
+                else
+                    CDB2_PROTOBUF_SIZE = atoi(tok);
             } else if (strcasecmp("comdb2dbname", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1438,6 +1487,14 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 static int get_config_file(const char *dbname, char *f, size_t s)
 {
     char *root = getenv("COMDB2_ROOT");
+
+    /* `dbname' is NULL if we're only reading defaults from comdb2db.cfg.
+       Formatting a NULL pointer with %s specifier is undefined behavior,
+       and whatever file path it produces (in glibc, it's "(null).cfg")
+       does not make sense. Return an error. */
+    if (dbname == NULL)
+        return -1;
+
     if (root == NULL)
         root = QUOTE(COMDB2_ROOT);
     size_t n;
@@ -1477,12 +1534,6 @@ static int read_available_comdb2db_configs(
         debugprint("entering\n");
 
     if (!noLock) pthread_mutex_lock(&cdb2_cfg_lock);
-    if (get_config_file(dbname, filename, sizeof(filename)) != 0) {
-        if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
-        snprintf(hndl->errstr, sizeof(hndl->errstr),
-                 "Config file name too long.");
-        return -1;
-    }
 
     if (num_hosts)
         *num_hosts = 0;
@@ -1523,12 +1574,13 @@ static int read_available_comdb2db_configs(
         }
     }
 
-    s = sbuf2openread(filename);
-    if (s != NULL) {
-        read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts,
-                          num_hosts, comdb2db_num, dbname, db_hosts,
-                          num_db_hosts, dbnum, send_stack);
-        sbuf2close(s);
+    if (get_config_file(dbname, filename, sizeof(filename)) == 0) {
+        s = sbuf2openread(filename);
+        if (s != NULL) {
+            read_comdb2db_cfg(hndl, s, comdb2db_name, NULL, comdb2db_hosts, num_hosts, comdb2db_num, dbname, db_hosts,
+                              num_db_hosts, dbnum, send_stack);
+            sbuf2close(s);
+        }
     }
     if (!noLock) pthread_mutex_unlock(&cdb2_cfg_lock);
     return 0;
@@ -1542,10 +1594,7 @@ static int read_available_comdb2db_configs(
 static int get_host_by_name(const char *comdb2db_name,
                             char comdb2db_hosts[][64], int *num_hosts)
 {
-    char tmp[8192];
-    int tmplen = sizeof(tmp);
-    int herr;
-    struct hostent hostbuf, *hp = NULL;
+    struct hostent *hp = NULL;
     char dns_name[512];
 
     if (cdb2_default_cluster[0] == '\0') {
@@ -1557,8 +1606,16 @@ static int get_host_by_name(const char *comdb2db_name,
 #ifdef __APPLE__
     hp = gethostbyname(dns_name);
 #elif _LINUX_SOURCE
+    int herr;
+    char tmp[8192];
+    int tmplen = sizeof(tmp);
+    struct hostent hostbuf;
     gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &hp, &herr);
 #elif _SUN_SOURCE
+    int herr;
+    char tmp[8192];
+    int tmplen = sizeof(tmp);
+    struct hostent hostbuf;
     hp = gethostbyname_r(dns_name, &hostbuf, tmp, tmplen, &herr);
 #else
     hp = gethostbyname(dns_name);
@@ -2047,10 +2104,8 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     /* An application may use different certificates.
        So we allocate an SSL context for each handle. */
     SSL_CTX *ctx;
-    int rc, i, dossl = 0;
+    int rc, dossl = 0;
     cdb2_ssl_sess *p;
-    cdb2_ssl_sess_list *store;
-    SSL_SESSION *sess;
 
     if (hndl->c_sslmode >= SSL_REQUIRE) {
         switch (hndl->s_sslmode) {
@@ -2128,72 +2183,17 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     p = (hndl->sess_list == NULL) ? NULL : &(hndl->sess_list->list[indx]);
 
     rc = sslio_connect(sb, ctx, hndl->c_sslmode, hndl->dbname, hndl->nid_dbname,
-                       hndl->errstr, sizeof(hndl->errstr),
-                       ((p != NULL) ? p->sess : NULL), &hndl->sslerr);
+                       ((p != NULL) ? p->sess : NULL));
 
     SSL_CTX_free(ctx);
     if (rc != 1) {
+        hndl->sslerr = sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
         /* If SSL_connect() fails, invalidate the session. */
         if (p != NULL)
             p->sess = NULL;
         return -1;
     }
-
-    if (hndl->cache_ssl_sess) {
-        if (hndl->sess_list == NULL) {
-            hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
-            if (hndl->sess_list == NULL)
-                return ENOMEM;
-            hndl->sess_list->list = NULL;
-            strncpy(hndl->sess_list->dbname,
-                    hndl->dbname, sizeof(hndl->dbname) - 1);
-            hndl->sess_list->dbname[sizeof(hndl->dbname) - 1] = '\0';
-            strncpy(hndl->sess_list->cluster,
-                    hndl->cluster, sizeof(hndl->cluster) - 1);
-            hndl->sess_list->cluster[sizeof(hndl->cluster) - 1] = '\0';
-            hndl->sess_list->ref = 1;
-            hndl->sess_list->n = hndl->num_hosts;
-
-            /* Append it to our internal linkedlist. */
-            rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
-            if (rc != 0) {
-                /* If we fail to lock (which is quite rare), don't error out. 
-                   we lose the caching ability, and that's it. */
-                free(hndl->sess_list);
-                hndl->sess_list = NULL;
-                hndl->cache_ssl_sess = 0;
-                return 0;
-            }
-
-            /* move store to the last element. */
-            for (store = &cdb2_ssl_sess_cache; store->next != NULL;
-                 store = store->next) {
-                /* right, blank. */
-            };
-            hndl->sess_list->next = NULL;
-            store->next = hndl->sess_list;
-            pthread_mutex_unlock(&cdb2_ssl_sess_lock);
-        }
-
-        if (hndl->sess_list->list == NULL) {
-            p = malloc(sizeof(cdb2_ssl_sess) * hndl->num_hosts);
-            if (p == NULL)
-                return ENOMEM;
-            hndl->sess_list->list = p;
-
-            for (i = 0; i != hndl->num_hosts; ++i, ++p) {
-                strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
-                p->host[sizeof(p->host) - 1] = '\0';
-                p->sess = NULL;
-            }
-        }
-
-        /* Refresh in case of renegotiation. */
-        p = &(hndl->sess_list->list[indx]);
-        sess = p->sess;
-        p->sess = SSL_get1_session(sslio_get_ssl(sb));
-        if (sess != NULL) SSL_SESSION_free(sess);
-    }
+    hndl->newsess = 1;
     return 0;
 }
 #endif
@@ -2256,13 +2256,16 @@ static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
     // sockpool had us connect to is not the same as what we intended to connect
 }
 
+static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *remote_host, const char *app,
+                           const char *service, const char *instance);
+
 /* Tries to connect to specified node using sockpool.
  * If there is none, then makes a new socket connection.
  */
 static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 {
     const char *host = hndl->hosts[node_indx];
-    const int port = hndl->ports[node_indx];
+    int port = hndl->ports[node_indx];
     debugprint("entering, host '%s:%d'\n", host, port);
     int fd = -1;
     SBUF2 *sb = NULL;
@@ -2294,9 +2297,17 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
-            fd =
-                cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
+            if (port <= 0) {
+                port = cdb2portmux_get(hndl, hndl->type, host, "comdb2", "replication", hndl->dbname);
+                hndl->ports[node_indx] = port;
+            }
+            fd = cdb2_tcpconnecth_to(hndl, host, port, 0, hndl->connect_timeout);
         } else {
+            if (port <= 0) {
+                /* cdb2portmux_route() works without the assignment. We do it here to make it clear
+                   that we will be connecting directly to portmux on this host. */
+                hndl->ports[node_indx] = CDB2_PORTMUXPORT;
+            }
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
                                    hndl->dbname);
         }
@@ -2458,8 +2469,7 @@ static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
     for (int j = 0; j < max; j++) {
         int i = (begin + j) % max;
         hndl->node_seq = i + 1;
-        if (i == hndl->master || hndl->ports[i] <= 0 ||
-            i == hndl->connected_host || hndl->hosts_connected[i] == 1)
+        if (i == hndl->master || i == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
         if (newsql_connect(hndl, i) == 0)
             return 0;
@@ -2497,21 +2507,6 @@ static int cdb2_random_int()
         do_once = 1;
     }
     return nrand48(rand_state);
-}
-
-static inline int cdb2_try_resolve_ports(cdb2_hndl_tp *hndl)
-{
-    for (int i = 0; i < hndl->num_hosts; i++) {
-        if (hndl->ports[i] <= 0) {
-            hndl->ports[i] =
-                cdb2portmux_get(hndl, hndl->type, hndl->hosts[i], "comdb2",
-                                "replication", hndl->dbname);
-            if (hndl->ports[i] > 0) {
-                return 1;
-            }
-        }
-    }
-    return 0;
 }
 
 /* Get random value from range 0 to max-1 excluding 1 value */
@@ -2555,21 +2550,6 @@ retry_connect:
             return 0;
     }
 
-    /* have hosts but no ports?  try to resolve ports */
-    if (hndl->flags & CDB2_DIRECT_CPU) {
-        for (int i = 0; i < hndl->num_hosts; i++) {
-            if (hndl->ports[i] <= 0) {
-                if (!cdb2_allow_pmux_route) {
-                    hndl->ports[i] =
-                        cdb2portmux_get(hndl, hndl->type, hndl->hosts[i],
-                                        "comdb2", "replication", hndl->dbname);
-                } else {
-                    hndl->ports[i] = CDB2_PORTMUXPORT;
-                }
-            }
-        }
-    }
-
     if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, hndl->num_hosts))
         return 0;
 
@@ -2578,16 +2558,8 @@ retry_connect:
          * master.*/
         /* After this retry on other nodes. */
         bzero(hndl->hosts_connected, sizeof(hndl->hosts_connected));
-        if (hndl->ports[hndl->master] > 0) {
-            if (newsql_connect(hndl, hndl->master) == 0)
-                return 0;
-        }
-    }
-
-    /* have hosts but no ports?  try to resolve ports */
-    if (hndl->flags & CDB2_DIRECT_CPU && cdb2_try_resolve_ports(hndl) == 1) {
-        requery_done = 1;
-        goto retry_connect;
+        if (newsql_connect(hndl, hndl->master) == 0)
+            return 0;
     }
 
     /* Can't connect to any of the nodes, re-check information about db. */
@@ -2639,6 +2611,14 @@ retry:
         debugprint("bad read or numbytes, b_read=%d, sizeof(hdr)=(%zu):\n",
                    b_read, sizeof(hdr));
         rc = -1;
+        /* In TLS 1.3, client authentication happens after handshake (RFC 8446).
+           An invalid client (e.g., a revoked cert) may see a successful
+           handshake but encounter an error when reading data from the server.
+           Catch the error here. */
+#       if WITH_SSL
+        if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
+            sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
+#       endif
         goto after_callback;
     }
 
@@ -2764,7 +2744,10 @@ static int cdb2_convert_error_code(int rc)
 static void clear_responses(cdb2_hndl_tp *hndl)
 {
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                             &hndl->allocator);
+        hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
         hndl->last_buf = NULL;
         hndl->lastresponse = NULL;
@@ -2893,7 +2876,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     if (!hndl || !hndl->sent_client_info) {
         cinfo.pid = _PID;
-        cinfo.th_id = pthread_self();
+        cinfo.th_id = (uint64_t)pthread_self();
         cinfo.host_id = cdb2_hostid();
         cinfo.argv0 = _ARGV0;
         if (hndl && hndl->send_stack)
@@ -3176,10 +3159,15 @@ retry_next_record:
     }
 
     /* free previous response */
-    if (hndl->lastresponse)
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+    if (hndl->lastresponse) {
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                             &hndl->allocator);
+        hndl->protobuf_offset = 0;
+    }
 
-    hndl->lastresponse = cdb2__sqlresponse__unpack(NULL, len, hndl->last_buf);
+    hndl->lastresponse =
+        cdb2__sqlresponse__unpack(&hndl->allocator, len, hndl->last_buf);
     debugprint("hndl->lastresponse->response_type=%d\n",
                hndl->lastresponse->response_type);
 
@@ -3419,9 +3407,16 @@ int cdb2_close(cdb2_hndl_tp *hndl)
     }
 
     if (hndl->lastresponse) {
-        cdb2__sqlresponse__free_unpacked(hndl->lastresponse, NULL);
+        if (hndl->protobuf_used_sysmalloc)
+            cdb2__sqlresponse__free_unpacked(hndl->lastresponse,
+                                             &hndl->allocator);
+        hndl->protobuf_offset = 0;
         free((void *)hndl->last_buf);
     }
+
+    if (hndl->protobuf_data)
+        free(hndl->protobuf_data);
+
     if (hndl->num_set_commands) {
         while (hndl->num_set_commands) {
             hndl->num_set_commands--;
@@ -3674,8 +3669,7 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
     if (!(hndl->snapshot_file || hndl->query_no <= 1)) {
         debugprint("in_trans=%d snapshot_file=%d query_no=%d\n", hndl->in_trans,
                    hndl->snapshot_file, hndl->query_no);
-        sprintf(hndl->errstr, "%s: Database disconnected while in transaction.",
-                __func__);
+        sprintf(hndl->errstr, "Database disconnected while in transaction.");
         return CDB2ERR_TRAN_IO_ERROR; /* Fail if disconnect happens in
                                          transaction which doesn't have snapshot
                                          info.*/
@@ -3802,6 +3796,8 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
         rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
         if (rc) {
             debugprint("Can't read response from the db node %s\n", host);
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
             sbuf2close(hndl->sb);
             hndl->sb = NULL;
             return 1;
@@ -3866,6 +3862,8 @@ static int retry_queries_and_skip(cdb2_hndl_tp *hndl, int num_retry,
     rc = cdb2_read_record(hndl, &hndl->first_buf, &len, NULL);
 
     if (rc) {
+        free(hndl->first_buf);
+        hndl->first_buf = NULL;
         PRINT_AND_RETURN_OK(rc);
     }
 
@@ -4282,7 +4280,8 @@ retry_queries:
                 goto retry_queries;
             }
             else if (rc < 0) {
-                sprintf(hndl->errstr, "Can't retry query to db");
+                if (hndl->in_trans)
+                    hndl->error_in_trans = rc;
                 PRINT_AND_RETURN(rc);
             }
         }
@@ -4381,63 +4380,76 @@ read_record:
                                          : "NOT-CONNECTED",
                rc, type);
 
-    if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+    if (rc == 0) {
+        if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
 #if WITH_SSL
-        hndl->s_sslmode = PEER_SSL_REQUIRE;
-        /* server wants us to use ssl so turn ssl on in same connection */
-        try_ssl(hndl, hndl->sb, hndl->connected_host);
+            hndl->s_sslmode = PEER_SSL_REQUIRE;
+            /* server wants us to use ssl so turn ssl on in same connection */
+            try_ssl(hndl, hndl->sb, hndl->connected_host);
 
-        /* Decrement retry counter: It is not a real retry. */
-        --retries_done;
-        /* Resend client info (argv0, cheapstack and etc.)
-           over the SSL connection. */
-        hndl->sent_client_info = 0;
-        GOTO_RETRY_QUERIES();
+            /* Decrement retry counter: It is not a real retry. */
+            --retries_done;
+            /* Resend client info (argv0, cheapstack and etc.)
+               over the SSL connection. */
+            hndl->sent_client_info = 0;
+            GOTO_RETRY_QUERIES();
 #else
-        sprintf(hndl->errstr, "%s: The database requires SSL connections.",
-                __func__);
-        PRINT_AND_RETURN(-1);
+            sprintf(hndl->errstr, "%s: The database requires SSL connections.",
+                    __func__);
+            PRINT_AND_RETURN(-1);
 #endif
-    }
+        } else if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
+            /* Dbinfo .. go to new node */
+            if (hndl->flags & CDB2_DIRECT_CPU) {
+                /* direct cpu should not do anything with dbinfo, just retry */
+                GOTO_RETRY_QUERIES();
+            }
+            /* We got back info about nodes that might be coherent. */
+            CDB2DBINFORESPONSE *dbinfo_resp = NULL;
+            dbinfo_resp =
+                cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
+            parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports,
+                             &hndl->master, &hndl->num_hosts,
+                             &hndl->num_hosts_sameroom, hndl->debug_trace
+#if WITH_SSL
+                             ,
+                             &hndl->s_sslmode
+#endif
+            );
+            cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
 
-    /* Dbinfo .. go to new node */
-    if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
-        if (hndl->flags & CDB2_DIRECT_CPU) {
-            /* direct cpu should not do anything with dbinfo, just retry */
+            newsql_disconnect(hndl, hndl->sb, __LINE__);
+            hndl->connected_host = -1;
+            hndl->retry_all = 1;
+
+#if WITH_SSL
+            /* Clear cached SSL sessions - Hosts may have changed. */
+            if (hndl->sess_list != NULL) {
+                cdb2_ssl_sess_list *sl = hndl->sess_list;
+                for (int i = 0; i != sl->n; ++i)
+                    SSL_SESSION_free(sl->list[i].sess);
+                free(sl->list);
+                sl->list = NULL;
+            }
+#endif
+            free(hndl->first_buf);
+            hndl->first_buf = NULL;
             GOTO_RETRY_QUERIES();
         }
-        /* We got back info about nodes that might be coherent. */
-        CDB2DBINFORESPONSE *dbinfo_resp = NULL;
-        dbinfo_resp = cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
-        parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports, &hndl->master,
-                         &hndl->num_hosts, &hndl->num_hosts_sameroom,
-                         hndl->debug_trace
-#if WITH_SSL
-                         ,
-                         &hndl->s_sslmode
-#endif
-        );
-        cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
-
-        newsql_disconnect(hndl, hndl->sb, __LINE__);
-        hndl->connected_host = -1;
-        hndl->retry_all = 1;
 
 #if WITH_SSL
-        /* Clear cached SSL sessions - Hosts may have changed. */
-        if (hndl->sess_list != NULL) {
-            cdb2_ssl_sess_list *sl = hndl->sess_list;
-            for (int i = 0; i != sl->n; ++i)
-                SSL_SESSION_free(sl->list[i].sess);
-            free(sl->list);
-            sl->list = NULL;
-        }
+        /* We used to cache a session immediately after a handshake.
+           However in TLSv1.3, a session is not established until a
+           separate post-handshake message containing the session
+           details from the server has been received by the client.
+           So we do it here after we've successfully read the first
+           response from the server. */
+        if ((rc = cdb2_add_ssl_session(hndl)) != 0)
+            PRINT_AND_RETURN(rc);
 #endif
-
-        GOTO_RETRY_QUERIES();
-    }
-
-    if (rc) {
+    } else {
         if (err_val) {
             /* we get here because skip feature is off
                and the sql is either commit or rollback.
@@ -4983,20 +4995,21 @@ int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
     bindval->type = type;
     bindval->varname = (char *)varname;
     bindval->value.data = (void *)varaddr;
-    if (varaddr == NULL) {
-        bindval->value.len = 0;
+    bindval->value.len = length;
+    if (length == 0) {
+        /* protobuf-c discards `data' if `len' is 0. A NULL value and a 0-length
+           value would look the same from the server's perspective. Hence we
+           need an addtional isnull flag to tell them apart. */
         bindval->has_isnull = 1;
-        bindval->isnull = 1;
-    } else if (type == CDB2_CSTRING && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 1;
-    } else if (type == CDB2_BLOB && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 0;
-        bindval->has_isnull = 1;
-        bindval->isnull = 0;
-    } else {
-        bindval->value.len = length;
+        bindval->isnull = (varaddr == NULL);
+
+        /* R6 and old R7 ignore isnull for cstring and treat a 0-length string
+           as NULL. So we send 1 dummy byte here to be backward compatible with
+           an old backend. */
+        if (type == CDB2_CSTRING && !bindval->isnull) {
+            bindval->value.data = (unsigned char *)"";
+            bindval->value.len = 1;
+        }
     }
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
     if (log_calls)
@@ -5026,22 +5039,17 @@ int cdb2_bind_index(cdb2_hndl_tp *hndl, int index, int type,
     bindval->type = type;
     bindval->varname = NULL;
     bindval->value.data = (void *)varaddr;
+    bindval->value.len = length;
     bindval->has_index = 1;
     bindval->index = index;
-    if (varaddr == NULL) {
-        bindval->value.len = 0;
+    if (length == 0) {
+        /* See comments in cdb2_bind_param(). */
         bindval->has_isnull = 1;
-        bindval->isnull = 1;
-    } else if (type == CDB2_CSTRING && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 1;
-    } else if (type == CDB2_BLOB && length == 0) {
-        bindval->value.data = (unsigned char *)"";
-        bindval->value.len = 0;
-        bindval->has_isnull = 1;
-        bindval->isnull = 0;
-    } else {
-        bindval->value.len = length;
+        bindval->isnull = (varaddr == NULL);
+        if (type == CDB2_CSTRING && !bindval->isnull) {
+            bindval->value.data = (unsigned char *)"";
+            bindval->value.len = 1;
+        }
     }
     hndl->bindvars[hndl->n_bindvars - 1] = bindval;
 
@@ -5517,9 +5525,11 @@ static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
     if (strcasecmp(hndl->cluster, "local") == 0) {
         hndl->num_hosts = 1;
         strcpy(hndl->hosts[0], "localhost");
-        hndl->ports[0] = cdb2portmux_get(hndl, "local", "localhost", "comdb2",
-                                         "replication", hndl->dbname);
         hndl->flags |= CDB2_DIRECT_CPU;
+
+        /* Skip dbinfo to avoid pulling other hosts in the cluster. */
+        rc = 0;
+        goto after_callback;
     } else {
         rc = get_comdb2db_hosts(hndl, comdb2db_hosts, comdb2db_ports, &master,
                                 comdb2db_name, &num_comdb2db_hosts,
@@ -6002,41 +6012,72 @@ static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl, cdb2_ssl_sess_list *arg)
     return 0;
 }
 
-#if 0
-static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *p)
+static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
 {
     int i, rc;
-    cdb2_ssl_sess_list *pos;
+    SSL_SESSION *sess;
+    cdb2_ssl_sess_list *store;
+    cdb2_ssl_sess *p;
 
-    if (p == NULL)
-        return;
+    if (!hndl->cache_ssl_sess || !hndl->newsess)
+        return 0;
+    hndl->newsess = 1;
+    if (hndl->sess_list == NULL) {
+        hndl->sess_list = malloc(sizeof(cdb2_ssl_sess_list));
+        if (hndl->sess_list == NULL)
+            return ENOMEM;
+        hndl->sess_list->list = NULL;
+        strncpy(hndl->sess_list->dbname, hndl->dbname,
+                sizeof(hndl->dbname) - 1);
+        hndl->sess_list->dbname[sizeof(hndl->dbname) - 1] = '\0';
+        strncpy(hndl->sess_list->cluster, hndl->cluster,
+                sizeof(hndl->cluster) - 1);
+        hndl->sess_list->cluster[sizeof(hndl->cluster) - 1] = '\0';
+        hndl->sess_list->ref = 1;
+        hndl->sess_list->n = hndl->num_hosts;
 
-    if (p->ref != 0)
-        return;
+        /* Append it to our internal linkedlist. */
+        rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
+        if (rc != 0) {
+            /* If we fail to lock (which is quite rare), don't error out.
+               we lose the caching ability, and that's it. */
+            free(hndl->sess_list);
+            hndl->sess_list = NULL;
+            hndl->cache_ssl_sess = 0;
+            return 0;
+        }
 
-    /* Remove from the linkedlist first. */
-    rc = pthread_mutex_lock(&cdb2_ssl_sess_lock);
-    if (rc != 0)
-        return;
+        /* move store to the last element. */
+        for (store = &cdb2_ssl_sess_cache; store->next != NULL;
+             store = store->next) {
+            /* right, blank. */
+        };
+        hndl->sess_list->next = NULL;
+        store->next = hndl->sess_list;
+        pthread_mutex_unlock(&cdb2_ssl_sess_lock);
+    }
 
-    if (p->ref == 0) {
-        /* pos points to the element before p. */
-        for (pos = &cdb2_ssl_sess_cache; pos->next != NULL; pos = pos->next) {
-            if (pos->next == p) {
-                pos->next = p->next;
-                break;
-            }
+    if (hndl->sess_list->list == NULL) {
+        p = malloc(sizeof(cdb2_ssl_sess) * hndl->num_hosts);
+        if (p == NULL)
+            return ENOMEM;
+        hndl->sess_list->list = p;
+
+        for (i = 0; i != hndl->num_hosts; ++i, ++p) {
+            strncpy(p->host, hndl->hosts[i], sizeof(p->host) - 1);
+            p->host[sizeof(p->host) - 1] = '\0';
+            p->sess = NULL;
         }
     }
 
-    pthread_mutex_unlock(&cdb2_ssl_sess_lock);
-
-    for (i = 0; i != p->n; ++i)
-        SSL_SESSION_free(p->list[i].sess);
-    free(p->list);
-    free(p);
+    /* Refresh in case of renegotiation. */
+    p = &(hndl->sess_list->list[hndl->connected_host]);
+    sess = p->sess;
+    p->sess = SSL_get1_session(sslio_get_ssl(hndl->sb));
+    if (sess != NULL)
+        SSL_SESSION_free(sess);
+    return 0;
 }
-#endif
 #else /* WITH_SSL */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 {
@@ -6107,7 +6148,10 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         strcpy(hndl->policy, "room");
     } else {
         hndl->flags |= CDB2_RANDOMROOM;
-        strcpy(hndl->policy, "random_room");
+        /* DIRECTCPU mode behaves like RANDOMROOM. But let's pick a shorter policy name
+           for it so we can fit longer hostnames in the sockpool type string which is
+           merely 48 chars. */
+        strcpy(hndl->policy, (hndl->flags & CDB2_DIRECT_CPU) ? "dc" : "random_room");
     }
 
     if (hndl->flags & CDB2_DIRECT_CPU) {
@@ -6119,15 +6163,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
         if (p) {
             *p = '\0';
             hndl->ports[0] = atoi(p + 1);
-        } else {
-            if (!cdb2_allow_pmux_route) {
-                hndl->ports[0] = cdb2portmux_get(hndl, type, type, "comdb2",
-                                                 "replication", dbname);
-                if (hndl->ports[0] < 0)
-                    rc = -1;
-            } else {
-                hndl->ports[0] = CDB2_PORTMUXPORT;
-            }
+        } else if (cdb2_allow_pmux_route) {
+            hndl->ports[0] = CDB2_PORTMUXPORT;
         }
         debugprint("host %s port %d\n", hndl->hosts[0], hndl->ports[0]);
     } else if (is_machine_list(type)) {
@@ -6203,6 +6240,13 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
             PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
         }
     }
+
+    if (!hndl->protobuf_size)
+        hndl->protobuf_size = CDB2_PROTOBUF_SIZE;
+    hndl->protobuf_data = malloc(hndl->protobuf_size);
+    hndl->allocator.alloc = &cdb2_protobuf_alloc;
+    hndl->allocator.free = &cdb2_protobuf_free;
+    hndl->allocator.allocator_data = hndl;
 
 out:
     if (log_calls) {

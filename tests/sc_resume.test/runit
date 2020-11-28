@@ -52,6 +52,15 @@ function assert_schema
     fi
 }
 
+function check_systable_sc_status
+{
+    seed1=$1
+    seed2=`cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm "select seed from comdb2_sc_status where name='t1'"`
+    if [ "$seed1" != "$seed2" ] ; then
+        failexit "sc_status does not contain the correct seed for t1 schemachange $seed1 vs $seed2"
+    fi
+}
+
 
 function assert_sc_status
 {
@@ -293,6 +302,10 @@ echo "sleep 10 to let alter1 process some rows"
 sleep 10
 
 seed1=`get_sc_seed`
+
+# check that comdb2_sc_status table has the same seed
+check_systable_sc_status $seed1
+
 #if it is a cluster we can downgrade, if it is single node we can restart
 #we can add feature to send('restart') where it will cleanup then exec self
 echo "sending downgrade"

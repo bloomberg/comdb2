@@ -95,6 +95,7 @@ hash_t *
 hash_init_strcase(int keyoff); /* string starts at keyoff (case-insensitive) */
 hash_t *hash_init_fnvstr(int keyoff);  /* string starts at keyoff; use FNV */
 hash_t *hash_init_strptr(int keyoff);  /* string ptr at keyoff */
+hash_t *hash_init_strcaseptr(int keyoff); /* like above, case insensitive */
 hash_t *hash_init_key0len(int keyoff); /* string with len in key[0] at keyoff */
 hash_t *
 hash_init_i4(int keyoff); /* i4 @ keyoff with some suitable optimisations */

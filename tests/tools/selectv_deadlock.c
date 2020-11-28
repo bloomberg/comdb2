@@ -88,7 +88,7 @@ int64_t count_updates(void)
 void *run_test(void *x)
 {
     cdb2_hndl_tp *hndl;
-    int64_t td = (int64_t)x;
+    int td = *(int*)x;
     int64_t *instids = (int64_t *)calloc(limit, sizeof(int64_t));
     int count = 0;
     int success = 0;
@@ -172,8 +172,7 @@ void *run_test(void *x)
     }
 
     cdb2_close(hndl);
-    printf("Thread %"PRId64" exiting, %d success, %d total\n", td, success,
-            total);
+    printf("Thread %d exiting, %d success, %d total\n", td, success, total);
 
     free(instids);
 
@@ -414,7 +413,7 @@ int main(int argc, char *argv[])
 
     errlog = fopen("err.log", "w");
     assert(errlog);
-    srand(time(NULL));
+    srandom(time(NULL));
 
     if (do_create) {
         drop_tables();
@@ -425,9 +424,10 @@ int main(int argc, char *argv[])
         populate_tables();
     }
     thds = (pthread_t *)calloc(numthds, sizeof(pthread_t));
+    int t_ids[numthds];
     for(int i = 0; i < numthds; i++) {
-        int64_t x = (int64_t)i;
-        rc = pthread_create(&thds[i], NULL, run_test, (void *)x);
+        t_ids[i] = i;
+        rc = pthread_create(&thds[i], NULL, run_test, (void *)&t_ids[i]);
         if (rc != 0) {
             fprintf(stderr, "pthread_create error, rc=%d errno=%d\n", rc,
                     errno);

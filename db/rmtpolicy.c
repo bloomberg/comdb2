@@ -36,8 +36,6 @@
 #include "nodemap.h"
 #include "logmsg.h"
 
-enum { MAX_CPU = 65536 };
-
 struct rmtpol {
     const char *descr;
     char explicit_allow_machs[MAX_CPU / 8];
@@ -49,7 +47,8 @@ struct rmtpol {
                             implies "allow write from alpha". */
 };
 
-static enum mach_class mach_classes[MAX_CPU] = {CLASS_UNKNOWN};
+enum mach_class mach_classes[MAX_CPU] = {CLASS_UNKNOWN};
+
 static struct rmtpol write_pol = {"write from", {0}, {0}, 0, 0, 1};
 static struct rmtpol brd_pol = {"broadcast to", {0}, {0}, 0, 0, 0};
 static struct rmtpol cluster_pol = {"cluster with", {0}, {0}, 0, 0, 0};
@@ -58,11 +57,15 @@ enum mach_class get_my_mach_class(void)
 {
     if (gbl_machine_class)
         return mach_class_name2class(gbl_machine_class);
-    return get_mach_class(gbl_mynode);
+    return machine_my_class();
+}
+
+const char *get_my_mach_class_str()
+{
+    return mach_class_class2name(get_my_mach_class());
 }
 
 enum mach_class get_mach_class(const char *host) { return machine_class(host); }
-
 
 const char *get_mach_class_str(char *host)
 {
@@ -105,7 +108,7 @@ int allow_write_from_remote(const char *host)
     rc = allow_action_from_remote(host, &write_pol);
     if (rc == -1) {
         /* default logic: allow writes from same or higher classes. */
-        if (get_mach_class(host) >= get_my_mach_class())
+        if (get_mach_class(host) >= get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -120,7 +123,7 @@ int allow_cluster_from_remote(const char *host)
     if (rc == -1) {
         /* default logic: only cluster with like machines i.e. alpha with alpha,
          * beta with beta etc. */
-        if (get_mach_class(host) == get_my_mach_class())
+        if (get_mach_class(host) == get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -134,7 +137,7 @@ int allow_broadcast_to_remote(const char *host)
     if (rc == -1) {
         /* default logic: only broadcast to machines of the same or a lower
          * class.  we don't want alpha to broadcast to prod! */
-        if (get_mach_class(host) <= get_my_mach_class())
+        if (get_mach_class(host) <= get_mach_class(gbl_myhostname))
             rc = 1;
         else
             rc = 0;
@@ -254,7 +257,7 @@ int process_allow_command(char *line, int lline)
         if (parse_mach_or_group(tok, ltok, &if_mach, &if_cls) != 0)
             goto bad;
 
-        if (if_mach > 0 && if_mach != gbl_mynode)
+        if (if_mach > 0 && if_mach != gbl_myhostname)
             goto ignore;
         if (if_cls != CLASS_UNKNOWN && if_cls != get_my_mach_class())
             goto ignore;

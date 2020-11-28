@@ -14,6 +14,7 @@
 int matchable_log_type(int rectype);
 
 extern int gbl_verbose_physrep;
+int gbl_physrep_exit_on_invalid_logstream = 0;
 
 LOG_INFO get_last_lsn(bdb_state_type *bdb_state)
 {
@@ -295,7 +296,17 @@ LOG_INFO find_match_lsn(void *in_bdb_state, cdb2_hndl_tp *repl_db,
                     info.file = match_file;
                     info.offset = match_offset;
                     info.size = blob_len;
-                    info.gen = *(int64_t *)cdb2_column_value(repl_db, 2);
+                    int64_t *gen = (int64_t *)cdb2_column_value(repl_db, 2);
+                    if (gen == NULL) {
+                        info.gen = 0;
+                        if (gbl_physrep_exit_on_invalid_logstream) {
+                            logmsg(LOGMSG_FATAL, "physreps require elect-highest-committed-gen on source- exiting\n");
+                            exit(1);
+                        }
+                        logmsg(LOGMSG_ERROR, "physreps require elect-highest-committed-gen source\n");
+                    } else {
+                        info.gen = *gen;
+                    }
                     logc->close(logc, 0);
                     free(logrec.data);
                     logrec.data = NULL;

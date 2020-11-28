@@ -1,4 +1,20 @@
 /*
+   Copyright 2020 Bloomberg Finance L.P.
+
+   Licensed under the Apache License, Version 2.0 (the "License");
+   you may not use this file except in compliance with the License.
+   You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+   Unless required by applicable law or agreed to in writing, software
+   distributed under the License is distributed on an "AS IS" BASIS,
+   WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+   See the License for the specific language governing permissions and
+   limitations under the License.
+ */
+
+/*
 **
 ** Vtables interface for Schema Tables.
 **
@@ -189,6 +205,7 @@ const sqlite3_module systblTablesModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
+  .systable_lock = "comdb2_tables",
 };
 
 /* This initializes this table but also a bunch of other schema tables
@@ -217,8 +234,6 @@ int comdb2SystblInit(
     rc = sqlite3_create_module(db, "comdb2_users", &systblUsersModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_queues", &systblQueuesModule, 0);
-  if (rc == SQLITE_OK)
-    rc = sqlite3_create_module(db, "comdb2_tablepermissions", &systblTablePermissionsModule, 0);
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_triggers", &systblTriggersModule, 0);
   if (rc == SQLITE_OK)
@@ -279,11 +294,25 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblScStatusInit(db);
   if (rc == SQLITE_OK)
+    rc = systblScHistoryInit(db);
+  if (rc == SQLITE_OK)
     rc = systblConnectionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblViewsInit(db);
   if (rc == SQLITE_OK)
-    rc  = systblSQLClientStats(db);
+    rc = systblSQLClientStats(db);
+  if (rc == SQLITE_OK)
+    rc = systblSQLIndexStatsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTemporaryFileSizesModuleInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblFunctionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTablePermissionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblSystabPermissionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblTimepartPermissionsInit(db);
 #endif
   return rc;
 }

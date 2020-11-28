@@ -1062,7 +1062,7 @@ int sqlite3VdbeExec(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( gbl_debug_sql_opcodes ){
-      logmsg(LOGMSG_USER, "tid 0x%lx step %d pc %d op %d %s\n", pthread_self(), nVmStep,
+      logmsg(LOGMSG_USER, "tid 0x%p step %d pc %d op %d %s\n", (void *)pthread_self(), nVmStep,
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -1922,6 +1922,16 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
   flags = pIn1->flags | pIn2->flags;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   assert( pOut->db );
+
+  /* SQLite may reuse a Mem object. If the Mem object has dynamically allocated
+     memory (zMalloc), we free it here. If we do not free it here, zMalloc will
+     be overwritten to NULL by one of the arithmetic routines below and the memory
+     will be leaked. */
+  if( pOut->szMalloc>0 ){
+    sqlite3DbFreeNN(pOut->db, pOut->zMalloc);
+    pOut->szMalloc = 0;
+    pOut->z = pOut->zMalloc = NULL;
+  }
 
   if( (pIn1->flags & MEM_Interval) && pIn1->du.tv.type == INTV_DECIMAL_TYPE)
   {
@@ -3024,9 +3034,7 @@ case OP_Column: {
   if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
     /* We may reuse a Mem structure.
        So delete any previously allocated memory in pDest. */
-    if( VdbeMemDynamic(pDest) ){
-      sqlite3VdbeMemSetNull(pDest);
-    }
+    sqlite3VdbeMemRelease(pDest); /* takes care of both z and zMalloc */
     if(cur_is_remote(pCrsr)) {
       goto cooked_access;
     }

@@ -95,7 +95,6 @@ void init_reorder_tbl()
     dyn_array_set_cmpr(&defered_index_array, defered_index_key_cmp);
 }
 
-
 void truncate_defered_index_array() 
 {
     dyn_array_close(&defered_index_array);
@@ -1234,8 +1233,8 @@ int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
 }
 #endif
 
-int process_defered_table(struct ireq *iq, block_state_t *blkstate, void *trans,
-                          int *blkpos, int *ixout, int *errout)
+int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
+                          int *errout)
 {
     dyn_array_sort(&defered_index_array);
 

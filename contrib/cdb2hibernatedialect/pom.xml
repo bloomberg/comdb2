@@ -16,7 +16,7 @@ limitations under the License. -->
   <groupId>com.bloomberg.comdb2</groupId>
   <modelVersion>4.0.0</modelVersion>
   <artifactId>cdb2hibernate</artifactId>
-  <version>0.1.0</version>
+  <version>0.1.1</version>
   <packaging>jar</packaging>
   <properties>
     <maven.compiler.source>1.6</maven.compiler.source>
@@ -32,7 +32,7 @@ limitations under the License. -->
     <dependency>
       <groupId>junit</groupId>
       <artifactId>junit</artifactId>
-      <version>4.11</version>
+      <version>4.13.1</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

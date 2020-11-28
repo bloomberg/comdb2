@@ -27,7 +27,6 @@
 #include <sys/uio.h>
 
 #include "list.h"
-#include "segstring.h"
 #include "comdb2.h"
 #include "sql.h"
 #include "pool.h"

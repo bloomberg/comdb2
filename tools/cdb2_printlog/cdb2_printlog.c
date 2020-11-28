@@ -61,7 +61,7 @@ extern char printlog_endline;
 
 extern pthread_key_t comdb2_open_key;
 
-bdb_state_type *gbl_bdb_state;
+extern bdb_state_type *gbl_bdb_state;
 
 extern int comdb2ma_init(size_t init_sz, size_t max_cap);
 
@@ -209,7 +209,7 @@ int tool_cdb2_printlog_main(argc, argv)
 	argc -= optind;
 	argv += optind;
 
-	if (argc >= 0)
+	if (argc > 0)
 		return (cdb2_printlog_usage());
 
 	/* Handle possible interruptions. */

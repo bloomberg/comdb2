@@ -207,4 +207,8 @@ typedef struct {
     LISTC_T(trigger_tbl_info) tbls;
 } trigger_info;
 void get_trigger_info(const char *, trigger_info *);
+
+void javasp_do_procedure_wrlock(void);
+void javasp_do_procedure_unlock(void);
+
 #endif

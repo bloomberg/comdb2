@@ -146,7 +146,7 @@ __db_verify_arg(dbp, dname, flags)
 
 #undef	OKFLAGS
 #define	OKFLAGS (DB_AGGRESSIVE | DB_NOORDERCHK | DB_ORDERCHKONLY | \
-    DB_PRINTABLE | DB_SALVAGE)
+    DB_PRINTABLE | DB_SALVAGE | DB_RECCNTCHK)
 	if ((ret = __db_fchk(dbenv, "DB->verify", flags, OKFLAGS)) != 0)
 		return (ret);
 
@@ -670,7 +670,7 @@ __db_vrfy_walkpages(dbp, vdp, handle, callback, flags)
 	ret = isbad = t_ret = 0;
 
 #define	OKFLAGS (DB_AGGRESSIVE | DB_NOORDERCHK | DB_ORDERCHKONLY | \
-    DB_PRINTABLE | DB_SALVAGE)
+    DB_PRINTABLE | DB_SALVAGE | DB_RECCNTCHK)
 	if ((ret = __db_fchk(dbenv,
 	    "__db_vrfy_walkpages", flags, OKFLAGS)) != 0)
 		return (ret);

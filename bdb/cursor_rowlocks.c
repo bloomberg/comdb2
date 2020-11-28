@@ -1973,10 +1973,10 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
     if (debug_trace(berkdb) && exit_lkcount > 100 &&
         exit_lkcount > enter_lkcount) {
         logmsg(LOGMSG_USER,
-               "thd %lx function %s %s %d lock-count incremented from "
+               "thd %p function %s %s %d lock-count incremented from "
                "%d to %d\n",
-               pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe",
-               cur->idx, enter_lkcount, exit_lkcount);
+               (void *)pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe", cur->idx, enter_lkcount,
+               exit_lkcount);
 
         /* Grab the number of cursors */
         cursor_count = cur->ifn->count(cur->ifn->countarg);
@@ -1986,18 +1986,18 @@ static inline int lockcount_trace(bdb_berkdb_t *berkdb, const char *func,
             bdb_state->dbenv, cur->curtran->lockerid, &page_lock_count);
 
         if (page_lock_count > cursor_count) {
-            logmsg(LOGMSG_USER, "thd %lx function %s %s %d pagelock-count is "
-                                "%d cursor count is  %d\n",
-                   pthread_self(), func,
-                   cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
-                   page_lock_count, cursor_count);
+            logmsg(LOGMSG_USER,
+                   "thd %p function %s %s %d pagelock-count is "
+                   "%d cursor count is  %d\n",
+                   (void *)pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe", cur->idx, page_lock_count,
+                   cursor_count);
         }
 
         if (cur->max_page_locks < page_lock_count) {
-            logmsg(LOGMSG_USER, "thd %lx function %s %s %d incrementing max "
-                                "pagelock count from %d to %d\n",
-                   pthread_self(), func,
-                   cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
+            logmsg(LOGMSG_USER,
+                   "thd %p function %s %s %d incrementing max "
+                   "pagelock count from %d to %d\n",
+                   (void *)pthread_self(), func, cur->type == BDBC_IX ? "index" : "stripe", cur->idx,
                    cur->max_page_locks, page_lock_count);
 
             cur->max_page_locks = page_lock_count;
@@ -2039,15 +2039,12 @@ static inline int bdb_berkdb_rowlocks_enter(bdb_berkdb_t *berkdb,
             }
 
             /* Print */
-            logmsg(LOGMSG_USER,
-                   "Cur %p thd %lu %s tbl %s %s how=%d srch='%s'\n", berkdb,
-                   pthread_self(), func, bdb_state->name,
-                   curtypetostr(cur->type), how, srckeyp);
+            logmsg(LOGMSG_USER, "Cur %p thd %p %s tbl %s %s how=%d srch='%s'\n", berkdb, (void *)pthread_self(), func,
+                   bdb_state->name, curtypetostr(cur->type), how, srckeyp);
         } else {
             /* Print */
-            logmsg(LOGMSG_USER, "Cur %p thd %lu %s tbl %s %s how=%d\n", berkdb,
-                   pthread_self(), func, bdb_state->name,
-                   curtypetostr(cur->type), how);
+            logmsg(LOGMSG_USER, "Cur %p thd %p %s tbl %s %s how=%d\n", berkdb, (void *)pthread_self(), func,
+                   bdb_state->name, curtypetostr(cur->type), how);
         }
 
         /* Grab the lock count if debugging */

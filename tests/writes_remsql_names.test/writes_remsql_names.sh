@@ -4,7 +4,7 @@
 ################################################################################
 
 a_remdbname=$1
-a_remdb2config=$2
+a_remcdb2config=$2
 a_dbname=$3
 a_cdb2config=$4
 a_dbdir=$5
@@ -15,6 +15,9 @@ if [[ ! -z $7 ]]; then
 fi
 
 set -x
+
+REM_CDB2_OPTIONS="--cdb2cfg ${a_remcdb2config}"
+SRC_CDB2_OPTIONS="--cdb2cfg ${a_cdb2config}"
 
 checkresult()
 {
@@ -66,16 +69,16 @@ run_test()
    sed "s/ t / LOCAL_${a_remdbname}.${tblname} /g" $input > $work_input
 
    # populate table on remote
-   ${CDB2SQL_EXE} --host $mach $a_dbname - < $work_input | grep -v "${tblname}" >> $output
+   ${CDB2SQL_EXE} ${SRC_CDB2_OPTIONS} --host $mach $a_dbname - < $work_input | grep -v "${tblname}" >> $output
 
 
    # retrieve data through remote sql
-   ${CDB2SQL_EXE} --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.${tblname} order by ${column}" >> $output
+   ${CDB2SQL_EXE} ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.${tblname} order by ${column}" >> $output
 
    # get the version V2
    #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-   echo ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-   ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+   echo ${CDB2SQL_EXE} ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
+   ${CDB2SQL_EXE} ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
 
    work_exp_output=${exp_output}.actual
    sed "s/ t / LOCAL_${a_remdbname}.${tblname} /g" ${exp_output}  > ${work_exp_output}
@@ -85,8 +88,8 @@ run_test()
 }
 
 # Make sure we talk to the same host
-echo "${CDB2SQL_EXE} --tabs --cdb2cfg $a_cdb2config $a_dbname default 'SELECT comdb2_host()'"
-mach=`${CDB2SQL_EXE} --tabs --cdb2cfg $a_cdb2config $a_dbname default "SELECT comdb2_host()"`
+echo "${CDB2SQL_EXE} --tabs ${SRC_CDB2_OPTIONS} $a_dbname default 'SELECT comdb2_host()'"
+mach=`${CDB2SQL_EXE} --tabs ${SRC_CDB2_OPTIONS} $a_dbname default "SELECT comdb2_host()"`
 if [[ -z $mach ]]; then
     echo "Failure to get a machine name"
     exit 1
@@ -107,7 +110,7 @@ if [[ -z $opt || "$opt" == "2" ]]; then
 fi
 
 if [[ -z $opt || "$opt" == "3" ]]; then
-    ${CDB2SQL_EXE} --cdb2cfg $a_remdb2config ${a_remdbname} default "drop table tt"
+    ${CDB2SQL_EXE} ${REM_CDB2_OPTIONS} ${a_remdbname} default "drop table tt"
 fi
 
 if [[ -z $opt || "$opt" == "4" ]]; then
@@ -138,8 +141,8 @@ if [[ -z $opt || "$opt" == "6" ]]; then
    output=./run.6.out
    rm $output 2>/dev/null
 
-   echo "${CDB2SQL_EXE} --host $mach ${a_remdbname} - < inserts3.req "
-   ${CDB2SQL_EXE} --host $mach ${a_remdbname} - < inserts3.req | grep -v "t2" >> $output
+   echo "${CDB2SQL_EXE} ${REM_CDB2_OPTIONS} --host $mach ${a_remdbname} - < inserts3.req "
+   ${CDB2SQL_EXE} ${REM_CDB2_OPTIONS} --host $mach ${a_remdbname} - < inserts3.req | grep -v "t2" >> $output
    
    echo "1. Round of updates" >> $output
    run_test updates2.req output.6.log $output t2 a

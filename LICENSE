@@ -25,4 +25,3 @@ dfp/      - bsd-style ./decNumber/ICU-license.html ./dfpal/ICU-license.html (can
 dlmalloc/ - public domain
 lua/      - 5.1.4 MIT lua/lua.h (lots of changes)
 sqlite/   - 3.8.9 + cherrypicked upstream + lots of local patches - public domain
-cson/     - public domain/MIT cson/cson_amalgamation_core.h

@@ -1,11 +1,10 @@
 include(${CMAKE_MODULE_PATH}/plugin.cmake)
-
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   ${SQLITE_FLAGS}
 )
-
 include_directories(
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
@@ -30,6 +29,6 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
-
-add_plugin(newsql STATIC newsql.c)
+set(NEWSQL_SRCS newsql.c newsql_sbuf.c)
+add_plugin(newsql STATIC "${NEWSQL_SRCS}")
 add_dependencies(newsql sqlite) # Wait for parse.h

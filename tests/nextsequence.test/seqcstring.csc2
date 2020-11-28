@@ -1,0 +1,5 @@
+schema
+{
+    int a null=yes
+    cstring b[100] null=yes dbstore=nextsequence
+}

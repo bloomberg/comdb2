@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
-function echo_color()
+function echo_color
 {
     MSG=$1
     COLOR=$2
@@ -36,7 +36,7 @@ function echo_color()
     fi
 }
 
-function echo_color_bold()
+function echo_color_bold
 {
     echo_color "$1" "$2" "BOLD"
 }

@@ -18,22 +18,6 @@ fi
 nins=0
 
 
-function assertcnt 
-{
-    tbl=$1
-    target=$2
-    cnt=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default "select count(*) from $tbl")
-    if [ $? -ne 0 ] ; then
-        echo "assertcnt: select error"
-    fi
-
-    echo "count of $tbl is now $cnt"
-    if [[ $cnt != $target ]] ; then
-        failexit "count is now $cnt but should be $target"
-    fi
-}
-
-
 function insert_records
 {
     tbl=$1

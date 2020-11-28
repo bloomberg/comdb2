@@ -65,6 +65,12 @@ static int __dbt_ferr __P((const DB *, const char *, const DBT *, int));
  * specified as such or if we're a client in a replicated environment and
  * we don't have the special "client-writer" designation.
  */
+
+extern int gbl_is_physical_replicant;
+
+#define IS_PHYSREP(dbenv) \
+    (gbl_is_physical_replicant && LOGGING_ON(dbenv))
+
 #define	IS_READONLY(dbp)						\
     (F_ISSET(dbp, DB_AM_RDONLY) ||					\
     (IS_REP_CLIENT((dbp)->dbenv) &&					\
@@ -227,14 +233,16 @@ __db_associate_arg(dbp, sdbp, callback, flags)
 }
 
 /*
- * __db_close_pp --
- *	DB->close pre/post processing.
+ * __db_closetxn_pp --
+ *  DB->closetxn pre/post processing.
  *
- * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
+ * PUBLIC: int __db_closetxn_pp __P((DB *, DB_TXN *, u_int32_t));
  */
+
 int
-__db_close_pp(dbp, flags)
+__db_closetxn_pp(dbp, txn, flags)
 	DB *dbp;
+    DB_TXN *txn;
 	u_int32_t flags;
 {
 	DB_ENV *dbenv;
@@ -262,7 +270,7 @@ __db_close_pp(dbp, flags)
 	    (t_ret = __db_rep_enter(dbp, 0, 0)) != 0 && ret == 0)
 		ret = t_ret;
 
-	if ((t_ret = __db_close(dbp, NULL, flags)) != 0 && ret == 0)
+	if ((t_ret = __db_close(dbp, txn, flags)) != 0 && ret == 0)
 		ret = t_ret;
 
 	/* Release replication block. */
@@ -270,6 +278,21 @@ __db_close_pp(dbp, flags)
 		__db_rep_exit(dbenv);
 
 	return (ret);
+}
+
+
+/*
+ * __db_close_pp --
+ *	DB->close pre/post processing.
+ *
+ * PUBLIC: int __db_close_pp __P((DB *, u_int32_t));
+ */
+int
+__db_close_pp(dbp, flags)
+	DB *dbp;
+	u_int32_t flags;
+{
+    return __db_closetxn_pp(dbp, NULL, flags);
 }
 
 /*
@@ -765,13 +788,13 @@ __db_cursor_arg(dbp, flags)
 	case 0:
 		break;
 	case DB_WRITECURSOR:
-		if (IS_READONLY(dbp))
+		if (IS_READONLY(dbp) || IS_PHYSREP(dbenv))
 			return (__db_rdonly(dbenv, "DB->cursor"));
 		if (!CDB_LOCKING(dbenv))
 			return (__db_ferr(dbenv, "DB->cursor", 0));
 		break;
 	case DB_WRITELOCK:
-		if (IS_READONLY(dbp))
+		if (IS_READONLY(dbp) || IS_PHYSREP(dbenv))
 			return (__db_rdonly(dbenv, "DB->cursor"));
 		if (pgorder || discardp || pausible)
 			return (__db_invwrite(dbenv, "DB->cursor"));
@@ -848,7 +871,7 @@ __db_del_arg(dbp, flags)
 	dbenv = dbp->dbenv;
 
 	/* Check for changes to a read-only tree. */
-	if (IS_READONLY(dbp))
+	if (IS_READONLY(dbp) || IS_PHYSREP(dbenv))
 		return (__db_rdonly(dbenv, "DB->del"));
 
 	/* Check for invalid function flags. */
@@ -1834,7 +1857,7 @@ __db_put_arg(dbp, key, data, flags)
 	returnkey = 0;
 
 	/* Check for changes to a read-only tree. */
-	if (IS_READONLY(dbp))
+	if (IS_READONLY(dbp) || IS_PHYSREP(dbenv))
 		return (__db_rdonly(dbenv, "put"));
 
 	/* Check for puts on a secondary. */
@@ -2193,7 +2216,7 @@ __db_c_del_arg(dbc, flags)
 	dbenv = dbp->dbenv;
 
 	/* Check for changes to a read-only tree. */
-	if (IS_READONLY(dbp))
+	if (IS_READONLY(dbp) || IS_PHYSREP(dbenv))
 		return (__db_rdonly(dbenv, "DBcursor->del"));
 
 	/* Check for invalid function flags. */
@@ -2662,7 +2685,7 @@ __db_c_put_arg(dbc, key, data, flags)
 	key_flags = 0;
 
 	/* Check for changes to a read-only tree. */
-	if (IS_READONLY(dbp))
+	if (IS_READONLY(dbp) || IS_PHYSREP(dbenv))
 		return (__db_rdonly(dbenv, "c_put"));
 
 	/* Check for puts on a secondary. */

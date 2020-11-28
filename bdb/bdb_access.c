@@ -19,6 +19,7 @@
 #include <assert.h>
 #include "bdb_int.h"
 #include "bdb_access.h"
+#include "cdb2_constants.h"
 
 #include <logmsg.h>
 
@@ -232,11 +233,12 @@ void bdb_access_tbl_invalidate(bdb_state_type *bdb_state)
           sizeof(bdb_state->access->hosts_cache));
 }
 
-int gbl_allow_user_schema;
-int gbl_uses_password;
+extern int gbl_allow_user_schema;
+extern int gbl_uses_password;
 
-int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
-                              char *table, int access_type, int *bdberr)
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                   char *user, char *table, int access_type,
+                                   int *bdberr)
 {
     int rc = 0;
     if (gbl_uses_password) {
@@ -248,20 +250,153 @@ int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
             }
         }
         if (access_type == ACCESS_READ) {
-            rc = bdb_tbl_access_read_get(bdb_state, NULL, table, user, bdberr);
+            rc = bdb_tbl_access_read_get(bdb_state, tran, table, user, bdberr);
         }
         if (rc != 0 &&
             (access_type == ACCESS_WRITE || access_type == ACCESS_READ)) {
-            rc = bdb_tbl_access_write_get(bdb_state, NULL, table, user, bdberr);
+            rc = bdb_tbl_access_write_get(bdb_state, tran, table, user, bdberr);
         }
         if (rc != 0 &&
             (access_type == ACCESS_DDL || access_type == ACCESS_WRITE ||
              access_type == ACCESS_READ)) {
-            rc = bdb_tbl_op_access_get(bdb_state, NULL, 0, table, user, bdberr);
+            /* Check for DDL privilege on table */
+            rc = bdb_tbl_op_access_get(bdb_state, tran, 0, table, user, bdberr);
         }
         if (rc != 0) {
-            rc = bdb_tbl_op_access_get(bdb_state, NULL, 0, "", user, bdberr);
+            /* Check for OP privilege */
+            rc = bdb_tbl_op_access_get(bdb_state, tran, 0, "", user, bdberr);
         }
     }
+    return rc;
+}
+
+static int bdb_del_user_tbl_access(bdb_state_type *bdb_state, tran_type *tran,
+                                   const char *user, const char *table_name)
+{
+    int rc = 0;
+    int bdberr;
+
+    if ((rc = bdb_tbl_access_read_delete(bdb_state, tran, table_name, user,
+                                         &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error deleting user access information (user: %s, table: %s, "
+               "rc: %d, bdberr: %d)\n",
+               user, table_name, rc, bdberr);
+        return rc;
+    }
+    if ((rc = bdb_tbl_access_write_delete(bdb_state, tran, table_name, user,
+                                          &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error deleting user access information (user: %s, table: %s, "
+               "rc: %d, bdberr: %d)\n",
+               user, table_name, rc, bdberr);
+        return rc;
+    }
+
+    return rc;
+}
+
+/* Delete all access permissions related to a specific table. */
+int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
+                             const char *table_name)
+{
+    int rc = 0;
+    char **users;
+    int nUsers;
+
+    if ((rc = bdb_user_get_all_tran(tran, &users, &nUsers)) != 0) {
+        logmsg(LOGMSG_ERROR, "error retrieving user list (rc: %d)\n", rc);
+        return rc;
+    }
+
+    for (int i = 0; i < nUsers; ++i) {
+        if ((rc = bdb_del_user_tbl_access(bdb_state, tran, users[i],
+                                          table_name))) {
+            break;
+        }
+    }
+
+    return rc;
+}
+
+/* Delete all access permissions for a specific user. */
+int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
+                            const char *user)
+{
+    int rc = 0;
+    int dbnums[MAX_NUM_TABLES];
+    char *tblnames[MAX_NUM_TABLES];
+    int numtbls;
+    int bdberr;
+
+    if ((rc = bdb_llmeta_get_tables(tran, tblnames, dbnums, MAX_NUM_TABLES,
+                                    &numtbls, &bdberr)) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "error retrieving table list (rc: %d, bdberr: %d)\n", rc,
+               bdberr);
+        return rc;
+    }
+
+    for (int i = 0; i < numtbls; ++i) {
+        if ((rc =
+                 bdb_del_user_tbl_access(bdb_state, tran, user, tblnames[i]))) {
+            break;
+        }
+    }
+
+    return rc;
+}
+
+int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
+                              char *table, int access_type, int *bdberr)
+{
+    return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table,
+                                          access_type, bdberr);
+}
+
+int gbl_create_dba_user = 1;
+
+int bdb_create_dba_user(bdb_state_type *bdb_state)
+{
+    int rc;
+    int bdberr;
+
+    if (!gbl_create_dba_user) {
+        return 0;
+    }
+
+    rc = bdb_user_exists(NULL, DEFAULT_DBA_USER);
+    if (rc == -1) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to retrieve user information\n",
+               __func__, __LINE__);
+        return 1;
+    } else if (rc == 1) {
+        logmsg(LOGMSG_USER, "DBA user '%s' already exists\n", DEFAULT_DBA_USER);
+        return 0;
+    }
+
+    /* Set the user */
+    rc = bdb_user_password_set(NULL, DEFAULT_DBA_USER, DEFAULT_DBA_PASSWORD);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to create the DBA user\n", __func__,
+               __LINE__);
+        rc = 1;
+        goto done;
+    }
+
+    /* Give them OP privilege */
+    rc = bdb_tbl_op_access_set(bdb_state, NULL, 0, "", DEFAULT_DBA_USER, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d failed to grant OP privileges to the DBA user\n",
+               __func__, __LINE__);
+        rc = 1;
+        goto done;
+    }
+
+    logmsg(LOGMSG_USER, "DBA user '%s' created\n", DEFAULT_DBA_USER);
+    rc = 0;
+
+done:
     return rc;
 }

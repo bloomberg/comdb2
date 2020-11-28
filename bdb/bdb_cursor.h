@@ -171,7 +171,7 @@ int bdb_put_cursortran(bdb_state_type *bdb_state, cursor_tran_t *curtran,
  * Return lockerid in use by provided curtran
  *
  */
-int bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
+uint32_t bdb_get_lid_from_cursortran(cursor_tran_t *curtran);
 
 /**
  * Parse a string containing an enable/disable feature and
@@ -184,6 +184,8 @@ int bdb_free_curtran_locks(bdb_state_type *bdb_state, cursor_tran_t *curtran,
                            int *bdberr);
 
 int bdb_curtran_has_waiters(bdb_state_type *bdb_state, cursor_tran_t *curtran);
+
+unsigned int bdb_curtran_get_lockerid(cursor_tran_t *curtran);
 
 int bdb_bkfill_shadows_pglogs_from_active_ltrans(bdb_state_type *bdb_state,
                                                  tran_type *shadow_tran,

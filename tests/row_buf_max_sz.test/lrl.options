@@ -1,3 +1,0 @@
-sqlenginepool maxt 1
-appsockpool linger 600
-logmsg level info

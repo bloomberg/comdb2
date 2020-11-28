@@ -60,6 +60,7 @@ static DB_Connection *curr_cnct = NULL;
 static volatile int do_repl;
 
 int gbl_deferred_phys_flag = 0;
+unsigned int gbl_deferred_phys_update;
 
 /* externs here */
 extern struct dbenv *thedb;
@@ -353,11 +354,11 @@ static int register_self()
     /* do a cleanup to get new list of tiered replicants */
     cleanup_hosts();
 
-    /* TODO: Change this from local host to gbl_mynode */
+    /* TODO: Change this from local host to gbl_myhostname */
     rc = snprintf(get_tier, sql_len,
                   "exec procedure "
                   "sys.cmd.register_replicant('%s', '%s', '%u', '%u')",
-                  gbl_dbname, gbl_mynode, info.file, info.offset);
+                  gbl_dbname, gbl_myhostname, info.file, info.offset);
 
     if (rc < 0 || rc >= sql_len) {
         logmsg(LOGMSG_ERROR, "lua call buffer is not long enough!\n");

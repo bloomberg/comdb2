@@ -57,6 +57,36 @@ cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT t1.id FROM LOCAL_${d
 cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT s1.id, s1.\"order\" FROM \"select\" s1 WHERE s1.\"order\" = 97" >> output.actual 2>&1
 cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT s1.id, s1.\"order\" FROM LOCAL_${dbname}.\"select\" s1 WHERE s1.\"order\" = 93" >> output.actual 2>&1
 
+#### remsql genid dedup test ####
+cdb2sql --cdb2cfg ${cdb2config} $dbname default - <<EOF
+DROP TABLE IF EXISTS dedup
+CREATE TABLE dedup (a INTEGER, b INTEGER)\$\$
+INSERT INTO dedup VALUES (0, 0), (1,1), (2,2), (3, 3)
+CREATE INDEX idx_a ON dedup(a)
+CREATE INDEX idx_b ON dedup(b)
+EOF
+
+# remsql genid dedup test 1:
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT 'REMSQL DEDUP TEST 1' AS TEST" >>output.actual 2>&1
+# This would've crashed the database as we did not have remsql genid dedup logic.
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "DELETE FROM LOCAL_${dbname}.dedup WHERE a = 1 OR b = 4"
+# Ensure that we've deleted 1 row.
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbname}.dedup" >>output.actual 2>&1
+
+# remsql genid dedup test 2:
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT 'REMSQL DEDUP TEST 2' AS TEST" >>output.actual 2>&1
+# Both index lookups find the same row. The dedup logic should filter out the duplicate.
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "DELETE FROM LOCAL_${dbname}.dedup WHERE a = 2 OR b = 2"
+# Ensure that we've deleted only 1 row.
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbname}.dedup" >>output.actual 2>&1
+
+# remsql genid dedup test 3:
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT 'REMSQL DEDUP TEST 3' AS TEST" >>output.actual 2>&1
+# Both index lookups find the same row. The dedup logic should filter out the duplicate.
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "UPDATE LOCAL_${dbname}.dedup SET a = 0 WHERE a = 3 OR b = 3"
+# Ensure that we've updated only 1 row.
+cdb2sql --cdb2cfg ${CDB2_CONFIG} $srcdbname default "SELECT * FROM LOCAL_${dbname}.dedup" >>output.actual 2>&1
+
 # validate results
 testcase_output=$(cat output.actual)
 expected_output=$(cat output.expected)

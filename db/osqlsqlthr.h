@@ -123,6 +123,8 @@ int osql_serial_send_readset(struct sqlclntstate *clnt, int nettype);
  */
 int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid);
 
+int osql_sock_start_no_reorder(struct sqlclntstate *clnt, int type, int keep_rqid);
+
 /**
  * Start a sosql session if not already started
  */
@@ -173,16 +175,6 @@ int access_control_check_sql_read(struct BtCursor *pCur,
 int osql_updstat(struct BtCursor *pCur, struct sql_thread *thd, char *pData,
                  int nData, int nStat);
 
-
-/**
- * Restart a broken socksql connection by opening
- * a new blockproc on the provided master and
- * sending the cache rows to resume the current.
- * If keep_session is set, the same rqid is used for the replay
- *
- */
-int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
-                      int keep_session);
 
 /**
 *

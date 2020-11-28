@@ -301,6 +301,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
         iCol = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         pCur->j = 0;
+
         eNextPhase = COMPLETION_FUNCTIONS;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         eNextPhase = COMPLETION_EOF;
@@ -309,6 +310,20 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       case COMPLETION_FUNCTIONS: {
+        if( pCur->pStmt==0 ){
+          sqlite3_prepare_v2(pCur->db, 
+                  "SELECT name FROM comdb2_functions", 
+                  -1, &pCur->pStmt, 0);
+        }
+        iCol = 0;
+        pCur->j = 0;
+        eNextPhase = COMPLETION_EOF;
+        break;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if defined(SQLITE_BUILDING_FOR_COMDB2_EXAMPLE)
+      /* this is example on how to add a custom list to completion */
+      case COMPLETION_CUSTOM_LIST: {
         /* NOTE: Please keep this list of functions sorted. */
         static char *cfuncs[] = {
           "comdb2_ctxinfo()",

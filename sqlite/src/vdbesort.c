@@ -1834,8 +1834,7 @@ int sqlite3VdbeSorterWrite(
 
   assert( pSorter );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  addVdbeToThdCost(VDBESORTER_WRITE);
-  pSorter->nwrite++;
+  addVdbeToThdCost(VDBESORTER_WRITE, &pSorter->nwrite);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   /* Figure out whether or not the current contents of memory should be
@@ -2636,7 +2635,7 @@ int sqlite3VdbeSorterRewind(const VdbeCursor *pCsr, int *pbEof){
   assert( pSorter );
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pSorter->nfind++;
+  addVdbeToThdCost(VDBESORTER_FIND, &pSorter->nfind);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* If no data has been written to disk, then do not do so now. Instead,
   ** sort the VdbeSorter.pRecord list. The vdbe layer will read data directly
@@ -2689,8 +2688,7 @@ int sqlite3VdbeSorterNext(sqlite3 *db, const VdbeCursor *pCsr){
   assert( pCsr->eCurType==CURTYPE_SORTER );
   pSorter = pCsr->uc.pSorter;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-  addVdbeToThdCost(VDBESORTER_MOVE);
-  pSorter->nmove++;
+  addVdbeToThdCost(VDBESORTER_MOVE, &pSorter->nmove);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   assert( pSorter->bUsePMA || (pSorter->pReader==0 && pSorter->pMerger==0) );
   if( pSorter->bUsePMA ){

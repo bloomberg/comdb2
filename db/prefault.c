@@ -158,7 +158,7 @@ unsigned int enque_pfault_ll(struct dbenv *dbenv, pfrq_t *qdata)
     Pthread_cond_signal(&(dbenv->prefaultiopool.cond));
     Pthread_mutex_unlock(&(dbenv->prefaultiopool.mutex));
 
-    /*fprintf(stderr, "(%d) queued idx %d\n",pthread_self(), ixnum);*/
+    /*fprintf(stderr, "(%d) queued idx %d\n",(void *)pthread_self(), ixnum);*/
     return 0;
 }
 
@@ -449,7 +449,7 @@ static void *prefault_io_thread(void *arg)
 
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDONLY);
 
-    logmsg(LOGMSG_INFO, "io thread started as %lu\n", pthread_self());
+    logmsg(LOGMSG_INFO, "io thread started as %p\n", (void *)pthread_self());
 
     Pthread_setspecific(lockmgr_key, &lock_variable);
 
@@ -457,8 +457,7 @@ static void *prefault_io_thread(void *arg)
      * will automatically free it when the thread exits. */
     thdinfo = malloc(sizeof(struct thread_info));
     if (thdinfo == NULL) {
-        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %lu\n",
-               pthread_self());
+        logmsg(LOGMSG_FATAL, "**aborting due malloc failure thd %p\n", (void *)pthread_self());
         abort();
     }
     thdinfo->uniquetag = 0;
@@ -951,8 +950,8 @@ fprintf(stderr, "opnum %d btst(%x, %d)\n",
             case PFRQ_EXITTHD: {
                 backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDONLY);
                 free(req);
-                /*fprintf(stderr, "exiting prefault thread %d\n",
-                  pthread_self());*/
+                /*fprintf(stderr, "exiting prefault thread %p\n",
+                  (void *)pthread_self());*/
                 pthread_exit((void *)0);
                 break;
             }

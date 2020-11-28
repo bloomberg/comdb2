@@ -181,18 +181,6 @@ struct __db_mpool_hash {
  */
 #define	MPOOL_BASE_DECREMENT	(UINT32_T_MAX - (UINT32_T_MAX / 4))
 
-/*
- * Mpool priorities from low to high.  Defined in terms of fractions of the
- * buffers in the pool.
- */
-#define	MPOOL_PRI_VERY_LOW	-1	/* Dead duck.  Check and set to 0. */
-#define	MPOOL_PRI_LOW		-2	/* Low. */
-#define	MPOOL_PRI_DEFAULT	0	/* No adjustment -- special case.*/
-#define	MPOOL_PRI_HIGH		10	/* With the dirty buffers. */
-#define	MPOOL_PRI_DIRTY		5	/* Dirty gets a 20% boost. */
-#define MPOOL_PRI_INDEX     2   /* Index pages get a 50% boost. */
-#define MPOOL_PRI_INTERNAL  4   /* Internal pages get an additional 25% boost. */
-#define	MPOOL_PRI_VERY_HIGH	1	/* Add number of buffers in pool. */
 
 /*
  * MPOOLFILE --

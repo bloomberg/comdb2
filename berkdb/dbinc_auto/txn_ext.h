@@ -7,6 +7,7 @@ extern "C" {
 #endif
 
 int __txn_begin_pp __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
+int __txn_assert_notran_pp __P((DB_ENV *));
 int __txn_begin_set_retries_pp __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t,
                                       u_int32_t));
 int __txn_begin __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));

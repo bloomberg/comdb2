@@ -36,7 +36,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <sys/types.h>
 #endif
 
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 #include <execinfo.h>
 #include <walkback.h>
 #endif
@@ -54,7 +54,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #define PRINTF(...)
 #endif
 
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
 extern void backtrace_symbols_fd(void *const *, int, int);
@@ -69,10 +69,13 @@ extern int gbl_rowlocks;
 extern int gbl_page_latches;
 extern int gbl_replicant_latches;
 extern int gbl_print_deadlock_cycles;
+extern int gbl_lock_conflict_trace;
 
 int gbl_berkdb_track_locks = 0;
-int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
+
+void comdb2_dump_blocker(unsigned int);
+extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
@@ -107,6 +110,8 @@ static int __lock_fix_list __P((DB_ENV *, DBT *, u_int32_t, u_int8_t));
 static const char __db_lock_err[] = "Lock table is out of available %s";
 static const char __db_lock_invalid[] = "%s: Lock is no longer valid";
 static const char __db_locker_invalid[] = "Locker is not valid";
+
+int __lock_to_dbt_pp(DB_ENV *, DB_LOCK *, DBT *);
 
 #ifdef DEBUG_LOCKS
 extern void bdb_describe_lock_dbt(DB_ENV *dbenv, DBT *dbt, char *out,
@@ -759,6 +764,17 @@ is_pagelock(lockobj)
 	return (ilock->type == DB_PAGE_LOCK);
 }
 
+static inline int
+is_handlelock(lockobj)
+	DB_LOCKOBJ *lockobj;
+{
+	if (lockobj->lockobj.size != sizeof(struct __db_ilock))
+		return 0;
+	struct __db_ilock *ilock = lockobj->lockobj.data;
+	return (ilock->type == DB_HANDLE_LOCK);
+}
+
+
 int
 use_page_latches(dbenv)
 	DB_ENV *dbenv;
@@ -1302,26 +1318,6 @@ __get_page_latch(lt, locker, flags, obj, lock_mode, lock)
  * PUBLIC: int __lock_vec __P((DB_ENV *,
  * PUBLIC:     u_int32_t, u_int32_t, DB_LOCKREQ *, int, DB_LOCKREQ **));
  */
-
-static char *
-opstring(int op)
-{
-	switch (op) {
-	case DB_LOCK_PUT_ALL:
-		return "PUT_ALL";
-		break;
-	case DB_LOCK_PUT_READ:
-		return "PUT_READ";
-		break;
-	case DB_LOCK_UPGRADE_WRITE:
-		return "UPGRADE_WRITE";
-		break;
-	default:
-		return "OTHER_LOCKOP";
-		break;
-	}
-}
-
 int
 __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 	DB_ENV *dbenv;
@@ -1512,6 +1508,10 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 					 */
 					if (is_pagelock(sh_obj))
 						sh_locker->npagelocks--;
+
+					if (is_handlelock(sh_obj))
+						sh_locker->nhandlelocks--;
+
 					sh_locker->nlocks--;
 					if (IS_WRITELOCK(lp->mode)) {
 						sh_locker->nwrites--;
@@ -1923,6 +1923,37 @@ __lock_get(dbenv, locker, flags, obj, lock_mode, lock)
 	return (ret);
 }
 
+#if defined (STACK_AT_LOCK_GEN_INCREMENT) || defined (STACK_AT_GET_LOCK)
+static void inline
+get_stack(struct __db_lock *lockp, DB_LOCK *lock, int checkgen)
+{
+	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
+
+	if (checkgen && lockp->gen != lockp->stack_gen + 1) {
+		abort();
+	}
+	lockp->stack_gen = lockp->gen;
+	lockp->tid = pthread_self();
+	lockp->lock = lock;
+}
+#endif
+
+static void inline
+stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
+{
+#ifdef STACK_AT_LOCK_GEN_INCREMENT
+	get_stack(lockp, lock, 1);
+#endif
+}
+
+static void inline
+stack_at_get_lock(struct __db_lock *lockp, DB_LOCK * lock)
+{
+#ifdef STACK_AT_GET_LOCK
+	get_stack(lockp, lock, 0);
+#endif
+}
+
 /* Return 1 if this is a comdb2 rowlock, 0 otherwise. */
 static inline int
 is_comdb2_rowlock(u_int32_t sz)
@@ -1999,6 +2030,52 @@ rep_return_deadlock(DB_ENV *dbenv, u_int32_t sz)
 		return 0;
 	}
 }
+
+#define LOCKOBJ_MAX_SIZE 33
+struct {
+	DBT obj;
+	char mem[LOCKOBJ_MAX_SIZE];
+} gbl_rep_lockobj;
+
+void berk_init_rep_lockobj() {
+	gbl_rep_lockobj.obj.data = gbl_rep_lockobj.mem;
+	gbl_rep_lockobj.obj.ulen = LOCKOBJ_MAX_SIZE;
+	gbl_rep_lockobj.obj.flags = DB_DBT_USERMEM;
+}
+
+void comdb2_dump_blockers(DB_ENV *dbenv)
+{
+	struct __db_lock *hlp, *lp;
+	DB_LOCKTAB *lt;
+	DB_LOCKREGION *region;
+	DB_LOCKOBJ *obj;
+	u_int32_t ndx;
+	u_int32_t partition;
+	int ret;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	OBJECT_INDX(lt, region, &gbl_rep_lockobj.obj, ndx, partition);
+
+	lock_obj_partition(region, partition);
+
+	ret = __lock_getobj(lt, &gbl_rep_lockobj.obj, ndx, partition, 0, &obj);
+
+	if (ret != 0 || !obj) {
+		unlock_obj_partition(region, partition);
+		return;
+	}
+
+	for (hlp = SH_TAILQ_FIRST(&obj->holders, __db_lock);
+		hlp != NULL; hlp = SH_TAILQ_NEXT(hlp, links, __db_lock))
+	{
+		comdb2_dump_blocker(hlp->holderp->id);
+	}
+
+	unlock_obj_partition(region, partition);
+}
+
 
 #define ADD_TO_HOLDARR(x)                                                      \
 	do {                                                                   \
@@ -2117,6 +2194,11 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		lock_locker_partition(region, sh_locker->partition);
 	}
 	lpartition = sh_locker->partition;
+
+    extern __thread int track_thread_locks;
+    if (track_thread_locks) {
+        comdb2_cheapstack_sym(stderr, "lockid %u", locker);
+    }
 
 #ifdef DEBUG_LOCKS
 	DB_LOCKER *mlockerp = R_ADDR(&lt->reginfo, sh_locker->master_locker);
@@ -2574,6 +2656,19 @@ upgrade:
 			++sh_obj->generation;
 			unlock_detector(region);
 		}
+
+		extern u_int32_t gbl_rep_lockid;
+		if (locker == gbl_rep_lockid) {
+			// Copy the lockobj that the replication thread is
+			// waiting on. This could later be used to look up
+			// the information of the lock holders.
+			assert(sh_obj->lockobj.size <= LOCKOBJ_MAX_SIZE);
+			memset(gbl_rep_lockobj.obj.data, 0, LOCKOBJ_MAX_SIZE);
+			gbl_rep_lockobj.obj.size = sh_obj->lockobj.size;
+			memcpy(gbl_rep_lockobj.obj.data, sh_obj->lockobj.data,
+				sh_obj->lockobj.size);
+		}
+
 		switch (action) {
 		case HEAD:
 			SH_TAILQ_INSERT_HEAD(&sh_obj->waiters, newl, links,
@@ -2818,6 +2913,7 @@ expired:			obj_ndx = sh_obj->index;
 	lock->off = R_OFFSET(&lt->reginfo, newl);
 	lock->gen = newl->gen;
 	lock->mode = newl->mode;
+	stack_at_get_lock(newl, lock);
 	sh_locker->nlocks++;
 
 
@@ -2830,6 +2926,9 @@ expired:			obj_ndx = sh_obj->index;
 
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
+	if (is_handlelock(sh_obj))
+        sh_locker->nhandlelocks++;
+
 	if (IS_WRITELOCK(newl->mode))
 		sh_locker->nwrites++;
 	if (is_pagelock(sh_obj) && IS_WRITELOCK(lock->mode) &&
@@ -2879,6 +2978,103 @@ err:
 	if (holdarr)
 		__os_free(dbenv, holdarr);
 
+	return (ret);
+}
+
+/* Return 1 if this lockid holds this lockobj in this lock_mode, 0 otherwise */
+static inline int
+__lock_query_internal(lt, locker, obj, lock_mode)
+	DB_LOCKTAB *lt;
+	u_int32_t locker;
+	const DBT *obj;
+	db_lockmode_t lock_mode;
+{
+	int ret = 0;
+	u_int32_t partition = gbl_lk_parts, lpartition = gbl_lkr_parts;
+	DB_ENV *dbenv = lt->dbenv;
+	DB_LOCKREGION *region = lt->reginfo.primary;
+	DB_LOCKER *sh_locker;
+
+	if (unlikely(F_ISSET(dbenv, DB_ENV_NOLOCKING)))
+		return (0);
+
+	u_int32_t locker_ndx;
+	u_int32_t gl_flags = GETLOCKER_KEEP_PART;
+	LOCKER_INDX(lt, region, locker, locker_ndx);
+	if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+					gl_flags, &sh_locker)) != 0 || sh_locker == NULL) {
+		logmsg(LOGMSG_DEBUG, "Locker %u does not exist\n", locker);
+		goto out;
+	}
+	lpartition = sh_locker->partition;
+
+	DB_LOCKOBJ *sh_obj;
+	u_int32_t object_ndx;
+	OBJECT_INDX(lt, region, obj, object_ndx, partition);
+	lock_obj_partition(region, partition);
+	if ((ret = __lock_getobj(lt, obj, object_ndx, partition, 0, &sh_obj)) != 0
+			|| sh_obj == NULL) {
+		logmsg(LOGMSG_DEBUG, "Lockobj does not exist\n");
+		goto out;
+	}
+
+	struct __db_lock *lp;
+	for (lp = SH_TAILQ_FIRST(&sh_obj->holders, __db_lock); lp != NULL;
+			lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
+		if (locker == lp->holderp->id && lp->mode == lock_mode &&
+				lp->status == DB_LSTAT_HELD) {
+			ret = 1;
+			break;
+		}
+	}
+
+out:
+	if (partition < gbl_lk_parts)
+		unlock_obj_partition(region, partition);
+	if (lpartition < gbl_lkr_parts)
+		unlock_locker_partition(region, lpartition);
+	return ret;
+}
+
+static int
+__lock_query(dbenv, locker, obj, lock_mode)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	const DBT *obj;
+	db_lockmode_t lock_mode;
+{
+	int ret;
+	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
+	ret = __lock_query_internal(dbenv->lk_handle,
+		locker, obj, lock_mode);
+	UNLOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
+	return (ret);
+}
+
+/*
+ * __lock_query_pp --
+ *	DB_ENV->lock_query pre/post processing.
+ *
+ * PUBLIC: int __lock_query_pp __P((DB_ENV *,
+ * PUBLIC:	 u_int32_t, const DBT *, db_lockmode_t));
+ */
+int
+__lock_query_pp(dbenv, locker, obj, lock_mode)
+	DB_ENV *dbenv;
+	u_int32_t locker;
+	const DBT *obj;
+	db_lockmode_t lock_mode;
+{
+	int rep_check, ret;
+	PANIC_CHECK(dbenv);
+	ENV_REQUIRES_CONFIG(dbenv,
+		dbenv->lk_handle, "DB_ENV->lock_get", DB_INIT_LOCK);
+	rep_check = IS_ENV_REPLICATED(dbenv) ? 1 : 0;
+	if (rep_check)
+		__env_rep_enter(dbenv);
+	ret = __lock_query(dbenv, locker, obj, lock_mode);
+	if (rep_check)
+		__env_rep_exit(dbenv);
 	return (ret);
 }
 
@@ -3124,21 +3320,6 @@ out:	UNLOCKREGION(dbenv, lt);
 	return (ret);
 }
 
-static void inline
-stack_at_gen_increment(struct __db_lock *lockp, DB_LOCK * lock)
-{
-#ifdef STACK_AT_LOCK_GEN_INCREMENT
-	lockp->frames = backtrace(lockp->buf, MAX_FRAMES);
-
-	if (lockp->gen != lockp->stack_gen + 1) {
-		abort();
-	}
-	lockp->stack_gen = lockp->gen;
-	lockp->tid = pthread_self();
-	lockp->lock = lock;
-#endif
-}
-
 static int
 __lock_put_internal(lt, lockp, lock, obj_ndx, need_dd, flags)
 	DB_LOCKTAB *lt;
@@ -3317,6 +3498,8 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 			DB_LOCKOBJ *sh_obj;
 			sh_locker->nlocks--;
 			sh_obj = lockp->lockobj;
+			if (is_handlelock(sh_obj))
+				sh_locker->nhandlelocks--;
 			if (is_pagelock(sh_obj))
 				sh_locker->npagelocks--;
 			if (IS_WRITELOCK(lockp->mode))
@@ -3872,6 +4055,7 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		SH_LIST_INIT(&sh_locker->heldby);
 		sh_locker->nlocks = 0;
 		sh_locker->npagelocks = 0;
+		sh_locker->nhandlelocks = 0;
 		sh_locker->nwrites = 0;
 		sh_locker->has_waiters = 0;
 #if TEST_DEADLOCKS
@@ -4251,6 +4435,8 @@ __lock_inherit_locks(lt, locker, flags)
 				sh_parent->nwrites++;
 			if (is_pagelock(obj))
 				sh_parent->npagelocks++;
+			if (is_handlelock(obj))
+				sh_parent->nhandlelocks++;
 			lp->holderp = sh_parent;
 		}
 
@@ -4596,6 +4782,8 @@ __lock_trade(dbenv, lock, new_locker, create)
 	sh_obj = lp->lockobj;
 	if (is_pagelock(sh_obj))
 		sh_locker->npagelocks++;
+	if (is_handlelock(sh_obj))
+		sh_locker->nhandlelocks++;
 	if (IS_WRITELOCK(lp->mode))
 		sh_locker->nwrites++;
 	lp->holderp = sh_locker;
@@ -5666,7 +5854,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 		/* special case, no locks, only context
 		 * dp points to context */
 
-		logmsg(LOGMSG_ERROR, "%lu size is 0, no nocks\n", pthread_self());
+		logmsg(LOGMSG_ERROR, "%p size is 0, no nocks\n", (void *)pthread_self());
 
 		LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 		locked_region = 1;
@@ -6115,6 +6303,47 @@ __lock_to_dbt_pp(dbenv, lock, dbt)
 	    dbenv->lk_handle, "DB_LOCK->lock_put", DB_INIT_LOCK);
 	ret = __lock_to_dbt(dbenv, lock, dbt);
 	return ret;
+}
+
+// this is heavy-weight
+int
+__nlocks_for_thread(DB_ENV *dbenv, int *locks, int *lockers)
+{
+	DB_LOCKTAB *lt;
+	DB_LOCKER *sh_locker;
+	DB_LOCKREGION *region;
+	u_int32_t locker_ndx;
+	int ret;
+	int nlocks = 0;
+	int nlockers = 0;
+
+	lt = dbenv->lk_handle;
+	region = lt->reginfo.primary;
+
+	LOCKREGION(dbenv, lt);
+	lock_lockers(region);
+	for (int i = 0; i < gbl_lkr_parts; ++i) {
+		lock_locker_partition(region, i);
+		for (int j = 0; j < region->locker_p_size; j++) {
+			DB_LOCKER *lip;
+			for (lip = SH_TAILQ_FIRST(&region->locker_tab[i][j], __db_locker);
+					lip != NULL; lip = SH_TAILQ_NEXT(lip, links, __db_locker)) {
+				if (lip->tid == pthread_self()) {
+					nlockers++;
+					// Don't count handle locks toward total
+					nlocks += (lip->nlocks - lip->nhandlelocks);
+				}
+			}
+		}
+		unlock_locker_partition(region, i);
+	}
+	unlock_lockers(region);
+	UNLOCKREGION(dbenv, lt);
+	if (locks)
+		(*locks) = nlocks;
+	if (lockers)
+		(*lockers) = nlockers;
+	return 0;
 }
 
 int

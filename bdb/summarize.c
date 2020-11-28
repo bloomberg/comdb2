@@ -73,7 +73,7 @@
 #include "logmsg.h"
 #include "analyze.h"
 
-extern volatile int gbl_schema_change_in_progress;
+extern int get_schema_change_in_progress(const char *func, int line);
 static double analyze_headroom = 6;
 
 void analyze_set_headroom(uint64_t headroom)
@@ -121,7 +121,7 @@ static DB *dbp_from_meta(DB *dbp, DBMETA *meta)
     return dbp;
 }
 
-typedef struct sampler {
+struct sampler {
     DB db;                      /* our DB handle */
     bdb_state_type *bdb_state;  /* our bdb_state */
     struct temp_table *tmptbl;  /* temptable to store sampled pages */
@@ -129,7 +129,7 @@ typedef struct sampler {
     int pos;                    /* to keep track of the index in the page */
     void *data;                 /* payload of the entry at `pos' */
     int len;                    /* length of the payload */
-} sampler_t;
+};
 
 int sampler_first(sampler_t *sampler)
 {
@@ -455,8 +455,10 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
             }
         }
 
-        if (gbl_schema_change_in_progress || get_analyze_abort_requested()) {
-            if (gbl_schema_change_in_progress) 
+        int inprogress;
+        if ((inprogress = get_schema_change_in_progress(__func__, __LINE__)) ||
+            get_analyze_abort_requested()) {
+            if (inprogress)
                 logmsg(LOGMSG_ERROR, "%s: Aborting Analyze because "
                         "schema_change_in_progress\n", __func__);
             if (get_analyze_abort_requested())

@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 set -e
 #set -x
@@ -11,16 +12,12 @@ if [ "x$dbnm" == "x" ] ; then
     exit 1
 fi
 
-failexit()
-{
-    echo "Failed $1"
-    exit -1
-}
 
 
 echo "create t1"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "create table t1 (a int) "
 MAX=100000
+cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('scon')"
 
 if [ "${DEBUGGER}" == "callgrind" ] || [ "${DEBUGGER}" == "memcheck" ]; then 
    DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=yes --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.cdb2sql.callgrind"

@@ -1,0 +1,5 @@
+schema
+{
+    int a null=yes
+    datetime b dbstore=nextsequence null=yes
+}

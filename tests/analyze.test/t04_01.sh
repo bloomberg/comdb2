@@ -51,9 +51,10 @@ function process_node() {
 
 cluster=`$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 
+hnamelist="`hostname -A` localhost"
 # check with every node in cluster:
 for node in $cluster ; do 
-    if [ $node == `hostname` ] ; then
+    if [[ " $hnamelist " =~ .*\ $node\ .* ]] ; then 
         currused=`df ${TESTDIR} | grep -v Filesystem | awk '{print $5 }' | sed 's/%//'`
     else
         currused=`ssh -o StrictHostKeyChecking=no $node "df ${TESTDIR}" | grep -v Filesystem | awk '{print $5 }' | sed 's/%//'`

@@ -1,0 +1,2 @@
+(name='testview1', period='daily', retention=30, nshards=1, version=0, shard0name='tcon1')
+(name='testview1', period='daily', retention=30, nshards=1, version=0, shard0name='tcon1')

@@ -48,6 +48,7 @@
 #include "osqlsqlthr.h"
 #include "osqlshadtbl.h"
 #include "osqlblkseq.h"
+#include "schemachange.h"
 #include <net_types.h>
 
 #include <logmsg.h>
@@ -189,77 +190,18 @@ void osql_cleanup(void)
     bdb_osql_destroy(&bdberr);
 }
 
-char *osql_breq2a(int op)
-{
-
-    switch (op) {
-    case OSQL_RPLINV:
-        return "INVALID";
-    case OSQL_DONE:
-        return "OSQL_DONE";
-    case OSQL_DONE_STATS:
-        return "OSQL_DONE_STATS";
-    case OSQL_DONE_SNAP:
-        return "OSQL_DONE_SNAP";
-    case OSQL_USEDB:
-        return "OSQL_USEDB";
-    case OSQL_DELREC:
-        return "OSQL_DELREC";
-    case OSQL_INSREC:
-        return "OSQL_INSREC";
-    case OSQL_QBLOB:
-        return "OSQL_QBLOB";
-    case OSQL_UPDREC:
-        return "OSQL_UPDREC";
-    case OSQL_XERR:
-        return "OSQL_XERR";
-    case OSQL_UPDCOLS:
-        return "OSQL_UPDCOLS";
-    case OSQL_SERIAL:
-        return "OSQL_SERIAL";
-    case OSQL_SELECTV:
-        return "OSQL_SELECTV";
-    case OSQL_DBGLOG:
-        return "OSQL_DBGLOG";
-    case OSQL_RECGENID:
-        return "OSQL_RECGENID";
-    case OSQL_UPDSTAT:
-        return "OSQL_UPDSTAT";
-    case OSQL_EXISTS:
-        return "OSQL_EXISTS";
-    case OSQL_DBQ_CONSUME:
-        return "OSQL_DBQ_CONSUME";
-    case OSQL_INSERT:
-        return "OSQL_INSERT";
-    case OSQL_DELETE:
-        return "OSQL_DELETE";
-    case OSQL_UPDATE:
-        return "OSQL_UPDATE";
-    case OSQL_SCHEMACHANGE:
-        return "OSQL_SCHEMACHANGE";
-    case OSQL_BPFUNC:
-        return "OSQL_BPFUNC";
-    case OSQL_DELIDX:
-        return "OSQL_DELIDX";
-    case OSQL_INSIDX:
-        return "OSQL_INSIDX";
-    case OSQL_DBQ_CONSUME_UUID:
-        return "OSQL_DBQ_CONSUME_UUID";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 void block2_sorese(struct ireq *iq, const char *sql, int sqlen, int block2_type)
 {
 
     struct thr_handle *thr_self = thrman_self();
 
     if (iq->debug)
-        reqprintf(iq, "%s received from node %s", __func__, iq->sorese->host);
+        reqprintf(iq, "%s received from node %s", __func__,
+                  iq->sorese->target.host);
 
     thrman_wheref(thr_self, "%s [%s %s %llx]", req2a(iq->opcode),
-                  breq2a(block2_type), iq->sorese->host, iq->sorese->rqid);
+                  breq2a(block2_type), iq->sorese->target.host,
+                  iq->sorese->rqid);
 }
 
 extern int gbl_early_verify;
@@ -478,13 +420,6 @@ int recom_abort(struct sqlclntstate *clnt)
     return sorese_abort(clnt, OSQL_RECOM_REQ);
 }
 
-inline int block2_serial(struct ireq *iq, const char *sql, int sqlen)
-{
-
-    block2_sorese(iq, sql, sqlen, BLOCK2_SERIAL);
-    return 0;
-}
-
 int snapisol_commit(struct sqlclntstate *clnt, struct sql_thread *thd,
                     char *tzname)
 {
@@ -643,6 +578,17 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     int rc = 0;
     int bdberr = 0;
 
+    /*
+     * Warn of any invalid engine state.  Do it before srs_tran_destroy() as
+     * clnt->sql will be pointing at free memory after that.
+     */
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS && clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %p\n", clnt, clnt->ctrl_sqlengine, clnt->osql.rqid,
+               (void *)pthread_self());
+        if (clnt->sql)
+            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
+    }
+
     /* TODO: once Dr. Hipp fixes the plan, this should be moved
        to sqlite3BtreeCloseCursor */
     clearClientSideRow(clnt);
@@ -673,19 +619,10 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
         }
     }
 
-    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
-        clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
-               clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
-        if (clnt->sql)
-            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
-    }
-
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid)) {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %lu\n", clnt,
-               clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-               pthread_self());
+        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %p\n", clnt, clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
+               (void *)pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();
@@ -794,8 +731,20 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 }
             }
             broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
-            if (iq->sc->db)
-                sc_del_unused_files(iq->sc->db);
+            if (iq->sc->db) {
+                int rc;
+                tran_type *lock_trans = NULL;
+                if ((rc = trans_start(iq, NULL, &lock_trans)) == 0) {
+                    bdb_lock_tablename_read(thedb->bdb_env, iq->sc->tablename,
+                                            lock_trans);
+                    sc_del_unused_files_tran(iq->sc->db, lock_trans);
+                    trans_abort(iq, lock_trans);
+                } else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s failed to start lock_trans, rc=%d\n", __func__,
+                           rc);
+                }
+            }
             if (iq->sc->fastinit && !iq->sc->drop_table)
                 autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);

@@ -201,12 +201,6 @@ done
 
 ### Tests for CREATE UNIQUE INDEX with multiple NULL values
 
-function failexit
-{
-    echo "Failed $1"
-    exit -1
-}
-
 function assertbadexitcode
 {
     rc=$1

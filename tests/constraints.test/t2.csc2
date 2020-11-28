@@ -1,15 +1,15 @@
 schema
 {
-  int uuid
+  int uid
   int value
 }
 
 keys
 {
-    "UUID1"      = uuid
+    "UID1"      = uid
 }
 
 constraints
 {
-    "UUID1" -> <"t1":"UUID">
+    "UID1" -> <"t1":"UID">
 }

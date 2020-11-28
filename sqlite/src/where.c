@@ -4024,6 +4024,9 @@ static LogEst whereSortingCost(
   ** Use the LIMIT for M if it is smaller */
   if( (pWInfo->wctrlFlags & WHERE_USE_LIMIT)!=0 && pWInfo->iLimit<nRow ){
     nRow = pWInfo->iLimit;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    nRow *= gbl_sqlite_sortermult;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
   rSortCost += estLog(nRow);
   return rSortCost;
@@ -4196,7 +4199,12 @@ static int wherePathSolver(WhereInfo *pWInfo, LogEst nRowEst){
           ** extra encouragment to the query planner to select a plan
           ** where the rows emerge in the correct order without any sorting
           ** required. */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+          extern int gbl_sqlite_sorterpenalty;
+          rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + gbl_sqlite_sorterpenalty;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
           rCost = sqlite3LogEstAdd(rUnsorted, aSortCost[isOrdered]) + 5;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
           WHERETRACE(0x002,
               ("---- sort cost=%-3d (%d/%d) increases cost %3d to %-3d\n",

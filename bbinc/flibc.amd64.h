@@ -14,9 +14,9 @@
    limitations under the License.
  */
 
-#define flibc_shortflip(x) __builtin_bswap16(x)
-#define flibc_intflip(x) __builtin_bswap32(x)
-#define flibc_llflip(x) __builtin_bswap64(x)
+#define flibc_shortflip(x) (uint16_t)__builtin_bswap16(x)
+#define flibc_intflip(x) (uint32_t)__builtin_bswap32(x)
+#define flibc_llflip(x) (uint64_t)__builtin_bswap64(x)
 #define flibc_ntohll(x) flibc_llflip(x)
 #define flibc_ntohf(x) flibc_floatflip(x)
 #define flibc_ntohd(x) flibc_dblflip(x)

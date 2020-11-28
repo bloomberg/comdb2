@@ -17,6 +17,8 @@ set(src
   dyn_array.c
   flibc.c
   fsnapf.c
+  hashfuncs.c
+  hostname_support.c
   int_overflow.c
   intern_strings.c
   list.c
@@ -26,6 +28,7 @@ set(src
   nodemap.c
   object_pool.c
   parse_lsn.c
+  pb_alloc.c
   perf.c
   plhash.c
   pool.c
@@ -37,12 +40,13 @@ set(src
   queuetest.c
   roll_file.c
   rtcpu.c
-  schema_lk.c
   sbuf2.c
+  schema_lk.c
   segstring.c
   sltpck.c
   str0.c
   strbuf.c
+  string_ref.c
   switches.c
   tcputil.c
   thdpool.c
@@ -63,18 +67,21 @@ if(COMDB2_LEGACY_DEFAULTS)
 endif()
 add_library(util ${src})
 include_directories(
-  ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${PROJECT_BINARY_DIR}/mem
+  ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/cdb2api
+  ${PROJECT_SOURCE_DIR}/db
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
-  ${PROJECT_BINARY_DIR}/mem
+  ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sockpool
-  ${PROJECT_SOURCE_DIR}/berkdb
+  ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
   ${UNWIND_INCLUDE_DIR}
-  ${PROJECT_SOURCE_DIR}/db
 )
 add_dependencies(util mem)
 set_source_files_properties(walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)

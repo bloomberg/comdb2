@@ -28,6 +28,7 @@ static const char revid[] = "$Id: rep_method.c,v 1.134 2003/11/13 15:41:51 sue E
 #include "dbinc/btree.h"
 #include "dbinc/log.h"
 #include "dbinc/txn.h"
+#include <comdb2_atomic.h>
 
 #ifdef HAVE_RPC
 #include "dbinc_auto/db_server.h"
@@ -64,9 +65,11 @@ static int __rep_set_rep_db_pagesize __P((DB_ENV *, int));
 static int __rep_get_rep_db_pagesize __P((DB_ENV *, int *));
 static int __rep_start __P((DB_ENV *, DBT *, u_int32_t, u_int32_t));
 static int __rep_stat __P((DB_ENV *, DB_REP_STAT **, u_int32_t));
+static int __rep_deadlocks __P((DB_ENV *, u_int64_t *));
 static int __rep_wait __P((DB_ENV *, u_int32_t, char **, u_int32_t *, u_int32_t, u_int32_t));
 
 extern int gbl_is_physical_replicant;
+extern int gbl_inmem_repdb;
 
 #ifndef TESTSUITE
 void bdb_get_writelock(void *bdb_state,
@@ -115,6 +118,7 @@ __rep_dbenv_create(dbenv)
 		dbenv->rep_verify_will_recover = __rep_verify_will_recover;
 		dbenv->rep_start = __rep_start;
 		dbenv->rep_stat = __rep_stat;
+		dbenv->rep_deadlocks = __rep_deadlocks;
 		dbenv->get_rep_gen = __rep_get_gen;
 		dbenv->get_last_locked = __rep_get_last_locked;
 		dbenv->get_rep_limit = __rep_get_limit;
@@ -571,6 +575,9 @@ __rep_client_dbinit(dbenv, startup)
 		namesp = NULL;
 	}
 
+	if(gbl_inmem_repdb)
+		goto done;
+
 	if ((ret = db_create(&dbp, dbenv, DB_REP_CREATE)) != 0)
 		goto err;
 	if ((ret = __bam_set_bt_compare(dbp, __rep_bt_cmp)) != 0)
@@ -614,6 +621,7 @@ err:		if (dbp != NULL &&
 			__os_free(dbenv, repdbname);
 	}
 
+done:
 	MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);
 
 	return (ret);
@@ -1658,6 +1666,17 @@ __rep_get_master(dbenv, master_out, gen, egen)
 }
 
 extern pthread_mutex_t gbl_durable_lsn_lk;
+
+static int
+__rep_deadlocks(dbenv, deadlocks)
+    DB_ENV *dbenv;
+    u_int64_t *deadlocks;
+{
+	DB_REP *db_rep = dbenv->rep_handle;
+	REP *rep = db_rep->region;
+    *deadlocks = ATOMIC_LOAD64(rep->stat.retry);
+    return 0;
+}
 
 /*
  * __rep_stat --

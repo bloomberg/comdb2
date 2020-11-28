@@ -101,6 +101,7 @@ __lock_dbenv_create(dbenv)
 		dbenv->lock_detect = __lock_detect_pp;
 		dbenv->lock_dump_region = __lock_dump_region;
 		dbenv->lock_get = __lock_get_pp;
+		dbenv->lock_query = __lock_query_pp;
 
 		dbenv->lock_abort_logical_waiters =
 		    __lock_abort_logical_waiters_pp;
