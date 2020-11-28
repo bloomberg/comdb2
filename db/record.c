@@ -997,6 +997,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             reqprintf(iq, "ix_load_for_write_by_genid_tran RRN %d GENID 0x%llx "
                           "DTALEN %zu FNDLEN %d RC %d",
                       rrn, vgenid, od_len, fndlen, rc);
+        // solutions: 
+        // 1. get this read record done under a write lock
+        // 2. release this read lock, and when doing update verify that nothing has changed on this record
     }
     if (rc != 0 || od_len != fndlen) {
         if (iq->debug)

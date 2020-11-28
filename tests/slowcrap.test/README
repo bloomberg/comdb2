@@ -1,0 +1,2 @@
+Insert/delete into a table in a large transaction and measure speed gain
+by using a dynamic array.

@@ -4928,6 +4928,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             GOTOBACKOUT;
         }
 
+
         /* check foreign key constraints */
 
         if (iq->debug)

@@ -90,7 +90,7 @@ static int osql_wait(struct sqlclntstate *clnt, int timeout,
 static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                              int keep_session);
 
-#ifdef DEBUG_REORDER
+#ifdef DEBUG_NUMOPS
 #define DEBUG_PRINT_NUMOPS()                                                   \
     do {                                                                       \
         uuidstr_t us;                                                          \

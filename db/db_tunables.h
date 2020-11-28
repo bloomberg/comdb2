@@ -1911,7 +1911,6 @@ REGISTER_TUNABLE("waitalive_iterations",
                  "socket to be usable.  (Default: 3)",
                  TUNABLE_INTEGER, &gbl_waitalive_iterations,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
-
 REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
@@ -2062,4 +2061,6 @@ REGISTER_TUNABLE("sockbplog_sockpool",
                  &gbl_sockbplog_sockpool, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
 
+REGISTER_TUNABLE("max_inmem_array_size", "Max in memory size for dynamic array",
+                 TUNABLE_INTEGER, &gbl_max_inmem_array_size, 0, NULL, NULL, NULL, NULL);
 #endif /* _DB_TUNABLES_H */

@@ -20,14 +20,17 @@
 #include "block_internal.h"
 #include "logmsg.h"
 #include "indices.h"
+#include "tohex.h"
+#include "dyn_array.h"
 #include "sqloffload.h"
 
 extern int gbl_partial_indexes;
-static __thread void *defered_index_tbl = NULL;
-static __thread void *defered_index_tbl_cursor = NULL;
+extern int gbl_reorder_idx_writes;
+
+static __thread dyn_array_t defered_index_array;
 
 //
-// del needs to sort before adds because dels used to happen online
+//del needs to sort before adds because dels used to happen online
 
 // defered index table types
 // the _CC types signify that we need to check constraints
@@ -86,78 +89,31 @@ static int defered_index_key_cmp(void *usermem, int key1len, const void *key1,
     return 0;
 }
 
-static inline void *create_defered_index_table()
+void init_reorder_tbl()
 {
-    int bdberr = 0;
-    struct temp_table *newtbl =
-        (struct temp_table *)bdb_temp_array_create(thedb->bdb_env, &bdberr);
-    if (newtbl == NULL || bdberr != 0) {
-        logmsg(LOGMSG_ERROR, "failed to create temp table err %d\n", bdberr);
-        return NULL;
-    }
-    // default ordering will not work -- memcmp is not ok
-    bdb_temp_table_set_cmp_func(newtbl, defered_index_key_cmp);
-    return newtbl;
+    dyn_array_init(&defered_index_array, thedb->bdb_env);
+    dyn_array_set_cmpr(&defered_index_array, defered_index_key_cmp);
 }
 
-/* If parameter createIfNull is set, this function
- * will create tbl and cursor and return it.
- * If parameter createIfNull is not set, we will return
- * cursor or NULL when tbl is null
- */
-static inline void *get_defered_index_tbl_cursor(int createIfNull)
+void truncate_defered_index_array() 
 {
-    if (defered_index_tbl_cursor) {
-        assert(defered_index_tbl != NULL);
-        return defered_index_tbl_cursor;
-    }
-
-    if (!defered_index_tbl) {
-        if (!createIfNull)
-            return NULL;
-
-        defered_index_tbl = (void *)create_defered_index_table();
-    }
-
-    defered_index_tbl_cursor = get_constraint_table_cursor(defered_index_tbl);
-
-    if (!defered_index_tbl_cursor)
-        abort();
-
-    return defered_index_tbl_cursor;
+    dyn_array_close(&defered_index_array);
 }
 
-static inline void close_defered_index_tbl_cursor()
-{
-    if (!defered_index_tbl_cursor)
-        return;
 
-    close_constraint_table_cursor(defered_index_tbl_cursor);
-    defered_index_tbl_cursor = NULL;
+inline void truncate_defered_index_tbl() 
+{
+    truncate_defered_index_array();
 }
 
-void truncate_defered_index_tbl()
-{
-    close_defered_index_tbl_cursor();
-
-    if (defered_index_tbl) {
-        truncate_constraint_table(defered_index_tbl);
-    }
-}
 
 /* delete tbl and cursor
  * called from handle_buf.c to cleanup defered tbl */
-void delete_defered_index_tbl()
+inline void delete_defered_index_tbl() 
 {
-    if (!defered_index_tbl)
-        return;
-
-    if (defered_index_tbl_cursor)
-        close_defered_index_tbl_cursor();
-
-    delete_constraint_table(defered_index_tbl);
-    defered_index_tbl = NULL;
+    truncate_defered_index_array();
 }
+
 
 /* Check whether the key for the specified record is already present in
  * the index.
@@ -322,15 +278,12 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
 
-    void *cur = NULL;
     dtikey_t ditk = {0};
 
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
+#endif
     if (reorder) {
-        cur = get_defered_index_tbl_cursor(1);
-        if (cur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
-            return -1;
-        }
         ditk.type = DIT_ADD;
         ditk.genid = *genid;
         ditk.usedb = iq->usedb;
@@ -390,11 +343,11 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             gbl_osqlpf_step[*(iq->osql_step_ix)].step += 2;
 
         if (reorder) {
-            // if not datacopy, no need to save od_dta_tail
+            //if not datacopy, no need to save od_dta_tail
             void *data = NULL;
             int datalen = 0;
             if (od_dta_tail) {
-                // have a tail when index is datacopy or for decimal quantum
+                //have a tail when index is datacopy or for decimal quantum
                 data = od_dta_tail;
                 datalen = od_tail_len;
             }
@@ -402,11 +355,13 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
             ditk.ixlen = ixkeylen;
             if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                 append_genid_to_key(&ditk, ixkeylen);
-            int err = 0;
-            rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk, sizeof(ditk),
-                                       data, datalen, &err);
+#if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "AZ: %s insert ditk: %s type %d, index %d, genid %llx\n", __func__, iq->usedb->tablename, ditk.type, ditk.ixnum, bdb_genid_to_host_order(ditk.genid));
+#endif
+            rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
+
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n",
+                logmsg(LOGMSG_ERROR, "%s: dyn_array_append rc = %d\n",
                        __func__, rc);
                 goto done;
             }
@@ -468,7 +423,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
     }
 done:
     if (rc)
-        close_defered_index_tbl_cursor();
+        dyn_array_close(&defered_index_array);
     return rc;
 }
 
@@ -532,7 +487,6 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     char *od_olddta_tail = NULL;
     int od_oldtail_len;
 
-    void *cur = NULL;
     dtikey_t delditk = {0}; // will serve as the delete key obj
     dtikey_t ditk = {0};    // will serve as the add or upd key obj
     bool reorder =
@@ -541,12 +495,11 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
         iq->usedb->n_constraints == 0; /* dont reorder if foreign constrts */
 
+#if DEBUG_REORDER
+    logmsg(LOGMSG_DEBUG, "%s(): entering, reorder = %d\n", __func__, reorder);
+#endif
+
     if (reorder) {
-        cur = get_defered_index_tbl_cursor(1);
-        if (cur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
-            return -1;
-        }
         delditk.type = DIT_DEL;
         delditk.usedb = iq->usedb;
         ditk.usedb = iq->usedb;
@@ -686,16 +639,15 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
                 if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                     append_genid_to_key(&ditk, keysize);
-                int err = 0;
-                rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk,
-                                           sizeof(ditk), data, datalen, &err);
+                rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
                 if (rc != 0) {
-                    logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n",
-                           __func__, rc);
+                    logmsg(LOGMSG_ERROR, "%s: dyn_array_append rc = %d\n", __func__,
+                            rc);
                     goto done;
                 }
                 memset(ditk.ixkey, 0, ditk.ixlen);
-            } else {
+            }
+            else {
                 rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
                                 *newgenid, od_dta_tail, od_tail_len,
                                 ix_isnullk(iq->usedb, newkey, ixnum));
@@ -729,24 +681,17 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     delditk.ixlen = keysize;
                     if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                         append_genid_to_key(&delditk, keysize);
-                    int err = 0;
-                    rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk,
-                                               sizeof(delditk), data, datalen,
-                                               &err);
+                    rc = dyn_array_append(&defered_index_array, &delditk, sizeof(delditk), data, datalen);
                     if (rc != 0) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: bdb_temp_table_insert rc = %d\n", __func__,
-                               rc);
+                        logmsg(LOGMSG_ERROR, "%s: dyn_array_append rc = %d\n", __func__,
+                                rc);
                         goto done;
                     }
-                    memset(delditk.ixkey, 0, delditk.ixlen);
-                } else {
+                    memset(delditk.ixkey, 0, keysize);
+                }
+                else {
                     rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid,
-                                 ix_isnullk(iq->usedb, oldkey, ixnum));
-
-                    if (iq->debug)
-                        reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn,
-                                  rc);
+                            ix_isnullk(iq->usedb, oldkey, ixnum));
 
                     if (rc != 0) {
                         *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
@@ -786,14 +731,10 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     ditk.ixlen = keysize;
                     if (od_dta_tail || iq->usedb->ix_dupes[ixnum] != 0)
                         append_genid_to_key(&ditk, keysize);
-                    int err = 0;
-                    rc = bdb_temp_table_insert(thedb->bdb_env, cur, &ditk,
-                                               sizeof(ditk), data, datalen,
-                                               &err);
+                    rc = dyn_array_append(&defered_index_array, &ditk, sizeof(ditk), data, datalen);
                     if (rc != 0) {
-                        logmsg(LOGMSG_ERROR,
-                               "%s: bdb_temp_table_insert rc = %d\n", __func__,
-                               rc);
+                        logmsg(LOGMSG_ERROR, "%s: dyn_array_append rc = %d\n", __func__,
+                                rc);
                         goto done;
                     }
                     memset(ditk.ixkey, 0, ditk.ixlen);
@@ -818,7 +759,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
 done:
     if (rc)
-        close_defered_index_tbl_cursor();
+        dyn_array_close(&defered_index_array);
     return rc;
 }
 
@@ -829,7 +770,6 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                        blob_buffer_t *del_idx_blobs, const char *ondisktag)
 {
     int rc = 0;
-    void *cur = NULL;
     dtikey_t delditk = {0};
     bool reorder =
         osql_is_index_reorder_on(iq->osql_flags) &&
@@ -838,11 +778,6 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         iq->usedb->n_constraints == 0; /* dont reorder if foreign constrts */
 
     if (reorder) {
-        cur = get_defered_index_tbl_cursor(1);
-        if (cur == NULL) {
-            logmsg(LOGMSG_ERROR, "%s : no cursor???\n", __func__);
-            return -1;
-        }
         delditk.type = DIT_DEL;
         delditk.genid = genid;
         delditk.usedb = iq->usedb;
@@ -902,17 +837,16 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             delditk.ixlen = keysize;
             if (iq->usedb->ix_dupes[ixnum] != 0)
                 append_genid_to_key(&delditk, keysize);
-            int err = 0;
 
-            rc = bdb_temp_table_insert(thedb->bdb_env, cur, &delditk,
-                                       sizeof(delditk), data, datalen, &err);
+            rc = dyn_array_append(&defered_index_array, &delditk, sizeof(delditk), data, datalen);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_insert rc = %d\n",
-                       __func__, rc);
+                logmsg(LOGMSG_ERROR, "%s: dyn_array_append rc = %d\n", __func__,
+                        rc);
                 goto done;
             }
             memset(delditk.ixkey, 0, delditk.ixlen); // clear it for next round
-        } else {
+        }
+        else {
             /* delete the key */
             rc = ix_delk(iq, trans, key, ixnum, rrn, genid,
                          ix_isnullk(iq->usedb, key, ixnum));
@@ -936,7 +870,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode,
 
 done:
     if (rc)
-        close_defered_index_tbl_cursor();
+        dyn_array_close(&defered_index_array);
     return rc;
 }
 
@@ -1302,12 +1236,7 @@ int insert_defered_tbl(struct ireq *iq, void *od_dta, size_t od_len,
 int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                           int *errout)
 {
-    void *cur = get_defered_index_tbl_cursor(0);
-
-    if (!cur) {
-        // never inserted anything in tmp tbl
-        return 0;
-    }
+    dyn_array_sort(&defered_index_array);
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): defered table content:\n", __func__);
@@ -1317,8 +1246,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     int count = 0;
 #endif
 
-    int err;
-    int rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
+    int rc = dyn_array_first(&defered_index_array);
     if (rc != IX_OK) {
         if (rc == IX_EMPTY) {
             if (iq->debug)
@@ -1334,9 +1262,17 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     }
 
     while (rc == IX_OK) {
-        dtikey_t *ditk = (dtikey_t *)bdb_temp_table_key(cur);
-        void *od_dta_tail = bdb_temp_table_data(cur);
-        int od_tail_len = bdb_temp_table_datasize(cur);
+        //dtikey_t *ditk = (dtikey_t *)bdb_temp_table_key(cur);
+        //int od_tail_len = bdb_temp_table_datasize(cur);
+        //void *od_dta_tail = bdb_temp_table_data(cur);
+        dtikey_t *ditk;
+        void *od_dta_tail;
+        int od_tail_len;
+        dyn_array_get_kv(&defered_index_array, (void**)&ditk, &od_dta_tail, &od_tail_len);
+
+#if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "AZ: %s() count %d, table %s, type %d, index %d, genid %llx\n", __func__, ++count, ditk->usedb->tablename, ditk->type, ditk->ixnum, bdb_genid_to_host_order(ditk->genid));
+#endif
 
         iq->usedb = ditk->usedb;
 
@@ -1346,6 +1282,10 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             rc = ix_addk(iq, trans, ditk->ixkey, ditk->ixnum, ditk->genid,
                          addrrn, od_dta_tail, od_tail_len,
                          ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
+
+#if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "AZ: pdt ix_addk genid=%llx rc %d\n", bdb_genid_to_host_order(ditk->genid), rc);
+#endif
 
             if (iq->debug) {
                 reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
@@ -1398,6 +1338,9 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             rc = ix_delk(iq, trans, ditk->ixkey, ditk->ixnum, delrrn,
                          ditk->genid,
                          ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
+#if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "AZ: pdt ix_delk ixnum=%d, rrn=%d, genid=%llx rc %d\n", ditk->ixnum, delrrn, bdb_genid_to_host_order(ditk->genid), rc);
+#endif
             if (iq->debug) {
                 reqprintf(iq, "ix_delk IX %d KEY ", ditk->ixnum);
                 reqdumphex(iq, ditk->ixkey,
@@ -1420,6 +1363,9 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 iq, trans, ditk->ixkey, ditk->usedb->ix_keylen[ditk->ixnum],
                 ditk->ixnum, ditk->genid, ditk->newgenid, od_dta_tail,
                 od_tail_len, ix_isnullk(ditk->usedb, ditk->ixkey, ditk->ixnum));
+#if DEBUG_REORDER
+logmsg(LOGMSG_DEBUG, "AZ: pdt ix_upd_key genid=%llx rc %d\n", bdb_genid_to_host_order(ditk->genid), rc);
+#endif
             if (iq->debug)
                 reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d",
                           ditk->ixnum, ditk->newgenid, rc);
@@ -1434,7 +1380,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         }
 
         /* get next record from table */
-        rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
+        rc = dyn_array_next(&defered_index_array);
     }
     if (rc == IX_PASTEOF)
         rc = IX_OK;

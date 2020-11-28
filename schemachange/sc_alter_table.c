@@ -419,6 +419,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
 
+#ifdef DEBUG_SC
+logmsg(LOGMSG_INFO, "AZ: create_db_from_schema old dbnum=%d newdbnum=%d\n", db->dbnum, newdb->dbnum);
+#endif
+
     if (newdb == NULL) {
         dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);

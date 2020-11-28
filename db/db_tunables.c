@@ -355,6 +355,7 @@ int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
 int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
 int gbl_enable_sq_flattening_optimization = 1;
+extern size_t gbl_max_inmem_array_size;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
