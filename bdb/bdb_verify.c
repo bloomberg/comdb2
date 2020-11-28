@@ -27,6 +27,7 @@
 #include "string_ref.h"
 
 /* NOTE: This is from "comdb2.h". */
+extern int gbl_exit;
 extern int gbl_expressions_indexes;
 extern int get_numblobs(const struct dbtable *tbl);
 extern int ix_isnullk(const struct dbtable *db_table, void *key, int ixnum);
@@ -193,6 +194,13 @@ static inline int check_connection_and_progress(verify_common_t *par, int t_ms)
 
     if (par->peer_check(par->arg)) {
         logmsg(LOGMSG_WARN, "client connection closed, stopped verify\n");
+        par->client_dropped_connection = 1;
+        goto out;
+    }
+
+    if (gbl_exit) {
+        locprint(par, "!DB exiting, stopping verify");
+        logmsg(LOGMSG_WARN, "DB exiting, stopping verify\n");
         par->client_dropped_connection = 1;
         goto out;
     }
