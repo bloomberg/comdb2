@@ -70,6 +70,6 @@ typedef struct td_processing_info {
     int8_t index;
 } td_processing_info_t;
 
-int bdb_verify_enqueue(td_processing_info_t *, thdpool *);
+void bdb_verify_enqueue(td_processing_info_t *, thdpool *);
 
 #endif

@@ -1176,7 +1176,7 @@ void bdb_verify_handler(td_processing_info_t *info)
                                               DB_LOCK_ID_READONLY)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: error getting a lockid, %d\n", __func__, rc);
         par->verify_status = 1;
-        return;
+        goto done;
     }
 
     switch (info->type) {
@@ -1200,6 +1200,7 @@ void bdb_verify_handler(td_processing_info_t *info)
     bdb_state->dbenv->lock_id_free(bdb_state->dbenv, lid);
 
     BDB_RELLOCK();
+done:
     ATOMIC_ADD32(par->threads_completed, 1);
 }
 
@@ -1247,7 +1248,7 @@ static inline void enqueue_work(td_processing_info_t *work, const char *desc,
  * all keys, and all blobs.
  * If verify_thdpool is null, processing will be performed serially.
  */
-int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
+void bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
 {
     verify_common_t *par = info->common_params;
     verify_mode_t v_mode = par->verify_mode;
@@ -1283,7 +1284,7 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         memcpy(work, info, sizeof(*work));
         work->type = PROCESS_SEQUENTIAL;
         enqueue_work(work, desc, verify_thdpool);
-        return 0;
+        return;
     }
 
     if (v_mode == VERIFY_PARALLEL || v_mode == VERIFY_INDICES) {
@@ -1324,6 +1325,5 @@ int bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
             enqueue_work(work, desc, verify_thdpool);
         }
     }
-
-    return par->verify_status;
+    // we dont need to return anything because return value is implicit in par->verify_status;
 }
