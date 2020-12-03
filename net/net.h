@@ -37,8 +37,6 @@
 #   endif
 #endif
 
-enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_MAX };
-
 /* Public structures and typedefs */
 struct netinfo_struct;
 struct host_node_tag;
@@ -444,6 +442,7 @@ int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
 
 extern int gbl_libevent;
+extern int gbl_libevent_rte_only;
 #if 0
 void add_tcp_event(int, void(*)(int, short, void *), void *);
 void add_udp_event(int, void(*)(int, short, void *), void *);

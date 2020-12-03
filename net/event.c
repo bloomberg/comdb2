@@ -78,6 +78,7 @@
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
 int gbl_libevent = 1;
+int gbl_libevent_rte_only = 0;
 
 extern char *gbl_myhostname;
 extern int gbl_create_mode;
@@ -2321,20 +2322,27 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     if (sscanf(res, "%d", &port) != 1) {
         return -1;
     }
+
     /* Accept connection on unix fd */
     evbuffer_free(n->unix_buf);
     n->unix_buf = NULL;
     event_free(n->unix_ev);
     n->unix_ev = event_new(base, unix_fd, EV_READ | EV_PERSIST, do_recvfd, n);
-    logmsg(LOGMSG_INFO, "%s: svc:%s accepting on unix socket fd:%d\n",
+    logmsg(LOGMSG_USER, "%s: svc:%s accepting on unix socket fd:%d\n",
            __func__, n->service, unix_fd);
     event_add(n->unix_ev, NULL);
+
+    /* Accept connection on new port */
+    if (gbl_libevent_rte_only) {
+        logmsg(LOGMSG_WARN, "%s: svc:%s rte-mode only\n", __func__, n->service);
+        n->port = port;
+        return 0;
+    }
     if (n->port == port && n->listener) {
         return 0;
     }
-    /* Accept connection on new port */
     if (n->port != port) {
-        logmsg(LOGMSG_ERROR, "%s: PORT CHANGED %d->%d\n", __func__, n->port, port);
+        logmsg(LOGMSG_WARN, "%s: PORT CHANGED %d->%d\n", __func__, n->port, port);
     }
     if (n->listener) {
         evconnlistener_free(n->listener);
@@ -2353,7 +2361,7 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     }
     int fd = evconnlistener_get_fd(n->listener);
     update_net_info(n, fd, port);
-    logmsg(LOGMSG_INFO, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
+    logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
            n->service, port, fd);
     return 0;
 }
@@ -2473,6 +2481,9 @@ static void net_accept(netinfo_type *netinfo_ptr)
         return;
     }
     unix_connect(-1, EV_TIMEOUT, n);
+    if (gbl_libevent_rte_only) {
+        return;
+    }
     int fd = netinfo_ptr->myfd;
     if (fd == -1) {
         return;

@@ -807,7 +807,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                     }
                     dbenv->sibling_hostname[dbenv->nsiblings] =
                         intern(name);
-                    for (int netnum = 0; netnum < MAXNETS; netnum++)
+                    for (int netnum = 0; netnum < NET_MAX; netnum++)
                         dbenv->sibling_port[dbenv->nsiblings][netnum] = 0;
                     dbenv->nsiblings++;
                 }
