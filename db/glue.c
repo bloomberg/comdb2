@@ -5993,8 +5993,7 @@ int setup_net_listen_all(struct dbenv *dbenv)
         else
             goto use;
         if (port <= 0) {
-            logmsg(LOGMSG_ERROR, 
-                   "couldn't get port for replication/primary net from portmux\n");
+            logmsg(LOGMSG_ERROR, "pmux register replication failed port:%d\n", port);
             return -1;
         }
         dbenv->sibling_port[0][NET_REPLICATION] = port;
@@ -6004,32 +6003,34 @@ int setup_net_listen_all(struct dbenv *dbenv)
 use:        portmux_use("comdb2", "replication", dbenv->envname, port);
     }
     if (gbl_accept_on_child_nets) {
-        if (dbenv->sibling_port[0][NET_SQL] == 0) {
-            dbenv->sibling_port[0][NET_SQL] =
-                portmux_register("comdb2", "offloadsql", dbenv->envname);
-            if (dbenv->sibling_port[0][NET_REPLICATION] == -1) {
-                logmsg(LOGMSG_ERROR, 
-                       "couldn't get port for offloadsql net from portmux\n");
+        int osql_port = dbenv->sibling_port[0][NET_SQL];
+        if (osql_port <= 0) {
+            osql_port = portmux_register("comdb2", "offloadsql", dbenv->envname);
+            if (osql_port <= 0) {
+                logmsg(LOGMSG_ERROR, "pmux register offloadsql failed port:%d\n", osql_port);
                 return -1;
             }
+            dbenv->sibling_port[0][NET_SQL] = osql_port;
         }
     }
-
-    logmsg(LOGMSG_INFO, "listen on %d for replication\n",
-           dbenv->sibling_port[0][NET_REPLICATION]);
-    dbenv->listen_fds[NET_REPLICATION] =
-        net_listen(dbenv->sibling_port[0][NET_REPLICATION]);
-    if (dbenv->listen_fds[NET_REPLICATION] == -1)
+    if (gbl_libevent_rte_only) {
+        for (int i = 0; i < NET_MAX; ++i) {
+            dbenv->listen_fds[i] = -1;
+        }
+        return 0;
+    }
+    logmsg(LOGMSG_INFO, "listen on %d for replication\n", dbenv->sibling_port[0][NET_REPLICATION]);
+    dbenv->listen_fds[NET_REPLICATION] = net_listen(dbenv->sibling_port[0][NET_REPLICATION]);
+    if (dbenv->listen_fds[NET_REPLICATION] == -1) {
         return -1;
-
+    }
     if (gbl_accept_on_child_nets) {
         logmsg(LOGMSG_INFO, "listen on %d for sql\n", dbenv->sibling_port[0][NET_SQL]);
-        dbenv->listen_fds[NET_SQL] =
-            net_listen(dbenv->sibling_port[0][NET_SQL]);
-        if (dbenv->listen_fds[NET_SQL] == -1)
+        dbenv->listen_fds[NET_SQL] = net_listen(dbenv->sibling_port[0][NET_SQL]);
+        if (dbenv->listen_fds[NET_SQL] == -1) {
             return -1;
+        }
     }
-
     return 0;
 }
 

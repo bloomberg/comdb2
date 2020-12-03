@@ -1784,9 +1784,11 @@ REGISTER_TUNABLE("skip_catchup_logic",
                  &gbl_skip_catchup_logic, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("libevent",
-                 "Use libevent in net library. (Default: on)",
+REGISTER_TUNABLE("libevent", "Use libevent in net library. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
+
+REGISTER_TUNABLE("libevent_rte_only", "Prevent listening on TCP socket. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_libevent_rte_only, READONLY, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("online_recovery",
                  "Don't get the bdb-writelock for recovery.  (Default: on)",

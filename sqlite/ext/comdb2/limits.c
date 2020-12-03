@@ -54,7 +54,7 @@ struct limit_t {
     {"max_indexes", "Maximum number of indexes per table", MAXINDEX},
     {"max_key_length", "Maximum key length", MAXKEYLEN},
     {"max_key_name_length", "Maximum key name length", MAXIDXNAMELEN - 1},
-    {"max_networks", "Maximum number of networks", MAXNETS},
+    {"max_networks", "Maximum number of networks", NET_MAX},
     {"max_nodes", "Maximum number of nodes", REPMAX},
     {"max_operation_name_length", "Maximum length of a custom operation name",
      MAXCUSTOPNAME},

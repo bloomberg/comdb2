@@ -100,8 +100,6 @@
 
 #include <crc32c.h>
 
-BB_COMPILE_TIME_ASSERT(NUMNETS, MAXNETS == NET_MAX);
-
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
 #endif
@@ -5433,9 +5431,8 @@ static void *accept_thread(void *arg)
         }
     } else {
         /* We used to listen here. We now listen way earlier and get a file
-           descriptor passed in.
-           This is to prevent 2 instances from coming up against the same data.
-           */
+         * descriptor passed in. This is to prevent 2 instances from coming up
+         * against the same data.  */
         if (netinfo_ptr->myfd != -1)
             listenfd = netinfo_ptr->myfd;
         else

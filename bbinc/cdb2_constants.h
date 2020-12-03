@@ -30,7 +30,6 @@
 #define MAXDYNTAGCOLUMNS 2048
 #define MAXKEYLEN 512
 #define MAXLRL 65536
-#define MAXNETS 2
 #define MAXNODES 32768
 #define MAXPLUGINS 100
 #define MAXPSTRLEN 256
@@ -79,8 +78,6 @@
         off += ret;                                                            \
     }
 
-#endif
-
 /* Access to base tables/indices */
 #define CDB2_WRITE_COST 100.0
 #define CDB2_FIND_COST 10.0
@@ -94,3 +91,7 @@
 
 /* Access to sqlite_statN & sqlite_master tables is considered free */
 #define CDB2_SQLITE_STAT_COST 0.0
+
+enum NET_NAMES { NET_REPLICATION, NET_SQL, NET_MAX };
+
+#endif /* INCLUDED_UTIL_CDB2_CONSTANTS_H */

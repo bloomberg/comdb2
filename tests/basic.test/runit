@@ -136,17 +136,22 @@ for node in $cluster ; do
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_host()"`
     assertres $res $node
 
+    if [ ! -n $PMUXPORT ] ; then
+        # this should also work, if pmux is in standard port
+        res=`cdb2sql -v --tabs $dbnm @$node "select comdb2_dbname()"`
+        assertres $res $dbnm
+    fi
+
+    #RTE only mode does not listen on any ports
+    if [[ $DBNAME == "basicrtegenerated"* ]] ; then
+        continue
+    fi
 
     port=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm --host $node "select comdb2_port()"`
     echo "connect to db with direct port info"
     res=`cdb2sql --tabs $dbnm @$node:port=$port "select comdb2_dbname()"`
     assertres $res $dbnm
 
-    if [ ! -n $PMUXPORT ] ; then
-        # this should also work, if pmux is in standard port
-        res=`cdb2sql -v --tabs $dbnm @$node "select comdb2_dbname()"`
-        assertres $res $dbnm
-    fi
 
     # as should this
     res=`cdb2sql --tabs $dbnm --host $node:$port "select comdb2_dbname()"`
