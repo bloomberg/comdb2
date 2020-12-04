@@ -286,6 +286,14 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
     if (is_msg_done && perr) {
+        if (debug_switch_test_sync_osql_cancel()) {
+            /* We need a scenario where requests arrive faster than they're
+               cancelled. This usually means the master is a lot busier than its
+               replicants. It's hard to archieve in our docker environment, for
+               all instances share resources of the physical host. Let's just
+               add an artificial sleep here. */
+            poll(NULL, 0, 1000);
+        }
         goto failed_stream;
     }
 
@@ -313,6 +321,9 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
     return handle_buf_sorese(sess);
 
 failed_stream:
+    if (is_msg_done && perr)
+        osql_comm_signal_sqlthr_rc(&sess->target, rqid, uuid, 0, &sess->xerr, NULL, 0);
+
     /* release the session */
     osql_repository_put(sess);
 
@@ -340,6 +351,9 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
     if (*is_msg_done && perr) {
+        if (debug_switch_test_sync_osql_cancel())
+            poll(NULL, 0, 1000);
+        osql_comm_signal_sqlthr_rc(&sess->target, sess->rqid, sess->uuid, 0, &sess->xerr, NULL, 0);
         return 0;
     }
 

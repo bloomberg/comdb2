@@ -84,8 +84,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
                                           struct sql_thread *thd);
 static int osql_begin(struct sqlclntstate *clnt, int type, int keep_rqid);
 static int osql_end(struct sqlclntstate *clnt);
-static int osql_wait(struct sqlclntstate *clnt, int timeout,
-                     struct errstat *err);
+static int osql_wait(struct sqlclntstate *clnt);
 
 static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                              int keep_session);
@@ -386,14 +385,25 @@ static int osql_end(struct sqlclntstate *clnt)
     return osql_end_net(clnt);
 }
 
-int osql_wait(struct sqlclntstate *clnt, int timeout, struct errstat *err)
+static int osql_wait(struct sqlclntstate *clnt)
 {
+    int timeout;
+    osqlstate_t *osql = &clnt->osql;
+    errstat_t dummy = {0};
+
+    /* If an error is set (e.g., selectv error from range check), latch it. */
+    errstat_t *err = (osql->xerr.errval == 0) ? &osql->xerr : &dummy;
+
+    if (osql->running_ddl)
+        timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
+    else
+        timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+
     if (clnt->wait)
         if (!clnt->wait(clnt, timeout, err))
             return 0;
 
-    return osql_chkboard_wait_commitrc(clnt->osql.rqid, clnt->osql.uuid,
-                                       timeout, err);
+    return osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, err);
 }
 
 /**
@@ -977,7 +987,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     int rcout = 0;
     int retries = 0;
     int bdberr = 0;
-    int timeout = 0;
 
     if (gbl_is_physical_replicant) {
         logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
@@ -1046,22 +1055,12 @@ retry:
             /*cheap_stack_trace();*/
             abort();
         }
-
-        if (osql->running_ddl)
-            timeout = bdb_attr_get(thedb->bdb_attr,
-                                   BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
-        else
-            timeout = bdb_attr_get(thedb->bdb_attr,
-                                   BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
-
-        /* waits for a sign */
-        rc = osql_wait(clnt, timeout, &clnt->osql.xerr);
+        rc = osql_wait(clnt);
         if (rc) {
             rcout = SQLITE_CLIENT_CHANGENODE;
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
                     __func__, __LINE__, rcout, rc);
-        }
-        else {
+        } else {
 
             if (gbl_random_blkseq_replays && ((rand() % 50) == 0)) {
                 logmsg(LOGMSG_ERROR, "%s line %d forcing random blkseq retry\n",
@@ -1254,6 +1253,10 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
             /* we still need to unregister the clnt */
             rcout = SQLITE_INTERNAL;
         }
+
+        rc = osql_wait(clnt);
+        if (rc)
+            logmsg(LOGMSG_WARN, "%s: osql_wait rc %d\n", __func__, rc);
 
         /* unregister this osql thread from checkboard */
         rc = osql_end(clnt);
