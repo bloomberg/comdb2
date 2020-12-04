@@ -70,6 +70,7 @@ int debug_switch_test_ddl_backout_blkseq(void);          /* 0 */
 int debug_switch_test_delay_analyze_commit(void);        /* 0 */
 int debug_switch_all_incoherent(void);                   /* 0 */
 int debug_switch_replicant_latency(void);                   /* 0 */
+int debug_switch_test_sync_osql_cancel(void);            /* 0 */
 
 /* value switches */
 int debug_switch_net_delay(void); /* 0 */
