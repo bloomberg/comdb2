@@ -5425,7 +5425,9 @@ static int enqueue_sql_query(struct sqlclntstate *clnt, priority_t priority)
              clnt->origin, clnt->sql, (pool != NULL) ? thdpool_get_name(pool) :
          "<null>", clnt->priority, (long long unsigned int)clnt->enque_timeus);
 
-    logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, msg);
+    if (gbl_verbose_prioritize_queries) {
+        logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, msg);
+    }
 
     q_depth_tag_and_sql = thd_queue_depth();
     if (thdpool_get_nthds(pool) == thdpool_get_maxthds(pool))
