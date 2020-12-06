@@ -60,6 +60,7 @@ struct tablelist {
     char name[1];
 };
 
+
 struct reqlogger {
     char origin[128];
 
@@ -94,7 +95,7 @@ struct reqlogger {
     struct logevent *last_event;
 
     /* the sql statement */
-    char *stmt;
+    struct string_ref *sql_ref;
 
     /* the bound parameters */
     cson_value *bound_param_cson;

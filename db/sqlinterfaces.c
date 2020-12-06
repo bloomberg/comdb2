@@ -1639,7 +1639,6 @@ static void log_cost(struct reqlogger *logger, int64_t cost, int64_t rows) {
 static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
     query_stats_setup(thd, clnt);
-    reqlog_new_sql_request(thd->logger, clnt->sql);
 
     if (reqlog_get_event(thd->logger) == EV_SQL) {
         unsigned char fp[FINGERPRINTSZ];
@@ -1697,7 +1696,7 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
 
     sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_NORMAL_PROCESS);
 
-    reqlog_new_sql_request(thd->logger, clnt->sql);
+    reqlog_new_sql_request(thd->logger, clnt->sql_ref);
     log_queue_time(thd->logger, clnt);
 
     reqlog_logf(thd->logger, REQL_QUERY,
@@ -3066,6 +3065,7 @@ void thr_set_current_sql(const char *sql)
 {
     char *prevsql;
     pthread_once(&current_sql_query_once, init_current_current_sql_key);
+    /* TODO: if we could put_ref at thread exit, we would be able to always keep a reference to sql in this variable at no cost */
     if (gbl_debug_temptables) {
         prevsql = pthread_getspecific(current_sql_query_key);
         if (prevsql) {
@@ -3086,7 +3086,9 @@ static void setup_reqlog(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                  clnt->verify_retries);
 
     setup_client_info(clnt, thd, info_nvreplays);
-    reqlog_new_sql_request(thd->logger, NULL);
+    if(!clnt->sql_ref)
+        clnt->sql_ref = create_string_ref(clnt->sql);
+    reqlog_new_sql_request(thd->logger, clnt->sql_ref);
     log_context(clnt, thd->logger);
 }
 
@@ -4399,8 +4401,6 @@ static inline void post_run_reqlog(struct sqlthdstate *thd,
 {
     reqlog_set_event(thd->logger, EV_SQL);
     log_queue_time(thd->logger, clnt);
-    if (rec->sql)
-        reqlog_set_sql(thd->logger, rec->sql);
 }
 
 int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
@@ -6426,7 +6426,10 @@ static int execute_sql_query_offload(struct sqlthdstate *poolthd,
     else
         cid = (char *)&clnt->osql.rqid;
 
-    reqlog_new_sql_request(poolthd->logger, clnt->sql);
+    if(!clnt->sql_ref)
+        clnt->sql_ref = create_string_ref(clnt->sql);
+    reqlog_new_sql_request(poolthd->logger, clnt->sql_ref);
+
     log_queue_time(poolthd->logger, clnt);
     bzero(&clnt->fail_reason, sizeof(clnt->fail_reason));
     bzero(&clnt->osql.xerr, sizeof(clnt->osql.xerr));

@@ -44,6 +44,7 @@
 
 #include "cson.h"
 #include "comdb2_atomic.h"
+#include "string_ref.h"
 
 extern int64_t comdb2_time_epochus(void);
 extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
@@ -443,9 +444,10 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
     cson_object_set(newobj, "type",
             cson_value_new_string("newsql", strlen("newsql")));
 
-    /* logger->stmt is NULL if we fail to strdup the query. */
-    if (logger->stmt != NULL)
-        cson_object_set(newobj, "sql", cson_value_new_string(logger->stmt, strlen(logger->stmt)));
+    if (logger->sql_ref != NULL) {
+        const char *str = get_string(logger->sql_ref);
+        cson_object_set(newobj, "sql", cson_value_new_string(str, strlen(str)));
+    }
 
     char expanded_fp[2 * FINGERPRINTSZ + 1];
     util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
@@ -469,9 +471,9 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
         cson_object_set(obj, "type", cson_value_new_string(str, strlen(str)));
     }
 
-    if (logger->stmt && eventlog_detailed) {
-        cson_object_set(obj, "sql", cson_value_new_string(
-                                        logger->stmt, strlen(logger->stmt)));
+    if (logger->sql_ref && eventlog_detailed) {
+        const char *str = get_string(logger->sql_ref);
+        cson_object_set(obj, "sql", cson_value_new_string(str, strlen(str)));
         cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     }
 
@@ -538,7 +540,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 
 static inline void add_to_fingerprints(const struct reqlogger *logger)
 {
-    bool isSqlErr = logger->error && logger->stmt;
+    bool isSqlErr = logger->error && logger->sql_ref;
 
     if ((EV_SQL == logger->event_type || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(logger);
