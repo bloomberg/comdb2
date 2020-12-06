@@ -75,6 +75,7 @@
 #include "reqlog_int.h"
 
 #include <tohex.h>
+#include "string_ref.h"
 
 /*
 ** ugh - constants are variable
@@ -1034,10 +1035,7 @@ static void reqlog_free_all(struct reqlogger *logger)
         free(logger->error);
         logger->error = NULL;
     }
-    if (logger->stmt) {
-        free(logger->stmt);
-        logger->stmt = NULL;
-    }
+    put_ref(&logger->sql_ref);
 
     while ((event = logger->events) != NULL) {
         logger->events = event->next;
@@ -1419,9 +1417,10 @@ static void reqlog_start_request(struct reqlogger *logger)
         } else if (master_opcode_inv_list.num > 0 &&
                    check_list(&master_opcode_inv_list, logger->opcode)) {
             gather = 1;
-        } else if (logger->stmt && master_num_stmts > 0) {
+        } else if (logger->sql_ref && master_num_stmts > 0) {
+            const char *str = get_string(logger->sql_ref);
             for (ii = 0; ii < master_num_stmts && ii < NUMSTMTS; ii++) {
-                if (strstr(logger->stmt, master_stmts[ii])) {
+                if (strstr(str, master_stmts[ii])) {
                     gather = 1;
                     break;
                 }
@@ -1468,13 +1467,13 @@ void reqlog_new_request(struct ireq *iq)
     reqlog_start_request(logger);
 }
 
-inline void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
+inline void reqlog_set_sql(struct reqlogger *logger, struct string_ref *sr)
 {
-    if (sqlstmt) {
-        if (logger->stmt) free(logger->stmt);
-        logger->stmt = strdup(sqlstmt);
+    put_ref(&logger->sql_ref);
+    if (sr) {
+        logger->sql_ref = get_ref(sr);
+        reqlog_logf(logger, REQL_INFO, "sql=%s", get_string(logger->sql_ref));
     }
-    if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
 }
 
 inline void reqlog_set_startprcs(struct reqlogger *logger, uint64_t val)
@@ -1482,7 +1481,7 @@ inline void reqlog_set_startprcs(struct reqlogger *logger, uint64_t val)
     logger->startprcsus = val;
 }
 
-void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
+void reqlog_new_sql_request(struct reqlogger *logger, struct string_ref *sr)
 {
     if (!logger) {
         return;
@@ -1494,8 +1493,9 @@ void reqlog_new_sql_request(struct reqlogger *logger, char *sqlstmt)
     reqlog_start_request(logger);
 
     logger->nsqlreqs = ATOMIC_LOAD32(gbl_nnewsql);
-    if (sqlstmt)
-        reqlog_set_sql(logger, sqlstmt);
+    if (sr) {
+        reqlog_set_sql(logger, sr);
+    }
 }
 
 void reqlog_diffstat_init(struct reqlogger *logger)
@@ -1936,7 +1936,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             }
 
             if (rule->stmt[0] &&
-                (!logger->stmt || !strstr(logger->stmt, rule->stmt))) {
+                (!logger->sql_ref || !strstr(get_string(logger->sql_ref), rule->stmt))) {
                 continue;
             }
 

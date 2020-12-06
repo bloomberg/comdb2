@@ -513,10 +513,56 @@ test_generate_series() {
     done
 }
 
+test_sp() {
+    cdb2sql --tabs -s ${CDB2_OPTIONS} $dbnm default > test_sp.out << 'EOF'
+create procedure test version 'sptest' {
+local function main(test_no, t)
+    db:exec(t)
+    db:column_type("string", 1);
+    db:emit("123")
+    return 0
+end}$$
+put default procedure test 'sptest'
+exec procedure test('select 1, 2')
+EOF
+
+    echo "sptest
+123" > test_sp.exp
+    if ! diff test_sp.out test_sp.exp ; then
+        failexit "unexpected testsp.out"
+    fi
+}
+
+test_trigger() {
+cdb2sql --tabs -s ${CDB2_OPTIONS} $dbnm default > test_trigger.out << 'EOF'
+create table t_orig (i int)$$
+create table t_trig (i int)$$
+create procedure ins_trig version 'instrig' {
+local function main(event)
+	local tt = db:table("t_trig")	
+	local tp = event.type
+	local inew, iold
+	if tp == 'add' then
+		inew = event.new.i
+	elseif tp == 'del' then
+		iold = event.old.i
+	end
+	return tt:insert({i=inew})
+end}$$
+create lua trigger ins_trig on (table t_orig for insert and update and delete)
+insert into t_orig values (1)
+EOF
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t_orig"`
+    assertres $res 1
+    res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t_trig"`
+    assertres $res 1
+}
 
 test_t1
 test_bulk
 test_generate_series
+test_sp
+test_trigger
 
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
 
