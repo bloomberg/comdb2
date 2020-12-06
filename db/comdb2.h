@@ -1237,6 +1237,7 @@ struct osql_sess {
     int verify_retries; /* how many times we verify retried this one */
     blocksql_tran_t *tran;
     int is_tranddl;
+    int is_cancelled; /* 1 if session is cancelled */
 };
 typedef struct osql_sess osql_sess_t;
 

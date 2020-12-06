@@ -68,7 +68,10 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
 
     /* collect the bplog; dispatch if bplog successful */
     rc = osqlcomm_bplog_socket(sb, sess);
-    if (rc) {
+    if (sess->is_cancelled) {
+        /* Not an error. Just clean it up. */
+        goto err_nomsg;
+    } else if (rc) {
         logmsg(LOGMSG_ERROR, "Failure to receive osql bplog rc=%d\n", rc);
         goto err;
     }
@@ -78,14 +81,15 @@ static int handle_sockbplog_request_session(SBUF2 *sb, char *host)
         to the writer thread */
     if (gbl_sockbplog_debug)
         logmsg(LOGMSG_ERROR, "%p %s called\n", (void *)pthread_self(), __func__);
+
+    free(sql);
     return 0;
 
 err:
     logmsg(LOGMSG_ERROR, "%p %s called and failed rc %d\n", (void *)pthread_self(),
            __func__, rc);
 err_nomsg:
-    if (sql)
-        free(sql);
+    free(sql);
     if (sess) {
         osql_sess_remclient(sess);
         osql_sess_close(&sess, 0);
