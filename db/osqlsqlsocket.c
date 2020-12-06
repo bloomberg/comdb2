@@ -262,19 +262,23 @@ int osql_read_buffer_default(char *buf, int buflen, SBUF2 *sb)
     return osql_read_buffer(buf, buflen, sb, &timeout, gbl_sockbplog_poll);
 }
 
-#define GDATA(obj)                                                             \
-    rc = osql_read_buffer_default((char *)&(obj), sizeof(obj), sb);            \
-    if (rc) {                                                                  \
-        logmsg(LOGMSG_ERROR, "Failure to read message %d rc %d\n", __LINE__,   \
-               rc);                                                            \
-    }
+#define GDATA(obj)                                                                                                     \
+    do {                                                                                                               \
+        rc = osql_read_buffer_default((char *)&(obj), sizeof(obj), sb);                                                \
+        if (rc) {                                                                                                      \
+            logmsg(LOGMSG_ERROR, "Failure to read message %d rc %d\n", __LINE__, rc);                                  \
+            goto done;                                                                                                 \
+        }                                                                                                              \
+    } while (0)
 
-#define GDATALEN(obj, objlen)                                                  \
-    rc = osql_read_buffer_default((char *)obj, (objlen), sb);                  \
-    if (rc) {                                                                  \
-        logmsg(LOGMSG_ERROR, "Failure to read message %d rc %d\n", __LINE__,   \
-               rc);                                                            \
-    }
+#define GDATALEN(obj, objlen)                                                                                          \
+    do {                                                                                                               \
+        rc = osql_read_buffer_default((char *)obj, (objlen), sb);                                                      \
+        if (rc) {                                                                                                      \
+            logmsg(LOGMSG_ERROR, "Failure to read message %d rc %d\n", __LINE__, rc);                                  \
+            goto done;                                                                                                 \
+        }                                                                                                              \
+    } while (0)
 
 int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
                         int *type, uuid_t uuid, int *flags)
@@ -287,53 +291,33 @@ int osqlcomm_req_socket(SBUF2 *sb, char **sql, char tzname[DB_MAX_TZNAMEDB],
     *sql = NULL;
 
     GDATA(totallen);
-    if (rc)
-        goto err;
     totallen = htonl(totallen);
 
     GDATA(*type);
-    if (rc)
-        goto err;
     *type = htonl(*type);
 
     GDATA(rqlen);
-    if (rc)
-        goto err;
     rqlen = htonl(rqlen);
 
     GDATA(sqlqlen);
-    if (rc)
-        goto err;
     sqlqlen = htonl(sqlqlen);
 
     *sql = malloc(sqlqlen + 1);
-    if (!*sql)
-        goto err;
+    if (!*sql) {
+        rc = ENOMEM;
+        goto done;
+    }
     GDATA(*flags);
-    if (rc)
-        goto err;
     *flags = htonl(*flags);
 
     GDATALEN(uuid, sizeof(uuid_t));
-    if (rc)
-        goto err;
     GDATALEN(tzname, DB_MAX_TZNAMEDB);
-    if (rc)
-        goto err;
-
     GDATA(unused);
-    if (rc)
-        goto err;
     GDATA(pad);
-    if (rc)
-        goto err;
     GDATALEN(*sql, sqlqlen + 1 /* there is an extra byte here */);
 
-    return 0;
-err:
-    if (*sql)
-        free(*sql);
-    return -1;
+done:
+    return rc;
 }
 
 /**
@@ -342,7 +326,7 @@ err:
  */
 int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
 {
-    char *buf = NULL;
+    void *buf = NULL, *reallocated;
     int buflen = 0, oldbuflen = -1;
     int type;
     int rc;
@@ -350,8 +334,6 @@ int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
 
     while (!is_msg_done) {
         GDATA(buflen);
-        if (rc)
-            goto err;
         buflen = htonl(buflen);
 
         if (gbl_sockbplog_debug)
@@ -359,35 +341,33 @@ int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
                    (void *)pthread_self(), buflen);
 
         if (oldbuflen < buflen) {
-            buf = realloc(buf, buflen);
-            if (!buf) {
+            reallocated = malloc_resize(buf, buflen);
+            if (!reallocated) {
                 logmsg(LOGMSG_ERROR, "%s malloc buflen %d\n", __func__, buflen);
-                goto err;
+                rc = ENOMEM;
+                goto done;
             }
+            buf = reallocated;
             oldbuflen = buflen;
         }
 
         GDATALEN(buf, buflen);
-        if (rc)
-            goto err;
 
         if (!(buf_get(&type, sizeof(type), buf, buf + buflen))) {
             logmsg(LOGMSG_ERROR, "%s:%s returns NULL\n", __func__,
                    "osqlcomm_uuid_rpl_type_get");
-            return -1;
+            rc = -1;
+            goto done;
         }
 
         rc = osql_sess_rcvop_socket(sess, type, buf, buflen, &is_msg_done);
         if (rc) {
             /* failed to save into bplog; discard and be done */
-            goto err;
+            goto done;
         }
     }
 
-    return rc;
-
-err:
-    if (buf)
-        free(buf);
+done:
+    free(buf);
     return rc;
 }

@@ -354,6 +354,7 @@ int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
         if (debug_switch_test_sync_osql_cancel())
             poll(NULL, 0, 1000);
         osql_comm_signal_sqlthr_rc(&sess->target, sess->rqid, sess->uuid, 0, &sess->xerr, NULL, 0);
+        sess->is_cancelled = 1;
         return 0;
     }
 

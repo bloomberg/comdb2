@@ -446,9 +446,11 @@ int handle_ireq(struct ireq *iq)
         }
     }
 
-    /* Finish off logging. */
     if (iq->sorese) {
+        /* Finish off logging. */
         osql_sess_reqlogquery(iq->sorese, iq->reqlogger);
+        /* Free the sorese transaction buffer */
+        free(iq->p_buf_out_start);
     }
     reqlog_end_request(iq->reqlogger, rc, __func__, __LINE__);
     release_node_stats(NULL, NULL, iq->frommach);
