@@ -1,0 +1,2 @@
+maxwt 1
+setattr DISABLE_SELECTVONLY_TRAN_NOP 1
