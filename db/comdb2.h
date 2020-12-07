@@ -601,7 +601,7 @@ void consumer_unlock_int(struct dbtable *db, const char *func, int line);
 typedef struct dbtable {
     struct dbenv *dbenv; /*chain back to my environment*/
     char *lrlfname;
-    const char *tablename_ip; /* intern pointer to tablename */
+    const char *tablename_interned; /* intern pointer to tablename */
     struct ireq *iq; /* iq used at sc time */
 
     int dbnum; /* zero unless setup as comdbg table */

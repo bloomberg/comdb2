@@ -1347,7 +1347,7 @@ static int osql_send_usedb_logic_int(const char *tablename, struct sqlclntstate 
 static int osql_send_usedb_logic(struct BtCursor *pCur, struct sql_thread *thd,
                                  int nettype)
 {
-    return osql_send_usedb_logic_int(pCur->db->tablename_ip, thd->clnt,
+    return osql_send_usedb_logic_int(pCur->db->tablename_interned, thd->clnt,
                                      nettype);
 }
 
@@ -1450,7 +1450,7 @@ static int osql_send_qblobs_logic(struct BtCursor *pCur, osqlstate_t *osql,
         /* Send length of -2 if this isn't being used in this update. */
         if (updCols && gbl_osql_blob_optimization && blobs[i].length > 0) {
             int idx =
-                get_schema_blob_field_idx(pCur->db->tablename_ip, ".ONDISK", i);
+                get_schema_blob_field_idx(pCur->db->tablename_interned, ".ONDISK", i);
             /* AZ: is pCur->db->schema not set to ondisk so we can instead call
              * get_schema_blob_field_idx_sc(pCur->db->schema,i); ?? */
             int ncols = updCols[0];
@@ -1737,13 +1737,13 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(
-            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename_ip,
+            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename_interned,
             nodeix(thd->clnt->origin), &bdberr);
         if (rc <= 0) {
             char msg[1024];
             snprintf(
                 msg, sizeof(msg), "Write access denied to %s from %d bdberr=%d",
-                pCur->db->tablename_ip, nodeix(thd->clnt->origin), bdberr);
+                pCur->db->tablename_interned, nodeix(thd->clnt->origin), bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -1758,11 +1758,11 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
         (thd->clnt->no_transaction == 0)) {
         rc = bdb_check_user_tbl_access(
             pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
-            pCur->db->tablename_ip, ACCESS_WRITE, &bdberr);
+            pCur->db->tablename_interned, ACCESS_WRITE, &bdberr);
         if (rc != 0) {
             char msg[1024];
             char buf[MAXTABLELEN];
-            const char *table_name = resolve_table_name(pCur->db->tablename_ip,
+            const char *table_name = resolve_table_name(pCur->db->tablename_interned,
                                                        (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
@@ -1788,13 +1788,13 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
-            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename_ip,
+            pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename_interned,
             nodeix(thd->clnt->origin), &bdberr);
         if (rc <= 0) {
             char msg[1024];
             snprintf(
                 msg, sizeof(msg), "Read access denied to %s from %d bdberr=%d",
-                pCur->db->tablename_ip, nodeix(thd->clnt->origin), bdberr);
+                pCur->db->tablename_interned, nodeix(thd->clnt->origin), bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -1808,11 +1808,11 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     if (gbl_uses_password && thd->clnt->no_transaction == 0) {
         rc = bdb_check_user_tbl_access(
             pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
-            pCur->db->tablename_ip, ACCESS_READ, &bdberr);
+            pCur->db->tablename_interned, ACCESS_READ, &bdberr);
         if (rc != 0) {
             char msg[1024];
             char buf[MAXTABLELEN];
-            const char *table_name = resolve_table_name(pCur->db->tablename_ip,
+            const char *table_name = resolve_table_name(pCur->db->tablename_interned,
                                                         (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",

@@ -595,7 +595,7 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     /* Initialize table's check constraint members. */
     if (init_check_constraints(db)) {
         logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
-               db->tablename_ip);
+               db->tablename_interned);
         return -1;
     }
     return 0;

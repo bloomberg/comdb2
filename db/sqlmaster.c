@@ -81,7 +81,7 @@ master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
     for (i = 0, tblnum = 0; tblnum < num_dbs; tblnum++) {
         master_entry_t *ent = &new_arr[i];
         struct dbtable *tbl = dbs[tblnum];
-        ent->tblname = strdup(tbl->tablename_ip);
+        ent->tblname = strdup(tbl->tablename_interned);
         ent->isstrdup = 1;
         ent->ixnum = -1;
         ent->rootpage = i + RTPAGE_START;
@@ -229,7 +229,7 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
     assert(tblnum < num_dbs);
 
     tbl = dbs[tblnum];
-    const char *dbname = tbl->tablename_ip;
+    const char *dbname = tbl->tablename_interned;
 
     if (ixnum == -1) {
         strcpy(name, dbname);

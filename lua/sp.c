@@ -198,7 +198,7 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
 {
     init_fake_ireq(thedb, &q->iq);
     int spname_len = info->spname_len;
-    strncpy0(q->name, qdb->tablename_ip, MAXTABLELEN);
+    strncpy0(q->name, qdb->tablename_interned, MAXTABLELEN);
     q->iq.usedb = qdb;
     q->emit_timeoutms = 60000; /* emit times-out after 1 min */
     q->consumer = consumer;

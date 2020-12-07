@@ -82,26 +82,26 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
                                    db->schema_version, &bdberr);
     if (rc) {
         sc_errf(s, "Failed to rename metadata structure for %s\n",
-                db->tablename_ip);
+                db->tablename_interned);
         goto tran_error;
     }
 
     /* update the table options */
     rc = rename_table_options(tran, db, newname);
     if (rc) {
-        sc_errf(s, "Failed to rename table options for %s\n", db->tablename_ip);
+        sc_errf(s, "Failed to rename table options for %s\n", db->tablename_interned);
         goto tran_error;
     }
 
     /* Update table sequences */
     rc = rename_table_sequences(tran, db, newname);
     if (rc) {
-        sc_errf(s, "Failed to rename table sequences for %s\n", db->tablename_ip);
+        sc_errf(s, "Failed to rename table sequences for %s\n", db->tablename_interned);
         goto tran_error;
     }
 
     /* fragile, handle with care */
-    oldname = db->tablename_ip;
+    oldname = db->tablename_interned;
     rc = rename_db(db, newname);
     if (rc) {
         /* crash the schema change, next master will hopefully have more memory
@@ -121,7 +121,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     /* set table version for the renamed name */
     rc = table_version_set(tran, newname, db->tableversion + 1);
     if (rc) {
-        sc_errf(s, "Failed to set table version for %s\n", db->tablename_ip);
+        sc_errf(s, "Failed to set table version for %s\n", db->tablename_interned);
         goto tran_error;
     }
 

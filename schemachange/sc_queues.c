@@ -157,17 +157,17 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
     if (newdb->dbenv->master == gbl_myhostname) {
         /* I am master: create new db */
         newdb->handle =
-            bdb_create_queue(newdb->tablename_ip, thedb->basedir, avgitemsz,
+            bdb_create_queue(newdb->tablename_interned, thedb->basedir, avgitemsz,
                              pagesize, thedb->bdb_env, 0, &bdberr);
     } else {
         /* I am NOT master: open replicated db */
         newdb->handle =
-            bdb_open_more_queue(newdb->tablename_ip, thedb->basedir, avgitemsz,
+            bdb_open_more_queue(newdb->tablename_interned, thedb->basedir, avgitemsz,
                                 pagesize, thedb->bdb_env, 0, NULL, &bdberr);
     }
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open queue %s/%s, rcode %d\n",
-               thedb->basedir, newdb->tablename_ip, bdberr);
+               thedb->basedir, newdb->tablename_interned, bdberr);
         return SC_BDB_ERROR;
     }
     add_to_qdbs(newdb);
@@ -247,7 +247,7 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
-                   thedb->basedir, db->tablename_ip, bdberr);
+                   thedb->basedir, db->tablename_interned, bdberr);
             rc = -1;
             goto done;
         }
@@ -551,12 +551,12 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         /* I am master: create new db */
         db->handle =
-            bdb_create_queue_tran(tran, db->tablename_ip, thedb->basedir, 65536,
+            bdb_create_queue_tran(tran, db->tablename_interned, thedb->basedir, 65536,
                                   65536, thedb->bdb_env, 1, &bdberr);
         if (db->handle == NULL) {
             logmsg(LOGMSG_ERROR,
                    "bdb_open:failed to open queue %s/%s, rcode %d\n",
-                   thedb->basedir, db->tablename_ip, bdberr);
+                   thedb->basedir, db->tablename_interned, bdberr);
             goto done;
         }
 
@@ -648,7 +648,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         /* stop */
         dbqueuedb_stop_consumers(db);
-        rc = javasp_do_procedure_op(JAVASP_OP_RELOAD, db->tablename_ip, NULL,
+        rc = javasp_do_procedure_op(JAVASP_OP_RELOAD, db->tablename_interned, NULL,
                                     config);
         if (rc) {
             sbuf2printf(sb,
@@ -671,13 +671,13 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* stop */
         dbqueuedb_stop_consumers(db);
 
-        javasp_do_procedure_op(JAVASP_OP_UNLOAD, db->tablename_ip, NULL, config);
+        javasp_do_procedure_op(JAVASP_OP_UNLOAD, db->tablename_interned, NULL, config);
 
         /* get us out of database list */
         remove_from_qdbs(db);
 
         /* get us out of llmeta */
-        rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename_ip, &bdberr);
+        rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename_interned, &bdberr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n",
                    __func__, rc, bdberr);

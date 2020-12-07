@@ -126,7 +126,7 @@ static int systblTablesColumn(
 ){
   systbl_tables_cursor *pCur = (systbl_tables_cursor*)cur;
   struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  const char *x = pDb->tablename_ip;
+  const char *x = pDb->tablename_interned;
 
   sqlite3_result_text(ctx, x, -1, NULL);
   return SQLITE_OK;

@@ -3667,9 +3667,9 @@ static int _is_tablename_unique(const char *name)
     int llen = strlen(name);
 
     for (i = 0; i < thedb->num_dbs; i++) {
-        if (llen != strlen(thedb->dbs[i]->tablename_ip))
+        if (llen != strlen(thedb->dbs[i]->tablename_interned))
             continue;
-        if (strncasecmp(thedb->dbs[i]->tablename_ip, name, llen) == 0)
+        if (strncasecmp(thedb->dbs[i]->tablename_interned, name, llen) == 0)
             return -1;
     }
 

@@ -156,7 +156,7 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
     tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (!trans) {
         logmsg(LOGMSG_ERROR, "%s bdb_tran_begin:%s bdberr:%d\n", __func__,
-               db->tablename_ip, bdberr);
+               db->tablename_interned, bdberr);
         return -1;
     }
     if (lockid) {
@@ -175,7 +175,7 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
         rc = dbqueuedb_get_stats_int(db, trans, stats);
     } else {
         logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
-               db->tablename_ip, rc);
+               db->tablename_interned, rc);
     }
     if (lockid) {
         bdb_set_tran_lockerid(trans, savedlid);
@@ -252,7 +252,7 @@ int queue_consume(struct ireq* iq, const void* fnd, int consumern)
         }
 
         logmsg(LOGMSG_ERROR, "difficulty consuming key from queue '%s' consumer %d\n",
-                iq->usedb->tablename_ip, consumern);
+                iq->usedb->tablename_interned, consumern);
         if (db_is_stopped() || thedb->master != gbl_myhostname)
             return -1;
         sleep(sleeptime);

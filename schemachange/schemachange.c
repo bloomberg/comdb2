@@ -536,12 +536,12 @@ int fastinit_table(struct dbenv *dbenvin, char *table)
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-    strncpy0(s->tablename, db->tablename_ip, sizeof(s->tablename));
+    strncpy0(s->tablename, db->tablename_interned, sizeof(s->tablename));
 
-    if (get_csc2_file(db->tablename_ip, -1 /*highest csc2_version*/, &s->newcsc2,
+    if (get_csc2_file(db->tablename_interned, -1 /*highest csc2_version*/, &s->newcsc2,
                       NULL /*csc2len*/)) {
         logmsg(LOGMSG_ERROR, "%s: could not get schema for table: %s\n",
-               __func__, db->tablename_ip);
+               __func__, db->tablename_interned);
         return -1;
     }
 
@@ -633,7 +633,7 @@ done:
         sbuf2printf(s->sb, "FAILED\n");
     }
     if (newdb) {
-        backout_schemas(newdb->tablename_ip);
+        backout_schemas(newdb->tablename_interned);
         newdb->schema = NULL;
         freedb(newdb);
     }
@@ -710,8 +710,8 @@ static int unodhfy_if_necessary(struct ireq *iq, blob_buffer_t *blobs,
     /* Check if we need to unpack vutf8. */
     assert(iq->usedb->sc_from != NULL && iq->usedb->sc_to != NULL);
 
-    from = find_tag_schema(iq->usedb->sc_from->tablename_ip, ".ONDISK");
-    to = find_tag_schema(iq->usedb->sc_to->tablename_ip, ".NEW..ONDISK");
+    from = find_tag_schema(iq->usedb->sc_from->tablename_interned, ".ONDISK");
+    to = find_tag_schema(iq->usedb->sc_to->tablename_interned, ".NEW..ONDISK");
 
     for (rc = 0, i = 0; i != to->nmembers; ++i) {
         /* If the field in the new schema is new, do nothing. */
@@ -1014,15 +1014,15 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     /* Don't lose precious flags like this */
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
-    newdb->schema_version = get_csc2_version(newdb->tablename_ip);
+    newdb->schema_version = get_csc2_version(newdb->tablename_interned);
 
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
-        backout_schemas(newdb->tablename_ip);
+        backout_schemas(newdb->tablename_interned);
         abort();
     }
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
-        backout_schemas(newdb->tablename_ip);
+        backout_schemas(newdb->tablename_interned);
         abort();
     }
 
@@ -1030,7 +1030,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 
     rc = open_temp_db_resume(newdb, new_prefix, 1, 0, NULL);
     if (rc) {
-        backout_schemas(newdb->tablename_ip);
+        backout_schemas(newdb->tablename_interned);
         abort();
     }
 
@@ -1056,14 +1056,14 @@ int add_schema_change_tables()
         int bdberr;
         void *packed_sc_data = NULL;
         size_t packed_sc_data_len = 0;
-        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename_ip,
+        if (bdb_get_in_schema_change(NULL /*tran*/, thedb->dbs[i]->tablename_interned,
                                      &packed_sc_data, &packed_sc_data_len,
                                      &bdberr) ||
             bdberr != BDBERR_NOERROR) {
             logmsg(LOGMSG_ERROR,
                    "%s: failed to discover "
                    "whether table: %s is in the middle of a schema change\n",
-                   __func__, thedb->dbs[i]->tablename_ip);
+                   __func__, thedb->dbs[i]->tablename_interned);
             continue;
         }
 
@@ -1072,7 +1072,7 @@ int add_schema_change_tables()
             struct schema_change_type *s;
             logmsg(LOGMSG_WARN, "%s: table: %s is in the middle of a "
                                 "schema change, adding table...\n",
-                   __func__, thedb->dbs[i]->tablename_ip);
+                   __func__, thedb->dbs[i]->tablename_interned);
 
             s = new_schemachange_type();
             if (!s) {
@@ -1095,7 +1095,7 @@ int add_schema_change_tables()
             char *abort_filename =
                 comdb2_location("marker", "%s.scabort", thedb->envname);
             if (access(abort_filename, F_OK) == 0) {
-                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename_ip,
+                rc = bdb_set_in_schema_change(NULL, thedb->dbs[i]->tablename_interned,
                                               NULL, 0, &bdberr);
                 if (rc)
                     logmsg(LOGMSG_ERROR,
@@ -1174,7 +1174,7 @@ int sc_timepart_add_table(const char *existingTableName,
                  existingTableName);
         goto error;
     }
-    if (get_csc2_file(db->tablename_ip, -1 /*highest csc2_version*/, &schemabuf,
+    if (get_csc2_file(db->tablename_interned, -1 /*highest csc2_version*/, &schemabuf,
                       NULL /*csc2len*/)) {
         xerr->errval = SC_VIEW_ERR_BUG;
         snprintf(xerr->errstr, sizeof(xerr->errstr),
@@ -1291,12 +1291,12 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
     /*do_crap*/
     {
         /* Find the existing table and use its current schema */
-        if (get_csc2_file(db->tablename_ip, -1 /*highest csc2_version*/,
+        if (get_csc2_file(db->tablename_interned, -1 /*highest csc2_version*/,
                           &schemabuf, NULL /*csc2len*/)) {
             xerr->errval = SC_VIEW_ERR_BUG;
             snprintf(xerr->errstr, sizeof(xerr->errstr),
                      "%s: could not get schema for table: %s\n", __func__,
-                     db->tablename_ip);
+                     db->tablename_interned);
             cleanup_strptr(&schemabuf);
             goto error;
         }

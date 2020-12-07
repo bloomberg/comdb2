@@ -134,7 +134,7 @@ static int systblTblSizeColumn(
 ){
   systbl_tblsize_cursor *pCur = (systbl_tblsize_cursor*)cur;
   struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-  const char *x = pDb->tablename_ip;
+  const char *x = pDb->tablename_interned;
 
   tran_type *trans = curtran_gettran();
   if (!trans) {

@@ -627,7 +627,7 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
             return NULL;
         }
     }
-    pCur->numblobs = get_schema_blob_count(pCur->db->tablename_ip, ".ONDISK");
+    pCur->numblobs = get_schema_blob_count(pCur->db->tablename_interned, ".ONDISK");
 
     if (need_bdbcursor) {
         pCur->bdbcur = bdb_cursor_open(
@@ -742,7 +742,7 @@ static int _fdb_svc_indexes_to_ondisk(unsigned char **pIndexes, struct dbtable *
                               NULL, 0, fail_reason, pCur);
         if (rc != getkeysize(db, i)) {
             char errs[128];
-            convert_failure_reason_str(fail_reason, db->tablename_ip,
+            convert_failure_reason_str(fail_reason, db->tablename_interned,
                                        "SQLite format", ".ONDISK_ix", errs,
                                        sizeof(errs));
             return -1;
@@ -801,7 +801,7 @@ int fdb_svc_cursor_insert(struct sqlclntstate *clnt, char *tblname,
                           rowblobs, MAXBLOBS, &clnt->fail_reason, &bCur);
     if (rc < 0) {
         char errs[128];
-        convert_failure_reason_str(&clnt->fail_reason, db->tablename_ip,
+        convert_failure_reason_str(&clnt->fail_reason, db->tablename_interned,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
 
@@ -939,7 +939,7 @@ int fdb_svc_cursor_update(struct sqlclntstate *clnt, char *tblname,
                           rowblobs, MAXBLOBS, &clnt->fail_reason, &bCur);
     if (rc < 0) {
         char errs[128];
-        convert_failure_reason_str(&clnt->fail_reason, db->tablename_ip,
+        convert_failure_reason_str(&clnt->fail_reason, db->tablename_interned,
                                    "SQLite format", ".ONDISK", errs,
                                    sizeof(errs));
 

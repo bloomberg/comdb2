@@ -57,7 +57,7 @@ void *get_field_from_sqlite_stat_rec(struct ireq *iq, const void *rec,
     if (fix < 0) {
         logmsg(LOGMSG_ERROR,
                "%s: couldn't find '%s' field in %s's ONDISK tag\n", __func__,
-               fld, iq->usedb->tablename_ip);
+               fld, iq->usedb->tablename_interned);
         return NULL;
     }
 
@@ -125,7 +125,7 @@ int sqlstat_find_record(struct ireq *iq, void *trans, const void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->tablename_ip, ".ONDISK", rec, ".ONDISK_IX_0", key,
+    rc = stag_to_stag_buf(sdb->tablename_interned, ".ONDISK", rec, ".ONDISK_IX_0", key,
                           NULL);
 
     if (rc)
@@ -228,7 +228,7 @@ int sqlstat_find_get_record(struct ireq *iq, void *trans, void *rec,
 
     /* set db */
     sdb = iq->usedb;
-    rc = stag_to_stag_buf(sdb->tablename_ip, ".ONDISK", rec, ".ONDISK_IX_0", key,
+    rc = stag_to_stag_buf(sdb->tablename_interned, ".ONDISK", rec, ".ONDISK_IX_0", key,
                           NULL);
 
     if (rc)

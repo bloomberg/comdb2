@@ -211,7 +211,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
 
         if (db) {
             /* use original tablename */
-            strncpy0(dst, db->tablename_ip, MAXTABLELEN);
+            strncpy0(dst, db->tablename_interned, MAXTABLELEN);
         }
     }
     else
@@ -4030,7 +4030,7 @@ static int retrieve_fk_constraint(Parse *pParse, struct comdb2_ddl_context *ctx,
 
         /* Parent table name. */
         constraint->parent_table =
-            comdb2_strdup(ctx->mem, parent_table->tablename_ip);
+            comdb2_strdup(ctx->mem, parent_table->tablename_interned);
         if (constraint->parent_table == 0)
             goto oom;
 
@@ -6155,15 +6155,15 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
             goto cleanup;
         }
 
-        if ((chkAndCopyTable(pParse, sc->tablename, table->tablename_ip,
-                             strlen(table->tablename_ip), 1, 1, 0)))
+        if ((chkAndCopyTable(pParse, sc->tablename, table->tablename_interned,
+                             strlen(table->tablename_interned), 1, 1, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
             goto cleanup;
     }
 
-    ctx->schema->name = table->tablename_ip;
+    ctx->schema->name = table->tablename_interned;
 
     /*
       Add all the columns, indexes and constraints in the table to the

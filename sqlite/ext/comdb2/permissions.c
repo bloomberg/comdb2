@@ -92,7 +92,7 @@ static int get_base_table_list(tran_type *trans, char ***table_list,
     for (int i = 0; i < thedb->num_dbs; ++i) {
         int err;
 
-        const char *tbl; tbl = thedb->dbs[i]->tablename_ip;
+        const char *tbl; tbl = thedb->dbs[i]->tablename_interned;
         if (bdb_check_user_tbl_access_tran(thedb->bdb_env, trans, usr, tbl,
                                            ACCESS_READ, &err) != 0) {
             continue;

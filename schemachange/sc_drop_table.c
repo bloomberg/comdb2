@@ -34,7 +34,7 @@ static int delete_table(struct dbtable *db, tran_type *tran)
         return -1;
     }
 
-    const char *table = db->tablename_ip;
+    const char *table = db->tablename_interned;
     delete_db(table);
     MEMORY_SYNC;
     delete_schema(table);
@@ -100,7 +100,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
 
     delete_table(db, tran);
     /*Now that we don't have any data, please clear unwanted schemas.*/
-    bdberr = bdb_reset_csc2_version(tran, db->tablename_ip, db->schema_version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename_interned, db->schema_version);
     if (bdberr != BDBERR_NOERROR) return -1;
 
     if ((rc = bdb_del_file_versions(db->handle, tran, &bdberr))) {
@@ -121,7 +121,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* Delete all access permissions related to this table. */
-    if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename_ip)) != 0)
+    if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename_interned)) != 0)
     {
         sc_errf(s, "Failed to delete access permissions\n");
         return rc;
@@ -138,7 +138,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     live_sc_off(db);
 
     if (!gbl_create_mode) {
-        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename_ip,
+        logmsg(LOGMSG_INFO, "Table %s is at version: %lld\n", db->tablename_interned,
                db->tableversion);
     }
 

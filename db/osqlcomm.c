@@ -6186,7 +6186,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         int locflags = RECFLAGS_DONT_LOCK_TBL;
 
-        rc = is_tablename_queue(iq->usedb->tablename_ip)
+        rc = is_tablename_queue(iq->usedb->tablename_interned)
             ? dbq_consume_genid(iq, trans, 0, dt.genid)
             : del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode, &err->ixnum, BLOCK2_DELKL, locflags);
 
@@ -6298,7 +6298,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                                                        "duplicate key '%s' on "
                                                        "table '%s' index %d",
                               get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                              iq->usedb->tablename_ip, err->ixnum);
+                              iq->usedb->tablename_interned, err->ixnum);
                 }
             } else if (rc != RC_INTERNAL_RETRY) {
                 errstat_cat_strf(&iq->errstat, " unable to add record rc = %d",
@@ -6413,7 +6413,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             /* Make sure this is sane before sending to upd_record. */
             for (int ii = 0; ii < MAXBLOBS; ii++) {
                 if (-2 == blobs[ii].length) {
-                    int idx = get_schema_blob_field_idx(iq->usedb->tablename_ip,
+                    int idx = get_schema_blob_field_idx(iq->usedb->tablename_interned,
                                                         ".ONDISK", ii);
                     assert(idx < ncols);
                     assert(-1 == (*updCols)[idx + 1]);

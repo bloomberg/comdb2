@@ -92,7 +92,7 @@ static int add_record_prefault(
         fldnullmap = lclnulls;
     }
 
-    expected_dat_len = get_size_of_schema_by_name(iq->usedb->tablename_ip, tag);
+    expected_dat_len = get_size_of_schema_by_name(iq->usedb->tablename_interned, tag);
     if ((size_t)expected_dat_len != reclen) {
         if (iq->debug)
             reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n", reclen,
@@ -112,13 +112,13 @@ static int add_record_prefault(
 
         od_dta = stackbuf;
 
-        rc = ctag_to_stag_buf(iq->usedb->tablename_ip, tag,
+        rc = ctag_to_stag_buf(iq->usedb->tablename_interned, tag,
                               (const char *)p_buf_rec, WHOLE_BUFFER, fldnullmap,
                               ondisktag, od_dta, 0, &reason);
         if (rc == -1) {
             if (iq->debug) {
                 char str[128];
-                convert_failure_reason_str(&reason, iq->usedb->tablename_ip, tag,
+                convert_failure_reason_str(&reason, iq->usedb->tablename_interned, tag,
                                            ".ONDISK", str, sizeof(str));
                 reqprintf(iq, "ERR CONVERT DTA %s->.ONDISK '%s'", tag, str);
             }
@@ -147,7 +147,7 @@ static int add_record_prefault(
         }
 
         snprintf(ixtag, sizeof(ixtag), "%s_IX_%d", ondisktag, ixnum);
-        rc = stag_to_stag_buf(iq->usedb->tablename_ip, ondisktag, od_dta, ixtag,
+        rc = stag_to_stag_buf(iq->usedb->tablename_interned, ondisktag, od_dta, ixtag,
                               key, NULL);
         if (rc == -1) {
             if (iq->debug)
@@ -184,7 +184,7 @@ err:
         reqpopprefixes(iq, prefixes);
 
     if (dynschema)
-        free_dynamic_schema(iq->usedb->tablename_ip, dynschema);
+        free_dynamic_schema(iq->usedb->tablename_interned, dynschema);
 
     return retrc;
 }
@@ -235,7 +235,7 @@ upd_record_prefault(struct ireq *iq, void *primkey, int rrn,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_interned);
         prefixes++;
     }
 
@@ -253,7 +253,7 @@ upd_record_prefault(struct ireq *iq, void *primkey, int rrn,
         fldnullmap = lclnulls;
     }
 
-    expected_dat_len = get_size_of_schema_by_name(iq->usedb->tablename_ip, tag);
+    expected_dat_len = get_size_of_schema_by_name(iq->usedb->tablename_interned, tag);
     if ((size_t)expected_dat_len != reclen) {
         if (iq->debug)
             reqprintf(iq, "BAD DTA LEN %u TAG %s EXPECTS DTALEN %u\n", reclen,
@@ -274,7 +274,7 @@ err:
         reqpopprefixes(iq, prefixes);
 
     if (dynschema)
-        free_dynamic_schema(iq->usedb->tablename_ip, dynschema);
+        free_dynamic_schema(iq->usedb->tablename_interned, dynschema);
 
     return retrc;
 }
@@ -315,7 +315,7 @@ static int del_record_prefault(struct ireq *iq, void *primkey,
     }
 
     if (iq->debug) {
-        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_ip);
+        reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename_interned);
         prefixes++;
     }
 
@@ -550,7 +550,7 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                 iq->usedb = iq->origdb;
                 skipblock = 1;
             } else if (iq->debug)
-                reqprintf(iq, "DB NUM %d '%s'", dbnum, iq->usedb->tablename_ip);
+                reqprintf(iq, "DB NUM %d '%s'", dbnum, iq->usedb->tablename_interned);
             break;
         }
 
@@ -586,7 +586,7 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                                   dbnum);
                     skipblock = 1;
                 } else if (iq->debug)
-                    reqprintf(iq, "DB '%s'", iq->usedb->tablename_ip);
+                    reqprintf(iq, "DB '%s'", iq->usedb->tablename_interned);
             } else {
                 iq->usedb = getdbbynum(dbnum);
                 if (iq->usedb == 0) {
@@ -598,7 +598,7 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
                     skipblock = 1;
                 } else if (iq->debug)
                     reqprintf(iq, "DB NUM %d '%s'", dbnum,
-                              iq->usedb->tablename_ip);
+                              iq->usedb->tablename_interned);
             }
             break;
         }

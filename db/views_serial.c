@@ -494,7 +494,7 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
                 if (rev_db->n_rev_constraints - 1 /*this */ + view->retention > MAXCONSTRAINTS) {
                     err->errval = VIEW_ERR_PARAM;
                     snprintf(err->errstr, sizeof(err->errstr), "FKEY %s->%s, %s has too many rev constraints %d > %d",
-                            db->tablename_ip, rev_db->tablename_ip, rev_db->tablename_ip,
+                            db->tablename_interned, rev_db->tablename_interned, rev_db->tablename_interned,
                             rev_db->n_rev_constraints + view->retention, MAXCONSTRAINTS);
                     goto error;
                 }

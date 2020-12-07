@@ -88,11 +88,11 @@ static const uint8_t *construct_uptbl_buffer(const struct dbtable *db,
     p_buf_op_hdr_end = p_buf;
 
     usekl.dbnum = db->dbnum;
-    usekl.taglen = strlen(db->tablename_ip) + 1 /*NUL byte*/;
+    usekl.taglen = strlen(db->tablename_interned) + 1 /*NUL byte*/;
     if (!(p_buf = packedreq_usekl_put(&usekl, p_buf, p_buf_end)))
         return NULL;
     if (!(p_buf =
-              buf_no_net_put(db->tablename_ip, usekl.taglen, p_buf, p_buf_end)))
+              buf_no_net_put(db->tablename_interned, usekl.taglen, p_buf, p_buf_end)))
         return NULL;
 
     op_hdr.opcode = BLOCK2_USE;
