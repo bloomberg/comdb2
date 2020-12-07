@@ -968,6 +968,22 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
     }
 }
 
+static int osql_wait(struct sqlclntstate *clnt)
+{
+    int timeout;
+    osqlstate_t *osql = &clnt->osql;
+    errstat_t dummy = {0};
+    errstat_t *err = (osql->xerr.errval == 0) ? &osql->xerr : &dummy;
+
+    if (osql->running_ddl)
+        timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
+    else
+        timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+
+    /* waits for a sign */
+    return osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, err);
+}
+
 /**
  * Terminates a sosql session
  * Block processor is informed that all the rows are sent
@@ -983,7 +999,6 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     int rcout = 0;
     int retries = 0;
     int bdberr = 0;
-    int timeout = 0;
 
     if (gbl_is_physical_replicant) {
         logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
@@ -1054,16 +1069,8 @@ retry:
             abort();
         }
 
-        if (osql->running_ddl)
-            timeout = bdb_attr_get(thedb->bdb_attr,
-                                   BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
-        else
-            timeout = bdb_attr_get(thedb->bdb_attr,
-                                   BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+        rc = osql_wait(clnt);
 
-        /* waits for a sign */
-        rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout,
-                                         &osql->xerr);
         if (rc) {
             rcout = SQLITE_CLIENT_CHANGENODE;
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
@@ -1261,6 +1268,10 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
             /* we still need to unregister the clnt */
             rcout = SQLITE_INTERNAL;
         }
+
+        rc = osql_wait(clnt);
+        if (rc)
+            logmsg(LOGMSG_WARN, "%s: osql_wait rc %d\n", __func__, rc);
 
         /* unregister this osql thread from checkboard */
         rc = osql_unregister_sqlthr(clnt);
