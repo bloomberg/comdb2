@@ -77,6 +77,12 @@ const char *col_type_names[] = {
     NULL
 };
 
+/* Used in is_valid_sql, for state transitions */
+enum {
+    CHAR_DELIM,
+    CHAR_WS,
+    CHAR_OTHER,
+};
 #define MIN_COL_TYPE_NAME (1)
 #define MAX_COL_TYPE_NAME (10)
 
@@ -509,6 +515,45 @@ static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
     return true;
 }
 
+char get_delim(){
+    return delimstr[0];
+}
+static const int state_trans[3][3] = {
+                    // character
+//state             // De  WS  Other
+/*Error        - 0*/   {1,  0,  2},
+/*Valid        - 1*/   {1,  1,  2},
+/*Incomplete   - 2*/   {1,  2,  2},
+};
+
+//This function is a state machine that determines
+//if sql is valid
+//
+static bool is_valid_sql(char *sql){
+    int state = 0;
+    char character;
+    while(*sql){
+        char cur_char = *sql;
+        if(cur_char==' ' || cur_char=='\n' ||  cur_char=='\r' || cur_char=='\t'){
+            character = CHAR_WS;
+        }
+        else if(cur_char==get_delim()){
+            character = CHAR_DELIM;
+        }
+        else if(cur_char=='\'' || cur_char == '"'){
+            sql++;
+            while(*sql && *sql!=cur_char) sql++;
+            if(*sql==0) return false;
+            character = CHAR_OTHER;
+        }
+        else{
+            character = CHAR_OTHER;
+        }
+        state = state_trans[state][character];
+        sql++;
+    }
+    return state==1;
+}
 static char *read_line()
 {
     static char *line = NULL;
@@ -533,7 +578,7 @@ static char *read_line()
             total_len += n;
             line = (char *)realloc(line, total_len + 1);
             strcpy(line + total_len - n, getline);
-            if (has_delimiter(line, total_len, delimstr, delim_len) == true) {
+            if (has_delimiter(line, total_len, delimstr, delim_len) == true && is_valid_sql(line)) {
                 line[total_len - delim_len] = 0;
                 return line;
             }
