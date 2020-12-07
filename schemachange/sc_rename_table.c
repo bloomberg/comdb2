@@ -96,7 +96,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     /* Update table sequences */
     rc = rename_table_sequences(tran, db, newname);
     if (rc) {
-        sc_errf(s, "Failed to rename table sequences for %s\n", db->tablename);
+        sc_errf(s, "Failed to rename table sequences for %s\n", db->tablename_ip);
         goto tran_error;
     }
 

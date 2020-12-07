@@ -1762,7 +1762,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
         if (rc != 0) {
             char msg[1024];
             char buf[MAXTABLELEN];
-            const char *table_name = resolve_table_name(pCur->db->tablename,
+            const char *table_name = resolve_table_name(pCur->db->tablename_ip,
                                                        (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
@@ -1812,7 +1812,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         if (rc != 0) {
             char msg[1024];
             char buf[MAXTABLELEN];
-            const char *table_name = resolve_table_name(pCur->db->tablename,
+            const char *table_name = resolve_table_name(pCur->db->tablename_ip,
                                                         (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",

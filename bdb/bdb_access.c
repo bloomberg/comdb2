@@ -348,7 +348,7 @@ int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
 }
 
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
-                              char *table, int access_type, int *bdberr)
+                              const char *table, int access_type, int *bdberr)
 {
     return bdb_check_user_tbl_access_tran(bdb_state, NULL, user, table,
                                           access_type, bdberr);

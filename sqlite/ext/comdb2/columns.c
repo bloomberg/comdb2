@@ -219,9 +219,9 @@ static int systblColumnsColumn(
           tran_type *trans = curtran_gettran();
           int64_t seq;
           int bdberr;
-          int rc = bdb_get_sequence(trans, pDb->tablename, pField->name, &seq, &bdberr);
+          int rc = bdb_get_sequence(trans, pDb->tablename_ip, pField->name, &seq, &bdberr);
           if (rc) {
-              logmsg(LOGMSG_ERROR, "bdb_get_sequence %s %s -> rc %d bdberr %d\n", pDb->tablename, pField->name, rc, bdberr);
+              logmsg(LOGMSG_ERROR, "bdb_get_sequence %s %s -> rc %d bdberr %d\n", pDb->tablename_ip, pField->name, rc, bdberr);
               curtran_puttran(trans);
               return -1;
           }

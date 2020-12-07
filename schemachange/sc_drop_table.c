@@ -121,7 +121,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* Delete all access permissions related to this table. */
-    if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename)) != 0)
+    if ((rc = bdb_del_all_table_access(db->handle, tran, db->tablename_ip)) != 0)
     {
         sc_errf(s, "Failed to delete access permissions\n");
         return rc;

@@ -1683,11 +1683,11 @@ int create_datacopy_array(struct dbtable *tbl)
     struct schema *schema = tbl->schema;
 
     if (schema == NULL) {
-        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename_ip);
         return -1;
     }
 
-    if (is_sqlite_stat(tbl->tablename)) {
+    if (is_sqlite_stat(tbl->tablename_ip)) {
         return 0;
     }
 
@@ -1696,7 +1696,7 @@ int create_datacopy_array(struct dbtable *tbl)
         schema = tbl->schema->ix[ixnum];
         struct schema *ondisk = tbl->schema;
         if (schema == NULL) {
-            logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum, tbl->tablename);
+            logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum, tbl->tablename_ip);
             return -1;
         }
 

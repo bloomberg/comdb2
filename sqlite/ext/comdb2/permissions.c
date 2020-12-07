@@ -90,10 +90,9 @@ static int get_base_table_list(tran_type *trans, char ***table_list,
 
     /* List of tables accessible to the current user */
     for (int i = 0; i < thedb->num_dbs; ++i) {
-        char *tbl;
         int err;
 
-        tbl = thedb->dbs[i]->tablename;
+        const char *tbl; tbl = thedb->dbs[i]->tablename_ip;
         if (bdb_check_user_tbl_access_tran(thedb->bdb_env, trans, usr, tbl,
                                            ACCESS_READ, &err) != 0) {
             continue;

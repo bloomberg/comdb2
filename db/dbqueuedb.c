@@ -156,7 +156,7 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
     tran_type *trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
     if (!trans) {
         logmsg(LOGMSG_ERROR, "%s bdb_tran_begin:%s bdberr:%d\n", __func__,
-               db->tablename, bdberr);
+               db->tablename_ip, bdberr);
         return -1;
     }
     if (lockid) {
@@ -175,7 +175,7 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
         rc = dbqueuedb_get_stats_int(db, trans, stats);
     } else {
         logmsg(LOGMSG_ERROR, "%s bdb_lock_table_read:%s rc:%d\n", __func__,
-               db->tablename, rc);
+               db->tablename_ip, rc);
     }
     if (lockid) {
         bdb_set_tran_lockerid(trans, savedlid);

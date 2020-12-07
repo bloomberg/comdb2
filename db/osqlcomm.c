@@ -3486,7 +3486,7 @@ int osql_send_usedb(osql_target_t *target, unsigned long long rqid, uuid_t uuid,
 
     /* tablename field is not null-terminated -- send rest of tablename */
     rc = target->send(target, type, &buf, msglen, 0,
-                      (tablenamelen > sent) ? tablename + sent : NULL,
+                      (tablenamelen > sent) ? ((char *)tablename) + sent : NULL,
                       (tablenamelen > sent) ? tablenamelen - sent : 0);
 
     if (rc)
@@ -6186,7 +6186,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 
         int locflags = RECFLAGS_DONT_LOCK_TBL;
 
-        rc = is_tablename_queue(iq->usedb->tablename)
+        rc = is_tablename_queue(iq->usedb->tablename_ip)
             ? dbq_consume_genid(iq, trans, 0, dt.genid)
             : del_record(iq, trans, NULL, 0, dt.genid, dt.dk, &err->errcode, &err->ixnum, BLOCK2_DELKL, locflags);
 
@@ -7344,7 +7344,7 @@ int osql_send_schemachange(osql_target_t *target, unsigned long long rqid,
 
     if (gbl_enable_osql_logging) {
         logmsg(LOGMSG_DEBUG, "[%llu %s] send OSQL_SCHEMACHANGE %s\n", rqid,
-               comdb2uuidstr(uuid, us), sc->tablename_ip);
+               comdb2uuidstr(uuid, us), sc->tablename);
     }
 
     return target->send(target, type, buf, osql_rpl_size, 0, NULL, 0);

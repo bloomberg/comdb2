@@ -62,9 +62,9 @@ static int get_index_usage(void **recsp, int *nrecs) {
 
     for (int dbn = 0; dbn < thedb->num_dbs; dbn++) {
         db = thedb->dbs[dbn];
-        if (strncmp(db->tablename, "sqlite_stat", strlen("sqlite_stat")) == 0)
+        if (strncmp(db->tablename_ip, "sqlite_stat", strlen("sqlite_stat")) == 0)
             continue;
-        logmsg(LOGMSG_USER, "table '%s'\n", db->tablename);
+        logmsg(LOGMSG_USER, "table '%s'\n", db->tablename_ip);
         for (int ixnum = 0; ixnum < db->nix; ixnum++) {
             if (nix == allocated) {
                 allocated = allocated * 2 + 16;
@@ -76,7 +76,7 @@ static int get_index_usage(void **recsp, int *nrecs) {
                 ixs = n;
             }
             struct index_usage *ix = &ixs[nix];
-            ix->tablename = strdup(db->tablename);
+            ix->tablename = strdup(db->tablename_ip);
             ix->ixnum = ixnum;
             ix->cscname = strdup(db->schema->ix[ixnum]->csctag);
             ix->sqlname =  strdup(db->schema->ix[ixnum]->sqlitetag);

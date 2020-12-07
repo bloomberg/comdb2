@@ -117,7 +117,7 @@ struct reqlogger {
 
     int ntables;
     int alloctables;
-    char **sqltables;
+    const char **sqltables;
     char *error;
     char error_code;
 

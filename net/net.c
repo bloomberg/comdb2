@@ -1860,7 +1860,7 @@ static void dump_queue(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 
 static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
                         int usertype, void *data, int datalen, int nodelay,
-                        int numtails, const void **tails, int *taillens, int nodrop,
+                        int numtails, void **tails, int *taillens, int nodrop,
                         int inorder, int trace)
 {
     if (gbl_libevent) {
@@ -1870,7 +1870,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
         if (nodrop)
             f |= NET_SEND_NODROP;
         return net_send_evbuffer(netinfo_ptr, host, usertype, data, datalen,
-                                    numtails, tails, taillens, f);
+                                 numtails, tails, taillens, f);
     }
     host_node_type *host_node_ptr;
     net_send_message_header tmphd, msghd;
@@ -1996,7 +1996,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     }
     if (numtails > 0) {
         for (i = 0; i < numtails; i++) {
-            iov[iovcount].iov_base = (void *)tails[i];
+            iov[iovcount].iov_base = tails[i];
             iov[iovcount].iov_len = taillens[i];
             iovcount++;
         }
@@ -2111,7 +2111,7 @@ int net_send_nodrop(netinfo_type *netinfo_ptr, const char *host, int usertype,
 
 int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
                    void *data, int datalen, int nodelay, int numtails,
-                   const void **tails, int *taillens)
+                   void **tails, int *taillens)
 {
 
     return net_send_int(netinfo_ptr, host, usertype, data, datalen, nodelay,
@@ -2119,7 +2119,7 @@ int net_send_tails(netinfo_type *netinfo_ptr, const char *host, int usertype,
 }
 
 int net_send_tail(netinfo_type *netinfo_ptr, const char *host, int usertype,
-                  void *data, int datalen, int nodelay, const void *tail, int tailen)
+                  void *data, int datalen, int nodelay, void *tail, int tailen)
 {
 
 #ifdef _BLOCKSQL_DBG

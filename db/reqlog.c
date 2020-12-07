@@ -1028,7 +1028,6 @@ static void reqlog_free_all(struct reqlogger *logger)
     struct print_event *pevent;
     struct push_prefix_event *pushevent;
     struct tablelist *table;
-    int i, len;
 
     if (logger->error) {
         free(logger->error);
@@ -1058,9 +1057,6 @@ static void reqlog_free_all(struct reqlogger *logger)
     }
     assert(logger->tables == NULL);
 
-    for (i = 0, len = logger->ntables; i != len; ++i) {
-        free(logger->sqltables[i]);
-    }
     free(logger->sqltables);
 }
 
@@ -2873,10 +2869,9 @@ void reqlog_add_table(struct reqlogger *logger, const char *table)
 {
     if (logger->ntables == logger->alloctables) {
         logger->alloctables = logger->alloctables * 2 + 10;
-        logger->sqltables =
-            realloc(logger->sqltables, logger->alloctables * sizeof(char *));
+        logger->sqltables = realloc(logger->sqltables, logger->alloctables * sizeof(char *));
     }
-    logger->sqltables[logger->ntables++] = strdup(table);
+    logger->sqltables[logger->ntables++] = table;
 }
 
 inline void reqlog_set_error(struct reqlogger *logger, const char *error,

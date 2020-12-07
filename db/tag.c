@@ -3201,7 +3201,7 @@ int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
     char *crec = record;
     int rc = 0, bdberr = 0;
     int64_t val;
-    struct schema *schema = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    struct schema *schema = find_tag_schema(iq->usedb->tablename_ip, ".ONDISK");
     for (int nfield = 0; nfield < schema->nmembers; nfield++) {
         const struct field *field = &schema->member[nfield];
 
@@ -3221,7 +3221,7 @@ int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
                 abort();
             }
             if (!isnull) {
-                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename, field->name, val, &bdberr);
+                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename_ip, field->name, val, &bdberr);
                 if (rc) {
                     if (bdberr == BDBERR_DEADLOCK) {
                         rc = bdberr;
@@ -3243,7 +3243,7 @@ int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
     char *crec = record;
     int rc = 0, bdberr = 0;
     int64_t seq;
-    struct schema *schema = find_tag_schema(iq->usedb->tablename, ".ONDISK");
+    struct schema *schema = find_tag_schema(iq->usedb->tablename_ip, ".ONDISK");
     for (int nfield = 0; nfield < schema->nmembers; nfield++) {
         const struct field *field = &schema->member[nfield];
         int outsz;
@@ -3256,7 +3256,7 @@ int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
 #ifdef _LINUX_SOURCE
                 inopts.flags |= FLD_CONV_LENDIAN;
 #endif
-                rc = bdb_increment_and_set_sequence(tran, iq->usedb->tablename, field->name, &seq, &bdberr);
+                rc = bdb_increment_and_set_sequence(tran, iq->usedb->tablename_ip, field->name, &seq, &bdberr);
                 if (rc) {
                     if (bdberr == BDBERR_DEADLOCK || bdberr == BDBERR_MAX_SEQUENCE) {
                         rc = bdberr;
@@ -3282,7 +3282,7 @@ int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
                             rc = BDBERR_MAX_SEQUENCE;
                         break;
                     }
-                    logmsg(LOGMSG_ERROR, "Failed to convert seq %" PRId64 " to %s %s\n", seq, iq->usedb->tablename,
+                    logmsg(LOGMSG_ERROR, "Failed to convert seq %" PRId64 " to %s %s\n", seq, iq->usedb->tablename_ip,
                            field->name);
                     return rc;
                 }
@@ -3301,7 +3301,7 @@ int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t recl
                     logmsg(LOGMSG_ERROR, "Failed to convert field to client?\n");
                     abort();
                 }
-                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename, field->name, val, &bdberr);
+                rc = bdb_check_and_set_sequence(tran, iq->usedb->tablename_ip, field->name, val, &bdberr);
                 if (rc) {
                     if (bdberr == BDBERR_DEADLOCK) {
                         rc = bdberr;
@@ -6484,8 +6484,8 @@ int delete_table_sequences(tran_type *tran, struct dbtable *db)
     for (int i = 0; i < db->schema->nmembers; i++) {
         struct field *f = &db->schema->member[i];
         if (f->in_default_type == SERVER_SEQUENCE) {
-            if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr) != 0)) {
-                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+            if ((rc = bdb_del_sequence(tran, db->tablename_ip, f->name, &bdberr) != 0)) {
+                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename_ip,
                        f->name, rc, bdberr);
                 return rc;
             }
@@ -6504,10 +6504,10 @@ int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbta
         if (f->in_default_type == SERVER_SEQUENCE) {
             int fn = find_field_idx_in_tag(newdb->schema, f->name);
             if (fn == -1 || newdb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
-                if ((rc = bdb_del_sequence(tran, olddb->tablename, f->name, &bdberr))) {
+                if ((rc = bdb_del_sequence(tran, olddb->tablename_ip, f->name, &bdberr))) {
 
                     logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__,
-                           olddb->tablename, f->name, rc, bdberr);
+                           olddb->tablename_ip, f->name, rc, bdberr);
                     return rc;
                 }
             }
@@ -6519,9 +6519,9 @@ int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbta
         if (f->in_default_type == SERVER_SEQUENCE) {
             int fn = find_field_idx_in_tag(olddb->schema, f->name);
             if (fn == -1) {
-                if ((rc = bdb_set_sequence(tran, olddb->tablename, f->name, 0, &bdberr))) {
+                if ((rc = bdb_set_sequence(tran, olddb->tablename_ip, f->name, 0, &bdberr))) {
                     logmsg(LOGMSG_ERROR, "%s error creating sequence %s %s rc=%d bdberr=%d\n", __func__,
-                           olddb->tablename, f->name, rc, bdberr);
+                           olddb->tablename_ip, f->name, rc, bdberr);
                     return rc;
                 }
             }
@@ -6553,13 +6553,13 @@ int rename_table_sequences(tran_type *tran, dbtable *db, const char *newname)
         struct field *f = &db->schema->member[i];
         if (f->in_default_type == SERVER_SEQUENCE) {
             int64_t s;
-            if ((rc = bdb_get_sequence(tran, db->tablename, f->name, &s, &bdberr))) {
-                logmsg(LOGMSG_ERROR, "%s error getting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+            if ((rc = bdb_get_sequence(tran, db->tablename_ip, f->name, &s, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error getting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename_ip,
                        f->name, rc, bdberr);
                 return rc;
             }
-            if ((rc = bdb_del_sequence(tran, db->tablename, f->name, &bdberr))) {
-                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+            if ((rc = bdb_del_sequence(tran, db->tablename_ip, f->name, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error deleting sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename_ip,
                        f->name, rc, bdberr);
                 return rc;
             }
@@ -6593,8 +6593,8 @@ int init_table_sequences(struct ireq *iq, tran_type *tran, dbtable *db)
                 }
                 return -1;
             }
-            if ((rc = bdb_set_sequence(tran, db->tablename, f->name, 0, &bdberr))) {
-                logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename,
+            if ((rc = bdb_set_sequence(tran, db->tablename_ip, f->name, 0, &bdberr))) {
+                logmsg(LOGMSG_ERROR, "%s error adding sequence %s %s rc=%d bdberr=%d\n", __func__, db->tablename_ip,
                        f->name, rc, bdberr);
                 return rc;
             }

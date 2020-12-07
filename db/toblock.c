@@ -4513,7 +4513,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             const uint8_t *p_buf_sqlq;
 
             /* synthetic block2_use */
-            iq->usedb = get_dbtable_by_name(thedb->static_table.tablename);
+            iq->usedb = get_dbtable_by_name(thedb->static_table.tablename_ip);
 
             /* synthetic block2_tz */
             strncpy0(iq->tzname, iq->sorese->tzname, sizeof(iq->tzname));
