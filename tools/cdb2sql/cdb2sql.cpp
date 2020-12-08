@@ -518,6 +518,30 @@ static bool has_delimiter(char *line, int len, char *delimiter, int dlen)
 char get_delim(){
     return delimstr[0];
 }
+
+bool is_space(char ch){
+    switch(ch){
+        case ' ':
+        case '\n':
+        case '\r':
+        case '\t':
+        case '\f':
+            return true;
+        default:
+            return false;
+    }
+}
+
+bool is_quote(char ch){
+    switch(ch){
+        case '`': //grave accent quote
+        case '\'': //single quote
+        case '"': //double quote
+            return true;
+        default : 
+            return false;
+    }
+}
 static const int state_trans[3][3] = {
                     // character
 //state             // De  WS  Other
@@ -534,17 +558,52 @@ static bool is_valid_sql(char *sql){
     char character;
     while(*sql){
         char cur_char = *sql;
-        if(cur_char==' ' || cur_char=='\n' ||  cur_char=='\r' || cur_char=='\t'){
+        if(is_space(cur_char)){
             character = CHAR_WS;
         }
         else if(cur_char==get_delim()){
             character = CHAR_DELIM;
         }
-        else if(cur_char=='\'' || cur_char == '"'){
-            sql++;
-            while(*sql && *sql!=cur_char) sql++;
+        else if(is_quote(cur_char)){
+            ++sql;
+            while(*sql){
+                if(*sql==cur_char){
+                    if(*sql==sql[1]){
+                        ++sql;
+                    }
+                    else{
+                        break;
+                    }
+                }
+                sql++;
+            }
             if(*sql==0) return false;
             character = CHAR_OTHER;
+        }
+        else if(cur_char=='-'){ /* Possibly a sql-style comment from "--" to end of the line*/
+            if(sql[1]!='-'){
+                //next char is not '-', so this is not a comment
+                character = CHAR_OTHER;
+            }
+            else{
+                //This is sql comment. we ignore it
+                while(*sql && *sql!='\n') sql++;
+                if(*sql==0) return state==1;
+                //we remain in same state as we were
+                character = CHAR_WS;
+            }
+        }
+        else if(cur_char=='/'){ /* C style comments */
+            if(sql[1]!='*'){
+                //not a c-style comment..
+                character = CHAR_OTHER;
+            }else{
+                sql += 2;
+                while(*sql && (sql[0]!='*' || sql[1] !='/')) sql++;
+                if(*sql==0) return false;
+                sql++;
+                character = CHAR_WS;
+            }
         }
         else{
             character = CHAR_OTHER;
