@@ -116,7 +116,7 @@ int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
 
 #ifdef PER_THREAD_MALLOC
-#define HOST_MALLOC(h, sz) comdb2_malloc((h)->msp, (sz))
+#define HOST_MALLOC(h, sz) ((gbl_libevent) ? malloc((sz)) : comdb2_malloc((h)->msp, (sz)))
 #else
 #define HOST_MALLOC(h, sz) malloc(sz)
 #endif /* PER_THREAD_MALLOC */
@@ -2503,28 +2503,26 @@ static host_node_type *add_to_netinfo_ll(netinfo_type *netinfo_ptr,
     }
 
 #ifdef PER_THREAD_MALLOC
-    if (gbl_verbose_net)
-        logmsg(LOGMSG_INFO, "creating %d byte buffer pool for node %s\n",
-               netinfo_ptr->pool_size, hostname);
+    if (!gbl_libevent) {
+        if (gbl_verbose_net)
+            logmsg(LOGMSG_INFO, "creating %d byte buffer pool for node %s\n", netinfo_ptr->pool_size, hostname);
 
-    size_t scopelen = strlen(hostname) + sizeof(netinfo_ptr->service) + 2;
-    char *scope = malloc(scopelen);
-    if (scope == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__,
-               hostname);
-        free(ptr);
-        return NULL;
-    }
+        size_t scopelen = strlen(hostname) + sizeof(netinfo_ptr->service) + 2;
+        char *scope = malloc(scopelen);
+        if (scope == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__, hostname);
+            free(ptr);
+            return NULL;
+        }
 
-    snprintf(scope, scopelen, "%s@%s", netinfo_ptr->service, hostname);
-    ptr->msp =
-        comdb2ma_create_with_scope(netinfo_ptr->pool_size, 0, "NET", scope, 1);
-    if (ptr->msp == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__,
-               hostname);
-        free(scope);
-        free(ptr);
-        return NULL;
+        snprintf(scope, scopelen, "%s@%s", netinfo_ptr->service, hostname);
+        ptr->msp = comdb2ma_create_with_scope(netinfo_ptr->pool_size, 0, "NET", scope, 1);
+        if (ptr->msp == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: couldn't init msp for %s\n", __func__, hostname);
+            free(scope);
+            free(ptr);
+            return NULL;
+        }
     }
 #endif /* PER_THREAD_MALLOC */
 
@@ -2673,7 +2671,8 @@ static void rem_from_netinfo_ll(netinfo_type *netinfo_ptr,
     Pthread_cond_destroy(&(host_node_ptr->throttle_wakeup));
 
 #ifdef PER_THREAD_MALLOC
-    comdb2ma_destroy(host_node_ptr->msp);
+    if (!gbl_libevent)
+        comdb2ma_destroy(host_node_ptr->msp);
 #endif /* PER_THREAD_MALLOC */
 
     free(host_node_ptr->user_data_buf);
@@ -3895,7 +3894,7 @@ static void *writer_thread(void *args)
     struct timeval tv;
 #endif
     thread_started("net writer");
-    THREAD_TYPE(__func__);
+    ENABLE_PER_THREAD_MALLOC(__func__);
 
     host_node_ptr = args;
     netinfo_ptr = host_node_ptr->netinfo_ptr;
@@ -4164,7 +4163,7 @@ static void *reader_thread(void *arg)
     char fromhost[256], tohost[256];
 
     thread_started("net reader");
-    THREAD_TYPE(__func__);
+    ENABLE_PER_THREAD_MALLOC(__func__);
 
     host_node_ptr = arg;
     netinfo_ptr = host_node_ptr->netinfo_ptr;
@@ -4604,7 +4603,7 @@ static void *connect_thread(void *arg)
     int connport = -1;
 
     thread_started("connect thread");
-    THREAD_TYPE(__func__);
+    ENABLE_PER_THREAD_MALLOC(__func__);
 
     int flags;
     struct pollfd pfd;
@@ -5406,7 +5405,7 @@ static void *accept_thread(void *arg)
     unsigned int last_stat_dump_time = comdb2_time_epochms();
 
     thread_started("net accept");
-    THREAD_TYPE(__func__);
+    ENABLE_PER_THREAD_MALLOC(__func__);
 
     netinfo_ptr = (netinfo_type *)arg;
 

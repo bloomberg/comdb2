@@ -115,9 +115,9 @@ typedef void (*stats_fn)(const struct mallinfo *mallinfo, int verbose,
 */
 #ifdef PER_THREAD_MALLOC
 extern __thread const char *thread_type_key;
-#define THREAD_TYPE(key) do { thread_type_key = (key); } while (0)
+#define ENABLE_PER_THREAD_MALLOC(key) do { thread_type_key = (key); } while (0)
 #else
-#define THREAD_TYPE(key) do { (void)key; } while (0)
+#define ENABLE_PER_THREAD_MALLOC(key) do { (void)key; } while (0)
 #endif
 
 /*

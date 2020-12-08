@@ -450,6 +450,9 @@ static void *net_dispatch(void *arg)
     struct net_dispatch_info *n = arg;
     struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
     struct timeval ten = {10, 0};
+
+    ENABLE_PER_THREAD_MALLOC(n->who);
+
     event_add(ev, &ten);
     if (start_callback) {
         start_callback(start_stop_callback_data);

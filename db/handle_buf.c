@@ -417,7 +417,7 @@ static void *thd_req(void *vthd)
     int numwriterthreads;
 
     thread_started("request");
-    THREAD_TYPE("tag");
+    ENABLE_PER_THREAD_MALLOC(__func__);
 
     thr_self = thrman_register(THRTYPE_REQ);
     logger = thrman_get_reqlogger(thr_self);
