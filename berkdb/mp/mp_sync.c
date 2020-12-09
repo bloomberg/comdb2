@@ -2102,8 +2102,8 @@ __memp_load(dbenv, s, pagecount, lines)
 	int ret = 0, endofline = 0, max_pages = gbl_load_cache_max_pages;
 	u_int8_t *pr;
 	u_int8_t fileid[DB_FILE_ID_LEN] = {0};
-	char cfileid[DB_FILE_ID_LEN*2], cpage[64];
-	char *p, *sp, c;
+	char cpage[64];
+	char *sp, c;
 	db_pgno_t pg;
 	unsigned int hx;
 	void *addrp = NULL;
@@ -2127,11 +2127,12 @@ __memp_load(dbenv, s, pagecount, lines)
 	}
 
 	start = time(NULL);
+	char cfileid[DB_FILE_ID_LEN*2+1];
+	cfileid[DB_FILE_ID_LEN*2] = 0;
 	while ((!max_pages || (*pagecount) < max_pages) && (ret =
-				sbuf2fread(cfileid, sizeof(cfileid), 1, s)) == 1) {
+				sbuf2fread(cfileid, DB_FILE_ID_LEN * 2, 1, s)) == 1) {
 		lineno++;
-
-		p = cfileid;
+		char *p = cfileid;
 		for (int j = 0; j < DB_FILE_ID_LEN; ++j, p+=2) {
 			sscanf(p, "%2x", &hx);
 			fileid[j] = hx;
