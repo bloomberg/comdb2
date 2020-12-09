@@ -4726,6 +4726,7 @@ void sqlite3ParserReset(Parse*);
 #ifdef SQLITE_ENABLE_NORMALIZE
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 char *sqlite3Normalize(Vdbe*, const char*,int);
+char *sqlite3Normalize_alternate(Vdbe*, const char*,int);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 char *sqlite3Normalize(Vdbe*, const char*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

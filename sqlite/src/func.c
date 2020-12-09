@@ -525,6 +525,30 @@ done:
   }
   sqlite3ParserReset(&sParse);
 }
+
+static void normalizeSqlFunc(
+  sqlite3_context *context,
+  int argc,
+  sqlite3_value **argv
+){
+  int rc;
+  sqlite3 *db;
+  const char *zSql;
+  sqlite3_stmt *pStmt = NULL;
+  if( sqlite3_value_type(argv[0])!=SQLITE_TEXT ) return;
+  zSql = (const char *)sqlite3_value_text(argv[0]);
+  if( !zSql ) return;
+  db = sqlite3_context_db_handle(context);
+  rc = sqlite3_prepare_v3(db, zSql, -1, SQLITE_PREPARE_NORMALIZE |
+                          SQLITE_PREPARE_ONLY, &pStmt, NULL);
+  if( rc==SQLITE_OK ){
+    sqlite3_result_text(context, sqlite3_normalized_sql(pStmt),
+                        -1, SQLITE_TRANSIENT);
+    sqlite3_finalize(pStmt);
+  }else{
+    sqlite3_result_error(context, sqlite3_errmsg(db), -1);
+  }
+}
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
@@ -2704,6 +2728,8 @@ void sqlite3RegisterBuiltinFunctions(void){
     VFUNCTION(usleep,            1, 0, 0, usleepFunc       ),
     VFUNCTION(comdb2_extract_table_names,
                                  1, 0, 0, tableNamesFunc   ),
+    VFUNCTION(comdb2_normalize_sql,
+                                 1, 0, 0, normalizeSqlFunc ),
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     FUNCTION(printf,            -1, 0, 0, printfFunc       ),
     FUNCTION(unicode,            1, 0, 0, unicodeFunc      ),
