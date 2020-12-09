@@ -3,3 +3,4 @@ ssl_client_mode OPTIONAL
 sync full
 do reql events detailed on
 nowatch
+alternate_normalize 0

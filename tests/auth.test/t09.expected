@@ -277,6 +277,7 @@
 (candidate='comdb2_extract_table_names()')
 (candidate='comdb2_host()')
 (candidate='comdb2_node()')
+(candidate='comdb2_normalize_sql()')
 (candidate='comdb2_port()')
 (candidate='comdb2_prevquerycost()')
 (candidate='comdb2_semver()')

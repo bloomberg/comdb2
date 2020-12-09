@@ -317,6 +317,52 @@ proc grab_cdb2_results { db varName {format csv} } {
     }
 }
 
+proc sqlite3_prepare_v3 { db sql args } {
+  # used by normalize.test, return SQL.
+  return $sql
+}
+
+proc sqlite3_finalize { args } {
+  # used by normalize.test, do nothing.
+  return SQLITE_OK
+}
+
+proc sqlite3_bind_null { args } {
+  # used by normalize.test, do nothing.
+  return ""
+}
+
+proc sqlite3_create_function { args } {
+  # used by normalize.test, do nothing.
+  return SQLITE_OK
+}
+
+proc sqlite3_normalize { sql } {
+  return [uplevel 1 [list do_cdb2_normalize $::comdb2_name $sql default]]
+}
+
+proc sqlite3_normalized_sql { sql } {
+  return [uplevel 1 [list do_cdb2_normalize $::comdb2_name $sql default]]
+}
+
+proc do_cdb2_normalize { dbName sql {tier default} } {
+  if {[info exists ::cdb2_config]} then {
+    cdb2 configure $::cdb2_config true
+  }
+
+  set db [cdb2 open $dbName $tier]
+  if {[info exists ::cdb2_debug] && $::cdb2_debug} {cdb2 debug $db}
+
+  cdb2 unbind $db; cdb2 bind $db 1 cstring $sql
+  set new_sql "SELECT comdb2_normalize_sql(?)"
+  cdb2 run $db $new_sql
+
+  set result ""; grab_cdb2_results $db result list
+
+  cdb2 close $db
+  return [lindex [lindex $result 0] 0]
+}
+
 proc do_cdb2_defquery { sql {format csv} {costVarName ""} } {
     return [uplevel 1 [list do_cdb2_query $::comdb2_name $sql default $format $costVarName]]
 }
