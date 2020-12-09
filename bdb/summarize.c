@@ -289,6 +289,13 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     unsigned long long recs_looked_at = 0;
     int fd = -1;
     int last, now;
+#ifdef POSIX_FADV_SEQUENTIAL
+    /* Release page cache every FADVISE_THRESH many pages. We could make it
+       a tunable, but for now, leave it hardcoded. */
+    off_t nread = 0;
+    const static size_t FADVISE_THRESH = 1024;
+    int usedio = bdb_attr_get(bdb_state->attr, BDB_ATTR_DIRECTIO);
+#endif
 
     if (comp_pct > 100 || comp_pct < 1) {
         *bdberr = BDBERR_BADARGS;
@@ -361,15 +368,20 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
         goto done;
     }
 
-#if defined(_IBM_SOURCE) || defined(__linux__)
+#ifdef POSIX_FADV_SEQUENTIAL
     // inform kernel that we will be accessing file sequentially
-    // and that we won't need the file to be cached
-    fdatasync(fd);
-    posix_fadvise(fd, 0, 0, POSIX_FADV_DONTNEED | POSIX_FADV_SEQUENTIAL);
+    (void)posix_fadvise(fd, 0, 0, POSIX_FADV_SEQUENTIAL);
 #endif
 
     last = comdb2_time_epoch();
     for (rc = read(fd, page, pgsz); rc == pgsz; rc = read(fd, page, pgsz)) {
+#ifdef POSIX_FADV_SEQUENTIAL
+        /* Periodically hint the OS to release pages we've read. Only do so
+           when directio is enabled for this operation will likely force out
+           useful cached pages otherwise. */
+        if (usedio && ((++nread) % FADVISE_THRESH) == 0)
+            (void)posix_fadvise(fd, (nread - FADVISE_THRESH) * pgsz, FADVISE_THRESH * pgsz, POSIX_FADV_DONTNEED);
+#endif
         /* If it is not a leaf page, continue reading the file. */
         if (!ISLEAF(page))
             continue;
