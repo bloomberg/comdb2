@@ -5693,6 +5693,11 @@ int comdb2_reload_schemas(void *dbenv, void *inlsn)
     int *file = &(((int *)(inlsn))[0]);
     int *offset = &(((int *)(inlsn))[1]);
 
+    if (thedb->bdb_env == NULL) {
+        logmsg(LOGMSG_INFO, "%s backend not open, returning\n", __func__);
+        return 0;
+    }
+
     gbl_comdb2_reload_schemas = 1;
     logmsg(LOGMSG_INFO, "%s starting for [%d:%d]\n", __func__, *file, *offset);
     wrlock_schema_lk();

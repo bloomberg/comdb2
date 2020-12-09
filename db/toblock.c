@@ -1087,7 +1087,8 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     /* If the latest commit is durable, then the blkseq commit must be durable.  
      * This can incorrectly report NOT_DURABLE but that's sane given that half 
      * the cluster is incoherent */
-    if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) &&
+    extern int gbl_replicant_retry_on_not_durable;
+    if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable) &&
             !bdb_latest_commit_is_durable(thedb->bdb_env)) {
         if (iq->have_snap_info) {
             logmsg(LOGMSG_ERROR,
