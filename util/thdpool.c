@@ -798,7 +798,7 @@ static void *thdpool_thd(void *voidarg)
              * still holding the pool lock. */
 
             if (work.ref_persistent_info)
-                thd->persistent_info = get_string(work.ref_persistent_info); // will reset this before put_ref() below
+                thd->persistent_info = string_ref_cstr(work.ref_persistent_info); // will reset this before put_ref() below
             else
                 thd->persistent_info = "working on unknown";
         }

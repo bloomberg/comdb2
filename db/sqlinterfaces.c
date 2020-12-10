@@ -1060,13 +1060,13 @@ void sql_dump_hist_statements(void)
                    tm.tm_min, tm.tm_sec, rqid, h->conn.pindex,
                    (char *)h->conn.pename, h->conn.pid, h->conn.node,
                    (long long int)h->cost.time, (long long int)h->cost.prepTime,
-                   h->cost.cost, get_string(h->sql_ref));
+                   h->cost.cost, string_ref_cstr(h->sql_ref));
         } else {
             logmsg(LOGMSG_USER,
                    "%02d/%02d/%02d %02d:%02d:%02d %stime %lldms prepTime %lldms cost %f sql: %s\n",
                    tm.tm_mon + 1, tm.tm_mday, 1900 + tm.tm_year, tm.tm_hour,
                    tm.tm_min, tm.tm_sec, rqid, (long long int)h->cost.time,
-                   (long long int)h->cost.prepTime, h->cost.cost, get_string(h->sql_ref));
+                   (long long int)h->cost.prepTime, h->cost.cost, string_ref_cstr(h->sql_ref));
         }
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
@@ -1225,7 +1225,7 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     if (gbl_fingerprint_queries) {
         if (h->sql_ref) {
-            if (is_stored_proc_sql(get_string(h->sql_ref))) {
+            if (is_stored_proc_sql(string_ref_cstr(h->sql_ref))) {
                 cost = clnt->spcost.cost;
                 time = clnt->spcost.time;
                 prepTime = clnt->spcost.prepTime;
@@ -1237,13 +1237,13 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
                 rows = clnt->nrows;
             }
             if (clnt->work.zOrigNormSql) { /* NOTE: Not subject to prepare. */
-                add_fingerprint(clnt, stmt, get_string(h->sql_ref), clnt->work.zOrigNormSql,
+                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zOrigNormSql,
                                 cost, time, prepTime, rows, logger,
                                 fingerprint);
                 have_fingerprint = 1;
             } else if (clnt->work.zNormSql &&
                        sqlite3_is_success(clnt->prep_rc)) {
-                add_fingerprint(clnt, stmt, get_string(h->sql_ref), clnt->work.zNormSql, cost,
+                add_fingerprint(clnt, stmt, string_ref_cstr(h->sql_ref), clnt->work.zNormSql, cost,
                                 time, prepTime, rows, logger, fingerprint);
                 have_fingerprint = 1;
             } else {
@@ -5389,7 +5389,7 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
         }
 
         if (rc) {
-            logmsg(LOGMSG_DEBUG, "%s: failed to enqueue: %s\n", __func__, get_string(clnt->sql_ref));
+            logmsg(LOGMSG_DEBUG, "%s: failed to enqueue: %s\n", __func__, string_ref_cstr(clnt->sql_ref));
             put_ref(&sr); // failed to enqueue so we still own this reference
             /* say something back, if the client expects it */
             if (clnt->fail_dispatch) {
