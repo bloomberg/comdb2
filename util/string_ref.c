@@ -37,6 +37,7 @@ static int gbl_creation_count;
 
 struct string_ref {
     int cnt;
+    size_t len;
     char str[1];
 };
 
@@ -46,9 +47,10 @@ struct string_ref {
 struct string_ref * create_string_ref(const char *str)
 {
     assert(str);
-    int len = strlen(str);
+    size_t len = strlen(str);
     struct string_ref *ref = malloc(sizeof(struct string_ref) + len);
     ref->cnt = 1;
+    ref->len = len;
     strcpy(ref->str, str);
 
 #ifdef TRACK_REFERENCES
@@ -117,11 +119,15 @@ void transfer_ref(struct string_ref **from, struct string_ref **to)
     *from = NULL;
 }
 
-const char *get_string(struct string_ref *ref)
+const char *string_ref_cstr(struct string_ref *ref)
 {
     return ref->str;
 }
 
+size_t string_ref_len(struct string_ref *ref)
+{
+    return ref->len;
+}
 
 #ifdef TRACK_REFERENCES
 static int print_it(void *obj, void *arg)

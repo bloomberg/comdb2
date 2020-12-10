@@ -1418,7 +1418,7 @@ static void reqlog_start_request(struct reqlogger *logger)
                    check_list(&master_opcode_inv_list, logger->opcode)) {
             gather = 1;
         } else if (logger->sql_ref && master_num_stmts > 0) {
-            const char *str = get_string(logger->sql_ref);
+            const char *str = string_ref_cstr(logger->sql_ref);
             for (ii = 0; ii < master_num_stmts && ii < NUMSTMTS; ii++) {
                 if (strstr(str, master_stmts[ii])) {
                     gather = 1;
@@ -1472,7 +1472,7 @@ inline void reqlog_set_sql(struct reqlogger *logger, struct string_ref *sr)
     put_ref(&logger->sql_ref);
     if (sr) {
         logger->sql_ref = get_ref(sr);
-        reqlog_logf(logger, REQL_INFO, "sql=%s", get_string(logger->sql_ref));
+        reqlog_logf(logger, REQL_INFO, "sql=%s", string_ref_cstr(logger->sql_ref));
     }
 }
 
@@ -1936,7 +1936,7 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             }
 
             if (rule->stmt[0] &&
-                (!logger->sql_ref || !strstr(get_string(logger->sql_ref), rule->stmt))) {
+                (!logger->sql_ref || !strstr(string_ref_cstr(logger->sql_ref), rule->stmt))) {
                 continue;
             }
 

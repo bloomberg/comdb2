@@ -40,11 +40,14 @@
  *
  */
 
+struct string_ref;
+
 struct string_ref * create_string_ref(const char *str);
 struct string_ref * get_ref(struct string_ref *ref);
 void put_ref(struct string_ref **ref);
 void transfer_ref(struct string_ref **from, struct string_ref **to);
-const char *get_string(struct string_ref *ref);
+const char *string_ref_cstr(struct string_ref *ref);
+size_t string_ref_len(struct string_ref *ref);
 int all_string_references_cleared();
 
 #endif

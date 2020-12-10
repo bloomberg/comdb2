@@ -445,8 +445,8 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
             cson_value_new_string("newsql", strlen("newsql")));
 
     if (logger->sql_ref != NULL) {
-        const char *str = get_string(logger->sql_ref);
-        cson_object_set(newobj, "sql", cson_value_new_string(str, strlen(str)));
+        cson_object_set(newobj, "sql", cson_value_new_string(string_ref_cstr(logger->sql_ref),
+                                                             string_ref_len(logger->sql_ref)));
     }
 
     char expanded_fp[2 * FINGERPRINTSZ + 1];
@@ -472,8 +472,8 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
     }
 
     if (logger->sql_ref && eventlog_detailed) {
-        const char *str = get_string(logger->sql_ref);
-        cson_object_set(obj, "sql", cson_value_new_string(str, strlen(str)));
+        cson_object_set(obj, "sql", cson_value_new_string(string_ref_cstr(logger->sql_ref),
+                                                          string_ref_len(logger->sql_ref)));
         cson_object_set(obj, "bound_parameters", logger->bound_param_cson);
     }
 

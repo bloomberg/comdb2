@@ -52,7 +52,7 @@ static void collect(struct thdpool *pool, struct workitem *item, void *user)
     i = &q->records[q->count - 1];
     i->time_in_queue_ms = comdb2_time_epochms() - item->queue_time_ms;
     if (item->ref_persistent_info) {
-        i->info = strdup(get_string(item->ref_persistent_info));
+        i->info = strdup(string_ref_cstr(item->ref_persistent_info));
         i->info_is_null = 0;
     } else {
         i->info = NULL;
