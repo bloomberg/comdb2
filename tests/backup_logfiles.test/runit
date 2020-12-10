@@ -47,19 +47,19 @@ master=`getmaster`
 # verify that backup dir has log.0000000001
 if [[ -n "$CLUSTER" ]]; then
     ssh -o StrictHostKeyChecking=no $master "ls -al $BACKUPDIR" > ls_out.txt
-    if [ "$CLEANUPDBDIR" != "0" ] ; then
-        ssh -o StrictHostKeyChecking=no $master "rm -rf $BACKUPDIR"
-    fi
 else
     ls -al $BACKUPDIR > ls_out.txt
 fi
 
-if [ "$CLEANUPDBDIR" != "0" ] ; then # clean locally (inited even in clustered)
-    rm -rf $BACKUPDIR
-    # may need to also rm ${TESTDIR}/backup_logfiles_dir
-fi
-
 cnt=`grep -c log.0000000001 ls_out.txt`
 assertres $cnt 1
+
+if [ "$CLEANUPDBDIR" != "0" ] ; then
+    if [[ -n "$CLUSTER" ]]; then
+        ssh -o StrictHostKeyChecking=no $master "rm -rf $BACKUPDIR"
+    fi
+    # clean locally (init created locally, even for clustered)
+    rm -rf $BACKUPDIR
+fi
 
 echo "Success"

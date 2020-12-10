@@ -3414,8 +3414,10 @@ static void setup_backup_logfiles_dir()
         if (rc)
             logmsg(LOGMSG_ERROR, "%s: Cannot create directory %s (bad path or parent directory): %d %s\n",
                    __func__, backupdir, errno, strerror(errno));
-        else
+        else {
+            logmsg(LOGMSG_DEBUG, "%s: Created directory %s\n", __func__, backupdir);
             gbl_backup_logfiles = 1;
+        }
     }
 cleanup:
     free(backupdir);
