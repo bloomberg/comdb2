@@ -1238,6 +1238,8 @@ done:
    return rcout;
 }
 
+int gbl_sync_osql_cancel = 1;
+
 /**
  * Terminates a sosql session
  * It notifies the block processor to abort the request
@@ -1269,9 +1271,11 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
             rcout = SQLITE_INTERNAL;
         }
 
-        rc = osql_wait(clnt);
-        if (rc)
-            logmsg(LOGMSG_WARN, "%s: osql_wait rc %d\n", __func__, rc);
+        if (gbl_sync_osql_cancel) {
+            rc = osql_wait(clnt);
+            if (rc)
+                logmsg(LOGMSG_WARN, "%s: osql_wait rc %d\n", __func__, rc);
+        }
 
         /* unregister this osql thread from checkboard */
         rc = osql_unregister_sqlthr(clnt);
