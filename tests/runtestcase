@@ -3,6 +3,55 @@
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
+
+# Setup a debugger to run comdb2 server
+setup_debugger() {
+    DEBUG_PREFIX=
+
+    if [[ -n ${DEBUGGER} ]]; then
+        case ${DEBUGGER} in
+        gdb)
+            DEBUG_PREFIX="gdb --args"
+            ;;
+        valgrind)
+            DEBUG_PREFIX="valgrind --track-origins=yes"
+            ;;
+        memcheck)
+            DEBUG_PREFIX="valgrind  --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
+            ;;
+        callgrind)
+            DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=no --dump-instr=yes --collect-systime=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+            if [[ -n ${COLLECTFUNC} ]]; then
+                # collect info on $COLLECTFUNC only
+                DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
+            fi
+            ;;
+        drd)
+            DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
+            ;;
+        helgrind)
+            DEBUG_PREFIX="valgrind --tool=helgrind "
+            ;;
+        massif)
+            DEBUG_PREFIX="valgrind --tool=massif "
+            ;;
+        perf)
+            DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
+            ;;
+        mutrace)   # mutex contention detection tool
+            DEBUG_PREFIX="mutrace "
+            ;;
+        *)
+            DEBUG_PREFIX=${DEBUGGER}
+            ;;
+        esac
+    fi
+
+    export DEBUG_PREFIX
+}
+
+setup_debugger
+
 TEST_TIMEOUT=${TEST_TIMEOUT:-5m}
 if [[ "$(uname -m)" == "armv7l" ]] ; then
     t=${TEST_TIMEOUT%%m}
@@ -10,14 +59,11 @@ if [[ "$(uname -m)" == "armv7l" ]] ; then
 elif [[ "$(uname -m)" == "aarch64" ]] ; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 2 + 2))m
-elif [[ "x${DEBUGGER}" == "xvalgrind" ]] ||  [[ "x${DEBUGGER}" == "xcallgrind" ]]; then
+elif [[ "${DEBUG_PREFIX}" == "valgrind"* ]]; then
     t=${TEST_TIMEOUT%%m}
     TEST_TIMEOUT=$(($t * 10 + 2))m
 fi
-if [[ "${DEBUGGER}" == "valgrind" ]] ; then
-    t=${TEST_TIMEOUT%%m}
-    TEST_TIMEOUT=$(($t * 10 + 2))m
-fi
+
 SETUP_TIMEOUT=${SETUP_TIMEOUT:-2m}
 
 if [[ -n "$NUMNODESTOUSE" ]] ; then
@@ -345,7 +391,7 @@ if [[ -n "$cr" ]] ; then
 elif [[ -n "$dbdown" ]] ; then
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
-    echo "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
+    echo -e "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
 elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then

@@ -37,69 +37,8 @@ source $TESTSROOTDIR/setup.common
 # get full path
 DBDIR=$(readlink -f $DBDIR || realpath $DBDIR )
 
-# Setup a debugger to run comdb2 server
-DEBUG_PREFIX=
-
-if [[ -n ${DEBUGGER} ]]; then
-    case ${DEBUGGER} in
-    gdb)
-        DEBUG_PREFIX="gdb --args"
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=1
-        fi
-        ;;
-    valgrind)
-        DEBUG_PREFIX="valgrind --track-origins=yes"
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=0
-        fi
-        ;;
-    memcheck)
-        DEBUG_PREFIX="valgrind  --leak-check=full --show-reachable=yes --track-origins=yes --leak-resolution=high --num-callers=30"
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=0
-        fi
-        ;;
-    callgrind)
-        DEBUG_PREFIX="valgrind --tool=callgrind --instr-atstart=no --dump-instr=yes --collect-systime=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
-        if [[ -n ${COLLECTFUNC} ]]; then
-            # collect info on $COLLECTFUNC only
-            DEBUG_PREFIX="valgrind --tool=callgrind --collect-atstart=no --toggle-collect="${COLLECTFUNC}" --dump-instr=yes --collect-jumps=yes --callgrind-out-file=$TESTDIR/$TESTCASE.callgrind"
-        fi
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=0
-        fi
-        ;;
-    drd)
-        DEBUG_PREFIX="valgrind --tool=drd --read-var-info=yes "
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=0
-        fi
-        ;;
-    helgrind)
-        DEBUG_PREFIX="valgrind --tool=helgrind "
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=0
-        fi
-        ;;
-    perf)
-        DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
-        INTERACTIVE_DEBUG=0
-        ;;    
-    mutrace)   # mutex contention detection tool
-        DEBUG_PREFIX="mutrace "
-        INTERACTIVE_DEBUG=0
-        ;;    
-    *)
-        DEBUG_PREFIX=${DEBUGGER}
-        if [[ -z "${INTERACTIVE_DEBUG}" ]]; then
-            INTERACTIVE_DEBUG=0
-        fi
-        ;;
-    esac
-
-    TEXTCOLOR='\033[0;32m' # Green
-    NOCOLOR='\033[0m'
+if [[ "${DEBUGGER}" == "gdb" && -z "${INTERACTIVE_DEBUG}" ]]; then
+    INTERACTIVE_DEBUG=1
 fi
 
 check_db_port_running_local() {
