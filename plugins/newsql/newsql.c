@@ -184,7 +184,8 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
     effects.num_updated = clnt->effects.num_updated;                           \
     effects.num_deleted = clnt->effects.num_deleted;                           \
     effects.num_inserted = clnt->effects.num_inserted;                         \
-                                                                               \
+    effects.cost = query_cost(clnt->thd->sqlthd);                              \
+    effects.has_cost = 1;                                                      \
     sql_response.effects = &effects;
 
 #define _has_features(clnt, sql_response)                                      \

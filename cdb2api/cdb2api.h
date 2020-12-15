@@ -130,6 +130,7 @@ struct cdb2_effects_type {
     int num_updated;
     int num_deleted;
     int num_inserted;
+    int64_t cost;
 };
 
 /* datetime type definition */

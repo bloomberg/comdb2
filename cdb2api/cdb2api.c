@@ -3277,6 +3277,17 @@ after_callback:
     return rc;
 }
 
+static inline void get_effects_from_cdb2effects(CDB2EFFECTS *cdb2effects, cdb2_effects_tp *effects)
+{
+    effects->num_affected = cdb2effects->num_affected;
+    effects->num_selected = cdb2effects->num_selected;
+    effects->num_updated = cdb2effects->num_updated;
+    effects->num_deleted = cdb2effects->num_deleted;
+    effects->num_inserted = cdb2effects->num_inserted;
+    if (cdb2effects->has_cost)
+        effects->cost = cdb2effects->cost;
+}
+
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
 {
     int rc = 0;
@@ -3289,11 +3300,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
         if (lrc) {
             rc = -1;
         } else if (hndl->firstresponse && hndl->firstresponse->effects) {
-            effects->num_affected = hndl->firstresponse->effects->num_affected;
-            effects->num_selected = hndl->firstresponse->effects->num_selected;
-            effects->num_updated = hndl->firstresponse->effects->num_updated;
-            effects->num_deleted = hndl->firstresponse->effects->num_deleted;
-            effects->num_inserted = hndl->firstresponse->effects->num_inserted;
+            get_effects_from_cdb2effects(hndl->firstresponse->effects, effects);
             cdb2__sqlresponse__free_unpacked(hndl->firstresponse, NULL);
             free((void *)hndl->first_buf);
             hndl->first_buf = NULL;
@@ -3303,11 +3310,7 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
             rc = -1;
         }
     } else if (hndl->lastresponse->effects) {
-        effects->num_affected = hndl->lastresponse->effects->num_affected;
-        effects->num_selected = hndl->lastresponse->effects->num_selected;
-        effects->num_updated = hndl->lastresponse->effects->num_updated;
-        effects->num_deleted = hndl->lastresponse->effects->num_deleted;
-        effects->num_inserted = hndl->lastresponse->effects->num_inserted;
+        get_effects_from_cdb2effects(hndl->lastresponse->effects, effects);
         rc = 0;
     } else {
         rc = -1;

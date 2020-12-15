@@ -31,6 +31,7 @@ Number of rows selected 1
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
+Query Cost 21
 [SELECT * FROM t1 ORDER BY i] rc 0
 Number of rows affected 0
 Number of rows selected 0
@@ -64,6 +65,7 @@ Number of rows selected 0
 Number of rows deleted 1
 Number of rows updated 0
 Number of rows inserted 1
+Query Cost 30
 [REPLACE INTO t1 VALUES(1,1)] rc 0
 (i=1, j=1)
 Number of rows affected 0
@@ -71,6 +73,7 @@ Number of rows selected 1
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
+Query Cost 21
 [SELECT * FROM t1 ORDER BY i] rc 0
 Number of rows affected 0
 Number of rows selected 0
@@ -118,6 +121,7 @@ Number of rows selected 0
 Number of rows deleted 3
 Number of rows updated 0
 Number of rows inserted 3
+Query Cost 90
 [REPLACE INTO t1 VALUES(1,1), (2,2), (3,3)] rc 0
 (i=1, j=1)
 (i=2, j=2)
@@ -127,6 +131,7 @@ Number of rows selected 3
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
+Query Cost 44
 [SELECT * FROM t1 ORDER BY i,j] rc 0
 Number of rows affected 0
 Number of rows selected 0
@@ -167,6 +172,7 @@ Number of rows selected 0
 Number of rows deleted 0
 Number of rows updated 1
 Number of rows inserted 0
+Query Cost 20
 [INSERT INTO t1 VALUES(0,1,2) ON CONFLICT (i) DO UPDATE SET j=j+1] rc 0
 (i=0, j=2, k=0)
 (i=1, j=0, k=1)
@@ -175,6 +181,7 @@ Number of rows selected 2
 Number of rows deleted 0
 Number of rows updated 0
 Number of rows inserted 0
+Query Cost 32
 [SELECT * FROM t1 ORDER BY i, j, k] rc 0
 Number of rows affected 0
 Number of rows selected 0

@@ -1594,6 +1594,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
             printf("Number of rows deleted %d\n", effects.num_deleted);
             printf("Number of rows updated %d\n", effects.num_updated);
             printf("Number of rows inserted %d\n", effects.num_inserted);
+            if (effects.cost > 0)
+                printf("Query Cost %d\n", effects.cost);
         } else {
             printf("Effects not sent by comdb2 server. \n");
         }

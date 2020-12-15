@@ -394,6 +394,7 @@ message CDB2_EFFECTS {
     required int32 num_updated  = 3;
     required int32 num_deleted  = 4;
     required int32 num_inserted = 5;
+    optional int64 cost         = 6;
 }
 
 message CDB2_SQLRESPONSE {
