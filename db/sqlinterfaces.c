@@ -5361,12 +5361,11 @@ static int enqueue_sql_query(struct sqlclntstate *clnt)
     }
 
     q_depth_tag_and_sql = thd_queue_depth();
-    if (thdpool_get_nthds(pool) == thdpool_get_maxthds(pool))
+    /* If all threads are busy, the request itself will likely be queued. Count it in. */
+    if (thdpool_get_nbusythds(pool) == thdpool_get_maxthds(pool))
         q_depth_tag_and_sql += thdpool_get_queue_depth(pool) + 1;
 
-    time_metric_add(thedb->concurrent_queries,
-                    thdpool_get_nthds(pool) -
-                        thdpool_get_nfreethds(pool));
+    time_metric_add(thedb->concurrent_queries, thdpool_get_nbusythds(pool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
 
     assert(clnt->dbtran.pStmt == NULL);

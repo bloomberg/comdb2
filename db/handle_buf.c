@@ -1015,9 +1015,9 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     if (add_latency > 0) {
                         poll(0, 0, rand() % add_latency);
                     }
-                    time_metric_add(thedb->handle_buf_queue_time,
-                                    comdb2_time_epochms() -
-                                        nextrq->queue_time_ms);
+                    time_metric_add(thedb->handle_buf_queue_time, comdb2_time_epochms() - nextrq->queue_time_ms);
+                    time_metric_add(thedb->queue_depth,
+                                    q_reqs.count + thdpool_get_queue_depth(get_default_sql_pool(0)));
                     pool_relablk(pq_reqs, nextrq);
                     if (!iq)
                         /* this should never be hit */
@@ -1033,9 +1033,9 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     if (add_latency > 0) {
                         poll(0, 0, rand() % add_latency);
                     }
-                    time_metric_add(thedb->handle_buf_queue_time,
-                                    comdb2_time_epochms() -
-                                        nextrq->queue_time_ms);
+                    time_metric_add(thedb->handle_buf_queue_time, comdb2_time_epochms() - nextrq->queue_time_ms);
+                    time_metric_add(thedb->queue_depth,
+                                    q_reqs.count + thdpool_get_queue_depth(get_default_sql_pool(0)));
                     /* release link block */
                     pool_relablk(pq_reqs, nextrq);
                     if (!iq) {

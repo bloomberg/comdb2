@@ -1151,6 +1151,11 @@ int thdpool_get_nfreethds(struct thdpool *pool)
     return pool->freelist.count;
 }
 
+int thdpool_get_nbusythds(struct thdpool *pool)
+{
+    return pool->thdlist.count - pool->freelist.count;
+}
+
 void thdpool_add_waitthd(struct thdpool *pool)
 {
     pool->nwaitthd++;
