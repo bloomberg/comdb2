@@ -35,6 +35,7 @@ void print_cooked_access(BtCursor *pCur, int col);
 void comdb2SetWriteFlag(int wrflag);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
+int comdb2_is_idx_uniqnulls(BtCursor *);
 extern void comdb2_handle_limit(Vdbe*,Mem*);
 extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
 extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
@@ -5028,7 +5029,12 @@ case OP_Found: {        /* jump, in3 */
     /* For the OP_NoConflict opcode, take the jump if any of the
     ** input fields are NULL, since any key with a NULL will not
     ** conflict */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    int is_idx_uniqnulls = comdb2_is_idx_uniqnulls(pC->uc.pCursor);
+    for(ii=0; is_idx_uniqnulls && ii<pIdxKey->nField; ii++){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     for(ii=0; ii<pIdxKey->nField; ii++){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( pIdxKey->aMem[ii].flags & MEM_Null ){
         takeJump = 1;
         break;
