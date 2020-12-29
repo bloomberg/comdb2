@@ -12854,3 +12854,8 @@ void comdb2_dump_blocker(unsigned int lockerid)
     }
     Pthread_mutex_unlock(&gbl_sql_lock);
 }
+
+int comdb2_is_idx_uniqnulls(BtCursor *pCur)
+{
+    return (pCur->db->schema->flags & SCHEMA_UNIQNULLS) ? 1 : 0;
+}
