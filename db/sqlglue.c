@@ -12549,3 +12549,8 @@ struct temptable get_tbl_by_rootpg(const sqlite3 *db, int i)
     struct temptable *t = hash_find(h, &i);
     return *t;
 }
+
+int comdb2_is_idx_uniqnulls(BtCursor *pCur)
+{
+    return (pCur->db->schema->flags & SCHEMA_UNIQNULLS) ? 1 : 0;
+}
