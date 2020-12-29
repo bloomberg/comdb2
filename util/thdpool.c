@@ -1018,6 +1018,11 @@ int thdpool_get_nfreethds(struct thdpool *pool)
     return pool->freelist.count;
 }
 
+int thdpool_get_nbusythds(struct thdpool *pool)
+{
+    return pool->thdlist.count - pool->freelist.count;
+}
+
 int thdpool_get_maxthds(struct thdpool *pool)
 {
     return pool->maxnthd;

@@ -4914,13 +4914,11 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
     clnt->enque_timeus = comdb2_time_epochus();
 
     q_depth_tag_and_sql = thd_queue_depth();
-    if (thdpool_get_nthds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
+    /* If all threads are busy, the request itself will likely be queued. Count it in. */
+    if (thdpool_get_nbusythds(gbl_sqlengine_thdpool) == thdpool_get_maxthds(gbl_sqlengine_thdpool))
         q_depth_tag_and_sql += thdpool_get_queue_depth(gbl_sqlengine_thdpool) + 1;
-
-    time_metric_add(thedb->concurrent_queries,
-                    thdpool_get_nthds(gbl_sqlengine_thdpool) -
-                        thdpool_get_nfreethds(gbl_sqlengine_thdpool));
     time_metric_add(thedb->queue_depth, q_depth_tag_and_sql);
+    time_metric_add(thedb->concurrent_queries, thdpool_get_nbusythds(gbl_sqlengine_thdpool));
 
     sqlcpy = strdup(msg);
     assert(clnt->dbtran.pStmt == NULL);

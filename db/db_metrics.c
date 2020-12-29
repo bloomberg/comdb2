@@ -505,11 +505,10 @@ static time_t metrics_standing_queue_time(void) {
 }
 
 static void update_standing_queue_time(void) {
-    double qdepth = time_metric_average(thedb->queue_depth) + time_metric_average(thedb->handle_buf_queue_time);
-    if (queue_start_time == 0 && qdepth > 1)
-        queue_start_time = time(NULL);
-    else if (qdepth < 1)
+    if (time_metric_average(thedb->queue_depth) < 1)
         queue_start_time = 0;
+    else if (queue_start_time == 0)
+        queue_start_time = time(NULL);
 }
 
 static void update_cpu_percent(void) 
