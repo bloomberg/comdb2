@@ -50,3 +50,7 @@
 #ifdef malloc_resize
 #undef malloc_resize
 #endif
+
+#ifdef posix_memalign
+#undef posix_memalign
+#endif
