@@ -1382,6 +1382,12 @@ void timeval_add(struct timeval *tvp,
                   struct timeval *uvp,
                   struct timeval *vvp);
 
+struct fileid_adj_fileid
+{
+	u_int8_t fileid[DB_FILE_ID_LEN];
+	int adj_fileid;
+};
+
 /* Database handle. */
 struct __db {
 	/*******************************************************
@@ -2479,6 +2485,7 @@ struct __db_env {
 
 	LISTC_T(DB) *dbs;
 	int maxdb;
+	hash_t *fidhash;
 
 	LISTC_T(HEAP) regions;
 	int bulk_stops_on_page;

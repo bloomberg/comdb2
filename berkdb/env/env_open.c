@@ -67,6 +67,23 @@ db_version(majverp, minverp, patchp)
 
 extern int gbl_instrument_dblist;
 
+static int freefid(void *obj, void *arg)
+{
+	free(obj);
+	return 0;
+}
+
+static inline void
+clear_fid_hash(DB_ENV *dbenv)
+{
+	if (dbenv->fidhash == NULL)
+		return;
+	hash_for(dbenv->fidhash, freefid, NULL);
+	hash_clear(dbenv->fidhash);
+	hash_free(dbenv->fidhash);
+	dbenv->fidhash = NULL;
+}
+
 static inline void 
 clear_adj_fileid(dbenv, func)
 	DB_ENV *dbenv;
@@ -558,6 +575,9 @@ foundlsn:
 	 */
 	clear_adj_fileid(dbenv, __func__);
 	LIST_INIT(&dbenv->dblist);
+	clear_fid_hash(dbenv);
+	dbenv->maxdb = 0;
+	dbenv->fidhash = hash_init(DB_FILE_ID_LEN);
 	if (F_ISSET(dbenv, DB_ENV_THREAD) && LF_ISSET(DB_INIT_MPOOL)) {
 		dbmp = dbenv->mp_handle;
 		if ((ret =
@@ -955,6 +975,9 @@ __dbenv_refresh(dbenv, orig_flags, rep_check)
 	 */
 	clear_adj_fileid(dbenv, __func__);
 	LIST_INIT(&dbenv->dblist);
+	clear_fid_hash(dbenv);
+	dbenv->maxdb = 0;
+	dbenv->fidhash = hash_init(DB_FILE_ID_LEN);
 	if (dbenv->dblist_mutexp != NULL) {
 		dbmp = dbenv->mp_handle;
 		__db_mutex_free(dbenv, dbmp->reginfo, dbenv->dblist_mutexp);
