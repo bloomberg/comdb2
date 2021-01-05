@@ -24,6 +24,7 @@ static const char revid[] = "$Id: mp_fopen.c,v 11.120 2003/11/07 18:45:15 ubell 
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
 #include "locks_wrap.h"
+#include "assert.h"
 
 #ifdef HAVE_RPC
 #include "dbinc_auto/db_server.h"
@@ -638,6 +639,7 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 	size_t pagesize;
 {
 	DB_ENV *dbenv;
+	MPOOLFILE *tmp, *loop_mfp;
 	DB_MPOOL *dbmp;
 	DB_MPOOLFILE *tmp_dbmfp;
 	MPOOL *mp;
@@ -646,6 +648,7 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 	u_int32_t mbytes, bytes, oflags;
 	int refinc, ret, i;
 	char *rpath, *recp_path, *recp_ext;
+	struct __fileid_mpf *fileid_mpf;
 	void *p;
 
 	dbenv = dbmfp->dbenv;
@@ -799,81 +802,83 @@ __memp_fopen(dbmfp, mfp, path, flags, mode, pagesize)
 	 * create a new entry for the current request.
 	 */
 	R_LOCK(dbenv, dbmp->reginfo);
-	for (mfp = SH_TAILQ_FIRST(&mp->mpfq, __mpoolfile);
-	    mfp != NULL; mfp = SH_TAILQ_NEXT(mfp, q, __mpoolfile)) {
-		/* Skip dead files and temporary files. */
-		if (mfp->deadfile || F_ISSET(mfp, MP_TEMP))
-			continue;
+	fileid_mpf = hash_find(mp->mpfhash, dbmfp->fileid);
+	if (fileid_mpf) {
+		LISTC_FOR_EACH_SAFE(&fileid_mpf->mpflist, loop_mfp, tmp, lnk) {
+			/* Skip dead files and temporary files. */
+			if (loop_mfp->deadfile || F_ISSET(loop_mfp, MP_TEMP))
+				continue;
 
-		/* Skip non-matching files. */
-		if (memcmp(dbmfp->fileid, R_ADDR(dbmp->reginfo,
-		    mfp->fileid_off), DB_FILE_ID_LEN) != 0)
-			continue;
+			/* Assert matching fileids. */
+			assert(memcmp(dbmfp->fileid, R_ADDR(dbmp->reginfo,
+							loop_mfp->fileid_off), DB_FILE_ID_LEN) == 0);
 
-		/*
-		 * If the file is being truncated, remove it from the system
-		 * and create a new entry.
-		 *
-		 * !!!
-		 * We should be able to set mfp to NULL and break out of the
-		 * loop, but I like the idea of checking all the entries.
-		 */
-		if (LF_ISSET(DB_TRUNCATE)) {
-			MUTEX_LOCK(dbenv, &mfp->mutex);
-			mfp->deadfile = 1;
-			MUTEX_UNLOCK(dbenv, &mfp->mutex);
-			continue;
+			/*
+			 * If the file is being truncated, remove it from the system
+			 * and create a new entry.
+			 *
+			 * !!!
+			 * We should be able to set mfp to NULL and break out of the
+			 * loop, but I like the idea of checking all the entries.
+			 */
+			if (LF_ISSET(DB_TRUNCATE)) {
+				MUTEX_LOCK(dbenv, &loop_mfp->mutex);
+				loop_mfp->deadfile = 1;
+				MUTEX_UNLOCK(dbenv, &loop_mfp->mutex);
+				continue;
+			}
+
+			/*
+			 * Some things about a file cannot be changed: the clear length,
+			 * page size, or lSN location.
+			 *
+			 * The file type can change if the application's pre- and post-
+			 * processing needs change.  For example, an application that
+			 * created a hash subdatabase in a database that was previously
+			 * all btree.
+			 *
+			 * !!!
+			 * We do not check to see if the pgcookie information changed,
+			 * or update it if it is.
+			 */
+			if (dbmfp->clear_len != loop_mfp->clear_len ||
+					pagesize != loop_mfp->stat.st_pagesize ||
+					dbmfp->lsn_offset != loop_mfp->lsn_off) {
+				__db_err(dbenv,
+						"%s: clear length, page size or LSN location changed",
+						path);
+				R_UNLOCK(dbenv, dbmp->reginfo);
+				ret = EINVAL;
+				goto err;
+			}
+
+			/*
+			 * Check to see if this file has died while we waited.
+			 *
+			 * We normally don't lock the deadfile field when we read it as
+			 * we only care if the field is zero or non-zero.  We do lock
+			 * on read when searching for a matching MPOOLFILE so that two
+			 * threads of control don't race between setting the deadfile
+			 * bit and incrementing the reference count, that is, a thread
+			 * of control decrementing the reference count and then setting
+			 * deadfile because the reference count is 0 blocks us finding
+			 * the file without knowing it's about to be marked dead.
+			 */
+			MUTEX_LOCK(dbenv, &loop_mfp->mutex);
+			if (loop_mfp->deadfile) {
+				MUTEX_UNLOCK(dbenv, &loop_mfp->mutex);
+				continue;
+			}
+			++loop_mfp->mpf_cnt;
+			refinc = 1;
+			MUTEX_UNLOCK(dbenv, &loop_mfp->mutex);
+
+			if (dbmfp->ftype != 0)
+				loop_mfp->ftype = dbmfp->ftype;
+
+			mfp = loop_mfp;
+			break;
 		}
-
-		/*
-		 * Some things about a file cannot be changed: the clear length,
-		 * page size, or lSN location.
-		 *
-		 * The file type can change if the application's pre- and post-
-		 * processing needs change.  For example, an application that
-		 * created a hash subdatabase in a database that was previously
-		 * all btree.
-		 *
-		 * !!!
-		 * We do not check to see if the pgcookie information changed,
-		 * or update it if it is.
-		 */
-		if (dbmfp->clear_len != mfp->clear_len ||
-		    pagesize != mfp->stat.st_pagesize ||
-		    dbmfp->lsn_offset != mfp->lsn_off) {
-			__db_err(dbenv,
-		    "%s: clear length, page size or LSN location changed",
-			    path);
-			R_UNLOCK(dbenv, dbmp->reginfo);
-			ret = EINVAL;
-			goto err;
-		}
-
-		/*
-		 * Check to see if this file has died while we waited.
-		 *
-		 * We normally don't lock the deadfile field when we read it as
-		 * we only care if the field is zero or non-zero.  We do lock
-		 * on read when searching for a matching MPOOLFILE so that two
-		 * threads of control don't race between setting the deadfile
-		 * bit and incrementing the reference count, that is, a thread
-		 * of control decrementing the reference count and then setting
-		 * deadfile because the reference count is 0 blocks us finding
-		 * the file without knowing it's about to be marked dead.
-		 */
-		MUTEX_LOCK(dbenv, &mfp->mutex);
-		if (mfp->deadfile) {
-			MUTEX_UNLOCK(dbenv, &mfp->mutex);
-			continue;
-		}
-		++mfp->mpf_cnt;
-		refinc = 1;
-		MUTEX_UNLOCK(dbenv, &mfp->mutex);
-
-		if (dbmfp->ftype != 0)
-			mfp->ftype = dbmfp->ftype;
-
-		break;
 	}
 	R_UNLOCK(dbenv, dbmp->reginfo);
 
@@ -979,9 +984,8 @@ alloc:	/* Allocate and initialize a new MPOOLFILE. */
 		memcpy(p, path, strlen(path) + 1);
 
 		/* Copy the file identification string into shared memory. */
-		if ((ret = __memp_alloc(dbmp, dbmp->reginfo,
-		    NULL, DB_FILE_ID_LEN, &mfp->fileid_off, &p)) != 0)
-			goto err;
+        p = mfp->fileid;
+        mfp->fileid_off = (R_OFFSET(dbmp->reginfo, mfp->fileid));
 		memcpy(p, dbmfp->fileid, DB_FILE_ID_LEN);
 	}
 
@@ -1003,8 +1007,17 @@ alloc:	/* Allocate and initialize a new MPOOLFILE. */
 	R_LOCK(dbenv, dbmp->reginfo);
 	ret = __db_mutex_setup(dbenv, dbmp->reginfo, &mfp->mutex,
 	    MUTEX_NO_RLOCK);
-	if (ret == 0)
+	if (ret == 0) {
 		SH_TAILQ_INSERT_HEAD(&mp->mpfq, mfp, q, __mpoolfile);
+		fileid_mpf = hash_find(mp->mpfhash, dbmfp->fileid);
+		if (fileid_mpf == NULL) {
+			fileid_mpf = calloc(1, sizeof(*fileid_mpf));
+			memcpy(fileid_mpf->fileid, dbmfp->fileid, DB_FILE_ID_LEN);
+			listc_init(&fileid_mpf->mpflist, offsetof(struct __mpoolfile, lnk));
+			hash_add(mp->mpfhash, fileid_mpf);
+		}
+		listc_abl(&fileid_mpf->mpflist, mfp);
+	}
 	R_UNLOCK(dbenv, dbmp->reginfo);
 	if (ret != 0)
 		goto err;
@@ -1090,37 +1103,6 @@ check_map:
 	 * Add the file to the process' list of DB_MPOOLFILEs.
 	 */
 	MUTEX_THREAD_LOCK(dbenv, dbmp->mutexp);
-
-	for (tmp_dbmfp = TAILQ_FIRST(&dbmp->dbmfq);
-	    tmp_dbmfp != NULL; tmp_dbmfp = TAILQ_NEXT(tmp_dbmfp, q))
-		if (dbmfp->mfp == tmp_dbmfp->mfp &&
-		    (F_ISSET(dbmfp, MP_READONLY) ||
-		    !F_ISSET(tmp_dbmfp, MP_READONLY))) {
-			if (dbmfp->fhp->mutexp != NULL)
-				__db_mutex_free(
-				    dbenv, dbmp->reginfo, dbmfp->fhp->mutexp);
-			(void)__os_closehandle(dbenv, dbmfp->fhp);
-
-			++tmp_dbmfp->fhp->ref;
-			dbmfp->fhp = tmp_dbmfp->fhp;
-
-			if (dbmfp->recp != NULL) {
-				if (dbmfp->recp->mutexp != NULL)
-					__db_mutex_free(dbenv, dbmp->reginfo,
-					    dbmfp->recp->mutexp);
-				__os_closehandle(dbenv, dbmfp->recp);
-				dbmfp->recp = tmp_dbmfp->recp;
-
-				for (i = 0; i <= dbenv->mp_recovery_pages; i++)
-					Pthread_mutex_destroy(&dbmfp->
-					    recp_lk_array[i]);
-
-				__os_free(dbenv, dbmfp->recp_lk_array);
-				dbmfp->recp_lk_array = tmp_dbmfp->recp_lk_array;
-			}
-			break;
-		}
-
 	TAILQ_INSERT_TAIL(&dbmp->dbmfq, dbmfp, q);
 	LIST_INSERT_HEAD(&mfp->dbmpf_list, dbmfp, mpfq);
 
@@ -1408,7 +1390,9 @@ __memp_mf_discard(dbmp, mfp)
 	MPOOLFILE *mfp;
 {
 	DB_ENV *dbenv;
+	MPOOLFILE *fnd, *tmp;
 	DB_MPOOL_STAT *sp;
+	struct __fileid_mpf *fileid_mpf;
 	MPOOL *mp;
 	int ret;
 
@@ -1440,6 +1424,18 @@ __memp_mf_discard(dbmp, mfp)
 	/* Delete from the list of MPOOLFILEs. */
 	R_LOCK(dbenv, dbmp->reginfo);
 	SH_TAILQ_REMOVE(&mp->mpfq, mfp, q, __mpoolfile);
+	if ((fileid_mpf = hash_find(mp->mpfhash, mfp->fileid)) != NULL) {
+		LISTC_FOR_EACH_SAFE(&fileid_mpf->mpflist, fnd, tmp, lnk) {
+			if (fnd == mfp) {
+				listc_rfl(&fileid_mpf->mpflist, fnd);
+				break;
+			}
+		}
+		if (listc_size(&fileid_mpf->mpflist) == 0) {
+			hash_del(mp->mpfhash, fileid_mpf);
+			free(fileid_mpf);
+		}
+	}
 
 	/* Copy the statistics into the region. */
 	sp = &mp->stat;
@@ -1464,9 +1460,6 @@ __memp_mf_discard(dbmp, mfp)
 	if (mfp->path_off != 0)
 		__db_shalloc_free(dbmp->reginfo[0].addr,
 		    R_ADDR(dbmp->reginfo, mfp->path_off));
-	if (mfp->fileid_off != 0)
-		__db_shalloc_free(dbmp->reginfo[0].addr,
-		    R_ADDR(dbmp->reginfo, mfp->fileid_off));
 	if (mfp->pgcookie_off != 0)
 		__db_shalloc_free(dbmp->reginfo[0].addr,
 		    R_ADDR(dbmp->reginfo, mfp->pgcookie_off));

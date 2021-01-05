@@ -92,6 +92,11 @@ struct __db_mpool {
 #define	NBUCKET(mc, mf_offset, pgno)					\
 	(((pgno) ^ (((intptr_t)mf_offset) << 9)) % (mc)->htab_buckets)
 
+struct __fileid_mpf {
+	u_int8_t fileid[DB_FILE_ID_LEN];
+	LISTC_T(struct __mpoolfile) mpflist;
+};
+
 /*
  * MPOOL --
  *	Shared memory pool region.
@@ -115,6 +120,8 @@ struct __mpool {
 	DB_LSN	  lsn;			/* Maximum checkpoint LSN. */
 
 	SH_TAILQ_HEAD(__mpfq, __mpoolfile) mpfq;	/* List of MPOOLFILEs. */
+	hash_t *mpfhash;
+
 
 	/*
 	 * The nreg, regids and maint_off fields are not thread protected,
@@ -206,6 +213,7 @@ struct __mpoolfile {
 
 	/* Protected by mpool cache 0 region lock. */
 	SH_TAILQ_ENTRY(__mpoolfile) q;	/* List of MPOOLFILEs */
+	LINKC_T(struct __mpoolfile) lnk;
 	db_pgno_t last_pgno;		/* Last page in the file. */
 	db_pgno_t orig_last_pgno;	/* Original last page in the file. */
 	db_pgno_t alloc_pgno;           /* Last page alloced on disk. */
@@ -261,6 +269,7 @@ struct __mpoolfile {
 
 	db_pgno_t prealloc_max;         /* Max pages to prealloc on disk */
 
+	u_int8_t fileid[DB_FILE_ID_LEN];
 	roff_t	  fileid_off;		/* File ID string location. */
 
 	roff_t	  pgcookie_len;		/* Pgin/pgout cookie length. */

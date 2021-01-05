@@ -248,7 +248,7 @@ __mpool_init(dbenv, dbmp, reginfo_off, htab_buckets)
 
 	if (reginfo_off == 0) {
 		SH_TAILQ_INIT(&mp->mpfq);
-
+		mp->mpfhash = hash_init(DB_FILE_ID_LEN);
 		ZERO_LSN(mp->lsn);
 		ZERO_LSN(mp->trickle_lsn);
 
