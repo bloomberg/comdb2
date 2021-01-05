@@ -1202,9 +1202,10 @@ REGISTER_TUNABLE("use_planned_schema_change",
                  "changing table. (Default: 1)",
                  TUNABLE_INTEGER, &gbl_default_plannedsc, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("watchthreshold", NULL, TUNABLE_INTEGER,
-                 &gbl_watchdog_watch_threshold, READONLY, NULL, NULL, NULL,
-                 NULL);
+REGISTER_TUNABLE("watchthreshold",
+                 "Panic if node has been unhealty (unresponsive, out of resources, etc.) for more "
+                 "than this many seconds. The default value is 60.",
+                 TUNABLE_INTEGER, &gbl_watchdog_watch_threshold, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_nlogs",
                  "When rolling trace files, keep this many. The older files "
                  "will have incrementing number suffixes (.1, .2, etc.). "
