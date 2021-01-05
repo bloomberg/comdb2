@@ -452,7 +452,8 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	DB *lldbp;
 	DB_ENV *dbenv;
 	DB_MPOOL *dbmp;
-	u_int32_t maxid;
+	struct fileid_adj_fileid *fidadj;
+
 	int bef, aft;
 	int ret;
 	int i;
@@ -533,9 +534,10 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 		dbp->peer = dbp;
 	}
 
-	for (lldbp = LIST_FIRST(&dbenv->dblist);
-		lldbp != NULL; lldbp = LIST_NEXT(lldbp, dblistlinks)) {
-		if (memcmp(lldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0) {
+	ldbp = NULL;
+	if ((fidadj = hash_find(dbenv->fidhash, dbp->fileid)) != NULL) {
+		LISTC_FOR_EACH(&dbenv->dbs[fidadj->adj_fileid], lldbp, adjlnk)
+		{
 			if (F_ISSET(dbp, DB_AM_HASH)) {
 				lldbp->peer = dbp;
 				dbp->revpeer_count++;
@@ -550,21 +552,11 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 							lldbp->peer->revpeer_count * sizeof(DB *));
 					lldbp->peer->revpeer[lldbp->peer->revpeer_count-1] = dbp;
 				}
-				break;
+			}
+			if (fname != NULL && lldbp->meta_pgno == dbp->meta_pgno) {
+				ldbp = lldbp;
 			}
 		}
-	}
-
-	int count=0;
-	for (maxid = 0, ldbp = LIST_FIRST(&dbenv->dblist);
-		ldbp != NULL; ldbp = LIST_NEXT(ldbp, dblistlinks)) {
-		if (fname != NULL &&
-			memcmp(ldbp->fileid, dbp->fileid, DB_FILE_ID_LEN) == 0 &&
-			ldbp->meta_pgno == dbp->meta_pgno)
-			break;
-		if (ldbp->adj_fileid > maxid)
-			maxid = ldbp->adj_fileid;
-		count++;
 	}
 
 	/*
@@ -578,16 +570,14 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 	 * together in the list.
 	 */
 	if (ldbp == NULL) {
-		dbp->adj_fileid = maxid + 1;
-		if (dbp->adj_fileid >= dbenv->maxdb) {
-			dbenv->dbs =
-				realloc(dbenv->dbs,
-				sizeof(listc_t) * (dbp->adj_fileid + 1));
-			for (i = dbenv->maxdb + 1 ; i <= dbp->adj_fileid; i++) {
-				listc_init(&dbenv->dbs[i], offsetof(DB, adjlnk));
-			}
-			dbenv->maxdb = dbp->adj_fileid;
+		dbp->adj_fileid = dbenv->maxdb + 1;
+		dbenv->dbs =
+			realloc(dbenv->dbs,
+					sizeof(listc_t) * (dbp->adj_fileid + 1));
+		for (i = dbenv->maxdb + 1 ; i <= dbp->adj_fileid; i++) {
+			listc_init(&dbenv->dbs[i], offsetof(DB, adjlnk));
 		}
+		dbenv->maxdb = dbp->adj_fileid;
 		listc_init(&dbenv->dbs[dbp->adj_fileid], offsetof(DB, adjlnk));
 
 		bef = get_dblist_count(dbenv, dbp, "before-insert-head", __func__, __LINE__);
@@ -595,6 +585,10 @@ __db_dbenv_setup(dbp, txn, fname, id, flags)
 		aft = get_dblist_count(dbenv, dbp, "after-insert-head", __func__, __LINE__);
 		if (gbl_instrument_dblist && aft != (bef+1))
 			abort();
+		fidadj = calloc(1, sizeof(*fidadj));
+		memcpy(fidadj->fileid, dbp->fileid, DB_FILE_ID_LEN);
+		fidadj->adj_fileid = dbp->adj_fileid;
+		hash_add(dbenv->fidhash, fidadj);
 	} else {
 		dbp->adj_fileid = ldbp->adj_fileid;
 		bef = get_dblist_count(dbenv, dbp, "before-insert", __func__, __LINE__);
