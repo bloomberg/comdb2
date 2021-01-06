@@ -190,6 +190,7 @@ __log_init(dbenv, dblp)
 	memset(region, 0, sizeof(*region));
 
 	region->fid_max = 0;
+	region->idhash = hash_init(sizeof(int32_t));
 	SH_TAILQ_INIT(&region->fq);
 	region->free_fid_stack = INVALID_ROFF;
 	region->free_fids = region->free_fids_alloced = 0;

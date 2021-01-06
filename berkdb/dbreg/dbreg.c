@@ -230,8 +230,13 @@ __dbreg_new_id(dbp, txn)
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 		return (0);
 	}
-	if ((ret = __dbreg_get_id(dbp, txn, &id)) == 0)
+	if ((ret = __dbreg_get_id(dbp, txn, &id)) == 0) {
+		struct __id_to_fname *id_to_fname = (struct __id_to_fname *)calloc(1, sizeof(*id_to_fname));
+		id_to_fname->id = id;
+		id_to_fname->fname = fnp;
+		hash_add(lp->idhash, id_to_fname);
 		fnp->id = id;
+	}
 	MUTEX_UNLOCK(dbenv, &lp->fq_mutex);
 	return (ret);
 }
@@ -286,6 +291,14 @@ __dbreg_get_id(dbp, txn, idp)
 
 	/* Hook the FNAME into the list of open files. */
 	SH_TAILQ_INSERT_HEAD(&lp->fq, fnp, q, __fname);
+	struct __id_to_fname *id_to_fname;
+	if ((id_to_fname = hash_find(lp->idhash, &id)) == NULL) {
+		id_to_fname = (struct __id_to_fname *)calloc(1, sizeof(*id_to_fname));
+		id_to_fname->id = id;
+		hash_add(lp->idhash, id_to_fname);
+	}
+	
+	id_to_fname->fname = fnp;
 
 	/*
 	 * Log the registry.  We should only request a new ID in situations
@@ -417,6 +430,14 @@ cont:	if ((ret = __dbreg_pluck_id(dbenv, id)) != 0)
 	fnp->is_durable = !F_ISSET(dbp, DB_AM_NOT_DURABLE);
 	SH_TAILQ_INSERT_HEAD(&lp->fq, fnp, q, __fname);
 
+	struct __id_to_fname *id_to_fname;
+	if ((id_to_fname = hash_find(lp->idhash, &id)) == NULL) {
+		id_to_fname = (struct __id_to_fname *)calloc(1, sizeof(*id_to_fname));
+		id_to_fname->id = id;
+		hash_add(lp->idhash, id_to_fname);
+	}
+	id_to_fname->fname = fnp;
+
 	if ((ret = __dbreg_add_dbentry(dbenv, dblp, dbp, id)) != 0)
 		goto err;
 
@@ -476,6 +497,11 @@ __dbreg_revoke_id(dbp, have_lock, force_id)
 
 	/* Remove the FNAME from the list of open files. */
 	SH_TAILQ_REMOVE(&lp->fq, fnp, q, __fname);
+	struct __id_to_fname *id_to_fname;
+	if ((id_to_fname = hash_find(lp->idhash, &id)) != NULL) {
+		hash_del(lp->idhash, id_to_fname);
+		free(id_to_fname);
+	}
 
 	/* Remove this id from the dbentry table. */
 	__dbreg_rem_dbentry(dblp, id);
