@@ -651,13 +651,10 @@ __dbreg_id_to_fname(dblp, lid, have_lock, fnamep)
 
 	if (!have_lock)
 		MUTEX_LOCK(dbenv, &lp->fq_mutex);
-	for (fnp = SH_TAILQ_FIRST(&lp->fq, __fname);
-	    fnp != NULL; fnp = SH_TAILQ_NEXT(fnp, q, __fname)) {
-		if (fnp->id == lid) {
-			*fnamep = fnp;
-			ret = 0;
-			break;
-		}
+	struct __id_to_fname *id_to_fname;
+	if ((id_to_fname = hash_find(lp->idhash, &lid)) != NULL && id_to_fname->fname->id == lid) {
+		*fnamep = id_to_fname->fname;
+		ret = 0;
 	}
 	if (!have_lock)
 		MUTEX_UNLOCK(dbenv, &lp->fq_mutex);

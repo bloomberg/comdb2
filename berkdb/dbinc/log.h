@@ -144,6 +144,12 @@ struct __log_persist {
 	u_int32_t mode;			/* Log file mode. */
 };
 
+
+struct __id_to_fname {
+	int32_t id;
+	struct __fname *fname;
+};
+
 /*
  * LOG --
  *	Shared log region.  One of these is allocated in shared memory,
@@ -160,6 +166,7 @@ struct __log {
 
 	LOGP	 persist;		/* Persistent information. */
 
+	hash_t *idhash;
 	SH_TAILQ_HEAD(__fq1, __fname) fq;	/* List of file names. */
 	int32_t	fid_max;		/* Max fid allocated. */
 	roff_t	free_fid_stack;		/* Stack of free file ids. */
