@@ -26,11 +26,11 @@ select sleep(5);
 #select 'time partitions' as rows;
 #select * from comdb2_timepartitions;
 select 'time partition shards' as rows;
-select * from comdb2_timepartshards;
+select count(*) from comdb2_timepartshards;
 select 'time partition shard permissions' as rows;
 select * from comdb2_timepartpermissions;
 select 'table permissions' as rows;
-select * from comdb2_tablepermissions where username = 'foo' and tablename like '$%';
+select username, READ, WRITE, DDL from comdb2_tablepermissions where username = 'foo' and tablename like '$%';
 
 insert into t2_tp values(1);
 
@@ -47,7 +47,7 @@ set user 'root'
 set password 'root'
 revoke ddl on 't2_tp' to 'foo';
 select 'table permissions' as rows;
-select * from comdb2_tablepermissions where username = 'foo' and tablename like '$%';
+select username, READ, WRITE, DDL from comdb2_tablepermissions where username = 'foo' and tablename like '$%';
 
 -- login as non-OP user
 set user foo
