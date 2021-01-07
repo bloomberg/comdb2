@@ -42,12 +42,16 @@ struct sess_impl {
     bool dispatched : 1; /* Set when session is dispatched to handle_buf */
     bool terminate : 1;  /* Set when this session is about to be terminated */
     bool socket : 1;     /* Set if request comes over socket instead of net */
+    bool embedded_sql : 1; /* Set if sql is part of session malloc object */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
 };
 
 static void _destroy_session(osql_sess_t **psess);
 static int handle_buf_sorese(osql_sess_t *psess);
+static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
+                                      unsigned long long rqid, uuid_t uuid,
+                                      const char *host, bool is_reorder_on);
 
 /**
  * Creates an sock osql session
@@ -60,13 +64,6 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               const char *host, bool is_reorder_on)
 {
     osql_sess_t *sess = NULL;
-    sess_impl_t *impl;
-
-#ifdef TEST_QSQL_REQ
-    uuidstr_t us;
-    logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
-           comdb2uuidstr(uuid, us));
-#endif
 
     /* alloc object */
     sess = (osql_sess_t *)calloc(
@@ -76,41 +73,38 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                sizeof(*sess));
         return NULL;
     }
-    sess->impl = impl = (sess_impl_t *)(sess + 1);
+    sess->impl = (sess_impl_t *)(sess + 1);
     sess->sql = (char *)(sess->impl + 1);
-#if DEBUG_REORDER
-    uuidstr_t us;
-    comdb2uuidstr(uuid, us);
-    logmsg(LOGMSG_DEBUG, "%s:processing sql=%s sess=%p, uuid=%s\n", __func__,
-           sql, sess, us);
-#endif
-
-    /* init sync fields */
-    Pthread_mutex_init(&sess->impl->mtx, NULL);
-
-    sess->rqid = rqid;
-    comdb2uuidcpy(sess->uuid, uuid);
-    sess->type = type;
-    sess->target.host = intern(host);
-    sess->sess_startus = comdb2_time_epochus();
-    sess->is_reorder_on = is_reorder_on;
     strncpy0((char *)sess->sql, sql, sqlen + 1);
-    if (tzname)
-        strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
+    sess->impl->embedded_sql = true;
 
-    sess->impl->clients = 1;
-    /* defaults to net */
-    init_bplog_net(&sess->target);
+    return _osql_sess_create(sess, tzname, type, rqid, uuid, host,
+                             is_reorder_on);
+}
 
-    /* create bplog so we can collect ops from sql thread */
-    sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID,
-                                   sess->is_reorder_on);
-    if (!sess->tran) {
-        logmsg(LOGMSG_ERROR, "%s Unable to create new bplog\n", __func__);
-        _destroy_session(&sess);
+/**
+ * Same as osql_sess_create, but sql is already allocated
+ *
+ */
+osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
+                                     unsigned long long rqid, uuid_t uuid,
+                                     const char *host, bool is_reorder_on)
+{
+    osql_sess_t *sess = NULL;
+
+    /* alloc object */
+    sess = (osql_sess_t *)calloc(sizeof(osql_sess_t) + sizeof(sess_impl_t), 1);
+    if (!sess) {
+        logmsg(LOGMSG_ERROR, "%s:unable to allocate %zu bytes\n", __func__,
+               sizeof(*sess));
+        return NULL;
     }
+    sess->impl = (sess_impl_t *)(sess + 1);
+    sess->sql = sql;
+    sess->impl->embedded_sql = false;
 
-    return sess;
+    return _osql_sess_create(sess, tzname, type, rqid, uuid, host,
+                             is_reorder_on);
 }
 
 /**
@@ -159,6 +153,8 @@ static void _destroy_session(osql_sess_t **psess)
         free(sess->snap_info);
 
     Pthread_mutex_destroy(&sess->impl->mtx);
+    if (!sess->impl->embedded_sql)
+        free((char *)sess->sql);
     free(sess);
 
     *psess = NULL;
@@ -485,4 +481,48 @@ static int handle_buf_sorese(osql_sess_t *psess)
         osql_sess_close(&psess, true);
     }
     return rc;
+}
+
+static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
+                                      unsigned long long rqid, uuid_t uuid,
+                                      const char *host, bool is_reorder_on)
+{
+#ifdef TEST_QSQL_REQ
+    uuidstr_t us;
+    logmsg(LOGMSG_INFO, "%s: Opening request %llu %s\n", __func__, rqid,
+           comdb2uuidstr(uuid, us));
+#endif
+
+#if DEBUG_REORDER
+    uuidstr_t us;
+    comdb2uuidstr(uuid, us);
+    logmsg(LOGMSG_DEBUG, "%s:processing sql=%s sess=%p, uuid=%s\n", __func__,
+           sql, sess, us);
+#endif
+
+    /* init sync fields */
+    Pthread_mutex_init(&sess->impl->mtx, NULL);
+
+    sess->rqid = rqid;
+    comdb2uuidcpy(sess->uuid, uuid);
+    sess->type = type;
+    sess->target.host = intern(host);
+    sess->sess_startus = comdb2_time_epochus();
+    sess->is_reorder_on = is_reorder_on;
+    if (tzname)
+        strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
+
+    sess->impl->clients = 1;
+    /* defaults to net */
+    init_bplog_net(&sess->target);
+
+    /* create bplog so we can collect ops from sql thread */
+    sess->tran = osql_bplog_create(sess->rqid == OSQL_RQID_USE_UUID,
+                                   sess->is_reorder_on);
+    if (!sess->tran) {
+        logmsg(LOGMSG_ERROR, "%s Unable to create new bplog\n", __func__);
+        _destroy_session(&sess);
+    }
+
+    return sess;
 }
