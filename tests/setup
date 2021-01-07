@@ -94,7 +94,7 @@ setup_db() {
     if [[ -z "$SKIPDEBUG" ]] ; then
         echo "logmsg level debug" >> ${LRL}
     fi
-    if [[ -z "$RTEONLY" ]] ; then
+    if [[ -n "$RTEONLY" ]] ; then
         echo "libevent_rte_only on" >> ${LRL}
     fi
     echo "eventlog_nkeep 0" >> ${LRL}
