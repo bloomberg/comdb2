@@ -624,7 +624,16 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     int rc;
 
     tok = segtok(line, len, &st, &ltok);
-    if (ltok == 0 || tok[0] == '#') return 0;
+
+    /* Skip processing this line, if it is:
+      - empty, or
+      - commented out (#), or
+      - an "if <tier> <lrl>" line and we're in a different tier
+    */
+
+    if (ltok == 0 || tok[0] == '#' || (!lrl_if(&tok, line, len, &st, &ltok))) {
+        return 0;
+    }
 
     if (tokcmp(tok, ltok, "on") == 0) {
         change_switch(1, line, len, st);
@@ -651,9 +660,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             logmsg(LOGMSG_ERROR, "%s:%d: bad attribute name %s\n",
                    options->lrlname, options->lineno, name);
         }
-    } else if (!lrl_if(&tok, line, len, &st, &ltok)) {
-        /* If this is an "if" statement that evaluates to false, skip */
-        return 1;
     } else if (tokcmp(tok, ltok, "sqlsortermaxmmapsize") == 0) {
         tok = segtok(line, len, &st, &ltok);
         long long maxmmapsz = toknumll(tok, ltok);
