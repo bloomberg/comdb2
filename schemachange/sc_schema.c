@@ -771,7 +771,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
 
     if (rc != SC_TAG_CHANGE && (s->flg & SC_CHK_PGSZ)) {
         int sz1 = getpgsize(olddb->handle);
-        int sz2 = calc_pagesize(newdb->lrl);
+        int sz2 = calc_pagesize(4096, newdb->lrl);
         if (sz1 != sz2) {
             rc = SC_TAG_CHANGE;
             info = ">    Rebuilding dta to optimal pagesize %d -> %d\n";

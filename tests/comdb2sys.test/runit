@@ -104,6 +104,39 @@ if [[ -f partidx.csc2 ]] ; then
     fi
 fi
 
+if [[ $DBNAME == *"pagesizegenerated"* ]] ; then
+    # change expected file with smaller sizes
+    # diff was generated with diff -Naur old new
+    patch comdb2sys.expected <<EOF
+@@ -71,15 +71,15 @@
+ (name='$CONSTRAINT_E4C60238', type='FOREIGN KEY', tablename='t3', keyname='UID1', foreigntablename='t1', foreignkeyname='UID', iscascadingdelete='Y', iscascadingupdate='N', expr=NULL)
+ (name='$CONSTRAINT_E4C60238', type='FOREIGN KEY', tablename='t4', keyname='UID1', foreigntablename='t1', foreignkeyname='UID', iscascadingdelete='N', iscascadingupdate='Y', expr=NULL)
+ [select * from comdb2_constraints order by tablename] rc 0
+-(tablename='alltypes', bytes=2162688)
+-(tablename='dummy', bytes=65536)
+-(tablename='partidx', bytes=81920)
+-(tablename='sqlite_stat1', bytes=532480)
+-(tablename='sqlite_stat4', bytes=139264)
+-(tablename='t1', bytes=90112)
+-(tablename='t2', bytes=73728)
+-(tablename='t3', bytes=73728)
+-(tablename='t4', bytes=73728)
++(tablename='alltypes', bytes=24576)
++(tablename='dummy', bytes=8192)
++(tablename='partidx', bytes=10240)
++(tablename='sqlite_stat1', bytes=525312)
++(tablename='sqlite_stat4', bytes=132096)
++(tablename='t1', bytes=11264)
++(tablename='t2', bytes=9216)
++(tablename='t3', bytes=9216)
++(tablename='t4', bytes=9216)
+ [select * from comdb2_tablesizes order by tablename] rc 0
+ (KEYWORDS_COUNT=215)
+ [SELECT COUNT(*) AS KEYWORDS_COUNT FROM comdb2_keywords] rc 0
+EOF
+
+fi
+
 # Iterate through input files
 ${TESTSROOTDIR}/tools/compare_results.sh -d $a_dbn -r req
 [ $? -eq 0 ] || exit 1

@@ -1958,7 +1958,7 @@ int bdb_berkdb_blobmem_yield(bdb_state_type *bdb_state);
 void bdb_dump_threads_and_maybe_abort(bdb_state_type *bdb_state, int watchdog,
                                       int fatal);
 
-int calc_pagesize(int recsize);
+int calc_pagesize(int initsize, int recsize);
 
 int getpgsize(void *handle_);
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state);

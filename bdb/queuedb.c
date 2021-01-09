@@ -318,7 +318,7 @@ void bdb_queuedb_init_priv(bdb_state_type *bdb_state)
 /* btree, so rely on our usual page size suggester */
 int bdb_queuedb_best_pagesize(int avg_item_sz)
 {
-    return calc_pagesize(avg_item_sz);
+    return calc_pagesize(4096, avg_item_sz);
 }
 
 /* add to queue */
