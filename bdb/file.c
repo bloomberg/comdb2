@@ -4163,12 +4163,11 @@ int rep_caught_up(bdb_state_type *bdb_state)
     return 1;
 }
 
-int calc_pagesize(int recsize)
+// calculate reasonable pagesize depending on initial value in initsize,
+// and record size
+int calc_pagesize(int initsize, int recsize)
 {
-    int pagesize;
-
-    pagesize = 4096;
-
+    int pagesize = initsize;
     if (recsize > 16000)
         pagesize = 65536;
 
@@ -4186,7 +4185,7 @@ int calc_pagesize(int recsize)
        recsize, pagesize);
     */
 
-    return pagesize;
+    return (initsize >= pagesize) ? initsize : pagesize;
 }
 
 static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
@@ -4307,9 +4306,9 @@ deadlock_again:
                 */
 
                 if (dtanum == 0)
-                    pagesize = calc_pagesize(bdb_state->lrl);
+                    pagesize = calc_pagesize(bdb_state->attr->pagesizedta, bdb_state->lrl);
                 else
-                    pagesize = 65536;
+                    pagesize = bdb_state->attr->pagesizeblob;
 
                 /* get page sizes from the llmeta table if there */
                 if (bdb_have_llmeta()) {
@@ -4396,7 +4395,7 @@ deadlock_again:
 
             /* Don't print this trace during schemachange */
             if (!get_schema_change_in_progress(__func__, __LINE__)) {
-                int calc_pgsz = calc_pagesize(bdb_state->lrl);
+                int calc_pgsz = calc_pagesize(bdb_state->attr->pagesizedta, bdb_state->lrl);
                 if (calc_pgsz > x) {
                     logmsg(LOGMSG_WARN, "%s: Warning: Table %s has non-optimal page size. "
                            " Current: %u Optimal: %u\n",
@@ -4640,10 +4639,10 @@ deadlock_again:
                 /* for datacopy indexes, use a potentially larger pagesize */
                 if (bdb_state->ixdta[i])
                     pagesize =
-                        calc_pagesize(bdb_state->lrl + bdb_state->ixlen[i]);
+                        calc_pagesize(bdb_state->attr->pagesizeix, bdb_state->lrl + bdb_state->ixlen[i]);
                 /*else if (bdb_state->ixcollattr[i])  ignore this for now */
                 else
-                    pagesize = calc_pagesize(bdb_state->ixlen[i]);
+                    pagesize = calc_pagesize(bdb_state->attr->pagesizeix, bdb_state->ixlen[i]);
             }
 
             /* get page sizes from the llmeta table if there */
