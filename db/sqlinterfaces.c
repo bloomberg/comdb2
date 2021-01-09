@@ -4139,12 +4139,13 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
         if (rc) {
             int irc = errstat_get_rc(&err);
             /* certain errors are saved, in that case we don't send anything */
-            if (irc == ERR_PREPARE)
+            if (irc == ERR_PREPARE) {
                 write_response(clnt, RESPONSE_ERROR_PREPARE, err.errstr, 0);
-            else if (irc == ERR_PREPARE_RETRY)
+                handle_sqlite_error(thd, clnt, &rec, rc);
+            } else if (irc == ERR_PREPARE_RETRY) {
                 write_response(clnt, RESPONSE_ERROR_PREPARE_RETRY, err.errstr, 0);
-
-            handle_sqlite_error(thd, clnt, &rec, rc);
+                rc = 0;
+            }
             break;
         }
 
