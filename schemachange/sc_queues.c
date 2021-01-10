@@ -19,6 +19,7 @@
 #include "translistener.h"
 #include "sc_schema.h"
 #include "logmsg.h"
+#include "sc_callbacks.h"
 
 #define BDB_TRAN_MAYBE_ABORT_OR_FATAL(a,b,c) do {                             \
     (c) = 0;                                                                  \

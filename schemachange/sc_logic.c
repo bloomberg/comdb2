@@ -38,6 +38,7 @@
 #include "sc_view.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "sc_callbacks.h"
 #include <debug_switches.h>
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);

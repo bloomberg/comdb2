@@ -37,6 +37,8 @@ setup_debugger() {
             ;;
         perf)
             DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
+            # get report of performance via perf report -i $TESTDIR/$TESTCASE.perfdata
+            # or perf annotate -i $TESTDIR/$TESTCASE.perfdata
             ;;
         mutrace)   # mutex contention detection tool
             DEBUG_PREFIX="mutrace "

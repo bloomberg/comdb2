@@ -936,11 +936,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     db->handle = old_bdb_handle;
 
-#if 0
-    /* handle in osql_scdone_commit_callback and osql_scdone_abort_callback */
-    /* delete files we don't need now */
-    sc_del_unused_files_tran(db, transac);
-#endif
+    /* deletion of btree files we don't need is handled in
+     * osql_scdone_commit_callback and osql_scdone_abort_callback */
     memset(newdb, 0xff, sizeof(struct dbtable));
     free(newdb);
     free(new_bdb_handle);
