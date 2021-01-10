@@ -3351,9 +3351,6 @@ void sql_dump_hints(void);
 
 extern int gbl_disable_exit_on_thread_error;
 
-void sc_del_unused_files(dbtable *db);
-void sc_del_unused_files_tran(dbtable *db, tran_type *tran);
-
 extern int gbl_support_sock_lu;
 
 extern int gbl_berkdb_iomap;

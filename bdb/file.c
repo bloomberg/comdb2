@@ -7822,14 +7822,22 @@ static inline int bdb_is_new_sc_file(bdb_state_type *bdb_state, tran_type *tran,
     char newname[32] = {0}; // LLMETA_TBLLEN = 32
     snprintf(newname, 32, "%s%s", NEW_PREFIX, tblname);
 
-    rc = is_table_in_schema_change(tblname, tran);
-    if (rc == 0) // table not in_schema_change
-        return 0;
-    else if (rc < 0) {
-        logmsg(LOGMSG_ERROR, "%s:%d failed to check in_schema_change for %s\n",
-               __func__, __LINE__, tblname);
-        *bdberr = BDBERR_MISC;
-        return -1;
+    uint32_t lid = 0;
+    int islocked = 0;
+    if (tran) {
+        bdb_get_tran_lockerid(tran, &lid);
+        islocked = bdb_has_tablename_locked(bdb_state, tblname, lid, TABLENAME_LOCKED_EITHER);
+    }
+    if (!islocked) {
+        rc = is_table_in_schema_change(tblname, tran);
+        if (rc == 0) // table not in_schema_change
+            return 0;
+        else if (rc < 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to check in_schema_change for %s\n",
+                    __func__, __LINE__, tblname);
+            *bdberr = BDBERR_MISC;
+            return -1;
+        }
     }
 
     rc = bdb_process_each_table_dta_entry(bdb_state, tran, newname, version,
@@ -8036,6 +8044,12 @@ done:
     return 0;
 }
 
+
+static inline void init_version_num(unsigned long long *version_num, int sz) {
+    for(int i = 0; i < sz; i++)
+        version_num[i] = -1;
+}
+
 /* given an existing table pointed by bdb_state, check the disk for older
    versions of it
    (i.e. not matching current metadata versioning information), and queue those
@@ -8056,7 +8070,8 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     int rc = 0;
     char table_prefix[80];
     unsigned long long file_version;
-    unsigned long long version_num;
+    unsigned long long dta_version_num[bdb_state->numdtafiles];
+    unsigned long long idx_version_num[bdb_state->numix];
 
     struct dirent *buf;
     struct dirent *ent;
@@ -8124,6 +8139,10 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         return -1;
     }
 
+    // cache version number in these arrays
+    init_version_num(dta_version_num, bdb_state->numdtafiles);
+    init_version_num(idx_version_num, bdb_state->numix);
+
     /* for each file in the db's directory */
     while ((error = bb_readdir(dirp, buf, &ent)) == 0 && ent != NULL) {
         /* if the file's name is longer then the prefix and it belongs to our
@@ -8185,56 +8204,58 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             rc = 0;
         } else if (rc) {
             logmsg(LOGMSG_ERROR,
-                   "%s:%d failed to check llmeta for %s, rc %d, bdberr "
-                   "%d\n",
+                   "%s:%d failed to check llmeta for %s, rc %d, bdberr %d\n",
                    __func__, __LINE__, ent->d_name, rc, *bdberr);
             continue;
         }
 
         /* try to find the file version amongst the active data files */
         for (i = 0; i < bdb_state->numdtafiles; ++i) {
-            if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
-                rc = bdb_get_file_version_qdb(bdb_state, tran, i, &version_num,
-                                              bdberr);
-            } else {
-                rc = bdb_get_file_version_data(bdb_state, tran, i, &version_num,
-                                               bdberr);
-            }
-            if (rc == 0) {
-                if (version_num == file_version) {
-                    found_in_llmeta = 1;
-                    break;
+            if (dta_version_num[i] == -1) {
+                if (bdb_state->bdbtype == BDBTYPE_QUEUEDB) {
+                    rc = bdb_get_file_version_qdb(bdb_state, tran, i, &dta_version_num[i], bdberr);
+                } else {
+                    rc = bdb_get_file_version_data(bdb_state, tran, i, &dta_version_num[i], bdberr);
                 }
-            } else if (rc == 1) {
-                /* table doesnt exist in llmeta, not an error */
-                *bdberr = BDBERR_NOERROR;
-                rc = 0;
-            } else
+
+                if (rc == 1) {
+                    /* table doesnt exist in llmeta, not an error */
+                    *bdberr = BDBERR_NOERROR;
+                    rc = 0;
+                } else if (rc != 0)
+                    break;
+            }
+
+            if (dta_version_num[i] == file_version) {
+                found_in_llmeta = 1;
                 break;
+            }
         }
 
         /* try to find the file version amongst the active indices */
-        for (i = 0; !found_in_llmeta && i < bdb_state->numix; ++i) {
+        for (i = 0; !rc && !found_in_llmeta && i < bdb_state->numix; ++i) {
             if (bdb_state->bdbtype == BDBTYPE_QUEUEDB)
                 break;
-            rc = bdb_get_file_version_index(bdb_state, tran, i /*dtanum*/,
-                                            &version_num, bdberr);
-            if (rc == 0) {
-                if (version_num == file_version) {
-                    found_in_llmeta = 1;
+            if (idx_version_num[i] == -1) {
+                rc = bdb_get_file_version_index(bdb_state, tran, i /*dtanum*/,
+                                                &idx_version_num[i], bdberr);
+                if (rc == 1) {
+                    /* table doesnt exist in llmeta, not an error */
+                    *bdberr = BDBERR_NOERROR;
+                    rc = 0;
+                } else if (rc != 0)
                     break;
-                }
-            } else if (rc == 1) {
-                /* table doesnt exist in llmeta, not an error */
-                *bdberr = BDBERR_NOERROR;
-                rc = 0;
-            } else
+            }
+
+            if (idx_version_num[i] == file_version) {
+                found_in_llmeta = 1;
                 break;
+            }
         }
+
         if (rc) {
             logmsg(LOGMSG_ERROR,
-                   "%s:%d failed to check llmeta for %s, rc %d, bdberr "
-                   "%d\n",
+                   "%s:%d failed to check llmeta for %s, rc %d, bdberr %d\n",
                    __func__, __LINE__, ent->d_name, rc, *bdberr);
             continue;
         }

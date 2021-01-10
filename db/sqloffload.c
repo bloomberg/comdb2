@@ -54,6 +54,7 @@
 #include <logmsg.h>
 
 #include <autoanalyze.h>
+#include "sc_callbacks.h"
 
 #if 0
 #define TEST_QSQL_REQ
