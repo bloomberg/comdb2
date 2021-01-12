@@ -5,7 +5,7 @@ else
 endif
 
 ifeq ($(TEST_TIMEOUT),)
-	export TEST_TIMEOUT=15m
+	export TEST_TIMEOUT=120m
 endif
 
 export DUMPLOCK_ON_TIMEOUT=1

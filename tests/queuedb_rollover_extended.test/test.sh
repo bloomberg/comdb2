@@ -86,11 +86,8 @@ for testcase in $files ; do
     # get expected output
     expected_output=$(cat $testcase.out)
 
-    # get expected output
-    alt_expected_output=$(cat $testcase.out.alt)
-
     # verify
-    if [[ "$testcase_output" != "$expected_output" && "$testcase_output" != "$alt_expected_output" ]]; then
+    if [[ "$testcase_output" != "$expected_output" ]]; then
         echo "  ^^^^^^^^^^^^"
         echo "The above testcase (${testcase}) has failed!!!"
         echo "diff ${PWD}/$testcase.out $output"
