@@ -4145,6 +4145,8 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
             } else if (irc == ERR_PREPARE_RETRY) {
                 write_response(clnt, RESPONSE_ERROR_PREPARE_RETRY, err.errstr, 0);
                 rc = 0;
+            } else {
+                handle_sqlite_error(thd, clnt, &rec, rc);
             }
             break;
         }
