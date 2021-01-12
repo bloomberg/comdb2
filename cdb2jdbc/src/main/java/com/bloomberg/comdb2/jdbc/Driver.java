@@ -86,6 +86,8 @@ public class Driver implements java.sql.Driver {
 
     protected void populateOptions() throws SQLException {
         try {
+            options.put("allow_pmux_route", new BooleanOption("allow_pmux_route", "AllowPmuxRoute"));
+            options.put("autocommit", new BooleanOption("autocommit", "AutoCommit"));
             options.put("maxquerytime", new IntegerOption("maxquerytime", "QueryTimeout"));
             options.put("timeout", new IntegerOption("timeout", "Timeout"));
             options.put("sotimeout", new IntegerOption("sotimeout", "SoTimeout"));
@@ -114,7 +116,6 @@ public class Driver implements java.sql.Driver {
             options.put("trust_store_password", new StringOption("trust_store_password", "SSLCAPass"));
             options.put("trust_store_type", new StringOption("trust_store_type", "SSLCAType"));
             options.put("crl", new StringOption("crl", "SSLCRL"));
-            options.put("allow_pmux_route", new BooleanOption("allow_pmux_route", "AllowPmuxRoute"));
             options.put("statement_query_effects",
                     new BooleanOption("statement_query_effects", "StatementQueryEffects"));
             options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
