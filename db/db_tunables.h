@@ -2072,6 +2072,7 @@ REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durabl
 REGISTER_TUNABLE("alternate_normalize",
                  "Use alternate SQL normalization algorithm.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_alternate_normalize,
+                 EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("dump_threads_after_seconds", "Dump all threads and related "
                  "state after this number of elapsed seconds.  If this value "
