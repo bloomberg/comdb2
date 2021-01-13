@@ -86,14 +86,17 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     newdb->iq = iq;
 
+    newdb->skip_error_on_ulonglong_check = 1;
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout_schemas(newdb->tablename);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
         dyns_cleanup_globals();
+        newdb->skip_error_on_ulonglong_check = 0;
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
+    newdb->skip_error_on_ulonglong_check = 0;
     dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
