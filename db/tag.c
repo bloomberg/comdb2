@@ -5071,8 +5071,19 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 logmsg(LOGMSG_ERROR,
                        "Error in table %s: u_longlong is unsupported\n",
                        db->tablename);
-                reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
-                return -1;
+                /* Skip returning error on presence of u_longlong if:
+
+                   - we are still starting, or
+                   - we were explicitly asked to do so.
+
+                   This is done to allow existing databases with tables
+                   containing u_longlong to start and also certain operational
+                   commands, like rebuild and truncate, to succeed.
+                */
+                if (gbl_ready && (db->skip_error_on_ulonglong_check != 1)) {
+                    reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
+                    return -1;
+                }
             }
 
             /* count the blobs */
@@ -7012,11 +7023,14 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     }
     newdb->schema_version = version;
     newdb->dbnum = db->dbnum;
+    newdb->skip_error_on_ulonglong_check = 1;
     rc = add_cmacc_stmt(newdb, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
+        newdb->skip_error_on_ulonglong_check = 0;
         goto err;
     }
+    newdb->skip_error_on_ulonglong_check = 0;
 
     /* Initialize table's check constraint members. */
     rc = init_check_constraints(newdb);
@@ -7100,30 +7114,6 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
 }
 
 #include <bdb_int.h>
-
-int reload_all_db_tran(tran_type *tran)
-{
-    int table;
-    int rc;
-    for (rc = 0, table = 0; table < thedb->num_dbs && rc == 0; table++) {
-        dbtable *db = thedb->dbs[table];
-        backout_schemas(db->tablename);
-
-        if (load_new_ondisk(db, tran)) {
-            logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
-            return 1;
-        }
-        if (load_new_versions(db, tran)) {
-            logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
-            return 1;
-        }
-
-        db->tableversion = table_version_select(db, tran);
-        update_dbstore(db);
-    }
-
-    return 0;
-}
 
 int reload_db_tran(dbtable *db, tran_type *tran)
 {

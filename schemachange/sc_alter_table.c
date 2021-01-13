@@ -431,6 +431,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb->iq = iq;
 
+    newdb->skip_error_on_ulonglong_check = (s->same_schema) ? 1 : 0;
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout(newdb);
         cleanup_newdb(newdb);
@@ -439,8 +440,10 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Failed to process schema!\n");
         if (local_lock)
             unlock_schema_lk();
+        newdb->skip_error_on_ulonglong_check = 0;
         return -1;
     }
+    newdb->skip_error_on_ulonglong_check = 0;
 
     if ((rc = sql_syntax_check(iq, newdb))) {
         Pthread_mutex_unlock(&csc2_subsystem_mtx);

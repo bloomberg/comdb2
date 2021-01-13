@@ -1016,10 +1016,12 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
 
+    newdb->skip_error_on_ulonglong_check = 1;
     if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
         backout_schemas(newdb->tablename);
         abort();
     }
+    newdb->skip_error_on_ulonglong_check = 0;
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout_schemas(newdb->tablename);
