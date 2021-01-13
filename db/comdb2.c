@@ -5625,7 +5625,6 @@ int gbl_hostname_refresh_time = 60;
 
 int close_all_dbs_tran(tran_type *tran);
 
-int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();

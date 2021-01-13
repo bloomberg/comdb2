@@ -83,13 +83,16 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     newdb->iq = iq;
 
+    newdb->skip_error_on_ulonglong_check = 1;
     if (add_cmacc_stmt(newdb, 1) != 0) {
         backout_schemas(newdb->tablename);
         cleanup_newdb(newdb);
         sc_errf(s, "Failed to process schema!\n");
+        newdb->skip_error_on_ulonglong_check = 0;
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return -1;
     }
+    newdb->skip_error_on_ulonglong_check = 0;
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     /* create temporary tables.  to try to avoid strange issues always
