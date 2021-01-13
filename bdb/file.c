@@ -132,6 +132,11 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
 static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
                               int *bdberr);
 
+enum {
+    BDB_CLOSE_FLAGS_FLUSH = 1,
+};
+static int bdb_close_only_flags(bdb_state_type *, DB_TXN *, int *bdberr, int flags);
+
 int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
 
@@ -6768,8 +6773,7 @@ int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
     return found;
 }
 
-static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
-                              int *bdberr)
+static int bdb_close_only_flags(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr, int flags)
 {
     int i;
     bdb_state_type *parent;
@@ -6785,7 +6789,11 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
         return 0;
 
     /* close doesn't fail */
-    close_dbs(bdb_state);
+    if (flags & BDB_CLOSE_FLAGS_FLUSH) {
+       close_dbs_flush(bdb_state);
+    } else {
+       close_dbs(bdb_state);
+    }
 
     /* now remove myself from my parents list of children */
 
@@ -6802,6 +6810,11 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
     bdb_unlock_children_lock(parent);
 
     return 0;
+}
+
+static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+{
+    return bdb_close_only_flags(bdb_state, tid, bdberr, 0);
 }
 
 int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
@@ -6833,6 +6846,15 @@ int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 
     BDB_RELLOCK();
 
+    return rc;
+}
+
+int bdb_close_flush(bdb_state_type *bdb_state, int *bdberr)
+{
+    if (!bdb_state || bdb_state->envonly) return 0;
+    BDB_READLOCK(__func__);
+    int rc = bdb_close_only_flags(bdb_state, NULL, bdberr, BDB_CLOSE_FLAGS_FLUSH);
+    BDB_RELLOCK();
     return rc;
 }
 
