@@ -1107,9 +1107,9 @@ int bdb_flush_noforce(bdb_state_type *bdb_handle, int *bdberr);
 
 int bdb_purge_freelist(bdb_state_type *bdb_handle, int *bdberr);
 
-/* close the underlying files used byt the bdb_handle */
+/* close the underlying files used by the bdb_handle */
 int bdb_close_only(bdb_state_type *bdb_handle, int *bdberr);
-
+int bdb_close_flush(bdb_state_type *, int *bdberr);
 int bdb_close_only_sc(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
 
 /* you must call bdb_close_only before a rename.
