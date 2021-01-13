@@ -842,6 +842,11 @@ typedef struct dbtable {
 
     bool disableskipscan : 1;
     bool do_local_replication : 1;
+    /* A flag to temporarily disable check for the presence of u_longlong types
+       in the (csc2) schema even when forbid_ulonglong is enabled. This allows
+       certain maintenance operations on legacy tables, using forbid_ulonglong
+       type, to work properly. */
+    bool skip_error_on_ulonglong_check : 1;
 } dbtable;
 
 struct log_delete_state {
