@@ -7026,7 +7026,6 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         goto err;
     }
 
-    newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
     extern int gbl_rowlocks;
