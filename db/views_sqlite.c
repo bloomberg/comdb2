@@ -281,7 +281,8 @@ static int _views_run_sql(sqlite3 *db, const char *stmt_str,
         /* can't control sqlite errors */
         err->errstr[sizeof(err->errstr) - 1] = '\0';
 
-        logmsg(LOGMSG_ERROR, "%s: sqlite error \"%s\"\n", __func__, err->errstr);
+        logmsg(LOGMSG_ERROR, "%s: sqlite error \"%s\" sql \"%s\"\n", __func__,
+               errstr, stmt_str);
 
         if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_ABORT_ON_PREPERROR)) {
             abort();
