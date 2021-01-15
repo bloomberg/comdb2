@@ -3645,7 +3645,8 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
 
     if (clnt->is_readonly &&
         /* exclude writes in a temp table for a select */
-        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect)) {
+        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&
+        (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {
         errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
         rc = SQLITE_ACCESS;
         goto done;
@@ -8503,7 +8504,8 @@ int sqlite3BtreeInsert(
 
     if (clnt->is_readonly &&
         /* exclude writes in a temp table for a select */
-        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect)) {
+        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&
+        (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {
         errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
         rc = SQLITE_ACCESS;
         goto done;
