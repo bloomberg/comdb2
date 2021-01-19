@@ -25,6 +25,7 @@ static const char revid[] = "$Id: qam.c,v 11.159 2003/11/18 21:32:17 ubell Exp $
 #include "dbinc/log.h"
 #include "dbinc/mp.h"
 #include "dbinc/qam.h"
+#include <assert.h>
 
 static int __qam_bulk __P((DBC *, DBT *, u_int32_t));
 static int __qam_c_close __P((DBC *, db_pgno_t, int *));
@@ -43,10 +44,11 @@ static int __qam_getno __P((DB *, const DBT *, db_recno_t *));
  * PUBLIC:       __P((DBC *, db_recno_t *, qam_position_mode, int *));
  */
 int
-__qam_position(dbc, recnop, mode, exactp)
+__qam_position_int(dbc, recnop, mode, errnotfound, exactp)
 	DBC *dbc;		/* open cursor */
 	db_recno_t *recnop;	/* pointer to recno to find */
 	qam_position_mode mode;/* locking: read or write */
+	int errnotfound;    /* return page/file not-found error */
 	int *exactp;		/* indicate if it was found */
 {
 	QUEUE_CURSOR *cp;
@@ -70,8 +72,8 @@ __qam_position(dbc, recnop, mode, exactp)
 	    mode == QAM_WRITE ? DB_MPOOL_CREATE : 0, &cp->page)) != 0) {
 		/* We did not fetch it, we can release the lock. */
 		(void)__LPUT(dbc, cp->lock);
-		if (mode != QAM_WRITE &&
-		    (ret == DB_PAGE_NOTFOUND || ret == ENOENT))
+		if (errnotfound == 0 && mode != QAM_WRITE &&
+			(ret == DB_PAGE_NOTFOUND || ret == ENOENT))
 			return (0);
 		return (ret);
 	}
@@ -92,6 +94,17 @@ __qam_position(dbc, recnop, mode, exactp)
 
 	return (ret);
 }
+
+int 
+__qam_position(dbc, recnop, mode, exactp)
+	DBC *dbc;		/* open cursor */
+	db_recno_t *recnop;	/* pointer to recno to find */
+	qam_position_mode mode;/* locking: read or write */
+	int *exactp;		/* indicate if it was found */
+{
+	return __qam_position_int(dbc, recnop, mode, 0, exactp);
+}
+
 
 /*
  * __qam_pitem --
@@ -905,8 +918,24 @@ retry:	/* Update the record number. */
 			goto err;
 	}
 
+	int pflags = (mode == QAM_READ && flags == DB_NEXT);
+
 	/* Position the cursor on the record. */
-	if ((ret = __qam_position(dbc, &cp->recno, mode, &exact)) != 0) {
+	ret = __qam_position_int(dbc, &cp->recno, mode, pflags, &exact);
+
+	/* Move to last record if page doesn't exist */
+	if (pflags == 1 && (ret == ENOENT || ret == DB_PAGE_NOTFOUND)) {
+		db_pgno_t pg = QAM_RECNO_PAGE(dbc->dbp, cp->recno);
+		db_recno_t lastrec = (QAM_RECNO_PER_PAGE(dbc->dbp) * pg);
+
+		assert(QAM_RECNO_PAGE(dbc->dbp, lastrec) == pg);
+		assert(QAM_RECNO_PAGE(dbc->dbp, lastrec + 1) == (pg + 1));
+
+		cp->recno = lastrec;
+		ret = 0;
+	}
+
+	if (ret != 0) {
 		/* We cannot get the page, release the record lock. */
 		(void)__LPUT(dbc, lock);
 		goto err;
