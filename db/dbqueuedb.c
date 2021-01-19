@@ -164,11 +164,11 @@ int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats, uint32_
         bdb_set_tran_lockerid(trans, lockid);
 
         if (gbl_debug_systable_locks) {
-            bdb_assert_tablename_locked(bdb_state, "_comdb2_systables", lockid, ASSERT_TABLENAME_LOCKED_READ);
+            assert(bdb_has_tablename_locked(bdb_state, "_comdb2_systables", lockid, TABLENAME_LOCKED_READ));
         }
 
         if (gbl_assert_systable_locks) {
-            bdb_assert_tablename_locked(bdb_state, "comdb2_queues", lockid, ASSERT_TABLENAME_LOCKED_READ);
+            assert(bdb_has_tablename_locked(bdb_state, "comdb2_queues", lockid, TABLENAME_LOCKED_READ));
         }
     }
     if ((rc = bdb_lock_table_read(bdb_state, trans)) == 0) {

@@ -694,15 +694,15 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         case llmeta_queue_add:
         case llmeta_queue_alter:
         case llmeta_queue_drop:
-            bdb_assert_tablename_locked(bdb_state, "comdb2_queues", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            assert(bdb_has_tablename_locked(bdb_state, "comdb2_queues", gbl_rep_lockid, TABLENAME_LOCKED_WRITE));
             break;
         case user_view:
-            bdb_assert_tablename_locked(bdb_state, "comdb2_views", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            assert(bdb_has_tablename_locked(bdb_state, "comdb2_views", gbl_rep_lockid, TABLENAME_LOCKED_WRITE));
             break;
         case add: // includes fastinit
         case drop:
         case alter:
-            bdb_assert_tablename_locked(bdb_state, "comdb2_tables", gbl_rep_lockid, ASSERT_TABLENAME_LOCKED_WRITE);
+            assert(bdb_has_tablename_locked(bdb_state, "comdb2_tables", gbl_rep_lockid, TABLENAME_LOCKED_WRITE));
             break;
         default:
             break;
