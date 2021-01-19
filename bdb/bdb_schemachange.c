@@ -55,6 +55,7 @@
 
 extern int sc_ready(void);
 extern int gbl_debug_systable_locks;
+extern int32_t gbl_rep_lockid;
 
 /* bdb routines to support schema change */
 
@@ -179,9 +180,8 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
     scdone_t sctype = ntohl(type);
 
     if (gbl_debug_systable_locks) {
-        extern int32_t gbl_rep_lockid;
-        bdb_assert_tablename_locked(dbenv->app_private, "_comdb2_systables", gbl_rep_lockid,
-                                    ASSERT_TABLENAME_LOCKED_WRITE);
+        assert(bdb_has_tablename_locked(dbenv->app_private, "_comdb2_systables", gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
     }
 
     if (sctype == rename_table) {

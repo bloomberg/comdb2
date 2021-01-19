@@ -1833,12 +1833,12 @@ int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *tblname,
                              tran_type *tran);
 int bdb_lock_tablename_read(bdb_state_type *, const char *name, tran_type *);
 
-enum assert_lock_type {
-    ASSERT_TABLENAME_LOCKED_WRITE = 1,
-    ASSERT_TABLENAME_LOCKED_READ = 2,
-    ASSERT_TABLENAME_LOCKED_EITHER = 3
+enum query_lock_type {
+    TABLENAME_LOCKED_WRITE = 1,
+    TABLENAME_LOCKED_READ = 2,
+    TABLENAME_LOCKED_EITHER = 3
 };
-int bdb_assert_tablename_locked(bdb_state_type *, const char *name, uint32_t lid, enum assert_lock_type type);
+int bdb_has_tablename_locked(bdb_state_type *, const char *name, uint32_t lid, enum query_lock_type type);
 int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                        unsigned long long genid);
 int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,

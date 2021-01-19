@@ -740,21 +740,21 @@ int bdb_lock_tablename_write(bdb_state_type *bdb_state, const char *name,
     return rc;
 }
 
-int bdb_assert_tablename_locked(bdb_state_type *bdb_state, const char *tblname, uint32_t lockid,
-                                enum assert_lock_type type)
+/* return whether current lockid has given type of lock on tablename */
+int bdb_has_tablename_locked(bdb_state_type *bdb_state, const char *tblname,
+                             uint32_t lockid, enum query_lock_type type)
 {
     int have_write = 0, have_read = 0;
     char name[TABLELOCK_KEY_SIZE];
     DBT lk;
 
     form_tablelock_keyname(tblname, name, &lk);
-    if (type == ASSERT_TABLENAME_LOCKED_WRITE || type == ASSERT_TABLENAME_LOCKED_EITHER) {
+    if (type == TABLENAME_LOCKED_WRITE || type == TABLENAME_LOCKED_EITHER) {
         have_write = berkdb_check_held(bdb_state->dbenv, lockid, &lk, DB_LOCK_WRITE);
     }
-    if ((have_write == 0) && (type == ASSERT_TABLENAME_LOCKED_READ || type == ASSERT_TABLENAME_LOCKED_EITHER)) {
+    if ((have_write == 0) && (type == TABLENAME_LOCKED_READ || type == TABLENAME_LOCKED_EITHER)) {
         have_read = berkdb_check_held(bdb_state->dbenv, lockid, &lk, DB_LOCK_READ);
     }
-    assert(have_write | have_read);
     return have_write | have_read;
 }
 
