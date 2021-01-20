@@ -3622,7 +3622,18 @@ int sqlite3BtreeLast(BtCursor *pCur, int *pRes)
     return rc;
 }
 
-/*forward*/
+/* print error and goto done if client has readonly set
+ * but sql is writing to normal (non-tmp) btrees */
+#define CHECK_CLNT_READONLY_BUT_SQL_IS_WRITING(clnt, pCur)                                                \
+    do {                                                                                                  \
+        if (clnt->is_readonly &&                                                                          \
+            (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&                           \
+            (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {                                                   \
+            errstat_set_strf(&clnt->osql.xerr, "Cannot modify tables via a read-only client connection"); \
+            rc = SQLITE_ACCESS;                                                                           \
+            goto done;                                                                                    \
+        }                                                                                                 \
+    } while(0);
 
 /*
  ** Delete the entry that the cursor is pointing to.  The cursor
@@ -3643,14 +3654,7 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
         pCur->nwrite++;
     }
 
-    if (clnt->is_readonly &&
-        /* exclude writes in a temp table for a select */
-        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&
-        (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {
-        errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
-        rc = SQLITE_ACCESS;
-        goto done;
-    }
+    CHECK_CLNT_READONLY_BUT_SQL_IS_WRITING(clnt, pCur);
 
     /* if this is part of an analyze skip the delete - we'll do
      * the entire update part in one shot later when the analyze is done */
@@ -8502,14 +8506,7 @@ int sqlite3BtreeInsert(
 
     assert(0 == pCur->is_sampled_idx);
 
-    if (clnt->is_readonly &&
-        /* exclude writes in a temp table for a select */
-        (pCur->cursor_class != CURSORCLASS_TEMPTABLE || !clnt->isselect) &&
-        (pCur->rootpage != RTPAGE_SQLITE_MASTER)) {
-        errstat_set_strf(&clnt->osql.xerr, "SET READONLY ON for the client");
-        rc = SQLITE_ACCESS;
-        goto done;
-    }
+    CHECK_CLNT_READONLY_BUT_SQL_IS_WRITING(clnt, pCur);
 
     if (unlikely(pCur->cursor_class == CURSORCLASS_STAT24)) {
         rc = make_stat_record(thd, pCur, pData, nData, pblobs);
