@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2018, Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -134,6 +134,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "comdb2_ruleset.h"
 #include <hostname_support.h>
 #include "string_ref.h"
+#include "sql_stmt_cache.h"
 
 #define tokdup strndup
 
@@ -236,7 +237,6 @@ int gbl_osql_max_queue = 10000;
 int gbl_osql_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
 
-int gbl_max_sqlcache = 10;
 int gbl_extended_tm_from_sql =
     0; /* Keep a count of our extended-tm requests from sql. */
 
@@ -462,8 +462,6 @@ int gbl_disable_skip_rows = 0;
 #if 0
 u_int gbl_blk_pq_shmkey = 0;
 #endif
-int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
-
 int gbl_round_robin_stripes = 0;
 int gbl_num_record_converts = 100;
 
@@ -5897,7 +5895,6 @@ int close_all_dbs_tran(tran_type *tran);
 
 int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
-void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
 void oldfile_list_clear(void);
@@ -6083,8 +6080,7 @@ retry_tran:
     sqlthd = pthread_getspecific(query_info_key);
     if (sqlthd) {
         thd = sqlthd->clnt->thd;
-
-        delete_prepared_stmts(thd);
+        stmt_cache_reset(thd->stmt_cache);
         sqlite3_close_serial(&thd->sqldb);
     }
 

@@ -48,7 +48,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
 
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
-    thd->stmt_caching_table = NULL;
+    thd->stmt_cache = NULL;
     thd->have_lastuser = 0;
     thd->query_preparer_running = 0;
 
@@ -78,8 +78,8 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
         }
     }
 
-    if (thd->stmt_caching_table)
-        delete_stmt_caching_table(thd->stmt_caching_table);
+    if (thd->stmt_cache)
+        stmt_cache_delete(thd->stmt_cache);
     sqlite3_close_serial(&thd->sqldb);
 
     /* AZ moved after the close which uses thd for rollbackall */

@@ -30,9 +30,9 @@
 #include "osqlshadtbl.h"
 #include "fwd_types.h"
 #include "comdb2_ruleset.h"
-
 #include "fdb_fend.h"
 #include <sp.h>
+#include "sql_stmt_cache.h"
 
 /* Modern transaction modes, more or less */
 enum transaction_level {
@@ -56,7 +56,6 @@ enum transaction_level {
  * we can have a small pool of sql threads with big stacks, and a large pool
  * of appsock threads with small stacks. */
 
-#define MAX_HASH_SQL_LENGTH 8192
 #define FINGERPRINTSZ 16
 
 /* Static rootpages numbers. */
@@ -74,18 +73,6 @@ struct fingerprint_track {
     char ** cachedColNames; /* Cached column names from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
 };
-
-typedef int(plugin_query_data_func)(struct sqlclntstate *, void **, int *, int, int);
-
-typedef struct stmt_hash_entry {
-    char sql[MAX_HASH_SQL_LENGTH];
-    sqlite3_stmt *stmt;
-    char *query;
-    void *stmt_data;
-    int stmt_data_sz;
-    plugin_query_data_func *qd_func; /* Function used for finalize */
-    LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
-} stmt_hash_entry_type;
 
 struct sql_authorizer_state {
     struct sqlclntstate *clnt;         /* pointer to current client info */
@@ -106,10 +93,9 @@ struct sqlthdstate {
 
     uint8_t have_lastuser;
     char lastuser[MAX_USERNAME_LEN]; // last user to use this sqlthd
-    hash_t *stmt_caching_table; // statement cache table: caches vdbe engines
 
-    LISTC_T(stmt_hash_entry_type) param_stmt_list;   // list of cached stmts
-    LISTC_T(stmt_hash_entry_type) noparam_stmt_list; // list of cached stmts
+    /* SQL statement cache */
+    stmt_cache_t *stmt_cache;
 
     int dbopen_gen;
     int analyze_gen;
@@ -404,10 +390,6 @@ typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 typedef int(override_type_func)(struct sqlclntstate *, int);
 
-enum query_data_ops { QUERY_DATA_SET = 1, QUERY_DATA_GET = 2, QUERY_DATA_DELETE = 3 };
-
-enum query_data_type { QUERY_STMT_DATA = 1, QUERY_HINT_DATA = 2 };
-
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
 
@@ -566,13 +548,6 @@ struct clnt_ddl_context {
 #define RECOVER_DEADLOCK_MAX_STACK 16348
 #endif
 
-#define HINT_LEN 127
-enum cache_status {
-    CACHE_DISABLED = 0,
-    CACHE_HAS_HINT = 1,
-    CACHE_FOUND_STMT = 2,
-    CACHE_FOUND_STR = 4,
-};
 enum prepare_flags {
     PREPARE_NONE = 0,
     PREPARE_RECREATE = 1,
@@ -583,15 +558,6 @@ enum prepare_flags {
     PREPARE_NO_NORMALIZE = 32,
     PREPARE_ONLY = 64,
     PREPARE_ALLOW_TEMP_DDL = 128,
-};
-struct sql_state {
-    enum cache_status status;          /* populated by get_prepared_stmt */
-    sqlite3_stmt *stmt;                /* cached engine, if any */
-    char cache_hint[HINT_LEN];         /* hint copy, if any */
-    const char *sql;                   /* the actual string used */
-    void *query_data;                  /* data associated with sql */
-    stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
-    int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
 
 /* This structure is designed to hold several pieces of data related to
@@ -1251,11 +1217,8 @@ int get_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *, struct sql_st
 int get_prepared_stmt_no_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
 int get_prepared_stmt_try_lock(struct sqlthdstate *, struct sqlclntstate *, struct sql_state *, struct errstat *, int);
 
-void put_prepared_stmt(struct sqlthdstate *, struct sqlclntstate *,
-                       struct sql_state *, int outrc);
 void sqlengine_thd_start(struct thdpool *, struct sqlthdstate *, enum thrtype);
 void sqlengine_thd_end(struct thdpool *, struct sqlthdstate *);
-void delete_stmt_caching_table(hash_t *stmt_caching_table);
 
 #define SQL_POOL_LEGACY_NAME          ("sqlenginepool")
 #define SQL_POOL_DEFLT_NAME           ("default")

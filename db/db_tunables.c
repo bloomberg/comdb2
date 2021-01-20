@@ -30,6 +30,7 @@
 #include "portmuxapi.h"
 #include "config.h"
 #include "net.h"
+#include "sql_stmt_cache.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512
