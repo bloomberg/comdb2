@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -145,12 +145,6 @@ enum SYNC_FLAGS {
     REP_SYNC_ROOM = 3 /* sync to nodes in my machine room */
     ,
     REP_SYNC_N = 4 /* wait for N machines */
-};
-
-enum STMT_CACHE_FLAGS {
-    STMT_CACHE_NONE = 0,
-    STMT_CACHE_PARAM = 1,
-    STMT_CACHE_ALL = 2 /* cache all the queries */
 };
 
 enum OPCODES {
@@ -990,6 +984,7 @@ struct thread_info {
     void *ct_add_table;
     void *ct_del_table;
     void *ct_add_index;
+    void *stmt_cache;
     hash_t *ct_add_table_genid_hash; // for quick lookups
     pool_t *ct_add_table_genid_pool; // provides memory for the above hash
 };

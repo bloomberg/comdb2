@@ -66,6 +66,7 @@
 #include <ctrace.h>
 #include <bb_oscompat.h>
 #include "comdb2_atomic.h"
+#include "sql_stmt_cache.h"
 
 #ifdef WITH_RDKAFKA    
 
@@ -1209,7 +1210,7 @@ static void donate_stmt(SP sp, dbstmt_t *dbstmt)
     if (!gbl_enable_sql_stmt_caching || !dbstmt->rec) {
         sqlite3_finalize(stmt);
     } else {
-        put_prepared_stmt(sp->thd, sp->clnt, dbstmt->rec, sp->rc);
+        stmt_cache_put(sp->thd, sp->clnt, dbstmt->rec, sp->rc);
     }
     if (dbstmt->num_tbls) {
         LIST_REMOVE(dbstmt, entries);
