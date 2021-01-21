@@ -3722,9 +3722,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
      * to another */
     if (len > in_len && len > out_len) {
 
-        if (!outblob)
-            return -1;
-
         /* This only copies if we've passed in both an inblob and outblob, but
          * like
          * our blob-conversion code, it will always return success, whether or

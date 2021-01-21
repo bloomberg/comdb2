@@ -43,9 +43,7 @@ static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
         if (rc != 0) {
             sc_printf(s, "not using plan.  error in plan module.\n");
             changed = SC_TAG_CHANGE;
-        } else if (!s->use_plan ||
-                   s->force_rebuild) // TODO This if does not make sense!
-        {
+        } else if (!s->use_plan || s->force_rebuild || s->use_old_blobs_on_rebuild) {
             sc_printf(s, "not using plan.  full rebuild\n");
             s->use_plan = gbl_use_plan = 0;
             changed = SC_TAG_CHANGE;
