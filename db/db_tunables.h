@@ -413,6 +413,11 @@ REGISTER_TUNABLE(
     "Enable subquery flattening optimization for OUTER JOINS (Default: off)",
     TUNABLE_BOOLEAN, &gbl_enable_sq_flattening_optimization,
     NOARG | INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE(
+    "enable_internal_sql_stmt_caching",
+    "Enable caching of query plans for internal sql statements (Default: on)",
+    TUNABLE_BOOLEAN, &gbl_enable_internal_sql_stmt_caching, READONLY | NOARG,
+    NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sql_stmt_caching",
                  "Enable caching of query plans. If followed by \"all\" will "
                  "cache all queries, including those without parameters. "
