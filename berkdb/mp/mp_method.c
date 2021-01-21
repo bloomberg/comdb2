@@ -339,7 +339,7 @@ __memp_nameop(dbenv, fileid, newname, fullold, fullnew)
 {
 	DB_MPOOL *dbmp;
 	MPOOL *mp;
-	MPOOLFILE *mfp;
+	MPOOLFILE *mfp, *tmp;
 	roff_t newname_off;
 	int locked, ret;
 	char *recp_old_path, *recp_new_path, *recp_ext;
@@ -384,31 +384,28 @@ __memp_nameop(dbenv, fileid, newname, fullold, fullnew)
 	 * Find the file -- if mpool doesn't know about this file, that's not
 	 * an error-- we may not have it open.
 	 */
-	for (mfp = SH_TAILQ_FIRST(&mp->mpfq, __mpoolfile);
-	    mfp != NULL; mfp = SH_TAILQ_NEXT(mfp, q, __mpoolfile)) {
-		/* Ignore non-active files. */
-		if (mfp->deadfile || F_ISSET(mfp, MP_TEMP))
-			continue;
+	struct __fileid_mpf *fileid_mpf = hash_find(mp->mpfhash, fileid);
+	if (fileid_mpf) {
+		LISTC_FOR_EACH_SAFE(&fileid_mpf->mpflist, mfp, tmp, lnk) {
+			/* Ignore non-active files. */
+			if (mfp->deadfile || F_ISSET(mfp, MP_TEMP))
+				continue;
 
-		/* Ignore non-matching files. */
-		if (memcmp(fileid, R_ADDR(
-		    dbmp->reginfo, mfp->fileid_off), DB_FILE_ID_LEN) != 0)
-			continue;
-
-		/* If newname is NULL, we're removing the file. */
-		if (newname == NULL) {
-			MUTEX_LOCK(dbenv, &mfp->mutex);
-			mfp->deadfile = 1;
-			MUTEX_UNLOCK(dbenv, &mfp->mutex);
-		} else {
-			/*
-			 * Else, it's a rename.  We've allocated memory
-			 * for the new name.  Swap it with the old one.
-			 */
-			p = R_ADDR(dbmp->reginfo, mfp->path_off);
-			mfp->path_off = newname_off;
+			/* If newname is NULL, we're removing the file. */
+			if (newname == NULL) {
+				MUTEX_LOCK(dbenv, &mfp->mutex);
+				mfp->deadfile = 1;
+				MUTEX_UNLOCK(dbenv, &mfp->mutex);
+			} else {
+				/*
+				 * Else, it's a rename.  We've allocated memory
+				 * for the new name.  Swap it with the old one.
+				 */
+				p = R_ADDR(dbmp->reginfo, mfp->path_off);
+				mfp->path_off = newname_off;
+			}
+			break;
 		}
-		break;
 	}
 
 	/* Delete the memory we no longer need. */
