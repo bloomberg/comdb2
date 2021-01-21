@@ -25,6 +25,7 @@
 #include <shard_range.h>
 #include <logical_cron.h>
 #include "cdb2_constants.h"
+#include "db_access.h" /* gbl_check_access_controls */
 
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 #define COMDB2_INVALID_AUTOINCREMENT "invalid datatype for autoincrement"
@@ -32,7 +33,6 @@
 extern pthread_key_t query_info_key;
 extern int gbl_commit_sleep;
 extern int gbl_convert_sleep;
-extern int gbl_check_access_controls;
 extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;

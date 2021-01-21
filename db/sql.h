@@ -33,6 +33,7 @@
 #include "fdb_fend.h"
 #include <sp.h>
 #include "sql_stmt_cache.h"
+#include "db_access.h"
 
 /* Modern transaction modes, more or less */
 enum transaction_level {
@@ -1320,9 +1321,6 @@ void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
 struct sqlclntstate *get_sql_clnt(void);
-
-/* Returns the current user for the session */
-char *get_current_user(struct sqlclntstate *clnt);
 
 struct client_sql_systable_data {
     char *host;

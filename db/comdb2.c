@@ -1946,41 +1946,6 @@ int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
 
 int find_lua_afunc(const char *name) { find_lua_func(name, a); }
 
-void check_access_controls(struct dbenv *dbenv)
-{
-    int rc;
-    int bdberr;
-
-    rc = bdb_authentication_get(dbenv->bdb_env, NULL, &bdberr);
-
-    if (rc == 0) {
-        if (!gbl_uses_password) {
-            gbl_uses_password = 1;
-            gbl_upgrade_blocksql_2_socksql = 1;
-            logmsg(LOGMSG_INFO, "User authentication enabled\n");
-        }
-    } else {
-        gbl_uses_password = 0;
-        logmsg(LOGMSG_WARN, "User authentication disabled\n");
-    }
-
-    rc = bdb_accesscontrol_tableXnode_get(dbenv->bdb_env, NULL, &bdberr);
-    if (rc != 0) {
-        gbl_uses_accesscontrol_tableXnode = 0;
-        return;
-    }
-
-    if (!bdb_access_create(dbenv->bdb_env, &bdberr)) {
-        logmsg(LOGMSG_ERROR, "fail to enable tableXnode control bdberr=%d\n",
-                bdberr);
-        gbl_uses_accesscontrol_tableXnode = 0;
-        return;
-    }
-
-    gbl_uses_accesscontrol_tableXnode = 1;
-    logmsg(LOGMSG_INFO, "access control tableXnode enabled\n");
-}
-
 int llmeta_load_tables_older_versions(struct dbenv *dbenv, void *tran)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
