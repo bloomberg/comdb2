@@ -2,7 +2,7 @@
 bash -n "$0" | exit 1
 
 . ${TESTSROOTDIR}/tools/write_prompt.sh
-. ${TESTSROOTDIR}/tools/bounce_database.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
 . ${TESTSROOTDIR}/tools/ddl.sh
 
 export debug=1
