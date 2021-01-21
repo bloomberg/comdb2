@@ -1,0 +1,5 @@
+tag ondisk {
+    int i
+    vutf8 txt[2]
+    blob binary[2]
+}

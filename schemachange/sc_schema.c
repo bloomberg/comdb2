@@ -893,8 +893,7 @@ int create_schema_change_plan(struct schema_change_type *s, struct dbtable *oldd
             int newidx = get_schema_blob_field_idx(newdb->tablename,
                                                    ".NEW..ONDISK", blobn);
 
-            /* rebuild if the blob length changed (should only happen for vutf8
-             * blobs) */
+            /* rebuild if the blob length changed */
             if (oldsc->member[oldidx].len != newsc->member[newidx].len) {
                 info = ">    Blob %d changed in record length\n";
                 if (s->dryrun)
