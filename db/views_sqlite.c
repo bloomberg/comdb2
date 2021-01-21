@@ -208,8 +208,16 @@ static char *_views_create_view_query(timepart_view_t *view, sqlite3 *db,
     /* TODO: put conditions for shards */
     select_str = sqlite3_mprintf("");
     for (i = 0; i < view->nshards; i++) {
-        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%w\"", select_str,
+        bool use_timepart_shard_prefix = false;
+        if ((IS_TIMEPART_VIEW(view->name)) &&
+            (strcmp(view->name+sizeof(TIMEPART_VIEW_PREFIX)-1,
+                    view->shards[i].tblname) == 0)) {
+            use_timepart_shard_prefix = true;
+        }
+        tmp_str = sqlite3_mprintf("%s%sSELECT %s FROM \"%s%w\"", select_str,
                                   (i > 0) ? " UNION ALL " : "", cols_str,
+                                  (use_timepart_shard_prefix) ?
+                                  TIMEPART_SHARD_PREFIX : "",
                                   view->shards[i].tblname);
         sqlite3_free(select_str);
         if (!tmp_str) {

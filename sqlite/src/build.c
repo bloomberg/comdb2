@@ -24,6 +24,7 @@
 */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <alloca.h>
+#include "views.h"
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -443,7 +444,43 @@ retry_after_fdb_creation:
       if( zDatabase==0 || sqlite3StrICmp(zDatabase, db->aDb[j].zDbSName)==0 ){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         assert( sqlite3SchemaMutexHeld(db, j, 0) );
-        p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, zName);
+
+        if (!(IS_TIMEPART_VIEW(zName) && IS_TIMEPART_SHARD(zName))) {
+          // We have to first look whether a time partition view exists with the
+          // same name.
+          char prefixed_view_name[MAXTABLELEN];
+          int size;
+          size = snprintf(prefixed_view_name, MAXTABLELEN, "%s%s",
+                          TIMEPART_VIEW_PREFIX, zName);
+          if (size > MAXTABLELEN) {
+              // TODO: (NC) handle error
+          }
+
+          p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, prefixed_view_name);
+          if (p && p->pSelect) {
+            for (int i = 0; i < p->pSelect->pSrc->nSrc; ++i) {
+              if (strcmp(zName, p->pSelect->pSrc->a[i].zName) == 0) {
+                char prefixed_table_name[MAXTABLELEN];
+                int size;
+                size = snprintf(prefixed_table_name, MAXTABLELEN, "%s%s",
+                                TIMEPART_SHARD_PREFIX, zName);
+                if (size > MAXTABLELEN) {
+                  // TODO: (NC) handle error
+                }
+                p->pSelect->pSrc->a[i].zName = strdup(prefixed_table_name);
+              }
+            }
+          }
+        }
+
+        // TODO: (NC) ignore if it's not a view
+        if (!p) {
+            char *tblname = (char*)zName;
+            if (IS_TIMEPART_SHARD(zName)) {
+              tblname = (char *)zName + sizeof(TIMEPART_SHARD_PREFIX) - 1;
+            }
+            p = sqlite3HashFind(&db->aDb[j].pSchema->tblHash, tblname);
+        }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         if( p && i<=1 ) return p;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -2689,6 +2726,10 @@ void sqlite3EndTable(
     Table *pOld;
     Schema *pSchema = p->pSchema;
     assert( sqlite3SchemaMutexHeld(db, iDb, 0) );
+    if (IS_TIMEPART_VIEW(p->zName)) {
+      assert(p->pSelect);
+      p->isTimepartView = 1;
+    }
     pOld = sqlite3HashInsert(&pSchema->tblHash, p->zName, p);
     if( pOld ){
       assert( p==pOld );  /* Malloc must have failed inside HashInsert() */

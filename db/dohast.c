@@ -20,6 +20,7 @@
 #include "ast.h"
 #include "dohsql.h"
 #include "sql.h"
+#include "views.h"
 
 int gbl_dohast_disable = 0;
 int gbl_dohast_verbose = 0;
@@ -177,6 +178,10 @@ char *sqlite_struct_to_string(Vdbe *v, Select *p, Expr *extraRows,
                                   p->pSrc->a[0].zName);
         else
             tbl = sqlite3_mprintf("\"%w\"", p->pSrc->a[0].zName);
+    } else if (p->pSrc->nSrc) {
+        if (IS_TIMEPART_SHARD(p->pSrc->a[0].zName)) {
+            tbl = sqlite3_mprintf("\"%w\"", p->pSrc->a[0].zName);
+        }
     }
 
     if (unlikely(!tbl)) {

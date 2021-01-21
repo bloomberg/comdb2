@@ -25,6 +25,13 @@ enum view_partition_period {
     VIEW_PARTITION_MANUAL
 };
 
+#define TIMEPART_VIEW_PREFIX "$__V_"
+#define TIMEPART_SHARD_PREFIX "$__T_"
+#define IS_TIMEPART_VIEW(p)                                                    \
+    ((strncmp(p, TIMEPART_VIEW_PREFIX, sizeof(TIMEPART_VIEW_PREFIX) - 1)) == 0)
+#define IS_TIMEPART_SHARD(p)                                                   \
+    ((strncmp(p, TIMEPART_SHARD_PREFIX, sizeof(TIMEPART_SHARD_PREFIX) - 1)) == 0)
+
 #define IS_TIMEPARTITION(p)                                                    \
     ((p) == VIEW_PARTITION_DAILY || (p) == VIEW_PARTITION_WEEKLY ||            \
      (p) == VIEW_PARTITION_MONTHLY || (p) == VIEW_PARTITION_YEARLY ||          \

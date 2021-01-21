@@ -2115,6 +2115,7 @@ struct Table {
   int iDb;             /* iDb version */
   int hasPartIdx;
   int hasExprIdx;
+  u8 isTimepartView;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

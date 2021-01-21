@@ -35,7 +35,11 @@ int timepart_systable_timepartitions_collect(void **data, int *nrecords)
     }
     for (narr = 0; narr < views->nviews; narr++) {
         view = views->views[narr];
-        arr[narr].name = strdup(view->name);
+        if (IS_TIMEPART_VIEW(view->name)) {
+            arr[narr].name = strdup(view->name + sizeof(TIMEPART_VIEW_PREFIX) - 1);
+        } else {
+            arr[narr].name = strdup(view->name);
+        }
         arr[narr].period = strdup(period_to_name(view->period));
         arr[narr].retention = view->retention;
         arr[narr].nshards = view->nshards;

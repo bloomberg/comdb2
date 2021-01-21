@@ -1242,16 +1242,20 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
         chkAndCopyTableTokens(pParse, tp->tablename, table, NULL, 1, 1, 0))
         goto clean_arg;
 
-    tp->partition_name = (char*) malloc(MAXTABLELEN);
-    if (!tp->partition_name) {
-        setError(pParse, SQLITE_NOMEM, "Out of Memory");
-        goto clean_arg;
+    if (partition_name->n) {
+        tp->partition_name = (char*) malloc(MAXTABLELEN);
+        if (!tp->partition_name) {
+            setError(pParse, SQLITE_NOMEM, "Out of Memory");
+            goto clean_arg;
+        }
+        if (partition_name->n >= MAXTABLELEN) {
+            setError(pParse, SQLITE_MISUSE, "Partition name is too long");
+            goto clean_arg;
+        }
+        strncpy0(tp->partition_name, partition_name->z, partition_name->n + 1);
+    } else {
+        tp->partition_name = strdup(tp->tablename);
     }
-    if (partition_name->n >= MAXTABLELEN) {
-        setError(pParse, SQLITE_MISUSE, "Partition name is too long");
-        goto clean_arg;
-    }
-    strncpy0(tp->partition_name, partition_name->z, partition_name->n + 1);
 
     char period_str[50];
 

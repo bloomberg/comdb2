@@ -460,10 +460,27 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
      */
     db = get_dbtable_by_name(view->name);
     if (db) {
-        err->errval = VIEW_ERR_PARAM;
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Partition name %s matches an existing table", view->name);
-        goto error;
+        char prefixed_view_name[MAXTABLELEN];
+        int size;
+
+        logmsg(LOGMSG_INFO, "Partition name %s matches an existing table", view->name);
+
+        size = snprintf(prefixed_view_name, MAXTABLELEN, "%s%s",
+                        TIMEPART_VIEW_PREFIX, view->name);
+        if (size > MAXTABLELEN) {
+            err->errval = VIEW_ERR_PARAM;
+            snprintf(err->errstr, sizeof(err->errstr),
+                     "Partition name (%s) too long", view->name);
+            goto error;
+        }
+
+        free(view->name);
+        view->name = strdup(prefixed_view_name);
+        if (!view->name) {
+            err->errval = VIEW_ERR_MALLOC;
+            snprintf(err->errstr, sizeof(err->errstr), "out-of-memory");
+            goto error;
+        }
     }
 
     first_shard = view->shards[0].tblname;

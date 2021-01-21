@@ -2296,11 +2296,16 @@ cmd ::= BULKIMPORT nm(A) DOT nm(B) nm(C) DOT nm(D). {
 
 ////////////////////////////// CREATE PARTITION ///////////////////////////////
 
+%type as_tp_nm_opt {Token}
+as_tp_nm_opt(A) ::= .      {A.z=0; A.n=0;}
+as_tp_nm_opt(A) ::= AS nm(X). {A = X;}
+
 cmd ::= createkw RANGE PARTITION ON nm(A) WHERE columnname(B) IN LP exprlist(C) RP. {
     comdb2CreateRangePartition(pParse, &A, &B, C);
 }
 
-cmd ::= createkw partition_type PARTITION ON nm(A) AS nm(P) PERIOD STRING(D) RETENTION INTEGER(R) START STRING(S). {
+cmd ::= createkw partition_type PARTITION ON nm(A) as_tp_nm_opt(P) PERIOD
+    STRING(D) RETENTION INTEGER(R) START STRING(S). {
     comdb2WriteTransaction(pParse);
     comdb2CreatePartition(pParse, &A, &P, &D, &R, &S);
 }
