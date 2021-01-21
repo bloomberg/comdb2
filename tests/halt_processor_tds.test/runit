@@ -105,7 +105,8 @@ function bounce_master
     [[ "$debug" == 1 ]] && echo "START ${FUNCNAME[0]}" && set -x
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
     PARAMS="$db --no-global-lrl"
-    CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+    REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    CMD="cd ${DBDIR}; source ${REP_ENV_VARS}; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
     if [[ -n "$master" ]]; then
         if [ $master == $(hostname) ]; then
             (

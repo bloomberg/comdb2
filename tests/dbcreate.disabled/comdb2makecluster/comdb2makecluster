@@ -167,9 +167,10 @@ for node in $CLUSTER; do
     fi
 done
 
-echo "export COMDB2_ROOT=$DBDIR" >> ${DBDIR}/replicant_vars
-echo "export PATH=$PATH" >> ${DBDIR}/replicant_vars
-CMD="source ${DBDIR}/replicant_vars ; $COMDB2_EXE ${DBNAME} --lrl $DBDIR/${DBNAME}.lrl"
+REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+echo "export COMDB2_ROOT=$DBDIR" >> ${REP_ENV_VARS}
+echo "export PATH=$PATH" >> ${REP_ENV_VARS}
+CMD="source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} --lrl $DBDIR/${DBNAME}.lrl"
 echo "$DBNAME: starting"
 for node in $CLUSTER; do
     if [ $node == $myhostname ] ; then # dont ssh to ourself -- just start db locally
@@ -185,7 +186,7 @@ for node in $CLUSTER; do
         echo -e "$DBNAME: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
         continue
     fi
-    scp -o StrictHostKeyChecking=no ${DBDIR}/replicant_vars $node:${DBDIR}/replicant_vars &>> $LOGDIR/setup.log
+    scp -o StrictHostKeyChecking=no ${REP_ENV_VARS} $node:${REP_ENV_VARS} &>> $LOGDIR/setup.log
     # redirect output from CMD to a subshell which runs awk to prepend time
     ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &>$LOGDIR/${DBNAME}.${node}.db &
     # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)

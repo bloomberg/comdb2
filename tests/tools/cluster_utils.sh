@@ -26,9 +26,10 @@ function bounce_cluster
     done
     sleep $sleeptime
 
+    REP_ENV_VARS="${DBDIR}/replicant_env_vars"
     for node in $CLUSTER ; do
         PARAMS="$DBNAME --no-global-lrl"
-        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+        CMD="sleep $sleeptime ; source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
         if [ $node == $(hostname) ] ; then
             (
                 kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
