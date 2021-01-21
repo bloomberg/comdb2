@@ -4424,6 +4424,7 @@ static void sqlengine_work_lua_thread(void *thddata, void *work)
 }
 
 int gbl_debug_sqlthd_failures;
+int gbl_enable_internal_sql_stmt_caching = 1;
 
 static int execute_verify_indexes(struct sqlthdstate *thd,
                                   struct sqlclntstate *clnt)
@@ -4433,8 +4434,8 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
         /* open sqlite db without copying rootpages */
         rc = sqlite3_open_serial("db", &thd->sqldb, thd);
         if (unlikely(rc != 0)) {
-            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n", __func__,
-                   rc, sqlite3_errmsg(thd->sqldb));
+            logmsg(LOGMSG_ERROR, "%s:sqlite3_open_serial failed %d: %s\n",
+                   __func__, rc, sqlite3_errmsg(thd->sqldb));
             sqlite3_close_serial(&thd->sqldb);
         } else {
             /* setting gen to -1 so real SQLs will reopen vm */
@@ -4442,22 +4443,49 @@ static int execute_verify_indexes(struct sqlthdstate *thd,
             thd->analyze_gen = -1;
         }
     }
-    sqlite3_stmt *stmt;
+
+    sqlite3_stmt *stmt = NULL;
     const char *tail;
-    clnt->prep_rc = rc = sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt,
-                                            &tail);
-    if (rc != SQLITE_OK) {
-        return rc;
+
+    if (gbl_enable_internal_sql_stmt_caching) {
+        if (thd->stmt_cache == NULL) {
+            thd->stmt_cache = stmt_cache_new(NULL);
+        }
+
+        stmt_cache_entry_t *cached_entry;
+        if ((stmt_cache_find_entry(thd->stmt_cache, clnt->sql,
+                                   &cached_entry)) == 0) {
+            stmt = cached_entry->stmt;
+        }
     }
+
+    if (!stmt) {
+        clnt->prep_rc = rc =
+            sqlite3_prepare_v2(thd->sqldb, clnt->sql, -1, &stmt, &tail);
+        if (rc != SQLITE_OK) {
+            return rc;
+        }
+    }
+
     bind_verify_indexes_query(stmt, clnt->schema_mems);
     run_stmt_setup(clnt, stmt);
     if ((clnt->step_rc = rc = sqlite3_step(stmt)) == SQLITE_ROW) {
         clnt->has_sqliterow = 1;
         rc = verify_indexes_column_value(stmt, clnt->schema_mems);
-        sqlite3_finalize(stmt);
+        if (gbl_enable_internal_sql_stmt_caching) {
+            stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
+        } else {
+            sqlite3_finalize(stmt);
+        }
         return rc;
     }
-    sqlite3_finalize(stmt);
+
+    if (gbl_enable_internal_sql_stmt_caching) {
+        stmt_cache_add_entry(thd->stmt_cache, clnt->sql, 0, stmt, clnt);
+    } else {
+        sqlite3_finalize(stmt);
+    }
+
     clnt->has_sqliterow = 0;
     if (rc == SQLITE_DONE) {
         return 0;

@@ -196,10 +196,14 @@ static int stmt_cache_remove_entry(stmt_cache_t *stmt_cache,
 /* This will call stmt_cache_requeue_entry() after it has allocated memory for
  * the new entry. On error will return non zero and caller will need to
  * finalize_stmt(). */
-static int stmt_cache_add_entry(stmt_cache_t *stmt_cache, const char *sql,
-                                const char *actual_sql, sqlite3_stmt *stmt,
-                                struct sqlclntstate *clnt)
+int stmt_cache_add_entry(stmt_cache_t *stmt_cache, const char *sql,
+                         const char *actual_sql, sqlite3_stmt *stmt,
+                         struct sqlclntstate *clnt)
 {
+    if (!stmt_cache) {
+        return 0;
+    }
+
     if (strlen(sql) >= MAX_HASH_SQL_LENGTH) {
         return -1;
     }
