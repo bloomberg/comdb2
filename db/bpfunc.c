@@ -7,11 +7,9 @@
 #include <bdb_access.h>
 #include <bpfunc.pb-c.h>
 #include <bdb_schemachange.h>
-#include "logical_cron.h"
-
 #include <logmsg.h>
-
-extern int gbl_check_access_controls;
+#include "logical_cron.h"
+#include "db_access.h" /* gbl_check_access_controls */
 
 /* Automatically create 'default' user when authentication is enabled. */
 int gbl_create_default_user;

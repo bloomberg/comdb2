@@ -3258,8 +3258,6 @@ int vtag_to_ondisk_vermap(const dbtable *db, uint8_t *rec, int *len,
 
 int get_origin_mach(char *origin);
 void comdb2_die(int abort);
-int access_control_check_read(struct ireq *iq, tran_type *tran, int *bdberr);
-int access_control_check_write(struct ireq *iq, tran_type *tran, int *bdberr);
 
 /* tcm test case enums */
 enum { TCM_PARENT_DEADLOCK = 1, TCM_MAX = 1 };
@@ -3492,10 +3490,6 @@ unsigned long long verify_indexes(struct dbtable *db, uint8_t *rec,
 int verify_check_constraints(struct dbtable *table, uint8_t *rec,
                              blob_buffer_t *blobs, size_t maxblobs,
                              int is_alter);
-/* Authentication types for users */
-enum { AUTH_READ = 1, AUTH_WRITE = 2, AUTH_OP = 3, AUTH_USERSCHEMA = 4 };
-
-void check_access_controls(struct dbenv *dbenv);
 
 /* Blob mem. */
 extern comdb2bma blobmem; // blobmem for db layer

@@ -8,6 +8,7 @@ set(src
   comdb2_ruleset.c
   config.c
   constraints.c
+  db_access.c
   db_fingerprint.c
   db_metrics.c
   db_tunables.c

@@ -161,13 +161,6 @@ int osql_record_genid(struct BtCursor *pCur, struct sql_thread *thd,
                       unsigned long long genid);
 
 /**
- * Validate Read access to database pointed by cursor pCur
- *
- */
-int access_control_check_sql_read(struct BtCursor *pCur,
-                                  struct sql_thread *thd);
-
-/**
  * Update an sqlite_stat1 record as part of an analyze
  *
  */

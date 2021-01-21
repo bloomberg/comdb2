@@ -92,6 +92,7 @@
 #include "reqlog.h"
 #include "time_accounting.h"
 #include "schemachange.h"
+#include "db_access.h" /* gbl_check_access_controls */
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -146,7 +147,6 @@ struct net_morestripe_msg {
 
 extern struct dbenv *thedb;
 extern int gbl_lost_master_time;
-extern int gbl_check_access_controls;
 extern int gbl_use_fastseed_for_comdb2_seqno;
 extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;

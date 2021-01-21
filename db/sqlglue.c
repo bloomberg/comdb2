@@ -98,7 +98,7 @@
 #include "reqlog.h"
 #include "locks.h"
 #include "eventlog.h"
-
+#include "db_access.h"
 #include "str0.h"
 #include "comdb2_atomic.h"
 #include "sc_util.h"
