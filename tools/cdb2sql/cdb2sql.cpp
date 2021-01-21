@@ -27,17 +27,19 @@
 #include <bb_getopt_long.h>
 #include <readline/readline.h>
 #include <readline/history.h>
-#include "cdb2api.h"
 #include <pthread.h>
 #include <assert.h>
+#include <sys/ioctl.h>
 #include <sys/time.h>
-#include "cdb2_constants.h"
 #include <inttypes.h>
 
 #include <iostream>
 #include <list>
 #include <string>
 #include <vector>
+
+#include "cdb2api.h"
+#include "cdb2_constants.h"
 
 static char *dbname = NULL;
 static char *dbtype = NULL;
@@ -60,6 +62,7 @@ enum {
     DISP_TABULAR = 1 << 4, /* display result in tabular format */
     DISP_STDERR  = 1 << 5, /* print to stderr */
     DISP_COLTYPE = 1 << 6, /* emit column type as well */
+    DISP_NONE    = 1 << 7, /* display nothing */
 };
 
 const char *col_type_names[] = {
@@ -89,6 +92,7 @@ static int scriptmode = 0;
 static int error = 0;
 static cdb2_hndl_tp *cdb2h = NULL;
 static int time_mode = 0;
+static int benchmark = 1;
 static int rowsleep = 0;
 static int string_blobs = 0;
 static int show_effects = 0;
@@ -178,6 +182,7 @@ static const char *usage_text =
     "     cdb2sql mydb @node1:port=19007,node2:port=19000 'select 1'\n"
     "\n"
     "Interactive session commands:\n"
+    "@benchmark number    Repeat a query this many times\n"
     "@cdb2_close          Close connection (calls cdb2_close())\n"
     "@desc      tblname   Describe a table\n"
     "@hexblobs            Display blobs in hexadecimal format\n"
@@ -204,9 +209,9 @@ const char *level_one_words[] = {
 };
 
 const char *char_atglyph_words[] = {
-    "bind", "cdb2_close", "desc", "hexblobs", "ls",   "redirect",
-    "row_sleep",  "send", "strblobs", "time",
-    NULL,  // must be terminated by NULL
+    "benchmark", "bind",      "cdb2_close", "desc",     "hexblobs", "ls",
+    "redirect",  "row_sleep", "send",       "strblobs", "time",
+    NULL, // must be terminated by NULL
 };
 
 static char *char_atglyph_generator(const char *text, const int state)
@@ -939,6 +944,14 @@ static int process_escape(const char *cmdstr)
                 return rc;
             }
         }
+    } else if (strcasecmp(tok, "benchmark") == 0) {
+        tok = strtok_r(NULL, delims, &lasts);
+        if (!tok) {
+            fprintf(stderr, "expected number of times to repeat the query\n");
+            return -1;
+        }
+        benchmark = atoi(tok);
+        printf("Repeating every query %d times\n", benchmark);
     } else {
         fprintf(stderr, "unknown command %s\n", tok);
         return -1;
@@ -1512,6 +1525,10 @@ static int run_statement(const char *sql, int ntypes, int *types,
 
     /* Print rows */
     while ((rc = cdb2_next_record(cdb2h)) == CDB2_OK) {
+        if (printmode & DISP_NONE) {
+          continue;
+        }
+
         if (printmode & DISP_CLASSIC) {
             fprintf(out, "(");
         } else if (printmode & DISP_GENSQL) {
@@ -1601,7 +1618,8 @@ static int run_statement(const char *sql, int ntypes, int *types,
     return 0;
 }
 
-static void process_line(char *sql, int ntypes, int *types)
+static void process_line(char *sql, int ntypes, int *types,
+                         int *start_time, int *run_time)
 {
     char *sqlstr = sql;
     int rc;
@@ -1635,12 +1653,19 @@ static void process_line(char *sql, int ntypes, int *types)
 
     if (rc != 0) {
         error++;
-    } else if (!scriptmode) {
+    } else if ((!scriptmode) && !(printmode & DISP_NONE)) {
         printf("[%s] rc %d\n", sqlstr, rc);
         if (time_mode) {
             printf("  prep time  %d ms\n", start_time_ms);
             printf("  run time   %d ms\n", run_time_ms);
         }
+    }
+
+    if (start_time) {
+      *start_time = start_time_ms;
+    }
+    if (run_time) {
+      *run_time = run_time_ms;
     }
 
     if (docost && !rc && report_costs == NULL) {
@@ -1650,6 +1675,63 @@ static void process_line(char *sql, int ntypes, int *types)
         run_statement(costSql, ntypes, types, &start_time_ms, &run_time_ms);
         printmode = saved_printmode;
     }
+}
+
+struct winsize win_size;
+
+static int do_benchmark(char *sql)
+{
+    long long start_time_ms_tot = 0, run_time_ms_tot = 0;
+    int start_time_ms, run_time_ms;
+
+    /* Trim whitespace and then ignore comments and empty lines. */
+    while (isspace(*sql))
+        sql++;
+
+    if (sql[0] == '#' || sql[0] == '\0' || (sql[0] == '-' && sql[1] == '-'))
+        return 0;
+
+    if (sql[0] == '@') {
+        return process_bind(sql);
+    }
+
+    printmode |= DISP_NONE;
+
+    ioctl(STDOUT_FILENO, TIOCGWINSZ, &win_size);
+    int progress_bar_width = win_size.ws_col - 20;
+    int spaces = 0;
+    int stars = 0;
+    float progress_pct = 0;
+    int last_progress_pct = 0;
+
+    /* Execute the query specified number of times */
+    for (int i = 1; i <= benchmark; i++) {
+        start_time_ms = 0;
+        run_time_ms = 0;
+        process_line(sql, 0, NULL, &start_time_ms, &run_time_ms);
+        start_time_ms_tot += start_time_ms;
+        run_time_ms_tot += run_time_ms;
+
+        progress_pct = ((float)i / benchmark) * 100;
+        if ((int)progress_pct > last_progress_pct) {
+            last_progress_pct = (int)progress_pct;
+            stars = (progress_pct * progress_bar_width) / 100;
+            spaces = progress_bar_width - stars;
+            printf("executing: [%s%s] %.d%%\r", std::string(stars, '*').c_str(),
+                   std::string(spaces, ' ').c_str(), (int)progress_pct);
+            fflush(stdout);
+        }
+    }
+
+    printmode &= (~DISP_NONE);
+
+    /* Print the summary */
+    printf("\n");
+    printf("summary:\n");
+    printf("  total prep time  %d ms\n", start_time_ms_tot);
+    printf("  total run time   %d ms\n", run_time_ms_tot);
+
+    return 0;
 }
 
 void load_readline_history()
@@ -1992,7 +2074,7 @@ int main(int argc, char *argv[])
         types = process_typed_statement_args(ntypes, &argv[optind]);
     if (sql && *sql != '-') {
         scriptmode = 1;
-        process_line(sql, ntypes, types);
+        process_line(sql, ntypes, types, 0, 0);
         if (cdb2h) {
             cdb2_close(cdb2h);
         }
@@ -2033,7 +2115,11 @@ int main(int argc, char *argv[])
             break;
         if ((multi = is_multi_line(line)) != 0)
             line = get_multi_line_statement(line);
-        process_line(line, 0, NULL);
+        if (benchmark > 1) {
+            do_benchmark(line);
+        } else {
+            process_line(line, 0, NULL, 0, 0);
+        }
         if (multi)
             free(line);
     }
