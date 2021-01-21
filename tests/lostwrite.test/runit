@@ -67,7 +67,8 @@ function bouncemaster
 
     PARAMS="$DBNAME --no-global-lrl"
     if [[ ! -z "$node" ]]; then
-        CMD="source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+        REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
         if [ "$node" == "$(hostname)" ] ; then
             (
             kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1

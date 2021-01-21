@@ -7,4 +7,4 @@ ifeq ($(TEST_TIMEOUT),)
 	export TEST_TIMEOUT=1m
 endif
 export MALLOC_ARENA_MAX=4
-$(shell echo "export MALLOC_ARENA_MAX=4" >> ${TESTDIR}/replicant_vars )
+$(shell mkdir -p ${DBDIR}/; echo "export MALLOC_ARENA_MAX=4" >> ${DBDIR}/replicant_env_vars )

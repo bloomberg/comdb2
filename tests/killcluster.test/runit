@@ -61,7 +61,8 @@ function bouncecluster
     [[ "$debug" == 1 ]] && set -x
     for node in $CLUSTER ; do
         PARAMS="$db --no-global-lrl"
-        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+        REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+        CMD="sleep $sleeptime ; source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
         if [ $node == $(hostname) ] ; then
             (
                 kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
