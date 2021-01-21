@@ -313,6 +313,8 @@ int comdb2SystblInit(
     rc = systblSystabPermissionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTimepartPermissionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = systblProgressInit(db);
 #endif
   return rc;
 }

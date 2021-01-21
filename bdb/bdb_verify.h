@@ -1,5 +1,5 @@
 /*
-   Copyright 2015-2020 Bloomberg Finance L.P.
+   Copyright 2015, 2021 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -59,12 +59,14 @@ typedef struct {
     verify_peer_check_func *peer_check;
     verify_response_func *verify_response;
     void *arg;
+    unsigned long long seed;
 } verify_common_t;
 
 // verify per thread processing info
 typedef struct td_processing_info {
     verify_common_t *common_params;
     processing_type type;
+    uint64_t records_processed; // per thread progress reporting
     int8_t blobno;
     int8_t dtastripe;
     int8_t index;

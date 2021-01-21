@@ -135,6 +135,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <hostname_support.h>
 #include "string_ref.h"
 #include "sql_stmt_cache.h"
+#include "progress_tracker.h"
 
 #define tokdup strndup
 
@@ -3491,6 +3492,8 @@ static int init(int argc, char **argv)
         logmsg(LOGMSG_FATAL, "Failed to initialize machine classes\n");
         exit(1);
     }
+
+    init_progress_tracker();
 
     handle_cmdline_options(argc, argv, &lrlname);
 

@@ -61,7 +61,7 @@ struct convert_record_data {
     blob_buffer_t freeblb[MAXBLOBS];
     int blobix[MAXBLOBS], toblobs2fromblobs[MAXBLOBS];
     unsigned n_genids_changed;
-    long long nrecs, prev_nrecs, nrecskip;
+    long long totrecs, nrecs, prev_nrecs, nrecskip;
     int num_records_per_trans;
     int num_retry_errors;
     int *tagmap; // mapping of fields from -> to
@@ -77,6 +77,7 @@ struct convert_record_data {
                            converting the records */
     unsigned long long cv_genid; /* the genid of the record that we get
                                     constraint violation on */
+    void *progress_attrib;
 };
 
 int convert_all_records(struct dbtable *from, struct dbtable *to,

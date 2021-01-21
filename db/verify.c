@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -18,6 +18,7 @@
 #include "comdb2.h"
 #include "bdb_verify.h"
 #include <sql.h>
+#include "progress_tracker.h"
 
 struct thdpool *gbl_verify_thdpool;
 static pthread_once_t once = PTHREAD_ONCE_INIT;
@@ -333,6 +334,10 @@ int verify_table(const char *table, int progress_report_seconds,
                  verify_response_func *response, void *arg)
 {
     pthread_once(&once, init_verify_thdpool);
+
+    unsigned long long seed = bdb_get_a_genid(thedb->bdb_env);
+    progress_tracking_start(PROGRESS_OP_VERIFY_TABLE, seed, table);
+
     verify_common_t par = {
         .tablename = table,
         .formkey_callback = verify_formkey_callback,
@@ -347,6 +352,7 @@ int verify_table(const char *table, int progress_report_seconds,
         .peer_check = peer_check,
         .verify_response = response,
         .arg = arg,
+        .seed = seed,
     };
     tran_type *tran = NULL;
     struct dbtable *db = NULL;
@@ -370,6 +376,7 @@ int verify_table(const char *table, int progress_report_seconds,
     }
     rc = par.verify_status;
 done:
+    progress_tracking_end(seed);
     if (tran) {
         int bdberr;
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);

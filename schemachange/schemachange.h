@@ -22,6 +22,7 @@
 #include <util.h>
 #include <locks.h>
 #include <list.h>
+#include "progress_tracker.h"
 
 /* To be forward declared one accessors methods are added */
 

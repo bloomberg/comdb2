@@ -819,6 +819,8 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
 
     if (!s->is_osql)
         stop_and_free_sc(iq, rc, s, 0 /*free_sc*/);
+
+    progress_tracking_end(s->seed);
     return rc;
 }
 

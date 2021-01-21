@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -40,6 +40,7 @@
 #include "str0.h"
 #include "sc_util.h"
 #include "debug_switches.h"
+#include "progress_tracker.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -115,6 +116,7 @@ typedef struct index_descriptor {
     struct dbtable *tbl;
     int ix;
     int sampling_pct;
+    unsigned long long seed;
 } index_descriptor_t;
 
 /* table-descriptor */
@@ -127,6 +129,7 @@ typedef struct table_descriptor {
     int override_llmeta;
     index_descriptor_t index[MAXINDEX];
     struct user current_user;
+    unsigned long long seed;
 } table_descriptor_t;
 
 /* loadStat4 (analyze.c) will ignore all stat entries
@@ -269,7 +272,7 @@ static int sample_index_int(index_descriptor_t *ix_des)
 
     /* ask bdb to put a summary of this into a temp-table */
     rc = bdb_summarize_table(tbl->handle, ix, sampling_pct, &sampler,
-                             &n_sampled_recs, &n_recs, &bdberr);
+                             &n_sampled_recs, &n_recs, &bdberr, ix_des->seed);
 
     /* failed */
     if (rc) {
@@ -298,6 +301,8 @@ static void *sampling_thread(void *arg)
     thrman_register(THRTYPE_ANALYZE);
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
 
+    progress_tracking_worker_start(ix_des->seed, PROGRESS_ANALYZE_TABLE_SAMPLING_INDEX);
+
     /* update state */
     ix_des->comp_state = SAMPLING_RUNNING;
 
@@ -319,6 +324,7 @@ static void *sampling_thread(void *arg)
 
     /* cleanup */
     backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+    progress_tracking_worker_end(ix_des->seed, (rc) ? PROGRESS_FAILED : PROGRESS_COMPLETED);
 
     return NULL;
 }
@@ -397,6 +403,7 @@ static int sample_indicies(table_descriptor_t *td, struct sqlclntstate *client,
         ix_des->tbl = tbl;
         ix_des->ix = i;
         ix_des->sampling_pct = sampling_pct;
+        ix_des->seed = td->seed;
 
         /* start an index sampling thread */
         int rc = dispatch_sample_index_thread(ix_des);
@@ -738,8 +745,6 @@ static int analyze_table_int(table_descriptor_t *td,
 
     clnt.current_user = td->current_user;
 
-    logmsg(LOGMSG_INFO, "Analyze thread starting, table %s (%d%%)\n", td->table, td->scale);
-
     int rc = run_internal_sql_clnt(&clnt, "BEGIN");
     if (rc) {
         snprintf(zErrTab, sizeof(zErrTab), "BEGIN");
@@ -824,7 +829,9 @@ static int analyze_table_int(table_descriptor_t *td,
     if (sampled_tables_enabled && totsiz > sampling_threshold) {
         logmsg(LOGMSG_INFO, "Sampling table '%s' at %d%% coverage\n", td->table, td->scale);
         sampled_table = 1;
+        progress_tracking_update(td->seed, PROGRESS_ANALYZE_TABLE_SAMPLING_INDICES, PROGRESS_STARTED, NULL);
         rc = sample_indicies(td, &clnt, tbl, td->scale, td->sb);
+        progress_tracking_update(td->seed, PROGRESS_ANALYZE_TABLE_SAMPLING_INDICES, PROGRESS_COMPLETED, NULL);
         if (rc) {
             snprintf(zErrTab, sizeof(zErrTab), "Sampling table '%s'", td->table);
             goto error;
@@ -832,6 +839,7 @@ static int analyze_table_int(table_descriptor_t *td,
     }
 
     clnt.is_analyze = 1;
+    clnt.analyze_seed = td->seed;
 
     /* run analyze as sql query */
     sql = sqlite3_mprintf("analyzesqlite main.\"%w\"", td->table);
@@ -886,6 +894,8 @@ static void *table_thread(void *arg)
     table_descriptor_t *td = (table_descriptor_t *)arg;
     struct thr_handle *thd_self;
 
+    progress_tracking_worker_start(td->seed, PROGRESS_ANALYZE_TABLE_SQLITE_ANALYZE);
+
     /* register thread */
     thd_self = thrman_register(THRTYPE_ANALYZE);
     backend_thread_event(thedb, COMDB2_THR_EVENT_START_RDWR);
@@ -917,6 +927,8 @@ static void *table_thread(void *arg)
     } else {
         td->table_state = TABLE_FAILED;
     }
+
+    progress_tracking_worker_end(td->seed, (rc && (rc != TABLE_SKIPPED)) ?  PROGRESS_FAILED : PROGRESS_COMPLETED);
 
     /* release thread */
     Pthread_mutex_lock(&table_thd_mutex);
@@ -1043,6 +1055,9 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
     if (check_stat1(sb))
         return -1;
 
+    unsigned long long seed = bdb_get_a_genid(thedb->bdb_env);
+    progress_tracking_start(PROGRESS_OP_ANALYZE_TABLE, seed, table);
+
     if (get_schema_change_in_progress(__func__, __LINE__)) {
         logmsg(LOGMSG_ERROR, 
                 "%s: Aborting Analyze because schema_change_in_progress\n",
@@ -1060,6 +1075,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
     td.scale = scale;
     td.override_llmeta = override_llmeta;
     strncpy0(td.table, table, sizeof(td.table));
+    td.seed = seed;
 
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = (thd) ? thd->clnt : NULL;
@@ -1087,6 +1103,8 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
         sbuf2printf(sb, "SUCCESS\n");
     else
         sbuf2printf(sb, "FAILED\n");
+
+    progress_tracking_end(seed);
 
     sbuf2flush(sb);
     /* no-longer running */

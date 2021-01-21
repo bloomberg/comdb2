@@ -260,6 +260,17 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     uuidstr_t us;
     comdb2uuidstr(s->uuid, us);
     s->seed = seed;
+
+    if (s->fastinit && s->drop_table) {
+    } else if (s->fastinit) {
+    } else if (s->addonly) {
+        progress_tracking_start(PROGRESS_OP_CREATE_TABLE, s->seed, s->tablename);
+    } else if (s->rename) {
+    } else if (s->type == DBTYPE_TAGGED_TABLE) {
+        progress_tracking_start(PROGRESS_OP_ALTER_TABLE, s->seed, s->tablename);
+    } else if (s->add_view || s->drop_view) {
+    }
+
     rc = sc_set_running(iq, s, s->tablename, s->preempted ? 2 : 1, node,
                         time(NULL), 0, __func__, __LINE__);
     if (rc != 0) {

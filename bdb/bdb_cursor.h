@@ -199,6 +199,7 @@ int bdb_get_lsn_context_from_timestamp(bdb_state_type *bdb_state,
 int bdb_get_context_from_lsn(bdb_state_type *bdb_state, void *lsnp,
                              unsigned long long *ret_context, int *bdberr);
 
-int bdb_direct_count(bdb_cursor_ifn_t *, int ixnum, int64_t *count);
+int bdb_direct_count(bdb_state_type *, int ixnum, int dtastripe,
+                     int64_t *count);
 
 #endif

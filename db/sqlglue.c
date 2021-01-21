@@ -106,6 +106,7 @@
 #include "comdb2_query_preparer.h"
 #include <portmuxapi.h>
 #include "cdb2_constants.h"
+#include "progress_tracker.h"
 
 int gbl_delay_sql_lock_release_sec = 5;
 
@@ -6393,6 +6394,9 @@ skip:
 done:
     reqlog_logf(pCur->reqlogger, REQL_TRACE, "CloseCursor(pCur %d)      = %s\n",
                 cursorid, sqlite3ErrStr(rc));
+    if (clnt->is_analyze && pCur->ixnum != -1) {
+        progress_tracking_update(clnt->analyze_seed, PROGRESS_ANALYZE_TABLE_UPDATING_STATS, PROGRESS_COMPLETED, NULL);
+    }
 
     return rc;
 }
@@ -7117,6 +7121,17 @@ sqlite3BtreeCursor_analyze(Btree *pBt,      /* The btree */
     cur->lastkey = NULL;
     cur->keybuflen = sz;
     cur->keybuf_alloc = sz;
+
+    int64_t total_records;
+    void *progress_attrib =
+        progress_tracking_update(clnt->analyze_seed,
+                                 PROGRESS_ANALYZE_TABLE_UPDATING_STATS,
+                                 PROGRESS_STARTED, cur->sc->tag);
+    total_records = clnt->sampled_idx_tbl[cur->ixnum].n_sampled_recs;
+    progress_tracking_update_total_records(progress_attrib, total_records);
+    cur->sqlite->nTotRows = total_records;
+    cur->sqlite->analyzeSeed = clnt->analyze_seed;
+    cur->sqlite->progressAttrib = progress_attrib;
 
     return SQLITE_OK;
 }
@@ -7915,7 +7930,6 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
 
     assert(iTable >= RTPAGE_START);
     /* INVALID: assert(iTable < thd->rootpage_nentries + RTPAGE_START); */
-
     cur->db = get_sqlite_db(thd, iTable, &cur->ixnum);
     assert(cur->db);
     cur->tableversion = cur->db->tableversion;
@@ -7935,6 +7949,26 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
         cur->cursor_move = cursor_move_index;
         cur->sc = cur->db->ixschema[cur->ixnum];
         cur->nCookFields = -1;
+        if (clnt->is_analyze) {
+            int64_t total_records;
+
+            void *progress_attrib =
+                progress_tracking_update(clnt->analyze_seed,
+                                         PROGRESS_ANALYZE_TABLE_UPDATING_STATS,
+                                         PROGRESS_STARTED, cur->sc->tag);
+
+            int rc = bdb_direct_count(cur->db->handle, cur->ixnum, -1,
+                                      &total_records);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to get record count for index %s\n",
+                       __func__, __LINE__, cur->sc->tag);
+            } else {
+                progress_tracking_update_total_records(progress_attrib,
+                                                       total_records);
+                cur->sqlite->nTotRows = total_records;
+                cur->sqlite->analyzeSeed = clnt->analyze_seed;
+            }
+        }
     }
 
     reqlog_usetable(pBt->reqlogger, cur->db->tablename);
@@ -10486,7 +10520,8 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
                 break;
             }
 
-            rc = bdb_direct_count(pCur->bdbcur, pCur->ixnum, (int64_t *)&count);
+            rc = bdb_direct_count(pCur->bdbcur->impl->state, pCur->ixnum, -1,
+                                  (int64_t *)&count);
             if (rc == BDBERR_DEADLOCK &&
                 recover_deadlock(thedb->bdb_env, thd, NULL, 0)) {
                 break;

@@ -72,6 +72,7 @@
 #include "flibc.h"
 #include "logmsg.h"
 #include "analyze.h"
+#include "progress_tracker.h"
 
 extern int get_schema_change_in_progress(const char *func, int line);
 static double analyze_headroom = 6;
@@ -272,7 +273,8 @@ int sampler_close(sampler_t *sampler)
 
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                         sampler_t **samplerp, unsigned long long *outrecs,
-                        unsigned long long *cmprecs, int *bdberr)
+                        unsigned long long *cmprecs, int *bdberr,
+                        unsigned long long seed)
 {
     DB_ENV *dbenv = bdb_state->dbenv;
     int is_hmac = CRYPTO_ON(dbenv);
@@ -296,6 +298,9 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     const static size_t FADVISE_THRESH = 1024;
     int usedio = bdb_attr_get(bdb_state->attr, BDB_ATTR_DIRECTIO);
 #endif
+
+    void *progress_attrib = progress_tracking_get_last_attribute(seed);
+    progress_tracking_compute_total_records(seed, bdb_state, ixnum, -1);
 
     if (comp_pct > 100 || comp_pct < 1) {
         *bdberr = BDBERR_BADARGS;
@@ -450,8 +455,13 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
            even if we did check every entry, the results wouldn't be
            100% accurate anyway. */
         recs_looked_at += (n >> 1);
-        if (rand() % 100 >= comp_pct)
+
+        progress_tracking_update_processed_records(progress_attrib,
+                                                   recs_looked_at);
+
+        if (rand() % 100 >= comp_pct) {
             continue;
+        }
         NUM_ENT(page) = n;
         nrecs += (n >> 1);
 
@@ -536,6 +546,7 @@ int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
     logmsg(LOGMSG_INFO, "summarize added %llu records, traversed %llu\n", nrecs,
            recs_looked_at);
 done:
+
     if (fd != -1)
         close(fd);
     if (page)

@@ -8656,15 +8656,19 @@ static void *db_count(void *varg)
 }
 
 int gbl_parallel_count = 0;
-int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
+int bdb_direct_count(bdb_state_type *state, int ixnum, int dtastripe,
+                     int64_t *rcnt)
 {
     int64_t count = 0;
     int parallel_count;
-    bdb_state_type *state = cur->impl->state;
     DB **db;
     int stripes;
     pthread_attr_t attr;
-    if (ixnum < 0) { // data
+    if (dtastripe != -1) { // single stripe
+        db = state->dbp_data[0];
+        stripes = 1;
+        parallel_count = 0;
+    } else if (ixnum < 0) { // data
         db = state->dbp_data[0];
         stripes = state->attr->dtastripe;
         parallel_count = gbl_parallel_count;
@@ -8680,7 +8684,7 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
     struct count_arg args[stripes];
     pthread_t thds[stripes];
     for (int i = 0; i < stripes; ++i) {
-        args[i].db = db[i];
+        args[i].db = (dtastripe == -1) ? db[i] : db[dtastripe];
         if (parallel_count) {
             pthread_create(&thds[i], &attr, db_count, &args[i]);
         } else {

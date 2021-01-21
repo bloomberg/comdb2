@@ -795,6 +795,7 @@ struct sqlclntstate {
     int8_t get_cost;
     int8_t is_explain;
     uint8_t is_analyze;
+    uint64_t analyze_seed;
     uint8_t is_overlapping;
     uint32_t init_gen;
     int8_t gen_changed;
