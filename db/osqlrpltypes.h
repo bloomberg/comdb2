@@ -48,6 +48,7 @@ XMACRO_OSQL_RPL_TYPES( OSQL_INSERT,            22, "OSQL_INSERT" ) /* for partia
 XMACRO_OSQL_RPL_TYPES( OSQL_UPDATE,            23, "OSQL_UPDATE" ) /* for partial indexes */                                 \
 XMACRO_OSQL_RPL_TYPES( OSQL_DELIDX,            24, "OSQL_DELIDX" ) /* for indexes on expressions */                          \
 XMACRO_OSQL_RPL_TYPES( OSQL_INSIDX,            25, "OSQL_INSIDX" ) /* for indexes on expressions */                          \
+XMACRO_OSQL_RPL_TYPES( OSQL_DBQ_CONSUME_UUID,  26, "OSQL_DBQ_CONSUME_UUID" ) /* not in use */                                \
 XMACRO_OSQL_RPL_TYPES( OSQL_STARTGEN,          27, "OSQL_STARTGEN" )                                                         \
 XMACRO_OSQL_RPL_TYPES( OSQL_DONE_WITH_EFFECTS, 28, "OSQL_DONE_WITH_EFFECTS" )                                                \
 XMACRO_OSQL_RPL_TYPES( MAX_OSQL_TYPES,         29, "OSQL_MAX")
@@ -57,7 +58,8 @@ XMACRO_OSQL_RPL_TYPES( MAX_OSQL_TYPES,         29, "OSQL_MAX")
 #ifdef XMACRO_OSQL_RPL_TYPES
 #   undef XMACRO_OSQL_RPL_TYPES
 #endif
-#define XMACRO_OSQL_RPL_TYPES(a, b, c) a,
+// the following will expand to enum OSQL_RPL_TYPE { OSQL_RPLINV = 0, OSQL_DONE = 1, ..., MAX_OSQL_TYPES = 29, };
+#define XMACRO_OSQL_RPL_TYPES(a, b, c) a = b,
 enum OSQL_RPL_TYPE { OSQL_RPL_TYPES };
 #undef XMACRO_OSQL_RPL_TYPES
 
