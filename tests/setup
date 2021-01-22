@@ -272,9 +272,8 @@ setup_db() {
                 echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${CMD}${NOCOLOR}"
             else
                 scp $SSH_OPT ${REP_ENV_VARS} $node:${REP_ENV_VARS}
-                # redirect output from CMD to a subshell which runs awk to prepend time
                 # could also use connection sharing and close master ssh session in unsetup
-                ssh -n $SSH_OPT -tt $node ${CMD} &>$LOGDIR/${DBNAME}.${node}.db &
+                ssh -n $SSH_OPT -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
                 # $! will be pid of ssh (if we had used pipe, $! would be pid of awk)
                 echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
             fi
