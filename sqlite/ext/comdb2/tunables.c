@@ -154,16 +154,20 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         switch (tunable->type) {
         case TUNABLE_INTEGER: {
             int val;
+            char buffer[64];
             val = (tunable->value) ? *(int *)tunable->value(tunable)
                                    : *(int *)tunable->var;
-            sqlite3_result_int(ctx, val);
+            sqlite3_snprintf(sizeof(buffer), buffer, "%d", val);
+            sqlite3_result_text(ctx, strdup(buffer), -1, free);
             break;
         }
         case TUNABLE_DOUBLE: {
             double val;
+            char buffer[64];
             val = (tunable->value) ? *(double *)tunable->value(tunable)
                                    : *(double *)tunable->var;
-            sqlite3_result_double(ctx, val);
+            sqlite3_snprintf(sizeof(buffer), buffer, "%.15g", val);
+            sqlite3_result_text(ctx, strdup(buffer), -1, free);
             break;
         }
         case TUNABLE_BOOLEAN: {
