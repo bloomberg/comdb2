@@ -5317,7 +5317,8 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                    commands, like rebuild and truncate, to succeed.
                 */
                 if (gbl_ready && (db->skip_error_on_ulonglong_check != 1)) {
-                    reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
+                    if (db->iq)
+                        reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
                     return -1;
                 }
             }
