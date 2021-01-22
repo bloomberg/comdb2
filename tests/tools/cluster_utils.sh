@@ -75,3 +75,62 @@ function bounce_database
 
     wait_up
 }
+
+function kill_by_pidfile() {
+    pidfile=$1
+    if [[ -f $pidfile ]]; then
+        local pid=$(cat $pidfile)
+        ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
+        if [[ $? -eq 0 ]]; then
+            echo "kill -9 $pid"
+            kill -9 $pid
+        fi
+        rm -f $pidfile
+    else
+        failexit "kill_by_pidfile: pidfile $pidfile does not exist"
+    fi
+}
+
+
+function kill_restart_node
+{
+    node=$1
+    if [ -z "$node" ] ; then # if not set
+        failexit "kill_restart_node: needs node to be passed in as parameter"
+    fi
+    delay=$2
+    if [ -z "$delay" ] ; then # if not set
+        delay=0
+    fi
+
+    pushd $DBDIR
+    # cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
+    export LOGDIR=$TESTDIR/logs
+
+    if [ -n "$CLUSTER" ] ; then
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+        mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
+        sleep $delay
+        if [ $node == `hostname` ] ; then
+            PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
+            $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
+        else
+            PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+            CMD="cd ${DBDIR}; source ${REP_ENV_VARS} ; $COMDB2_EXE ${DBNAME} ${PARAMS} 2>&1 | tee $TESTDIR/${DBNAME}.db"
+            ssh -n -o StrictHostKeyChecking=no -tt $node ${CMD} &> $LOGDIR/${DBNAME}.${node}.db &
+            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+        fi
+    else
+        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
+        mv --backup=numbered $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.db.1
+        sleep $delay
+        echo "$DBNAME: starting single node"
+        PARAMS="--no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+        echo "$COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db"
+        $COMDB2_EXE ${DBNAME} ${PARAMS} &> $LOGDIR/${DBNAME}.db &
+    fi
+
+    popd
+
+    waitmach $node
+}

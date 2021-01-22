@@ -2,6 +2,7 @@
 bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 # Debug variable
 debug=0
@@ -71,42 +72,6 @@ kill_restart_cluster()
     done
 }
 
-kill_restart_node()
-{
-    node=$1
-    delay=$2
-    pushd $DBDIR
-    cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
-
-    if [ -n "$CLUSTER" ] ; then
-        kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
-        mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
-        sleep $delay
-        if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
-            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
-        else
-            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
-        fi
-    else
-        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-        mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
-        sleep $delay
-        echo "$DBNAME: starting single node"
-        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
-    fi
-
-    popd
-
-    out=0
-    # wait until we can query it
-    echo "$DBNAME: waiting until ready"
-    while [[ "$out" != "1" ]]; do
-        sleep 2
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    done
-}
 
 cluster=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':' `
 

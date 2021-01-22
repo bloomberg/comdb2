@@ -4,6 +4,7 @@ bash -n "$0" | exit 1
 #PS4='$(date +%Y%m%d-%H:%M:%S): '
 set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
 
 RESTART_DELAY=35
 INITNUMREC=100
@@ -49,51 +50,6 @@ assert_schema()
     fi
 }
 
-
-assert_sc_status()
-{
-    target=$1
-    cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("stat")' > stat1.out
-    if [ $? -ne 0 ] ; then
-        failexit "sending stat to new master $master"
-    fi
-
-    scrunning=`grep "schema change running" stat1.out | awk '{print $4}' `
-    echo "scrunning is $scrunning"
-    if [ "$scrunning" == "NO" ] ; then 
-        if [ $target != 0 ] ; then
-            failexit "scrunning is $scrunning, but target is $target"
-        fi
-    else 
-        if [ $target != 1 ] ; then
-            failexit "scrunning is $scrunning, but target is $target"
-        fi
-    fi
-}
-
-
-get_sc_seed()
-{
-    cdb2sql --tabs --host $master ${CDB2_OPTIONS} $dbnm 'exec procedure sys.cmd.send("stat")' > stat1.out
-    if [ $? -ne 0 ] ; then
-        failexit "sending stat to new master $master"
-    fi
-
-    grep "Schema change in progress with seed" stat1.out | awk '{print $7}'
-}
-
-
-assert_sc_seed()
-{
-    target=$1
-    scseed=`get_sc_seed`
-    echo "scseed is $scseed"
-    if [ "$scseed" != "$target" ] ; then 
-        failexit "scseed $scseed, but target is $target"
-    fi
-}
-
-
 insert_records()
 {
     j=$1
@@ -123,40 +79,6 @@ insert_records()
 }
 
 
-insert_records_oneshot()
-{
-    j=$1
-    nstop=$2
-    let nins=nins+1
-    insfl=insert${nins}.out
-    echo "Inserting $((nstop-j+1)) records ($j to $nstop)."
-    echo "" > $insfl
-
-    while [[ $j -le $nstop ]]; do 
-        # use for compare? echo "a=$j, b='test1$j', c='$j'" >> rows.out
-        echo "insert into t1(a,b,c) values ($j,'test1$j',$j)" 
-        let j=j+1
-    done | cdb2sql ${CDB2_OPTIONS} $dbnm default -  &>> $insfl
-    echo "done inserting round $nins"
-}
-
-
-kill_by_pidfile() 
-{
-    pidfile=$1
-    if [[ -f $pidfile ]]; then
-        local pid=$(cat $pidfile)
-        ps -p $pid -o args | grep -q "comdb2 ${DBNAME}"
-        if [[ $? -eq 0 ]]; then
-            echo "kill -9 $pid"
-            kill -9 $pid
-        fi
-        rm -f $pidfile
-    else
-        failexit "kill_by_pidfile: pidfile $pidfile does not exist"
-    fi
-}
-
 kill_restart_cluster()
 {
     delay=$1
@@ -175,61 +97,6 @@ kill_restart_cluster()
             out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
         done
     done
-}
-
-kill_restart_node()
-{
-    node=$1
-    delay=$2
-    pushd $DBDIR
-    cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'exec procedure sys.cmd.send("flush")'
-
-    if [ -n "$CLUSTER" ] ; then
-        kill_by_pidfile ${TMPDIR}/${DBNAME}.${node}.pid
-        mv --backup=numbered $TESTDIR/logs/${DBNAME}.${node}.db $TESTDIR/logs/${DBNAME}.${node}.db.1
-        sleep $delay
-        if [ $node != `hostname` ] ; then
-            ssh -o StrictHostKeyChecking=no -tt $node COMDB2_ROOT=$COMDB2_ROOT $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1 </dev/null &
-            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
-        else
-            $COMDB2_EXE ${DBNAME} -lrl $DBDIR/${DBNAME}.lrl &> $TESTDIR/logs/${DBNAME}.${node}.db -pidfile ${TMPDIR}/${DBNAME}.${node}.pid &
-        fi
-    else
-        kill_by_pidfile ${TMPDIR}/${DBNAME}.pid
-        mv --backup=numbered $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.1
-        sleep $delay
-        echo "$DBNAME: starting single node"
-        echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-        $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
-    fi
-
-    popd
-
-    out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    # wait until we can query it
-    echo "$DBNAME: waiting until ready"
-    while [[ "$out" != "1" ]]; do
-        sleep 2
-        out=$(cdb2sql ${CDB2_OPTIONS} --tabs --host $node $DBNAME  'select 1' 2>/dev/null)
-    done
-}
-
-
-get_schemachange_status()
-{
-    master=$1
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('stat')" | grep "Schema change in progress" > schemachange_status.out
-    if [ $? -eq 0 ] ; then
-        return 1 
-    fi
-    return 0
-}
-
-
-force_delay_master()
-{
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('bdb setattr SC_FORCE_DELAY 1')"
-    cdb2sql ${CDB2_OPTIONS} --host $master $dbnm "exec procedure sys.cmd.send('scdelay 300')"
 }
 
 echo "Test with insert, SC should not fail"
