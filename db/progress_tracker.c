@@ -361,17 +361,19 @@ int progress_tracking_end(uint64_t seed)
     }
 
     /* Update the end time for the last attribute in the list. */
-    struct progress_attribute *last_attrib;
+    struct progress_attribute *last_attrib = NULL;
     LISTC_FOR_EACH(&thread->attribs, attrib, lnk)
     {
         last_attrib = attrib;
     }
 
-    /* Status */
-    last_attrib->status = PROGRESS_COMPLETED;
+    if (last_attrib) {
+        /* Status */
+        last_attrib->status = PROGRESS_COMPLETED;
 
-    /* End time */
-    last_attrib->end_time_ms = get_epochms();
+        /* End time */
+        last_attrib->end_time_ms = get_epochms();
+    }
 
     return 0;
 }
@@ -427,17 +429,19 @@ int progress_tracking_worker_end(uint64_t seed, int status)
     }
 
     /* Update the last attribute in the list. */
-    struct progress_attribute *last_attrib;
+    struct progress_attribute *last_attrib = NULL;
     LISTC_FOR_EACH(&thread->attribs, attrib, lnk)
     {
         last_attrib = attrib;
     }
 
-    /* Status */
-    last_attrib->status = status;
+    if (last_attrib) {
+        /* Status */
+        last_attrib->status = status;
 
-    /* End time */
-    last_attrib->end_time_ms = get_epochms();
+        /* End time */
+        last_attrib->end_time_ms = get_epochms();
+    }
 
     /* Wait for counter thread to complete. */
     if (status == PROGRESS_COMPLETED && thread->wait_for_counter_thd) {
@@ -454,7 +458,7 @@ void *progress_tracking_update(uint64_t seed, int stage, int status,
 {
     struct progress_thread *thread;
     struct progress_thread *last = NULL;
-    struct progress_attribute *attrib, *last_updated_attrib;
+    struct progress_attribute *attrib, *last_updated_attrib = NULL;
     struct progress_tracker *tracker;
     pthread_t thread_id;
 
@@ -484,41 +488,44 @@ void *progress_tracking_update(uint64_t seed, int stage, int status,
     }
 
     /* Update the last attribute in the list. */
-    struct progress_attribute *last_attrib;
+    struct progress_attribute *last_attrib = NULL;
     LISTC_FOR_EACH(&thread->attribs, attrib, lnk)
     {
         last_attrib = attrib;
     }
 
-    /* Add a new attribute (entry) only if we are entering a different stage. */
-    if (last_attrib->stage != stage ||
-        last_attrib->status == PROGRESS_COMPLETED) {
-        if (!name) {
-            name = last_attrib->sub_name;
-        }
-        last_updated_attrib =
-            append_progress_attribute(thread, stage, status, name);
+    if (last_attrib) {
+        /* Add a new attribute (entry) only if we are entering a different
+         * stage. */
+        if (last_attrib->stage != stage ||
+            last_attrib->status == PROGRESS_COMPLETED) {
+            if (!name) {
+                name = last_attrib->sub_name;
+            }
+            last_updated_attrib =
+                append_progress_attribute(thread, stage, status, name);
 
-        /* Now that we have added a new entry, let's also update the status and
-         * end time for last stage. */
-        last_attrib->status = PROGRESS_COMPLETED;
-        last_attrib->end_time_ms = get_epochms();
-    } else { /* Update the last stage. */
-        /* Status */
-        last_attrib->status = status;
-
-        /* Sub-name */
-        if (name) {
-            free(last_attrib->sub_name);
-            last_attrib->sub_name = strdup(name);
-        }
-
-        /* End time */
-        if (status == PROGRESS_COMPLETED) {
+            /* Now that we have added a new entry, let's also update the status
+             * and end time for last stage. */
+            last_attrib->status = PROGRESS_COMPLETED;
             last_attrib->end_time_ms = get_epochms();
-        }
+        } else { /* Update the last stage. */
+            /* Status */
+            last_attrib->status = status;
 
-        last_updated_attrib = last_attrib;
+            /* Sub-name */
+            if (name) {
+                free(last_attrib->sub_name);
+                last_attrib->sub_name = strdup(name);
+            }
+
+            /* End time */
+            if (status == PROGRESS_COMPLETED) {
+                last_attrib->end_time_ms = get_epochms();
+            }
+
+            last_updated_attrib = last_attrib;
+        }
     }
 
     /* Wait for counter thread to complete. */
@@ -534,7 +541,6 @@ void *progress_tracking_get_last_attribute(uint64_t seed)
 {
     struct progress_thread *thread;
     struct progress_thread *last = NULL;
-    struct progress_attribute *attrib, *last_attrib;
     struct progress_tracker *tracker;
     pthread_t thread_id;
 
@@ -564,6 +570,7 @@ void *progress_tracking_get_last_attribute(uint64_t seed)
     }
 
     /* Update the last attribute in the list. */
+    struct progress_attribute *attrib, *last_attrib = NULL;
     LISTC_FOR_EACH(&thread->attribs, attrib, lnk)
     {
         last_attrib = attrib;
@@ -595,7 +602,6 @@ void progress_tracking_compute_total_records(uint64_t seed,
     int rc;
     struct progress_thread *thread;
     struct progress_thread *last = NULL;
-    struct progress_attribute *attrib, *last_attrib;
     struct progress_tracker *tracker;
     pthread_t thread_id;
 
@@ -625,6 +631,7 @@ void progress_tracking_compute_total_records(uint64_t seed,
     }
 
     /* Update the last attribute in the list. */
+    struct progress_attribute *attrib, *last_attrib = NULL;
     LISTC_FOR_EACH(&thread->attribs, attrib, lnk)
     {
         last_attrib = attrib;
@@ -633,7 +640,8 @@ void progress_tracking_compute_total_records(uint64_t seed,
     thread->work.state = state;
     thread->work.ixnum = ixnum;
     thread->work.dtastripe = dtastripe;
-    thread->work.count = &last_attrib->total_records;
+    if (last_attrib) /* Safety */
+        thread->work.count = &last_attrib->total_records;
 
     rc = pthread_create(&thread->counter_thd, NULL, record_counter_thd,
                         (void *)&thread->work);
