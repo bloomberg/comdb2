@@ -12,12 +12,12 @@
 [PUT TUNABLE allow_broken_datetimes 'onn'] failed with rc -3 Invalid tunable value
 (allow_broken_datetimes='ON')
 [PUT TUNABLE allow_broken_datetimes 'of'] failed with rc -3 Invalid tunable value
-(name='latch_max_poll', value=5, read_only='N')
-(value=100)
+(name='latch_max_poll', value='5', read_only='N')
+(value='100')
 [PUT TUNABLE latch_max_poll 'xx'] failed with rc -3 Invalid tunable value
 [PUT TUNABLE latch_max_poll xx] failed with rc -3 near "xx": syntax error
-(value=100)
-(value=10)
+(value='100')
+(value='10')
 (lock_conflict_trace='OFF')
 (lock_conflict_trace='ON')
 (out='Tunable 'lock_conflict_trace' set to ON')
@@ -48,9 +48,9 @@
 (appsockpool tunables='appsockpool.maxt')
 (appsockpool tunables='appsockpool.mint')
 (appsockpool tunables='appsockpool.stacksz')
-(appsockpool.maxt=0)
+(appsockpool.maxt='0')
 [PUT TUNABLE 'appsockpool.maxt' 'xxx'] failed with rc -3 Invalid tunable value
-(appsockpool.maxt=101)
+(appsockpool.maxt='101')
 (out='Pool [appsockpool] max threads set to 0')
 (out='Pool [appsockpool] max threads set to 102')
-(appsockpool.maxt=102)
+(appsockpool.maxt='102')
