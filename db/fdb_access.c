@@ -20,7 +20,6 @@
  */
 
 #include "plhash.h"
-#include "util.h"
 #include "list.h"
 
 #include "comdb2.h"
@@ -322,8 +321,7 @@ int fdb_add_dbname_to_whitelist(const char *dbname)
     /* hash will contain pointers to strings, it needs to memcmp ptrs */
     Pthread_mutex_lock(&fdb_dbname_hash_lock);
     if (fdb_dbname_hash == NULL)
-        fdb_dbname_hash = hash_init_user((hashfunc_t *)ptrhashfunc,
-                                         (cmpfunc_t *)memcmp, 0, 0);
+        fdb_dbname_hash = hash_init_ptr();
 
     assert(fdb_dbname_hash != NULL);
     const char *name = dbname;

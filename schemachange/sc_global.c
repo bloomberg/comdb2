@@ -275,9 +275,7 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
 
     Pthread_mutex_lock(&schema_change_in_progress_mutex);
     if (sc_tables == NULL) {
-        sc_tables =
-            hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                           offsetof(sc_table_t, tablename), 0);
+        sc_tables = hash_init_strcaseptr(offsetof(sc_table_t, tablename));
     }
     assert(sc_tables);
 

@@ -142,9 +142,7 @@ static int ctag_to_stag_int(const char *table, const char *ctag,
 int schema_init(void)
 {
     init_taglock();
-    gbl_tag_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct dbtag, tblname), 0);
+    gbl_tag_hash = hash_init_strcaseptr(offsetof(struct dbtag, tblname));
     Pthread_key_create(&unique_tag_key, free);
 
     logmsg(LOGMSG_INFO, "Schema module init ok\n");
@@ -174,9 +172,7 @@ static void add_tag_schema_lk(const char *table, struct schema *schema)
         }
 
         tag->tblname = strdup(table);
-        tag->tags =
-            hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                           offsetof(struct schema, tag), 0);
+        tag->tags = hash_init_strcaseptr(offsetof(struct schema, tag));
         hash_add(gbl_tag_hash, tag);
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
     }
@@ -1436,9 +1432,7 @@ void add_tag_alias(const char *table, struct schema *s, char *name)
     if (tag == NULL) {
         tag = malloc(sizeof(struct dbtag));
         tag->tblname = strdup(table);
-        tag->tags =
-            hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                           offsetof(struct schema, tag), 0);
+        tag->tags = hash_init_strcaseptr(offsetof(struct schema, tag));
         listc_init(&tag->taglist, offsetof(struct schema, lnk));
         hash_add(gbl_tag_hash, tag);
     }

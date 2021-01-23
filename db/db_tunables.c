@@ -1010,9 +1010,7 @@ int init_gbl_tunables()
     }
 
     /* Initialize the tunables hash. */
-    gbl_tunables->hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(comdb2_tunable, name), 0);
+    gbl_tunables->hash = hash_init_strcaseptr(offsetof(comdb2_tunable, name));
     hash_initsize(gbl_tunables->hash, 1024);
     logmsg(LOGMSG_DEBUG, "Global tunables hash initialized\n");
 

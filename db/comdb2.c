@@ -85,7 +85,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "timer.h"
 #include <plhash.h>
 #include <dynschemaload.h>
-#include "util.h"
 #include "verify.h"
 #include "ssl_bend.h"
 #include "switches.h"
@@ -2104,9 +2103,7 @@ int llmeta_load_views(struct dbenv *dbenv, void *tran)
     int view_count = 0;
     hash_t *view_hash;
 
-    view_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct dbview, view_name), 0);
+    view_hash = hash_init_strcaseptr(offsetof(struct dbview, view_name));
 
     /* load the tables from the low level metatable */
     if (bdb_get_view_names(tran, (char **)view_names, &view_count)) {
@@ -2592,16 +2589,9 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
     /* Initialize the table/queue hashes. */
-    dbenv->db_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(dbtable, tablename), 0);
-    dbenv->qdb_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(dbtable, tablename), 0);
-
-    dbenv->view_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct dbview, view_name), 0);
+    dbenv->db_hash = hash_init_strcaseptr(offsetof(dbtable, tablename));
+    dbenv->qdb_hash = hash_init_strcaseptr(offsetof(dbtable, tablename));
+    dbenv->view_hash = hash_init_strcaseptr(offsetof(struct dbview, view_name));
 
     /* Register all db tunables. */
     if ((register_db_tunables(dbenv))) {
