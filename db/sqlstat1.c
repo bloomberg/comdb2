@@ -22,7 +22,6 @@
 #include <netinet/in.h>
 #include "comdb2.h"
 #include "tag.h"
-#include "bdb_sqlstat1.h"
 #include "logmsg.h"
 
 #define is_stat1(x) ((x)[11] == '1')

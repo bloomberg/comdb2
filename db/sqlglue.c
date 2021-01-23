@@ -84,7 +84,6 @@
 
 #include "osqlsqlthr.h"
 #include "osqlshadtbl.h"
-#include "bdb_sqlstat1.h"
 #include "bdb/bdb_schemachange.h"
 
 #include <genid.h>

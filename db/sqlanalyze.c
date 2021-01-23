@@ -15,7 +15,6 @@
  */
 
 #include <comdb2.h>
-#include <bdb_sqlstat1.h>
 #include <strings.h>
 #include <assert.h>
 #include <limits.h>
