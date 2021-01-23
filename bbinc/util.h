@@ -32,9 +32,6 @@ extern int gbl_myroom;
 struct timeval;
 
 void perror_errnum(const char *s, int errnum);
-int strcmpfunc(char **a, char **b, int len);
-unsigned int strhashfunc(unsigned char **keyp, int len);
-unsigned int ptrhashfunc(unsigned char *keyp, int len);
 
 void xorbufcpy(char *dest, const char *src, size_t len);
 #define xorbuf(p, len) xorbufcpy((void *)(p), (const void *)(p), (len))

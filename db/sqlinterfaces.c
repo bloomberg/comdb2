@@ -27,7 +27,6 @@
 #include <stddef.h>
 #include <pthread.h>
 #include <sys/types.h>
-#include <util.h>
 #include <netinet/in.h>
 #include <inttypes.h>
 #include <fcntl.h>
@@ -1572,9 +1571,7 @@ static void sql_update_usertran_state(struct sqlclntstate *clnt)
                    clnt->ddl_contexts == NULL);
             clnt->ddl_tables = hash_init_strcase(0);
             clnt->dml_tables = hash_init_strcase(0);
-            clnt->ddl_contexts = hash_init_user(
-                (hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                offsetof(struct clnt_ddl_context, name), 0);
+            clnt->ddl_contexts = hash_init_strcaseptr(offsetof(struct clnt_ddl_context, name));
         }
     } else if (meta == TSMC_COMMIT) {
         clnt->snapshot = 0;

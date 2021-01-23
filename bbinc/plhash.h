@@ -102,6 +102,7 @@ hash_init_i4(int keyoff); /* i4 @ keyoff with some suitable optimisations */
 hash_t *hash_init_o(int keyoff, int keylen); /* fixed len key at keyoff */
 hash_t *hash_init_jenkins_o(
     int keyoff, int keylen); /* Bob Jenkins hash, power of 2 sized hash table */
+hash_t *hash_init_ptr();               /* hash of pointers (addresses) */
 hash_t *hash_init_user(hashfunc_t *hashfunc, cmpfunc_t *cmpfunc, int keyoff,
                        int keyl);
 hash_t *hash_setalloc_init(hashmalloc_t *hashmalloc, hashfree_t *hashfree,

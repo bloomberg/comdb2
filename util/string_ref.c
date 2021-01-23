@@ -30,7 +30,6 @@
 
 static pthread_mutex_t srh_mtx = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *sr_hash = NULL;
-extern u_int ptrhashfunc(u_char *keyp, int len);
 #endif
 
 static int gbl_creation_count;
@@ -56,7 +55,7 @@ struct string_ref * create_string_ref(const char *str)
 #ifdef TRACK_REFERENCES
     Pthread_mutex_lock(&srh_mtx);
     if(!sr_hash)
-        sr_hash = hash_init_user((hashfunc_t *)ptrhashfunc, (cmpfunc_t *)memcmp, 0, 0);
+        sr_hash = hash_init_ptr();
     hash_add(sr_hash, ref);
     gbl_creation_count += 1;
     Pthread_mutex_unlock(&srh_mtx);

@@ -24,7 +24,6 @@
  */
 
 #include "lockmacros.h"
-#include "util.h"
 #include "comdb2.h"
 #include "comdb2_plugin.h"
 #include "comdb2_appsock.h"
@@ -83,9 +82,7 @@ void close_appsock(SBUF2 *sb)
 int appsock_init(void)
 {
     /* Initialize the appsock handler hash. */
-    gbl_appsock_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(comdb2_appsock_t, name), 0);
+    gbl_appsock_hash = hash_init_strcaseptr(offsetof(comdb2_appsock_t, name));
     logmsg(LOGMSG_DEBUG, "appsock handler hash initialized\n");
 
     gbl_appsock_thdpool =

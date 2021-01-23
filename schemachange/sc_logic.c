@@ -963,9 +963,7 @@ int resume_schema_change(void)
     /* if a schema change is currently running don't try to resume one */
     clear_ongoing_alter();
 
-    hash_t *tpt_sc_hash =
-        hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
-                       offsetof(struct timepart_sc_resuming, viewname), 0);
+    hash_t *tpt_sc_hash = hash_init_strcaseptr(offsetof(struct timepart_sc_resuming, viewname));
     if (!tpt_sc_hash) {
         logmsg(LOGMSG_FATAL, "%s: ran out of memory\n", __func__);
         abort();
