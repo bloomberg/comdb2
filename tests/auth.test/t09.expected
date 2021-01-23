@@ -240,6 +240,7 @@
 (candidate='comdb2_opcode_handlers')
 (candidate='comdb2_plugins')
 (candidate='comdb2_procedures')
+(candidate='comdb2_progress')
 (candidate='comdb2_queues')
 (candidate='comdb2_repl_stats')
 (candidate='comdb2_replication_netqueue')

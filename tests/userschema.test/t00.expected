@@ -29,6 +29,7 @@
 (tablename='comdb2_opcode_handlers', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_plugins', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_procedures', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_progress', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_queues', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_repl_stats', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_replication_netqueue', username='mohit', READ='Y', WRITE='Y', DDL='Y')

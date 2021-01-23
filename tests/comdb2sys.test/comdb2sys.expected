@@ -379,6 +379,7 @@
 (name='comdb2_opcode_handlers')
 (name='comdb2_plugins')
 (name='comdb2_procedures')
+(name='comdb2_progress')
 (name='comdb2_queues')
 (name='comdb2_repl_stats')
 (name='comdb2_replication_netqueue')
