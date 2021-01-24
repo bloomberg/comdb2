@@ -806,8 +806,8 @@ void eventlog_process_message(char *line, int lline, int *toff)
     }
 }
 
-void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
-                        u_int32_t nlockers, u_int32_t victim)
+void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
+                             u_int32_t nlockers, u_int32_t victim)
 {
     if (!eventlog_enabled || eventlog == NULL) {
         return;
