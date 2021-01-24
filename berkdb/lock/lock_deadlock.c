@@ -40,7 +40,7 @@ extern int gbl_rowlocks;
 
 extern void stack_me(char *location);
 extern void log_snap_info_key(snap_uid_t *);
-extern void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
+extern void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
 
 #define	CLEAR_MAP(M, N) {						\
 	u_int32_t __i;							\
@@ -869,7 +869,7 @@ dokill:
 		if (gbl_print_deadlock_cycles) {
 			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
-			log_deadlock_cycle(idmap, *deadp, nlockers, killid);
+			eventlog_deadlock_cycle(idmap, *deadp, nlockers, killid);
 #ifdef DEBUG_LOCKS
 			__lock_dump_active_locks(dbenv, stderr);
 #endif

@@ -631,6 +631,9 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
 err:
+    if (retrc == RC_INTERNAL_RETRY) {
+        iq->usedb->deadlock_count++;
+    }
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
     if (dynschema)
@@ -1543,6 +1546,9 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
 err:
+    if (retrc == RC_INTERNAL_RETRY) {
+        iq->usedb->deadlock_count++;
+    }
     free_blob_status_data(&oldblobs);
     if (iq->debug)
         reqpopprefixes(iq, prefixes);
@@ -1834,6 +1840,9 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
 err:
     dbglog_record_db_write(iq, "delete");
+    if (retrc == RC_INTERNAL_RETRY) {
+        iq->usedb->deadlock_count++;
+    }
     if (!retrc && iq->__limits.maxcost && iq->cost > iq->__limits.maxcost)
         retrc = ERR_LIMIT;
 

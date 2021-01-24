@@ -646,6 +646,8 @@ typedef struct dbtable {
     /* counters for writes to this table */
     unsigned write_count[RECORD_WRITE_MAX];
     unsigned saved_write_count[RECORD_WRITE_MAX];
+    unsigned deadlock_count;
+    unsigned saved_deadlock_count;
     unsigned aa_saved_counter; // zeroed out at autoanalyze
     time_t aa_lastepoch;
     unsigned aa_counter_upd;   // counter which includes updates

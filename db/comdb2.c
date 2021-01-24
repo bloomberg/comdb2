@@ -4679,6 +4679,8 @@ void *statthd(void *p)
                                  NULL, 0, "updated rows", &hdr, statlogger, tbl, 0);
                     log_tbl_item(tbl->write_count[RECORD_WRITE_DEL], &tbl->saved_write_count[RECORD_WRITE_DEL],
                                  NULL, 0, "deleted rows", &hdr, statlogger, tbl, 0);
+                    log_tbl_item(tbl->deadlock_count, &tbl->saved_deadlock_count,
+                                 NULL, 0, "deadlock count", &hdr, statlogger, tbl, 0);
                 }
                 unlock_schema_lk();
 
