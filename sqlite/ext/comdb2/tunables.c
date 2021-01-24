@@ -47,6 +47,7 @@ enum {
     TUNABLES_COLUMN_DESCR,
     TUNABLES_COLUMN_TYPE,
     TUNABLES_COLUMN_VALUE,
+    TUNABLES_COLUMN_FLAGS,
     TUNABLES_COLUMN_READONLY,
 };
 
@@ -58,6 +59,7 @@ static int systblTunablesConnect(sqlite3 *db, void *pAux, int argc,
 
     rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_tunables(\"name\", "
                                   "\"description\", \"type\", \"value\", "
+                                  "\"flags\" hidden, "
                                   "\"read_only\")");
 
     if (rc == SQLITE_OK) {
@@ -84,14 +86,20 @@ static int systblTunablesDisconnect(sqlite3_vtab *pVtab)
 
 static int systblTunablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
-    systbl_tunables_cursor *cur =
-        sqlite3_malloc(sizeof(systbl_tunables_cursor));
+    systbl_tunables_cursor *cur = sqlite3_malloc(sizeof(systbl_tunables_cursor));
     if (cur == 0) {
         return SQLITE_NOMEM;
     }
     memset(cur, 0, sizeof(*cur));
     *ppCursor = &cur->base;
+    cur->rowid = 0;
     cur->tunable = hash_first(gbl_tunables->hash, &cur->ent, &cur->bkt);
+    while ((cur->tunable->type == TUNABLE_COMPOSITE) ||
+           (gbl_mask_internal_tunables && (cur->tunable->flags & INTERNAL))) {
+        cur->rowid++;
+        cur->tunable = hash_next(gbl_tunables->hash, &cur->ent, &cur->bkt);
+    }
+
     return SQLITE_OK;
 }
 
@@ -105,8 +113,9 @@ static int systblTunablesFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
                                 const char *idxStr, int argc,
                                 sqlite3_value **argv)
 {
-    systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)pVtabCursor;
-    pCur->rowid = 0;
+    /* systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)pVtabCursor; 
+     * cur->rowid = 0;
+     */
     return SQLITE_OK;
 }
 
@@ -120,8 +129,7 @@ static int systblTunablesNext(sqlite3_vtab_cursor *cur)
         if (pCur->rowid >= gbl_tunables->count) break;
         pCur->tunable = hash_next(gbl_tunables->hash, &pCur->ent, &pCur->bkt);
     } while ((pCur->tunable->type == TUNABLE_COMPOSITE) ||
-             (gbl_mask_internal_tunables &&
-              ((pCur->tunable->flags & INTERNAL) != 0)));
+             (gbl_mask_internal_tunables && (pCur->tunable->flags & INTERNAL)));
 
     return SQLITE_OK;
 }
@@ -202,6 +210,27 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
     case TUNABLES_COLUMN_READONLY:
         sqlite3_result_text(ctx, YESNO(tunable->flags & READONLY), -1, NULL);
         break;
+    case TUNABLES_COLUMN_FLAGS:
+    {
+        char buffer[64];
+
+        int flags = (int)tunable->flags;
+        sqlite3_snprintf(sizeof(buffer), buffer, "%s%s%s%s%s%s%s%s%s%s",
+                             flags & NOARG ? "NOARG " : "",
+                             flags & READONLY ? "READONLY " : "",
+                             flags & NOZERO ? "NOZERO " : "",
+                             flags & SIGNED ? "SIGNED " : "",
+                             flags & INVERSE_VALUE ? "INVERSE_VALUE " : "",
+                             flags & DEPRECATED_TUNABLE ? "DEPRECATED " : "",
+                             flags & EXPERIMENTAL ? "EXPERIMENTAL " : "",
+                             flags & INTERNAL ? "INTERNAL " : "",
+                             flags & EMPTY ? "EMPTY " : "",
+                             flags & READEARLY ? "READEARLY " : "",
+                             flags & DYNAMIC ? "DYNAMIC " : ""
+                             );
+        sqlite3_result_text(ctx, strdup(buffer), -1, free);
+        break;
+    }
     default: assert(0);
     };
 
