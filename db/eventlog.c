@@ -47,7 +47,6 @@
 #include "string_ref.h"
 
 extern int64_t comdb2_time_epochus(void);
-extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
 
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
@@ -463,6 +462,18 @@ static void eventlog_add_newsql(const struct reqlogger *logger)
 
 static const char *ev_str[] = { "unset", "txn", "sql", "sp" };
 
+static inline void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
+{
+    if (obj && snap_info) {
+        char cnonce[2 * snap_info->keylen + 1];
+        /* util_tohex() takes care of null-terminating the resulting string. */
+        util_tohex(cnonce, snap_info->key, snap_info->keylen);
+        cson_object_set(obj, "cnonce",
+                        cson_value_new_string(cnonce, snap_info->keylen * 2));
+    }
+}
+
+
 static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 {
     cson_object_set(obj, "time", cson_new_int(logger->startus));
@@ -482,13 +493,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
         p = IQ_SNAPINFO(logger->iq);
     else if (logger->clnt && get_cnonce(logger->clnt, &snap) == 0)
         p = &snap;
-    if (p) {
-        char cnonce[2 * p->keylen + 1];
-        /* util_tohex() takes care of null-terminating the resulting string. */
-        util_tohex(cnonce, p->key, p->keylen);
-        cson_object_set(obj, "cnonce",
-                        cson_value_new_string(cnonce, p->keylen * 2));
-    }
+    cson_snap_info_key(obj, p);
 
     if (logger->have_id)
         cson_object_set(obj, "id", cson_value_new_string(logger->id, strlen(logger->id)));
@@ -583,13 +588,6 @@ void eventlog_add(const struct reqlogger *logger)
         cson_output_FILE(val, stdout);
 
     cson_value_free(val);
-}
-
-void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
-{
-    if (obj && snap_info)
-        cson_object_set(obj, "cnonce", cson_value_new_string(
-                                           snap_info->key, snap_info->keylen));
 }
 
 void eventlog_status(void)
