@@ -1212,9 +1212,13 @@ int sc_timepart_add_table(const char *existingTableName,
 
     /* do the dance */
     sc.nothrevent = 1;
-    do_schema_change_locked(&sc);
+    int rc = do_schema_change_locked(&sc);
+    if (rc) {
+        xerr->errval = SC_VIEW_ERR_SC;
+        snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to add table");
+    } else
+        xerr->errval = SC_VIEW_NOERR;
 
-    xerr->errval = SC_VIEW_NOERR;
     return xerr->errval;
 
 error:
