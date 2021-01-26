@@ -8480,19 +8480,16 @@ int sqlite3BtreeInsert(
     struct sql_thread *thd = pCur->thd;
     struct sqlclntstate *clnt = pCur->clnt;
 
-    /* If pPayload is NULL, ondisk_buf and ondisk_blobs contain comdb2 row data
+    pKey = pPayload->pKey;
+    nKey = pPayload->nKey;
+    pData = pPayload->pData;
+    nData = pPayload->nData;
+
+    /* If pData is NULL, ondisk_buf and ondisk_blobs contain comdb2 row data
        and are ready to be inserted as is. */
-    if (pPayload == NULL) {
+    if (pData == NULL) {
         pblobs = pCur->ondisk_blobs;
-        pKey = NULL;
-        nKey = 0;
-        pData = NULL;
-        nData = 0;
     } else {
-        pKey = pPayload->pKey;
-        nKey = pPayload->nKey;
-        pData = pPayload->pData;
-        nData = pPayload->nData;
         pblobs = alloca(sizeof(blob_buffer_t) * MAXBLOBS);
         memset(pblobs, 0, sizeof(blob_buffer_t) * MAXBLOBS);
     }
@@ -8687,7 +8684,7 @@ int sqlite3BtreeInsert(
         }
 
         if (likely(pCur->cursor_class != CURSORCLASS_STAT24) && likely(pCur->bt == NULL || pCur->bt->is_remote == 0) &&
-            pPayload != NULL) {
+            pData != NULL) {
             rc = sqlite_to_ondisk(pCur->db->schema, pData, nData, pCur->ondisk_buf, clnt->tzname, pblobs, MAXBLOBS,
                                   &thd->clnt->fail_reason, pCur);
             if (rc < 0) {
