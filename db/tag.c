@@ -5299,28 +5299,14 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
 
             extern int gbl_forbid_ulonglong;
             if (gbl_forbid_ulonglong &&
-                (schema->member[field].type == SERVER_UINT ||
-                 schema->member[field].type == CLIENT_UINT) &&
+                 schema->member[field].type == CLIENT_UINT &&
                 schema->member[field].len == sizeof(unsigned long long) &&
                 strncasecmp(db->tablename, gbl_ver_temp_table,
                             sizeof(gbl_ver_temp_table) - 1) != 0) {
                 logmsg(LOGMSG_ERROR,
                        "Error in table %s: u_longlong is unsupported\n",
                        db->tablename);
-                /* Skip returning error on presence of u_longlong if:
-
-                   - we are still starting, or
-                   - we were explicitly asked to do so.
-
-                   This is done to allow existing databases with tables
-                   containing u_longlong to start and also certain operational
-                   commands, like rebuild and truncate, to succeed.
-                */
-                if (gbl_ready && (db->skip_error_on_ulonglong_check != 1)) {
-                    if (db->iq)
-                        reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
-                    return -1;
-                }
+                return -1;
             }
 
             /* count the blobs */
@@ -7120,14 +7106,11 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     }
     newdb->schema_version = version;
     newdb->dbnum = db->dbnum;
-    newdb->skip_error_on_ulonglong_check = 1;
     rc = add_cmacc_stmt(newdb, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
-        newdb->skip_error_on_ulonglong_check = 0;
         goto err;
     }
-    newdb->skip_error_on_ulonglong_check = 0;
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 

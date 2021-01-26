@@ -837,14 +837,11 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
             return 1;
         }
         newdb->dbnum = db->dbnum;
-        newdb->skip_error_on_ulonglong_check = 1;
         if (add_cmacc_stmt(newdb, 1) != 0) {
             /* can happen if new schema has no .DEFAULT tag but needs one */
             backout_schemas(table);
-            newdb->skip_error_on_ulonglong_check = 0;
             return 1;
         }
-        newdb->skip_error_on_ulonglong_check = 0;
         newdb->meta = db->meta;
         newdb->dtastripe = gbl_dtastripe;
 
