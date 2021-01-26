@@ -30,26 +30,12 @@ sqlite3_module systblProgressModule = {
     .systable_lock = "comdb2_progress",
 };
 
-static void release_progress_data(void *data, int npoints)
-{
-    progress_entry_t *pEntries = (progress_entry_t *)data;
-    if (pEntries != NULL) {
-        for (int i = 0; i < npoints; i++) {
-            free(pEntries[i].name);
-            free(pEntries[i].sub_name);
-            free(pEntries[i].seed);
-        }
-        free(pEntries);
-    }
-    return;
-}
-
 // clang-format off
 int systblProgressInit(sqlite3 *db)
 {
     return create_system_table(
         db, "comdb2_progress", &systblProgressModule,
-        progress_tracker_copy_data, release_progress_data, sizeof(progress_entry_t),
+        progress_tracker_copy_data, progress_tracker_release_data, sizeof(progress_entry_t),
         CDB2_CSTRING, "name", -1, offsetof(progress_entry_t, name),
         CDB2_CSTRING, "sub_name", -1, offsetof(progress_entry_t, sub_name),
         CDB2_CSTRING, "type", -1, offsetof(progress_entry_t, type),

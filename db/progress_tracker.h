@@ -117,12 +117,15 @@ int progress_tracking_worker_end(uint64_t seed, int status);
 void *progress_tracking_update(uint64_t seed, int stage, int status,
                                const char *name);
 void *progress_tracking_get_last_attribute(uint64_t seed);
+
 void progress_tracking_update_total_records(void *, uint64_t count);
 void progress_tracking_update_processed_records(void *, uint64_t count);
 void progress_tracking_compute_total_records(uint64_t seed,
                                              bdb_state_type *state, int ixnum,
                                              int dtastripe);
 void progress_tracking_update_stats(void *);
+
 int progress_tracker_copy_data(void **data, int *npoints);
+void progress_tracker_release_data(void *data, int npoints);
 
 #endif /* PROGRESS_TRACKER_H */

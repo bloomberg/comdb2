@@ -781,3 +781,18 @@ int progress_tracker_copy_data(void **data, int *npoints)
 
     return 0;
 }
+
+void progress_tracker_release_data(void *data, int npoints)
+{
+    progress_entry_t *pEntries = (progress_entry_t *)data;
+    if (pEntries != NULL) {
+        for (int i = 0; i < npoints; i++) {
+            free(pEntries[i].name);
+            free(pEntries[i].sub_name);
+            free(pEntries[i].seed);
+        }
+        free(pEntries);
+    }
+    return;
+}
+
