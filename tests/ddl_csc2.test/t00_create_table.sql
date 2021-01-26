@@ -25,7 +25,3 @@ CREATE TABLE t3 { constants { SIZE = 0 } schema { vutf8 c[SIZE] } } $$
 DROP TABLE t1;
 DROP TABLE t2;
 DROP TABLE t3;
-
-# DRQS 164542358
-SELECT value FROM comdb2_tunables WHERE name = 'forbid_ulonglong';
-CREATE TABLE t1 { schema { u_longlong u } }$$
