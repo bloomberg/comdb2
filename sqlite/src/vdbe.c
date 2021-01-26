@@ -5410,6 +5410,7 @@ case OP_Insert: {
   assert( pKey->flags & MEM_Int );
   assert( memIsValid(pKey) );
   REGISTER_TRACE(pOp->p3, pKey);
+  memset(&x, 0, sizeof(BtreePayload));
   x.nKey = pKey->u.i;
 
   if( pOp->p4type==P4_TABLE && HAS_UPDATE_HOOK(db) ){
@@ -5443,7 +5444,7 @@ case OP_Insert: {
   /* Data is already serialized to comdb2 row format and stored in the btree cursor. */
   if( pData->flags & MEM_Comdb2 ){
     seekResult = ((pOp->p5 & OPFLAG_USESEEKRESULT) ? pC->seekResult : 0);
-    rc = sqlite3BtreeInsert(pC->uc.pCursor, NULL,
+    rc = sqlite3BtreeInsert(pC->uc.pCursor, &x,
         (pOp->p5 & OPFLAG_ISUPDATE)!=0, seekResult, pOp->p5
     );
   }else{
