@@ -1,5 +1,5 @@
 /*
-   Copyright 2020 Bloomberg Finance L.P.
+   Copyright 2021 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -760,11 +760,6 @@ static int handle_exec_chunk_cmd(int argc, char **argv, std::string &result)
 
     verbose("executing 'exec-chunk'");
 
-    if (argc < 1) {
-        std::cerr << "invalid number of arguments; see usage" << std::endl;
-        exit(1);
-    }
-
     /* The command could be supplied as command line argument. */
     /* There must be at least 1 more argument */
     if (argc > 0) {
@@ -788,7 +783,6 @@ static int handle_exec_chunk_cmd(int argc, char **argv, std::string &result)
         while (getline(tx_file, line)) {
             cmd.push_back(line);
         }
-        rc = execute_transaction(cmd, result);
     } else {
         cmd.push_back(opt_command);
     }
@@ -1032,8 +1026,8 @@ int main(int argc, char **argv)
         }
     }
 
-    /* There must be at least 2 more arguments */
-    if (optind + 3 > argc) {
+    /* There must be at least 1 more argument */
+    if (optind + 2 > argc) {
         std::cerr << "invalid number of arguments; see usage" << std::endl;
         exit(1);
     }
