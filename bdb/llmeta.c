@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -30,9 +30,9 @@
 #include <openssl/rand.h>
 #include "logmsg.h"
 #include "str0.h"
-
+#include "lrucache.h"
 #include <sys/time.h>
-#include <str0.h>
+#include "lockmacros.h"
 
 extern int gbl_maxretries;
 extern int gbl_disable_access_controls;
@@ -9644,13 +9644,17 @@ int bdb_process_each_table_idx_entry(bdb_state_type *bdb_state, tran_type *tran,
 ** Key is: LLMETA_USER_PASSWORD_HASH
 ** Value is: 'struct passwd_hash' below
 */
+
+#define PASSWD_HASH_SZ 32
+#define PASSWD_SALT_SZ 32
+
 typedef union {
     struct llmeta_user_password passwd;
     uint8_t buf[LLMETA_IXLEN];
 } passwd_key;
 typedef struct {
-    uint8_t salt[32];
-    uint8_t hash[32];
+    uint8_t salt[PASSWD_SALT_SZ];
+    uint8_t hash[PASSWD_HASH_SZ];
 } passwd_v0;
 typedef struct {
     uint8_t ver;
@@ -9736,6 +9740,52 @@ out:
     return rc;
 }
 
+int gbl_max_password_cache_size = 100;
+static lrucache *password_cache; // saved password hashes
+static pthread_mutex_t password_cache_mu = PTHREAD_MUTEX_INITIALIZER;
+
+typedef struct {
+    uint8_t key[PASSWD_HASH_SZ]; // Hash of plaintext password
+    uint8_t password[PASSWD_HASH_SZ];
+    int iterations;
+    lrucache_link lnk;
+} password_cache_entry_t;
+
+static unsigned int password_hash(const void *p, int len)
+{
+    unsigned int h = 0;
+    uint8_t *key = (uint8_t *)p;
+    for (int i = 0; i < PASSWD_HASH_SZ; ++ i) {
+        h = ((h % 8388013) << 8) + (key[i]);
+    }
+    return h;
+}
+
+static int password_cmp(const void *key1, const void *key2, int len)
+{
+    return CRYPTO_memcmp(key1, key2, PASSWD_HASH_SZ);
+}
+
+void init_password_cache()
+{
+    if (gbl_max_password_cache_size <= 0) {
+        return;
+    }
+    password_cache = lrucache_init(password_hash, password_cmp, free,
+                                   offsetof(password_cache_entry_t, lnk),
+                                   offsetof(password_cache_entry_t, key),
+                                   PASSWD_HASH_SZ, gbl_max_password_cache_size);
+}
+
+void destroy_password_cache()
+{
+    if (!password_cache)
+      return;
+
+    lrucache_destroy(password_cache);
+    password_cache = 0;
+}
+
 int bdb_user_password_check(tran_type *tran, char *user, char *passwd, int *valid_user)
 {
     int passwd_rc = 1;
@@ -9772,16 +9822,69 @@ int bdb_user_password_check(tran_type *tran, char *user, char *passwd, int *vali
     if (valid_user) {
         *valid_user = 1;
     }
+
+    // Since calculating password hashes can be CPU intensive, we maintain a
+    // hash table of passwords and their respective hashes. In the following
+    // lines, we check if the hash for the specified password is already stored
+    // in the table.
+    uint8_t key[PASSWD_HASH_SZ]; // Password key for lookup
     PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), stored->u.p0.salt,
-                           sizeof(stored->u.p0.salt), iterations,
-                           sizeof(computed.u.p0.hash), computed.u.p0.hash);
+                           sizeof(stored->u.p0.salt), 1, sizeof(key), key);
+
+    password_cache_entry_t *password_entry = NULL;
+
+    if (gbl_max_password_cache_size > 0) {
+        Pthread_mutex_lock(&password_cache_mu);
+        password_entry = lrucache_find(password_cache, &key);
+        Pthread_mutex_unlock(&password_cache_mu);
+
+    }
+
+    uint8_t matching_entry_found = 0;
+    if (password_entry) {
+        if (password_entry->iterations == iterations) {
+            memcpy(computed.u.p0.hash, password_entry->password,
+                   sizeof(stored->u.p0.hash));
+            matching_entry_found = 1;
+        }
+
+        Pthread_mutex_lock(&password_cache_mu);
+        lrucache_release(password_cache, &key);
+        Pthread_mutex_unlock(&password_cache_mu);
+    }
+
+    if (matching_entry_found == 0) {
+        PKCS5_PBKDF2_HMAC_SHA1(passwd, strlen(passwd), stored->u.p0.salt,
+                               sizeof(stored->u.p0.salt), iterations,
+                               sizeof(computed.u.p0.hash), computed.u.p0.hash);
+    }
+
     passwd_rc = CRYPTO_memcmp(computed.u.p0.hash, stored->u.p0.hash,
                               sizeof(stored->u.p0.hash));
+
+    // Add matching password entry to the password cache
+    if ((gbl_max_password_cache_size > 0) && (passwd_rc == 0) &&
+        !password_entry) {
+        password_cache_entry_t *entry;
+        entry = malloc(sizeof(password_cache_entry_t));
+
+        if (entry) {
+            entry->iterations = iterations;
+            memcpy(entry->key, key, sizeof(key));
+            memcpy(entry->password, computed.u.p0.hash, sizeof(computed.u.p0.hash));
+
+            Pthread_mutex_lock(&password_cache_mu);
+            lrucache_add(password_cache, entry);
+            Pthread_mutex_unlock(&password_cache_mu);
+        }
+    }
+
 out:
     if (data) {
         free(*data);
         free(data);
     }
+
     return passwd_rc;
 }
 int bdb_user_password_set(tran_type *tran, char *user, char *passwd)

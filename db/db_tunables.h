@@ -2041,6 +2041,12 @@ REGISTER_TUNABLE("test_log_file",
                  EXPERIMENTAL | INTERNAL | READEARLY, NULL, NULL,
                  test_log_file_update, NULL);
 
+REGISTER_TUNABLE(
+    "max_password_cache_size",
+    "Password cache size, set to <=0 to turn off caching (Default: 100)",
+    TUNABLE_INTEGER, &gbl_max_password_cache_size, 0, NULL, NULL,
+    max_password_cache_size_update, NULL);
+
 REGISTER_TUNABLE("debug_systable_locks",
                  "Grab the comdb2_systables lock in every schema change.  "
                  "(Default: off)",
