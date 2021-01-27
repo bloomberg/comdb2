@@ -267,6 +267,7 @@ extern int gbl_ref_sync_wait_txnlist;
 extern int gbl_ref_sync_iterations;
 extern int gbl_sc_pause_at_end;
 extern int gbl_sc_is_at_end;
+extern int gbl_max_password_cache_size;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;
@@ -924,6 +925,19 @@ static int page_order_table_scan_update(void *context, void *value)
                  gbl_page_order_table_scan);
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
+}
+
+static int max_password_cache_size_update(void *context, void *value)
+{
+    int val = *(int *)value;
+    destroy_password_cache();
+    if (val <= 0) {
+        gbl_max_password_cache_size = 0;
+        return 0;
+    }
+    gbl_max_password_cache_size = val;
+    init_password_cache();
     return 0;
 }
 

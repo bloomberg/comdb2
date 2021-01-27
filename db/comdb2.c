@@ -4471,6 +4471,8 @@ static int init(int argc, char **argv)
 
     csc2_free_all();
 
+    init_password_cache();
+
     return 0;
 }
 

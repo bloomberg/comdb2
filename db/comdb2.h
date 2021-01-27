@@ -3584,4 +3584,9 @@ extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;
 
 extern void global_sql_timings_print(void);
+
+/* User password cache */
+void init_password_cache();
+void destroy_password_cache();
+
 #endif /* !INCLUDED_COMDB2_H */
