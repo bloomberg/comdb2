@@ -40,6 +40,9 @@ setup_debugger() {
             # get report of performance via perf report -i $TESTDIR/$TESTCASE.perfdata
             # or perf annotate -i $TESTDIR/$TESTCASE.perfdata
             ;;
+        strace)   # strace syscalls: -tt -T for timing information, -f for threads, -C summary
+            DEBUG_PREFIX="strace -tt -T -f -C -o $TESTDIR/$TESTCASE.strace"
+            ;;
         mutrace)   # mutex contention detection tool
             DEBUG_PREFIX="mutrace "
             ;;
