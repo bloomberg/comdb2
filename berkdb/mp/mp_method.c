@@ -476,7 +476,7 @@ __memp_get_refcnt(dbenv, fileid, refp)
 {
 	DB_MPOOL *dbmp;
 	MPOOL *mp;
-	MPOOLFILE *mfp;
+	MPOOLFILE *mfp, *tmp;
 
 	*refp = 0;
 
@@ -491,20 +491,16 @@ __memp_get_refcnt(dbenv, fileid, refp)
 	 * Find the file -- if mpool doesn't know about this file, the
 	 * reference count is 0.
 	 */
-	for (mfp = SH_TAILQ_FIRST(&mp->mpfq, __mpoolfile);
-	    mfp != NULL; mfp = SH_TAILQ_NEXT(mfp, q, __mpoolfile)) {
+	struct __fileid_mpf *fileid_mpf = hash_find(mp->mpfhash, fileid);
+	if (fileid_mpf) {
+		LISTC_FOR_EACH_SAFE(&fileid_mpf->mpflist, mfp, tmp, lnk) {
+			/* Ignore non-active files. */
+			if (mfp->deadfile || F_ISSET(mfp, MP_TEMP))
+				continue;
 
-		/* Ignore non-active files. */
-		if (mfp->deadfile || F_ISSET(mfp, MP_TEMP))
-			continue;
-
-		/* Ignore non-matching files. */
-		if (memcmp(fileid, R_ADDR(
-		    dbmp->reginfo, mfp->fileid_off), DB_FILE_ID_LEN) != 0)
-			continue;
-
-		*refp = mfp->mpf_cnt;
-		break;
+			*refp = mfp->mpf_cnt;
+			break;
+		}
 	}
 	R_UNLOCK(dbenv, dbmp->reginfo);
 
