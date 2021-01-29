@@ -2332,5 +2332,6 @@ int bdb_debug_log(bdb_state_type *bdb_state, tran_type *tran, int op);
 int bdb_iam_master(bdb_state_type *bdb_state);
 
 int32_t bdb_get_dbopen_gen(void);
+int is_incoherent(bdb_state_type *, const char *);
 
 #endif

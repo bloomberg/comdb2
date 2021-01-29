@@ -1665,7 +1665,7 @@ extern int gbl_lock_conflict_trace;
 extern int gbl_enque_flush_interval;
 extern int gbl_inflate_log;
 extern pthread_attr_t gbl_pthread_attr_detached;
-extern unsigned int gbl_nsql;
+extern uint32_t gbl_nsql;
 extern long long gbl_nsql_steps;
 
 extern unsigned int gbl_nnewsql;
@@ -3576,4 +3576,8 @@ extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;
 
 extern void global_sql_timings_print(void);
+
+extern int gbl_sql_release_locks_on_slow_reader;
+extern int gbl_fail_client_write_lock;
+
 #endif /* !INCLUDED_COMDB2_H */

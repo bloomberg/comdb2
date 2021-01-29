@@ -81,6 +81,8 @@ phys_rep.test
 sc_async_constraints.test
 async_sc_bench.test       -- benchmark for paper
 queuedb_rollover_extended.test -- takes a very long time
+rootpagememleak.test
+mem_protobuf.test
 <END>
 
 # vim: set sw=4 ts=4 et:

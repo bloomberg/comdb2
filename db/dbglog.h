@@ -27,7 +27,7 @@ struct sqlclntstate;
 struct client_query_stats;
 
 int dbglog_init_write_counters(struct ireq *);
-int grab_dbglog_file(struct sbuf2 *, unsigned long long, struct sqlclntstate *);
+int grab_dbglog_file(unsigned long long, struct sqlclntstate *);
 struct sbuf2 *open_dbglog_file(unsigned long long);
 void append_debug_logs_from_master(struct sbuf2 *, unsigned long long);
 void dbglog_dump_write_stats(struct ireq *);
@@ -40,7 +40,7 @@ int dbglog_munmap_dbglog_file(unsigned long long, void *, size_t, int);
 
 struct dbglog_impl {
     int (*dbglog_init_write_counters)(struct ireq *);
-    int (*grab_dbglog_file)(struct sbuf2 *, unsigned long long, struct sqlclntstate *);
+    int (*grab_dbglog_file)(unsigned long long, struct sqlclntstate *);
     struct sbuf2 *(*open_dbglog_file)(unsigned long long);
     void (*append_debug_logs_from_master)(struct sbuf2 *, unsigned long long);
     void (*dbglog_dump_write_stats)(struct ireq *);
