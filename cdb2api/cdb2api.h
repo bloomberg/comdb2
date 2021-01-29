@@ -300,6 +300,20 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
                                 cdb2_event_ctrl ctrls, cdb2_event_callback cb,
                                 void *user_arg, int argc, ...);
 int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *e);
+
+typedef enum cdb2_hndl_field {
+    CDB2_HNDL_ENV_TZ,
+    CDB2_HNDL_HOSTS,
+    CDB2_HNDL_HOSTS_CONNECTED,
+    CDB2_HNDL_IN_TRANS,
+    CDB2_HNDL_IS_ADMIN,
+    CDB2_HNDL_IS_HASQL,
+    CDB2_HNDL_MAX_RETRIES,
+    CDB2_HNDL_PORTS,
+} cdb2_hndl_field;
+
+int cdb2_get_info(cdb2_hndl_tp *hndl, cdb2_hndl_field field, void **out_buf,
+                  cdb2_coltype *out_type, int *out_arr_sz);
 #if defined __cplusplus
 }
 #endif
