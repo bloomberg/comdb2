@@ -828,9 +828,14 @@ int main(int argc, char **argv)
     }
 
     sighold(SIGPIPE);
-    base = event_base_new();
+
+    struct event_config *cfg = event_config_new();
+    event_config_set_flag(cfg, EVENT_BASE_FLAG_NOLOCK);
+    base = event_base_new_with_config(cfg);
+    event_config_free(cfg);
     debug_log("Using Libevent %s with backend method %s\n",
               event_get_version(), event_base_get_method(base));
+
     std::vector<evconnlistener *> listeners;
     evconnlistener *listener;
     for (auto port : listen_ports) {
