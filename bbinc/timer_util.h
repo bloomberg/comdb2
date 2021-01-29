@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2020 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -12,31 +12,17 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
- */
+*/
 
-/* EPOCHLIB.H - RETURNS DIFFERENT STYLES OF TIMESTAMP BASED ON EPOCH */
-#ifndef INCLUDED_EPOCHLIB_H
-#define INCLUDED_EPOCHLIB_H
+#ifndef INCLUDED_TIMER_UTIL_H
+#define INCLUDED_TIMER_UTIL_H
 
-#include <inttypes.h>
-
-#ifdef __cplusplus
-extern "C" {
+#if defined(_IBM_SOURCE)
+#   include <event2/util.h>
+#   define timeradd evutil_timeradd
+#   define timersub evutil_timersub
+#else
+#   include <sys/time.h>
 #endif
 
-void comdb2_time_init(void);
-
-/* RETURNS # SECONDS SINCE 1/1/1970 */
-int comdb2_time_epoch(void);
-
-/* RETURNS # MILLISECONDS SINCE STARTUP */
-int comdb2_time_epochms(void);
-
-/* Microseconds since start of epoch */
-int64_t comdb2_time_epochus(void);
-
-#ifdef __cplusplus
-}
-#endif
-
-#endif
+#endif /* INCLUDED_TIMER_UTIL_H */

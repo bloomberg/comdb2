@@ -29,7 +29,6 @@
 #endif
 
 extern int gbl_myroom;
-struct timeval;
 
 void perror_errnum(const char *s, int errnum);
 
@@ -54,8 +53,6 @@ int rewrite_lrl_remove_tables(const char *lrlname);
 
 char *fmt_size(char *buf, size_t bufsz, uint64_t bytes);
 
-void timeval_diff(struct timeval *before, struct timeval *after,
-                  struct timeval *diff);
 int getroom_callback(void *dummy, const char *host);
 
 uint64_t comdb2fastseed(void);
