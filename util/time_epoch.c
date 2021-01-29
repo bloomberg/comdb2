@@ -20,8 +20,21 @@
 #include <sys/time.h>
 #include <errno.h>
 #include "logmsg.h"
+#include <epochlib.h>
 
-int64_t starttime;
+static int64_t starttime;
+
+void comdb2_time_init(void)
+{
+    int rc;
+    struct timeval tv;
+    rc = gettimeofday(&tv, NULL);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
+        abort();
+    }
+    starttime = tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
 
 int comdb2_time_epoch(void)
 {

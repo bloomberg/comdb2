@@ -104,6 +104,7 @@
 #include <bdb_queuedb.h>
 #include <schema_lk.h>
 #include <tohex.h>
+#include <timer_util.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
@@ -1834,7 +1835,7 @@ int bdb_handle_dbp_hash_stat(bdb_state_type *bdb_state)
                 stat.n_bt_hash += dbp->pg_hash_stat.n_bt_hash;
                 stat.n_bt_hash_hit += dbp->pg_hash_stat.n_bt_hash_hit;
                 stat.n_bt_hash_miss += dbp->pg_hash_stat.n_bt_hash_miss;
-                timeval_add(&(stat.t_bt_search),
+                timeradd(&(stat.t_bt_search),
                             &(dbp->pg_hash_stat.t_bt_search),
                             &(stat.t_bt_search));
                 if (!(dbp->flags & DB_AM_HASH) || !(dbp->pg_hash))

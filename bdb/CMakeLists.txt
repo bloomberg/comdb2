@@ -107,6 +107,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/schemachange
+  ${LIBEVENT_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
