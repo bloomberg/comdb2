@@ -3,6 +3,7 @@
 # on exit call_unsetup
 trap "call_unsetup \"0\"" INT EXIT
 
+SSH='ssh -o StrictHostKeyChecking=no'
 
 # Setup a debugger to run comdb2 server
 setup_debugger() {
@@ -201,7 +202,7 @@ find_cores() {
         fi
         if [ $has_pattern -eq 1 ] ; then
             PIDFL=${TMPDIR}/${LCLDBNM}.pid
-            local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`
+            local PID=`$SSH $node "cat ${PIDFL} 2> /dev/null" </dev/null`
             if [ "x$PID" == "x" ] ; then
                 continue
             fi
@@ -210,12 +211,12 @@ find_cores() {
             CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
         fi
 
-        cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
+        cr=`$SSH $node "$CORECMD" < /dev/null`
 
         if [[ -n "$cr" ]] ; then
             echo "$node:$cr" # this is the return value of the function
             local space=$(df .  | awk '{print $4}' | grep -v Available)
-            local size=$(ssh $node "ls -s $cr | cut -f1 -d' '")
+            local size=$($SSH $node "ls -s $cr | cut -f1 -d' '")
             if [[ $size -lt $space ]] ; then # if there is space, copy locally
                 local copy_core=$LCLDBDIR/${node}.`basename $cr`
                 scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
@@ -280,9 +281,9 @@ check_db_at_finish() {
 
     fi
     for node in ${CLUSTER} ; do
-        out=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' 2>&1)
+        out=$(timeout --kill-after=5s 1m $SSH $node "$CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1'" 2>&1)
         if [ "$out" != "1" ] ; then
-            timeout --kill-after=5s 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
+            timeout --kill-after=5s 1m $SSH $node "$CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host $node $LCLDBNM 'select 1'" &> ${TESTDIR}/logs/${LCLDBNM}.${node}.atfinish
             echo $out
             return
         fi
