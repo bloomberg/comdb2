@@ -269,6 +269,7 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
+  ${LIBEVENT_INCLUDE_DIR}
   ${LZ4_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
 )

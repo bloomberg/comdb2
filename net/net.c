@@ -99,6 +99,7 @@
 #include "perf.h"
 
 #include <crc32c.h>
+#include <timer_util.h>
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;

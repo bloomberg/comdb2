@@ -104,6 +104,7 @@
 #include <bdb_queuedb.h>
 #include <schema_lk.h>
 #include <tohex.h>
+#include <timer_util.h>
 
 extern int gbl_bdblock_debug;
 extern int gbl_keycompr;
