@@ -236,8 +236,7 @@ int gbl_osql_max_queue = 10000;
 int gbl_osql_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
 
-int gbl_extended_tm_from_sql =
-    0; /* Keep a count of our extended-tm requests from sql. */
+int gbl_extended_tm_from_sql = 0; /* Keep a count of our extended-tm requests from sql. */
 
 int gbl_upgrade_blocksql_2_socksql =
     1; /* this is set if blocksock is in any parsed lrl

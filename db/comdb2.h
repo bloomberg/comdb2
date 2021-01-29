@@ -3555,4 +3555,8 @@ extern int gbl_abort_invalid_query_info_key;
 extern int gbl_is_physical_replicant;
 
 extern void global_sql_timings_print(void);
+
+extern int gbl_sql_release_locks_on_slow_reader;
+extern int gbl_fail_client_write_lock;
+
 #endif /* !INCLUDED_COMDB2_H */

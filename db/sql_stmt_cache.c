@@ -121,10 +121,9 @@ static int stmt_cache_requeue_entry(stmt_cache_t *stmt_cache,
     }
 
     int rc = sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
-    assert(rc == SQLITE_OK);
     if (rc != SQLITE_OK) {
-        logmsg(LOGMSG_ERROR, "%s:%d sqlite3_reset(%p) error, rc = %d\n",
-               __func__, __LINE__, entry->stmt, rc);
+        /* sqlite_step -> sql_tick -> EPIPE -> sqlite_reset returns SQLITE_ABORT */
+        return -1;
     }
     rc = sqlite3_clear_bindings(entry->stmt);
     assert(rc == SQLITE_OK);

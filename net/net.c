@@ -5844,6 +5844,8 @@ void net_end_appsock(SBUF2 *sb)
 
 void net_add_watch(SBUF2 *sb, int read_timeout, int write_timeout)
 {
+    if (!sb)
+        return;
     watchlist_node_type *watchlist_node;
     netinfo_type *netinfo_ptr;
 

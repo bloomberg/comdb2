@@ -304,6 +304,11 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
+int should_reject_request(void)
+{
+    return thedb->stopped || gbl_exit || !gbl_ready;
+}
+
 void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 {
     /*START HANDLER THREAD*/
@@ -334,7 +339,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     /* reject requests if we're not up, going down, or not interested */
-    if (dbenv->stopped || gbl_exit || !gbl_ready) {
+    if (should_reject_request()) {
         total_appsock_rejections++;
         net_end_appsock(sb);
         return;

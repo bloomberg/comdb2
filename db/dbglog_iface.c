@@ -25,10 +25,10 @@ int dbglog_init_write_counters(struct ireq *iq)
     return 0;
 }
 
-int grab_dbglog_file(struct sbuf2 *sb, unsigned long long cookie, struct sqlclntstate *clnt)
+int grab_dbglog_file(unsigned long long cookie, struct sqlclntstate *clnt)
 {
     if (impl.grab_dbglog_file)
-        return impl.grab_dbglog_file(sb, cookie, clnt);
+        return impl.grab_dbglog_file(cookie, clnt);
     return 0;
 }
 

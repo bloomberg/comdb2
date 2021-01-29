@@ -7141,7 +7141,6 @@ void *exec_trigger(trigger_reg_t *reg)
         force_unregister(L, reg);
     }
     put_curtran(thedb->bdb_env, &clnt);
-    close_sp(&clnt);
     end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);
