@@ -48,6 +48,5 @@ char *fmt_size(char *buf, size_t bufsz, uint64_t bytes);
 
 int cpu_usage(double *user_time, double *system_time);
 
-void timeval_diff(struct timeval *before, struct timeval *after, struct timeval *diff);
 int getroom_callback(void *dummy, int node);
 #endif

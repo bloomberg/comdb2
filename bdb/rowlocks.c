@@ -1968,8 +1968,8 @@ int abort_logical_transaction(bdb_state_type *bdb_state, tran_type *tran,
 
 #ifdef NEWSI_STAT
         gettimeofday(&after, NULL);
-        timeval_diff(&before, &after, &diff);
-        timeval_add(&comprec_time, &diff, &comprec_time);
+        timersub(&after, &before, &diff);
+        timeradd(&comprec_time, &diff, &comprec_time);
 #endif
         if (log_compare(&last_regop_lsn, &tran->last_regop_lsn))
             memcpy(&start_phys_txn, &undolsn, sizeof(start_phys_txn));
