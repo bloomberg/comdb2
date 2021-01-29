@@ -95,7 +95,6 @@ function setup
 {
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE t1" 2>/dev/null
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE t1(t int,a int)"
-    #sleep 7
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE INDEX ix1 ON t1(t,a)"
 }
 
