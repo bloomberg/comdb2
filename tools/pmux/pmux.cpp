@@ -67,6 +67,7 @@
 #endif
 
 struct connection;
+
 static event_base *base;
 static std::map<std::string, int> port_map;
 static std::map<std::string, connection *> connection_map;
@@ -75,6 +76,8 @@ static std::unique_ptr<pmux_store> pmux_store;
 static std::vector<in_addr_t> local_addresses;
 static std::vector<std::pair<int, int>> port_ranges;
 static std::string unix_bind_path = "/tmp/portmux.socket";
+
+static int fd_limit; /* start closing outstanding connections */
 
 static int get_svc_port(const char *svc)
 {
@@ -193,6 +196,11 @@ struct connection {
         event_assign(&ev, base, fd, EV_WRITE, writecb, this);
         event_add(&ev, NULL);
     }
+    void init()
+    {
+        fd_limit = 0;
+        enable_read();
+    }
   public:
     int fd;
     int is_unix;
@@ -200,12 +208,12 @@ struct connection {
     connection(int f)
         : addr{0}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}, fd{f}, is_unix{1}
     {
-        enable_read();
+        init();
     }
     connection(int f, uint32_t a)
         : addr{a}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}, fd{f}, is_unix{0}
     {
-        enable_read();
+        init();
     }
     ~connection()
     {
@@ -247,8 +255,11 @@ struct connection {
     void route(int dest)
     {
         event_del(&ev);
-        event_assign(&ev, base, dest, EV_WRITE, routefd, this);
-        event_add(&ev, NULL);
+        event_assign(&ev, base, dest, EV_WRITE | EV_TIMEOUT, routefd, this);
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = 10 * 1000; //10ms
+        event_add(&ev, &timeout);
     }
     int active()
     {
@@ -341,6 +352,10 @@ static void make_socket_blocking(int fd)
 static void routefd(int serverfd, short what, void *arg)
 {
     connection *c = (connection *)(arg);
+    if ((what & EV_TIMEOUT) && fd_limit) {
+       delete c;
+       return;
+    }
     int clientfd = c->fd;
     make_socket_blocking(clientfd);
     debug_log("%s send fd:%d to fd:%d\n", __func__, clientfd, serverfd);
@@ -570,10 +585,14 @@ static void unix_cb(evconnlistener *listener, evutil_socket_t fd,
 static void accept_errorcb(evconnlistener *listener, void *data)
 {
     int err = EVUTIL_SOCKET_ERROR();
-    syslog(LOG_CRIT, "%s fd:%d err:%d-%s\n", __func__,
-           evconnlistener_get_fd(listener), err,
-           evutil_socket_error_to_string(err));
-    event_base_loopbreak(base);
+    int fd = evconnlistener_get_fd(listener);
+    const char *errstr = evutil_socket_error_to_string(err);
+    syslog(LOG_CRIT, "%s fd:%d err:%d-%s\n", __func__, fd, err, errstr);
+    if (err == EMFILE || err == ENFILE) {
+        fd_limit = 1;
+    } else {
+        event_base_loopbreak(base);
+    }
 }
 
 static int make_port_range(char *s, std::pair<int, int> &range)
