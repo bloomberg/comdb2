@@ -8168,32 +8168,23 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     }
     Pthread_mutex_unlock(&owner_mtx);
 
-    /* must be large enough to hold a dirent struct with the longest possible
-     * filename */
-    buf = malloc(4096);
-    if (!buf) {
-        logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
-        *bdberr = BDBERR_MALLOC;
-
+    int tp_len =
+        snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name);
+    if (tp_len >= sizeof(table_prefix)) {
+        logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
+        *bdberr = BDBERR_MISC;
         return -1;
     }
+
+    /* must be large enough to hold a dirent struct with the longest possible
+     * filename */
+    buf = alloca(4096);
 
     /* open the db's directory */
     dirp = opendir(bdb_state->parent->dir);
     if (!dirp) {
         logmsg(LOGMSG_ERROR, "%s: opendir failed\n", __func__);
         *bdberr = BDBERR_MISC;
-        free(buf);
-        return -1;
-    }
-
-    int tp_len =
-        snprintf(table_prefix, sizeof(table_prefix), "%s_", bdb_state->name);
-    if (tp_len >= sizeof(table_prefix)) {
-        logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
-        *bdberr = BDBERR_MISC;
-        free(buf);
-        closedir(dirp);
         return -1;
     }
 
@@ -8366,7 +8357,6 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     closedir(dirp);
-    free(buf);
 
     Pthread_mutex_lock(&owner_mtx);
     owner = NULL;
