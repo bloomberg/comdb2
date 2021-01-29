@@ -73,6 +73,7 @@ static const char revid[] = "$Id: bt_search.c,v 11.47 2003/06/30 17:19:35 bostic
 
 #include <logmsg.h>
 #include <locks_wrap.h>
+#include <timer_util.h>
 
 /*
  * __bam_cmp --
@@ -305,17 +306,6 @@ void
 genidsetzero(void *g)
 {
 	memset(g, 0, HASH_GENID_SIZE);
-}
-
-void
-timeval_add(struct timeval *tvp, struct timeval *uvp, struct timeval *vvp)
-{
-	vvp->tv_sec = tvp->tv_sec + uvp->tv_sec;
-	vvp->tv_usec = tvp->tv_usec + uvp->tv_usec;
-	if (vvp->tv_usec >= 1000000) {
-		vvp->tv_sec++;
-		vvp->tv_usec -= 1000000;
-	}
 }
 
 /*

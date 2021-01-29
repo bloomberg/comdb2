@@ -76,8 +76,8 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sockpool
-  ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
+  ${PROTOBUF-C_INCLUDE_DIR}
   ${UNWIND_INCLUDE_DIR}
 )
 add_dependencies(util mem)

@@ -41,6 +41,7 @@
 #include "endian_core.h"
 #include "printformats.h"
 #include "crc32c.h"
+#include <timer_util.h>
 
 #undef UDP_DEBUG
 #undef UDP_TRACE

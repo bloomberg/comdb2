@@ -72,10 +72,9 @@
 #include <bdb_net.h>
 
 #include "debug_switches.h"
-#include "comdb2_atomic.h"
 #include "thrman.h"
 #include "thread_util.h"
-#include "comdb2_atomic.h"
+#include <timer_util.h>
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
