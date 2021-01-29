@@ -1109,8 +1109,8 @@ static int bdb_osql_trn_create_backfill(bdb_state_type *bdb_state,
                                             0 /* dont skip committed trans */);
 #ifdef NEWSI_STAT
         gettimeofday(&after, NULL);
-        timeval_diff(&before, &after, &diff);
-        timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+        timersub(&after, &before, &diff);
+        timeradd(&logical_undo_time, &diff, &logical_undo_time);
 #endif
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -1199,8 +1199,8 @@ tmpcursor_t *bdb_osql_open_backfilled_shadows(bdb_cursor_impl_t *cur,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logical_undo_time, &diff, &logical_undo_time);
 #endif
 
     if (dirty && !shadcur) {

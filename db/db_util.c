@@ -98,23 +98,6 @@ void xorbufcpy(char *dest, const char *src, size_t len)
     }
 }
 
-void timeval_diff(struct timeval *before, struct timeval *after,
-                  struct timeval *diff)
-{
-    diff->tv_sec = after->tv_sec - before->tv_sec;
-    if (diff->tv_sec) {
-        --diff->tv_sec;
-        diff->tv_usec = 1000000 - before->tv_usec;
-        diff->tv_usec += after->tv_usec;
-        if (diff->tv_usec == 1000000) {
-            ++diff->tv_sec;
-            diff->tv_usec = 0;
-        }
-    } else {
-        diff->tv_usec = after->tv_usec - before->tv_usec;
-    }
-}
-
 void split_genid(unsigned long long genid, unsigned int *rrn1,
                  unsigned int *rrn2)
 {

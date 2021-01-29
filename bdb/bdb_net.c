@@ -41,6 +41,7 @@
 #include "endian_core.h"
 #include "printformats.h"
 #include "crc32c.h"
+#include <timer_util.h>
 
 #undef UDP_DEBUG
 #undef UDP_TRACE
@@ -431,7 +432,7 @@ static void print_ping_rtt(ack_info *info)
         return;
     gettimeofday(&now, NULL);
     sent = ack_info_data(info);
-    timeval_diff(sent, &now, &diff);
+    timersub(&now, sent, &diff);
     const char *type;
     switch (info->type) {
     case USER_TYPE_UDP_TIMESTAMP_ACK:

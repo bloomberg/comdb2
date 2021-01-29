@@ -1382,9 +1382,6 @@ typedef struct
 genid_hash *genid_hash_init(DB_ENV *dbenv, int sz);
 void genid_hash_resize(DB_ENV *dbenv, genid_hash **hpp, int szkb);
 void genid_hash_free(DB_ENV *dbenv, genid_hash *hp);
-void timeval_add(struct timeval *tvp,
-                  struct timeval *uvp,
-                  struct timeval *vvp);
 
 struct fileid_adj_fileid
 {
