@@ -51,6 +51,7 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 int fdb_access_control_create(struct sqlclntstate *clnt, char *str);
 int handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr);
 int sbuf_is_local(SBUF2 *sb);
+void free_original_normalized_sql(struct sqlclntstate *);
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
@@ -2367,6 +2368,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         APPDATA->sqlquery = sql_query;
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
+
+        free_original_normalized_sql(&clnt);
 
         if (!in_client_trans(&clnt)) {
             bzero(&clnt.effects, sizeof(clnt.effects));

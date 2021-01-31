@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -175,6 +175,13 @@ static int db_reset(Lua);
 static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
+static void lua_begin_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
+static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_end_all_step(struct sqlclntstate *, SP);
+static int lua_get_prepare_flags();
+static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
+static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
@@ -1061,6 +1068,8 @@ static void donate_stmt(SP sp, dbstmt_t *dbstmt)
     sqlite3_stmt *stmt = dbstmt->stmt;
     if (stmt == NULL) return;
 
+    lua_end_step(sp->clnt, sp, stmt);
+
     if (!gbl_enable_sql_stmt_caching || !dbstmt->rec) {
         sqlite3_finalize(stmt);
     } else {
@@ -1082,14 +1091,6 @@ static int enable_global_variables(lua_State *lua)
     lua_setmetatable(lua, LUA_GLOBALSINDEX);
     return 0;
 }
-
-static void lua_begin_step(struct sqlclntstate *, SP, sqlite3_stmt *);
-static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
-static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
-static void lua_end_all_step(struct sqlclntstate *, SP);
-static int lua_get_prepare_flags();
-static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
-static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
 
 /*
 ** Lua stack:
@@ -3355,7 +3356,17 @@ static int dbstmt_fetch(Lua lua)
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
     setup_first_sqlite_step(sp, dbstmt, 1);
+    Vdbe *pVdbe = (Vdbe*)dbstmt->stmt;
+
+    // pVdbe->luaStartTime != 0 is used in lua_end_step() to decide whether
+    // to add fingerprint for this statement. In some situations, however,
+    // vdbe is reset (sqlite3_reset) causing it to lose luaStartTime. We need
+    // to save and restore it in order for the stmt's fingerprint and metrics
+    // to be correctly logged.
+    int64_t luaStartTimeSaved = pVdbe->luaStartTime;
     int rc = stmt_sql_step(lua, dbstmt);
+    pVdbe->luaStartTime = luaStartTimeSaved;
+
     if (rc == SQLITE_ROW) return 1;
     donate_stmt(sp, dbstmt);
     return 0;
