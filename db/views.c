@@ -958,7 +958,8 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
         a dropped partition ahead of everything, but jic ! */
         if (unlikely(
                 _validate_view_id(view, event->source_id, "phase 1", err))) {
-            /*TODO*/
+            rc = VIEW_ERR_GENERIC; /* silently dropped obsolete event, don't
+                                      leak wr sc */
             goto done;
         }
 
