@@ -1,5 +1,5 @@
 /*
-   Copyright 2019, 2020 Bloomberg Finance L.P.
+   Copyright 2019, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ struct comdb2_query_preparer {
     int (*do_cleanup)(struct sqlclntstate *);
     int (*sqlitex_is_initializing)(void *);
     char *(*sqlitex_table_name)(void *);
+    int (*do_cleanup_thd)(struct sqlthdstate *);
 };
 typedef struct comdb2_query_preparer comdb2_query_preparer_t;
 

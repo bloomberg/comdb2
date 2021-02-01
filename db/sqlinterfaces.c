@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -4512,6 +4512,12 @@ check_version:
             }
             delete_prepared_stmts(thd);
             sqlite3_close_serial(&thd->sqldb);
+
+            /* Force sqlitex to recreate db handle. */
+            if (gbl_old_column_names && query_preparer_plugin &&
+                query_preparer_plugin->do_cleanup_thd) {
+                query_preparer_plugin->do_cleanup_thd(thd);
+            }
         }
     }
     assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
@@ -5086,6 +5092,11 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
     if (thd->stmt_caching_table)
         delete_stmt_caching_table(thd->stmt_caching_table);
     sqlite3_close_serial(&thd->sqldb);
+
+    if (gbl_old_column_names && query_preparer_plugin &&
+        query_preparer_plugin->do_cleanup_thd) {
+        query_preparer_plugin->do_cleanup_thd(thd);
+    }
 
     /* AZ moved after the close which uses thd for rollbackall */
     done_sql_thread();
