@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2017, Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -5067,14 +5067,17 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                        db->tablename);
                 /* Skip returning error on presence of u_longlong if:
 
-                   - we are still starting, or
-                   - we were explicitly asked to do so.
+                   - we haven't fully started, or
+                   - we are rolling out a new time partition shard, or
+                   - we were explicitly asked (by the callers) to do so
 
                    This is done to allow existing databases with tables
                    containing u_longlong to start and also certain operational
-                   commands, like rebuild and truncate, to succeed.
+                   commands, like table rebuilds, truncates and time partition
+                   rollouts, to succeed.
                 */
-                if (gbl_ready && (db->skip_error_on_ulonglong_check != 1)) {
+                if (gbl_ready && (db->skip_error_on_ulonglong_check != 1) &&
+                    db->is_timepart != 1) {
                     if (db->iq)
                         reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
                     return -1;

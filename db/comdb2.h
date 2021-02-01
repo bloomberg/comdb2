@@ -776,6 +776,9 @@ typedef struct dbtable {
        certain maintenance operations on legacy tables, using forbid_ulonglong
        type, to work properly. */
     bool skip_error_on_ulonglong_check : 1;
+
+    /* Is this table a time partition shard? */
+    bool is_timepart : 1;
 } dbtable;
 
 struct dbview {
