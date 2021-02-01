@@ -115,6 +115,7 @@ struct sqlthdstate {
      * is especially needed to differentiate between fdb cursors opened by core
      * versus query preparer plugin. */
     bool query_preparer_running;
+    void *sqldbx;
 };
 
 typedef struct osqltimings {
