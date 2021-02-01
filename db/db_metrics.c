@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "bdb_api.h"
 #include "net.h"
 #include "thread_stats.h"
+#include "comdb2_query_preparer.h"
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -90,6 +91,7 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_file;
     int64_t minimum_truncation_offset;
     int64_t minimum_truncation_timestamp;
+    int64_t reprepares;
 };
 
 static struct comdb2_metrics_store stats;
@@ -245,6 +247,9 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.minimum_truncation_timestamp, NULL},
 #endif
+    {"reprepares", "Number of times statements are reprepared by sqlitex",
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.reprepares,
+     NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -468,6 +473,12 @@ int refresh_metrics(void)
     stats.minimum_truncation_offset = min_offset;
     stats.minimum_truncation_timestamp = min_timestamp;
 #endif
+
+    if (gbl_old_column_names && query_preparer_plugin &&
+        query_preparer_plugin->sqlitex_get_metrics) {
+        query_preparer_plugin->sqlitex_get_metrics(&stats.reprepares);
+    }
+
     return 0;
 }
 
