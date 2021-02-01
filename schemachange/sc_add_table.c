@@ -130,9 +130,12 @@ int add_table_to_environment(char *table, const char *csc2,
     if (newdb == NULL) {
         return SC_INTERNAL_ERROR;
     }
-    newdb->dtastripe = gbl_dtastripe;
 
+    newdb->dtastripe = gbl_dtastripe;
     newdb->iq = iq;
+    if (s) {
+        newdb->is_timepart = s->is_timepart;
+    }
 
     if (add_cmacc_stmt(newdb, 0)) {
         logmsg(LOGMSG_ERROR, "%s: add_cmacc_stmt failed\n", __func__);
