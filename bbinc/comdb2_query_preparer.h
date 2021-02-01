@@ -24,6 +24,7 @@ struct comdb2_query_preparer {
     int (*sqlitex_is_initializing)(void *);
     char *(*sqlitex_table_name)(void *);
     int (*do_cleanup_thd)(struct sqlthdstate *);
+    void (*sqlitex_get_metrics)(int64_t *);
 };
 typedef struct comdb2_query_preparer comdb2_query_preparer_t;
 
