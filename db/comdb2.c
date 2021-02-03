@@ -5853,7 +5853,7 @@ int close_all_dbs_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 int reload_lua_sfuncs();
 int reload_lua_afuncs();
-void oldfile_list_clear(void);
+void oldfile_clear(void);
 
 int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
 {
@@ -6043,7 +6043,7 @@ retry_tran:
     create_datacopy_arrays();
     create_sqlmaster_records(tran);
     create_sqlite_master();
-    oldfile_list_clear();
+    oldfile_clear();
 
     BDB_BUMP_DBOPEN_GEN(invalid, NULL);
 
