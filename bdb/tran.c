@@ -1013,11 +1013,11 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
      * don't lock: this can attempt to update-pagelogs for a
      * shadow-trans that is exiting .. */
     /* XXX This doesn't seem to be locking .. XXX */
-    rc = tran->tid->commit_rowlocks(
-        tran->tid, flags, tran->logical_tran->logical_tranid,
-        tran->logical_tran->logical_lid, &tran->logical_tran->last_regop_lsn,
-        &rldbt, tran->logical_tran->rc_locks, rc_count,
-        &tran->logical_tran->begin_lsn, lsn, tran->logical_tran);
+    u_int64_t logbytes = 0;
+    rc = tran->tid->commit_rowlocks(tran->tid, flags, tran->logical_tran->logical_tranid,
+                                    tran->logical_tran->logical_lid, &tran->logical_tran->last_regop_lsn, &rldbt,
+                                    tran->logical_tran->rc_locks, rc_count, &logbytes, &tran->logical_tran->begin_lsn,
+                                    lsn, tran->logical_tran);
 
     tran_reset_rowlist(tran->logical_tran);
 
@@ -1029,6 +1029,8 @@ static int bdb_tran_commit_phys_getlsn_flags(bdb_state_type *bdb_state,
         bdb_wait_for_seqnum_from_all_adaptive_newcoh(bdb_state, &seqnum, 0,
                                                      &timeoutms);
     }
+
+    tran->logbytes += logbytes;
 
     if (tran->trak)
         logmsg(LOGMSG_USER, "TRK_TRAN: committed transaction %p (physical "
@@ -1557,7 +1559,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
 
     case TRANCLASS_LOGICAL_NOROWLOCKS:
         flags = (tran->request_ack) ? DB_TXN_REP_ACK : 0;
-        rc = tran->tid->commit_getlsn(tran->tid, flags, &lsn, tran);
+        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
         if (rc != 0) {
             *bdberr = BDBERR_MISC;
             outrc = -1;
@@ -1650,7 +1652,7 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
         /* "normal" case for physical transactions. just commit */
         flags = DB_TXN_DONT_GET_REPO_MTX;
         flags |= (tran->request_ack) ? DB_TXN_REP_ACK : 0;
-        rc = tran->tid->commit_getlsn(tran->tid, flags, &lsn, tran);
+        rc = tran->tid->commit_getlsn(tran->tid, flags, out_txnsize, &lsn, tran);
         bdb_osql_trn_repo_unlock();
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
@@ -2002,10 +2004,6 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             seqnum->generation = generation;
         }
 
-        if (out_txnsize) {
-            *out_txnsize = subtract_lsn(bdb_state, &our_lsn, &tran->startlsn);
-        }
-
         outrc = 0;
         goto cleanup;
     }
@@ -2031,13 +2029,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
             seqnum->generation = generation;
         }
 
-        if (out_txnsize) {
-            if (!gbl_rowlocks)
-                *out_txnsize =
-                    subtract_lsn(bdb_state, &tran->savelsn, &tran->startlsn);
-            else
-                *out_txnsize =
-                    subtract_lsn(bdb_state, &tran->commit_lsn, &tran->startlsn);
+        if (out_txnsize && gbl_rowlocks) {
+            *out_txnsize = tran->logbytes;
         }
     }
 

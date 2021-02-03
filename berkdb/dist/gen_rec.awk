@@ -673,8 +673,10 @@ function log_function() {
 		printf("flags | DB_LOG_NOCOPY);\n") >> CFILE;
 
 		# Update the transactions last_lsn.
-		printf("\t\tif (ret == 0 && txnid != NULL)\n") >> CFILE;
+		printf("\t\tif (ret == 0 && txnid != NULL) {\n") >> CFILE;
 		printf("\t\t\ttxnid->last_lsn = *ret_lsnp;\n") >> CFILE;
+		printf("\t\t\ttxnid->logbytes += logrec.size;\n") >> CFILE;
+		printf("\t\t}\n") >> CFILE;
 		printf("\t}\n\n") >> CFILE;
 		printf("\tif (!is_durable)\n") >> CFILE;
 		printf("\t\tLSN_NOT_LOGGED(*ret_lsnp);\n") >> CFILE;
@@ -683,8 +685,10 @@ function log_function() {
 		printf("ret_lsnp, (DBT *)&logrec, flags);\n") >> CFILE;
 
 		# Update the transactions last_lsn.
-		printf("\tif (ret == 0 && txnid != NULL)\n") >> CFILE;
+		printf("\tif (ret == 0 && txnid != NULL) {\n") >> CFILE;
 		printf("\t\ttxnid->last_lsn = *ret_lsnp;\n\n") >> CFILE;
+		printf("\t\ttxnid->logbytes += logrec.size;\n\n") >> CFILE;
+        printf("\t}\n") >> CFILE;
 	}
 
 	# If out of disk space log writes may fail.  If we are debugging

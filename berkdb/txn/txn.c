@@ -169,9 +169,10 @@ typedef enum {
 static int __txn_abort_pp __P((DB_TXN *));
 static int __txn_begin_int __P((DB_TXN *, u_int32_t));
 static int __txn_commit_pp __P((DB_TXN *, u_int32_t));
-static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
+static int __txn_logbytes_pp __P((DB_TXN *, u_int64_t *));
+static int __txn_commit_getlsn_pp __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 static int __txn_commit_rl_pp __P((DB_TXN *, u_int32_t, u_int64_t, u_int32_t,
-	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, DB_LSN *, DB_LSN *, void *));
+	DB_LSN *, DBT *, DB_LOCK *, u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
 static int __txn_discard_pp __P((DB_TXN *, u_int32_t));
 static int __txn_end __P((DB_TXN *, int));
 static int __txn_isvalid __P((const DB_TXN *, TXN_DETAIL **, txnop_t));
@@ -635,6 +636,7 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 
 	txn->abort = __txn_abort_pp;
 	txn->commit = __txn_commit_pp;
+    txn->getlogbytes = __txn_logbytes_pp;
 	txn->commit_getlsn = __txn_commit_getlsn_pp;
 	txn->commit_rowlocks = __txn_commit_rl_pp;
 	txn->discard = __txn_discard_pp;
@@ -941,7 +943,7 @@ void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
  */
 static int
 __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
-	nrlocks, begin_lsn, lsn_out, usr_ptr)
+	nrlocks, logbytes, begin_lsn, lsn_out, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -950,6 +952,7 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 	DBT *rlocks;
 	DB_LOCK *inlks;
 	u_int32_t nrlocks;
+	u_int64_t *logbytes;
 	DB_LSN *begin_lsn;
 	DB_LSN *lsn_out;
 	void *usr_ptr;
@@ -1356,7 +1359,10 @@ __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn, rlocks, inlks,
 		F_CLR(txnp, TXN_RECOVER_LOCK);
 	}
 
-    remove_td_txn(txnp);
+	remove_td_txn(txnp);
+	if (logbytes) {
+		(*logbytes) = txnp->logbytes;
+	}
 
 	/* This is OK because __txn_end can only fail with a panic. */
 	return (__txn_end(txnp, 1));
@@ -1373,6 +1379,10 @@ err:	/*
 	if (td->status == TXN_PREPARED)
 		return (__db_panic(dbenv, ret));
 
+	if (logbytes) {
+		(*logbytes) = txnp->logbytes;
+	}
+
 	if ((t_ret = __txn_abort(txnp)) != 0) {
 		ret = t_ret;
 	}
@@ -1384,8 +1394,7 @@ __txn_commit(txnp, flags)
 	DB_TXN *txnp;
 	u_int32_t flags;
 {
-	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL,
-		NULL, NULL);
+	return __txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
 }
 
 
@@ -1404,23 +1413,43 @@ __txn_commit_pp(txnp, flags)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL,
-		NULL);
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, NULL, NULL, NULL, NULL);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 	return (ret);
 }
 
+/*
+ * __txn_commit_txnlen --
+ *  Commit a transaction, and return the number of logbytes written.
+ */
+static int
+__txn_commit_txnlen_pp(txnp, logbytes, flags)
+	DB_TXN *txnp;
+	u_int64_t *logbytes;
+	u_int32_t flags;
+{
+	DB_ENV *dbenv;
+	int not_child, ret;
 
+	dbenv = txnp->mgrp->dbenv;
+	not_child = txnp->parent == NULL;
+	ret =
+		__txn_commit_int(txnp, flags, 0, 0, NULL, NULL, NULL, 0, logbytes, NULL, NULL, NULL);
+	if (not_child && IS_ENV_REPLICATED(dbenv))
+		__op_rep_exit(dbenv);
+	return (ret);
+}
 
 /*
  * __txn_commit_getlsn__pp --
  *	Interface routine to TXN->commit.
  */
 static int
-__txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
+__txn_commit_getlsn_pp(txnp, flags, logbytes, lsn_out, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
+	u_int64_t *logbytes;
 	DB_LSN *lsn_out;
 	void *usr_ptr;
 {
@@ -1431,7 +1460,7 @@ __txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
 	dbenv = txnp->mgrp->dbenv;
 	not_child = txnp->parent == NULL;
 	ret =
-		__txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, NULL,
+		__txn_commit_int(txnp, flags, ltranid, 0, NULL, NULL, NULL, 0, logbytes, NULL,
 		lsn_out, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
@@ -1440,8 +1469,17 @@ __txn_commit_getlsn_pp(txnp, flags, lsn_out, usr_ptr)
 }
 
 static int
+__txn_logbytes_pp(txnp, logbytes)
+	DB_TXN *txnp;
+	u_int64_t *logbytes;
+{
+	(*logbytes) = txnp->logbytes;
+	return 0;
+}
+
+static int
 __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
-	lks, nrlocks, begin_lsn, lsn_out, usr_ptr)
+	lks, nrlocks, logbytes, begin_lsn, lsn_out, usr_ptr)
 	DB_TXN *txnp;
 	u_int32_t flags;
 	u_int64_t ltranid;
@@ -1450,6 +1488,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	DBT *rlocks;
 	DB_LOCK *lks;
 	u_int32_t nrlocks;
+    u_int64_t *logbytes;
 	DB_LSN *begin_lsn;
 	DB_LSN *lsn_out;
 	void *usr_ptr;
@@ -1461,7 +1500,7 @@ __txn_commit_rl_pp(txnp, flags, ltranid, llid, last_commit_lsn, rlocks,
 	not_child = txnp->parent == NULL;
 
 	ret = __txn_commit_int(txnp, flags, ltranid, llid, last_commit_lsn,
-		rlocks, lks, nrlocks, begin_lsn, lsn_out, usr_ptr);
+		rlocks, lks, nrlocks, logbytes, begin_lsn, lsn_out, usr_ptr);
 	if (not_child && IS_ENV_REPLICATED(dbenv))
 		__op_rep_exit(dbenv);
 
