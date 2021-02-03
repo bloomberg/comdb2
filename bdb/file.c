@@ -167,7 +167,7 @@ extern void *master_lease_thread(void *arg);
 extern void *coherency_lease_thread(void *arg);
 
 LISTC_T(struct checkpoint_list) ckp_lst;
-pthread_mutex_t ckp_lst_mtx;
+static pthread_mutex_t ckp_lst_mtx;
 int ckp_lst_ready = 0;
 extern int gbl_set_seqnum_trace;
 
@@ -7652,97 +7652,163 @@ void bdb_genid_sanity_check(bdb_state_type *bdb_state, unsigned long long genid,
 }
 
 struct unused_file {
-    char *fname;
     unsigned lognum;
+    char fname[1];
 };
 
 #define OF_LIST_MAX 16384
-static struct unused_file of_list[OF_LIST_MAX];
+hash_t *oldfile_hash;
+static struct unused_file *of_list[OF_LIST_MAX];
 static int list_hd = 0, list_tl = 0;
-static pthread_mutex_t of_list_mtx = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t unused_files_mtx = PTHREAD_MUTEX_INITIALIZER;
 
-/* return 1 if oldfilelist contains filename */
-int oldfile_list_contains(char *filename)
+/* to debug hash content can dump hash
+        hash_for(oldfile_hash, oldfile_hash_dump, NULL);
+static int oldfile_hash_dump(void *ptr, void *unused)
 {
-    int contains = 0;
-    int list_end;
-    Pthread_mutex_lock(&of_list_mtx);
-    if (list_tl <= list_hd)
-        list_end = list_hd;
-    else
-        list_end = OF_LIST_MAX + list_hd;
-    for (int i = list_tl; i < list_end; i++) {
-        if (strncmp(filename, of_list[i % OF_LIST_MAX].fname, FILENAMELEN) ==
-            0) {
-            contains = 1;
-            break;
-        }
+    struct unused_file *obj = ptr;
+    logmsg(LOGMSG_USER, "%s: str='%s' %d (obj %p)\n", __func__, obj->fname,
+           obj->lognum, obj);
+    return 0;
+}
+ */
+
+/* use hash tbl to check if we have added file to list previously */
+static int oldfile_list_contains(const char *filename)
+{
+    struct unused_file *ptr = NULL;
+    Pthread_mutex_lock(&unused_files_mtx);
+    if (oldfile_hash) {
+        ptr = hash_find_readonly(oldfile_hash, filename);
     }
-    Pthread_mutex_unlock(&of_list_mtx);
+    Pthread_mutex_unlock(&unused_files_mtx);
 
 #ifdef DEBUG
-    if (contains)
+    if (ptr)
         logmsg(LOGMSG_INFO, "tid: 0x%x found in oldfilelist file %s\n",
                 pthread_self(), filename);
 #endif
-
-    return contains;
+    return ptr != NULL;
 }
-int oldfile_list_add(char *filename, unsigned lognum, const char *func,
-                     int line)
+
+
+/* Add ptr to hash and to list
+ * if filename already in hash or if hash is full or if could not add to hash,
+ * this function will return nonzero rc, and in that case caller needs
+ * to free ptr accordingly.
+ */
+static int oldfile_add_ptr(struct unused_file *ptr, const char *func, int line)
 {
     int rc = 0;
+    if (!ptr)
+        return 1;
 
-    Pthread_mutex_lock(&of_list_mtx);
-    if ((list_hd + 1) % OF_LIST_MAX == list_tl) {
-        logmsg(LOGMSG_ERROR, "Failed to add %s, (%d,%d)\n", filename, list_hd,
-                list_tl);
+    Pthread_mutex_lock(&unused_files_mtx);
+    if (!oldfile_hash)
+        oldfile_hash = hash_init_str(offsetof(struct unused_file, fname));
+
+    if (hash_get_num_entries(oldfile_hash) >= OF_LIST_MAX - 1) {
+        logmsg(LOGMSG_ERROR, "Failed to add %s, (%d,%d)\n", ptr->fname, list_hd,
+               list_tl);
         rc = 1;
-    } else {
-        of_list[list_hd].fname = filename;
-        of_list[list_hd++].lognum = lognum;
+        goto done; // nospace
+    }
+
+    if (hash_find_readonly(oldfile_hash, ptr->fname) != NULL) { //check under lock before adding
+        rc = 1;
+        goto done; // already in hash
+    }
+
+    rc = hash_add(oldfile_hash, ptr);
+
+    if (!rc) {
+        assert ((list_hd + 1) % OF_LIST_MAX != list_tl);
+        of_list[list_hd] = ptr;
+        list_hd++;
         list_hd %= OF_LIST_MAX;
         logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d from %s:%d\n",
-               __func__, __LINE__, filename, list_hd, list_tl, func, line);
+               __func__, __LINE__, ptr->fname, list_hd, list_tl, func, line);
     }
-    Pthread_mutex_unlock(&of_list_mtx);
 
+done:
+    Pthread_mutex_unlock(&unused_files_mtx);
     return rc;
 }
 
-char *oldfile_list_rem(int *lognum)
+static int oldfile_add(const char *filename, int lognum,
+                       const char *func, int line)
 {
-    char *ret = NULL;
+    size_t len = strlen(filename);
+    struct unused_file *ptr = malloc(sizeof(struct unused_file) + len);
+    if (!ptr)
+        return 1;
+    ptr->lognum = lognum;
+    memcpy(ptr->fname, filename, len + 1);
+    
+    int rc = oldfile_add_ptr(ptr, func, line);
+    if (rc) {
+        free(ptr);
+    }
+    return rc;
+}
 
-    Pthread_mutex_lock(&of_list_mtx);
+/* Get first oldfile in list and remove from both list and hash 
+ * Caller should free the returned pointer */
+static struct unused_file *oldfile_get_first()
+{
+    struct unused_file *ptr = NULL;
+    Pthread_mutex_lock(&unused_files_mtx);
+
     if (list_tl != list_hd) {
-        ret = of_list[list_tl].fname;
-        *lognum = of_list[list_tl].lognum;
-        of_list[list_tl].fname = NULL;
+        ptr = of_list[list_tl];
+        of_list[list_tl] = NULL;
         list_tl = (list_tl + 1) % OF_LIST_MAX;
         logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d\n", __func__,
-               __LINE__, ret, list_hd, list_tl);
+               __LINE__, ptr->fname, list_hd, list_tl);
+
+        assert(hash_find(oldfile_hash, ptr->fname) == ptr);
+        hash_del(oldfile_hash, ptr);
     }
-    Pthread_mutex_unlock(&of_list_mtx);
 
-    return ret;
+    Pthread_mutex_unlock(&unused_files_mtx);
+    return ptr;
 }
 
-void oldfile_list_clear(void)
+static int free_unused_file(void *obj, void *arg)
 {
-    Pthread_mutex_lock(&of_list_mtx);
-    list_tl = list_hd = 0;
-    Pthread_mutex_unlock(&of_list_mtx);
+    free(obj);
+    return 0;
 }
 
-int oldfile_list_empty(void)
+void oldfile_clear(void)
+{
+    Pthread_mutex_lock(&unused_files_mtx);
+
+    list_hd = 0;
+    list_tl = 0;
+
+    if (oldfile_hash) {
+        hash_for(oldfile_hash, free_unused_file, NULL);
+        hash_clear(oldfile_hash);
+        hash_free(oldfile_hash);
+        oldfile_hash = NULL;
+    }
+    Pthread_mutex_unlock(&unused_files_mtx);
+}
+
+int oldfile_is_empty(void)
 {
     int ret = 1;
-    Pthread_mutex_lock(&of_list_mtx);
+    Pthread_mutex_lock(&unused_files_mtx);
     if (list_tl != list_hd) {
         ret = 0;
+        assert(oldfile_hash);
+        assert(hash_get_num_entries(oldfile_hash) != 0);
     }
-    Pthread_mutex_unlock(&of_list_mtx);
+    else {
+        assert(oldfile_hash == NULL || hash_get_num_entries(oldfile_hash) == 0);
+    }
+    Pthread_mutex_unlock(&unused_files_mtx);
 
     return ret;
 }
@@ -7895,7 +7961,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     if (!buf) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         *bdberr = BDBERR_MALLOC;
-
         return -1;
     }
 
@@ -7908,7 +7973,6 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         return -1;
     }
 
-    /* */
     int tp_len = snprintf(table_prefix, sizeof(table_prefix), "%s_", tblname);
     if (tp_len >= sizeof(table_prefix)) {
         logmsg(LOGMSG_ERROR, "%s: tablename too long\n", __func__);
@@ -7973,8 +8037,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
             rc = 0;
         } else if (rc) {
             logmsg(LOGMSG_ERROR,
-                   "%s:%d failed to check llmeta for %s, rc %d, bdberr "
-                   "%d\n",
+                   "%s:%d failed to check llmeta for %s, rc %d, bdberr %d\n",
                    __func__, __LINE__, ent->d_name, rc, *bdberr);
             continue;
         }
@@ -7987,8 +8050,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                 rc = 0;
             } else if (rc) {
                 logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to check llmeta for %s, rc %d, "
-                       "bdberr %d\n",
+                       "%s:%d failed to check llmeta for %s, rc %d, bdberr %d\n",
                        __func__, __LINE__, ent->d_name, rc, *bdberr);
                 continue;
             }
@@ -8002,8 +8064,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                 rc = 0;
             } else if (rc) {
                 logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to check llmeta for %s, rc %d, "
-                       "bdberr %d\n",
+                       "%s:%d failed to check llmeta for %s, rc %d, bdberr %d\n",
                        __func__, __LINE__, ent->d_name, rc, *bdberr);
                 continue;
             }
@@ -8026,18 +8087,15 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         if (oldfile_list_contains(munged_name))
             continue;
 
-        if (oldfile_list_add(strdup(munged_name), lognum, __func__, __LINE__)) {
-            print(bdb_state, "failed to collect old file (list full) %s\n",
-                  ent->d_name);
-            goto done;
+        if (oldfile_add(munged_name, lognum, __func__, __LINE__)) {
+            print(bdb_state, "failed to add old file to hash: %s\n", ent->d_name);
+            break;
         } else {
-            logmsg(LOGMSG_DEBUG, "%s: requeued file %s\n", __func__,
-                   ent->d_name);
+            logmsg(LOGMSG_DEBUG, "%s: requeued file %s\n", __func__, ent->d_name);
             print(bdb_state, "requeued old file %s\n", ent->d_name);
         }
     }
 
-done:
     closedir(dirp);
     free(buf);
     *bdberr = BDBERR_NOERROR;
@@ -8102,7 +8160,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     Pthread_mutex_lock(&owner_mtx);
     if (owner != NULL) {
-        logmsg(LOGMSG_INFO, "Log deletion in progress(\"%s\")\n", owner);
+        logmsg(LOGMSG_INFO, "Old file deletion in progress(\"%s\")\n", owner);
         Pthread_mutex_unlock(&owner_mtx);
         return 0;
     } else {
@@ -8278,24 +8336,20 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (oldfile_list_contains(munged_name))
                 continue;
 
-            if (oldfile_list_add(strdup(munged_name), lognum, __func__,
-                                 __LINE__)) {
-                print(bdb_state, "failed to collect old file (list full) %s\n",
-                      ent->d_name);
+            if (oldfile_add(munged_name, lognum, __func__, __LINE__)) {
+                print(bdb_state, "failed to collect old file %s\n", ent->d_name);
             } else {
                 print(bdb_state, "collected old file %s\n", ent->d_name);
             }
         } else {
-            logmsg(LOGMSG_INFO, "%s: deleting file %s\n", __func__,
-                   ent->d_name);
+            logmsg(LOGMSG_INFO, "%s: deleting file %s\n", __func__, ent->d_name);
             print(bdb_state, "deleting file %s\n", ent->d_name);
             DB_TXN *tid;
             if (bdb_state->dbenv->txn_begin(bdb_state->dbenv,
                                             tran ? tran->tid : NULL, &tid,
                                             0 /*flags*/)) {
                 logmsg(LOGMSG_ERROR,
-                       "%s: failed to begin trans for "
-                       "deleteing file: %s\n",
+                       "%s: failed to begin trans for deleteing file: %s\n",
                        __func__, ent->d_name);
                 continue;
             }
@@ -8305,8 +8359,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                 tid->abort(tid);
             } else if (tid->commit(tid, 0)) {
                 logmsg(LOGMSG_ERROR,
-                       "%s: failed to commit trans for "
-                       "deleteing file: %s\n",
+                       "%s: failed to commit trans for deleteing file: %s\n",
                        __func__, ent->d_name);
             }
         }
@@ -8345,14 +8398,13 @@ int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner)
     return bdb_list_unused_files_tran(bdb_state, NULL, bdberr, powner);
 }
 
-int bdb_have_unused_files(void) { return oldfile_list_empty() != 1; }
+int bdb_have_unused_files(void) { return oldfile_is_empty() != 1; }
 
 int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
-    char *munged_name = NULL;
     int rc;
-    unsigned lognum = 0, lowfilenum = 0;
+    unsigned lowfilenum = 0;
     struct stat sb;
 
     if (bdb_state->attr->keep_referenced_files) {
@@ -8381,43 +8433,43 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     assert(tran);
 
-    munged_name = oldfile_list_rem((int *)&lognum);
+    struct unused_file *uf_ptr = oldfile_get_first(lowfilenum);
 
     /* wait some more */
-    if (!munged_name) return 1;
+    if (!uf_ptr) return 1;
 
     /* skip already deleted files */
     char path[PATH_MAX];
-    bdb_trans(munged_name, path);
+    bdb_trans(uf_ptr->fname, path);
     if (stat(path, &sb)) {
-        free(munged_name);
+        free(uf_ptr);
         return 0;
     }
 
-    if (lognum && lowfilenum && lognum >= lowfilenum) {
-        oldfile_list_add(munged_name, lognum, __func__, __LINE__);
+    if (uf_ptr->lognum && lowfilenum && uf_ptr->lognum >= lowfilenum) {
+        if (oldfile_add_ptr(uf_ptr, __func__, __LINE__))
+            free(uf_ptr); /* failed to add back so need to free */
         return 1;
     }
 
-    logmsg(LOGMSG_INFO, "deleting file %s\n", munged_name);
-    print(bdb_state, "deleting file %s\n", munged_name);
+    logmsg(LOGMSG_INFO, "deleting file %s\n", uf_ptr->fname);
+    print(bdb_state, "deleting file %s\n", uf_ptr->fname);
 
-    if ((rc = bdb_del_file(bdb_state, tran->tid, munged_name, bdberr))) {
+    if ((rc = bdb_del_file(bdb_state, tran->tid, uf_ptr->fname, bdberr))) {
         logmsg(LOGMSG_ERROR, "%s: failed to delete file rc %d bdberr %d: %s\n",
-                __func__, rc, *bdberr, munged_name);
+                __func__, rc, *bdberr, uf_ptr->fname);
 
         if (*bdberr == BDBERR_DELNOTFOUND)
             rc = 0;
-        else if (oldfile_list_add(munged_name, lognum, __func__, __LINE__))
+        else if (oldfile_add_ptr(uf_ptr, __func__, __LINE__))
             print(bdb_state,
-                  "bdb_del_file failed bdberr=%d and failed to "
-                  "requeue \"%s\"\n",
-                  *bdberr, munged_name);
-        else /* Added back to oldfile list. Don't free the file name. */
+                  "bdb_del_file failed bdberr=%d and failed to requeue \"%s\"\n",
+                  *bdberr, uf_ptr->fname);
+        else /* Added back, dont free uf_ptr */
             return rc;
     }
 
-    free(munged_name);
+    free(uf_ptr);
     return rc;
 }
 
