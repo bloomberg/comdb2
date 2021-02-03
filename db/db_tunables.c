@@ -251,6 +251,7 @@ extern int gbl_client_running_slow_seconds;
 extern int gbl_client_abort_on_slow;
 extern int gbl_max_trigger_threads;
 extern int gbl_alternate_normalize;
+extern int gbl_sc_logbytes_per_second;
 
 extern long long sampling_threshold;
 

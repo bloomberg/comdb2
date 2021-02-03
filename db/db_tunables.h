@@ -2079,4 +2079,8 @@ REGISTER_TUNABLE("alternate_normalize",
                  TUNABLE_BOOLEAN, &gbl_alternate_normalize,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("sc_logbytes_per_second",
+                 "Throttle schema-changes to this many logbytes per second.  (Default: 10000000)",
+                 TUNABLE_INTEGER, &gbl_sc_logbytes_per_second, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
