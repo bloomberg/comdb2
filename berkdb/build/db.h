@@ -978,6 +978,7 @@ struct __db_txn {
 	DB_LSN		last_lsn;	/* Lsn of last log write. */
 	u_int32_t	txnid;		/* Unique transaction id. */
 	u_int32_t	tid;		/* Thread id for use in MT XA. */
+	u_int64_t   logbytes;
 	roff_t		off;		/* Detail structure within region. */
 	db_timeout_t	lock_timeout;	/* Timeout for locks for this txn. */
 	db_timeout_t	expire;		/* Time this txn expires. */
@@ -1046,10 +1047,11 @@ struct __db_txn {
 					/* Methods. */
 	int	  (*abort) __P((DB_TXN *));
 	int	  (*commit) __P((DB_TXN *, u_int32_t));
-	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, DB_LSN *, void *));
+	int	  (*commit_getlsn) __P((DB_TXN *, u_int32_t, u_int64_t *, DB_LSN *, void *));
 	int	  (*commit_rowlocks) __P((DB_TXN *, u_int32_t, u_int64_t,
-		      u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
-		      u_int32_t, DB_LSN *, DB_LSN *, void *));
+			  u_int32_t, DB_LSN *,DBT *, DB_LOCK *,
+		      u_int32_t, u_int64_t *, DB_LSN *, DB_LSN *, void *));
+	int   (*getlogbytes) __P((DB_TXN *, u_int64_t *));
 	int	  (*discard) __P((DB_TXN *, u_int32_t));
 	u_int32_t (*id) __P((DB_TXN *));
 	int	  (*prepare) __P((DB_TXN *, u_int8_t *));

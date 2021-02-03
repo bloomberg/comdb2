@@ -462,6 +462,7 @@ struct tran_tag {
     DB_LOCK *rc_locks;
     u_int32_t rc_max;
     u_int32_t rc_count;
+    u_int64_t logbytes;
 
     /* Newsi pglogs queue hash */
     hash_t *pglogs_queue_hash;
