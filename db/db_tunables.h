@@ -266,8 +266,7 @@ REGISTER_TUNABLE("dont_abort_on_in_use_rqid", "Disable 'abort_on_in_use_rqid'",
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_forbid_ulonglong", "Disables 'forbid_ulonglong'",
                  TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
-                 INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
-                 NULL);
+                 INVERSE_VALUE | NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_init_with_inplace_updates",
                  "Disables 'init_with_inplace_updates'", TUNABLE_BOOLEAN,
                  &gbl_init_with_ipu, INVERSE_VALUE | READONLY | NOARG, NULL,
@@ -465,7 +464,7 @@ REGISTER_TUNABLE("fdbtrackhints", NULL, TUNABLE_INTEGER, &gbl_fdb_track_hints,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("forbid_ulonglong", "Disallow u_longlong. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_forbid_ulonglong,
-                 READONLY | NOARG | READEARLY, NULL, NULL, NULL, NULL);
+                 NOARG | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("force_highslot", NULL, TUNABLE_BOOLEAN, &gbl_force_highslot,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("foreign_db_allow_cross_class", NULL, TUNABLE_BOOLEAN,
