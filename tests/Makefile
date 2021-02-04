@@ -1,5 +1,5 @@
 export TESTSROOTDIR:=$(shell pwd)
-SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ || realpath $(TESTSROOTDIR)/../ )
+SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ 2> /dev/null || realpath $(TESTSROOTDIR)/../ )
 ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
