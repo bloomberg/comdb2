@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+set -x
+dbname=$1
+
+echo "Starting tests"
+echo "Using SP_OPTIONS: $SP_OPTIONS"
+./test.sh $dbname
+rc=$?
+if (( $rc != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"

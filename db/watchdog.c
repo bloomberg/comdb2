@@ -85,6 +85,7 @@
 int gbl_client_queued_slow_seconds = 0;
 int gbl_client_running_slow_seconds = 0;
 int gbl_client_abort_on_slow = 0;
+int gbl_dump_threads_seconds = 0;
 
 extern int gbl_watcher_thread_ran;
 
@@ -182,6 +183,19 @@ static void *watchdog_thread(void *arg)
     int test_io_time = 0;
     while (!db_is_stopped()) {
         gbl_epoch_time = comdb2_time_epoch();
+
+        int dump_threads_seconds = gbl_dump_threads_seconds;
+
+        if (dump_threads_seconds < 0)
+            dump_threads_seconds = -dump_threads_seconds;
+
+        if ((dump_threads_seconds > 0) &&
+            ((gbl_epoch_time - gbl_starttime) >= dump_threads_seconds)) {
+            if (gbl_dump_threads_seconds > 0)
+                gbl_dump_threads_seconds = 0; /* ONE-SHOT */
+
+            bdb_dump_threads_and_maybe_abort(thedb->bdb_env, 0, 0);
+        }
 
         if (!gbl_nowatch) {
             int stop_thds_time;
