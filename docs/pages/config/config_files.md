@@ -292,6 +292,7 @@ accept_on_child_nets|  off |listen on separate port for osql/signal nets
 disable_etc_services_lookup|  off |When on, disables using /etc/services first to resolve ports
 rowlocks_deadlock_trace|off |Prints deadlock trace in phys.c
 mask_internal_tunables|on|When enabled, comdb2_tunables system table would not list INTERNAL tunables
+lightweight_rename|off|When enabled, rename will add an alias instead of completely changing the table name
 
 #### `sqllogger` commands
 

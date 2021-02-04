@@ -4069,11 +4069,12 @@ int backend_open_tran(struct dbenv *dbenv, tran_type *tran, uint32_t flags)
                "odh %s  "
                "isc %s  "
                "odh_datacopy %s  "
-               "ipu %s",
+               "ipu %s "
+               "alias %s",
                tbl->tablename, tbl->schema_version, tbl->odh ? "yes" : "no",
                tbl->instant_schema_change ? "yes" : "no",
-               datacopy_odh ? "yes" : "no",
-               tbl->inplace_updates ? "yes" : "no");
+               datacopy_odh ? "yes" : "no", tbl->inplace_updates ? "yes" : "no",
+               tbl->sqlaliasname ? tbl->sqlaliasname : "<none>");
     }
 
     if (gbl_create_mode) {

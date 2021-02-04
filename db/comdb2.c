@@ -825,11 +825,35 @@ dbtable *getdbbynum(int num)
     return p_db;
 }
 
-/* lockless -- thedb_lock should be gotten from caller */
-int getdbidxbyname_ll(const char *p_name)
+static inline dbtable *_db_hash_find(const char *p_name)
 {
     dbtable *tbl;
     tbl = hash_find_readonly(thedb->db_hash, &p_name);
+    if (!tbl)
+        tbl = hash_find_readonly(thedb->sqlalias_hash, &p_name);
+    return tbl;
+}
+
+static inline void _db_hash_add(dbtable *tbl)
+{
+    hash_add(thedb->db_hash, tbl);
+    if (tbl->sqlaliasname)
+        hash_add(thedb->sqlalias_hash, tbl);
+}
+
+static inline void _db_hash_del(dbtable *tbl)
+{
+    hash_del(thedb->db_hash, tbl);
+
+    if (tbl->sqlaliasname)
+        hash_del(thedb->sqlalias_hash, tbl);
+}
+
+/* lockless -- thedb_lock should be gotten from caller */
+int getdbidxbyname_ll(const char *p_name)
+{
+    dbtable *tbl = _db_hash_find(p_name);
+
     return (tbl) ? tbl->dbs_idx : -1;
 }
 
@@ -851,7 +875,7 @@ dbtable *get_dbtable_by_name(const char *p_name)
     dbtable *p_db = NULL;
 
     Pthread_rwlock_rdlock(&thedb_lock);
-    p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    p_db = _db_hash_find(p_name);
     Pthread_rwlock_unlock(&thedb_lock);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
@@ -868,13 +892,13 @@ dbtable *get_dbtable_by_name_locked(tran_type *tran, const char *p_name)
         return get_dbtable_by_name(p_name);
 
     Pthread_rwlock_rdlock(&thedb_lock);
-    p_db = hash_find_readonly(thedb->db_hash, &p_name);
+    p_db = _db_hash_find(p_name);
     if (!p_db && !strcmp(p_name, COMDB2_STATIC_TABLE))
         p_db = &thedb->static_table;
     if (!p_db) {
-        rc = bdb_lock_tablename_read(thedb->bdb_env, p_name, tran);
+        rc = bdb_lock_tablename_read(thedb->bdb_env, p_db->tablename, tran);
     } else {
-        rc = bdb_lock_tablename_write(thedb->bdb_env, p_name, tran);
+        rc = bdb_lock_tablename_write(thedb->bdb_env, p_db->tablename, tran);
     }
     Pthread_rwlock_unlock(&thedb_lock);
 
@@ -1527,6 +1551,12 @@ void clean_exit(void)
 
     free_sqlite_table(thedb);
 
+    if (thedb->sqlalias_hash) {
+        hash_clear(thedb->sqlalias_hash);
+        hash_free(thedb->sqlalias_hash);
+        thedb->sqlalias_hash = NULL;
+    }
+
     if (thedb->db_hash) {
         hash_clear(thedb->db_hash);
         hash_free(thedb->db_hash);
@@ -1621,6 +1651,8 @@ void cleanup_newdb(dbtable *tbl)
 {
     if (!tbl)
         return;
+
+    free(tbl->sqlaliasname);
 
     if (tbl->tablename) {
         free(tbl->tablename);
@@ -2149,6 +2181,22 @@ err:
     return rc;
 }
 
+static inline int db_get_alias(void *tran, dbtable *tbl)
+{
+    char *sqlalias = NULL;
+    int rc;
+
+    rc = bdb_get_table_sqlalias_tran(tbl->tablename, tran, &sqlalias);
+    if (rc < 0)
+        return -1;
+    if (sqlalias) {
+        tbl->sqlaliasname = sqlalias;
+        logmsg(LOGMSG_INFO, "%s: found table %s alias %s\n", __func__,
+               tbl->tablename, tbl->sqlaliasname);
+    }
+    return 0;
+}
+
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
 static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
@@ -2239,6 +2287,15 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         }
         tbl->schema_version = ver;
 
+        rc = db_get_alias(tran, tbl);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: failed to get sqlalias for table %s rc %d\n", __func__,
+                   tbl->tablename, rc);
+            rc = 1;
+            break;
+        }
+
         /* We only want to load older schema versions for ODH databases.  ODH
          * information
          * is stored in the meta table (not the llmeta table), so it's not
@@ -2249,7 +2306,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
         dbenv->dbs[i] = tbl;
 
         /* Add table to the hash. */
-        hash_add(dbenv->db_hash, tbl);
+        _db_hash_add(tbl);
 
         /* just got a bunch of data. remember it so key forming
            routines and SQL can get at it */
@@ -2590,6 +2647,8 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     /* Initialize the table/queue hashes. */
     dbenv->db_hash = hash_init_strcaseptr(offsetof(dbtable, tablename));
+    dbenv->sqlalias_hash =
+        hash_init_strcaseptr(offsetof(dbtable, sqlaliasname));
     dbenv->qdb_hash = hash_init_strcaseptr(offsetof(dbtable, tablename));
     dbenv->view_hash = hash_init_strcaseptr(offsetof(struct dbview, view_name));
 
@@ -3245,7 +3304,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
     dbenv->dbs[dbenv->num_dbs++] = tbl;
 
     /* Add table to the hash. */
-    hash_add(dbenv->db_hash, tbl);
+    _db_hash_add(tbl);
 
     if (add_cmacc_stmt(tbl, 0)) {
         logmsg(LOGMSG_ERROR, "Can't init table structures %s from schema\n", table);
@@ -5567,7 +5626,7 @@ int add_db(dbtable *db)
 {
     Pthread_rwlock_wrlock(&thedb_lock);
 
-    if (hash_find_readonly(thedb->db_hash, db) != 0) {
+    if (_db_hash_find(db->tablename) != 0) {
         Pthread_rwlock_unlock(&thedb_lock);
         return -1;
     }
@@ -5577,7 +5636,7 @@ int add_db(dbtable *db)
     thedb->dbs[thedb->num_dbs++] = db;
 
     /* Add table to the hash. */
-    hash_add(thedb->db_hash, db);
+    _db_hash_add(db);
 
     Pthread_rwlock_unlock(&thedb_lock);
     return 0;
@@ -5595,7 +5654,7 @@ void delete_db(char *db_name)
     }
 
     /* Remove the table from hash. */
-    hash_del(thedb->db_hash, thedb->dbs[idx]);
+    _db_hash_del(thedb->dbs[idx]);
 
     for (int i = idx; i < (thedb->num_dbs - 1); i++) {
         thedb->dbs[i] = thedb->dbs[i + 1];
@@ -5605,6 +5664,44 @@ void delete_db(char *db_name)
     thedb->num_dbs -= 1;
     thedb->dbs[thedb->num_dbs] = NULL;
     Pthread_rwlock_unlock(&thedb_lock);
+}
+
+static void add_sqlalias_db(dbtable *tbl, char *newname)
+{
+    char *name;
+
+    Pthread_rwlock_wrlock(&thedb_lock);
+    name = tbl->sqlaliasname;
+    tbl->sqlaliasname = newname;
+    hash_add(thedb->sqlalias_hash, tbl);
+    Pthread_rwlock_unlock(&thedb_lock);
+
+    free(name);
+}
+
+static void delete_sqlalias_db(dbtable *tbl)
+{
+    char *name;
+
+    Pthread_rwlock_wrlock(&thedb_lock);
+    name = tbl->sqlaliasname;
+    if (name) {
+        hash_del(thedb->sqlalias_hash, tbl);
+        tbl->sqlaliasname = NULL;
+    }
+    Pthread_rwlock_unlock(&thedb_lock);
+
+    free(name);
+}
+
+void hash_sqlalias_db(dbtable *tbl, const char *newname)
+{
+    if (strncasecmp(tbl->tablename, newname, MAXTABLELEN) == 0) {
+        /* this is actually an alias removal */
+        delete_sqlalias_db(tbl);
+    } else {
+        add_sqlalias_db(tbl, strdup(newname));
+    }
 }
 
 /* rename in memory db names; fragile */
@@ -5625,9 +5722,9 @@ int rename_db(dbtable *db, const char *newname)
     bdb_state_rename(db->handle, bdb_name);
 
     /* db */
-    hash_del(thedb->db_hash, db);
+    _db_hash_del(db);
     db->tablename = (char *)newname;
-    hash_add(thedb->db_hash, db);
+    _db_hash_add(db);
 
     Pthread_rwlock_unlock(&thedb_lock);
     return 0;
@@ -5659,7 +5756,7 @@ void replace_db_idx(dbtable *p_db, int idx)
 
     /* Add table to the hash. */
     if (move == 1) {
-        hash_add(thedb->db_hash, p_db);
+        _db_hash_add(p_db);
     }
 
     Pthread_rwlock_unlock(&thedb_lock);
@@ -5960,6 +6057,8 @@ retry_tran:
 
     if (thedb->db_hash)
         hash_clear(thedb->db_hash);
+    if (thedb->sqlalias_hash)
+        hash_clear(thedb->sqlalias_hash);
 
     if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) == 0 &&
         stripes > 0) {

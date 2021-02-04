@@ -17,9 +17,13 @@
 #ifndef INCLUDE_SC_RENAME_H
 #define INCLUDE_SC_RENAME_H
 
+extern int gbl_lightweight_rename;
+
 struct ireq;
 int do_rename_table(struct ireq *, struct schema_change_type *, tran_type *);
 int finalize_rename_table(struct ireq *, struct schema_change_type *,
                           tran_type *);
+int finalize_rename_table_alias(struct ireq *, struct schema_change_type *,
+                                tran_type *);
 
 #endif

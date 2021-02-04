@@ -1740,29 +1740,31 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
 {
     int field;
     char namebuf[128];
+    char *tablename = tbl->sqlaliasname ? tbl->sqlaliasname : tbl->tablename;
 
     struct schema *schema = tbl->schema;
     if (schema == NULL) {
-        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tbl->tablename);
+        logmsg(LOGMSG_ERROR, "No .ONDISK tag for table %s.\n", tablename);
         return -1;
     }
 
-    if (is_sqlite_stat(tbl->tablename)) {
+    if (is_sqlite_stat(tablename)) {
         create_sqlite_stat_sqlmaster_record(tbl);
         return 0;
     }
 
     strbuf *sql = strbuf_new();
     strbuf_clear(sql);
-    strbuf_appendf(sql, "create table \"%s\"(", tbl->tablename);
+    strbuf_appendf(sql, "create table \"%s\"(", tablename);
 
     /* Fields */
     for (field = 0; field < schema->nmembers; field++) {
         char *type = sqltype(&schema->member[field], namebuf, sizeof(namebuf));
         if (type == NULL) {
-            logmsg(LOGMSG_ERROR, "Unsupported type in schema: column '%s' [%d] "
-                                 "table %s\n",
-                   schema->member[field].name, field, tbl->tablename);
+            logmsg(LOGMSG_ERROR,
+                   "Unsupported type in schema: column '%s' [%d] "
+                   "table %s\n",
+                   schema->member[field].name, field, tablename);
             strbuf_free(sql);
             return -1;
         }
@@ -1779,7 +1781,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                 logmsg(LOGMSG_ERROR,
                        "Failed to convert default value column '%s' table "
                        "%s type %d\n",
-                       schema->member[field].name, tbl->tablename,
+                       schema->member[field].name, tablename,
                        schema->member[field].type);
                 strbuf_free(sql);
                 return -1;
@@ -1825,7 +1827,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         schema = tbl->schema->ix[ixnum];
         if (schema == NULL) {
             logmsg(LOGMSG_ERROR, "No index %d schema for table %s\n", ixnum,
-                   tbl->tablename);
+                   tablename);
             strbuf_free(sql);
             return -1;
         }
@@ -1845,7 +1847,7 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
         /* We lie to sqlite about the uniqueness of the indexes. */
         strbuf_append(sql, "create index ");
 
-        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tbl->tablename);
+        strbuf_appendf(sql, "\"%s\" on \"%s\" (", namebuf, tablename);
         for (field = 0; field < schema->nmembers; field++) {
             if (field > 0)
                 strbuf_append(sql, ", ");

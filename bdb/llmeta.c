@@ -8653,6 +8653,43 @@ int bdb_clear_table_parameter(void *parent_tran, const char *table,
     return bdb_set_table_parameter(parent_tran, table, parameter, NULL);
 }
 
+/**
+ * Set the sql alias for a table "bdb_state->name" to newname
+ *
+ */
+int bdb_set_table_sqlalias(const char *tablename, tran_type *tran,
+                           char *newname)
+{
+    int rc = 0;
+
+    rc = bdb_set_table_parameter(tran, tablename, "sqlalias", newname);
+
+    return rc;
+}
+
+/**
+ * Get the sql alias for a table "bdb_state->name" in newname (malloced)
+ *
+ */
+int bdb_get_table_sqlalias_tran(const char *tablename, tran_type *tran,
+                                char **newname)
+{
+    int rc = 0;
+
+    rc = bdb_get_table_parameter_tran(tablename, "sqlalias", newname, tran);
+
+    return rc;
+}
+
+/**
+ * Delete the sql alias for a table "bdb_state->name"
+ *
+ */
+int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran)
+{
+    return bdb_set_table_parameter(tran, tablename, "sqlalias", NULL);
+}
+
 struct queue_key {
     int file_type;
     char dbname[LLMETA_TBLLEN + 1];

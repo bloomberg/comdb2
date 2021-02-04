@@ -29,6 +29,7 @@
 #include "bdb_net.h"
 #include "comdb2_atomic.h"
 #include "sc_struct.h"
+#include "sc_rename_table.h"
 
 extern void free_cached_idx(uint8_t **cached_idx);
 
@@ -74,6 +75,45 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
     create_sqlmaster_records(tran);
     create_sqlite_master();
     BDB_BUMP_DBOPEN_GEN(rename_table, NULL);
+
+    bdb_set_tran_lockerid(tran, lid);
+    rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (rc)
+        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
+               rc);
+    return rc;
+}
+
+static int reload_rename_table_alias(bdb_state_type *bdb_state,
+                                     const char *name, const char *newname)
+{
+    extern uint32_t gbl_rep_lockid;
+    uint32_t lid = 0;
+    void *tran = NULL;
+    struct dbtable *db = get_dbtable_by_name(name);
+    int bdberr = 0;
+    int rc;
+
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
+        return -1;
+    }
+
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
+
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    /* newname is NULL if we remove an alias */
+    hash_sqlalias_db(db, newname ? newname : db->tablename);
+
+    create_sqlmaster_records(tran);
+    create_sqlite_master();
+    BDB_BUMP_DBOPEN_GEN(rename_table_alias, NULL);
 
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
@@ -733,6 +773,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case lua_afunc: return reload_lua_afuncs();
     case rename_table:
         return reload_rename_table(bdb_state, table, (char *)arg);
+    case rename_table_alias:
+        return reload_rename_table_alias(bdb_state, table, (char *)arg);
     case change_stripe:
         return reload_stripe_info(bdb_state);
     default:

@@ -48,7 +48,8 @@ typedef enum scdone {
     change_stripe,           // 20
     user_view,               // 21
     add_queue_file,          // 22
-    del_queue_file           // 23
+    del_queue_file,          // 23
+    rename_table_alias       // 24
 } scdone_t;
 
 #define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
