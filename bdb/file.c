@@ -8433,7 +8433,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     assert(tran);
 
-    struct unused_file *uf_ptr = oldfile_get_first(lowfilenum);
+    struct unused_file *uf_ptr = oldfile_get_first();
 
     /* wait some more */
     if (!uf_ptr) return 1;
