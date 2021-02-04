@@ -35,7 +35,7 @@ done
 source $TESTSROOTDIR/setup.common
 
 # get full path
-DBDIR=$(readlink -f $DBDIR || realpath $DBDIR )
+DBDIR=$(readlink -f $DBDIR 2> /dev/null || realpath $DBDIR )
 
 if [[ "${DEBUGGER}" == "gdb" && -z "${INTERACTIVE_DEBUG}" ]]; then
     INTERACTIVE_DEBUG=1
