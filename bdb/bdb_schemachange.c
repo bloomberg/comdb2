@@ -84,7 +84,8 @@ static const char *const bdb_scdone_type_names[] = {
     "change_stripe",           // 20
     "user_view",               // 21
     "add_queue_file",          // 22
-    "del_queue_file"           // 23
+    "del_queue_file",          // 23
+    "rename_table_alias"       // 24
 };
 
 const char *bdb_get_scdone_str(scdone_t type)
@@ -184,7 +185,7 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
                                         TABLENAME_LOCKED_WRITE));
     }
 
-    if (sctype == rename_table) {
+    if (sctype == rename_table || sctype == rename_table_alias) {
         assert(strlen(table) + 1 < scdoneop->table.size);
         newtable = &table[strlen(table) + 1];
     }
@@ -307,7 +308,7 @@ static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
         bzero(dtbl, sizeof(DBT));
         dtbl->data = tbl;
         dtbl->size = strlen(tbl) + 1;
-        if (sctype == rename_table) {
+        if (sctype == rename_table || sctype == rename_table_alias) {
             assert(origtable);
             int origlen = strlen(origtable) + 1;
             int len = dtbl->size + origlen;
@@ -345,13 +346,21 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         bzero(dtbl, sizeof(DBT));
         dtbl->data = bdb_state->name;
         dtbl->size = strlen(bdb_state->name) + 1;
-        if (type == rename_table) {
-            assert(origtable);
-            int origlen = strlen(origtable) + 1;
+        if (type == rename_table || type == rename_table_alias) {
+            assert(origtable || rename_table_alias);
+            int origlen = origtable ? (strlen(origtable) + 1) : 1;
             int len = dtbl->size + origlen;
             char *mashup = alloca(len);
-            memcpy(mashup, origtable, origlen);
-            memcpy(mashup + origlen, dtbl->data, dtbl->size);
+            if (type == rename_table) {
+                memcpy(mashup, origtable, origlen);
+                memcpy(mashup + origlen, dtbl->data, dtbl->size);
+            } else {
+                memcpy(mashup, dtbl->data, dtbl->size);
+                if (origtable)
+                    memcpy(mashup + dtbl->size, origtable, origlen);
+                else
+                    mashup[dtbl->size] = '\0';
+            }
             dtbl->data = mashup;
             dtbl->size = len;
         }

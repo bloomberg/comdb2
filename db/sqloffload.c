@@ -698,7 +698,8 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 else if (s->addonly)
                     type = add;
                 else if (s->rename)
-                    type = rename_table;
+                    type = (s->rename == SC_RENAME_LEGACY) ? rename_table
+                                                           : rename_table_alias;
                 else if (s->type == DBTYPE_TAGGED_TABLE)
                     type = alter;
                 else if (s->add_view || s->drop_view)

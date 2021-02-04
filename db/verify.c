@@ -314,7 +314,8 @@ static int get_tbl_and_lock_in_tran(verify_common_t *par, const char *table,
     *db = locdb;
     *tran = loctran;
     int rc;
-    if ((rc = bdb_lock_tablename_read(thedb->bdb_env, table, loctran)) != 0) {
+    if ((rc = bdb_lock_tablename_read(thedb->bdb_env, locdb->tablename,
+                                      loctran)) != 0) {
         char err[LINE_MAX];
         snprintf(err, sizeof(err), "?Readlock rc:%d table:%s", rc, table);
         logmsg(LOGMSG_ERROR, "%s\n", err + 1);

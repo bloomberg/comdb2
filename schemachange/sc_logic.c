@@ -343,16 +343,25 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         }
 
         int bdberr = 0;
-        if ((rc = bdb_llog_scdone(bdb_state, type, 1, &bdberr)) ||
-            bdberr != BDBERR_NOERROR) {
+        if (type == rename_table || type == rename_table_alias)
+            rc = bdb_llog_scdone_origname(bdb_state, type, 1, s->tablename,
+                                          &bdberr);
+        else
+            rc = bdb_llog_scdone(bdb_state, type, 1, &bdberr);
+
+        if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
         }
         sc_del_unused_files(s->db);
     } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
-        rc = bdb_llog_scdone_tran(bdb_state, type, input_tran, s->tablename,
-                                  &bdberr);
+        if (type == rename_table_alias && s->db /* no views */)
+            rc = bdb_llog_scdone_tran(bdb_state, type, input_tran,
+                                      s->db->sqlaliasname, &bdberr);
+        else
+            rc = bdb_llog_scdone_tran(bdb_state, type, input_tran, s->tablename,
+                                      &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
@@ -630,8 +639,12 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     else if (s->addonly)
         rc = do_ddl(do_add_table, finalize_add_table, iq, s, trans, add);
     else if (s->rename)
-        rc = do_ddl(do_rename_table, finalize_rename_table, iq, s, trans,
-                    rename_table);
+        if (s->rename == SC_RENAME_LEGACY)
+            rc = do_ddl(do_rename_table, finalize_rename_table, iq, s, trans,
+                        rename_table);
+        else
+            rc = do_ddl(do_rename_table, finalize_rename_table_alias, iq, s,
+                        trans, rename_table_alias);
     else if (s->fulluprecs || s->partialuprecs)
         rc = do_upgrade_table(s);
     else if (s->type == DBTYPE_TAGGED_TABLE)
@@ -805,7 +818,11 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     else if (s->addonly)
         rc = do_finalize(finalize_add_table, iq, s, trans, add);
     else if (s->rename)
-        rc = do_finalize(finalize_rename_table, iq, s, trans, rename_table);
+        if (s->rename == SC_RENAME_LEGACY)
+            rc = do_finalize(finalize_rename_table, iq, s, trans, rename_table);
+        else
+            rc = do_finalize(finalize_rename_table_alias, iq, s, trans,
+                             rename_table_alias);
     else if (s->type == DBTYPE_TAGGED_TABLE)
         rc = do_finalize(finalize_alter_table, iq, s, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)

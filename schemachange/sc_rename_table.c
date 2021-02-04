@@ -24,17 +24,19 @@
 #include "sc_global.h"
 #include "sc_callbacks.h"
 
+int gbl_lightweight_rename = 0;
+
 int do_rename_table(struct ireq *iq, struct schema_change_type *s,
                     tran_type *tran)
 {
-    struct dbtable *db;
+    struct dbtable *db, *db2;
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         sc_errf(s, "Table doesn't exists\n");
         reqerrstr(iq, ERR_SC, "Table doesn't exists");
         return SC_TABLE_DOESNOT_EXIST;
     }
-    if (get_dbtable_by_name(s->newtable)) {
+    if (((db2 = get_dbtable_by_name(s->newtable)) != NULL) && db != db2) {
         sc_errf(s, "New table name exists\n");
         reqerrstr(iq, ERR_SC, "New table name exists");
         return SC_TABLE_ALREADY_EXIST;
@@ -49,6 +51,47 @@ int do_rename_table(struct ireq *iq, struct schema_change_type *s,
     return SC_OK;
 }
 
+int finalize_rename_table_alias(struct ireq *iq, struct schema_change_type *s,
+                                tran_type *tran)
+{
+    struct dbtable *db = s->db;
+    int rc = 0;
+
+    assert(s->rename);
+
+    /* Before this handle is closed, lets wait for all the db reads to finish*/
+    bdb_lock_table_write(db->handle, tran);
+    bdb_lock_tablename_write(db->handle, s->newtable, tran);
+
+    s->already_finalized = 1;
+
+    hash_sqlalias_db(db, s->newtable);
+
+    rc = bdb_set_table_sqlalias(db->tablename, tran, db->sqlaliasname);
+    if (rc) {
+        /* undo alias */
+        sc_errf(s, "bdb_set_table_sqlalias failed rc %d\n", rc);
+        hash_sqlalias_db(db, db->tablename);
+        return rc;
+    }
+
+    if (s->finalize) {
+        if ((rc = create_sqlmaster_records(tran))) {
+            sc_errf(s, "create_sqlmaster_records failed rc %d\n", rc);
+            hash_sqlalias_db(db, db->tablename);
+            return rc;
+        }
+        create_sqlite_master();
+    }
+
+    gbl_sc_commit_count++;
+
+    /* TODO: review this, do we need it?*/
+    live_sc_off(db);
+
+    return 0;
+}
+
 int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran)
 {
@@ -61,7 +104,7 @@ int finalize_rename_table(struct ireq *iq, struct schema_change_type *s,
     assert(s->rename);
     if (!newname) {
         sc_errf(s, "strdup error\n");
-        goto tran_error;
+        return -1;
     }
 
     /* Before this handle is closed, lets wait for all the db reads to finish*/

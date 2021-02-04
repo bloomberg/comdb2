@@ -37,6 +37,7 @@ extern int gbl_allow_user_schema;
 extern int gbl_ddl_cascade_drop;
 extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
+extern int gbl_lightweight_rename;
 
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
@@ -2459,6 +2460,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     char table[MAXTABLELEN];
     char newTable[MAXTABLELEN];
     struct schema_change_type *sc;
+    struct dbtable *db;
 
     Vdbe *v = sqlite3GetVdbe(pParse);
 
@@ -2472,7 +2474,11 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
-    if (get_dbtable_by_name(newTable)) {
+
+    db = get_dbtable_by_name(newTable);
+    /* cannot rename to an existing table, unless we are removing an alias
+    */
+    if (db && !(gbl_lightweight_rename && db->sqlaliasname && (strncmp(db->sqlaliasname, table, MAXTABLELEN) == 0))) {
         setError(pParse, SQLITE_ERROR, "New table name already exists");
         return;
     }
@@ -2490,7 +2496,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
     comdb2WriteTransaction(pParse);
     sc->nothrevent = 1;
     sc->live = 1;
-    sc->rename = 1;
+    sc->rename = gbl_lightweight_rename?SC_RENAME_ALIAS:SC_RENAME_LEGACY;
     strncpy0(sc->newtable, newTable, sizeof(sc->newtable));
 
     comdb2prepareNoRows(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
@@ -5436,7 +5442,7 @@ void comdb2CreateIndex(
     }
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), 1, 1, 0)))
+                         strlen(ctx->schema->name), ERROR_ON_TBL_NOT_FOUND, 1, 0)))
         goto cleanup;
 
     /*
@@ -6111,7 +6117,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         sqlite3Dequote(tbl_name);
 
         if ((chkAndCopyTable(pParse, sc->tablename, tbl_name, strlen(tbl_name),
-                             1, 1, 0)))
+                             ERROR_ON_TBL_NOT_FOUND, 1, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))
@@ -6171,7 +6177,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
         }
 
         if ((chkAndCopyTable(pParse, sc->tablename, table->tablename,
-                             strlen(table->tablename), 1, 1, 0)))
+                             strlen(table->tablename), ERROR_ON_TBL_NOT_FOUND, 1, 0)))
             goto cleanup;
 
         if (authenticateSC(sc->tablename, pParse))

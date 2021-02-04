@@ -2073,6 +2073,11 @@ REGISTER_TUNABLE("sockbplog_sockpool",
 REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE(
+    "lightweight_rename",
+    "Replaces the ondisk file rename with an aliasing at llmeta level",
+    TUNABLE_BOOLEAN, &gbl_lightweight_rename, 0, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("alternate_normalize",
                  "Use alternate SQL normalization algorithm.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_alternate_normalize,

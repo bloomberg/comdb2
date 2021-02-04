@@ -2100,6 +2100,26 @@ int bdb_table_version_upsert(bdb_state_type *bdb_state, tran_type *tran,
                              int *bdberr);
 
 /**
+ * Set the sql alias for a table "bdb_state->name" to newname
+ *
+ */
+int bdb_set_table_sqlalias(const char *tablename, tran_type *tran,
+                           char *newname);
+
+/**
+ * Get the sql alias for a table "bdb_state->name"" in newname (malloced)
+ *
+ */
+int bdb_get_table_sqlalias_tran(const char *tablename, tran_type *tran,
+                                char **newname);
+
+/**
+ * Delete the sql alias for a table "bdb_state->name
+ *
+ */
+int bdb_del_table_sqlalias_tran(const char *tablename, tran_type *tran);
+
+/**
  * Set the TABLE VERSION ENTRY for table "bdb_state->name" to "val"
  * (It creates or, if existing, updates an entry)
  *

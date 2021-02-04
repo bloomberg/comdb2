@@ -230,7 +230,7 @@ static void *create_master_row(struct dbtable **dbs, int num_dbs, int rootpage,
     assert(tblnum < num_dbs);
 
     tbl = dbs[tblnum];
-    dbname = tbl->tablename;
+    dbname = tbl->sqlaliasname ? tbl->sqlaliasname : tbl->tablename;
 
     if (ixnum == -1) {
         strcpy(name, dbname);
