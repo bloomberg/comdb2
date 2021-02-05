@@ -167,7 +167,7 @@ void *thr(void *arg)
 }
 
 void usage(const char *p, const char *err) {
-    fprintf(stderr, err);
+    fprintf(stderr, "%s", err);
     fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --cntperthread CNTPERTHREAD\n"
                     "--iterations ITERATIONS [--transize TRANSIZE] [--atcommit commit|rollback|disconnect]\n", p);
     exit(1);
