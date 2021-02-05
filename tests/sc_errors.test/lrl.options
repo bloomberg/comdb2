@@ -1,0 +1,3 @@
+init_with_instant_schema_change
+init_with_ondisk_header
+init_with_inplace_updates 

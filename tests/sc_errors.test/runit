@@ -1,0 +1,13 @@
+#!/bin/bash
+
+dbname=$1
+
+# check that line number of the error is correct
+cdb2sql ${CDB2_OPTIONS} $dbname default "create table t {
+    schema {
+        int a
+        int b
+        string c
+    }
+}" > out.1 2>&1
+diff out.1 expected.1
