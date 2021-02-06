@@ -1068,6 +1068,35 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     int len = val->value.len;
     void *p = val->value.data;
 
+    
+    if (val->bind_array) {
+        switch (val->bind_array->oneof_t_case) { 
+            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_INT32_ARR: {
+                param->u.p = val->bind_array->int32_arr->elements;
+                param->arraylen = val->bind_array->int32_arr->n_elements;
+                param->len = sizeof(int32_t);
+                return 0;
+            }
+            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_INT64_ARR: {
+                param->u.p = val->bind_array->int64_arr->elements;
+                param->arraylen = val->bind_array->int64_arr->n_elements;
+                param->len = sizeof(int64_t);
+                return 0;
+            }
+            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_DOUBLE_ARR: {
+                param->u.p = val->bind_array->double_arr->elements;
+                param->arraylen = val->bind_array->double_arr->n_elements;
+                return 0;
+            }
+            case CDB2__SQLQUERY__BINDVALUE__BINDARRAY__ONEOF_T_TEXT_ARR: {
+                param->u.p = val->bind_array->text_arr->elements;
+                param->arraylen = val->bind_array->text_arr->n_elements;
+                return 0;
+            }
+            default: break;
+        }
+    }
+
     /* The bound parameter is from an old client which does not send isnull,
        and its length is 0. Treat it as a NULL to keep backward-compatible. */
     if (len == 0 && !val->has_isnull) {

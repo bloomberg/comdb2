@@ -202,6 +202,8 @@ static int test_no_btcursors(struct sqlthdstate *thd);
 static void sql_thread_describe(void *obj, FILE *out);
 static char *get_query_cost_as_string(struct sql_thread *thd,
                                       struct sqlclntstate *clnt);
+extern int sqlite3_carray_bind(sqlite3_stmt *pStmt, int idx, void *aData,
+                               int nData, int mFlags, void (*xDestroy)(void*));
 
 void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 
@@ -3186,6 +3188,33 @@ static int bind_parameters(struct reqlogger *logger, sqlite3_stmt *stmt,
             if (rc) { /* position out-of-bounds, etc? */
                 goto out;
             }
+            continue;
+        }
+        if (p.arraylen) {
+            int flag;
+            switch (p.type) {
+            case CLIENT_INT:
+            case CLIENT_UINT:
+                //we dont have 32bit int type 
+                if (p.len == sizeof(int32_t))
+                    flag = 0; /* CARRAY_INT32; */
+                else if (p.len == sizeof(int64_t))
+                    flag = 1; /* CARRAY_INT64; */ 
+                else 
+                    flag = -1;
+                break;
+            case CLIENT_REAL:
+                flag = 2; /* CARRAY_DOUBLE; */ break;
+            case CLIENT_CSTR:
+            case CLIENT_VUTF8:
+                flag = 3; /* CARRAY_TEXT; */ break;
+            default:
+                logmsg(LOGMSG_ERROR, "Unsupported type %d for carray_bind\n", p.type);
+                rc = -1;
+                return rc;
+            }
+
+            rc = sqlite3_carray_bind(stmt, p.pos, p.u.p, p.arraylen, flag, SQLITE_STATIC);
             continue;
         }
         switch (p.type) {
