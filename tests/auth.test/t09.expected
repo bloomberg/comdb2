@@ -215,6 +215,7 @@
 (candidate='WRITE')
 (candidate='ZLIB')
 (candidate='main')
+(candidate='carray')
 (candidate='comdb2_active_osqls')
 (candidate='comdb2_appsock_handlers')
 (candidate='comdb2_blkseq')

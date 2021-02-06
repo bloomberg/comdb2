@@ -64,6 +64,7 @@ void test_bind_index(cdb2_hndl_tp *hndl, int index, int type,
 void test_exec(cdb2_hndl_tp *hndl, const char *cmd)
 {
     int rc;
+    printf("SQL: %s\n", cmd);
     rc = cdb2_run_statement(hndl, cmd);
     if (rc != 0) {
         fprintf(stderr, "error execing %s (err: %s)\n", cmd, cdb2_errstr(hndl));
@@ -77,8 +78,8 @@ void test_next_record(cdb2_hndl_tp *hndl)
     int rc;
     rc = cdb2_next_record(hndl);
     if (rc != 0) {
-        fprintf(stderr, "error in cdb2_next_record (err: %s)\n",
-                cdb2_errstr(hndl));
+        fprintf(stderr, "error in cdb2_next_record (err: %s, rc: %d)\n",
+                cdb2_errstr(hndl), rc);
         exit(1);
     }
 }
@@ -314,6 +315,170 @@ void test_04()
     test_close(hndl);
 }
 
+void test_bind_array()
+{
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+
+    {   // bind int32 array
+        int N = 2048;
+        int values[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = i + 123;
+        }
+        cdb2_bind_array(hndl, "myintarr", CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select * from carray(@myintarr) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%ld expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %ld\n", *vala);
+        }
+
+        cdb2_clearbindings(hndl);
+    }
+    {   // bind int64 array
+        int N = 2048;
+        int64_t values[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = i + 123;
+        }
+        cdb2_bind_array(hndl, "mylongintarr", CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select * from carray(@mylongintarr) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%ld expected:%ld\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %ld\n", *vala);
+        }
+
+        cdb2_clearbindings(hndl);
+    } 
+
+    {   // bind double array
+        int N = 2048;
+        double values[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = i + 123;
+        }
+        cdb2_bind_array(hndl, "mydblarr", CDB2_REAL, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select * from carray(@mydblarr) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            double *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%lf expected:%lf\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %lf\n", *vala);
+        }
+
+        cdb2_clearbindings(hndl);
+    }
+    {   // bind char* array
+        int N = 2048;
+        char* values[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = malloc(30);
+            snprintf(values[i], 29, "Hello %d", i + 123);
+        }
+        cdb2_bind_array(hndl, "mytxtarr", CDB2_CSTRING, (const void *)values, N, 0);
+        test_exec(hndl, "select * from carray(@mytxtarr) ");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            char *vala = cdb2_column_value(hndl, 0);
+            if (strcmp(vala, values[i]) != 0) {
+                fprintf(stderr, "%s:%d:error got:%s expected:%s\n", __func__, __LINE__, vala, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 05 RESP %s\n", vala);
+        }
+
+        cdb2_clearbindings(hndl);
+        for (int i = 0; i < N; i++)
+            free(values[i]);
+    }
+
+    /* Close the handle */
+    test_close(hndl);
+}
+
+void test_bind_array2()
+{
+    cdb2_hndl_tp *hndl = NULL;
+    test_open(&hndl, db);
+
+    test_exec(hndl, "drop table if exists t2");
+    test_exec(hndl, "create table t2 (a int, b char(1))");
+    test_exec(hndl, "insert into t2 select value, cast(value%10 as char) from generate_series(0,2999)");
+
+    
+    {
+        int N = 2048;
+        int values[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = i;
+        }
+        cdb2_bind_array(hndl, "myarray", CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "select a,b from t2 where a in carray(@myarray) order by a");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            long long *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%lld expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+
+            char *valb = cdb2_column_value(hndl, 1);
+            if (*valb != ('0'+values[i]%10)) {
+                fprintf(stderr, "%s:%d:error got:'%c' expected:'%d'\n", __func__, __LINE__, *valb, values[i]);
+                exit(1);
+            }
+
+            //printf("TEST 06 RESP %lld %c\n", *vala, *valb);
+        }
+
+        cdb2_clearbindings(hndl);
+    }
+
+    {  // use bind to insert 
+        test_exec(hndl, "drop table if exists t3");
+        test_exec(hndl, "create table t3 (a int)");
+
+        int N = 2048;
+        int values[N];
+        for (int i = 0; i < N; i++) {
+            values[i] = i + 123;
+        }
+        cdb2_bind_array(hndl, "myintarr", CDB2_INTEGER, (const void *)values, N, sizeof(values[0]));
+        test_exec(hndl, "insert into t3 select * from carray(@myintarr)");
+        cdb2_clearbindings(hndl);
+
+        // verify insert succeeded
+        test_exec(hndl, "select a from t3 order by a");
+        for (int i = 0; i < N; i++) {
+            test_next_record(hndl);
+            int64_t *vala = cdb2_column_value(hndl, 0);
+            if (*vala != values[i]) {
+                fprintf(stderr, "%s:%d:error got:%ld expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                exit(1);
+            }
+        }
+    }
+    /* Close the handle */
+    test_close(hndl);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -323,6 +488,8 @@ int main(int argc, char *argv[])
     test_02();
     test_03();
     test_04();
+    test_bind_array();
+    test_bind_array2();
 
     return 0;
 }

@@ -356,6 +356,42 @@ Parameters:
 |*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement), and for numeric types must be signed. |
 |*length*| input | The length of replaceable param | This should be the sizeof(valueaddr's original type), so 1 if it's a char, 4 for float... |
 
+### cdb2_bind_array
+```
+int cdb2_bind_array(cdb2_hndl_tp *hndl, const char *name, int type, const void *varaddr, unsigned int count, int typelen)
+
+```
+
+Description:
+
+This routine is used to bind arrays in an sql statement, for use with sql statements with IN clause with many parameters example: `SELECT * FROM t1 WHERE a IN CARRAY(@myarray)` as a replacement for 'select * from t1 where a IN (1,2,3,4,...)`.
+
+Usage example for an array with 10 elements:
+
+```c
+char *sql = "SELECT * FROM t1 WHERE a IN CARRAY(@myarray)”
+int arr[10] = {1,2,3,4...};
+
+cdb2_bind_array(hndl, "myarray", CDB2_INTEGER, arr, 10, sizeof(int));
+cdb2_run_statement(db, sql);
+```
+
+Notice that you can name parameter `myarray` any valid varable name you want.
+
+Other usage of such binding can be an insert statement such as this: `INSERT INTO t2 SELECT * FROM CARRAY(@myintarr)`.
+
+Parameters:
+
+|Name|Type|Description|Notes|
+|---|---|---|--|
+|*hndl*| input | cdb2 handle | A previously allocated CDB2 handle |
+|*name*| input | The name of replaceable param, max 31 characters | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement) |
+|*type*| input | The type of replaceable param | |
+|*valueaddr*| input | The value pointer of replaceable param | The value associated with this pointer should not change between bind and [cdb2_run_statement](#cdb2_run_statement), and for numeric types must be signed. |
+|*count*| input | The count of items in the array | |
+|*typelen*| input | The length of the data type of the array which is being passed in | This should be the sizeof(valueaddr's original type), so 4 if it's a int32, 8 for int64... |
+
+
 ### cdb2_get_effects
 ```
 int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects);

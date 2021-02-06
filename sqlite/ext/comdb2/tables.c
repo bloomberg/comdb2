@@ -211,6 +211,10 @@ const sqlite3_module systblTablesModule = {
 /* This initializes this table but also a bunch of other schema tables
 ** that fall under the similar use. */
 extern int sqlite3CompletionVtabInit(sqlite3 *);
+int sqlite3_carray_init(
+  sqlite3 *db, 
+  char **pzErrMsg, 
+  const sqlite3_api_routines *pApi);
 
 int comdb2SystblInit(
   sqlite3 *db
@@ -313,6 +317,8 @@ int comdb2SystblInit(
     rc = systblSystabPermissionsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTimepartPermissionsInit(db);
+  if (rc == SQLITE_OK)
+    rc = sqlite3_carray_init(db, 0, 0);
 #endif
   return rc;
 }

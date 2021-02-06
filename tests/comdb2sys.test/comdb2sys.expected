@@ -354,6 +354,7 @@
 (type='sqlsorters')
 (type='temptables')
 [SELECT type FROM comdb2_temporary_file_sizes ORDER BY type] rc 0
+(name='carray')
 (name='comdb2_active_osqls')
 (name='comdb2_appsock_handlers')
 (name='comdb2_blkseq')

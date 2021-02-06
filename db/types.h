@@ -2078,6 +2078,7 @@ struct param_data {
         dttz_t dt;
         intv_t tv;
     } u;
+    int arraylen; // bound array number of elements
 };
 
 int get_type(struct param_data *out, void *in, int inlen, int intype,
