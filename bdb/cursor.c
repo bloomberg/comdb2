@@ -4266,20 +4266,25 @@ static int berkdb_get_genid(bdb_cursor_impl_t *cur, bdb_berkdb_t *berkdb,
                             unsigned long long *genid, int *bdberr)
 {
     char *val = NULL;
-    int vallen = 0;
     int rc = 0;
 
     if (cur->type == BDBC_DT) {
         rc = berkdb->key(berkdb, &val, bdberr);
         if (rc < 0)
             return rc;
+#ifndef NDEBUG
+        int vallen = 0;
         rc = berkdb->keysize(berkdb, &vallen, bdberr);
         if (rc < 0)
             return rc;
+        assert(vallen >= sizeof(*genid));
+#endif
     } else {
         rc = berkdb->dta(berkdb, &val, bdberr);
         if (rc < 0)
             return rc;
+#ifndef NDEBUG
+        int vallen = 0;
         rc = berkdb->dtasize(berkdb, &vallen, bdberr);
         if (cur->state->ixdta[cur->idx]) {
             /* datacopy */
@@ -4288,9 +4293,8 @@ static int berkdb_get_genid(bdb_cursor_impl_t *cur, bdb_berkdb_t *berkdb,
         }
         if (rc < 0)
             return rc;
+#endif
     }
-
-    assert(vallen >= sizeof(*genid));
 
 #ifdef _SUN_SOURCE
     memcpy(genid, val, 8);
@@ -4475,6 +4479,11 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
 static int update_pglogs_from_global_queues(bdb_cursor_impl_t *cur,
                                             unsigned char *fileid, int *bdberr);
 
+static inline int is_tran_sosql(bdb_cursor_impl_t *cur)
+{
+    return cur->shadow_tran && cur->shadow_tran->tranclass == TRANCLASS_SOSQL;
+}
+
 /**
  * RETURNS:
  * - IX_FND       : found a record
@@ -4489,7 +4498,6 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
                                         int retrieved, int update_shadows,
                                         int *bdberr)
 {
-    unsigned long long genid = 0;
     int howcrt = how;
     int rc = 0;
     int rc2 = 0;
@@ -4553,9 +4561,18 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
 
         /* If we've found something, see if we should skip it. */
         if (IX_FND == rc) {
+            if (is_tran_sosql(cur->ifn->impl))
+                break; /* we are done, nothing could be deleted */
+
+            unsigned long long genid = 0;
             rc = berkdb_get_genid(cur, berkdb, &genid, bdberr);
             if (rc)
                 return rc;
+
+#if MERGE_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s ignored %llx\n",
+               (cur->sd == berkdb) ? "shadow" : "real", genid);
+#endif
 
             rc = bdb_tran_deltbl_isdeleted(cur->ifn, genid,
                                            (cur->sd == berkdb) ? 1 : 0, bdberr);
@@ -4568,11 +4585,6 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
             /* This is updated inside of bdb_move_merge. */
             break;
         }
-
-#if MERGE_DEBUG
-        logmsg(LOGMSG_DEBUG, "%s ignored %llx\n",
-               (cur->sd == berkdb) ? "shadow" : "real", genid);
-#endif
 
         /* ok, the found row is marked deleted, try to get
            the next one preserving the direction */
