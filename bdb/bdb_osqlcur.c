@@ -705,8 +705,9 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
     if (is_genid_synthetic(genid)) /* only real genid are marked deleted */
         return 0;
 
+    int is_not_sosql = cur->shadow_tran && cur->shadow_tran->tranclass != TRANCLASS_SOSQL;
     /* we add this to socksql as an artifact of saving session in socksql */
-    if (cur->shadow_tran && cur->shadow_tran->tranclass != TRANCLASS_SOSQL) {
+    if (is_not_sosql) {
         /* check genid cases the genid limit */
         switch (cur->shadow_tran->tranclass) {
         case TRANCLASS_READCOMMITTED: break;
@@ -748,8 +749,7 @@ static int _bdb_tran_deltbl_isdeleted(bdb_cursor_ifn_t *pcur_ifn,
     }
 
     /* we can check here also if we are trying to dedup one pass deletes */
-    if (!check ||
-        (cur->shadow_tran && cur->shadow_tran->tranclass != TRANCLASS_SOSQL)) {
+    if (!check || is_not_sosql) {
         if (!cur->skip) {
             cur->skip =
                 bdb_tran_open_shadow(cur->state, cur->dbnum, cur->shadow_tran,
