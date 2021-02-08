@@ -37,13 +37,13 @@ keys
 	}
 ')
 ("transactional alter (bad case 1)"='transactional alter (bad case 1)')
-[alter table m drop index "COMDB2_PK"] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[alter table m drop index "COMDB2_PK"] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: parent key not found
 ("transactional alter (bad case 2)"='transactional alter (bad case 2)')
-[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: parent key not found
 ("transactional alter (bad case 3)"='transactional alter (bad case 3)')
-[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: parent key not found
 ("transactional alter (bad case 4)"='transactional alter (bad case 4)')
-[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "d" key "$KEY_5A448109" -> <"m":"COMDB2_PK">: parent key not found
 (name='c', csc2='schema
 	{
 		int i null = yes 
@@ -179,7 +179,7 @@ keys
 	}
 ')
 ("transactional alter & drop (bad case)"='transactional alter & drop (bad case)')
-[commit] failed with rc 240 constraint error for table "e" key "$KEY_6724A8B9" -> <"m":"COMDB2_PK">: foreign key not found
+[commit] failed with rc 240 constraint error for table "e" key "$KEY_6724A8B9" -> <"m":"COMDB2_PK">: parent key not found
 (name='c', csc2='schema
 	{
 		int i null = yes 
@@ -304,10 +304,10 @@ constraints
 ')
 ("drop self-referenced table"='drop self-referenced table')
 ("tests for nullfkey (enabled by default)"='tests for nullfkey (enabled by default)')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key '$KEY_877B2989'
+[insert into t2 values(1)] failed with rc 3 Transaction violates foreign key constraint t2(i) -> t1(i): key value does not exist in parent table
 (rows inserted=1)
 (rows inserted=1)
-[delete from t1 where i=1] failed with rc 3 verify key constraint cannot resolve constraint table 't1' index '0' key '$KEY_877B2989' -> table 't2' index '0' 
+[delete from t1 where i=1] failed with rc 3 Transaction violates foreign key constraint t2(i) -> t1(i): key value is still referenced from child table
 (rows inserted=1)
 (rows inserted=1)
 (i=NULL)
@@ -337,7 +337,7 @@ constraints
 		"$KEY_1E994F88" -> <"t1":"IDX1"> 
 	}
 ')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key 'IDX1'
+[insert into t2 values(1)] failed with rc 3 Transaction violates foreign key constraint t2(i) -> t1(i): key value does not exist in parent table
 (rows inserted=1)
 (rows inserted=1)
 (i=1)
@@ -364,7 +364,7 @@ constraints
 		"IDX2" -> <"t1":"IDX1"> 
 	}
 ')
-[insert into t2 values(1)] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key 'IDX2' -> table 't1' index '0' key 'IDX1'
+[insert into t2 values(1)] failed with rc 3 Transaction violates foreign key constraint t2(i) -> t1(i): key value does not exist in parent table
 (rows inserted=1)
 (rows inserted=1)
 (i=1)
@@ -402,7 +402,7 @@ constraints
 (i=1, j=2)
 (i=1, j=3)
 (i=1, j=4)
-[update t2 set i=2 where i=1] failed with rc 3 verify key constraint cannot resolve constraint table 't2' key '$KEY_1E994F88' -> table 't1' index '0' key '$KEY_877B2989'
+[update t2 set i=2 where i=1] failed with rc 3 Transaction violates foreign key constraint t2(i) -> t1(i): key value does not exist in parent table
 (rows updated=1)
 (i=2, j=1)
 (i=2, j=2)

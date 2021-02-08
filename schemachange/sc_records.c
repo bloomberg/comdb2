@@ -1093,12 +1093,8 @@ err:
         return -2;
     } else if (rc == ERR_CONSTR) {
         if (data->s->iq)
-            reqerrstr(data->s->iq, ERR_SC,
-                      "Error verifying constraints changed rrn %d genid 0x%llx",
-                      rrn, genid);
-        sc_errf(data->s, "Error verifying constraints changed!"
-                         " rrn %d genid 0x%llx\n",
-                rrn, genid);
+            reqerrstr(data->s->iq, ERR_SC, "Record violates foreign constraints rrn %d genid 0x%llx", rrn, genid);
+        sc_errf(data->s, "Record violates foreign constraints rrn %d genid 0x%llx\n", rrn, genid);
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
         if (data->s->iq)

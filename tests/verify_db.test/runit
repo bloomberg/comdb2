@@ -202,7 +202,7 @@ constraints
 
 # will fail, constraint violation
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (1, 1, x'aa')" &> err_fk.out
-echo "[insert into child_t(a,b,blb) values (1, 1, x'aa')] failed with rc 3 verify key constraint cannot resolve constraint table 'child_t' key 'K1' -> table 'parent_t' index '0' key 'A'" > err_fk.expected
+echo "[insert into child_t(a,b,blb) values (1, 1, x'aa')] failed with rc 3 Transaction violates foreign key constraint child_t(a) -> parent_t(a): key value does not exist in parent table" > err_fk.expected
 if ! diff err_fk.out err_fk.expected ; then
     failexit "diff ${PWD}/{err_fk.out,err_fk.expected}"
 fi
@@ -236,7 +236,7 @@ cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into parent_t values (2)"
 cdb2sql ${CDB2_OPTIONS} $dbnm default "insert into child_t(a,b,blb) values (2, 2, x'bb')" &> err_fk2.out 
 
 # constraint 3 still not satisfied
-echo "[insert into child_t(a,b,blb) values (2, 2, x'bb')] failed with rc 3 verify key constraint cannot resolve constraint table 'child_t' key 'K3' -> table 'parent_t' index '0' key 'A'" > err_fk2.expected
+echo "[insert into child_t(a,b,blb) values (2, 2, x'bb')] failed with rc 3 Transaction violates foreign key constraint child_t(length(blb)) -> parent_t(a): key value does not exist in parent table" > err_fk2.expected
 if ! diff err_fk2.out err_fk2.expected ; then
     failexit "diff ${PWD}/{err_fk2.out,err_fk2.expected}"
 fi

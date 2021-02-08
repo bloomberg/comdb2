@@ -42,6 +42,35 @@ extern void free_cached_idx(uint8_t **cached_idx);
 extern int gbl_partial_indexes;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 
+static void generate_fkconstraint_error(struct ireq *iq, const char *child, const char *fkey, const char *parent,
+                                        const char *rkey, const char *reason)
+{
+    /* foreign key and referenced key schema */
+    const struct schema *fk, *rk;
+    size_t errstrlen;
+    char *errstr;
+    int ofs, ii;
+
+    fk = find_tag_schema(child, fkey);
+    rk = find_tag_schema(parent, rkey);
+
+    errstrlen = (MAXCOLNAME + 2) * (fk->nmembers + rk->nmembers) + 2 * MAXTABLELEN + 512;
+    if ((errstr = malloc(errstrlen)) == NULL)
+        return;
+
+    ofs = sprintf(errstr, "Transaction violates foreign key constraint ");
+    ofs += sprintf(errstr + ofs, "%s(%s", child, fk->member[0].name);
+    for (ii = 1; ii != fk->nmembers; ++ii)
+        ofs += sprintf(errstr + ofs, ", %s", fk->member[ii].name);
+    ofs += sprintf(errstr + ofs, ") -> %s(%s", parent, rk->member[0].name);
+    for (ii = 1; ii != rk->nmembers; ++ii)
+        ofs += sprintf(errstr + ofs, ", %s", rk->member[ii].name);
+    sprintf(errstr + ofs, "): %s", reason);
+
+    reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL, errstr);
+    free(errstr);
+}
+
 /**
  * Checks to see if there are any cascading deletes/updates pointing to this
  * table
@@ -944,12 +973,9 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 reqdumphex(iq, bct->key, bct->sixlen);
                 reqmoref(iq, " RC %d", rc);
             }
-            reqerrstr(iq, COMDB2_CSTRT_RC_INVL_KEY,
-                      "verify key constraint cannot resolve constraint "
-                      "table '%s' index '%d' key '%s' -> table '%s' index "
-                      "'%d' ",
-                      bct->dstdb->tablename, bct->dixnum, get_keynm_from_db_idx(bct->dstdb, bct->dixnum),
-                      bct->tablename, bct->sixnum);
+
+            generate_fkconstraint_error(iq, bct->tablename, ondisk_tag, bct->dstdb->tablename, dondisk_tag,
+                                        "key value is still referenced from child table");
             *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
             close_constraint_table_cursor(cur);
             return ERR_BADREQ;
@@ -1630,12 +1656,9 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                             reqdumphex(iq, fkey, fixlen);
                             reqmoref(iq, " RC %d", rc);
                         }
-                        reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
-                                  "verify key constraint cannot resolve "
-                                  "constraint table '%s' key '%s' -> "
-                                  "table '%s' index '%d' key '%s'",
-                                  ct->lcltable->tablename, ct->lclkeyname,
-                                  ftable->tablename, ridx, ct->keynm[ridx]);
+
+                        generate_fkconstraint_error(iq, ct->lcltable->tablename, ondisk_tag, ftable->tablename,
+                                                    fondisk_tag, "key value does not exist in parent table");
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);
@@ -2051,13 +2074,12 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
         }
         if (!(fky = find_tag_schema(from_db->tablename, keytag))) {
             /* Referencing a nonexistent key */
-            constraint_err(s, from_db, ct, 0, "local key not found");
+            constraint_err(s, from_db, ct, 0, "foreign key not found");
             n_errors++;
         }
         if (from_db->ix_expr && key_has_expressions_members(fky) &&
             (ct->flags & CT_UPD_CASCADE)) {
-            constraint_err(s, from_db, ct, 0,
-                           "no update cascade on expression indexes");
+            constraint_err(s, from_db, ct, 0, "cascading update on expression indexes is not allowed");
             n_errors++;
         }
         for (jj = 0; jj < ct->nrules; jj++) {
@@ -2075,14 +2097,13 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 rdb = from_db;
             if (!rdb) {
                 /* Referencing a non-existent table */
-                constraint_err(s, from_db, ct, jj, "foreign table not found");
+                constraint_err(s, from_db, ct, jj, "parent table not found");
                 n_errors++;
                 continue;
             } else {
                 if (timepart_is_shard(rdb->tablename, (!s || !s->views_locked),
                                       NULL)) {
-                    constraint_err(s, from_db, ct, jj,
-                                   "foreign table is a shard");
+                    constraint_err(s, from_db, ct, jj, "A foreign key cannot refer to a time partition");
                     n_errors++;
                     continue;
                 }
@@ -2094,7 +2115,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
             }
             if (!(bky = find_tag_schema(ct->table[jj], keytag))) {
                 /* Referencing a nonexistent key */
-                constraint_err(s, from_db, ct, jj, "foreign key not found");
+                constraint_err(s, from_db, ct, jj, "parent key not found");
                 n_errors++;
             }
 
