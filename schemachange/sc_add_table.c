@@ -149,15 +149,14 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: Verify constraints failed \n", __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to verify constraints\n", __func__);
         rc = -1;
         goto err;
     }
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         populate_reverse_constraints(newdb)) {
-        logmsg(LOGMSG_ERROR, "%s: populating reverse constraints failed\n",
-               __func__);
+        logmsg(LOGMSG_ERROR, "%s: failed to populate reverse constraints\n", __func__);
         rc = -1;
         goto err;
     }
