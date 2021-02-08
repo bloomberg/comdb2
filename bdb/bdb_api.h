@@ -678,7 +678,7 @@ tran_type *bdb_tran_begin_snapisol(bdb_state_type *bdb_state, int trak,
                                    int is_ha_retry);
 
 /* return log bytes written so far for this transaction */
-u_int64_t bdb_tran_logbytes(tran_type *tran);
+uint64_t bdb_tran_logbytes(tran_type *tran);
 
 /* commit the transaction referenced by the tran handle */
 int bdb_tran_commit(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
