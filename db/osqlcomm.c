@@ -6718,7 +6718,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         arg.s = sc;
         arg.s->iq = iq;
         rc = timepart_foreach_shard(sc->tablename,
-                                    start_schema_change_tran_wrapper, &arg, 0);
+                                    start_schema_change_tran_wrapper, &arg, -1);
     }
     iq->usedb = NULL;
 

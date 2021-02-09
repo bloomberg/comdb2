@@ -2261,6 +2261,8 @@ done:
 /**
  * Run "func" for each shard, starting with "first_shard".
  * Callback receives the name of the shard and argument struct
+ * NOTE: first_shard == -1 means include the next shard if
+ * already created
  *
  */
 int timepart_foreach_shard(const char *view_name,
@@ -2269,6 +2271,7 @@ int timepart_foreach_shard(const char *view_name,
 {
     timepart_views_t *views;
     timepart_view_t *view;
+    char next_shard[MAXTABLELEN + 1];
     int rc = 0;
     int i;
 
@@ -2285,10 +2288,18 @@ int timepart_foreach_shard(const char *view_name,
         arg->view_name = view_name;
         arg->nshards = view->nshards;
     }
+
     for (i = first_shard; i < view->nshards; i++) {
         if (arg)
             arg->indx = i;
-        rc = func(view->shards[i].tblname, arg);
+        if (i == -1) {
+            rc = _next_shard_exists(view, next_shard, sizeof(next_shard));
+            if (rc == VIEW_ERR_EXIST) {
+                rc = func(next_shard, arg);
+            }
+        } else {
+            rc = func(view->shards[i].tblname, arg);
+        }
         if (rc) {
             break;
         }
