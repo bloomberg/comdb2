@@ -314,7 +314,9 @@ int timepart_foreach_shard(const char *view_name,
 
 /**
  * Under views lock, call a function for each shard
- * 
+ * NOTE: first_shard == -1 means include the next shard if
+ * already created
+ *
  */
 int timepart_for_each_shard(const char *name,
       int (*func)(const char *shardname));
