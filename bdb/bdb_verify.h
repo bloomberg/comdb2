@@ -44,8 +44,8 @@ typedef struct {
     unsigned long long (*verify_indexes_callback)(void *parm, void *dta, void *blob_parm);
     char *header; // header string for printing for prog rep in default mode
     uint64_t items_processed;             // atomic inc: for progres report
-    uint64_t records_processed;           // progress report in default mode
     uint64_t saved_progress;              // previous progress counter
+    uint64_t records_processed;           // progress report in default mode
     int nrecs_progress;                   // progress done in this time window
     unsigned int last_connection_check;   // last reported time in ms
     int progress_report_seconds;          // freq of report in seconds

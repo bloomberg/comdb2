@@ -283,6 +283,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
     rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver, DB_FIRST);
     int atstart = comdb2_time_epochms();
     int now = atstart;
+    int items = 0;
     logmsg(LOGMSG_DEBUG, "%p:%s Entering stripe=%d\n", (void *)pthread_self(),
            __func__, dtastripe);
 
@@ -290,6 +291,7 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
+        items++;
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
@@ -548,8 +550,8 @@ err:
         ckey->c_close(ckey);
     if (cdata)
         cdata->c_close(cdata);
-    logmsg(LOGMSG_DEBUG, "%p:%s Exiting stripe=%d, delta=%dms\n",
-           (void *)pthread_self(), __func__, dtastripe, now - atstart);
+    logmsg(LOGMSG_DEBUG, "%p:%s Exiting stripe=%d, delta=%dms, items=%d\n",
+           (void *)pthread_self(), __func__, dtastripe, now - atstart, items);
     return rc;
 }
 
@@ -650,6 +652,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
+    int items = 0;
     logmsg(LOGMSG_DEBUG, "%p:%s Entering ix=%d\n", (void *)pthread_self(),
            __func__, ix);
 
@@ -676,6 +679,7 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
+        items++;
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
@@ -981,8 +985,8 @@ next_key:
         locprint(par, "!%016llx ix %d close cursor rc %d", genid, ix, rc);
     }
 
-    logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms\n",
-           (void *)pthread_self(), __func__, ix, now - atstart);
+    logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms, items=%d\n",
+           (void *)pthread_self(), __func__, ix, now - atstart, items);
 done:
 
     return rc;
@@ -1035,6 +1039,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
 
     int atstart = comdb2_time_epochms();
     int now = atstart;
+    int items = 0;
     logmsg(LOGMSG_DEBUG, "%p:%s Entering blobno=%d, stripe=%d\n",
            (void *)pthread_self(), __func__, blobno, dtastripe);
 
@@ -1043,6 +1048,7 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
+        items++;
         unsigned long long genid_flipped;
 
         now = comdb2_time_epochms();
@@ -1104,8 +1110,8 @@ next_key:
         logmsg(LOGMSG_ERROR, "fetch blob rc %d\n", rc);
 
     cblob->c_close(cblob);
-    logmsg(LOGMSG_DEBUG, "%p:%s Exiting blobno=%d, stripe=%d, delta=%dms\n",
-           (void *)pthread_self(), __func__, blobno, dtastripe, now - atstart);
+    logmsg(LOGMSG_DEBUG, "%p:%s Exiting blobno=%d, stripe=%d, delta=%dms, items=%d\n",
+           (void *)pthread_self(), __func__, blobno, dtastripe, now - atstart, items);
 }
 
 /* sequential processing of the stripes, keys, blobs
@@ -1273,7 +1279,7 @@ void bdb_verify_enqueue(td_processing_info_t *info, thdpool *verify_thdpool)
         abort();
     };
     char desc[512] = {0};
-    snprintf(desc, sizeof(desc) - 1, "Verify %s %s mode\n", par->tablename, tp);
+    snprintf(desc, sizeof(desc) - 1, "Verify %s %s mode", par->tablename, tp);
 #ifndef NDEBUG
     logmsg(LOGMSG_DEBUG, "%s: %s\n", __func__, desc);
 #endif
