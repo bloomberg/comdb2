@@ -6630,8 +6630,8 @@ void update_dbstore(dbtable *db)
     }
 
     bzero(db->dbstore, sizeof db->dbstore);
-    logmsg(LOGMSG_DEBUG, "%s table '%s' version %d\n", __func__, db->tablename,
-           db->schema_version);
+    logmsg(LOGMSG_DEBUG, "%s table '%s' schema version %d\n", __func__,
+           db->tablename, db->schema_version);
 
     for (int v = 1; v <= db->schema_version; ++v) {
         char tag[MAXTAGLEN];
@@ -6646,8 +6646,8 @@ void update_dbstore(dbtable *db)
         }
 
         db->versmap[v] = (unsigned int *)get_tag_mapping(ver, ondisk);
-        logmsg(LOGMSG_DEBUG, "%s set table '%s' vers %d to %p\n", __func__,
-               db->tablename, v, db->versmap[v]);
+        logmsg(LOGMSG_DEBUG, "%s set table '%s' schema version %d to %p\n",
+               __func__, db->tablename, v, db->versmap[v]);
         db->vers_compat_ondisk[v] = 1;
         if (SC_TAG_CHANGE ==
             compare_tag_int(ver, ondisk, NULL, 0 /*non-strict compliance*/))

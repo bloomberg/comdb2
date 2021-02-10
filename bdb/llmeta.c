@@ -8031,7 +8031,7 @@ static int bdb_table_version_upsert_int(bdb_state_type *bdb_state,
     if (rc || *bdberr != BDBERR_NOERROR) {
         return rc;
     } else {
-        logmsg(LOGMSG_INFO, "Saved version %" PRIu64 " for table %s\n",
+        logmsg(LOGMSG_INFO, "Saved tableversion %" PRIu64 " for table %s\n",
                flibc_htonll(version), bdb_state->name);
     }
 
@@ -8242,8 +8242,8 @@ retry:
     *version = flibc_ntohll(*version);
 
     if (verbose)
-        logmsg(LOGMSG_INFO, "Retrieved version %lld for %s\n", *version,
-               tblname);
+        logmsg(LOGMSG_INFO, "Retrieved tableversion %lld for %s\n",
+               *version, tblname);
 
     *bdberr = BDBERR_NOERROR;
     return 0;
@@ -9891,8 +9891,7 @@ int bdb_rename_csc2_version(tran_type *trans, const char *tblname,
                 return rc;
             }
             logmsg(LOGMSG_DEBUG,
-                   "%s added table '%s' (old table '%s') version "
-                   "%d\n",
+                   "%s added table '%s' (old table '%s') version %d\n",
                    __func__, newtblname, tblname, ver);
         } else {
             if (ver == 0)

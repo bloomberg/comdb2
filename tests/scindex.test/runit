@@ -449,9 +449,9 @@ function do_verify
 {
     typeset cnt=0
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify.out
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_t1.out
 
-    if ! grep succeeded verify.out > /dev/null ; then
+    if ! grep succeeded verify_t1.out > /dev/null ; then
 
         errquit "Verify failed."
 
