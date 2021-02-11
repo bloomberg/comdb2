@@ -144,6 +144,7 @@
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <logmsg.h>
+#include <progress_tracker.h>
 int is_comdb2_index_disableskipscan(const char *);
 void get_disable_skipscan_all();
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -909,7 +910,11 @@ static void statPush(
       p->current.anEq[i] = 1;
     }
   }
+
   p->nRow++;
+
+  progress_tracking_update_processed_records(p->db->progressAttrib, p->nRow);
+
 #ifdef SQLITE_ENABLE_STAT3_OR_STAT4
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   sampleSetPackedRow(p->db, &p->current, sqlite3_value_bytes(argv[2]),

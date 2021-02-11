@@ -1697,7 +1697,8 @@ int sampler_close(sampler_t *);
 
 int bdb_summarize_table(bdb_state_type *bdb_state, int ixnum, int comp_pct,
                         sampler_t **samplerp, unsigned long long *outrecs,
-                        unsigned long long *cmprecs, int *bdberr);
+                        unsigned long long *cmprecs, int *bdberr,
+                        unsigned long long seed);
 
 void bdb_bdblock_debug(void);
 int bdb_env_init_after_llmeta(bdb_state_type *bdb_state);

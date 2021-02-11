@@ -55,6 +55,7 @@ set(src
   prefault_toblock.c
   printlog.c
   process_message.c
+  progress_tracker.c
   pushlogs.c
   record.c
   repl_wait.c

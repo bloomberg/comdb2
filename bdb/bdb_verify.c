@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include "comdb2_atomic.h"
 #include "constraints.h"
 #include "string_ref.h"
+#include "progress_tracker.h"
 
 /* NOTE: This is from "comdb2.h". */
 extern int gbl_exit;
@@ -246,9 +247,10 @@ static inline void check_order(DB *db, DBT *old, DBT *curr,
 }
 
 /* TODO: handle deadlock, get rowlocks if db in rowlocks mode */
-static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
-                                  unsigned int lid)
+static int bdb_verify_data_stripe(td_processing_info_t *info, unsigned int lid)
 {
+    verify_common_t *par = info->common_params;
+    int dtastripe = info->dtastripe;
     DBC *cdata = NULL;
     DBC *ckey = NULL;
     DBC *cblob = NULL;
@@ -279,9 +281,20 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         logmsg(LOGMSG_ERROR, "dtastripe %d cursor rc %d\n", dtastripe, rc);
         return rc;
     }
+
+    void *progress_attrib =
+        progress_tracking_update(par->seed, PROGRESS_VERIFY_PROCESS_DATA_STRIPE,
+                                 PROGRESS_STARTED, NULL);
+    progress_tracking_compute_total_records(par->seed, bdb_state, -1,
+                                            dtastripe);
+
+    info->records_processed = 0;
+
     uint8_t ver;
     rc = bdb_cget_unpack(bdb_state, cdata, &dbt_key, &dbt_data, &ver, DB_FIRST);
     int atstart = comdb2_time_epochms();
+
+
     int now = atstart;
     logmsg(LOGMSG_DEBUG, "%p:%s Entering stripe=%d\n", (void *)pthread_self(),
            __func__, dtastripe);
@@ -290,11 +303,15 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
         ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
+        info->records_processed++;
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
         if (check_connection_and_progress(par, now))
             break;
+
+        progress_tracking_update_processed_records(progress_attrib,
+                                                   info->records_processed);
 
         unsigned long long genid;
         memcpy(&genid, dbt_key.data, sizeof(genid));
@@ -550,6 +567,9 @@ err:
         cdata->c_close(cdata);
     logmsg(LOGMSG_DEBUG, "%p:%s Exiting stripe=%d, delta=%dms\n",
            (void *)pthread_self(), __func__, dtastripe, now - atstart);
+
+    progress_tracking_update(par->seed, PROGRESS_VERIFY_PROCESS_DATA_STRIPE,
+                             PROGRESS_COMPLETED, NULL);
     return rc;
 }
 
@@ -612,8 +632,10 @@ static int verify_foreign_key_constraint(constraint_t *ct, char *lcl_tag,
     return rc;
 }
 
-static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
+static int bdb_verify_key(td_processing_info_t *info, unsigned int lid)
 {
+    verify_common_t *par = info->common_params;
+    int ix = info->index;
     DBC *cdata = NULL;
     DBC *ckey = NULL;
     unsigned char databuf[17 * 1024];
@@ -661,6 +683,13 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         return 0;
     }
 
+    void * progress_attrib = progress_tracking_update(par->seed,
+                                                      PROGRESS_VERIFY_PROCESS_KEY,
+                                                      PROGRESS_STARTED, NULL);
+    progress_tracking_compute_total_records(par->seed, bdb_state, ix, -1);
+
+    info->records_processed = 0;
+
     char ix_tag[MAXTAGLEN];
     constraint_t *ix_constraint = get_constraint_for_ix(par->db_table, ix);
     if (ix_constraint) {
@@ -676,6 +705,10 @@ static int bdb_verify_key(verify_common_t *par, int ix, unsigned int lid)
         ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
+        info->records_processed++;
+
+        progress_tracking_update_processed_records(progress_attrib,
+                                                   info->records_processed);
 
         now = comdb2_time_epochms();
         /* check existence of client and print progress every 1000ms */
@@ -981,16 +1014,19 @@ next_key:
         locprint(par, "!%016llx ix %d close cursor rc %d", genid, ix, rc);
     }
 
+done:
     logmsg(LOGMSG_DEBUG, "%p:%s Exiting ix=%d, delta=%dms\n",
            (void *)pthread_self(), __func__, ix, now - atstart);
-done:
-
+    progress_tracking_update(par->seed, PROGRESS_VERIFY_PROCESS_KEY,
+                             PROGRESS_COMPLETED, NULL);
     return rc;
 }
 
-static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
-                            unsigned int lid)
+static void bdb_verify_blob(td_processing_info_t *info, unsigned int lid)
 {
+    verify_common_t *par = info->common_params;
+    int blobno = info->blobno;
+    int dtastripe = info->dtastripe;
     DBC *cblob;
     int rc = 0;
 
@@ -1005,12 +1041,17 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         return;
     }
 
+    info->records_processed = 0;
+
     rc = db->paired_cursor_from_lid(db, lid, &cblob, 0);
     if (rc) {
         logmsg(LOGMSG_ERROR, "dtastripe %d blobno %d cursor rc %d\n", dtastripe,
                blobno, rc);
         return;
     }
+
+    progress_tracking_update(par->seed, PROGRESS_VERIFY_PROCESS_BLOB,
+                             PROGRESS_STARTED, NULL);
 
     char dumbuf;
     unsigned long long genid;
@@ -1043,6 +1084,8 @@ static void bdb_verify_blob(verify_common_t *par, int blobno, int dtastripe,
         ATOMIC_ADD64(par->items_processed, 1);
         par->records_processed++;
         par->nrecs_progress++;
+        info->records_processed++;
+
         unsigned long long genid_flipped;
 
         now = comdb2_time_epochms();
@@ -1106,13 +1149,18 @@ next_key:
     cblob->c_close(cblob);
     logmsg(LOGMSG_DEBUG, "%p:%s Exiting blobno=%d, stripe=%d, delta=%dms\n",
            (void *)pthread_self(), __func__, blobno, dtastripe, now - atstart);
+
+    progress_tracking_update(par->seed, PROGRESS_VERIFY_PROCESS_BLOB,
+                             PROGRESS_COMPLETED, NULL);
 }
 
 /* sequential processing of the stripes, keys, blobs
  */
-static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
+static int bdb_verify_sequential(td_processing_info_t *info, unsigned int lid)
 {
     int rc = 0;
+    verify_common_t *par = info->common_params;
+
     /* scan 1 - run through data, verify all the keys and blobs */
     for (int dtastripe = 0; dtastripe < par->bdb_state->attr->dtastripe &&
                             !par->client_dropped_connection;
@@ -1122,7 +1170,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
         par->header = header;
         par->records_processed = 0;
         par->nrecs_progress = 0;
-        rc = bdb_verify_data_stripe(par, dtastripe, lid);
+        info->dtastripe = dtastripe;
+        rc = bdb_verify_data_stripe(info, lid);
         if (rc)
             goto done;
     }
@@ -1135,7 +1184,8 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
         char header[256];
         snprintf(header, sizeof(header), "verifying index %d", ix);
         par->header = header;
-        rc = bdb_verify_key(par, ix, lid);
+        info->index = ix;
+        rc = bdb_verify_key(info, lid);
         if (rc)
             goto done;
     }
@@ -1152,7 +1202,9 @@ static int bdb_verify_sequential(verify_common_t *par, unsigned int lid)
             snprintf(header, sizeof(header), "verifying blob %d stripe %d",
                      blobno, dtastripe);
             par->header = header;
-            bdb_verify_blob(par, blobno, dtastripe, lid);
+            info->blobno = blobno;
+            info->dtastripe = dtastripe;
+            bdb_verify_blob(info, lid);
         }
     }
 
@@ -1181,16 +1233,16 @@ void bdb_verify_handler(td_processing_info_t *info)
 
     switch (info->type) {
     case PROCESS_SEQUENTIAL:
-        bdb_verify_sequential(par, lid);
+        bdb_verify_sequential(info, lid);
         break;
     case PROCESS_DATA:
-        bdb_verify_data_stripe(par, info->dtastripe, lid);
+        bdb_verify_data_stripe(info, lid);
         break;
     case PROCESS_KEY:
-        bdb_verify_key(par, info->index, lid);
+        bdb_verify_key(info, lid);
         break;
     case PROCESS_BLOB:
-        bdb_verify_blob(par, info->blobno, info->dtastripe, lid);
+        bdb_verify_blob(info, lid);
         break;
     }
 
@@ -1204,14 +1256,31 @@ done:
     ATOMIC_ADD32(par->threads_completed, 1);
 }
 
+static int get_verify_progress_stage(int type) {
+    switch (type) {
+    case PROCESS_SEQUENTIAL:
+        return PROGRESS_VERIFY_PROCESS_SEQUENTIAL;
+    case PROCESS_DATA:
+        return PROGRESS_VERIFY_PROCESS_DATA_STRIPE;
+    case PROCESS_KEY:
+        return PROGRESS_VERIFY_PROCESS_KEY;
+    case PROCESS_BLOB:
+        return PROGRESS_VERIFY_PROCESS_BLOB;
+    }
+    abort();
+}
+
 static void bdb_verify_handler_work_pp(struct thdpool *pool, void *work,
                                        void *thddata, int op)
 {
     td_processing_info_t *info = work;
     bdb_state_type *bdb_state = info->common_params->bdb_state;
+    progress_tracking_worker_start(info->common_params->seed,
+                                   get_verify_progress_stage(info->type));
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
     bdb_verify_handler(info);
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);
+    progress_tracking_worker_end(info->common_params->seed, PROGRESS_COMPLETED);
     free(work);
 }
 

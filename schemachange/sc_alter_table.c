@@ -29,6 +29,7 @@
 #include "sc_records.h"
 #include "analyze.h"
 #include "comdb2_atomic.h"
+#include "progress_tracker.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct dbtable *db, struct dbtable *newdb,
@@ -374,6 +375,7 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     struct scinfo scinfo;
 
+    progress_tracking_start(PROGRESS_OP_ALTER_TABLE, s->seed, s->tablename);
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
 #endif
@@ -705,6 +707,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     int olddb_bthashsz;
 
     iq->usedb = db;
+
+    progress_tracking_start(PROGRESS_OP_ALTER_TABLE, s->seed, s->tablename);
 
     new_bdb_handle = newdb->handle;
     old_bdb_handle = db->handle;

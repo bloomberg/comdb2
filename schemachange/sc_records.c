@@ -35,6 +35,7 @@
 #include "reqlog.h"
 #include "logmsg.h"
 #include "debug_switches.h"
+#include "progress_tracker.h"
 
 int gbl_logical_live_sc = 0;
 
@@ -409,6 +410,9 @@ static void delay_sc_if_needed(struct convert_record_data *data,
 
 static int report_sc_progress(struct convert_record_data *data, int now)
 {
+    progress_tracking_update_processed_records(data->progress_attrib,
+                                               data->nrecs);
+
     int copy_sc_report_freq = gbl_sc_report_freq;
 
     if (copy_sc_report_freq > 0 &&
@@ -733,7 +737,8 @@ static int convert_record(struct convert_record_data *data)
                     "[%s] finished converting stripe %d, last genid %llx\n",
                     data->from->tablename, data->stripe,
                     data->sc_genids[data->stripe]);
-                return 0;
+                rc = 0;
+                goto done;
             }
 
             // AZ: determine what locks we hold at this time
@@ -764,7 +769,7 @@ static int convert_record(struct convert_record_data *data)
                       "[%s] finished stripe %d, setting genid %llx, rc %d\n",
                       data->from->tablename, data->stripe,
                       data->sc_genids[data->stripe], rc);
-            return rc;
+            goto done;
         } else if (rc == RC_INTERNAL_RETRY) {
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
@@ -774,7 +779,8 @@ static int convert_record(struct convert_record_data *data)
                 decrease_max_threads(&data->cmembers->maxthreads);
             else
                 poll(0, 0, (rand() % 500 + 10));
-            return 1;
+            rc = 1;
+            goto done;
         } else if (rc != 0) {
             sc_errf(data->s, "error %d reading database records\n", rc);
             return -2;
@@ -795,7 +801,8 @@ static int convert_record(struct convert_record_data *data)
         vtag_to_ondisk(data->iq.usedb, dta, &dtalen, ver, genid);
         if (rc == 1) {
             /* no more records - success! */
-            return 0;
+            rc = 0;
+            goto done;
         } else if (rc != 0) {
             sc_errf(data->s, "bdb error %d reading database records\n", bdberr);
             return -2;
@@ -838,7 +845,8 @@ static int convert_record(struct convert_record_data *data)
             }
         } else if (rc == IX_NOTFND || rc == IX_PASTEOF || rc == IX_EMPTY) {
             /* no more records - success! */
-            return 0;
+            rc = 0;
+            goto done;
         } else {
             sc_errf(data->s, "ix_find/ix_next error rcode %d\n", rc);
             return -2;
@@ -883,7 +891,8 @@ static int convert_record(struct convert_record_data *data)
             else
                 poll(0, 0, (rand() % 500 + 10));
 
-            return 1;
+            rc = 1;
+            goto done;
         }
         if (blobrc != 0) {
             sc_errf(data->s, "convert_record: "
@@ -1038,7 +1047,8 @@ err:
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
             poll(0, 0, 200);
-            return 1;
+            rc = 1;
+            goto done;
         }
     }
 
@@ -1063,7 +1073,8 @@ err:
             decrease_max_threads(&data->cmembers->maxthreads);
         else
             poll(0, 0, (rand() % 500 + 10));
-        return 1;
+        rc = 1;
+        goto done;
     } else if (rc == IX_DUP) {
         if ((data->scanmode == SCAN_PARALLEL ||
              data->scanmode == SCAN_PAGEORDER) &&
@@ -1079,7 +1090,8 @@ err:
             increment_sc_logbytes(logbytes);
             trans_abort(&data->iq, data->trans);
             data->trans = NULL;
-            return 1;
+            rc = 1;
+            goto done;
         }
 
         if (data->s->iq)
@@ -1148,12 +1160,15 @@ err:
     ATOMIC_ADD64(data->from->sc_nrecs, 1);
 
     int now = comdb2_time_epoch();
-    if ((rc = report_sc_progress(data, now))) return rc;
 
     // do the following check every second or so
     if (data->cmembers->is_decrease_thrds) lkcounter_check(data, now);
-
+    report_sc_progress(data, now);
     return 1;
+
+done:
+    report_sc_progress(data, comdb2_time_epoch());
+    return rc;
 }
 
 /* Thread local flag to disable page compaction when rebuild.
@@ -1170,7 +1185,27 @@ void *convert_records_thd(struct convert_record_data *data)
 {
     struct thr_handle *thr_self = thrman_self();
     enum thrtype oldtype = THRTYPE_UNKNOWN;
-    int rc = 1;
+    int rc;
+
+    progress_tracking_worker_start(data->s->seed,
+                                   PROGRESS_ALTER_TABLE_CONVERT_RECORDS);
+
+    data->progress_attrib =
+      progress_tracking_get_last_attribute(data->s->seed);
+
+    int64_t total_records;
+    rc = bdb_direct_count(data->iq.usedb->handle, -1, data->stripe,
+                          &total_records);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to get row count for stripe %d (rc: %d)",
+               __func__, __LINE__, data->stripe, rc);
+    } else {
+        data->totrecs = total_records;
+        progress_tracking_update_total_records(data->progress_attrib,
+                                               total_records);
+    }
+
+    rc = 1;
 
     if (data->isThread) thread_started("convert records");
 
@@ -1298,6 +1333,8 @@ cleanup_no_msg:
 
     /* restore our  thread type to what it was before */
     if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
+
+    progress_tracking_worker_end(data->s->seed, (data->s->sc_thd_failed) ? PROGRESS_FAILED : PROGRESS_COMPLETED);
 
     return NULL;
 }
@@ -1881,6 +1918,9 @@ static void *upgrade_records_thd(void *vdata)
     // transfer thread type
     if (data->isThread) thread_started("upgrade records");
 
+    progress_tracking_worker_start(data->s->seed,
+                                   PROGRESS_ALTER_TABLE_UPGRADE_RECORDS);
+
     if (thr_self) {
         oldtype = thrman_get_type(thr_self);
         thrman_change_type(thr_self, THRTYPE_SCHEMACHANGE);
@@ -1910,6 +1950,7 @@ static void *upgrade_records_thd(void *vdata)
         if (get_stopsc(__func__, __LINE__)) {
             if (data->isThread)
                 backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+            progress_tracking_worker_end(data->s->seed, (rc) ? PROGRESS_FAILED : PROGRESS_COMPLETED);
             return NULL;
         }
     }
@@ -1935,6 +1976,8 @@ cleanup:
         }
         data->s->sc_thd_failed = data->stripe + 1;
     }
+
+    progress_tracking_worker_end(data->s->seed, (data->outrc) ? PROGRESS_FAILED : PROGRESS_COMPLETED);
 
     convert_record_data_cleanup(data);
 
@@ -1968,6 +2011,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
     data.iq.debug = 0;
 
     if (data.scanmode != SCAN_PARALLEL) {
+        // upgrade records - single thread
         if (s->start_genid != 0) {
             data.stripe = get_dtafile_from_genid(s->start_genid);
             data.sc_genids[data.stripe] = s->start_genid;
@@ -1992,7 +2036,6 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
             sc_printf(thread_data[idx].s,
                       "[%s] starting thread for stripe: %d\n", db->tablename,
                       thread_data[idx].stripe);
-
             rc = pthread_create(&thread_data[idx].tid, &attr,
                                 upgrade_records_thd, &thread_data[idx]);
 
@@ -2968,6 +3011,8 @@ static int live_sc_redo_logical_log(struct convert_record_data *data,
     LISTC_T(bdb_osql_log_rec_t) recs; /* list of relevant undo records */
     listc_init(&recs, offsetof(bdb_osql_log_rec_t, lnk));
 
+    void *progress_attrib = progress_tracking_get_last_attribute(data->s->seed);
+
     /* pre process recs */
     LISTC_FOR_EACH_SAFE(&pCur->log->impl->recs, rec, tmp, lnk)
     {
@@ -3074,6 +3119,7 @@ again:
     }
 
     data->nrecs++;
+    progress_tracking_update_processed_records(progress_attrib, data->nrecs);
     if (data->nrecs %
             BDB_ATTR_GET(thedb->bdb_attr, SC_LOGICAL_SAVE_LSN_EVERY_N) ==
         0) {
@@ -3200,6 +3246,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     DB_LSN eofLsn = {0};
     int serial = 0;
     DB_LSN serialLsn = {0}; /* scan serial upto this LSN for resume */
+
+    progress_tracking_worker_start(data->s->seed,
+                                   PROGRESS_ALTER_TABLE_LOGICAL_REDO);
 
     bzero(pCur, sizeof(bdb_llog_cursor));
 
@@ -3447,6 +3496,8 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
 
 cleanup:
     convert_record_data_cleanup(data);
+
+    progress_tracking_worker_end(data->s->seed, (s->iq->sc_should_abort) ? PROGRESS_FAILED : PROGRESS_COMPLETED);
 
     if (data->isThread)
         backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);

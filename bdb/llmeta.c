@@ -3791,7 +3791,7 @@ retry:
     return 0;
 }
 
-static unsigned long long get_epochms(void)
+unsigned long long get_epochms(void)
 {
     struct timeval tv;
     int rc;

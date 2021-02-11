@@ -110,7 +110,7 @@
 #include "dohsql.h"
 #include "comdb2_query_preparer.h"
 #include "string_ref.h"
-
+#include "progress_tracker.h"
 #include "osqlsqlsocket.h"
 
 /*
@@ -3880,6 +3880,7 @@ int handle_sqlite_requests(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     if (allocd_str)
         free(allocd_str);
+
     return rc;
 }
 
@@ -4564,6 +4565,11 @@ void sqlengine_work_appsock(void *thddata, void *work)
 
     thr_set_user("appsock", clnt->appsock_id);
 
+    if (clnt->is_analyze)
+    {
+        progress_tracking_worker_start(clnt->analyze_seed, PROGRESS_ANALYZE_TABLE_ANALYZING_RECORDS);
+    }
+
     clnt->added_to_hist = clnt->isselect = 0;
     clnt_change_state(clnt, CONNECTION_RUNNING);
     clnt->osql.timings.query_dispatched = osql_log_time();
@@ -4641,6 +4647,10 @@ void sqlengine_work_appsock(void *thddata, void *work)
     clnt_change_state(clnt, CONNECTION_IDLE);
     debug_close_clnt(clnt);
     signal_clnt_as_done(clnt);
+
+    if (clnt->is_analyze)
+        progress_tracking_worker_end(clnt->analyze_seed, (clnt->query_rc ?  PROGRESS_FAILED : PROGRESS_COMPLETED));
+
     thrman_setid(thrman_self(), "[done]");
 }
 

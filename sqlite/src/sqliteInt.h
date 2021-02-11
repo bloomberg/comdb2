@@ -1572,6 +1572,9 @@ struct sqlite3 {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
   u8 isTimepartView;                    /* Time partition view */
+  i64 nTotRows;
+  u64 analyzeSeed;
+  void *progressAttrib;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
