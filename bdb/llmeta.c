@@ -6767,6 +6767,15 @@ int bdb_llmeta_print_record(bdb_state_type *bdb_state, void *key, int keylen,
                              ? "LLMETA_GENID_48BIT"
                              : "UNKNOWN GENID FORMAT");
         } break;
+        case LLMETA_TABLE_PARAMETERS: {
+            char tblname[LLMETA_TBLLEN + 1];
+            buf_no_net_get(&(tblname), sizeof(tblname), p_buf_key + sizeof(int),
+                           p_buf_end_key);
+
+            logmsg(LOGMSG_USER,
+                   "LLMETA_TABLE_PARAMETERS table=\"%s\" value=\"%s\"\n",
+                   tblname, (char *)data);
+        } break;
         default:
             logmsg(LOGMSG_USER, "Todo (type=%d)\n", type);
             break;
