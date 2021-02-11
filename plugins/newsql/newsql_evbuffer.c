@@ -57,6 +57,7 @@ struct newsql_appdata_evbuffer {
 static void free_newsql_appdata_evbuffer(int fd, short what, void *arg)
 {
     struct newsql_appdata_evbuffer *appdata = arg;
+    printf("%s:closing fd:%d\n", __func__, appdata->fd);
     if (appdata->ping_ev) {
         event_free(appdata->ping_ev);
         appdata->ping_ev = NULL;
@@ -113,6 +114,9 @@ static int newsql_done(struct sqlclntstate *clnt)
             srs_tran_destroy(clnt);
         }
         return event_once(appsock_timer_base, newsql_cleanup, appdata);
+    }
+    if (clnt->query_rc && clnt->query_rc != -103 && clnt->has_recording) {
+        abort();
     }
     if (clnt->osql.replay == OSQL_RETRY_DO) {
         if (clnt->dbtran.trans_has_sp) {

@@ -695,6 +695,9 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     }
 
 done:
+    if (rc != -103 && clnt.has_recording) {
+        abort();
+    }
     sbuf2setclnt(sb, NULL);
     if (query) {
         cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
