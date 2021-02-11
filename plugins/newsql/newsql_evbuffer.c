@@ -107,8 +107,7 @@ static void newsql_read_again(int fd, short what, void *arg)
 static int newsql_done(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    if (clnt->query_rc == CDB2ERR_IO_ERROR) {
-        /* dispatch timed out */
+    if (clnt->query_rc == CDB2ERR_IO_ERROR) { /* dispatch timed out */
         if (clnt->osql.replay == OSQL_RETRY_DO) {
             osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
             srs_tran_destroy(clnt);
@@ -339,14 +338,16 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
         goto err;
     }
     if (newsql_should_dispatch(clnt, &commit_rollback) != 0) {
-        goto err;
+        cdb2__query__free_unpacked(query, NULL);
+        read_newsql_hdr(appdata->fd, 0, appdata);
+        return;
     }
     sql_reset(appdata->writer);
-    if (dispatch_sql_query_no_wait(clnt) != 0) {
-        goto err;
-    }
     if (clnt->query_timeout) {
         sql_enable_timeout(appdata->writer, clnt->query_timeout, newsql_maxquerytime_fn, clnt);
+    }
+    if (dispatch_sql_query_no_wait(clnt) != 0) {
+        goto err;
     }
     sql_enable_heartbeat(appdata->writer);
     return;
