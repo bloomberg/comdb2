@@ -29,7 +29,7 @@ enum {
     SERIALIZABLE        = 4
 };
 
-#define INITTHDS 3
+#define INITTHDS 1
 
 int serialize_reads_like_writes = 0;
 int selectv_updaters = INITTHDS;
@@ -121,58 +121,6 @@ int is_common_acceptable_error(cdb2_hndl_tp *db, int rc)
 }
 
 /*
- * SELECTV THREAD SQL:
- * SHOULD GET CONSTRAINTS ERRORS, BUT NOT VERIFY ERRORS
- *
- * BEGIN
- * SELECTV i.rqstid,instid,began from jobinstance i 
- *          LEFT JOIN dbgopts d ON d.rqstid=i.rqstid 
- *          WHERE state=1 AND began <= now() limit 15
- * COMMIT
- */
-int selectv(cdb2_hndl_tp *db)
-{
-    int rc;
-    int got_error = 0;
-
-    cdb2_clearbindings(db);
-    if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
-        exit(1);
-    }
-    if ((rc = cdb2_run_statement(db, "selectv i.rqstid,instid,began from jobinstance "
-            "i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began "
-            "<= now() limit 15")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
-        exit(1);
-    }
-    while ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) 
-        ;
-    assert(rc == CDB2_OK_DONE || is_common_acceptable_error(db, rc));
-
-    /* SELECTV: only allowed constraints violation in any isolation level */
-    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (rc != -103) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-            exit(1);
-        } else
-            got_error = 1;
-    }
-
-    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (rc != -103) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-            exit(1);
-        } else
-            got_error = 1;
-    }
-    return got_error;
-}
-
-
-/*
  * SELECTV-UPDATER THREAD SQL
  * SHOULD GET CONSTRAINTS ERRORS
  *
@@ -195,9 +143,7 @@ int selectv_update(cdb2_hndl_tp *db)
         fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
     }
-    if ((rc = cdb2_run_statement(db, "selectv i.rqstid,instid,began from jobinstance "
-            "i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began "
-            "<= now() limit 15")) != CDB2_OK) {
+    if ((rc = cdb2_run_statement(db, "selectv i.rqstid,instid,began from jobinstance i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began <= now() limit 1")) != CDB2_OK) {
         fprintf(stderr, "line %d error running selectv, %s\n", __LINE__, cdb2_errstr(db));
         exit(1);
     }
@@ -208,13 +154,9 @@ int selectv_update(cdb2_hndl_tp *db)
     assert(rc == CDB2_OK_DONE || is_common_acceptable_error(db, rc));
     for (int i = 0; i < cnt; i++) {
         int64_t instid = instids[i];
-        cdb2_clearbindings(db);
-        if ((rc = cdb2_bind_param(db, "instid", CDB2_INTEGER, &instid, sizeof(instid))) != 0) {
-            fprintf(stderr, "line %d error binding, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-        if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
-                        "instid = @instid")) != CDB2_OK) {
+        char sql[256];
+        sprintf(sql, "update jobinstance set instid = instid where instid = %ld", instid);
+        if ((rc = cdb2_run_statement(db, sql)) != CDB2_OK) {
             if (is_common_acceptable_error(db, rc)) {
                 cdb2_run_statement(db, "rollback");
                 return 0;
@@ -228,7 +170,7 @@ int selectv_update(cdb2_hndl_tp *db)
         /* SELECTV + UPDATE: only allowed constraints violation in any isolation level */
         if (is_common_acceptable_error(db, rc)) {
         } else if (rc != -103) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+            fprintf(stderr, "line:%d rc:%d\n", __LINE__, rc);
             exit(1);
         } else
             got_error = 1;
@@ -267,9 +209,7 @@ int update(cdb2_hndl_tp *db)
         fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
         exit(1);
     }
-    if ((rc = cdb2_run_statement(db, "select i.rqstid,instid,began from jobinstance "
-            "i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began "
-            "<= now() limit 15")) != CDB2_OK) {
+    if ((rc = cdb2_run_statement(db, "select i.rqstid,instid,began from jobinstance i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began <= now() limit 1")) != CDB2_OK) {
         fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
         exit(1);
     }
@@ -280,399 +220,55 @@ int update(cdb2_hndl_tp *db)
     assert(rc == CDB2_OK_DONE || is_common_acceptable_error(db, rc));
     for (int i = 0; i < cnt; i++) {
         int64_t instid = instids[i];
-        cdb2_clearbindings(db);
-        if ((rc = cdb2_bind_param(db, "instid", CDB2_INTEGER, &instid, sizeof(instid))) != 0) {
-            fprintf(stderr, "line %d error binding, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-        if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
-                        "instid = @instid")) != CDB2_OK) {
-            fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-    }
-    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
-    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-
-    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-    return got_error;
-}
-
-/*
- * NOSELECT-UPDATER THREAD SQL
- *
- * SELECT i.rqstid,instid,began from jobinstance i 
- *          LEFT JOIN dbgopts d ON d.rqstid=i.rqstid 
- *          WHERE state=1 AND began <= now() limit 15
- * BEGIN
- * UPDATE jobinstance SET instid = instdid WHERE instid = @x 
- * COMMIT
- */
-int noselect_update(cdb2_hndl_tp *db)
-{
-    int rc;
-    int64_t *instids = NULL;
-    int cnt = 0;
-    int got_error = 0;
-
-    cdb2_clearbindings(db);
-    if ((rc = cdb2_run_statement(db, "select i.rqstid,instid,began from jobinstance "
-            "i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began "
-            "<= now() limit 15")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
-        exit(1);
-    }
-    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
-        instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
-        instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
-    }
-    if (rc != CDB2_OK_DONE && !is_common_acceptable_error(db, rc)) {
-        assert(serialize_reads_like_writes && rc == 230);
-    }
-    if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
-        exit(1);
-    }
-    for (int i = 0; i < cnt; i++) {
-        int64_t instid = instids[i];
-        cdb2_clearbindings(db);
-        if ((rc = cdb2_bind_param(db, "instid", CDB2_INTEGER, &instid, sizeof(instid))) != 0) {
-            fprintf(stderr, "line %d error binding, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-        if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
-                        "instid = @instid")) != CDB2_OK) {
-            fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-    }
-    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
-    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (fail_updater_error) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-            exit(1);
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-
-    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (fail_updater_error) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-            exit(1);
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-    return got_error;
-}
-
-/*
- * GET-INTRANS-EFFECTS UPDATER THREAD SQL
- *
- * SELECT i.rqstid,instid,began from jobinstance i 
- *          LEFT JOIN dbgopts d ON d.rqstid=i.rqstid 
- *          WHERE state=1 AND began <= now() limit 15
- * BEGIN
- * UPDATE jobinstance SET instid = instdid WHERE instid = @x 
- * (get-effects-of-these)
- * COMMIT
- */
-int intrans_effect_update(cdb2_hndl_tp *db)
-{
-    int rc;
-    int64_t *instids = NULL;
-    int cnt = 0;
-    int got_error = 0;
-
-    cdb2_clearbindings(db);
-    if ((rc = cdb2_run_statement(db, "select i.rqstid,instid,began from jobinstance "
-            "i left join dbgopts d on d.rqstid=i.rqstid where state=1 and began "
-            "<= now() limit 15")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running select, %s\n", __LINE__, cdb2_errstr(db));
-        exit(1);
-    }
-    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
-        instids = realloc(instids, ((cnt+1) * sizeof(int64_t)));
-        instids[cnt++] = *(int64_t *)cdb2_column_value(db, 1);
-    }
-    if (rc != CDB2_OK_DONE && !is_common_acceptable_error(db, rc)) {
-        assert(serialize_reads_like_writes && rc == 230);
-    }
-    if ((rc = cdb2_run_statement(db, "begin")) != CDB2_OK) {
-        fprintf(stderr, "line %d error running begin, %d\n", __LINE__, rc);
-        exit(1);
-    }
-    for (int i = 0; i < cnt; i++) {
-        int64_t instid = instids[i];
-        cdb2_clearbindings(db);
-        if ((rc = cdb2_bind_param(db, "instid", CDB2_INTEGER, &instid, sizeof(instid))) != 0) {
-            fprintf(stderr, "line %d error binding, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-        if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
-                        "instid = @instid")) != CDB2_OK) {
-            fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
-            exit(1);
-        }
-    }
-    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
-    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-
-    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-    return got_error;
-}
-
-/*
- * POINT-IN-TIME UPDATER THREAD SQL
- *
- * BEGIN TRANSACTION AS OF DATETIME <now - 10 seconds>
- * UPDATE jobinstance SET instid = instdid WHERE state=1 AND
- *          began <= now() limit 15
- * COMMIT
- */
-int point_in_time_update(cdb2_hndl_tp *db)
-{
-    int rc;
-    int got_error = 0;
-    char sql[80];
-    time_t point_in_time = (time(NULL) - 10);
-
-    cdb2_clearbindings(db);
-    snprintf(sql, sizeof(sql), "BEGIN TRANSACTION AS OF DATETIME %ld", point_in_time);
-    if ((rc = cdb2_run_statement(db, sql)) != CDB2_OK) {
-        fprintf(stderr, "line %d error running %s, %d\n", __LINE__, sql, rc);
-        exit(1);
-    }
-
-    if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
-                    "state = 1 AND began <= now() limit 15")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-
-    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
-    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-
-    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-    return got_error;
-}
-
-/*
- * SINGLE_STATEMENT-NOSELECT-UPDATER THREAD SQL
- *
- * UPDATE jobinstance SET instid = instdid WHERE state=1 AND
- *          began <= now() limit 15
- */
-int single_statement_noselect_update(cdb2_hndl_tp *db)
-{
-    int rc;
-    int got_error = 0;
-
-    cdb2_clearbindings(db);
-
-    if ((rc = cdb2_run_statement(db, "update jobinstance set instid = instid where "
-                    "state = 1 AND began <= now() limit 15")) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (fail_updater_error) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-            exit(1);
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-
-    if ((rc = cdb2_next_record(db)) != CDB2_OK) {
-        if (is_common_acceptable_error(db, rc)) {
-        } else if (fail_updater_error) {
-            fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-            exit(1);
-        } else if (isolation == SERIALIZABLE) {
-            if (rc != 230) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        } else {
-            if (rc != 2) {
-                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
-                exit(1);
-            } else
-                got_error = 1;
-        }
-    }
-    return got_error;
-}
-
-void set_isolation(cdb2_hndl_tp *db)
-{
-    int rc;
-    switch(isolation) {
-        case SOCKSQL:
-            rc = cdb2_run_statement(db, "set transaction blocksql");
-            break;
-        case READ_COMMITTED:
-            rc = cdb2_run_statement(db, "set transaction read committed");
-            break;
-        case SNAPSHOT:
-            rc = cdb2_run_statement(db, "set transaction snapshot");
-            break;
-        case SERIALIZABLE:
-            rc = cdb2_run_statement(db, "set transaction serialzable");
-            break;
-        default:
+        char sql[256];
+        sprintf(sql, "update jobinstance set instid = instid where instid = %ld", instid);
+        if ((rc = cdb2_run_statement(db, sql)) != CDB2_OK) {
+            fprintf(stderr, "****************************never\n");
             abort();
-            break;
+            fprintf(stderr, "line %d run_statement error, %s\n", __LINE__, cdb2_errstr(db));
+            exit(1);
+        }
     }
-    if (rc != 0) {
-        fprintf(stderr, "set transaction failed, %d %s\n", rc, cdb2_errstr(db));
-        exit(1);
+    /* Allow verify error for < SERIALIZABLE, serializable error for == SERIALIZABLE */
+    if ((rc = cdb2_run_statement(db, "commit")) != CDB2_OK) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
     }
 
-    while ((rc = cdb2_next_record(db)) == CDB2_OK)
-        ;
-    if (rc != CDB2_OK_DONE) {
-        fprintf(stderr, "Set transaction line %d bad rcode from next record, %d\n",
-                __LINE__, rc);
-        exit(1);
+    if ((rc = cdb2_next_record(db)) != CDB2_OK_DONE) {
+        if (is_common_acceptable_error(db, rc)) {
+        } else if (isolation == SERIALIZABLE) {
+            if (rc != 230) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        } else {
+            if (rc != 2) {
+                fprintf(stderr, "line %d error running commit: %d %s\n", __LINE__, rc, cdb2_errstr(db));
+                exit(1);
+            } else
+                got_error = 1;
+        }
     }
+    return got_error;
 }
 
-void *thd(void *arg) {
+
+void *thd(void *arg)
+{
     int rc;
     struct thread_num_type *tnum = (struct thread_num_type *)arg;
     int num = tnum->tdnum;
@@ -716,32 +312,13 @@ void *thd(void *arg) {
         exit(1);
     }
 
-    set_isolation(db);
-
     while(!time_is_up) {
         switch(type) {
-            case SELECTV_THREAD:
-                numerrs += selectv(db);
-                break;
             case UPDATER_THREAD:
                 numerrs += update(db);
                 break;
             case SELECTV_UPDATER_THREAD:
                 numerrs += selectv_update(db);
-                break;
-            case NOSELECT_UPDATER:
-                numerrs += noselect_update(db);
-                assert (!fail_updater_error || (numerrs == 0));
-                break;
-            case SINGLE_STATEMENT_NOSELECT_UPDATER:
-                numerrs += single_statement_noselect_update(db);
-                assert (!fail_updater_error || (numerrs == 0));
-                break;
-            case POINT_IN_TIME_UPDATER:
-                numerrs += point_in_time_update(db);
-                break;
-            case INTRANS_EFFECT_UPDATER:
-                numerrs += intrans_effect_update(db);
                 break;
         }
         iterations++;
@@ -756,10 +333,10 @@ void *thd(void *arg) {
     return NULL;
 }
 
-int main(int argc, char *argv[]) {
+int main(int argc, char *argv[])
+{
     int opt, err = 0;
     int test_time = 60;
-    int nthreads, ix;
 
     signal(SIGPIPE, SIG_IGN);
     setvbuf(stdout, NULL, _IOLBF, 0);
@@ -858,7 +435,7 @@ int main(int argc, char *argv[]) {
     }
 
     pthread_t *threads;
-    nthreads = selectv_updaters + updaters + selectvers + noselect_updaters +
+    int nthreads = selectv_updaters + updaters + selectvers + noselect_updaters +
         single_statement_noselect_updaters + point_in_time_updaters +
         intrans_effects_updaters;
     threads = malloc(sizeof(pthread_t) * nthreads);
@@ -879,6 +456,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    int ix;
     for (int i = 0 ; i < selectv_updaters; i++) {
         struct thread_num_type *t = (struct thread_num_type *)malloc(sizeof(*t));
         ix = updaters + i;
@@ -891,6 +469,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
+#   if 0 
     for (int i = 0 ; i < selectvers; i++) {
         struct thread_num_type *t = (struct thread_num_type *)malloc(sizeof(*t));
         t->tdnum = i;
@@ -952,6 +531,7 @@ int main(int argc, char *argv[]) {
             return 1;
         }
     }
+#   endif
 
     sleep(test_time);
     time_is_up = 1;
