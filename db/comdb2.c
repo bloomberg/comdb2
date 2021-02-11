@@ -132,6 +132,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "metrics.h"
 #include "time_accounting.h"
 #include <build/db.h>
+#include "comdb2_query_preparer.h"
 
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -5811,6 +5812,12 @@ retry_tran:
         delete_prepared_stmts(thd);
         sqlite3_close(thd->sqldb);
         thd->sqldb = NULL;
+
+        /* Also clear sqlitex's db handle */
+        if (gbl_old_column_names && query_preparer_plugin &&
+            query_preparer_plugin->do_cleanup_thd) {
+            query_preparer_plugin->do_cleanup_thd(thd);
+        }
     }
 
     create_datacopy_arrays();

@@ -2222,7 +2222,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
     CDB2QUERY *query = NULL;
     int rc = 0;
-    struct sqlclntstate clnt;
+    struct sqlclntstate clnt = {{0}};
     struct thr_handle *thr_self;
     struct sbuf2 *sb;
     struct dbenv *dbenv;

@@ -5058,6 +5058,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
 
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
+    thd->sqldbx = NULL;
     thd->stmt_caching_table = NULL;
     thd->lastuser[0] = '\0';
 
@@ -5108,6 +5109,7 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 
 static void thdpool_sqlengine_start(struct thdpool *pool, void *thd)
 {
+    /* The caller has already bzero-ed thd */
     sqlengine_thd_start(pool, (struct sqlthdstate *) thd, THRTYPE_SQLENGINEPOOL);
 }
 
