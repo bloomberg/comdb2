@@ -300,6 +300,8 @@ nonclosingbrkt [^}]*
 <CONSTRAINTS>on                 { return T_CON_ON; }
 <CONSTRAINTS>update             { return T_CON_UPDATE; }
 <CONSTRAINTS>delete             { return T_CON_DELETE; }
+<CONSTRAINTS>set                { return T_SET; }
+<CONSTRAINTS>null               { return T_NULL; }
 <CONSTRAINTS>[\-:]              { return yytext[0];  }
 <CONSTRAINTS>{varname}          { yylval.varname=yytext; return T_VARNAME; }
 <CONSTRAINTS>=                  { return T_EQ; }

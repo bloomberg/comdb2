@@ -705,12 +705,15 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
         int rrn = 0;
         int del_cascade = 0;
         int upd_cascade = 0;
+        int del_null = 0;
         struct backward_ct *bct = &ctrq->ctop.bwdct;
         struct dbtable *currdb = iq->usedb; /* make a copy */
         char *skey = bct ? bct->key : "";
 
         if (is_delete_op(bct->optype) && (bct->flags & CT_DEL_CASCADE))
             del_cascade = 1;
+        else if (is_delete_op(bct->optype) && (bct->flags & CT_SETNULL_CASCADE))
+            del_null = 1;
         else if (is_update_op(bct->optype) && (bct->flags & CT_UPD_CASCADE))
             upd_cascade = 1;
 
@@ -868,9 +871,8 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             iq->usedb = get_dbtable_by_name(bct->tablename);
             if (iq->debug)
                 reqpushprefixf(iq, "VERBKYCNSTRT CASCADE DEL:");
+
             /* TODO verify we have proper schema change locks */
-
-
             int saved_flgs = iq->osql_flags;
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
@@ -907,6 +909,83 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             }
             /* here, we need to retry to verify the constraint */
             /* sub 1 to go to current constraint again */
+            continue;
+        } else if (del_null) {
+            int err = 0, idx = 0;
+            unsigned long long newgenid;
+            if (iq->debug) {
+                reqprintf(iq, "VERBKYCNSTRT SET NULL ON DELETE TBL %s RRN %d ", bct->tablename, rrn);
+            }
+
+            rc = bdb_lock_tablename_read(thedb->bdb_env, bct->tablename, trans);
+            if (rc != 0) {
+                *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
+                close_constraint_table_cursor(cur);
+                return RC_INTERNAL_RETRY;
+            }
+
+            iq->usedb = get_dbtable_by_name(bct->tablename);
+
+            if (iq->debug)
+                reqpushprefixf(iq, "VERBKYCNSTRT SET NULL ON DELETE:");
+
+            /* TODO verify we have proper schema change locks */
+            int saved_flgs = iq->osql_flags;
+            osql_unset_index_reorder_bit(&iq->osql_flags);
+
+            char nullkey[MAXKEYLEN];
+            rc = stag_set_key_null(bct->tablename, ondisk_tag, skey, keylen, nullkey);
+
+            if (rc)
+                goto delnullerr;
+
+            if (iq->usedb) {
+                rc = upd_record(iq, trans, NULL,                               /*primkey*/
+                                rrn, genid, (const unsigned char *)ondisk_tag, /*.ONDISK_IX_0*/
+                                (const unsigned char *)ondisk_tag + strlen(ondisk_tag),
+                                (unsigned char *)nullkey, /*p_buf_rec*/
+                                (const unsigned char *)nullkey + keylen, NULL /*p_buf_vrec*/, NULL /*p_buf_vrec_end*/,
+                                NULL,                                                 /*fldnullmap*/
+                                NULL,                                                 /*updCols*/
+                                NULL,                                                 /*blobs*/
+                                0,                                                    /*maxblobs*/
+                                &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
+                                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+            } else {
+                rc = ERR_NO_SUCH_TABLE;
+            }
+            iq->osql_flags = saved_flgs;
+            if (iq->debug)
+                reqpopprefixes(iq, 1);
+            iq->usedb = currdb;
+
+        delnullerr:
+            if (rc != 0) {
+                if (iq->debug) {
+                    reqprintf(iq,
+                              "VERBKYCNSTRT CANT SET NULL ON DELETE "
+                              "TBL %s RRN %d RC %d ",
+                              bct->tablename, rrn, rc);
+                }
+                if (rc == ERR_NULL_CONSTRAINT) {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
+                              "verify key constraint cannot set null on delete "
+                              "table '%s' rc %d",
+                              bct->tablename, rc);
+                    *errout = OP_FAILED_INTERNAL + ERR_NULL_CONSTRAINT;
+                } else if (rc == ERR_TRAN_TOO_BIG) {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE, "set null on delete exceeds max writes");
+                    *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
+                } else {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
+                              "verify key constraint cannot set null on delete "
+                              "table '%s' rc %d",
+                              bct->tablename, rc);
+                    *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+                }
+                close_constraint_table_cursor(cur);
+                return rc;
+            }
             continue;
         } else if (upd_cascade) {
             int err = 0, idx = 0;
@@ -1715,20 +1794,19 @@ void dump_all_constraints(struct dbenv *env)
 void dump_rev_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n",
-           table->tablename, table->n_rev_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n", table->tablename, table->n_rev_constraints);
     for (i = 0; i < table->n_rev_constraints; i++) {
         constraint_t *ct = table->rev_constraints[i];
         int j = 0;
-        logmsg(LOGMSG_USER, "(%d)REV CONSTRAINT TBL: '%s' KEY '%s'  CSCUPD: %c "
-                            "CSCDEL: %c #RULES %d:\n",
+        logmsg(LOGMSG_USER,
+               "(%d)REV CONSTRAINT TBL: '%s' KEY '%s'  CSCUPD: %c "
+               "CSCDEL: %c CSCDELNULL: %c #RULES %d:\n",
                i + 1, ct->lcltable->tablename, ct->lclkeyname,
                ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
-               ct->nrules);
+               ((ct->flags & CT_SETNULL_CASCADE) == CT_SETNULL_CASCADE) ? 'T' : 'F', ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
-            logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j],
-                    ct->keynm[j]);
+            logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j], ct->keynm[j]);
         }
     }
     logmsg(LOGMSG_USER, "\n");
@@ -1737,20 +1815,16 @@ void dump_rev_constraints(struct dbtable *table)
 void dump_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->tablename,
-           table->n_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->tablename, table->n_constraints);
     for (i = 0; i < table->n_constraints; i++) {
         constraint_t *ct = &table->constraints[i];
         int j = 0;
-        logmsg(LOGMSG_USER, 
-                "(%d)CONSTRAINT KEY '%s'  CSCUPD: %c CSCDEL: %c #RULES %d:\n",
-                i + 1, ct->lclkeyname,
-                ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
-                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
-                ct->nrules);
+        logmsg(LOGMSG_USER, "(%d)CONSTRAINT KEY '%s'  CSCUPD: %c CSCDEL: %c CSCDELNULL: %c #RULES %d:\n", i + 1,
+               ct->lclkeyname, ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
+               ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
+               ((ct->flags & CT_SETNULL_CASCADE) == CT_SETNULL_CASCADE) ? 'T' : 'F', ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
-            logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j],
-                    ct->keynm[j]);
+            logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j], ct->keynm[j]);
         }
     }
     logmsg(LOGMSG_USER, "\n");
@@ -2386,7 +2460,7 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
             if (iq->debug)
                 reqprintf(iq, "update_constraint_genid: OLDGENID 0x%llx NEWGENID 0x%llx",
                           old_genid, new_genid);
-            assert(curop->optype == opcode);
+            //            assert(curop->optype == opcode);
             curop->genid = new_genid; // directly update genid in the temp list
             curop->flags |= flags;    // also update with the flags passed in
 
