@@ -40,6 +40,13 @@ setup_debugger() {
             # get report of performance via perf report -i $TESTDIR/$TESTCASE.perfdata
             # or perf annotate -i $TESTDIR/$TESTCASE.perfdata
             ;;
+        sched-perf)
+            # this one needs root access: please run sudo and type password so it gets cached beforehand
+            # once this completes, you can look at the output this way:
+            # chown $USER test_XXX/YYYY.perfdata
+            # perf report -T -n -i test_XXX/YYYY.perfdata
+            DEBUG_PREFIX="sudo perf record -s -e sched:sched_stat_sleep -e sched:sched_switch -e sched:sched_process_exit --call-graph dwarf -o $TESTDIR/$TESTCASE.perfdata -g "
+            ;;
         strace)   # strace syscalls: -tt -T for timing information, -f for threads, -C summary
             DEBUG_PREFIX="strace -tt -T -f -C -o $TESTDIR/$TESTCASE.strace"
             ;;
@@ -427,10 +434,14 @@ DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 echo "Duration $SECONDS seconds" >> ${TESTDIR}/logs/${DBNAME}.testcase
 
-if [[ "${DEBUGGER}" == "callgrind" ]]; then 
-   echo "callgrind files are located here:"
+if [[ "${DEBUGGER}" == *"grind" ]]; then 
+   echo "${DEBUGGER} files are located here:"
    ls ${TESTDIR}/*.callgrind
+elif [[ "${DEBUGGER}" == *"perf" ]]; then 
+   echo "perf files are located here:"
+   ls ${TESTDIR}/*.perfdata
 fi
+
 
 
 
