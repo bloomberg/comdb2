@@ -151,6 +151,9 @@ void set_constraint_mod(int start, int op, int type)
     else if (op == 1)
         macc_globals->constraints[macc_globals->nconstraints].flags |=
             CT_DEL_CASCADE;
+    else if (op == 2)
+        macc_globals->constraints[macc_globals->nconstraints].flags |=
+            CT_SETNULL_CASCADE;
 }
 
 void set_constraint_name(char *name, enum ct_type type)

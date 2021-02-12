@@ -84,7 +84,7 @@ struct fieldopt {
     } value;
 };
 
-enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002 };
+enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002, CT_SETNULL_CASCADE =  0x00000003 };
 enum ct_type { CT_FKEY, CT_CHECK };
 
 struct constraint {
