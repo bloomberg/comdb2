@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
-set -x
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 set -x
 # Grab my database name.
@@ -9,8 +10,7 @@ dbnm=$1
 # Verify that the user at least supplied a dbname
 if [[ -z "$dbnm" ]]; then
 
-    echo "Testcase requires <dbname> argument."
-    exit 1
+    failexit "Testcase requires <dbname> argument."
 
 fi
 
@@ -192,20 +192,19 @@ function insert_rand_t1
 
     # Insert the record
     if [[ "1" == "$debug" ]]; then
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"insert into t1(id, b1) values ($id, x'$bl')\""
-        cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')"
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"insert into t1(id, b1) values ($id, x'$bl')\""
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')"
     else
-        out=$(cdb2sql ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')" 2>&1)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "insert into t1(id, b1) values ($id, x'$bl')" 2>&1)
     fi
     if [[ $? != 0 ]]; then
-        echo "insert_rand_t1 failed, $out"
-        exit 1
+        failexit "insert_rand_t1 failed, $out"
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
     if [[ "1" == "$bgdebug" ]]; then
         
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"insert into t1(id, b1) values ($id, x'$bl')\"" >> $bgtmpfl
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"insert into t1(id, b1) values ($id, x'$bl')\"" >> $bgtmpfl
     fi
 
     return 0
@@ -227,20 +226,19 @@ function update_noblob_rand_t1
 
     # Update a record, discard the result
     if [[ "1" == "$debug" ]]; then
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid where id=$id\""
-        cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id"
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set id=$upid where id=$id\""
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id"
     else
-        out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id" 2>&1)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set id=$upid where id=$id" 2>&1)
     fi
     if [[ $? != 0 ]]; then
-        echo "update_noblob_rand_t1 failed, $out"
-        exit 1
+        failexit "update_noblob_rand_t1 failed, $out"
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
     if [[ "1" == "$bgdebug" ]]; then
         
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid where id=$id\"" >> $bgtmpfl
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set id=$upid where id=$id\"" >> $bgtmpfl
     fi
 
     return 0
@@ -276,35 +274,34 @@ function update_onlyblob_rand_t1
 
         if [[ "1" == "$nullblob" ]]; then
 
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set b1=NULL where id=$id\""
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=NULL where id=$id"
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set b1=NULL where id=$id\""
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set b1=NULL where id=$id"
 
         else
 
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set b1=x'$bl' where id=$id\""
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bl' where id=$id"
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set b1=x'$bl' where id=$id\""
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bl' where id=$id"
 
         fi
 
     else
         if [[ "1" == "$nullblob" ]]; then
-            out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=NULL where id=$id" 2>&1)
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set b1=NULL where id=$id" 2>&1)
         else
-            out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bl' where id=$id" 2>&1)
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set b1=x'$bl' where id=$id" 2>&1)
         fi
     fi
     if [[ $? != 0 ]]; then
-        echo "update_onlyblob_rand_t1 failed, $out"
-        exit 1
+        failexit "update_onlyblob_rand_t1 failed, $out"
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
     if [[ "1" == "$bgdebug" ]]; then
         
         if [[ "1" == "$nullblob" ]]; then
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set b1=NULL where id=$id\"" >> $bgtmpfl
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set b1=NULL where id=$id\"" >> $bgtmpfl
         else
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set b1=x'$bl' where id=$id\"" >> $bgtmpfl
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set b1=x'$bl' where id=$id\"" >> $bgtmpfl
         fi
     fi
 
@@ -342,35 +339,34 @@ function update_rand_t1
 
         if [[ "1" == "$nullblob" ]]; then
 
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=NULL where id=$id\""
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=NULL where id=$id"
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=NULL where id=$id\""
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=NULL where id=$id"
 
         else
 
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=x'$bl' where id=$id\""
-            cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=x'$bl' where id=$id"
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=x'$bl' where id=$id\""
+            $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=x'$bl' where id=$id"
 
         fi
 
     else
         if [[ "1" == "$nullblob" ]]; then
-            out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=NULL where id=$id" 2>&1)
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=NULL where id=$id" 2>&1)
         else
-            out=$(cdb2sql ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=x'$bl' where id=$id" 2>&1)
+            out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "update t1 set id=$upid, b1=x'$bl' where id=$id" 2>&1)
         fi
     fi
     if [[ $? != 0 ]]; then
-        echo "update_rand_t1 failed, $out"
-        exit 1
+        failexit "update_rand_t1 failed, $out"
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
     if [[ "1" == "$bgdebug" ]]; then
         
         if [[ "1" == "$nullblob" ]]; then
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=NULL where id=$id\"" >> $bgtmpfl
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=NULL where id=$id\"" >> $bgtmpfl
         else
-            echo "cdb2sql ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=x'$bl' where id=$id\"" >> $bgtmpfl
+            echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"update t1 set id=$upid, b1=x'$bl' where id=$id\"" >> $bgtmpfl
         fi
 
     fi
@@ -394,20 +390,19 @@ function delete_rand_t1
 
     # Delete a record, discard the result
     if [[ "1" == "$debug" ]]; then
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"delete from t1 where id=$id\""
-        cdb2sql ${CDB2_OPTIONS} $db default "delete from t1 where id=$id"
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"delete from t1 where id=$id\""
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $db default "delete from t1 where id=$id"
     else
-        out=$(cdb2sql ${CDB2_OPTIONS} $db default "delete from t1 where id=$id" 2>&1)
+        out=$($CDB2SQL_EXE ${CDB2_OPTIONS} $db default "delete from t1 where id=$id" 2>&1)
     fi
     if [[ $? != 0 ]]; then
-        echo "delete_rand_t1 failed, $out"
-        exit 1
+        failexit "delete_rand_t1 failed, $out"
     fi
 
     # If the 'bgdebug' flag is set, write this to a file. */
     if [[ "1" == "$bgdebug" ]]; then
         
-        echo "cdb2sql ${CDB2_OPTIONS} $db default \"delete from t1 where id=$id\"" >> $bgtmpfl
+        echo "$CDB2SQL_EXE ${CDB2_OPTIONS} $db default \"delete from t1 where id=$id\"" >> $bgtmpfl
 
     fi
 
@@ -449,7 +444,7 @@ function do_verify
 {
     typeset cnt=0
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_t1.out
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('t1')" &> verify_t1.out
 
     if ! grep succeeded verify_t1.out > /dev/null ; then
 
@@ -482,8 +477,8 @@ function do_schemachange
 do_verify
 sleep 2
 do_verify
-echo "Add int index"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Add int index"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -499,12 +494,12 @@ EOF
 if [[ $? != 0 ]]; then
     errquit "Schemachange has failed."
 fi
-echo "do_verify after first schema change"
+echo "do_schemachange: do_verify after first schema change"
 do_verify
 
 sleep 2
-echo "Change int index to <DESCEND>"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Change int index to <DESCEND>"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -520,12 +515,12 @@ EOF
 if [[ $? != 0 ]]; then
     errquit "Schemachange has failed."
 fi
-echo "do_verify after second schema change"
+echo "do_schemachange: do_verify after second schema change"
 do_verify
 
 sleep 2
-echo "Change int index back to <ASCEND>"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Change int index back to <ASCEND>"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -544,8 +539,8 @@ fi
 
 do_verify
 sleep 2
-echo "Add partial index"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Add partial index"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -565,8 +560,8 @@ fi
 do_verify
 
 sleep 2
-echo "Change partial index"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Change partial index"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -586,8 +581,8 @@ fi
 do_verify
 
 sleep 2
-echo "Change partial index (blob)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Change partial index (blob)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -607,8 +602,8 @@ fi
 do_verify
 
 sleep 2
-echo "Drop partial index"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Drop partial index"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -627,8 +622,8 @@ fi
 do_verify
 
 sleep 2
-echo "Add expression index (sum)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Add expression index (sum)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -648,8 +643,8 @@ fi
 do_verify
 
 sleep 2
-echo "Add expression index (blob)"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Add expression index (blob)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -670,8 +665,8 @@ fi
 do_verify
 
 sleep 2
-echo "Add compound expression index"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Add compound expression index"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -693,8 +688,8 @@ fi
 do_verify
 
 sleep 2
-echo "Add condition to expression index"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Add condition to expression index"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -716,8 +711,8 @@ fi
 do_verify
 
 sleep 2
-echo "Change expression index to <DESCEND>"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+echo "do_schemachange: Change expression index to <DESCEND>"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -742,7 +737,7 @@ do_verify
 # Trap to errquit if the user presses Ctrl-C
 trap "errquit \"Cancelling test on INT EXIT\"" INT EXIT
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<EOF
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<EOF
 drop table if exists t1
 create table t1 {
 schema
@@ -772,11 +767,13 @@ gent1insert $maxt1 insert_t1.cfg
 
 # Insert records into t1.k
 echo "Inserting records into t1."
-cdb2sql -s ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
+$CDB2SQL_EXE -s ${CDB2_OPTIONS} $dbnm default - < insert_t1.cfg >/dev/null
 
 # Select t1 back.
 echo "Selecting t1."
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select id, b1 from t1 order by id" > select_t1.txt
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "select id, b1 from t1 order by id" > select_t1.txt
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('debg 500')"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('ndebg 500')"
 
 ii=0
 # Print status message.
@@ -797,14 +794,16 @@ while [[ $ii -lt $nwrts ]]; do
 
 done
 
+master=`getmaster`
+
 echo "Starting schemachange"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "PUT SCHEMACHANGE COMMITSLEEP 3"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "PUT SCHEMACHANGE CONVERTSLEEP 3"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $master "PUT SCHEMACHANGE COMMITSLEEP 3"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $master "PUT SCHEMACHANGE CONVERTSLEEP 3"
 
 do_schemachange
 
 echo "Drop all indexes"
-cdb2sql ${CDB2_OPTIONS} $dbnm default - <<"EOF"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default - <<"EOF"
 alter table t1 {
 schema
 {
@@ -818,8 +817,8 @@ if [[ $? != 0 ]]; then
 fi
 do_verify
 
-# delay key adds
-cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.send('goslow')"
+echo "delay key adds (goslow)"
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $master "exec procedure sys.cmd.send('goslow')"
 
 # do schemachange test again
 do_schemachange
@@ -847,7 +846,7 @@ trap - INT EXIT
 
 # Select t1 back.
 echo "Selecting t1."
-cdb2sql ${CDB2_OPTIONS} $dbnm default "select id, b1 from t1 order by id" > select_t1_final.txt
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "select id, b1 from t1 order by id" > select_t1_final.txt
 
 # See if t1 was updated during this test.
 wr_t1=$(( upd_t1 + del_t1 + ins_t1 ))
@@ -862,9 +861,7 @@ if [[ "0" != "$wr_t1" && $? == 0 ]]; then
     echo "Testcase is broken: the post-commit t1 should have changed."
 
     # Tell the user how to see this.
-    echo "Run 'diff ${PWD}/{select_t1.txt,select_t1_final.txt}' to see the error."
-
-    exit 1
+    failexit "Run 'diff ${PWD}/{select_t1.txt,select_t1_final.txt}' to see the error."
 
 fi
 

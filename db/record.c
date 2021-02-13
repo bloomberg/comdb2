@@ -1942,7 +1942,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
     rc = remap_update_columns(iq->usedb->tablename, ".ONDISK", updCols,
                               ".NEW..ONDISK", myupdatecols);
     if (iq->debug) {
-        reqprintf(iq, "upd_new_record returns %d", rc);
+        reqprintf(iq, "remap_update_columns returns %d", rc);
     }
 
     if (0 != rc) {
@@ -2189,6 +2189,10 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
         }
     }
 
+    if (iq->debug) {
+        reqpushprefixf(iq, "upd_new_record_indices: ");
+        prefixes++;
+    }
     retrc = upd_new_record_indices(iq, trans, newgenid, ins_keys, new_dta,
                                    old_dta, use_new_tag, sc_old, sc_new, nd_len,
                                    del_keys, add_idx_blobs, del_idx_blobs,

@@ -550,7 +550,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
         ditk.usedb = iq->usedb;
     }
 
-    /* Delay key add if schema change has constraints so we can * verify them.
+    /* Delay key add if schema change has constraints so we can verify them.
      * FIXME: What if the table does not have index to begin with?
      * (Redo based live sc works for this case)
      */
@@ -1158,8 +1158,10 @@ int upd_new_record_indices(
             iq, trans, newgenid, use_new_tag ? sc_new : new_dta,
             use_new_tag ? iq->usedb->lrl : nd_len, ins_keys, use_new_tag,
             add_idx_blobs, !verify_retry);
-    } else
-        reqprintf(iq, "is deferredAdd so will add to indices at the end");
+    } else {
+        if (iq->debug)
+            reqprintf(iq, "is deferredAdd so will add to indices at the end");
+    }
 
     return rc;
 }

@@ -664,10 +664,6 @@ static int convert_record(struct convert_record_data *data)
         data->iq.debug = 1;
     }
     Pthread_mutex_unlock(&gbl_sc_lock);
-    if (data->iq.debug) {
-        reqlog_new_request(&data->iq); // TODO: cleanup (reset) logger
-        reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
-    }
 
     /* Get record to convert.  We support four scan modes:-
      * - SCAN_STRIPES - DEPRECATED AND REMOVED:
@@ -1207,6 +1203,11 @@ void *convert_records_thd(struct convert_record_data *data)
         Pthread_setspecific(no_pgcompact, (void *)1);
     }
 
+    if (data->iq.debug) {
+        reqlog_new_request(&data->iq);
+        reqpushprefixf(&data->iq, "0x%llx: CONVERT_REC ", pthread_self());
+    }
+
     int prev_preempted = data->s->preempted;
     /* convert each record */
     while (rc > 0) {
@@ -1291,6 +1292,9 @@ cleanup:
 cleanup_no_msg:
     convert_record_data_cleanup(data);
     if (data->isThread) backend_thread_event(thedb, COMDB2_THR_EVENT_DONE_RDWR);
+
+    if (data->iq.debug)
+        reqpopprefixes(&data->iq, 1);
 
     /* restore our  thread type to what it was before */
     if (oldtype != THRTYPE_UNKNOWN) thrman_change_type(thr_self, oldtype);
