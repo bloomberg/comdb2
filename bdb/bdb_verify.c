@@ -515,9 +515,18 @@ static int bdb_verify_data_stripe(verify_common_t *par, int dtastripe,
                 locprint(par, "!%016llx ix %d fetch rc %d", genid_flipped, ix,
                          rc);
             } else if (genid != verify_genid) {
+
+                unsigned long long v_genid_flipped;
+
+#ifdef _LINUX_SOURCE
+                buf_put(&verify_genid, sizeof(unsigned long long), (uint8_t *)&v_genid_flipped,
+                        (uint8_t *)&v_genid_flipped + sizeof(unsigned long long));
+#else
+                v_genid_flipped = verify_genid;
+#endif
                 par->verify_status = 1;
                 locprint(par, "!%016llx ix %d genid mismatch %016llx",
-                         genid_flipped, ix, verify_genid);
+                         genid_flipped, ix, v_genid_flipped);
             }
 
             ckey->c_close(ckey);

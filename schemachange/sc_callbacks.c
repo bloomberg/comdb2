@@ -514,6 +514,9 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
                   oldgenid, newgenid, deferredAdd);
     }
 
+    if (iq->debug) {
+        reqpushprefixf(iq, "upd_new_record: ");
+    }
     rc = upd_new_record(iq, trans, oldgenid, old_dta, newgenid, new_dta,
                         ins_keys, del_keys, od_len, updCols, blobs, deferredAdd,
                         oldblobs, newblobs, 1);
@@ -529,7 +532,7 @@ int live_sc_post_upd_record(struct ireq *iq, void *trans,
 
     ATOMIC_ADD32(usedb->sc_updates, 1);
     if (iq->debug) {
-        reqpopprefixes(iq, 1);
+        reqpopprefixes(iq, 2);
     }
     return rc;
 }

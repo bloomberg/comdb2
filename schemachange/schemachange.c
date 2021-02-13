@@ -1002,8 +1002,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
 
     if (s->dbnum != -1) db->dbnum = s->dbnum;
 
-    db->sc_to = newdb =
-        newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix, 0);
+    db->sc_to = newdb = newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix, 0);
 
     if (newdb == NULL) {
         return -1;

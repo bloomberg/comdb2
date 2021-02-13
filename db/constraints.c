@@ -294,7 +294,7 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
 
     /* Add the genid to hash for quick lookup. */
     unsigned long long *genid_ptr =
-      pool_getablk(thdinfo->ct_add_table_genid_pool);
+        pool_getablk(thdinfo->ct_add_table_genid_pool);
     memcpy(genid_ptr, &genid, sizeof(unsigned long long));
     hash_add(thdinfo->ct_add_table_genid_hash, genid_ptr);
 
@@ -331,6 +331,8 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
         logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
         return -1;
     }
+    if (iq->debug)
+        reqprintf(iq, "insert_add_op: GENID 0x%llx", genid);
 
     blkstate->ct_id_key++;
     return 0;
@@ -1125,7 +1127,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
          * If a key is a dup violation then we don't want SC to fail,
          * rather the UPD should fail (when processing that idx in this loop).
          * So when table cursor points to next genid, only then we can call
-         * live_sc on the stored genid. 
+         * live_sc on the stored (ie previous) genid. 
          */
         if (genid && genid != curop->genid) {
             LIVE_SC_DELAYED_KEY_ADDS(0 /* not last */);

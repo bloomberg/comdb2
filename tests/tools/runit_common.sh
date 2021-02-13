@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-
 # Common bash functions across many of the runit scripts
 
-C2SQL="$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME}"
 
 # exit after displaying error message
 failexit()
@@ -27,7 +25,6 @@ assertres ()
 }
 
 
-
 # assert that number of rows of table in $1 is targecnt in $2, optional comment in $3
 # assertcnt (table, targetcnt, comment)
 assertcnt ()
@@ -38,7 +35,7 @@ assertcnt ()
     local tbl=$1
     local target=$2
     comment=$3
-    local cnt=$($C2SQL default "select count(*) from $tbl")
+    local cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select count(*) from $tbl")
     if [ $? -ne 0 ] ; then
         echo "assertcnt: select error"
     fi
@@ -52,19 +49,19 @@ assertcnt ()
 
 getmaster()
 {
-    $C2SQL default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
 }
 
 getclusternodes()
 {
-    $C2SQL default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'
 }
 
 sendtocluster()
 {
     msg=$1
     for n in `getclusternodes` ; do
-        $C2SQL --host $n "$msg"
+        $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} --host $n "$msg"
     done
 }
 
@@ -72,11 +69,10 @@ sendtocluster()
 do_verify()
 {
     tbl=$1
-    $C2SQL default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "exec procedure sys.cmd.verify('$tbl', 'parallel')" &> verify_$tbl.out
 
     if ! grep succeeded verify_$tbl.out > /dev/null ; then
         grep succeeded verify_$tbl.out | head -10
         failexit "verify $tbl had errors"
     fi
 }
-
