@@ -2,19 +2,17 @@
 bash -n "$0" | exit 1
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
+set -x
 
-# Grab my database name.
-dbnm=$1
 
-tbl=t2
-
-if [ "x$dbnm" == "x" ] ; then
+if [ "x${DBNAME}" == "x" ] ; then
     echo "need a DB name"
     exit 1
 fi
 
+tbl=t2
 # Number of records I will add.
-nrecs=100
+nrecs=1000
 
 # Max number of schema changes
 max_nusc=100
@@ -22,14 +20,14 @@ max_nusc=100
 
 function do_rebuild_track_pid
 {
-    typeset loc_dbnm=$1
+    typeset loc_dbname=$1
     typeset loc_tbl=$2
     typeset track_pid=$3
     typeset scnt=0
     while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
 
         echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbnm default "rebuild $loc_tbl"
+        cdb2sql ${CDB2_OPTIONS} $loc_dbname default "rebuild $loc_tbl"
 
         if [[ $? != 0 ]]; then
             kill -9 $track_pid
@@ -51,17 +49,19 @@ function do_rebuild_track_pid
 
 function insert_records
 {
-    j=0
     echo "Inserting $nrecs records."
+    typeset j=0
+    typeset loc_nrecs=$1
+    typeset is_sleep=$2
 
-    while [[ $j -lt $nrecs ]]; do 
+    while [[ $j -lt $loc_nrecs ]]; do 
         echo "insert into $tbl(a,b,c,d,e,f) values ($j,'test1',x'1234',$((j*2)),$j,$j)"
         let j=j+1
-        if [ $1 -gt 0 ] ; then
-            sleep 0.1
+        if [ -n "$is_sleep" ] ; then
+            sleep $is_sleep
         fi
-    done | cdb2sql ${CDB2_OPTIONS} $dbnm default &> insert.out || failexit "insert_records error"
-    echo "Done inserting $nrecs records."
+    done | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default &> insert.out || failexit "insert_records error"
+    echo "Done inserting $loc_nrecs records."
 }
 
 
@@ -70,12 +70,27 @@ function run_test
 {
     typeset ipid=''
 
-    cdb2sql ${CDB2_OPTIONS} $dbnm default "truncate $tbl"
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists $tbl"
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table $tbl {
+schema
+{
+    int      a
+    cstring  b[32]
+    blob     c
+    int      d
+    int      e
+    int      f
+}
+}
+"
 
-    insert_records 0 &
+    insert_records $nrecs 0.01 &
     typeset ipid=$!
 
-    do_rebuild_track_pid $dbnm $tbl $ipid
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "alter table $tbl { `cat $tbl.csc2 ` }"
+    do_verify $tbl
+
+    do_rebuild_track_pid ${DBNAME} $tbl $ipid
     wait
 
     assertcnt $tbl $nrecs
@@ -83,26 +98,24 @@ function run_test
 }
 
 
-
-
 echo "running test in machine $(hostname):${PWD}"
 
-cdb2sql ${CDB2_OPTIONS} $dbnm default "drop table $tbl"
-cdb2sql ${CDB2_OPTIONS} $dbnm default "create table $tbl  { `cat $tbl.csc2 ` }"
+master=`cdb2sql -tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "PUT SCHEMACHANGE COMMITSLEEP 1"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "PUT SCHEMACHANGE CONVERTSLEEP 1"
 
-
-master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-
-max_iter=40
+max_iter=10
 t=0
 while [ $t -lt ${max_iter} ] ; do
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('gofast')"
     run_test
     mv insert.out insert.out.$t
 
-    sleep 2
+    cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('goslow')"
+    run_test
+    mv insert.out insert.out.$t
+
     let t=t+1
 done
-
-sleep 15
 
 echo "Success"
