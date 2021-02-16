@@ -501,7 +501,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if (iq->usedb->nix > 0) {
+    if (iq->usedb->nix > 0 || (iq->usedb->sc_to && iq->usedb->sc_to->nix > 0)) {
         bool reorder =
             osql_is_index_reorder_on(iq->osql_flags) && !is_event_from_sc(flags) &&
             rec_flags == 0 && iq->usedb->sc_from != iq->usedb &&
