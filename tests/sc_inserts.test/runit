@@ -27,7 +27,7 @@ function do_rebuild_track_pid
     while `kill -0 $track_pid 2>/dev/null` && [[ $scnt -lt $max_nusc ]]; do
 
         echo "Running rebuild iteration $scnt"
-        cdb2sql ${CDB2_OPTIONS} $loc_dbname default "rebuild $loc_tbl"
+        $CDB2SQL_EXE ${CDB2_OPTIONS} $loc_dbname default "rebuild $loc_tbl"
 
         if [[ $? != 0 ]]; then
             kill -9 $track_pid
@@ -60,7 +60,7 @@ function insert_records
         if [ -n "$is_sleep" ] ; then
             sleep $is_sleep
         fi
-    done | cdb2sql ${CDB2_OPTIONS} ${DBNAME} default &> insert.out || failexit "insert_records error"
+    done | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default &> insert.out || failexit "insert_records error"
     echo "Done inserting $loc_nrecs records."
 }
 
@@ -70,8 +70,8 @@ function run_test
 {
     typeset ipid=''
 
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists $tbl"
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table $tbl {
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists $tbl"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table $tbl {
 schema
 {
     int      a
@@ -87,7 +87,7 @@ schema
     insert_records $nrecs 0.01 &
     typeset ipid=$!
 
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "alter table $tbl { `cat $tbl.csc2 ` }"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "alter table $tbl { `cat $tbl.csc2 ` }"
     do_verify $tbl
 
     do_rebuild_track_pid ${DBNAME} $tbl $ipid
@@ -100,18 +100,18 @@ schema
 
 echo "running test in machine $(hostname):${PWD}"
 
-master=`cdb2sql -tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "PUT SCHEMACHANGE COMMITSLEEP 1"
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "PUT SCHEMACHANGE CONVERTSLEEP 1"
+master=`$CDB2SQL_EXE -tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $master "PUT SCHEMACHANGE COMMITSLEEP 1"
+$CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $master "PUT SCHEMACHANGE CONVERTSLEEP 1"
 
 max_iter=10
 t=0
 while [ $t -lt ${max_iter} ] ; do
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('gofast')"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('gofast')"
     run_test
     mv insert.out insert.out.$t
 
-    cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('goslow')"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('goslow')"
     run_test
     mv insert.out insert.out.$t
 

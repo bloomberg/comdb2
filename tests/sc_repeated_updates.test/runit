@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 # Grab my database name.
@@ -18,7 +19,7 @@ tbl=t2
 
 
 # Number of records I will add.
-nrecs=2000
+nrecs=0
 
 # Max number of schema changes
 max_nusc=1000
@@ -82,7 +83,7 @@ function update_same_record
     done | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default &> update1.out || failexit "update_same_record: failure to update, see update1.out"
 
     assertcnt $tbl $nrecs "update_same_record"
-    do_verify $tbl
+    do_verify $tbl "done with update_same_record"
     succ=`grep -c "rows updated=1" update1.out`
     if [[ $succ -ne $((nrep*nrecs)) ]] ; then
 	    failexit "update_same_record: all $((nrep*nrecs)) should have resulted in successful update instead of $succ"
@@ -132,7 +133,7 @@ function update_records
         let t=t+1
     done | $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default &> update2.out || failexit "update_records: failure to update, see oupdate2.out"
     assertcnt $tbl $nrecs "update_records"
-    do_verify $tbl
+    do_verify $tbl "done with update_records"
 
     succ=`grep -c "rows updated=1" update2.out`
     if [[ $succ -ne $((nrecs*nrepeat)) ]] ; then
@@ -165,24 +166,31 @@ function update_records_fail
     echo "update_records_fail: Done (update4)"
 }
 
+function prepare
+{
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "drop table if exists $tbl"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "create table $tbl { `cat ${tbl}_1.csc2` }"
 
+    echo "Insert $nrecs records"
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into $tbl(a,b,c,d,e,f) select value,'test1',x'1234',value*2, value, value from generate_series(1,$nrecs)"
+    assertcnt $tbl $nrecs "Prepare"
+    do_verify $tbl "After insert"
+}
 
 function run_test
 {
     typeset upid=''
     nrecs=$1
+    set -e
 
-    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "truncate $tbl"
-
-    echo "Insert $nrecs records"
-    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "insert into $tbl(a,b,c,d,e,f) select value,'test1',x'1234',value*2, value, value from generate_series(1,$nrecs)"
-    assertcnt $tbl $nrecs "run_test"
-    do_verify $tbl
-
+    prepare
 
     update_same_record &
     upid=$!
 
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "alter table $tbl { `cat ${tbl}_2.csc2` }"
+    do_verify $tbl "Added indices"
+
     if [[ $rebuild -eq 1 ]] ; then
         do_rebuild_track_pid ${DBNAME} $tbl $upid
     fi
@@ -190,9 +198,14 @@ function run_test
     checkfailexit
 
 
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "alter table $tbl { `cat ${tbl}_1.csc2` }"
+    do_verify $tbl "Back to no indices"
     update_records &
     upid=$!
 
+    $CDB2SQL_EXE ${CDB2_OPTIONS} ${DBNAME} default "alter table $tbl { `cat ${tbl}_2.csc2` }"
+    do_verify $tbl "Added indices"
+
     if [[ $rebuild -eq 1 ]] ; then
         do_rebuild_track_pid ${DBNAME} $tbl $upid
     fi
@@ -200,6 +213,7 @@ function run_test
     checkfailexit
 
 
+    # this relies on keys being there to fail
     update_same_record_fail &
     upid=$!
 
@@ -209,7 +223,7 @@ function run_test
     wait
     checkfailexit
 
-
+    # this relies on keys being there to fail
     update_records_fail &
     upid=$!
 
@@ -225,12 +239,14 @@ sendtocluster "PUT SCHEMACHANGE COMMITSLEEP 1"
 sendtocluster "PUT SCHEMACHANGE CONVERTSLEEP 1"
 master=`getmaster`
 
+$CDB2SQL_EXE -s ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('goslow')"
+
 for g in 100 200 400 ; do 
-	echo "run_test $g"
-    $CDB2SQL_EXE -s ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('setipu $tbl on')" &>/dev/null
-	run_test $g
-    $CDB2SQL_EXE -s ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('setipu $tbl off')" &>/dev/null
-	run_test $g
+    echo "run_test $g"
+    $CDB2SQL_EXE -s ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('setipu $tbl on')" || failexit "Error while turning ipu on"
+    run_test $g
+    $CDB2SQL_EXE -s ${CDB2_OPTIONS} ${DBNAME} --host $master "exec procedure sys.cmd.send('setipu $tbl off')" || failexit "Error while turning ipu off"
+    run_test $g
     let g=g+g
 done
 
