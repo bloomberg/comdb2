@@ -4,7 +4,7 @@
 
 bash -n "$0" | exit 1
 
-[ -z "${CLUSTER}" ] && { echo "skipping, it's a cluster test"; exit 0; }
+[ -z "${CLUSTER}" ] && { echo "Test only suitable for a clustered setup"; exit 0; }
 
 dbnm=$1
 
