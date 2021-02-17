@@ -12852,5 +12852,13 @@ void comdb2_dump_blocker(unsigned int lockerid)
 
 int comdb2_is_idx_uniqnulls(BtCursor *pCur)
 {
-    return (pCur->db->schema->flags & SCHEMA_UNIQNULLS) ? 1 : 0;
+    struct schema *s;
+
+    /* Safety */
+    if (pCur->sc->ixnum < 0) {
+        return 0;
+    }
+
+    s = pCur->db->ixschema[pCur->sc->ixnum];
+    return (s->flags & SCHEMA_UNIQNULLS) ? 1 : 0;
 }
