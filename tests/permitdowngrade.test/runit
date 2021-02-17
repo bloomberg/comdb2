@@ -1,40 +1,32 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
-selectpid=0
 
-. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/runit_common.sh
 
-[[ $debug == "1" ]] && set -x
-
-function failexit
-{
-    [[ "$selectpid" != 0 ]] && kill -9 $selectpid
-    exit -1
-}
 
 function setup
 {
     typeset func="setup"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE t1 (a INT)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "INSERT INTO t1 SELECT * FROM GENERATE_SERIES(1, 300)"
-    for n in ${CLUSTER} ; do 
-        $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $n "PUT TUNABLE debug_sleep_in_sql_tick = '1'"
-    done
+    sendtocluster "PUT TUNABLE debug_sleep_in_sql_tick = '1'"
 }
 
 function run_tests
 {
     set -x
-    master=$(get_master)
+    master=$(getmaster)
     echo "MASTER IS $master"
     newmaster=0
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "SELECT * FROM t1" &
     selectpid=$!
+    trap "kill -9 $selectpid" INT EXIT
+
     sleep 2
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "EXEC PROCEDURE sys.cmd.send('downgrade')"
     sleep 2
     for ((i=0;i<60;++i)); do
-        m=$(get_master)
+        m=$(getmaster)
         if [[ "$m" == "$master" ]] ; then
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "EXEC PROCEDURE sys.cmd.send('downgrade')"
         else
@@ -45,10 +37,10 @@ function run_tests
     done
 
     kill -9 $selectpid
-    selectpid=0
+    trap - INT EXIT
 
-    echo "OLD MASTER WAS $master NEW MASTER IS $(get_master)"
-    [[ "$newmaster" == "0" ]] && failexit "master never downgraded"
+    echo "OLD MASTER WAS $master NEW MASTER IS $(getmaster)"
+    [[ "$newmaster" == "0" && -n "$CLUSTER" ]] && failexit "master never downgraded"
 }
 
 # Eventually master is watchdogged - this "succeeds" but produces a core
