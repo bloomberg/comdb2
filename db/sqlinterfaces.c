@@ -3383,7 +3383,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                     return rc;
             }
 
-            if (rec->stmt)
+            if (rec->stmt && sqlite3_column_count(rec->stmt) == column_count)
                 stmt_set_cached_columns(rec->stmt, column_names, column_decltypes, column_count);
         }
 
