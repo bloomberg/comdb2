@@ -1190,8 +1190,8 @@ REGISTER_TUNABLE("use_node_priority",
                  "Sets node priority for the db. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_use_node_pri, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("use_nondedicated_network", NULL, TUNABLE_BOOLEAN | NOARG,
-                 &_non_dedicated_subnet, READONLY, NULL, NULL,
+REGISTER_TUNABLE("use_nondedicated_network", NULL, TUNABLE_BOOLEAN,
+                 &_non_dedicated_subnet, READONLY | NOARG, NULL, NULL,
                  net_add_nondedicated_subnet, NULL);
 /*
 REGISTER_TUNABLE(
