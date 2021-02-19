@@ -6467,6 +6467,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
       c[connid].host = clnt->origin;
       c[connid].state_int = clnt->state;
       c[connid].time_in_state_int = clnt->state_start_time;
+      c[connid].is_admin = clnt->admin;
       Pthread_mutex_lock(&clnt->state_lk);
       if (clnt->state == CONNECTION_RUNNING || clnt->state == CONNECTION_QUEUED) {
          char zFingerprint[FINGERPRINTSZ*2+1];
