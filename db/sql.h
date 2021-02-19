@@ -1111,6 +1111,7 @@ struct connection_info {
     char *state;
     char *sql;
     char *fingerprint;
+    int64_t is_admin;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
