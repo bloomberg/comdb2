@@ -4,26 +4,35 @@ bash -n "$0" | exit 1
 set -x
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
-# I'll cover schema-change comprehensively in the truncate_sc test
-#env
-dbname=$1
 export NRECS=10
+export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
+
+SLEEPAMOUNT=8
+dbname=$1
 NRUNS=100
 dgpid=0
-
-export COPYCOMDB2_EXE=${BUILDDIR}/db/copycomdb2
-export comdb2ar=${COMDB2AR_EXE}
 destdb=${TESTCASE}dest${TESTID}
-DEST_DBDIR=${DBDIR}/$destdb
+copy_using_comdb2_files=0
 
-downgradeonce()
+COPY_DBDIR=${DBDIR}/$destdb
+DEST_DBDIR=${COPY_DBDIR}/$dbname
+
+if [[ -z "$TEST_TIMEOUT" ]] ; then
+    export TEST_TIMEOUT=5m
+fi
+
+if [ "$TESTCASE" == "phys_rep_via_comdb2_files_generated" ]; then
+    copy_using_comdb2_files=1
+fi
+
+function downgradeonce()
 {
     local dbname=$1
     local mnode=`getmaster`
     cdb2sql ${CDB2_OPTIONS} --host $mnode $dbname "exec procedure sys.cmd.send('downgrade')"
 }
 
-downgrade()
+function downgrade()
 {
     local dbname=$1
     local SLEEPAMOUNT=${2:-4}
@@ -34,91 +43,101 @@ downgrade()
     done
 }
 
-
-if [[ -z "$TEST_TIMEOUT" ]] ; then 
-    export TEST_TIMEOUT=5m 
-fi
-
-mkdir -p $DEST_DBDIR
-if [[ -z "$CLUSTER" ]]; then
-    cl="-y @localhost"
-else
-    cl="-y @$(echo $CLUSTER | tr ' ' ',')"
-fi
-if [[ -n "$CLUSTER" ]]; then
-    if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
-        rmt=""
-    else
-        clarray=($CLUSTER)
-        rmt="${clarray[0]}:"
-    fi
-fi
-
-override_physrep_sp()
+function override_physrep_sp()
 {
     local mnode=`getmaster`
     # Override the register_replicant stored procedure
     ${CDB2SQL_EXE} $CDB2_OPTIONS $dbname --host $mnode "create procedure 'sys.physrep.register_replicant' version '1' { `cat ./register_replicant.lua`  }"
 }
-override_physrep_sp
 
-# use copycomdb2 to create a physical replicant
+function setup_replicant()
+{
+    if [ $copy_using_comdb2_files -eq 1 ]; then
+	mkdir -p $COPY_DBDIR
 
-${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+	# The data gets copied under $COPY_DIR/${DBNAME} which is stored in $DEST_DBDIR
+	local mnode=`getmaster`
+	${TESTSBUILDDIR}/copy_db_files -d ${DBNAME} -h @${mnode} -t $COPY_DBDIR
+	if [ $? -ne 0 ]; then
+	    failexit "copy_db_files failed"
+	fi
 
-if [ ! $? -eq 0 ]; then
-    failexit "copycomdb2 failed"
-fi
+	# Create a new lrl file for the replicant (ignoring the one copied from parent)
+	cat <<END >> ${DEST_DBDIR}/${destdb}.lrl
+name ${destdb}
+dir ${DEST_DBDIR}
+logmsg level debug
+replicate_from ${dbname} @${mnode}
+END
 
-df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
-echo "verbose_fills on" >> $DEST_DBDIR/${destdb}.lrl
+    else
+	mkdir -p $DEST_DBDIR
+	if [[ -z "$CLUSTER" ]]; then
+	    cl="-y @localhost"
+	else
+	    cl="-y @$(echo $CLUSTER | tr ' ' ',')"
+	fi
+	if [[ -n "$CLUSTER" ]]; then
+	    if [[ "$CLUSTER" =~ .*$myhost.* ]]; then
+		rmt=""
+	    else
+		clarray=($CLUSTER)
+		rmt="${clarray[0]}:"
+	    fi
+	fi
 
-if [ -n "$PMUXPORT" ] ; then
-    echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
-    echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
-fi
-
-replog=$TESTDIR/logs/$destdb.db
-
-if [[ -n "$repalive" ]]; then
-    # cd to dbdir so we get potential core where we expect it
-    (cd $DBDIR; $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
-else
-    (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
-fi
-
-out=
-retries=0
-while [[ "$out" != "1" ]]; do
-    out=$(${CDB2SQL_EXE} --tabs $destdb --host localhost 'select 1' 2>/dev/null)
-    sleep 1
-
-    let retries=retries+1
-
-    if [ $retries -eq 10 ]; then
-        failexit "Timeout waiting for local replicant to come up"
+	${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $destdb $cl $rmt${DBDIR}/${DBNAME}.lrl $DEST_DBDIR $DEST_DBDIR
+	if [ $? -ne 0 ]; then
+	    failexit "copycomdb2 failed"
+	fi
     fi
-done
 
-cleanup_abort() {
-    # if pkill is always available, use pkill -F fl.pid
+    df $DBDIR | awk '{print $1 }' | grep "tmpfs\|nfs" && echo "setattr directio 0" >> $DEST_DBDIR/${destdb}.lrl
+    echo "verbose_fills on" >> $DEST_DBDIR/${destdb}.lrl
+
+    if [ -n "$PMUXPORT" ] ; then
+        echo "portmux_port $PMUXPORT" >> $DEST_DBDIR/${destdb}.lrl
+        echo "portmux_bind_path $pmux_socket" >> $DEST_DBDIR/${destdb}.lrl
+    fi
+
+    replog=$TESTDIR/logs/$destdb.db
+
+    if [[ -n "$repalive" ]]; then
+        # cd to dbdir so we get potential core where we expect it
+        (cd $DBDIR; $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+    else
+        (cd $DBDIR; timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $destdb --lrl $DEST_DBDIR/${destdb}.lrl --pidfile $DEST_DBDIR/${destdb}.pid >$replog 2>&1) &
+    fi
+
+    out=
+    retries=0
+    while [[ "$out" != "1" ]]; do
+        out=$(${CDB2SQL_EXE} --tabs $destdb --host localhost 'select 1' 2>/dev/null)
+        sleep 1
+
+        let retries=retries+1
+
+        if [ $retries -eq 10 ]; then
+            failexit "Timeout waiting for local replicant to come up"
+        fi
+    done
+}
+
+function cleanup_abort()
+{
+    # If pkill is always available, use pkill -F fl.pid
     kill -6 $(cat $DEST_DBDIR/${destdb}.pid)
     [[ $dgpid != 0 ]] && kill -9 $dgpid
 }
 
-
-cleanup() {
+function cleanup()
+{
     kill -9 $(cat $DEST_DBDIR/${destdb}.pid)
     [[ $dgpid != 0 ]] && kill -9 $dgpid
 }
 
-SLEEPAMOUNT=8
-seq=0
-
-# We need to wait for lsn to reach same as on master
-# In the case of downgrade, txnlog will missmatch for a bit until
-# phys rep gets the logs from the new master
-wait_for_catchup() {
+function wait_for_catchup()
+{
     local start=$SECONDS
     local mnode=""
     local c_lsn=""
@@ -136,10 +155,6 @@ wait_for_catchup() {
         r_lsn=`$CDB2SQL_EXE --tabs $CDB2_OPTIONS $destdb local 'exec procedure sys.cmd.send("bdb cluster")' | grep "MASTER l" | cut -f3 -d":" | cut -f1 -d" "`
     done
 
-    # We could also use comdb2_transaction_logs table but more messy with committed lsn on physical replicant:
-    # TRANLOG_FLAGS_DURABLE (0x2) | TRANLOG_FLAGS_DESCENDING (0x4) => 6
-    # cmd="$CDB2SQL_EXE --tabs $CDB2_OPTIONS $destdb local 'select lsn from comdb2_transaction_logs(NULL, NULL, 6) limit 1' | cut -f2 -d':' | cut -f1 -d'}'"
-
     if [ "$r_lsn" -ne "$c_lsn" ] ; then
         $CDB2SQL_EXE --tabs $CDB2_OPTIONS $dbname --host $mnode 'select * from comdb2_transaction_logs(NULL, NULL, 4) limit 1' > cl.out
         $CDB2SQL_EXE --tabs $CDB2_OPTIONS $destdb local 'select * from comdb2_transaction_logs(NULL, NULL, 4) limit 1' > pr.out
@@ -152,52 +167,52 @@ wait_for_catchup() {
     fi
 }
 
-./generate_tests.sh
+function run_tests()
+{
+    # iterate over each test: for every .src.sql and .src.sh file there is a .query.sql file to check
+    for file in `ls *.src.sql *src.sh | sort -V`; do
+        # for each sql test execute it
+        if [ "${file: -3}" == "sql" ]; then
+            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -f $file ${CDB2_OPTIONS} $dbname default || failexit "Error from $file"
+            query_cmd=$(echo $file | sed 's/\.src\.sql//').query.sql
 
-# keep downgrading in the background, when we fix hasql with retries
-#   downgrade $dbname $SLEEPAMOUNT > downgrade.out 2>&1 &
-#dgpid=$!
-#echo "Downgrade Thread PID $dgpid"
-#trap cleanup EXIT
+        else
+            source ./"$file"
 
-# iterate over each test: for every .src.sql and .src.sh file there is a .query.sql file to check
-for file in `ls *.src.sql *src.sh | sort -V`; do
-    # for each sql test execute it
-    if [ "${file: -3}" == "sql" ]; then
-        ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -f $file ${CDB2_OPTIONS} $dbname default || failexit "Error from $file"
-        query_cmd=$(echo $file | sed 's/\.src\.sql//').query.sql
+            query_cmd=$(echo $file | sed 's/\.src\.sh//').query.sql
+        fi
 
-    else
-        source ./"$file"
+        if [ $((RANDOM % 3)) -eq 1 ] ; then
+            downgradeonce $dbname
+        fi
 
-        query_cmd=$(echo $file | sed 's/\.src\.sh//').query.sql
-    fi
+        is_ok=1
+        while [ $is_ok -ne 0 ] ; do
+            sleep 2
+            ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -v -f $query_cmd ${CDB2_OPTIONS} $dbname default 2> src.err > src.out 
+            is_ok=$?
+        done
 
-    if [ $((RANDOM % 3)) -eq 1 ] ; then
-        downgradeonce $dbname
-    fi
+        wait_for_catchup
 
-    is_ok=1
-    while [ $is_ok -ne 0 ] ; do
-        sleep 2
-        ${CDB2SQL_EXE} -s --tabs --maxretries=100000 -v -f $query_cmd ${CDB2_OPTIONS} $dbname default 2> src.err > src.out 
-        is_ok=$?
+        ${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2> dest.err > dest.out
+
+        if ! diff src.out dest.out ; then
+            echo "Replicant not updated [correctly] vimdiff $PWD/{src.out,dest.out}"
+            sleep 1
+            src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 ) 
+            dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 )
+            failexit "Failed on $file test."
+        fi
     done
-
-    wait_for_catchup
-
-    ${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2> dest.err > dest.out
-
-    if ! diff src.out dest.out ; then
-        echo "Replicant not updated [correctly] vimdiff $PWD/{src.out,dest.out}"
-        sleep 1
-        src=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd ${CDB2_OPTIONS} $dbname default 2>&1 ) 
-        dest=$(${CDB2SQL_EXE} -s --tabs -f $query_cmd $destdb --host localhost 2>&1 )
-        failexit "Failed on $file test."
-    fi
-done
+}
 
 trap - INT EXIT
+
+override_physrep_sp
+setup_replicant
+./generate_tests.sh
+run_tests
 cleanup
 
 exit 0

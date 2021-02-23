@@ -5,7 +5,7 @@
 #include "riia.h"
 #include "fdostream.h"
 #include "serialiseerror.h"
-#include "db_wrap.h"
+#include "ar_wrap.h"
 #include "util.h"
 
 #include <unistd.h>

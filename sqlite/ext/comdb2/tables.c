@@ -286,6 +286,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblTablePropertiesInit(db);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_files", &systblFilesModule, 0);
+  if (rc == SQLITE_OK)
     rc = systblTimepartInit(db);
   if (rc == SQLITE_OK)
     rc = systblCronInit(db);
@@ -339,7 +341,7 @@ int comdb2SystblInit(
     rc = systblMemstatsInit(db);
   if (rc == SQLITE_OK)
     rc = systblTransactionStateInit(db);
-  if (rc == SQLITE_OK)  
+  if (rc == SQLITE_OK)
     rc = systblStacks(db);
 #ifdef INCLUDE_DEBUG_ONLY_SYSTABLES
   if (rc == SQLITE_OK)
