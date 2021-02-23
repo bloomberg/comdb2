@@ -54,18 +54,10 @@ static void release_files(void *data, int npoints)
     free(files);
 }
 
-static int read_file(const char *path, void **buffer, size_t *sz)
+static int read_file(const char *path, void **buffer, size_t sz)
 {
-    struct stat st;
     int fd;
     int rc;
-
-    rc = stat(path, &st);
-    if (rc == -1) {
-        logmsg(LOGMSG_ERROR, "%s:%d can't stat %s (%s)\n", __func__, __LINE__,
-               path, strerror(errno));
-        return -1;
-    }
 
     fd = open(path, O_RDONLY);
     if (fd == -1) {
@@ -73,18 +65,17 @@ static int read_file(const char *path, void **buffer, size_t *sz)
         return -1;
     }
 
-    *buffer = malloc(st.st_size);
+    *buffer = malloc(sz);
     if (*buffer == NULL) {
         logmsg(LOGMSG_ERROR, "%s:%d out-of-memory\n", __func__, __LINE__);
         goto err;
     }
 
-    rc = read(fd, *buffer, st.st_size);
+    rc = read(fd, *buffer, sz);
     if (rc == -1) {
         logmsg(LOGMSG_ERROR, "%s:%d %s\n", __func__, __LINE__, strerror(errno));
         goto err;
     }
-    *sz = st.st_size;
     return 0;
 
 err:
@@ -106,14 +97,23 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
     }
 
     while (bb_readdir(d, &buf, &de) == 0 && de) {
+        struct stat st;
+
         if ((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0)) {
             continue;
         }
 
-        if (de->d_type == DT_DIR) {
-            char dir[4096];
-            snprintf(dir, sizeof(dir), "%s/%s", dirname, de->d_name);
-            rc = read_dir(dir, files, count);
+        char path[4096];
+        snprintf(path, sizeof(path), "%s/%s", dirname, de->d_name);
+        rc = stat(path, &st);
+        if (rc == -1) {
+            logmsg(LOGMSG_ERROR, "%s:%d couldn't stat %s (%s)\n", __func__,
+                   __LINE__, path, strerror(errno));
+            break;
+        }
+
+        if (S_ISDIR(st.st_mode)) {
+            rc = read_dir(path, files, count);
             if (rc != 0) {
                 break;
             }
@@ -136,12 +136,11 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
                 f->dir = strdup(dirname + strlen(thedb->basedir) + 1);
             }
 
-            char path[4096];
-            snprintf(path, sizeof(path), "%s/%s", dirname, f->file);
-            rc = read_file(path, &f->content.value, &f->content.size);
+            rc = read_file(path, &f->content.value, st.st_size);
             if (rc == -1) {
                 break;
             }
+            f->content.size = st.st_size;
         }
     }
 
