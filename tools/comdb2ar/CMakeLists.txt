@@ -1,8 +1,6 @@
 add_executable(comdb2ar
   appsock.cpp
-  chksum.cpp
   comdb2ar.cpp
-  db_wrap.cpp
   deserialise.cpp
   error.cpp
   fdostream.cpp
@@ -23,17 +21,21 @@ add_executable(comdb2ar
   ${PROJECT_SOURCE_DIR}/util/ssl_glue.c
 )
 include_directories(
-  ${PROJECT_SOURCE_DIR}/util
+  ${PROJECT_SOURCE_DIR}/archive
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/crc32c
   ${PROJECT_SOURCE_DIR}/sockpool
+  ${PROJECT_SOURCE_DIR}/util
   ${OPENSSL_INCLUDE_DIR}
 )
 target_link_libraries(comdb2ar
   ${OPENSSL_LIBRARIES}
   ${ZLIB_LIBRARIES}
   ${CMAKE_DL_LIBS}
+  cdb2archive
+  crc32c
 )
+
 if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()

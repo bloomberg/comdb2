@@ -1,6 +1,6 @@
 #include "comdb2ar.h"
 
-#include "db_wrap.h"
+#include "ar_wrap.h"
 #include "error.h"
 #include "file_info.h"
 #include "logholder.h"
@@ -12,6 +12,7 @@
 #include "increment.h"
 #include "util.h"
 #include "ssl_support.h"
+#include "cdb2_constants.h"
 
 #include <cassert>
 #include <cstring>
@@ -227,7 +228,6 @@ reopen:
 #endif
     uint8_t *pagebuf = NULL;
     off_t bytesleft = st.st_size;
-    unsigned long long pageno = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
         if(posix_memalign((void**) &pagebuf, 512, bufsize))
@@ -278,12 +278,11 @@ reopen:
             ssize_t n = 0;
 
             while (n < bytesread && retry) {
-                bool verify_bool = false;
                 PAGE * pagep = (PAGE *) (pagebuf + n);
                 uint32_t verify_cksum;
-                verify_checksum(pagebuf + n, pagesize, file.get_crypto(), file.get_swapped(), &verify_bool, &verify_cksum);
 
-                if(verify_bool){
+                if ((verify_checksum(pagebuf + n, pagesize, file.get_crypto(),
+                                     file.get_swapped(), &verify_cksum)) == 1) {
                     // checksum verified
                     n += pagesize;
                     retry = 5;
@@ -1095,14 +1094,15 @@ void serialise_database(
                 ++it) {
             const std::string& filename(*it);
 
-            bool is_data_file = false;
-            bool is_queue_file = false;
-            bool is_queuedb_file = false;
-            std::string table_name;
+            uint8_t is_data_file = 0;
+            uint8_t is_queue_file = 0;
+            uint8_t is_queuedb_file = 0;
+            char *table_name = (char *)alloca(MAXTABLELEN);
 
             // First see if this file relates to any of our tables or queues
-            if(recognize_data_file(filename,
-                        is_data_file, is_queue_file, is_queuedb_file, table_name)) {
+            if(recognize_data_file(filename.c_str(), &is_data_file,
+                                   &is_queue_file, &is_queuedb_file,
+                                   &table_name)) {
                 if(is_data_file &&
                         table_names.find(table_name) == table_names.end() && filename != templ_static_table_meta) {
                     continue;
@@ -1125,12 +1125,23 @@ void serialise_database(
             makeabs(abspath, dbdir, filename);
 
             try {
-                DB_Wrap db(abspath);
-                size_t pagesize = db.get_pagesize();
-                bool checksums = db.get_checksums();
-                bool crypto = db.get_crypto();
-                bool sparse = db.get_sparse();
-                bool swapped = db.get_swapped();
+                dbfile_info file = {0};
+                (void) dbfile_init(&file, abspath.c_str());
+
+                uint32_t pagesize = dbfile_pagesize(&file);
+                bool checksums = (dbfile_is_checksummed(&file)) ? true : false;
+                bool crypto = (dbfile_is_encrypted(&file)) ? true : false;
+                bool swapped = (dbfile_is_swapped(&file)) ? true : false;
+
+                bool sparse = false;
+                int is_sparse = dbfile_is_sparse(&file);
+                if (is_sparse == -1) {
+                    std::ostringstream ss;
+                    ss << "failed to stat file " << filename;
+                    throw Error(ss);
+                } else {
+                    sparse = (is_sparse) ? true : false;
+                }
 
                 data_files.push_back(FileInfo(FileInfo::BERKDB_FILE,
                       abspath, dbdir, pagesize, checksums, crypto, sparse, do_direct_io, swapped));
@@ -1514,8 +1525,6 @@ void serialise_database(
     }
 }
 
-extern uint32_t myflip(uint32_t in);
-
 void write_incremental_file (
         const std::string &dbdir, 
         const std::string &abspath, 
@@ -1524,9 +1533,19 @@ void write_incremental_file (
 ) 
 // Write checksum/LSN information for a database file
 {
-    DB_Wrap db(abspath);
+    dbfile_info *file = dbfile_init(NULL, abspath.c_str());
+    if (!file) {
+        std::ostringstream ss;
+        ss << "Failed to open/read " << abspath << " " << strerror(errno) << std::endl;
+        throw SerialiseError(abspath, ss.str());
+    }
+
+    uint32_t pagesize = dbfile_pagesize(file);
+    bool is_encrypted = (dbfile_is_encrypted(file)) ? true : false;
+    bool is_swapped = (dbfile_is_swapped(file)) ? true : false;
+    dbfile_deinit(file);
+
     int flags = O_RDONLY; 
-    size_t pagesize;
     int fd;
 
     RIIA_fd fd_guard(fd);
@@ -1539,7 +1558,6 @@ void write_incremental_file (
         throw SerialiseError(abspath, ss.str());
     }
 
-    pagesize = db.get_pagesize();
     if (pagesize == 0)
         pagesize = 4096;
     size_t bufsize = pagesize;
@@ -1568,7 +1586,6 @@ void write_incremental_file (
 
     uint8_t *pagebuf = NULL;
     off_t bytesleft = uptosize;
-    unsigned long long pageno = 0;
     off_t offset = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
@@ -1592,11 +1609,12 @@ void write_incremental_file (
 
         for (off_t n = 0; n < nbytes / pagesize; n++) {
             PAGE *pagep = (PAGE *) (pagebuf + (pagesize * n));
-            bool verify_bool;
             uint32_t verify_cksum;
 
-            verify_checksum(pagebuf + (pagesize * n), pagesize, db.get_crypto(), db.get_swapped(), &verify_bool, &verify_cksum);
-            if (db.get_swapped()) {
+            // TODO (NC): check return
+            (void) verify_checksum(pagebuf + (pagesize * n), pagesize,
+                                   is_encrypted, is_swapped, &verify_cksum);
+            if (is_swapped) {
                 verify_cksum = myflip(verify_cksum);
                 pagep->lsn.file = myflip(pagep->lsn.file);
                 pagep->lsn.offset = myflip(pagep->lsn.offset);
@@ -1686,8 +1704,10 @@ void create_partials(
     serialise_string("fingerprint.sha", sha);
 
     for (std::list<std::string>::const_iterator it  = dbdir_files.begin();  it != dbdir_files.end(); ++it) {
-        bool is_data_file, is_queue_file, is_queuedb_file;
-        std::string table;
+        uint8_t is_data_file = 0;
+        uint8_t is_queue_file = 0;
+        uint8_t is_queuedb_file = 0;
+        char *table_name = (char *)alloca(MAXTABLELEN);
 
         std::ostringstream ss;
         ss << dbdir << "/" << *it;
@@ -1705,7 +1725,8 @@ void create_partials(
             continue;
         }
 
-        if (recognize_data_file(*it, is_data_file, is_queue_file, is_queuedb_file, table) || 
+        if (recognize_data_file((*it).c_str(), &is_data_file, &is_queue_file,
+                                &is_queuedb_file, &table_name) ||
                 *it == templ_fstblk || *it == templ_llmeta || *it == templ_metadata || 
                 *it == templ_blkseq_dta || *it == templ_blkseq_freerec || *it == templ_blkseq_ix0) {
             std::ostringstream ss;

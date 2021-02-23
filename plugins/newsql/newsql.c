@@ -620,6 +620,17 @@ static int newsql_send_postponed_row(struct sqlclntstate *clnt)
 #error "Missing BYTE_ORDER"
 #endif
 
+int endianness_mismatch(struct sqlclntstate *clnt) {
+    struct newsql_appdata *appdata = clnt->appdata;
+#if BYTE_ORDER == BIG_ENDIAN
+    if (appdata->sqlquery->little_endian)
+#elif BYTE_ORDER == LITTLE_ENDIAN
+    if (!appdata->sqlquery->little_endian)
+#endif
+        return 1;
+    return 0;
+}
+
 static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                       int postpone)
 {
@@ -631,13 +642,8 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     struct newsql_appdata *appdata = clnt->appdata;
     update_col_info(&appdata->col_info, ncols);
     assert(ncols == appdata->col_info.count);
-    int flip = 0;
-#if BYTE_ORDER == BIG_ENDIAN
-    if (appdata->sqlquery->little_endian)
-#elif BYTE_ORDER == LITTLE_ENDIAN
-    if (!appdata->sqlquery->little_endian)
-#endif
-        flip = 1;
+
+    int flip = endianness_mismatch(clnt);
 
     /* nested column values */
     CDB2SQLRESPONSE__Column cols[ncols];

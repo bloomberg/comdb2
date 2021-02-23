@@ -17,6 +17,7 @@ add_library(sqlite
   ext/comdb2/constraints.c
   ext/comdb2/crons.c
   ext/comdb2/ezsystables.c
+  ext/comdb2/files.c
   ext/comdb2/fingerprints.c
   ext/comdb2/functions.c
   ext/comdb2/indexuse.c
@@ -202,6 +203,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/expert
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/util
+  ${PROJECT_SOURCE_DIR}/archive
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
@@ -228,7 +230,10 @@ include_directories(
   ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_dependencies(sqlite mem proto bdb)
+
 if (COMDB2_BBCMAKE)
-  target_link_libraries(sqlite PUBLIC protobuf-c uuid)
+  target_link_libraries(sqlite PRIVATE cdb2archive protobuf-c uuid)
   configure_bb_target(sqlite V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+else()
+  target_link_libraries(sqlite PRIVATE cdb2archive)
 endif()
