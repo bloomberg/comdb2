@@ -1365,7 +1365,6 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
     } else if (tokcmp(tok, ltok, "replicate_wait") == 0) {
         tok = segtok(line, len, &st, &ltok);
 
-        /* need to replicate a database */
         if (ltok == 0) {
             logmsg(LOGMSG_ERROR,
                    "Must specify # of seconds to wait for timestamp\n");
@@ -1602,4 +1601,74 @@ int read_lrl_files(struct dbenv *dbenv, const char *lrlname)
     }
 
     return 0;
+}
+
+int pre_process_physrep_options(const char *lrlname)
+{
+    FILE *f;
+    char line[512];
+    char *dbname = NULL;
+    char *type = NULL;
+    char *datadir = NULL;
+    char *tok;
+    int st = 0;
+    int ltok;
+    int llen;
+    int rc = 0;
+
+    f = fopen(lrlname, "r");
+    if (f == 0) {
+        return -1;
+    }
+
+    while (fgets(line, sizeof(line), f)) {
+        llen = strlen(line);
+        st = 0;
+        ltok = 0;
+
+        tok = segtok(line, llen, &st, &ltok);
+        if (ltok == 0 || tok[0] == '#') {
+            continue;
+        }
+
+#if 0
+        /* if this is an "if" statement that evaluates to false, skip */
+        if (!lrl_if(&tok, line, llen, &st, &ltok)) {
+            continue;
+        }
+#endif
+        if (tokcmp(tok, ltok, "replicate_from") == 0) {
+            /* dbname */
+            tok = segtok(line, llen, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_FATAL,
+                       "Must specify a database to replicate from\n");
+                exit(1);
+            }
+            dbname = tokdup(tok, ltok);
+
+            tok = segtok(line, llen, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_FATAL, "Must specify a type\n");
+                exit(1);
+            }
+            type = tokdup(tok, ltok);
+        } else if (tokcmp(tok, ltok, "dir") == 0) {
+            tok = segtok(line, llen, &st, &ltok);
+            if (ltok == 0) {
+                logmsg(LOGMSG_FATAL, "Must specify the data irectory\n");
+                exit(1);
+            }
+            datadir = tokdup(tok, ltok);
+        }
+    }
+
+    if (dbname && type && datadir) {
+        int copy_datadir(const char *dbname, const char *type,
+                         const char *datadir);
+        rc = copy_datadir(dbname, type, datadir);
+    }
+
+    fclose(f);
+    return rc;
 }

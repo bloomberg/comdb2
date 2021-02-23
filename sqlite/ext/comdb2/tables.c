@@ -321,6 +321,8 @@ int comdb2SystblInit(
     rc = systblFdbInfoInit(db);
   if (rc == SQLITE_OK)
     rc = sqlite3_carray_init(db, 0, 0);
+  if (rc == SQLITE_OK)
+    rc = systblFilesInit(db);
 #endif
   return rc;
 }

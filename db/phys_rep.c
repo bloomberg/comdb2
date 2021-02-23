@@ -657,3 +657,114 @@ static void delete_connect(DB_Connection *cnct)
     cnct->hostname = cnct->dbname = NULL;
     free(cnct);
 }
+
+#ifndef _XOPEN_SOURCE
+// Required for nftw()
+#define _XOPEN_SOURCE 500
+#endif
+
+#include <ftw.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <errno.h>
+#include <string.h>
+#include <cdb2api.h>
+
+static char *argv0 = NULL;
+
+char *dbname;
+char *tmpdir;
+
+void usage(void)
+{
+    fprintf(stderr, "Usage: %s -d <dbname> -t <tmpdir>\n", argv0);
+    exit(1);
+}
+
+static char *datadir;
+static int remove_file_cb(const char *fpath, const struct stat *sb,
+                          int typeflag, struct FTW *ftwbuf)
+{
+    if (strcmp(fpath, datadir) != 0) {
+        logmsg(LOGMSG_USER, "%s:%d removing %s\n", __func__, __LINE__, fpath);
+        return remove(fpath);
+    }
+    return 0;
+}
+
+static int cleanup_datadir(const char *dir)
+{
+    datadir = (char *)dir;
+    return nftw(dir, remove_file_cb, 10, FTW_PHYS | FTW_DEPTH | FTW_MOUNT);
+}
+
+int copy_datadir(const char *dbname, const char *type, const char *datadir)
+{
+    cdb2_hndl_tp *cdb2 = NULL;
+    int rc;
+
+    rc = cleanup_datadir(datadir);
+    if (rc != 0) {
+        logmsg(LOGMSG_USER, "%s:%d failed cleanup data directory (rc: %d)\n",
+               __func__, __LINE__, rc);
+        exit(1);
+    }
+
+    rc = cdb2_open(&cdb2, dbname, type, 0);
+    if (rc != 0) {
+        logmsg(LOGMSG_USER, "%s:%d failed to open connection (rc: %d)\n",
+               __func__, __LINE__, rc);
+        exit(1);
+    }
+
+    rc = cdb2_run_statement(cdb2, "select * from comdb2_files");
+    if (rc != 0) {
+        logmsg(LOGMSG_USER, "%s:%d failed to execute command (rc: %d)\n",
+               __func__, __LINE__, rc);
+        exit(1);
+    }
+
+    while ((rc = cdb2_next_record(cdb2) == CDB2_OK)) {
+        char *file = (char *)cdb2_column_value(cdb2, 0);
+        char *dir = (char *)cdb2_column_value(cdb2, 1);
+        void *content = cdb2_column_value(cdb2, 2);
+        int content_len = cdb2_column_size(cdb2, 2);
+
+        char path[4096];
+
+        if (strlen(dir) > 0) {
+            snprintf(path, sizeof(path), "%s/%s", datadir, dir);
+            /* Create directory if it does not exist */
+            mkdir(path, 0755);
+            snprintf(path, sizeof(path), "%s/%s/%s", datadir, dir, file);
+        } else {
+            snprintf(path, sizeof(path), "%s/%s", datadir, file);
+        }
+
+        int fd = open(path, O_WRONLY | O_CREAT);
+        if (fd == -1) {
+            logmsg(LOGMSG_USER, "%s:%d failed to open file %s (errno: %d)\n",
+                   __func__, __LINE__, path, errno);
+            exit(1);
+        }
+
+        rc = write(fd, content, content_len);
+        if (rc == -1) {
+            logmsg(LOGMSG_USER, "%s:%d failed to write to file %s (err: %s)\n",
+                   __func__, __LINE__, path, strerror(errno));
+            exit(1);
+        }
+        fchmod(fd, 0755);
+        close(fd);
+
+        logmsg(LOGMSG_USER, "%s:%d %s created successfully\n", __func__,
+               __LINE__, path);
+    }
+
+    cdb2_close(cdb2);
+    return 0;
+}

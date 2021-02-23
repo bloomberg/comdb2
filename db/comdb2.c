@@ -3827,6 +3827,16 @@ static int init(int argc, char **argv)
         }
     }
 
+    if (!gbl_create_mode) {
+        int pre_process_physrep_options(const char *lrlname);
+        rc = pre_process_physrep_options(lrlname);
+        if (rc != 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to prepare physical replicant\n",
+                   __func__, __LINE__);
+            exit(1);
+        }
+    }
+
     init_file_locations(lrlname);
 
     if (gbl_create_mode && lrlname == NULL) {
