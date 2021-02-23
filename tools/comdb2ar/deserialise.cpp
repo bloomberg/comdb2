@@ -9,6 +9,8 @@
 #include "riia.h"
 #include "increment.h"
 #include "util.h"
+#include "ar_wrap.h"
+#include "cdb2_constants.h"
 
 #include <cstdlib>
 #include <map>
@@ -586,13 +588,14 @@ void deserialise_database(
         // do that yet. This way the onus is on the serialising side to get
         // the list of files right.
         if(!is_text && filename.find_first_of('/') == std::string::npos) {
-            bool is_data_file = false;
-            bool is_queue_file = false;
-            bool is_queuedb_file = false;
-            std::string table_name;
+            uint8_t is_data_file = 0;
+            uint8_t is_queue_file = 0;
+            uint8_t is_queuedb_file = 0;
+            char *table_name = (char *)alloca(MAXTABLELEN);
 
-            if(recognize_data_file(filename, is_data_file,
-                        is_queue_file, is_queuedb_file, table_name)) {
+            if(recognize_data_file(filename.c_str(), &is_data_file,
+                                   &is_queue_file, &is_queuedb_file,
+                                   &table_name)) {
                 if(table_set.insert(table_name).second) {
                     std::clog << "Discovered table " << table_name
                         << " from data file " << filename << std::endl;

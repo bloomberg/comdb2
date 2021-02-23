@@ -167,6 +167,29 @@ __checkpoint_verify(DB_ENV *dbenv)
 	return 0;
 }
 
+void swap(uint8_t *b1, uint8_t *b2) {
+    uint8_t tmp;
+    tmp = *b1;
+    *b1 = *b2;
+    *b2 = tmp;
+}
+
+void berk_fix_checkpoint_endianness(u_int8_t *buffer) {
+    uint8_t *lsn = buffer + offsetof(struct __db_checkpoint, lsn);
+
+    uint8_t *lsn_file = lsn;
+    swap(lsn_file, lsn_file+3);
+    swap(lsn_file+1, lsn_file+2);
+
+    uint8_t *lsn_offset = lsn_file + sizeof(u_int32_t);
+    swap(lsn_offset, lsn_offset+3);
+    swap(lsn_offset+1, lsn_offset+2);
+
+    __db_chksum_no_crypto(lsn,
+                          sizeof(struct __db_checkpoint) - offsetof(struct __db_checkpoint, lsn),
+                          buffer);
+}
+
 int
 __checkpoint_save(DB_ENV *dbenv, DB_LSN *lsn, int in_recovery)
 {

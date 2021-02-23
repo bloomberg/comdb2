@@ -232,6 +232,7 @@ target_link_libraries(comdb2 PRIVATE
   sqlite
   util
   tz
+  ${LibArchive_LIBRARIES}
   ${LZ4_LIBRARY}
   ${RDKAFKA_LIBRARY}
   ${OPENSSL_LIBRARIES}
