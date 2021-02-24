@@ -4356,6 +4356,7 @@ u32 sqlite3VdbeSerialGet(
 
       pMem->flags = MEM_Datetime;
       pMem->tz = NULL;  /* make sure it's not garbage */
+      pMem->z = NULL; // make sure this ain't garbage either 
       return sizeof(dttz_t);
     }
     case SQLITE_MAX_U32: {  /* datetime blob */
