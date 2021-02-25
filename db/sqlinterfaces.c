@@ -6003,7 +6003,7 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
         *errstr = sqlite3_errmsg(sqldb);
         break;
 
-    case SQLITE_TOOBIG:
+    case SQLITE_TOOBIG: /* We interpret SQLITE_TOOBIG differently from SQLite. */
         if (clnt->sqlite_errstr) {
             *errstr = clnt->sqlite_errstr;
             clnt->saved_errstr = 0;
@@ -6021,14 +6021,9 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
 
     case SQLITE_ERROR:
         /* check for convertion failure, stored in clnt->fail_reason */
-        if (clnt->fail_reason.reason != CONVERT_OK) {
+        if (clnt->fail_reason.reason != CONVERT_OK)
             rc = ERR_CONVERT_DTA;
-        }
         *errstr = sqlite3_errmsg(sqldb);
-        break;
-
-    case SQLITE_LIMIT:
-        *errstr = "Query exceeded set limits";
         break;
 
     case SQLITE_ACCESS:
@@ -6043,39 +6038,28 @@ int sql_check_errors(struct sqlclntstate *clnt, sqlite3 *sqldb,
 
     case SQLITE_CONV_ERROR:
         if (!*errstr)
-            *errstr = "type conversion failure";
-        break;
-
-    case SQLITE_TRANTOOCOMPLEX:
-        *errstr = "Transaction rollback too large";
-        break;
-
-    case SQLITE_TRAN_CANCELLED:
-        *errstr = "Unable to maintain snapshot, too many resources blocked";
-        break;
-
-    case SQLITE_TRAN_NOLOG:
-        *errstr = "Unable to maintain snapshot, too many log files";
-        break;
-
-    case SQLITE_TRAN_NOUNDO:
-        *errstr = "Database changed due to sc or fastinit; snapshot failure";
-        break;
-
-    case SQLITE_CLIENT_CHANGENODE:
-        *errstr = "Client api should run query against a different node";
+            *errstr = sqlite3_errmsg(sqldb);
         break;
 
     case 147: // 147 = 0 - SQLHERR_MASTER_TIMEOUT
-        *errstr = "Client api should run query against a different node";
         rc = SQLITE_CLIENT_CHANGENODE;
+        *errstr = sqlite3_errstr(rc);
         break;
 
     case SQLITE_SCHEMA_REMOTE:
         rc = SQLITE_OK; /* this is processed based on clnt->osql.xerr */
         break;
 
+    case SQLITE_TRANTOOCOMPLEX:
+    case SQLITE_TRAN_CANCELLED:
+    case SQLITE_TRAN_NOLOG:
+    case SQLITE_TRAN_NOUNDO:
+    case SQLITE_CLIENT_CHANGENODE:
     case SQLITE_COMDB2SCHEMA:
+    case SQLITE_TIMEDOUT:
+    case SQLITE_COST_TOO_HIGH:
+    case SQLITE_NO_TEMPTABLES:
+    case SQLITE_NO_TABLESCANS:
         *errstr = sqlite3_errmsg(sqldb);
         break;
 
@@ -6217,7 +6201,10 @@ int sqlserver2sqlclient_error(int rc)
     case SQLITE_DEADLOCK:
     case SQLITE_BUSY:
         return CDB2ERR_DEADLOCK;
-    case SQLITE_LIMIT:
+    case SQLITE_TIMEDOUT:
+    case SQLITE_COST_TOO_HIGH:
+    case SQLITE_NO_TEMPTABLES:
+    case SQLITE_NO_TABLESCANS:
         return SQLHERR_LIMIT;
     case SQLITE_TRANTOOCOMPLEX:
         return SQLHERR_ROLLBACKTOOLARGE;

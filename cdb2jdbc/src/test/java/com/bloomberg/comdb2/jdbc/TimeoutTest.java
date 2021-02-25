@@ -19,7 +19,7 @@ public class TimeoutTest {
         try {
             stmt.executeQuery("SELECT SLEEP(5)");
         } catch (SQLException e) {
-            Assert.assertTrue("Should exceed limit", e.getMessage().contains("Query exceeded set limits"));
+            Assert.assertTrue("Should exceed limit", e.getMessage().contains("query timed out"));
         }
         stmt.close();
         conn.close();
@@ -53,7 +53,7 @@ public class TimeoutTest {
         try {
             stmt.executeQuery("SELECT SLEEP(5)");
         } catch (SQLException e) {
-            Assert.assertTrue("Should exceed limit", e.getMessage().contains("Query exceeded set limits"));
+            Assert.assertTrue("Should exceed limit", e.getMessage().contains("query timed out"));
         }
         stmt.close();
         conn.close();
