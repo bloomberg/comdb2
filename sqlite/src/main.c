@@ -1526,10 +1526,30 @@ const char *sqlite3ErrStr(int rc){
     /* SQLITE_NOTADB      */ "file is not a database",
     /* SQLITE_NOTICE      */ "notification message",
     /* SQLITE_WARNING     */ "warning message",
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* SQLITE_DEADLOCK    */ "transaction has been aborted due to deadlock",
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   };
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  static const char* const aComdb2Msg[] = {
+    /* SQLITE_DEADLOCK          */ "transaction aborted due to deadlock",
+    /* SQLITE_ACCESS            */ "access denied",
+    /* SQLITE_LIMIT_DEPRECATED  */ 0,
+    /* 203, unused              */ 0,
+    /* SQLITE_TRANTOOCOMPLEX    */ "Transaction rollback too large",
+    /* SQLITE_TRAN_CANCELLED    */ "Unable to maintain snapshot, too many resources blocked",
+    /* SQLITE_TRAN_NOLOG        */ "Unable to maintain snapshot, too many log files",
+    /* SQLITE_TRAN_NOUNDO       */ "Database changed due to sc or fastinit; snapshot failure",
+    /* SQLITE_CONV_ERROR        */ "type conversion failure",
+    /* SQLITE_COMDB2SCHEMA      */ "table schema changed",
+    /* SQLITE_CLIENT_CHANGENODE */ "Client api should run query against a different node",
+    /* SQLITE_DDL_MISUSE        */ "overlapping tables detected in transactional DDL",
+    /* SQLITE_TIMEDOUT          */ "query timed out",
+    /* SQLITE_COST_TOO_HIGH     */ "query cost too high",
+    /* SQLITE_NO_TEMPTABLES     */ "temporary tables disallowed",
+    /* SQLITE_NO_TABLESCANS     */ "table scans disallowed",
+  };
+  static const int comdb2MinErr = SQLITE_DEADLOCK;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
   const char *zErr = "unknown error";
   switch( rc ){
     case SQLITE_ABORT_ROLLBACK: {
@@ -1549,6 +1569,14 @@ const char *sqlite3ErrStr(int rc){
       if( ALWAYS(rc>=0) && rc<ArraySize(aMsg) && aMsg[rc]!=0 ){
         zErr = aMsg[rc];
       }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      else if( rc>=comdb2MinErr ){
+        rc -= comdb2MinErr;
+        if( rc<ArraySize(aComdb2Msg) && aComdb2Msg[rc]!=0 ){
+          zErr = aComdb2Msg[rc];
+        }
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       break;
     }
   }

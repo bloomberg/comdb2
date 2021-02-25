@@ -465,7 +465,7 @@ SQLITE_API int sqlite3_exec(
 #define SQLITE_EARLYSTOP_DOHSQL   52 /* see dohsql */
 #define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
 #define SQLITE_ACCESS            201 /* failed permissions */
-#define SQLITE_LIMIT             202 /* query hit configured max cost */
+#define SQLITE_LIMIT_DEPRECATED  202 /* SQLITE_LIMIT -- no longer used */
 #define SQLITE_TRANTOOCOMPLEX    204 /* I refuse to use 203 for this */
 #define SQLITE_TRAN_CANCELLED    205 /* resource had to be freed, transaction
                                       * was aborted */
@@ -482,6 +482,10 @@ SQLITE_API int sqlite3_exec(
                                       * another node */
 #define SQLITE_DDL_MISUSE        211 /* overlapping tables detected in
                                       * transactional DDLs */
+#define SQLITE_TIMEDOUT          212 /* query timed out */
+#define SQLITE_COST_TOO_HIGH     213 /* query cost too high */
+#define SQLITE_NO_TEMPTABLES     214 /* temporary tables disallowed */
+#define SQLITE_NO_TABLESCANS     215 /* table scans disallowed */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 /* end-of-error-codes */
 
