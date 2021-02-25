@@ -2405,6 +2405,7 @@ static int get_matching_genid(BtCursor *cur, int rrn, unsigned long long *genid)
 static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 {
     struct sql_thread *thd = pCur->thd;
+    struct sqlclntstate *clnt;
     int bdberr = 0;
     int done = 0;
     int rc = SQLITE_OK;
@@ -2420,12 +2421,14 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return rc;
     }
 
-    /* If no tablescans are allowed, return an error */
-    if (!thd->clnt->limits.tablescans_ok) {
-        return SQLITE_LIMIT;
-    }
+    clnt = thd->clnt;
 
-    if (thd)
+    /* If no tablescans are allowed (sqlite_stats* tables are exempt), return an error */
+    if (!clnt->limits.tablescans_ok && pCur->db && !is_sqlite_stat(pCur->db->tablename))
+        return SQLITE_LIMIT;
+
+    /* Set had_tablescans flag if we're asked to warn of tablescans. */
+    if (clnt->limits.tablescans_warn)
         thd->had_tablescans = 1;
 
     outrc = SQLITE_OK;
@@ -2448,16 +2451,10 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return SQLITE_TRAN_NOLOG;
     }
     if (bdberr == BDBERR_DEADLOCK) {
-        logmsg(LOGMSG_ERROR, "%s: too much contention, retried %d times [%llx]\n",
-                __func__, gbl_move_deadlk_max_attempt,
-                (thd->clnt && thd->clnt->osql.rqid)
-                    ? thd->clnt->osql.rqid
-                    : 0);
-        ctrace("%s: too much contention, retried %d times [%llx]\n", __func__,
-               gbl_move_deadlk_max_attempt,
-               (thd->clnt && thd->clnt->osql.rqid)
-                   ? thd->clnt->osql.rqid
-                   : 0);
+        logmsg(LOGMSG_ERROR, "%s: too much contention, retried %d times [%llx]\n", __func__,
+               gbl_move_deadlk_max_attempt, clnt->osql.rqid);
+        ctrace("%s: too much contention, retried %d times [%llx]\n", __func__, gbl_move_deadlk_max_attempt,
+               clnt->osql.rqid);
         return SQLITE_DEADLOCK;
     }
     if (rc == IX_FND || rc == IX_NOTFND) {
@@ -2512,7 +2509,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 
         if (!gbl_selectv_rangechk) {
             if ((rc == IX_FND || rc == IX_FNDMORE) && pCur->is_recording &&
-                thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+                clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                 rc = osql_record_genid(pCur, thd, pCur->genid);
                 if (rc) {
                     logmsg(LOGMSG_ERROR, "%s: failed to record genid %llx (%llu)\n",
