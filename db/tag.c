@@ -3858,9 +3858,6 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
 int stag_set_key_null(const char *table, const char *tag, const char *inkey,
                       const int keylen, char *outkey) {
     struct schema *schema;
-//    struct convert_failure *fail_reason = (struct convert_failure *)malloc(sizeof(struct convert_failure));
-//    int flags = 0;
-
     schema = find_tag_schema(table, tag);
     if(schema == NULL)
         return -1;
@@ -3868,22 +3865,13 @@ int stag_set_key_null(const char *table, const char *tag, const char *inkey,
     memcpy(outkey, inkey, keylen);
     for(int fieldno = 0; fieldno < schema->nmembers; fieldno++) {
         struct field *field = &schema->member[fieldno];
-
         if (field->flags & NO_NULL) {
             return ERR_NULL_CONSTRAINT;
         }
- //       int rc = stag_to_stag_field(inbuf, outbuf, flags, fail_reason, NULL /** inblobs */,
- //                                   NULL /*outblobs*/, 0, NULL /*tzname*/, fieldno,
- //                                   fieldno, schema, schema);
-
         int rc = NULL_to_SERVER(outkey + field->offset, field->len, field->type);
-
         if (rc)
-//        {free(fail_reason);
           return rc;
-//        }
     }
-//    free(fail_reason);
     return 0;
 }
 
