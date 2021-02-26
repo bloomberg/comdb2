@@ -900,7 +900,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             int err = 0, idx = 0;
             unsigned long long newgenid;
             if (iq->debug) {
-                reqprintf(iq, "VERBKYCNSTRT CASCADE NULL ON DELETE TBL %s RRN %d ", bct->tablename, rrn);
+                reqprintf(iq, "VERBKYCNSTRT NULL ON DELETE TBL %s RRN %d ", bct->tablename, rrn);
             }
 
             rc = bdb_lock_tablename_read(thedb->bdb_env, bct->tablename, trans);
@@ -913,7 +913,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             iq->usedb = get_dbtable_by_name(bct->tablename);
 
             if (iq->debug)
-                reqpushprefixf(iq, "VERBKYCNSTRT CASCADE NULL ON DELETE:");
+                reqpushprefixf(iq, "VERBKYCNSTRT NULL ON DELETE:");
 
             /* TODO verify we have proper schema change locks */
             int saved_flgs = iq->osql_flags;
@@ -949,13 +949,13 @@ delnullerr:
             if (rc != 0) {
                 if (iq->debug) {
                     reqprintf(iq,
-                              "VERBKYCNSTRT CANT CASCADE NULL ON DELETE"
+                              "VERBKYCNSTRT CANT NULL ON DELETE "
                               "TBL %s RRN %d RC %d ",
                               bct->tablename, rrn, rc);
                 }
                 if (rc == ERR_NULL_CONSTRAINT) {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "verify key constraint cannot cascade null on delete "
+                              "verify key constraint cannot null on delete "
                               "table '%s' rc %d",
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_NULL_CONSTRAINT;
@@ -965,7 +965,7 @@ delnullerr:
                     *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "verify key constraint cannot cascade null on delete "
+                              "verify key constraint cannot null on delete "
                               "table '%s' rc %d",
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
