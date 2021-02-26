@@ -865,43 +865,34 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             /* here, we need to retry to verify the constraint */
             /* sub 1 to go to current constraint again */
             continue;
-        } else if(del_null){
+        } else if(del_null) {
             int err = 0, idx = 0;
-            (void) err;
-            (void) idx;
             unsigned long long newgenid;
-            int newkeylen = 0;
             if (iq->debug) {
-                reqprintf(iq, "VERBKYCNSTRT CASCADE NULL TBL %s RRN %d ", bct->tablename, rrn);
+                reqprintf(iq, "VERBKYCNSTRT CASCADE NULL ON DELETE TBL %s RRN %d ", bct->tablename, rrn);
             }
 
-            /* verify against source table...must be not found */
             rc = bdb_lock_tablename_read(thedb->bdb_env, bct->tablename, trans);
             if (rc != 0) {
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 close_constraint_table_cursor(cur);
                 return RC_INTERNAL_RETRY;
             }
-            iq->usedb = get_dbtable_by_name(bct->tablename);
-            newkeylen = getkeysize(iq->usedb, bct->sixnum);
 
-            if (gbl_fk_allow_superset_keys && newkeylen > bct->sixlen) {
-                memcpy(bct->newkey + bct->sixlen, key + bct->sixlen,
-                       newkeylen - bct->sixlen);
-            } else {
-                newkeylen = bct->sixlen;
-            }
+            iq->usedb = get_dbtable_by_name(bct->tablename);
 
             if (iq->debug)
-                reqpushprefixf(iq, "VERBKYCNSTRT CASCADE NULL:");
+                reqpushprefixf(iq, "VERBKYCNSTRT CASCADE NULL ON DELETE:");
 
             /* TODO verify we have proper schema change locks */
             int saved_flgs = iq->osql_flags;
             osql_unset_index_reorder_bit(&iq->osql_flags);
-            (void) saved_flgs;
 
             char nullkey[MAXKEYLEN];
-            stag_set_fields_null(bct->tablename, ondisk_tag, skey, nullkey);
+            rc = stag_set_key_null(bct->tablename, ondisk_tag, skey, keylen, nullkey);
+
+            if (rc)
+               goto delnullerr;
 
             if(iq->usedb) {
                 rc = upd_record(iq, trans, NULL,                               /*primkey*/
@@ -918,7 +909,40 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
+            iq->osql_flags = saved_flgs;
+            if (iq->debug)
+                reqpopprefixes(iq, 1);
+            iq->usedb = currdb;
 
+delnullerr:
+            if (rc != 0) {
+                if (iq->debug) {
+                    reqprintf(iq,
+                              "VERBKYCNSTRT CANT CASCADE NULL ON DELETE"
+                              "TBL %s RRN %d RC %d ",
+                              bct->tablename, rrn, rc);
+                }
+                if (rc == ERR_NULL_CONSTRAINT) {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
+                              "verify key constraint cannot cascade null on delete "
+                              "table '%s' rc %d",
+                              bct->tablename, rc);
+                    *errout = OP_FAILED_INTERNAL + ERR_NULL_CONSTRAINT;
+                } else if (rc == ERR_TRAN_TOO_BIG) {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
+                              "cascaded update exceeds max writes");
+                    *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
+                } else {
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
+                              "verify key constraint cannot cascade null on delete "
+                              "table '%s' rc %d",
+                              bct->tablename, rc);
+                    *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+                }
+                close_constraint_table_cursor(cur);
+                return rc;
+            }
+            continue;
         } else if (upd_cascade) {
             int err = 0, idx = 0;
             unsigned long long newgenid;
