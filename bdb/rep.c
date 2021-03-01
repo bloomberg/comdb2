@@ -1278,7 +1278,7 @@ static void *elect_thread(void *args)
         return NULL;
     }
 
-    logmsg(LOGMSG_INFO, "thread 0x%lx in election\n", pthread_self());
+    logmsg(LOGMSG_INFO, "thread 0x%p in election\n", (void *)pthread_self());
 
     bdb_state->repinfo->in_election = 1;
     start = comdb2_time_epochms();
@@ -1383,9 +1383,9 @@ elect_again:
 
     logmsg(
         LOGMSG_INFO,
-        "0x%lx: calling for election with cluster"
+        "0x%p: calling for election with cluster"
         " of %d nodes (%d connected) : %s,  %f secs timeout and priority %d\n",
-        pthread_self(), elect_count, num_connected, hoststring,
+        (void *)pthread_self(), elect_count, num_connected, hoststring,
         ((double)elect_time) / 1000000.00, rep_pri);
 
     free(hoststring);
@@ -1522,7 +1522,7 @@ void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
 */
 static void bdb_reopen(bdb_state_type *bdb_state, const char *func, int line)
 {
-    logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%lx\n", pthread_self());
+    logmsg(LOGMSG_DEBUG, "bdb_reopen called by tid 0x%p\n", (void *)pthread_self());
     logmsg(LOGMSG_USER, "%s line %d called for election (bdb_reopen)\n", func,
            line);
     call_for_election_int(bdb_state, REOPEN_AND_LOSE);
@@ -5755,8 +5755,8 @@ void *watcher_thread(void *arg)
 
             if (!bdb_state->repinfo->in_election) {
                 print(bdb_state, "watcher_thread: calling for election\n");
-                logmsg(LOGMSG_DEBUG, "0x%lx %s:%d %s: calling for election\n",
-                       pthread_self(), __FILE__, __LINE__, __func__);
+                logmsg(LOGMSG_DEBUG, "0x%p %s:%d %s: calling for election\n",
+                       (void *)pthread_self(), __FILE__, __LINE__, __func__);
 
                 call_for_election(bdb_state, __func__, __LINE__);
             }

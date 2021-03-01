@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -77,13 +77,14 @@ extern int gbl_max_sqlcache;
 extern int gbl_lua_new_trans_model;
 extern int gbl_max_lua_instructions;
 extern int gbl_lua_version;
-extern int gbl_break_lua;
 extern int gbl_notimeouts;
 extern int gbl_epoch_time;
 extern int gbl_allow_lua_print;
 extern int gbl_allow_lua_dynamic_libs;
 extern int comdb2_sql_tick();
 
+pthread_t gbl_break_lua;
+int gbl_break_all_lua = 0;
 char *gbl_break_spname;
 void *debug_clnt;
 
@@ -174,6 +175,13 @@ static int db_reset(Lua);
 static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
+static void lua_begin_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
+static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
+static void lua_end_all_step(struct sqlclntstate *, SP);
+static int lua_get_prepare_flags();
+static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
+static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
@@ -472,11 +480,15 @@ static void luabb_trigger_unregister(Lua L, dbconsumer_t *q)
     while (retry > 0) {
         --retry;
         rc = trigger_unregister_req(&q->info);
+        /* See comments in luabb_trigger_register(). */
+        comdb2_sql_tick();
         if (rc == CDB2_TRIG_REQ_SUCCESS || rc == CDB2_TRIG_ASSIGNED_OTHER)
             return;
         if (L)
             check_retry_conditions(L, 1);
         sleep(1);
+        /* See comments in luabb_trigger_register(). */
+        comdb2_sql_tick();
     }
 }
 
@@ -818,10 +830,14 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
         }
         clnt->intrans = 1;
     }
-    sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                            SQLENG_INTRANS_STATE);
+    sql_set_sqlengine_state(clnt, __FILE__, __LINE__, SQLENG_INTRANS_STATE);
     return osql_dbq_consume_logic(clnt, q->info.spname, q->genid);
 }
+
+// _int variants don't modify lua stack, just return success/error code
+static const char * db_begin_int(Lua, int *);
+static const char * db_commit_int(Lua, int *);
+static const char * db_rollback_int(Lua, int *);
 
 /*
 ** (1) No explicit db:begin()
@@ -832,31 +848,38 @@ static int lua_trigger_impl(Lua L, dbconsumer_t *q)
 static int lua_consumer_impl(Lua L, dbconsumer_t *q)
 {
     int rc = 0;
+    const char *err = NULL;
     SP sp = getsp(L);
-    int start = in_parent_trans(sp);
     struct sqlclntstate *clnt = sp->clnt;
-    if (start || clnt->intrans == 0) {
-        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) != 0) {
-            luaL_error(L, "%s osql_sock_start rc:%d\n", __func__, rc);
+    int implicit_txn = in_parent_trans(sp);
+    if (implicit_txn) {
+        err = db_begin_int(L, &rc);
+        if (err || rc || clnt->intrans) {
+            luaL_error(L, "%s: begin intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
         }
-        clnt->intrans = 1;
+    }
+    if (!clnt->intrans) {
+        if ((rc = start_new_transaction(clnt, clnt->thd->sqlthd)) != 0) {
+            luaL_error(L, "%s: start_new_transaction intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
+        }
+        if ((rc = osql_sock_start(clnt, OSQL_SOCK_REQ, 0)) != 0) {
+            luaL_error(L, "%s: osql_sock_start intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
+        }
     }
     if ((rc = osql_dbq_consume_logic(clnt, q->info.spname, q->genid)) != 0) {
-        if (start) {
-            osql_sock_abort(clnt, OSQL_SOCK_REQ);
-            clnt->intrans = 0;
+        if (implicit_txn) {
+            err = db_rollback_int(L, &rc);
+            if (err || rc || clnt->intrans) {
+                luaL_error(L, "%s: rollback - unexpected intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
+            }
         }
         luaL_error(L, "%s osql_dbq_consume_logic rc:%d\n", __func__, rc);
     }
-    if (start) {
-        rc = osql_sock_commit(clnt, OSQL_SOCK_REQ);
-        clnt->intrans = 0;
-        if (rc) {
-            luaL_error(L, "%s osql_sock_commit rc:%d\n", __func__, rc);
+    if (implicit_txn) {
+        err = db_commit_int(L, &rc);
+        if (err || rc || clnt->intrans) {
+            luaL_error(L, "%s: commit failed intrans:%d err:%s rc:%d\n", __func__, clnt->intrans, err, rc);
         }
-    } else {
-        sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
-                                SQLENG_INTRANS_STATE);
     }
     return rc;
 }
@@ -1045,6 +1068,8 @@ static void donate_stmt(SP sp, dbstmt_t *dbstmt)
     sqlite3_stmt *stmt = dbstmt->stmt;
     if (stmt == NULL) return;
 
+    lua_end_step(sp->clnt, sp, stmt);
+
     if (!gbl_enable_sql_stmt_caching || !dbstmt->rec) {
         sqlite3_finalize(stmt);
     } else {
@@ -1066,14 +1091,6 @@ static int enable_global_variables(lua_State *lua)
     lua_setmetatable(lua, LUA_GLOBALSINDEX);
     return 0;
 }
-
-static void lua_begin_step(struct sqlclntstate *, SP, sqlite3_stmt *);
-static void lua_another_step(struct sqlclntstate *, sqlite3_stmt *, int);
-static void lua_end_step(struct sqlclntstate *, SP, sqlite3_stmt *);
-static void lua_end_all_step(struct sqlclntstate *, SP);
-static int lua_get_prepare_flags();
-static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
-static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
 
 /*
 ** Lua stack:
@@ -1132,12 +1149,6 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
         goto out;
     }
 
-    // Run ddl stmt 'create temp table...' under schema lk
-    if (tryrdlock_schema_lk() != 0) {
-        sqlite3_finalize(stmt);
-        return luaL_error(sp->lua, sqlite3ErrStr(SQLITE_SCHEMA));
-    }
-    // now, actually create the temp table
     *lk = malloc(sizeof(pthread_mutex_t));
     Pthread_mutex_init(*lk, NULL);
     comdb2_set_tmptbl_lk(*lk);
@@ -1147,7 +1158,6 @@ static int create_temp_table(Lua lua, pthread_mutex_t **lk, const char **name)
     }
     lua_end_step(sp->clnt, sp, stmt);
     comdb2_set_tmptbl_lk(NULL);
-    unlock_schema_lk();
     sqlite3_finalize(stmt);
 
     if (rc == SQLITE_DONE) {
@@ -1393,7 +1403,7 @@ static int stmt_sql_step(Lua L, dbstmt_t *stmt)
 
 typedef struct client_info {
     struct sqlclntstate *clnt;
-    int thread_id;
+    pthread_t thread_id;
     char buffer[250];
     int has_buffer;
 } clnt_info;
@@ -1489,7 +1499,7 @@ static int db_debug(lua_State *lua)
         }
     }
 
-    if (gbl_break_lua == INT_MAX) {
+    if (gbl_break_all_lua) {
         char sp_info[128];
         int len;
         if (sp->spversion.version_num) {
@@ -1503,7 +1513,7 @@ static int db_debug(lua_State *lua)
         }
     }
 
-    if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
+    if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
         if (debug_clnt) {
             sp->debug_clnt = debug_clnt;
             sp->debug_clnt->sp = sp;
@@ -1516,6 +1526,7 @@ static int db_debug(lua_State *lua)
         }
         lua_settop(lua, 0); /* remove eventual returns */
         gbl_break_lua = 0;
+        gbl_break_all_lua = 0;
     }
 
     return 0;
@@ -1976,7 +1987,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
         }
         sp->num_instructions++;
 
-        if (gbl_break_lua == INT_MAX) {
+        if (gbl_break_all_lua) {
             lua_getstack(lua, 1, debug);
             lua_getinfo(lua, "nSl", debug);
             char sp_info[128];
@@ -1994,7 +2005,7 @@ static void InstructionCountHook(lua_State *lua, lua_Debug *debug)
             }
         }
 
-        if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
+        if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
             if (debug_clnt) {
                 char *err = NULL;
                 load_debugging_information(sp, &err);
@@ -2105,6 +2116,11 @@ static int lua_prepare_sql_int(Lua L, SP sp, const char *sql,
     struct sql_state rec_lcl = {0};
     struct sql_state *rec_ptr = rec ? rec : &rec_lcl;
     rec_ptr->sql = sql;
+
+    /* Reset logger. This clears table names (see reqlog_add_table) and
+       print events (see reqlog_logv_int) in the logger. */
+    reqlog_reset_logger(sp->thd->logger);
+
     sp->rc = sp->initial ? get_prepared_stmt(sp->thd, sp->clnt, rec_ptr, &err, flags)
                          : get_prepared_stmt_try_lock(sp->thd, sp->clnt, rec_ptr, &err, flags);
     sp->initial = 0;
@@ -2145,23 +2161,28 @@ static void lua_another_step(struct sqlclntstate *clnt,
 static void lua_end_step(struct sqlclntstate *clnt, SP sp,
                          sqlite3_stmt *pStmt)
 {
-    int64_t time = comdb2_time_epochms();
     Vdbe *pVdbe = (Vdbe*)pStmt;
 
-    if ((sp != NULL) && (pVdbe != NULL) && (pVdbe->luaStartTime != 0)) {
+    /* Check whether fingerprint has already been computed. */
+    if ((pVdbe == NULL) || (pVdbe->fingerprint_added == 1)) {
+        return;
+    }
+
+    if ((sp != NULL) && (pVdbe->luaStartTime != 0)) {
         const char *zNormSql = sqlite3_normalized_sql(pStmt);
 
         if (zNormSql != NULL) {
             double cost = 0.0;
             int64_t prepMs = 0;
             int64_t timeMs;
+            int64_t time = comdb2_time_epochms();
 
             clnt_query_cost(sp->thd, &cost, &prepMs);
             timeMs = time - pVdbe->luaStartTime + prepMs;
 
             unsigned char fingerprint[FINGERPRINTSZ];
             add_fingerprint(
-                pStmt, sqlite3_sql(pStmt), zNormSql, cost,
+                clnt, pStmt, sqlite3_sql(pStmt), zNormSql, cost,
                 timeMs, prepMs, pVdbe->luaRows, NULL,
                 fingerprint
             );
@@ -2172,6 +2193,8 @@ static void lua_end_step(struct sqlclntstate *clnt, SP sp,
             clnt->spcost.time += timeMs;
             clnt->spcost.prepTime += prepMs;
             clnt->spcost.rows += pVdbe->luaRows;
+
+            pVdbe->fingerprint_added = 1;
         }
 
         restore_thd_cost_and_reset(sp->thd, pVdbe);
@@ -2275,6 +2298,8 @@ static int luatable_emit(Lua L)
     } else {
         return luaL_error(L, "attempt to emit row without defining columns");
     }
+    /* NC: Should we iterate over all the rows here and call lua_end_step()
+       (like dbstmt_emit()) ? */
     int rc = l_send_back_row(L, stmt, cols);
     lua_pushinteger(L, rc);
     return 1;
@@ -2542,11 +2567,6 @@ static void reset_stmts(SP sp)
     }
 }
 
-// _int variants don't modify lua stack, just return success/error code
-static const char * db_begin_int(Lua, int *);
-static const char * db_commit_int(Lua, int *);
-static const char * db_rollback_int(Lua, int *);
-
 static int db_begin(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -2593,12 +2613,10 @@ static const char *db_begin_int(Lua L, int *rc)
         reset_stmts(sp);
     }
     if (sp->clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS) {
-        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                                SQLENG_WRONG_STATE);
+        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
         return "BEGIN in the middle of transaction";
     }
-    sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                            SQLENG_PRE_STRT_STATE);
+    sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_PRE_STRT_STATE);
     *rc = handle_sql_begin(sp->thd, sp->clnt, TRANS_CLNTCOMM_NOREPLY);
     sp->clnt->ready_for_heartbeats = 1;
     return NULL;
@@ -2609,8 +2627,7 @@ static const char *db_commit_int(Lua L, int *rc)
     SP sp = getsp(L);
     if (sp->clnt->ctrl_sqlengine != SQLENG_INTRANS_STATE &&
         sp->clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__,
-                                SQLENG_WRONG_STATE);
+        sql_set_sqlengine_state(sp->clnt, __FILE__, __LINE__, SQLENG_WRONG_STATE);
         return no_transaction();
     }
     reset_stmts(sp);
@@ -3238,7 +3255,13 @@ static int join_threads(SP sp)
 static int dbstmt_free(Lua L)
 {
     dbstmt_t *stmt = lua_touserdata(L, -1);
-    donate_stmt(getsp(L), stmt);
+    SP sp = getsp(L);
+
+    /* Compute and add fingerprint for this statement in case it wasn't
+       done already. */
+    lua_end_step(sp->clnt, sp, stmt->stmt);
+
+    donate_stmt(sp, stmt);
     return 0;
 }
 
@@ -3333,7 +3356,17 @@ static int dbstmt_fetch(Lua lua)
     dbstmt_t *dbstmt = lua_touserdata(lua, 1);
     no_stmt_chk(lua, dbstmt);
     setup_first_sqlite_step(sp, dbstmt, 1);
+    Vdbe *pVdbe = (Vdbe*)dbstmt->stmt;
+
+    // pVdbe->luaStartTime != 0 is used in lua_end_step() to decide whether
+    // to add fingerprint for this statement. In some situations, however,
+    // vdbe is reset (sqlite3_reset) causing it to lose luaStartTime. We need
+    // to save and restore it in order for the stmt's fingerprint and metrics
+    // to be correctly logged.
+    int64_t luaStartTimeSaved = pVdbe->luaStartTime;
     int rc = stmt_sql_step(lua, dbstmt);
+    pVdbe->luaStartTime = luaStartTimeSaved;
+
     if (rc == SQLITE_ROW) return 1;
     donate_stmt(sp, dbstmt);
     return 0;
@@ -3372,6 +3405,72 @@ static int dbstmt_close(Lua L)
     donate_stmt(sp, dbstmt);
     return 0;
 }
+static int dbstmt_column_count(Lua L)
+{
+    luaL_checkudata(L, 1, dbtypes.dbstmt);
+    dbstmt_t *dbstmt = lua_touserdata(L, 1);
+    sqlite3_stmt *stmt = dbstmt->stmt;
+    if (stmt == NULL) return 0;
+    lua_pushinteger(L, sqlite3_column_count(stmt));
+    return 1;
+}
+
+#define GET_STMT_AND_COL()                                                     \
+    luaL_checkudata(L, 1, dbtypes.dbstmt);                                     \
+    luaL_checknumber(L, 2);                                                    \
+    dbstmt_t *dbstmt = lua_touserdata(L, 1);                                   \
+    sqlite3_stmt *stmt = dbstmt->stmt;                                         \
+    if (stmt == NULL) return 0;                                                \
+    int col = lua_tonumber(L, 2) - 1;                                          \
+    if (col > sqlite3_column_count(stmt)) return 0
+
+static int dbstmt_column_name(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_name(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_origin_name(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_origin_name(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_table_name(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_table_name(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_decltype(Lua L)
+{
+    GET_STMT_AND_COL();
+    lua_pushstring(L, sqlite3_column_decltype(stmt, col));
+    return 1;
+}
+
+static int dbstmt_column_type(Lua L)
+{
+    GET_STMT_AND_COL();
+    switch (sqlite3_column_type(stmt, col)) {
+    case SQLITE_INTEGER:       lua_pushstring(L, "integer"); break;
+    case SQLITE_FLOAT:         lua_pushstring(L, "double"); break;
+    case SQLITE_TEXT:          lua_pushstring(L, "cstring"); break;
+    case SQLITE_BLOB:          lua_pushstring(L, "blob"); break;
+    case SQLITE_DATETIME:      lua_pushstring(L, "datetime"); break;
+    case SQLITE_INTERVAL_YM:   lua_pushstring(L, "intervalym"); break;
+    case SQLITE_INTERVAL_DS:   lua_pushstring(L, "intervalds"); break;
+    case SQLITE_DATETIMEUS:    lua_pushstring(L, "datetimeus"); break;
+    case SQLITE_INTERVAL_DSUS: lua_pushstring(L, "intervaldsus"); break;
+    case SQLITE_DECIMAL:       lua_pushstring(L, "decimal"); break;
+    default:                   lua_pushnil(L); break;
+    }
+    return 1;
+}
+
 
 static int dbstmt_rows_changed(Lua L)
 {
@@ -4673,6 +4772,12 @@ static const struct luaL_Reg dbstmt_funcs[] = {
     {"fetch", dbstmt_fetch},
     {"emit", dbstmt_emit},
     {"close", dbstmt_close},
+    {"column_count", dbstmt_column_count},
+    {"column_decltype", dbstmt_column_decltype},
+    {"column_name", dbstmt_column_name},
+    {"column_origin_name", dbstmt_column_origin_name},
+    {"column_table_name", dbstmt_column_table_name},
+    {"column_type", dbstmt_column_type},
     {"rows_changed", dbstmt_rows_changed},
     {NULL, NULL}
 };
@@ -5525,7 +5630,7 @@ static void debug_sp(struct sqlclntstate *clnt)
 halt_here:
     debug_clnt = clnt;
     if (arg1 == 0) {
-        gbl_break_lua = INT_MAX;
+        gbl_break_all_lua = 1;
         gbl_break_spname = carg1;
     } else {
         gbl_break_lua = arg1;
@@ -5842,9 +5947,10 @@ static int run_sp_int(struct sqlclntstate *clnt, int argcnt, char **err)
         }
     }
 
-    if (gbl_break_lua && (gbl_break_lua == pthread_self())) {
+    if (gbl_break_lua && pthread_equal(gbl_break_lua, pthread_self())) {
         gbl_lua_version++;
         gbl_break_lua = 0;
+        gbl_break_all_lua = 0;
     }
 
     return rc;
@@ -6663,7 +6769,7 @@ void *exec_trigger(trigger_reg_t *reg)
     clnt.dbtran.trans_has_sp = 1;
 
     thread_memcreate(128 * 1024);
-    struct sqlthdstate thd;
+    struct sqlthdstate thd = {0};
     sqlengine_thd_start(NULL, &thd, THRTYPE_TRIGGER);
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
@@ -6753,6 +6859,7 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
 int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)
 {
+    clnt->ready_for_heartbeats = 1;
     int rc = exec_procedure_int(thd, clnt, err);
     if (clnt->sp) {
         reset_sp(clnt->sp);

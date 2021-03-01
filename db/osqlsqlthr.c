@@ -694,7 +694,7 @@ int osql_sock_start(struct sqlclntstate *clnt, int type, int keep_rqid)
     if (gbl_debug_sql_opcodes) {
         uuidstr_t us;
         logmsg(LOGMSG_USER, "%p gets rqid %llx %s tid=0x%x\n", clnt, osql->rqid,
-                comdb2uuidstr(osql->uuid, us), pthread_self());
+                comdb2uuidstr(osql->uuid, us), (void *)pthread_self());
     }
 #endif
 
@@ -880,8 +880,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
                 logmsg(LOGMSG_USER,
-                       "0x%lu Starting new session rqid=%llx, uuid=%s\n",
-                       pthread_self(), clnt->osql.rqid,
+                       "0x%p Starting new session rqid=%llx, uuid=%s\n",
+                       (void *)pthread_self(), clnt->osql.rqid,
                        comdb2uuidstr(clnt->osql.uuid, us));
             /* unregister this osql thread from checkboard */
             rc = osql_unregister_sqlthr(clnt);
@@ -891,8 +891,8 @@ int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
             uuidstr_t us;
             if (gbl_master_swing_osql_verbose)
                 logmsg(LOGMSG_USER,
-                       "0x%lu Restarting rqid=%llx uuid=%s against %s\n",
-                       pthread_self(), clnt->osql.rqid,
+                       "0x%p Restarting rqid=%llx uuid=%s against %s\n",
+                       (void *)pthread_self(), clnt->osql.rqid,
                        comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
             /* TODO: osql_sock_start will also call osql_reuse_sqlthr() */
             rc = osql_reuse_sqlthr(clnt, thedb->master);
@@ -968,6 +968,22 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
     }
 }
 
+static int osql_wait(struct sqlclntstate *clnt)
+{
+    int timeout;
+    osqlstate_t *osql = &clnt->osql;
+    errstat_t dummy = {0};
+    errstat_t *err = (osql->xerr.errval == 0) ? &osql->xerr : &dummy;
+
+    if (osql->running_ddl)
+        timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
+    else
+        timeout = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+
+    /* waits for a sign */
+    return osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout, err);
+}
+
 /**
  * Terminates a sosql session
  * Block processor is informed that all the rows are sent
@@ -975,6 +991,7 @@ static inline int sock_restart_retryable_rcode(int restart_rc)
  * Returns the result of block processor commit
  *
  */
+extern int gbl_is_physical_replicant;
 int osql_sock_commit(struct sqlclntstate *clnt, int type)
 {
     osqlstate_t *osql = &clnt->osql;
@@ -982,7 +999,12 @@ int osql_sock_commit(struct sqlclntstate *clnt, int type)
     int rcout = 0;
     int retries = 0;
     int bdberr = 0;
-    int timeout = 0;
+
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s attempted write against physical replicant\n", __func__);
+        osql_sock_abort(clnt, type);
+        return SQLITE_READONLY;
+    }
 
     /* temp hook for sql transactions */
     /* is it distributed? */
@@ -1041,22 +1063,14 @@ retry:
 
         /* trap */
         if (!osql->rqid) {
-            logmsg(LOGMSG_ERROR, "%s: !rqid %p %lu???\n", __func__, clnt,
-                   pthread_self());
+            logmsg(LOGMSG_ERROR, "%s: !rqid %p %p???\n", __func__, clnt,
+                   (void *)pthread_self());
             /*cheap_stack_trace();*/
             abort();
         }
 
-        if (osql->running_ddl)
-            timeout = bdb_attr_get(thedb->bdb_attr,
-                                   BDB_ATTR_SOSQL_DDL_MAX_COMMIT_WAIT_SEC);
-        else
-            timeout = bdb_attr_get(thedb->bdb_attr,
-                                   BDB_ATTR_SOSQL_MAX_COMMIT_WAIT_SEC);
+        rc = osql_wait(clnt);
 
-        /* waits for a sign */
-        rc = osql_chkboard_wait_commitrc(osql->rqid, osql->uuid, timeout,
-                                         &osql->xerr);
         if (rc) {
             rcout = SQLITE_CLIENT_CHANGENODE;
             logmsg(LOGMSG_ERROR, "%s line %d setting rcout to (%d) from %d\n", 
@@ -1224,6 +1238,8 @@ done:
    return rcout;
 }
 
+int gbl_sync_osql_cancel = 1;
+
 /**
  * Terminates a sosql session
  * It notifies the block processor to abort the request
@@ -1253,6 +1269,12 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
             logmsg(LOGMSG_ERROR, "%s: failed to send abort rc=%d\n", __func__, rc);
             /* we still need to unregister the clnt */
             rcout = SQLITE_INTERNAL;
+        }
+
+        if (gbl_sync_osql_cancel) {
+            rc = osql_wait(clnt);
+            if (rc)
+                logmsg(LOGMSG_WARN, "%s: osql_wait rc %d\n", __func__, rc);
         }
 
         /* unregister this osql thread from checkboard */
@@ -1294,6 +1316,7 @@ int osql_sock_abort(struct sqlclntstate *clnt, int type)
 
 /********************** INTERNALS
  * ***********************************************/
+int gbl_reject_mixed_ddl_dml = 1;
 
 static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
                                      int nettype)
@@ -1301,6 +1324,10 @@ static int osql_send_usedb_logic_int(char *tablename, struct sqlclntstate *clnt,
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int restarted;
+
+    if (gbl_reject_mixed_ddl_dml && osql->running_ddl) {
+        return SQLITE_DDL_MISUSE;
+    }
 
     if (clnt->ddl_tables && hash_find_readonly(clnt->ddl_tables, tablename)) {
         return SQLITE_DDL_MISUSE;
@@ -1577,6 +1604,9 @@ static int check_osql_capacity(struct sql_thread *thd)
 {
     struct sqlclntstate *clnt = thd->clnt;
     osqlstate_t *osql = &thd->clnt->osql;
+    /* Print the first 1024 characters of the SQL query. */
+    const static int maxwidth = 1024;
+    int nremain;
 
     osql->sentops++;
     osql->tran_ops++;
@@ -1584,12 +1614,17 @@ static int check_osql_capacity(struct sql_thread *thd)
     if (clnt->osql_max_trans && osql->tran_ops > clnt->osql_max_trans) {
         /* This trace is used by ALMN 1779 to alert database owners.. please do
          * not change without reference to that almn. */
-        logmsg(LOGMSG_ERROR, "check_osql_capacity: transaction size %d too big "
-                        "(limit is %d) [\"%s\"]\n",
-                osql->tran_ops, clnt->osql_max_trans,
-                (thd->clnt && thd->clnt->sql)
-                    ? thd->clnt->sql
-                    : "not_set");
+        nremain = strlen(clnt->sql) - maxwidth;
+        if (nremain <= 0)
+            logmsg(LOGMSG_ERROR,
+                   "check_osql_capacity: transaction size %d too big "
+                   "(limit is %d) [\"%s\"]\n",
+                   osql->tran_ops, clnt->osql_max_trans, clnt->sql ? clnt->sql : "not_set");
+        else
+            logmsg(LOGMSG_ERROR,
+                   "check_osql_capacity: transaction size %d too big "
+                   "(limit is %d) [\"%*s <%d more character(s)>\"]\n",
+                   osql->tran_ops, clnt->osql_max_trans, maxwidth, clnt->sql ? clnt->sql : "not_set", nremain);
 
         errstat_set_rc(&osql->xerr, SQLITE_TOOBIG);
         errstat_set_str(&osql->xerr, "transaction too big\n");
@@ -1748,9 +1783,12 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
             pCur->db->tablename, ACCESS_WRITE, &bdberr);
         if (rc != 0) {
             char msg[1024];
+            char buf[MAXTABLELEN];
+            char *table_name = resolve_table_name(pCur->db->tablename,
+                                                  (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Write access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->clnt->current_user.name, bdberr);
+                     table_name, thd->clnt->current_user.name, bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -1795,9 +1833,12 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
             pCur->db->tablename, ACCESS_READ, &bdberr);
         if (rc != 0) {
             char msg[1024];
+            char buf[MAXTABLELEN];
+            char *table_name = resolve_table_name(pCur->db->tablename,
+                                                  (char *)buf, sizeof(buf));
             snprintf(msg, sizeof(msg),
                      "Read access denied to %s for user %s bdberr=%d",
-                     pCur->db->tablename, thd->clnt->current_user.name, bdberr);
+                     table_name, thd->clnt->current_user.name, bdberr);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
@@ -1822,8 +1863,16 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     osqlstate_t *osql = &clnt->osql;
     int restarted;
     int rc = 0;
+    int count = 0;
 
     osql->running_ddl = 1;
+
+    if (gbl_reject_mixed_ddl_dml && clnt->dml_tables) {
+        hash_info(clnt->dml_tables, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+        if (count > 0) {
+            return SQLITE_DDL_MISUSE;
+        }
+    }
 
     if (clnt->dml_tables &&
         hash_find_readonly(clnt->dml_tables, sc->tablename)) {

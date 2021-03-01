@@ -5683,7 +5683,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 		/* special case, no locks, only context
 		 * dp points to context */
 
-		logmsg(LOGMSG_ERROR, "%lu size is 0, no nocks\n", pthread_self());
+		logmsg(LOGMSG_ERROR, "%p size is 0, no nocks\n", (void *)pthread_self());
 
 		LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 		locked_region = 1;

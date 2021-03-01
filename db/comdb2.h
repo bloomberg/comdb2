@@ -107,9 +107,6 @@ typedef long long tranid_t;
 /* we will delete at most this many per run of purge_old_blkseq */
 #define MAXBLKSEQ_PURGE (5 * 1024)
 
-#define MAX_NUM_TABLES 1024
-#define MAX_NUM_QUEUES 1024
-
 #define DEC_ROUND_NONE (-1)
 
 enum AUXDB_TYPES {
@@ -658,6 +655,16 @@ struct dbstore {
 };
 
 typedef struct timepart_views timepart_views_t;
+
+#define consumer_lock_read(x) consumer_lock_read_int(x, __func__, __LINE__);
+void consumer_lock_read_int(struct dbtable *db, const char *func, int line);
+
+#define consumer_lock_write(x) consumer_lock_write_int(x, __func__, __LINE__);
+void consumer_lock_write_int(struct dbtable *db, const char *func, int line);
+
+#define consumer_unlock(x) consumer_unlock_int(x, __func__, __LINE__);
+void consumer_unlock_int(struct dbtable *db, const char *func, int line);
+
 /*
  * We now have different types of db (I overloaded this structure rather than
  * create a new structure because the ireq usedb concept is endemic anyway).
@@ -908,10 +915,10 @@ struct dbenv {
     /* the log delete filenum is the highest log file number that may
      * be removed.  set this to -1 if any log file may be removed. */
     int log_delete_filenum;
-    /* this is a lonked list of log_delete_stat structs.  If the list is
-     * empty then log fil deletion can proceed as normal.  Otherwise we
+    /* this is a linked list of log_delete_stat structs. If the list is
+     * empty then log file deletion can proceed as normal. Otherwise we
      * have one or more clients that have requested log deletion to be
-     * held up, at least beyond a certain log number.  The log_delete_state
+     * held up, at least beyond a certain log number. The log_delete_state
      * structs themselves reside on the stacks of appsock threads. */
     LISTC_T(struct log_delete_state) log_delete_state_list;
 
@@ -1049,6 +1056,8 @@ struct thread_info {
     void *ct_add_table;
     void *ct_del_table;
     void *ct_add_index;
+    hash_t *ct_add_table_genid_hash; // for quick lookups
+    pool_t *ct_add_table_genid_pool; // provides memory for the above hash
 };
 
 /* Unique id for a record.  Note that an RRN is sufficiently unique
@@ -1808,6 +1817,8 @@ extern int gbl_dohsql_max_threads;
 
 extern int gbl_logical_live_sc;
 
+extern int gbl_test_io_errors;
+
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
@@ -2455,8 +2466,6 @@ int broadcast_add_new_queue(char *table, int avgitemsz);
 int broadcast_add_consumer(const char *queuename, int consumern,
                            const char *method);
 int broadcast_procedure_op(int op, const char *name, const char *param);
-int broadcast_quiesce_threads(void);
-int broadcast_resume_threads(void);
 int broadcast_close_db(char *table);
 int broadcast_close_only_db(char *table);
 int broadcast_close_all_dbs(void);
@@ -2498,12 +2507,16 @@ unsigned long long dbq_item_genid(const void *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
 typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
-                                    unsigned int epoch, unsigned int depth,
+                                    unsigned int newest_epoch, 
+                                    unsigned int oldest_epoch, 
+                                    unsigned int depth,
                                     void *userptr);
 
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
-             void *userptr);
-int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
+
+int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback, int limit, 
+             tran_type *tran, void *userptr);
+int dbq_oldest_epoch(struct ireq *iq, tran_type *tran, time_t *epoch);
+int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback, tran_type *tran,
                   void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
 int fix_consumers_with_bdblib(struct dbenv *dbenv);
@@ -2528,6 +2541,8 @@ int get_copy_rootpages_selectfire(struct sql_thread *thd, int nnames,
                                   int *oldnentries, int lock);
 void restore_old_rootpages(struct sql_thread *thd, master_entry_t *ents,
                            int nents);
+int create_datacopy_arrays(void);
+int create_datacopy_array(struct dbtable *db);
 master_entry_t *create_master_entry_array(struct dbtable **dbs, int num_dbs,
                                           int *nents);
 void cleanup_sqlite_master();
@@ -2614,7 +2629,7 @@ void diagnostics_dump_dta(struct dbtable *db, int dtanum);
 
 /* queue stuff */
 void dbqueuedb_coalesce(struct dbenv *dbenv);
-void dbqueuedb_admin(struct dbenv *dbenv);
+void dbqueuedb_admin(struct dbenv *dbenv, tran_type *tran);
 int dbqueuedb_add_consumer(struct dbtable *db, int consumer, const char *method,
                          int noremove);
 int consumer_change(const char *queuename, int consumern, const char *method);
@@ -2624,7 +2639,7 @@ int dbqueuedb_stop_consumers(struct dbtable *db);
 int dbqueuedb_restart_consumers(struct dbtable *db);
 int dbqueuedb_check_consumer(const char *method);
 int dbqueuedb_get_name(struct dbtable *db, char **spname);
-int dbqueuedb_get_stats(struct dbtable *db, struct consumer_stat *stats);
+int dbqueuedb_get_stats(struct dbtable *db, tran_type *tran, struct consumer_stat *stats);
 
 /* Resource manager */
 void initresourceman(const char *newlrlname);
@@ -2884,6 +2899,7 @@ void reqlog_reset_fingerprint(struct reqlogger *logger, size_t n);
 void reqlog_set_fingerprint(struct reqlogger *logger, const char *fp, size_t n);
 void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen);
 void reqlog_set_event(struct reqlogger *logger, const char *evtype);
+const char *reqlog_get_event(struct reqlogger *logger);
 void reqlog_add_table(struct reqlogger *logger, const char *table);
 void reqlog_set_error(struct reqlogger *logger, const char *error,
                       int error_code);
@@ -2906,6 +2922,7 @@ struct summary_nodestats *get_nodestats_summary(unsigned *nodes_cnt,
                                                 int disp_rates);
 
 struct reqlogger *reqlog_alloc(void);
+void reqlog_reset(struct reqlogger *logger);
 int peer_dropped_connection(struct sqlclntstate *clnt);
 
 void osql_set_replay(const char *file, int line, struct sqlclntstate *clnt,
@@ -3645,4 +3662,6 @@ extern int gbl_pbkdf2_iterations;
 extern int gbl_bpfunc_auth_gen;
 
 void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
+
+extern int gbl_queue_walk_limit;
 #endif /* !INCLUDED_COMDB2_H */

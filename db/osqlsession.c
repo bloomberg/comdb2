@@ -542,6 +542,11 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
 
     if (is_msg_done && perr && htonl(perr->errval) == SQLITE_ABORT &&
         !bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DISABLE_SELECTVONLY_TRAN_NOP)) {
+        struct ireq *iq = sess->iq;
+        rc = osql_comm_signal_sqlthr_rc(&iq->sorese, &iq->errstat, &iq->snap_info, 0);
+        if (rc != 0)
+            logmsg(LOGMSG_WARN, "%s: osql_comm_signal_sqlthr_rc rc =%d\n", __func__, rc);
+
         /* release the session */
         if ((rc = osql_repository_put(sess, is_msg_done)) != 0) {
             logmsg(LOGMSG_ERROR, "%s: osql_repository_put rc =%d\n", __func__,

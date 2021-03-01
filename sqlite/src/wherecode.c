@@ -568,6 +568,9 @@ static int codeEqualityTerm(
     if( pLevel->u.in.nIn==0 ){
       pLevel->addrNxt = sqlite3VdbeMakeLabel(pParse);
     }
+    if( iEq>0 ){
+      pLoop->wsFlags |= WHERE_IN_EARLYOUT;
+    }
 
     i = pLevel->u.in.nIn;
     pLevel->u.in.nIn += nEq;
@@ -594,7 +597,6 @@ static int codeEqualityTerm(
             if( iEq>0 && (pLoop->wsFlags & WHERE_VIRTUALTABLE)==0 ){
               pIn->iBase = iReg - i;
               pIn->nPrefix = i;
-              pLoop->wsFlags |= WHERE_IN_EARLYOUT;
             }else{
               pIn->nPrefix = 0;
             }
@@ -603,6 +605,9 @@ static int codeEqualityTerm(
           }
           pIn++;
         }
+      }
+      if( iEq>0 ){
+        sqlite3VdbeAddOp3(v, OP_SeekHit, pLevel->iIdxCur, 0, iEq);
       }
     }else{
       pLevel->u.in.nIn = 0;
@@ -1109,7 +1114,8 @@ static void codeDeferredSeek(
 
   assert( iIdxCur>0 );
   assert( pIdx->aiColumn[pIdx->nColumn-1]==-1 );
-  
+
+  pWInfo->bDeferredSeek = 1;
   sqlite3VdbeAddOp3(v, OP_DeferredSeek, iIdxCur, 0, iCur);
   if( (pWInfo->wctrlFlags & WHERE_OR_SUBCLAUSE)
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -1761,9 +1767,6 @@ Bitmask sqlite3WhereCodeOneLoopStart(
       ** above has already left the cursor sitting on the correct row,
       ** so no further seeking is needed */
     }else{
-      if( pLoop->wsFlags & WHERE_IN_EARLYOUT ){
-        sqlite3VdbeAddOp1(v, OP_SeekHit, iIdxCur);
-      }
       op = aStartOp[(start_constraints<<2) + (startEq<<1) + bRev];
       assert( op!=0 );
       sqlite3VdbeAddOp4Int(v, op, iIdxCur, addrNxt, regBase, nConstraint);
@@ -1826,7 +1829,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     }
 
     if( pLoop->wsFlags & WHERE_IN_EARLYOUT ){
-      sqlite3VdbeAddOp2(v, OP_SeekHit, iIdxCur, 1);
+      sqlite3VdbeAddOp3(v, OP_SeekHit, iIdxCur, nEq, nEq);
     }
 
     /* Seek the table cursor, if required */
@@ -1835,17 +1838,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     if( omitTable ){
       /* pIdx is a covering index.  No need to access the main table. */
     }else if( HasRowid(pIdx->pTable) ){
-      if( (pWInfo->wctrlFlags & WHERE_SEEK_TABLE) || (
-          (pWInfo->wctrlFlags & WHERE_SEEK_UNIQ_TABLE) 
-       && (pWInfo->eOnePass==ONEPASS_SINGLE)
-      )){
-        iRowidReg = ++pParse->nMem;
-        sqlite3VdbeAddOp2(v, OP_IdxRowid, iIdxCur, iRowidReg);
-        sqlite3VdbeAddOp3(v, OP_NotExists, iCur, 0, iRowidReg);
-        VdbeCoverage(v);
-      }else{
-        codeDeferredSeek(pWInfo, pIdx, iCur, iIdxCur);
-      }
+      codeDeferredSeek(pWInfo, pIdx, iCur, iIdxCur);
     }else if( iCur!=iIdxCur ){
       Index *pPk = sqlite3PrimaryKeyIndex(pIdx->pTable);
       iRowidReg = sqlite3GetTempRange(pParse, pPk->nKeyCol);
@@ -1959,7 +1952,6 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     int iRetInit;                             /* Address of regReturn init */
     int untestedTerms = 0;             /* Some terms not completely tested */
     int ii;                            /* Loop counter */
-    u16 wctrlFlags;                    /* Flags for sub-WHERE clause */
     Expr *pAndExpr = 0;                /* An ".. AND (...)" expression */
     Table *pTab = pTabItem->pTab;
 
@@ -2060,7 +2052,6 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     ** eliminating duplicates from other WHERE clauses, the action for each
     ** sub-WHERE clause is to to invoke the main loop body as a subroutine.
     */
-    wctrlFlags =  WHERE_OR_SUBCLAUSE | (pWInfo->wctrlFlags & WHERE_SEEK_TABLE);
     ExplainQueryPlan((pParse, 1, "MULTI-INDEX OR"));
     for(ii=0; ii<pOrWc->nTerm; ii++){
       WhereTerm *pOrTerm = &pOrWc->a[ii];
@@ -2079,7 +2070,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
         ExplainQueryPlan((pParse, 1, "INDEX %d", ii+1));
         WHERETRACE(0xffff, ("Subplan for OR-clause:\n"));
         pSubWInfo = sqlite3WhereBegin(pParse, pOrTab, pOrExpr, 0, 0,
-                                      wctrlFlags, iCovCur);
+                                      WHERE_OR_SUBCLAUSE, iCovCur);
         assert( pSubWInfo || pParse->nErr || db->mallocFailed );
         if( pSubWInfo ){
           WhereLoop *pSubLoop;
@@ -2176,6 +2167,9 @@ Bitmask sqlite3WhereCodeOneLoopStart(
             pCov = pSubLoop->u.btree.pIndex;
           }else{
             pCov = 0;
+          }
+          if( sqlite3WhereUsesDeferredSeek(pSubWInfo) ){
+            pWInfo->bDeferredSeek = 1;
           }
 
           /* Finish the loop through table entries that match term pOrTerm. */

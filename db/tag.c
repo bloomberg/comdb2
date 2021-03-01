@@ -5299,7 +5299,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
 
             extern int gbl_forbid_ulonglong;
             if (gbl_forbid_ulonglong &&
-                schema->member[field].type == CLIENT_UINT &&
+                 schema->member[field].type == CLIENT_UINT &&
                 schema->member[field].len == sizeof(unsigned long long) &&
                 strncasecmp(db->tablename, gbl_ver_temp_table,
                             sizeof(gbl_ver_temp_table) - 1) != 0) {
@@ -7183,30 +7183,6 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
 }
 
 #include <bdb_int.h>
-
-int reload_all_db_tran(tran_type *tran)
-{
-    int table;
-    int rc;
-    for (rc = 0, table = 0; table < thedb->num_dbs && rc == 0; table++) {
-        dbtable *db = thedb->dbs[table];
-        backout_schemas(db->tablename);
-
-        if (load_new_ondisk(db, tran)) {
-            logmsg(LOGMSG_ERROR, "Failed to load new .ONDISK\n");
-            return 1;
-        }
-        if (load_new_versions(db, tran)) {
-            logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
-            return 1;
-        }
-
-        db->tableversion = table_version_select(db, tran);
-        update_dbstore(db);
-    }
-
-    return 0;
-}
 
 int reload_db_tran(dbtable *db, tran_type *tran)
 {

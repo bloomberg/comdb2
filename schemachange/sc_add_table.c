@@ -280,6 +280,12 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
+    rc = create_datacopy_array(db);
+    if (rc) {
+        sc_errf(s, "error initializing datacopy array\n");
+        return -1;
+    }
+
     /* Set instant schema-change */
     db->instant_schema_change = db->odh && s->instant_sc;
 
@@ -296,6 +302,16 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     if (llmeta_set_tables(tran, thedb)) {
         sc_errf(s, "Failed to set table names in low level meta\n");
         return rc;
+    }
+
+    /* Update table permissions for this new shard. */
+    if (s->is_timepart) {
+        if ((rc = timepart_copy_access(thedb->bdb_env, tran, s->tablename,
+                                       s->timepartname, 0)) != 0) {
+            sc_errf(s, "Failed to set user permissions for time partition %s\n",
+                    s->timepartname);
+            return rc;
+        }
     }
 
     if ((rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,

@@ -469,7 +469,7 @@ int sqlite3Init(sqlite3 *db, char **pzErrMsg){
     tmp = strchr(db->init.zTblName, '.');
     if( tmp ){
       memcpy(dbname, db->init.zTblName, tmp-db->init.zTblName);
-      dbname[tmp-db->init.zTblName+1] = '\0';
+      dbname[tmp-db->init.zTblName] = '\0';
       memmove(db->init.zTblName, tmp+1, strlen(tmp));
     }else{
       logmsg(LOGMSG_WARN, "%s: confusing name %s\n", __func__, db->init.zTblName);

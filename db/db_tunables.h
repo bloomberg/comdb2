@@ -138,6 +138,11 @@ REGISTER_TUNABLE("crc32c",
                  "different checksums) for page checksums. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_crc32c, READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("create_dba_user",
+                 "Automatically create 'dba' user if it does not exist already "
+                 "(Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_create_dba_user, READONLY | NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("create_default_user",
                  "Automatically create 'default' user when authentication is "
                  "enabled. (Default: off)",
@@ -408,6 +413,11 @@ REGISTER_TUNABLE("enable_sparse_lockerid_map",
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE(
+    "enable_sq_flattening_optimization",
+    "Enable subquery flattening optimization for OUTER JOINS (Default: off)",
+    TUNABLE_BOOLEAN, &gbl_enable_sq_flattening_optimization,
+    NOARG | INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("enable_sql_stmt_caching",
                  "Enable caching of query plans. If followed by \"all\" will "
                  "cache all queries, including those without parameters. "
@@ -574,22 +584,31 @@ REGISTER_TUNABLE("lock_conflict_trace",
                  "Dump count of lock conflicts every second. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lock_conflict_trace, NOARG, NULL, NULL,
                  NULL, NULL);
-/* TODO(Nirbhay): Merge the following 3 into a single (enum?) tunable. */
-REGISTER_TUNABLE("log_delete_after_backup",
-                 "Set log deletion policy to disable log deletion (can be set "
-                 "by backups). (Default: off)",
-                 TUNABLE_INTEGER, &db->log_delete_age, READONLY, NULL, NULL,
-                 NULL, NULL);
-REGISTER_TUNABLE("log_delete_before_startup",
-                 "Set log deletion policy to disable logs older than database "
-                 "startup time. (Default: off)",
-                 TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG, NULL,
-                 NULL, log_delete_before_startup_update, NULL);
+REGISTER_TUNABLE("lock_dba_user",
+                 "When enabled, 'dba' user cannot be removed and its access "
+                 "permissions cannot be modified. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_lock_dba_user, READONLY | NOARG, NULL,
+                 NULL, NULL, NULL);
+REGISTER_TUNABLE("log_delete_age", "Log deletion policy", TUNABLE_INTEGER,
+                 &db->log_delete_age, READONLY, NULL, NULL, NULL, NULL);
+/* The following 3 tunables have been marked internal as we do not want them
+ * to be listed via comdb2_tunables system table. log_delete_age's value
+ * should be sufficient to reflect on the current log deletion policy. */
 REGISTER_TUNABLE(
-    "log_delete_now",
-    "Set log deletion policy to delete logs as soon as possible. (Default: 0)",
-    TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG | INVERSE_VALUE,
-    NULL, NULL, NULL, NULL);
+    "log_delete_after_backup",
+    "Set log deletion policy to disable log deletion (can be set by backups)",
+    TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG | INTERNAL, NULL,
+    NULL, log_delete_after_backup_update, NULL);
+REGISTER_TUNABLE(
+    "log_delete_before_startup",
+    "Set log deletion policy to disable logs older than database startup time.",
+    TUNABLE_INTEGER, &db->log_delete_age, READONLY | NOARG | INTERNAL, NULL,
+    NULL, log_delete_before_startup_update, NULL);
+REGISTER_TUNABLE("log_delete_now",
+                 "Set log deletion policy to delete logs as soon as possible.",
+                 TUNABLE_INTEGER, &db->log_delete_age,
+                 READONLY | NOARG | INTERNAL, NULL, NULL, log_delete_now_update,
+                 NULL);
 REGISTER_TUNABLE("loghist", NULL, TUNABLE_INTEGER, &gbl_loghist,
                  READONLY | NOARG, NULL, NULL, loghist_update, NULL);
 REGISTER_TUNABLE("loghist_verbose", NULL, TUNABLE_BOOLEAN, &gbl_loghist_verbose,
@@ -598,6 +617,12 @@ REGISTER_TUNABLE("loghist_verbose", NULL, TUNABLE_BOOLEAN, &gbl_loghist_verbose,
 REGISTER_TUNABLE("mallocregions", NULL, TUNABLE_INTEGER,
                  &gbl_malloc_regions, READONLY, NULL, NULL, NULL, NULL);
 */
+
+REGISTER_TUNABLE("mask_internal_tunables",
+                 "When enabled, comdb2_tunables system table would not list "
+                 "INTERNAL tunables (Default: on)", TUNABLE_BOOLEAN,
+                 &gbl_mask_internal_tunables, NOARG, NULL, NULL, NULL, NULL);
+
 /*
   Note: master_retry_poll_ms' value < 0 was previously ignored without
   any error.
@@ -908,8 +933,8 @@ REGISTER_TUNABLE("penaltyincpercent", NULL, TUNABLE_INTEGER,
 REGISTER_TUNABLE("perfect_ckp", NULL, TUNABLE_INTEGER, &gbl_use_perfect_ckp,
                  READONLY | NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("portmux_bind_path", NULL, TUNABLE_STRING,
-                 &gbl_portmux_unix_socket, READONLY | READEARLY, NULL, NULL,
-                 NULL, NULL);
+                 NULL, READONLY | READEARLY, portmux_bind_path_get, NULL,
+                 portmux_bind_path_set, NULL);
 REGISTER_TUNABLE("portmux_port", NULL, TUNABLE_INTEGER, &portmux_port,
                  READONLY | READEARLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("prefaulthelper_blockops", NULL, TUNABLE_INTEGER,
@@ -1052,6 +1077,9 @@ REGISTER_TUNABLE("sqlsortermem", "Maximum amount of memory to be "
                  NULL, NULL);
 REGISTER_TUNABLE("sqlsortermult", NULL, TUNABLE_INTEGER, &gbl_sqlite_sortermult,
                  READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("sqlsorterpenalty",
+                 "Sets the sorter penalty for query planner to prefer plans without explicit sort (Default: 5)",
+                 TUNABLE_INTEGER, &gbl_sqlite_sorterpenalty, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sql_time_threshold",
                  "Sets the threshold time in ms after which queries are "
                  "reported as running a long time. (Default: 5000 ms)",
@@ -1142,8 +1170,8 @@ REGISTER_TUNABLE("use_node_priority",
                  "Sets node priority for the db. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_use_node_pri, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
-REGISTER_TUNABLE("use_nondedicated_network", NULL, TUNABLE_BOOLEAN | NOARG,
-                 &_non_dedicated_subnet, READONLY, NULL, NULL,
+REGISTER_TUNABLE("use_nondedicated_network", NULL, TUNABLE_BOOLEAN,
+                 &_non_dedicated_subnet, READONLY | NOARG, NULL, NULL,
                  net_add_nondedicated_subnet, NULL);
 /*
 REGISTER_TUNABLE(
@@ -1159,9 +1187,10 @@ REGISTER_TUNABLE("use_planned_schema_change",
                  "changing table. (Default: 1)",
                  TUNABLE_INTEGER, &gbl_default_plannedsc, READONLY | NOARG,
                  NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("watchthreshold", NULL, TUNABLE_INTEGER,
-                 &gbl_watchdog_watch_threshold, READONLY, NULL, NULL, NULL,
-                 NULL);
+REGISTER_TUNABLE("watchthreshold",
+                 "Panic if node has been unhealty (unresponsive, out of resources, etc.) for more "
+                 "than this many seconds. The default value is 60.",
+                 TUNABLE_INTEGER, &gbl_watchdog_watch_threshold, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("ctrace_nlogs",
                  "When rolling trace files, keep this many. The older files "
                  "will have incrementing number suffixes (.1, .2, etc.). "
@@ -1484,7 +1513,8 @@ REGISTER_TUNABLE("random_elect_max_ms",
                  &gbl_rand_elect_max_ms, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 REGISTER_TUNABLE("legacy_defaults", "Configure server with legacy defaults",
-                 TUNABLE_BOOLEAN, NULL, NOARG | INTERNAL | READONLY | READEARLY,
+                 TUNABLE_BOOLEAN, &gbl_legacy_defaults,
+                 NOARG | INTERNAL | READONLY | READEARLY,
                  NULL, NULL, pre_read_legacy_defaults, NULL);
 REGISTER_TUNABLE("abort_on_reconstruct_failure",
                  "Abort database if snapshot fails to reconstruct a record.  "
@@ -1837,5 +1867,37 @@ REGISTER_TUNABLE("json_escape_control_characters",
                  "(Default: on)",
                  TUNABLE_BOOLEAN, &gbl_json_escape_control_chars, 0, NULL, NULL,
                  NULL, NULL);
+
+REGISTER_TUNABLE("max_trigger_threads", "Maximum number of trigger threads allowed", TUNABLE_INTEGER,
+                 &gbl_max_trigger_threads, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("test_fdb_io", "Testing fail mode remote sql.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_test_io_errors, INTERNAL, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid logstream.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_physrep_exit_on_invalid_logstream, 0, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
+                 &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("queue_walk_limit",
+                 "When walking queues for metrics, stop after this many elements.  "
+                 "(Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_queue_walk_limit, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_consumer_lock",
+                 "Enable debug-trace for consumer lock.  "
+                 "(Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_instrument_consumer_lock, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("reject_mixed_ddl_dml", "Reject write schedules which mix DDL and DML.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_reject_mixed_ddl_dml, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("debug_mixed_ddl_dml", "Reject write schedules which mix DDL and DML.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_debug_mixed_ddl_dml, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("sync_osql_cancel", "Synchronous osql cancellation (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_sync_osql_cancel, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

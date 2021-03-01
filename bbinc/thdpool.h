@@ -111,6 +111,7 @@ char *thdpool_get_name(struct thdpool *pool);
 int thdpool_get_status(struct thdpool *pool);
 int thdpool_get_nthds(struct thdpool *pool);
 int thdpool_get_nfreethds(struct thdpool *pool);
+int thdpool_get_nbusythds(struct thdpool *pool);
 int thdpool_get_maxthds(struct thdpool *pool);
 int thdpool_get_peaknthds(struct thdpool *pool);
 int thdpool_get_creates(struct thdpool *pool);

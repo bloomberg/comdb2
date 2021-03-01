@@ -111,7 +111,7 @@ extern struct thdpool *gbl_verify_thdpool;
 void debug_bulktraverse_data(char *tbl);
 
 int gbl_track_sqlengine_states = 0;
-int gbl_break_lua;
+extern pthread_t gbl_break_lua;
 
 extern void reinit_sql_hint_table();
 
@@ -464,9 +464,7 @@ int process_sync_command(struct dbenv *dbenv, char *line, int lline, int st)
                 logmsg(LOGMSG_ERROR, "must specify a positive epoch time\n");
                 break;
             }
-            if (dbenv->log_delete_age > 0) {
-                dbenv->log_delete_age = epoch ? epoch : comdb2_time_epoch();
-            }
+            dbenv->log_delete_age = epoch;
         } else if (tokcmp(tok, ltok, "log-delete") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (tokcmp(tok, ltok, "on") == 0) {
@@ -1531,7 +1529,8 @@ clipper_usage:
         bdb_set_recovery(dbenv->static_table.handle);
     } else if (tokcmp(tok, ltok, "lua_break") == 0) {
         tok = segtok(line, lline, &st, &ltok);
-        int thread_id = toknum(tok, ltok);
+        pthread_t thread_id;
+        sscanf(tok, "%p", (void **)&thread_id);
         gbl_break_lua = thread_id;
     } else if (tokcmp(tok, ltok, "stat") == 0) {
         tok = segtok(line, lline, &st, &ltok);
@@ -3009,9 +3008,9 @@ clipper_usage:
             logmsg(LOGMSG_ERROR, "expected thread id\n");
             return 1;
         }
-        tid = toknum(tok, ltok);
+        sscanf(tok, "%p", (void **)&tid);
         rc = pthread_kill(tid, 0);
-        logmsg(LOGMSG_USER, "kill tid %lu rc %d\n", tid, rc);
+        logmsg(LOGMSG_USER, "kill tid %p rc %d\n", (void *)tid, rc);
     } else if (tokcmp(tok, ltok, "chkpoint_alarm_time") == 0) {
         tok = segtok(line, lline, &st, &ltok);
         if (ltok > 0) {

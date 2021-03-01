@@ -51,6 +51,7 @@ void handle_sql_intrans_unrecoverable_error(struct sqlclntstate *clnt);
 int fdb_access_control_create(struct sqlclntstate *clnt, char *str);
 int handle_failed_dispatch(struct sqlclntstate *clnt, char *errstr);
 int sbuf_is_local(SBUF2 *sb);
+void free_original_normalized_sql(struct sqlclntstate *);
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
@@ -447,8 +448,8 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     return type;
 }
 
-static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
-                                                 int ncols)
+#define APPDATA_MINCOLS 32
+static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     if (appdata == NULL) {
@@ -458,7 +459,7 @@ static struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt,
         appdata->capacity = ncols;
         appdata->send_intrans_response = 1;
     } else if (appdata->capacity < ncols) {
-        size_t n = ncols + 32;
+        size_t n = ncols + APPDATA_MINCOLS;
         size_t types_sz = n * sizeof(appdata->type[0]);
         appdata = realloc(appdata, sizeof(struct newsql_appdata) + types_sz);
         clnt->appdata = appdata;
@@ -1213,23 +1214,21 @@ static int newsql_param_value(struct sqlclntstate *clnt,
     param->name = val->varname;
     param->pos = val->has_index ? val->index : 0;
     param->type = newsql_to_client_type(val->type);
-
+    int len = val->value.len;
     void *p = val->value.data;
 
-    if (val->has_isnull && val->isnull) {
+    /* The bound parameter is from an old client which does not send isnull,
+       and its length is 0. Treat it as a NULL to keep backward-compatible. */
+    if (len == 0 && !val->has_isnull) {
         param->null = 1;
         return 0;
     }
 
-    if (val->value.data == NULL) {
-        if (param->type != CLIENT_BLOB) {
-            param->null = 1;
-            return 0;
-        }
-        p = (void *)"";
+    if (val->isnull) {
+        param->null = 1;
+        return 0;
     }
 
-    int len = val->value.len;
     int little = appdata->sqlquery->little_endian;
 
     return get_type(param, p, len, param->type, clnt->tzname, little);
@@ -2118,9 +2117,8 @@ retry_read:
         Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 
-    if (!query) return NULL;
-    if (errno != 0) {
-        cdb2__query__free_unpacked(query, &pb_alloc);
+    if (!query) {
+        logmsg(LOGMSG_ERROR, "%s:%d Error unpacking query error: %s\n", __func__, __LINE__, strerror(errno));
         return NULL;
     }
 
@@ -2204,6 +2202,10 @@ retry_read:
     return query;
 }
 
+static int newsql_needs_decltypes(struct sqlclntstate *clnt) {
+    return 0;
+}
+
 extern int gbl_allow_incoherent_sql;
 static inline int incoh_reject(int admin, bdb_state_type *bdb_state)
 {
@@ -2220,7 +2222,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 {
     CDB2QUERY *query = NULL;
     int rc = 0;
-    struct sqlclntstate clnt;
+    struct sqlclntstate clnt = {{0}};
     struct thr_handle *thr_self;
     struct sbuf2 *sb;
     struct dbenv *dbenv;
@@ -2266,7 +2268,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     reset_clnt(&clnt, sb, 1);
     clnt_register(&clnt);
 
-    get_newsql_appdata(&clnt, 32);
+    get_newsql_appdata(&clnt, APPDATA_MINCOLS);
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
@@ -2367,6 +2369,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.sql = sql_query->sql_query;
         clnt.added_to_hist = 0;
 
+        free_original_normalized_sql(&clnt);
+
         if (!in_client_trans(&clnt)) {
             bzero(&clnt.effects, sizeof(clnt.effects));
             bzero(&clnt.log_effects, sizeof(clnt.log_effects));
@@ -2379,11 +2383,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.osql.sent_column_data = 0;
         clnt.stop_this_statement = 0;
 
-        if ((clnt.tzname[0] == '\0') && sql_query->tzname)
+        if (clnt.tzname[0] == '\0' && sql_query->tzname)
             strncpy0(clnt.tzname, sql_query->tzname, sizeof(clnt.tzname));
 
-        if (sql_query->dbname && dbenv->envname &&
-            strcasecmp(sql_query->dbname, dbenv->envname)) {
+        if (sql_query->dbname && dbenv->envname && strcasecmp(sql_query->dbname, dbenv->envname)) {
             char errstr[64 + (2 * MAX_DBNAME_LENGTH)];
             snprintf(errstr, sizeof(errstr),
                      "DB name mismatch query:%s actual:%s", sql_query->dbname,
@@ -2398,12 +2401,10 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
                 release_node_stats(clnt.argv0, clnt.stack, clnt.origin);
                 clnt.rawnodestats = NULL;
             }
-            if (clnt.conninfo.pid &&
-                clnt.conninfo.pid != sql_query->client_info->pid) {
+            if (clnt.conninfo.pid && clnt.conninfo.pid != sql_query->client_info->pid) {
                 /* Different pid is coming without reset. */
                 logmsg(LOGMSG_WARN,
-                       "Multiple processes using same socket PID 1 %d "
-                       "PID 2 %d Host %.8x\n",
+                       "Multiple processes using same socket PID 1 %d PID 2 %d Host %.8x\n",
                        clnt.conninfo.pid, sql_query->client_info->pid,
                        sql_query->client_info->host_id);
             }
@@ -2441,8 +2442,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         if (incoh_reject(clnt.admin, thedb->bdb_env) &&
             (clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
             logmsg(LOGMSG_ERROR,
-                   "%s line %d td %u new query on incoherent node, "
-                   "dropping socket\n",
+                   "%s line %d td %u new query on incoherent node, dropping socket\n",
                    __func__, __LINE__, (uint32_t)pthread_self());
             goto done;
         }
@@ -2482,8 +2482,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
             /* if this transaction is done (marked by SQLENG_NORMAL_PROCESS),
                clean transaction sql history
             */
-            if (clnt.osql.history &&
-                clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
+            if (clnt.osql.history && clnt.ctrl_sqlengine == SQLENG_NORMAL_PROCESS) {
                 srs_tran_destroy(&clnt);
                 query = APPDATA->query = NULL;
             }
@@ -2497,6 +2496,11 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         } else if (APPDATA->query) {
             cdb2__query__free_unpacked(APPDATA->query, &pb_alloc);
             APPDATA->query = NULL;
+            /*
+             * clnt.sql points into the protobuf unpacked buffer, which becomes
+             * invalid after cdb2__query__free_unpacked. Reset the pointer here.
+             */
+            clnt.sql = NULL;
         }
 
         query = read_newsql_query(dbenv, &clnt, sb);

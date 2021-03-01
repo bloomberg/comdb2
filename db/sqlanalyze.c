@@ -23,6 +23,7 @@
 #include <netinet/in.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <unistd.h>
 #include <epochlib.h>
 #include "analyze.h"
 #include "sql.h"
@@ -38,6 +39,7 @@
 #include <logmsg.h>
 #include "str0.h"
 #include "sc_util.h"
+#include "debug_switches.h"
 
 /* amount of thread-memory initialized for this thread */
 #ifndef PER_THREAD_MALLOC
@@ -602,11 +604,11 @@ again:
         goto done;
     }
     rc = trans_commit(&iq, trans, gbl_mynode);
+    trans = NULL;
     if (rc) {
         logmsg(LOGMSG_ERROR, "analyze: commit rc %d\n", rc);
         goto done;
     }
-    trans = NULL;
 
 done:
     if (trans) {
@@ -861,8 +863,18 @@ static int analyze_table_int(table_descriptor_t *td,
     if (rc)
         goto error;
 
+    if (debug_switch_test_delay_analyze_commit())
+        sleep(10);
+
     rc = run_internal_sql_clnt(&clnt, "COMMIT");
-    if (rc) snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+    if (rc) {
+        /*
+        ** Manually unregister the client from the checkboard,
+        ** if COMMIT or ROLLBACK fails.
+        */
+        osql_unregister_sqlthr(&clnt);
+        snprintf(zErrTab, sizeof(zErrTab), "COMMIT");
+    }
 
 cleanup:
     sbuf2flush(sb2);
@@ -873,7 +885,7 @@ cleanup:
                     td->table, zErrTab);
     } else {
         sbuf2printf(td->sb, "?Analyze completed table %s\n", td->table);
-       logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
+        logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
     end_internal_sql_clnt(&clnt);
@@ -884,7 +896,8 @@ cleanup:
     return rc;
 
 error:
-    run_internal_sql_clnt(&clnt, "ROLLBACK");
+    if (run_internal_sql_clnt(&clnt, "ROLLBACK") != 0)
+        osql_unregister_sqlthr(&clnt);
     goto cleanup;
 }
 
@@ -1047,7 +1060,8 @@ int get_analyze_abort_requested()
 
 
 /* analyze 'table' */
-int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
+int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta,
+                  int bypass_auth)
 {
     if (check_stat1(sb))
         return -1;
@@ -1076,6 +1090,7 @@ int analyze_table(char *table, SBUF2 *sb, int scale, int override_llmeta)
     if (clnt) {
         td.current_user = clnt->current_user;
     }
+    td.current_user.bypass_auth = bypass_auth;
 
     /* dispatch */
     int rc = dispatch_table_thread(&td);
@@ -1427,7 +1442,7 @@ int do_analyze(char *tbl, int percent)
     if (tbl == NULL)
         rc = analyze_database(sb2, percent, overwrite_llmeta);
     else
-        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta);
+        rc = analyze_table(tbl, sb2, percent, overwrite_llmeta, 0);
     sbuf2flush(sb2);
     sbuf2free(sb2);
     return rc;

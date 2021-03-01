@@ -121,6 +121,8 @@ static const char NEW_PREFIX[] = "new.";
 
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;
 
+static int notclosingdta_trace = 0;
+
 int rep_caught_up(bdb_state_type *bdb_state);
 static int bdb_del_file(bdb_state_type *bdb_state, DB_TXN *tid, char *filename,
                         int *bdberr);
@@ -129,6 +131,11 @@ static int bdb_free_int(bdb_state_type *bdb_state, bdb_state_type *replace,
 
 static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
                               int *bdberr);
+
+enum {
+    BDB_CLOSE_FLAGS_FLUSH = 1,
+};
+static int bdb_close_only_flags(bdb_state_type *, DB_TXN *, int *bdberr, int flags);
 
 int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
                     char *newfile, int *bdberr);
@@ -1328,7 +1335,7 @@ static int close_dbs_int(bdb_state_type *bdb_state, DB_TXN *tid, int flags)
                            bdb_state->name, dtanum, strnum, rc,
                            db_strerror(rc));
                 }
-            } else {
+            } else if (notclosingdta_trace) {
                 logmsg(LOGMSG_DEBUG,
                        "%s:%d not closing dtafile %d stripe %d "
                        "(NULL ptr)\n",
@@ -3508,7 +3515,9 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         return;
 
     /* dont delete log files during backups or hot copies */
-    if (bdb_state->attr->logdeleteage == LOGDELETEAGE_NEVER &&
+    time_t now = time(NULL);
+    if (((bdb_state->attr->logdeleteage == LOGDELETEAGE_NEVER) ||
+         (bdb_state->attr->logdeleteage > now)) &&
         !has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0))
         return;
 
@@ -3555,7 +3564,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     if (attrlowfilenum >= 0 && attrlowfilenum < lowfilenum)
         lowfilenum = attrlowfilenum;
 
-    /* get the filenum of our logical LWM.  we cant delete any log files
+    /* get the filenum of our logical LWM. We can delete any log files
        lower than that */
     if (gbl_rowlocks) {
         rc = bdb_get_file_lwm(bdb_state, NULL, &lwmlsn, &bdberr);
@@ -3566,7 +3575,7 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         }
 
         /* The file in lwm is the latest log file needed to run logical
-           recovery.  So the file before it is the newest log file that
+           recovery. So the file before it is the newest log file that
            can be deleted. */
         if (lwmlsn.file - 1 < lowfilenum)
             lowfilenum = lwmlsn.file - 1;
@@ -3590,8 +3599,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         } else {
             if (bdb_state->attr->debug_log_deletion) {
                 logmsg(LOGMSG_USER,
-                       "Ignoring snapylsn because %d:%d is already <= %d\n",
-                       snapylsn.file, snapylsn.offset, lowfilenum);
+                       "Ignoring snapylsn because %d is already <= %d:%d\n",
+                       lowfilenum, snapylsn.file, snapylsn.offset);
             }
         }
     }
@@ -3823,7 +3832,7 @@ low_headroom:
                 send_filenum = filenum;
 
             if ((filenum <= lowfilenum && delete_adjacent) || is_low_headroom) {
-                /* delete this file is we got this far AND it's under the
+                /* delete this file if we got this far AND it's under the
                  * replicated low number */
                 if (is_low_headroom) {
                     logmsg(LOGMSG_WARN, "LOW HEADROOM : delete_log_files: deleting "
@@ -4291,6 +4300,8 @@ deadlock_again:
             break;
         case BDBTYPE_LITE:
             snprintf(tmpname, sizeof(tmpname), "XXX.%s.dta", bdb_state->name);
+            break;
+	default:
             break;
         }
         if (rc) {
@@ -6762,8 +6773,7 @@ int get_dbnum_by_name(bdb_state_type *bdb_state, const char *name)
     return found;
 }
 
-static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
-                              int *bdberr)
+static int bdb_close_only_flags(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr, int flags)
 {
     int i;
     bdb_state_type *parent;
@@ -6779,7 +6789,11 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
         return 0;
 
     /* close doesn't fail */
-    close_dbs(bdb_state);
+    if (flags & BDB_CLOSE_FLAGS_FLUSH) {
+       close_dbs_flush(bdb_state);
+    } else {
+       close_dbs(bdb_state);
+    }
 
     /* now remove myself from my parents list of children */
 
@@ -6796,6 +6810,11 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
     bdb_unlock_children_lock(parent);
 
     return 0;
+}
+
+static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+{
+    return bdb_close_only_flags(bdb_state, tid, bdberr, 0);
 }
 
 int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
@@ -6827,6 +6846,15 @@ int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)
 
     BDB_RELLOCK();
 
+    return rc;
+}
+
+int bdb_close_flush(bdb_state_type *bdb_state, int *bdberr)
+{
+    if (!bdb_state || bdb_state->envonly) return 0;
+    BDB_READLOCK(__func__);
+    int rc = bdb_close_only_flags(bdb_state, NULL, bdberr, BDB_CLOSE_FLAGS_FLUSH);
+    BDB_RELLOCK();
     return rc;
 }
 

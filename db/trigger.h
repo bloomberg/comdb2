@@ -2,6 +2,7 @@
 #define TRIGGER_H
 
 #include "genid.h"
+#include "bdb_api.h"
 
 struct dbtable;
 struct dbenv;
@@ -14,14 +15,15 @@ struct consumer_base {
 struct consumer_stat {
     int has_stuff;
     size_t first_item_length;
-    time_t epoch;
+    time_t newest_epoch;
+    time_t oldest_epoch;
     int depth;
 };
 
 struct comdb2_queue_consumer {
     int type;
     int (*add_consumer)(struct dbtable *db, int consumern, const char *method, int noremove);
-    void (*admin)(struct dbenv *dbenv, int type);
+    void (*admin)(struct dbenv *dbenv, tran_type *tran, int type);
     int (*check_consumer)(const char *method);
     enum consumer_t (*consumer_type)(struct consumer *c);
     void (*coalesce)(struct dbenv *dbenv);
@@ -31,7 +33,7 @@ struct comdb2_queue_consumer {
     int (*wake_all_consumers_all_queues)(struct dbenv *dbenv, int force);
     int (*handles_method)(const char *method);
     int (*get_name)(struct dbtable *db, char **spname);
-    int (*get_stats)(struct dbtable *db, struct consumer_stat *stat);
+    int (*get_stats)(struct dbtable *db, tran_type *tran, struct consumer_stat *stat);
 };
 typedef struct comdb2_queue_consumer comdb2_queue_consumer_t;
 

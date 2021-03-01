@@ -33,7 +33,7 @@ done
 source $TESTSROOTDIR/setup.common
 
 # get full path
-DBDIR=$(readlink -f $DBDIR)
+DBDIR=$(readlink -f $DBDIR || realpath $DBDIR )
 
 # Setup a debugger to run comdb2 server
 DEBUG_PREFIX=
@@ -47,7 +47,7 @@ if [[ -n ${DEBUGGER} ]]; then
         fi
         ;;
     valgrind)
-        DEBUG_PREFIX="valgrind"
+        DEBUG_PREFIX="valgrind --track-origins=yes"
         if [[ -z ${INTERACTIVE_DEBUG} ]]; then
             INTERACTIVE_DEBUG=0
         fi
@@ -302,11 +302,11 @@ setup_db() {
         echo "!$TESTCASE: starting"
         for node in $CLUSTER; do
             if [ $node == $HOSTNAME ] ; then # dont ssh to ourself -- just start db locally
-                CL_PARAMS=--no-global-lrl --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid
+                CL_PARAMS="--no-global-lrl --lrl ${LRL} --pidfile ${TMPDIR}/${DBNAME}.${node}.pid"
                 if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
                     echo -e "!$TESTCASE: Execute the following command on ${node}: ${TEXTCOLOR}${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${CL_PARAMS} ${NOCOLOR}"
                 else
-                    ${DEBUG_PREFIX} $COMDB2_EXE ${CL_PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
+                    ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${CL_PARAMS} &> $LOGDIR/${DBNAME}.${node}.db &
                 fi
                 continue
             fi

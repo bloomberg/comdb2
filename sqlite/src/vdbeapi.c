@@ -115,6 +115,32 @@ char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   return column_names[index];
 }
 
+char *stmt_column_decltype(sqlite3_stmt *pStmt, int index) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  index += COLNAME_DECLTYPE * sqlite3_column_count(pStmt);
+  char *ret = (char *) sqlite3_value_text((sqlite3_value*)&vdbe->aColName[index]);
+  if (ret == NULL)
+      return "text";
+  return ret;
+}
+
+char *stmt_cached_column_decltype(sqlite3_stmt *pStmt, int index) {
+  char **column_decltypes;
+  Vdbe *vdbe = (Vdbe *)pStmt;
+
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  column_decltypes = vdbe->oldColDeclTypes;
+  return column_decltypes[index];
+}
+
+
 int stmt_cached_column_count(sqlite3_stmt *pStmt) {
   Vdbe *vdbe = (Vdbe *)pStmt;
   return (vdbe) ? vdbe->oldColCount : 0;
@@ -125,6 +151,7 @@ static void stmt_free_column_names(sqlite3_stmt *pStmt) {
   int column_count;
   int i;
   char **column_names;
+  char **column_decltypes;
 
   vdbe = (Vdbe *)pStmt;
   if (!vdbe)
@@ -132,16 +159,21 @@ static void stmt_free_column_names(sqlite3_stmt *pStmt) {
 
   column_names = vdbe->oldColNames;
   column_count = vdbe->oldColCount;
+  column_decltypes = vdbe->oldColDeclTypes;
   for(i=0; i<column_count; i++) {
     free(column_names[i]);
+    free(column_decltypes[i]);
   }
   free(column_names);
+  free(column_decltypes);
 
   vdbe->oldColNames = 0;
+  vdbe->oldColDeclTypes = 0;
   vdbe->oldColCount = 0;
 }
 
 void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
+                             char **column_decltypes, 
                              int column_count) {
   Vdbe *vdbe = (Vdbe *)pStmt;
 
@@ -149,26 +181,37 @@ void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
   stmt_free_column_names(pStmt);
 
   vdbe->oldColNames = column_names;
+  vdbe->oldColDeclTypes = column_decltypes;
   vdbe->oldColCount = column_count;
 }
 
-int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
-  Vdbe *p;
-  int cached_column_count;
-  int i;
-
-  if( gbl_old_column_names==0 || (stmt_cached_column_count(pStmt)==0) ||
-      (sqlite3_column_count(pStmt)==0) ){
-    return 1;
-  }
-
-  cached_column_count = stmt_cached_column_count(pStmt);
+#define COLUMN_MATCH_COMMON(pStmt) \
+  int cached_column_count;        \
+  int i;                          \
+  if( gbl_old_column_names==0 || (stmt_cached_column_count(pStmt)==0) ||  \
+      (sqlite3_column_count(pStmt)==0) ){                                 \
+    return 1;                     \
+  }                               \
+  cached_column_count = stmt_cached_column_count(pStmt);        \
   assert(cached_column_count == sqlite3_column_count(pStmt));
 
+int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
+  COLUMN_MATCH_COMMON(pStmt);
+  Vdbe *p;
   p = (Vdbe *)pStmt;
   for(i=0; i<cached_column_count; i++){
     if( (strcmp((const char *)sqlite3_value_text((sqlite3_value*)&p->aColName[i]),
                 stmt_cached_column_name(pStmt, i)))!=0 ) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt) {
+  COLUMN_MATCH_COMMON(pStmt);
+  for(i=0; i<cached_column_count; i++){
+    if((strcmp(stmt_column_decltype(pStmt, i), stmt_cached_column_decltype(pStmt, i)))!=0) {
       return 0;
     }
   }
@@ -1426,10 +1469,14 @@ static const void *columnName(
     sqlite3_mutex_enter(db->mutex);
     assert( db->mallocFailed==0 );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    if( gbl_old_column_names && useUtf16 == 0 && useType == COLNAME_NAME &&
-        stmt_cached_column_count(pStmt)>0 ){
-      assert(N<=stmt_cached_column_count(pStmt));
-      ret = stmt_cached_column_name(pStmt, N);
+    if( gbl_old_column_names && useUtf16 == 0 && 
+            (useType == COLNAME_NAME || useType == COLNAME_DECLTYPE) &&
+            stmt_cached_column_count(pStmt)>0 ){
+      if (useType == COLNAME_NAME) {
+          assert(N<=stmt_cached_column_count(pStmt));
+          ret = stmt_cached_column_name(pStmt, N);
+      } else if (useType == COLNAME_DECLTYPE)
+          ret = stmt_cached_column_decltype(pStmt, N-n);
     }else
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifndef SQLITE_OMIT_UTF16

@@ -71,14 +71,19 @@ struct fingerprint_track {
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
     char ** cachedColNames; /* Cached column names from sqlitex */
+    char ** cachedColDeclTypes; /* Cached column types from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
 };
+
+typedef int(plugin_query_data_func)(struct sqlclntstate *, void **, int *, int, int);
 
 typedef struct stmt_hash_entry {
     char sql[MAX_HASH_SQL_LENGTH];
     sqlite3_stmt *stmt;
     char *query;
-    //struct schema *params_to_bind;
+    void *stmt_data;
+    int stmt_data_sz;
+    plugin_query_data_func *qd_func; /* Function used for finalize */
     LINKC_T(struct stmt_hash_entry) stmtlist_linkv;
 } stmt_hash_entry_type;
 
@@ -110,6 +115,7 @@ struct sqlthdstate {
      * is especially needed to differentiate between fdb cursors opened by core
      * versus query preparer plugin. */
     bool query_preparer_running;
+    void *sqldbx;
 };
 
 typedef struct osqltimings {
@@ -244,6 +250,7 @@ typedef struct {
 
     fdb_distributed_tran_t *
         dtran; /* remote transactions, contain each remote cluster tran */
+    bool rollbacked; /* mark this to catch out-of-order errors */
 
     sqlite3_stmt *pStmt; /* if sql is in progress, points at the engine */
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked
@@ -396,6 +403,10 @@ typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 typedef int(override_type_func)(struct sqlclntstate *, int);
 
+enum query_data_ops { QUERY_DATA_SET = 1, QUERY_DATA_GET = 2, QUERY_DATA_DELETE = 3 };
+
+enum query_data_type { QUERY_STMT_DATA = 1, QUERY_HINT_DATA = 2 };
+
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
 
@@ -410,6 +421,7 @@ struct plugin_callbacks {
 
     // bound params
     plugin_func *param_count; /* newsql_param_count */
+    plugin_query_data_func *query_data_func;
     param_index_func *param_index; /* newsql_param_index */
     param_value_func *param_value; /* newsql_param_value */
 
@@ -432,6 +444,8 @@ struct plugin_callbacks {
     plugin_func *get_high_availability; /* newsql_get_high_availability*/
     plugin_func *has_parallel_sql;      /* newsql_has_parallel_sql */
 
+
+
     add_steps_func *add_steps; /* newsql_add_steps */
     setup_client_info_func *setup_client_info; /* newsql_setup_client_info */
     skip_row_func *skip_row; /* newsql_skip_row */
@@ -443,6 +457,7 @@ struct plugin_callbacks {
     void *state;
     int (*column_count)(struct sqlclntstate *,
                         sqlite3_stmt *); /* sqlite3_column_count */
+    plugin_func *needs_decltypes;
     int (*next_row)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_step */
     SQLITE_CALLBACK_API(int, type);                   /* sqlite3_column_type */
     SQLITE_CALLBACK_API(sqlite_int64, int64);         /* sqlite3_column_int64*/
@@ -494,6 +509,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
+        make_plugin_callback(clnt, name, needs_decltypes);                     \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
         make_plugin_optional_null(clnt, int64);                                \
@@ -505,6 +521,7 @@ struct plugin_callbacks {
         make_plugin_optional_null(clnt, interval);                             \
         (clnt)->plugin.state = NULL;                                           \
         (clnt)->plugin.next_row = NULL;                                        \
+        (clnt)->plugin.query_data_func = NULL;                                 \
     } while (0)
 
 int param_count(struct sqlclntstate *);
@@ -554,6 +571,7 @@ struct sql_state {
     sqlite3_stmt *stmt;                /* cached engine, if any */
     char cache_hint[HINT_LEN];         /* hint copy, if any */
     const char *sql;                   /* the actual string used */
+    void *query_data;                  /* data associated with sql */
     stmt_hash_entry_type *stmt_entry;  /* fast pointer to hashed record */
     int prepFlags;                     /* flags to get_prepared_stmt_int */
 };
@@ -581,6 +599,10 @@ struct user {
     uint8_t have_password;
     /* 1 if the user is retrieved from a client certificate */
     uint8_t is_x509_user;
+
+    /* Set to allow automatically triggered operations, like autoanalyze, to
+       go through. */
+    uint8_t bypass_auth;
 };
 
 #define in_client_trans(clnt) ((clnt)->in_client_trans)
@@ -640,7 +662,7 @@ struct sqlclntstate {
     int n_cmp_idx;
     sampled_idx_t *sampled_idx_tbl;
 
-    int debug_sqlclntstate;
+    pthread_t debug_sqlclntstate;
     int last_check_time;
     int query_timeout;
     int stop_this_statement;
@@ -1250,7 +1272,7 @@ void clnt_query_cost(struct sqlthdstate *thd, double *pCost, int64_t *pPrepMs);
 int clear_fingerprints(void);
 void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
                       unsigned char fingerprint[FINGERPRINTSZ]);
-void add_fingerprint(sqlite3_stmt *, const char *, const char *, int64_t,
+void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *, const char *, const char *, int64_t,
                      int64_t, int64_t, int64_t, struct reqlogger *logger,
                      unsigned char *fingerprint_out);
 
@@ -1301,4 +1323,9 @@ struct query_count {
 void add_fingerprint_to_rawstats(struct rawnodestats *stats,
                                  unsigned char *fingerprint, int cost, int rows,
                                  int timems);
+
+tran_type *curtran_gettran(void);
+void curtran_puttran(tran_type *tran);
+int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
+
 #endif /* _SQL_H_ */

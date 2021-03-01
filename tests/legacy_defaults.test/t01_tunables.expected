@@ -1,0 +1,5 @@
+(test='== Tunables in legacy_defaults mode ==')
+(name='legacy_defaults', description='Configure server with legacy defaults', type='BOOLEAN', value='ON', read_only='Y')
+(name='mask_internal_tunables', description='When enabled, comdb2_tunables system table would not list INTERNAL tunables (Default: on)', type='BOOLEAN', value='OFF', read_only='N')
+(name='plugin', description='Load plugin from the specified shared object file.', type='STRING', value=NULL, read_only='Y')
+(name='plugindir', description='Default directory to look for shared object files.', type='STRING', value=NULL, read_only='Y')

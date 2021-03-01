@@ -69,12 +69,15 @@ struct schema_change_type {
     int type; /* DBTYPE_TAGGED_TABLE or DBTYPE_QUEUE or DBTYPE_QUEUEDB
                  or DBTYPE_MORESTRIPE */
     size_t tablename_len;
-    char tablename[MAXTABLELEN]; /* name of table/queue */
-    int rename;              /* new table name */
-    char newtable[MAXTABLELEN]; /* rename table */
+    char tablename[MAXTABLELEN];    /* name of table/queue */
+    int rename;                     /* rename table? */
+    char newtable[MAXTABLELEN];     /* new table name */
+    int is_timepart;                /* Is this a time partition? */
+    char timepartname[MAXTABLELEN]; /* time partition name that this shard
+                                       belongs to */
     size_t fname_len;
-    char fname[256];         /* name of schema file for table schema change
-                                or client provided SP version */
+    char fname[256];                /* name of schema file for table schema
+                                       change or client provided SP version */
     size_t aname_len;
     char aname[256];         /* advised file name for .csc2 */
     int avgitemsz;           /* average item size for queue creation */
@@ -116,9 +119,8 @@ struct schema_change_type {
 
 #define SC_CHK_PGSZ 0x00000001U
 #define SC_IDXRBLD 0x00000002U
-#define SC_MASK_FLG                                                            \
-    0xfffffffcU /* Detect and fail if newer ver started sc.                    \
-                   Update this mask when new flags added */
+#define SC_MASK_FLG 0xfffffffcU /* Detect and fail if newer ver started sc.
+                                 * Update this mask when new flags added */
     uint32_t flg;
 
     uint8_t rebuild_index;    /* option to rebuild only one index */
@@ -395,5 +397,7 @@ unsigned long long revalidate_new_indexes(struct ireq *iq, struct dbtable *db,
 
 char *get_ddl_type_str(struct schema_change_type *s);
 char *get_ddl_csc2(struct schema_change_type *s);
+
+int comdb2_is_user_op(char *user, char *password);
 
 #endif

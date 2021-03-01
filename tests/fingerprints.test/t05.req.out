@@ -1,0 +1,272 @@
+(test='==== test #1 ====')
+(version='sptest')
+(1=1, 2=2, 3=3, 4=4, 5=5)
+(fingerprint='e1115fe58ac11f2ef272f9c6360ff5fe', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_1 VERSION?{
+    local function main()
+	local t, rc = db:prepare([[SELECT 1,2,3,4,5]])
+	if rc ~=0 then
+	    return rc
+	end
+	local row = t:fetch()
+	db:emit(row)
+	return 0
+    end};')
+(fingerprint='86be757dadc1edbe25089d96be33e145', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_1();')
+(fingerprint='df34593173d7414ffb66cb3514205bc5', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_1?;')
+(fingerprint='c868ab16d94b512fb381974224dae18e', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?,?,?,?,?;')
+(test='==== test #2 ====')
+(version='sptest')
+(6=6, 7=7, 8=8, 9=9)
+(fingerprint='a46c616a6eacb61302a5feffd9e668b4', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_2 VERSION?{
+    local function main()
+	local t, rc = db:prepare([[SELECT 6,7,8,9]])
+	if rc ~=0 then
+	    return rc
+	end
+	local row = t:fetch()
+	while row do
+	    db:emit(row)
+	    row = t:fetch()
+	end
+	return 0
+    end};')
+(fingerprint='f5ad4f5e565be658514bae7830703ab3', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_2();')
+(fingerprint='b68b81eebafb4781aeec95403c279f07', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_2?;')
+(fingerprint='ae02b7be9e030654c9d4c746725326a3', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?,?,?,?;')
+(test='==== test #3 ====')
+(version='sptest')
+(fingerprint='5512ca166ac70eee8d94e52d7351df4b', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_3 VERSION?{
+    local function main(a)
+        local res = ""
+        local stmt, rcode = db:prepare([[select @a as aa]])
+        stmt:bind("a", a)
+        local row = stmt:fetch()
+        while row do
+            res = res .. tostring(row.aa)
+            row = stmt:fetch()
+        end
+        --db:emit(res)
+        return 0
+    end};')
+(fingerprint='536ba020e783870a250c2f6a3cd8fadb', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_3(?);')
+(fingerprint='a87940c140b88916466200c66ecb05c9', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_3?;')
+(fingerprint='67851c28c9a628b5184c263df9d2bff1', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?AS aa;')
+(test='==== test #4 ====')
+(version='sptest')
+($0=2.000000)
+(fingerprint='14cec4d768371f2453706dc991738a8b', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_4 VERSION?{
+    local function main(a)
+        local res = ""
+        local stmt, rcode = db:prepare([[select @a as bb]])
+        stmt:bind("a", a)
+        local row = stmt:fetch()
+        while row do
+            res = res .. tostring(row.bb)
+            row = stmt:fetch()
+        end
+        db:emit(res)
+        return 0
+    end};')
+(fingerprint='999eb2e90403539b9196ae41e5fa43d7', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_4(?);')
+(fingerprint='60da4bd0560ee97e2b7e217759f3809e', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_4?;')
+(fingerprint='142bab341095cf2351d1a421ac2f8410', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?AS bb;')
+(test='==== test #5 ====')
+(version='sptest')
+(cc=3.000000)
+(fingerprint='ea948da47c194c9b3cc829f922ccd127', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_5 VERSION?{
+    local function main(a)
+        local res = ""
+        local stmt, rcode = db:prepare([[select @a as cc]])
+        stmt:bind("a", a)
+        if rcode ~=0 then
+            return rcode
+        end
+        local row = stmt:fetch()
+        db:emit(row)
+        return 0
+    end};')
+(fingerprint='d5f57f8b1c829c10a7dbe66ea49b14ab', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_5(?);')
+(fingerprint='038eb6c4be440763b5654497da1e70f1', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_5?;')
+(fingerprint='cac48aafdc0eb1d1af3895a01748efaf', count=1, total_cost=0, total_rows=1, normalized_sql='SELECT?AS cc;')
+(test='==== test #6 ====')
+(version='sptest')
+(dd=1.000000)
+(dd=2.000000)
+(fingerprint='82afa986332f592e750bc34aaf099ef4', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_6 VERSION?{
+local function main(a, b)
+        local tab = db:table("test_6")
+        local stmt, rcode = db:prepare([[select * from (select @a as dd union all select @b as dd)]])
+        stmt:bind("a", a)
+        stmt:bind("b", b)
+        if rcode ~=0 then
+            return rcode
+        end
+        local row = stmt:fetch()
+        while row do
+            db:emit(row)
+            tab:insert(row)
+            row = stmt:fetch()
+        end
+        return 0
+    end};')
+(fingerprint='2dd1f52d08b56fe3bf4a77d957412f85', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE test_6(i int);')
+(fingerprint='6d429d1509eb24be74a166e86f5d3135', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE IF EXISTS test_6;')
+(fingerprint='1032292e37fd13e4ada0106e50e469e7', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE test_6;')
+(fingerprint='129da060ea51549337c09436f45ebefe', count=1, total_cost=0, total_rows=2, normalized_sql='EXEC PROCEDURE fp_test_6(?,?);')
+(fingerprint='0c26093e4a1d877f37b53f02af761394', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_6?;')
+(fingerprint='5c32a2f1c1eea7f4bf5e02353cb1879c', count=1, total_cost=10, total_rows=0, normalized_sql='SELECT*FROM test_6 ORDER BY?;')
+(fingerprint='2adc972af897576e5ff5743f7f4a47c4', count=1, total_cost=0, total_rows=2, normalized_sql='SELECT*FROM(SELECT?AS dd UNION ALL SELECT?AS dd);')
+(test='==== test #7 ====')
+(version='sptest')
+(ee=1.000000)
+(ee=2.000000)
+(fingerprint='c0cbb471cbe780f277c7818582887d9b', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_7 VERSION?{
+local function get_a_num(num)
+   local stmt, rcode = db:prepare([[select @a as ee]])
+   stmt:bind("a", num)
+   local row = stmt:fetch()
+   return row.ee
+end
+
+local function main(a, b)
+        local stmt, rcode = db:prepare([[select * from (select @a as ee union all select @b as ee)]])
+        stmt:bind("a", get_a_num(a))
+        stmt:bind("b", get_a_num(b))
+        if rcode ~=0 then
+            return rcode
+        end
+        local row = stmt:fetch()
+        while row do
+            db:emit(row)
+            row = stmt:fetch()
+        end
+        return 0
+    end};')
+(fingerprint='d103b4cb6a20bc8db51440aadcd64452', count=1, total_cost=0, total_rows=4, normalized_sql='EXEC PROCEDURE fp_test_7(?,?);')
+(fingerprint='ab3eac91209f0b7557152d242719db7e', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_7?;')
+(fingerprint='9e08e6c21b70b9ff03fa8c1691984be5', count=1, total_cost=0, total_rows=2, normalized_sql='SELECT*FROM(SELECT?AS ee UNION ALL SELECT?AS ee);')
+(fingerprint='df27d26b0fdf98103fc11979fd68013a', count=2, total_cost=0, total_rows=2, normalized_sql='SELECT?AS ee;')
+(test='==== test #8 ====')
+(version='sptest')
+(i=1)
+(i=2)
+(i=3)
+(i=4)
+(i=5)
+(i=6)
+(i=7)
+(i=8)
+(i=9)
+(i=10)
+(fingerprint='df612713a0dce10393db430ce612b4ca', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_8 VERSION?{
+local function main()
+        local stmt, rcode = db:prepare([[insert into test_8 values (@a)]])
+        if rcode ~=0 then
+            return rcode
+        end
+
+        for i=1,10
+        do
+            stmt:bind("a", i)
+            stmt:exec()
+        end
+        return 0
+    end};')
+(fingerprint='5ca5247eac7366dbe46258c81a4ad47e', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE test_8(i int);')
+(fingerprint='20bd06ff02829794855f06541365b183', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE IF EXISTS test_8;')
+(fingerprint='f124969cc6518b78362c72983e116735', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE test_8;')
+(fingerprint='c195454b72f2af6d4fe0677c4e060c43', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_8();')
+(fingerprint='5e2503b17c62fa9d174923e83e3600ae', count=1, total_cost=0, total_rows=1, normalized_sql='INSERT INTO test_8 VALUES(?);')
+(fingerprint='bed9bb6266b9f271acb1ef3bcda2d0f2', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_8?;')
+(fingerprint='e9b5d14a46567cbc6cb90293141fd0a3', count=1, total_cost=23, total_rows=10, normalized_sql='SELECT*FROM test_8 ORDER BY?;')
+(test='==== test #9 ====')
+(version='sptest')
+(i=1)
+(i=2)
+(i=3)
+(i=4)
+(i=5)
+(i=6)
+(i=7)
+(i=8)
+(i=9)
+(i=10)
+(fingerprint='631c9647b524c82228b3dd37d5e38ed7', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_9 VERSION?{
+local function main()
+        local stmt, rcode = db:prepare([[insert into test_9 values (@a)]])
+        if rcode ~=0 then
+            return rcode
+        end
+
+        for i=1,10
+        do
+            db:begin()
+            stmt:bind("a", i)
+            stmt:exec()
+            db:commit()
+        end
+        return 0
+    end};')
+(fingerprint='e1fd8a453228f724c8514b7ef9f29410', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE test_9(i int);')
+(fingerprint='587ed87f6d1264319c6ea98211c5d607', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE IF EXISTS test_9;')
+(fingerprint='3e6373b2483ee8ee4b26ebcf32046d01', count=1, total_cost=0, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_9();')
+(fingerprint='77f981d27ec98338051e4d466369ca9d', count=1, total_cost=0, total_rows=1, normalized_sql='INSERT INTO test_9 VALUES(?);')
+(fingerprint='a3a178fc9984d82ae810ccdbc60d46b4', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_9?;')
+(fingerprint='41db477d14f0a48cb08ada442610b442', count=1, total_cost=23, total_rows=10, normalized_sql='SELECT*FROM test_9 ORDER BY?;')
+(test='==== test #10 ====')
+(version='sptest')
+(i=1)
+(i=2)
+(i=3)
+(i=4)
+(i=5)
+(i=6)
+(i=7)
+(i=8)
+(i=9)
+(i=10)
+(fingerprint='4f25c7657a299cc4732ec53586ac5655', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_10 VERSION?{
+local function main(a)
+        local tab = db:table("test_10")
+        for i=1,10
+        do
+            tab:insert({i=i})
+        end
+        return 0
+    end};')
+(fingerprint='4a24e53abd04565296e681c27d37ffa1', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE test_10(i int);')
+(fingerprint='78c8e3f37e214982c9c7d85c8e5ad035', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE IF EXISTS test_10;')
+(fingerprint='a75604a61f71522c199529437b4b30eb', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE test_10;')
+(fingerprint='d0e263b3cd9a8e5d174ee87f7fa91994', count=1, total_cost=0, total_rows=10, normalized_sql='EXEC PROCEDURE fp_test_10();')
+(fingerprint='6965044720aa9f2910ff92e2e0b44db7', count=10, total_cost=0, total_rows=10, normalized_sql='INSERT INTO test_10(i)VALUES(?);')
+(fingerprint='d8ff879d163e3daa36091c0aaad3c060', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_10?;')
+(fingerprint='c970c179a4b2884292fd74d9d4d65d4b', count=1, total_cost=23, total_rows=10, normalized_sql='SELECT*FROM test_10 ORDER BY?;')
+(test='==== test #11 ====')
+(rows inserted=1)
+(version='sptest')
+(i=1)
+(fingerprint='a374c120ae3e4d19c77d90cc657df2b3', count=1, total_cost=0, total_rows=0, normalized_sql='ANALYZE test_11;')
+(fingerprint='e96fa5a19035d789e63278a761cf2fd0', count=1, total_cost=22, total_rows=2, normalized_sql='ANALYZESQLITE main.test_11;')
+(fingerprint='a1495e65de6aa2692a456eb0b8cc6288', count=1, total_cost=0, total_rows=1, normalized_sql='CREATE PROCEDURE fp_test_11 VERSION?{
+local function main(n)
+   local stmt, rcode = db:prepare([[SELECT i FROM test_11 WHERE i = @n]])
+   if rcode ~=0 then
+       return rcode
+   end
+
+   stmt:bind("n", n)
+   local row = stmt:fetch()
+   while row do
+       db:emit(row)
+       row = stmt:fetch()
+   end
+   return 0
+end
+};')
+(fingerprint='7df55e11a610b2932cbf3184e31eb3ff', count=1, total_cost=0, total_rows=0, normalized_sql='CREATE TABLE test_11 { schema { int i } keys { "idx1" = i } };')
+(fingerprint='8bdabb5703f374819755d2c3fb79918b', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE IF EXISTS test_11;')
+(fingerprint='3c79eeaf96def00a68797543520a3f39', count=1, total_cost=0, total_rows=0, normalized_sql='DROP TABLE test_11;')
+(fingerprint='5e3901e24aa13e15aa3136f809e150ec', count=1, total_cost=11, total_rows=1, normalized_sql='EXEC PROCEDURE fp_test_11(?);')
+(fingerprint='2431bcd6852f132ecbfe1cf19db00ec7', count=1, total_cost=0, total_rows=1, normalized_sql='INSERT INTO test_11 VALUES(?);')
+(fingerprint='c4a0109e58088623bf4d79e712a0a779', count=1, total_cost=0, total_rows=0, normalized_sql='PUT DEFAULT PROCEDURE fp_test_11?;')
+(fingerprint='65d42a7a65e3313e21e4e18f26880fd9', count=1, total_cost=11, total_rows=1, normalized_sql='SELECT i FROM test_11 WHERE i=?;')

@@ -24,4 +24,41 @@ for testreq in `ls t*.req` ; do
   fi
 done
 
+dbname=$1
+default=default
+
+cdb2sql ${CDB2_OPTIONS} $dbname $default "create procedure test {
+local function main()
+    return 1
+end
+}"
+cdb2sql ${CDB2_OPTIONS} $dbname $default "create table qlentest(a int)"
+cdb2sql ${CDB2_OPTIONS} $dbname $default "create lua trigger test on (table qlentest for insert)"
+cdb2sql ${CDB2_OPTIONS} $dbname $default "insert into qlentest values(1)"
+sleep 5
+cdb2sql ${CDB2_OPTIONS} $dbname $default "insert into qlentest select value from generate_series(1, 11999)"
+
+host=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbname $default "select host from comdb2_cluster where is_master='Y'")
+cdb2sql --host $host -tabs ${CDB2_OPTIONS} $dbname $default "put tunable queue_walk_limit 10000"
+count=$(cdb2sql --host $host -tabs ${CDB2_OPTIONS} $dbname $default "select depth from comdb2_queues where queuename='__qtest'")
+agediff=$(cdb2sql --host $host -tabs ${CDB2_OPTIONS} $dbname $default "select head_age - tail_age from comdb2_queues where queuename='__qtest'")
+
+if [[ $count -ne 10000 ]]; then
+    echo "Expected count of 10000 got $count"
+    exit 1
+fi
+
+if [[ $agediff -lt 5 ]]; then
+    echo "Expected agediff of at least 5 got $agediff"
+    exit 1
+fi
+
+host=$(cdb2sql -tabs ${CDB2_OPTIONS} $dbname $default "select host from comdb2_cluster where is_master='Y'")
+cdb2sql --host $host -tabs ${CDB2_OPTIONS} $dbname $default "put tunable queue_walk_limit 0"
+count=$(cdb2sql --host $host -tabs ${CDB2_OPTIONS} $dbname $default "select depth from comdb2_queues where queuename='__qtest'")
+if [[ $count -ne 12000 ]]; then
+    echo "Expected count of 12000 got $count"
+    exit 1
+fi
+
 exit 0

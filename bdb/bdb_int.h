@@ -290,6 +290,7 @@ struct tran_tag {
     tranclass_type tranclass;
     DB_TXN *tid;
     u_int32_t logical_lid;
+    u_int32_t original_lid;
 
     void *usrptr;
     DB_LSN savelsn;
@@ -1231,10 +1232,10 @@ void bdb_maybe_uncompress_data(bdb_state_type *bdb_state, DBT *data,
 
 int bdb_cget_unpack(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data,
                     uint8_t *ver, u_int32_t flags);
-int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key,
-                         DBT *data, uint8_t *ver, u_int32_t flags);
-int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid,
-                        DBT *key, DBT *data, uint8_t *ver, u_int32_t flags);
+int bdb_cget_unpack_blob(bdb_state_type *bdb_state, DBC *dbcp, DBT *key, DBT *data, uint8_t *ver, u_int32_t flags,
+                         void *(*fn_malloc)(int), void (*fn_free)(void *));
+int bdb_get_unpack_blob(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key, DBT *data, uint8_t *ver,
+                        u_int32_t flags, void *(*fn_malloc)(int), void (*fn_free)(void *));
 int bdb_get_unpack(bdb_state_type *bdb_state, DB *db, DB_TXN *tid, DBT *key,
                    DBT *data, uint8_t *ver, u_int32_t flags);
 int bdb_put_pack(bdb_state_type *bdb_state, int is_blob, DB *db, DB_TXN *tid,
@@ -1265,7 +1266,6 @@ int bdb_pack(bdb_state_type *bdb_state, const struct odh *odh, void *to,
 int bdb_unpack(bdb_state_type *bdb_state, const void *from, size_t fromlen,
                void *to, size_t tolen, struct odh *odh, void **freeptr);
 
-/* This is used by */
 int bdb_unpack_force_odh(bdb_state_type *bdb_state, const void *from,
                          size_t fromlen, void *to, size_t tolen,
                          struct odh *odh, void **freeptr);

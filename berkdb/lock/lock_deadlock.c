@@ -365,8 +365,8 @@ show_locker_info(DB_ENV *dbenv, DB_LOCKTAB *lt, DB_LOCKREGION *region,
 		logmsg(LOGMSG_USER, "%s:%d__lock_getlocker ret: %d\n",
 		    __func__, __LINE__, ret);
 	} else if (lockerp != NULL) {
-		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d, tid=%lx \n", idmap[lid].id,
-		    idmap[lid].killme, lockerp->tid);
+		logmsg(LOGMSG_USER, "lockerid=%x, killme=%d, tid=%p \n", idmap[lid].id,
+		    idmap[lid].killme, (void *)lockerp->tid);
 
 		struct __db_lock *lp;
 		for (lp = SH_LIST_FIRST(&lockerp->heldby, __db_lock); lp !=NULL;

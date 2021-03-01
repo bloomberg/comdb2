@@ -29,6 +29,7 @@
 #include "sc_drop_table.h"
 #include "sc_add_table.h"
 #include "sc_alter_table.h"
+#include "sc_util.h"
 
 int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {

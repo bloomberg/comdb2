@@ -43,9 +43,7 @@ static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
         if (rc != 0) {
             sc_printf(s, "not using plan.  error in plan module.\n");
             changed = SC_TAG_CHANGE;
-        } else if (!s->use_plan ||
-                   s->force_rebuild) // TODO This if does not make sense!
-        {
+        } else if (!s->use_plan || s->force_rebuild || s->use_old_blobs_on_rebuild) {
             sc_printf(s, "not using plan.  full rebuild\n");
             s->use_plan = gbl_use_plan = 0;
             changed = SC_TAG_CHANGE;
@@ -399,7 +397,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
 
-    sc_printf(s, "starting schema update with seed %llx\n", iq->sc_seed);
+    sc_printf(s, "starting schema update with seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
 
     int local_lock = 0;
     if (!iq->sc_locked) {
@@ -427,7 +426,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     newdb->schema_version = get_csc2_version(newdb->tablename);
 
     newdb->iq = iq;
-
     if (add_cmacc_stmt(newdb, 1) != 0) {
         backout(newdb);
         cleanup_newdb(newdb);
@@ -775,6 +773,12 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
             BACKOUT;
     }
 
+    rc = create_datacopy_array(newdb);
+    if (rc) {
+        sc_errf(s, "error initializing datacopy array\n");
+        return -1;
+    }
+
     if ((rc = prepare_version_for_dbs_without_instant_sc(transac, db, newdb)))
         BACKOUT;
 
@@ -924,7 +928,8 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     free(newdb);
     free(new_bdb_handle);
 
-    sc_printf(s, "Schema change finished, seed %llx\n", iq->sc_seed);
+    sc_printf(s, "Schema change finished, seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
     return 0;
 
 backout:
@@ -1029,6 +1034,7 @@ int finalize_upgrade_table(struct schema_change_type *s)
         if (rc != 0) continue;
 
         rc = trans_commit(&iq, tran, gbl_mynode);
+        tran = NULL;
     }
 
     return rc;

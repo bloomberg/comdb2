@@ -106,16 +106,13 @@ THRDS=20
 CNT=10000
 ITERATIONS=10
 TRANSIZE=0
+if [[ $DBNAME == *"largetrangenerated"* ]] ; then
+    TRANSIZE=2800
+fi
 
 gen_series_test
 
 time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins1.out
-assertcnt $((THRDS * CNT * ITERATIONS))
-
-cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "truncate t1"
-
-TRANSIZE=2800
-time ${TESTSBUILDDIR}/insert_lots_mt $dbnm $THRDS $CNT $ITERATIONS $TRANSIZE> ins2.out
 assertcnt $((THRDS * CNT * ITERATIONS))
 
 echo "Success"

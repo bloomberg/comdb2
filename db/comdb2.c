@@ -132,6 +132,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "metrics.h"
 #include "time_accounting.h"
 #include <build/db.h>
+#include "comdb2_query_preparer.h"
 
 #define QUOTE_(x) #x
 #define QUOTE(x) QUOTE_(x)
@@ -758,6 +759,8 @@ extern int gbl_debug_sqlthd_failures;
 extern int gbl_random_get_curtran_failures;
 extern int gbl_random_blkseq_replays;
 extern int gbl_disable_cnonce_blkseq;
+extern int gbl_create_dba_user;
+
 int gbl_mifid2_datetime_range = 1;
 
 int gbl_early_verify = 1;
@@ -782,6 +785,8 @@ int destroy_plugins(void);
 void register_plugin_tunables(void);
 int install_static_plugins(void);
 int run_init_plugins(int phase);
+
+int gbl_queue_walk_limit = 10000;
 
 inline int getkeyrecnums(const dbtable *tbl, int ixnum)
 {
@@ -1199,7 +1204,7 @@ static void *purge_old_blkseq_thread(void *arg)
 
         /* queue consumer thread admin */
         thrman_where(thr_self, "dbqueue_admin");
-        dbqueuedb_admin(dbenv);
+        dbqueuedb_admin(dbenv, NULL);
         thrman_where(thr_self, NULL);
 
         /* purge old blobs.  i didn't want to make a whole new thread just
@@ -1517,10 +1522,8 @@ void clean_exit(void)
     cleanup_interned_strings();
     cleanup_peer_hash();
     free(gbl_dbdir);
-    free(gbl_myhostname);
 
     cleanresources(); // list of lrls
-    clear_portmux_bind_path();
     // TODO: would be nice but other threads need to exit first:
     // comdb2ma_exit();
 
@@ -1585,7 +1588,7 @@ dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
     tbl->avgitemsz = avgsz;
     tbl->queue_pagesize_override = pagesize;
 
-    if (tbl->dbtype == DBTYPE_QUEUEDB) {
+    if (tbl->dbtype == DBTYPE_QUEUEDB || tbl->dbtype == DBTYPE_QUEUE) {
         Pthread_rwlock_init(&tbl->consumer_lk, NULL);
     }
 
@@ -2178,7 +2181,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
 
 int llmeta_load_timepart(struct dbenv *dbenv)
 {
-    /* We need to do this before resuming schema chabge , if any */
+    /* We need to do this before resuming schema change, if any */
     logmsg(LOGMSG_INFO, "Reloading time partitions\n");
     dbenv->timepart_views = timepart_views_init(dbenv);
 
@@ -3843,6 +3846,11 @@ static int init(int argc, char **argv)
     unlock_schema_lk();
 
     sqlinit();
+    rc = create_datacopy_arrays();
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "create_datacopy_arrays rc %d\n", rc);
+        return -1;
+    }
     rc = create_sqlmaster_records(NULL);
     if (rc) {
         logmsg(LOGMSG_FATAL, "create_sqlmaster_records rc %d\n", rc);
@@ -4031,11 +4039,12 @@ static char *strtoupper(char instr[])
 
 static void ttrap(struct timer_parm *parm)
 {
-    char *msg;
     switch (parm->parm) {
     case TMEV_ENABLE_LOG_DELETE:
-        msg = "sync log-delete on";
-        process_command(thedb, msg, strlen(msg), 0);
+        /* We already hold timerlk. process_sync_command("sync log-delete on")
+           will attempt to grab timerlk one more time. So call the routine
+           directly without faking a message trap. */
+        log_delete_counter_change(thedb, LOG_DEL_ABS_ON);
         break;
     case TMEV_PURGE_OLD_LONGTRN:
         (void)purge_expired_long_transactions(thedb);
@@ -5104,9 +5113,7 @@ static void getmyid(void)
         gbl_myhostname = "UNKNOWN";
         gbl_mynode = "localhost";
     } else {
-        name[1023] = '\0'; /* paranoia, just in case of truncation */
-
-        gbl_myhostname = strdup(name);
+        gbl_myhostname = intern(name);
         gbl_mynode = intern(gbl_myhostname);
     }
 
@@ -5343,6 +5350,20 @@ int main(int argc, char **argv)
     if (run_init_plugins(COMDB2_PLUGIN_INITIALIZER_POST)) {
         logmsg(LOGMSG_FATAL, "Initializer plugin failed\n");
         exit(1);
+    }
+
+    /* Create DBA user if it does not already exist */
+    if ((thedb->master == gbl_myhostname) && (gbl_create_dba_user == 1)) {
+        /*
+          Skip if authentication is enabled, as we do not want to open a
+          backdoor by automatically creating an OP user with no password
+          (the default DBA user attributes).
+        */
+        if (gbl_uses_password == 0) {
+            bdb_create_dba_user(thedb->bdb_env);
+        } else {
+            logmsg(LOGMSG_USER, "authentication enabled, DBA user not created\n");
+        }
     }
 
     gbl_ready = 1;
@@ -5605,7 +5626,6 @@ int gbl_hostname_refresh_time = 60;
 
 int close_all_dbs_tran(tran_type *tran);
 
-int reload_all_db_tran(tran_type *tran);
 int open_all_dbs_tran(void *tran);
 void delete_prepared_stmts(struct sqlthdstate *thd);
 int reload_lua_sfuncs();
@@ -5792,8 +5812,15 @@ retry_tran:
         delete_prepared_stmts(thd);
         sqlite3_close(thd->sqldb);
         thd->sqldb = NULL;
+
+        /* Also clear sqlitex's db handle */
+        if (gbl_old_column_names && query_preparer_plugin &&
+            query_preparer_plugin->do_cleanup_thd) {
+            query_preparer_plugin->do_cleanup_thd(thd);
+        }
     }
 
+    create_datacopy_arrays();
     create_sqlmaster_records(tran);
     create_sqlite_master();
     oldfile_list_clear();

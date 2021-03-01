@@ -660,6 +660,17 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     int rc = 0;
     int bdberr = 0;
 
+    /*
+     * Warn of any invalid engine state.  Do it before srs_tran_destroy() as
+     * clnt->sql will be pointing at free memory after that.
+     */
+    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS && clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %p\n", clnt, clnt->ctrl_sqlengine,
+               clnt->osql.rqid, (void *)pthread_self());
+        if (clnt->sql)
+            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
+    }
+
     /* TODO: once Dr. Hipp fixes the plan, this should be moved
        to sqlite3BtreeCloseCursor */
     clearClientSideRow(clnt);
@@ -694,19 +705,11 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     if (clnt->osql.sess_blocksock)
         logmsg(LOGMSG_ERROR, "sess_blocksock field is not cleared!\n");
 
-    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
-        clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %lu\n",
-               clnt, clnt->ctrl_sqlengine, clnt->osql.rqid, pthread_self());
-        if (clnt->sql)
-            logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
-    }
-
     if (osql_chkboard_sqlsession_exists(clnt->osql.rqid, clnt->osql.uuid, 1)) {
         uuidstr_t us;
-        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %lu\n", clnt,
+        logmsg(LOGMSG_ERROR, "%p [%llx %s] in USE! %p\n", clnt,
                clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us),
-               pthread_self());
+               (void *)pthread_self());
         /* XXX temporary debug code. */
         if (gbl_abort_on_clear_inuse_rqid)
             abort();

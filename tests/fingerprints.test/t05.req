@@ -1,0 +1,236 @@
+select "==== test #1 ====" as test;
+create procedure fp_test_1 version 'sptest' {
+    local function main()
+	local t, rc = db:prepare([[SELECT 1,2,3,4,5]])
+	if rc ~=0 then
+	    return rc
+	end
+	local row = t:fetch()
+	db:emit(row)
+	return 0
+    end}$$
+put default procedure fp_test_1 'sptest'
+exec procedure fp_test_1()
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql = 'SELECT?,?,?,?,?;' OR normalized_sql LIKE '%fp_test_1%'order by normalized_sql;
+
+select "==== test #2 ====" as test;
+create procedure fp_test_2 version 'sptest' {
+    local function main()
+	local t, rc = db:prepare([[SELECT 6,7,8,9]])
+	if rc ~=0 then
+	    return rc
+	end
+	local row = t:fetch()
+	while row do
+	    db:emit(row)
+	    row = t:fetch()
+	end
+	return 0
+    end}$$
+put default procedure fp_test_2 'sptest'
+exec procedure fp_test_2()
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql = 'SELECT?,?,?,?;' OR normalized_sql LIKE '%fp_test_2%'order by normalized_sql;
+
+select "==== test #3 ====" as test;
+create procedure fp_test_3 version 'sptest' {
+    local function main(a)
+        local res = ""
+        local stmt, rcode = db:prepare([[select @a as aa]])
+        stmt:bind("a", a)
+        local row = stmt:fetch()
+        while row do
+            res = res .. tostring(row.aa)
+            row = stmt:fetch()
+        end
+        --db:emit(res)
+        return 0
+    end}$$
+put default procedure fp_test_3 'sptest'
+exec procedure fp_test_3(1)
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE 'SELECT%AS aa%' OR normalized_sql LIKE '%fp_test_3%'order by normalized_sql;
+
+select "==== test #4 ====" as test;
+create procedure fp_test_4 version 'sptest' {
+    local function main(a)
+        local res = ""
+        local stmt, rcode = db:prepare([[select @a as bb]])
+        stmt:bind("a", a)
+        local row = stmt:fetch()
+        while row do
+            res = res .. tostring(row.bb)
+            row = stmt:fetch()
+        end
+        db:emit(res)
+        return 0
+    end}$$
+put default procedure fp_test_4 'sptest'
+exec procedure fp_test_4(2)
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE 'SELECT%AS bb%' OR normalized_sql LIKE '%fp_test_4%'order by normalized_sql;
+
+select "==== test #5 ====" as test;
+create procedure fp_test_5 version 'sptest' {
+    local function main(a)
+        local res = ""
+        local stmt, rcode = db:prepare([[select @a as cc]])
+        stmt:bind("a", a)
+        if rcode ~=0 then
+            return rcode
+        end
+        local row = stmt:fetch()
+        db:emit(row)
+        return 0
+    end}$$
+put default procedure fp_test_5 'sptest'
+exec procedure fp_test_5(3)
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE 'SELECT%AS cc%' OR normalized_sql LIKE '%fp_test_5%'order by normalized_sql;
+
+select "==== test #6 ====" as test;
+drop table if exists test_6;
+create table test_6(i int)$$
+create procedure fp_test_6 version 'sptest' {
+local function main(a, b)
+        local tab = db:table("test_6")
+        local stmt, rcode = db:prepare([[select * from (select @a as dd union all select @b as dd)]])
+        stmt:bind("a", a)
+        stmt:bind("b", b)
+        if rcode ~=0 then
+            return rcode
+        end
+        local row = stmt:fetch()
+        while row do
+            db:emit(row)
+            tab:insert(row)
+            row = stmt:fetch()
+        end
+        return 0
+    end}$$
+put default procedure fp_test_6 'sptest'
+exec procedure fp_test_6(1, 2)
+select * from test_6 order by 1;
+drop table test_6;
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE 'SELECT%AS dd%' OR normalized_sql LIKE '%test_6%' order by normalized_sql;
+
+select "==== test #7 ====" as test;
+create procedure fp_test_7 version 'sptest' {
+local function get_a_num(num)
+   local stmt, rcode = db:prepare([[select @a as ee]])
+   stmt:bind("a", num)
+   local row = stmt:fetch()
+   return row.ee
+end
+
+local function main(a, b)
+        local stmt, rcode = db:prepare([[select * from (select @a as ee union all select @b as ee)]])
+        stmt:bind("a", get_a_num(a))
+        stmt:bind("b", get_a_num(b))
+        if rcode ~=0 then
+            return rcode
+        end
+        local row = stmt:fetch()
+        while row do
+            db:emit(row)
+            row = stmt:fetch()
+        end
+        return 0
+    end}$$
+put default procedure fp_test_7 'sptest'
+exec procedure fp_test_7(1, 2)
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE 'SELECT%AS ee%' OR normalized_sql LIKE '%fp_test_7%' order by normalized_sql;
+
+select "==== test #8 ====" as test;
+drop table if exists test_8;
+create table test_8(i int)$$
+create procedure fp_test_8 version 'sptest' {
+local function main()
+        local stmt, rcode = db:prepare([[insert into test_8 values (@a)]])
+        if rcode ~=0 then
+            return rcode
+        end
+
+        for i=1,10
+        do
+            stmt:bind("a", i)
+            stmt:exec()
+        end
+        return 0
+    end}$$
+put default procedure fp_test_8 'sptest'
+exec procedure fp_test_8()
+select * from test_8 order by 1;
+drop table test_8;
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE '%test_8%' order by normalized_sql;
+
+select "==== test #9 ====" as test;
+drop table if exists test_9;
+create table test_9(i int)$$
+create procedure fp_test_9 version 'sptest' {
+local function main()
+        local stmt, rcode = db:prepare([[insert into test_9 values (@a)]])
+        if rcode ~=0 then
+            return rcode
+        end
+
+        for i=1,10
+        do
+            db:begin()
+            stmt:bind("a", i)
+            stmt:exec()
+            db:commit()
+        end
+        return 0
+    end}$$
+put default procedure fp_test_9 'sptest'
+exec procedure fp_test_9()
+select * from test_9 order by 1;
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE '%test_9%' order by normalized_sql;
+
+select "==== test #10 ====" as test;
+drop table if exists test_10;
+create table test_10(i int)$$
+create procedure fp_test_10 version 'sptest' {
+local function main(a)
+        local tab = db:table("test_10")
+        for i=1,10
+        do
+            tab:insert({i=i})
+        end
+        return 0
+    end}$$
+put default procedure fp_test_10 'sptest'
+exec procedure fp_test_10()
+select * from test_10 order by 1;
+drop table test_10;
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE '%test_10%' order by normalized_sql;
+
+select "==== test #11 ====" as test;
+# DRQS 163872257
+drop table if exists test_11;
+create table test_11 { schema { int i } keys { "idx1" = i } }$$
+insert into test_11 values(1);
+
+# The following analyze is required. It helps alter the sqlite plan
+# to trigger a sqlite3_reset() that clears vdbe's luaStartTime causing
+# fingerprint code to be skipped in lua_end_step().
+analyze test_11
+
+create procedure fp_test_11 version 'sptest' {
+local function main(n)
+   local stmt, rcode = db:prepare([[SELECT i FROM test_11 WHERE i = @n]])
+   if rcode ~=0 then
+       return rcode
+   end
+
+   stmt:bind("n", n)
+   local row = stmt:fetch()
+   while row do
+       db:emit(row)
+       row = stmt:fetch()
+   end
+   return 0
+end
+}$$
+put default procedure fp_test_11 'sptest'
+exec procedure fp_test_11(1)
+drop table test_11;
+select fingerprint, count, total_cost, total_rows, normalized_sql from comdb2_fingerprints where normalized_sql LIKE '%test_11%' order by normalized_sql;
+

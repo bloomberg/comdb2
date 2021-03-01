@@ -432,7 +432,8 @@ static void *watchdog_watcher_thread(void *arg)
               cycle before making a decision to abort.
             */
             if (failed_once > 0) {
-                logmsg(LOGMSG_FATAL, "watchdog thread stuck, exiting\n");
+                logmsg(LOGMSG_FATAL, "watchdog thread stuck for more than %d seconds, exiting\n",
+                       gbl_watchdog_watch_threshold);
                 comdb2_die(1);
             }
             failed_once++;
@@ -446,8 +447,9 @@ static void *watchdog_watcher_thread(void *arg)
 
         /* I also wanna watch the bdb watcher, since that one
            gets stuck every time there is berkdb lockdown */
-        if (tmstmp - gbl_watcher_thread_ran > 60) {
-            logmsg(LOGMSG_FATAL, "rep watcher thread stuck, exiting\n");
+        if (tmstmp - gbl_watcher_thread_ran > gbl_watchdog_watch_threshold) {
+            logmsg(LOGMSG_FATAL, "rep watcher thread stuck for more than %d seconds, exiting\n",
+                   gbl_watchdog_watch_threshold);
             comdb2_die(1);
         }
     }

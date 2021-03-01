@@ -62,6 +62,7 @@ extern int gbl_expressions_indexes;
 
 int gbl_fdb_track = 0;
 int gbl_fdb_track_times = 0;
+int gbl_test_io_errors = 0;
 
 struct fdb_tbl;
 struct fdb;
@@ -212,7 +213,7 @@ static int insert_table_entry_from_packedsqlite(fdb_t *fdb, fdb_tbl_t *tbl,
                                                 fdb_tbl_ent_t **found_ent,
                                                 int versioned);
 static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                           fdb_tbl_ent_t **found_ent);
+                           fdb_tbl_ent_t **found_ent, int is_sqlite_master);
 
 static int fdb_num_entries(fdb_t *fdb);
 
@@ -411,7 +412,7 @@ static void __fdb_add_user(fdb_t *fdb, int noTrace)
     fdb->users++;
 
     if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
     assert(fdb->users > 0);
@@ -428,7 +429,7 @@ static void __fdb_rem_user(fdb_t *fdb, int noTrace)
     fdb->users--;
 
     if (!noTrace && gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu %s %s users %d\n", pthread_self(), __func__,
+        logmsg(LOGMSG_USER, "%p %s %s users %d\n", (void *)pthread_self(), __func__,
                fdb->dbname, fdb->users);
 
     assert(fdb->users >= 0);
@@ -830,7 +831,7 @@ static int _add_table_and_stats_fdb(fdb_t *fdb, const char *table_name,
      */
     is_sqlite_master = (strcasecmp(table_name, "sqlite_master") == 0);
     found_ent = NULL;
-    rc = check_table_fdb(fdb, tbl, initial, &found_ent);
+    rc = check_table_fdb(fdb, tbl, initial, &found_ent, is_sqlite_master);
 
     if (rc != FDB_NOERR || (!found_ent && !is_sqlite_master)) {
         *version = 0;
@@ -916,7 +917,7 @@ static int fdb_num_entries(fdb_t *fdb)
  * NOTE:
  */
 static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
-                           fdb_tbl_ent_t **found_ent)
+                           fdb_tbl_ent_t **found_ent, int is_sqlite_master)
 {
     BtCursor *cur;
     int rc = FDB_NOERR;
@@ -940,6 +941,7 @@ static int check_table_fdb(fdb_t *fdb, fdb_tbl_t *tbl, int initial,
     cur->bt->fdb = fdb;
     cur->bt->is_remote = 1;
     struct sqlclntstate *clnt = cur->clnt;
+    cur->rootpage = 1;
 
 run:
     /* if we have already learnt that fdb is older, do not try newer versioned
@@ -949,7 +951,7 @@ run:
     else
         versioned = 1;
 
-    fdbc_if = fdb_cursor_open(clnt, cur, 1, NULL, NULL, need_ssl);
+    fdbc_if = fdb_cursor_open(clnt, cur, cur->rootpage, NULL, NULL, need_ssl);
     if (!fdbc_if) {
         rc = clnt->fdb_state.xerr.errval;
         logmsg(LOGMSG_ERROR, 
@@ -994,6 +996,7 @@ run:
     fdbc->sql_hint = sql;
 
     rc = fdbc_if->move(cur, CFIRST);
+    fdbc_if = cur->fdbc; /* retry might get another cursor */
     if (rc != IX_FND && rc != IX_FNDMORE) {
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
@@ -1043,8 +1046,9 @@ run:
             break;
         }
 
-        logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n",
-                __func__, fdb->dbname, tbl->name, rc);
+        if (!is_sqlite_master)
+            logmsg(LOGMSG_ERROR, "%s: unable to find schema for %s.%s rc =%d\n",
+                   __func__, fdb->dbname, tbl->name, rc);
 
         if (*found_ent)
             *found_ent = NULL;
@@ -1239,7 +1243,8 @@ static int _failed_AddAndLockTable(const char *dbname, int errcode,
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     struct sqlclntstate *clnt = thd->clnt;
 
-    logmsg(LOGMSG_WARN, "Error \"%s\" for db \"%s\"\n", prefix, dbname);
+    logmsg(LOGMSG_WARN, "Error rc %d \"%s\" for db \"%s\"\n", errcode, prefix,
+           dbname);
 
     if (clnt->fdb_state.xerr.errval && clnt->fdb_state.preserve_err) {
         logmsg(LOGMSG_ERROR, "Ignored error rc=%d str=\"%s\", got new rc=%d new prefix=\"%s\"\n",
@@ -1958,8 +1963,16 @@ int fdb_cursor_move_master(BtCursor *pCur, int *pRes, int how)
         will need to position on the current table; given the order
         chosen {table, stat1, stat4, done}, if table is stat4, we
         end up skipping stat1.  To fix this, we replace stat4 with
-        stat1 since we will get stat4 after this */
+        stat1 since we will get stat4 after this.
+        */
         if (strncasecmp(zTblName, "sqlite_stat4", 12) == 0)
+            zTblName = "sqlite_stat1";
+        /* In addition, if the first remote table from this fdb
+        is sqlite_master, we only get stats tables, and the follow-up
+        hash_find_readonly returns no entry, since we don't have an
+        entry for sqlite_master;  fix this by pointing to sqlite_stat1
+        as well */
+        if (strncasecmp(zTblName, "sqlite_master", 13) == 0)
             zTblName = "sqlite_stat1";
     }
 
@@ -2250,8 +2263,7 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                     tran_flags = 0;
 
                 rc = fdb_send_begin(msg, trans, clnt->dbtran.mode, tran_flags,
-                                    clnt->osql.rqid == OSQL_RQID_USE_UUID,
-                                    trans->sb);
+                                    trans->isuuid, trans->sb);
                 if (rc == FDB_NOERR) {
                     trans->host = host;
                 }
@@ -2369,7 +2381,8 @@ static fdb_cursor_if_t *_fdb_cursor_open_remote(struct sqlclntstate *clnt,
     fdb_cursor_t *fdbc;
     int rc;
     char *tid;
-    int isuuid = gbl_noenv_messages;
+    int isuuid =
+        (gbl_noenv_messages) & (fdb->server_version > FDB_VER_WR_NAMES);
     uuid_t zerouuid;
     char zerotid[8] = {0};
 
@@ -2928,6 +2941,7 @@ static int fdb_cursor_reopen(BtCursor *pCur)
     int rc;
     fdb_tran_t *tran;
     int need_ssl = 0;
+    char *sql_hint;
 
     thd = pthread_getspecific(query_info_key);
 
@@ -2942,6 +2956,9 @@ static int fdb_cursor_reopen(BtCursor *pCur)
     if (tran)
         Pthread_mutex_lock(&clnt->dtran_mtx);
 
+    /* preserve the hint */
+    sql_hint = pCur->fdbc->impl->sql_hint;
+
     rc = pCur->fdbc->close(pCur);
     if (rc) {
         /*rc = -1;*/
@@ -2955,6 +2972,8 @@ static int fdb_cursor_reopen(BtCursor *pCur)
         goto done;
     }
 
+    pCur->fdbc->impl->sql_hint = sql_hint;
+
 done:
     if (tran)
         Pthread_mutex_unlock(&clnt->dtran_mtx);
@@ -2962,6 +2981,7 @@ done:
     return rc;
 }
 
+#define RETRY_GET_ROW 16
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
     fdb_cursor_t *fdbc = pCur->fdbc->impl;
@@ -2970,6 +2990,7 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     enum run_sql_flags flags = FDB_RUN_SQL_NORMAL;
     unsigned long long start_rpc;
     unsigned long long end_rpc;
+    int retry = 0;
 
     if (fdbc) {
 retry:
@@ -2979,7 +3000,7 @@ retry:
         if ((how == CFIRST || how == CLAST) &&
             (fdbc->streaming != FDB_CUR_IDLE)) {
             rc = fdb_cursor_reopen(pCur);
-            if (rc) {
+            if (rc || !pCur->fdbc /*did we fail to pass error back */) {
                 logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
                         rc);
                 return rc;
@@ -3090,7 +3111,11 @@ retry:
                         logmsg(LOGMSG_USER,
                                "%s:%d blacklisting %s, retrying..\n", __func__,
                                __LINE__, fdbc->node);
-                    goto retry;
+                    if (retry++ < RETRY_GET_ROW)
+                        goto retry;
+                    logmsg(LOGMSG_ERROR,
+                           "%s:%d failed to reconnect after %d retries\n",
+                           __func__, __LINE__, retry);
                 } else {
                     if (rc != FDB_ERR_SSL) {
                         if (state) {
@@ -3210,7 +3235,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
         }
 
         if (pCur->ixnum == -1) {
-            if (bias != OP_NotExists && bias != OP_SeekRowid) {
+            if (bias != OP_NotExists && bias != OP_SeekRowid && bias != OP_DeferredSeek) {
                 logmsg(LOGMSG_FATAL, "%s: not supported op %d\n", __func__, bias);
                 abort();
             }
@@ -3690,6 +3715,12 @@ static int fdb_cursor_delete(BtCursor *pCur, struct sqlclntstate *clnt,
 
     trans->seq++;
 
+    if (rc == 0) {
+        rc = fdb_set_genid_deleted(trans, genid);
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "%s: error marking genid deleted, rc %d\n", __func__, rc);
+    }
+
     return rc;
 }
 
@@ -3762,6 +3793,12 @@ static int fdb_cursor_update(BtCursor *pCur, struct sqlclntstate *clnt,
 
     trans->seq++;
 
+    if (rc == 0) {
+        rc = fdb_set_genid_deleted(trans, genid);
+        if (rc != 0)
+            logmsg(LOGMSG_ERROR, "%s: error marking genid deleted, rc %d\n", __func__, rc);
+    }
+
     return rc;
 }
 
@@ -3794,7 +3831,8 @@ static fdb_distributed_tran_t *fdb_trans_create_dtran(struct sqlclntstate *clnt)
 
 static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
                                                fdb_distributed_tran_t *dtran,
-                                               fdb_t *fdb, int use_ssl)
+                                               fdb_t *fdb, int use_ssl,
+                                               int isuuid)
 {
     fdb_tran_t *tran;
     fdb_msg_t *msg;
@@ -3817,8 +3855,8 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         }
         tran->tid = (char *)tran->tiduuid;
 
-        tran->isuuid = clnt->osql.rqid == OSQL_RQID_USE_UUID;
-        if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+        tran->isuuid = isuuid;
+        if (tran->isuuid) {
             comdb2uuid((unsigned char *)tran->tid);
         } else
             *(unsigned long long *)tran->tid = comdb2fastseed();
@@ -3844,7 +3882,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         free(msg);
 
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Created tid=%s db=\"%s\"\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
@@ -3856,7 +3894,7 @@ static fdb_tran_t *fdb_trans_dtran_get_subtran(struct sqlclntstate *clnt,
         }
     } else {
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Reusing tid=%s db=\"%s\"\n", __func__,
                        comdb2uuidstr((unsigned char *)tran->tid, us),
@@ -3876,6 +3914,8 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     fdb_distributed_tran_t *dtran;
     fdb_tran_t *tran;
+    int isuuid = (clnt->osql.rqid == OSQL_RQID_USE_UUID) &&
+                 (fdb->server_version > FDB_VER_WR_NAMES);
 
     Pthread_mutex_lock(&clnt->dtran_mtx);
 
@@ -3888,9 +3928,9 @@ fdb_tran_t *fdb_trans_begin_or_join(struct sqlclntstate *clnt, fdb_t *fdb,
         }
     }
 
-    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl);
+    tran = fdb_trans_dtran_get_subtran(clnt, dtran, fdb, use_ssl, isuuid);
     if (tran) {
-        if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+        if (tran->isuuid) {
             comdb2uuidcpy((unsigned char *)ptid, (unsigned char *)tran->tid);
         } else
             *(unsigned long long *)ptid = *(unsigned long long *)tran->tid;
@@ -3909,7 +3949,7 @@ fdb_tran_t *fdb_trans_join(struct sqlclntstate *clnt, fdb_t *fdb, char *ptid)
     if (dtran) {
         tran = fdb_get_subtran(dtran, fdb);
         if (tran) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID)
+            if (tran->isuuid)
                 comdb2uuidcpy((unsigned char *)ptid,
                               (unsigned char *)tran->tid);
             else
@@ -3925,7 +3965,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc = 0;
+    int rc = 0, bdberr;
 
     if (!dtran)
         return 0;
@@ -3951,8 +3991,8 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode,
-                             clnt->osql.rqid == OSQL_RQID_USE_UUID, tran->sb);
+        rc = fdb_send_commit(msg, tran, clnt->dbtran.mode, tran->isuuid,
+                             tran->sb);
 
         if (gbl_fdb_track)
             logmsg(LOGMSG_USER, "%s Send Commit tid=%llx db=\"%s\" rc=%d\n",
@@ -3965,7 +4005,7 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
         rc = fdb_recv_rc(msg, tran);
 
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 logmsg(LOGMSG_USER, "%s Commit RC=%d tid=%s db=\"%s\"\n",
                        __func__, rc,
@@ -4005,6 +4045,14 @@ int fdb_trans_commit(struct sqlclntstate *clnt)
             sbuf2close(tran->sb);
         if (tran->errstr)
             free(tran->errstr);
+
+        if (tran->dedup_tbl != NULL) {
+            /* tempcursors are automatically closed in bdb_temp_table_close. */
+            rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr);
+            if (rc != 0)
+                logmsg(LOGMSG_ERROR, "%s: error closing temptable, rc %d, bdberr %d\n", __func__, rc, bdberr);
+        }
+
         free(tran);
     }
     free(clnt->dbtran.dtran);
@@ -4022,7 +4070,7 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
     fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
     fdb_tran_t *tran, *tmp;
     fdb_msg_t *msg;
-    int rc;
+    int rc, bdberr;
 
     if (!dtran)
         return 0;
@@ -4073,6 +4121,14 @@ int fdb_trans_rollback(struct sqlclntstate *clnt)
             sbuf2close(tran->sb);
         if (tran->errstr)
             free(tran->errstr);
+
+        if (tran->dedup_tbl != NULL) {
+            /* tempcursors are automatically closed in bdb_temp_table_close. */
+            rc = bdb_temp_table_close(tran->bdb_state, tran->dedup_tbl, &bdberr);
+            if (rc != 0)
+                logmsg(LOGMSG_ERROR, "%s: error closing temptable, rc %d, bdberr %d\n", __func__, rc, bdberr);
+        }
+
         free(tran);
     }
     free(clnt->dbtran.dtran);
@@ -4752,11 +4808,10 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
 
     LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
     {
-        rc = fdb_send_heartbeat(
-            msg, tran->tid, clnt->osql.rqid == OSQL_RQID_USE_UUID, tran->sb);
+        rc = fdb_send_heartbeat(msg, tran->tid, tran->isuuid, tran->sb);
 
         if (gbl_fdb_track) {
-            if (clnt->osql.rqid == OSQL_RQID_USE_UUID) {
+            if (tran->isuuid) {
                 uuidstr_t us;
                 comdb2uuidstr((unsigned char *)tran->tid, us);
                 logmsg(LOGMSG_USER, "%s Send heartbeat tid=%s db=\"%s\" rc=%d\n",
@@ -5002,10 +5057,18 @@ done:
 static int _validate_existing_table(fdb_t *fdb, int cls, int local)
 {
     if (fdb->local != local) {
+        logmsg(LOGMSG_ERROR,
+               "Failed local match fdb %s class %d local %d, asked for class "
+               "%d local %d\n",
+               fdb->dbname, fdb->class, fdb->local, cls, local);
         /* follow-up instances don't specify LOCAL mode */
         return FDB_ERR_CLASS_DENIED;
     }
     if (fdb->class != cls) {
+        logmsg(
+            LOGMSG_ERROR,
+            "Failed class match fdb %s class %d, asked for class %d local %d\n",
+            fdb->dbname, fdb->class, cls, local);
         /* follow-up instances don't specify same class */
         return FDB_ERR_CLASS_DENIED;
     }
@@ -5032,4 +5095,53 @@ int fdb_validate_existing_table(const char *zDatabase)
        up code might actually establish a new fdb */
     Pthread_rwlock_unlock(&fdbs.arr_lock);
     return rc;
+}
+
+int fdb_set_genid_deleted(fdb_tran_t *tran, unsigned long long genid)
+{
+    int rc, bdberr;
+
+    if (tran->dedup_cur == NULL) {
+        tran->bdb_state = thedb->bdb_env;
+
+        tran->dedup_tbl = bdb_temp_table_create(tran->bdb_state, &bdberr);
+        if (tran->dedup_tbl == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: error creating a temptable, bdberr %d\n", __func__, bdberr);
+            return -1;
+        }
+
+        tran->dedup_cur = bdb_temp_table_cursor(tran->bdb_state, tran->dedup_tbl, NULL, &bdberr);
+        if (tran->dedup_cur == NULL) {
+            logmsg(LOGMSG_ERROR, "%s: error creating a tempcursor, bdberr %d\n", __func__, bdberr);
+            return -1;
+        }
+    }
+
+    rc = bdb_temp_table_insert(tran->bdb_state, tran->dedup_cur, &genid, sizeof(genid), NULL, 0, &bdberr);
+    if (rc != 0)
+        logmsg(LOGMSG_ERROR, "%s: error inserting, rc %d, bdberr %d\n", __func__, rc, bdberr);
+
+    return rc;
+}
+
+int fdb_is_genid_deleted(fdb_tran_t *tran, unsigned long long genid)
+{
+    int rc, bdberr;
+    unsigned long long *pgenid;
+
+    if (tran->dedup_cur == NULL)
+        return 0;
+
+
+    pgenid = malloc(sizeof(*pgenid));
+    *pgenid = genid;
+
+    rc = bdb_temp_table_find_exact(tran->bdb_state, tran->dedup_cur, pgenid, sizeof(genid), &bdberr);
+    if (rc != IX_FND)
+        free(pgenid);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s: error looking up genid 0x%llx, rc %d, bdberr %d\n", __func__, genid, rc, bdberr);
+        return rc;
+    }
+    return (rc == IX_FND);
 }

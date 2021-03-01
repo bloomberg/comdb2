@@ -27,6 +27,8 @@
 #include "tunables.h"
 #include "comdb2.h"
 
+extern int gbl_mask_internal_tunables;
+
 /*
   comdb2_tunables: query various attributes of tunables.
 */
@@ -112,12 +114,14 @@ static int systblTunablesNext(sqlite3_vtab_cursor *cur)
 {
     systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)cur;
 
-    /* Skip all tunables marked 'INTERNAL'. */
+    /* Skip all 'COMPOSITE' and 'INTERNAL' tunables. */
     do {
         pCur->rowid++;
         if (pCur->rowid >= gbl_tunables->count) break;
         pCur->tunable = hash_next(gbl_tunables->hash, &pCur->ent, &pCur->bkt);
-    } while ((pCur->tunable->flags & INTERNAL) != 0);
+    } while ((pCur->tunable->type == TUNABLE_COMPOSITE) ||
+             (gbl_mask_internal_tunables &&
+              ((pCur->tunable->flags & INTERNAL) != 0)));
 
     return SQLITE_OK;
 }
@@ -176,7 +180,8 @@ static int systblTunablesColumn(sqlite3_vtab_cursor *cur, sqlite3_context *ctx,
         case TUNABLE_RAW: {
             const char *val;
             val = (tunable->value) ? (const char *)tunable->value(tunable)
-                                   : *(char **)tunable->var;
+                                   : ((tunable->var) ? *(char **)tunable->var
+                                      : 0);
             sqlite3_result_text(ctx, val, -1, NULL);
             break;
         }

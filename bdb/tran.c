@@ -261,6 +261,12 @@ void *bdb_get_physical_tran(tran_type *ltran)
     return ltran->physical_tran;
 }
 
+void bdb_reset_physical_tran(tran_type *ltran)
+{
+    assert(ltran->tranclass == TRANCLASS_LOGICAL);
+    ltran->physical_tran = NULL;
+}
+
 void *bdb_get_sc_parent_tran(tran_type *ltran)
 {
     assert(ltran->tranclass == TRANCLASS_LOGICAL);
@@ -1609,8 +1615,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                 tran->tid->abort(tran->tid);
                 bdb_osql_trn_repo_unlock();
                 logmsg(LOGMSG_ERROR,
-                       "%s:%d td %ld failed to log logical commit, rc %d\n",
-                       __func__, __LINE__, pthread_self(), iirc);
+                       "%s:%d td %p failed to log logical commit, rc %d\n",
+                       __func__, __LINE__, (void *)pthread_self(), iirc);
                 *bdberr = BDBERR_MISC;
                 outrc = -1;
                 goto cleanup;
@@ -1629,7 +1635,8 @@ int bdb_tran_commit_with_seqnum_int(bdb_state_type *bdb_state, tran_type *tran,
                         "%s:update_shadows_beforecommit nonblocking rc %d\n",
                         __func__, rc);
                 *bdberr = rc;
-                return -1;
+                outrc = -1;
+                goto cleanup;
             }
 
             if (!isabort && tran->committed_child &&

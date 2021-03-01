@@ -3721,9 +3721,6 @@ static TYPES_INLINE int vutf8_convert(int len, const void *in, int in_len,
      * to another */
     if (len > in_len && len > out_len) {
 
-        if (!outblob)
-            return -1;
-
         /* This only copies if we've passed in both an inblob and outblob, but
          * like
          * our blob-conversion code, it will always return success, whether or
@@ -14529,6 +14526,9 @@ int get_type(struct param_data *param, void *p, int len, int type,
 #   endif
         flip = 1;
     param->null = 0;
+    /* Make sure the parameter is not NULL if we're binding a 0-length value. */
+    if (p == NULL)
+        p = "";
     switch (type) {
     case CLIENT_INT:
         param->len = sizeof(param->u.i);

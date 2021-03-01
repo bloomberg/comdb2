@@ -168,7 +168,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
 
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     if (db->dbtype == DBTYPE_QUEUE || db->dbtype == DBTYPE_QUEUEDB) {
         for (consumern = 0; consumern < MAXCONSUMERS; consumern++) {
             struct consumer *consumer = db->consumers[consumern];
@@ -176,7 +176,7 @@ static int wake_all_consumers(struct dbtable *db, int force)
                 wake_up_consumer(consumer, force);
         }
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
     return 0;
 }
 
@@ -199,8 +199,11 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     const char *opts;
     int rc = 0;
 
-    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_wrlock(&db->consumer_lk);
+    assert(!db || db->dbtype != DBTYPE_QUEUE);
+
+    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB) {
+        consumer_lock_write(db);
+    }
 
     if (checkonly) {
         if (strncmp(method, "lua:", 4) != 0 &&
@@ -299,8 +302,9 @@ static int add_consumer_int(struct dbtable *db, int consumern,
     rc = 0;
 
 done:
-    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB)
-        Pthread_rwlock_unlock(&db->consumer_lk);
+    if (!checkonly && db->dbtype == DBTYPE_QUEUEDB) {
+        consumer_unlock(db);
+    }
     return rc;
 }
 
@@ -445,7 +449,7 @@ static int dbqueuedb_admin_running = 0;
 /* This gets called once a second from purge_old_blkseq_thread().
  * If we have become master we make sure that we have threads in place
  * for each consumer. */
-static void admin(struct dbenv *dbenv, int type)
+static void admin(struct dbenv *dbenv, tran_type *tran, int type)
 {
     int iammaster = (dbenv->master == gbl_mynode) ? 1 : 0;
 
@@ -464,7 +468,7 @@ static void admin(struct dbenv *dbenv, int type)
                 continue;
             if (dbenv->qdbs[ii]->dbtype == DBTYPE_QUEUEDB) {
                 struct dbtable *db = dbenv->qdbs[ii];
-                Pthread_rwlock_rdlock(&db->consumer_lk);
+                consumer_lock_read(db);
                 for (int consumern = 0; consumern < MAXCONSUMERS; consumern++) {
                     struct consumer *consumer = db->consumers[consumern];
                     if (!consumer)
@@ -493,7 +497,7 @@ static void admin(struct dbenv *dbenv, int type)
                         break;
                     }
                 }
-                Pthread_rwlock_unlock(&db->consumer_lk);
+                consumer_unlock(db);
             }
         }
     }
@@ -503,20 +507,20 @@ static void admin(struct dbenv *dbenv, int type)
     Pthread_mutex_unlock(&dbqueuedb_admin_lk);
 }
 
-static int stat_odh_callback(int consumern, size_t length, unsigned int epoch,
-                             unsigned int depth, void *userptr)
+static int stat_odh_callback(int consumern, size_t length, unsigned int newest_epoch,
+        unsigned int oldest_epoch, unsigned int depth, void *userptr)
 {
     struct consumer_stat *stats = userptr;
 
     if (consumern < 0 || consumern >= MAXCONSUMERS) {
         logmsg(LOGMSG_USER, "%s: consumern=%d length=%u epoch=%u\n", __func__,
-               consumern, (unsigned)length, epoch);
+               consumern, (unsigned)length, newest_epoch);
     } else {
         assert(!stats[consumern].has_stuff);
         stats[consumern].has_stuff = 1;
         stats[consumern].first_item_length = length;
-        stats[consumern].epoch = epoch;
-        stats[consumern].has_stuff = 1;
+        stats[consumern].newest_epoch = newest_epoch;
+        stats[consumern].oldest_epoch = oldest_epoch;
         stats[consumern].depth = depth;
     }
     return BDB_QUEUE_WALK_CONTINUE;
@@ -533,7 +537,7 @@ static int stat_callback(int consumern, size_t length,
     } else {
         if (!stats[consumern].has_stuff) {
             stats[consumern].first_item_length = length;
-            stats[consumern].epoch = epoch;
+            stats[consumern].newest_epoch = epoch;
         }
         stats[consumern].has_stuff = 1;
         stats[consumern].depth++;
@@ -565,9 +569,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
         if (fullstat)
             flags |= BDB_QUEUE_WALK_KNOWN_CONSUMERS_ONLY;
         if (db->odh)
-            dbq_odh_stats(&iq, stat_odh_callback, stats);
+            dbq_odh_stats(&iq, stat_odh_callback, NULL, stats);
         else
-            dbq_walk(&iq, flags, stat_callback, stats);
+            dbq_walk(&iq, flags, stat_callback, 0, NULL, stats);
 
         logmsg(LOGMSG_USER, "queue '%s':-\n", db->tablename);
         logmsg(LOGMSG_USER, "  geese added     %u\n", db->num_goose_adds);
@@ -584,8 +588,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                bdbstats->n_new_way_geese_consumed,
                bdbstats->n_old_way_frags_consumed);
 
-        if (db->dbtype == DBTYPE_QUEUEDB)
-            Pthread_rwlock_rdlock(&db->consumer_lk);
+        if (db->dbtype == DBTYPE_QUEUEDB) {
+            consumer_lock_read(db);
+        }
         for (ii = 0; ii < MAXCONSUMERS; ii++) {
             struct consumer *consumer = db->consumers[ii];
 
@@ -607,9 +612,9 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
 
             if (stats[ii].has_stuff) {
                 unsigned int now = comdb2_time_epoch();
-                unsigned int age = now - stats[ii].epoch;
+                unsigned int age = now - stats[ii].newest_epoch;
                 struct tm ctime;
-                time_t cepoch = (time_t)stats[ii].epoch;
+                time_t cepoch = (time_t)stats[ii].newest_epoch;
                 char buf[32]; /* must be at least 26 chars */
                 unsigned int hr, mn, sc;
 
@@ -624,12 +629,13 @@ static void stat_thread_int(struct dbtable *db, int fullstat, int walk_queue)
                     LOGMSG_USER,
                     "    head item length %u age %u:%02u:%02u created %ld %s",
                     (unsigned)stats[ii].first_item_length, hr, mn, sc,
-                    stats[ii].epoch, buf);
+                    stats[ii].newest_epoch, buf);
             } else if (consumer)
                 logmsg(LOGMSG_USER, "    empty\n");
         }
-        if (db->dbtype == DBTYPE_QUEUEDB)
-            Pthread_rwlock_unlock(&db->consumer_lk);
+        if (db->dbtype == DBTYPE_QUEUEDB) {
+            consumer_unlock(db);
+        }
 
         logmsg(LOGMSG_USER, "-----\n");
     }
@@ -855,12 +861,12 @@ int stop_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             stop_consumer(db->consumers[i]);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
     return 0;
 }
 
@@ -868,12 +874,12 @@ int restart_consumers(struct dbtable *db)
 {
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
-    Pthread_rwlock_rdlock(&db->consumer_lk);
+    consumer_lock_read(db);
     for (int i = 0; i < MAXCONSUMERS; i++) {
         if (db->consumers[i])
             restart_consumer(db->consumers[i]);
     }
-    Pthread_rwlock_unlock(&db->consumer_lk);
+    consumer_unlock(db);
 
     return 0;
 }
@@ -901,17 +907,42 @@ static int get_name(struct dbtable *db, char **spname) {
     return 0;
 }
 
-static int get_stats(struct dbtable *db, struct consumer_stat *st) {
+static int get_stats(struct dbtable *db, tran_type *tran, struct consumer_stat *st) {
     struct ireq iq;
     int rc;
     if (db->dbtype != DBTYPE_QUEUEDB)
         return -1;
+    int made_tran = 0;
+    int bdberr;
+    if (tran == NULL) {
+        bdberr = 0;
+        tran = bdb_tran_begin(db->handle, NULL, &bdberr);
+        if (tran == NULL) {
+            logmsg(LOGMSG_ERROR, "%s:%d failed to begin transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
+            return -1;
+        }
+        made_tran = 1;
+    }
     init_fake_ireq(db->dbenv, &iq);
     iq.usedb = db;
     if (db->odh) {
-        rc = dbq_odh_stats(&iq, stat_odh_callback, st);
+        rc = dbq_odh_stats(&iq, stat_odh_callback, (tran_type *)tran, st);
     } else {
-        rc = dbq_walk(&iq, 0, stat_callback, st);
+        rc = dbq_walk(&iq, 0, stat_callback, gbl_queue_walk_limit, (tran_type *)tran, st);
+    }
+    time_t epoch;
+    rc = dbq_oldest_epoch(&iq, (tran_type*)tran, &epoch);
+    if (rc == 0)
+        st->oldest_epoch = epoch;
+    if (made_tran) {
+        bdberr = 0;
+        int rc2 = bdb_tran_abort(db->handle, tran, &bdberr);
+        if (rc2) {
+            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction (%d)\n",
+                   __FILE__, __LINE__, bdberr);
+            abort();
+        }
     }
     if (rc)
         return rc;
@@ -931,7 +962,7 @@ comdb2_queue_consumer_t dbqueuedb_plugin_lua = {
     .wake_all_consumers_all_queues = wake_all_consumers_all_queues,
     .handles_method = handles_method,
     .get_name = get_name,
-    .get_stats = get_stats
+    .get_stats = get_stats,
 };
 
 comdb2_queue_consumer_t dbqueuedb_plugin_dynlua = {
@@ -947,7 +978,7 @@ comdb2_queue_consumer_t dbqueuedb_plugin_dynlua = {
     .wake_all_consumers_all_queues = wake_all_consumers_all_queues,
     .handles_method = handles_method,
     .get_name = get_name,
-    .get_stats = get_stats
+    .get_stats = get_stats,
 };
 
 

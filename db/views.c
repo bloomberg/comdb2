@@ -15,7 +15,6 @@
  */
 
 #include <stdlib.h>
-#include <pthread.h>
 #include <string.h>
 #include <limits.h>
 #include <string.h>
@@ -52,7 +51,7 @@ typedef struct timepart_shard timepart_shard_t;
 struct timepart_view {
     char *name;                       /* name of the view, visible in sql */
     enum view_partition_period period; /* when do we rotate to a new shard */
-    int retention;                    /* how many shard are preserves */
+    int retention;                    /* how many shards are preserved */
     int nshards;                      /* how many shards */
     timepart_shard_t *shards;         /* array of shard pointers */
     int version;      /* in-memory versioning, allowing single view refreshes */
@@ -61,7 +60,7 @@ struct timepart_view {
     int starttime;    /* info about the beginning of the rollout */
     int purge_time;   /* set if there is a purger thread assigned */
     int roll_time;    /* cached time for next rollout */
-    uuid_t source_id; /* identifier for view, unique as compare to name */
+    uuid_t source_id; /* identifier for view, unique as compared to name */
 };
 
 struct timepart_views {
@@ -74,11 +73,6 @@ struct timepart_views {
                                 one is removed, if past retention */
 };
 
-/*
-   NOTE: for now, since views access is done only when sqlite engines are
-   created,
-   when shards are rolled, or when db starts, we can use a mutex
-*/
 pthread_rwlock_t views_lk;
 
 /*
@@ -227,7 +221,7 @@ int timepart_is_shard(const char *name, int lock, char **viewname)
    return rc;
 }
 
-/** 
+/**
  * Check if a name is a timepart
  *
  */
@@ -963,7 +957,8 @@ void *_view_cron_phase1(struct cron_event *event, struct errstat *err)
         a dropped partition ahead of everything, but jic ! */
         if (unlikely(
                 _validate_view_id(view, event->source_id, "phase 1", err))) {
-            /*TODO*/
+            rc = VIEW_ERR_GENERIC; /* silently dropped obsolete event, don't
+                                      leak wr sc */
             goto done;
         }
 
@@ -2266,6 +2261,8 @@ done:
 /**
  * Run "func" for each shard, starting with "first_shard".
  * Callback receives the name of the shard and argument struct
+ * NOTE: first_shard == -1 means include the next shard if
+ * already created
  *
  */
 int timepart_foreach_shard(const char *view_name,
@@ -2274,6 +2271,7 @@ int timepart_foreach_shard(const char *view_name,
 {
     timepart_views_t *views;
     timepart_view_t *view;
+    char next_shard[MAXTABLELEN + 1];
     int rc = 0;
     int i;
 
@@ -2290,10 +2288,18 @@ int timepart_foreach_shard(const char *view_name,
         arg->view_name = view_name;
         arg->nshards = view->nshards;
     }
+
     for (i = first_shard; i < view->nshards; i++) {
         if (arg)
             arg->indx = i;
-        rc = func(view->shards[i].tblname, arg);
+        if (i == -1) {
+            rc = _next_shard_exists(view, next_shard, sizeof(next_shard));
+            if (rc == VIEW_ERR_EXIST) {
+                rc = func(next_shard, arg);
+            }
+        } else {
+            rc = func(view->shards[i].tblname, arg);
+        }
         if (rc) {
             break;
         }
@@ -2679,6 +2685,23 @@ static cron_sched_t *_get_sched_byname(enum view_partition_period period,
     if (period == VIEW_PARTITION_MANUAL)
         return cron_sched_byname(sched_name);
     abort();
+}
+
+/* Returns time partition name if the specified 'table_name' is a shard,
+  'table_name' otherwise. */
+char *resolve_table_name(char *table_name, char *buf, size_t buf_len)
+{
+    char *tp_name;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    if ((timepart_is_shard(table_name, 0, &tp_name))) {
+        strncpy(buf, tp_name, buf_len);
+        Pthread_rwlock_unlock(&views_lk);
+        return buf;
+    }
+    Pthread_rwlock_unlock(&views_lk);
+
+    return table_name;
 }
 
 #include "views_systable.c"

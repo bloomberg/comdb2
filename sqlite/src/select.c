@@ -1890,9 +1890,6 @@ static void generateColumnNames(
   sqlite3 *db = pParse->db;
   int fullName;    /* TABLE.COLUMN if no AS clause and is a direct table ref */
   int srcName;     /* COLUMN or TABLE.COLUMN if no AS clause and is direct */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  int isCompound = 0; /* Will be >0 for compound SELECT statements */
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 #ifndef SQLITE_OMIT_EXPLAIN
   /* If this is an EXPLAIN, skip this step */
@@ -1903,18 +1900,9 @@ static void generateColumnNames(
 
   if( pParse->colNamesSet ) return;
   /* Column names are determined by the left-most term of a compound select */
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  /* COMPAT: column types of compound SELECTs are assumed to be 'text'. */
-  while( pSelect->pPrior ){ isCompound++; pSelect = pSelect->pPrior; }
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   while( pSelect->pPrior ) pSelect = pSelect->pPrior;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   SELECTTRACE(1,pParse,pSelect,("generating column names\n"));
-#if defined(SQLITE_BUILDING_FOR_COMDB2)
-  pTabList = isCompound>0 ? 0 : pSelect->pSrc;
-#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pTabList = pSelect->pSrc;
-#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   pEList = pSelect->pEList;
   assert( v!=0 );
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -3855,6 +3843,12 @@ static int flattenSubquery(
   ** See also tickets #306, #350, and #3300.
   */
   if( (pSubitem->fg.jointype & JT_OUTER)!=0 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    extern int gbl_enable_sq_flattening_optimization;
+    if (!gbl_enable_sq_flattening_optimization) {
+      return 0;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     isLeftJoin = 1;
     if( pSubSrc->nSrc>1 || isAgg || IsVirtual(pSubSrc->a[0].pTab) ){
       /*  (3a)             (3c)     (3b) */

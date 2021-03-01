@@ -212,6 +212,7 @@ extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;
 extern int gbl_verbose_physrep;
+extern int gbl_physrep_exit_on_invalid_logstream;
 extern int gbl_blocking_physrep;
 extern int gbl_verbose_set_sc_in_progress;
 extern int gbl_send_failed_dispatch_message;
@@ -230,6 +231,9 @@ extern int gbl_disable_ckp;
 extern int gbl_abort_on_illegal_log_put;
 extern int gbl_sc_close_txn;
 extern int gbl_master_sends_query_effects;
+extern int gbl_create_dba_user;
+extern int gbl_lock_dba_user;
+extern int gbl_max_trigger_threads;
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;
@@ -304,6 +308,7 @@ extern int gbl_metric_maxage;
 extern int gbl_osql_check_replicant_numops;
 extern int gbl_abort_on_missing_osql_session;
 extern int gbl_abort_irregular_set_durable_lsn;
+extern int gbl_legacy_defaults;
 extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
@@ -314,13 +319,21 @@ extern int gbl_debug_omit_idx_write;
 extern int gbl_debug_omit_blob_write;
 extern int gbl_debug_skip_constraintscheck_on_insert;
 extern int gbl_json_escape_control_chars;
+extern int gbl_debug_sleep_in_sql_tick;
+extern int gbl_instrument_consumer_lock;
+extern int gbl_reject_mixed_ddl_dml;
+extern int gbl_debug_mixed_ddl_dml;
+extern int gbl_sync_osql_cancel;
 extern int eventlog_nkeep;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_page_order_table_scan;
 int gbl_old_column_names = 1;
+int gbl_enable_sq_flattening_optimization = 1;
+int gbl_mask_internal_tunables = 1;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
+int gbl_sqlite_sorterpenalty = 5;
 
 /*
   =========================================================
@@ -774,10 +787,29 @@ static int simulate_rowlock_deadlock_update(void *context, void *value)
     return 0;
 }
 
+static int log_delete_after_backup_update(void *context, void *unused)
+{
+    logmsg(LOGMSG_USER, "Will delete log files after backup\n");
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    /* Epoch time of 1; so we won't delete any logfiles until after backup.
+       NC: Copied old logic, not exactly sure what this means. */
+    *(int *)tunable->var = 1;
+    return 0;
+}
+
 static int log_delete_before_startup_update(void *context, void *unused)
 {
+    logmsg(LOGMSG_USER, "Will delete log files predating this startup\n");
     comdb2_tunable *tunable = (comdb2_tunable *)context;
     *(int *)tunable->var = (int)time(NULL);
+    return 0;
+}
+
+static int log_delete_now_update(void *context, void *unused)
+{
+    logmsg(LOGMSG_USER, "Will delete log files as soon as possible\n");
+    comdb2_tunable *tunable = (comdb2_tunable *)context;
+    *(int *)tunable->var = 0;
     return 0;
 }
 
@@ -858,6 +890,16 @@ static int page_order_table_scan_update(void *context, void *value)
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
     return 0;
+}
+
+static void *portmux_bind_path_get(void *dum)
+{
+    return get_portmux_bind_path();
+}
+
+static int portmux_bind_path_set(void *dum, void *path)
+{
+    return set_portmux_bind_path(path);
 }
 
 /* Routines for the tunable system itself - tunable-specific

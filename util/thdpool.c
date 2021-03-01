@@ -855,7 +855,7 @@ int thdpool_enqueue(struct thdpool *pool, thdpool_work_fn work_fn, void *work,
                         exit(1);
                 }
 
-                logmsg(LOGMSG_DEBUG, "CREATED %lu\n", thd->tid);
+                logmsg(LOGMSG_DEBUG, "CREATED %p\n", (void *)thd->tid);
 
                 listc_rfl(&pool->thdlist, thd);
                 pool->num_failed_dispatches++;
@@ -1016,6 +1016,11 @@ int thdpool_get_nthds(struct thdpool *pool)
 int thdpool_get_nfreethds(struct thdpool *pool)
 {
     return pool->freelist.count;
+}
+
+int thdpool_get_nbusythds(struct thdpool *pool)
+{
+    return pool->thdlist.count - pool->freelist.count;
 }
 
 int thdpool_get_maxthds(struct thdpool *pool)

@@ -38,6 +38,7 @@ const sqlite3_module systblTimeseriesModule;
 const sqlite3_module systblReplStatsModule;
 const sqlite3_module systblLogicalOpsModule;
 const sqlite3_module systblSystabsModule;
+const sqlite3_module systblTableTPPermissionsModule;
 
 int systblTypeSamplesInit(sqlite3 *db);
 int systblRepNetQueueStatInit(sqlite3 *db);
@@ -52,10 +53,12 @@ int systblCronInit(sqlite3*db);
 int systblFingerprintsInit(sqlite3 *);
 int systblViewsInit(sqlite3 *);
 int systblSQLClientStats(sqlite3 *);
+int systblSQLIndexStatsInit(sqlite3 *);
 
 int comdb2_next_allowed_table(sqlite3_int64 *tabId);
 
 int systblScStatusInit(sqlite3 *db);
+int systblScHistoryInit(sqlite3 *db);
 int systblConnectionsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */

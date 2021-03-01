@@ -652,7 +652,7 @@ static const char *help_text[] = {
     "       roll             - roll over log file",
     "       keep N           - keep N log files",
     "       detailed on/off  - turn on/off detailed mode (ex. sql bound param)",
-    "       rollat N         - roll when log file size larger than N bytes",
+    "       rollat N         - roll when log file size larger than N MB",
     "       every N          - log only every Nth event, 0 logs all",
     "       verbose on/off   - turn on/off verbose mode",
     "       dir <dir>        - set custom directory for event log files\n",
@@ -1001,6 +1001,12 @@ void reqlog_stat(void)
     }
     eventlog_status();
     Pthread_mutex_unlock(&rules_mutex);
+}
+
+void reqlog_reset(struct reqlogger *logger)
+{
+    if (logger)
+        logger->ncontext = 0;
 }
 
 struct reqlogger *reqlog_alloc(void)
@@ -2858,6 +2864,11 @@ void reqlog_set_fingerprint(struct reqlogger *logger, const char *fingerprint,
 inline void reqlog_set_event(struct reqlogger *logger, const char *evtype)
 {
     logger->event_type = evtype;
+}
+
+inline const char *reqlog_get_event(struct reqlogger *logger)
+{
+    return logger->event_type;
 }
 
 void reqlog_add_table(struct reqlogger *logger, const char *table)

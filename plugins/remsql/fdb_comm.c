@@ -36,6 +36,7 @@ extern int gbl_time_fdb;
 extern int gbl_notimeouts;
 extern int gbl_expressions_indexes;
 extern int gbl_fdb_track_times;
+extern int gbl_test_io_errors;
 extern char *gbl_myuri;
 
 /* matches fdb_svc_callback_t callbacks */
@@ -874,6 +875,15 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
 
     /* clean previous message */
     fdb_msg_clean_message(msg);
+
+    if (gbl_test_io_errors) {
+        static int counter = 0;
+        if (random() % 5 == 0) {
+            logmsg(LOGMSG_ERROR, "%s: triggered i/o error %d\n", __func__,
+                   counter++);
+            return -1;
+        }
+    }
 
     rc = sbuf2fread((char *)&msg->hd.type, 1, sizeof(msg->hd.type), sb);
 
@@ -1743,7 +1753,7 @@ void fdb_msg_print_message(SBUF2 *sb, fdb_msg_t *msg, char *prefix)
     int isuuid;
     char prf[512];
 
-    snprintf(prf, sizeof(prf), "%lx: %llu%s%s", pthread_self(),
+    snprintf(prf, sizeof(prf), "%p: %llu%s%s", (void *)pthread_self(),
              (unsigned long long)gettimeofday_ms(), (prefix) ? " " : "",
              (prefix) ? prefix : "");
     prefix = prf;
@@ -3497,8 +3507,8 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
 
         rc = handle_remsql_session(sb, dbenv);
         if (gbl_fdb_track)
-            logmsg(LOGMSG_USER, "%lu: %s: executed session rc=%d\n",
-                   pthread_self(), __func__, rc);
+            logmsg(LOGMSG_USER, "%p: %s: executed session rc=%d\n",
+                   (void *)pthread_self(), __func__, rc);
 
         if (gbl_fdb_track_times) {
             then = gettimeofday_ms();
@@ -3515,11 +3525,14 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
         if (rc == FDB_NOERR) {
             /* we need to read the header again, waiting here */
             rc = sbuf2gets(line, sizeof(line), sb);
+            if (rc < 0) {
+                /* I/O error */
+                rc = FDB_NOERR;
+                break;
+            }
             if (rc != strlen("remsql\n")) {
-                if (rc != -1)
-                    logmsg(LOGMSG_ERROR,
-                           "%s: received wrong request! rc=%d: %s\n", __func__,
-                           rc, line);
+                logmsg(LOGMSG_ERROR, "%s: received wrong request! rc=%d: %s\n",
+                       __func__, rc, line);
                 rc = FDB_NOERR;
                 break;
             }
@@ -3530,7 +3543,7 @@ int handle_remsql_request(comdb2_appsock_arg_t *arg)
         }
     }
     if (gbl_fdb_track)
-        logmsg(LOGMSG_USER, "%lu: %s: done processing\n", pthread_self(),
+        logmsg(LOGMSG_USER, "%p: %s: done processing\n", (void *)pthread_self(),
                __func__);
 
     return rc;

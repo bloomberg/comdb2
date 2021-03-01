@@ -271,7 +271,7 @@ int berkdb_lock_random_rowlock(bdb_state_type *bdb_state, int lid, int flags,
     static __thread int rowlock_rand_seq = 0;
     int *p = (int *)lkname->data;
 
-    (*p) = pthread_self();
+    (*p) = (int)pthread_self();
     p = (int *)(&((char *)lkname->data)[24]);
     (*p) = rowlock_rand_seq++;
 
@@ -682,6 +682,12 @@ int bdb_lock_stripe_write(bdb_state_type *bdb_state, int stripe,
 int bdb_lock_table_read_fromlid(bdb_state_type *bdb_state, int lid)
 {
     return bdb_lock_table_int(bdb_state->dbenv, bdb_state->name, lid,
+                              BDB_LOCK_READ);
+}
+
+int bdb_lock_table_read_by_name_fromlid(bdb_state_type *bdb_state, char *name, int lid)
+{
+    return bdb_lock_table_int(bdb_state->dbenv, name, lid,
                               BDB_LOCK_READ);
 }
 

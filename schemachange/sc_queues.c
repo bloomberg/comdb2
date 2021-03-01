@@ -34,10 +34,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
         return -1;
     }
 
-    /* Stop everything */
-    stop_threads(thedb);
-    broadcast_quiesce_threads();
-
     /* Do the change.  If it works locally then assume that it will work
      * globally. */
     rc = dbqueuedb_add_consumer(db, consumern, method, 0);
@@ -45,10 +41,6 @@ int consumer_change(const char *queuename, int consumern, const char *method)
     if (rc == 0) {
         rc = broadcast_add_consumer(queuename, consumern, method);
     }
-
-    /* Start up again. */
-    broadcast_resume_threads();
-    resume_threads(thedb);
 
     logmsg(LOGMSG_WARN, "consumer change %s-%d-%s %s\n", queuename, consumern,
            method, rc == 0 ? "SUCCESS" : "FAILED");
@@ -128,12 +120,6 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
         return SC_INTERNAL_ERROR;
     }
 
-    /* why?  er... not sure.  this is copied off the pattern below, but we
-     * don't have much to do.   think this is still good as we'll get a
-     * memory sync in there. */
-    stop_threads(thedb);
-    resume_threads(thedb);
-
     if (newdb->dbenv->master == gbl_mynode) {
         /* I am master: create new db */
         newdb->handle =
@@ -190,6 +176,13 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
 
     bdb_get_tran_lockerid(tran, &lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "Error %d getting tablelock for comdb2_queues\n", rc);
+        goto done;
+    }
+
 
     /* TODO: assert we are holding the write-lock on the queue */
     if (type != llmeta_queue_drop) {
@@ -415,6 +408,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             sbuf2printf(sb, "FAILED\n");
             goto done;
         }
+    }
+
+    rc = bdb_lock_tablename_write(thedb->bdb_env, "comdb2_queues", tran);
+    if (rc) {
+        sbuf2printf(sb, "!Error %d getting tablelock for %s.\n", rc,
+                    sc->tablename);
+        sbuf2printf(sb, "FAILED\n");
+        goto done;
     }
 
     rc = bdb_lock_tablename_write(thedb->bdb_env, sc->tablename, tran);
@@ -645,18 +646,19 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
+    if (sc->addonly || sc->alteronly) {
+        dbqueuedb_admin(thedb, !same_tran ? tran : ltran);
+    }
+
     if (!same_tran) {
         rc = trans_commit(&iq, tran, gbl_mynode);
+        tran = NULL;
         if (rc) {
             sbuf2printf(sb, "!Failed to commit transaction\n");
             goto done;
         }
-        tran = NULL;
     }
 
-    if (sc->addonly || sc->alteronly) {
-        dbqueuedb_admin(thedb);
-    }
 
     /* log for replicants to do the same */
     if (!same_tran) {
@@ -700,11 +702,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         if (!same_tran) {
             rc = trans_commit(&iq, tran, gbl_mynode);
+            tran = NULL;
             if (rc) {
                 sbuf2printf(sb, "!Failed to commit transaction\n");
                 goto done;
             }
-            tran = NULL;
         }
     }
 
@@ -716,12 +718,12 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
         rc = trans_commit(&iq, ltran, gbl_mynode);
+        tran = NULL;
+        ltran = NULL;
         if (rc || bdberr != BDBERR_NOERROR) {
             sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
             goto done;
         }
-        tran = NULL;
-        ltran = NULL;
     }
 
 done:

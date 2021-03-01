@@ -33,6 +33,7 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func,
                                 struct errstat *err);
 static int exec_genid48_enable(void *tran, bpfunc_t *func, struct errstat *err);
 static int exec_set_skipscan(void *tran, bpfunc_t *func, struct errstat *err);
+static int exec_delete_from_sc_history(void *tran, bpfunc_t *func, struct errstat *err);
 /********************      UTILITIES     ***********************/
 
 static int empty(void *tran, bpfunc_t *func, struct errstat *err)
@@ -114,6 +115,11 @@ static int prepare_methods(bpfunc_t *func, bpfunc_info *info)
     case BPFUNC_SET_SKIPSCAN:
         func->exec = exec_set_skipscan;
         break;
+
+    case BPFUNC_DELETE_FROM_SC_HISTORY:
+        func->exec = exec_delete_from_sc_history;
+        break;
+
 
     default:
         logmsg(LOGMSG_ERROR, "Unknown function_id in bplog function\n");
@@ -235,8 +241,7 @@ static int prepare_drop_timepart(bpfunc_t *tp)
     return 0;
 }
 
-/*********************************** GRANT
- * ***********************************************/
+/*********************** GRANT ****************************/
 
 static int grantAuth(void *tran, int permission, int command_type,
                      char *tablename, char *userschema, char *username)
@@ -248,10 +253,18 @@ static int grantAuth(void *tran, int permission, int command_type,
     case AUTH_READ:
         rc = bdb_tbl_access_read_set(bdb_state, tran, tablename, username,
                                      &bdberr);
+        if (!rc) {
+            rc = timepart_shards_grant_access(bdb_state, tran, tablename,
+                                              username, ACCESS_READ);
+        }
         break;
     case AUTH_WRITE:
         rc = bdb_tbl_access_write_set(bdb_state, tran, tablename, username,
                                       &bdberr);
+        if (!rc) {
+            rc = timepart_shards_grant_access(bdb_state, tran, tablename,
+                                              username, ACCESS_WRITE);
+        }
         break;
     case AUTH_USERSCHEMA:
         rc = bdb_tbl_access_userschema_set(bdb_state, tran, userschema,
@@ -260,6 +273,10 @@ static int grantAuth(void *tran, int permission, int command_type,
     case AUTH_OP:
         rc = bdb_tbl_op_access_set(bdb_state, tran, command_type, tablename,
                                    username, &bdberr);
+        if (!rc) {
+            rc = timepart_shards_grant_access(bdb_state, tran, tablename,
+                                              username, ACCESS_DDL);
+        }
         break;
     default:
         rc = SQLITE_INTERNAL;
@@ -282,14 +299,26 @@ static int revokeAuth(void *tran, int permission, int command_type,
     case AUTH_READ:
         rc = bdb_tbl_access_read_delete(bdb_state, tran, tablename, username,
                                         &bdberr);
+        if (!rc) {
+            rc = timepart_shards_revoke_access(bdb_state, tran, tablename,
+                                               username, ACCESS_READ);
+        }
         break;
     case AUTH_WRITE:
         rc = bdb_tbl_access_write_delete(bdb_state, tran, tablename, username,
                                          &bdberr);
+        if (!rc) {
+            rc = timepart_shards_revoke_access(bdb_state, tran, tablename,
+                                               username, ACCESS_WRITE);
+        }
         break;
     case AUTH_OP:
         rc = bdb_tbl_op_access_delete(bdb_state, tran, command_type, tablename,
                                       username, &bdberr);
+        if (!rc) {
+            rc = timepart_shards_revoke_access(bdb_state, tran, tablename,
+                                               username, ACCESS_DDL);
+        }
         break;
     case AUTH_USERSCHEMA:
         rc = bdb_tbl_access_userschema_delete(bdb_state, tran, userschema,
@@ -303,11 +332,19 @@ static int revokeAuth(void *tran, int permission, int command_type,
     return rc;
 }
 
+int gbl_lock_dba_user = 0;
+
 static int exec_grant(void *tran, bpfunc_t *func, struct errstat *err)
 {
-
     BpfuncGrant *grant = func->arg->grant;
     int rc = 0;
+
+    if (gbl_lock_dba_user &&
+        (strcasecmp(grant->username, DEFAULT_DBA_USER) == 0)) {
+        rc = 1;
+        errstat_set_rcstrf(err, rc, "dba user is locked!");
+        return rc;
+    }
 
     if (!grant->yesno)
         rc = grantAuth(tran, grant->perm, 0, grant->table, grant->userschema,
@@ -327,11 +364,24 @@ static int exec_password(void *tran, bpfunc_t *func, struct errstat *err)
 {
     int rc;
     BpfuncPassword *pwd = func->arg->pwd;
+
+    if (gbl_lock_dba_user && (strcasecmp(pwd->user, DEFAULT_DBA_USER) == 0)) {
+        rc = 1;
+        errstat_set_rcstrf(err, rc, "dba user is locked!");
+        return rc;
+    }
+
     rc = pwd->disable ? bdb_user_password_delete(tran, pwd->user)
                       : bdb_user_password_set(tran, pwd->user, pwd->password);
 
-    if (rc == 0)
+    if (rc == 0 && pwd->disable) {
+        /* Also delete all the table accesses for this user. */
+        rc = bdb_del_all_user_access(thedb->bdb_env, tran, pwd->user);
+    }
+
+    if (rc == 0) {
         rc = net_send_authcheck_all(thedb->handle_sibling);
+    }
 
     ++gbl_bpfunc_auth_gen;
 
@@ -347,7 +397,8 @@ static int exec_authentication(void *tran, bpfunc_t *func, struct errstat *err)
     int valid_user;
 
     if (auth->enabled)
-        bdb_user_password_check(DEFAULT_USER, DEFAULT_PASSWORD, &valid_user);
+        bdb_user_password_check(tran, DEFAULT_USER, DEFAULT_PASSWORD,
+                                &valid_user);
 
     /* Check if there is already op password. */
     int rc = bdb_authentication_set(thedb->bdb_env, tran, auth->enabled, &bdberr);
@@ -520,3 +571,12 @@ static int exec_rowlocks_enable(void *tran, bpfunc_t *func, struct errstat *err)
     return rc;
 }
 
+static int exec_delete_from_sc_history(void *tran, bpfunc_t *func,
+                                       struct errstat *err)
+{
+    BpfuncDeleteFromScHistory *tblseed = func->arg->tblseed;
+    int rc = bdb_del_schema_change_history(tran, tblseed->tablename, tblseed->seed);
+    if (rc)
+        errstat_set_rcstrf(err, rc, "%s failed delete", __func__);
+    return rc;
+}

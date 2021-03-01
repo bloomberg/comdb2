@@ -946,11 +946,8 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
                         ntohl(blob->length), schema->member[bfldno].len);
 
             if (blob->notnull && b->bloblens[cblob] != ntohl(blob->length))
-                logmsg(
-                    LOGMSG_ERROR,
-                    "b->bloblens[cblob]=%zu ntohl(blob->length)=%d diff=%zu\n",
-                    b->bloblens[cblob], ntohl(blob->length),
-                    b->bloblens[cblob] - ntohl(blob->length));
+                logmsg(LOGMSG_ERROR, "b->bloblens[cblob]=%zu ntohl(blob->length)=%d diff=%d\n", b->bloblens[cblob],
+                       ntohl(blob->length), (int)b->bloblens[cblob] - ntohl(blob->length));
         }
     }
 

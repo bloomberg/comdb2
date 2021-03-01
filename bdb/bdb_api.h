@@ -39,6 +39,9 @@
 
 #include <assert.h>
 
+#define DEFAULT_DBA_USER "dba"
+#define DEFAULT_DBA_PASSWORD ""
+
 #define SIZEOF_SEQNUM (10 * sizeof(int))
 struct seqnum_t;
 typedef struct seqnum_t seqnum_type;
@@ -629,6 +632,7 @@ tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
 void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid);
 void bdb_get_tran_lockerid(tran_type *tran, uint32_t *lockerid);
 void *bdb_get_physical_tran(tran_type *ltran);
+void bdb_reset_physical_tran(tran_type *ltran);
 void *bdb_get_sc_parent_tran(tran_type *ltran);
 void bdb_ltran_get_schema_lock(tran_type *ltran);
 void bdb_ltran_put_schema_lock(tran_type *ltran);
@@ -907,19 +911,22 @@ enum {
 };
 
 typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
-                                          unsigned int epoch,
+                                          unsigned int newest_epoch,
+                                          unsigned int oldest_epoch,
                                           unsigned int depth, void *userptr);
 
 int bdb_queuedb_stats(bdb_state_type *bdb_state,
-                      bdb_queue_stats_callback_t callback, void *userptr,
+                      bdb_queue_stats_callback_t callback, tran_type *tran, void *userptr,
                       int *bdberr);
 
 typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
 
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, void *userptr,
-                   int *bdberr);
+                   bdb_queue_walk_callback_t callback, tran_type *tran, int limit,
+                   void *userptr, int *bdberr);
+
+int bdb_queue_oldest_epoch(bdb_state_type *bdb_state, tran_type *tran, time_t *epoch, int *bdberr);
 
 /* debug aid - dump the entire queue */
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);
@@ -1053,9 +1060,9 @@ int bdb_flush_noforce(bdb_state_type *bdb_handle, int *bdberr);
 
 int bdb_purge_freelist(bdb_state_type *bdb_handle, int *bdberr);
 
-/* close the underlying files used byt the bdb_handle */
+/* close the underlying files used by the bdb_handle */
 int bdb_close_only(bdb_state_type *bdb_handle, int *bdberr);
-
+int bdb_close_flush(bdb_state_type *, int *bdberr);
 int bdb_close_only_sc(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
 
 /* you must call bdb_close_only before a rename.
@@ -1506,6 +1513,7 @@ typedef struct {
 } llmeta_sc_status_data;
 
 int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
+                                 uint64_t seed, uint64_t converted,
                                  void *schema_change_data,
                                  size_t schema_change_data_len, int status,
                                  const char *errstr, int *bdberr);
@@ -1513,7 +1521,33 @@ int bdb_set_schema_change_status(tran_type *input_trans, const char *db_name,
 int bdb_llmeta_get_all_sc_status(llmeta_sc_status_data ***status_out,
                                  void ***sc_data_out, int *num, int *bdberr);
 
-int bdb_set_high_genid(tran_type *input_trans, const char *db_name,
+typedef struct {
+    uint64_t start;
+    uint64_t last;
+    uint64_t converted;
+    int status;
+    int type; // optional
+    char errstr[LLMETA_SCERR_LEN];
+    int sc_data_len;   // extra data that we might want to store
+} llmeta_sc_hist_data; // this is the data stored in llmeta for sc_history
+
+typedef struct {
+    uint64_t seed;
+    uint64_t start;
+    uint64_t last;
+    uint64_t converted;
+    char tablename[MAXTABLELEN];
+    int status;
+    char errstr[LLMETA_SCERR_LEN];
+} sc_hist_row; // this is content of row in comdb2_sc_history
+
+int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
+                              int *bdberr, const char *tablename);
+
+int bdb_del_schema_change_history(tran_type *t, const char *tablename,
+                                  uint64_t seed);
+
+int bdb_set_high_genid(tran_type *input_trans, const char *tablename,
                        unsigned long long genid, int *bdberr);
 int bdb_set_high_genid_stripe(tran_type *input_trans, const char *db_name,
                               int stripe, unsigned long long genid,
@@ -1663,6 +1697,11 @@ int bdb_tbl_op_access_delete(bdb_state_type *bdb_state, tran_type *input_trans,
                              int command_type, const char *tblname, const char *username,
                              int *bdberr);
 
+int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
+                             const char *table_name);
+int bdb_del_all_user_access(bdb_state_type *bdb_state, tran_type *tran,
+                            const char *user);
+
 int bdb_authentication_set(bdb_state_type *bdb_state, tran_type *input_trans, int enable,
                            int *bdberr);
 int bdb_authentication_get(bdb_state_type *bdb_state, tran_type *tran,
@@ -1671,9 +1710,11 @@ int bdb_accesscontrol_tableXnode_get(bdb_state_type *bdb_state, tran_type *tran,
                                      int *bdberr);
 
 int bdb_user_password_set(tran_type *, char *user, char *passwd);
-int bdb_user_password_check(char *user, char *passwd, int *valid_user);
+int bdb_user_password_check(tran_type *tran, char *user, char *passwd,
+                            int *valid_user);
 int bdb_user_password_delete(tran_type *tran, char *user);
 int bdb_user_get_all(char ***users, int *num);
+int bdb_user_get_all_tran(tran_type *tran, char ***users, int *num);
 
 void bdb_set_instant_schema_change(bdb_state_type *bdb_state, int isc);
 void bdb_set_inplace_updates(bdb_state_type *bdb_state, int ipu);
@@ -1787,6 +1828,8 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_have_unused_files(void);
 
 int bdb_nlocks_for_locker(bdb_state_type *bdb_state, int lid);
+
+void bdb_tran_assert_nolocks(bdb_state_type *bdb_state, tran_type *tran);
 
 int bdb_llmeta_list_records(bdb_state_type *bdb_state, int *bdberr);
 
@@ -2044,8 +2087,14 @@ int bdb_get_all_for_versioned_sp(char *name, char ***versions, int *num);
 int bdb_get_default_versioned_sps(char ***names, int *num);
 int bdb_get_versioned_sps(char ***names, int *num);
 
+int bdb_user_exists(tran_type *tran, char *user);
+int bdb_create_dba_user(bdb_state_type *bdb_state);
+
 int bdb_check_user_tbl_access(bdb_state_type *bdb_state, char *user,
                               char *table, int access_type, int *bdberr);
+int bdb_check_user_tbl_access_tran(bdb_state_type *bdb_state, tran_type *tran,
+                                   char *user, char *table, int access_type,
+                                   int *bdberr);
 int bdb_first_user_get(bdb_state_type *bdb_state, tran_type *tran,
                        char *key_out, char *user_out, int *isop, int *bdberr);
 int bdb_next_user_get(bdb_state_type *bdb_state, tran_type *tran, char *key,

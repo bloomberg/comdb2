@@ -21,6 +21,13 @@ else()
   add_definitions(-DWITH_SSL=0)
 endif()
 
+option(WITH_TINFO "Turn ON on platforms where tinfo library is required for cdb2sql" OFF)
+if(WITH_TINFO)
+  add_definitions(-DWITH_TINFO=1)
+else()
+  add_definitions(-DWITH_TINFO=0)
+endif()
+
 if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   # Homebrew will install here by default
   list(APPEND CMAKE_PREFIX_PATH
@@ -147,7 +154,11 @@ endif()
 
 if (${CMAKE_C_COMPILER_ID} STREQUAL GNU OR ${CMAKE_C_COMPILER_ID} STREQUAL Clang)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
+  if (NOT ${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l)
+     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror")
+  else()
+     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -latomic")
+  endif()
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-unused-function")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wno-switch")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wignored-qualifiers")

@@ -23,6 +23,7 @@
 #include <sys/time.h>
 #include <inttypes.h>
 #include <dirent.h>
+#include <bb_oscompat.h>
 
 #include <comdb2.h>
 #if defined(_IBM_SOURCE)
@@ -49,7 +50,7 @@ extern void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info);
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 int eventlog_nkeep = 2; // keep only last 2 event log files
-static int eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
+static uint64_t eventlog_rollat = 100 * 1024 * 1024; // 100MB to begin
 static int eventlog_enabled = 1;
 static int eventlog_detailed = 0;
 static int64_t bytes_written = 0;
@@ -57,9 +58,8 @@ static int eventlog_verbose = 0;
 
 static gzFile eventlog = NULL;
 static pthread_mutex_t eventlog_lk = PTHREAD_MUTEX_INITIALIZER;
-static gzFile eventlog_open(char *fname);
-int eventlog_every_n = 1;
-int64_t eventlog_count = 0;
+static int eventlog_every_n = 1;
+static int64_t eventlog_count = 0;
 
 static void eventlog_roll(void);
 #define min(x, y) ((x) < (y) ? (x) : (y))
@@ -73,15 +73,6 @@ LISTC_T(struct sqltrack) sql_statements;
 
 static hash_t *seen_sql;
 
-void eventlog_init()
-{
-    seen_sql =
-        hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
-    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
-    char *fname = eventlog_fname(thedb->envname);
-    if (eventlog_enabled) eventlog = eventlog_open(fname);
-}
-
 static inline void free_gbl_eventlog_fname()
 {
     if (gbl_eventlog_fname == NULL)
@@ -90,46 +81,74 @@ static inline void free_gbl_eventlog_fname()
     gbl_eventlog_fname = NULL;
 }
 
+static int strptrcmp(const void *p1, const void *p2) {
+      return strcmp(*(char *const *)p1, *(char *const *)p2);
+}
+
 static void eventlog_roll_cleanup()
 {
     if (eventlog_nkeep == 0)
         return;
 
-    char cmd[512] = {0};
-    const char postfix[] = ".events.";
-    char *fname = comdb2_location("eventlog", "%s%s", thedb->envname, postfix);
-
-    if (fname == NULL)
+    char eventflstok[256];
+    int ret = snprintf(eventflstok, sizeof(eventflstok), "%s.events.", thedb->envname);
+    if (ret >= sizeof(eventflstok)) {
+        logmsg(LOGMSG_ERROR, "eventlog_roll_cleanup: File name token truncated to %s\n", eventflstok);
         abort();
-
-    // fname should look like '/dir/<dbname>.events.' : see eventlog_fname()
-    int len = strlen(fname);
-
-    // SANITY CHECK; last part of fname should match postfix
-    if (len < sizeof(postfix) ||
-        strcmp(&(fname[len - sizeof(postfix) + 1]), postfix) != 0)
-        abort();
-
-    // Delete all except the most recent files
-    // WARNING: MAKE SURE NO SPACE BETWEEN THE TWO CHARACTERS '%s*'
-    // IN THE CALL TO ls IN NEXT LINE
-    snprintf(
-        cmd, sizeof(cmd) - 1,
-        "ls -1t %s* | grep '%s' | grep '.events.' | sed '1,%dd' | xargs rm -f",
-        fname, thedb->envname, eventlog_nkeep);
-    free(fname);
-
-    int rc = system(cmd);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "Failed to rotate log rc = %d\n", rc);
     }
+
+    char *dname = comdb2_location("eventlog", NULL);
+    if (dname == NULL)
+        abort();
+
+    int cnt = 100;
+    int num = 0;
+    char **arr = malloc((cnt * sizeof(char *)));
+
+    /* must be large enough to hold a dirent struct with the longest possible
+     * filename */
+    struct dirent *buf = alloca(4096);
+    struct dirent *de;
+    DIR *d = opendir(dname);
+    if (!d) {
+        logmsg(LOGMSG_ERROR, "%s: opendir %s failed\n", __func__, dname);
+        return;
+    }
+
+    while (bb_readdir(d, buf, &de) == 0 && de) {
+        if (strstr(de->d_name, eventflstok) == NULL) {
+            continue;
+        }
+
+        if (num >= cnt) {
+            cnt *= 2;
+            arr = realloc(arr, cnt * sizeof(char*));
+        }
+
+        arr[num++] = strdup(de->d_name);
+    }
+    qsort(arr, num, sizeof(char *), strptrcmp); // files sorted by time
+    
+    int dfd = dirfd(d);
+    for(int i = 0; i < num; i++) {
+        if (i < num - eventlog_nkeep) {
+            int rc = unlinkat(dfd, arr[i], 0);
+            if (rc) 
+                logmsg(LOGMSG_ERROR,
+                       "eventlog_roll_cleanup: Error while deleting eventlog file %s, rc=%d\n",
+                       arr[i], rc);
+        }
+        free(arr[i]);
+    }
+    free(arr);
+    closedir(d);
 }
 
-static gzFile eventlog_open(char *fname)
+static gzFile eventlog_open(char *fname, bool append)
 {
-    eventlog_roll_cleanup();
     gbl_eventlog_fname = fname;
-    gzFile f = gzopen(fname, "2w");
+    const char *mode = append ? "2a" : "2w";
+    gzFile f = gzopen(fname, mode);
     if (f == NULL) {
         logmsg(LOGMSG_ERROR, "Failed to open log file = %s\n", fname);
         eventlog_enabled = 0;
@@ -154,6 +173,15 @@ static void eventlog_close(void)
     }
     free_gbl_eventlog_fname();
 }
+
+void eventlog_init()
+{
+    seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
+    listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
+    char *fname = eventlog_fname(thedb->envname);
+    if (eventlog_enabled) eventlog = eventlog_open(fname, false);
+}
+
 
 static char *eventlog_fname(const char *dbname)
 {
@@ -427,8 +455,7 @@ static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger
 {
     struct sqltrack *st;
     st = malloc(sizeof(struct sqltrack));
-    memcpy(st->fingerprint, logger->fingerprint,
-            sizeof(logger->fingerprint));
+    memcpy(st->fingerprint, logger->fingerprint, sizeof(logger->fingerprint));
     hash_add(seen_sql, st);
     listc_abl(&sql_statements, st);
 
@@ -440,9 +467,9 @@ static void eventlog_add_newsql(cson_object *obj, const struct reqlogger *logger
     cson_object_set(newobj, "time", cson_new_int(logger->startus));
     cson_object_set(newobj, "type",
             cson_value_new_string("newsql", sizeof("newsql")));
-    cson_object_set(newobj, "sql", cson_value_new_string(
-                logger->stmt, strlen(logger->stmt)));
-
+    if (logger->stmt != NULL)
+        cson_object_set(newobj, "sql", cson_value_new_string(
+                    logger->stmt, strlen(logger->stmt)));
     char expanded_fp[2 * FINGERPRINTSZ + 1];
     util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
     cson_object_set(newobj, "fingerprint",
@@ -521,8 +548,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
     if (logger->have_fingerprint) {
         char expanded_fp[2 * FINGERPRINTSZ + 1];
         util_tohex(expanded_fp, logger->fingerprint, FINGERPRINTSZ);
-        cson_object_set(obj, "fingerprint",
-                        cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
+        cson_object_set(obj, "fingerprint", cson_value_new_string(expanded_fp, FINGERPRINTSZ * 2));
     }
 
     if (logger->clnt) {
@@ -549,6 +575,7 @@ static void eventlog_add_int(cson_object *obj, const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
+    int call_roll_cleanup = 0;
     Pthread_mutex_lock(&eventlog_lk);
     if (eventlog == NULL || !eventlog_enabled) {
         Pthread_mutex_unlock(&eventlog_lk);
@@ -563,8 +590,9 @@ void eventlog_add(const struct reqlogger *logger)
         Pthread_mutex_unlock(&eventlog_lk);
         return;
     }
-    if (bytes_written > eventlog_rollat) {
+    if (eventlog_rollat > 0 && bytes_written > eventlog_rollat) {
         eventlog_roll();
+        call_roll_cleanup = 1;
     }
     Pthread_mutex_unlock(&eventlog_lk);
 
@@ -577,6 +605,9 @@ void eventlog_add(const struct reqlogger *logger)
         cson_output(val, write_json, eventlog, &opt);
     Pthread_mutex_unlock(&eventlog_lk);
 
+    if (call_roll_cleanup) {
+        eventlog_roll_cleanup();
+    }
     if (eventlog_verbose) cson_output(val, write_logmsg, stdout, &opt);
 
     cson_value_free(val);
@@ -597,26 +628,25 @@ void eventlog_status(void)
         logmsg(LOGMSG_USER, "Eventlog disabled\n");
 }
 
+// roll the log: close existing file open a new one
+// this function must be called while holding eventlog_lk
 static void eventlog_roll(void)
 {
     eventlog_close();
 
     char *fname = eventlog_fname(thedb->envname);
-    eventlog = eventlog_open(fname);
+    eventlog = eventlog_open(fname, false);
 }
 
+// this function must be called while holding eventlog_lk
 static void eventlog_usefile(const char *fname)
 {
     eventlog_close();
 
     char *d = strdup(fname);
-    eventlog = eventlog_open(d); // passes responsibility to free d
-    if (eventlog) // success
-        return;
-
-    // failed to open fname, so open from default location
-    char *defaultname = eventlog_fname(thedb->envname);
-    eventlog = eventlog_open(defaultname);
+    eventlog = eventlog_open(d, true); // passes responsibility to free d
+    if (!eventlog)                     // failed to open fname, so open from default location
+        eventlog_roll();
 }
 
 static void eventlog_enable(void)
@@ -628,14 +658,19 @@ static void eventlog_enable(void)
 static void eventlog_disable(void)
 {
     eventlog_close();
-    eventlog = NULL;
     eventlog_enabled = 0;
-    bytes_written = 0;
 }
 
 void eventlog_stop(void)
 {
+    Pthread_mutex_lock(&eventlog_lk);
     eventlog_disable();
+    Pthread_mutex_unlock(&eventlog_lk);
+}
+
+static inline void eventlog_set_rollat(uint64_t rollat_bytes) 
+{
+    eventlog_rollat = rollat_bytes;
 }
 
 static void eventlog_help(void)
@@ -646,7 +681,7 @@ static void eventlog_help(void)
                         "events roll              - roll the event log file\n"
                         "events keep N            - keep N files\n"
                         "events detailed <on|off> - turn on/off detailed mode (ex. sql bound param)\n"
-                        "events rollat N          - roll when log file size larger than N bytes\n"
+                        "events rollat N          - roll when log file size larger than N MB\n"
                         "events every N           - log only every Nth event, 0 logs all\n"
                         "events verbose on/off    - turn on/off verbose mode\n"
                         "events dir <dir>         - set custom directory for event log files\n"
@@ -655,7 +690,7 @@ static void eventlog_help(void)
                         "events help              - this help message\n");
 }
 
-static void eventlog_process_message_locked(char *line, int lline, int *toff)
+static void eventlog_process_message_locked(char *line, int lline, int *toff, int *call_roll_cleanup)
 {
     char *tok;
     int ltok;
@@ -663,14 +698,24 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
     tok = segtok(line, lline, toff, &ltok);
     if (ltok == 0) {
         logmsg(LOGMSG_ERROR, "Expected option for reql events\n");
+        eventlog_help();
         return;
     }
-    if (tokcmp(tok, ltok, "on") == 0)
-        eventlog_enable();
-    else if (tokcmp(tok, ltok, "off") == 0)
-        eventlog_disable();
-    else if (tokcmp(tok, ltok, "roll") == 0) {
+
+    if (tokcmp(tok, ltok, "on") == 0) {
+        if (!eventlog_enabled) {
+            eventlog_enable();
+            *call_roll_cleanup = 1;
+        } else
+            logmsg(LOGMSG_USER, "Event logging is already enabled\n");
+    } else if (tokcmp(tok, ltok, "off") == 0) {
+        if (eventlog_enabled)
+            eventlog_disable();
+        else
+            logmsg(LOGMSG_USER, "Event logging is already disbled\n");
+    } else if (tokcmp(tok, ltok, "roll") == 0) {
         eventlog_roll();
+        *call_roll_cleanup = 1;
     } else if (tokcmp(tok, ltok, "keep") == 0) {
         int nfiles;
         tok = segtok(line, lline, toff, &ltok);
@@ -694,7 +739,7 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         else if (tokcmp(tok, ltok, "off") == 0)
             eventlog_detailed = 0;
     } else if (tokcmp(tok, ltok, "rollat") == 0) {
-        off_t rollat;
+        int rollat;
         char *s;
         tok = segtok(line, lline, toff, &ltok);
         if (ltok == 0) {
@@ -708,15 +753,18 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
         }
         rollat = strtol(s, NULL, 10);
         free(s);
+
         if (rollat < 0) {
+            logmsg(LOGMSG_USER, "Invalid size to roll (%d); set to 0 to stop rolling)\n", rollat);
             return;
         }
-        if (rollat == 0)
+
+        if (rollat == 0) {
             logmsg(LOGMSG_USER, "Turned off rolling\n");
-        else {
-            logmsg(LOGMSG_USER, "Rolling logs after %zd bytes\n", rollat);
+        } else {
+            logmsg(LOGMSG_USER, "Rolling logs after %d MB\n", rollat);
         }
-        eventlog_rollat = rollat;
+        eventlog_set_rollat(rollat * 1024 * 1024);  // we perform check in bytes
     } else if (tokcmp(tok, ltok, "every") == 0) {
         int every;
         tok = segtok(line, lline, toff, &ltok);
@@ -725,13 +773,15 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             return;
         }
         every = toknum(tok, ltok);
-        if (every == 0) {
-            logmsg(LOGMSG_USER, "Logging all events\n");
-        } else if (every < 0) {
+        if (every < 0) {
             logmsg(LOGMSG_ERROR, "Invalid count for 'every'\n");
             return;
-        } else
+        }
+        if (every == 0) {
+            logmsg(LOGMSG_USER, "Logging all events\n");
+        } else {
             logmsg(LOGMSG_USER, "Logging every %d queries\n", eventlog_every_n);
+        }
         eventlog_every_n = every;
     } else if (tokcmp(tok, ltok, "verbose") == 0) {
         tok = segtok(line, lline, toff, &ltok);
@@ -739,20 +789,21 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
             return;
         }
-        if (tokcmp(tok, ltok, "on") == 0)
+        if (tokcmp(tok, ltok, "on") == 0) {
             eventlog_verbose = 1;
-        else if (tokcmp(tok, ltok, "off") == 0)
+        } else if (tokcmp(tok, ltok, "off") == 0) {
             eventlog_verbose = 0;
-        else {
+        } else {
             logmsg(LOGMSG_ERROR, "Expected on/off for 'verbose'\n");
-            return;
         }
     } else if (tokcmp(tok, ltok, "flush") == 0) {
-        gzflush(eventlog, 1);
+        if (eventlog)
+            gzflush(eventlog, 1);
     } else if (tokcmp(tok, ltok, "file") == 0) {
-        // use given file for logging, when we roll, we go back to the original scheme
+        // use given file for logging; when we roll, we go back to the original scheme
         tok = segtok(line, lline, toff, &ltok);
         eventlog_usefile(tok);
+        *call_roll_cleanup = 1;
     } else if (tokcmp(tok, ltok, "dir") == 0) {
         // set directory for event file logging
         tok = segtok(line, lline, toff, &ltok);
@@ -763,19 +814,24 @@ static void eventlog_process_message_locked(char *line, int lline, int *toff)
             closedir(pd);
             update_file_location("eventlog", tok);
         }
-    } else if (tokcmp(tok, ltok, "help") == 0) {
-        eventlog_help();
     } else {
-        logmsg(LOGMSG_ERROR, "Unknown eventlog command\n");
-        return;
+        if (tokcmp(tok, ltok, "help") != 0) {
+            logmsg(LOGMSG_ERROR, "Unknown eventlog command '%s'\n", line);
+        }
+        eventlog_help();
     }
 }
 
 void eventlog_process_message(char *line, int lline, int *toff)
 {
+    int call_roll_cleanup = 0;
     Pthread_mutex_lock(&eventlog_lk);
-    eventlog_process_message_locked(line, lline, toff);
+    eventlog_process_message_locked(line, lline, toff, &call_roll_cleanup);
     Pthread_mutex_unlock(&eventlog_lk);
+
+    if (call_roll_cleanup) {
+        eventlog_roll_cleanup();
+    }
 }
 
 void log_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,

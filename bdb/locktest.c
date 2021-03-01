@@ -824,7 +824,7 @@ static void stripe(void)
 #define shuffle(x)                                                             \
     do {                                                                       \
         int i;                                                                 \
-        unsigned int seed = pthread_self();                                    \
+        unsigned int seed = (int)pthread_self();                               \
         for (i = 0; i < arraylen(x) - 1; ++i) {                                \
             int j = i + (rand_r(&seed) % (arraylen(x) - i));                   \
             uint8_t tmp[sizeof(x[0])];                                         \

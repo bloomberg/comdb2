@@ -331,6 +331,8 @@ int sc_set_running(struct ireq *iq, struct schema_change_type *s, char *table,
 
 void sc_set_downgrading(struct schema_change_type *s);
 
+int gbl_debug_mixed_ddl_dml = 0;
+
 /**
  * Apply all schema changes and wait for them to finish
  */
@@ -423,6 +425,12 @@ int osql_bplog_schemachange(struct ireq *iq)
         iq->sc_pending = NULL;
     }
     logmsg(LOGMSG_INFO, ">>> DDL SCHEMA CHANGE RC %d <<<\n", rc);
+
+    if (!gbl_debug_mixed_ddl_dml) {
+        assert(!iq->sc_locked);
+        iq->sc_locked = 1;
+        wrlock_schema_lk();
+    }
     return rc;
 }
 
@@ -1418,8 +1426,8 @@ static int process_this_session(
         DEBUG_PRINT_TMPBL_READ();
 
         if (bdb_lock_desired(thedb->bdb_env)) {
-            logmsg(LOGMSG_ERROR, "%lu %s:%d blocksql session closing early\n",
-                   pthread_self(), __FILE__, __LINE__);
+            logmsg(LOGMSG_ERROR, "%p %s:%d blocksql session closing early\n",
+                   (void *)pthread_self(), __FILE__, __LINE__);
             err->blockop_num = 0;
             err->errcode = ERR_NOMASTER;
             err->ixnum = 0;
@@ -1808,8 +1816,10 @@ void *osql_commit_timepart_resuming_sc(void *p)
 
 abort_sc:
     logmsg(LOGMSG_ERROR, "%s: aborting schema change\n", __func__);
-    if (iq.sc_tran)
+    if (iq.sc_tran) {
         trans_abort(&iq, iq.sc_tran);
+        iq.sc_tran = NULL;
+    }
     backout_schema_changes(&iq, parent_trans);
     if (iq.sc_locked) {
         unlock_schema_lk();

@@ -2017,9 +2017,8 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
             if (sc_parent == NULL) {
                 irc = -1;
                 logmsg(LOGMSG_ERROR,
-                       "%s:%d/%d td %ld failed to get physical "
-                       "tran\n",
-                       __func__, __LINE__, line, pthread_self());
+                       "%s:%d/%d td %p failed to get physical tran\n",
+                       __func__, __LINE__, line, (void *)pthread_self());
             } else {
                 irc = trans_start_sc(iq, sc_parent, &(iq->sc_tran));
                 if (irc == 0 && gbl_sc_close_txn)
@@ -2094,12 +2093,14 @@ static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
     int rc = 0;
 
     rc = trans_abort(iq, *trans);
+    *trans = NULL;
     if (rc) {
         logmsg(LOGMSG_ERROR, "aborting transaction failed\n");
         error = 1;
     }
     if (parent_trans && *parent_trans) {
         rc = trans_abort(iq, *parent_trans);
+        *parent_trans = NULL;
         if (rc) {
             logmsg(LOGMSG_ERROR, "aborting parent transaction failed\n");
             error = 1;
@@ -2107,9 +2108,6 @@ static int osql_destroy_transaction(struct ireq *iq, tran_type **parent_trans,
     }
 
     *osql_needtransaction = OSQL_BPLOG_NOTRANS;
-    if (parent_trans)
-        *parent_trans = NULL;
-    *trans = NULL;
 
     return error;
 }
@@ -2403,11 +2401,14 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
     int rc = 0;
     if (rowlocks) {
         assert(parent);
-        rc = trans_abort(iq, bdb_get_physical_tran(parent));
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__,
-                   __LINE__, rc);
-            comdb2_die(1);
+        /* Check if we started a physical transaction. */
+        if (bdb_get_physical_tran(parent) != NULL) {
+            rc = trans_abort(iq, bdb_get_physical_tran(parent));
+            bdb_reset_physical_tran(parent);
+            if (rc != 0) {
+                logmsg(LOGMSG_FATAL, "%s:%d TRANS_ABORT FAILED RC %d", __func__, __LINE__, rc);
+                comdb2_die(1);
+            }
         }
         parent = bdb_get_sc_parent_tran(parent);
     }
@@ -2442,9 +2443,15 @@ static void backout_and_abort_tranddl(struct ireq *iq, tran_type *parent,
         rc = trans_commit_logical(iq, iq->sc_logical_tran, gbl_mynode, 0, 1,
                                   NULL, 0, NULL, 0);
         if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s:%d TD %ld TRANS_ABORT FAILED RC %d\n",
-                   __func__, __LINE__, pthread_self(), rc);
+            logmsg(LOGMSG_ERROR, "%s:%d TD %p TRANS_ABORT FAILED RC %d\n",
+                   __func__, __LINE__, (void *)pthread_self(), rc);
         }
+    } else if (parent && !rowlocks) {
+        /*
+        ** We didn't start an sc logical transaction.
+        ** Just abort the parent transcation here.
+        */
+        trans_abort(iq, parent);
     }
     iq->sc_logical_tran = NULL;
 }
@@ -2572,6 +2579,29 @@ static inline int check_for_node_up(struct ireq *iq, block_state_t *p_blkstate)
     return 0;
 }
 
+extern int gbl_is_physical_replicant;
+
+static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
+{
+    int rc = 0;
+    /* Transactionally read the last sequence number.
+       This effectively serializes all updates.
+       There are probably riskier more clever schemes where we don't
+       need to do this. */
+    if (gbl_replicate_local_concurrent) {
+        unsigned long long useqno;
+        useqno = bdb_get_timestamp(thedb->bdb_env);
+        memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
+    } else {
+        long long seqno;
+        rc = get_next_seqno(trans, &seqno);
+        if (rc == 0)
+            p_blkstate->seqno = seqno;
+    }
+
+    return rc;
+}
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -2633,6 +2663,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     iq->oplog_numops = 0;
 
     num_reqs = p_blkstate->numreq;
+
+    if (gbl_is_physical_replicant) {
+        logmsg(LOGMSG_ERROR, "%s client attempting write against physical replicant\n", __func__);
+        rc = ERR_NOMASTER;
+        return rc;
+    }
 
     /* reset queue hits stats so we don't accumulate them over several
      * retries */
@@ -2853,8 +2889,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             if (verbose_deadlocks)
-                logmsg(LOGMSG_USER, "%x %s:%d Using iq %p priority %d\n",
-                       (int)pthread_self(), __FILE__, __LINE__, iq,
+                logmsg(LOGMSG_USER, "%p %s:%d Using iq %p priority %d\n",
+                       (void *)pthread_self(), __FILE__, __LINE__, iq,
                        iq->priority);
 
             irc =
@@ -2881,6 +2917,16 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
     }
 
+    if (debug_switch_test_ddl_backout_nomaster()) {
+        rc = ERR_NOMASTER;
+        GOTOBACKOUT;
+    }
+
+    if (debug_switch_test_ddl_backout_deadlock()) {
+        rc = RC_INTERNAL_RETRY;
+        GOTOBACKOUT;
+    }
+
     if (irc != 0) {
         logmsg(LOGMSG_ERROR, "%s:%d trans_start failed rc %d\n", __func__,
                __LINE__, irc);
@@ -2901,28 +2947,12 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
     javasp_trans_set_trans(javasp_trans_handle, iq, parent_trans, trans);
 
-    if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog")) {
-        /* Transactionally read the last sequence number.
-           This effectively serializes all updates.
-           There are probably riskier more clever schemes where we don't
-           need to do this. */
-        if (gbl_replicate_local_concurrent) {
-            unsigned long long useqno;
-            useqno = bdb_get_timestamp(thedb->bdb_env);
-            memcpy(&p_blkstate->seqno, &useqno, sizeof(unsigned long long));
-        } else {
-            long long seqno;
-            rc = get_next_seqno(trans, &seqno);
-
-            /* This can fail if we deadlock with another transaction.
-               ANYTHING in berkeley can deadlock.  Looking at the code
-               funny makes it deadlock.  */
-            if (rc) {
-                if (rc != RC_INTERNAL_RETRY)
-                    logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d\n", rc);
-                GOTOBACKOUT;
-            }
-            p_blkstate->seqno = seqno;
+    if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog") && !iq->tranddl) {
+        rc = localrep_seqno(trans, p_blkstate);
+        if (rc) {
+            if (rc != RC_INTERNAL_RETRY)
+                logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d\n", rc);
+            GOTOBACKOUT;
         }
     }
 
@@ -4708,6 +4738,13 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (iirc) {
                 rc = iirc;
                 needbackout = 1;
+            } else if (gbl_replicate_local && get_dbtable_by_name("comdb2_oplog")) {
+                rc = localrep_seqno(trans, p_blkstate);
+                if (rc) {
+                    if (rc != RC_INTERNAL_RETRY)
+                        logmsg(LOGMSG_ERROR, "get_next_seqno unexpected rc %d for ddl\n", rc);
+                    needbackout = 1;
+                }
             }
         }
 
@@ -5550,6 +5587,8 @@ add_blkseq:
                                        bskeylen, buf_fstblk,
                                        p_buf_fstblk - buf_fstblk + sizeof(int),
                                        &replay_data, &replay_len);
+                if (debug_switch_test_ddl_backout_blkseq())
+                    rc = -1;
             }
 
             /* force a parent-deadlock for cdb2tcm */
@@ -5609,6 +5648,7 @@ add_blkseq:
                     iq->sc_logical_tran = NULL;
                 } else {
                     irc = trans_commit_adaptive(iq, parent_trans, source_host);
+                    parent_trans = NULL;
                 }
                 if (irc) {
                     /* We've committed to the btree, but we are not replicated:

@@ -35,6 +35,7 @@ void print_cooked_access(BtCursor *pCur, int col);
 void comdb2SetWriteFlag(int wrflag);
 int is_datacopy(BtCursor *pCur, int *fnum);
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m);
+int comdb2_is_idx_uniqnulls(BtCursor *);
 extern void comdb2_handle_limit(Vdbe*,Mem*);
 extern void sqlite3BtreeCursorSetFieldUsed(BtCursor *, unsigned long long);
 extern i64 sqlite3BtreeNewRowid(BtCursor *pCur);
@@ -1062,7 +1063,7 @@ int sqlite3VdbeExec(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     if( gbl_debug_sql_opcodes ){
-      logmsg(LOGMSG_USER, "tid 0x%lx step %d pc %d op %d %s\n", pthread_self(), nVmStep,
+      logmsg(LOGMSG_USER, "tid 0x%p step %d pc %d op %d %s\n", (void *)pthread_self(), nVmStep,
                 (int)(pOp - aOp), pOp->opcode, sqlite3OpcodeName(pOp->opcode));
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3034,9 +3035,7 @@ case OP_Column: {
   if( pC->eCurType == CURTYPE_BTREE && cur_is_raw(pCrsr) && !pC->nullRow ) {
     /* We may reuse a Mem structure.
        So delete any previously allocated memory in pDest. */
-    if( VdbeMemDynamic(pDest) ){
-      sqlite3VdbeMemSetNull(pDest);
-    }
+    sqlite3VdbeMemRelease(pDest); /* takes care of both z and zMalloc */
     if(cur_is_remote(pCrsr)) {
       goto cooked_access;
     }
@@ -4822,22 +4821,31 @@ seek_not_found:
   break;
 }
 
-/* Opcode: SeekHit P1 P2 * * *
-** Synopsis: seekHit=P2
+/* Opcode: SeekHit P1 P2 P3 * *
+** Synopsis: set P2<=seekHit<=P3
 **
-** Set the seekHit flag on cursor P1 to the value in P2.
-** The seekHit flag is used by the IfNoHope opcode.
+** Increase or decrease the seekHit value for cursor P1, if necessary,
+** so that it is no less than P2 and no greater than P3.
 **
-** P1 must be a valid b-tree cursor.  P2 must be a boolean value,
-** either 0 or 1.
+** The seekHit integer represents the maximum of terms in an index for which
+** there is known to be at least one match.  If the seekHit value is smaller
+** than the total number of equality terms in an index lookup, then the
+** OP_IfNoHope opcode might run to see if the IN loop can be abandoned
+** early, thus saving work.  This is part of the IN-early-out optimization.
+**
+** P1 must be a valid b-tree cursor.
 */
 case OP_SeekHit: {
   VdbeCursor *pC;
   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
   pC = p->apCsr[pOp->p1];
   assert( pC!=0 );
-  assert( pOp->p2==0 || pOp->p2==1 );
-  pC->seekHit = pOp->p2 & 1;
+  assert( pOp->p3>=pOp->p2 );
+  if( pC->seekHit<pOp->p2 ){
+    pC->seekHit = pOp->p2;
+  }else if( pC->seekHit>pOp->p3 ){
+    pC->seekHit = pOp->p3;
+  }
   break;
 }
 
@@ -4883,16 +4891,20 @@ case OP_SeekHit: {
 ** Synopsis: key=r[P3@P4]
 **
 ** Register P3 is the first of P4 registers that form an unpacked
-** record.
+** record.  Cursor P1 is an index btree.  P2 is a jump destination.
+** In other words, the operands to this opcode are the same as the
+** operands to OP_NotFound and OP_IdxGT.
 **
-** Cursor P1 is on an index btree.  If the seekHit flag is set on P1, then
-** this opcode is a no-op.  But if the seekHit flag of P1 is clear, then
-** check to see if there is any entry in P1 that matches the
-** prefix identified by P3 and P4.  If no entry matches the prefix,
-** jump to P2.  Otherwise fall through.
+** This opcode is an optimization attempt only.  If this opcode always
+** falls through, the correct answer is still obtained, but extra works
+** is performed.
 **
-** This opcode behaves like OP_NotFound if the seekHit
-** flag is clear and it behaves like OP_Noop if the seekHit flag is set.
+** A value of N in the seekHit flag of cursor P1 means that there exists
+** a key P3:N that will match some record in the index.  We want to know
+** if it is possible for a record P3:P4 to match some record in the
+** index.  If it is not possible, we can skips some work.  So if seekHit
+** is less than P4, attempt to find out if a match is possible by running
+** OP_NotFound.
 **
 ** This opcode is used in IN clause processing for a multi-column key.
 ** If an IN clause is attached to an element of the key other than the
@@ -4934,7 +4946,7 @@ case OP_IfNoHope: {     /* jump, in3 */
   assert( pOp->p1>=0 && pOp->p1<p->nCursor );
   pC = p->apCsr[pOp->p1];
   assert( pC!=0 );
-  if( pC->seekHit ) break;
+  if( pC->seekHit>=pOp->p4.i ) break;
   /* Fall through into OP_NotFound */
 }
 case OP_NoConflict:     /* jump, in3 */
@@ -4992,7 +5004,12 @@ case OP_Found: {        /* jump, in3 */
     /* For the OP_NoConflict opcode, take the jump if any of the
     ** input fields are NULL, since any key with a NULL will not
     ** conflict */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    int is_idx_uniqnulls = comdb2_is_idx_uniqnulls(pC->uc.pCursor);
+    for(ii=0; is_idx_uniqnulls && ii<pIdxKey->nField; ii++){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     for(ii=0; ii<pIdxKey->nField; ii++){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       if( pIdxKey->aMem[ii].flags & MEM_Null ){
         takeJump = 1;
         break;
@@ -5025,6 +5042,7 @@ case OP_Found: {        /* jump, in3 */
   }else{
     VdbeBranchTaken(takeJump||alreadyExists==0,2);
     if( takeJump || !alreadyExists ) goto jump_to_p2;
+    if( pOp->opcode==OP_IfNoHope ) pC->seekHit = pOp->p4.i;
   }
   break;
 }
@@ -6303,6 +6321,24 @@ case OP_IdxRowid: {           /* out2 */
   }else{
     assert( pOp->opcode==OP_IdxRowid );
     sqlite3VdbeMemSetNull(&aMem[pOp->p2]);
+  }
+  break;
+}
+
+/* Opcode: FinishSeek P1 * * * *
+**
+** If cursor P1 was previously moved via OP_DeferredSeek, complete that
+** seek operation now, without further delay.  If the cursor seek has
+** already occurred, this instruction is a no-op.
+*/
+case OP_FinishSeek: {
+  VdbeCursor *pC;             /* The P1 index cursor */
+
+  assert( pOp->p1>=0 && pOp->p1<p->nCursor );
+  pC = p->apCsr[pOp->p1];
+  if( pC->deferredMoveto ){
+    rc = sqlite3VdbeFinishMoveto(pC);
+    if( rc ) goto abort_due_to_error;
   }
   break;
 }
