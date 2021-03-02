@@ -216,7 +216,7 @@ __fileid_track_init(dbenv)
 	ft->numids = 0;
 }
 
-int
+static int
 __fileid_track_free(dbenv)
 	DB_ENV *dbenv;
 {
@@ -229,16 +229,15 @@ __fileid_track_free(dbenv)
 
 		r = listc_rtl(&ft->ranges[i]);
 		while (r) {
-			__os_free(dbenv, r->fname);
 			if (r->dbp) {
 				ret = __db_close(r->dbp, NULL, 0);
 
 				if (ret) {
 					logmsg(LOGMSG_ERROR, "__db_close %s rc %d\n",
-						r->dbp->fname, ret);
-					return ret;
+						r->fname, ret);
 				}
 			}
+			__os_free(dbenv, r->fname);
 			next = listc_rtl(&ft->ranges[i]);
 			__os_free(dbenv, r);
 			r = next;
