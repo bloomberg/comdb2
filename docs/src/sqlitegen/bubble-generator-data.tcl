@@ -165,12 +165,17 @@ set all_graphs {
 
   upsert-clause {
       stack
-      {line ON CONFLICT {opt ( index-column-list ) {opt WHERE expr }}
-      }
-      {line DO
+      {line ON CONFLICT
           {or
-              {line NOTHING}
-              {line UPDATE SET {loop {line /column-name = expr} ,} {optx WHERE expr}}
+              {stack
+                  {line ( index-column-list ) {opt WHERE expr } }
+                  {line DO UPDATE SET {loop {line /column-name = expr} ,}}
+                  {line {optx WHERE expr}}
+              }
+              {stack
+                  {line {opt {line ( index-column-list ) {opt WHERE expr }}}} 
+                  {line DO NOTHING}
+              }
           }
       }
   }
