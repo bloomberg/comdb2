@@ -193,3 +193,15 @@ keys
 (a=NULL)
 (a=2)
 (a=4)
+(test='--- Test partial-index ----')
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+[INSERT INTO t1 VALUES(1)] failed with rc 299 add key constraint duplicate key 'IDX1' on table 't1' index 0
+(rows inserted=1)
+[INSERT INTO t1 VALUES(1) ON CONFLICT(i) DO NOTHING] failed with rc -3 ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+[INSERT INTO t1 VALUES(1) ON CONFLICT(i) WHERE i > 1 DO NOTHING] failed with rc -3 ON CONFLICT clause does not match any PRIMARY KEY or UNIQUE constraint
+(rows inserted=1)
+(i=0)
+(i=0)
+(i=1)
