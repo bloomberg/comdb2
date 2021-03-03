@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include "sc_csc2.h"
 
 extern int gbl_is_physical_replicant;
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 
 static inline int adjust_master_tables(struct dbtable *newdb, const char *csc2,
                                        struct ireq *iq, void *trans)
@@ -99,6 +100,36 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
     return SC_OK;
 }
 
+// Verify and return the new dbnum for the table being schemachang-ed
+int sc_verify_dbnum(struct schema_change_type *s, char *tablename,
+                    int *newdbnum)
+{
+    *newdbnum = -1;
+
+    // scdone_callback()
+    if (!s) {
+      return SC_OK;
+    }
+
+    if (s->dbnum == -1) {
+        return SC_OK;
+    }
+
+    // We were explicitly supplied a dbnum for the table. Let us ensure that
+    // it does not conflict with thedb's dbnum in case the table name is not
+    // same as dbname (legacy behavior). If unchecked, this will prevent comdb2
+    // from starting.
+    if ((thedb->dbnum == s->dbnum) && (strcasecmp(gbl_dbname, tablename)
+                                       != 0)) {
+        logmsg(LOGMSG_ERROR, "%s:%d: table %s has same db number as parent "
+               "database but different name\n", __func__, __LINE__, tablename);
+        return SC_INVALID_OPTIONS;
+    }
+
+    *newdbnum = s->dbnum;
+    return SC_OK;
+}
+
 /* Add a new table.  Assume new table has no db number.
  * If csc2 is provided then a filename is chosen, the lrl updated and
  * the file written with the csc2. */
@@ -130,7 +161,19 @@ int add_table_to_environment(char *table, const char *csc2,
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
         return SC_CSC2_ERROR;
     }
-    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
+
+    int newdbnum;
+
+    rc = sc_verify_dbnum(s, table, &newdbnum);
+    if (rc != SC_OK) {
+        sc_errf(s, "dbnum check failed\n");
+        return rc;
+    }
+    if (newdbnum == -1) {
+        newdbnum = 0;
+    }
+
+    newdb = newdb_from_schema(thedb, table, NULL, newdbnum, thedb->num_dbs, 0);
 
     if (newdb == NULL) return SC_INTERNAL_ERROR;
 

@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -399,5 +399,9 @@ char *get_ddl_type_str(struct schema_change_type *s);
 char *get_ddl_csc2(struct schema_change_type *s);
 
 int comdb2_is_user_op(char *user, char *password);
+
+// Verify and return the new dbnum for the table being schemachang-ed
+int sc_verify_dbnum(struct schema_change_type *s, char *tablename,
+                    int *newdbnum);
 
 #endif

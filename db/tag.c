@@ -5215,6 +5215,17 @@ static int init_default_value(struct field *fld, int fldn, int loadstore)
     return outrc;
 }
 
+int table_contains_tag(dbtable *db, const char *tag)
+{
+    int ntags = dyns_get_table_count();
+    for (int i = 0; i < ntags; i++) {
+        if (strcasecmp(tag, dyns_get_table_tag(i)) ==  0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
 /* have a cmacc parsed and sanity-checked csc schema.
    convert to sql statement, execute, save schema in db
    structure and sanity check again (sqlite schema must

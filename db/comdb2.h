@@ -2347,6 +2347,7 @@ int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
 int add_cmacc_stmt(struct dbtable *db, int alt);
 int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
+int table_contains_tag(struct dbtable *db, const char *tag);
 
 void cleanup_newdb(struct dbtable *);
 struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,

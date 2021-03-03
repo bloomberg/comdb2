@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -533,6 +533,29 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
      * blobstripe_genid. */
     transfer_db_settings(db, newdb);
 
+    // Update dbnum of the altered table if explicitly supplied with one
+    int newdbnum;
+    rc = sc_verify_dbnum(s, s->tablename, &newdbnum);
+    if (rc != SC_OK) {
+        sc_errf(s, "dbnum check failed\n");
+        delete_temp_table(iq, newdb);
+        change_schemas_recover(s->tablename);
+        return rc;
+    }
+    if (newdbnum != -1) {
+        // Legacy: Verify ".DEFAULT" tag is present for tables with dbnum > 0
+        if ((table_contains_tag(newdb, ".DEFAULT")) == 0) {
+            logmsg(LOGMSG_ERROR, "%s:%d: csc schema %s requires comdbg compatibility"
+                   " but has no default tag\n", __func__, __LINE__, s->tablename);
+            sc_errf(s, "no default tag for table: %s (dbnum: %d)\n", s->tablename,
+                    newdbnum);
+            delete_temp_table(iq, newdb);
+            change_schemas_recover(s->tablename);
+            return SC_INVALID_OPTIONS;
+        }
+        newdb->dbnum = newdbnum;
+    }
+
     get_db_datacopy_odh_tran(db, &datacopy_odh, tran);
     if (s->force_rebuild ||           /* we're first to set */
         newdb->instant_schema_change) /* we're doing instant sc*/
@@ -827,6 +850,15 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     free_db_and_replace(db, newdb);
     fix_constraint_pointers(db, newdb);
+
+    // Legacy: Now that contents of the newdb have been copied to db, update the
+    // list of tables in llmeta to reflect any new change (dbnum, for instance,
+    // so that replicants see the newly set db num via:
+    // > comdb2sc.tsk -g <dbnum> alter/rebuild <tab>
+    if (llmeta_set_tables(transac, thedb)) {
+        sc_errf(s, "failed to update llmeta\n");
+        BACKOUT;
+    }
 
     /* update tags in memory */
     commit_schemas(/*s->tablename*/ db->tablename);
