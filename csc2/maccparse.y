@@ -51,7 +51,7 @@
 %token T_PUBLIC T_PRIVATE
 %token T_FLD_NULL T_FLD_STRDEFAULT T_FLD_LDDEFAULT T_FLD_NEXTSEQUENCE T_FLD_PADDING
 %token T_TABLE_TAG T_DEFAULT T_ONDISK T_SCHEMA
-%token T_CONSTRAINTS T_CASCADE T_NULL
+%token T_CONSTRAINTS T_CASCADE T_SET T_NULL
 %token T_CON_ON  T_CON_UPDATE T_CON_DELETE T_RESTRICT
 %token T_CHECK
 
@@ -128,7 +128,7 @@ constraintstruct: T_CONSTRAINTS comment '{' cnstrtdef '}' {}
                 ;
 
 ctmodifiers:    T_CON_ON T_CON_UPDATE T_CASCADE ctmodifiers           { set_constraint_mod(0,0,1); }
-                | T_CON_ON T_CON_DELETE T_NULL ctmodifiers            { set_constraint_mod(0,2,1); }
+                | T_CON_ON T_CON_DELETE T_SET T_NULL ctmodifiers      { set_constraint_mod(0,2,1); }
                 | T_CON_ON T_CON_UPDATE T_RESTRICT ctmodifiers        { set_constraint_mod(0,0,0); }
                 | T_CON_ON T_CON_DELETE T_CASCADE ctmodifiers         { set_constraint_mod(0,1,1); }
                 | T_CON_ON T_CON_DELETE T_RESTRICT ctmodifiers        { set_constraint_mod(0,1,0); }

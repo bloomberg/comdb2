@@ -2,9 +2,9 @@ drop table if exists c
 drop table if exists p
 
 create table p {schema{int i int j} keys{"pki" = i "pkj" = j "pkij" = i+j }} $$
-create table c1 {schema{int i null=yes} keys{dup "pki" = i} constraints{"pki" -> <"p":"pki"> on delete null on update cascade}} $$
-create table c2 {schema{int i} keys{dup "pki" = i} constraints{"pki" -> <"p":"pki"> on delete null on update cascade}} $$
-create table c3 {schema{int i null=yes int j null=yes} keys{dup "pki" = i dup "pkij" = i+j} constraints{"pkij" -> <"p":"pkij"> on delete null on update cascade}} $$
+create table c1 {schema{int i null=yes} keys{dup "pki" = i} constraints{"pki" -> <"p":"pki"> on delete set null on update cascade}} $$
+create table c2 {schema{int i} keys{dup "pki" = i} constraints{"pki" -> <"p":"pki"> on delete set null on update cascade}} $$
+create table c3 {schema{int i null=yes int j null=yes} keys{dup "pki" = i dup "pkij" = i+j} constraints{"pkij" -> <"p":"pkij"> on delete set null on update cascade}} $$
 
 insert into p values (1,2),(3,4),(5,6),(6,7)
 insert into c1 values (1),(3)
