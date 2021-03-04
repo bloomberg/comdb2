@@ -1806,10 +1806,11 @@ void dump_rev_constraints(struct dbtable *table)
         constraint_t *ct = table->rev_constraints[i];
         int j = 0;
         logmsg(LOGMSG_USER, "(%d)REV CONSTRAINT TBL: '%s' KEY '%s'  CSCUPD: %c "
-                            "CSCDEL: %c #RULES %d:\n",
+                            "CSCDEL: %c CSCDELNULL: %c #RULES %d:\n",
                i + 1, ct->lcltable->tablename, ct->lclkeyname,
                ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
+               ((ct->flags & CT_SETNULL_CASCADE) == CT_SETNULL_CASCADE) ? 'T' : 'F',
                ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
             logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j],
@@ -1828,10 +1829,11 @@ void dump_constraints(struct dbtable *table)
         constraint_t *ct = &table->constraints[i];
         int j = 0;
         logmsg(LOGMSG_USER, 
-                "(%d)CONSTRAINT KEY '%s'  CSCUPD: %c CSCDEL: %c #RULES %d:\n",
+                "(%d)CONSTRAINT KEY '%s'  CSCUPD: %c CSCDEL: %c CSCDELNULL: %c #RULES %d:\n",
                 i + 1, ct->lclkeyname,
                 ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
                 ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
+                ((ct->flags & CT_SETNULL_CASCADE) == CT_SETNULL_CASCADE) ? 'T' : 'F',
                 ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
             logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j],
