@@ -27,9 +27,6 @@ THRDS=20
 CNT=10000
 ITERATIONS=2
 TRANSIZE=0
-#if [[ $DBNAME == *"largetrangenerated"* ]] ; then
-#    TRANSIZE=2800
-#fi
 
 gen_series_test
 
@@ -37,7 +34,7 @@ cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default 'create table t1 {schema { short 
 time ${TESTSBUILDDIR}/insert_lots_mt --dbname $DBNAME --numthreads $THRDS --cntperthread $CNT --iterations $ITERATIONS --transize $TRANSIZE> ins.out
 assertcnt t1 $((THRDS * CNT * ITERATIONS))
 
-while [ $SECONDS -lt 120 ] ; do
+while [ $SECONDS -lt 180 ] ; do
     cdb2sql --tabs ${CDB2_OPTIONS} $DBNAME default "insert into t2 select * from generate_series(1, 100) "
     sleep 10
 done
