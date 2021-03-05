@@ -4141,6 +4141,12 @@ u32 sqlite3VdbeSerialGet(
   u32 serial_type,              /* Serial type to deserialize */
   Mem *pMem                     /* Memory cell to write value into */
 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* pMem->tz may be uninitialized (e.g., when pMem is allocated by
+     sqlite3VdbeAllocUnpackedRecord() from VdbeSorter).
+     Make sure it's not garbage, for pMem may be casted to a Datetime later. */
+  pMem->tz = NULL;
+#endif /* !defined(SQLITE_BUILDING_FOR_COMDB2) */
   switch( serial_type ){
 #if !defined(SQLITE_BUILDING_FOR_COMDB2)
     case 10: { /* Internal use only: NULL with virtual table
@@ -4374,7 +4380,6 @@ u32 sqlite3VdbeSerialGet(
       pMem->du.dt.dttz_prec = ntohs( p->dttz_prec );
       pMem->du.dt.dttz_conv = ntohs( p->dttz_conv );
       pMem->flags = MEM_Datetime;
-      pMem->tz = NULL;  /* make sure it's not garbage */
       return sizeof(dttz_t);
     }
     case (SQLITE_MAX_U32-2): {
