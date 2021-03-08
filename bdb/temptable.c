@@ -53,6 +53,7 @@
 #include "strbuf.h"
 
 extern int recover_deadlock_simple(bdb_state_type *bdb_state);
+extern int is_sql_clnt_really_lua_thread(void);
 
 #ifdef __GLIBC__
 extern int backtrace(void **, int);
@@ -721,7 +722,6 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
 
     /* needed by temptable pool */
     extern pthread_key_t query_info_key;
-    void *sql_thread;
     int action;
 
     ++gbl_temptable_create_reqs;
@@ -744,9 +744,9 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
                 return NULL;
         }
     } else {
-        sql_thread = pthread_getspecific(query_info_key);
-
-        if (sql_thread == NULL) {
+        if (is_sql_clnt_really_lua_thread() ||
+                    pthread_getspecific(query_info_key) == NULL)
+        {
             /*
             ** a sql thread may be waiting for the completion of a non-sql
             *thread (tag, for example).

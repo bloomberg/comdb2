@@ -292,6 +292,31 @@ struct sqlclntstate *get_sql_clnt(void){
   return thd->clnt;
 }
 
+static pthread_key_t dispatch_clnt_key;
+static pthread_once_t dispatch_clnt_once = PTHREAD_ONCE_INIT;
+
+static void init_dispatch_clnt_key(void)
+{
+    Pthread_key_create(&dispatch_clnt_key, NULL);
+}
+
+int is_sql_clnt_really_lua_thread(void)
+{
+    struct sqlclntstate *clnt = pthread_getspecific(dispatch_clnt_key);
+    return (clnt && (clnt->exec_lua_thread || clnt->exec_lua_trigger));
+}
+
+void begin_dispatch_clnt(struct sqlclntstate *clnt)
+{
+    pthread_once(&dispatch_clnt_once, init_dispatch_clnt_key);
+    Pthread_setspecific(dispatch_clnt_key, clnt);
+}
+
+void end_dispatch_clnt(void)
+{
+    Pthread_setspecific(dispatch_clnt_key, NULL);
+}
+
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -4826,6 +4851,8 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
 {
     struct sqlclntstate *clnt = work;
 
+    begin_dispatch_clnt(clnt);
+
     switch (op) {
     case THD_RUN:
         if (clnt->exec_lua_thread)
@@ -4840,6 +4867,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
         break;
     }
     bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
+    end_dispatch_clnt();
 }
 
 static int send_heartbeat(struct sqlclntstate *clnt)

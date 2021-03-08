@@ -681,6 +681,7 @@ struct sqlclntstate {
     /* lua stored procedure */
     struct stored_proc *sp;
     int exec_lua_thread;
+    int exec_lua_trigger;
     int want_stored_procedure_trace;
     int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
@@ -1287,6 +1288,9 @@ void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
 struct sqlclntstate *get_sql_clnt(void);
+int is_sql_clnt_really_lua_thread(void);
+void begin_dispatch_clnt(struct sqlclntstate *clnt);
+void end_dispatch_clnt(void);
 
 /* Returns the current user for the session */
 char *get_current_user(struct sqlclntstate *clnt);
