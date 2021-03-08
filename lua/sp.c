@@ -432,6 +432,8 @@ static int check_retry_conditions(Lua L, int skip_incoherent)
     return 0;
 }
 
+extern struct thdpool *gbl_sqlengine_thdpool;
+
 static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
                                   int register_timeoutms)
 {
@@ -442,6 +444,9 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
     if (retry <= 0) {
         retry = 1;
     }
+
+    thdpool_add_waitthd(gbl_sqlengine_thdpool);
+
     while ((rc = trigger_register_req(reg)) != CDB2_TRIG_REQ_SUCCESS) {
         /* trigger_register_req() can take up to 1 second. Tick up immediately
            after this so that it's guaranteed that the appsock thread observes
@@ -451,18 +456,23 @@ static int luabb_trigger_register(Lua L, trigger_reg_t *reg,
             if (retry == 0) {
                 luabb_error(L, sp, " trigger:%s registration timeout %dms",
                             reg->spname, register_timeoutms);
-                return -2;
+                rc = -2;
+                goto out;
             }
             --retry;
         }
         if (check_retry_conditions(L, 1) != 0) {
-            return luabb_error(L, sp, sp->error);
+            rc = luabb_error(L, sp, sp->error);
+            goto out;
         }
         sleep(1);
         /* Tick up after the sleep(1). Again this is to make sure that
            the appsock thread sends out a "good" heartbeat every second. */
         comdb2_sql_tick();
     }
+
+out:
+    thdpool_remove_waitthd(gbl_sqlengine_thdpool);
     return rc;
 }
 
