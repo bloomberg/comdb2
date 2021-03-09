@@ -1841,7 +1841,10 @@ enum query_lock_type {
     TABLENAME_LOCKED_READ = 2,
     TABLENAME_LOCKED_EITHER = 3
 };
-int bdb_has_tablename_locked(bdb_state_type *, const char *name, uint32_t lid, enum query_lock_type type);
+int bdb_has_tablename_locked(bdb_state_type *, const char *tblname,
+                             uint32_t lid, enum query_lock_type type);
+int bdb_has_trans_tablename_locked(bdb_state_type *bdb_state, const char *tblname,
+                                   tran_type *tran, enum query_lock_type type);
 int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                        unsigned long long genid);
 int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
