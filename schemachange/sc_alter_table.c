@@ -739,13 +739,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         BACKOUT;
     }
 
-    uint8_t dbnum_changed = 0;
-    if (db->dbnum != newdb->dbnum) {
-        dbnum_changed = 1;
-        logmsg(LOGMSG_USER, "%s:%d dbnum changed (old: %d, new: %d)\n",
-               __func__, __LINE__, db->dbnum, newdb->dbnum);
-    }
-
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;
 
@@ -850,6 +843,21 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     /* remove the new.NUM. prefix */
     bdb_remove_prefix(newdb->handle);
 
+    uint8_t dbnum_changed = 0;
+    if (db->dbnum != newdb->dbnum) {
+        dbnum_changed = 1;
+
+        // We are transitioning from non-zero to 0 dbnum. This calls for
+        // destroying the db with old dbnum in bbipc shared memory space.
+        int destroy_db = 1;
+        if ((newdb->dbnum == 0) &&
+            (rc = run_init_plugins(COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC,
+                                   db, &destroy_db))) {
+            sc_errf(s, "'finalize_sc' callback failed (rc: %d)\n", rc);
+            BACKOUT;
+        }
+    }
+
     /* TODO: need to free db handle - right now we just leak some memory */
     /* replace the old db definition with a new one */
 
@@ -863,9 +871,20 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     // list of tables in llmeta to reflect any new change (dbnum, for instance,
     // so that replicants see the newly set db num via:
     // > comdb2sc.tsk -g <dbnum> alter/rebuild <tab>
-    if (dbnum_changed == 1 && llmeta_set_tables(transac, thedb)) {
-        sc_errf(s, "failed to update llmeta\n");
-        BACKOUT;
+    if (dbnum_changed == 1) {
+        if (llmeta_set_tables(transac, thedb)) {
+            sc_errf(s, "failed to update llmeta\n");
+            BACKOUT;
+        }
+
+        if (db->dbnum != 0) {
+            int destroy_db = 0;
+            if ((rc = run_init_plugins(COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC,
+                                   db, &destroy_db))) {
+                sc_errf(s, "'finalize_sc' callback failed (rc: %d)\n", rc);
+                BACKOUT;
+            }
+        }
     }
 
     /* update tags in memory */

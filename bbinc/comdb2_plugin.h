@@ -28,8 +28,9 @@ enum comdb2_plugin_type {
 };
 
 enum {
-    COMDB2_PLUGIN_INITIALIZER_PRE,
-    COMDB2_PLUGIN_INITIALIZER_POST
+    COMDB2_PLUGIN_INITIALIZER_PRE_RECOVERY,
+    COMDB2_PLUGIN_INITIALIZER_POST_RECOVERY,
+    COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC,
 };
 
 enum comdb2_plugin_flag {
@@ -61,5 +62,10 @@ struct dbenv;
  * have it passed to the next handler in the chain. */
 void plugin_register_lrl_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
 void plugin_register_message_handler(struct dbenv *dbenv, int (*)(struct dbenv*, const char *)); 
+
+int destroy_plugins(void);
+void register_plugin_tunables(void);
+int install_static_plugins(void);
+int run_init_plugins(int when, void *arg1, void *arg2);
 
 #endif /* ! __INCLUDED_COMDB2_PLUGIN_H */

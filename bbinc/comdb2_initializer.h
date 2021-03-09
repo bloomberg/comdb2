@@ -17,9 +17,12 @@
 #ifndef __INCLUDED_COMDB2_INITIALIZER_H
 #define __INCLUDED_COMDB2_INITIALIZER_H
 
+struct dbtable;
+
 struct comdb2_initializer {
     int (*pre_recovery)();
     int (*post_recovery)();
+    int (*finalize_sc)(struct dbtable *, int *);
 };
 typedef struct comdb2_initializer comdb2_initializer_t;
 

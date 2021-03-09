@@ -347,6 +347,15 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return rc;
     }
 
+    if (db->dbnum != 0) {
+        int destroy_db = 0;
+        if ((rc = run_init_plugins(COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC, db,
+                                   &destroy_db))) {
+            sc_errf(s, "'finalize_sc' callback failed (rc: %d)\n", rc);
+            return rc;
+        }
+    }
+
     /* Update table permissions for this new shard. */
     if (s->is_timepart) {
         if ((rc = timepart_copy_access(thedb->bdb_env, tran, s->tablename,

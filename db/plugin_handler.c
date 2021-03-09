@@ -329,7 +329,7 @@ const char *comdb2_plugin_type_to_str(int type)
     return "unknown";
 }
 
-int run_init_plugins(int phase)
+int run_init_plugins(int when, void *arg1, void *arg2)
 {
     for (int i = 0; gbl_plugins[i]; ++i) {
         struct comdb2_initializer *initer;
@@ -337,16 +337,20 @@ int run_init_plugins(int phase)
         if (gbl_plugins[i]->type == COMDB2_PLUGIN_INITIALIZER) {
             initer = gbl_plugins[i]->data;
             rc = 0;
-            switch (phase) {
-                case COMDB2_PLUGIN_INITIALIZER_PRE:
+            switch (when) {
+                case COMDB2_PLUGIN_INITIALIZER_PRE_RECOVERY:
                     if (initer->pre_recovery)
                         rc = initer->pre_recovery();
                     break;
-                case COMDB2_PLUGIN_INITIALIZER_POST:
+                case COMDB2_PLUGIN_INITIALIZER_POST_RECOVERY:
                     if (initer->post_recovery)
                         rc = initer->post_recovery();
                     break;
-
+                case COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC:
+                    if (initer->finalize_sc) {
+                        rc = initer->finalize_sc(arg1, arg2);
+                    }
+                    break;
             }
             if (rc) {
                 return 1;
