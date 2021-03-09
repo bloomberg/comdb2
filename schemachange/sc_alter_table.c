@@ -542,7 +542,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         change_schemas_recover(s->tablename);
         return rc;
     }
-    if (newdbnum != -1) {
+
+    if (newdbnum != -1 && db->dbnum != newdbnum) {
         // Legacy: Verify ".DEFAULT" tag is present for tables with dbnum > 0
         if ((table_contains_tag(newdb, ".DEFAULT")) == 0) {
             logmsg(LOGMSG_ERROR, "%s:%d: csc schema %s requires comdbg compatibility"
@@ -738,6 +739,13 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         BACKOUT;
     }
 
+    uint8_t dbnum_changed = 0;
+    if (db->dbnum != newdb->dbnum) {
+        dbnum_changed = 1;
+        logmsg(LOGMSG_USER, "%s:%d dbnum changed (old: %d, new: %d)\n",
+               __func__, __LINE__, db->dbnum, newdb->dbnum);
+    }
+
     if (get_db_bthash_tran(db, &olddb_bthashsz, transac) != 0)
         olddb_bthashsz = 0;
 
@@ -855,7 +863,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     // list of tables in llmeta to reflect any new change (dbnum, for instance,
     // so that replicants see the newly set db num via:
     // > comdb2sc.tsk -g <dbnum> alter/rebuild <tab>
-    if (llmeta_set_tables(transac, thedb)) {
+    if (dbnum_changed == 1 && llmeta_set_tables(transac, thedb)) {
         sc_errf(s, "failed to update llmeta\n");
         BACKOUT;
     }
