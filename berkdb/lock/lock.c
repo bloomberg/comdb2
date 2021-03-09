@@ -3045,8 +3045,7 @@ __lock_query(dbenv, locker, obj, lock_mode)
 {
 	int ret;
 	LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
-	ret = __lock_query_internal(dbenv->lk_handle,
-		locker, obj, lock_mode);
+	ret = __lock_query_internal(dbenv->lk_handle, locker, obj, lock_mode);
 	UNLOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 	return (ret);
 }

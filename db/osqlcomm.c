@@ -6094,7 +6094,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     case OSQL_USEDB: {
         osql_usedb_t dt = {0};
         p_buf_end = (uint8_t *)p_buf + sizeof(osql_usedb_t);
-        const char *tablename;
 
         /* IDEA: don't store the usedb in the defered_table, rather right before
          * loading a new usedb, process the curret one,
@@ -6105,8 +6104,11 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
         */
 
-        tablename =
-            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        const char *tablename = (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        if (iq->usedb && strcmp(iq->usedb->tablename, tablename) == 0) {
+            assert(bdb_has_trans_tablename_locked(thedb->bdb_env, tablename, trans, TABLENAME_LOCKED_READ));
+            return 0; /* already have tbl lock from before */
+        }
 
         // get table lock
         rc = bdb_lock_tablename_read(thedb->bdb_env, tablename, trans);
@@ -6119,6 +6121,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                 reqprintf(iq, "LOCK TABLE READ ERROR: %d", rc);
             return ERR_INTERNAL;
         }
+        assert(bdb_has_trans_tablename_locked(thedb->bdb_env, tablename, trans, TABLENAME_LOCKED_READ));
 
         if (gbl_enable_osql_logging) {
             uuidstr_t us = {0};

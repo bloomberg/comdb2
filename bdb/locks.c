@@ -319,7 +319,7 @@ int form_stripelock_keyname(bdb_state_type *bdb_state, int stripe,
     return 0;
 }
 
-int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
+void form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
 {
     int len;
     u_int32_t cksum;
@@ -338,8 +338,6 @@ int form_tablelock_keyname(const char *name, char *keynamebuf, DBT *dbt_out)
 
     dbt_out->data = keynamebuf;
     dbt_out->size = TABLELOCK_KEY_SIZE;
-
-    return 0;
 }
 
 /* FNV-1a */
@@ -490,10 +488,7 @@ static int bdb_lock_table_int(DB_ENV *dbenv, const char *tblname, int lid,
     int lockmode;
     char name[TABLELOCK_KEY_SIZE];
 
-    rc = form_tablelock_keyname(tblname, name, &lk);
-    if (rc)
-        return rc;
-
+    form_tablelock_keyname(tblname, name, &lk);
     if (how == BDB_LOCK_READ)
         lockmode = DB_LOCK_READ;
     else if (how == BDB_LOCK_WRITE)
@@ -756,6 +751,15 @@ int bdb_has_tablename_locked(bdb_state_type *bdb_state, const char *tblname,
         have_read = berkdb_check_held(bdb_state->dbenv, lockid, &lk, DB_LOCK_READ);
     }
     return have_write | have_read;
+}
+
+/* return whether current trans has given type of lock on tablename */
+int bdb_has_trans_tablename_locked(bdb_state_type *bdb_state, const char *tblname,
+                                   tran_type *tran, enum query_lock_type type)
+{
+    if (tran->parent)
+        tran = tran->parent;
+    return bdb_has_tablename_locked(bdb_state, tblname, resolve_locker_id(tran), type);
 }
 
 int bdb_lock_ix_value_write(bdb_state_type *bdb_state, tran_type *tran, int idx,
