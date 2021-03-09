@@ -1476,9 +1476,16 @@ static int vdbeSorterSort(SortSubtask *pTask, SorterList *pList){
   pList->pList = p;
 
   sqlite3_free(aSlot);
-  assert( pTask->pUnpacked->errCode==SQLITE_OK 
-       || pTask->pUnpacked->errCode==SQLITE_NOMEM 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  assert( pTask->pUnpacked->errCode==SQLITE_OK
+       || pTask->pUnpacked->errCode==SQLITE_NOMEM
+       || pTask->pUnpacked->errCode==SQLITE_CONV_ERROR
   );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  assert( pTask->pUnpacked->errCode==SQLITE_OK
+       || pTask->pUnpacked->errCode==SQLITE_NOMEM
+  );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   return pTask->pUnpacked->errCode;
 }
 
