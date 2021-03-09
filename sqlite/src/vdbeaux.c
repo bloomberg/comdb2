@@ -4361,7 +4361,6 @@ u32 sqlite3VdbeSerialGet(
         pMem->du.dt.dttz_conv = 1;
 
       pMem->flags = MEM_Datetime;
-      pMem->tz = NULL;  /* make sure it's not garbage */
       return sizeof(dttz_t);
     }
     case SQLITE_MAX_U32: {  /* datetime blob */
@@ -4497,27 +4496,52 @@ static int compareDateTimeInterval(
   int f2,
   int combined_flags,
   const Mem *pMem1,
-  const Mem *pMem2
+  const Mem *pMem2,
+  u8 *err
 ){
+  int rc = 0;
+  if( err ){
+    *err = 0;
+  }
   /* datetime and interval 
    * since casting from numerics to datetime/interval preserves the numeric
    * flag, try first to see if these are converted to datetime/interval and
    * only a afterwards check for numerics */
   if( combined_flags&MEM_Datetime ){
     if(!(f1&MEM_Datetime)){
-      if(pMem1->tz == NULL){
+      if( pMem1->tz == NULL ){
+        const char *tz = pMem2->tz;
+        if(tz == NULL){
+          /* We need a timezone here. However when the Mem objects are
+             deserialized from SerialGet(), neither has a valid tz.
+             In this case we grab tz from clnt. */
+          tz = get_clnt_tz();
+        }
         /* either embedded in the string, or use the tz of the other member */
-        sqlite3VdbeMemDatetimefyTz((Mem *)pMem1, pMem2->tz);
+        rc = sqlite3VdbeMemDatetimefyTz((Mem *)pMem1, tz);
       }else{
-        sqlite3VdbeMemDatetimefy((Mem *)pMem1);
+        rc = sqlite3VdbeMemDatetimefy((Mem *)pMem1);
       }
     }else if( !(f2&MEM_Datetime) ){
       if( pMem2->tz==NULL ){
+        const char *tz = pMem1->tz;
+        if(tz == NULL){
+          /* We need a timezone here. However when the Mem objects are
+             deserialized from SerialGet(), neither has a valid tz.
+             In this case we grab tz from clnt. */
+          tz = get_clnt_tz();
+        }
         /* either embedded in the string, or use the tz of the other member */
-        sqlite3VdbeMemDatetimefyTz((Mem *)pMem2, pMem1->tz);
+        rc = sqlite3VdbeMemDatetimefyTz((Mem *)pMem2, tz);
       }else{
-        sqlite3VdbeMemDatetimefy((Mem *)pMem2);
+        rc = sqlite3VdbeMemDatetimefy((Mem *)pMem2);
       }
+    }
+    if( rc ){
+      if( err ){
+        *err = SQLITE_CONV_ERROR;
+      }
+      return 0;
     }
     return dttz_cmp(&pMem1->du.dt, &pMem2->du.dt);
   }
@@ -4833,6 +4857,9 @@ static int sqlite3IntFloatCompare(i64 i, double r){
 int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
   int f1, f2;
   int combined_flags;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  Mem copy;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   f1 = pMem1->flags;
   f2 = pMem2->flags;
@@ -4848,7 +4875,57 @@ int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if(combined_flags&MEM_Datetime || combined_flags&MEM_Interval) {
-    return compareDateTimeInterval(f1, f2, combined_flags, pMem1, pMem2);
+    if( f1&(MEM_Int|MEM_Real) ){
+      /* If lhs is a number, convert rhs to a real and compare these 2 numbers.
+         This takes care of out-of-range values. */
+      sqlite3VdbeMemInit(&copy, pMem1->db, MEM_Null);
+      sqlite3VdbeMemCopy(&copy, pMem2);
+      sqlite3VdbeMemRealify(&copy);
+
+      f2 = copy.flags;
+      pMem2 = &copy;
+      combined_flags = f1|f2;
+    }else if( f2&(MEM_Int|MEM_Real) ){
+      /* If rhs is a number, convert lhs to a real and compare these 2 numbers.
+         This takes care of out-of-range values. */
+      sqlite3VdbeMemInit(&copy, pMem2->db, MEM_Null);
+      sqlite3VdbeMemCopy(&copy, pMem1);
+      sqlite3VdbeMemRealify(&copy);
+
+      f1 = copy.flags;
+      pMem1 = &copy;
+      combined_flags = f1|f2;
+    }else{
+      u8 err;
+      int rc = compareDateTimeInterval(f1, f2, combined_flags, pMem1, pMem2, &err);
+      if( err==0 )
+        return rc;
+      /* Type error. If one value is a string, convert the other one to
+         a string and then compare. */
+      if( f1&MEM_Str ){
+        sqlite3VdbeMemInit(&copy, pMem1->db, MEM_Null);
+        sqlite3VdbeMemCopy(&copy, pMem2);
+
+        rc = sqlite3VdbeMemStringify(&copy, pColl ? pColl->enc : pMem1->enc, 0);
+        if( rc!=SQLITE_OK )
+          return rc;
+
+        f2 = copy.flags;
+        pMem2 = &copy;
+        combined_flags = f1|f2;
+      }else if( f2&MEM_Str ){
+        sqlite3VdbeMemInit(&copy, pMem2->db, MEM_Null);
+        sqlite3VdbeMemCopy(&copy, pMem1);
+
+        rc = sqlite3VdbeMemStringify(&copy, pColl ? pColl->enc : pMem2->enc, 0);
+        if( rc!=SQLITE_OK )
+          return rc;
+
+        f1 = copy.flags;
+        pMem1 = &copy;
+        combined_flags = f1|f2;
+      }
+    }
   }
   /* If one value is a number and the other is not, the number is less.
   ** If both are numbers, compare as reals if one is a real, or as integers
@@ -4920,14 +4997,30 @@ int sqlite3MemCompare(const Mem *pMem1, const Mem *pMem2, const CollSeq *pColl){
     assert( !pColl || pColl->xCmp );
 
     if( pColl ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      int rc = vdbeCompareMemString(pMem1, pMem2, pColl, 0);
+      if( pMem1==&copy || pMem2==&copy ){
+        sqlite3VdbeMemRelease(&copy);
+      }
+      return rc;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       return vdbeCompareMemString(pMem1, pMem2, pColl, 0);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
     /* If a NULL pointer was passed as the collate function, fall through
     ** to the blob case and use memcmp().  */
   }
  
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  int rc = sqlite3BlobCompare(pMem1, pMem2);
+  if( pMem1==&copy || pMem2==&copy ){
+    sqlite3VdbeMemRelease(&copy);
+  }
+  return rc;
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Both values must be blobs.  Compare using memcmp().  */
   return sqlite3BlobCompare(pMem1, pMem2);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -5056,7 +5149,7 @@ int sqlite3VdbeRecordCompareWithSkip(
       rc = (f2&MEM_Null) - (f1&MEM_Null);
     }
     else if(combined_flags&MEM_Datetime || combined_flags&MEM_Interval) {
-      rc = compareDateTimeInterval(f1, f2, combined_flags, &mem1, pRhs);
+      rc = sqlite3MemCompare(&mem1, pRhs,  pPKey2->pKeyInfo->aColl[i]);
     }
     else
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */

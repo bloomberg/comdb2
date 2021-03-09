@@ -2522,6 +2522,13 @@ val_nn_done:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pOp->p4type==P4_COLLSEQ || pOp->p4.pColl==0 );
     res = sqlite3MemCompare(pIn3, pIn1, pOp->p4.pColl);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( p->rc!=SQLITE_OK ){
+      rc = p->rc;
+      p->rc = 0;
+      goto abort_due_to_error;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 compare_op:
   /* At this point, res is negative, zero, or positive if reg[P1] is
@@ -2543,11 +2550,28 @@ compare_op:
     res2 = aGTb[pOp->opcode - OP_Ne];
   }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  /* Undo any changes made by applyAffinity() to the input registers.
+  **
+  ** However, if the operand 1) was previously a string, 2) is compared with
+  ** a non-string affinity type, 3) and has lost its `Mem.z` during the type
+  ** conversion (e.g., Decimalfy or Datetimefy), do not change back its type. */
+
+  if( (flags1 & MEM_Str)==0 || (pIn1->flags & MEM_Str)!=0 || pIn1->z!=NULL ){
+    assert( (pIn1->flags & MEM_Dyn) == (flags1 & MEM_Dyn) );
+    pIn1->flags = flags1;
+  }
+  if( (flags3 & MEM_Str)==0 || (pIn3->flags & MEM_Str)!=0 || pIn3->z!=NULL ){
+    assert( (pIn3->flags & MEM_Dyn) == (flags3 & MEM_Dyn) );
+    pIn3->flags = flags3;
+  }
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   /* Undo any changes made by applyAffinity() to the input registers. */
   assert( (pIn1->flags & MEM_Dyn) == (flags1 & MEM_Dyn) );
   pIn1->flags = flags1;
   assert( (pIn3->flags & MEM_Dyn) == (flags3 & MEM_Dyn) );
   pIn3->flags = flags3;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   if( pOp->p5 & SQLITE_STOREP2 ){
     pOut = &aMem[pOp->p2];
