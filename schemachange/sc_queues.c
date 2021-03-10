@@ -491,6 +491,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * those first.  For
      * other methods, we need to manage the existing consumer first. */
     if (sc->addonly) {
+        rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
+                                  sc->dests.count, dests, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n",
+                   __func__, rc);
+            goto done;
+        }
+
         /* create a procedure (needs to go away, badly) */
         rc =
             javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
@@ -500,14 +508,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             sbuf2printf(sb,
                         "!Can't load procedure - check config/destinations?\n");
             sbuf2printf(sb, "FAILED\n");
-            goto done;
-        }
-
-        rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
-                                  sc->dests.count, dests, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_add_queue returned %d\n",
-                   __func__, rc);
             goto done;
         }
 
@@ -620,6 +620,14 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* start - see the ugh above. */
         dbqueuedb_restart_consumers(db);
     } else if (sc->drop_table) {
+        /* get us out of llmeta */
+        rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename, &bdberr);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n",
+                   __func__, rc, bdberr);
+            goto done;
+        }
+
         scdone_type = llmeta_queue_drop;
         /* stop */
         dbqueuedb_stop_consumers(db);
@@ -628,14 +636,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
         /* get us out of database list */
         remove_from_qdbs(db);
-
-        /* get us out of llmeta */
-        rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: bdb_llmeta_drop_queue rc %d bdberr %d\n",
-                   __func__, rc, bdberr);
-            goto done;
-        }
 
         /* close */
         rc = bdb_close_only_sc(db->handle, tran, &bdberr);
@@ -669,8 +669,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                         sc->drop_table ? "drop" : "add");
             logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
                    sc->drop_table ? "drop" : "add");
-            /* shouldn't be possible -- yeah right */
-            goto done;
+            /* Some replicant(s) timed-out, but master (us) committed successfully. There is no backing out of this */
+            //goto done;
         }
     }
 
@@ -727,8 +727,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
 done:
-    if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
     if (ltran) bdb_tran_abort(thedb->bdb_env, ltran, &bdberr);
+    else if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
