@@ -521,18 +521,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * those first.  For
      * other methods, we need to manage the existing consumer first. */
     if (sc->addonly) {
-        /* create a procedure (needs to go away, badly) */
-        rc =
-            javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n",
-                   __func__, rc);
-            sbuf2printf(sb,
-                        "!Can't load procedure - check config/destinations?\n");
-            sbuf2printf(sb, "FAILED\n");
-            goto done;
-        }
-
         rc = bdb_llmeta_add_queue(thedb->bdb_env, tran, sc->tablename, config,
                                   sc->dests.count, dests, &bdberr);
         if (rc) {
@@ -588,6 +576,15 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         db->odh = sc->headers;
         bdb_set_queue_odh_options(db->handle, sc->headers, sc->compress,
                                   sc->persistent_seq);
+
+        /* create a procedure (needs to go away, badly) */
+        rc = javasp_do_procedure_op(JAVASP_OP_LOAD, sc->tablename, NULL, config);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s: javasp_do_procedure_op returned rc %d\n", __func__, rc);
+            sbuf2printf(sb, "!Can't load procedure - check config/destinations?\n");
+            sbuf2printf(sb, "FAILED\n");
+            goto done;
+        }
 
         add_to_qdbs(db);
 
@@ -672,11 +669,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         /* stop */
         dbqueuedb_stop_consumers(db);
 
-        javasp_do_procedure_op(JAVASP_OP_UNLOAD, db->tablename, NULL, config);
-
-        /* get us out of database list */
-        remove_from_qdbs(db);
-
         /* get us out of llmeta */
         rc = bdb_llmeta_drop_queue(db->handle, tran, db->tablename, &bdberr);
         if (rc) {
@@ -692,6 +684,11 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    __func__, rc, bdberr);
             goto done;
         }
+
+        javasp_do_procedure_op(JAVASP_OP_UNLOAD, db->tablename, NULL, config);
+
+        /* get us out of database list */
+        remove_from_qdbs(db);
     }
 
     if (!same_tran) {
@@ -706,14 +703,9 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     /* log for replicants to do the same */
     if (!same_tran) {
         rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);
-
         if (rc) {
-            sbuf2printf(sb, "!Failed to broadcast queue %s\n",
-                        sc->drop_table ? "drop" : "add");
-            logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n",
-                   sc->drop_table ? "drop" : "add");
-            /* shouldn't be possible -- yeah right */
-            goto done;
+            sbuf2printf(sb, "!Failed to broadcast queue %s\n", sc->drop_table ? "drop" : "add");
+            logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n", sc->drop_table ? "drop" : "add");
         }
     }
 
@@ -783,8 +775,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
 done:
     if (ltran) bdb_tran_abort(thedb->bdb_env, ltran, &bdberr);
-    else if (tran)
-        bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    else if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
