@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -28,6 +28,10 @@
 #include "comdb2.h"
 
 extern int gbl_mask_internal_tunables;
+
+#define IS_TUNABLE_HIDDEN(cur)                                                 \
+    ((cur->tunable->type == TUNABLE_COMPOSITE) ||                              \
+     (gbl_mask_internal_tunables && (cur->tunable->flags & INTERNAL)))
 
 /*
   comdb2_tunables: query various attributes of tunables.
@@ -82,6 +86,18 @@ static int systblTunablesDisconnect(sqlite3_vtab *pVtab)
     return SQLITE_OK;
 }
 
+static void jumpToNextVisibleTunable(systbl_tunables_cursor *cur)
+{
+    if (cur->rowid == 0) {
+        cur->tunable = hash_first(gbl_tunables->hash, &cur->ent, &cur->bkt);
+    }
+
+    while (IS_TUNABLE_HIDDEN(cur)) {
+        cur->rowid++;
+        cur->tunable = hash_next(gbl_tunables->hash, &cur->ent, &cur->bkt);
+    }
+}
+
 static int systblTunablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
 {
     systbl_tunables_cursor *cur =
@@ -91,7 +107,9 @@ static int systblTunablesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor)
     }
     memset(cur, 0, sizeof(*cur));
     *ppCursor = &cur->base;
-    cur->tunable = hash_first(gbl_tunables->hash, &cur->ent, &cur->bkt);
+
+    jumpToNextVisibleTunable(cur);
+
     return SQLITE_OK;
 }
 
@@ -105,8 +123,13 @@ static int systblTunablesFilter(sqlite3_vtab_cursor *pVtabCursor, int idxNum,
                                 const char *idxStr, int argc,
                                 sqlite3_value **argv)
 {
-    systbl_tunables_cursor *pCur = (systbl_tunables_cursor *)pVtabCursor;
-    pCur->rowid = 0;
+    systbl_tunables_cursor *cur = (systbl_tunables_cursor *)pVtabCursor;
+
+    cur->rowid = 0;
+    cur->ent = NULL;
+    cur->bkt = 0;
+
+    jumpToNextVisibleTunable(cur);
     return SQLITE_OK;
 }
 
@@ -117,11 +140,10 @@ static int systblTunablesNext(sqlite3_vtab_cursor *cur)
     /* Skip all 'COMPOSITE' and 'INTERNAL' tunables. */
     do {
         pCur->rowid++;
-        if (pCur->rowid >= gbl_tunables->count) break;
+        if (pCur->rowid >= gbl_tunables->count)
+            break;
         pCur->tunable = hash_next(gbl_tunables->hash, &pCur->ent, &pCur->bkt);
-    } while ((pCur->tunable->type == TUNABLE_COMPOSITE) ||
-             (gbl_mask_internal_tunables &&
-              ((pCur->tunable->flags & INTERNAL) != 0)));
+    } while (IS_TUNABLE_HIDDEN(pCur));
 
     return SQLITE_OK;
 }
