@@ -352,7 +352,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         if ((rc = run_init_plugins(COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC, db,
                                    &destroy_db))) {
             sc_errf(s, "'finalize_sc' callback failed (rc: %d)\n", rc);
-            return rc;
+            return SC_INTERNAL_ERROR;
         }
     }
 
