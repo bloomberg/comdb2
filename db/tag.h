@@ -272,6 +272,9 @@ int ctag_to_stag_blobs_tz(const char *table, const char *ctag,
                           const char *tzname);
 int ctag_to_ctag_buf(const char *table, const char *ftag, void *inbufp,
                      const char *ttag, void *outbufp);
+// stag_set_key_null takes a tablename and and stag 
+int stag_set_key_null(const char *table, const char *stag, const char *inkey, 
+                      const int keylen, char *outkey);
 int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen);
 int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen);
 void add_tag_alias(const char *table, struct schema *s, char *name);
