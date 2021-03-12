@@ -79,6 +79,9 @@ void reset_range();
 void reset_fldopt(void);
 void add_fldopt(int opttype, int valtype, void *value);
 
+int validate_contraint(char* tbl, char *keynm);
+
+
 static void
 key_add_comn(int ix, char *tag, char *exprname,
              char *where); /* used by parser, adds a completed key */
@@ -204,6 +207,8 @@ void add_constraint(char *tbl, char *key)
     constraints[macc_globals->nconstraints].ncnstrts++;
     constraints[macc_globals->nconstraints].table[cidx] = tbl;
     constraints[macc_globals->nconstraints].keynm[cidx] = key;
+
+    validate_contraint(tbl, key);
 }
 
 void add_check_constraint(char *expr)
@@ -398,7 +403,7 @@ char * sqltypetxt(int t, int size)
 
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
-    int ii, jj = 0;
+    int ii, jj, kk = 0;
     int ondisktag = 0, numnormtags = 0;
     struct table *tables = macc_globals->tables;
 
@@ -550,6 +555,14 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
         csc2_error("ONDISK tag not defined.\n");
         any_errors++;
     }
+
+    for(kk = 0; kk < macc_globals->nconstraints; kk++) {
+        struct constraint * cnst = &macc_globals->constraints[kk];
+        for(int mm = 0; mm < cnst->ncnstrts; ++mm) {
+            validate_contraint(cnst->table[mm], cnst->keynm[mm]);
+        }
+    }
+
     return any_errors;
 }
 
@@ -580,6 +593,49 @@ int getsymbol(char *tabletag, char *nm, int *tblidx) /* GETS A SYMBOL BY NAME */
         return i;
     *tblidx = -1;
     return -1;
+}
+ 
+int getkey(const char *keyname) /* GET KEY BY KEY NAME  */
+{
+    int i = 0;
+    for (i = 0; i < MAXKEYS; ++i)
+    {
+        struct key *key = macc_globals->keys[i];
+        if (strncmp(keyname, key->keytag, sizeof(key->keytag)) == 0)
+        {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// validates foreign key constraints against
+// check constraints
+// Basically set a flag in struct constraint to denote relevant properties for constraints
+// E.g. if the fieldopt != FLDOPT_NULL, 
+// then in that case we wouldn’t want to enable the CT_SETNULL_CASCADE constraint 
+int validate_contraint(char* tbl, char *keynm)
+{
+    const int i = getkey(keynm);
+    if (i < 0) {
+        return -2;
+    }
+
+    const struct key* key = macc_globals->keys[i];
+    if (!key || key->stbl < 0 || key->stbl >= MAXTBLS || key->sym < 0 || key->sym >= MAX)
+    {
+        return -2;
+    }
+
+    struct symbol keysymbol =  macc_globals->tables[key->stbl].sym[key->sym];
+    for(int j = 0; j < keysymbol.numfo; j++) {
+        struct fieldopt fopt = keysymbol.fopts[j];
+        if ((fopt.opttype & FLDOPT_NULL) == 0) {
+            return -1;
+        }
+    }
+
+    return 0;
 }
 
 int getexpr(char *nm) /* GET EXPRESSION BY NAME  */
