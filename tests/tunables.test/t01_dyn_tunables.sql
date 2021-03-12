@@ -67,3 +67,6 @@ SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpoo
 exec procedure sys.cmd.send('appsockpool maxt xxx');
 exec procedure sys.cmd.send('appsockpool maxt 102');
 SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';
+
+# Test joins on comdb2_tunables
+select count(*) from comdb2_tunables c, comdb2_tunables d where c.name like '%colum%';
