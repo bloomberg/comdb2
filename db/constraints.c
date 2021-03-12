@@ -896,7 +896,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             /* here, we need to retry to verify the constraint */
             /* sub 1 to go to current constraint again */
             continue;
-        } else if(del_null) {
+        } else if (del_null) {
             int err = 0, idx = 0;
             unsigned long long newgenid;
             if (iq->debug) {
@@ -923,15 +923,15 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             rc = stag_set_key_null(bct->tablename, ondisk_tag, skey, keylen, nullkey);
 
             if (rc)
-               goto delnullerr;
+                goto delnullerr;
 
-            if(iq->usedb) {
+            if (iq->usedb) {
                 rc = upd_record(iq, trans, NULL,                               /*primkey*/
                                 rrn, genid, (const unsigned char *)ondisk_tag, /*.ONDISK_IX_0*/
                                 (const unsigned char *)ondisk_tag + strlen(ondisk_tag),
                                 (unsigned char *)nullkey, /*p_buf_rec*/
-                                (const unsigned char *)nullkey + keylen, NULL /*p_buf_vrec*/,
-                                NULL /*p_buf_vrec_end*/, NULL,                        /*fldnullmap*/
+                                (const unsigned char *)nullkey + keylen, NULL /*p_buf_vrec*/, NULL /*p_buf_vrec_end*/,
+                                NULL,                                                 /*fldnullmap*/
                                 NULL,                                                 /*updCols*/
                                 NULL,                                                 /*blobs*/
                                 0,                                                    /*maxblobs*/
@@ -945,7 +945,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
 
-delnullerr:
+        delnullerr:
             if (rc != 0) {
                 if (iq->debug) {
                     reqprintf(iq,
@@ -960,8 +960,7 @@ delnullerr:
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_NULL_CONSTRAINT;
                 } else if (rc == ERR_TRAN_TOO_BIG) {
-                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "set null on delete exceeds max writes");
+                    reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE, "set null on delete exceeds max writes");
                     *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
