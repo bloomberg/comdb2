@@ -78,9 +78,7 @@ void reset_array();
 void reset_range();
 void reset_fldopt(void);
 void add_fldopt(int opttype, int valtype, void *value);
-
-int validate_contraint(char* tbl, char *keynm);
-
+int keysym_has_fieldopt(const char *keynm, enum fieldopttypes fopt);
 
 static void
 key_add_comn(int ix, char *tag, char *exprname,
@@ -193,6 +191,7 @@ void add_constraint(char *tbl, char *key)
 {
     struct constraint *constraints = macc_globals->constraints;
     int cidx = constraints[macc_globals->nconstraints].ncnstrts;
+    int rc = keysym_has_fieldopt(key, FLDOPT_NULL);
     if (cidx >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
                    "(MAX: %d)\n",
@@ -205,7 +204,12 @@ void add_constraint(char *tbl, char *key)
     constraints[macc_globals->nconstraints].table[cidx] = tbl;
     constraints[macc_globals->nconstraints].keynm[cidx] = key;
 
-    validate_contraint(tbl, key);
+    if(rc < 0) { 
+       // key was not found; shouldn't happen  
+    } else if (rc == 0) {
+       // null = yes wasn't set for the field 
+       constraints[macc_globals->nconstraints].chkflags[cidx] |= CT_CHECK_NOTNULL;
+    }
 }
 
 void add_check_constraint(char *expr)
@@ -400,7 +404,7 @@ char * sqltypetxt(int t, int size)
 
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
-    int ii, jj, kk = 0;
+    int ii, jj;
     int ondisktag = 0, numnormtags = 0;
     struct table *tables = macc_globals->tables;
 
@@ -553,13 +557,6 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
         any_errors++;
     }
 
-    for(kk = 0; kk < macc_globals->nconstraints; kk++) {
-        struct constraint * cnst = &macc_globals->constraints[kk];
-        for(int mm = 0; mm < cnst->ncnstrts; ++mm) {
-            validate_contraint(cnst->table[mm], cnst->keynm[mm]);
-        }
-    }
-
     return any_errors;
 }
 
@@ -591,15 +588,13 @@ int getsymbol(char *tabletag, char *nm, int *tblidx) /* GETS A SYMBOL BY NAME */
     *tblidx = -1;
     return -1;
 }
- 
+
 int getkey(const char *keyname) /* GET KEY BY KEY NAME  */
 {
     int i = 0;
-    for (i = 0; i < MAXKEYS; ++i)
-    {
+    for (i = 0; i < MAXKEYS; ++i) {
         struct key *key = macc_globals->keys[i];
-        if (strncmp(keyname, key->keytag, sizeof(key->keytag)) == 0)
-        {
+        if (strncmp(keyname, key->keytag, sizeof(key->keytag)) == 0) {
             return i;
         }
     }
@@ -609,27 +604,34 @@ int getkey(const char *keyname) /* GET KEY BY KEY NAME  */
 // validates foreign key constraints against
 // check constraints
 // Basically set a flag in struct constraint to denote relevant properties for constraints
-// E.g. if the fieldopt != FLDOPT_NULL, 
-// then in that case we wouldn’t want to enable the CT_SETNULL_CASCADE constraint 
-int validate_contraint(char* tbl, char *keynm)
+// E.g. if the fieldopt != FLDOPT_NULL,
+// then in that case we wouldn’t want to enable the CT_SETNULL_CASCADE constraint
+// returns -2 if key or sym not found
+// returns 1 on keysym_has_fieldopt
+// return 0 keysym doesn't have fieldopt
+int keysym_has_fieldopt(const char *keynm, enum fieldopttypes fopt)
 {
     const int i = getkey(keynm);
+    int j = 0;
     if (i < 0) {
         return -2;
     }
 
-    const struct key* key = macc_globals->keys[i];
-    if (!key || key->stbl < 0 || key->stbl >= MAXTBLS || key->sym < 0 || key->sym >= MAX)
-    {
+    const struct key *key = macc_globals->keys[i];
+    if (!key || key->stbl < 0 || key->stbl >= MAXTBLS || key->sym < 0 || key->sym >= MAX) {
         return -2;
     }
 
-    struct symbol keysymbol =  macc_globals->tables[key->stbl].sym[key->sym];
-    for(int j = 0; j < keysymbol.numfo; j++) {
+    struct symbol keysymbol = macc_globals->tables[key->stbl].sym[key->sym];
+    for (j = 0; j < keysymbol.numfo; j++) {
         struct fieldopt fopt = keysymbol.fopts[j];
-        if ((fopt.opttype & FLDOPT_NULL) == 0) {
-            return -1;
+        if (fopt.opttype == FLDOPT_NULL) {
+            break;
         }
+    }
+
+    if (j < keysymbol.numfo) {
+        return 1;
     }
 
     return 0;

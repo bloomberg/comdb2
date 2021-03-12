@@ -86,6 +86,7 @@ struct fieldopt {
 
 enum ct_flags { CT_UPD_CASCADE = 0x00000001, CT_DEL_CASCADE = 0x00000002, CT_SETNULL_CASCADE = 0x00000008 };
 enum ct_type { CT_FKEY, CT_CHECK };
+enum ct_check_flags { CT_CHECK_NOTNULL = 0x00000001 };
 
 struct constraint {
     char *consname;
@@ -94,6 +95,8 @@ struct constraint {
     int flags;
     char *table[MAXCNSTRTS];
     char *keynm[MAXCNSTRTS];
+    int chkflags[MAXCNSTRTS]; /* flags to check the efficacy of a constraint
+     for instance CT_SETNULL_CASCADE is not valid for a key corresponding to a non-null field */
 };
 
 struct check_constraint {
