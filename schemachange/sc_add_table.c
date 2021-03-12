@@ -340,11 +340,11 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     s->addonly = SC_DONE_ADD; /* done adding to thedb->dbs */
 
     if ((rc = set_header_and_properties(tran, db, s, 0, gbl_init_with_bthash)))
-        return rc;
+        goto err;
 
     if (llmeta_set_tables(tran, thedb)) {
         sc_errf(s, "Failed to set table names in low level meta\n");
-        return rc;
+        goto err;
     }
 
     if (db->dbnum != 0) {
@@ -352,7 +352,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         if ((rc = run_init_plugins(COMDB2_PLUGIN_INITIALIZER_FINALIZE_SC, db,
                                    &destroy_db))) {
             sc_errf(s, "'finalize_sc' callback failed (rc: %d)\n", rc);
-            return SC_INTERNAL_ERROR;
+            rc = SC_INTERNAL_ERROR;
+            goto err;
         }
     }
 
@@ -362,20 +363,21 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                                        s->timepartname, 0)) != 0) {
             sc_errf(s, "Failed to set user permissions for time partition %s\n",
                     s->timepartname);
-            return rc;
+            goto err;
         }
     }
 
     if ((rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,
                                        &bdberr)) != 0) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
-        return rc;
+        goto err;
     }
 
     /* Save .ONDISK as schema version 1 if instant_sc is enabled. */
     if (db->odh && db->instant_schema_change) {
         struct schema *ver_one;
-        if ((rc = prepare_table_version_one(tran, db, &ver_one))) return rc;
+        if ((rc = prepare_table_version_one(tran, db, &ver_one)))
+            goto err;
         add_tag_schema(db->tablename, ver_one);
     }
 
@@ -386,7 +388,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     if (s->finalize) {
         if (create_sqlmaster_records(tran)) {
             sc_errf(s, "create_sqlmaster_records failed\n");
-            return -1;
+            rc = -1;
+            goto err;
         }
         create_sqlite_master();
     }
@@ -400,11 +403,16 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                gbl_init_with_bthash);
         if (put_db_bthash(db, tran, gbl_init_with_bthash) != 0) {
             logmsg(LOGMSG_ERROR, "Failed to write bthash to meta table\n");
-            return -1;
+            rc = -1;
+            goto err;
         }
         bdb_handle_dbp_add_hash(db->handle, gbl_init_with_bthash);
     }
 
     sc_printf(s, "Schema change ok\n");
     return 0;
+
+err:
+    delete_db(db->tablename);
+    return rc;
 }
