@@ -150,8 +150,15 @@ void set_constraint_mod(int start, int op, int type)
         macc_globals->constraints[macc_globals->nconstraints].flags |= CT_UPD_CASCADE;
     else if (op == 1)
         macc_globals->constraints[macc_globals->nconstraints].flags |= CT_DEL_CASCADE;
-    else if (op == 2)
+    else if (op == 2) {
+        if (macc_globals->constraints[macc_globals->nconstraints].fkchkflags & CT_CHECK_NOTNULL) {
+            csc2_error("Error ADDING THE CONSTRAINT ON DELETE SET NULL. A NON NULLABLE FIELD FORMS THE KEY: %s.\n",
+                       macc_globals->constraints[macc_globals->nconstraints].lclkey);
+            any_errors++;
+            return;
+        }
         macc_globals->constraints[macc_globals->nconstraints].flags |= CT_SETNULL_CASCADE;
+    }
 }
 
 void set_constraint_name(char *name, enum ct_type type)
@@ -208,7 +215,7 @@ void add_constraint(char *tbl, char *key)
        // key was not found; shouldn't happen  
     } else if (rc == 0) {
        // null = yes wasn't set for the field 
-       constraints[macc_globals->nconstraints].chkflags[cidx] |= CT_CHECK_NOTNULL;
+       constraints[macc_globals->nconstraints].fkchkflags |= CT_CHECK_NOTNULL;
     }
 }
 
@@ -609,32 +616,38 @@ int getkey(const char *keyname) /* GET KEY BY KEY NAME  */
 // returns -2 if key or sym not found
 // returns 1 on keysym_has_fieldopt
 // return 0 keysym doesn't have fieldopt
-int keysym_has_fieldopt(const char *keynm, enum fieldopttypes fopt)
+int keysym_has_fieldopt(const char *keynm, enum fieldopttypes fopttype)
 {
     const int i = getkey(keynm);
     int j = 0;
-    if (i < 0) {
+    signed char keysym_has_fieldopt = 1;
+    const struct key *key = NULL;
+
+    if (i < 0 || i >= MAXKEYS || ((key = macc_globals->keys[i]) == NULL)) {
         return -2;
     }
 
-    const struct key *key = macc_globals->keys[i];
-    if (!key || key->stbl < 0 || key->stbl >= MAXTBLS || key->sym < 0 || key->sym >= MAX) {
-        return -2;
-    }
+    while (key) {
+        if (key->stbl < 0 || key->stbl >= MAXTBLS || key->sym < 0 || key->sym >= MAX) {
+            return -2;
+        }
+        struct symbol keysymbol = macc_globals->tables[key->stbl].sym[key->sym];
+        for (j = 0; j < keysymbol.numfo; j++) {
+            struct fieldopt fopt = keysymbol.fopts[j];
+            if (fopt.opttype == fopttype) {
+                break;
+            }
+        }
 
-    struct symbol keysymbol = macc_globals->tables[key->stbl].sym[key->sym];
-    for (j = 0; j < keysymbol.numfo; j++) {
-        struct fieldopt fopt = keysymbol.fopts[j];
-        if (fopt.opttype == FLDOPT_NULL) {
+        if (j == keysymbol.numfo) {
+            keysym_has_fieldopt = 0;
             break;
         }
+
+        key = key->cmp;
     }
 
-    if (j < keysymbol.numfo) {
-        return 1;
-    }
-
-    return 0;
+    return keysym_has_fieldopt;
 }
 
 int getexpr(char *nm) /* GET EXPRESSION BY NAME  */

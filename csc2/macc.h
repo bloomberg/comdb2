@@ -95,7 +95,7 @@ struct constraint {
     int flags;
     char *table[MAXCNSTRTS];
     char *keynm[MAXCNSTRTS];
-    int chkflags[MAXCNSTRTS]; /* flags to check the efficacy of a constraint
+    int fkchkflags; /* flags to check the efficacy of a constraint
      for instance CT_SETNULL_CASCADE is not valid for a key corresponding to a non-null field */
 };
 
