@@ -273,6 +273,7 @@ static int create_temp_db_env(bdb_state_type *bdb_state, struct temp_table *tbl,
     rc = db_env_create(&dbenv_temp, 0);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "couldnt create temp table env\n");
+        *bdberr = BDBERR_MISC;
         return rc;
     }
 
@@ -326,6 +327,7 @@ static int create_temp_db_env(bdb_state_type *bdb_state, struct temp_table *tbl,
     return 0;
 
 error:
+    *bdberr = BDBERR_MISC;
     tbl->dbenv_temp = NULL;
     (void)dbenv_temp->close(dbenv_temp, 0);
     return rc;
@@ -576,7 +578,6 @@ int gbl_debug_temptables = 0;
 static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
                                                      int *bdberr)
 {
-    struct temp_table *tbl;
     bdb_state_type *parent;
     int id;
 
@@ -585,7 +586,7 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     else
         parent = bdb_state;
 
-    tbl = calloc(1, sizeof(struct temp_table));
+    struct temp_table *tbl = calloc(1, sizeof(struct temp_table));
     if (!tbl) {
         logmsg(LOGMSG_ERROR, "%s:%d: Failed calloc", __func__, __LINE__);
         *bdberr = BDBERR_MALLOC;
@@ -629,11 +630,8 @@ static struct temp_table *bdb_temp_table_create_main(bdb_state_type *bdb_state,
     }
 #endif
     ++gbl_temptable_created;
-
-    if (tbl != NULL) ATOMIC_ADD32(gbl_temptable_count, 1);
-
-    dbgtrace(3, "temp_table_create(%s) = %d", tbl ? tbl->filename : "failed",
-             tbl ? tbl->tblid : -1);
+    ATOMIC_ADD32(gbl_temptable_count, 1);
+    dbgtrace(3, "temp_table_create(%s) = %d", tbl->filename, tbl->tblid);
     return tbl;
 }
 
@@ -750,14 +748,21 @@ static struct temp_table *bdb_temp_table_create_type(bdb_state_type *bdb_state,
             action = bdb_temp_table_maybe_set_priority_thread(bdb_state);
         }
 
+        int rc = 0;
         switch (action) {
         case TMPTBL_PRIORITY:
-            comdb2_objpool_forcedborrow(bdb_state->temp_table_pool,
-                                        (void **)&table);
+            rc = comdb2_objpool_forcedborrow(bdb_state->temp_table_pool, (void **)&table);
             break;
         case TMPTBL_WAIT:
-            comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
+            rc = comdb2_objpool_borrow(bdb_state->temp_table_pool, (void **)&table);
             break;
+        }
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "comdb2_objpool_borrow (or forcedborrow) returns rc %d %s\n", rc, db_strerror(rc));
+            *bdberr = BDBERR_MISC;
+        } else if (!table) {
+            logmsg(LOGMSG_ERROR, "comdb2_objpool_borrow (or forcedborrow) returns NULL table object\n");
+            *bdberr = BDBERR_MISC;
         }
     }
 
