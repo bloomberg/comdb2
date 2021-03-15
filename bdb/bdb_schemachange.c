@@ -347,7 +347,7 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
         dtbl->data = bdb_state->name;
         dtbl->size = strlen(bdb_state->name) + 1;
         if (type == rename_table || type == rename_table_alias) {
-            assert(origtable || rename_table_alias);
+            assert(origtable || type == rename_table_alias);
             int origlen = origtable ? (strlen(origtable) + 1) : 1;
             int len = dtbl->size + origlen;
             char *mashup = alloca(len);
