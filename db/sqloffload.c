@@ -578,13 +578,16 @@ int osql_clean_sqlclntstate(struct sqlclntstate *clnt)
     osqlstate_t *osql = &clnt->osql;
     int rc = 0;
     int bdberr = 0;
+    enum ctrl_sqleng state = clnt->ctrl_sqlengine;
 
     /*
      * Warn of any invalid engine state.  Do it before srs_tran_destroy() as
      * clnt->sql will be pointing at free memory after that.
      */
-    if (clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS && clnt->ctrl_sqlengine != SQLENG_STRT_STATE) {
-        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %p\n", clnt, clnt->ctrl_sqlengine, clnt->osql.rqid,
+    if (state != SQLENG_NORMAL_PROCESS /* most common case */
+        && state != SQLENG_STRT_STATE  /* empty transactions */
+        && state != SQLENG_FNSH_ABORTED_STATE /* aborted transactions */) {
+        logmsg(LOGMSG_ERROR, "%p ctrl engine has wrong state %d %llx %p\n", clnt, state, clnt->osql.rqid,
                (void *)pthread_self());
         if (clnt->sql)
             logmsg(LOGMSG_ERROR, "%p sql is \"%s\"\n", clnt, clnt->sql);
