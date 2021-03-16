@@ -13396,15 +13396,27 @@ int dttz_to_str(const dttz_t *in, char *out, int outlen, int *outdtsz,
 
 int real_to_dttz(double d, dttz_t *dt, int precision)
 {
+    long long i = (long long)d;
     /* a real is alway convertible to any precision */
     dt->dttz_conv = 1;
-    dt->dttz_sec = d;
     if ((long long)(d * 1000) == d * 1000) {
-        dt->dttz_frac = (d - (long long)d) * 1E3 + 0.5;
         dt->dttz_prec = DTTZ_PREC_MSEC;
+        if (d > 0) {
+            dt->dttz_sec = i;
+            dt->dttz_frac = (d - i) * 1E3 + 0.5; /* Round up */
+        } else {
+            dt->dttz_sec = i - 1;
+            dt->dttz_frac = (d - i + 1) * 1E3; /* Round down */
+        }
     } else {
-        dt->dttz_frac = (d - (long long)d) * 1E6 + 0.5;
         dt->dttz_prec = DTTZ_PREC_USEC;
+        if (d > 0) {
+            dt->dttz_sec = i;
+            dt->dttz_frac = (d - i) * 1E6 + 0.5; /* Round up */
+        } else {
+            dt->dttz_sec = i - 1;
+            dt->dttz_frac = (d - i + 1) * 1E6; /* Round down */
+        }
     }
 
     if (precision > dt->dttz_prec) {
