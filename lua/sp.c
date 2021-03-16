@@ -861,7 +861,7 @@ static int lua_consumer_impl(Lua L, dbconsumer_t *q)
     const char *err = NULL;
     SP sp = getsp(L);
     struct sqlclntstate *clnt = sp->clnt;
-    int implicit_txn = in_parent_trans(sp);
+    int implicit_txn = in_client_trans(clnt) ? 0 : in_parent_trans(sp);
     if (implicit_txn) {
         err = db_begin_int(L, &rc);
         if (err || rc || clnt->intrans) {
