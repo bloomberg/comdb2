@@ -72,9 +72,7 @@ struct schema_change_type {
     char tablename[MAXTABLELEN];    /* name of table/queue */
     int rename;                     /* rename table? */
     char newtable[MAXTABLELEN];     /* new table name */
-    int is_timepart;                /* Is this a time partition? */
-    char timepartname[MAXTABLELEN]; /* time partition name that this shard
-                                       belongs to */
+    const char *timepartition_name; /* time partition name for sc, if any */
     size_t fname_len;
     char fname[256];                /* name of schema file for table schema
                                        change or client provided SP version */

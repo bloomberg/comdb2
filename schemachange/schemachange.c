@@ -38,7 +38,6 @@
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
-int timepart_is_shard(const char *, int, char **);
 
 extern int gbl_test_sc_resume_race;
 
@@ -967,6 +966,7 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         wrlock_schema_lk();
+        s->timepartition_name = timepart_is_next_shard(s->tablename);
         rc = do_add_table(iq, s, NULL);
         unlock_schema_lk();
         return rc;
@@ -1151,13 +1151,6 @@ int sc_timepart_add_table(const char *existingTableName,
     snprintf(sc.tablename, sizeof(sc.tablename), "%s", newTableName);
     sc.tablename[sizeof(sc.tablename) - 1] = '\0';
 
-    char *tp_name;
-    if (timepart_is_shard(existingTableName, 0, &tp_name)) {
-        sc.is_timepart = 1;
-        snprintf(sc.timepartname, sizeof(sc.timepartname), "%s", tp_name);
-        sc.timepartname[sizeof(sc.timepartname) - 1] = '\0';
-    }
-
     sc.scanmode = gbl_default_sc_scanmode;
 
     sc.live = 1;
@@ -1225,6 +1218,10 @@ int sc_timepart_add_table(const char *existingTableName,
 
     /* do the dance */
     sc.nothrevent = 1;
+
+    /* save timepartition name here */
+    sc.timepartition_name = db->timepartition_name;
+
     int rc = do_schema_change_locked(&sc);
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;

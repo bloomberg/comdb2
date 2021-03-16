@@ -612,9 +612,6 @@ DEF_ATTR(REP_VERIFY_LIMIT_ENABLED, rep_verify_limit_enabled, BOOLEAN, 1,
 DEF_ATTR(TIMEPART_ABORT_ON_PREPERROR, timepart_abort_on_preperror, BOOLEAN, 0,
          NULL)
 DEF_ATTR(REPORT_DECIMAL_CONVERSION, report_decimal_conversion, BOOLEAN, 0, NULL)
-DEF_ATTR(TIMEPART_CHECK_SHARD_EXISTENCE, timepart_check_shard_existence,
-         BOOLEAN, 0,
-         "Check at startup/time-partition creation that all shard files exist.")
 DEF_ATTR(
     IGNORE_BAD_TABLE, ignore_bad_table, BOOLEAN, 0,
     "Allow a database with a corrupt table to come up, without that table.")
@@ -679,6 +676,8 @@ DEF_ATTR(
     "Print a message to stdout instead of performing auto-analyze ourselves")
 DEF_ATTR(TEST_IO_TIME, test_io_time, SECS, 10,
          "Check I/O in watchdog this often")
+DEF_ATTR(DELETE_OLD_FILE_DEBUG, delete_old_file_debug, BOOLEAN, 0,
+         "Spew debug info about deleting old files.")
 
 /*
   BDB_ATTR_REPTIMEOUT

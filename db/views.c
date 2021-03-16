@@ -130,6 +130,8 @@ static void print_dbg_verbose(const char *name, uuid_t *source_id, const char *p
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran);
 static cron_sched_t *_get_sched_byname(enum view_partition_period period,
                                        const char *sched_name);
+static void _view_unregister_shards(timepart_views_t *views,
+                                    timepart_view_t *view);
 
 enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
@@ -188,38 +190,6 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     }
 
     return dbenv->timepart_views;
-}
-
-/** 
- * Check if a name is a shard 
- *
- */
-int timepart_is_shard(const char *name, int lock, char **viewname)
-{
-   timepart_views_t  *views = thedb->timepart_views;
-   timepart_view_t   *view;
-   int               rc;
-   int               indx;
-
-   rc = 0;
-
-   if(lock)
-       Pthread_rwlock_rdlock(&views_lk);
-
-   view = _check_shard_collision(views, name, &indx, _CHECK_ALL_SHARDS);
-
-   if(view)
-   {  
-      rc = 1;
-      if (viewname) {
-          *viewname = view->name;
-      }
-   }
-
-   if(lock)
-       Pthread_rwlock_unlock(&views_lk);
-
-   return rc;
 }
 
 /**
@@ -336,6 +306,8 @@ int timepart_add_view(void *tran, timepart_views_t *views,
         errstat_set_rc(err, rc);
         goto done;
     }
+
+    get_dbtable_by_name(view->shard0name)->timepartition_name = view->name;
 
     view->roll_time = tm;
 
@@ -507,6 +479,9 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
     }
 
     if (view) {
+
+        _view_unregister_shards(views, view);
+
         rc = timepart_free_view(view);
 
         _remove_view_entry(views, i);
@@ -645,6 +620,7 @@ int views_handle_replicant_reload(const char *name)
             goto done;
         }
         db->tableversion = table_version_select(db, NULL);
+        db->timepartition_name = view->name;
     }
 
 alter_struct:
@@ -2207,13 +2183,29 @@ static void _remove_view_entry(timepart_views_t *views, int i)
     views->nviews--;
 }
 
-/**
- * Best effort to validate a view;  are the table present?
- * Is there another partition colliding with it?
- *
- */
-int views_validate_view(timepart_views_t *views, timepart_view_t *view, 
-                        struct errstat *err)
+/* Set timepartition_name for the next shard, if exist; set to NULL to
+ * unregister */
+static void _shard_timepartition_name_set(timepart_view_t *view,
+                                          const char *name)
+{
+    struct dbtable *db;
+    char next_shard[MAXTABLELEN + 1];
+    int rc;
+
+    rc = _generate_new_shard_name_wrapper(view, next_shard, sizeof(next_shard),
+                                          view->retention);
+    if (rc == VIEW_NOERR) {
+        /* does this table exists ?*/
+        db = get_dbtable_by_name(next_shard);
+        if (db) {
+            db->timepartition_name = name;
+        }
+    }
+}
+
+/* Register timepartition name for all its table shards */
+static int _view_register_shards(timepart_views_t *views, timepart_view_t *view,
+                                 struct errstat *err)
 {
     timepart_view_t *chk_view;
     struct dbtable *db;
@@ -2230,33 +2222,61 @@ int views_validate_view(timepart_views_t *views, timepart_view_t *view,
                                       _CHECK_ALL_SHARDS);
     if(chk_view) {
         if(indx==-1)
-            errstat_set_strf(err, "Name %s matches seed shard partition \"%s\"",
-                    view->name, chk_view->name);
+            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                               "Name %s matches seed shard partition \"%s\"",
+                               view->name, chk_view->name);
         else
-            errstat_set_strf(err, "Name %s matches shard %d partition \"%s\"",
-                    view->name, indx, chk_view->name);
-        errstat_set_rc(err, rc = VIEW_ERR_EXIST);
+            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                               "Name %s matches shard %d partition \"%s\"",
+                               view->name, indx, chk_view->name);
         goto done;
     }
 
-    if(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_TIMEPART_CHECK_SHARD_EXISTENCE)) {
-        for(i=0;i<view->nshards;i++) {  
-            /* do all the shards exist? */
-            db = get_dbtable_by_name(view->shards[i].tblname);
-            if(!db) {
-                errstat_set_strf(err, "Partition %s shard %s doesn't exist!",
-                        view->name, view->shards[i].tblname);
-                errstat_set_rc(err, rc = VIEW_ERR_EXIST);
-                goto done;
-            }
+    for (i = 0; i < view->nshards; i++) {
+        db = get_dbtable_by_name(view->shards[i].tblname);
+        if (!db) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                               "Partition %s shard %s doesn't exist!",
+                               view->name, view->shards[i].tblname);
+            goto done;
         }
+        /* _check_shard_collision prevents this, but just
+        in case that code changes, make sure we did not
+        register shard with another time partition already */
+        if (unlikely(db->timepartition_name)) {
+            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                               "Partition %s shard %s reused!", view->name,
+                               view->shards[i].tblname);
+            goto done;
+        }
+        db->timepartition_name = view->name;
     }
 
+    /* also mark the next shard */
+    _shard_timepartition_name_set(view, view->name);
 
 done:
     Pthread_rwlock_unlock(&views_lk);
 
     return rc;
+}
+
+/* Unregister timepartition name for all its table shards */
+static void _view_unregister_shards(timepart_views_t *views,
+                                    timepart_view_t *view)
+{
+    struct dbtable *db;
+    int i;
+
+    for (i = 0; i < view->nshards; i++) {
+        db = get_dbtable_by_name(view->shards[i].tblname);
+        if (db) {
+            db->timepartition_name = NULL;
+        }
+    }
+
+    /* also reset the next shard */
+    _shard_timepartition_name_set(view, NULL);
 }
 
 /**
@@ -2296,52 +2316,19 @@ int timepart_foreach_shard(const char *view_name,
         if (i == -1) {
             rc = _next_shard_exists(view, next_shard, sizeof(next_shard));
             if (rc == VIEW_ERR_EXIST) {
+                logmsg(LOGMSG_INFO, "%s Applying %p to %s (next shard)\n",
+                       __func__, func, next_shard);
                 rc = func(next_shard, arg);
             }
         } else {
+            logmsg(LOGMSG_INFO, "%s Applying %p to %s (existing shard)\n",
+                   __func__, func, view->shards[i].tblname);
             rc = func(view->shards[i].tblname, arg);
         }
         if (rc) {
             break;
         }
     }
-
-done:
-    Pthread_rwlock_unlock(&views_lk);
-
-    return rc;
-}
-
-/**
- * Under views lock, call a function for each shard
- * 
- */
-int timepart_for_each_shard(const char *name,
-      int (*func)(const char *shardname))
-{
-   timepart_views_t  *views = thedb->timepart_views;
-   timepart_view_t   *view;
-   int               rc = VIEW_NOERR, irc;
-   int               i;
-
-   Pthread_rwlock_rdlock(&views_lk);
-
-   view = _get_view(views, name);
-   if(!view)
-   {
-      rc = VIEW_ERR_EXIST;
-      goto done;
-   }
-
-
-   for(i=0;i<view->nshards; i++)
-   {
-      irc = func(view->shards[i].tblname);
-      if(irc && rc == VIEW_NOERR)
-      {
-         rc = VIEW_ERR_SC;
-      }
-   }
 
 done:
     Pthread_rwlock_unlock(&views_lk);
@@ -2554,65 +2541,6 @@ char *timepart_newest_shard(const char *view_name, unsigned long long *version)
     return ret;
 }
 
-/**
- * Time partition schema change resume
- *
- */
-int timepart_resume_schemachange(int check_llmeta(const char *))
-{
-    timepart_views_t *views;
-    timepart_view_t *view;
-    int i;
-    int rc = 0;
-
-    Pthread_rwlock_wrlock(&views_lk);
-
-    views = thedb->timepart_views;
-    for (i = 0; i < views->nviews; i++) {
-        view = views->views[i];
-        rc = check_llmeta(view->name);
-        if (rc)
-            break;
-    }
-
-    Pthread_rwlock_unlock(&views_lk);
-
-    return rc;
-}
-
-/**
- * During resume, we need to check at if the interrupted alter made any
- * progress, and continue with that shard
- *
- */
-int timepart_schemachange_get_shard_in_progress(const char *view_name,
-                                                int check_llmeta(const char *))
-{
-    timepart_views_t *views;
-    timepart_view_t *view;
-    int rc = 0;
-    int i = 0;
-
-    Pthread_rwlock_wrlock(&views_lk);
-
-    views = thedb->timepart_views;
-
-    view = _get_view(views, view_name);
-    if (view) {
-        for (i = 0; i < view->nshards; i++) {
-            rc = check_llmeta(view->shards[i].tblname);
-            if (rc)
-                break;
-        }
-    }
-    if (rc == 1)
-        rc = i;
-
-    Pthread_rwlock_unlock(&views_lk);
-
-    return rc;
-}
-
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
 {
     unsigned long long version;
@@ -2688,21 +2616,53 @@ static cron_sched_t *_get_sched_byname(enum view_partition_period period,
     abort();
 }
 
-/* Returns time partition name if the specified 'table_name' is a shard,
-  'table_name' otherwise. */
-char *resolve_table_name(char *table_name, char *buf, size_t buf_len)
+/**
+ * Check if a table name is the next shard for a time partition
+ * and if so, returns the pointer to the partition name
+ * NOTE: this is expensive, so only use it in schema resume
+ * or recovery operations that lack information about the underlying
+ * table (for regular operations, pass down this information from caller
+ * instead of calling this function). Recovery includes sc_callbacks
+ * NOTE2: it grabs views repository
+ *
+ */
+const char *timepart_is_next_shard(const char *shardname)
 {
-    char *tp_name;
+    timepart_views_t *views;
+    timepart_view_t *view;
+    int i;
+    char next_shard[MAXTABLELEN + 1];
+    const char *ret_name = NULL;
+    int rc;
 
     Pthread_rwlock_rdlock(&views_lk);
-    if ((timepart_is_shard(table_name, 0, &tp_name))) {
-        strncpy(buf, tp_name, buf_len);
-        Pthread_rwlock_unlock(&views_lk);
-        return buf;
+
+    views = thedb->timepart_views;
+
+    for (i = 0; i < views->nviews; i++) {
+        view = views->views[i];
+
+        rc = _generate_new_shard_name_wrapper(
+            view, next_shard, sizeof(next_shard), view->retention);
+        if (rc != VIEW_NOERR) {
+            logmsg(LOGMSG_ERROR,
+                   "%s fail to generate next shard name view %s\n", __func__,
+                   view->name);
+            continue;
+        }
+
+        if (strncasecmp(next_shard, shardname, strlen(next_shard) + 1) == 0) {
+            logmsg(LOGMSG_INFO,
+                   "%s table %s is the next shard for partition %s\n", __func__,
+                   shardname, view->name);
+            ret_name = view->name;
+            break;
+        }
     }
+
     Pthread_rwlock_unlock(&views_lk);
 
-    return table_name;
+    return ret_name;
 }
 
 #include "views_systable.c"
