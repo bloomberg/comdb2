@@ -3,3 +3,4 @@ bash -n "$0" | exit 1
 set -e
 ${TESTSROOTDIR}/tools/compare_results.sh -s -d $1
 ./t02.sh
+./t03.sh
