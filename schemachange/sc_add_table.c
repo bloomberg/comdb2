@@ -24,6 +24,7 @@
 #include "sc_util.h"
 #include "sc_logic.h"
 #include "sc_csc2.h"
+#include "views.h"
 
 extern int gbl_is_physical_replicant;
 
@@ -99,7 +100,7 @@ static inline int init_bthashsize_tran(struct dbtable *newdb, tran_type *tran)
  * the file written with the csc2. */
 int add_table_to_environment(char *table, const char *csc2,
                              struct schema_change_type *s, struct ireq *iq,
-                             tran_type *trans)
+                             tran_type *trans, const char *timepartition_name)
 {
     int rc;
     struct dbtable *newdb;
@@ -133,9 +134,7 @@ int add_table_to_environment(char *table, const char *csc2,
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->iq = iq;
-    if (s) {
-        newdb->is_timepart = s->is_timepart;
-    }
+    newdb->timepartition_name = timepartition_name;
 
     if (add_cmacc_stmt(newdb, 0)) {
         logmsg(LOGMSG_ERROR, "%s: add_cmacc_stmt failed\n", __func__);
@@ -246,7 +245,8 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
     dyns_init_globals();
-    rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans);
+    rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans,
+                                  s->timepartition_name);
     dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
@@ -335,11 +335,12 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     /* Update table permissions for this new shard. */
-    if (s->is_timepart) {
+    if (s->timepartition_name) {
         if ((rc = timepart_copy_access(thedb->bdb_env, tran, s->tablename,
-                                       s->timepartname, 0)) != 0) {
+                                       (char *)s->timepartition_name, 0)) !=
+            0) {
             sc_errf(s, "Failed to set user permissions for time partition %s\n",
-                    s->timepartname);
+                    s->timepartition_name);
             return rc;
         }
     }

@@ -7697,7 +7697,8 @@ static int oldfile_list_contains(const char *filename)
  * this function will return nonzero rc, and in that case caller needs
  * to free ptr accordingly.
  */
-static int oldfile_add_ptr(struct unused_file *ptr, const char *func, int line)
+static int oldfile_add_ptr(struct unused_file *ptr, const char *func, int line,
+                           int spew_debug)
 {
     int rc = 0;
     if (!ptr)
@@ -7726,8 +7727,10 @@ static int oldfile_add_ptr(struct unused_file *ptr, const char *func, int line)
         of_list[list_hd] = ptr;
         list_hd++;
         list_hd %= OF_LIST_MAX;
-        logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d from %s:%d\n",
-               __func__, __LINE__, ptr->fname, list_hd, list_tl, func, line);
+        if (spew_debug)
+            logmsg(LOGMSG_DEBUG,
+                   "%s:%d [%s] list_hd %d, list_tl %d from %s:%d\n", __func__,
+                   __LINE__, ptr->fname, list_hd, list_tl, func, line);
     }
 
 done:
@@ -7735,8 +7738,8 @@ done:
     return rc;
 }
 
-static int oldfile_add(const char *filename, int lognum,
-                       const char *func, int line)
+static int oldfile_add(const char *filename, int lognum, const char *func,
+                       int line, int spew_debug)
 {
     size_t len = strlen(filename);
     struct unused_file *ptr = malloc(sizeof(struct unused_file) + len);
@@ -7744,8 +7747,8 @@ static int oldfile_add(const char *filename, int lognum,
         return 1;
     ptr->lognum = lognum;
     memcpy(ptr->fname, filename, len + 1);
-    
-    int rc = oldfile_add_ptr(ptr, func, line);
+
+    int rc = oldfile_add_ptr(ptr, func, line, spew_debug);
     if (rc) {
         free(ptr);
     }
@@ -7754,7 +7757,7 @@ static int oldfile_add(const char *filename, int lognum,
 
 /* Get first oldfile in list and remove from both list and hash 
  * Caller should free the returned pointer */
-static struct unused_file *oldfile_get_first()
+static struct unused_file *oldfile_get_first(int spew_debug)
 {
     struct unused_file *ptr = NULL;
     Pthread_mutex_lock(&unused_files_mtx);
@@ -7763,8 +7766,9 @@ static struct unused_file *oldfile_get_first()
         ptr = of_list[list_tl];
         of_list[list_tl] = NULL;
         list_tl = (list_tl + 1) % OF_LIST_MAX;
-        logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d\n", __func__,
-               __LINE__, ptr->fname, list_hd, list_tl);
+        if (spew_debug)
+            logmsg(LOGMSG_DEBUG, "%s:%d [%s] list_hd %d, list_tl %d\n",
+                   __func__, __LINE__, ptr->fname, list_hd, list_tl);
 
         assert(hash_find(oldfile_hash, ptr->fname) == ptr);
         hash_del(oldfile_hash, ptr);
@@ -7927,6 +7931,8 @@ static inline int bdb_is_new_sc_file(bdb_state_type *bdb_state, tran_type *tran,
 int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
                             int *bdberr)
 {
+    int spew_debug =
+        bdb_attr_get(bdb_state->attr, BDB_ATTR_DELETE_OLD_FILE_DEBUG);
     const char data_ext[] = ".data";
     const char index_ext[] = ".index";
     const char blob_ext[] = ".blob";
@@ -8087,11 +8093,13 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
         if (oldfile_list_contains(munged_name))
             continue;
 
-        if (oldfile_add(munged_name, lognum, __func__, __LINE__)) {
+        if (oldfile_add(munged_name, lognum, __func__, __LINE__, spew_debug)) {
             print(bdb_state, "failed to add old file to hash: %s\n", ent->d_name);
             break;
         } else {
-            logmsg(LOGMSG_DEBUG, "%s: requeued file %s\n", __func__, ent->d_name);
+            if (spew_debug)
+                logmsg(LOGMSG_DEBUG, "%s: requeued file %s\n", __func__,
+                       ent->d_name);
             print(bdb_state, "requeued old file %s\n", ent->d_name);
         }
     }
@@ -8119,6 +8127,8 @@ static inline void init_version_num(unsigned long long *version_num, int sz) {
 static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                                     int *bdberr, char *powner, int delay)
 {
+    int spew_debug =
+        bdb_attr_get(bdb_state->attr, BDB_ATTR_DELETE_OLD_FILE_DEBUG);
     static char *owner = NULL;
     static pthread_mutex_t owner_mtx = PTHREAD_MUTEX_INITIALIZER;
     const char blob_ext[] = ".blob";
@@ -8327,7 +8337,8 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (oldfile_list_contains(munged_name))
                 continue;
 
-            if (oldfile_add(munged_name, lognum, __func__, __LINE__)) {
+            if (oldfile_add(munged_name, lognum, __func__, __LINE__,
+                            spew_debug)) {
                 print(bdb_state, "failed to collect old file %s\n", ent->d_name);
             } else {
                 print(bdb_state, "collected old file %s\n", ent->d_name);
@@ -8393,6 +8404,8 @@ int bdb_have_unused_files(void) { return oldfile_is_empty() != 1; }
 int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
                            int *bdberr)
 {
+    int spew_debug =
+        bdb_attr_get(bdb_state->attr, BDB_ATTR_DELETE_OLD_FILE_DEBUG);
     int rc;
     unsigned lowfilenum = 0;
     struct stat sb;
@@ -8423,7 +8436,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     assert(tran);
 
-    struct unused_file *uf_ptr = oldfile_get_first();
+    struct unused_file *uf_ptr = oldfile_get_first(spew_debug);
 
     /* wait some more */
     if (!uf_ptr) return 1;
@@ -8437,7 +8450,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     }
 
     if (uf_ptr->lognum && lowfilenum && uf_ptr->lognum >= lowfilenum) {
-        if (oldfile_add_ptr(uf_ptr, __func__, __LINE__))
+        if (oldfile_add_ptr(uf_ptr, __func__, __LINE__, spew_debug))
             free(uf_ptr); /* failed to add back so need to free */
         return 1;
     }
@@ -8451,7 +8464,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
         if (*bdberr == BDBERR_DELNOTFOUND)
             rc = 0;
-        else if (oldfile_add_ptr(uf_ptr, __func__, __LINE__))
+        else if (oldfile_add_ptr(uf_ptr, __func__, __LINE__, spew_debug))
             print(bdb_state,
                   "bdb_del_file failed bdberr=%d and failed to requeue \"%s\"\n",
                   *bdberr, uf_ptr->fname);

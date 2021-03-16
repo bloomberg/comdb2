@@ -1730,7 +1730,7 @@ static timepart_views_t *_create_all_views(const char *views_str)
             goto done;
         }
 
-        rc = views_validate_view(views, view, &xerr);
+        rc = _view_register_shards(views, view, &xerr);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Time partition error rc=%d [%s]\n",
                    xerr.errval, xerr.errstr);

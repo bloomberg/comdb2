@@ -843,7 +843,8 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     } else if (type == add && add_new_db) {
         logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
         dyns_init_globals();
-        rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran);
+        rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran,
+                                      timepart_is_next_shard(table_copy));
         dyns_cleanup_globals();
         if (rc) {
             logmsg(LOGMSG_FATAL, "%s: error adding table %s.\n",

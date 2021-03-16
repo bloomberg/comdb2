@@ -39,6 +39,7 @@
 #include "logmsg.h"
 #include "comdb2_atomic.h"
 #include "sc_callbacks.h"
+#include "views.h"
 #include <debug_switches.h>
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -942,8 +943,8 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
 {
     struct timepart_sc_resuming *tpt_sc = (struct timepart_sc_resuming *)obj;
 
-    /* all shards resumed */
-    if (tpt_sc->nshards >= timepart_get_num_shards(tpt_sc->viewname))
+    /* all shards resumed, including the next shard if any */
+    if (tpt_sc->nshards > timepart_get_num_shards(tpt_sc->viewname))
         return 0;
 
     timepart_sc_arg_t sc_arg = {0};
@@ -951,7 +952,7 @@ static int verify_sc_resumed_for_all_shards(void *obj, void *arg)
     sc_arg.s = tpt_sc->s;
     /* start new sc for shards that were not resumed */
     timepart_foreach_shard(tpt_sc->viewname, verify_sc_resumed_for_shard,
-                           &sc_arg, 0);
+                           &sc_arg, -1);
     assert(sc_arg.s != tpt_sc->s);
     tpt_sc->s = sc_arg.s;
     return 0;
@@ -963,8 +964,6 @@ int resume_schema_change(void)
     int rc;
     int scabort = 0;
     char *abort_filename = NULL;
-    int is_shard = 0;
-    char *viewname = NULL;
 
     /* if we're not the master node/phys replicant then we can't do schema
      * change! */
@@ -1018,10 +1017,19 @@ int resume_schema_change(void)
         /* if we got some data back, that means we were in a schema change */
         if (packed_sc_data) {
             struct schema_change_type *s;
-            logmsg(LOGMSG_WARN,
-                   "resume_schema_change: table: %s is in the middle of a "
-                   "schema change, resuming...\n",
-                   thedb->dbs[i]->tablename);
+            if (!thedb->dbs[i]->timepartition_name) {
+                logmsg(LOGMSG_WARN,
+                       "resume_schema_change: table: %s is in the middle of a "
+                       "schema change, resuming...\n",
+                       thedb->dbs[i]->tablename);
+            } else {
+                logmsg(
+                    LOGMSG_WARN,
+                    "resume_schema_change: shard: %s for partition: %s is in "
+                    "the middle of a schema change, resuming...\n",
+                    thedb->dbs[i]->tablename,
+                    thedb->dbs[i]->timepartition_name);
+            }
 
             s = new_schemachange_type();
             if (!s) {
@@ -1071,22 +1079,25 @@ int resume_schema_change(void)
 
             uuidstr_t us;
             comdb2uuidstr(s->uuid, us);
+
+            s->timepartition_name = thedb->dbs[i]->timepartition_name;
+
             logmsg(LOGMSG_INFO,
                    "%s: resuming schema change: rqid [%llx %s] "
-                   "table %s, add %d, drop %d, fastinit %d, alter %d\n",
+                   "table %s, add %d, drop %d, fastinit %d, alter %d%s%s\n",
                    __func__, s->rqid, us, s->tablename, s->addonly,
-                   s->drop_table, s->fastinit, s->alteronly);
+                   s->drop_table, s->fastinit, s->alteronly,
+                   s->timepartition_name ? " timepartition " : "",
+                   s->timepartition_name ? s->timepartition_name : "");
 
-            is_shard = 0;
             if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_RESUME_AUTOCOMMIT) &&
                 s->rqid == 0 && comdb2uuid_is_zero(s->uuid)) {
                 s->resume = SC_RESUME;
-                if (timepart_is_shard(s->tablename, 1, &viewname)) {
+                if (s->timepartition_name) {
                     logmsg(LOGMSG_INFO,
                            "Resuming schema change for view '%s' shard '%s'\n",
-                           viewname, s->tablename);
+                           s->timepartition_name, s->tablename);
                     s->finalize = 0;
-                    is_shard = 1;
                 } else {
                     s->finalize = 1; /* finalize at the end of resume */
                 }
@@ -1100,17 +1111,18 @@ int resume_schema_change(void)
             /* start the schema change back up */
             rc = start_schema_change(s);
             if (rc != SC_OK && rc != SC_ASYNC) {
-                logmsg(LOGMSG_ERROR,
-                       "%s: failed to resume schema change for table '%s'\n",
-                       __func__, s->tablename);
+                logmsg(
+                    LOGMSG_ERROR,
+                    "%s: failed to resume schema change for table '%s' rc %d\n",
+                    __func__, s->tablename, rc);
                 /* start_schema_change will free if this fails */
                 /*
                 free_schema_change_type(s);
                 */
                 continue;
-            } else if (is_shard) {
+            } else if (s->timepartition_name) {
                 struct timepart_sc_resuming *tpt_sc = NULL;
-                tpt_sc = hash_find(tpt_sc_hash, &viewname);
+                tpt_sc = hash_find(tpt_sc_hash, &s->timepartition_name);
                 if (tpt_sc == NULL) {
                     /* not found */
                     tpt_sc = calloc(1, sizeof(struct timepart_sc_resuming));
@@ -1119,7 +1131,7 @@ int resume_schema_change(void)
                                __func__);
                         abort();
                     }
-                    tpt_sc->viewname = viewname;
+                    tpt_sc->viewname = (char *)s->timepartition_name;
                     tpt_sc->s = s;
                     tpt_sc->nshards = 1;
                     hash_add(tpt_sc_hash, tpt_sc);

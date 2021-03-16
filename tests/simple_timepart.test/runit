@@ -238,7 +238,7 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
-ayearago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(365*24*3600 +3600))'`
+ayearago=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-(364*24*3600 +3600))'`
 cdb2sql ${CDB2_OPTIONS} $dbname default "CREATE TIME PARTITION ON tbl4 as tbl4v1 PERIOD 'YEARLY' RETENTION 3 START '${ayearago}'" >> $OUT
 if (( $? != 0 )) ; then
    echo "FAILURE"

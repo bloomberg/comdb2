@@ -2098,8 +2098,7 @@ int verify_constraints_exist(struct dbtable *from_db, struct dbtable *to_db,
                 n_errors++;
                 continue;
             } else {
-                if (timepart_is_shard(rdb->tablename, (!s || !s->views_locked),
-                                      NULL)) {
+                if (rdb->timepartition_name) {
                     constraint_err(s, from_db, ct, jj, "A foreign key cannot refer to a time partition");
                     n_errors++;
                     continue;

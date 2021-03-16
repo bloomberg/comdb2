@@ -694,7 +694,7 @@ lease if a node is either not responding or is significantly slower than the oth
 |REP_VERIFY_MAX_TIME | 300 | Maximum amount of time we allow a replicant to roll back its logs in an attempt to sync up to the master.
 |REP_VERIFY_MIN_PROGRESS | 10485760 | Abort replicant if it doesn't make this much progress while rolling back logs to sync up to master.
 |REP_VERIFY_LIMIT_ENABLED | 1 | Enable aborting replicant if it doesn't make sufficient progress while rolling back logs to sync up to master.
-|TIMEPART_CHECK_SHARD_EXISTENCE | 0 | Check at startup/time partition creation that all shard files exist.
+|DELETE_OLD_FILE_DEBUG | 0 | Spew debug info about deleting old files during schema change.
 
 ### Init time options
 

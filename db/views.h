@@ -270,19 +270,6 @@ void comdb2_partition_info_all(const char *option);
  */
 int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int *indx);
 
-/**
- * Best effort to validate a view;  are the table present?
- * Is there another partition colliding with it?
- *
- */
-int views_validate_view(timepart_views_t *views, timepart_view_t *view, struct errstat *err);
-
-/** 
- * Check if a name is a shard 
- *
- */
-int timepart_is_shard(const char *name, int lock, char **viewname);
-
 /** 
  * Check if a name is a timepart
  *
@@ -290,37 +277,15 @@ int timepart_is_shard(const char *name, int lock, char **viewname);
 int timepart_is_timepart(const char *name, int lock);
 
 /**
- * Time partition schema change resume
- *
- */
-int timepart_resume_schemachange(int check_llmeta(const char *));
-
-/**
- * During resume, we need to check at if the interrupted alter made any
- * progress, and continue with that shard
- *
- */
-int timepart_schemachange_get_shard_in_progress(const char *view_name,
-                                                int check_llmeta(const char *));
-
-/**
  * Run "func" for each shard, starting with "first_shard".
  * Callback receives the name of the shard and argument struct
+ * NOTE: first_shard == -1 means include the next shard if
+ * already created
  *
  */
 int timepart_foreach_shard(const char *view_name,
                            int func(const char *, timepart_sc_arg_t *),
                            timepart_sc_arg_t *arg, int first_shard);
-
-/**
- * Under views lock, call a function for each shard
- * NOTE: first_shard == -1 means include the next shard if
- * already created
- *
- */
-int timepart_for_each_shard(const char *name,
-      int (*func)(const char *shardname));
-
 
 /**
  * Queue up the necessary events to rollout time partitions 
@@ -381,11 +346,26 @@ char *timepart_describe(sched_if_t *impl);
  */
 char *timepart_event_describe(sched_if_t *impl, cron_event_t *event);
 
+/**
+ * Timepartition access routines
+ *
+ */
 int timepart_shards_grant_access(bdb_state_type *bdb_state, void *tran, char
                                  *name, char *user, int access_type);
 int timepart_shards_revoke_access(bdb_state_type *bdb_state, void *tran, char
                                   *name, char *user, int access_type);
 
-char *resolve_table_name(char *table_name, char *buf, size_t buf_len);
+/**
+ * Check if a table name is the next shard for a time partition
+ * and if so, returns the pointer to the partition name
+ * NOTE: this is expensive, so only use it in schema resume
+ * or recovery operations that lack information about the underlying
+ * table (for regular operations, pass down this information from caller
+ * instead of calling this function). Recovery includes sc_callbacks
+ * NOTE2: it grabs views repository
+ *
+ */
+const char *timepart_is_next_shard(const char *shardname);
+
 #endif
 

@@ -780,8 +780,8 @@ typedef struct dbtable {
        type, to work properly. */
     bool skip_error_on_ulonglong_check : 1;
 
-    /* Is this table a time partition shard? */
-    bool is_timepart : 1;
+    /* name of the timepartition, if this is a shard */
+    const char *timepartition_name;
 } dbtable;
 
 struct dbview {
