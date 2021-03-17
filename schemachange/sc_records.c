@@ -38,6 +38,7 @@
 
 int gbl_logical_live_sc = 0;
 
+extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
 extern int gbl_partial_indexes;
 // Increase max threads to do SC -- called when no contention is detected
 // A simple atomic add sufices here since this function is called from one
@@ -1202,6 +1203,10 @@ void *convert_records_thd(struct convert_record_data *data)
         /* Disable page compaction only if page compaction is enabled. */
         Pthread_setspecific(no_pgcompact, (void *)1);
     }
+    snap_uid_t loc_snap_info;
+    osql_snap_info = &loc_snap_info; /* valid for the duration of the rebuild */
+    loc_snap_info.keylen = snprintf(loc_snap_info.key, sizeof(loc_snap_info.key),
+                                    "internal-schemachange-%p", (void *)pthread_self());
 
     if (data->iq.debug) {
         reqlog_new_request(&data->iq);

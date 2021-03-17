@@ -75,6 +75,7 @@ typedef struct bdb_cursor_ser bdb_cursor_ser_t;
 struct bdb_cursor_ser {
     uint8_t opaque[64];
 };
+struct txn_properties;
 
 void bdb_cursor_ser_invalidate(bdb_cursor_ser_t *cur_ser);
 
@@ -1826,8 +1827,8 @@ void bdb_checklock(bdb_state_type *);
 int bdb_lockref(void);
 void berkdb_set_max_rep_retries(int max);
 void bdb_set_recovery(bdb_state_type *);
-tran_type *bdb_tran_begin_set_retries(bdb_state_type *, tran_type *parent,
-                                      int retries, int *bdberr);
+tran_type *bdb_tran_begin_set_prop(bdb_state_type *, tran_type *parent,
+                                   struct txn_properties *prop, int *bdberr);
 uint32_t bdb_readonly_lock_id(bdb_state_type *bdb_state);
 void bdb_free_lock_id(bdb_state_type *bdb_state, uint32_t lid);
 void bdb_lockspeed(bdb_state_type *bdb_state);

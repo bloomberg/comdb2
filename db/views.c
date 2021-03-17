@@ -1614,7 +1614,7 @@ static int _views_rollout_phase2(timepart_view_t *view,
     }
     view->roll_time = *timeNextRollout;
 
-    tran = bdb_tran_begin_set_retries(thedb->bdb_env, NULL, 0, &bdberr);
+    tran = bdb_tran_begin_set_prop(thedb->bdb_env, NULL, NULL, &bdberr);
     if (!tran || bdberr) {
         goto oom;
     }

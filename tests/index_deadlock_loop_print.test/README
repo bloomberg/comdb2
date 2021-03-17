@@ -13,8 +13,9 @@ the sql stmts in replicant node by using cnonce retrieved from
 transaction cnonce on master node.
 
 
-Eventlog for the deadlock loop will appear only if setting is turned on:
-  on print_deadlock_cycles
+Eventlog for the deadlock loop will appear only if setting is turned on
+for every deadlock:
+  print_deadlock_cycles 1
 
 Eventlog entry will look like this:
 

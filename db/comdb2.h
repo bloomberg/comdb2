@@ -1378,7 +1378,7 @@ struct ireq {
     int timeoutms;
 
     /* more stats - number of retries done under this request */
-    int retries;
+    uint32_t retries;
 
     int ixused;    /* what index was used? */
     int ixstepcnt; /* how many steps on that index? */
@@ -1394,7 +1394,7 @@ struct ireq {
     int helper_thread;
     int queryid;
     int osql_flags;
-    int priority;
+    uint32_t priority;
     int tranddl;
 
     /* Client endian flags. */
@@ -1993,7 +1993,8 @@ void tran_dump(struct long_trn_stat *tstats);
 int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
-                            int retries);
+                            uint32_t retries, uint32_t priority);
+int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans);
 int trans_start_logical(struct ireq *, tran_type **out);
 int trans_start_logical_sc(struct ireq *, tran_type **out);
 int trans_start_logical_sc_with_force(struct ireq *, tran_type **out);

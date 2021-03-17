@@ -171,6 +171,8 @@ struct __recovery_processor;
 struct __recovery_list;
 struct __db_trigger_subscription;
 
+struct txn_properties;
+
 #include "db_dbt.h"
 
 /* Compiler hints for branch prediction */
@@ -2494,8 +2496,8 @@ struct __db_env {
 
 	void (*lsn_undone_callback)(DB_ENV *env, DB_LSN*);
 
-	int  (*txn_begin_set_retries)
-		__P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, u_int32_t));
+	int  (*txn_begin_with_prop)
+		__P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, struct txn_properties*));
 
 	int  (*set_num_recovery_processor_threads)
 		__P((DB_ENV *env, int nthreads));

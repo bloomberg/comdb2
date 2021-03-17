@@ -60,6 +60,7 @@
 
 #include "nodemap.h"
 #include "logmsg.h"
+#include "txn_properties.h"
 
 static unsigned int curtran_counter = 0;
 extern int __txn_getpriority(DB_TXN *txnp, int *priority);
@@ -1101,7 +1102,7 @@ int bdb_tran_abort_phys(bdb_state_type *bdb_state, tran_type *tran)
 }
 
 static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
-                                        tran_type *parent, int retries,
+                                        tran_type *parent, struct txn_properties *prop, 
                                         int tranclass, int *bdberr,
                                         u_int32_t inflags)
 {
@@ -1174,10 +1175,10 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 
     case TRANCLASS_PHYSICAL:
     case TRANCLASS_BERK:
-        /*fprintf(stderr, "calling txn_begin_set_retries\n");*/
+        /*fprintf(stderr, "calling txn_begin_with_prop\n");*/
 
-        rc = bdb_state->dbenv->txn_begin_set_retries(
-            bdb_state->dbenv, parent_tid, &(tran->tid), flags, retries);
+        rc = bdb_state->dbenv->txn_begin_with_prop(
+            bdb_state->dbenv, parent_tid, &(tran->tid), flags, prop);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "begin transaction failed\n");
             *bdberr = BDBERR_DEADLOCK;
@@ -1210,12 +1211,12 @@ static tran_type *bdb_tran_begin_ll_int(bdb_state_type *bdb_state,
 }
 
 static tran_type *bdb_tran_begin_berk_int(bdb_state_type *bdb_state,
-                                          tran_type *parent, int retries,
+                                          tran_type *parent, struct txn_properties *prop,
                                           int *bdberr, u_int32_t flags)
 {
     tran_type *tran;
 
-    tran = bdb_tran_begin_ll_int(bdb_state, parent, retries, TRANCLASS_BERK,
+    tran = bdb_tran_begin_ll_int(bdb_state, parent, prop, TRANCLASS_BERK,
                                  bdberr, flags);
 
     return tran;
@@ -1244,7 +1245,7 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_ll_int(bdb_state, NULL, 0, tranclass, bdberr, 0);
+    tran = bdb_tran_begin_ll_int(bdb_state, NULL, NULL, tranclass, bdberr, 0);
 
     /* we do this for query isolation in socksql with row caching;
        snapshot/serializable will set this again while holding the trn_repo
@@ -1330,7 +1331,7 @@ static tran_type *bdb_tran_begin_logical_pp(bdb_state_type *bdb_state, int trak,
 }
 
 static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
-                                    tran_type *parent, int retries, int *bdberr,
+                                    tran_type *parent, struct txn_properties *prop, int *bdberr,
                                     u_int32_t flags)
 {
     tran_type *tran;
@@ -1341,7 +1342,7 @@ static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_berk_int(bdb_state, parent, retries, bdberr, flags);
+    tran = bdb_tran_begin_berk_int(bdb_state, parent, prop, bdberr, flags);
     /* NOTE: we don't release this lock until commit/rollback time */
     if (!tran) {
         BDB_RELLOCK();
@@ -1403,7 +1404,7 @@ tran_type *bdb_tran_begin(bdb_state_type *bdb_state, tran_type *parent,
                           int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, 0);
+    tran = bdb_tran_begin_pp(bdb_state, parent, NULL, bdberr, 0);
     return tran;
 }
 
@@ -1411,16 +1412,16 @@ tran_type *bdb_tran_begin_flags(bdb_state_type *bdb_state, tran_type *parent,
                                 int *bdberr, u_int32_t flags)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, 0, bdberr, flags);
+    tran = bdb_tran_begin_pp(bdb_state, parent, NULL, bdberr, flags);
     return tran;
 }
 
-tran_type *bdb_tran_begin_set_retries(bdb_state_type *bdb_state,
-                                      tran_type *parent, int retries,
+tran_type *bdb_tran_begin_set_prop(bdb_state_type *bdb_state,
+                                      tran_type *parent, struct txn_properties *prop,
                                       int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_pp(bdb_state, parent, retries, bdberr, 0);
+    tran = bdb_tran_begin_pp(bdb_state, parent, prop, bdberr, 0);
     return tran;
 }
 
