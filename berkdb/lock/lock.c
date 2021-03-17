@@ -45,6 +45,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include "locks_wrap.h"
 #include "thread_stats.h"
 #include "tohex.h"
+#include "txn_properties.h"
 
 
 #ifdef TRACE_ON_ADDING_LOCKS
@@ -126,8 +127,11 @@ static pthread_mutex_t lblk = PTHREAD_MUTEX_INITIALIZER;
 
 pthread_key_t lockmgr_key;
 
+static int __lock_getlocker_with_prop( DB_LOCKTAB *lt, u_int32_t locker,
+    u_int32_t indx, struct txn_properties *prop, u_int32_t flags, DB_LOCKER **retp);
+
 static int __lock_getlocker_int(DB_LOCKTAB *, u_int32_t locker, u_int32_t indx,
-    u_int32_t partition, int create, u_int32_t retries, DB_LOCKER **retp,
+    u_int32_t partition, int create, struct txn_properties *prop, DB_LOCKER **retp,
     int *created, int is_logical);
 
 void
@@ -141,7 +145,7 @@ berkdb_dump_locks_for_locker(dbenv, id)
 
 	int ndx;
 	LOCKER_INDX(lt, region, id, ndx);
-	if (__lock_getlocker(lt, id, ndx, 0, GETLOCKER_KEEP_PART, &locker) != 0
+	if (__lock_getlocker(lt, id, ndx, GETLOCKER_KEEP_PART, &locker) != 0
 	    || locker == NULL)
 		return;
 	__lock_dump_locker_int(dbenv->lk_handle, locker, stdout, 1);
@@ -260,7 +264,7 @@ __lock_id_flags(dbenv, idp, flags)
 	/* Allocate a locker for this id. */
 	LOCKER_INDX(lt, region, *idp, locker_ndx);
 	u_int32_t glflags = GETLOCKER_CREATE | GETLOCKER_DONT_LOCK;
-	ret = __lock_getlocker(lt, *idp, locker_ndx, 0, glflags, &lk);
+	ret = __lock_getlocker(lt, *idp, locker_ndx, glflags, &lk);
 
 	if (!ret) {
 		F_CLR(lk,
@@ -299,7 +303,7 @@ __lock_id_set_logical_abort(dbenv, id)
 	LOCKREGION(dbenv, lt);
 	LOCKER_INDX(lt, region, id, locker_ndx);
 	if ((ret =
-	    __lock_getlocker(lt, id, locker_ndx, 0, GETLOCKER_KEEP_PART,
+	    __lock_getlocker(lt, id, locker_ndx, GETLOCKER_KEEP_PART,
 	    &sh_locker)) != 0) {
 		return ret;
 	}
@@ -354,7 +358,7 @@ __lock_id_has_waiters(dbenv, id)
 	LOCKREGION(dbenv, lt);
 	LOCKER_INDX(lt, region, id, locker_ndx);
 	if ((ret =
-		__lock_getlocker(lt, id, locker_ndx, 0, GETLOCKER_KEEP_PART,
+		__lock_getlocker(lt, id, locker_ndx, GETLOCKER_KEEP_PART,
 		    &sh_locker)) != 0) {
 		return ret;
 	}
@@ -689,7 +693,7 @@ __lock_id_free(dbenv, id)
 	lock_lockers(region);
 	LOCKER_INDX(lt, region, id, locker_ndx);
 	if ((ret =
-		__lock_getlocker(lt, id, locker_ndx, 0, GETLOCKER_KEEP_PART,
+		__lock_getlocker(lt, id, locker_ndx, GETLOCKER_KEEP_PART,
 		    &sh_locker)) != 0) {
 		unlock_lockers(region);
 		return ret;
@@ -1392,7 +1396,7 @@ __lock_vec(dbenv, locker, flags, list, nlist, elistp)
 
 			LOCKER_INDX(lt, region, locker, ndx);
 			if ((rc = __lock_getlocker(lt,
-				    locker, ndx, 0, GETLOCKER_KEEP_PART,
+				    locker, ndx, GETLOCKER_KEEP_PART,
 				    &sh_locker)) != 0 || sh_locker == NULL ||
 			    F_ISSET(sh_locker, DB_LOCKER_DELETED)) {
 				/*
@@ -1826,7 +1830,7 @@ again2:		for (lp = SH_TAILQ_FIRST(&sh_obj->holders, __db_lock);
 			/* Find the locker. */
 			LOCKER_INDX(lt, region, locker, ndx);
 			if ((ret = __lock_getlocker(lt,
-				    locker, ndx, 0, GETLOCKER_KEEP_PART,
+				    locker, ndx, GETLOCKER_KEEP_PART,
 				    &sh_locker)) != 0 || sh_locker == NULL)
 				break;
 			if (F_ISSET(sh_locker, DB_LOCKER_DELETED)) {
@@ -2182,7 +2186,7 @@ __lock_get_internal_int(lt, locker, in_locker, flags, obj, lock_mode, timeout,
 		    (LF_ISSET(DB_LOCK_LOGICAL) ? GETLOCKER_LOGICAL : 0);
 		gl_flags |= GETLOCKER_KEEP_PART;
 		LOCKER_INDX(lt, region, locker, locker_ndx);
-		if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+		if ((ret = __lock_getlocker(lt, locker, locker_ndx,
 			    gl_flags, &sh_locker)) != 0) {
 			goto err;
 		}
@@ -2792,7 +2796,7 @@ upgrade:
 				    locker_ndx);
 				if ((ret =
 					__lock_getlocker(lt, holdarr[ii],
-					    locker_ndx, 0, GETLOCKER_KEEP_PART,
+					    locker_ndx, GETLOCKER_KEEP_PART,
 					    &holder_locker)) == 0 &&
 				    holder_locker != NULL) {
 					if (verbose_waiter)
@@ -3001,7 +3005,7 @@ __lock_query_internal(lt, locker, obj, lock_mode)
 	u_int32_t locker_ndx;
 	u_int32_t gl_flags = GETLOCKER_KEEP_PART;
 	LOCKER_INDX(lt, region, locker, locker_ndx);
-	if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+	if ((ret = __lock_getlocker(lt, locker, locker_ndx,
 					gl_flags, &sh_locker)) != 0 || sh_locker == NULL) {
 		logmsg(LOGMSG_DEBUG, "Locker %u does not exist\n", locker);
 		goto out;
@@ -3540,15 +3544,16 @@ __lock_freelock(lt, lockp, sh_locker, flags)
 }
 
 /*
- * __lock_addfamilylocker
+ * __lock_addfamilylocker_int
  *	Put a locker entry in for a child transaction.
  *
- * PUBLIC: int __lock_addfamilylocker __P((DB_ENV *, u_int32_t, u_int32_t));
+ * PUBLIC: int __lock_addfamilylocker_int __P((DB_ENV *, u_int32_t, u_int32_t, struct txn_properties *));
  */
 int
-__lock_addfamilylocker_int(dbenv, pid, id, retries)
+__lock_addfamilylocker_int(dbenv, pid, id, prop)
 	DB_ENV *dbenv;
-	u_int32_t pid, id, retries;
+	u_int32_t pid, id;
+    struct txn_properties *prop;
 {
 	DB_LOCKER *lockerp, *mlockerp;
 	DB_LOCKREGION *region;
@@ -3562,8 +3567,8 @@ __lock_addfamilylocker_int(dbenv, pid, id, retries)
 
 	/* get/create the  parent locker info */
 	LOCKER_INDX(lt, region, pid, ndx);
-	if ((ret = __lock_getlocker(dbenv->lk_handle,
-		    pid, ndx, retries, GETLOCKER_CREATE, &mlockerp)) != 0)
+	if ((ret = __lock_getlocker_with_prop(dbenv->lk_handle,
+		    pid, ndx, prop, GETLOCKER_CREATE, &mlockerp)) != 0)
 		goto err;
 
 	/*
@@ -3574,8 +3579,8 @@ __lock_addfamilylocker_int(dbenv, pid, id, retries)
 	 * family be created at the same time.
 	 */
 	LOCKER_INDX(lt, region, id, ndx);
-	if ((ret = __lock_getlocker(dbenv->lk_handle,
-		    id, ndx, retries, GETLOCKER_CREATE, &lockerp)) != 0)
+	if ((ret = __lock_getlocker_with_prop(dbenv->lk_handle,
+		    id, ndx, prop, GETLOCKER_CREATE, &lockerp)) != 0)
 		goto err;
 
 	/* Point to our parent. */
@@ -3617,6 +3622,7 @@ __lock_addfamilylocker(dbenv, pid, id)
 	DB_ENV *dbenv;
 	u_int32_t pid, id;
 {
+    struct txn_properties prop = {0};
 	return __lock_addfamilylocker_int(dbenv, pid, id, 0);
 }
 
@@ -3643,14 +3649,15 @@ __lock_add_child_locker_pp(dbenv, pid, id)
 /*
  * COMDB2 MODIFICATION
  *
- * PUBLIC: int __lock_addfamilylocker_set_retries __P((DB_ENV *, u_int32_t, u_int32_t, u_int32_t));
+ * PUBLIC: int __lock_addfamilylocker_with_prop __P((DB_ENV *, u_int32_t, u_int32_t, struct txn_properties *));
  */
 int
-__lock_addfamilylocker_set_retries(dbenv, pid, id, retries)
+__lock_addfamilylocker_with_prop(dbenv, pid, id, prop)
 	DB_ENV *dbenv;
-	u_int32_t pid, id, retries;
+	u_int32_t pid, id;
+    struct txn_properties *prop;
 {
-	return __lock_addfamilylocker_int(dbenv, pid, id, retries);
+	return __lock_addfamilylocker_int(dbenv, pid, id, prop);
 }
 
 
@@ -3674,7 +3681,7 @@ __lock_locker_set_lowpri(dbenv, locker)
 
 	u_int32_t flags = GETLOCKER_CREATE;
 	if ((ret = __lock_getlocker(lt,
-		    locker, indx, 0, flags, &sh_locker)) != 0 ||
+		    locker, indx, flags, &sh_locker)) != 0 ||
 	    sh_locker == NULL) {
 		logmsg(LOGMSG_ERROR, "EORROR getting locker %s:%d locker %x \n", __FILE__,
 		    __LINE__, locker);
@@ -3722,7 +3729,7 @@ __lock_locker_getpriority(lt, locker, priority)
 
 	u_int32_t flags = GETLOCKER_KEEP_PART;
 	if ((ret = __lock_getlocker(lt,
-		    locker, indx, 0, flags, &sh_locker)) != 0 ||
+		    locker, indx, flags, &sh_locker)) != 0 ||
 	    sh_locker == NULL)
 		goto err;
 #if 0
@@ -3733,9 +3740,9 @@ NOTE:	THIS IS USEFUL ONLY FOR CHILD TRANSACTIONS !
 	}
 #endif
 	if (verbose_deadlocks)
-		logmsg(LOGMSG_USER, "%s:%d locker %x priority %d\n",
-		    __FILE__, __LINE__, locker, sh_locker->nretries);
-	*priority = sh_locker->nretries;
+		logmsg(LOGMSG_USER, "%s:%d locker %x retries %d priority %d\n",
+		    __FILE__, __LINE__, locker, sh_locker->num_retries, sh_locker->priority);
+	*priority = sh_locker->priority;
 	unlock_locker_partition(region, sh_locker->partition);
 
 err:
@@ -3774,7 +3781,7 @@ __lock_freefamilylocker(lt, locker)
 
 	u_int32_t flags = GETLOCKER_KEEP_PART;
 	if ((ret = __lock_getlocker(lt,
-		    locker, indx, 0, flags, &sh_locker)) != 0 ||
+		    locker, indx, flags, &sh_locker)) != 0 ||
 	    sh_locker == NULL) {
 		unlock_lockers(region);
 		return ret;
@@ -3891,7 +3898,7 @@ __lock_set_timeout_internal(dbenv, locker, timeout, op)
 
 	LOCKER_INDX(lt, region, locker, locker_ndx);
 	u_int32_t flags = GETLOCKER_CREATE;
-	ret = __lock_getlocker(lt, locker, locker_ndx, 0, flags, &sh_locker);
+	ret = __lock_getlocker(lt, locker, locker_ndx, flags, &sh_locker);
 
 	if (ret != 0)
 		return (ret);
@@ -3946,7 +3953,7 @@ __lock_inherit_timeout(dbenv, parent, locker)
 	/* If the parent does not exist, we are done. */
 	LOCKER_INDX(lt, region, parent, locker_ndx);
 	if ((ret = __lock_getlocker(lt,
-		    parent, locker_ndx, 0, 0, &parent_locker)) != 0)
+		    parent, locker_ndx, 0, &parent_locker)) != 0)
 		goto err;
 
 	/*
@@ -3964,7 +3971,7 @@ __lock_inherit_timeout(dbenv, parent, locker)
 	LOCKER_INDX(lt, region, locker, locker_ndx);
 	u_int32_t flags = GETLOCKER_CREATE;
 	if ((ret = __lock_getlocker(lt,
-		    locker, locker_ndx, 0, flags, &sh_locker)) != 0)
+		    locker, locker_ndx, flags, &sh_locker)) != 0)
 		goto err;
 
 	sh_locker->tx_expire = parent_locker->tx_expire;
@@ -3991,12 +3998,12 @@ err:
  * This must be called with the locker bucket locked.
  */
 static int
-__lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
+__lock_getlocker_int(lt, locker, indx, partition, create, prop, retp,
     created, is_logical)
 	DB_LOCKTAB *lt;
 	u_int32_t locker, indx, partition;
 	int create;
-	u_int32_t retries;
+	struct txn_properties *prop;
 	DB_LOCKER **retp;
 	int *created;
 	int is_logical;
@@ -4058,10 +4065,11 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 		sh_locker->nwrites = 0;
 		sh_locker->has_waiters = 0;
 #if TEST_DEADLOCKS
-		printf("%d %s:%d lockerid %x setting priority to %d\n",
-		    pthread_self(), __FILE__, __LINE__, sh_locker->id, retries);
+		printf("%p %s:%d lockerid %x setting priority to %d\n",
+		    (void*)pthread_self(), __FILE__, __LINE__, sh_locker->id, priority);
 #endif
-		sh_locker->nretries = retries;
+		sh_locker->priority = prop ? prop->priority : 0;
+		sh_locker->num_retries = prop ? prop->retries : 0;
 		sh_locker->lk_timeout = 0;
 		sh_locker->partition = partition;
 		LOCK_SET_TIME_INVALID(&sh_locker->tx_expire);
@@ -4091,10 +4099,11 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	if (sh_locker && create) {
 		sh_locker->tid = pthread_self();
 
+		sh_locker->snap_info = NULL;
 		if (gbl_print_deadlock_cycles) {
 			extern __thread snap_uid_t *osql_snap_info; /* contains cnonce */
-			if(osql_snap_info) sh_locker->snap_info = osql_snap_info;
-			else sh_locker->snap_info = NULL;
+			if(osql_snap_info)
+				sh_locker->snap_info = osql_snap_info;
 		}
 	}
 
@@ -4102,21 +4111,12 @@ __lock_getlocker_int(lt, locker, indx, partition, create, retries, retp,
 	return 0;
 }
 
-/*
- * __lock_getlocker --
- *	Get a locker in the locker hash table.  The create parameter
- * indicates if the locker should be created if it doesn't exist in
- * the table.
- *
- * PUBLIC: int __lock_getlocker __P((DB_LOCKTAB *,
- * PUBLIC:     u_int32_t, u_int32_t, int, u_int32_t, DB_LOCKER **));
- */
-
+/* get locker: initialize with the provided retries and priority */
 int
-__lock_getlocker(lt, locker, indx, retries, flags, retp)
+__lock_getlocker_with_prop(lt, locker, indx, prop, flags, retp)
 	DB_LOCKTAB *lt;
 	u_int32_t locker, indx;
-	int retries;
+	struct txn_properties *prop;
 	u_int32_t flags;
 	DB_LOCKER **retp;
 {
@@ -4132,7 +4132,7 @@ __lock_getlocker(lt, locker, indx, retries, flags, retp)
 	lock_locker_partition(region, partition);
 
 	int ret = __lock_getlocker_int(lt, locker, indx, partition, lk_create,
-                                   retries, retp, &created, is_logical);
+                                   prop, retp, &created, is_logical);
     
 	if (ret || *retp == NULL || keep_part_lock == 0) 
 		unlock_locker_partition(region, partition);
@@ -4155,6 +4155,26 @@ __lock_getlocker(lt, locker, indx, retries, flags, retp)
 	}
 	return ret;
 }
+
+/*
+ * __lock_getlocker --
+ *	Get a locker in the locker hash table.  The create parameter
+ * indicates if the locker should be created if it doesn't exist in
+ * the table.
+ *
+ * PUBLIC: int __lock_getlocker __P((DB_LOCKTAB *, u_int32_t, u_int32_t, u_int32_t, DB_LOCKER **));
+ */
+
+int
+__lock_getlocker(lt, locker, indx, flags, retp)
+	DB_LOCKTAB *lt;
+	u_int32_t locker, indx;
+	u_int32_t flags;
+	DB_LOCKER **retp;
+{
+    return __lock_getlocker_with_prop(lt, locker, indx, NULL, flags, retp);
+}
+
 
 
 /*
@@ -4361,7 +4381,7 @@ __lock_inherit_locks(lt, locker, flags)
 	 */
 	LOCKER_INDX(lt, region, locker, ndx);
 	if ((ret = __lock_getlocker(lt,
-		    locker, ndx, 0, GETLOCKER_KEEP_PART, &sh_locker)) != 0 ||
+		    locker, ndx, GETLOCKER_KEEP_PART, &sh_locker)) != 0 ||
 	    sh_locker == NULL || F_ISSET(sh_locker, DB_LOCKER_DELETED)) {
 		if (sh_locker)
 			unlock_locker_partition(region, sh_locker->partition);
@@ -4728,7 +4748,7 @@ __lock_trade(dbenv, lock, new_locker, create)
 	/* Make sure that we can get new locker and add this lock to it. */
 	LOCKER_INDX(lt, region, new_locker, locker_ndx);
 	if ((ret =
-		__lock_getlocker(lt, new_locker, locker_ndx, 0,
+		__lock_getlocker(lt, new_locker, locker_ndx,
 		    create ? GETLOCKER_CREATE : 0, &sh_locker)) != 0)
 		goto out;
 
@@ -5584,7 +5604,7 @@ __lock_get_rowlocks_list(dbenv, locker, flags, lock_mode, list, locklist,
 	}
 
 	LOCKER_INDX(lt, region, locker, locker_ndx);
-	if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+	if ((ret = __lock_getlocker(lt, locker, locker_ndx,
 		    0, &sh_locker)) != 0) {
 		goto err;
 	}
@@ -5715,7 +5735,7 @@ __lock_list_parse_pglogs_int(dbenv, locker, flags, lock_mode, list, maxlsn,
 		LOCKREGION(dbenv, (DB_LOCKTAB *)dbenv->lk_handle);
 		u_int32_t locker_ndx;
 		LOCKER_INDX(lt, region, locker, locker_ndx);
-		if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+		if ((ret = __lock_getlocker(lt, locker, locker_ndx,
 			    0, &sh_locker)) != 0) {
 			goto err;
 		}
@@ -5874,7 +5894,7 @@ __lock_get_list_int_int(dbenv, locker, flags, lock_mode, list, pcontext, maxlsn,
 			locked_region = 1;
 			u_int32_t locker_ndx;
 			LOCKER_INDX(lt, region, locker, locker_ndx);
-			if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+			if ((ret = __lock_getlocker(lt, locker, locker_ndx,
 				    0, &sh_locker)) != 0) {
 				goto err;
 			}
@@ -6212,7 +6232,7 @@ __lock_abort_logical_waiters(dbenv, locker, flags)
 	LOCKER_INDX(lt, region, locker, locker_ndx);
 
 	/* Retrieve the locker */
-	if ((ret = __lock_getlocker(lt, locker, locker_ndx, 0,
+	if ((ret = __lock_getlocker(lt, locker, locker_ndx,
 		    GETLOCKER_KEEP_PART, &sh_locker)) != 0) {
 		__db_err(dbenv, "Error in lock_getlocker for lid %u", locker);
 		goto err;
@@ -6360,7 +6380,7 @@ __nlocks_for_locker(DB_ENV *dbenv, u_int32_t id)
 
 	LOCKREGION(dbenv, lt);
 	LOCKER_INDX(lt, region, id, locker_ndx);
-	if ((ret = __lock_getlocker(lt, id, locker_ndx, 0, 0, &sh_locker)) != 0)
+	if ((ret = __lock_getlocker(lt, id, locker_ndx, 0, &sh_locker)) != 0)
 		goto err;
 	nlocks = sh_locker->nlocks;
 	UNLOCKREGION(dbenv, lt);
@@ -6385,7 +6405,7 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 	} else {
 		DB_LOCKER *locker;
 		LOCKER_INDX(lt, region, lockerid, ndx);
-		if (__lock_getlocker(lt, lockerid, ndx, 0, 0, &locker) != 0
+		if (__lock_getlocker(lt, lockerid, ndx, 0, &locker) != 0
 			|| locker == NULL) {
 			logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__,
 				lockerid);
@@ -6399,7 +6419,7 @@ __latch_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 	} else {
 		DB_LOCKER *parent_locker;
 		LOCKER_INDX(lt, region, parentid, ndx);
-		if (__lock_getlocker(lt, parentid, ndx, 0, 0,
+		if (__lock_getlocker(lt, parentid, ndx, 0,
 			&parent_locker) != 0 || parent_locker == NULL) {
 			logmsg(LOGMSG_FATAL, "%s: parent-lockid %x not found\n",
 				__func__, parentid);
@@ -6426,14 +6446,14 @@ __lock_set_parent_has_pglk_lsn(DB_ENV *dbenv, u_int32_t parentid,
 		return __latch_set_parent_has_pglk_lsn(dbenv, parentid, lockid);
 
 	LOCKER_INDX(lt, region, lockid, ndx);
-	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
+	if (__lock_getlocker(lt, lockid, ndx, 0, &locker) != 0
 		|| locker == NULL) {
 		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
 		abort();
 	}
 
 	LOCKER_INDX(lt, region, parentid, ndx);
-	if (__lock_getlocker(lt, parentid, ndx, 0, 0, &parent_locker) != 0
+	if (__lock_getlocker(lt, parentid, ndx, 0, &parent_locker) != 0
 		|| parent_locker == NULL) {
 		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__,
 			parentid);
@@ -6470,7 +6490,7 @@ __lock_update_tracked_writelocks_lsn_pp(DB_ENV *dbenv, DB_TXN *txnp,
 
 	int ndx;
 	LOCKER_INDX(lt, region, lockid, ndx);
-	if (__lock_getlocker(lt, lockid, ndx, 0, 0, &locker) != 0
+	if (__lock_getlocker(lt, lockid, ndx, 0, &locker) != 0
 		|| locker == NULL) {
 		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
 		abort();
@@ -6554,7 +6574,7 @@ __lock_clear_tracked_writelocks_pp(DB_ENV *dbenv, u_int32_t lockid)
 		return __latch_clear_tracked_writelocks(dbenv, lockid);
 
 	LOCKER_INDX(lt, region, lockid, ndx);
-	if (__lock_getlocker(lt, lockid, ndx, 0, GETLOCKER_CREATE, &locker) != 0
+	if (__lock_getlocker(lt, lockid, ndx, GETLOCKER_CREATE, &locker) != 0
 		|| locker == NULL) {
 		logmsg(LOGMSG_FATAL, "%s: lockid %x not found\n", __func__, lockid);
 		abort();

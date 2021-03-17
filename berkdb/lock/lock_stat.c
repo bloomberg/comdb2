@@ -443,7 +443,7 @@ __lock_locker_lockcount(dbenv, id, nlocks)
 
 	LOCKER_INDX(lt, region, id, ndx)
 
-	if (__lock_getlocker(lt, id, ndx, 0, GETLOCKER_KEEP_PART, &locker) != 0
+	if (__lock_getlocker(lt, id, ndx, GETLOCKER_KEEP_PART, &locker) != 0
 	    || locker == NULL) {
 		return -1;
 	}
@@ -472,7 +472,7 @@ __lock_locker_pagelockcount(dbenv, id, nlocks)
 
 	LOCKER_INDX(lt, region, id, ndx)
 
-	if (__lock_getlocker(lt, id, ndx, 0, GETLOCKER_KEEP_PART, &locker) != 0
+	if (__lock_getlocker(lt, id, ndx, GETLOCKER_KEEP_PART, &locker) != 0
 	    || locker == NULL) {
 		return -1;
 	}

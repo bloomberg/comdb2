@@ -78,6 +78,9 @@ do_inserts()
 
 #cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "INSERT INTO t1 (a,b,c,d) WITH i(x) AS ( VALUES(1) UNION ALL SELECT x+1 FROM i where x < $NUM) SELECT x,(x+1)%100,(x+2)%100,(x+3)%100 FROM i" > ins1.out
 
+tun=`cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default "select value from comdb2_tunables where name='print_deadlock_cycles'"`
+assertres $tun 1 # Tunable needs to be set to 1
+
 i=0
 while [[ $i -lt $INSERTERS ]] ; do 
     do_inserts $i &

@@ -256,7 +256,6 @@ locks_check_waiters|  off |Light a flag if a lockid has waiters
 rowlocks_commit_on_waiters|  off |Don't commit a physical transaction unless there are lock waiters
 broadcast_check_rmtpol|  on |Check rmtpol before sending triggers
 track_curtran_locks|  off |Print curtran lockinfo
-print_deadlock_cycles|  off |Print all deadlock cycles
 replicate_rowlocks|  on |Replicate rowlocks
 gather_rowlocks_on_replicant|  on |Replicant will gather rowlocks
 force_old_cursors|  off |Replicant will use old cursors
@@ -849,6 +848,7 @@ These options are toggle-able at runtime.
 |querylimit | | See [query limit commands](#query-limit-commands)
 |maxretries | 500 | Maximum number of times a transactions will be retried on a deadlock
 |deadlock_rep_retry_max | not set | If set, will reset the deadlock mode after this many deadlocks on the replicant while applying the log stream.
+|print_deadlock_cycles|  100 | Print deadlock cycle every n-th time a transaction encounters a deadlock. Set to 1 to turn off, set to 1 to print all deadlock cycles.
 |enable_sparse_lockerid_map | set | If set, allocates a sparse map of lockers for deadlock resolution
 |disable_sparse_lockerid_map | | Disables enable_sparse_lockerid_map
 |enable_inplace_blobs | set | Don't update the rowid of a blob entry on an update 

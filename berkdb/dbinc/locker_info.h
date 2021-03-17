@@ -29,7 +29,7 @@ typedef struct {
 	pthread_t tid;
 	snap_uid_t *snap_info; /* contains cnonce */
 	roff_t last_lock;
-	u_int32_t count;
+	u_int32_t lcount; /* lock count scaled by number of times txn retried */
 	u_int32_t id;
 	u_int32_t last_locker_id;
 	db_pgno_t pgno;

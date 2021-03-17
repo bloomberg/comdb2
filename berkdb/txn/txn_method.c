@@ -142,7 +142,7 @@ __txn_dbenv_create(dbenv)
 		dbenv->get_ltran_list = __txn_get_ltran_list;
 		dbenv->set_logical_start = __txn_set_logical_start;
 		dbenv->set_logical_commit = __txn_set_logical_commit;
-		dbenv->txn_begin_set_retries = __txn_begin_set_retries_pp;
+		dbenv->txn_begin_with_prop = __txn_begin_with_prop_pp;
 	}
 
 	/* If we lazily initialize the key in __txn_begin(), Operations outside

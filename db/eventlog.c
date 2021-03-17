@@ -821,7 +821,7 @@ void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
         char hex[11];
         sprintf(hex, "0x%x", idmap[j].id);
         cson_object_set(vobj, "lid", cson_value_new_string(hex, strlen(hex)));
-        cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].count));
+        cson_object_set(vobj, "lcount", cson_value_new_integer(idmap[j].lcount));
         if (j == victim)
             cson_object_set(vobj, "victim", cson_value_new_bool(1));
         cson_array_append(arr, lobj);

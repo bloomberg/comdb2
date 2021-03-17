@@ -37,10 +37,16 @@ static const char revid[] = "$Id: lock_deadlock.c,v 11.66 2003/11/19 19:59:02 ub
 extern int verbose_deadlocks;
 extern int gbl_sparse_lockerid_map;
 extern int gbl_rowlocks;
+extern int gbl_print_deadlock_cycles;
+extern int gbl_deadlock_policy_override;
+extern int gbl_already_aborted_trace;
 
 extern void stack_me(char *location);
 extern void log_snap_info_key(snap_uid_t *);
 extern void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap, u_int32_t nlockers, u_int32_t victim);
+
+static unsigned long long already_aborted_count = 0;
+
 
 #define	CLEAR_MAP(M, N) {						\
 	u_int32_t __i;							\
@@ -70,7 +76,7 @@ static inline int copy_sparse_map __P((DB_ENV *, sparse_map_t *,
 	sparse_map_t **));
 static void (*berkdb_deadlock_callback) (struct berkdb_deadlock_info *) = NULL;
 
-static int __dd_abort __P((DB_ENV *, locker_info *));
+static int __dd_abort __P((DB_ENV *, locker_info *, u_int32_t *));
 static int __dd_build __P((DB_ENV *,
 	u_int32_t, u_int32_t **, sparse_map_t **, u_int32_t *, u_int32_t *,
 	locker_info **, int));
@@ -360,7 +366,7 @@ show_locker_info(DB_ENV *dbenv, DB_LOCKTAB *lt, DB_LOCKREGION *region,
 	// Get the locker. 
 	LOCKER_INDX(lt, region, idmap[lid].id, ndx);
 
-	if ((ret = __lock_getlocker(lt, idmap[lid].id, ndx, 0,
+	if ((ret = __lock_getlocker(lt, idmap[lid].id, ndx,
 		    GETLOCKER_KEEP_PART, &lockerp))!=0) {
 		logmsg(LOGMSG_USER, "%s:%d__lock_getlocker ret: %d\n",
 		    __func__, __LINE__, ret);
@@ -420,7 +426,7 @@ __dd_print_deadlock_cycle(idmap, deadmap, nlockers, victim)
 		if (j == victim)
 			logmsg(LOGMSG_WARN, "*");
 		log_snap_info_key(idmap[j].snap_info);
-		logmsg(LOGMSG_WARN, "[%lx](%u) ", (long)idmap[j].id, idmap[j].count);
+		logmsg(LOGMSG_WARN, "[%lx](%u) ", (long)idmap[j].id, idmap[j].lcount);
 	}
 	logmsg(LOGMSG_WARN, "\n");
 }
@@ -526,8 +532,6 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 	    *tmpmap;
 	u_int32_t i, keeper, killid, limit = 0, nalloc = 0, nlockers = 0, dwhoix;
 	u_int32_t lock_max, txn_max;
-	extern int gbl_print_deadlock_cycles;
-	extern int gbl_deadlock_policy_override;
 	int policy_override = gbl_deadlock_policy_override;
 	int is_client;
 	int ret;
@@ -763,7 +767,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 				break;
 			case DB_LOCK_MAXLOCKS:
 			case DB_LOCK_MAXWRITE:
-				if (idmap[i].count < idmap[killid].count)
+				if (idmap[i].lcount < idmap[killid].lcount)
 					 continue;
 				keeper = i;
 
@@ -773,11 +777,11 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 			case DB_LOCK_MINLOCKS:
 			case DB_LOCK_MINWRITE:
 			case DB_LOCK_MINWRITE_NOREAD:
-				if (idmap[i].count > idmap[killid].count) {
-					if (idmap[i].count >100) {
+				if (idmap[i].lcount > idmap[killid].lcount) {
+					if (idmap[i].lcount >100) {
 						/*
 						 * fprintf(stderr, "sparing %d cause he has %d locks\n",
-						 * i, idmap[i].count);
+						 * i, idmap[i].lcount);
 						 */
 					}
 					continue;
@@ -788,7 +792,7 @@ __lock_detect_int(dbenv, atype, abortp, can_retry)
 
 			case DB_LOCK_YOUNGEST_EVER:
 				/* if current younger, keep it */
-				if (idmap[i].count < idmap[killid].count) {
+				if (idmap[i].lcount < idmap[killid].lcount) {
 					continue;
 				}
 				keeper = i;
@@ -851,7 +855,7 @@ dokill:
 #endif
 		}
 
-		if (idmap[killid].count == UINT_MAX && can_retry) {
+		if (idmap[killid].lcount == UINT_MAX && can_retry) {
 			*can_retry = 1;
 			goto out;
 		}
@@ -866,17 +870,10 @@ dokill:
 			__dd_print_tracked(idmap, *deadp, nlockers, killid);
 		}
 
-		if (gbl_print_deadlock_cycles) {
-			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
 
-			eventlog_deadlock_cycle(idmap, *deadp, nlockers, killid);
-#ifdef DEBUG_LOCKS
-			__lock_dump_active_locks(dbenv, stderr);
-#endif
-		}
-
+		u_int32_t num_retries = 0;
 		/* Kill the locker with lockid idmap[killid]. */
-		if ((ret = __dd_abort(dbenv, &idmap[killid]))!=0) {
+		if ((ret = __dd_abort(dbenv, &idmap[killid], &num_retries))!=0) {
 			/*
 			 * It's possible that the lock was already aborted;
 			 * this isn't necessarily a problem, so do not treat
@@ -884,7 +881,6 @@ dokill:
 			 */
 			if (ret == DB_ALREADY_ABORTED)
 				ret = 0;
-
 			else
 				__db_err(dbenv,
 				    "warning: unable to abort locker %lx",
@@ -892,6 +888,19 @@ dokill:
 		} else if (FLD_ISSET(dbenv->verbose, DB_VERB_DEADLOCK))
 			 __db_err(dbenv, "Aborted locker %lx",
 			    (u_long)idmap[killid].id);
+
+
+		if (gbl_print_deadlock_cycles == 1 || (num_retries && gbl_print_deadlock_cycles > 0 && (num_retries % gbl_print_deadlock_cycles) == 0)) {
+			if(gbl_print_deadlock_cycles != 1)
+				show_locker_info(dbenv, lt, region, idmap, killid);
+
+			__dd_print_deadlock_cycle(idmap, *deadp, nlockers, killid);
+
+			eventlog_deadlock_cycle(idmap, *deadp, nlockers, killid);
+#ifdef DEBUG_LOCKS
+			__lock_dump_active_locks(dbenv, stderr);
+#endif
+		}
 	}
 out:__os_free (dbenv, tmpmap);
 
@@ -932,23 +941,23 @@ __init_lockerid_priority(dbenv, atype, lip, ptr_idarr)
 	switch (atype) {
 	case DB_LOCK_MINLOCKS:
 	case DB_LOCK_MAXLOCKS:
-		ptr_idarr->count = lip->nlocks;
+		ptr_idarr->lcount = lip->nlocks;
 
 		break;
 	case DB_LOCK_MINWRITE:
 	case DB_LOCK_MINWRITE_NOREAD:
 		/* bias by the number of times we retried this txn */
-		ptr_idarr->count = lip->nretries * dbenv->lk_max;
-		ptr_idarr->count += lip->nwrites;
+		ptr_idarr->lcount = lip->priority * dbenv->lk_max;
+		ptr_idarr->lcount += lip->nwrites;
 
 		break;
 	case DB_LOCK_YOUNGEST_EVER:
-		ptr_idarr->count = lip->nretries;	/* this is the age in epoch seconds */
+		ptr_idarr->lcount = lip->priority;
 
 		break;
 	case DB_LOCK_MINWRITE_EVER:
-		ptr_idarr->count = lip->nretries;
-		ptr_idarr->count += lip->nwrites;
+		ptr_idarr->lcount = lip->priority;
+		ptr_idarr->lcount += lip->nwrites;
 
 		break;
 	}
@@ -964,24 +973,24 @@ __adjust_lockerid_priority(dbenv, atype, lip, ptr_idarr)
 	switch (atype) {
 	case DB_LOCK_MINLOCKS:
 	case DB_LOCK_MAXLOCKS:
-		ptr_idarr->count += lip->nlocks;
+		ptr_idarr->lcount += lip->nlocks;
 
 		break;
 	case DB_LOCK_MINWRITE:
 	case DB_LOCK_MINWRITE_NOREAD:
 		/* bias by the number of times we retried this txn */
-		ptr_idarr->count += lip->nretries * dbenv->lk_max;
-		ptr_idarr->count += lip->nwrites;
+		ptr_idarr->lcount += lip->priority * dbenv->lk_max;
+		ptr_idarr->lcount += lip->nwrites;
 
 		break;
 	case DB_LOCK_YOUNGEST_EVER:
-		if (ptr_idarr->count > lip->nretries)
-			ptr_idarr->count = lip->nretries;	/* this is the age in epoch seconds */
+		if (ptr_idarr->lcount > lip->priority)
+			ptr_idarr->lcount = lip->priority;
 
 		break;
 	case DB_LOCK_MINWRITE_EVER:
-		ptr_idarr->count += lip->nretries;
-		ptr_idarr->count += lip->nwrites;
+		ptr_idarr->lcount += lip->priority;
+		ptr_idarr->lcount += lip->nwrites;
 
 		break;
 	}
@@ -1033,10 +1042,10 @@ __adjust_lockerid_priority_td(dbenv, atype, lip, dd_id, id_array, increment)
 		printf
 		    ("%d %s:%d lockerid %x got priority %d [dd_id=%d] parent %x[%d] = %d master %x[%d] =%d\n",
 		    pthread_self(), __FILE__, __LINE__, lip->id,
-		    id_array[dd_id].count, dd_id, parent_id, parent_dd_id,
-		    (parent_dd_id != -1) ? id_array[parent_dd_id].count : -1,
+		    id_array[dd_id].lcount, dd_id, parent_id, parent_dd_id,
+		    (parent_dd_id != -1) ? id_array[parent_dd_id].lcount : -1,
 		    master_id, master_dd_id,
-		    (master_dd_id != -1) ? id_array[master_dd_id].count : -1);
+		    (master_dd_id != -1) ? id_array[master_dd_id].lcount : -1);
 	}
 }
 #endif
@@ -1168,12 +1177,9 @@ retry:	count = region->stat.st_nlockers;
 			ptr_idarr->tid = lip->tid;
 			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
 			ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
-			ptr_idarr->saveme =
-				F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
-			ptr_idarr->in_abort =
-				(F_ISSET(lip, DB_LOCKER_INABORT) != 0);
-			ptr_idarr->tracked =
-				(F_ISSET(lip, DB_LOCKER_TRACK) != 0);
+			ptr_idarr->saveme = F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
+			ptr_idarr->in_abort = (F_ISSET(lip, DB_LOCKER_INABORT) != 0);
+			ptr_idarr->tracked = (F_ISSET(lip, DB_LOCKER_TRACK) != 0);
 
 #if TEST_DEADLOCKS
 			__adjust_lockerid_priority_td(dbenv, atype, lip,
@@ -1184,7 +1190,7 @@ retry:	count = region->stat.st_nlockers;
 
 			if (verbose_deadlocks &&lip->id >DB_LOCK_MAXID)
 				logmsg(LOGMSG_USER, "Added lip %p id=%x dd_id=%x count=%u\n",
-					lip, lip->id, lip->dd_id, ptr_idarr->count);
+					lip, lip->id, lip->dd_id, ptr_idarr->lcount);
 
 		} else {
 			lip->dd_id = DD_INVALID_ID;
@@ -1294,7 +1300,7 @@ obj_loop:
 				logmsg(LOGMSG_USER, 
 					"Marking valid holder after increment lip %p id=%x dd_id=%x count=%u master=%"PRIxPTR"\n",
 						lockerp, lockerp->id, lockerp->dd_id,
-						dd_id_array[lockerp->dd_id].count,
+						dd_id_array[lockerp->dd_id].lcount,
 						(has_master)? lockerp->master_locker : 0);
 
 			/*
@@ -1362,7 +1368,7 @@ look_waiters:
 			if (verbose_deadlocks)
 				logmsg(LOGMSG_USER, "Marking valid waiter after increment lip %p id=%x dd_id=%x count=%u master=%"PRIxPTR"\n",
 					lockerp, lockerp->id, lockerp->dd_id,
-					dd_id_array[lockerp->dd_id].count,
+					dd_id_array[lockerp->dd_id].lcount,
 					(has_master)? lockerp->master_locker : 0);
 
 			/*
@@ -1431,21 +1437,21 @@ look_waiters:
 			 continue;
 
 		/* MINWRITE_NOREAD and MINWRITE_EVER count write-locks, not readlocks */
-		if (fix_pure_readers && dd_id_array[id].count == 0 &&
+		if (fix_pure_readers && dd_id_array[id].lcount == 0 &&
 			dd_id_array[id].readonly) {
 			/*fprintf(stderr, "setting count to uint_max\n"); */
-			dd_id_array[id].count = (UINT_MAX -1);
+			dd_id_array[id].lcount = (UINT_MAX -1);
 			if (verbose_deadlocks &&dd_id_array[id].
 				id >DB_LOCK_MAXID)
 				logmsg(LOGMSG_USER, "Adjusted id=%x dd_id=%x count=%u\n",
 					dd_id_array[id].id, id,
-					dd_id_array[id].count);
+					dd_id_array[id].lcount);
 		}
 
 		LOCKER_INDX(lt, region, dd_id_array[id].id, ndx);
 
 		if ((ret = __lock_getlocker(lt, dd_id_array[id].id,
-				ndx, 0, GETLOCKER_KEEP_PART, &lockerp))!=0) {
+				ndx, GETLOCKER_KEEP_PART, &lockerp))!=0) {
 			__db_err(dbenv, "No locks for locker %lu",
 				(u_long)dd_id_array[id].id);
 			continue;
@@ -1462,7 +1468,7 @@ look_waiters:
 		/* Rep-thread can't release rowlocks (it'll corrupt the database) */
 		if (is_replicant &&
 			gbl_rowlocks &&F_ISSET(lockerp, DB_LOCKER_LOGICAL)) {
-			dd_id_array[id].count = (UINT_MAX);
+			dd_id_array[id].lcount = (UINT_MAX);
 		}
 
 		lkr_partition = lockerp->partition;
@@ -1735,9 +1741,6 @@ __dd_find(dbenv, bmp, sparse_map, idmap, nlockers, nalloc, deadp, deadwho,
 	return (0);
 }
 
-static unsigned long long already_aborted_count = 0;
-extern int gbl_already_aborted_trace;
-
 static void
 already_aborted_trace(int lineno)
 {
@@ -1754,9 +1757,10 @@ already_aborted_trace(int lineno)
 }
 
 static int
-__dd_abort(dbenv, info)
+__dd_abort(dbenv, info, num_retries)
 	DB_ENV *dbenv;
 	locker_info *info;
+    u_int32_t *num_retries;
 {
 	struct __db_lock *lockp;
 	DB_LOCKER *lockerp;
@@ -1778,7 +1782,7 @@ __dd_abort(dbenv, info)
 	 */
 	LOCKER_INDX(lt, region, info->last_locker_id, ndx);
 
-	if ((ret = __lock_getlocker(lt, info->last_locker_id, ndx, 0,
+	if ((ret = __lock_getlocker(lt, info->last_locker_id, ndx,
 			GETLOCKER_KEEP_PART, &lockerp))!=0) {
 		printf("%s:%d__lock_getlocker ret: %d\n",
 			__func__, __LINE__, ret);
@@ -1840,10 +1844,14 @@ __dd_abort(dbenv, info)
 		logmsg(LOGMSG_USER, 
 			"%p %s:%d lockerid %x abort with priority %d id=%d dd_id=%d nlocks=%d, npagelocks=%d nwrites=%d master_locker=%"PRIxPTR" parent_locker=%"PRIxPTR"\n",
 			(void *)pthread_self(), __FILE__, __LINE__, lockerp->id,
-			info->count, lockerp->id, lockerp->dd_id, lockerp->nlocks,
+			info->lcount, lockerp->id, lockerp->dd_id, lockerp->nlocks,
 			lockerp->npagelocks, lockerp->nwrites,
 			lockerp->master_locker, lockerp->parent_locker);
-	lockerp->nretries = info->count;
+	lockerp->priority = info->lcount;
+	lockerp->num_retries++;
+	if (num_retries) {
+		*num_retries = lockerp->num_retries;
+	}
 
 	sh_obj = lockp->lockobj;
 
@@ -2159,7 +2167,7 @@ __dd_abort_holders(dbenv, sh_obj)
 		LOCKER_INDX(lt, region, infop->id, ndx);
 
 		/* Bad rcode is okay */
-		if ((ret = __lock_getlocker(lt, infop->id, ndx, 0,
+		if ((ret = __lock_getlocker(lt, infop->id, ndx,
 			    GETLOCKER_KEEP_PART, &lockerp))!=0) {
 			continue;
 		}
@@ -2210,7 +2218,7 @@ __dd_abort_holders(dbenv, sh_obj)
 		unlock_locker_partition(region, lockerp->partition);
 
 		/* Abort the holder */
-		if ((ret = __dd_abort(dbenv, infop))!=0) {
+		if ((ret = __dd_abort(dbenv, infop, NULL))!=0) {
 			if (ret == DB_ALREADY_ABORTED) {
 				ret = 0;
 			} else {
@@ -2330,7 +2338,7 @@ __dd_abort_waiters(dbenv, sh_obj)
 		LOCKER_INDX(lt, region, infop->id, ndx);
 
 		/* Bad rcode is okay */
-		if ((ret = __lock_getlocker(lt, infop->id, ndx, 0,
+		if ((ret = __lock_getlocker(lt, infop->id, ndx,
 			    GETLOCKER_KEEP_PART, &lockerp))!=0) {
 			continue;
 		}
@@ -2386,7 +2394,7 @@ __dd_abort_waiters(dbenv, sh_obj)
 
 
 		/* Abort waiter */
-		if ((ret = __dd_abort(dbenv, infop))!=0) {
+		if ((ret = __dd_abort(dbenv, infop, NULL))!=0) {
 			if (ret == DB_ALREADY_ABORTED) {
 				ret = 0;
 			} else {

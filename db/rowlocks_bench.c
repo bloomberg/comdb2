@@ -30,8 +30,6 @@ int ll_rowlocks_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                       int arg1, int arg2, void *payload, int paylen);
 int ll_commit_bench(bdb_state_type *bdb_state, tran_type *tran, int op,
                     int arg1, int arg2, void *payload, int paylen);
-int trans_start_int(struct ireq *iq, tran_type *parent_trans,
-                    tran_type **out_trans, int logical, int retries);
 int bdb_tran_set_request_ack(void *trans);
 unsigned long long rep_get_send_callcount(void);
 unsigned long long rep_get_send_bytecount(void);
@@ -67,7 +65,7 @@ static void commit_bench_int(bdb_state_type *bdb_state, int op, int tcount,
 
     for (i = 0; i < tcount; i++) {
         /* trans_start changes to logical if gbl_rowlocks is set */
-        if ((rc = trans_start_int(&iq, NULL, &trans, 0, 0)) != 0) {
+        if ((rc = trans_start_nonlogical(&iq, NULL, &trans)) != 0) {
             fprintf(stderr, "%s: error creating trans rc=%d\n", __func__, rc);
             return;
         }

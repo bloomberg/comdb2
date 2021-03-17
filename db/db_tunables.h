@@ -1380,7 +1380,7 @@ REGISTER_TUNABLE("max_wr_rows_per_txn",
                  "Set the max written rows per transaction.", TUNABLE_INTEGER,
                  &gbl_max_wr_rows_per_txn, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("print_deadlock_cycles",
-                 "Print all deadlock cycles. (Default: off)", TUNABLE_BOOLEAN,
+                 "Print every Nth deadlock cycle, set to 0 to turn off. (Default: 100)", TUNABLE_INTEGER,
                  &gbl_print_deadlock_cycles, NOARG, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("always_send_cnonce",
                  "Always send cnonce to master. (Default: on)", TUNABLE_BOOLEAN,

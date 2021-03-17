@@ -52,6 +52,8 @@
 #include <unistd.h>
 #include "osqlsqlnet.h"
 #include "osqlsqlsocket.h"
+#include "sc_global.h"
+
 
 #define MAX_CLUSTER 16
 
@@ -69,6 +71,7 @@ extern int gbl_partial_indexes;
 
 int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
+int gbl_selectv_writelock = 0;
 
 int db_is_stopped();
 
@@ -5918,16 +5921,12 @@ int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
     return 0;
 }
 
-int gbl_selectv_writelock = 0;
 
 /**
  * Handles each packet and calls record.c functions
  * to apply to received row updates
  *
  */
-
-#include <schemachange/sc_global.h>
-
 int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                         void *trans, char **pmsg, int msglen, int *flags,
                         int **updCols, blob_buffer_t blobs[MAXBLOBS], int step,

@@ -100,9 +100,25 @@ extern int gbl_reorder_socksql_no_deadlock;
 extern int gbl_print_blockp_stats;
 extern int gbl_dump_blkseq;
 extern __thread int send_prefault_udp;
-extern void delay_if_sc_resuming(struct ireq *iq);
 extern unsigned int gbl_delayed_skip;
 
+extern void delay_if_sc_resuming(struct ireq *iq);
+extern void clear_pfk(struct dbenv *dbenv, int i, int numops);
+
+/*
+   When no osql, NONE
+   When osql is detected, transactions are aborted and NOTRANS
+   When osql finished the sql part and starting record.c calls and
+   RECREATEDTRANS
+*/
+enum {
+    OSQL_BPLOG_NONE = 0,
+    OSQL_BPLOG_NOTRANS = 1,
+    OSQL_BPLOG_RECREATEDTRANS = 2
+};
+
+
+int gbl_sc_close_txn = 1;
 int gbl_osql_snap_info_hashcheck = 1;
 
 #if 0
@@ -2013,26 +2029,12 @@ int toblock(struct ireq *iq)
     return rc;
 }
 
-void clear_pfk(struct dbenv *dbenv, int i, int numops);
-
-/*
-   When no osql, NONE
-   When osql is detected, transactions are aborted and NOTRANS
-   When osql finished the sql part and starting record.c calls and
-   RECREATEDTRANS
-*/
-enum {
-    OSQL_BPLOG_NONE = 0,
-    OSQL_BPLOG_NOTRANS = 1,
-    OSQL_BPLOG_RECREATEDTRANS = 2
-};
-
 static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
                                     tran_type **trans)
 {
     int irc = 0;
     if (gbl_enable_berkdb_retry_deadlock_bias) {
-        irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries);
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries, iq->retries);
     } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DEADLOCK_YOUNGEST_EVER) ||
                bdb_attr_get(thedb->bdb_attr,
                             BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
@@ -2044,14 +2046,13 @@ static int create_child_transaction(struct ireq *iq, tran_type *parent_trans,
         if (verbose_deadlocks)
             logmsg(LOGMSG_DEBUG, "%x %s:%d Using iq %p priority %d\n",
                    (int)pthread_self(), __FILE__, __LINE__, iq, iq->priority);
-        irc = trans_start_set_retries(iq, parent_trans, trans, iq->priority);
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries, iq->priority);
     } else {
-        irc = trans_start_set_retries(iq, parent_trans, trans, 0);
+        irc = trans_start_set_retries(iq, parent_trans, trans, iq->retries, 0);
     }
     return irc;
 }
 
-int gbl_sc_close_txn = 1;
 
 static int
 osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
@@ -2936,29 +2937,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
-        /* START child TRANSACTION */
-        if (gbl_enable_berkdb_retry_deadlock_bias) {
-            irc =
-                trans_start_set_retries(iq, parent_trans, &trans, iq->retries);
-        } else if (bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_YOUNGEST_EVER) ||
-                   bdb_attr_get(thedb->bdb_attr,
-                                BDB_ATTR_DEADLOCK_LEAST_WRITES_EVER)) {
-            if (iq->priority == 0) {
-                if (bdb_attr_get(thedb->bdb_attr,
-                                 BDB_ATTR_DEADLOCK_YOUNGEST_EVER))
-                    iq->priority = comdb2_time_epochms();
-            }
-
-            if (verbose_deadlocks)
-                logmsg(LOGMSG_USER, "%p %s:%d Using iq %p priority %d\n", (void *)pthread_self(), __FILE__, __LINE__,
-                       iq, iq->priority);
-
-            irc =
-                trans_start_set_retries(iq, parent_trans, &trans, iq->priority);
-        } else {
-            irc = trans_start_set_retries(iq, parent_trans, &trans, 0);
-        }
+        irc = create_child_transaction(iq, parent_trans, &trans);
     } else {
         /* we dont have nested transaction support here.  we play games with
            writing the blkseq record differently in rowlocks mode */

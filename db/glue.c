@@ -93,6 +93,7 @@
 #include "time_accounting.h"
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
+#include "txn_properties.h"
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -257,7 +258,7 @@ int set_tran_lowpri(struct ireq *iq, tran_type *tran)
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
                                tran_type **out_trans, int logical, int sc,
-                               int retries, int force_physical)
+                               struct txn_properties *props, int force_physical)
 {
     int bdberr;
     bdb_state_type *bdb_handle = thedb->bdb_env;
@@ -267,12 +268,12 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
 
     if (!logical) {
         /*
-        if (retries)
-           fprintf(stderr, "bdb_tran_begin_set_retries(%d)\n", retries);
+        if (props && props->retries)
+           fprintf(stderr, "bdb_tran_begin_set_prop(%d)\n", props->retries);
         */
 
-        *out_trans = bdb_tran_begin_set_retries(bdb_handle, parent_trans,
-                                                retries, &bdberr);
+        *out_trans = bdb_tran_begin_set_prop(bdb_handle, parent_trans,
+                                                props, &bdberr);
     } else {
         *out_trans = bdb_tran_begin_logical(bdb_handle, 0, &bdberr);
         if ((force_physical || iq->tranddl) && sc && *out_trans) {
@@ -306,26 +307,30 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
     return 0;
 }
 
-int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
-                    int logical, int retries)
+static int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
+                    int logical)
 {
-    return trans_start_int_int(iq, parent_trans, out_trans, logical, 0,
-                               retries, 0);
+    return trans_start_int_int(iq, parent_trans, out_trans, logical, 0, NULL, 0);
 }
 
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 0);
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, NULL, 0);
 }
 
 int trans_start_logical_sc_with_force(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, 0, 1);
+    return trans_start_int_int(iq, NULL, out_trans, 1, 1, NULL, 1);
+}
+
+int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans)
+{
+    return trans_start_int_int(iq, parent_trans, out_trans, 0, 0, NULL, 0);
 }
 
 int trans_start_logical(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int(iq, NULL, out_trans, 1, 0);
+    return trans_start_int(iq, NULL, out_trans, 1);
 }
 
 int rowlocks_check_commit_physical(bdb_state_type *bdb_state, tran_type *tran,
@@ -344,24 +349,24 @@ int trans_start(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
     if (gbl_rowlocks)
         return trans_start_logical(iq, out_trans);
     else
-        return trans_start_int(iq, parent_trans, out_trans, 0, 0);
+        return trans_start_int(iq, parent_trans, out_trans, 0);
 }
 
 int trans_start_sc(struct ireq *iq, tran_type *parent_trans,
                    tran_type **out_trans)
 {
-    return trans_start_int(iq, parent_trans, out_trans, 0, 0);
+    return trans_start_int(iq, parent_trans, out_trans, 0);
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
-                            tran_type **out_trans, int retries)
+                            tran_type **out_trans, uint32_t retries, uint32_t priority)
 {
     int rc = 0;
 
-    if (gbl_rowlocks)
-        rc = trans_start_logical(iq, out_trans);
-    else
-        rc = trans_start_int(iq, parent_trans, out_trans, 0, retries);
+    struct txn_properties props = { .retries = retries, .priority = priority };
+
+    rc = trans_start_int_int(iq, (gbl_rowlocks ? NULL : parent_trans),
+							 out_trans, gbl_rowlocks, 0, &props, 0);
 
     if (verbose_deadlocks && retries != 0)
         logmsg(LOGMSG_USER, "%s ptran %p tran %p with retries %d\n", __func__,
@@ -4698,7 +4703,7 @@ retry:
     if (input_tran)
         trans = input_tran;
     else {
-        rc = trans_start_int(&iq, NULL, &trans, 0, 0);
+        rc = trans_start_int(&iq, NULL, &trans, 0);
         if (rc != 0) {
             if (iq.debug)
                 logmsg(LOGMSG_USER, "meta_put:trans_start failed\n");

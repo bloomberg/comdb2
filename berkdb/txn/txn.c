@@ -80,6 +80,7 @@ static const char revid[] = "$Id: txn.c,v 11.219 2003/12/03 14:33:06 bostic Exp 
 #include "dbinc/db_swap.h"
 #include "logmsg.h"
 #include "locks_wrap.h"
+#include "txn_properties.h"
 
 #ifndef TESTSUITE
 #include <thread_util.h>
@@ -104,7 +105,7 @@ extern int gbl_is_physical_replicant;
 #endif
 
 
-static int __txn_begin_int_set_retries(DB_TXN *txn, u_int32_t retries,
+static int __txn_begin_int_with_prop(DB_TXN *txn, struct txn_properties *prop,
 	DB_LSN *we_start_at_this_lsn, u_int32_t flags);
 
 extern int __lock_locker_getpriority(DB_LOCKTAB *lt, u_int32_t locker,
@@ -180,6 +181,8 @@ static int __txn_undo __P((DB_TXN *));
 static int __txn_dispatch_undo __P((DB_ENV *,
 	DB_TXN *, DBT *, DB_LSN *, void *));
 
+
+
 /*
  * __txn_begin_pp --
  *	DB_ENV->txn_begin pre/post processing.
@@ -187,11 +190,11 @@ static int __txn_dispatch_undo __P((DB_ENV *,
  * PUBLIC: int __txn_begin_pp __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
  */
 int
-__txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
+__txn_begin_pp_int(dbenv, parent, txnpp, flags, prop)
 	DB_ENV *dbenv;
 	DB_TXN *parent, **txnpp;
 	u_int32_t flags;
-	u_int32_t retries;
+	struct txn_properties *prop;
 {
 	int rep_check, ret;
 
@@ -214,7 +217,7 @@ __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries)
 			__op_rep_enter(dbenv);
 	} else
 		rep_check = 0;
-	ret = __txn_begin_set_retries(dbenv, parent, txnpp, flags, retries);
+	ret = __txn_begin_with_prop(dbenv, parent, txnpp, flags, prop);
 	/*
 	 * We only decrement the count if the operation fails.
 	 * Otherwise the count will be decremented when the
@@ -252,14 +255,18 @@ static void remove_td_txn(DB_TXN *txn)
 	}
 }
 
+ /*
+  *
+  * PUBLIC: int __txn_begin_with_prop_pp __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, struct txn_properties *));
+  */
 int
-__txn_begin_set_retries_pp(dbenv, parent, txnpp, flags, retries)
+__txn_begin_with_prop_pp(dbenv, parent, txnpp, flags, prop)
 	DB_ENV *dbenv;
 	DB_TXN *parent, **txnpp;
 	u_int32_t flags;
-	u_int32_t retries;
+	struct txn_properties *prop;
 {
-	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, retries);
+	return __txn_begin_pp_int(dbenv, parent, txnpp, flags, prop);
 }
 
 int bdb_txn_pglogs_init(void *bdb_state, void **pglogs_hashtbl,
@@ -279,14 +286,14 @@ int bdb_txn_pglogs_close(void *bdb_state, void **pglogs_hashtbl,
  * provides access to the transaction ID and the offset in the transaction
  * region of the TXN_DETAIL structure.
  *
- * PUBLIC: int __txn_begin __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t));
+ * PUBLIC: int __txn_begin __P((DB_ENV *, DB_TXN *, DB_TXN **, u_int32_t, struct txn_properties *));
  */
 int
-__txn_begin_main(dbenv, parent, txnpp, flags, retries)
+__txn_begin_main(dbenv, parent, txnpp, flags, prop)
 	DB_ENV *dbenv;
 	DB_TXN *parent, **txnpp;
 	u_int32_t flags;
-	u_int32_t retries;
+    struct txn_properties *prop;
 {
 	DB_LOCKREGION *region;
 	DB_TXN *txn;
@@ -294,8 +301,8 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 	DB_LSN we_start_at_this_lsn;
 
 	/*
-	 * if (retries)
-	 * fprintf(stderr, "txn_begin_main retries %d\n", retries);
+	 * if (prop && prop->retries)
+	 * fprintf(stderr, "txn_begin_main retries %d\n", prop->retries);
 	 */
 
 	*txnpp = NULL;
@@ -319,7 +326,7 @@ __txn_begin_main(dbenv, parent, txnpp, flags, retries)
 		F_SET(txn, TXN_NOWAIT);
 
 	if ((ret =
-		__txn_begin_int_set_retries(txn, retries,
+		__txn_begin_int_with_prop(txn, prop,
 			&we_start_at_this_lsn, flags)) != 0)
 		goto err;
 
@@ -383,17 +390,17 @@ __txn_begin(dbenv, parent, txnpp, flags)
 	DB_TXN *parent, **txnpp;
 	u_int32_t flags;
 {
-	return __txn_begin_main(dbenv, parent, txnpp, flags, 0);
+	return __txn_begin_main(dbenv, parent, txnpp, flags, NULL);
 }
 
 int
-__txn_begin_set_retries(dbenv, parent, txnpp, flags, retries)
+__txn_begin_with_prop(dbenv, parent, txnpp, flags, prop)
 	DB_ENV *dbenv;
 	DB_TXN *parent, **txnpp;
 	u_int32_t flags;
-	u_int32_t retries;
+	struct txn_properties *prop;
 {
-	return __txn_begin_main(dbenv, parent, txnpp, flags, retries);
+	return __txn_begin_main(dbenv, parent, txnpp, flags, prop);
 }
 
 /*
@@ -495,9 +502,9 @@ int __txn_assert_notran_pp(dbenv)
  *	Normal DB version of txn_begin.
  */
 static int
-__txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
+__txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	u_int32_t retries;
+	struct txn_properties *prop;
 	DB_LSN *we_start_at_this_lsn;
 	u_int32_t flags;
 {
@@ -514,8 +521,8 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 
 
 	/*
-	 * if (retries)
-	 * fprintf(stderr, "begin_int_int with retries %d\n", retries);
+	 * if (prop && prop->retries)
+	 * fprintf(stderr, "begin_int_int with retries %d\n", prop->retries);
 	 */
 
 	mgr = txn->mgrp;
@@ -652,8 +659,8 @@ __txn_begin_int_int(txn, retries, we_start_at_this_lsn, flags)
 	 * maximal grandparent in the lock table for deadlock detection.
 	 */
 	if (txn->parent != NULL && LOCKING_ON(dbenv))
-		if ((ret = __lock_addfamilylocker_set_retries(dbenv,
-				txn->parent->txnid, txn->txnid, retries)) != 0)
+		if ((ret = __lock_addfamilylocker_with_prop(dbenv,
+				txn->parent->txnid, txn->txnid, prop)) != 0)
 			return (ret);
 
 	if (txncnt >= TXN_TD_MAX) {
@@ -685,18 +692,17 @@ __txn_begin_int(txn, flags)
 	DB_TXN *txn;
 	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, 0, NULL, flags);
+	return __txn_begin_int_int(txn, NULL, NULL, flags);
 }
 
 static int
-__txn_begin_int_set_retries(txn, retries, we_start_at_this_lsn, flags)
+__txn_begin_int_with_prop(txn, prop, we_start_at_this_lsn, flags)
 	DB_TXN *txn;
-	u_int32_t retries;
+	struct txn_properties *prop;
 	DB_LSN *we_start_at_this_lsn;
 	u_int32_t flags;
 {
-	return __txn_begin_int_int(txn, retries,
-		we_start_at_this_lsn, flags);
+	return __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags);
 }
 
 int
