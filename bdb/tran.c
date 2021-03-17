@@ -2708,9 +2708,3 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
         *offset = outlsn.offset;
     return current_context;
 }
-
-int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran)
-{
-    return bdb_state->dbenv->set_tran_lowpri(bdb_state->dbenv,
-                                             tran->tid->txnid);
-}

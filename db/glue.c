@@ -247,16 +247,10 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
     iq->helper_thread = -1;
 }
 
-int set_tran_lowpri(struct ireq *iq, tran_type *tran)
-{
-    bdb_state_type *bdb_handle = thedb->bdb_env;
-    return bdb_set_tran_lowpri(bdb_handle, tran);
-}
-
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*        TRANSACTIONAL STUFF        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
-static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
+static int trans_start_int(struct ireq *iq, tran_type *parent_trans,
                                tran_type **out_trans, int logical, int sc,
                                struct txn_properties *props, int force_physical)
 {
@@ -307,30 +301,24 @@ static int trans_start_int_int(struct ireq *iq, tran_type *parent_trans,
     return 0;
 }
 
-static int trans_start_int(struct ireq *iq, void *parent_trans, tran_type **out_trans,
-                    int logical)
-{
-    return trans_start_int_int(iq, parent_trans, out_trans, logical, 0, NULL, 0);
-}
-
 int trans_start_logical_sc(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, NULL, 0);
+    return trans_start_int(iq, NULL, out_trans, 1, 1, NULL, 0);
 }
 
 int trans_start_logical_sc_with_force(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, NULL, out_trans, 1, 1, NULL, 1);
+    return trans_start_int(iq, NULL, out_trans, 1, 1, NULL, 1);
 }
 
 int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans)
 {
-    return trans_start_int_int(iq, parent_trans, out_trans, 0, 0, NULL, 0);
+    return trans_start_int(iq, parent_trans, out_trans, 0, 0, NULL, 0);
 }
 
 int trans_start_logical(struct ireq *iq, tran_type **out_trans)
 {
-    return trans_start_int(iq, NULL, out_trans, 1);
+    return trans_start_int(iq, NULL, out_trans, 1, 0, NULL, 0);
 }
 
 int rowlocks_check_commit_physical(bdb_state_type *bdb_state, tran_type *tran,
@@ -349,13 +337,19 @@ int trans_start(struct ireq *iq, tran_type *parent_trans, tran_type **out_trans)
     if (gbl_rowlocks)
         return trans_start_logical(iq, out_trans);
     else
-        return trans_start_int(iq, parent_trans, out_trans, 0);
+        return trans_start_int(iq, parent_trans, out_trans, 0, 0, NULL, 0);
 }
 
 int trans_start_sc(struct ireq *iq, tran_type *parent_trans,
                    tran_type **out_trans)
 {
-    return trans_start_int(iq, parent_trans, out_trans, 0);
+    return trans_start_int(iq, parent_trans, out_trans, 0, 0, NULL, 0);
+}
+
+int trans_start_sc_lowpri(struct ireq *iq, tran_type **out_trans)
+{
+    struct txn_properties p = { .flags = DB_LOCK_ID_LOWPRI };
+    return trans_start_int(iq, NULL, out_trans, 0, 0, &p, 0);
 }
 
 int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
@@ -365,7 +359,7 @@ int trans_start_set_retries(struct ireq *iq, tran_type *parent_trans,
 
     struct txn_properties props = { .retries = retries, .priority = priority };
 
-    rc = trans_start_int_int(iq, (gbl_rowlocks ? NULL : parent_trans),
+    rc = trans_start_int(iq, (gbl_rowlocks ? NULL : parent_trans),
 							 out_trans, gbl_rowlocks, 0, &props, 0);
 
     if (verbose_deadlocks && retries != 0)
@@ -4703,7 +4697,7 @@ retry:
     if (input_tran)
         trans = input_tran;
     else {
-        rc = trans_start_int(&iq, NULL, &trans, 0);
+        rc = trans_start_nonlogical(&iq, NULL, &trans);
         if (rc != 0) {
             if (iq.debug)
                 logmsg(LOGMSG_USER, "meta_put:trans_start failed\n");

@@ -650,12 +650,11 @@ static int convert_record(struct convert_record_data *data)
     if (data->trans == NULL) {
         /* Schema-change writes are always page-lock, not rowlock */
         throttle_sc_logbytes();
-        rc = trans_start_sc(&data->iq, NULL, &data->trans);
+        rc = trans_start_sc_lowpri(&data->iq, &data->trans);
         if (rc) {
             sc_errf(data->s, "Error %d starting transaction\n", rc);
             return -2;
         }
-        set_tran_lowpri(&data->iq, data->trans);
     }
 
     data->iq.debug = debug_this_request(gbl_debug_until);
@@ -1670,15 +1669,12 @@ static int upgrade_records(struct convert_record_data *data)
     if (data->trans == NULL) {
         /* Schema-change writes are always page-lock, not rowlock */
         throttle_sc_logbytes();
-        rc = trans_start_sc(&data->iq, NULL, &data->trans);
+        rc = trans_start_sc_lowpri(&data->iq, &data->trans);
         if (rc) {
             sc_errf(data->s, "error %d starting transaction\n", rc);
             return -2;
         }
     }
-
-    // make sc transaction low priority
-    set_tran_lowpri(&data->iq, data->trans);
 
     // set debug info
     if (gbl_who > 0 || data->iq.debug > 0) {
@@ -3033,14 +3029,13 @@ again:
 
     /* Schema-change writes are always page-lock, not rowlock */
     throttle_sc_logbytes();
-    rc = trans_start_sc(&data->iq, NULL, &data->trans);
+    rc = trans_start_sc_lowpri(&data->iq, &data->trans);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s:%d error %d starting transaction\n", __func__,
                __LINE__, rc);
         rc = -2;
         goto done;
     }
-    set_tran_lowpri(&data->iq, data->trans);
     data->iq.timeoutms = gbl_sc_timeoutms;
     data->iq.debug = debug_this_request(gbl_debug_until);
     if (data->iq.debug) {

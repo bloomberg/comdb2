@@ -71,7 +71,6 @@ static int __dbenv_get_lsn_chaining __P((DB_ENV *, int *));
 static int __dbenv_set_bulk_stops_on_page __P((DB_ENV *, int));
 static int __dbenv_memp_dump_bufferpool_info __P((DB_ENV *, FILE *));
 static int __dbenv_set_deadlock_override __P((DB_ENV *, u_int32_t));
-static int __dbenv_set_tran_lowpri __P((DB_ENV *, u_int32_t));
 static int __dbenv_set_num_recovery_processor_threads __P((DB_ENV *, int));
 static int __dbenv_set_num_recovery_worker_threads __P((DB_ENV *, int));
 static void __dbenv_set_recovery_memsize __P((DB_ENV *, int));
@@ -264,7 +263,6 @@ __dbenv_init(dbenv)
 		dbenv->memp_dump_bufferpool_info =
 		    __dbenv_memp_dump_bufferpool_info;
 		dbenv->set_deadlock_override = __dbenv_set_deadlock_override;
-		dbenv->set_tran_lowpri = __dbenv_set_tran_lowpri;
 		dbenv->get_rep_master = __dbenv_get_rep_master;
 		dbenv->get_rep_eid = __dbenv_get_rep_eid;
 		dbenv->get_page_extent_size = __dbenv_get_page_extent_size;
@@ -1207,14 +1205,6 @@ __dbenv_set_deadlock_override(dbenv, opt)
 	}
 
 	return 0;
-}
-
-static int
-__dbenv_set_tran_lowpri(dbenv, txnid)
-	DB_ENV *dbenv;
-	u_int32_t txnid;
-{
-	return __lock_locker_set_lowpri(dbenv, txnid);
 }
 
 static void
