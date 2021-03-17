@@ -1403,8 +1403,6 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
                                        unsigned int *file,
                                        unsigned int *offset);
 
-int bdb_set_tran_lowpri(bdb_state_type *bdb_state, tran_type *tran);
-
 int bdb_am_i_coherent(bdb_state_type *bdb_state);
 
 int bdb_get_num_notcoherent(bdb_state_type *bdb_state);

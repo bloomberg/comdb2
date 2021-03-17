@@ -1981,7 +1981,6 @@ void backend_sync_stat(struct dbenv *dbenv);
 
 void init_fake_ireq_auxdb(struct dbenv *dbenv, struct ireq *iq, int auxdb);
 void init_fake_ireq(struct dbenv *, struct ireq *);
-int set_tran_lowpri(struct ireq *iq, tran_type *tran);
 
 /* long transaction routines */
 
@@ -1992,6 +1991,7 @@ void tran_dump(struct long_trn_stat *tstats);
 /* transactional stuff */
 int trans_start(struct ireq *, tran_type *parent, tran_type **out);
 int trans_start_sc(struct ireq *, tran_type *parent, tran_type **out);
+int trans_start_sc_lowpri(struct ireq *, tran_type **out);
 int trans_start_set_retries(struct ireq *, tran_type *parent, tran_type **out,
                             uint32_t retries, uint32_t priority);
 int trans_start_nonlogical(struct ireq *iq, void *parent_trans, tran_type **out_trans);

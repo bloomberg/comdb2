@@ -2540,7 +2540,6 @@ struct __db_env {
 
 	/* overrides for minwrite deadlock */
 	int (*set_deadlock_override) __P((DB_ENV *, u_int32_t));
-	int (*set_tran_lowpri) __P((DB_ENV *, u_int32_t));
 	int master_use_minwrite_ever;
 	int replicant_use_minwrite_noread;
 	int page_extent_size;

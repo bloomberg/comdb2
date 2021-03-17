@@ -21,5 +21,6 @@
 struct txn_properties {
     uint32_t priority;
     uint32_t retries;
+    uint32_t flags;
 };
 #endif
