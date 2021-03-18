@@ -54,6 +54,7 @@
 #include <locks.h>
 #include <trigger.h>
 #include <thread_malloc.h>
+#include <uuid/uuid.h>
 
 #include <lua.h>
 #include <lauxlib.h>
@@ -1064,8 +1065,9 @@ static int dbconsumer_free(Lua L)
 
 static int l_global_undef(lua_State *lua)
 {
+    const char *name = lua_tostring(lua, -1);
     lua_pushnumber(lua, -1);
-    return luaL_error(lua, "Global variables not allowed.");
+    return luaL_error(lua, "Global variables not allowed (%s).", name);
 }
 
 int to_positive_index(Lua L, int idx)
@@ -2227,7 +2229,7 @@ static int stmt_bind_int(Lua lua, sqlite3_stmt *stmt, int name, int value)
     case DBTYPES_INTERVALDS:
         i = &((lua_intervalds_t *)p)->val;
         return sqlite3_bind_interval(stmt, position, i);
-    default: return luabb_error(lua, NULL, "unsupported type for bind");
+    default: return luabb_error(lua, NULL, "unsupported type (%d) for bind ", type);
     }
 }
 
@@ -4666,6 +4668,50 @@ static int db_error(lua_State *lua)
     return 1;
 }
 
+static int db_guid(Lua lua)
+{
+    int nargs = lua_gettop(lua);
+    luaL_argcheck(lua, nargs <= 2, 3, "Function may take only one optional guid as string argument");
+    const char *str = luaL_optstring(lua, 2, NULL);
+    uuid_t guid;
+    if (str) {
+        const char *z = luabb_tostring(lua, 2);
+        if(uuid_parse(z, guid) != 0)
+            return luaL_error(lua, "Can not convert string %s to guid", z);
+    } else {
+        uuid_generate(guid);
+    }
+
+    uint8_t *b = malloc(sizeof(guid));
+    memcpy(b, guid, sizeof(guid));
+    blob_t x = {.data = b, .length = sizeof(uuid_t)};
+    luabb_pushblob_dl(lua, &x);
+    return 1;
+}
+
+#define GUID_STR_LENGTH 37
+
+static int db_guid_str(Lua lua)
+{
+    int nargs = lua_gettop(lua);
+    luaL_argcheck(lua, nargs <= 2, 3, "Function may take only one optional guid blob as string argument");
+
+    uuid_t guid;
+    if (nargs == 1)
+        uuid_generate(guid);
+    else {
+        blob_t x = {0};
+        luabb_toblob(lua, 2, &x);
+        memcpy(guid, x.data, sizeof(guid));
+    }
+
+    char guid_str[GUID_STR_LENGTH];
+    uuid_unparse(guid, guid_str);
+
+    lua_pushstring(lua, guid_str);
+    return 1;
+}
+
 void force_unregister(Lua L, trigger_reg_t *reg)
 {
     // setup fake dbconsumer_t to send unregister
@@ -4864,6 +4910,8 @@ static const luaL_Reg db_funcs[] = {
     {"getdbname", db_getdbname},
     {"getinstructioncount", db_getinstructioncount},
     {"gettimezone", db_gettimezone},
+    {"guid", db_guid},
+    {"guid_str", db_guid_str},
     {"isnull", db_isnull},
     {"json_to_table", db_json_to_table},
     {"now", db_now},

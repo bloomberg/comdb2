@@ -10,7 +10,7 @@ udf
 
 global var
 udf
-[SELECT byte_me()] failed with rc 300 [local function byte_me() return...]:1: Global variables not allowed.
+[SELECT byte_me()] failed with rc 300 [local function byte_me() return...]:1: Global variables not allowed (i).
 
 good procedure
 udf

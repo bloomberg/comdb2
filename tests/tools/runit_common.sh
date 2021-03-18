@@ -20,7 +20,7 @@ assertres ()
     local expected=$1
     local target=$2
     if [ "$expected" != "$target" ] ; then
-        failexit "Expected is $expected but should be $target"
+        failexit "Expected is '$expected' but should be '$target'"
     fi
 }
 
