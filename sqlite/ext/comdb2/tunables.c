@@ -29,9 +29,10 @@
 
 extern int gbl_mask_internal_tunables;
 
-#define IS_TUNABLE_HIDDEN(cur)                                                 \
-    ((cur->tunable->type == TUNABLE_COMPOSITE) ||                              \
-     (gbl_mask_internal_tunables && (cur->tunable->flags & INTERNAL)))
+#define IS_TUNABLE_HIDDEN(tunable)                                             \
+    ((tunable != NULL) &&                                                      \
+     ((tunable->type == TUNABLE_COMPOSITE) ||                                  \
+      (gbl_mask_internal_tunables && (tunable->flags & INTERNAL))))
 
 /*
   comdb2_tunables: query various attributes of tunables.
@@ -92,7 +93,7 @@ static void jumpToNextVisibleTunable(systbl_tunables_cursor *cur)
         cur->tunable = hash_first(gbl_tunables->hash, &cur->ent, &cur->bkt);
     }
 
-    while (IS_TUNABLE_HIDDEN(cur)) {
+    while (IS_TUNABLE_HIDDEN(cur->tunable)) {
         cur->rowid++;
         cur->tunable = hash_next(gbl_tunables->hash, &cur->ent, &cur->bkt);
     }
@@ -143,7 +144,7 @@ static int systblTunablesNext(sqlite3_vtab_cursor *cur)
         if (pCur->rowid >= gbl_tunables->count)
             break;
         pCur->tunable = hash_next(gbl_tunables->hash, &pCur->ent, &pCur->bkt);
-    } while (IS_TUNABLE_HIDDEN(pCur));
+    } while (IS_TUNABLE_HIDDEN(pCur->tunable));
 
     return SQLITE_OK;
 }
