@@ -93,6 +93,11 @@ test_guid_function() {
 }
 
 test_guid_str_function() {
+    local ag=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select guid()"`
+    local agstr=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select guid_str($ag)"`
+    local agblb=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select guid('$agstr')"`
+    assertres "$agblb" "$ag"
+
     cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table if exists t2'
     cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(gs cstring(37))'
     cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2 select guid_str()'
@@ -108,7 +113,7 @@ test_guid_str_function() {
 
 
 test_guid_column() {
-    echo "Test that having guid as a column works"
+    echo "Test that having string 'guid' as a column name works"
 
     cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2(GUID int PRIMARY KEY, i int)'
     cdb2sql ${CDB2_OPTIONS} $dbnm default 'insert into t2(GUID, i) values(1,1),(2,2)'
@@ -257,6 +262,190 @@ test_guid_autofill() {
 
 }
 
+test_guid_sp() {
+    echo "Testing having guid(guid) as used as key for multiple tables via stored procedure"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table if exists t1'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'drop table if exists t2'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t1 { 
+    schema 
+    {
+        byte uid[16] null=yes
+        int  i
+    }
+    keys
+    {
+        "PK"=uid
+    }
+    }'
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default 'create table t2 { 
+    schema 
+    {
+        int other
+        byte uid[16] null=yes
+        cstring  moredata[37]
+    }
+    keys
+    {
+        "PK"=uid
+    }
+    constraints
+    {
+        "PK" -> <"t1" : "PK">
+    }
+    }'
+
+    u=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'select guid()'`
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+begin
+insert into t1 values ($u, 1)
+insert into t2 values (123, $u, '1234')
+commit
+EOF
+
+    assertcnt t1 1
+    assertcnt t2 1
+
+    echo "add stored procedure"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure txnins version 'one' {
+local function main(t1_i, t2_other, t2_moredata)
+  local res, rc = db:exec("select guid() as H")
+  local id = res:fetch()       -- id is a table with one column 'H'
+  db:emit(id.H)
+  local t1 = db:table('t1') 
+  local t2 = db:table('t2') 
+  db:begin()
+  t1:insert({uid = id.H, i = t1_i}) 
+  t2:insert({uid = id.H, other = t2_other, moredata = t2_moredata}) 
+  db:commit()
+  return 0
+end}\$\$
+put default procedure txnins 'one'
+EOF
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure txnins(2, 124,'1244')"
+
+    assertcnt t1 2
+    assertcnt t2 2
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure txnins version 'two' {
+local function main(t1_i, t2_other, t2_moredata)
+    local gu = db:guid()
+    db:emit(gu)
+    local t1 = db:table('t1') 
+    local t2 = db:table('t2') 
+    t1:insert({uid = gu, i = t1_i}) 
+    t2:insert({uid = gu, other = t2_other, moredata = t2_moredata}) 
+end
+}\$\$
+put default procedure txnins 'two'
+EOF
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure txnins(3, 125,'1255')"
+
+    assertcnt t1 3
+    assertcnt t2 3
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t2 where 1"
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "delete from t1 where 1"
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure teststr version 'one' {
+local function main()
+    local gu = db:guid(1,2)
+    db:emit(gu)
+end
+}\$\$
+put default procedure teststr 'one'
+EOF
+
+    set +e
+    local res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure teststr()" 2>&1`
+    assertres "[exec procedure teststr()] failed with rc -3 [local gu = db:guid(1,2)...]:3: bad argument #2 to 'guid' (Function may take only one optional guid as string argument)" "$res"
+    set -e
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure teststr version 'two' {
+local function main()
+    local gustr = db:guid_str(1,2)
+    db:emit(gustr)
+end
+}\$\$
+put default procedure teststr 'two'
+EOF
+
+    set +e
+    local res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure teststr()" 2>&1`
+    assertres "[exec procedure teststr()] failed with rc -3 [local gustr = db:guid_str(1,2)...]:3: bad argument #2 to 'guid_str' (Function may take only one optional guid blob as string argument)" "$res"
+    set -e
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure teststr version 'three' {
+local function main()
+    local gu = db:guid('867c25e2-8c91-433e-a1ab-f45830d621d2')
+    db:emit(gu)
+    gu = db:guid(100)
+    db:emit(gu)
+end
+}\$\$
+put default procedure teststr 'three'
+EOF
+
+    set +e
+    local res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure teststr()" 2>&1 | tr -d "\n"`
+    assertres "x'867c25e28c91433ea1abf45830d621d2'[exec procedure teststr()] failed with rc -3 [gu = db:guid(100)...]:5: Can not convert string 100 to guid" "$res"
+    set -e
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure teststr version 'four' {
+local function main()
+    local gu = db:guid_str(x'867c25e28c91433ea1abf45830d621d2')
+    db:emit(gu)
+    gu = db:guid_str(100)
+    db:emit(gu)
+end
+}\$\$
+put default procedure teststr 'four'
+EOF
+
+    set +e
+    local res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure teststr()" 2>&1 | tr -d "\n"`
+    assertres "867c25e2-8c91-433e-a1ab-f45830d621d2[exec procedure teststr()] failed with rc -3 [gu = db:guid_str(100)...]:5: conversion to:blob failed from:number" "$res"
+    set -e
+
+
+    cdb2sql ${CDB2_OPTIONS} $dbnm default - << EOF
+create procedure teststr version 'five' {
+local function main(t1_i, t2_other, gu)
+    local gustr = db:guid_str(gu) --note gustr will be 37 characters long (includes -)
+    local gublb = db:guid(gustr)
+
+    local t1 = db:table('t1') 
+    local t2 = db:table('t2') 
+    t1:insert({uid = gu, i = t1_i}) 
+    t2:insert({other = t2_other, uid = gublb, moredata = gustr}) 
+end
+}\$\$
+put default procedure teststr 'five'
+EOF
+
+    local aguid=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select guid()"`
+    local aguidstr=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select guid_str($aguid)"`
+    cdb2sql ${CDB2_OPTIONS} $dbnm default "exec procedure teststr(3, 125,$aguid)"
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" > res.out
+    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select * from t2" >> res.out
+
+    echo "$aguid 3" > res.exp
+    echo "125 $aguid $aguidstr" >> res.exp
+    if ! diff -w res.exp res.out ; then
+        failexit "res.exp res.out differ"
+    fi
+}
+
 test_guid_errors() {
 
     set +e 
@@ -305,6 +494,8 @@ test_guid_function
 test_guid_column
 
 test_guid_autofill
+
+test_guid_sp
 
 test_guid_errors
 
