@@ -26,7 +26,8 @@ which fields to grow, shrink, etc.  A table definition has a several sections:
 * [Constraints](#constraints-section)
 
 Comments begin with ```//``` and go until the end of the line. Multi-line
-comments enclosed in ```/* ... */``` are also supported.
+comments enclosed in ```/* ... */``` are also supported. Lines end with a
+LF character (0x0A); CR+LF pairs (0x0D 0x0A) are not supported.
 
 ## Constants section
 
