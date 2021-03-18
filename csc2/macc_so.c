@@ -78,6 +78,7 @@ void reset_array();
 void reset_range();
 void reset_fldopt(void);
 void add_fldopt(int opttype, int valtype, void *value);
+int keysym_has_fieldopt(const char *keynm, enum fieldopttypes fopt);
 
 static void
 key_add_comn(int ix, char *tag, char *exprname,
@@ -146,11 +147,18 @@ void set_constraint_mod(int start, int op, int type)
     if (type == 0)
         return;
     if (op == 0)
-        macc_globals->constraints[macc_globals->nconstraints].flags |=
-            CT_UPD_CASCADE;
+        macc_globals->constraints[macc_globals->nconstraints].flags |= CT_UPD_CASCADE;
     else if (op == 1)
-        macc_globals->constraints[macc_globals->nconstraints].flags |=
-            CT_DEL_CASCADE;
+        macc_globals->constraints[macc_globals->nconstraints].flags |= CT_DEL_CASCADE;
+    else if (op == 2) {
+        if (macc_globals->constraints[macc_globals->nconstraints].fkchkflags & CT_CHECK_NOTNULL) {
+            csc2_error("Error ADDING THE CONSTRAINT ON DELETE SET NULL. A NON NULLABLE FIELD FORMS THE KEY: %s.\n",
+                       macc_globals->constraints[macc_globals->nconstraints].lclkey);
+            any_errors++;
+            return;
+        }
+        macc_globals->constraints[macc_globals->nconstraints].flags |= CT_SETNULL_CASCADE;
+    }
 }
 
 void set_constraint_name(char *name, enum ct_type type)
@@ -190,6 +198,7 @@ void add_constraint(char *tbl, char *key)
 {
     struct constraint *constraints = macc_globals->constraints;
     int cidx = constraints[macc_globals->nconstraints].ncnstrts;
+    int rc = keysym_has_fieldopt(key, FLDOPT_NULL);
     if (cidx >= MAXCNSTRTS) {
         csc2_error("ERROR: TOO MANY RULES SPECIFIED IN CONSTRAINT FOR KEY: %s. "
                    "(MAX: %d)\n",
@@ -201,6 +210,13 @@ void add_constraint(char *tbl, char *key)
     constraints[macc_globals->nconstraints].ncnstrts++;
     constraints[macc_globals->nconstraints].table[cidx] = tbl;
     constraints[macc_globals->nconstraints].keynm[cidx] = key;
+
+    if(rc < 0) { 
+       // key was not found; shouldn't happen  
+    } else if (rc == 0) {
+       // null = yes wasn't set for the field 
+       constraints[macc_globals->nconstraints].fkchkflags |= CT_CHECK_NOTNULL;
+    }
 }
 
 void add_check_constraint(char *expr)
@@ -395,7 +411,7 @@ char * sqltypetxt(int t, int size)
 
 int check_options() /* CHECK VALIDITY OF OPTIONS      */
 {
-    int ii, jj = 0;
+    int ii, jj;
     int ondisktag = 0, numnormtags = 0;
     struct table *tables = macc_globals->tables;
 
@@ -547,6 +563,7 @@ int check_options() /* CHECK VALIDITY OF OPTIONS      */
         csc2_error("ONDISK tag not defined.\n");
         any_errors++;
     }
+
     return any_errors;
 }
 
@@ -577,6 +594,60 @@ int getsymbol(char *tabletag, char *nm, int *tblidx) /* GETS A SYMBOL BY NAME */
         return i;
     *tblidx = -1;
     return -1;
+}
+
+int getkey(const char *keyname) /* GET KEY BY KEY NAME  */
+{
+    int i = 0;
+    for (i = 0; i < MAXKEYS; ++i) {
+        struct key *key = macc_globals->keys[i];
+        if (strncmp(keyname, key->keytag, sizeof(key->keytag)) == 0) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+// validates foreign key constraints against
+// check constraints
+// Basically set a flag in struct constraint to denote relevant properties for constraints
+// E.g. if the fieldopt != FLDOPT_NULL,
+// then in that case we wouldn’t want to enable the CT_SETNULL_CASCADE constraint
+// returns -2 if key or sym not found
+// returns 1 on keysym_has_fieldopt
+// return 0 keysym doesn't have fieldopt
+int keysym_has_fieldopt(const char *keynm, enum fieldopttypes fopttype)
+{
+    const int i = getkey(keynm);
+    int j = 0;
+    signed char keysym_has_fieldopt = 1;
+    const struct key *key = NULL;
+
+    if (i < 0 || i >= MAXKEYS || ((key = macc_globals->keys[i]) == NULL)) {
+        return -2;
+    }
+
+    while (key) {
+        if (key->stbl < 0 || key->stbl >= MAXTBLS || key->sym < 0 || key->sym >= MAX) {
+            return -2;
+        }
+        struct symbol keysymbol = macc_globals->tables[key->stbl].sym[key->sym];
+        for (j = 0; j < keysymbol.numfo; j++) {
+            struct fieldopt fopt = keysymbol.fopts[j];
+            if (fopt.opttype == fopttype) {
+                break;
+            }
+        }
+
+        if (j == keysymbol.numfo) {
+            keysym_has_fieldopt = 0;
+            break;
+        }
+
+        key = key->cmp;
+    }
+
+    return keysym_has_fieldopt;
 }
 
 int getexpr(char *nm) /* GET EXPRESSION BY NAME  */

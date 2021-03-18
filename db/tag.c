@@ -3855,6 +3855,26 @@ static int stag_to_stag_field(const char *inbuf, char *outbuf, int flags,
     return 0;
 }
 
+int stag_set_key_null(const char *table, const char *tag, const char *inkey, const int keylen, char *outkey)
+{
+    struct schema *schema;
+    schema = find_tag_schema(table, tag);
+    if (schema == NULL)
+        return -1;
+
+    memcpy(outkey, inkey, keylen);
+    for (int fieldno = 0; fieldno < schema->nmembers; fieldno++) {
+        struct field *field = &schema->member[fieldno];
+        if (field->flags & NO_NULL) {
+            return ERR_NULL_CONSTRAINT;
+        }
+        int rc = NULL_to_SERVER(outkey + field->offset, field->len, field->type);
+        if (rc)
+            return rc;
+    }
+    return 0;
+}
+
 /*
  * On success only outblobs will be valid, there is no need to free up inblobs.
  * On failure the caller should free inblobs and outblobs.
