@@ -6447,6 +6447,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
        c[cid].host = clnt->origin;
        c[cid].state_int = clnt->state;
        c[cid].time_in_state_int = clnt->state_start_time;
+       c[cid].is_admin = clnt->admin;
        Pthread_mutex_lock(&clnt->state_lk);
        if (clnt->state == CONNECTION_RUNNING ||
            clnt->state == CONNECTION_QUEUED) {
