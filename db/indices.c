@@ -486,8 +486,6 @@ static int add_key(struct ireq *iq, void *trans, int ixnum,
 
     if (!do_inline) {
         rc = insert_add_op(iq, opcode, rrn, ixnum, genid, ins_keys, blkpos, 0);
-        if (iq->debug)
-            reqprintf(iq, "insert_add_op IX %d RRN %d RC %d", ixnum, rrn, rc);
         if (rc != 0) {
             *opfailcode = OP_FAILED_INTERNAL;
             rc = ERR_INTERNAL;
@@ -696,9 +694,12 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                 rc = ix_upd_key(iq, trans, newkey, keysize, ixnum, vgenid,
                                 *newgenid, od_dta_tail, od_tail_len,
                                 ix_isnullk(iq->usedb, newkey, ixnum));
-                if (iq->debug)
-                    reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d", ixnum,
-                              *newgenid, rc);
+                if (iq->debug) {
+                    reqprintf(iq, "upd_key IX %d (%s) GENID 0x%016llx ",
+                              ixnum, iq->usedb->ixschema[ixnum]->csctag, *newgenid);
+                    reqdumphex(iq, newkey, keysize);
+                    reqmoref(iq, " RC %d", rc);
+                }
 
                 if (rc != 0) {
                     *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
@@ -741,9 +742,11 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                     rc = ix_delk(iq, trans, oldkey, ixnum, rrn, vgenid,
                                  ix_isnullk(iq->usedb, oldkey, ixnum));
 
-                    if (iq->debug)
-                        reqprintf(iq, "ix_delk IX %d RRN %d RC %d", ixnum, rrn,
-                                  rc);
+                    if (iq->debug) {
+                        reqprintf(iq, "ix_delk IX %d RRN %d key ", ixnum, rrn);
+                        reqdumphex(iq, oldkey, keysize);
+                        reqmoref(iq, " RC %d", rc);
+                    }
 
                     if (rc != 0) {
                         *opfailcode = OP_FAILED_INTERNAL + ERR_DEL_KEY;
@@ -800,9 +803,11 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
                                  od_dta, od_len, opcode, blkpos, opfailcode,
                                  newkey, od_dta_tail, od_tail_len, do_inline);
 
-                    if (iq->debug)
-                        reqprintf(iq, "add_key IX %d RRN %d RC %d", ixnum, rrn,
-                                  rc);
+                    if (iq->debug) {
+                        reqprintf(iq, "add_key IX %d RRN %d ", ixnum, rrn);
+                        reqdumphex(iq, newkey, keysize);
+                        reqmoref(iq, " RC %d", rc);
+                    }
 
                     if (rc != 0) {
                         *ixfailnum = ixnum;
@@ -1308,7 +1313,6 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     // if needed to check content of socksql temp table, dump with:
     void bdb_temp_table_debug_dump(bdb_state_type * bdb_state, void *cur, int);
     bdb_temp_table_debug_dump(thedb->bdb_env, cur, LOGMSG_DEBUG);
-    int count = 0;
 #endif
 
     int err;
@@ -1316,12 +1320,12 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     if (rc != IX_OK) {
         if (rc == IX_EMPTY) {
             if (iq->debug)
-                reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
+                reqprintf(iq, "VERKYCNSTRT FOUND NO KEYS TO ADD");
             rc = 0;
             goto done;
         }
         if (iq->debug)
-            reqprintf(iq, "%p: CANNOT GET ADD LIST RECORD", trans);
+            reqprintf(iq, "CANNOT GET ADD LIST RECORD");
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC, "cannot get add list record");
         *errout = OP_FAILED_INTERNAL;
         goto done;
@@ -1342,7 +1346,7 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                          ix_isnullk(iq->usedb, ditk->ixkey, ditk->ixnum));
 
             if (iq->debug) {
-                reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
+                reqprintf(iq, "ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ",
                           ditk->usedb->tablename, ditk->ixnum, addrrn);
                 int ixkeylen = getkeysize(ditk->usedb, ditk->ixnum);
                 reqdumphex(iq, ditk->ixkey, ixkeylen);
@@ -1414,9 +1418,12 @@ int process_defered_table(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                 iq, trans, ditk->ixkey, ditk->usedb->ix_keylen[ditk->ixnum],
                 ditk->ixnum, ditk->genid, ditk->newgenid, od_dta_tail,
                 od_tail_len, ix_isnullk(ditk->usedb, ditk->ixkey, ditk->ixnum));
-            if (iq->debug)
-                reqprintf(iq, "upd_key IX %d GENID 0x%016llx RC %d",
-                          ditk->ixnum, ditk->newgenid, rc);
+            if (iq->debug) {
+                reqprintf(iq, "upd_key IX %d (%s) GENID 0x%016llx ",
+                          ditk->ixnum, iq->usedb->ixschema[ditk->ixnum]->csctag, ditk->newgenid);
+                reqdumphex(iq, ditk->ixkey, ditk->usedb->ix_keylen[ditk->ixnum]);
+                reqmoref(iq, " RC %d", rc);
+            }
 
             if (rc != 0) {
                 *errout = OP_FAILED_INTERNAL + ERR_DEL_KEY;

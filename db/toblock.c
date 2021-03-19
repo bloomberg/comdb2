@@ -4893,7 +4893,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
         if (osql_is_index_reorder_on(iq->osql_flags)) {
             if (iq->debug)
-                reqpushprefixf(iq, "process_defered_table:");
+                reqpushprefixf(iq, "%p process_defered_table: ", trans);
             rc = process_defered_table(iq, trans, &blkpos, &ixout, &errout);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
@@ -4910,7 +4910,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (iq->debug)
-            reqpushprefixf(iq, "delayed_key_adds: %p", trans);
+            reqpushprefixf(iq, "%p delayed_key_adds: ", trans);
 
         int verror = 0;
         rc = delayed_key_adds(iq, trans, &blkpos, &ixout, &errout);
@@ -4932,7 +4932,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         /* check foreign key constraints */
 
         if (iq->debug)
-            reqpushprefixf(iq, "verify_del_constraints: %p", trans);
+            reqpushprefixf(iq, "%p verify_del_constraints: ", trans);
         rc = verify_del_constraints(iq, trans, &verror);
         if (iq->debug)
             reqpopprefixes(iq, 1);
@@ -4948,7 +4948,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         }
 
         if (iq->debug)
-            reqpushprefixf(iq, "verify_add_constraints: %p", trans);
+            reqpushprefixf(iq, "%p verify_add_constraints: ", trans);
 
         rc = verify_add_constraints(iq, trans, &verror);
         if (iq->debug)
