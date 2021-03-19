@@ -2361,6 +2361,13 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
         return -1;
     }
 
+#if DEBUG_TEMPTABLES
+    logmsg(LOGMSG_DEBUG, "%s(): PRE constraint_table content:\n", __func__);
+    void bdb_temp_table_debug_dump(bdb_state_type * bdb_state, void *cur, int);
+    bdb_temp_table_debug_dump(thedb->bdb_env, cur, LOGMSG_DEBUG);
+#endif
+
+
     rc = bdb_temp_table_first(thedb->bdb_env, cur, &err);
     if (rc == IX_EMPTY) {
         /* The table is empty */
@@ -2382,25 +2389,14 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
         }
         curop = &ctrq->ctop.fwdct;
         if ((bdb_cmp_genids(curop->genid, old_genid)) == 0) {
-            logmsg(LOGMSG_DEBUG, "%s:%d found a matching genid %llu\n",
-                   __func__, __LINE__, old_genid);
-            rc = bdb_temp_table_delete(thedb->bdb_env, cur, &err);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d bdb_temp_table_data() failed\n",
-                       __func__, __LINE__);
-                goto done;
-            }
+            if (iq->debug)
+                reqprintf(iq, "update_constraint_genid: OLDGENID 0x%llx NEWGENID 0x%llx",
+                          old_genid, new_genid);
+            assert(curop->optype == opcode);
+            curop->genid = new_genid; // directly update genid in the temp list
+            curop->flags |= flags;    // also update with the flags passed in
 
-            rc = insert_add_op(iq, opcode, rrn, -1, new_genid, ins_keys, blkpos,
-                               flags);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "%s:%d insert_add_op() failed\n", __func__,
-                       __LINE__);
-                goto done;
-            }
-
-            /* Now that insert_add_op() had added the new_genid to the hash,
-               let's drop the old one from the hash. */
+            /* old genid is not needed in hash at this point */
             hash_del(thdinfo->ct_add_table_genid_hash, &old_genid);
 
             // TODO: (NC) break if duplicates not possible
@@ -2413,6 +2409,13 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
     } while (rc == 0);
 
 done:
+
+#if DEBUG_TEMPTABLES
+    logmsg(LOGMSG_DEBUG, "%s(): constraint_table content:\n", __func__);
+    void bdb_temp_table_debug_dump(bdb_state_type * bdb_state, void *cur, int);
+    bdb_temp_table_debug_dump(thedb->bdb_env, cur, LOGMSG_DEBUG);
+#endif
+
     close_constraint_table_cursor(cur);
     return rc;
 }

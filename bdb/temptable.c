@@ -129,6 +129,7 @@ int hashcmpfunc(const void *key1, const void *key2, int len)
 struct temp_list_node {
     LINKC_T(struct temp_list_node) lnk;
     void *data;
+    int datalen;
 };
 
 /* code for SQL temp table support */
@@ -2265,10 +2266,17 @@ void bdb_temp_table_debug_dump(bdb_state_type *bdb_state, tmpcursor_t *cur,
     rc = bdb_temp_table_first(bdb_state, cur, &bdberr);
     while (!rc) {
 
-        key_sd = bdb_temp_table_key(cur);
-        keysize_sd = bdb_temp_table_keysize(cur);
-        dta_sd = bdb_temp_table_data(cur);
-        dtasize_sd = bdb_temp_table_datasize(cur);
+        if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
+            key_sd = (void*)&rowid;
+            keysize_sd = sizeof(int);
+            dta_sd = cur->list_cur->data;
+            dtasize_sd = cur->list_cur->datalen;
+        } else {
+            key_sd = bdb_temp_table_key(cur);
+            keysize_sd = bdb_temp_table_keysize(cur);
+            dta_sd = bdb_temp_table_data(cur);
+            dtasize_sd = bdb_temp_table_datasize(cur);
+        }
 
         logmsg(level, " ROW %d:\n\tkeylen=%d\n\tkey=\"", rowid, keysize_sd);
         hexdump(level, key_sd, keysize_sd);
@@ -2363,6 +2371,7 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         void *list_data = malloc(dtalen);
         memcpy(list_data, data, dtalen);
         c_node->data = list_data;
+        c_node->datalen = dtalen;
         listc_abl(&(tbl->temp_tbl_list), c_node);
         return 0;
     }
