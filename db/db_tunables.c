@@ -102,6 +102,7 @@ extern int skip_clear_queue_extents;
 extern int gbl_slow_rep_process_txn_freq;
 extern int gbl_slow_rep_process_txn_maxms;
 extern int gbl_sqlite_sorter_mem;
+extern int gbl_sqlite_stat4_scan;
 extern int gbl_survive_n_master_swings;
 extern int gbl_test_blob_race;
 extern int gbl_test_scindex_deadlock;

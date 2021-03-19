@@ -55,7 +55,7 @@ then
     FILE="*.test"
 fi
 
-FILEPATH="$TMPDIR/files"
+FILEPATH="$TMPDIR/files/$DBNAME"
 TCLCDB2="$BUILDDIR/tcl"
 mkdir -p $FILEPATH
 echo "Yet Another SQL Test (yast) for Comdb2"

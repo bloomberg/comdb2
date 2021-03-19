@@ -2154,6 +2154,7 @@ static int loadStatTbl(
     }
     pSpace = (tRowcnt*)&pIdx->aSample[nSample];
     pIdx->aAvgEq = pSpace; pSpace += nIdxCol;
+    pIdx->pTable->tabFlags |= TF_HasStat4;
     for(i=0; i<nSample; i++){
       pIdx->aSample[i].anEq = pSpace; pSpace += nIdxCol;
       pIdx->aSample[i].anLt = pSpace; pSpace += nIdxCol;
@@ -2379,6 +2380,7 @@ static int loadStat4(sqlite3 *db, const char *zDb){
     memcpy(pSample->p, sqlite3_column_blob(pStmt, 4), pSample->n);
     memset((u8*)pSample->p + pSample->n, 0, 2);
     pIdx->nSample++;
+    pIdx->pTable->tabFlags |= TF_HasStat4;
   }
   return sqlite3_finalize(pStmt);
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
