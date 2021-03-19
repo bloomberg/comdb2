@@ -44,6 +44,7 @@ static int whereLoopResize(sqlite3*, WhereLoop*, int);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int gbl_disable_seekscan_optimization = 0;
+int gbl_sqlite_stat4_scan = 0;
 
 int shard_check_parallelism(int iTable);
 int comdb2_shard_table_constraints(Parse *pParse, 
@@ -3060,8 +3061,31 @@ static int whereLoopAddBtree(
 
       /* Full table scan */
       pNew->iSortIdx = b ? iSortIdx : 0;
-      /* TUNING: Cost of full table scan is (N*3.0). */
+      /* TUNING: Cost of full table scan is 3.0*N.  The 3.0 factor is an
+      ** extra cost designed to discourage the use of full table scans,
+      ** since index lookups have better worst-case performance if our
+      ** stat guesses are wrong.  Reduce the 3.0 penalty slightly
+      ** (to 2.75) if we have valid STAT4 information for the table.
+      ** At 2.75, a full table scan is preferred over using an index on
+      ** a column with just two distinct values where each value has about
+      ** an equal number of appearances.  Without STAT4 data, we still want
+      ** to use an index in that case, since the constraint might be for
+      ** the scarcer of the two values, and in that case an index lookup is
+      ** better.
+      */
+#ifdef SQLITE_ENABLE_STAT4
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if( gbl_sqlite_stat4_scan ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+      pNew->rRun = rSize + 16 - 2*((pTab->tabFlags & TF_HasStat4)!=0);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      }else{
       pNew->rRun = rSize + 16;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#else
+      pNew->rRun = rSize + 16;
+#endif
       ApplyCostMultiplier(pNew->rRun, pTab->costMult);
       whereLoopOutputAdjust(pWC, pNew, rSize);
       rc = whereLoopInsert(pBuilder, pNew);
