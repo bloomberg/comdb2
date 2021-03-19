@@ -281,15 +281,17 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
                   int blkpos, int rec_flags)
 {
     block_state_t *blkstate = iq->blkstate;
-    int type = CTE_ADD, rc = 0;
+    int type = CTE_ADD;
     char key[MAXKEYLEN];
     cte cte_record;
     int err = 0;
+    int rc = 0;
 
     struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         logmsg(LOGMSG_ERROR, "insert_add_op: no thdinfo\n");
-        return -1;
+        rc = -1;
+        goto ret;
     }
 
     /* Add the genid to hash for quick lookup. */
@@ -301,7 +303,8 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
     void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
     if (cur == NULL) {
         logmsg(LOGMSG_ERROR, "insert_add_op: no cursor???\n");
-        return -1;
+        rc = -1;
+        goto ret;
     }
     memcpy(key, &type, sizeof(type));
     memcpy(key + sizeof(type), &blkstate->ct_id_key,
@@ -324,18 +327,22 @@ int insert_add_op(struct ireq *iq, int optype, int rrn, int ixnum,
     close_constraint_table_cursor(cur);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: bdb_temp_table_insert rc = %d\n", rc);
-        return -1;
+        rc = -1;
+        goto ret;
     }
     rc = insert_add_index(iq, genid);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "insert_add_op: insert_add_index rc = %d\n", rc);
-        return -1;
+        rc = -1;
+        goto ret;
     }
-    if (iq->debug)
-        reqprintf(iq, "insert_add_op: GENID 0x%llx", genid);
-
     blkstate->ct_id_key++;
-    return 0;
+
+ret:
+    if (iq->debug)
+        reqprintf(iq, "insert_add_op: GENID 0x%llx IX %d RC %d", genid, ixnum, rc);
+
+    return rc;
 }
 
 static int insert_del_op(block_state_t *blkstate, struct dbtable *srcdb,
@@ -613,6 +620,14 @@ int check_update_constraints(struct ireq *iq, void *trans,
                 }
             }
 
+            if (iq->debug) {
+                reqprintf(iq, "insert_del_op TBL %s IX %d (%s) CHECK ON TBL %s IX %d (%s) ",
+                          iq->usedb->tablename, ixnum, cnstrt->keynm[j],  cnstrt->lcltable->tablename,
+                          rixnum, cnstrt->lclkeyname);
+                reqdumphex(iq, rkey, rixlen);
+                reqmoref(iq, " RC %d", rc);
+            }
+
             rc = insert_del_op(blkstate, cnstrt->lcltable, iq->usedb, op, 0,
                                rkey, (newrec_dta == NULL) ? NULL : rnkey,
                                rixlen, rixnum, ixnum, nornrefs, cnstrt->flags);
@@ -732,6 +747,13 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             continue;
         }
 
+        if (iq->debug) {
+            reqprintf(iq, "VERBKYCNSTRT NOT FOUND TBL %s IX %d AGAINST TBL %s IX %d ", bct->dstdb->tablename,
+                      bct->dixnum, bct->tablename, bct->sixnum);
+            reqdumphex(iq, bct->key, bct->sixlen);
+            reqmoref(iq, " RC %d", rc);
+        }
+
         /* Key was found, check the dependee (parent table) of the constraint.
          * If we find another key there with the same value, then we dont need
          * to do anything (if also key length and key are exactly the same).
@@ -812,15 +834,20 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
         /* key was found in parent tbl, no need to delete */
         if (rc == IX_FND || rc == IX_FNDMORE) {
             if (iq->debug) {
-                reqprintf(iq,
-                          "VERBKYCNSTRT VERIFIED TBL %s IX %d AGAINST "
-                          "TBL %s IX %d ",
+                reqprintf(iq, "VERBKYCNSTRT VERIFIED TBL %s IX %d AGAINST TBL %s IX %d ",
                           bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum);
                 reqdumphex(iq, bct->key, bct->sixlen);
                 reqmoref(iq, " RC %d", rc);
             }
             rc = bdb_temp_table_next(thedb->bdb_env, cur, &err);
             continue;
+        }
+
+        if (iq->debug) {
+            reqprintf(iq, "VERBKYCNSTRT NOT FOUND TBL %s IX %d AGAINST TBL %s IX %d ",
+                      bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum);
+            reqdumphex(iq, bct->key, bct->sixlen);
+            reqmoref(iq, " RC %d", rc);
         }
 
         /* key was not found in parent tbl, will need to delete from this tbl */
@@ -955,9 +982,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             continue;
         } else { /* key was not found in parent tbl and we are not cascading */
             if (iq->debug) {
-                reqprintf(iq,
-                          "VERBKYCNSTRT CANT RESOLVE CONSTRAINT TBL %s "
-                          "IDX '%d' KEY -> TBL %s IDX '%d' ",
+                reqprintf(iq, "VERBKYCNSTRT CANT RESOLVE CONSTRAINT TBL %s IDX '%d' KEY -> TBL %s IDX '%d' ",
                           bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum);
                 reqdumphex(iq, bct->key, bct->sixlen);
                 reqmoref(iq, " RC %d", rc);
@@ -1028,7 +1053,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     od_dta = alloca(20 * 1024 + 8);
     if (od_dta == NULL) {
         if (iq->debug)
-            reqprintf(iq, "%p:ADDKYCNSTRT FAILED MALLOC", trans);
+            reqprintf(iq, "ADDKYCNSTRT FAILED MALLOC");
         reqerrstr(iq, COMDB2_CSTRT_RC_ALLOC,
                   "add key constraint failed malloc");
         *errout = OP_FAILED_INTERNAL;
@@ -1039,7 +1064,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     struct thread_info *thdinfo = pthread_getspecific(unique_tag_key);
     if (thdinfo == NULL) {
         if (iq->debug)
-            reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST CURSOR", trans);
+            reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST CURSOR");
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_CURSOR,
                   "verify key constraint: cannot get add list cursor");
         *errout = OP_FAILED_INTERNAL;
@@ -1049,7 +1074,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     void *cur = get_constraint_table_cursor(thdinfo->ct_add_table);
     if (cur == NULL) {
         if (iq->debug)
-            reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST CURSOR", trans);
+            reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST CURSOR");
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_CURSOR,
                   "verify key constraint cannot get add list cursor");
         *errout = OP_FAILED_INTERNAL;
@@ -1069,11 +1094,11 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         free_cached_delayed_indexes(iq);
         if (rc == IX_EMPTY) {
             if (iq->debug)
-                reqprintf(iq, "%p:VERKYCNSTRT FOUND NO KEYS TO ADD", trans);
+                reqprintf(iq, "VERKYCNSTRT FOUND NO KEYS TO ADD");
             return 0;
         }
         if (iq->debug)
-            reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST RECORD", trans);
+            reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST RECORD");
         reqerrstr(iq, COMDB2_CSTRT_RC_INVL_REC,
                   "verify key constraint: cannot get add list record");
         *errout = OP_FAILED_INTERNAL;
@@ -1087,8 +1112,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         /* do something */
         if (ctrq == NULL) {
             if (iq->debug)
-                reqprintf(iq, "%p:VERKYCNSTRT CANNOT GET ADD LIST RECORD DATA",
-                          trans);
+                reqprintf(iq, "VERKYCNSTRT CANNOT GET ADD LIST RECORD DATA");
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
                       "verify key constraint: cannot get add list record data");
             close_constraint_table_cursor(cur);
@@ -1127,7 +1151,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
 
         if (addrrn == -1) {
             if (iq->debug)
-                reqprintf(iq, "%p:ADDKYCNSTRT (AFPRI) FAILED, NO RRN\n", trans);
+                reqprintf(iq, "ADDKYCNSTRT (AFPRI) FAILED, NO RRN");
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_RRN,
                       "add key constraint failed, no rrn");
             *errout = OP_FAILED_INTERNAL + ERR_ADD_RRN;
@@ -1140,8 +1164,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         ondisk_size = getdatsize(iq->usedb);
         if (ondisk_size == -1) {
             if (iq->debug)
-                reqprintf(iq, "%p:ADDKYCNSTRT BAD TABLE %s\n", trans,
-                          iq->usedb->tablename);
+                reqprintf(iq, "ADDKYCNSTRT BAD TABLE %s\n", iq->usedb->tablename);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                       "add key constraint bad table '%s'",
                       iq->usedb->tablename);
@@ -1162,8 +1185,8 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
 
         if (fndlen != ondisk_size) {
             if (iq->debug)
-                reqprintf(iq, "%p:ADDKYCNSTRT FNDLEN %d != DTALEN %d RC %d",
-                          trans, fndlen, ondisk_size, rc);
+                reqprintf(iq, "ADDKYCNSTRT FNDLEN %d != DTALEN %d RC %d",
+                          fndlen, ondisk_size, rc);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
                       "add key constraint: record not found in table %s",
                       iq->usedb->tablename);
@@ -1205,8 +1228,8 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             ixkeylen = getkeysize(iq->usedb, doidx);
             if (ixkeylen < 0) {
                 if (iq->debug)
-                    reqprintf(iq, "%p:ADDKYCNSTRT BAD INDEX %d OR KEYLENGTH %d",
-                              trans, doidx, ixkeylen);
+                    reqprintf(iq, "ADDKYCNSTRT BAD INDEX %d OR KEYLENGTH %d",
+                              doidx, ixkeylen);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_IDX,
                           "add key constraint bad index %d or keylength %d",
                           doidx, ixkeylen);
@@ -1225,8 +1248,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                                             ondisk_size, key, NULL, 0, iq->tzname);
             if (rc == -1) {
                 if (iq->debug)
-                    reqprintf(iq, "%p:ADDKYCNSTRT CANT FORM INDEX %d", trans,
-                              ixnum);
+                    reqprintf(iq, "ADDKYCNSTRT CANT FORM INDEX %d", ixnum);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_IDX,
                           "add key constraint cannot form index %d", ixnum);
                 *blkpos = curop->blkpos;
@@ -1245,7 +1267,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                          od_tail_len, ix_isnullk(iq->usedb, key, doidx));
 
             if (iq->debug) {
-                reqprintf(iq, "%p:ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ", trans,
+                reqprintf(iq, "ADDKYCNSTRT  TBL %s IX %d RRN %d KEY ",
                           iq->usedb->tablename, doidx, addrrn);
                 reqdumphex(iq, key, ixkeylen);
                 reqmoref(iq, " RC %d", rc);
@@ -1315,7 +1337,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
         return 0;
     }
     if (iq->debug)
-        reqprintf(iq, "%p:ADDKYCNSTRT ERROR READING ADD TABLE", trans);
+        reqprintf(iq, "ADDKYCNSTRT ERROR READING ADD TABLE");
     reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
               "add key constraint error reading add table");
     *errout = OP_FAILED_INTERNAL;
@@ -1462,24 +1484,27 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
             rc = ix_find_by_rrn_and_genid_tran(iq, addrrn, genid, od_dta,
                                                &fndlen, ondisk_size, trans);
 
-            if (rc) {
+            if (rc == RC_INTERNAL_RETRY) {
                 *errout = OP_FAILED_INTERNAL;
                 close_constraint_table_cursor(cur);
+                return rc;
+            }
 
-                if (rc == RC_INTERNAL_RETRY)
-                    return rc;
-
+            /* NB: fndlen can be 0 rather than ondisk_size if there were no rows
+             * is the [last] stripe, so check (fndlen != ondisk_size) was not fully correct */
+            if (rc) {
                 if (iq->debug)
-                    reqprintf(iq,
-                              "VERKYCNSTRT CASCADE DELETED GENID 0x%llx "
-                              "FNDLEN %d DTALEN %d RC %d",
+                    reqprintf(iq, "VERKYCNSTRT CASCADE DELETED GENID 0x%llx FNDLEN %d DTALEN %d RC %d",
                               genid, fndlen, ondisk_size, rc);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                          "verify key constraint: record not found in table %s "
-                          "(cascaded)",
+                          "verify key constraint: record not found in table %s (cascaded)",
                           iq->usedb->tablename);
                 return ERR_INTERNAL;
             }
+
+            if (iq->debug)
+                reqprintf(iq, "VERKYCNSTRT CASCADE FOUND GENID 0x%llx FNDLEN %d DTALEN %d RC %d",
+                          genid, fndlen, ondisk_size, rc);
 
             for (cidx = 0; cidx < nct; cidx++) {
                 constraint_t *ct = &curop->usedb->constraints[cidx];
@@ -1516,8 +1541,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
 
                 if (rc == -1) {
                     if (iq->debug)
-                        reqprintf(iq,
-                                  "VERKYCNSTRT CANT FORM TBL %s INDEX %d (%s)",
+                        reqprintf(iq, "VERKYCNSTRT CANT FORM TBL %s INDEX %d (%s)",
                                   iq->usedb->tablename, lixnum, ct->lclkeyname);
                     reqerrstr(iq, COMDB2_CSTRT_RC_INVL_TBL,
                               "verify key constraint cannot form table '%s' "
@@ -1625,8 +1649,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
 
                     if (rc != IX_FND && rc != IX_FNDMORE) {
                         if (iq->debug) {
-                            reqprintf(iq, "VERKYCNSTRT CANT RESOLVE CONSTRAINT "
-                                          "TBL %s IDX '%s' KEY ",
+                            reqprintf(iq, "VERKYCNSTRT CANT RESOLVE CONSTRAINT TBL %s IDX '%s' KEY ",
                                       ftable->tablename, ct->keynm[ridx]);
                             reqdumphex(iq, fkey, fixlen);
                             reqmoref(iq, " RC %d", rc);
@@ -1640,11 +1663,10 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                         return ERR_BADREQ;
                     }
                     if (iq->debug) {
-                        reqprintf(
-                            iq,
-                            "VERKYCNSTRT VERIFIED RC=%d %s:%s AGAINST %s:%s",
-                            rc, iq->usedb->tablename, ct->lclkeyname,
-                            ct->table[ridx], ct->keynm[ridx]);
+                        reqprintf(iq, "VERKYCNSTRT VERIFIED %s:%s AGAINST %s:%s ",
+                            iq->usedb->tablename, ct->lclkeyname, ct->table[ridx], ct->keynm[ridx]);
+                            reqdumphex(iq, fkey, fixlen);
+                            reqmoref(iq, " RC %d", rc);
                     }
                 }
             }

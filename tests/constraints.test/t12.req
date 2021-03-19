@@ -8,6 +8,7 @@ insert into p values (1)
 insert into c values (1)
 
 select "test #1" as comment
+# txn will succeed because we cascade the delete on p at the end of commit, tbl will end up empty
 begin
 insert into c values (1)
 delete from p where i = 1
@@ -18,6 +19,7 @@ select * from p
 select "test #2" as comment
 insert into p values (1)
 insert into c values (1)
+# txn will succeed, we will cascade the update at the end of commit, and tbl c will have 2 entries of value 2
 begin
 insert into c values (1)
 update p set i = i+i where i = 1
@@ -32,6 +34,7 @@ delete from c;
 delete from p;
 insert into p values (1)
 insert into c values (1)
+# this is same as test 1
 begin
 insert into c values (1)
 delete from p where i = 1
@@ -41,3 +44,40 @@ select * from p order by i
 
 exec procedure sys.cmd.verify("p")
 exec procedure sys.cmd.verify("c")
+
+
+select "test #4" as comment
+delete from c;
+delete from p;
+insert into p values (1)
+insert into c values (1)
+# this is same as test 1
+begin
+update c set i = 2 where i = 1
+update p set i = 2 where i = 1
+commit
+select * from c order by i
+select * from p order by i
+
+exec procedure sys.cmd.verify("p")
+exec procedure sys.cmd.verify("c")
+
+
+select "test #5" as comment
+delete from c;
+delete from p;
+insert into p values (1)
+insert into p values (3)
+insert into c values (1)
+# this is same as test 1
+begin
+update c set i = 3 where i = 1
+update p set i = 2 where i = 1
+commit
+select * from c order by i
+select * from p order by i
+
+exec procedure sys.cmd.verify("p")
+exec procedure sys.cmd.verify("c")
+
+
