@@ -553,15 +553,19 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         sqlite3_stmt_has_remotes(stmt)) {
         goto cleanup;
     }
-    if (rec->stmt_entry != NULL) { /* we found this stmt in the cache */
-        if (rec->status & CACHE_HAS_HINT) {
-            /* Leave the ownership of stmt data */
-            query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
+
+    if (rec->status & (CACHE_FOUND_STMT | CACHE_FOUND_STR)) { /* we found this stmt in the cache */
+        if (rec->stmt_entry == NULL) {
+            query_data_func(clnt, NULL, NULL, QUERY_HINT_DATA, QUERY_DATA_SET);
+        } else {
+            if (rec->status & CACHE_HAS_HINT) {
+                /* Leave the ownership of stmt data. */
+                query_data_func(clnt, NULL, NULL, QUERY_STMT_DATA, QUERY_DATA_SET);
+            }
+            if (stmt_cache_requeue_entry(thd->stmt_cache, rec->stmt_entry)) { /* put back in queue... */
+                stmt_cache_finalize_entry(rec->stmt_entry);                   /* ...and on error, cleanup */
+            }
         }
-        if (stmt_cache_requeue_entry(
-                thd->stmt_cache, rec->stmt_entry)) /* put back in queue... */
-            stmt_cache_finalize_entry(
-                rec->stmt_entry); /* ...and on error, cleanup */
 
         return 0;
     }
