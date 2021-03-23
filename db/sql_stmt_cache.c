@@ -24,6 +24,7 @@ int gbl_max_sqlcache = 10;
 int gbl_enable_sql_stmt_caching = STMT_CACHE_ALL;
 
 extern int gbl_debug_temptables;
+static int stmt_cache_finalize_entry(stmt_cache_entry_t *entry);
 
 static int query_data_func(struct sqlclntstate *clnt, void **data, int *sz,
                            int type, int op)
@@ -34,19 +35,10 @@ static int query_data_func(struct sqlclntstate *clnt, void **data, int *sz,
         return 0;
 }
 
-static int stmt_cache_finalize_entry_int(void *stmt_entry, void *args)
+static int stmt_cache_finalize_entry_cb(void *stmt_entry, void *args)
 {
-    stmt_cache_entry_t *entry = (stmt_cache_entry_t *)stmt_entry;
-    sqlite3_finalize(entry->stmt);
-    if (entry->qd_func && entry->stmt_data)
-        entry->qd_func(NULL, &entry->stmt_data, NULL, QUERY_STMT_DATA,
-                       QUERY_DATA_DELETE);
-    if (entry->query && gbl_debug_temptables) {
-        free(entry->query);
-        entry->query = NULL;
-    }
-    sqlite3_free(entry);
-    return 0;
+    (void)args;
+    return stmt_cache_finalize_entry(stmt_entry);
 }
 
 /* Teardown statement cache */
@@ -54,7 +46,7 @@ int stmt_cache_delete(stmt_cache_t *stmt_cache)
 {
     assert(stmt_cache && stmt_cache->hash);
     /* iterate through the hash table and finalize all the statements */
-    hash_for(stmt_cache->hash, stmt_cache_finalize_entry_int, NULL);
+    hash_for(stmt_cache->hash, stmt_cache_finalize_entry_cb, NULL);
     hash_clear(stmt_cache->hash);
     hash_free(stmt_cache->hash);
     return 0;
@@ -142,7 +134,7 @@ static int stmt_cache_requeue_entry(stmt_cache_t *stmt_cache,
 
 static void stmt_cache_free_entry(stmt_cache_entry_t *entry)
 {
-    if (entry->query) {
+    if (entry->query && gbl_debug_temptables) {
         free(entry->query);
         entry->query = NULL;
     }
@@ -477,8 +469,7 @@ int stmt_cache_get(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             if (find_sql_hint_table(rec->cache_hint, (char **)&rec->sql, &data,
                                     &data_sz) == 0) {
                 rec->status |= CACHE_FOUND_STR;
-                query_data_func(clnt, &data, &data_sz, QUERY_STMT_DATA,
-                                QUERY_DATA_SET);
+                query_data_func(clnt, &data, &data_sz, QUERY_HINT_DATA, QUERY_DATA_SET);
             }
         }
     } else {
@@ -581,15 +572,6 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         }
     }
 
-    if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
-        char *k = rec->cache_hint;
-        Pthread_mutex_lock(&gbl_sql_lock);
-        {
-            lrucache_release(sql_hints, &k);
-        }
-        Pthread_mutex_unlock(&gbl_sql_lock);
-    }
-
     return stmt_cache_add_entry(thd->stmt_cache, sqlptr,
                                 gbl_debug_temptables ? rec->sql : NULL, stmt,
                                 clnt);
@@ -598,15 +580,6 @@ cleanup:
         stmt_cache_remove_entry(thd->stmt_cache, rec->stmt_entry, 1);
         stmt_cache_free_entry(rec->stmt_entry);
         rec->stmt_entry = NULL;
-    }
-
-    if ((rec->status & CACHE_HAS_HINT) && (rec->status & CACHE_FOUND_STR)) {
-        char *k = rec->cache_hint;
-        Pthread_mutex_lock(&gbl_sql_lock);
-        {
-            lrucache_release(sql_hints, &k);
-        }
-        Pthread_mutex_unlock(&gbl_sql_lock);
     }
 
     return 1;
