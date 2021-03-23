@@ -1,5 +1,5 @@
 /*
-   Copyright 2017, Bloomberg Finance L.P.
+   Copyright 2017, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -246,6 +246,31 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     return 0;
 }
 
+/* Validates the correctness of the supplied dbnum */
+static int validate_dbnum(struct dbenv *dbenv, char *tablename, int dbnum)
+{
+    if (dbnum < 0) {
+        logmsg(LOGMSG_ERROR,
+               "Invalid dbnum entry in \"table/comdbg\" directive\n");
+        return 1;
+    }
+
+    /* if db number matches parent database db number then
+     * table name must match parent database name.  otherwise
+     * we get mysterious failures to receive qtraps (setting
+     * taskname to something not our task name causes initque
+     * to fail, and the ldgblzr papers over this) */
+    if (dbnum == dbenv->dbnum && strcasecmp(gbl_dbname, tablename) != 0) {
+        logmsg(LOGMSG_ERROR,
+               "Table %s has same db number as parent database but different "
+               "name\n",
+               tablename);
+        return 1;
+    }
+
+    return 0;
+}
+
 struct deferred_option {
     char *option;
     int line;
@@ -285,10 +310,48 @@ int deferred_do_commands(struct dbenv *env, char *option,
     int rc = 0;
 
     tok = segtok(option, len, &st, &tlen);
-    if (tokcmp(tok, tlen, "sqllogger") == 0)
+    if (tokcmp(tok, tlen, "sqllogger") == 0) {
         sqllogger_process_message(option + st, len - st);
-    else if (tokcmp(tok, tlen, "do") == 0)
+    } else if (tokcmp(tok, tlen, "do") == 0) {
         rc = process_command(env, option + st, len - st, 0);
+    } else if (tokcmp(tok, tlen, "comdbg") == 0) {
+        char *tablename;
+        int dbnum;
+
+        // table name
+        tok = segtok(option, len, &st, &tlen);
+        if (tok == 0) {
+            logmsg(LOGMSG_ERROR, "comdbg: no table name specified\n");
+            return -1;
+        }
+        tablename = tokdup(tok, tlen);
+
+        // dbnum
+        tok = segtok(option, len, &st, &tlen);
+        if (tlen == 0) {
+            logmsg(LOGMSG_ERROR, "comdbg: no dbnum specified\n");
+            free(tablename);
+            return -1;
+        } else {
+            dbnum = toknum(tok, tlen);
+            if (validate_dbnum(env, tablename, dbnum)) {
+                free(tablename);
+                return -1;
+            }
+        }
+
+        for (int i = 0; i < thedb->num_dbs; ++i) {
+            if (strcasecmp(tablename, env->dbs[i]->tablename) == 0) {
+                logmsg(LOGMSG_USER, "comdbg: overriding dbnum for %s (old: %d "
+                       "new: %d)\n", env->dbs[i]->tablename, env->dbs[i]->dbnum,
+                       dbnum);
+                env->dbs[i]->dbnum = dbnum;
+                break;
+            }
+        }
+        free(tablename);
+    }
+
     return rc;
 }
 
@@ -958,23 +1021,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 dbnum = 0;
             else {
                 dbnum = toknum(tok, ltok);
-                if (dbnum <= 0) {
-                    logmsg(LOGMSG_ERROR,
-                           "Invalid dbnum entry in \"table\" directive\n");
-                    return -1;
-                }
-
-                /* if db number matches parent database db number then
-                 * table name must match parent database name.  otherwise
-                 * we get mysterious failures to receive qtraps (setting
-                 * taskname to something not our task name causes initque
-                 * to fail, and the ldgblzr papers over this) */
-                if (dbnum == dbenv->dbnum &&
-                    strcasecmp(gbl_dbname, tblname) != 0) {
-                    logmsg(LOGMSG_ERROR,
-                           "Table %s has same db number as parent database "
-                           "but different name\n",
-                           tblname);
+                if (validate_dbnum(dbenv, tblname, dbnum)) {
                     return -1;
                 }
             }
@@ -1028,6 +1075,8 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return -1;
         }
         dbenv->num_allow_lines++;
+    } else if (tokcmp(tok, ltok, "comdbg") == 0) {
+        defer_option(line, len, options->lineno);
     } else if (tokcmp(tok, ltok, "debug") == 0) {
         tok = segtok(line, len, &st, &ltok);
         while (ltok > 0) {
