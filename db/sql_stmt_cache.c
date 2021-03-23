@@ -576,8 +576,7 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
         if (!(rec->status & CACHE_FOUND_STR)) {
             void *data;
             int data_sz;
-            query_data_func(clnt, &data, &data_sz, QUERY_HINT_DATA,
-                            QUERY_DATA_SET);
+            query_data_func(clnt, &data, &data_sz, QUERY_HINT_DATA, QUERY_DATA_GET);
             add_sql_hint_table(rec->cache_hint, clnt->sql, data, data_sz);
         }
     }
