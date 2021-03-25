@@ -2989,15 +2989,13 @@ clipper_usage:
             int qid;
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0 || (qid = toknum(tok, ltok)) == 0)
-                logmsg(LOGMSG_ERROR, "Usage: sql cancel queryid.  You can get query id with "
-                       "\"sql dump\".\n");
+                logmsg(LOGMSG_ERROR, "Usage: sql cancel queryid.  You can get query id with \"sql dump\".\n");
             else
                 cancel_sql_statement(qid);
         } else if (tokcmp(tok, ltok, "cancelcnonce") == 0) {
             tok = segtok(line, lline, &st, &ltok);
             if (ltok == 0)
-                logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with "
-                       "\"sql dump\".\n");
+                logmsg(LOGMSG_ERROR, "Usage: sql cancelcnonce CNONCE.  You can get cnonce with \"sql dump\".\n");
             else {
                 char *cnonce = tokdup(tok, ltok);
                 cancel_sql_statement_with_cnonce(cnonce);
