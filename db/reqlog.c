@@ -1576,6 +1576,12 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
                     expanded_fp);
     }
 
+    struct sqlclntstate *clnt = logger->clnt;
+    if(clnt) {
+        dumpf(logger, out, " pid %d task %s",
+              clnt->conninfo.pid, clnt->argv0 ? clnt->argv0 : "???");
+    }
+
     dumpf(logger, out, " rqid %s from %s rc %d\n", logger->id,
           reqorigin(logger), logger->rc);
 
@@ -1585,12 +1591,11 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
             uint64_t rate = iq->txnsize / iq->reptimems;
 
             dumpf(logger, out,
-                  "  Committed %llu log bytes in %d ms rep time (%llu "
-                  "bytes/ms)\n",
+                  "  Committed %llu log bytes in %d ms rep time (%llu bytes/ms)\n",
                   iq->txnsize, iq->reptimems, rate);
         }
 
-        dumpf(logger, out, "  nretries %d reply len %td\n", iq->retries,
+        dumpf(logger, out, " nretries %d reply len %td\n", iq->retries,
               (ptrdiff_t)(iq->p_buf_out - iq->p_buf_out_start));
     }
 
