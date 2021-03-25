@@ -1624,6 +1624,7 @@ extern long n_bad_parm;
 extern long n_bad_swapin;
 extern long n_retries;
 extern long n_missed;
+extern long n_dbinfo;
 extern history *reqhist;
 extern int gbl_sbuftimeout;
 extern int sqldbgflag;
