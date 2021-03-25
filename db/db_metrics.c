@@ -92,6 +92,7 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_offset;
     int64_t minimum_truncation_timestamp;
     int64_t reprepares;
+    int64_t nonsql; 
 };
 
 static struct comdb2_metrics_store stats;
@@ -237,6 +238,9 @@ comdb2_metric gbl_metrics[] = {
     {"standing_queue_time", "How long the database has had a standing queue",
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.standing_queue_time, NULL},
+    {"nonsql", "Number of non-sql requests (eg: tagged)", 
+     STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE,
+     &stats.nonsql, NULL},
 #if 0
     {"minimum_truncation_file", "Minimum truncation file", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.minimum_truncation_file, NULL},
@@ -336,6 +340,7 @@ int refresh_metrics(void)
 
     stats.commits = n_commits;
     stats.fstraps = n_fstrap;
+    stats.nonsql = n_fstrap + n_qtrap - n_dbinfo; 
     stats.retries = n_retries;
     stats.sql_cost = gbl_nsql_steps + gbl_nnewsql_steps;
     stats.sql_count = gbl_nsql + gbl_nnewsql;
