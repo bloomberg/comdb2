@@ -4488,15 +4488,29 @@ static int compareDateTimeInterval(
   if( combined_flags&MEM_Datetime ){
     if(!(f1&MEM_Datetime)){
       if(pMem1->tz == NULL){
+        const char *tz = pMem2->tz;
+        if(tz == NULL){
+          /* We need a timezone here. However when the Mem objects are
+             deserialized from SerialGet(), neither has a valid tz.
+             In this case we grab tz from clnt. */
+          tz = get_clnt_tz();
+        }
         /* either embedded in the string, or use the tz of the other member */
-        sqlite3VdbeMemDatetimefyTz((Mem *)pMem1, pMem2->tz);
+        sqlite3VdbeMemDatetimefyTz((Mem *)pMem1, tz);
       }else{
         sqlite3VdbeMemDatetimefy((Mem *)pMem1);
       }
     }else if( !(f2&MEM_Datetime) ){
       if( pMem2->tz==NULL ){
+        const char *tz = pMem1->tz;
+        if(tz == NULL){
+          /* We need a timezone here. However when the Mem objects are
+             deserialized from SerialGet(), neither has a valid tz.
+             In this case we grab tz from clnt. */
+          tz = get_clnt_tz();
+        }
         /* either embedded in the string, or use the tz of the other member */
-        sqlite3VdbeMemDatetimefyTz((Mem *)pMem2, pMem1->tz);
+        sqlite3VdbeMemDatetimefyTz((Mem *)pMem2, tz);
       }else{
         sqlite3VdbeMemDatetimefy((Mem *)pMem2);
       }

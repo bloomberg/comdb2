@@ -409,3 +409,8 @@ static void monthsFunc(sqlite3_context *context, int argc, sqlite3_value **argv)
       sqlite3_result_null(context);
 }
 
+const char *get_clnt_tz()
+{
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    return ( thd && thd->clnt ) ? thd->clnt->tzname : NULL;
+}
