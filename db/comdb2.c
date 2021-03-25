@@ -491,6 +491,7 @@ long n_bad_parm;
 long n_bad_swapin;
 long n_retries;
 long n_missed;
+long n_dbinfo;
 
 int n_commits;
 long long n_commit_time; /* in micro seconds.*/
