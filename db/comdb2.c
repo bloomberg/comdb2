@@ -3382,41 +3382,38 @@ static int create_db(char *dbname, char *dir) {
 
 static void setup_backup_logfiles_dir()
 {
-    char *backupdir = comdb2_location("backup_logfiles_dir", NULL);
-    if (!backupdir)
+    char *backupdir = comdb2_location_in_hash("backup_logfiles_dir", NULL);
+    if (!backupdir) {
+        logmsg(LOGMSG_DEBUG, "%s: Location for backup_logfiles_dir is not set\n", __func__);
         goto cleanup;
-
-    /* cant have the db called 'backup_logfiles_dir' */
-    char *loc = strstr(backupdir, "backup_logfiles_dir");
-    if (loc != 0 && *(loc + sizeof("backup_logfiles_dir") + 1) == '\0' && *(loc - 1) == '/')
-        goto cleanup;
-
-    {
-        /* if path like "..../%dbname" then substitute %dbname with thedb->envname */
-        char *loc = strstr(backupdir, "%dbname");
-        if (loc) {
-            int dbnamelen = strlen(thedb->envname);
-            int diff = dbnamelen - sizeof("%dbname");
-            if (diff > 0) {
-                int newlen = (loc - backupdir) + dbnamelen + 1;
-                char *newd = realloc(backupdir, newlen);
-                if (!newd) {
-                    logmsg(LOGMSG_ERROR, "%s: Cannot realloc backupdir newlen %d\n",
-                           __func__, newlen);
-                    goto cleanup;
-                }
-                loc = newd + (loc - backupdir);
-                backupdir = newd;
-            }
-            strcpy(loc, thedb->envname);
-            update_file_location("backup_logfiles_dir", backupdir);
-        }
     }
+
+    /* if path like "..../%dbname" then substitute %dbname with thedb->envname */
+    char *loc = strstr(backupdir, "%dbname");
+    if (loc) {
+        int dbnamelen = strlen(thedb->envname);
+        int diff = dbnamelen - sizeof("%dbname");
+        if (diff > 0) {
+            int newlen = (loc - backupdir) + dbnamelen + 1;
+            char *newd = realloc(backupdir, newlen);
+            if (!newd) {
+                logmsg(LOGMSG_ERROR, "%s: Cannot realloc backupdir newlen %d\n",
+                       __func__, newlen);
+                goto cleanup;
+            }
+            loc = newd + (loc - backupdir);
+            backupdir = newd;
+        }
+        strcpy(loc, thedb->envname);
+        update_file_location("backup_logfiles_dir", backupdir);
+    }
+
     struct stat stats;
     int rc = stat(backupdir, &stats);
     if (rc)
-        logmsg(LOGMSG_ERROR, "%s: Cannot stat directory %s: %d %s\n",
+        logmsg(LOGMSG_WARN, "%s: Cannot stat directory %s: %d %s\n",
                __func__, backupdir, errno, strerror(errno));
+
     if (S_ISDIR(stats.st_mode)) {
         gbl_backup_logfiles = 1;
     } else {
@@ -3424,10 +3421,10 @@ static void setup_backup_logfiles_dir()
         umask(mask);
         //try to create directory, if successful turn on feature
         rc = mkdir(backupdir, 0777 & (~mask));
-        if (rc)
+        if (rc) {
             logmsg(LOGMSG_ERROR, "%s: Cannot create directory %s (bad path or parent directory): %d %s\n",
                    __func__, backupdir, errno, strerror(errno));
-        else {
+        } else {
             logmsg(LOGMSG_DEBUG, "%s: Created directory %s\n", __func__, backupdir);
             gbl_backup_logfiles = 1;
         }

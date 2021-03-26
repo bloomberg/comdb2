@@ -124,6 +124,30 @@ char *comdb2_location(char *type, char *fmt, ...)
     return out;
 }
 
+/* Return location only if it is found in the hash
+ * caller needs to free returned string */
+char *comdb2_location_in_hash(char *type, char *fmt, ...)
+{
+    struct location *l = hash_find_readonly(locations, &type);
+    if (l == NULL) {
+        return NULL;
+    }
+
+    char *out;
+    if (fmt) {
+        va_list args;
+        char *fmtout;
+        va_start(args, fmt);
+        fmtout = comdb2_vasprintf(fmt, args);
+        va_end(args);
+        out = comdb2_asprintf("%s/%s", l->dir, fmtout);
+        free(fmtout);
+    } else {
+        out = strdup(l->dir);
+    }
+    return out;
+}
+
 #define DEFAULT_LOCATION(type, file)                                           \
     do {                                                                       \
         char *f;                                                               \
