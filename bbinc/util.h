@@ -66,6 +66,7 @@ char *comdb2_asprintf(const char *fmt, ...);
 char *comdb2_vasprintf(const char *fmt, va_list args);
 
 char *comdb2_location(char *type, char *fmt, ...);
+char *comdb2_location_in_hash(char *type, char *fmt, ...);
 char *comdb2_filev(char *fmt, va_list args);
 char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
