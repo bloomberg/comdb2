@@ -15,19 +15,19 @@ AAAABBBBCCCCDDDDEEEEFFFFGGGG
 HHHHIIIIJJJJKKKKLLLLMMMMNNNN
 aaaabbbbccccddddeeeeffffgggg
 --------------
-    table t finds 1 next/prev 4[TABLE SCAN]
-    table t finds 1 next/prev 4[TABLE SCAN]
-    table t finds 1 next/prev 4[TABLE SCAN]
+   {"Type":"Table Scan","Table":"t","NumFind":1,"NumNextOrPrev":4}
+   {"Type":"Table Scan","Table":"t","NumFind":1,"NumNextOrPrev":4}
+   {"Type":"Table Scan","Table":"t","NumFind":1,"NumNextOrPrev":4}
 1111111122222222
 ABCDEFG
 HHHHIIIIJJJJKKKKLLLLMMMMNNNN
 aaaabbbbccccddddeeeeffffgggg
-    table t finds 2
-    index 0 on table t finds 1 next/prev 2
-    table t finds 1
-    index 0 on table t finds 1 next/prev 1
-    table t finds 1
-    index 0 on table t finds 1 next/prev 1
+   {"Type":"Table Scan","Table":"t","NumFind":2},
+   {"Type":"Index Lookup","Index":0,"Table":"t","NumFind":1,"NumNextOrPrev":2}
+   {"Type":"Table Scan","Table":"t","NumFind":1},
+   {"Type":"Index Lookup","Index":0,"Table":"t","NumFind":1,"NumNextOrPrev":1}
+   {"Type":"Table Scan","Table":"t","NumFind":1},
+   {"Type":"Index Lookup","Index":0,"Table":"t","NumFind":1,"NumNextOrPrev":1}
 1111111122222222
 A
 AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA

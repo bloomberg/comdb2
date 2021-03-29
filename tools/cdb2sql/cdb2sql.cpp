@@ -126,7 +126,7 @@ static void hexdump(FILE *f, void *datap, int len)
         fprintf(f, "%02x", (unsigned int)data[i]);
 }
 
-void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
+static void dumpstring(FILE *f, char *s, int quotes, int quote_quotes)
 {
     if (quotes)
         fprintf(f, "'");
@@ -154,7 +154,7 @@ static const char *usage_text =
     "Options:\n"
     " -c, --cdb2cfg FL    Set the config file to FL\n"
     "     --coltype       Prefix column output with associated type\n"
-    "     --cost          Log the cost of query in db trace files\n"
+    "     --cost          Show cost and cost components of query\n"
     "     --debugtrace    Set debug trace flag on api handle\n"
     " -d, --delim str     Set string used to separate two sql statements read "
     "from a file or input stream\n"
@@ -195,7 +195,7 @@ static const char *usage_text =
     "@strblobs            Display blobs as strings\n"
     "@time                Toggle between time modes\n";
 
-void cdb2sql_usage(const int exit_val)
+static void cdb2sql_usage(const int exit_val)
 {
     fputs(usage_text, (exit_val == EXIT_SUCCESS) ? stdout : stderr);
     exit(exit_val);
@@ -576,7 +576,7 @@ static char *read_line()
         }                                                                      \
     } while (0)
 
-int get_type(const char **sqlstr)
+static int get_type(const char **sqlstr)
 {
     while (isspace(**sqlstr))
         (*sqlstr)++;
@@ -596,7 +596,7 @@ int get_type(const char **sqlstr)
     return -1;
 }
 
-char *get_parameter(const char **sqlstr)
+static char *get_parameter(const char **sqlstr)
 {
     while (isspace(**sqlstr)) {
         (*sqlstr)++;
@@ -613,7 +613,7 @@ char *get_parameter(const char **sqlstr)
     return copy;
 }
 
-int fromhex(uint8_t *out, const uint8_t *in, size_t len)
+static int fromhex(uint8_t *out, const uint8_t *in, size_t len)
 {
     const uint8_t *end = in + len;
     while (in != end) {
@@ -640,7 +640,7 @@ const char *cdb2_tp_str[] = {"???",
                              "CDB2_DATETIMEUS",
                              "CDB2_INTERVALDSUS"};
 
-inline const char *cdb2_type_str(int type)
+inline static const char *cdb2_type_str(int type)
 {
     if (type < 1 || type > CDB2_INTERVALDSUS)
         return "???";
@@ -648,7 +648,7 @@ inline const char *cdb2_type_str(int type)
     return cdb2_tp_str[type];
 }
 
-void *get_val(const char **sqlstr, int type, int *vallen)
+static void *get_val(const char **sqlstr, int type, int *vallen)
 {
     while (isspace(**sqlstr))
         (*sqlstr)++;
@@ -779,21 +779,21 @@ extern void REPORT_COSTS(void);
 static void (*enable_costs)(void) = ENABLE_COSTS;
 static void (*report_costs)(void) = REPORT_COSTS;
 
-int list_tables()
+static int list_tables()
 {
     int start_time_ms, run_time_ms;
     const char *sql = "SELECT tablename FROM comdb2_tables order by tablename";
     return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
 }
 
-int list_systables()
+static int list_systables()
 {
     int start_time_ms, run_time_ms;
     const char *sql = "SELECT name FROM comdb2_systables order by name";
     return run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
 }
 
-int list_views()
+static int list_views()
 {
     int start_time_ms, run_time_ms;
     const char *sql = "SELECT name FROM comdb2_views order by name";
@@ -1626,6 +1626,13 @@ static int run_statement(const char *sql, int ntypes, int *types,
             printf("Effects not sent by comdb2 server. \n");
         }
     }
+
+    if (docost) {
+        struct cdb2_get_info_out out;
+        if(cdb2_get_info(cdb2h, CDB2_IT_EXTENDED_COST, &out) == 0 && out.str_component) {
+            fprintf(stderr, "%s\n", out.str_component);
+        }
+    }
     return 0;
 }
 
@@ -1677,14 +1684,6 @@ static void process_line(char *sql, int ntypes, int *types,
     }
     if (run_time) {
       *run_time = run_time_ms;
-    }
-
-    if (docost && !rc && report_costs == NULL) {
-        int saved_printmode = printmode;
-        printmode = DISP_TABS | DISP_STDERR;
-        const char *costSql = "SELECT comdb2_prevquerycost() as Cost";
-        run_statement(costSql, ntypes, types, &start_time_ms, &run_time_ms);
-        printmode = saved_printmode;
     }
 }
 

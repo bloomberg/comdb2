@@ -49,7 +49,7 @@ sleep 5
 cdb2sql $REM_CDB2_OPTIONS $a_remdbname default 'select table_version("t")' >> $output
 
 # retrieve data
-cdb2sql ${SRC_CDB2_OPTIONS} -cost --host $mach $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --cost --host $mach $a_dbname default "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
 
 # get the new version V2'
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
