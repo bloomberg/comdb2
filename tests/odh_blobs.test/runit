@@ -56,7 +56,7 @@ select * from t where length(txt) = 28
 select * from t where length(txt) = 16
 select * from t where length(txt) = 7
 EOF
-cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep 'TABLE SCAN' >>actual 2>&1
+cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep -i 'table scan' >>actual 2>&1
 
 wait
 
@@ -67,7 +67,7 @@ select * from t where length(txt) = 28
 select * from t where length(txt) = 16
 select * from t where length(txt) = 7
 EOF
-cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep 'finds' >>actual 2>&1
+cdb2sql ${CDB2_OPTIONS} -s --tabs --cost $dbnm --host $fixednode - 2>&1 | grep -i 'numfind' >>actual 2>&1
 
 ### Test 4: removing ODH
 

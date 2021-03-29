@@ -293,6 +293,17 @@ typedef enum cdb2_event_arg {
     CDB2_QUERY_STATE
 } cdb2_event_arg;
 
+typedef enum cdb2_response_info_type {
+    CDB2_IT_COST = 1,
+    CDB2_IT_EXTENDED_COST,
+    CDB2_IT_EFFECTS
+} cdb2_response_info_type;
+
+struct cdb2_get_info_out {
+    int64_t int_component;
+    const char *str_component;
+};
+
 typedef struct cdb2_event cdb2_event;
 
 typedef void *(*cdb2_event_callback)(cdb2_hndl_tp *hndl, void *user_arg,
@@ -302,6 +313,8 @@ cdb2_event *cdb2_register_event(cdb2_hndl_tp *hndl, cdb2_event_type types,
                                 cdb2_event_ctrl ctrls, cdb2_event_callback cb,
                                 void *user_arg, int argc, ...);
 int cdb2_unregister_event(cdb2_hndl_tp *hndl, cdb2_event *e);
+int cdb2_get_info(cdb2_hndl_tp *hndl, cdb2_response_info_type tp, struct cdb2_get_info_out *out);
+
 #if defined __cplusplus
 }
 #endif
