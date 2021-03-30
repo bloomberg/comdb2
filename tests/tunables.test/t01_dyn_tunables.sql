@@ -59,5 +59,14 @@ exec procedure sys.cmd.send('appsockpool maxt xxx');
 exec procedure sys.cmd.send('appsockpool maxt 102');
 SELECT value AS 'appsockpool.maxt' FROM comdb2_tunables WHERE name = 'appsockpool.maxt';
 
-# Test joins on comdb2_tunables
-select count(*) from comdb2_tunables c, comdb2_tunables d where c.name like '%colum%';
+# Test joins on comdb2_tunables (added "order by + limit" so that the output
+# remains mostly unchanged on every tunable addition)
+select c.name from comdb2_tunables c, comdb2_tunables d where c.name like '%colum%' order by c.name limit 1;
+
+# Test 'max_query_fingerprints'
+select value from comdb2_tunables where name = 'max_query_fingerprints'
+put tunable 'max_query_fingerprints' 500;
+select value from comdb2_tunables where name = 'max_query_fingerprints'
+put tunable 'max_query_fingerprints' 2000;
+select value from comdb2_tunables where name = 'max_query_fingerprints'
+
