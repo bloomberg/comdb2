@@ -1984,20 +1984,25 @@ static int cdb2_socket_pool_get_ll(const char *typestr, int dbnum, int *port)
 /* Get the file descriptor of a socket matching the given type string from
  * the pool.  Returns -1 if none is available or the file descriptor on
  * success. */
-int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port)
+int cdb2_socket_pool_get(const char *typestr, int dbnum, int *port, const char *dest)
 {
+    if (strcasecmp(dest, "local") == 0)
+        return -1;
+
     int rc = cdb2_socket_pool_get_ll(typestr, dbnum, port);
     if (log_calls)
         fprintf(stderr, "%s(%s,%d): fd=%d\n", __func__, typestr, dbnum, rc);
     return rc;
 }
 
-void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl,
-                                 int dbnum)
+void cdb2_socket_pool_donate_ext(const char *typestr, int fd, int ttl, int dbnum, const char *dest)
 {
     int enabled = 0;
     int sockpool_fd = -1;
     int sp_generation = -1;
+
+    if (strcasecmp(dest, "local") == 0)
+        return;
 
     pthread_mutex_lock(&cdb2_sockpool_mutex);
     enabled = sockpool_enabled;
@@ -2281,9 +2286,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
                    hndl->newsql_typestr);
     }
 
-    while (!hndl->is_admin &&
-           (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
-                                      NULL)) > 0) {
+    while (!hndl->is_admin && (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum, NULL, hndl->type)) > 0) {
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
             return -1;
@@ -2360,8 +2363,7 @@ static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
         sbuf2close(sb);
     } else {
         sbuf2free(sb);
-        cdb2_socket_pool_donate_ext(hndl->newsql_typestr, fd, timeoutms / 1000,
-                                    hndl->dbnum);
+        cdb2_socket_pool_donate_ext(hndl->newsql_typestr, fd, timeoutms / 1000, hndl->dbnum, hndl->type);
     }
     hndl->use_hint = 0;
     hndl->sb = NULL;
@@ -5132,7 +5134,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
             comdb2db_name, cluster, hndl->policy);
     }
 
-    int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL);
+    int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL, cluster);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
             fd =
@@ -5261,8 +5263,7 @@ free_vars:
     cdb2__sqlresponse__free_unpacked(sqlresponse, NULL);
     free(p);
     int timeoutms = 10 * 1000;
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000,
-                                comdb2db_num);
+    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, comdb2db_num, cluster);
 
     sbuf2free(ss);
     free_events(&tmp);
@@ -5308,7 +5309,8 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         rc = -1;
         goto after_callback;
     }
-    int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL);
+
+    int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL, type);
     debugprint("cdb2_socket_pool_get fd %d, host '%s'\n", fd, host);
     if (fd < 0) {
         if (host == NULL) {
@@ -5440,7 +5442,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     int timeoutms = 10 * 1000;
 
-    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum);
+    cdb2_socket_pool_donate_ext(newsql_typestr, fd, timeoutms / 1000, dbnum, type);
 
     sbuf2free(sb);
 
