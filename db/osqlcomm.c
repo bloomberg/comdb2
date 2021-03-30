@@ -73,7 +73,7 @@ int gbl_master_sends_query_effects = 1;
 int gbl_toblock_random_deadlock_trans;
 int gbl_selectv_writelock = 0;
 
-int db_is_stopped();
+extern int db_is_exiting();
 
 static int osql_net_type_to_net_uuid_type(int type);
 static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
@@ -5088,7 +5088,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
     comdb2uuid_clear(uuid);
 
-    if (db_is_stopped()) {
+    if (db_is_exiting()) {
         /* don't do anything, we're going down */
         return;
     }
@@ -5183,7 +5183,7 @@ static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
 
     comdb2uuid_clear(uuid);
 
-    if (db_is_stopped()) {
+    if (db_is_exiting()) {
         /* don't do anything, we're going down */
         return;
     }

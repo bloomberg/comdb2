@@ -330,6 +330,7 @@ extern int gbl_legacy_schema;
 extern int gbl_selectv_writelock_on_update;
 extern int gbl_selectv_writelock;
 extern int gbl_reorder_idx_writes;
+extern int gbl_perform_full_clean_exit;
 extern int gbl_clean_exit_on_sigterm;
 extern int gbl_debug_omit_dta_write;
 extern int gbl_debug_omit_idx_write;

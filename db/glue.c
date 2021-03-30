@@ -3160,7 +3160,7 @@ static void net_flush_all(void *hndl, void *uptr, char *fromnode, int usertype,
                           void *dtap, int dtalen, uint8_t is_tcp)
 {
     logmsg(LOGMSG_DEBUG, "Received NET_FLUSH_ALL\n");
-    if (!thedb || db_is_stopped() || gbl_exit || !gbl_ready) {
+    if (db_is_exiting() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_WARN, "I am not ready, ignoring NET_FLUSH_ALL\n");
         return;
     }
@@ -3276,7 +3276,7 @@ static void net_forgetmenot(void *hndl, void *uptr, char *fromnode,
 {
 
     /* if this arrives too early, it will crash the master */
-    if (db_is_stopped() || gbl_exit || !gbl_ready) {
+    if (db_is_exiting() || gbl_exit || !gbl_ready) {
         logmsg(LOGMSG_ERROR, "%s: received trap during lunch time\n", __func__);
         return;
     }

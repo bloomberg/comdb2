@@ -1599,15 +1599,8 @@ static int bdb_unlock_children_lock(bdb_state_type *bdb_state)
     return 0;
 }
 
-/* this routine is only used to CLOSE THE WHOLE DB (env) */
-static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
+void bdb_prepare_close(bdb_state_type *bdb_state)
 {
-    int rc;
-    bdb_state_type *child;
-    int i;
-    int bdberr;
-    int last;
-    DB_TXN *tid;
     netinfo_type *netinfo_ptr = bdb_state->repinfo->netinfo;
 
     if (is_real_netinfo(netinfo_ptr)) {
@@ -1622,9 +1615,20 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
             osql_net_exiting();
         }
     }
+
     net_cleanup_netinfo(netinfo_ptr);
     osql_cleanup_netinfo();
+}
 
+/* this routine is only used to CLOSE THE WHOLE DB (env) */
+static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
+{
+    int rc;
+    bdb_state_type *child;
+    int i;
+    int bdberr;
+    int last;
+    DB_TXN *tid;
     /* lock everyone out of the bdb code */
     BDB_WRITELOCK(__func__);
 
@@ -1863,6 +1867,14 @@ int bdb_handle_dbp_hash_stat_reset(bdb_state_type *bdb_state)
     }
 
     return 0;
+}
+
+void bdb_stop_recover_threads(bdb_state_type *bdb_state)
+{
+    if (bdb_state->dbenv->recovery_processors)
+        thdpool_stop(bdb_state->dbenv->recovery_processors);
+    if (bdb_state->dbenv->recovery_workers)
+        thdpool_stop(bdb_state->dbenv->recovery_workers);
 }
 
 int bdb_close_env(bdb_state_type *bdb_state)

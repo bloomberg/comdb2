@@ -162,6 +162,7 @@ int gbl_recovery_lsn_offset = 0;
 int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
+int gbl_perform_full_clean_exit = 1;
 extern int gbl_dump_fsql_response;
 struct ruleset *gbl_ruleset = NULL;
 
@@ -177,6 +178,7 @@ extern void *clean_exit_thd(void *unused);
 extern void bdb_durable_lsn_for_single_node(void *in_bdb_state);
 extern void update_metrics(void);
 extern void *timer_thread(void *);
+extern void comdb2_signal_timer();
 void init_lua_dbtypes(void);
 static int put_all_csc2();
 
@@ -335,6 +337,9 @@ int gbl_meta_lite = 1;
 int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
+int gbl_db_is_exiting = 0; /* Indicates this process is exiting */
+
+
 int gbl_debug_omit_dta_write;
 int gbl_debug_omit_idx_write;
 int gbl_debug_omit_blob_write;
@@ -564,6 +569,9 @@ void free_tzdir();
 extern void init_sql_hint_table();
 extern void init_clientstats_table();
 extern int bdb_osql_log_repo_init(int *bdberr);
+extern void set_stop_mempsync_thread();
+extern void bdb_prepare_close(bdb_state_type *bdb_state);
+extern void bdb_stop_recover_threads(bdb_state_type *bdb_state);
 
 int gbl_use_plan = 1;
 
@@ -791,6 +799,15 @@ void register_plugin_tunables(void);
 int install_static_plugins(void);
 int run_init_plugins(int phase);
 extern void clear_sqlhist();
+
+int gbl_hostname_refresh_time = 60;
+
+int close_all_dbs_tran(tran_type *tran);
+
+int open_all_dbs_tran(void *tran);
+int reload_lua_sfuncs();
+int reload_lua_afuncs();
+void oldfile_clear(void);
 
 inline int getkeyrecnums(const dbtable *tbl, int ixnum)
 {
@@ -1030,6 +1047,11 @@ int db_is_stopped(void)
     return thedb->stopped;
 }
 
+int db_is_exiting()
+{
+    return ATOMIC_LOAD32(gbl_db_is_exiting);
+}
+
 void print_dbsize(void);
 
 static void init_q_vars()
@@ -1126,11 +1148,10 @@ static void *purge_old_blkseq_thread(void *arg)
     loop = 0;
     sleep(1);
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
 
         /* Check del unused files progress about twice per threshold  */
-        if (!(loop % (gbl_sc_del_unused_files_threshold_ms /
-                      (2 * 1000 /*ms per sec*/))))
+        if (!(loop % (gbl_sc_del_unused_files_threshold_ms / (2 * 1000 /*ms per sec*/))))
             sc_del_unused_files_check_progress();
 
         if (loop == 3600)
@@ -1256,6 +1277,14 @@ static void *purge_old_blkseq_thread(void *arg)
     return NULL;
 }
 
+/* sleep for secs in total by checking every second for db_is_exiting()
+ * and stopping short if that's the case */
+static inline void sleep_with_check_for_exiting(int secs)
+{
+    for(int i = 0; i < secs && !db_is_exiting(); i++)
+        sleep(1);
+}
+
 static void *purge_old_files_thread(void *arg)
 {
     struct dbenv *dbenv = (struct dbenv *)arg;
@@ -1275,14 +1304,14 @@ static void *purge_old_files_thread(void *arg)
 
     assert(!gbl_is_physical_replicant);
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
         if (thedb->master != gbl_myhostname) {
-            sleep(empty_pause);
+            sleep_with_check_for_exiting(empty_pause);
             continue;
         }
-        if (db_is_stopped())
+        if (db_is_exiting())
             continue;
 
         if (!bdb_have_unused_files() && gbl_master_changed_oldfiles) {
@@ -1292,7 +1321,7 @@ static void *purge_old_files_thread(void *arg)
                 logmsg(LOGMSG_ERROR,
                        "%s: bdb_list_unused_files failed with rc=%d\n",
                        __func__, rc);
-                sleep(empty_pause);
+                sleep_with_check_for_exiting(empty_pause);
                 continue;
             }
         }
@@ -1305,7 +1334,7 @@ static void *purge_old_files_thread(void *arg)
         rc = trans_start_sc(&iq, NULL, &trans);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, "%s: failed to create transaction\n", __func__);
-            sleep(empty_pause);
+            sleep_with_check_for_exiting(empty_pause);
             continue;
         }
 
@@ -1327,12 +1356,12 @@ static void *purge_old_files_thread(void *arg)
                        "%s: failed to commit purged file, "
                        "rc=%d\n",
                        __func__, rc);
-                sleep(empty_pause);
+                sleep_with_check_for_exiting(empty_pause);
                 continue;
             }
 
             if (empty) {
-                sleep(empty_pause);
+                sleep_with_check_for_exiting(empty_pause);
                 continue;
             }
         } else {
@@ -1340,7 +1369,7 @@ static void *purge_old_files_thread(void *arg)
                    "%s: bdb_purge_unused_files failed rc=%d bdberr=%d\n",
                    __func__, rc, bdberr);
             trans_abort(&iq, trans);
-            sleep(empty_pause);
+            sleep_with_check_for_exiting(empty_pause);
             continue;
         }
     }
@@ -1484,18 +1513,142 @@ static void free_view_hash(hash_t *view_hash)
     hash_free(view_hash);
 }
 
+/* second part of full cleanup which performs freeing of all the remaining
+ * threads (not controlled by thrmgr) and free all structures
+ */
+static void finish_clean()
+{
+    int rc = backend_close(thedb);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
+    }
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
+
+    /* gbl_trickle_thdpool is needed up to here */
+    stop_trickle_threads();
+    close_all_dbs_tran(NULL);
+
+    eventlog_stop();
+
+    cleanup_file_locations();
+    ctrace_closelog();
+
+    backend_cleanup(thedb);
+    net_cleanup();
+    cleanup_sqlite_master();
+
+    free_sqlite_table(thedb);
+
+    if (thedb->sqlalias_hash) {
+        hash_clear(thedb->sqlalias_hash);
+        hash_free(thedb->sqlalias_hash);
+        thedb->sqlalias_hash = NULL;
+    }
+
+    if (thedb->db_hash) {
+        hash_clear(thedb->db_hash);
+        hash_free(thedb->db_hash);
+        thedb->db_hash = NULL;
+    }
+
+    if (thedb->view_hash) {
+        free_view_hash(thedb->view_hash);
+        thedb->view_hash = NULL;
+    }
+
+    cleanup_interned_strings();
+    cleanup_peer_hash();
+    free(gbl_dbdir);
+    gbl_dbdir = NULL;
+
+    cleanresources(); // list of lrls
+    // TODO: would be nice but other threads need to exit first:
+    // comdb2ma_exit();
+    free_tzdir();
+    tz_hash_free();
+    clear_sqlhist();
+    if(!all_string_references_cleared())
+        abort();
+}
+
+void call_abort(int s)
+{
+    abort();
+}
+
+/* Full way of clean exit called when gbl_perform_full_clean_exit is enabled
+ * its done in two parts, first we set gbl_db_is_exiting and wait for all
+ * the thrmgr threads to exit.
+ * The second part is done from main() where we then call finish_clean()
+ */
+static void begin_clean_exit(void)
+{
+    int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
+
+    logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
+
+#ifndef NDEBUG
+    signal(SIGALRM, call_abort);
+#endif
+    /* this defaults to 5 minutes */
+    alarm(alarmtime);
+
+    XCHANGE32(gbl_db_is_exiting, 1);
+
+    /* dont let any new requests come in.  we're going to go non-coherent
+       here in a second, so letting new reads in would be bad. */
+    no_new_requests(thedb);
+
+    print_all_time_accounting();
+    wait_for_sc_to_stop("exit", __func__, __LINE__);
+
+    /* let the lower level start advertising high lsns to go non-coherent
+       - dont hang the master waiting for sync replication to an exiting
+       node. */
+    bdb_exiting(thedb->static_table.handle);
+
+    comdb2_signal_timer();
+    stop_threads(thedb);
+    set_stop_mempsync_thread();
+    flush_db();
+
+    cleanup_q_vars();
+    cleanup_switches();
+    free_gbl_tunables();
+    destroy_plugins();
+    destroy_appsock();
+    bdb_prepare_close(thedb->bdb_env);
+    bdb_stop_recover_threads(thedb->bdb_env);
+
+    thrman_wait_type_exit(THRTYPE_PURGEFILES);
+    // close the generic threads
+    thrman_wait_type_exit(THRTYPE_GENERIC);
+
+    if (gbl_create_mode) {
+        logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
+        finish_clean();
+    }
+}
+
 /* clean_exit will be called to cleanup db structures upon exit
  * NB: This function can be called by clean_exit_sigwrap() when the db is not
  * up yet at which point we may not have much to cleanup.
  */
 void clean_exit(void)
 {
+    if(gbl_perform_full_clean_exit) {
+        begin_clean_exit();
+        return;
+    }
+
     int alarmtime = (gbl_exit_alarm_sec > 0 ? gbl_exit_alarm_sec : 300);
 
     logmsg(LOGMSG_INFO, "CLEAN EXIT: alarm time %d\n", alarmtime);
 
     /* this defaults to 5 minutes */
     alarm(alarmtime);
+
+    XCHANGE32(gbl_db_is_exiting, 1);
 
     /* dont let any new requests come in.  we're going to go non-coherent
        here in a second, so letting new reads in would be bad. */
@@ -1586,16 +1739,12 @@ int get_elect_time_microsecs(void)
     if (gbl_elect_time_secs > 0) {
         /* local override has first priority */
         return gbl_elect_time_secs * 1000000;
-    } else {
-        /* This is set in config_init, and hasn't changed in 10 years.  Let's
-         * call it
-         * fixed, unless there's an override above
-         */
-        return 5000000;
-    }
+    } 
 
-    /* No preference, bdblib will do its own thing */
-    return 0;
+    /* This is set in config_init, and hasn't changed in 10 years.  Let's
+     * call it fixed, unless there's an override above
+     */
+    return 5000000;
 }
 
 /* compare cmpto againt the lrl file line lrlline to make sure that the
@@ -4086,6 +4235,7 @@ static int init(int argc, char **argv)
             /* quit successfully */
             logmsg(LOGMSG_INFO, "-exiting.\n");
             unlock_schema_lk();
+            gbl_perform_full_clean_exit = 0;
             clean_exit();
         }
     }
@@ -4250,6 +4400,7 @@ static int init(int argc, char **argv)
 
     if (gbl_exit) {
         logmsg(LOGMSG_INFO, "-exiting.\n");
+        gbl_perform_full_clean_exit = 0;
         clean_exit();
     }
 
@@ -4559,7 +4710,7 @@ void *statthd(void *p)
     statlogger = reqlog_alloc();
     reqlog_diffstat_init(statlogger);
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         nqtrap = n_qtrap;
         nfstrap = n_fstrap;
         ncommits = n_commits;
@@ -5468,6 +5619,25 @@ static void handle_resume_sc()
     }
 }
 
+static void goodbye()
+{
+    logmsg(LOGMSG_USER, "goodbye\n");
+#ifndef NDEBUG //TODO:wrap the follwing lines before checking in
+    if (gbl_perform_full_clean_exit) {
+        char cmd[400];
+        sprintf(cmd,
+                "bash -c 'gdb --batch --eval-command=\"thr app all ba\" "
+                "/proc/%d/exe %d 2>&1 > %s/logs/%s.atexit'",
+                gbl_mypid, gbl_mypid, getenv("TESTDIR"), gbl_dbname);
+
+        logmsg(LOGMSG_ERROR, "goodbye: running %s\n", cmd);
+        int rc = system(cmd);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "goodbye: system  returned rc %d\n", rc);
+        }
+    }
+#endif
+}
 
 #define TOOL(x) #x,
 
@@ -5688,21 +5858,45 @@ int main(int argc, char **argv)
     pthread_attr_t timer_attr;
     Pthread_attr_init(&timer_attr);
     Pthread_attr_setstacksize(&timer_attr, DEFAULT_THD_STACKSZ);
-    Pthread_attr_setdetachstate(&timer_attr, PTHREAD_CREATE_JOINABLE);
-    rc = pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
-    Pthread_attr_destroy(&timer_attr);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "Can't create timer thread %d %s\n", rc, strerror(rc));
-        return 1;
+    if (gbl_perform_full_clean_exit) {
+        Pthread_attr_setdetachstate(&timer_attr, PTHREAD_CREATE_DETACHED);
+    } else {
+        Pthread_attr_setdetachstate(&timer_attr, PTHREAD_CREATE_JOINABLE);
     }
-    void *ret;
-    rc = pthread_join(timer_tid, &ret);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "Can't wait for timer thread %d %s\n", rc,
-                strerror(rc));
-        return 1;
+    Pthread_create(&timer_tid, &timer_attr, timer_thread, NULL);
+    Pthread_attr_destroy(&timer_attr);
+
+    if (!gbl_perform_full_clean_exit) {
+        void *ret;
+        rc = pthread_join(timer_tid, &ret);
+        if (rc) {
+            logmsg(LOGMSG_FATAL, "Can't wait for timer thread %d %s\n", rc,
+                    strerror(rc));
+            return 1;
+        }
+        return 0;
     }
 
+    int wait_counter = 0;
+    while (!db_is_exiting()) {
+        sleep(1);
+        wait_counter++;
+    }
+
+    /* wait until THRTYPE_CLEANEXIT thread has exited
+     * THRTYPE_CLEANEXIT threads calls begin_clean_exit() which in turn
+     * will wait for all the generic threads to exit */
+    thrman_wait_type_exit(THRTYPE_CLEANEXIT);
+    finish_clean();
+
+    for (int ii = 0; ii < thedb->num_dbs; ii++) {
+        struct dbtable *db = thedb->dbs[ii];
+        free(db->handle);
+    }
+    free(thedb);
+    thedb = NULL;
+
+    goodbye();
     return 0;
 }
 
@@ -6026,15 +6220,6 @@ int thdpool_alarm_on_queing(int len)
         return 0;
     return 1;
 }
-
-int gbl_hostname_refresh_time = 60;
-
-int close_all_dbs_tran(tran_type *tran);
-
-int open_all_dbs_tran(void *tran);
-int reload_lua_sfuncs();
-int reload_lua_afuncs();
-void oldfile_clear(void);
 
 int comdb2_recovery_cleanup(void *dbenv, void *inlsn, int is_master)
 {

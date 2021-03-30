@@ -924,7 +924,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
     int numwriterthreads;
     struct dbq_entry_t *newent = NULL;
 
-    if (db_is_stopped()) {
+    if (db_is_exiting()) {
         return ERR_REJECTED;
     }
 

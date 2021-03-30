@@ -3297,6 +3297,7 @@ extern int gbl_sql_tranlevel_default;
 extern int gbl_sql_tranlevel_preserved;
 
 void berkdb_iopool_process_message(char *line, int lline, int st);
+void stop_trickle_threads();
 
 uint8_t *db_info2_iostats_put(const struct db_info2_iostats *p_iostats,
                               uint8_t *p_buf, const uint8_t *p_buf_end);
@@ -3541,6 +3542,7 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags);
 
 int db_is_stopped(void);
+int db_is_exiting();
 
 int is_tablename_queue(const char *);
 

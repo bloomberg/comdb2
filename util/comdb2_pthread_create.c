@@ -40,7 +40,7 @@
 #define FREE_THR_INTV 5
 #define MIN_MMAP_THRESH 128 * 1024
 
-extern int db_is_stopped();
+extern int db_is_exiting();
 
 typedef struct thr_arg {
     void *(*func)(void *); /* actual pthread routine */
@@ -84,7 +84,7 @@ static void *free_stack_thr(void *unused)
     ** [3] sleep for a few seconds and free # elems from stack_list
     */
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         //![1]
         Pthread_mutex_lock(&pthr_mutex);
         signal_count = listc_size(&stack_list);

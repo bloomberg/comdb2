@@ -82,7 +82,7 @@ else
 
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
     ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $TSTDBDIR/${DB}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
-    sleep 1
+    sleep 2
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $DB default "select comdb2_host()"`
     if [[ $res != $HOSTNAME ]] && [[ $res != `hostname --long` ]] ; then
         failexit "comdb2_host() returned unexpected $res instead of $HOSTNAME"

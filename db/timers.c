@@ -24,6 +24,7 @@
 #include "thrman.h"
 #include "thread_util.h"
 
+extern int db_is_exiting();
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
@@ -160,6 +161,12 @@ int remove_timer(int parm, int dolock)
     return -1;
 }
 
+// send signal on db exit to allow timer_thread() to exit
+void comdb2_signal_timer()
+{
+    Pthread_cond_signal(&timerwait);
+}
+
 int comdb2_cantim(int parm)
 {
     return remove_timer(parm, 1);
@@ -182,7 +189,7 @@ void *timer_thread(void *p)
     thrman_register(THRTYPE_GENERIC);
     thread_started("timer_thread");
 
-    for (;;) {
+    while (!db_is_exiting()) {
         tnow = comdb2_time_epochms();
         Pthread_mutex_lock(&timerlk);
         while (ntimers == 0)

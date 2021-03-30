@@ -89,6 +89,9 @@ extern int gbl_exit;
 extern int gbl_net_portmux_register_interval;
 extern int gbl_accept_on_child_nets;
 
+extern void myfree(void *ptr);
+extern int db_is_exiting(void);
+
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
 
@@ -136,8 +139,6 @@ static int sbuf2write_wrapper(SBUF2 *sb, const char *buf, int nbytes)
 
     return sbuf2unbufferedwrite(sb, buf, nbytes);
 }
-
-extern void myfree(void *ptr);
 
 /* Help me build the test program... - Sam J */
 #ifdef TEST
@@ -1598,9 +1599,7 @@ int net_send_message_payload_ack(netinfo_type *netinfo_ptr, const char *to_host,
     }
 
     msghd.usertype = usertype;
-    Pthread_mutex_lock(&(netinfo_ptr->seqlock));
-    msghd.seqnum = ++netinfo_ptr->seqnum;
-    Pthread_mutex_unlock(&(netinfo_ptr->seqlock));
+    msghd.seqnum = ATOMIC_ADD32(netinfo_ptr->seqnum, 1);
     msghd.waitforack = waitforack;
     msghd.datalen = datalen;
 
@@ -1952,9 +1951,7 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
     /*ctrace("net_send_message: to node %s, ut=%d\n", host_node_ptr->host, usertype);*/
 
     msghd.usertype = usertype;
-    Pthread_mutex_lock(&(netinfo_ptr->seqlock));
-    msghd.seqnum = ++netinfo_ptr->seqnum;
-    Pthread_mutex_unlock(&(netinfo_ptr->seqlock));
+    msghd.seqnum = ATOMIC_ADD32(netinfo_ptr->seqnum, 1);
     msghd.waitforack = 0;
     msghd.datalen = datalen + tailen;
 
@@ -2980,7 +2977,7 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     }
 
     Pthread_rwlock_init(&(netinfo_ptr->lock), NULL);
-    Pthread_mutex_init(&(netinfo_ptr->seqlock), NULL);
+    Pthread_mutex_init(&(netinfo_ptr->stop_thread_callback_lock), NULL);
     Pthread_mutex_init(&(netinfo_ptr->watchlk), NULL);
     Pthread_mutex_init(&(netinfo_ptr->sanclk), NULL);
 
@@ -4033,8 +4030,10 @@ done:
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -4280,8 +4279,10 @@ done:
     close_hostnode_ll(host_node_ptr);
     Pthread_mutex_unlock(&(host_node_ptr->lock));
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
     return NULL;
 }
 
@@ -4613,7 +4614,13 @@ static void *connect_thread(void *arg)
             uint32_t seed = crc32c((uint8_t *)&seed_data, sizeof(seed_data));
             int r = rand_r(&seed) % 5000;
             Pthread_mutex_unlock(&(host_node_ptr->lock));
-            poll(NULL, 0, r);
+            // sleep up to r-ms by 1s (1000ms) increments
+            while (r > 0 && !host_node_ptr->decom_flag &&
+                   !netinfo_ptr->exiting) {
+                int milli = (r > 1000) ? 1000 : r; // usleep for at most 1s
+                usleep(milli * 1000);
+                r -= 1000;
+            }
             check = 0;
             Pthread_mutex_lock(&(host_node_ptr->lock));
             continue;
@@ -4892,8 +4899,10 @@ static void *connect_thread(void *arg)
         rem_from_netinfo(netinfo_ptr, host_node_ptr);
     }
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -5418,7 +5427,7 @@ static void *accept_thread(void *arg)
     netinfo_ptr->accept_thread_created = 1;
     /*fprintf(stderr, "setting netinfo_ptr->accept_thread_created\n");*/
 
-    while (!netinfo_ptr->exiting) {
+    while (!netinfo_ptr->exiting && !db_is_exiting()) {
 
         clilen = sizeof(cliaddr);
 
@@ -5427,13 +5436,15 @@ static void *accept_thread(void *arg)
         } else {
             new_fd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
         }
-        if (new_fd == 0 || new_fd == 1 || new_fd == 2) {
-            logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
-        }
 
         if (new_fd == -1) {
-            logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s", listenfd, errno,
+            logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s\n", listenfd, errno,
                    strerror(errno));
+            continue;
+        }
+
+        if (new_fd <= 2) {
+            logmsg(LOGMSG_ERROR, "Unusual new_fd:%d\n", new_fd);
             continue;
         }
 
@@ -5637,8 +5648,10 @@ static void *accept_thread(void *arg)
     close(listenfd);
 
 #ifdef NOTREACHED
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     if (portmux_fds)
         portmux_close(portmux_fds);
@@ -5680,10 +5693,14 @@ static void *heartbeat_send_thread(void *arg)
         if (netinfo_ptr->exiting)
             break;
 
-        sleep(netinfo_ptr->heartbeat_send_time);
+        int ss = netinfo_ptr->heartbeat_send_time;
+        for (int i = 0; i < ss && !netinfo_ptr->exiting; i++)
+            sleep(1);
     }
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
@@ -5944,8 +5961,10 @@ static void *heartbeat_check_thread(void *arg)
 
     logmsg(LOGMSG_DEBUG, "heartbeat check thread exiting!\n");
 
+    Pthread_mutex_lock(&(netinfo_ptr->stop_thread_callback_lock));
     if (netinfo_ptr->stop_thread_callback)
         netinfo_ptr->stop_thread_callback(netinfo_ptr->callback_data);
+    Pthread_mutex_unlock(&(netinfo_ptr->stop_thread_callback_lock));
 
     return NULL;
 }
