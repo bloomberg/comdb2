@@ -105,7 +105,6 @@ extern int gbl_reallyearly;
 extern int gbl_udp;
 extern int gbl_prefault_udp;
 extern int gbl_prefault_latency;
-extern int gbl_fingerprint_max_queries;
 extern struct thdpool *gbl_verify_thdpool;
 
 void debug_bulktraverse_data(char *tbl);
@@ -4793,15 +4792,6 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "clear_fingerprints") == 0) {
         int fpcount = clear_fingerprints();
         logmsg(LOGMSG_USER, "Cleared %d fingerprints\n", fpcount);
-    } else if (tokcmp(tok, ltok, "max_query_fingerprints") == 0) {
-        tok = segtok(line, lline, &st, &ltok);
-        if (ltok == 0) {
-            logmsg(LOGMSG_ERROR,
-                   "Expected max query fingerprints, current %d\n",
-                   gbl_fingerprint_max_queries);
-        } else {
-            gbl_fingerprint_max_queries = toknum(tok, ltok);
-        }
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;

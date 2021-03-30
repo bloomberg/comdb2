@@ -1,5 +1,5 @@
 /*
-   Copyright 2017 Bloomberg Finance L.P.
+   Copyright 2017, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -699,6 +699,11 @@ REGISTER_TUNABLE(
     "maxwt",
     "Maximum number of threads processing write requests. (Default: 8)",
     TUNABLE_INTEGER, &gbl_maxwthreads, READONLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("max_query_fingerprints",
+                 "Minimum number of queries to be placed into the fingerprint "
+                 "hash (Default: 1000)",
+                 TUNABLE_INTEGER, &gbl_fingerprint_max_queries, 0, NULL,
+                 max_query_fingerprints_check, NULL, NULL);
 REGISTER_TUNABLE("memnice", NULL, TUNABLE_INTEGER, &gbl_mem_nice,
                  READONLY | NOARG, NULL, NULL, memnice_update, NULL);
 REGISTER_TUNABLE("mempget_timeout", NULL, TUNABLE_INTEGER,

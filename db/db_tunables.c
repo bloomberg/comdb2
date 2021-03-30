@@ -236,6 +236,7 @@ extern int gbl_create_dba_user;
 extern int gbl_lock_dba_user;
 extern int gbl_max_trigger_threads;
 extern int gbl_do_inline_poll;
+extern int gbl_fingerprint_max_queries;
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;
@@ -891,6 +892,18 @@ static int page_order_table_scan_update(void *context, void *value)
                  gbl_page_order_table_scan);
     logmsg(LOGMSG_USER, "Page order table scan set to %s.\n",
            (gbl_page_order_table_scan) ? "on" : "off");
+    return 0;
+}
+
+static int max_query_fingerprints_check(void *context, void *value)
+{
+    if ((*(int *)value) < gbl_fingerprint_max_queries) {
+        logmsg(LOGMSG_ERROR,
+               "'max_query_fingerprints' cannot be reduced at runtime "
+               "(current: %d)\n",
+               gbl_fingerprint_max_queries);
+        return 1;
+    }
     return 0;
 }
 
