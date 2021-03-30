@@ -354,6 +354,10 @@ const char *thrman_type2a(enum thrtype type)
         return "lua-trigger";
     case THRTYPE_PGLOGS_ASOF:
         return "pglogs-asof";
+    case THRTYPE_CLEANEXIT:
+        return "cleanexit";
+    case THRTYPE_GENERIC:
+        return "generic";
     default:
         return "??";
     }

@@ -122,6 +122,10 @@ extern int gbl_backup_logfiles;
 extern int is_db_roomsync();
 extern int get_schema_change_in_progress(const char *func, int line);
 
+int gbl_debug_children_lock = 0;
+int gbl_queuedb_genid_filename = 1;
+int gbl_queuedb_file_threshold = 0;
+int gbl_queuedb_file_interval = 60000;
 static const char NEW_PREFIX[] = "new.";
 
 static pthread_once_t ONCE_LOCK = PTHREAD_ONCE_INIT;
@@ -651,10 +655,6 @@ static int form_indexfile_name(bdb_state_type *bdb_state, DB_TXN *tid,
     return form_file_name(bdb_state, tid, 0 /*is_data_file*/, ixnum,
                           0 /*isstriped*/, 0 /*stripenum*/, outbuf, buflen);
 }
-
-int gbl_queuedb_genid_filename = 1;
-int gbl_queuedb_file_threshold = 0;
-int gbl_queuedb_file_interval = 60000;
 
 static int should_stop_looking_for_queuedb_files(bdb_state_type *bdb_state,
                                                  tran_type *tran, int file_num,
@@ -1569,8 +1569,6 @@ int bdb_flush_noforce(bdb_state_type *bdb_state, int *bdberr)
 
     return rc;
 }
-
-int gbl_debug_children_lock = 0;
 
 static int bdb_lock_children_lock(bdb_state_type *bdb_state)
 {

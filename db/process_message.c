@@ -24,35 +24,18 @@ extern int __berkdb_read_alarm_ms;
 
 #include <pthread.h>
 
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
 #include <stdint.h>
 #include <errno.h>
-
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/statvfs.h>
-
-#include <segstr.h>
-#include <epochlib.h>
-#include <net.h>
 #include <memory_sync.h>
-
-#include <bdb_api.h>
+#include <stdbool.h>
 #include <bdb_int.h>
-#ifdef _LINUX_SOURCE
-#endif
-#include <sqliteInt.h>
 #include <ctrace.h>
 
 #include "comdb2.h"
-#include "block_internal.h"
 #include "timer.h"
-#include "translistener.h"
-#include "tag.h"
 #include "sigutil.h"
-#include "util.h"
 #include "memdebug.h"
 #include "verify.h"
 #include "switches.h"
@@ -60,24 +43,18 @@ extern int __berkdb_read_alarm_ms;
 #include "osqlrepository.h"
 #include "osqlcomm.h"
 #include "osqlblockproc.h"
-#include "thdpool.h"
 #include "bdb_access.h"
 #include "analyze.h"
-#include "dbdest.h"
 #include "intern_strings.h"
-#include <stdbool.h>
 #include "utilmisc.h"
 #include "sqllog.h"
 #include "views.h"
-#include <autoanalyze.h>
+#include "autoanalyze.h"
 #include "quantize.h"
 #include "timers.h"
-#include "crc32c.h"
 #include "ssl_bend.h"
 #include "dohsql.h"
 #include "fdb_whitelist.h"
-
-#include "trigger.h"
 #include "sc_stripes.h"
 #include "sc_global.h"
 #include "logmsg.h"
@@ -642,6 +619,7 @@ void *clean_exit_thd(void *unused)
     Pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+
     clean_exit();
     return NULL;
 }
@@ -1026,13 +1004,13 @@ clipper_usage:
             unsigned long long genid;
             tokcpy0(tok, ltok, genid_c, sizeof(genid_c));
             if (!strcmp(genid_c, "auto")) {
-               logmsg(LOGMSG_FATAL, "AUTO PURGE\n");
+                logmsg(LOGMSG_FATAL, "AUTO PURGE\n");
                 /* purge the first few genids we find.
                    Used for testing purposes. */
                 purge_by_genid(db, NULL);
             } else {
                 genid = strtoull(genid_c, NULL, 0);
-               logmsg(LOGMSG_USER, "purge genid: 0x%llx\n", genid);
+                logmsg(LOGMSG_USER, "purge genid: 0x%llx\n", genid);
                 purge_by_genid(db, &genid);
             }
             tok = segtok(line, lline, &st, &ltok);

@@ -15,72 +15,15 @@
  */
 
 #include <pthread.h>
-#include <sys/resource.h>
-#include <sys/utsname.h>
-
-#include <alloca.h>
-#include <ctype.h>
-#include <errno.h>
-#include <signal.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <strings.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <sys/statvfs.h>
-#include <time.h>
-#include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <netdb.h>
-
-#include <epochlib.h>
-#include "marshal.h"
-#include <segstr.h>
-
-#include <list.h>
-
-#include <str0.h>
-#include <rtcpu.h>
-#include <ctrace.h>
-
-#include <memory_sync.h>
-
-#include <net.h>
-#include <bdb_api.h>
-#include <sbuf2.h>
-#include <quantize.h>
 #include <sockpool.h>
-
 #include "lockmacros.h"
 #include "comdb2.h"
 #include "sql.h"
-
-#include "comdb2_trn_intrl.h"
-#include "history.h"
-#include "tag.h"
-#include "types.h"
-#include "timer.h"
-#include <plhash.h>
-#include <dynschemaload.h>
-#include "translistener.h"
-#include "util.h"
-#include "verify.h"
-#include "switches.h"
-#include "sqloffload.h"
-#include "osqlblockproc.h"
 #include "fdb_fend.h"
-
-#include <sqliteInt.h>
-
-#include "thdpool.h"
-#include "memdebug.h"
-#include "bdb_access.h"
 #include "views.h"
-#include <logmsg.h>
+#include "logmsg.h"
 
 int gbl_client_queued_slow_seconds = 0;
 int gbl_client_running_slow_seconds = 0;
@@ -175,6 +118,9 @@ static void *watchdog_thread(void *arg)
     Pthread_attr_setstacksize(&gbl_pthread_joinable_attr, DEFAULT_THD_STACKSZ);
     pthread_attr_setdetachstate(&gbl_pthread_joinable_attr,
                                 PTHREAD_CREATE_JOINABLE);
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("watchdog");
 
     while (!gbl_ready)
         sleep(1);

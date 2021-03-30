@@ -16,18 +16,14 @@
 
 #include <pthread.h>
 #include <sys/time.h>
-
-#include <stdlib.h>
-#include <stdio.h>
-#include <stdint.h>
-#include <time.h>
-#include <string.h>
 #include <errno.h>
-
 #include <timers.h>
+#include "epochlib.h"
+#include "logmsg.h"
+#include "locks_wrap.h"
+#include "thrman.h"
+#include "thread_util.h"
 
-#include <logmsg.h>
-#include <locks_wrap.h>
 
 /* timer traps */
 static pthread_mutex_t timerlk = PTHREAD_MUTEX_INITIALIZER;
@@ -42,7 +38,7 @@ struct timer {
 static int ntimers = 0;
 static struct timer timers[MAXTIMERS];
 
-int64_t starttime;
+extern int64_t starttime;
 
 static void (*timer_func)(struct timer_parm *) = NULL;
 
@@ -59,34 +55,6 @@ void timer_init(void (*func)(struct timer_parm *))
     timer_func = func;
 }
 
-int comdb2_time_epoch(void)
-{
-    return time(NULL);
-}
-
-int64_t comdb2_time_epochus(void)
-{
-    struct timeval tv;
-    int rc;
-    rc = gettimeofday(&tv, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
-        abort();
-    }
-    return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
-}
-
-int comdb2_time_epochms(void)
-{
-    struct timeval tv;
-    int rc;
-    rc = gettimeofday(&tv, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
-        abort();
-    }
-    return (tv.tv_sec * 1000 + tv.tv_usec / 1000) - starttime;
-}
 
 #define left(n) (((n + 1) * 2) - 1)
 #define right(n) (((n + 1) * 2))
@@ -210,6 +178,10 @@ void *timer_thread(void *p)
     int rc;
     int oneshot;
     int ms;
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("timer_thread");
+
     for (;;) {
         tnow = comdb2_time_epochms();
         Pthread_mutex_lock(&timerlk);
@@ -254,4 +226,5 @@ void *timer_thread(void *p)
         }
         Pthread_mutex_unlock(&timerlk);
     }
+    return NULL;
 }
