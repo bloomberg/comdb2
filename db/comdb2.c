@@ -3511,7 +3511,7 @@ static int init(int argc, char **argv)
         gbl_exit = 1;
     }
     if (gbl_fullrecovery) {       /*  11  */
-        logmsg(LOGMSG_FATAL, "force full recovery.\n");
+        logmsg(LOGMSG_WARN, "force full recovery.\n");
         gbl_exit = 1;
     }
 

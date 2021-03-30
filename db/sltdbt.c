@@ -304,7 +304,7 @@ int handle_ireq(struct ireq *iq)
         get_raw_node_stats(NULL, NULL, iq->frommach, sbuf2fileno(iq->sb));
     if (iq->rawnodestats && iq->opcode >= 0 && iq->opcode < MAXTYPCNT)
         iq->rawnodestats->opcode_counts[iq->opcode]++;
-    if (gbl_print_deadlock_cycles)
+    if (gbl_print_deadlock_cycles && IQ_HAS_SNAPINFO(iq))
         osql_snap_info = IQ_SNAPINFO(iq);
 
     comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
