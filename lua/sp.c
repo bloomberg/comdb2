@@ -375,7 +375,7 @@ static int check_retry_conditions(Lua L, trigger_reg_t *reg,
 {
     SP sp = getsp(L);
 
-    if (db_is_stopped()) {
+    if (db_is_exiting()) {
         luabb_error(L, sp, "database exiting");
         return -1;
     }
@@ -7181,9 +7181,11 @@ void *exec_trigger(trigger_reg_t *reg)
         put_curtran(thedb->bdb_env, &clnt);
     }
     if (q) {
-        ctrace("trigger:%s %016" PRIx64 " unregister req\n", q->info.spname, q->info.trigger_cookie);
-        luabb_trigger_unregister(L, q);
-        ctrace("trigger:%s %016" PRIx64 " unregister done\n", q->info.spname, q->info.trigger_cookie);
+        if (!db_is_exiting()) {
+            ctrace("trigger:%s %016" PRIx64 " unregister req\n", q->info.spname, q->info.trigger_cookie);
+            luabb_trigger_unregister(L, q);
+            ctrace("trigger:%s %016" PRIx64 " unregister done\n", q->info.spname, q->info.trigger_cookie);
+        }
         free(q);
     } else {
         force_unregister(L, reg);

@@ -51,6 +51,8 @@
 #include "reqlog.h"
 #include "str0.h"
 
+extern struct thdpool *gbl_loadcache_thdpool;
+
 struct thr_handle {
     pthread_t tid;
 
@@ -474,7 +476,7 @@ static int thrman_check_threads_stopped_ll(void *context)
         all_gone = 1;
 
     /* if we're exiting then we don't want a schema change thread running */
-    if (db_is_stopped() && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
+    if (db_is_exiting() && 0 != thr_type_counts[THRTYPE_SCHEMACHANGE])
         all_gone = 0;
 
     if (self)
@@ -515,9 +517,8 @@ static void thrman_wait(const char *descr, int (*check_fn_ll)(void *),
             break;
 
         gettimeofday(&tp, NULL);
-        ts.tv_sec = tp.tv_sec;
+        ts.tv_sec = tp.tv_sec + 1;
         ts.tv_nsec = tp.tv_usec * 1000;
-        ts.tv_sec += 10;
 
         /* Wait for something to change. */
         rc = pthread_cond_timedwait(&cond, &mutex, &ts);
@@ -551,6 +552,12 @@ void stop_threads(struct dbenv *dbenv)
     stop_all_sql_pools();
     if (gbl_osqlpfault_thdpool)
         thdpool_stop(gbl_osqlpfault_thdpool);
+    if (gbl_udppfault_thdpool)
+        thdpool_stop(gbl_udppfault_thdpool);
+    if (gbl_pgcompact_thdpool)
+        thdpool_stop(gbl_pgcompact_thdpool);
+    if (gbl_loadcache_thdpool)
+        thdpool_stop(gbl_loadcache_thdpool);
 
     /* Membar ensures that all other threads will now see that db is stopping */
     MEMORY_SYNC;
@@ -571,8 +578,6 @@ void stop_threads(struct dbenv *dbenv)
 
     LOCK(&stop_thds_time_lk) { gbl_stop_thds_time = 0; }
     UNLOCK(&stop_thds_time_lk);
-    /*watchdog_disable();*/ /* watchdog will fail when trying to run a sql query
-                         * bc sql thds are stopped */
 }
 
 void resume_threads(struct dbenv *dbenv)

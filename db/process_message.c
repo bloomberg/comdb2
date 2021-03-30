@@ -619,6 +619,8 @@ void *clean_exit_thd(void *unused)
     Pthread_mutex_unlock(&exiting_lock);
 
     bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
+    thrman_register(THRTYPE_CLEANEXIT);
+    thread_started("clean_exit");
 
     clean_exit();
     return NULL;
@@ -647,7 +649,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     /* prevent this if the threads are stopped; initial intent is
        to prevent a bdb access while the db is closed during schema
        change (which is crashing the db) */
-    if (dbenv->stopped) {
+    if (db_is_stopped()) {
         logmsg(LOGMSG_USER, "Threads are stopped, ignoring message trap.\n");
         return 0;
     }
@@ -657,7 +659,7 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
     if (ltok == 0)
         return -1;
     if (gbl_exit) {
-        logmsg(LOGMSG_USER, "gbl_exit set, skipping command\n");
+        logmsg(LOGMSG_USER, "gbl_exit is set, skip process command (%s)\n", tok);
         return -1;
     }
 

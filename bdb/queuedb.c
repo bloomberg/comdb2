@@ -252,8 +252,7 @@ static void *queuedb_cron_kickoff(struct cron_event *evt, struct errstat *err)
 {
     if (db_is_stopped()) return NULL;
     if (gbl_queuedb_file_interval > 0) {
-        logmsg(LOGMSG_INFO, "Starting queuedb cron job. "
-                        "Will check queuedb usage every %d seconds.\n",
+        logmsg(LOGMSG_INFO, "Starting queuedb cron job. Will check queuedb usage every %d seconds.\n",
                 gbl_queuedb_file_interval / 1000);
         return queuedb_cron_event(evt, err);
     }

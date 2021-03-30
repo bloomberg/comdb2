@@ -53,6 +53,7 @@ extern int gbl_prefault_udp;
 extern __thread int send_prefault_udp;
 extern __thread DB *prefault_dbp;
 
+extern int db_is_exiting(void);
 void udp_prefault_all(bdb_state_type * bdb_state, unsigned int fileid,
     unsigned int pgno);
 int send_pg_compact_req(bdb_state_type *bdb_state, int32_t fileid,
@@ -1014,13 +1015,16 @@ __memp_send_sparse_page_thread(_)
 	thrman_register(THRTYPE_GENERIC);
 	thread_started("send_sparse_page");
 
-	while (1) {
+	while (!db_is_exiting()) {
 		{
 			Pthread_mutex_lock(&spgs.lock);
-			while (spgs.list[ii].sparseness == 0) {
+			while (spgs.list[ii].sparseness == 0 && !db_is_exiting()) {
 				/* no entry, cond wait */
 				spgs.wait = 1;
-				Pthread_cond_wait(&spgs.cond, &spgs.lock);
+				struct timespec ts;
+				clock_gettime(CLOCK_REALTIME, &ts);
+				ts.tv_sec += 1;
+				pthread_cond_timedwait(&spgs.cond, &spgs.lock, &ts);
 			}
 
 			spgs.wait = 0;
@@ -1029,6 +1033,9 @@ __memp_send_sparse_page_thread(_)
 			memset(spgs.list, 0, sizeof(struct spg));
 			Pthread_mutex_unlock(&spgs.lock);
 		}
+
+		if (db_is_exiting())
+			break;
 
 		dbenv = ent.dbenv;
 		fileid = ent.id;

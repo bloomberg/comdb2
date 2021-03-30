@@ -256,7 +256,7 @@ static void *_cron_runner(void *arg)
     }
 
     locked = 0;
-    while (!gbl_exit && !db_is_stopped()) {
+    while (!gbl_exit && !db_is_exiting()) {
         Pthread_mutex_lock(&sched->mtx);
         locked = 1;
 
@@ -291,6 +291,9 @@ static void *_cron_runner(void *arg)
                 break;
             }
         }
+
+        if (db_is_exiting())
+            break;
 
         rc = sched->impl.wait_next_event(&sched->impl, event);
         if (rc && rc != ETIMEDOUT) {

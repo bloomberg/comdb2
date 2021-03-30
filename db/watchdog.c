@@ -125,7 +125,7 @@ static void *watchdog_thread(void *arg)
         sleep(1);
 
     int test_io_time = 0;
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         gbl_epoch_time = comdb2_time_epoch();
 
         if (!gbl_nowatch) {
@@ -401,9 +401,12 @@ static void *watchdog_watcher_thread(void *arg)
     extern int gbl_watchdog_watch_threshold;
     int failed_once = 0;
 
-    while (!db_is_stopped()) {
-        sleep(10);
-        if (gbl_nowatch || db_is_stopped())
+    while (!db_is_exiting()) {
+        int ss = 10; /* sleep for these many seconds */
+        for (int i = 0; i < ss && !db_is_exiting(); i++)
+            sleep(1);
+
+        if (gbl_nowatch || db_is_exiting())
             continue;
 
         int tmstmp = comdb2_time_epoch();

@@ -330,8 +330,7 @@ int refresh_metrics(void)
     int32_t min_timestamp;
 #endif
 
-    /* Check whether the server is exiting. */
-    if (db_is_stopped())
+    if (db_is_exiting())
         return 1;
 
     stats.commits = n_commits;

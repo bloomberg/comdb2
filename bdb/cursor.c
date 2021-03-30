@@ -2159,12 +2159,12 @@ static void *pglogs_asof_thread(void *arg)
     thrman_register(THRTYPE_PGLOGS_ASOF);
 
     /* We need to stop this thread when truncating the log */
-    if (!db_is_stopped()) {
+    if (!db_is_exiting()) {
         haslock = 1;
         dbenv->lock_recovery_lock(dbenv);
     }
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         // Remove list
         int count, i, dont_poll = 0;
         DB_LSN new_asof_lsn, lsn, del_lsn = {0};

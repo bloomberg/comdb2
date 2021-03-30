@@ -649,7 +649,7 @@ static void *udp_reader_thd(void *arg)
     repinfo_type *repinfo = bdb_state->repinfo;
     int fd = repinfo->udp_fd;
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         udp_reader(fd, 0, bdb_state);
     }
     bdb_thread_event(bdb_state, BDBTHR_EVENT_DONE_RDONLY);

@@ -217,8 +217,14 @@ enum {
 	BDBTHR_EVENT_START_RDWR = 3
 };
 
-void *
-mempsync_thd(void *p)
+void set_stop_mempsync_thread()
+{
+	mempsync_thread_should_stop = 1;
+	if (mempsync_thread_running)
+		Pthread_cond_signal(&mempsync_wait);
+}
+
+void *mempsync_thd(void *p)
 {
 	int rc;
 	DB_LOGC *logc;
@@ -243,7 +249,7 @@ mempsync_thd(void *p)
 		Pthread_mutex_lock(&mempsync_lk);
 		Pthread_cond_wait(&mempsync_wait, &mempsync_lk);
 		if (mempsync_thread_should_stop) {
-		Pthread_mutex_unlock(&mempsync_lk);
+			Pthread_mutex_unlock(&mempsync_lk);
 			break;
 		}
 		/* latch the lsn */
@@ -1044,7 +1050,7 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	Pthread_mutex_unlock(&pgpool_lk);
 }
 
-static struct thdpool *gbl_loadcache_thdpool;
+struct thdpool *gbl_loadcache_thdpool;
 int gbl_load_cache_threads = 8;
 int gbl_load_cache_max_pages = 0;
 int gbl_dump_cache_max_pages = 0;
@@ -1083,6 +1089,12 @@ berkdb_iopool_process_message(char *line, int lline, int st)
 {
 	pthread_once(&trickle_threads_once, init_trickle_threads);
 	thdpool_process_message(gbl_trickle_thdpool, line, lline, st);
+}
+
+void stop_trickle_threads()
+{
+    if (gbl_trickle_thdpool)
+        thdpool_stop(gbl_trickle_thdpool);
 }
 
 static int memp_sync_alarm_ms = 500;

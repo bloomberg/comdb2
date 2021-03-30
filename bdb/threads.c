@@ -30,6 +30,7 @@
 #include "thrman.h"
 #include <locks_wrap.h>
 
+extern int db_is_exiting(void);
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
 extern void *rep_catchup_add_thread(void *arg);
 extern pthread_attr_t gbl_pthread_attr_detached;
@@ -66,7 +67,7 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
     thread_started("udpbackup_and_autoanalyze");
 
     bdb_state_type *bdb_state = arg;
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         ++count;
         udp_backup(-1, 0, bdb_state);
         if (count % ((bdb_state->attr->chk_aa_time * 1000) / pollms) == 0) {
@@ -114,7 +115,7 @@ void *memp_trickle_thread(void *arg)
     while (!bdb_state->passed_dbenv_open)
         sleep(1);
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         BDB_READLOCK("memp_trickle_thread");
 
         /* time is in usecs, memptricklemsecs is in msecs */
@@ -136,7 +137,7 @@ void *memp_trickle_thread(void *arg)
 
         BDB_RELLOCK();
 
-        if (db_is_stopped())
+        if (db_is_exiting())
             break;
         usleep(time);
     }
@@ -176,7 +177,7 @@ void *deadlockdetect_thread(void *arg)
         if (bdb_state->attr->deadlock_youngest_ever)
             policy = DB_LOCK_YOUNGEST_EVER;
 
-        if (db_is_stopped()) {
+        if (db_is_exiting()) {
             logmsg(LOGMSG_DEBUG, "deadlockdetect_thread: exiting\n");
 
             BDB_RELLOCK();
@@ -221,8 +222,7 @@ void *master_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (!db_is_stopped() &&
-           (lease_time = bdb_state->attr->master_lease) != 0) {
+    while (!db_is_exiting() && (lease_time = bdb_state->attr->master_lease) != 0) {
         if (repinfo->master_host != repinfo->myhost) {
             send_myseqnum_to_master_udp(bdb_state);
         }
@@ -262,13 +262,12 @@ void *coherency_lease_thread(void *arg)
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
 
-    while (!db_is_stopped() &&
-           (lease_time = bdb_state->attr->coherency_lease)) {
+    while (!db_is_exiting() && (lease_time = bdb_state->attr->coherency_lease)) {
         inc_wait = 0;
         uint32_t current_gen, durable_gen;
         DB_LSN durable_lsn;
         BDB_READLOCK(__func__);
-        if (db_is_stopped()) {
+        if (db_is_exiting()) {
             BDB_RELLOCK();
             break;
         }
@@ -301,7 +300,7 @@ void *coherency_lease_thread(void *arg)
                      ? renew
                      : (lease_time / 3);
 
-        if (db_is_stopped())
+        if (db_is_exiting())
             break;
         poll(0, 0, pollms);
     }
@@ -328,7 +327,7 @@ void *logdelete_thread(void *arg)
     bdb_thread_event(bdb_state, 1);
     time_t last_run_time = 0;
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         time_t now = time(NULL);
         int run_interval = bdb_state->attr->logdelete_run_interval;
         run_interval = (run_interval <= 0 ? 30 : run_interval);
@@ -386,7 +385,7 @@ void *checkpoint_thread(void *arg)
 
     bdb_thread_event(bdb_state, 1);
 
-    while (!db_is_stopped()) {
+    while (!db_is_exiting()) {
         BDB_READLOCK("checkpoint_thread");
         checkpointtime = bdb_state->attr->checkpointtime;
         checkpointrand = bdb_state->attr->checkpointrand;
@@ -443,7 +442,9 @@ void *checkpoint_thread(void *arg)
         total_sleep_msec = 1000 * (checkpointtime + (rand() % checkpointrand));
 
         if (broken) {
-            sleep(total_sleep_msec / 1000);
+            int ss = total_sleep_msec / 1000;
+            for (int i = 0; i < ss && !db_is_exiting(); i++)
+                sleep(1);
         } else {
             if (checkpointtimepoll > total_sleep_msec) {
                 checkpointtimepoll = total_sleep_msec;
@@ -457,6 +458,8 @@ void *checkpoint_thread(void *arg)
                 }
 
                 poll(0, 0, checkpointtimepoll);
+                if (db_is_exiting())
+                    break;
 
                 BDB_READLOCK("checkpoint_thread2");
                 broken = bdb_state->dbenv->log_get_last_lsn(bdb_state->dbenv,

@@ -375,8 +375,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         u_int32_t flags;
 
         if (common->bdb_parent_state->bdb_lock_desired) {
-            logmsg(LOGMSG_ERROR, "fstdump_thread: "
-                            "aborting due to write lock desired\n");
+            logmsg(LOGMSG_ERROR, "fstdump_thread: aborting due to write lock desired\n");
             Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
@@ -389,8 +388,7 @@ static void *fstdump_thread_inner(fstdump_per_thread_t *fstdump, void *sendrec,
         }
 
         if (db_is_stopped()) {
-            logmsg(LOGMSG_ERROR, "fstdump_thread: "
-                            "aborting due to stop_threads\n");
+            logmsg(LOGMSG_ERROR, "fstdump_thread: aborting due to stop_threads\n");
             Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
@@ -518,8 +516,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
         *retkey_p = retkey;
 
         if (common->bdb_parent_state->bdb_lock_desired) {
-            logmsg(LOGMSG_ERROR, "fstdump_thread: "
-                            "aborting due to write lock desired\n");
+            logmsg(LOGMSG_ERROR, "fstdump_thread: aborting due to write lock desired\n");
             Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
@@ -531,8 +528,7 @@ static int write_records(fstdump_per_thread_t *fstdump, DBT *data,
         }
 
         if (db_is_stopped()) {
-            logmsg(LOGMSG_ERROR, "fstdump_thread: "
-                            "aborting due to stop_threads\n");
+            logmsg(LOGMSG_ERROR, "fstdump_thread: aborting due to stop_threads\n");
             Pthread_mutex_lock(&common->lock);
             {
                 common->bdberr = BDBERR_DEADLOCK;
