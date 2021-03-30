@@ -159,8 +159,7 @@ reopen:
             throw SerialiseError(filename, ss.str());
         }
         else if (EINVAL == errno){
-            std::clog << "Turning off directio, err: " << std::strerror(errno)
-                      << std::endl;
+            std::clog << "Turning off directio because of open() err: " << std::strerror(errno) << std::endl;
             flags ^= DO_DIRECT;
             goto reopen;
         }

@@ -213,7 +213,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             gbl_exit = 1;
             break;
         case 2: /* recovertotime */
-            logmsg(LOGMSG_FATAL, "force full recovery to timestamp %u\n",
+            logmsg(LOGMSG_WARN, "force full recovery to timestamp %u\n",
                    gbl_recovery_timestamp);
             gbl_recovery_timestamp = strtoul(optarg, NULL, 10);
             gbl_fullrecovery = 1;
@@ -227,7 +227,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
             p++;
             gbl_recovery_lsn_file = atoi(optarg);
             gbl_recovery_lsn_offset = atoi(p);
-            logmsg(LOGMSG_FATAL, "force full recovery to lsn %d:%d\n",
+            logmsg(LOGMSG_WARN, "force full recovery to lsn %d:%d\n",
                    gbl_recovery_lsn_file, gbl_recovery_lsn_offset);
             gbl_fullrecovery = 1;
             break;

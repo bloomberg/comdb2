@@ -322,8 +322,7 @@ reopen:
     int fd = open(filename.c_str(), flags, 0666);
     if(fd == -1) {
         if (EINVAL == errno){
-            std::clog << "Turning off directio, err: " << std::strerror(errno)
-                      << std::endl;
+            std::clog << "Turning off directio because of open() err: " << std::strerror(errno) << std::endl;
             flags ^= O_DIRECT;
             goto reopen;
         } else {
