@@ -27,11 +27,13 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <poll.h>
 #include <limits.h>
 
+#include "thrman.h"
+#include "thread_util.h"
 #include "thdpool.h"
-#include <ctrace.h>
+#include "ctrace.h"
 #include <pool.h>
-#include <logmsg.h>
-#include <locks_wrap.h>
+#include "logmsg.h"
+#include "locks_wrap.h"
 
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */
@@ -231,6 +233,8 @@ mempsync_thd(void *p)
 	bdb_state = dbenv->app_private;
 	bdb_set_key(bdb_state);
 	bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDONLY);
+	thrman_register(THRTYPE_GENERIC);
+	thread_started("mempsync");
 
 	rep_check = IS_ENV_REPLICATED(dbenv);
 
@@ -239,7 +243,7 @@ mempsync_thd(void *p)
 		Pthread_mutex_lock(&mempsync_lk);
 		Pthread_cond_wait(&mempsync_wait, &mempsync_lk);
 		if (mempsync_thread_should_stop) {
-			Pthread_mutex_unlock(&mempsync_lk);
+		Pthread_mutex_unlock(&mempsync_lk);
 			break;
 		}
 		/* latch the lsn */
@@ -544,7 +548,7 @@ struct writable_range {
 	struct trickler *t;
 };
 
-static struct thdpool *trickle_thdpool;
+static struct thdpool *gbl_trickle_thdpool;
 static pool_t *pgpool;
 pthread_mutex_t pgpool_lk;
 int gbl_ref_sync_pollms = 250;
@@ -1044,33 +1048,32 @@ trickle_do_work(struct thdpool *thdpool, void *work, void *thddata, int thd_op)
 	Pthread_mutex_unlock(&pgpool_lk);
 }
 
-static struct thdpool *loadcache_thdpool;
+static struct thdpool *gbl_loadcache_thdpool;
 int gbl_load_cache_threads = 8;
 int gbl_load_cache_max_pages = 0;
 int gbl_dump_cache_max_pages = 0;
 int gbl_max_pages_per_cache_thread = 8192;
 
-void
-init_trickle_threads(void)
+void init_trickle_threads(void)
 {
-	trickle_thdpool = thdpool_create("memptrickle", 0);
-	thdpool_set_linger(trickle_thdpool, 10);
-	thdpool_set_minthds(trickle_thdpool, 1);
-	thdpool_set_maxthds(trickle_thdpool, 4);
-	thdpool_set_maxqueue(trickle_thdpool, 8000);
-	thdpool_set_longwaitms(trickle_thdpool, 30000);
+	gbl_trickle_thdpool = thdpool_create("memptrickle", 0);
+	thdpool_set_linger(gbl_trickle_thdpool, 10);
+	thdpool_set_minthds(gbl_trickle_thdpool, 1);
+	thdpool_set_maxthds(gbl_trickle_thdpool, 4);
+	thdpool_set_maxqueue(gbl_trickle_thdpool, 8000);
+	thdpool_set_longwaitms(gbl_trickle_thdpool, 30000);
 	Pthread_mutex_init(&pgpool_lk, NULL);
 
 	pgpool =
 		pool_setalloc_init(sizeof(struct writable_range), 0, malloc, free);
 
-	loadcache_thdpool = thdpool_create("loadcache", 0);
-	thdpool_set_linger(loadcache_thdpool, 10);
-	thdpool_set_minthds(loadcache_thdpool, 0);
-	thdpool_set_maxthds(loadcache_thdpool, gbl_load_cache_threads);
-	thdpool_set_maxqueue(loadcache_thdpool, 0);
-	thdpool_set_maxqueueoverride(loadcache_thdpool, 0);
-	thdpool_set_wait(loadcache_thdpool, 0);
+	gbl_loadcache_thdpool = thdpool_create("loadcache", 0);
+	thdpool_set_linger(gbl_loadcache_thdpool, 10);
+	thdpool_set_minthds(gbl_loadcache_thdpool, 0);
+	thdpool_set_maxthds(gbl_loadcache_thdpool, gbl_load_cache_threads);
+	thdpool_set_maxqueue(gbl_loadcache_thdpool, 0);
+	thdpool_set_maxqueueoverride(gbl_loadcache_thdpool, 0);
+	thdpool_set_wait(gbl_loadcache_thdpool, 0);
 }
 
 int gbl_parallel_memptrickle = 1;
@@ -1083,7 +1086,7 @@ void
 berkdb_iopool_process_message(char *line, int lline, int st)
 {
 	pthread_once(&trickle_threads_once, init_trickle_threads);
-	thdpool_process_message(trickle_thdpool, line, lline, st);
+	thdpool_process_message(gbl_trickle_thdpool, line, lline, st);
 }
 
 static int memp_sync_alarm_ms = 500;
@@ -1428,7 +1431,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 				      t_ret != 0) {
 					Pthread_mutex_unlock(&pt->lk);
 					
-					t_ret = thdpool_enqueue(trickle_thdpool,
+					t_ret = thdpool_enqueue(gbl_trickle_thdpool,
 					    trickle_do_work, range, 0, NULL, 0);
 					if (t_ret) {
 						pt->nwaits++;
@@ -1470,7 +1473,7 @@ __memp_sync_int(dbenv, dbmfp, trickle_max, op, wrotep, restartable,
 			while(pt->ret == 0 && t_ret != 0) {
 				Pthread_mutex_unlock(&pt->lk);
 
-				t_ret = thdpool_enqueue(trickle_thdpool,
+				t_ret = thdpool_enqueue(gbl_trickle_thdpool,
 				    trickle_do_work, range, 0, NULL, 0);
 				if (t_ret) {
 					pt->nwaits++;
@@ -2072,7 +2075,7 @@ load_fileids_thdpool(fileid_page_env_t *fileid_env)
 	int ret;
 	Pthread_mutex_lock(fileid_env->lk);
 	(*fileid_env->active_threads)++;
-	if ((ret = thdpool_enqueue(loadcache_thdpool, load_fileids,
+	if ((ret = thdpool_enqueue(gbl_loadcache_thdpool, load_fileids,
                                    fileid_env, 0, NULL, 0)) != 0) {
 		Pthread_mutex_unlock(fileid_env->lk);
 		load_fileids(NULL, fileid_env, NULL, 0);

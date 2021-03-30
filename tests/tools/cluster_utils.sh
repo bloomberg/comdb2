@@ -22,8 +22,9 @@ function bounce_cluster
     typeset sleeptime=${1:-5}
     write_prompt $func "Running $func"
     for node in $CLUSTER ; do
-        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"exit\")"
+        $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $n "exec procedure sys.cmd.send(\"exit\")" &
     done
+    wait
     sleep $sleeptime
 
     REP_ENV_VARS="${DBDIR}/replicant_env_vars"
@@ -33,11 +34,13 @@ function bounce_cluster
         if [ $node == $(hostname) ] ; then
             (
                 kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+                mv --backup=numbered $LOGDIR/${DBNAME}.db $LOGDIR/${DBNAME}.db.1
                 sleep $sleeptime
                 ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
             ) &
         else
             kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+            mv --backup=numbered $LOGDIR/${DBNAME}.${node}.db $LOGDIR/${DBNAME}.${node}.db.1
             ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
             echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
         fi

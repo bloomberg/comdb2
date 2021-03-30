@@ -20,21 +20,10 @@
 #define TCPBUFSZ
 #endif
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <strings.h>
-#include <string.h>
-#include <errno.h>
-#include <time.h>
-#include <alloca.h>
-#include <ctrace.h>
 
 #include <netdb.h>
 #include <unistd.h>
 #include <signal.h>
-#include <string.h>
-#include <pthread.h>
-#include "thread_util.h"
 
 #ifdef __DGUX__
 #include <siginfo.h>
@@ -43,29 +32,21 @@
 #include <siginfo.h>
 #endif
 
-#include <sys/types.h>
-#include <sys/stat.h>
 #include <fcntl.h>
-
-#include <arpa/inet.h>
-#include <sys/socket.h>
 #ifdef _AIX
+#include <sys/socket.h>
 #include <sys/socketvar.h>
 #endif
-#include <netinet/in.h>
 #include <netinet/tcp.h>
-#include <pwd.h>
-#include <dirent.h>
 #include <utime.h>
 #include <sys/time.h>
 #include <poll.h>
 
 #include <bb_oscompat.h>
 #include <compat.h>
-
 #include <pool.h>
-#include <plhash.h>
 #include <assert.h>
+#include <crc32c.h>
 
 #include "locks_wrap.h"
 #include "net.h"
@@ -78,27 +59,23 @@
 
 #include <endian_core.h>
 #include <compile_time_assert.h>
-
 #include <portmuxapi.h>
-
 #include <epochlib.h>
 #include <str0.h>
 
 #include <util.h>
-#include <sched.h>
-#include <cdb2_constants.h>
 #include "intern_strings.h"
 
 #include "rtcpu.h"
-
 #include "mem_net.h"
 #include "mem_override.h"
 #include <bdb_net.h>
 
 #include "debug_switches.h"
-#include "perf.h"
-
-#include <crc32c.h>
+#include "comdb2_atomic.h"
+#include "thrman.h"
+#include "thread_util.h"
+#include "comdb2_atomic.h"
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -3893,6 +3870,7 @@ static void *writer_thread(void *args)
 #ifndef HAS_CLOCK_GETTIME
     struct timeval tv;
 #endif
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net writer");
     ENABLE_PER_THREAD_MALLOC(__func__);
 
@@ -4162,6 +4140,7 @@ static void *reader_thread(void *arg)
     int rc, set_qstat = 0;
     char fromhost[256], tohost[256];
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net reader");
     ENABLE_PER_THREAD_MALLOC(__func__);
 
@@ -4602,6 +4581,7 @@ static void *connect_thread(void *arg)
     int flag = 1;
     int connport = -1;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("connect thread");
     ENABLE_PER_THREAD_MALLOC(__func__);
 
@@ -5403,6 +5383,7 @@ static void *accept_thread(void *arg)
     portmux_fd_t *portmux_fds = NULL;
     unsigned int last_stat_dump_time = comdb2_time_epochms();
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net accept");
     ENABLE_PER_THREAD_MALLOC(__func__);
 
@@ -5459,7 +5440,7 @@ static void *accept_thread(void *arg)
 
         if (new_fd == -1) {
             logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s", listenfd, errno,
-                    strerror(errno));
+                   strerror(errno));
             continue;
         }
 
@@ -5679,6 +5660,7 @@ static void *heartbeat_send_thread(void *arg)
     host_node_type *ptr;
     netinfo_type *netinfo_ptr;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net heartbeat send");
 
     netinfo_ptr = (netinfo_type *)arg;
@@ -5889,6 +5871,7 @@ static void *heartbeat_check_thread(void *arg)
     int node_timestamp;
     int running_user_func;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("net heartbeat check");
 
     netinfo_ptr = (netinfo_type *)arg;

@@ -258,6 +258,7 @@ int gbl_sqlwrtimeoutms = 10000;
 
 long long gbl_converted_blocksql_requests = 0;
 
+/* TODO: delete */
 int gbl_rangextunit =
     16; /* dont do more than 16 records in a single rangext op */
 int gbl_honor_rangextunit_for_old_apis = 0;
@@ -1119,10 +1120,9 @@ static void *purge_old_blkseq_thread(void *arg)
 {
     struct dbenv *dbenv;
     dbenv = arg;
-    struct thr_handle *thr_self;
     int loop;
 
-    thr_self = thrman_register(THRTYPE_PURGEBLKSEQ);
+    struct thr_handle *thr_self = thrman_register(THRTYPE_PURGEBLKSEQ);
     thread_started("blkseq");
 
     dbenv->purge_old_blkseq_is_running = 1;
@@ -4463,6 +4463,9 @@ void *statthd(void *p)
     int64_t rw_evicts;
 
     extern int active_appsock_conns;
+
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("statthd");
 
     dbenv = p;
 

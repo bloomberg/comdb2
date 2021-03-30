@@ -41,6 +41,8 @@ static const char revid[] = "$Id: mp_fget.c,v 11.81 2003/09/25 02:15:16 sue Exp 
 #include "logmsg.h"
 #include "locks_wrap.h"
 #include "comdb2_atomic.h"
+#include "thrman.h"
+#include "thread_util.h"
 #include "thread_stats.h"
 
 
@@ -1008,6 +1010,9 @@ __memp_send_sparse_page_thread(_)
 	u_int8_t *ufid;
 
 	ii = sizeof(spgs.list) / sizeof(spgs.list[0]) - 1;
+
+	thrman_register(THRTYPE_GENERIC);
+	thread_started("send_sparse_page");
 
 	while (1) {
 		{

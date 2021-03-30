@@ -46,12 +46,13 @@ static const char revid[] =
 
 #include "printformats.h"
 
+#include <errno.h>
 #include <list.h>
 #include <bbhrtime.h>
 #include <epochlib.h>
 #include "schema_lk.h"
-#include "logmsg.h"
-#include <errno.h>
+#include "thrman.h"
+#include "thread_util.h"
 
 
 #ifndef TESTSUITE
@@ -481,6 +482,9 @@ static void *apply_thread(void *arg)
 	lp = dblp->reginfo.primary;
 	bdb_thread_start_rw();
 
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("apply thread");
+    
 	Pthread_mutex_lock(&rep_queue_lock);
 	while (gbl_decoupled_logputs) {
 		int pollms = (gbl_apply_thread_pollms > 0) ?

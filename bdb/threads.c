@@ -16,6 +16,7 @@
 
 /* the helper threads that work behind the scenes */
 
+#include <pthread.h>
 #include <sys/poll.h>
 #include <unistd.h>
 
@@ -26,6 +27,7 @@
 #include "memory_sync.h"
 #include "autoanalyze.h"
 #include "logmsg.h"
+#include "thrman.h"
 #include <locks_wrap.h>
 
 extern int send_myseqnum_to_master_udp(bdb_state_type *bdb_state);
@@ -60,6 +62,9 @@ void *udpbackup_and_autoanalyze_thd(void *arg)
 {
     unsigned pollms = 500;
     unsigned count = 0;
+    thrman_register(THRTYPE_GENERIC);
+    thread_started("udpbackup_and_autoanalyze");
+
     bdb_state_type *bdb_state = arg;
     while (!db_is_stopped()) {
         ++count;
@@ -101,6 +106,7 @@ void *memp_trickle_thread(void *arg)
     while (!bdb_state->after_llmeta_init_done)
         sleep(1);
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("bdb memptrickle");
 
     bdb_thread_event(bdb_state, 1);
@@ -210,6 +216,7 @@ void *master_lease_thread(void *arg)
     bdb_state->master_lease_thread = pthread_self();
 
     assert(!bdb_state->parent);
+    thrman_register(THRTYPE_GENERIC);
     thread_started("bdb master lease");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
@@ -250,6 +257,7 @@ void *coherency_lease_thread(void *arg)
     bdb_state->coherency_lease_thread = pthread_self();
 
     assert(!bdb_state->parent);
+    thrman_register(THRTYPE_GENERIC);
     thread_started("bdb coherency lease");
     bdb_thread_event(bdb_state, BDBTHR_EVENT_START_RDWR);
     logmsg(LOGMSG_DEBUG, "%s starting\n", __func__);
@@ -314,6 +322,7 @@ void *logdelete_thread(void *arg)
     while (!bdb_state->after_llmeta_init_done)
         sleep(1);
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("bdb logdelete");
 
     bdb_thread_event(bdb_state, 1);
@@ -365,6 +374,7 @@ void *checkpoint_thread(void *arg)
     if (try_set(&checkpoint_thd_running) == 0)
         return NULL;
 
+    thrman_register(THRTYPE_GENERIC);
     thread_started("bdb checkpoint");
 
     bdb_state = (bdb_state_type *)arg;

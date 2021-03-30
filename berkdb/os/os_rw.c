@@ -1250,8 +1250,7 @@ bb_berkdb_thread_stats_init(void)
 	inited = 1;
 }
 
-struct berkdb_thread_stats *
-bb_berkdb_get_thread_stats(void)
+struct berkdb_thread_stats * bb_berkdb_get_thread_stats(void)
 {
 	static struct berkdb_thread_stats junk;
 	struct berkdb_thread_stats *p;
