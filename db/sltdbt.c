@@ -243,6 +243,82 @@ int init_opcode_handlers()
     return 0;
 }
 
+static inline int opcode_supported(int opcode)
+{
+    static int last_rej = 0;
+    static unsigned long long rejcnt = 0;
+    int now;
+
+    if (!gbl_rowlocks && !gbl_disable_tagged_api)
+        return 1;
+
+    switch (opcode) {
+    case OP_FNDRRN:
+    case OP_FORMKEY:
+    case OP_FNDRRNX:
+    case OP_JSTFND:
+    case OP_FIND:
+    case OP_JSTPREV:
+    case OP_JSTNX:
+    case OP_PREV:
+    case OP_NEXT:
+    case OP_FNDKLESS:
+    case OP_JFNDKLESS:
+    case OP_FIND2:
+    case OP_JFND2:
+    case OP_FNDNXTKLESS:
+    case OP_FNDPRVKLESS:
+    case OP_JFNDNXTKLESS:
+    case OP_JFNDPRVKLESS:
+    case OP_NEXT2:
+    case OP_PREV2:
+    case OP_JNXT2:
+    case OP_JPRV2:
+    case OP_BLOBASK:
+    case OP_RNGEXT2:
+    case OP_RNGEXTP2:
+    case OP_RNGEXTTAG:
+    case OP_RNGEXTTAGP:
+    case OP_RNGEXTTAGTZ:
+    case OP_RNGEXTTAGPTZ:
+    case OP_NUMRRN:
+    case OP_HIGHRRN:
+    case OP_STORED:
+    case OP_COUNTTABLE:
+    case OP_RMTFIND:
+    case OP_RMTFINDLASTDUP:
+    case OP_RMTFINDNEXT:
+    case OP_RMTFINDPREV:
+    case OP_RMTFINDRRN:
+        rejcnt++;
+        if (((now = comdb2_time_epoch()) - last_rej) > 0) {
+            logmsg(LOGMSG_ERROR, "Rejecting tagged api request (%llu)\n",
+                   rejcnt);
+            last_rej = now;
+        }
+        return 0;
+        break;
+
+    case OP_DBINFO:
+    case OP_DBINFO2:
+    case OP_FWD_LBLOCK:
+    case OP_LONGBLOCK:
+    case OP_FWD_BLOCK:
+    case OP_BLOCK:
+    case OP_MSG_TRAP:
+    case OP_DESCRIBE:
+    case OP_DESCRIBEKEYS:
+    case OP_GETKEYNAMES:
+    case OP_CLEARTABLE:
+    case OP_FASTINIT:
+    case OP_MAKE_NODE_INCOHERENT:
+    case OP_CLIENT_STATS:
+    default:
+        return 1;
+        break;
+    }
+}
+
 int handle_ireq(struct ireq *iq)
 {
     int rc;
@@ -271,7 +347,7 @@ int handle_ireq(struct ireq *iq)
         osql_snap_info = &iq->snap_info;
 
     comdb2_opcode_t *opcode = hash_find_readonly(gbl_opcode_hash, &iq->opcode);
-    if (!opcode) {
+    if (!opcode || !opcode_supported(iq->opcode)) {
         logmsg(LOGMSG_ERROR, "bad request %d from %s\n", iq->opcode,
                getorigin(iq));
         /* Starting write, no more reads */
@@ -298,7 +374,7 @@ int handle_ireq(struct ireq *iq)
         /* SNDBAK RESPONSE */
         if (iq->debug) {
             reqprintf(iq, "iq->reply_len=%td RC %d\n",
-                      (ptrdiff_t) (iq->p_buf_out - iq->p_buf_out_start), rc);
+                      (ptrdiff_t)(iq->p_buf_out - iq->p_buf_out_start), rc);
         }
 
         /* pack data at tail of reply */
