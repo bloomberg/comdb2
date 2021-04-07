@@ -53,6 +53,17 @@ static int resolveAttachExpr(NameContext *pName, Expr *pExpr)
 }
 
 /*
+** Return true if zName points to a name that may be used to refer to
+** database iDb attached to handle db.
+*/
+int sqlite3DbIsNamed(sqlite3 *db, int iDb, const char *zName){
+  return (
+      sqlite3StrICmp(db->aDb[iDb].zDbSName, zName)==0
+   || (iDb==0 && sqlite3StrICmp("main", zName)==0)
+  );
+}
+
+/*
 ** An SQL user-function registered to do the work of an ATTACH statement. The
 ** three arguments to the function come directly from an attach statement:
 **
@@ -181,15 +192,14 @@ static void attachFunc(
     }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     for(i=0; i<db->nDb; i++){
-      char *z = db->aDb[i].zDbSName;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-      assert( z && dbName);
-      if( sqlite3StrICmp(z, dbName)==0 ){
+      assert( dbName );
+      if( sqlite3DbIsNamed(db, i, dbName) ){
         break;
       }
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-      assert( z && zName );
-      if( sqlite3StrICmp(z, zName)==0 ){
+      assert( zName );
+      if( sqlite3DbIsNamed(db, i, zName) ){
         zErrDyn = sqlite3MPrintf(db, "database %s is already in use", zName);
         goto attach_error;
       }
@@ -281,46 +291,10 @@ static void attachFunc(
   if( rc==SQLITE_OK && pNew->zDbSName==0 ){
     rc = SQLITE_NOMEM_BKPT;
   }
-
-
-#ifdef SQLITE_HAS_CODEC
-  if( rc==SQLITE_OK ){
-    extern int sqlite3CodecAttach(sqlite3*, int, const void*, int);
-    extern void sqlite3CodecGetKey(sqlite3*, int, void**, int*);
-    int nKey;
-    char *zKey;
-    int t = sqlite3_value_type(argv[2]);
-    switch( t ){
-      case SQLITE_INTEGER:
-      case SQLITE_FLOAT:
-        zErrDyn = sqlite3DbStrDup(db, "Invalid key value");
-        rc = SQLITE_ERROR;
-        break;
-        
-      case SQLITE_TEXT:
-      case SQLITE_BLOB:
-        nKey = sqlite3_value_bytes(argv[2]);
-        zKey = (char *)sqlite3_value_blob(argv[2]);
-        rc = sqlite3CodecAttach(db, db->nDb-1, zKey, nKey);
-        break;
-
-      case SQLITE_NULL:
-        /* No key specified.  Use the key from URI filename, or if none,
-        ** use the key from the main database. */
-        if( sqlite3CodecQueryParameters(db, zName, zPath)==0 ){
-          sqlite3CodecGetKey(db, 0, (void**)&zKey, &nKey);
-          if( nKey || sqlite3BtreeGetOptimalReserve(db->aDb[0].pBt)>0 ){
-            rc = sqlite3CodecAttach(db, db->nDb-1, zKey, nKey);
-          }
-        }
-        break;
-    }
-  }
-#endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 done_with_open:
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-  sqlite3_free( zPath );
+  sqlite3_free_filename( zPath );
 
   /* If the file was opened successfully, read the schema for the new database.
   ** If this fails, or if opening the file failed, then close the file and 
@@ -466,6 +440,7 @@ static void detachFunc(
   sqlite3 *db = sqlite3_context_db_handle(context);
   int i;
   Db *pDb = 0;
+  HashElem *pEntry;
   char zErr[128];
 
   UNUSED_PARAMETER(NotUsed);
@@ -474,7 +449,7 @@ static void detachFunc(
   for(i=0; i<db->nDb; i++){
     pDb = &db->aDb[i];
     if( pDb->pBt==0 ) continue;
-    if( sqlite3StrICmp(pDb->zDbSName, zName)==0 ) break;
+    if( sqlite3DbIsNamed(db, i, zName) ) break;
   }
 
   if( i>=db->nDb ){
@@ -485,9 +460,23 @@ static void detachFunc(
     sqlite3_snprintf(sizeof(zErr),zErr, "cannot detach database %s", zName);
     goto detach_error;
   }
-  if( sqlite3BtreeIsInReadTrans(pDb->pBt) || sqlite3BtreeIsInBackup(pDb->pBt) ){
+  if( sqlite3BtreeTxnState(pDb->pBt)!=SQLITE_TXN_NONE
+   || sqlite3BtreeIsInBackup(pDb->pBt)
+  ){
     sqlite3_snprintf(sizeof(zErr),zErr, "database %s is locked", zName);
     goto detach_error;
+  }
+
+  /* If any TEMP triggers reference the schema being detached, move those
+  ** triggers to reference the TEMP schema itself. */
+  assert( db->aDb[1].pSchema );
+  pEntry = sqliteHashFirst(&db->aDb[1].pSchema->trigHash);
+  while( pEntry ){
+    Trigger *pTrig = (Trigger*)sqliteHashData(pEntry);
+    if( pTrig->pTabSchema==pDb->pSchema ){
+      pTrig->pTabSchema = pTrig->pSchema;
+    }
+    pEntry = sqliteHashNext(pEntry);
   }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
@@ -559,11 +548,8 @@ static void codeAttach(
 
   assert( v || db->mallocFailed );
   if( v ){
-    sqlite3VdbeAddOp4(v, OP_Function0, 0, regArgs+3-pFunc->nArg, regArgs+3,
-                      (char *)pFunc, P4_FUNCDEF);
-    assert( pFunc->nArg==-1 || (pFunc->nArg&0xff)==pFunc->nArg );
-    sqlite3VdbeChangeP5(v, (u8)(pFunc->nArg));
- 
+    sqlite3VdbeAddFunctionCall(pParse, 0, regArgs+3-pFunc->nArg, regArgs+3,
+                               pFunc->nArg, pFunc, 0);
     /* Code an OP_Expire. For an ATTACH statement, set P1 to true (expire this
     ** statement only). For DETACH, set it to false (expire all existing
     ** statements).
@@ -638,7 +624,7 @@ void sqlite3FixInit(
   pFix->pSchema = db->aDb[iDb].pSchema;
   pFix->zType = zType;
   pFix->pName = pName;
-  pFix->bVarOnly = (iDb==1);
+  pFix->bTemp = (iDb==1);
 }
 
 /*
@@ -660,22 +646,24 @@ int sqlite3FixSrcList(
   SrcList *pList       /* The Source list to check and modify */
 ){
   int i;
-  const char *zDb;
   struct SrcList_item *pItem;
+  sqlite3 *db = pFix->pParse->db;
+  int iDb = sqlite3FindDbName(db, pFix->zDb);
 
   if( NEVER(pList==0) ) return 0;
-  zDb = pFix->zDb;
+
   for(i=0, pItem=pList->a; i<pList->nSrc; i++, pItem++){
-    if( pFix->bVarOnly==0 ){
-      if( pItem->zDatabase && sqlite3StrICmp(pItem->zDatabase, zDb) ){
+    if( pFix->bTemp==0 ){
+      if( pItem->zDatabase && iDb!=sqlite3FindDbName(db, pItem->zDatabase) ){
         sqlite3ErrorMsg(pFix->pParse,
             "%s %T cannot reference objects in database %s",
             pFix->zType, pFix->pName, pItem->zDatabase);
         return 1;
       }
-      sqlite3DbFree(pFix->pParse->db, pItem->zDatabase);
+      sqlite3DbFree(db, pItem->zDatabase);
       pItem->zDatabase = 0;
       pItem->pSchema = pFix->pSchema;
+      pItem->fg.fromDDL = 1;
     }
 #if !defined(SQLITE_OMIT_VIEW) || !defined(SQLITE_OMIT_TRIGGER)
     if( sqlite3FixSelect(pFix, pItem->pSelect) ) return 1;
@@ -731,6 +719,7 @@ int sqlite3FixExpr(
   Expr *pExpr        /* The expression to be fixed to one database */
 ){
   while( pExpr ){
+    if( !pFix->bTemp ) ExprSetProperty(pExpr, EP_FromDDL);
     if( pExpr->op==TK_VARIABLE ){
       if( pFix->pParse->db->init.busy ){
         pExpr->op = TK_NULL;
@@ -781,6 +770,9 @@ int sqlite3FixTriggerStep(
       return 1;
     }
     if( sqlite3FixExprList(pFix, pStep->pExprList) ){
+      return 1;
+    }
+    if( pStep->pFrom && sqlite3FixSrcList(pFix, pStep->pFrom) ){
       return 1;
     }
 #ifndef SQLITE_OMIT_UPSERT

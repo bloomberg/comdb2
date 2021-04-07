@@ -232,6 +232,9 @@ static void print_explain_mem(strbuf *out, Mem *m)
     case MEM_Int:
         strbuf_appendf(out, "int %lld", (long long)m->u.i);
         break;
+    case MEM_IntReal:
+        strbuf_appendf(out, "intreal %lld", (long long)m->u.i);
+        break;
     case MEM_Real:
         strbuf_appendf(out, "real %f", m->u.r);
         break;
@@ -620,7 +623,7 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_CollSeq:
         strbuf_appendf(out, "Using collation sequence %s", op->p4.pColl->zName);
         break;
-    case OP_Function0:
+    case OP_PureFunc:
     case OP_Function:
         if (op->p5 > 1) {
             strbuf_appendf(out, "R%d = %s(R%d..R%d)", op->p3,
@@ -719,6 +722,28 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         if (op->p3)
             strbuf_appendf(out, "Jump to %d if NULL.", op->p3);
         break;
+    case OP_IfNotOpen:
+        strbuf_appendf(out, "Jump to %d if cursor [%d] is not open. ",
+                       op->p2, op->p1);
+        break;
+#ifdef SQLITE_DEBUG
+    case OP_ReleaseReg:
+        strbuf_appendf(out, "Release R%d..R%d", op->p1, op->p1+op->p2);
+        if (op->p3) {
+            int max_ii = op->p2;
+            if( max_ii>31 ) max_ii = 31;
+            for(int ii=0; ii<max_ii; ii++){
+                if( (op->p3 & MASKBIT32(ii))!=0 ){
+                    strbuf_appendf(out, ", excepting R%d", op->p1+ii);
+                }
+            }
+        }
+        if (op->p5) {
+            strbuf_appendf(out, ", while marking as undefined", op->p3);
+        }
+        strbuf_appendf(out, ". ");
+        break;
+#endif
     case OP_IsNull:
     case OP_NotNull:
         strbuf_appendf(out, "Jump to %d if R%d is %s.", op->p2, op->p1,
@@ -856,14 +881,16 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                        "Create a temp %s, and cursor [%d] to operate on it",
                        (op->p3 ? "index" : "table"), op->p1);
         struct KeyInfo *info = op->p4.pKeyInfo;
-        if (info && info->aSortOrder) {
+        if (info && info->aSortFlags) {
             int i;
             strbuf_append(out, " sort order (");
             for (i = 0; i < info->nAllField; i++) {
-                if (info->aSortOrder[i])
+                if (info->aSortFlags[i] & KEYINFO_ORDER_DESC)
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
+                if (info->aSortFlags[i] & KEYINFO_ORDER_BIGNULL)
+                    strbuf_append(out, " bignull");
                 if (i != info->nAllField - 1)
                     strbuf_append(out, ", ");
             }
@@ -901,9 +928,21 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "If no such records exist, go to %d", op->p2);
         break;
     }
+    case OP_SeekHit:
+        strbuf_appendf(out, "Increase seek hit value for cursor [%d] so it "
+                       "is no less than %d and no greater than %d", op->p1,
+                       op->p2, op->p3);
+        break;
+    case OP_SeekScan:
+        strbuf_appendf(out, "Scan ahead up to %d rows", op->p1);
+        break;
     case OP_DeferredSeek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
                        op->p3, op->p1);
+        break;
+    case OP_FinishSeek:
+        strbuf_appendf(out, "End of deferred seek for cursor [%d] if needed",
+                       op->p1);
         break;
     case OP_IfNoHope:
     case OP_NoConflict:
@@ -1112,11 +1151,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
                             "[%d] to operate on it",
                        op->p2, op->p1);
         struct KeyInfo *info = op->p4.pKeyInfo;
-        if (info && info->aSortOrder) {
+        if (info && info->aSortFlags) {
             int i;
             strbuf_append(out, " sort order (");
             for (i = 0; i < info->nAllField; i++) {
-                if (info->aSortOrder[i])
+                if (info->aSortFlags[i] & KEYINFO_ORDER_DESC)
                     strbuf_append(out, "desc");
                 else
                     strbuf_append(out, "asc");
@@ -1203,8 +1242,14 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_OpFuncString:
         strbuf_appendf(out, "Next String of R%d into R%d", op->p1, op->p2);
         break;
-
-
+    case OP_CursorLock:
+        strbuf_appendf(out, "Lock btree to which cursor [%d] is pointing",
+                       op->p1);
+        break;
+    case OP_CursorUnlock:
+        strbuf_appendf(out, "Unlock btree to which cursor [%d] is pointing",
+                       op->p1);
+        break;
     case OP_TableLock:
     case OP_VBegin:
     case OP_VCreate:

@@ -21,7 +21,7 @@
 		int i null = yes 
 	}
 ')
-(type='view', name='t2_v', tbl_name=NULL, rootpage=-1, sql='CREATE VIEW t2_v as select * from t2', csc2=NULL)
+(type='view', name='t2_v', tbl_name='t2_v', rootpage=0, sql='CREATE VIEW t2_v as select * from t2', csc2=NULL)
 (type='table', name='time_part_t', tbl_name='time_part_t', rootpage=4, sql='create table "time_part_t"("i" int);', csc2='schema
 	{
 		int i null = yes 

@@ -911,6 +911,9 @@ int convert_sql_failure_reason_str(const struct convert_failure *reason,
     } else if (reason->source_sql_field_flags & MEM_Int) {
         return snprintf(out, outlen, " from SQL integer '%lld'",
                         reason->source_sql_field_info.ival);
+    } else if (reason->source_sql_field_flags & MEM_IntReal) {
+        return snprintf(out, outlen, " from SQL integer '%lld' as real",
+                        reason->source_sql_field_info.ival);
     } else if (reason->source_sql_field_flags & MEM_Real) {
         return snprintf(out, outlen, " from SQL real '%f'",
                         reason->source_sql_field_info.rval);
@@ -1001,7 +1004,7 @@ static int mem_to_ondisk(void *outbuf, struct field *f, struct mem_info *info,
         rc = 0;
     }
 
-    if (m->flags & MEM_Int) {
+    if (m->flags & (MEM_Int|MEM_IntReal)) {
         i64 i = flibc_htonll(m->u.i);
         rc = CLIENT_to_SERVER(
             &i, sizeof(i), CLIENT_INT, null, (struct field_conv_opts *)convopts,
@@ -1293,7 +1296,7 @@ done:
         fail_reason->source_sql_field_flags = m->flags;
         fail_reason->target_schema = s;
         fail_reason->target_field_idx = info->fldidx;
-        if (m->flags & MEM_Int) {
+        if (m->flags & (MEM_Int|MEM_IntReal)) {
             fail_reason->source_sql_field_info.ival = m->u.i;
         } else if (m->flags & MEM_Real) {
             fail_reason->source_sql_field_info.rval = m->u.r;
@@ -3154,6 +3157,10 @@ sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor *pCur){
     return 2147483647; /* see vdbeMemFromBtreeResize in vdbemem.c */
 }
 
+Pgno sqlite3BtreeLastPage(Btree *pBt){
+    return 4294967294; /* not used for Comdb2. */
+}
+
 /*
  ** Return the currently defined page size
  */
@@ -3410,7 +3417,7 @@ int sqlite3BtreeOpen(
         bt->reqlogger = thrman_get_reqlogger(thrman_self());
         bt->btreeid = id++;
         bt->is_temporary = 1;
-        int masterPgno;
+        Pgno masterPgno;
         assert(tmptbl_clone == NULL);
         rc = sqlite3BtreeCreateTable(bt, &masterPgno, BTREE_INTKEY);
         if (rc != SQLITE_OK) goto done;
@@ -3512,6 +3519,12 @@ int sqlite3BtreeSetCacheSize(Btree *pBt, int mxPage)
                 mxPage, sqlite3ErrStr(SQLITE_OK));
     return SQLITE_OK;
 }
+
+#ifdef SQLITE_DEBUG
+sqlite3_uint64 sqlite3BtreeSeekCount(Btree *pBt){
+  return 0;
+}
+#endif
 
 /*
  ** Return the full pathname of the underlying database file.
@@ -4047,20 +4060,6 @@ int sqlite3BtreePrevious(BtCursor *pCur, int flags)
 }
 
 /*
- ** Return non-zero if a statement transaction is active.
- */
-int sqlite3BtreeIsInStmt(Btree *pBt)
-{
-    /* don't care for now. if one was started, return that one is in progress */
-    struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = (thd && thd->clnt) ? thd->clnt->intrans : 0;
-
-    reqlog_logf(pBt->reqlogger, REQL_TRACE, "IsInTrans(pBt %d)      = %s\n",
-                pBt->btreeid, rc ? "yes" : "no");
-    return rc;
-}
-
-/*
  ** Return the currently defined page size
  */
 int sqlite3BtreeGetReserve(Btree *pBt)
@@ -4069,6 +4068,12 @@ int sqlite3BtreeGetReserve(Btree *pBt)
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "GetReserve(pBt %d)       = %d\n",
                 pBt->btreeid, 1);
     return 1;
+}
+
+int sqlite3BtreeGetRequestedReserve(Btree*pBt){
+    reqlog_logf(pBt->reqlogger,REQL_TRACE,"GetRequestedReserve(pBt %d) = %d\n",
+                pBt->btreeid, 1);
+    return 0; /* TODO: Is this a valid return? */
 }
 
 /*
@@ -5062,19 +5067,29 @@ done:
 }
 
 /*
- ** Return non-zero if a transaction is active.
+ ** Return transaction state, e.g. none, read, or write.
  */
-int sqlite3BtreeIsInTrans(Btree *pBt)
+int sqlite3BtreeTxnState(Btree *pBt)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
-    int rc = (thd && thd->clnt) ? thd->clnt->intrans : 0;
+    struct sqlclntstate *clnt = thd ? thd->clnt : 0;
+    int rc;
 
-/* UNIMPLEMENTED */
-/* FIXME TODO XXX #if 0'ed out the foll */
+    if (clnt && clnt->intrans) {
+        rc = clnt->writeTransaction ? SQLITE_TXN_WRITE : SQLITE_TXN_READ;
+    } else {
+        rc = SQLITE_TXN_NONE;
+    }
+
+    /* TODO: Should this logging actually be disabled? */
 #if 0
-   reqlog_logf(pBt->reqlogger, REQL_TRACE, "IsInTrans(pBt %d)      = %s\n",
-         pBt->btreeid, rc ? "yes" : "no");
+    if (pBt) {
+        static const char *zTrans[] = { "NONE", "READ", "WRITE", NULL };
+        reqlog_logf(pBt->reqlogger, REQL_TRACE, "TxnState(pBt %d)      = %s\n",
+                    pBt->btreeid, zTrans[rc]);
+    }
 #endif
+
     return rc;
 }
 
@@ -5114,7 +5129,7 @@ void comdb2_set_tmptbl_lk(pthread_mutex_t *lk)
  **     BTREE_INTKEY                    Used for SQL tables with rowid keys
  **     BTREE_BLOBKEY                   Used for SQL indices
  */
-int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
+int sqlite3BtreeCreateTable(Btree *pBt, Pgno *piTable, int flags)
 {
     int bdberr = 0;
     int rc = SQLITE_OK;
@@ -5564,7 +5579,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
         /* filter the supported operations */
         if (bias != OP_SeekLT && bias != OP_SeekLE && bias != OP_SeekGE &&
             bias != OP_SeekGT && bias != OP_NotExists && bias != OP_Found &&
-            bias != OP_IfNoHope && bias != OP_NotFound &&
+            bias != OP_IfNoHope && bias != OP_NotFound && bias != OP_DeferredSeek &&
             bias != OP_IdxDelete && bias != OP_SeekRowid) {
             logmsg(LOGMSG_ERROR, "%s: unsupported remote cursor operation op=%d\n",
                     __func__, bias);
@@ -8151,7 +8166,7 @@ BtCursor *sqlite3BtreeFakeValidCursor(void){
 int sqlite3BtreeCursor(
     Vdbe *vdbe,               /* Vdbe running the show */
     Btree *pBt,               /* BTree containing table to open */
-    int iTable,               /* Index of root page */
+    Pgno iTable,              /* Index of root page */
     int wrFlag,               /* 1 for writing.  0 for read-only. */
     int forOpen,              /* 1 for open mode.  0 for create mode. */
     struct KeyInfo *pKeyInfo, /* First argument to compare function */
@@ -8183,7 +8198,7 @@ int sqlite3BtreeCursor(
 
     if (pBt->is_temporary) { /* temp table */
         assert(iTable >= 1); /* can never be zero or negative */
-        int pgno = iTable;
+        Pgno pgno = iTable;
         if (forOpen) {
             /*
             ** NOTE: When being called to open a temporary (table) cursor in
@@ -8191,7 +8206,7 @@ int sqlite3BtreeCursor(
             **       opcodes by the VDBE, the temporary table may not have
             **       been created yet.  Attempt to do that now.
             */
-            if (hash_find(pBt->temp_tables, &pgno) == NULL) {
+            if (hash_find(pBt->temp_tables, &iTable) == NULL) {
                 assert(tmptbl_clone == NULL);
                 rc = sqlite3BtreeCreateTable(pBt, &pgno, BTREE_INTKEY);
             }
@@ -8927,8 +8942,8 @@ int sqlite3BtreeData(BtCursor *pCur, u32 offset, u32 amt, void *pBuf)
  ** and a pointer to that error message is returned.  The calling function
  ** is responsible for freeing the error message when it is done.
  */
-char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
-                                 int *pnErr)
+char *sqlite3BtreeIntegrityCheck(sqlite3 *db, Btree *pBt, Pgno *aRoot, int nRoot,
+                                 int mxErr, int *pnErr)
 {
     int rc = SQLITE_OK;
     int i;
@@ -8938,7 +8953,7 @@ char *sqlite3BtreeIntegrityCheck(Btree *pBt, int *aRoot, int nRoot, int mxErr,
     reqlog_logf(pBt->reqlogger, REQL_TRACE, "IntegrityCheck(pBt %d pages",
                 pBt->btreeid);
     for (i = 0; i < nRoot; i++) {
-        reqlog_logf(pBt->reqlogger, REQL_TRACE, "%d ", aRoot[i]);
+        reqlog_logf(pBt->reqlogger, REQL_TRACE, "%u ", aRoot[i]);
     }
     reqlog_logf(pBt->reqlogger, REQL_TRACE, ")    = %s\n", sqlite3ErrStr(rc));
     return NULL;
@@ -10353,15 +10368,6 @@ void print_cooked_access(BtCursor *pCur, int col)
 }
 #endif
 
-/*
- ** Return non-zero if a read (or write) transaction is active.
- */
-int sqlite3BtreeIsInReadTrans(Btree *p)
-{
-    /* TODO: called where? need? */
-    return sqlite3BtreeIsInTrans(p);
-}
-
 int sqlite3BtreeIsInBackup(Btree *p)
 {
     /* Backups are invisible to sqlite. */
@@ -10437,7 +10443,7 @@ int gbl_direct_count = 1;
  ** Otherwise, if an error is encountered (i.e. an IO error or database
  ** corruption) an SQLite error code is returned.
  */
-int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
+int sqlite3BtreeCount(sqlite3 *db, BtCursor *pCur, i64 *pnEntry)
 {
     struct sql_thread *thd = pCur->thd;
     int rc;
@@ -10507,6 +10513,16 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
                 pCur->cursorid, sqlite3ErrStr(rc));
 
     return rc;
+}
+
+/*
+** Pin or unpin a cursor.
+*/
+void sqlite3BtreeCursorPin(BtCursor *pCur){
+  /* TODO: Is this needed? */
+}
+void sqlite3BtreeCursorUnpin(BtCursor *pCur){
+  /* TODO: Is this needed? */
 }
 
 /*
@@ -10660,7 +10676,7 @@ sqlite3_file *sqlite3PagerJrnlFile(Pager *pPager) { return NULL; }
 /*
  ** Return the full pathname of the database file.
  */
-const char *sqlite3PagerFilename(Pager *pPager, int dummy) { return NULL; }
+const char *sqlite3PagerFilename(const Pager *pPager, int dummy) { return NULL; }
 
 /*
  ** Return the approximate number of bytes of memory currently
@@ -11411,7 +11427,7 @@ void stat4dump(int more, char *table, int istrace)
                     comma = ", ";
                     if (m.flags & MEM_Null) {
                         outFunc("NULL");
-                    } else if (m.flags & MEM_Int) {
+                    } else if (m.flags & (MEM_Int|MEM_IntReal)) {
                         outFunc("%" PRId64, m.u.i);
                     } else if (m.flags & MEM_Real) {
                         outFunc("%f", m.u.r);
@@ -12215,7 +12231,7 @@ int verify_indexes_column_value(sqlite3_stmt *stmt, void *sm)
                 pTo->zMalloc[pFrom->n] = 0;
                 pTo->z = pTo->zMalloc;
             }
-        } else if (pFrom->flags & MEM_Int) {
+        } else if (pFrom->flags & (MEM_Int|MEM_IntReal)) {
             pTo->u.i = pFrom->u.i;
         }
     }
@@ -12738,7 +12754,7 @@ int verify_check_constraints(struct dbtable *table, uint8_t *rec,
 
         /* CHECK constraint has passed if we get 1 or NULL. */
         assert(clnt.has_sqliterow);
-        if (sm.min->flags & MEM_Int) {
+        if (sm.min->flags & (MEM_Int|MEM_IntReal)) {
             if (sm.mout->u.i == 0) {
                 /* CHECK constraint failed */
                 rc = i + 1;

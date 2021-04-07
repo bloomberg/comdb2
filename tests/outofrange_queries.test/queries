@@ -45,6 +45,7 @@ alter table t {schema {
     cstring c[4] null=yes
     u_short us null=yes
     u_int ui null=yes
+    byte b[1] null=yes
 }
 keys {
     "s" = s
@@ -79,6 +80,7 @@ alter table t {schema {
     cstring c[4] null=yes
     u_short us null=yes
     u_int ui null=yes
+    byte b[1] null=yes
 }
 keys {
     "s" = <DESCEND> s
