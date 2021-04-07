@@ -312,6 +312,31 @@ struct sqlclntstate *get_sql_clnt(void){
   return thd->clnt;
 }
 
+static pthread_key_t dispatch_clnt_key;
+static pthread_once_t dispatch_clnt_once = PTHREAD_ONCE_INIT;
+
+static void init_dispatch_clnt_key(void)
+{
+    Pthread_key_create(&dispatch_clnt_key, NULL);
+}
+
+int is_sql_clnt_really_lua_thread(void)
+{
+    struct sqlclntstate *clnt = pthread_getspecific(dispatch_clnt_key);
+    return (clnt && (clnt->exec_lua_thread || clnt->exec_lua_trigger));
+}
+
+void begin_dispatch_clnt(struct sqlclntstate *clnt)
+{
+    pthread_once(&dispatch_clnt_once, init_dispatch_clnt_key);
+    Pthread_setspecific(dispatch_clnt_key, clnt);
+}
+
+void end_dispatch_clnt(void)
+{
+    Pthread_setspecific(dispatch_clnt_key, NULL);
+}
+
 static inline int lock_client_write_lock_int(struct sqlclntstate *clnt, int try)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -747,9 +772,9 @@ static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const 
 static int comdb2_authorizer_for_sqlite(
   void *pArg,        /* IN: NOT USED */
   int code,          /* IN: NOT USED */
-  const char *zArg1, /* IN: NOT USED */
-  const char *zArg2, /* IN: NOT USED */
-  const char *zArg3, /* IN: NOT USED */
+  const char *zArg1, /* IN */
+  const char *zArg2, /* IN */
+  const char *zArg3, /* IN */
   const char *zArg4  /* IN: NOT USED */
 #ifdef SQLITE_USER_AUTHENTICATION
   ,const char *zArg5 /* IN: NOT USED */
@@ -802,8 +827,9 @@ static int comdb2_authorizer_for_sqlite(
       if (denyDdl || denyPragma) {
         return SQLITE_DENY;
       } else if (pAuthState->clnt != NULL) {
-        logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-               __LINE__, __func__, pAuthState->clnt->sql);
+        logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s = %s] IN DATABASE "
+               "[%s] ON BEHALF OF SQL [%s]\n", __FILE__, __LINE__, __func__,
+               zArg1, zArg2, zArg3, pAuthState->clnt->sql);
         return SQLITE_OK;
       } else {
         return SQLITE_DENY;
@@ -3385,7 +3411,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
         write_response(clnt, RESPONSE_TRACE, (void *)zCand, 0);
         write_response(clnt, RESPONSE_TRACE, "---------------------------------------------\n", 0);
     } else {
-        fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
+        logmsg(LOGMSG_ERROR, "%s: EXPERT: %s\n", __func__, zErr ? zErr : "?");
         write_response(clnt, RESPONSE_TRACE, zErr, 0);
     }
     write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);
@@ -4673,6 +4699,8 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
 {
     struct sqlclntstate *clnt = work;
 
+    begin_dispatch_clnt(clnt);
+
     switch (op) {
     case THD_RUN:
         if (clnt->exec_lua_thread)
@@ -4687,6 +4715,7 @@ static void sqlengine_work_appsock_pp(struct thdpool *pool, void *work,
         break;
     }
     bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
+    end_dispatch_clnt();
 }
 
 static int send_heartbeat(struct sqlclntstate *clnt)

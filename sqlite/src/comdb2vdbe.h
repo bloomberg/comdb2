@@ -51,7 +51,7 @@ struct rstMsg
 int comdb2GenerateRstMsg(OpFunc *f);
 void free_rstMsg(struct rstMsg* rec);
 
-int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDb,
+int resolveTableName(sqlite3 *db, struct SrcItem *p, const char *zDb,
                      char *tablename, size_t len);
 
 #endif // COMDB2VDBE_H
