@@ -1,3 +1,4 @@
 update_delete_limit
 dtastripe 1
 ssl_client_mode OPTIONAL
+exec_sql_on_new_connect PRAGMA automatic_index = 0;

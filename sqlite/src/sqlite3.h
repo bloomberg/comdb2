@@ -125,7 +125,7 @@ extern "C" {
 */
 #define SQLITE_VERSION        "3.28.0"
 #define SQLITE_VERSION_NUMBER 3028000
-#define SQLITE_SOURCE_ID      "2019-04-23 16:19:00 4ff9da96b8258b25015ee313b281fb8dfe2d856572ecbddcc63b762a33f9f32f"
+#define SQLITE_SOURCE_ID      "2021-03-08 16:12:49 1fdaa9a8e527f4457182c12837662aa1bfc88f601a9baafa395d11dfc8981628"
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include <types.h>
@@ -5031,7 +5031,10 @@ SQLITE_API int sqlite3_create_window_function(
 ** [sqlite3_create_function_v2()].
 */
 #define SQLITE_DETERMINISTIC    0x000000800
+#define SQLITE_DIRECTONLY       0x000080000
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
 #define SQLITE_SUBTYPE          0x000100000
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Deprecated Functions

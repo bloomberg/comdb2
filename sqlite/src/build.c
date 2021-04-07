@@ -1189,13 +1189,39 @@ int sqlite3WritableSchema(sqlite3 *db){
 ** trigger). All names are legal except those that begin with the string
 ** "sqlite_" (in upper, lower or mixed case). This portion of the namespace
 ** is reserved for internal use.
+**
+** When parsing the sqlite_master table, this routine also checks to
+** make sure the "type", "name", and "tbl_name" columns are consistent
+** with the SQL.
 */
-int sqlite3CheckObjectName(Parse *pParse, const char *zName){
-  if( !pParse->db->init.busy && pParse->nested==0 
-          && sqlite3WritableSchema(pParse->db)==0
-          && 0==sqlite3StrNICmp(zName, "sqlite_", 7) ){
-    sqlite3ErrorMsg(pParse, "object name reserved for internal use: %s", zName);
-    return SQLITE_ERROR;
+int sqlite3CheckObjectName(
+  Parse *pParse,            /* Parsing context */
+  const char *zName,        /* Name of the object to check */
+  const char *zType,        /* Type of this object */
+  const char *zTblName      /* Parent table name for triggers and indexes */
+){
+  sqlite3 *db = pParse->db;
+  if( sqlite3WritableSchema(db) || db->init.imposterTable ){
+    /* Skip these error checks for writable_schema=ON */
+    return SQLITE_OK;
+  }
+  if( db->init.busy ){
+    if( sqlite3_stricmp(zType, db->init.azInit[0])
+     || sqlite3_stricmp(zName, db->init.azInit[1])
+     || sqlite3_stricmp(zTblName, db->init.azInit[2])
+    ){
+      sqlite3ErrorMsg(pParse, ""); /* corruptSchema() will supply the error */
+      return SQLITE_ERROR;
+    }
+  }else{
+    if( (pParse->nested==0 && 0==sqlite3StrNICmp(zName, "sqlite_", 7))
+     || (sqlite3ReadOnlyShadowTables(db) && sqlite3ShadowTableName(db, zName))
+    ){
+      sqlite3ErrorMsg(pParse, "object name reserved for internal use: %s",
+                      zName);
+      return SQLITE_ERROR;
+    }
+
   }
   return SQLITE_OK;
 }
@@ -1278,7 +1304,7 @@ void sqlite3StartTable(
   }
   pParse->sNameToken = *pName;
   if( zName==0 ) return;
-  if( SQLITE_OK!=sqlite3CheckObjectName(pParse, zName) ){
+  if( sqlite3CheckObjectName(pParse, zName, isView?"view":"table", zName) ){
     goto begin_table_error;
   }
   if( db->init.iDb==1 ) isTemp = 1;
@@ -2375,7 +2401,7 @@ static void convertToWithoutRowidTable(Parse *pParse, Table *pTab){
 ** zName is temporarily modified while this routine is running, but is
 ** restored to its original value prior to this routine returning.
 */
-static int isShadowTableName(sqlite3 *db, char *zName){
+int sqlite3ShadowTableName(sqlite3 *db, const char *zName){
   char *zTail;                  /* Pointer to the last "_" in zName */
   Table *pTab;                  /* Table that zName is a shadow of */
   Module *pMod;                 /* Module for the virtual table */
@@ -2393,8 +2419,6 @@ static int isShadowTableName(sqlite3 *db, char *zName){
   if( pMod->pModule->xShadowName==0 ) return 0;
   return pMod->pModule->xShadowName(zTail+1);
 }
-#else
-# define isShadowTableName(x,y) 0
 #endif /* ifndef SQLITE_OMIT_VIRTUALTABLE */
 
 /*
@@ -2436,7 +2460,7 @@ void sqlite3EndTable(
   p = pParse->pNewTable;
   if( p==0 ) return;
 
-  if( pSelect==0 && isShadowTableName(db, p->zName) ){
+  if( pSelect==0 && sqlite3ShadowTableName(db, p->zName) ){
     p->tabFlags |= TF_Shadow;
   }
 
@@ -3171,6 +3195,37 @@ void sqlite3CodeDropTable(Parse *pParse, Table *pTab, int iDb, int isView){
 }
 
 /*
+** Return TRUE if shadow tables should be read-only in the current
+** context.
+*/
+int sqlite3ReadOnlyShadowTables(sqlite3 *db){
+#ifndef SQLITE_OMIT_VIRTUALTABLE
+  if( (db->flags & SQLITE_Defensive)!=0
+   && db->pVtabCtx==0
+   && db->nVdbeExec==0
+  ){
+    return 1;
+  }
+#endif
+  return 0;
+}
+
+/*
+** Return true if it is not allowed to drop the given table
+*/
+static int tableMayNotBeDropped(sqlite3 *db, Table *pTab){
+  if( sqlite3StrNICmp(pTab->zName, "sqlite_", 7)==0 ){
+    if( sqlite3StrNICmp(pTab->zName+7, "stat", 4)==0 ) return 0;
+    if( sqlite3StrNICmp(pTab->zName+7, "parameters", 10)==0 ) return 0;
+    return 1;
+  }
+  if( (pTab->tabFlags & TF_Shadow)!=0 && sqlite3ReadOnlyShadowTables(db) ){
+    return 1;
+  }
+  return 0;
+}
+
+/*
 ** This routine is called to do the work of a DROP TABLE statement.
 ** pName is the name of the table to be dropped.
 */
@@ -3246,8 +3301,7 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
     }
   }
 #endif
-  if( sqlite3StrNICmp(pTab->zName, "sqlite_", 7)==0 
-    && sqlite3StrNICmp(pTab->zName, "sqlite_stat", 11)!=0 ){
+  if( tableMayNotBeDropped(db, pTab) ){
     sqlite3ErrorMsg(pParse, "table %s may not be dropped", pTab->zName);
     goto exit_drop_table;
   }
@@ -3740,7 +3794,7 @@ void sqlite3CreateIndex(
     zName = sqlite3NameFromToken(db, pName);
     if( zName==0 ) goto exit_create_index;
     assert( pName->z!=0 );
-    if( SQLITE_OK!=sqlite3CheckObjectName(pParse, zName) ){
+    if( SQLITE_OK!=sqlite3CheckObjectName(pParse, zName,"index",pTab->zName) ){
       goto exit_create_index;
     }
     if( !IN_RENAME_OBJECT ){

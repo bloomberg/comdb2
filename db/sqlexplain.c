@@ -901,9 +901,21 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         strbuf_appendf(out, "If no such records exist, go to %d", op->p2);
         break;
     }
+    case OP_SeekHit:
+        strbuf_appendf(out, "Increase seek hit value for cursor [%d] so it "
+                       "is no less than %d and no greater than %d", op->p1,
+                       op->p2, op->p3);
+        break;
+    case OP_SeekScan:
+        strbuf_appendf(out, "Scan ahead up to %d rows", op->p1);
+        break;
     case OP_DeferredSeek:
         strbuf_appendf(out, "Move cursor [%d] to rowid of index cursor [%d]",
                        op->p3, op->p1);
+        break;
+    case OP_FinishSeek:
+        strbuf_appendf(out, "End of deferred seek for cursor [%d] if needed",
+                       op->p1);
         break;
     case OP_IfNoHope:
     case OP_NoConflict:

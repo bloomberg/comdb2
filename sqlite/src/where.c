@@ -172,6 +172,14 @@ int sqlite3WhereOkOnePass(WhereInfo *pWInfo, int *aiCur){
 }
 
 /*
+** Return TRUE if the WHERE loop uses the OP_DeferredSeek opcode to move
+** the data cursor to the row selected by the index cursor.
+*/
+int sqlite3WhereUsesDeferredSeek(WhereInfo *pWInfo){
+  return pWInfo->bDeferredSeek;
+}
+
+/*
 ** Move the content of pSrc into pDest
 */
 static void whereOrMove(WhereOrSet *pDest, WhereOrSet *pSrc){
@@ -2321,7 +2329,9 @@ static void whereLoopOutputAdjust(
         /* In the absence of explicit truth probabilities, use heuristics to
         ** guess a reasonable truth probability. */
         pLoop->nOut--;
-        if( pTerm->eOperator&(WO_EQ|WO_IS) ){
+        if( (pTerm->eOperator&(WO_EQ|WO_IS))!=0
+         && (pTerm->wtFlags & TERM_HIGHTRUTH)==0  /* tag-20200224-1 */
+        ){
           Expr *pRight = pTerm->pExpr->pRight;
           testcase( pTerm->pExpr->op==TK_IS );
           if( sqlite3ExprIsInteger(pRight, &k) && k>=(-1) && k<=1 ){
@@ -2329,7 +2339,10 @@ static void whereLoopOutputAdjust(
           }else{
             k = 20;
           }
-          if( iReduce<k ) iReduce = k;
+          if( iReduce<k ){
+            pTerm->wtFlags |= TERM_HEURTRUTH;
+            iReduce = k;
+          }
         }
       }
     }
@@ -2510,9 +2523,9 @@ static int whereLoopAddBtreeIndex(
     }
 
     if( IsUniqueIndex(pProbe) && saved_nEq==pProbe->nKeyCol-1 ){
-      pBuilder->bldFlags |= SQLITE_BLDF_UNIQUE;
+      pBuilder->bldFlags1 |= SQLITE_BLDF1_UNIQUE;
     }else{
-      pBuilder->bldFlags |= SQLITE_BLDF_INDEXED;
+      pBuilder->bldFlags1 |= SQLITE_BLDF1_INDEXED;
     }
     pNew->wsFlags = saved_wsFlags;
     pNew->u.btree.nEq = saved_nEq;
@@ -2550,7 +2563,7 @@ static int whereLoopAddBtreeIndex(
         assert( nIn>0 );  /* RHS always has 2 or more terms...  The parser
                           ** changes "x IN (?)" into "x=?". */
       }
-      if( pProbe->hasStat1 ){
+      if( pProbe->hasStat1 && rLogSize>=10 ){
         LogEst M, logK, safetyMargin;
         /* Let:
         **   N = the total number of rows in the table
@@ -2569,7 +2582,8 @@ static int whereLoopAddBtreeIndex(
         ** a safety margin of 2 (LogEst: 10) that favors using the IN operator
         ** with the index, as using an index has better worst-case behavior.
         ** If we do not have real sqlite_stat1 data, always prefer to use
-        ** the index.
+        ** the index.  Do not bother with this optimization on very small
+        ** tables (less than 2 rows) as it is pointless in that case.
         */
         M = pProbe->aiRowLogEst[saved_nEq];
         logK = estLog(nIn);
@@ -2578,7 +2592,7 @@ static int whereLoopAddBtreeIndex(
           WHERETRACE(0x40,
             ("Scan preferred over IN operator on column %d of \"%s\" (%d<%d)\n",
              saved_nEq, pProbe->zName, M+logK+10, nIn+rLogSize));
-          continue;
+          pNew->wsFlags |= WHERE_IN_SEEKSCAN;
         }else{
           WHERETRACE(0x40,
             ("IN operator preferred on column %d of \"%s\" (%d>=%d)\n",
@@ -2679,6 +2693,27 @@ static int whereLoopAddBtreeIndex(
           if( rc!=SQLITE_OK ) break;          /* Jump out of the pTerm loop */
           if( nOut ){
             pNew->nOut = sqlite3LogEst(nOut);
+            if( nEq==1
+             /* TUNING: Mark terms as "low selectivity" if they seem likely
+             ** to be true for half or more of the rows in the table.
+             ** See tag-202002240-1 */
+             && pNew->nOut+10 > pProbe->aiRowLogEst[0]
+            ){
+#if WHERETRACE_ENABLED /* 0x01 */
+              if( sqlite3WhereTrace & 0x01 ){
+                sqlite3DebugPrintf(
+                   "STAT4 determines term has low selectivity:\n");
+                whereTermPrint(pTerm, 999);
+              }
+#endif
+              pTerm->wtFlags |= TERM_HIGHTRUTH;
+              if( pTerm->wtFlags & TERM_HEURTRUTH ){
+                /* If the term has previously been used with an assumption of
+                ** higher selectivity, then set the flag to rerun the
+                ** loop computations. */
+                pBuilder->bldFlags2 |= SQLITE_BLDF2_2NDPASS;
+              }
+            }
             if( pNew->nOut>saved_nOut ) pNew->nOut = saved_nOut;
             pNew->nOut -= nIn;
           }
@@ -3032,8 +3067,23 @@ static int whereLoopAddBtree(
 
       /* Full table scan */
       pNew->iSortIdx = b ? iSortIdx : 0;
-      /* TUNING: Cost of full table scan is (N*3.0). */
+      /* TUNING: Cost of full table scan is 3.0*N.  The 3.0 factor is an
+      ** extra cost designed to discourage the use of full table scans,
+      ** since index lookups have better worst-case performance if our
+      ** stat guesses are wrong.  Reduce the 3.0 penalty slightly
+      ** (to 2.75) if we have valid STAT4 information for the table.
+      ** At 2.75, a full table scan is preferred over using an index on
+      ** a column with just two distinct values where each value has about
+      ** an equal number of appearances.  Without STAT4 data, we still want
+      ** to use an index in that case, since the constraint might be for
+      ** the scarcer of the two values, and in that case an index lookup is
+      ** better.
+      */
+#ifdef SQLITE_ENABLE_STAT4
+      pNew->rRun = rSize + 16 - 2*((pTab->tabFlags & TF_HasStat4)!=0);
+#else
       pNew->rRun = rSize + 16;
+#endif
       ApplyCostMultiplier(pNew->rRun, pTab->costMult);
       whereLoopOutputAdjust(pWC, pNew, rSize);
       rc = whereLoopInsert(pBuilder, pNew);
@@ -3102,9 +3152,9 @@ static int whereLoopAddBtree(
       }
     }
 
-    pBuilder->bldFlags = 0;
+    pBuilder->bldFlags1 = 0;
     rc = whereLoopAddBtreeIndex(pBuilder, pSrc, pProbe, 0);
-    if( pBuilder->bldFlags==SQLITE_BLDF_INDEXED ){
+    if( pBuilder->bldFlags1==SQLITE_BLDF1_INDEXED ){
       /* If a non-unique index is used, or if a prefix of the key for
       ** unique index is used (making the index functionally non-unique)
       ** then the sqlite_stat1 data becomes important for scoring the
@@ -4562,6 +4612,28 @@ static int exprIsDeterministic(Expr *p){
   return w.eCode;
 }
 
+  
+#ifdef WHERETRACE_ENABLED
+/*
+** Display all WhereLoops in pWInfo
+*/
+static void showAllWhereLoops(WhereInfo *pWInfo, WhereClause *pWC){
+  if( sqlite3WhereTrace ){    /* Display all of the WhereLoop objects */
+    WhereLoop *p;
+    int i;
+    static const char zLabel[] = "0123456789abcdefghijklmnopqrstuvwyxz"
+                                           "ABCDEFGHIJKLMNOPQRSTUVWYXZ";
+    for(p=pWInfo->pLoops, i=0; p; p=p->pNextLoop, i++){
+      p->cId = zLabel[i%(sizeof(zLabel)-1)];
+      whereLoopPrint(p, pWC);
+    }
+  }
+}
+# define WHERETRACE_ALL_LOOPS(W,C) showAllWhereLoops(W,C)
+#else
+# define WHERETRACE_ALL_LOOPS(W,C)
+#endif
+
 /*
 ** Generate the beginning of the loop used for WHERE clause processing.
 ** The return value is a pointer to an opaque structure that contains
@@ -4860,19 +4932,28 @@ WhereInfo *sqlite3WhereBegin(
   if( nTabList!=1 || whereShortCut(&sWLB)==0 ){
     rc = whereLoopAddAll(&sWLB);
     if( rc ) goto whereBeginError;
-  
-#ifdef WHERETRACE_ENABLED
-    if( sqlite3WhereTrace ){    /* Display all of the WhereLoop objects */
-      WhereLoop *p;
-      int i;
-      static const char zLabel[] = "0123456789abcdefghijklmnopqrstuvwyxz"
-                                             "ABCDEFGHIJKLMNOPQRSTUVWYXZ";
-      for(p=pWInfo->pLoops, i=0; p; p=p->pNextLoop, i++){
-        p->cId = zLabel[i%(sizeof(zLabel)-1)];
-        whereLoopPrint(p, sWLB.pWC);
+
+#ifdef SQLITE_ENABLE_STAT4
+    /* If one or more WhereTerm.truthProb values were used in estimating
+    ** loop parameters, but then those truthProb values were subsequently
+    ** changed based on STAT4 information while computing subsequent loops,
+    ** then we need to rerun the whole loop building process so that all
+    ** loops will be built using the revised truthProb values. */
+    if( sWLB.bldFlags2 & SQLITE_BLDF2_2NDPASS ){
+      WHERETRACE_ALL_LOOPS(pWInfo, sWLB.pWC);
+      WHERETRACE(0xffff, 
+           ("**** Redo all loop computations due to"
+            " TERM_HIGHTRUTH changes ****\n"));
+      while( pWInfo->pLoops ){
+        WhereLoop *p = pWInfo->pLoops;
+        pWInfo->pLoops = p->pNextLoop;
+        whereLoopDelete(db, p);
       }
+      rc = whereLoopAddAll(&sWLB);
+      if( rc ) goto whereBeginError;
     }
 #endif
+    WHERETRACE_ALL_LOOPS(pWInfo, sWLB.pWC);
   
     wherePathSolver(pWInfo, 0);
     if( db->mallocFailed ) goto whereBeginError;
@@ -5142,6 +5223,7 @@ WhereInfo *sqlite3WhereBegin(
         sqlite3VdbeSetP4KeyInfo(pParse, pIx);
         if( (pLoop->wsFlags & WHERE_CONSTRAINT)!=0
          && (pLoop->wsFlags & (WHERE_COLUMN_RANGE|WHERE_SKIPSCAN))==0
+         && (pLoop->wsFlags & WHERE_IN_SEEKSCAN)==0
          && (pWInfo->wctrlFlags&WHERE_ORDERBY_MIN)==0
          && pWInfo->eDistinct!=WHERE_DISTINCT_ORDERED
         ){
@@ -5199,6 +5281,7 @@ WhereInfo *sqlite3WhereBegin(
 
   /* Done. */
   VdbeModuleComment((v, "Begin WHERE-core"));
+  pWInfo->iEndWhere = sqlite3VdbeCurrentAddr(v);
   return pWInfo;
 
   /* Jump here if malloc fails */
@@ -5242,6 +5325,7 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
   WhereLoop *pLoop;
   SrcList *pTabList = pWInfo->pTabList;
   sqlite3 *db = pParse->db;
+  int iEnd = sqlite3VdbeCurrentAddr(v);
 
   /* Generate loop termination code.
   */
@@ -5297,11 +5381,15 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
         sqlite3VdbeJumpHere(v, pIn->addrInTop+1);
         if( pIn->eEndLoopOp!=OP_Noop ){
           if( pIn->nPrefix ){
-            assert( pLoop->wsFlags & WHERE_IN_EARLYOUT );
-            sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
-                              sqlite3VdbeCurrentAddr(v)+2,
-                              pIn->iBase, pIn->nPrefix);
-            VdbeCoverage(v);
+            int bEarlyOut = 
+                (pLoop->wsFlags & WHERE_VIRTUALTABLE)==0
+                 && (pLoop->wsFlags & WHERE_IN_EARLYOUT)!=0;
+            if( bEarlyOut ){
+              sqlite3VdbeAddOp4Int(v, OP_IfNoHope, pLevel->iIdxCur,
+                  sqlite3VdbeCurrentAddr(v)+2,
+                  pIn->iBase, pIn->nPrefix);
+              VdbeCoverage(v);
+            }
           }
           sqlite3VdbeAddOp2(v, pIn->eEndLoopOp, pIn->iCur, pIn->addrInTop);
           VdbeCoverage(v);
@@ -5357,7 +5445,7 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
   assert( pWInfo->nLevel<=pTabList->nSrc );
   for(i=0, pLevel=pWInfo->a; i<pWInfo->nLevel; i++, pLevel++){
     int k, last;
-    VdbeOp *pOp;
+    VdbeOp *pOp, *pLastOp;
     Index *pIdx = 0;
     struct SrcList_item *pTabItem = &pTabList->a[pLevel->iFrom];
     Table *pTab = pTabItem->pTab;
@@ -5415,20 +5503,31 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
       pIdx = pLevel->u.pCovidx;
     }
     if( pIdx
-     && (pWInfo->eOnePass==ONEPASS_OFF || !HasRowid(pIdx->pTable))
      && !db->mallocFailed
     ){
-      last = sqlite3VdbeCurrentAddr(v);
-      k = pLevel->addrBody;
+      if( pWInfo->eOnePass==ONEPASS_OFF || !HasRowid(pIdx->pTable) ){
+        last = iEnd;
+      }else{
+        last = pWInfo->iEndWhere;
+      }
+      k = pLevel->addrBody + 1;
 #ifdef SQLITE_DEBUG
       if( db->flags & SQLITE_VdbeAddopTrace ){
         printf("TRANSLATE opcodes in range %d..%d\n", k, last-1);
       }
+      /* Proof that the "+1" on the k value above is safe */
+      pOp = sqlite3VdbeGetOp(v, k - 1);
+      assert( pOp->opcode!=OP_Column || pOp->p1!=pLevel->iTabCur );
+      assert( pOp->opcode!=OP_Rowid  || pOp->p1!=pLevel->iTabCur );
+      assert( pOp->opcode!=OP_IfNullRow || pOp->p1!=pLevel->iTabCur );
 #endif
       pOp = sqlite3VdbeGetOp(v, k);
-      for(; k<last; k++, pOp++){
-        if( pOp->p1!=pLevel->iTabCur ) continue;
-        if( pOp->opcode==OP_Column
+      pLastOp = pOp + (last - k);
+      assert( pOp<pLastOp );
+      do{
+        if( pOp->p1!=pLevel->iTabCur ){
+          /* no-op */
+        }else if( pOp->opcode==OP_Column
 #ifdef SQLITE_ENABLE_OFFSET_SQL_FUNC
          || pOp->opcode==OP_Offset
 #endif
@@ -5456,7 +5555,10 @@ void sqlite3WhereEnd(WhereInfo *pWInfo){
           pOp->p1 = pLevel->iIdxCur;
           OpcodeRewriteTrace(db, k, pOp);
         }
-      }
+#ifdef SQLITE_DEBUG
+        k++;
+#endif
+      }while( (++pOp)<pLastOp );
 #ifdef SQLITE_DEBUG
       if( db->flags & SQLITE_VdbeAddopTrace ) printf("TRANSLATE complete\n");
 #endif

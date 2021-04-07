@@ -32,9 +32,8 @@
 static int isAlterableTable(Parse *pParse, Table *pTab){
   if( 0==sqlite3StrNICmp(pTab->zName, "sqlite_", 7) 
 #ifndef SQLITE_OMIT_VIRTUALTABLE
-   || ( (pTab->tabFlags & TF_Shadow) 
-     && (pParse->db->flags & SQLITE_Defensive)
-     && pParse->db->nVdbeExec==0
+   || ( (pTab->tabFlags & TF_Shadow)!=0
+        && sqlite3ReadOnlyShadowTables(pParse->db)
    )
 #endif
   ){
@@ -137,8 +136,8 @@ void sqlite3AlterRenameTable(
   if( SQLITE_OK!=isAlterableTable(pParse, pTab) ){
     goto exit_rename_table;
   }
-  if( SQLITE_OK!=sqlite3CheckObjectName(pParse, zName) ){ goto
-    exit_rename_table;
+  if( SQLITE_OK!=sqlite3CheckObjectName(pParse,zName,"table",zName) ){
+    goto exit_rename_table;
   }
 
 #ifndef SQLITE_OMIT_VIEW
