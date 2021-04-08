@@ -235,6 +235,7 @@ extern int gbl_master_sends_query_effects;
 extern int gbl_create_dba_user;
 extern int gbl_lock_dba_user;
 extern int gbl_max_trigger_threads;
+extern int gbl_do_inline_poll;
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;

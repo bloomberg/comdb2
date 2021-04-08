@@ -42,7 +42,7 @@ typedef struct sanc_node_tag sanc_node_type;
 
 typedef void HELLOFP(struct netinfo_struct *netinfo, char name[]);
 
-typedef void APPSOCKFP(struct netinfo_struct *netinfo, SBUF2 *sb);
+typedef int APPSOCKFP(struct netinfo_struct *netinfo, SBUF2 *sb, struct sockaddr_in, int);
 
 typedef void NETFP(void *ack_handle, void *usr_ptr, char *fromhost,
                    int usertype, void *dta, int dtalen, uint8_t is_tcp);
@@ -349,6 +349,10 @@ void net_sleep_with_lock(netinfo_type *netinfo_ptr, int nseconds);
 void net_timeout_watchlist(netinfo_type *netinfo_ptr);
 void net_add_watch(SBUF2 *sb, int read_timeout, int write_timeout);
 void net_set_writefn(SBUF2 *, sbuf2writefn);
+
+enum { HANDLE_SOCKET_SUCCESS = 0, HANDLE_SOCKET_FAILURE = -1, HANDLE_SOCKET_FAIL_DISPATCH = 1 };
+
+int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int handle_appsock, struct sockaddr_in, int *keepsocket, int *is_admin);
 void net_end_appsock(SBUF2 *sb);
 
 /* get information about our network nodes.  fills in up to max_nodes array

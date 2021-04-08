@@ -5467,27 +5467,195 @@ void net_register_child_net(netinfo_type *netinfo_ptr,
 
 int gbl_forbid_remote_admin = 1;
 
+int handle_accepted_socket(SBUF2 *sb, netinfo_type *netinfo_ptr, int is_inline, struct sockaddr_in cliaddr, int *keepsocket, int *is_admin)
+{
+      int rc;
+      char paddr[64];
+      struct pollfd pol;
+      pthread_t tid;
+      unsigned int last_stat_dump_time = comdb2_time_epochms();
+      watchlist_node_type *watchlist_node;
+      connect_and_accept_t *ca;
+      int new_fd = sbuf2fileno(sb);
+      *keepsocket = 1;
+
+      /* reasonable default for poll */
+      int polltm = 100;
+
+      /* use tuned value if set */
+      if(netinfo_ptr->netpoll > 0)
+      {
+         polltm = netinfo_ptr->netpoll;
+      }
+
+      /* setup poll */
+      pol.fd=new_fd;
+      pol.events=POLLIN;
+
+      /* poll */
+      unsigned pollstart, pollend;
+      pollstart = comdb2_time_epochms();
+      rc = poll(&pol, 1, polltm);
+      pollend = comdb2_time_epochms();
+      
+      quantize(netinfo_ptr->conntime_all, pollend - pollstart);
+      quantize(netinfo_ptr->conntime_periodic, pollend - pollstart);
+      netinfo_ptr->num_accepts++;
+
+      if (netinfo_ptr->conntime_dump_period && ((pollend - last_stat_dump_time) / 1000) > netinfo_ptr->conntime_dump_period ) {
+         quantize_ctrace(netinfo_ptr->conntime_all, "Accept poll times, overall:");
+         quantize_ctrace(netinfo_ptr->conntime_periodic, "Accept poll times, last period:");
+         quantize_clear(netinfo_ptr->conntime_periodic);
+         last_stat_dump_time = pollend;
+      }
+
+      /* drop connection on poll error */
+      if( rc < 0 )
+      {
+         findpeer(new_fd, paddr, sizeof(paddr));
+         logmsg(LOGMSG_ERROR, "%s: error from poll: %s, peeraddr=%s\n", __func__,
+                 strerror(errno), paddr);
+         sbuf2close(sb);
+         return -1;
+      }
+
+      /* drop connection on timeout */
+      else if( 0 == rc )
+      {
+         findpeer(new_fd, paddr, sizeof(paddr));
+         logmsg(LOGMSG_ERROR, "%s: timeout reading from socket, peeraddr=%s\n",
+                 __func__, paddr);
+         sbuf2close(sb);
+         netinfo_ptr->num_accept_timeouts++;
+         return -1;
+      }
+
+      /* drop connection if i would block in read */
+      if( (pol.revents & POLLIN) == 0 )
+      {
+         findpeer(new_fd, paddr, sizeof(paddr));
+         logmsg(LOGMSG_ERROR, "%s: cannot read without blocking, peeraddr=%s\n",
+                 __func__, paddr);
+         sbuf2close(sb);
+         return -1;
+      }
+      /* the above poll ensures that this will not block */
+
+      uint8_t firstbyte;
+      rc = read_stream(netinfo_ptr, NULL, sb, &firstbyte, 1);
+      if (rc != 1)
+      {
+         findpeer(new_fd, paddr, sizeof(paddr));
+         logmsg(LOGMSG_ERROR, "%s: read_stream failed for = %s\n", __func__,
+                 paddr);
+         sbuf2close(sb);
+         return -1;
+      }
+
+      /* appsock reqs have a non-0 first byte */
+      if (firstbyte > 0)
+      {
+         APPSOCKFP *rtn = NULL;
+
+         *is_admin = 0;
+         if (firstbyte == '@') {
+             findpeer(new_fd, paddr, sizeof(paddr));
+             if (!gbl_forbid_remote_admin ||
+                 (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
+                 *is_admin = 1;
+             } else {
+                 logmsg(LOGMSG_INFO,
+                        "Rejecting non-local admin user from %s\n", paddr);
+                 sbuf2close(sb);
+                 return -1;
+             }
+         } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
+             logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__,
+                     __LINE__);
+             sbuf2close(sb);
+             return -1;
+         }
+
+         if (is_inline) {
+             /* call user specified app routine */
+             if (*is_admin && netinfo_ptr->admin_appsock_rtn) {
+                 rtn = netinfo_ptr->admin_appsock_rtn;
+             } else if (netinfo_ptr->appsock_rtn) {
+                 rtn = netinfo_ptr->appsock_rtn;
+             }
+             if (!rtn) {
+                 sbuf2close(sb);
+                 return -1;
+             }
+         }
+
+         /* set up the watchlist system for this node */
+         watchlist_node = calloc(1, sizeof(watchlist_node_type));
+         if(!watchlist_node)
+         {
+            logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n",
+                    __func__);
+            sbuf2close(sb);
+            return -1;
+         }
+         memcpy(watchlist_node->magic, "WLST", 4);
+         watchlist_node->in_watchlist = 0;
+         watchlist_node->netinfo_ptr = netinfo_ptr;
+         watchlist_node->sb = sb;
+         watchlist_node->readfn = sbuf2getr(sb);
+         watchlist_node->writefn = sbuf2getw(sb);
+         watchlist_node->addr = cliaddr;
+         sbuf2setrw(sb, net_reads, net_writes);
+         sbuf2setuserptr(sb, watchlist_node);
+         if (is_inline) {
+             (rtn)(netinfo_ptr, sb, cliaddr, 1);
+         } else {
+             *keepsocket = 0;
+         }
+         return 0;
+      }
+
+      /* grab pool memory for connect_and_accept_t */
+      Pthread_mutex_lock(&(netinfo_ptr->connlk));
+      ca=(connect_and_accept_t *)pool_getablk(netinfo_ptr->connpool);
+      Pthread_mutex_unlock(&(netinfo_ptr->connlk));
+
+      /* setup connect_and_accept args */
+      ca->netinfo_ptr = netinfo_ptr;
+      ca->sb = sb;
+      ca->addr = cliaddr.sin_addr;
+
+      /* connect and accept- this might be replaced with a threadpool later */
+      rc = pthread_create(&tid, &(netinfo_ptr->pthread_attr_detach),
+            connect_and_accept, ca);
+
+      if( rc != 0)
+      {
+          logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
+                  strerror(errno));
+          free(ca);
+          sbuf2close(sb);
+          return -1;
+      }
+      return -1;
+}
+
+int gbl_do_inline_poll = 1;
+
 static void *accept_thread(void *arg)
 {
     netinfo_type *netinfo_ptr;
-    struct pollfd pol;
     int rc;
     int listenfd = 0;
-    int polltm;
     int tcpbfsz;
     struct linger linger_data;
     struct sockaddr_in cliaddr;
-    connect_and_accept_t *ca;
-    pthread_t tid;
-    char paddr[64];
     socklen_t clilen;
     socklen_t len;
     int new_fd;
     int flag = 1;
     SBUF2 *sb;
     portmux_fd_t *portmux_fds = NULL;
-    watchlist_node_type *watchlist_node;
-    unsigned int last_stat_dump_time = comdb2_time_epochms();
 
     thread_started("net accept");
     THREAD_TYPE(__func__);
@@ -5543,6 +5711,7 @@ static void *accept_thread(void *arg)
         if (new_fd == 0 || new_fd == 1 || new_fd == 2) {
             logmsg(LOGMSG_ERROR, "Weird new_fd:%d\n", new_fd);
         }
+
 
         if (new_fd == -1) {
             logmsg(LOGMSG_ERROR, "accept fd %d rc %d %s", listenfd, errno,
@@ -5646,154 +5815,14 @@ static void *accept_thread(void *arg)
         }
 
         sbuf2setbufsize(sb, netinfo_ptr->bufsz);
+        sbuf2setuserptr(sb, netinfo_ptr);
 
-        /* reasonable default for poll */
-        polltm = 100;
-
-        /* use tuned value if set */
-        if (netinfo_ptr->netpoll > 0) {
-            polltm = netinfo_ptr->netpoll;
-        }
-
-        /* setup poll */
-        pol.fd = new_fd;
-        pol.events = POLLIN;
-
-        /* poll */
-        unsigned pollstart, pollend;
-        pollstart = comdb2_time_epochms();
-        rc = poll(&pol, 1, polltm);
-        pollend = comdb2_time_epochms();
-
-        quantize(netinfo_ptr->conntime_all, pollend - pollstart);
-        quantize(netinfo_ptr->conntime_periodic, pollend - pollstart);
-        netinfo_ptr->num_accepts++;
-
-        if (netinfo_ptr->conntime_dump_period && ((pollend - last_stat_dump_time) / 1000) > netinfo_ptr->conntime_dump_period ) {
-            quantize_ctrace(netinfo_ptr->conntime_all, "Accept poll times, overall:");
-            quantize_ctrace(netinfo_ptr->conntime_periodic, "Accept poll times, last period:");
-            quantize_clear(netinfo_ptr->conntime_periodic);
-            last_stat_dump_time = pollend;
-        }
-
-        /* drop connection on poll error */
-        if (rc < 0) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: error from poll: %s, peeraddr=%s\n", __func__,
-                    strerror(errno), paddr);
-            sbuf2close(sb);
-            continue;
-        }
-
-        /* drop connection on timeout */
-        else if (0 == rc) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: timeout reading from socket, peeraddr=%s\n",
-                    __func__, paddr);
-            sbuf2close(sb);
-            netinfo_ptr->num_accept_timeouts++;
-            continue;
-        }
-
-        /* drop connection if i would block in read */
-        if ((pol.revents & POLLIN) == 0) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: cannot read without blocking, peeraddr=%s\n",
-                    __func__, paddr);
-            sbuf2close(sb);
-            continue;
-        }
-
-        /* the above poll ensures that this will not block */
-
-        uint8_t firstbyte;
-        rc = read_stream(netinfo_ptr, NULL, sb, &firstbyte, 1);
-        if (rc != 1) {
-            findpeer(new_fd, paddr, sizeof(paddr));
-            logmsg(LOGMSG_ERROR, "%s: read_stream failed for = %s\n", __func__,
-                    paddr);
-            sbuf2close(sb);
-            continue;
-        }
-
-        /* appsock reqs have a non-0 first byte */
-        if (firstbyte > 0) {
-            int admin = 0;
-            APPSOCKFP *rtn = NULL;
-
-            if (firstbyte == '@') {
-                findpeer(new_fd, paddr, sizeof(paddr));
-                if (!gbl_forbid_remote_admin ||
-                    (cliaddr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))) {
-                    admin = 1;
-                } else {
-                    logmsg(LOGMSG_INFO,
-                           "Rejecting non-local admin user from %s\n", paddr);
-                    sbuf2close(sb);
-                    continue;
-                }
-            } else if (firstbyte != sbuf2ungetc(firstbyte, sb)) {
-                logmsg(LOGMSG_ERROR, "sbuf2ungetc failed %s:%d\n", __FILE__,
-                        __LINE__);
-                sbuf2close(sb);
-                continue;
-            }
-
-            /* call user specified app routine */
-            if (admin && netinfo_ptr->admin_appsock_rtn) {
-                rtn = netinfo_ptr->admin_appsock_rtn;
-            } else if (netinfo_ptr->appsock_rtn) {
-                rtn = netinfo_ptr->appsock_rtn;
-            }
-
-            if (rtn) {
-                /* set up the watchlist system for this node */
-                watchlist_node = calloc(1, sizeof(watchlist_node_type));
-                if (!watchlist_node) {
-                    logmsg(LOGMSG_ERROR, "%s: malloc watchlist_node failed\n",
-                            __func__);
-                    sbuf2close(sb);
-                    continue;
-                }
-                memcpy(watchlist_node->magic, "WLST", 4);
-                watchlist_node->in_watchlist = 0;
-                watchlist_node->netinfo_ptr = netinfo_ptr;
-                watchlist_node->sb = sb;
-                watchlist_node->readfn = sbuf2getr(sb);
-                watchlist_node->writefn = sbuf2getw(sb);
-                watchlist_node->addr = cliaddr;
-                sbuf2setrw(sb, net_reads, net_writes);
-                sbuf2setuserptr(sb, watchlist_node);
-
-                /* this doesn't read- it just farms this off to a thread */
-                (rtn)(netinfo_ptr, sb);
-            }
-
-            continue;
-        }
-
-        /* grab pool memory for connect_and_accept_t */
-        Pthread_mutex_lock(&(netinfo_ptr->connlk));
-        ca = (connect_and_accept_t *)pool_getablk(netinfo_ptr->connpool);
-        Pthread_mutex_unlock(&(netinfo_ptr->connlk));
-
-        /* setup connect_and_accept args */
-        ca->netinfo_ptr = netinfo_ptr;
-        ca->sb = sb;
-        ca->addr = cliaddr.sin_addr;
-
-        /* connect and accept- this might be replaced with a threadpool later */
-        rc = pthread_create(&tid, &(netinfo_ptr->pthread_attr_detach),
-                            connect_and_accept, ca);
-
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "%s:pthread_create error: %s\n", __func__,
-                    strerror(errno));
-            Pthread_mutex_lock(&(netinfo_ptr->connlk));
-            pool_relablk(netinfo_ptr->connpool, ca);
-            Pthread_mutex_unlock(&(netinfo_ptr->connlk));
-            sbuf2close(sb);
-            continue;
+        if (gbl_do_inline_poll || !netinfo_ptr->appsock_rtn || (netinfo_ptr->appsock_rtn)(netinfo_ptr, sb, cliaddr, 0) == HANDLE_SOCKET_FAIL_DISPATCH) {
+             int keepsocket = 1;
+             int is_admin = 0;
+             handle_accepted_socket(sb, netinfo_ptr, 1, cliaddr, &keepsocket, &is_admin);
+             if (keepsocket == 0)
+                 sbuf2close(sb);
         }
     }
 
@@ -6309,15 +6338,15 @@ int net_init(netinfo_type *netinfo_ptr)
     return 0;
 }
 
-int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
-{
-    netinfo_ptr->admin_appsock_rtn = func;
-    return 0;
-}
-
 int net_register_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
 {
     netinfo_ptr->appsock_rtn = func;
+    return 0;
+}
+
+int net_register_admin_appsock(netinfo_type *netinfo_ptr, APPSOCKFP func)
+{
+    netinfo_ptr->admin_appsock_rtn = func;
     return 0;
 }
 
