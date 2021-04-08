@@ -569,6 +569,12 @@ static int codeEqualityTerm(
       pLevel->addrNxt = sqlite3VdbeMakeLabel(pParse);
     }
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    //if( iEq>0 && (pLoop->wsFlags && WHERE_IN_SEEKSCAN)==0 ){
+    //  pLoop->wsFlags |= WHERE_IN_EARLYOUT;
+    //}
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
+
     i = pLevel->u.in.nIn;
     pLevel->u.in.nIn += nEq;
     pLevel->u.in.aInLoop =
