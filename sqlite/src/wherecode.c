@@ -1777,7 +1777,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         assert( regBignull==0 );
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-        sqlite3VdbeAddOp1(v, OP_SeekScan, 10);
+        sqlite3VdbeAddOp1(v, OP_SeekScan, 10);  VdbeCoverage(v);
       }
       sqlite3VdbeAddOp4Int(v, op, iIdxCur, addrNxt, regBase, nConstraint);
       VdbeCoverage(v);
