@@ -4883,7 +4883,8 @@ seek_not_found:
   break;
 }
 
-/* Opcode: SeekScan
+
+/* Opcode: SeekScan  P1 * * * *
 ** Synopsis: Scan-ahead up to P1 rows
 **
 ** This opcode is a prefix opcode to OP_SeekGE.  In other words, this
@@ -4932,7 +4933,7 @@ seek_not_found:
 case OP_SeekScan: {
   VdbeCursor *pC;
   int res;
-  int n;
+  int nStep;
   UnpackedRecord r;
 
   assert( pOp[1].opcode==OP_SeekGE );
@@ -4954,8 +4955,8 @@ case OP_SeekScan: {
 #endif
     break;
   }
-  n = pOp->p1;
-  assert( n>=1 );
+  nStep = pOp->p1;
+  assert( nStep>=1 );
   r.pKeyInfo = pC->pKeyInfo;
   r.nField = (u16)pOp[1].p4.i;
   r.default_rc = 0;
@@ -4977,7 +4978,7 @@ case OP_SeekScan: {
       seekscan_search_fail:
 #ifdef SQLITE_DEBUG
       if( db->flags&SQLITE_VdbeTrace ){
-        printf("... %d steps and then skip\n", pOp->p1 - n);
+        printf("... %d steps and then skip\n", pOp->p1 - nStep);
       }        
 #endif
       VdbeBranchTaken(1,3);
@@ -4987,14 +4988,14 @@ case OP_SeekScan: {
     if( res==0 ){
 #ifdef SQLITE_DEBUG
       if( db->flags&SQLITE_VdbeTrace ){
-        printf("... %d steps and then success\n", pOp->p1 - n);
+        printf("... %d steps and then success\n", pOp->p1 - nStep);
       }        
 #endif
       VdbeBranchTaken(2,3);
       pOp += 2;
       break;
     }
-    if( n<=0 ){
+    if( nStep<=0 ){
 #ifdef SQLITE_DEBUG
       if( db->flags&SQLITE_VdbeTrace ){
         printf("... fall through after %d steps\n", pOp->p1);
@@ -5003,7 +5004,7 @@ case OP_SeekScan: {
       VdbeBranchTaken(0,3);
       break;
     }
-    n--;
+    nStep--;
     rc = sqlite3BtreeNext(pC->uc.pCursor, 0);
     if( rc ){
       if( rc==SQLITE_DONE ){
