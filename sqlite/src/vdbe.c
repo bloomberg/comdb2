@@ -4980,8 +4980,8 @@ case OP_SeekScan: {
         printf("... %d steps and then skip\n", pOp->p1 - n);
       }        
 #endif
-      pOp++;
       VdbeBranchTaken(1,3);
+      pOp++;
       goto jump_to_p2;
     }
     if( res==0 ){
@@ -4990,8 +4990,8 @@ case OP_SeekScan: {
         printf("... %d steps and then success\n", pOp->p1 - n);
       }        
 #endif
-      pOp += 2;
       VdbeBranchTaken(2,3);
+      pOp += 2;
       break;
     }
     if( n<=0 ){
