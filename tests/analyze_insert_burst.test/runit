@@ -1,4 +1,5 @@
 #!/bin/sh
+source ${TESTSROOTDIR}/tools/runit_common.sh
 
 ##################################################################
 # Verify that analyze works correctly under high rate insertion. #
@@ -21,7 +22,7 @@ COMMIT
 EOF
 
 while true; do
-cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql >/dev/null 2>&1
+cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql > out.txt 2>&1 || failexit 'failure to insert, see out.txt'
 done &
 
 keep_inserting=$!

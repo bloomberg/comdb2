@@ -245,7 +245,7 @@ void osql_sess_reqlogquery(osql_sess_t *sess, struct reqlogger *reqlog)
     char *info = osql_sess_info(sess);
     reqlog_logf(
         reqlog, REQL_INFO,
-        "%s time %" PRId64 "ms queuetime=%" PRId64 "ms \"%s\"\n",
+        "%s time %dms queuetime=%dms \"%s\"\n",
         (info) ? info : "unknown", U2M(sess->sess_endus - sess->sess_startus),
         U2M(reqlog_get_queue_time(reqlog)), sess->sql ? sess->sql : "()");
     if (info)
