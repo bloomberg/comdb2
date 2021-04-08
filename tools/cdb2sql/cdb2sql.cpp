@@ -1742,8 +1742,8 @@ static int do_repeat(char *sql)
     /* Print the summary */
     if (time_mode) {
         printf("summary:\n");
-        printf("  total prep time  %d ms\n", start_time_ms_tot);
-        printf("  total run time   %d ms\n", run_time_ms_tot);
+        printf("  total prep time  %lld ms\n", start_time_ms_tot);
+        printf("  total run time   %lld ms\n", run_time_ms_tot);
     }
 
     return 0;

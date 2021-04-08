@@ -199,8 +199,7 @@ int handle_cmdline_options(int argc, char **argv, char **lrlname)
     int c;
     int options_idx;
 
-    while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) !=
-           -1) {
+    while ((c = bb_getopt_long(argc, argv, "hv", long_options, &options_idx)) != -1) {
         if (c == 'h') print_usage_and_exit(0);
         if (c == 'v') print_version_and_exit();
         if (c == '?') return 1;
