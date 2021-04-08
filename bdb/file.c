@@ -2018,22 +2018,25 @@ static void print_ourlsn(bdb_state_type *bdb_state)
 }
 */
 
-static void bdb_admin_appsock(netinfo_type *netinfo, SBUF2 *sb)
+static int bdb_admin_appsock(netinfo_type *netinfo, SBUF2 *sb, struct sockaddr_in cliaddr, int is_inline)
 {
     bdb_state_type *bdb_state;
     bdb_state = net_get_usrptr(netinfo);
 
     if (bdb_state->callback->admin_appsock_rtn)
-        (bdb_state->callback->admin_appsock_rtn)(bdb_state, sb);
+        return (bdb_state->callback->admin_appsock_rtn)(bdb_state, sb, cliaddr, is_inline);
+    return -1;    
 }
 
-static void bdb_appsock(netinfo_type *netinfo, SBUF2 *sb)
+static int bdb_appsock(netinfo_type *netinfo, SBUF2 *sb, struct sockaddr_in cliaddr, int is_inline)
 {
     bdb_state_type *bdb_state;
     bdb_state = net_get_usrptr(netinfo);
 
     if (bdb_state->callback->appsock_rtn)
-        (bdb_state->callback->appsock_rtn)(bdb_state, sb);
+        return (bdb_state->callback->appsock_rtn)(bdb_state, sb, cliaddr, is_inline);
+
+   return -1;     
 }
 
 static void panic_func(DB_ENV *dbenv, int errval)

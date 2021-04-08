@@ -269,6 +269,9 @@ REGISTER_TUNABLE("disallow_portmux_route", "Disables 'allow_portmux_route'",
                  TUNABLE_BOOLEAN, &gbl_pmux_route_enabled,
                  INVERSE_VALUE | READONLY | NOARG | READEARLY, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("do_inline_poll", "Enable to allow inline poll after accept",
+                 TUNABLE_BOOLEAN, &gbl_do_inline_poll, READONLY | NOARG, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("dont_abort_on_in_use_rqid", "Disable 'abort_on_in_use_rqid'",
                  TUNABLE_BOOLEAN, &gbl_abort_on_clear_inuse_rqid,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);
@@ -1075,6 +1078,10 @@ REGISTER_TUNABLE("sqlsortermem", "Maximum amount of memory to be "
                                  "(Default: 314572800)",
                  TUNABLE_INTEGER, &gbl_sqlite_sorter_mem, READONLY, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("sql_stat4_scan", "Possibly adjust the cost of a full table "
+                                   "scan based on STAT4 data.  (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_sqlite_stat4_scan, READONLY | INTERNAL |
+                 EXPERIMENTAL, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlsortermult", NULL, TUNABLE_INTEGER, &gbl_sqlite_sortermult,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("sqlsorterpenalty",

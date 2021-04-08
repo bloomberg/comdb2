@@ -358,7 +358,7 @@ typedef int (*REPFAILFP)(bdb_state_type *bdb_handle, char *host, int reason);
   this routine must return immediately, and should create it's own
   thread if extended processing is needed.
   */
-typedef int (*BDBAPPSOCKFP)(bdb_state_type *bdb_handle, SBUF2 *sb);
+typedef int (*BDBAPPSOCKFP)(bdb_state_type *bdb_handle, SBUF2 *sb, struct sockaddr_in cliaddr, int header_read);
 
 /*
   pass in a routine that will return the current election preferences.

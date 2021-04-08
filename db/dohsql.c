@@ -54,6 +54,8 @@ struct dohsql_connector {
     struct sqlclntstate *clnt;
     queue_type *que;      /* queue to caller */
     queue_type *que_free; /* de-queued rows come here to be freed */
+    bool selected;        /* true if a row from this engine is being used by
+                             coordinator */
     pthread_mutex_t mtx;  /* mutex for queueing operations and related counts */
     char *thr_where;      /* cached where status */
     my_col_t *cols;       /* cached cols values */
@@ -285,8 +287,10 @@ static void trimQue(dohsql_connector_t *conn, sqlite3_stmt *stmt,
     while (queue_count(que) > limit) {
         row = queue_next(que);
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "XXX: %p freed older row limit %d\n", que,
-                   limit);
+            logmsg(LOGMSG_USER,
+                   "%p XXX: conn %p %s %p freed older row limit %d\n",
+                   (void *)pthread_self(), conn,
+                   que == conn->que ? "que" : "que_free", que, limit);
 
         Pthread_mutex_lock(&master_mem_mtx);
         sqlite3CloneResultFree(stmt, &row, &row_size);
@@ -435,8 +439,9 @@ static int inner_row(struct sqlclntstate *clnt, struct response_data *resp,
         abort();
 
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "%p XXX: %p added new row\n", (void *)pthread_self(),
-               conn);
+        logmsg(LOGMSG_USER,
+               "%p XXX: added new row conn %p que %p que_free %p\n",
+               (void *)pthread_self(), conn, conn->que, conn->que_free);
 
     _que_limiter(conn, stmt, row_size);
 
@@ -561,23 +566,7 @@ static int dohsql_dist_param_value(struct sqlclntstate *clnt,
     return _param_value(&clnt->conns->conns[0], param, n, __func__);
 }
 
-static void add_row(dohsql_t *conns, int i, row_t *row)
-{
-    if (conns->row && conns->row_src) {
-        /* put the used row in the free list */
-        if (i != conns->row_src)
-            Q_LOCK(conns->row_src);
-        if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
-            abort();
-        if (i != conns->row_src)
-            Q_UNLOCK(conns->row_src);
-    }
-    /* new row */
-    conns->row = row;
-    conns->row_src = i;
-}
-
-static void donate_current_row(dohsql_t *conns)
+static void donate_current_row(dohsql_t *conns, int locked)
 {
     if (conns->row && conns->row_src) {
 
@@ -585,14 +574,27 @@ static void donate_current_row(dohsql_t *conns)
             logmsg(LOGMSG_USER, "%p %s donating current row %p src %d\n",
                    (void *)pthread_self(), __func__, conns->row,
                    conns->row_src);
-
-        Q_LOCK(conns->row_src);
+        if (!locked)
+            Q_LOCK(conns->row_src);
         if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
             abort();
-        Q_UNLOCK(conns->row_src);
+        conns->conns[conns->row_src].selected = 0;
+        if (!locked)
+            Q_UNLOCK(conns->row_src);
         conns->row = NULL;
         conns->row_src = 0;
     }
+}
+
+static void add_row(dohsql_t *conns, int i, row_t *row)
+{
+    /* put the used row in the free list */
+    donate_current_row(conns, i == conns->row_src);
+
+    /* new row */
+    conns->row = row;
+    conns->row_src = i;
+    conns->conns[conns->row_src].selected = 1;
 }
 
 #define CHILD_DONE(kid)                                                        \
@@ -607,14 +609,20 @@ static void _signal_children_master_is_done(dohsql_t *conns)
     int child_num;
 
     for (child_num = 1; child_num < conns->nconns; child_num++) {
-        Pthread_mutex_lock(&conns->conns[child_num].mtx);
+        Q_LOCK(child_num);
+
+        /* is coordinator sitting on a row? */
+        if (conns->row && conns->row_src == child_num) {
+            donate_current_row(conns, 1);
+        }
+
         if (conns->conns[child_num].status != DOH_CLIENT_DONE) {
             if (gbl_dohsql_verbose)
                 logmsg(LOGMSG_USER, "%s: signalling client done, ignoring\n",
                        __func__);
             conns->conns[child_num].status = DOH_MASTER_DONE;
         }
-        Pthread_mutex_unlock(&conns->conns[child_num].mtx);
+        Q_UNLOCK(child_num);
     }
 }
 
@@ -651,8 +659,8 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
         *prow = queue_next(conns->conns[child_num].que);
         if (*prow != NULL) {
             if (gbl_dohsql_verbose)
-                logmsg(LOGMSG_USER, "XXX: %p retrieved row\n",
-                       &conns->conns[child_num]);
+                logmsg(LOGMSG_USER, "%p XXX: %p retrieved row\n",
+                       (void *)pthread_self(), &conns->conns[child_num]);
             add_row(conns, child_num, *prow);
             rc = SQLITE_ROW;
         }
@@ -660,12 +668,13 @@ static int _get_a_parallel_row(dohsql_t *conns, row_t **prow, int *error_child)
     }
 
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "XXX: parallel row rc = %d\n", rc);
+        logmsg(LOGMSG_USER, "%p XXX: parallel row rc = %d\n",
+               (void *)pthread_self(), rc);
 
     if (rc == SQLITE_OK) {
         /* none of the children had any rows; donate the row we
         are sitting on to be freed, if any */
-        donate_current_row(conns);
+        donate_current_row(conns, 0);
     }
 
     return rc;
@@ -740,7 +749,8 @@ static int _check_offset(dohsql_t *conns)
     }
 
     if (gbl_dohsql_verbose)
-        logmsg(LOGMSG_USER, "XXX: returned source %d row\n", conns->row_src);
+        logmsg(LOGMSG_USER, "%p XXX: returned source %d row\n",
+               (void *)pthread_self(), conns->row_src);
     return SQLITE_ROW;
 }
 
@@ -802,7 +812,8 @@ wait_for_others:
         rc = sqlite3_maybe_step(clnt, stmt);
 
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "%s: rc =%d\n", __func__, rc);
+            logmsg(LOGMSG_USER, "%p %s: rc =%d\n", (void *)pthread_self(),
+                   __func__, rc);
 
         if (rc == SQLITE_DONE)
             conns->conns[0].rc = SQLITE_DONE;
@@ -827,6 +838,8 @@ wait_for_others:
         }
         goto wait_for_others;
     }
+
+    donate_current_row(conns, 0);
 
     /* error or done */
     return SQLITE_DONE;
@@ -1158,14 +1171,15 @@ static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
     conn->thr_where = strdup(where ? where : "");
     conn->nparams = nparams;
     conn->params = params;
-    logmsg(LOGMSG_USER, "%p %p saved nparams %d\n", (void *)pthread_self(), __func__,
-           conn->nparams);
-    for (int i = 0; i < conn->nparams; i++) {
-        logmsg(LOGMSG_USER, "%p %p saved params %d name \"%s\" pos %d\n",
-               (void *)pthread_self(), __func__, i, conn->params[i].name,
-               conn->params[i].pos);
+    if (gbl_dohsql_verbose) {
+        logmsg(LOGMSG_USER, "%p %p saved nparams %d\n", (void *)pthread_self(),
+               __func__, conn->nparams);
+        for (int i = 0; i < conn->nparams; i++) {
+            logmsg(LOGMSG_USER, "%p %p saved params %d name \"%s\" pos %d\n",
+                   (void *)pthread_self(), __func__, i, conn->params[i].name,
+                   conn->params[i].pos);
+        }
     }
-
     conn->rc = SQLITE_ROW;
 
     return SHARD_NOERR;
@@ -1176,6 +1190,12 @@ static void _shard_disconnect(dohsql_connector_t *conn)
     struct sqlclntstate *clnt = conn->clnt;
 
     free(conn->thr_where);
+
+    if (gbl_dohsql_verbose)
+        logmsg(
+            LOGMSG_USER, "%p XXX: %s conn %p destroying que %p que_free %p\n",
+            (void *)pthread_self(), __func__, conn, conn->que, conn->que_free);
+
     queue_free(conn->que);
     queue_free(conn->que_free);
     if (conn->cols)
@@ -1329,14 +1349,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
     if (!clnt->conns)
         return SHARD_NOERR;
 
-    if (conns->row && conns->row_src) {
-        Pthread_mutex_lock(&conns->conns[conns->row_src].mtx);
-        if (queue_add(conns->conns[conns->row_src].que_free, conns->row))
-            abort();
-        Pthread_mutex_unlock(&conns->conns[conns->row_src].mtx);
-        conns->row = NULL;
-        conns->row_src = 0;
-    }
+    donate_current_row(conns, 0);
 
     for (i = 1; i < conns->nconns; i++) {
         Pthread_mutex_lock(&conns->conns[i].mtx);
@@ -1427,13 +1440,18 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
     if (!stmt || !DOHSQL_CLIENT)
         return;
 
+    if (gbl_dohsql_verbose)
+        logmsg(LOGMSG_USER, "%p %s waiting for master\n",
+               (void *)pthread_self(), __func__);
+
     conn = clnt->plugin.state;
 
     Pthread_mutex_lock(&conn->mtx);
 
     /* wait if run ended ok, master is not done, and there are cached rows */
     if (!clnt->query_rc) {
-        while (conn->status == DOH_RUNNING && queue_count(conn->que) > 0) {
+        while (conn->status == DOH_RUNNING &&
+               (conn->selected || (queue_count(conn->que) > 0))) {
             Pthread_mutex_unlock(&conn->mtx);
             poll(NULL, 0, 10);
             if (bdb_lock_desired(thedb->bdb_env)) {
@@ -1447,6 +1465,13 @@ void dohsql_wait_for_master(sqlite3_stmt *stmt, struct sqlclntstate *clnt)
             Pthread_mutex_lock(&conn->mtx);
         }
     }
+
+    if (gbl_dohsql_verbose)
+        logmsg(LOGMSG_USER,
+               "%p %s done waiting que %p count %d que_free %p count %d\n",
+               (void *)pthread_self(), __func__, conn->que,
+               queue_count(conn->que), conn->que_free,
+               queue_count(conn->que_free));
 
     _track_que_free(conn);
     trimQue(conn, stmt, conn->que, 0);
@@ -1739,6 +1764,10 @@ static int _local_step(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
 
     conns->conns[0].rc = init_next_row(clnt, stmt);
     if (conns->conns[0].rc == SQLITE_ROW) {
+        if (gbl_dohsql_verbose)
+            logmsg(LOGMSG_USER, "%p XXX: %s added local new row\n",
+                   (void *)pthread_self(), __func__);
+
         if (queue_add(conns->conns[0].que, ((Vdbe *)stmt)->pResultSet))
             abort();
         _move_client_row(conns, crt_idx);
@@ -1789,7 +1818,8 @@ retry_row:
         ret_row = queue_next(conns->conns[found].que);
 
         if (gbl_dohsql_verbose)
-            logmsg(LOGMSG_USER, "Retrieved client %d row %p\n", found, ret_row);
+            logmsg(LOGMSG_USER, "%p XXXX %s Retrieved client %d row %p\n",
+                   (void *)pthread_self(), __func__, found, ret_row);
 
         add_row(conns, found, ret_row);
         Q_UNLOCK(found);

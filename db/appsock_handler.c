@@ -49,6 +49,8 @@ struct appsock_thd_state {
 typedef struct appsock_work_args {
     SBUF2 *sb;
     int admin;
+    int header_read;
+    struct sockaddr_in cliaddr;
 } appsock_work_args_t;
 
 struct thdpool *gbl_appsock_thdpool = NULL;
@@ -188,6 +190,20 @@ static void *thd_appsock_int(appsock_work_args_t *w, int *keepsocket,
     arg.table_name = strdup(COMDB2_STATIC_TABLE);
     arg.conv_flags = 0;
 
+    if (!w->header_read && handle_accepted_socket(sb, sbuf2getuserptr(sb), 0, w->cliaddr, keepsocket, &w->admin) != 0) {
+       /* Failure or not an appsock request */ 
+       return 0;
+    } else {
+       total_appsock_conns++;
+       LOCK(&appsock_conn_lk) {
+          active_appsock_conns++;
+       } UNLOCK(&appsock_conn_lk);
+       if (active_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
+          fprintf(stderr, "TOO many active socket connections. current limit %d\n",
+                bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED));
+       }
+    }
+
     while (1) {
         thrman_where(thr_self, NULL);
 
@@ -310,7 +326,7 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
+int appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, struct sockaddr_in cliaddr, int admin, int header_read)
 {
     /*START HANDLER THREAD*/
     static int last_thread_dump_time = 0;
@@ -320,6 +336,16 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     time_t now;
 
     now = time(NULL);
+
+    /* reject requests if we're not up, going down, or not interested */
+    if (dbenv->stopped || gbl_exit || !gbl_ready) {
+        if (header_read) {
+            total_appsock_rejections++;
+            sbuf2close(sb);
+            return HANDLE_SOCKET_FAILURE;
+        }
+        return HANDLE_SOCKET_FAIL_DISPATCH;
+    }
 
     time_metric_add(dbenv->connections, thdpool_get_nthds(gbl_appsock_thdpool));
 
@@ -338,12 +364,6 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
         }
     }
 
-    /* reject requests if we're not up, going down, or not interested */
-    if (dbenv->stopped || gbl_exit || !gbl_ready) {
-        total_appsock_rejections++;
-        net_end_appsock(sb);
-        return;
-    }
 
     if (active_appsock_conns >=
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT)) {
@@ -366,9 +386,15 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
         }
     }
 
-    uint32_t flags = admin ? THDPOOL_FORCE_DISPATCH : 0;
+    uint32_t flags = admin? THDPOOL_FORCE_DISPATCH : 0;
     appsock_work_args_t *work = malloc(sizeof(*work));
+    work->cliaddr = cliaddr;
     work->admin = admin;
+    if (header_read) {
+       work->header_read = 1;
+    } else {
+       work->header_read = 0;
+    }
     work->sb = sb;
     if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL,
                         flags) != 0) {
@@ -380,20 +406,16 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
         }
 
         logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue error\n", __func__);
-        net_end_appsock(sb);
-        return;
+        if (header_read) {
+            sbuf2close(sb);
+            return HANDLE_SOCKET_FAILURE;
+        } else {
+            logmsg(LOGMSG_ERROR, "%s:thdpool_enqueue error, failed to dispatch in appsock thread\n", __func__);
+            return HANDLE_SOCKET_FAIL_DISPATCH;
+        }
+            
     }
-
-    total_appsock_conns++;
-    Pthread_mutex_lock(&appsock_conn_lk);
-    active_appsock_conns++;
-    Pthread_mutex_unlock(&appsock_conn_lk);
-    if (active_appsock_conns >
-        bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {
-        logmsg(LOGMSG_WARN,
-               "TOO many active socket connections. current limit %d\n",
-               bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED));
-    }
+    return HANDLE_SOCKET_SUCCESS;
 }
 
 int set_rowlocks(void *trans, int enable)

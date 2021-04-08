@@ -3030,24 +3030,20 @@ static int threaddump_callback(void)
 }
 
 /* callback to accept application socket */
-static int appsock_callback(void *bdb_handle, SBUF2 *sb)
+static int admin_appsock_callback(void *bdb_handle, SBUF2 *sb, struct sockaddr_in cliaddr, int header_read)
 {
     struct dbenv *dbenv;
 
     dbenv = bdb_get_usr_ptr(bdb_handle);
-    appsock_handler_start(dbenv, sb, 0);
-
-    return 0;
+    return appsock_handler_start(dbenv, sb, cliaddr, 1, header_read);
 }
 
-static int admin_appsock_callback(void *bdb_handle, SBUF2 *sb)
+static int appsock_callback(void *bdb_handle, SBUF2 *sb, struct sockaddr_in cliaddr, int header_read)
 {
     struct dbenv *dbenv;
 
     dbenv = bdb_get_usr_ptr(bdb_handle);
-    appsock_handler_start(dbenv, sb, 1);
-
-    return 0;
+    return appsock_handler_start(dbenv, sb, cliaddr, 0, header_read);
 }
 
 /* callback to do serializable transaction range check */

@@ -1851,7 +1851,7 @@ const char *req2a(int opcode);
 int a2req(const char *s);
 
 /* request processing */
-void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int is_admin);
+int appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, struct sockaddr_in, int admin, int header_read);
 void appsock_coalesce(struct dbenv *dbenv);
 void close_appsock(SBUF2 *sb);
 void thd_stats(void);

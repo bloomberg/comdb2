@@ -8,7 +8,7 @@ set -x
 function fdbinfo
 {
     echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')"
-    cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')" >> $output 2>&1
+    cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send('fdb info db')"  2>&1 | cut -f 5- -d ' ' >> $output
     if (( $? != 0 )) ; then
         echo "Failed to retrieved fdb info ${a_dbname}"
         exit 1
