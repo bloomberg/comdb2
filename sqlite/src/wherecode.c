@@ -1771,7 +1771,12 @@ Bitmask sqlite3WhereCodeOneLoopStart(
       assert( op!=0 );
       if( (pLoop->wsFlags & WHERE_IN_SEEKSCAN)!=0 ){
         assert( op==OP_SeekGE );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        // NC: Patch that introduced Bignull has not been backported yet
+        //assert( regBignull==0 );
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         assert( regBignull==0 );
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         sqlite3VdbeAddOp1(v, OP_SeekScan, 10);
       }
       sqlite3VdbeAddOp4Int(v, op, iIdxCur, addrNxt, regBase, nConstraint);
