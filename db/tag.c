@@ -5928,12 +5928,6 @@ static int backout_schemas_lockless(const char *tblname)
     return 0;
 }
 
-static int backout_schemas_shard_lockless(const char *shardname,
-                                          timepart_sc_arg_t *arg)
-{
-    return backout_schemas_lockless(shardname);
-}
-
 void backout_schemas(char *tblname)
 {
     struct dbtag *dbt;
@@ -5943,11 +5937,6 @@ void backout_schemas(char *tblname)
 
     dbt = hash_find_readonly(gbl_tag_hash, &tblname);
     if (dbt == NULL) {
-        if (likely(timepart_is_timepart(tblname, 1))) {
-            timepart_foreach_shard(tblname, backout_schemas_shard_lockless,
-                                   NULL, -1);
-        }
-
         unlock_taglock();
         return;
     }
