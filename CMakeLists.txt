@@ -152,9 +152,12 @@ else()
   add_definitions(-DUSE_SYS_ALLOC)
 endif()
 
-if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64 OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64)
+if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)
   # This is mostly misused as little-endian
   add_definitions(-D_LINUX_SOURCE)
+elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL armv7l OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL aarch64)
+  add_definitions(-D_LINUX_SOURCE)
+  include(crc32c/arm.cmake)
 endif()
 
 if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)

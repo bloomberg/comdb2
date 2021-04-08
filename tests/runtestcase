@@ -36,7 +36,7 @@ setup_debugger() {
             DEBUG_PREFIX="valgrind --tool=massif "
             ;;
         perf)
-            DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g "
+            DEBUG_PREFIX="perf record -o $TESTDIR/$TESTCASE.perfdata -g -s "
             # get report of performance via perf report -i $TESTDIR/$TESTCASE.perfdata
             # or perf annotate -i $TESTDIR/$TESTCASE.perfdata
             ;;

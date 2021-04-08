@@ -112,11 +112,9 @@ int main(int argc, char *argv[])
     int ret = 0;
 
 #if defined NORMAL_GETOPT
-    while ((ret = getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) !=
-           -1) {
+    while ((ret = getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) != -1) {
 #else
-    while ((ret = bb_getopt_long(argc, argv, "ha:pu", long_options,
-                               &options_idx)) != -1) {
+    while ((ret = bb_getopt_long(argc, argv, "ha:pu", long_options, &options_idx)) != -1) {
 #endif
         char c = ret;
         if (c == 'h') {

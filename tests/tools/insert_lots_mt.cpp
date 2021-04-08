@@ -167,7 +167,7 @@ void *thr(void *arg)
 }
 
 void usage(const char *p, const char *err) {
-    fprintf(stderr, err);
+    fprintf(stderr, "%s\n", err);
     fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --cntperthread CNTPERTHREAD\n"
                     "--iterations ITERATIONS [--transize TRANSIZE] [--atcommit commit|rollback|disconnect]\n", p);
     exit(1);
@@ -180,7 +180,7 @@ int main(int argc, char *argv[])
     int iterations = 0;
 
     if(argc < 5)
-        usage(argv[0], "Required parameters were NOT provided\n"); //exit too
+        usage(argv[0], "Required parameters were NOT provided"); //exit too
 
     static struct option long_options[] =
     {
@@ -194,9 +194,9 @@ int main(int argc, char *argv[])
         {NULL, 0, NULL, 0}
     };
 
-    char c;
+    int c;
     int index;
-    while ((c = getopt_long(argc, argv, "d:n:c:i:t:rd?", long_options, &index))!=EOF) {
+    while ((c = getopt_long(argc, argv, "d:n:c:i:t:rd?", long_options, &index)) != -1) {
         //printf("c '%c' %d index %d optarg '%s'\n", c, c, index, optarg);
         switch(c) {
             case 'd': dbname = strdup(optarg); break;
@@ -220,13 +220,13 @@ int main(int argc, char *argv[])
     }
 
     if (!dbname)
-        usage(argv[0], "Parameter dbname is not set\n"); //exit too
+        usage(argv[0], "Parameter dbname is not set"); //exit too
     if (numthreads < 1)
-        usage(argv[0], "Parameter numthreads is not set\n"); //exit too
+        usage(argv[0], "Parameter numthreads is not set"); //exit too
     if (cntperthread < 1)
-        usage(argv[0], "Parameter cntperthread is not set\n"); //exit too
+        usage(argv[0], "Parameter cntperthread is not set"); //exit too
     if (iterations < 1)
-        usage(argv[0], "Parameter iterations is not set\n"); //exit too
+        usage(argv[0], "Parameter iterations is not set"); //exit too
 
     //printf("%s %d %d %d %d\n", dbname, numthreads, cntperthread, iterations, transize);//
 

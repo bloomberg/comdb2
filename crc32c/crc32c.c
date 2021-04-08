@@ -303,3 +303,174 @@ static inline uint32_t crc32c_1024_sse_int(const uint8_t *buf, uint32_t crc)
 }
 
 #endif // Intel only
+
+#if defined(_HAS_CRC32_ARMV7) || defined(_HAS_CRC32_ARMV8)
+#include <arm_acle.h>
+#include <asm/hwcap.h>
+#include <sys/auxv.h>
+
+typedef uint32_t(*crc32c_t)(const uint8_t* data, uint32_t size, uint32_t crc);
+static crc32c_t crc32c_func;
+
+/* compute chksum for a small (<8) number of items word then half word then byte 
+   doing loop is more expensive then chunking by word, half, and byte
+   while (sz >= sizeof(const uint8_t)) {
+       crc = __crc32cb(crc, *buf++);
+       sz -= 1;
+   }
+ */
+
+static inline uint32_t crc32c_process_small_arm(const uint8_t **buf_, uint32_t *totsz_, uint32_t sz, uint32_t crc)
+{
+    const uint8_t *buf = *buf_;
+
+    if (sz & sizeof(uint32_t)) {
+        crc = __crc32cw(crc, *(const uint32_t *)buf);
+        buf += sizeof(uint32_t);
+    }
+
+    if (sz & sizeof(uint16_t)) {
+        crc = __crc32ch(crc, *(const uint16_t *)buf);
+        buf += sizeof(uint16_t);
+    }
+
+    if (sz & sizeof(const uint8_t)) {
+        crc = __crc32cb(crc, *buf);
+    }
+    *buf_ = buf + sz;
+    *totsz_ -= sz;
+
+    return crc;
+}
+
+/* Compute chksum until input is sizeof(intptr) aligned */
+static inline uint32_t crc32c_until_aligned_arm(const uint8_t **buf_, uint32_t *sz_, uint32_t crc)
+{
+    const uint8_t *buf = *buf_;
+    uint32_t sz = *sz_;
+    intptr_t misaligned = (intptr_t)buf & (sizeof(intptr_t) - 1);
+    unsigned adj = misaligned ? sizeof(intptr_t) - misaligned : 0;
+    if (adj > sz) adj = sz;
+    return crc32c_process_small_arm(buf_, sz_, adj, crc);
+}
+
+static inline uint32_t crc32c_arm(const uint8_t* buf, uint32_t sz, uint32_t crc)
+{
+    // If we will need to process long buffers aligned we
+    // should call it here: crc32c_until_aligned_arm(&buf, &sz, crc);
+
+    while (sz >= sizeof(uint64_t)) {
+        crc = __crc32cd(crc, *(const uint64_t *)buf);
+        sz -= sizeof(uint64_t);
+        buf += sizeof(uint64_t);
+    }
+
+    return crc32c_process_small_arm(&buf, &sz, sz, crc);
+}
+
+void crc32c_init(int v)
+{
+#if defined(_HAS_CRC32_ARMV7)
+    int en = getauxval(AT_HWCAP) & HWCAP2_CRC32;
+#else
+    int en = getauxval(AT_HWCAP) & HWCAP_CRC32;
+#endif
+    if (en) {
+        crc32c_func = crc32c_arm;
+        if (v) {
+            logmsg(LOGMSG_INFO, "ARM HW SUPPORT FOR CRC32C\n");
+        }
+    } else {
+        crc32c_func = crc32c_software;
+        if (v) {
+            logmsg(LOGMSG_INFO, "NO HARDWARE SUPPORT FOR CRC32C\n");
+            logmsg(LOGMSG_INFO, "crc32c = crc32c_software\n");
+        }
+    }
+}
+
+uint32_t crc32c_comdb2(const uint8_t* buf, uint32_t sz)
+{
+    return crc32c_func(buf, sz, CRC32C_SEED);
+}
+
+#endif
+
+
+
+#if TEST_CRC32C
+
+int logmsg(loglvl lvl, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    int ret = printf(fmt, args);
+    va_end(args);
+    return ret;
+}
+
+#include <assert.h>
+#include <sys/time.h>
+
+void timediff(const char * s) {
+    static struct timeval tv;
+    struct timeval tmp;
+
+    gettimeofday(&tmp, NULL);
+    int sec = (tmp.tv_sec - tv.tv_sec)*1000000;
+    int msec = (tmp.tv_usec - tv.tv_usec);
+    if (tv.tv_sec)
+        printf("%20.20s diff = %12.dusec\n", s, sec + msec);
+    tv = tmp;
+}
+
+__attribute__((noinline)) int f(int a)
+{
+    return a;
+}
+
+int main()
+{
+    crc32c_init(1);
+
+    printf("Test that NULL does not crash hw %d", crc32c_comdb2(NULL, 0)); printf("...check\n");
+
+    printf("''   sw 0x%x hw 0x%x", crc32c_software((const uint8_t*)"", 0, 0), crc32c_comdb2((const uint8_t*)"", 0));
+    if (crc32c_comdb2((const uint8_t*)"", 0) != 0x0) {
+        printf("...crc2c for '' not correct\n");
+        exit(1);
+    } else
+        printf("...check\n");
+
+    printf("'a'  sw 0x%x hw 0x%x", crc32c_software((const uint8_t*)"a", 1, 0), crc32c_comdb2((const uint8_t*)"a", 1));
+    if (crc32c_comdb2((const uint8_t*)"a", 1) != 0x93ad1061) {
+        printf("...crc2c for 'a' not correct\n");
+        exit(1);
+    } else
+        printf("...check\n");
+#define MAXLEN 1<<15
+    uint8_t lbuf[MAXLEN];
+    int i;
+    lbuf[0] = 'a';
+
+    for(i = 1; i < MAXLEN; i++)
+        lbuf[i] = i;
+    timediff("start");
+
+    for(i = 1; i < MAXLEN; i++) {
+        int a = crc32c_software(lbuf, i, 0);
+        f(a);
+    }
+    timediff("software: ");
+    for(i = 1; i < MAXLEN; i++) {
+        int a = crc32c_comdb2(lbuf, i);
+        f(a);
+    }
+    timediff("hardware: ");
+
+    for(i = 1; i < MAXLEN; i++) {
+        assert(crc32c_software(lbuf, i, 0) == crc32c_comdb2(lbuf, i));
+    }
+    printf("successfully tested %d strings\n", i);
+    return 0;
+}
+#endif
