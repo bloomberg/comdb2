@@ -4260,8 +4260,6 @@ check_version:
         get_copy_rootpages_nolock(thd->sqlthd);
         if (clnt->dbtran.cursor_tran) {
             if (thedb->timepart_views) {
-                int cnonce = has_cnonce(clnt);
-                clr_cnonce(clnt);
                 /* how about we are gonna add the views ? */
                 rc = views_sqlite_update(thedb->timepart_views, thd->sqldb,
                                          &xerr, 0);
@@ -4272,8 +4270,6 @@ check_version:
                     /* there is no really way forward */
                     abort();
                 }
-                if (cnonce)
-                    set_cnonce(clnt);
             }
 
             /* save the views generation number */
