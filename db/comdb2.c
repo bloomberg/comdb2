@@ -993,9 +993,8 @@ void showdbenv(struct dbenv *dbenv)
         usedb = dbenv->dbs[jj]; /*de-stink*/
         logmsg(LOGMSG_USER,
                "table '%s' comdbg compat dbnum %d\ndir '%s' lrlfile '%s' "
-               "nconns %d  nrevconns %d\n",
-               usedb->tablename, usedb->dbnum, dbenv->basedir,
-               (usedb->lrlfname) ? usedb->lrlfname : "NULL",
+               "nconns %zu  nrevconns %zu\n",
+               usedb->tablename, usedb->dbnum, dbenv->basedir, (usedb->lrlfname) ? usedb->lrlfname : "NULL",
                usedb->n_constraints, usedb->n_rev_constraints);
         logmsg(LOGMSG_ERROR, "   data reclen %-3d bytes\n", usedb->lrl);
 
@@ -1003,17 +1002,13 @@ void showdbenv(struct dbenv *dbenv)
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
                    " datacopy? %c collattr? %c uniqnulls %c\n",
-                   ii, usedb->ix_keylen[ii],
-                   (usedb->ix_dupes[ii] ? 'y' : 'n'),
-                   (usedb->ix_recnums[ii] ? 'y' : 'n'),
-                   (usedb->ix_datacopy[ii] ? 'y' : 'n'),
-                   (usedb->ix_collattr[ii] ? 'y' : 'n'),
+                   ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'), (usedb->ix_recnums[ii] ? 'y' : 'n'),
+                   (usedb->ix_datacopy[ii] ? 'y' : 'n'), (usedb->ix_collattr[ii] ? 'y' : 'n'),
                    (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
-        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii,
-               dbenv->sibling_hostname[ii], *dbenv->sibling_port[ii]);
+        logmsg(LOGMSG_USER, "sibling %-2d host %s:%d\n", ii, dbenv->sibling_hostname[ii], *dbenv->sibling_port[ii]);
     }
 }
 
@@ -1674,12 +1669,44 @@ void cleanup_newdb(dbtable *tbl)
         tbl->sqlixuse = NULL;
     }
 
+    if (tbl->rev_constraints) {
+        free(tbl->rev_constraints);
+        tbl->rev_constraints = NULL;
+    }
+
+    for (int i = 0; i < tbl->n_constraints; ++i) {
+        if (tbl->constraints == NULL)
+            break;
+        for (int j = 0; j < tbl->constraints[i].nrules; ++j) {
+            free(tbl->constraints[i].table[j]);
+            free(tbl->constraints[i].keynm[j]);
+        }
+        free(tbl->constraints[i].table);
+        free(tbl->constraints[i].keynm);
+    }
+
+    if (tbl->constraints) {
+        free(tbl->constraints);
+        tbl->constraints = NULL;
+    }
+
+    if (tbl->check_constraints) {
+        free(tbl->check_constraints);
+        tbl->check_constraints = NULL;
+    }
+
     for (int i = 0; i < tbl->n_check_constraints; i++) {
-        if (tbl->check_constraint_query[i] == NULL)
+        if ((tbl->check_constraint_query == NULL) || (tbl->check_constraint_query[i] == NULL))
             break;
         free(tbl->check_constraint_query[i]);
         tbl->check_constraint_query[i] = NULL;
     }
+
+    if (tbl->check_constraint_query) {
+        free(tbl->check_constraint_query);
+        tbl->check_constraint_query = NULL;
+    }
+
     Pthread_mutex_destroy(&tbl->rev_constraints_lk);
 
     if (tbl->dbtype == DBTYPE_QUEUEDB)
@@ -1797,25 +1824,19 @@ dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
           return NULL;
         }
     }
-    tbl->n_rev_constraints =
-        0; /* this will be initialized at verification time */
+
+    init_reverse_constraints(tbl);
+
     tbl->n_constraints = dyns_get_constraint_count();
     if (tbl->n_constraints > 0) {
         char *consname = NULL;
         char *keyname = NULL;
         int rulecnt = 0, flags = 0;
-        if (tbl->n_constraints >= MAXCONSTRAINTS) {
-            logmsg(LOGMSG_ERROR, "too many constraints for table %s (%d>=%d)\n",
-                    tblname, tbl->n_constraints, MAXCONSTRAINTS);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
+        tbl->constraints = calloc(tbl->n_constraints, sizeof(constraint_t));
         for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt,
-                                        &flags);
+            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt, &flags);
             if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%d)!\n", ii,
-                        tbl->n_constraints);
+                logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%zu)!\n", ii, tbl->n_constraints);
                 cleanup_newdb(tbl);
                 return NULL;
             }
@@ -1824,13 +1845,11 @@ dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
             tbl->constraints[ii].lclkeyname = (keyname) ? strdup(keyname) : 0;
             tbl->constraints[ii].nrules = rulecnt;
-            if (tbl->constraints[ii].nrules >= MAXCONSTRAINTS) {
-                logmsg(LOGMSG_ERROR, "too many constraint rules for table %s:%s (%d>=%d)\n",
-                        tblname, keyname, tbl->constraints[ii].nrules,
-                        MAXCONSTRAINTS);
-                cleanup_newdb(tbl);
-                return NULL;
-            } else if (tbl->constraints[ii].nrules > 0) {
+
+            tbl->constraints[ii].table = calloc(tbl->constraints[ii].nrules, MAXTABLELEN * sizeof(char *));
+            tbl->constraints[ii].keynm = calloc(tbl->constraints[ii].nrules, MAXKEYLEN * sizeof(char *));
+
+            if (tbl->constraints[ii].nrules > 0) {
                 int jj = 0;
                 for (jj = 0; jj < tbl->constraints[ii].nrules; jj++) {
                     char *tblnm = NULL;
@@ -1862,6 +1881,13 @@ int init_check_constraints(dbtable *tbl)
     tbl->n_check_constraints = dyns_get_check_constraint_count();
     if (tbl->n_check_constraints == 0) {
         return 0;
+    }
+
+    tbl->check_constraints = calloc(tbl->n_check_constraints, sizeof(check_constraint_t));
+    tbl->check_constraint_query = calloc(tbl->n_check_constraints, sizeof(char *));
+    if ((tbl->check_constraints == NULL) || (tbl->check_constraint_query == NULL)) {
+        logmsg(LOGMSG_ERROR, "%s:%d failed to allocate memory\n", __func__, __LINE__);
+        return 1;
     }
 
     sql = strbuf_new();
@@ -1897,6 +1923,64 @@ int init_check_constraints(dbtable *tbl)
     }
     strbuf_free(sql);
     return 0;
+}
+
+static int resize_reverse_constraints(struct dbtable *db, size_t newsize)
+{
+    constraint_t **temp = realloc(db->rev_constraints, newsize * sizeof(constraint_t *));
+    if (temp) {
+        db->rev_constraints = temp;
+        db->cap_rev_constraints = newsize;
+        return 0;
+    } else {
+        free(db->rev_constraints);
+        return 1;
+    }
+}
+
+void init_reverse_constraints(struct dbtable *db)
+{
+    db->rev_constraints = calloc(INITREVCONSTRAINTS, sizeof(constraint_t *));
+    db->cap_rev_constraints = INITREVCONSTRAINTS;
+    db->n_rev_constraints = 0;
+}
+
+int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt)
+{
+    int rc = 0;
+    if (db->n_rev_constraints >= db->cap_rev_constraints) {
+        if ((rc = resize_reverse_constraints(db, 2 * db->cap_rev_constraints)) != 0) {
+            return rc;
+        };
+    }
+    db->rev_constraints[db->n_rev_constraints++] = cnstrt;
+    return rc;
+}
+
+int delete_reverse_constraint(struct dbtable *db, size_t idx)
+{
+    int rc = 0;
+    if (idx > db->n_rev_constraints) {
+        return 1;
+    }
+
+    db->rev_constraints[idx] = NULL;
+
+    for (size_t i = idx; i < db->n_rev_constraints - 1; ++i) {
+        db->rev_constraints[i] = db->rev_constraints[i + 1];
+        db->rev_constraints[i + 1] = NULL;
+    }
+
+    db->n_rev_constraints--;
+
+    if (db->n_rev_constraints > 0 && db->n_rev_constraints <= db->cap_rev_constraints / 4) {
+        if (db->n_rev_constraints >= db->cap_rev_constraints) {
+            if ((rc = resize_reverse_constraints(db, (db->cap_rev_constraints / 2))) != 0) {
+                return rc;
+            };
+        }
+    }
+    return rc;
 }
 
 /* lock mgr partition defaults */
@@ -6222,4 +6306,3 @@ static void create_service_file(const char *lrlname)
 #endif
     return;
 }
-

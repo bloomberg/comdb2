@@ -1792,7 +1792,7 @@ void dump_all_constraints(struct dbenv *env)
 void dump_rev_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d REVSE CONSTRAINTS\n", table->tablename, table->n_rev_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %zu REVSE CONSTRAINTS\n", table->tablename, table->n_rev_constraints);
     for (i = 0; i < table->n_rev_constraints; i++) {
         constraint_t *ct = table->rev_constraints[i];
         int j = 0;
@@ -1813,7 +1813,7 @@ void dump_rev_constraints(struct dbtable *table)
 void dump_constraints(struct dbtable *table)
 {
     int i = 0;
-    logmsg(LOGMSG_USER, "TABLE '%s' HAS %d CONSTRAINTS\n", table->tablename, table->n_constraints);
+    logmsg(LOGMSG_USER, "TABLE '%s' HAS %zu CONSTRAINTS\n", table->tablename, table->n_constraints);
     for (i = 0; i < table->n_constraints; i++) {
         constraint_t *ct = &table->constraints[i];
         int j = 0;
@@ -2255,15 +2255,7 @@ int populate_reverse_constraints(struct dbtable *db)
             if (dupadd)
                 continue;
 
-            if (cttbl->n_rev_constraints >= MAXCONSTRAINTS) {
-                ++n_errors;
-               logmsg(LOGMSG_ERROR, "constraint error for table %s. too many reverse "
-                       "constraints!\n",
-                       cnstrt->table[jj]);
-                continue;
-            }
-
-            cttbl->rev_constraints[cttbl->n_rev_constraints++] = cnstrt;
+            add_reverse_constraint(cttbl, cnstrt);
         }
     }
 

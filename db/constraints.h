@@ -36,8 +36,8 @@ typedef struct {
     char *lclkeyname;
     int nrules;
     int flags;
-    char *table[MAXCONSTRAINTS];
-    char *keynm[MAXCONSTRAINTS];
+    char **table;
+    char **keynm;
 } constraint_t;
 
 typedef struct {

@@ -309,7 +309,6 @@
 (name='max_bounded_parameters', description='Maximum number of bounded parameters per prepared statement', value=2048)
 (name='max_column_name_length', description='Maximum column name length', value=99)
 (name='max_columns', description='Maximum columns per table', value=1024)
-(name='max_constraints', description='Maximum number of constraints per table', value=32)
 (name='max_consumers', description='Maximum queue consumers per table', value=32)
 (name='max_data_files', description='Maximum number of data files per table', value=16)
 (name='max_data_stipes', description='Maximum number of data stripes per table', value=16)
