@@ -2460,7 +2460,6 @@ int update_constraint_genid(struct ireq *iq, int opcode, int blkpos, int flags,
             if (iq->debug)
                 reqprintf(iq, "update_constraint_genid: OLDGENID 0x%llx NEWGENID 0x%llx",
                           old_genid, new_genid);
-            //            assert(curop->optype == opcode);
             curop->genid = new_genid; // directly update genid in the temp list
             curop->flags |= flags;    // also update with the flags passed in
 
