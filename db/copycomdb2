@@ -272,13 +272,6 @@ done
 [ -z "$comdb2ar_rmt" ] && comdb2ar_rmt="${comdb2ar}"
 [ -z "$lz4_rmt" ] && lz4_rmt="${lz4}"
 
-if [[ -z "$lz4_rmt" ]]; then
-    ar_compress_rmt="cat"
-    ar_decompress_rmt="cat"
-else
-    ar_compress_rmt="$lz4_rmt stdin stdout"
-    ar_decompress_rmt="$lz4_rmt -d stdin stdout"
-fi
 
 [ $copy_data = no -a $copy_lrls = no ] && die "cannot use -s and -d together"
 
@@ -380,15 +373,33 @@ fi
 # determine if we should strip or preserve cluster node information.
 if [ "$srcmach" = "$HOSTNAME" -a "$destmach" != "$HOSTNAME" ]; then
     copy_mode=PUSH
+    # need valid lz4 in destination
+    [ -z $comdb2ar_rmt ] && die "comdb2ar_rmt not set"
+    $rsh $destmach "test -e $comdb2ar_rmt" < /dev/null || die "$destmach:$comdb2ar_rmt not available"
+    $rsh $destmach "test -e $lz4_rmt" < /dev/null || lz4_rmt=""
     [ $movemode = no ] || die "move mode can only be used locally"
 elif [ "$srcmach" != "$HOSTNAME" -a "$destmach" = "$HOSTNAME" ]; then
     copy_mode=PULL
+    [ -z $comdb2ar_rmt ] && die "comdb2ar_rmt not set"
+    $rsh $srcmach "test -e $comdb2ar_rmt" < /dev/null || die "$srcmach:$comdb2ar_rmt not available"
+    $rsh $srcmach "test -e $lz4_rmt" < /dev/null || lz4_rmt=""
     [ $movemode = no ] || die "move mode can only be used locally"
 elif [ "$srcmach" = "$HOSTNAME" -a "$destmach" = "$HOSTNAME" ]; then
     copy_mode=LOCAL
 else
     die "cannot work on two remote machines (srcmach=$srcmach, destmach=$destmach)"
 fi
+
+if [[ -z "$lz4_rmt" ]]; then
+    ar_compress_rmt="cat"
+    ar_decompress_rmt="cat"
+    ar_compress="cat"  # need both local and rmt to be same
+    ar_decompress="cat"
+else
+    ar_compress_rmt="$lz4_rmt stdin stdout"
+    ar_decompress_rmt="$lz4_rmt -d stdin stdout"
+fi
+
 
 # if we want an incremental copy, create the partial files on the
 # destination, and get them to the source
