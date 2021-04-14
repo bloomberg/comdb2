@@ -867,7 +867,14 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
             if (iq->usedb) {
-                rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
+                rc = del_record(iq, trans, NULL, rrn, genid,
+                                /* Partial index bitmap:
+                                   -1ULL implies that at this point we don't know
+                                   which of the partial indices would be affected.
+                                   This is determined in del_record(). */
+                                -1ULL, /* del_keys */
+                                &err, &idx, BLOCK2_DELKL,
+                                RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
@@ -928,16 +935,32 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 goto delnullerr;
 
             if (iq->usedb) {
-                rc = upd_record(iq, trans, NULL,                               /*primkey*/
-                                rrn, genid, (const unsigned char *)ondisk_tag, /*.ONDISK_IX_0*/
+                rc = upd_record(iq,
+                                trans,
+                                NULL, /* primkey */
+                                rrn,
+                                genid,
+                                (const unsigned char *)ondisk_tag, /* .ONDISK_IX_0 */
                                 (const unsigned char *)ondisk_tag + strlen(ondisk_tag),
                                 (unsigned char *)nullkey, /*p_buf_rec*/
-                                (const unsigned char *)nullkey + keylen, NULL /*p_buf_vrec*/, NULL /*p_buf_vrec_end*/,
-                                NULL,                                                 /*fldnullmap*/
-                                NULL,                                                 /*updCols*/
-                                NULL,                                                 /*blobs*/
-                                0,                                                    /*maxblobs*/
-                                &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
+                                (const unsigned char *)nullkey + keylen,
+                                NULL, /* p_buf_vrec */
+                                NULL, /* p_buf_vrec_end */
+                                NULL, /* fldnullmap */
+                                NULL, /* updCols */
+                                NULL, /* blobs */
+                                0,    /* maxblobs */
+                                &newgenid,
+                                /* Partial index bitmaps:
+                                   -1ULL implies that at this point we don't know
+                                   which of the partial indices would be affected.
+                                   This is determined in upd_record(). */
+                                -1ULL, /* ins_keys */
+                                -1ULL, /* del_keys */
+                                &err,
+                                &idx,
+                                BLOCK2_UPDKL,
+                                0, /*blkpos*/
                                 RECFLAGS_UPD_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
             } else {
                 rc = ERR_NO_SUCH_TABLE;
@@ -1001,16 +1024,32 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
             if (iq->usedb) {
-                rc = upd_record(iq, trans, NULL,                               /*primkey*/
-                                rrn, genid, (const unsigned char *)ondisk_tag, /*.ONDISK_IX_0*/
+                rc = upd_record(iq,
+                                trans,
+                                NULL, /* primkey */
+                                rrn,
+                                genid,
+                                (const unsigned char *)ondisk_tag, /* .ONDISK_IX_0 */
                                 (const unsigned char *)ondisk_tag + strlen(ondisk_tag),
-                                (unsigned char *)bct->newkey, /*p_buf_rec*/
-                                (const unsigned char *)bct->newkey + newkeylen, NULL /*p_buf_vrec*/,
-                                NULL /*p_buf_vrec_end*/, NULL,                        /*fldnullmap*/
-                                NULL,                                                 /*updCols*/
-                                NULL,                                                 /*blobs*/
-                                0,                                                    /*maxblobs*/
-                                &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
+                                (unsigned char *)bct->newkey, /* p_buf_rec */
+                                (const unsigned char *)bct->newkey + newkeylen,
+                                NULL, /* p_buf_vrec */
+                                NULL, /* p_buf_vrec_end */
+                                NULL, /* fldnullmap */
+                                NULL, /* updCols */
+                                NULL, /* blobs */
+                                0,    /* maxblobs */
+                                &newgenid,
+                                /* Partial index bitmaps:
+                                   -1ULL implies that at this point we don't know
+                                   which of the partial indices would be affected.
+                                   This is determined in upd_record(). */
+                                -1ULL, /* ins_keys */
+                                -1ULL, /* del_keys */
+                                &err,
+                                &idx,
+                                BLOCK2_UPDKL,
+                                0, /*blkpos*/
                                 RECFLAGS_UPD_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
             } else {
                 rc = ERR_NO_SUCH_TABLE;

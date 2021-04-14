@@ -503,10 +503,10 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
     }
 
-    if (gbl_partial_indexes && iq->usedb->ix_partial && ins_keys == -1ULL) {
+    if (iq->usedb->ix_partial && ins_keys == -1ULL) {
         ins_keys = verify_indexes(iq->usedb, od_dta, blobs, maxblobs, 0);
         if (ins_keys == -1ULL) {
-            fprintf(stderr, "%s: failed to verify_indexes\n", __func__);
+            logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
             *opfailcode = OP_FAILED_INTERNAL;
             retrc = ERR_INTERNAL;
             ERR;
@@ -1184,23 +1184,25 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
 
             add_blobs_buf[blobno] = *blob;
         }
-        if (gbl_partial_indexes && iq->usedb->ix_partial) {
-            if (del_keys == -1ULL)
-                del_keys = verify_indexes(iq->usedb, old_dta, del_blobs_buf,
-                                          MAXBLOBS, 0);
-            if (ins_keys == -1ULL)
-                ins_keys = verify_indexes(iq->usedb, od_dta, add_blobs_buf,
-                                          MAXBLOBS, 0);
-            if (ins_keys == -1ULL || del_keys == -1ULL) {
-                fprintf(stderr, "%s: failed to verify_indexes\n", __func__);
-                *opfailcode = OP_FAILED_INTERNAL;
-                retrc = ERR_INTERNAL;
-                goto err;
-            }
-        }
         del_idx_blobs = del_blobs_buf;
         add_idx_blobs = add_blobs_buf;
     }
+
+    if (iq->usedb->ix_partial) {
+        if (del_keys == -1ULL)
+            del_keys = verify_indexes(iq->usedb, old_dta, del_idx_blobs,
+                                      MAXBLOBS, 0);
+        if (ins_keys == -1ULL)
+            ins_keys = verify_indexes(iq->usedb, od_dta, add_idx_blobs,
+                                      MAXBLOBS, 0);
+        if (ins_keys == -1ULL || del_keys == -1ULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
+        }
+    }
+
     rc = upd_master_columns(iq, trans, od_dta, od_len);
     if (rc == BDBERR_DEADLOCK) {
         if (iq->debug)
@@ -1754,17 +1756,18 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             blob_status_to_blob_buffer(&oldblobs, blobs_buf);
             got_oldblobs = 1;
         }
-        if (gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) {
-            del_keys =
-                verify_indexes(iq->usedb, od_dta, blobs_buf, MAXBLOBS, 0);
-            if (del_keys == -1ULL) {
-                fprintf(stderr, "%s: failed to verify_indexes\n", __func__);
-                *opfailcode = OP_FAILED_INTERNAL;
-                retrc = ERR_INTERNAL;
-                goto err;
-            }
+       del_idx_blobs = blobs_buf;
+    }
+
+    if (iq->usedb->ix_partial && del_keys == -1ULL) {
+        del_keys = verify_indexes(iq->usedb, od_dta, del_idx_blobs, MAXBLOBS,
+                                  0);
+        if (del_keys == -1ULL) {
+            logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
+            *opfailcode = OP_FAILED_INTERNAL;
+            retrc = ERR_INTERNAL;
+            goto err;
         }
-        del_idx_blobs = blobs_buf;
     }
 
     if (has_constraint(flags)) {
@@ -2106,7 +2109,7 @@ int upd_new_record(struct ireq *iq, void *trans, unsigned long long oldgenid,
                 verify_indexes(iq->usedb, sc_new, add_idx_blobs,
                                add_idx_blobs ? MAXBLOBS : 0, 0);
             if (ins_keys == -1ULL || del_keys == -1ULL) {
-                fprintf(stderr, "%s: failed to verify_indexes\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
                 retrc = ERR_INTERNAL;
                 goto err;
             }
@@ -2312,8 +2315,6 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
     /* if the destination database does not have odh, mask the updateid */
     ngenid = bdb_normalise_genid(iq->usedb->handle, genid);
 
-    /*fprintf(stderr, "DEL NEW GENID 0x%llx\n", ngenid);*/
-
     if (iq->usedb->has_datacopy_ix ||
         (gbl_partial_indexes && iq->usedb->ix_partial && del_keys == -1ULL) ||
         (gbl_expressions_indexes && iq->usedb->ix_expr && !iq->idxDelete)) {
@@ -2339,7 +2340,7 @@ int del_new_record(struct ireq *iq, void *trans, unsigned long long genid,
                 verify_indexes(iq->usedb, sc_old, del_idx_blobs,
                                del_idx_blobs ? MAXBLOBS : 0, 0);
             if (del_keys == -1ULL) {
-                fprintf(stderr, "%s: failed to verify_indexes\n", __func__);
+                logmsg(LOGMSG_ERROR, "%s: failed to verify_indexes\n", __func__);
                 retrc = ERR_INTERNAL;
                 goto err;
             }
