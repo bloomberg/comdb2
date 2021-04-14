@@ -203,7 +203,7 @@ function copy_test
     fi
 
     write_prompt $func "Creating physical rep $repname"
-    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -H $repname $cl $rmt${DBDIR}/${DBNAME}.lrl $repdir $repdir
+    ${COPYCOMDB2_EXE} -x ${COMDB2_EXE} -P ${COMDB2AR_EXE} -H $repname $cl $rmt${DBDIR}/${DBNAME}.lrl $repdir $repdir || failexit "Failure copying physical rep"
 
     if [[ "$autocache" != "ON" ]] ; then
         echo "cache_flush_interval 10" >> $repdir/${repname}.lrl
