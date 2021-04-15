@@ -140,7 +140,7 @@ function test_restoredb {
   mv ${LOCTMPDIR}/restore/${DBNAME}_file_vers_map ${LOCTMPDIR}/restore/${DBNAME}_restore_file_vers_map
 
   echo "~~~~~~~~~~"
-  $COMDB2_EXE ${DBNAME}_restore --lrl ${LOCTMPDIR}/restore/${DBNAME}.single.lrl -pidfile ${TMPDIR}/${DBNAME}_restore.pid &
+  $COMDB2_EXE ${DBNAME}_restore --lrl ${LOCTMPDIR}/restore/${DBNAME}.single.lrl --pidfile ${TMPDIR}/${DBNAME}_restore.pid &
   # wait for db to launch
   count=0
   ${CDB2SQL_EXE} ${DBNAME}_restore local "select 1" > ./sqloutput 2>&1

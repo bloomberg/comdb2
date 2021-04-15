@@ -85,8 +85,8 @@ cat $lrlpath >> $cpdir/$db.lrl
 
 outfile=$db.out.$(date +%Y%m%d%H%M%S)
 
-echo "comdb2 $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid >$cpdir/$outfile 2>&1 &"
-comdb2 $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid >$cpdir/$outfile 2>&1 &
+echo "comdb2 $db --lrl $cpdir/$db.lrl --pidfile /tmp/$db.pid >$cpdir/$outfile 2>&1 &"
+comdb2 $db --lrl $cpdir/$db.lrl --pidfile /tmp/$db.pid >$cpdir/$outfile 2>&1 &
 wait_for_db_up $db @localhost
 cat >> $cpdir/$db.lrl <<EOF
 cluster nodes $machines
@@ -123,8 +123,8 @@ printf "starting cluster "
 for m in $machines; do
     printf "%s " $m
     ssh $m "/opt/bb/bin/pmux -l"
-    echo ssh $m "$vg $exe $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid > $cpdir/${outfile}.$m 2>&1 "
-    ssh $m "$vg $exe $db -lrl $cpdir/$db.lrl -pidfile /tmp/$db.pid > $cpdir/${outfile}.$m 2>&1 " &
+    echo ssh $m "$vg $exe $db --lrl $cpdir/$db.lrl --pidfile /tmp/$db.pid > $cpdir/${outfile}.$m 2>&1 "
+    ssh $m "$vg $exe $db --lrl $cpdir/$db.lrl --pidfile /tmp/$db.pid > $cpdir/${outfile}.$m 2>&1 " &
 done
 echo
 

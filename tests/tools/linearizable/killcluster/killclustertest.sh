@@ -55,8 +55,8 @@ for x in $machines ; do
 
     else
 
-        echo "kill -9 \$(ps -ef | egrep comdb2 | egrep lrl | egrep -v bash | egrep $db | awk '{print \$2}') ; sleep 10 ; export MALLOC_CHECK_=2 ; /opt/bb/bin/comdb2 $db -lrl /db/comdb2/$db/$db.lrl -pidfile /tmp/$db.pid 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' > /db/comdb2/$db/$outfile.$x 2>&1"
-        ssh $x "kill -9 \$(ps -ef | egrep comdb2 | egrep lrl | egrep -v bash | egrep $db | awk '{print \$2}') ; sleep 10 ; export MALLOC_CHECK_=2 ; /opt/bb/bin/comdb2 $db -lrl /db/comdb2/$db/$db.lrl -pidfile /tmp/$db.pid 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' > /db/comdb2/$db/$outfile.$x 2>&1" < /dev/null &
+        echo "kill -9 \$(ps -ef | egrep comdb2 | egrep lrl | egrep -v bash | egrep $db | awk '{print \$2}') ; sleep 10 ; export MALLOC_CHECK_=2 ; /opt/bb/bin/comdb2 $db --lrl /db/comdb2/$db/$db.lrl --pidfile /tmp/$db.pid 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' > /db/comdb2/$db/$outfile.$x 2>&1"
+        ssh $x "kill -9 \$(ps -ef | egrep comdb2 | egrep lrl | egrep -v bash | egrep $db | awk '{print \$2}') ; sleep 10 ; export MALLOC_CHECK_=2 ; /opt/bb/bin/comdb2 $db --lrl /db/comdb2/$db/$db.lrl --pidfile /tmp/$db.pid 2>&1 | ts '[%Y-%m-%d %H:%M:%S]' > /db/comdb2/$db/$outfile.$x 2>&1" < /dev/null &
 
     fi
     #sleep 2

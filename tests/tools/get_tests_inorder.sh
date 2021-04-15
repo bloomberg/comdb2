@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
+# Get list of tests in order from longest to shortest duration
 
-#get list of tests in order from longest to shortest test to run
-DEFAULT_TIMEOUT=5
+DEFAULT_TIMEOUT=5  # default timeout for the tests is 5 seconds
 
 #get the tests with custom times
 custom_times=`grep "TEST_TIMEOUT=" *.test/Makefile | sed 's#export TEST_TIMEOUT=##; s#/Makefile:# #; s#m$##'`

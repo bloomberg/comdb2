@@ -68,12 +68,12 @@ function bouncemaster
     PARAMS="$DBNAME --no-global-lrl"
     if [[ ! -z "$node" ]]; then
         REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
         if [ "$node" == "$(hostname)" ] ; then
             (
             kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
             sleep $sleeptime
-            ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
+            ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
             ) &
         else
             kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1

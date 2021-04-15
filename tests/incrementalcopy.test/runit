@@ -112,7 +112,7 @@ egrep -v "cluster nodes" $lrl > $newlrl
 scp $newlrl $target:$newlrl
 
 # bring back up
-ssh $target ${COMDB2_EXE} $dbname -lrl $newlrl < /dev/null &
+ssh $target ${COMDB2_EXE} $dbname --lrl $newlrl < /dev/null &
 
 sleep 30
 
