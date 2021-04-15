@@ -423,3 +423,8 @@ constraints
 (rows updated=1)
 (i=2, j=2)
 (i=2, j=2)
+("on delete set null"='on delete set null')
+(rows inserted=1)
+(rows inserted=1)
+(rows deleted=1)
+(i=NULL, j=2)

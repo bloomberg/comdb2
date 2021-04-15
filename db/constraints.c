@@ -712,7 +712,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
 
         if (is_delete_op(bct->optype) && (bct->flags & CT_DEL_CASCADE))
             del_cascade = 1;
-        else if (is_delete_op(bct->optype) && (bct->flags & CT_SETNULL_CASCADE))
+        else if (is_delete_op(bct->optype) && (bct->flags & CT_DEL_SETNULL))
             del_null = 1;
         else if (is_update_op(bct->optype) && (bct->flags & CT_UPD_CASCADE))
             upd_cascade = 1;
@@ -1804,7 +1804,7 @@ void dump_rev_constraints(struct dbtable *table)
                i + 1, ct->lcltable->tablename, ct->lclkeyname,
                ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
-               ((ct->flags & CT_SETNULL_CASCADE) == CT_SETNULL_CASCADE) ? 'T' : 'F', ct->nrules);
+               ((ct->flags & CT_DEL_SETNULL) == CT_DEL_SETNULL) ? 'T' : 'F', ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
             logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j], ct->keynm[j]);
         }
@@ -1822,7 +1822,7 @@ void dump_constraints(struct dbtable *table)
         logmsg(LOGMSG_USER, "(%d)CONSTRAINT KEY '%s'  CSCUPD: %c CSCDEL: %c CSCDELNULL: %c #RULES %d:\n", i + 1,
                ct->lclkeyname, ((ct->flags & CT_UPD_CASCADE) == CT_UPD_CASCADE) ? 'T' : 'F',
                ((ct->flags & CT_DEL_CASCADE) == CT_DEL_CASCADE) ? 'T' : 'F',
-               ((ct->flags & CT_SETNULL_CASCADE) == CT_SETNULL_CASCADE) ? 'T' : 'F', ct->nrules);
+               ((ct->flags & CT_DEL_SETNULL) == CT_DEL_SETNULL) ? 'T' : 'F', ct->nrules);
         for (j = 0; j < ct->nrules; j++) {
             logmsg(LOGMSG_USER, "  -> TBL '%s' KEY '%s'\n", ct->table[j], ct->keynm[j]);
         }

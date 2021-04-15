@@ -264,3 +264,14 @@ alter table t2 drop constraint "t2_fk_1"$$
 alter table t2 drop constraint "t2_fk_2"$$
 drop table t2;
 drop table t1;
+
+select "on delete set null";
+create table t1(i int unique, j int)$$
+create table t2(i int unique, j int, foreign key (i) references t1(i) on delete set null)$$
+insert into t1 values(1,1);
+insert into t2 values(1,2);
+delete from t1 where i = 1;
+select * from t1 order by 1;
+select * from t2 order by 1;
+drop table t2;
+drop table t1;

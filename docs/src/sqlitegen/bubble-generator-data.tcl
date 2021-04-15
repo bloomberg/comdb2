@@ -633,7 +633,10 @@ stack
               }
               {opt 
                 {loop 
-                   {line on {or update delete} {or cascade restrict }}
+                   {or
+                       {line on delete {or cascade restrict {line set null}}}
+                       {line on update {or cascade restrict }}
+                   }
                 }
               }
           }
@@ -730,12 +733,19 @@ stack
           {loop
               {line ON
                   {or
-                      {line UPDATE}
-                      {line DELETE}
-                  }
-                  {or
-                      {line NO ACTION}
-                      {line CASCADE}
+                      {line DELETE
+                          {or
+                              {line NO ACTION}
+                              {line CASCADE}
+                              {line SET NULL}
+                          }
+                      }
+                      {line UPDATE
+                          {or
+                              {line NO ACTION}
+                              {line CASCADE}
+                          }
+                      }
                   }
               }
           }
