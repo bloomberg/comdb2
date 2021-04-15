@@ -152,9 +152,9 @@ function make_phys_rep
 
     write_prompt $func "Starting replicant database, replog is $replog"
     if [[ -n "$replive" ]]; then
-        ( $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1) &
+        ( $COMDB2_EXE $repname --lrl $repdir/${repname}.lrl --pidfile $repdir/${repname}.pid >$replog 2>&1) &
     else
-        ( timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $repname -lrl $repdir/${repname}.lrl -pidfile $repdir/${repname}.pid >$replog 2>&1) &
+        ( timeout --kill-after=5s $TEST_TIMEOUT $COMDB2_EXE $repname --lrl $repdir/${repname}.lrl --pidfile $repdir/${repname}.pid >$replog 2>&1) &
     fi
 }
 

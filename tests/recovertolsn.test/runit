@@ -112,12 +112,12 @@ function kill_restarttolsn
     sleep 1
 
     echo "$DBNAME: recovering to lsn $lsn"
-    $COMDB2_EXE --recovertolsn $lsn $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1
+    $COMDB2_EXE --recovertolsn $lsn $DBNAME >$TESTDIR/logs/${DBNAME}.db --pidfile ${TMPDIR}/$DBNAME.pid 2>&1
 
     mv -b $TESTDIR/logs/${DBNAME}.db $TESTDIR/logs/${DBNAME}.db.2
     echo "$DBNAME: starting single node"
-    echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid"
-    $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db -pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
+    echo "$COMDB2_EXE $DBNAME $TESTDIR/logs/${DBNAME}.db --pidfile ${TMPDIR}/$DBNAME.pid"
+    $COMDB2_EXE $DBNAME >$TESTDIR/logs/${DBNAME}.db --pidfile ${TMPDIR}/$DBNAME.pid 2>&1 &
 
     popd
 

@@ -250,8 +250,8 @@ cd2_64=$(newexe $dbex $tach linux_64)
 delbtrees $tmach $dest
 
 # restore the database on the remote side
-rsh $tmach "$cd2 $dbnm -lrl $dest/$dbnm.lrl -fullrecovery >/dev/null 2>&1"
-rsh $tmach "$cd2_64 $dbnm -lrl $dest/$dbnm.lrl -fullrecovery >/dev/null 2>&1"
+rsh $tmach "$cd2 $dbnm --lrl $dest/$dbnm.lrl -fullrecovery >/dev/null 2>&1"
+rsh $tmach "$cd2_64 $dbnm --lrl $dest/$dbnm.lrl -fullrecovery >/dev/null 2>&1"
 
 # verify script
 vfy=/bb/bin/db_verify

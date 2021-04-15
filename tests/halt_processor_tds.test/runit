@@ -106,12 +106,12 @@ function bounce_master
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]' `
     PARAMS="$db --no-global-lrl"
     REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-    CMD="cd ${DBDIR}; source ${REP_ENV_VARS}; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.pid"
+    CMD="cd ${DBDIR}; source ${REP_ENV_VARS}; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl --pidfile ${TMPDIR}/${db}.pid"
     if [[ -n "$master" ]]; then
         if [ $master == $(hostname) ]; then
             (
                 kill -9 $(cat ${TMPDIR}/${db}.${node}.pid)
-                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl -pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
+                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${db}.lrl --pidfile ${TMPDIR}/${db}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${db}.${node}.db 2>&1
             ) &
         else
             kill -9 $(cat ${TMPDIR}/${db}.${master}.pid)

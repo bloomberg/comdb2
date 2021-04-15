@@ -1,52 +1,66 @@
 export TESTSROOTDIR:=$(shell pwd)
+
 SRCHOME:=$(shell readlink -f $(TESTSROOTDIR)/../ || realpath $(TESTSROOTDIR)/../ )
 ifeq ($(SRCHOME),)
   SRCHOME:=$(TESTSROOTDIR)/..
 endif
+
 export SRCHOME
 ifeq ($(TESTID),)
-export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
+  export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
+
 include $(TESTSROOTDIR)/Makefile.common
 
 # List of disabled tests
 DISABLED_TESTS:=$(shell awk '/^DISABLED/{f=1;next};/<END>/{f=0}f' TODO | cut -d' ' -f1)
 
 # When SKIPSSL is on, skip running tests which rely on SSL
-ifeq ($(SKIPSSL), 1)
-SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/' | sort -u)
-DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+ifeq ($(SKIPSSL),1)
+  SKIPS:=$(shell grep ssl *.test/lrl*  | grep 'ssl_client_mode VERIFY' | cut -f1 -d'/')
+  DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
 
 # Skip tests that need tcl
 ifeq ($(wildcard $(BUILDDIR)/tcl/libtclcdb2.so),)
-#if we have not compiled with tcl, skip tests that require tclcdb2
-SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/' | sort -u)
-DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+  #if we have not compiled with tcl, skip tests that require tclcdb2
+  SKIPS:=$(shell ls *.test/*.tcl | xargs grep 'package require tclcdb2' | cut -f1 -d'/')
+  DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
 
 # Skip any tests that we specifically want by reading 'tests/excluded.txt'
+# which should contain one line per test (line can be testname or testname.test)
 ifeq ($(wildcard excluded.txt),excluded.txt)
-SKIPS:=$(shell cat excluded.txt | sort -u)
-DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
+  SKIPS:=$(shell cat excluded.txt)
+  DISABLED_TESTS:="${DISABLED_TESTS} ${SKIPS}"
 endif
-
-export DISABLED_TESTS
 
 DOALL:=0
-
 ifeq ($(subst all,,$(MAKECMDGOALS)),) #if cmdgoals empty or 'all'
-DOALL:=1
+  # only used to assign TOTAL below, and to print as debug info in target showparams
+  DOALL:=1
 endif
 
-# List of all tests that need to run. This is essentially a list of all
-# non-disabled tests.
-export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
-    $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
+# List of all tests that need to run.
+ifeq ($(wildcard alltests.txt),alltests.txt)
+  # If file alltests.txt exists, only run the tests in that file (one line per test)
+  export ALL_TESTS:=$(patsubst %.test, %, $(shell sort -u alltests.txt) )
+else
+  ifneq ($(DISABLED_TESTS),)
+    DISABLED_TESTS:=" $(shell echo $(DISABLED_TESTS) | tr ' ' '\n' | sort -u) "
+  endif
 
+  export DISABLED_TESTS
+
+  # This is the list of all non-disabled tests.
+  export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
+      $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
+endif
+
+# get number of TOTAL tests running: used for printing progress report of tests
 TOTAL=$(words $(MAKECMDGOALS) )
 ifeq ($(DOALL),1)
-TOTAL=$(words $(ALL_TESTS) )
+  TOTAL=$(words $(ALL_TESTS) )
 endif
 
 all: init basicops all_tests
@@ -65,7 +79,7 @@ basicops_nokey: init
 	$(shell echo "SRCHOME=${SRCHOME} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTSROOTDIR=${TESTSROOTDIR} " >> ${TESTDIR}/test.log)
 	$(shell echo "TESTDIR=${TESTDIR} " >> ${TESTDIR}/test.log)
-	$(shell echo "DISABLED= $(sort ${DISABLED_TESTS}) " >> ${TESTDIR}/test.log)
+	$(shell echo "DISABLED= ${DISABLED_TESTS} " >> ${TESTDIR}/test.log)
 	$(shell echo "MAKECMDGOALS=${MAKECMDGOALS}" >> ${TESTDIR}/test.log)
 	$(shell echo "" >> ${TESTDIR}/test.log)
 
