@@ -560,9 +560,8 @@ constraints
 (part='---------------------------------- PART #25 ----------------------------------')
 (part='---------------------------------- PART #26 ----------------------------------')
 [CREATE TABLE t2(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1)] failed with rc -3 near ")": syntax error
-[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE SET NULL)] failed with rc -3 Actions other than cascading delete and update are currently not supported in Comdb2.
-[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE SET DEFAULT)] failed with rc -3 Actions other than cascading delete and update are currently not supported in Comdb2.
-[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE RESTRICT)] failed with rc -3 Actions other than cascading delete and update are currently not supported in Comdb2.
+[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE SET DEFAULT)] failed with rc -3 requested cascade action is not supported
+[CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE RESTRICT)] failed with rc -3 requested cascade action is not supported
 [CREATE TABLE t6(i INT PRIMARY KEY, FOREIGN KEY (i) REFERENCES t1(i) ON DELETE junk)] failed with rc -3 near "junk": syntax error
 (part='---------------------------------- PART #27 ----------------------------------')
 (tablename='t1', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='N', lastsequence=NULL)

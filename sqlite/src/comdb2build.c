@@ -2634,7 +2634,8 @@ enum {
 enum {
     CONS_UPD_CASCADE = 1 << 0,
     CONS_DEL_CASCADE = 1 << 1,
-    CONS_DELETED = 1 << 2,
+    CONS_DEL_SETNULL = 1 << 2,
+    CONS_DELETED     = 1 << 3,
 };
 
 struct comdb2_constraint {
@@ -3122,6 +3123,9 @@ static void csc2_append_fkey_cons(struct strbuf *csc2,
     }
     if ((constraint->flags & CONS_DEL_CASCADE) != 0) {
         strbuf_append(csc2, "on delete cascade ");
+    }
+    if ((constraint->flags & CONS_DEL_SETNULL) != 0) {
+        strbuf_append(csc2, "on delete set null ");
     }
 }
 
@@ -4066,6 +4070,9 @@ static int retrieve_fk_constraint(Parse *pParse, struct comdb2_ddl_context *ctx,
         }
         if (cons->flags & CT_DEL_CASCADE) {
             constraint->flags |= CONS_DEL_CASCADE;
+        }
+        if (cons->flags & CT_DEL_SETNULL) {
+            constraint->flags |= CONS_DEL_SETNULL;
         }
 
         if (cons->consname) {
@@ -5516,19 +5523,21 @@ static int check_constraint_action(Parse *pParse, int *flags)
 
     *flags = 0;
 
-    if ((on_delete != 0 && on_delete != OE_Cascade) ||
+    if ((on_delete != 0 && (on_delete != OE_Cascade &&
+                            on_delete != OE_SetNull)) ||
         (on_update != 0 && on_update != OE_Cascade)) {
         pParse->rc = SQLITE_ERROR;
-        sqlite3ErrorMsg(pParse, "Actions other than cascading delete and "
-                                "update are currently not supported in "
-                                "Comdb2.");
+        sqlite3ErrorMsg(pParse, "requested cascade action is not supported");
         return 1;
     } else {
         if (on_delete == OE_Cascade) {
-            *flags |= CT_DEL_CASCADE;
+            *flags |= CONS_DEL_CASCADE;
+        }
+        if (on_delete == OE_SetNull) {
+            *flags |= CONS_DEL_SETNULL;
         }
         if (on_update == OE_Cascade) {
-            *flags |= CT_UPD_CASCADE;
+            *flags |= CONS_UPD_CASCADE;
         }
     }
 
