@@ -16,7 +16,7 @@ limitations under the License. -->
   <groupId>com.bloomberg.comdb2</groupId>
   <modelVersion>4.0.0</modelVersion>
   <artifactId>cdb2jdbc</artifactId>
-  <version>2.4.0</version>
+  <version>2.5.0</version>
   <packaging>jar</packaging>
   <properties>
     <maven.compiler.source>1.6</maven.compiler.source>
@@ -37,9 +37,11 @@ limitations under the License. -->
     </dependency>
   </dependencies>
   <build>
-    <!-- explicitly copy services file to JAR for auto-regiration -->
     <resources>
       <resource>
+        <directory>src/main/resources/</directory>
+      </resource>
+      <resource> <!-- explicitly copy services file to JAR for auto-regiration -->
         <directory>src/main/resources/META-INF/services</directory>
         <targetPath>META-INF/services</targetPath>
       </resource>
