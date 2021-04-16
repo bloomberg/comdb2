@@ -993,7 +993,7 @@ run:
     }
     fdbc->sql_hint = sql;
 
-    rc = fdbc_if->move(cur, CFIRST);
+    rc = fdbc_if->move(cur, CFIRST | NORETRY);
     fdbc_if = cur->fdbc; /* retry might get another cursor */
     if (rc != IX_FND && rc != IX_FNDMORE) {
         /* maybe remote is old code, retry in unversioned mode */
@@ -2977,6 +2977,22 @@ done:
     return rc;
 }
 
+static void _update_fdb_version(BtCursor *pCur, char *errstr)
+{
+    /* extract protocol number */
+    unsigned int protocol_version;
+
+    protocol_version = atoll(errstr);
+
+    logmsg(LOGMSG_ERROR,
+           "%s: remote db %s requires protocol "
+           "version %d, downgrading from %d\n",
+           __func__, pCur->bt->fdb->dbname, protocol_version,
+           pCur->bt->fdb->server_version);
+
+    pCur->bt->fdb->server_version = protocol_version;
+}
+
 #define RETRY_GET_ROW 16
 static int fdb_cursor_move_sql(BtCursor *pCur, int how)
 {
@@ -2988,6 +3004,9 @@ static int fdb_cursor_move_sql(BtCursor *pCur, int how)
     unsigned long long end_rpc;
     int retry = 0;
 
+    int no_version_retry = how & NORETRY;
+    how &= 0x0F;
+
     if (fdbc) {
 retry:
         start_rpc = osql_log_time();
@@ -2995,6 +3014,7 @@ retry:
         /* this is a rewind, lets make sure the pipe is clean */
         if ((how == CFIRST || how == CLAST) &&
             (fdbc->streaming != FDB_CUR_IDLE)) {
+        version_retry:
             rc = fdb_cursor_reopen(pCur);
             if (rc || !pCur->fdbc /*did we fail to pass error back */) {
                 logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
@@ -3072,17 +3092,12 @@ retry:
 
                     rc = SQLITE_SCHEMA_REMOTE;
                 } else if (rc == FDB_ERR_FDB_VERSION) {
-                    /* extract protocol number */
-                    unsigned int protocol_version;
+                    _update_fdb_version(pCur, errstr);
 
-                    protocol_version = atoll(errstr);
-
-                    logmsg(LOGMSG_INFO, "%s: remote db %s requires protocol "
-                                    "version %d, downgrading from %d\n",
-                            __func__, pCur->bt->fdb->dbname, protocol_version,
-                            pCur->bt->fdb->server_version);
-
-                    pCur->bt->fdb->server_version = protocol_version;
+                    if (!no_version_retry && (how == CFIRST || how == CLAST)) {
+                        no_version_retry = 1;
+                        goto version_retry;
+                    }
                 } else if (rc == FDB_ERR_SSL) {
 #if WITH_SSL
                     /* extract ssl config */
@@ -3213,6 +3228,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
     int packed_keylen = 0;
     unsigned long long start_rpc;
     unsigned long long end_rpc;
+    int no_version_retry = 0;
 
     if (fdbc) {
         int sqllen;
@@ -3221,6 +3237,7 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
 
         /* this is a rewind, lets make sure the pipe is clean */
         if (fdbc->streaming != FDB_CUR_IDLE) {
+        version_retry:
             rc = fdb_cursor_reopen(pCur);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed to reconnect rc=%d\n", __func__,
@@ -3313,6 +3330,14 @@ static int fdb_cursor_find_sql_common(BtCursor *pCur, Mem *key, int nfields,
                     fdbc->ent->tbl->need_version = remote_version + 1;
 
                     rc = SQLITE_SCHEMA_REMOTE;
+                    rc = SQLITE_SCHEMA_REMOTE;
+                } else if (rc == FDB_ERR_FDB_VERSION) {
+                    _update_fdb_version(pCur, errstr);
+
+                    if (!no_version_retry) {
+                        no_version_retry = 1;
+                        goto version_retry;
+                    }
                 } else {
                     if (rc != FDB_ERR_SSL) {
                         if (state) {

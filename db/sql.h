@@ -905,7 +905,7 @@ struct Btree {
     fdb_t *fdb;
 };
 
-enum { CFIRST, CNEXT, CPREV, CLAST };
+enum { CFIRST = 0, CNEXT = 1, CPREV = 2, CLAST = 3, NORETRY = 256 };
 
 typedef enum {
     CURSORCLASS_TEMPTABLE = 1,
