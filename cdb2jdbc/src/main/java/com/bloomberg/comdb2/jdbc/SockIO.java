@@ -130,6 +130,10 @@ public class SockIO implements IO {
 
     @Override
     public boolean open() {
+        HealthChecker hc = Driver.getHealthChecker();
+        if (hc != null && hc.isHostDown(host))
+            return false;
+
         try {
             close();
             sock = new Socket();
