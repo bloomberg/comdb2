@@ -2924,8 +2924,7 @@ static int cursor_move_remote(BtCursor *pCur, int *pRes, int how)
 
         return SQLITE_SCHEMA_REMOTE;
     } else if (rc == FDB_ERR_FDB_VERSION) {
-        /* corner case, the db was backout to a lower protocol */
-        /* TODO: */
+        /* lower level handles the retries here */
         abort();
     } else {
         assert(rc != 0);
@@ -5360,8 +5359,7 @@ cursor_find_remote(BtCursor *pCur,            /* The cursor to be moved */
 
         return SQLITE_SCHEMA_REMOTE;
     } else if (rc == FDB_ERR_FDB_VERSION) {
-        /* corner case, the db was backout to a lower protocol */
-        /* TODO: */
+        /* lower level handles the retries here */
         abort();
     } else {
         *pRes = -1;
