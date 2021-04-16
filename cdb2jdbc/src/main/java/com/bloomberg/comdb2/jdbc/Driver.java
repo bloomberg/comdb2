@@ -17,6 +17,7 @@ import java.sql.*;
 import java.util.*;
 import java.util.logging.*;
 import java.lang.reflect.*;
+import java.io.*;
 
 /**
  * @author Rivers Zhang
@@ -25,6 +26,7 @@ public class Driver implements java.sql.Driver {
     private static Logger logger = Logger.getLogger(Driver.class.getName());
     public static final String PREFIX = "jdbc:comdb2:";
     protected HashMap<String, Option> options = new HashMap<String, Option>();
+    private static HealthChecker healthChecker;
 
     public Driver() throws SQLException {
         populateOptions();
@@ -141,6 +143,26 @@ public class Driver implements java.sql.Driver {
         if (!acceptsURL(url))
             return null;
 
+        /* Register addons from config. */
+        InputStream is = Driver.class.getClassLoader().getResourceAsStream("cdb2jdbc.properties");
+        if (is != null) {
+            Properties props = new Properties();
+            try {
+                props.load(is);
+                String value = props.getProperty("addons");
+                String[] addons = value.split(",");
+                for (String addon : addons) {
+                    try {
+                        Class.forName("com.bloomberg.comdb2.jdbc." + addon);
+                    } catch(ClassNotFoundException e) {
+                        logger.log(Level.WARNING, String.format("Error loading %s addon", addon));
+                    }
+                }
+            } catch (IOException ioe) {
+                logger.log(Level.WARNING, "Error processing properties file\n");
+            }
+        }
+
         /**
          * The format of connection string is `jdbc:comdb2:<dbname>:<cluster>'.
          */
@@ -228,6 +250,17 @@ public class Driver implements java.sql.Driver {
                     if (keyval.length != 2)
                         continue;
 
+                    if (keyval[0].equalsIgnoreCase("addons")) {
+                        String[] addons = keyval[1].split(",");
+                        for (String addon : addons) {
+                            try {
+                                Class.forName("com.bloomberg.comdb2.jdbc." + addon);
+                            } catch(ClassNotFoundException e) {
+                                logger.log(Level.WARNING, String.format("Error loading %s addon", addon));
+                            }
+                        }
+                    }
+
                     Option opt = options.get(keyval[0]);
                     if (opt != null) {
                         opt.process(ret, keyval[1], info);
@@ -278,5 +311,12 @@ public class Driver implements java.sql.Driver {
         return null;
     }
 
+    public static void setHealthChecker(HealthChecker hc) {
+        healthChecker = hc;
+    }
+
+    public static HealthChecker getHealthChecker() {
+        return healthChecker;
+    }
 }
 /* vim: set sw=4 ts=4 et: */
