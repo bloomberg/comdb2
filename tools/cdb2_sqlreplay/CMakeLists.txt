@@ -18,4 +18,7 @@ target_link_libraries(cdb2_sqlreplay ${libs})
 if(COMDB2_BUILD_STATIC)
   set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -static-libgcc -static-libstdc++")
 endif()
+
+set_property(TARGET cdb2_sqlreplay PROPERTY CXX_STANDARD 11)
+
 install(TARGETS cdb2_sqlreplay RUNTIME DESTINATION bin)
