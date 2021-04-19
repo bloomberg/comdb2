@@ -28,14 +28,14 @@ cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 # trying a missing table
 cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t_missing order by id"  &>> $output
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 # trying again the good query on a different table
 cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t2 order by id" >> $output 2>&1
@@ -45,7 +45,7 @@ cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output.log > output.log.actual
@@ -79,14 +79,14 @@ cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb clear s
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
 # trying a missing table
 cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t_missing order by id" >> $output 2>&1
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
 # trying a good query
 cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id" >> $output 2>&1
@@ -96,7 +96,7 @@ cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t2 order by i
 
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 #convert the table to actual dbname
 sed "s/dorintdb/${a_remdbname}/g" output_2.log > output_2.log.actual

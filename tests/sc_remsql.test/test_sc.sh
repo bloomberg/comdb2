@@ -32,7 +32,7 @@ cdb2sql --host $mach $a_dbname "select * from LOCAL_${a_remdbname}.t order by id
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
 echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
 # schema change the remote V1->V1'
 cdb2sql --cdb2cfg ${a_remcdb2config} $a_remdbname default "alter table t { `cat t.csc2 ` }"
@@ -49,7 +49,7 @@ cdb2sql -cost --host $mach $a_dbname default "select * from LOCAL_${a_remdbname}
 # get the new version V2'
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
 echo cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
 sed "s/DBNAME/${a_remdbname}/g" output.log > output.log.actual
 

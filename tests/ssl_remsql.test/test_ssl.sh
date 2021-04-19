@@ -23,7 +23,7 @@ cdb2sql -s --cdb2cfg $cdb2cfg2 $db2 --host $node "select * from LOCAL_${db1}.t o
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
 echo cdb2sql --tabs --cdb2cfg $cdb2cfg2 $db2 --host $node "exec procedure sys.cmd.send(\"fdb info db\")" 
-cdb2sql --tabs --cdb2cfg $cdb2cfg2 $db2 --host $node "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql --tabs --cdb2cfg $cdb2cfg2 $db2 --host $node "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
 # validate results 
 testcase_output=$(cat $output)

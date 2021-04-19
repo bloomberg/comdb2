@@ -75,7 +75,7 @@ run_test()
    # get the version V2
    #comdb2sc $a_dbname send fdb info db >> $output 2>&1
    echo ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-   ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+   ${CDB2SQL_EXE} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" 2>&1 | cut -f 5- -d ' ' >> $output
 
    work_exp_output=${exp_output}.actual
    sed "s/ t / LOCAL_${a_remdbname}.${tblname} /g" ${exp_output}  > ${work_exp_output}
