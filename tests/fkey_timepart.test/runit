@@ -16,7 +16,7 @@ OUT="run.log"
 rm $OUT 2>/dev/null
 touch $OUT
 
-function show_timepart() 
+function show_timepart 
 {
     echo cdb2sql ${CDB2_OPTIONS} $dbname default "select name, period, retention, nshards, version, shard0name from comdb2_timepartitions" 
     cdb2sql ${CDB2_OPTIONS} $dbname default "select name, period, retention, nshards, version, shard0name from comdb2_timepartitions" >> $OUT

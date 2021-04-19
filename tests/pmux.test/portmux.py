@@ -4,11 +4,13 @@ import socket
 import sys
 import unittest
 import threading
+import os
 
 numports=1000
 startport = 19000
 port=5105
 unix_path='/tmp/portmux.socket'
+
 
 class BufferedSocketReader(socket.socket):
     def __init__(self, family=socket.AF_INET, type=socket.SOCK_STREAM, proto=0, fileno=None):
@@ -105,7 +107,7 @@ class Pmux(unittest.TestCase):
         self.assertEqual(send(fast, 'reg abc\n'), 8)
         self.assertEqual(fast.get_response(), str(startport))
         self.assertEqual(send(slow, 't\n'), 2)
-        self.assertEqual(slow.get_response(), 'free ports: 999')
+        self.assertEqual(slow.get_response(), 'free ports: ' + str(numports - 1))
         self.assertEqual(send(fast, 'del abc\n'), 8)
         self.assertEqual(fast.get_response(), '0')
         fast.close()
@@ -252,4 +254,15 @@ class Pmux(unittest.TestCase):
     #    self.assertIsNone(s.close())
 
 if __name__ == '__main__':
+    if(os.environ.get('PMUXPORT')):
+        port = int(os.environ.get('PMUXPORT'))
+    if(os.environ.get('START_PORT')):
+        startport = int(os.environ.get('START_PORT'))
+    if(os.environ.get('UNIX_PATH')):
+        unix_path = os.environ.get('UNIX_PATH')
+    if(os.environ.get('NUM_PORTS')):
+        numports = int(os.environ.get('NUM_PORTS'))
+
+    print (port, startport, unix_path, numports)
+
     unittest.main()
