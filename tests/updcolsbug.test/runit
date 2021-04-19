@@ -121,7 +121,7 @@ done
 flushall
 
 
-function perform_check() 
+function perform_check
 {
     if [[ -n "$CLUSTER" ]] ; then 
       for node in $CLUSTER ; do

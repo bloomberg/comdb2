@@ -654,7 +654,7 @@ static bool init(const std::vector<std::pair<int, int>> &pranges)
     }
     for (auto &range : pranges) {
         debug_log("%s free port range %d - %d\n", __func__, range.first,
-                    range.second);
+                  range.second);
         for (int s = range.first; s <= range.second; ++s) {
             free_ports.insert(s);
         }
@@ -757,6 +757,15 @@ int main(int argc, char **argv)
         }
     }
 
+    /* Extern optind is populated by getopt() -- if it is less than argc
+     * then it points to an argument that was not processed by getopt.
+     * If that is the case it means invalid arguments were passed in
+     */
+    if (optind < argc) {
+        fprintf(stderr, "%s: invalid argument '%s'\n", argv[0], argv[optind]);
+        return usage(stderr, EXIT_FAILURE);
+    }
+
     if (listen_ports.size() == 0) {
         listen_ports.push_back(5105); // default port
     }
@@ -796,7 +805,7 @@ int main(int argc, char **argv)
     sighold(SIGPIPE);
     base = event_base_new();
     debug_log("Using Libevent %s with backend method %s\n",
-                event_get_version(), event_base_get_method(base));
+              event_get_version(), event_base_get_method(base));
     std::vector<evconnlistener *> listeners;
     evconnlistener *listener;
     for (auto port : listen_ports) {
@@ -811,7 +820,7 @@ int main(int argc, char **argv)
             evconnlistener_set_error_cb(listener, accept_errorcb);
             listeners.push_back(listener);
             debug_log("accept on port:%d fd:%d\n", port,
-                   evconnlistener_get_fd(listener));
+                      evconnlistener_get_fd(listener));
             pmux_store->sav_port("pmux", port);
         } else {
             syslog(LOG_CRIT, "failed to listen on port:%d\n", port);
@@ -830,7 +839,7 @@ int main(int argc, char **argv)
         evconnlistener_set_error_cb(listener, accept_errorcb);
         listeners.push_back(listener);
         debug_log("accept on path:%s fd:%d\n", unix_bind_path.c_str(),
-                evconnlistener_get_fd(listener));
+                  evconnlistener_get_fd(listener));
     } else {
         syslog(LOG_CRIT, "failed to listen on unix path:%s\n", unix_bind_path.c_str());
         return EXIT_FAILURE;

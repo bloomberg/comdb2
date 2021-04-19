@@ -60,12 +60,6 @@ insert_records()
 }
 
 
-function getmaster {
-    cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
-}
-
-
-
 #make sure verify behaves as we expect
 cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "exec procedure sys.cmd.verify('')" &> verify1.out
 echo "Usage: verify(\"<table>\" [,\"serial\"|\"parallel\"|\"data\"|\"blobs\"|\"indices\",[\"verbose\"]])
