@@ -4459,14 +4459,24 @@ static int __fdb_info_ent(void *obj, void *arg)
     fdb_tbl_ent_t *ent = (fdb_tbl_ent_t *)obj;
 
     if (ent->ixnum == -1) {
-        logmsg(LOGMSG_USER, "Table \"%s\" Rootp %d Remrootp %d Version=%llx\n",
-                ent->name, ent->rootpage, ent->source_rootpage,
-                ent->tbl->version);
+        logmsg(
+            LOGMSG_USER,
+            "Db \"%s\" Class \"%s\" Table \"%s\" Rootp %d Remrootp %d "
+            "Version=%llx\n",
+            ent->tbl->fdb->dbname,
+            ent->tbl->fdb->local ? "local"
+                                 : mach_class_class2name(ent->tbl->fdb->class),
+            ent->name, ent->rootpage, ent->source_rootpage, ent->tbl->version);
     } else {
-        logmsg(LOGMSG_USER, 
-            "Index \"%s\" for table \"%s\" Rootp %d Remrootp %d Version=%llx\n",
-            ent->name, ent->tbl->name, ent->rootpage, ent->source_rootpage,
-            ent->tbl->version);
+        logmsg(LOGMSG_USER,
+               "Db \"%s\" Class \"%s\" Index \"%s\" for table \"%s\" Rootp %d "
+               "Remrootp %d Version=%llx\n",
+               ent->tbl->fdb->dbname,
+               ent->tbl->fdb->local
+                   ? "local"
+                   : mach_class_class2name(ent->tbl->fdb->class),
+               ent->name, ent->tbl->name, ent->rootpage, ent->source_rootpage,
+               ent->tbl->version);
     }
 
     return FDB_NOERR;
