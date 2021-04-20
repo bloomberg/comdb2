@@ -110,19 +110,34 @@ uint8_t *req_hdr_put(const struct req_hdr *p_req_hdr, uint8_t *p_buf,
 }
 
 const uint8_t *req_hdr_get(struct req_hdr *p_req_hdr, const uint8_t *p_buf,
-                           const uint8_t *p_buf_end)
+                           const uint8_t *p_buf_end, int flags)
 {
     if (p_buf_end < p_buf || REQ_HDR_LEN > (p_buf_end - p_buf))
         return NULL;
 
-    p_buf =
-        buf_get(&(p_req_hdr->ver1), sizeof(p_req_hdr->ver1), p_buf, p_buf_end);
-    p_buf =
-        buf_get(&(p_req_hdr->ver2), sizeof(p_req_hdr->ver2), p_buf, p_buf_end);
-    p_buf = buf_get(&(p_req_hdr->luxref), sizeof(p_req_hdr->luxref), p_buf,
-                    p_buf_end);
-    p_buf = buf_get(&(p_req_hdr->opcode), sizeof(p_req_hdr->opcode), p_buf,
-                    p_buf_end);
+    /* comdbg routines store the opcode as an integer in the second word of the
+     * buffer. If that's the origin of the request, read it "correctly" */
+    if (flags & COMDBG_FLAG_FROM_LE) {
+        p_req_hdr->opcode = flags & 0xffff;
+
+        // ver1, ver2
+        p_buf = buf_skip(6, (void*) p_buf, p_buf_end);
+        // luxref
+        p_buf = buf_get(&p_req_hdr->luxref, sizeof(p_req_hdr->luxref), p_buf, p_buf_end);
+        // opcode (skip, see above)
+        p_buf = buf_skip(1, (void*) p_buf, p_buf_end);
+    }
+    else {
+        p_buf = buf_get(&(p_req_hdr->ver1), sizeof(p_req_hdr->ver1), p_buf,
+                p_buf_end);
+        p_buf = buf_get(&(p_req_hdr->ver2), sizeof(p_req_hdr->ver2), p_buf,
+                p_buf_end);
+        p_buf = buf_get(&(p_req_hdr->luxref), sizeof(p_req_hdr->luxref), p_buf,
+                p_buf_end);
+        p_buf = buf_get(&(p_req_hdr->opcode), sizeof(p_req_hdr->opcode), p_buf,
+                p_buf_end);
+    }
+
 
     return p_buf;
 }

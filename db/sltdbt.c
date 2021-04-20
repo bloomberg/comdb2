@@ -230,6 +230,9 @@ static comdb2_opcode_t block_op_handler = {OP_BLOCK, "blockop",
                                            handle_op_block};
 static comdb2_opcode_t fwd_block_op_handler = {OP_FWD_BLOCK, "fwdblockop",
                                                handle_op_block};
+static comdb2_opcode_t fwd_block_le_op_handler = {OP_FWD_BLOCK_LE, "fwdblockople",
+                                               handle_op_block};
+
 int init_opcode_handlers()
 {
     /* Initialize the opcode handler hash. */
@@ -239,6 +242,7 @@ int init_opcode_handlers()
     /* Also register the builtin opcode handlers. */
     hash_add(gbl_opcode_hash, &block_op_handler);
     hash_add(gbl_opcode_hash, &fwd_block_op_handler);
+    hash_add(gbl_opcode_hash, &fwd_block_le_op_handler);
 
     return 0;
 }

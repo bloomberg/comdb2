@@ -818,7 +818,7 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      uint8_t *p_buf, const uint8_t *p_buf_end, int debug,
                      char *frommach, int frompid, char *fromtask, int qtype,
                      void *data_hndl, int luxref, unsigned long long rqid,
-                     void *p_sinfo, intptr_t curswap)
+                     void *p_sinfo, intptr_t curswap, int comdbg_flags)
 {
     struct req_hdr hdr;
     uint64_t nowus;
@@ -860,8 +860,11 @@ static int init_ireq(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     /* IPC stuff */
     iq->p_sinfo = p_sinfo;
     iq->curswap = curswap;
+    iq->comdbg_flags = comdbg_flags;
 
-    if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end))) {
+
+    /* HERE: unpack and get the proper lux - req_hdr_get_and_fixup_lux */
+    if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end, iq->comdbg_flags))) {
         errUNLOCK(&lock);
         logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
         return reterr(curswap, /*thd*/ 0, iq, ERR_BADREQ);
@@ -948,7 +951,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                      char *frommach, int frompid, char *fromtask,
                      sorese_info_t *sorese, int qtype, void *data_hndl,
                      int luxref, unsigned long long rqid, void *p_sinfo,
-                     intptr_t curswap)
+                     intptr_t curswap, int comdbg_flags)
 {
     int rc, num, ndispatch, iamwriter = 0;
     int add_latency = gbl_handle_buf_add_latency_ms;
@@ -977,7 +980,7 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 
         rc = init_ireq(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
                        frommach, frompid, fromtask, qtype, data_hndl, luxref,
-                       rqid, p_sinfo, curswap);
+                       rqid, p_sinfo, curswap, comdbg_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
             return rc;
@@ -987,6 +990,13 @@ int handle_buf_main2(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
        fprintf(stderr, "%s:%d: THD=%d delivered iq=%p\n", __func__, __LINE__, pthread_self(), iq);
 #endif
     }
+
+    if (iq->comdbg_flags == -1)
+        iq->comdbg_flags = 0;
+
+    if (p_buf && p_buf[7] == OP_FWD_BLOCK_LE)
+        iq->comdbg_flags |= COMDBG_FLAG_FROM_LE;
+
 
     {
         ++handled_queue;
@@ -1209,7 +1219,7 @@ int handle_buf_main(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
 {
     return handle_buf_main2(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,
-                            rqid, 0, 0);
+                            rqid, 0, 0, 0);
 }
 struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
                                 const uint8_t *p_buf_end, int debug,
@@ -1231,7 +1241,7 @@ struct ireq *create_sorese_ireq(struct dbenv *dbenv, SBUF2 *sb, uint8_t *p_buf,
         logmsg(LOGMSG_ERROR, "can't allocate ireq\n");
     }
     rc = init_ireq(dbenv, iq, sb, p_buf, p_buf_end, debug, frommach, 0, NULL,
-                   REQ_OFFLOAD, NULL, 0, 0, 0, 0);
+                   REQ_OFFLOAD, NULL, 0, 0, 0, 0, 0);
     if (rc)
         /* init_ireq unlocks on error */
         return NULL;
@@ -1281,7 +1291,8 @@ static int is_req_write(int opcode)
     if (opcode == OP_FWD_LBLOCK || opcode == OP_BLOCK ||
         opcode == OP_LONGBLOCK || opcode == OP_FWD_BLOCK ||
         opcode == OP_CLEARTABLE || opcode == OP_TRAN_FINALIZE ||
-        opcode == OP_TRAN_COMMIT || opcode == OP_TRAN_ABORT)
+        opcode == OP_TRAN_COMMIT || opcode == OP_TRAN_ABORT  ||
+        opcode == OP_FWD_BLOCK_LE)
         return 1;
     return 0;
 }
