@@ -430,7 +430,7 @@ static int forward_longblock_to_master(struct ireq *iq,
 
     /*modify request to indicate forwarded and send off to remote */
     if (req_hdr_get(&req_hdr, iq->p_buf_out_start,
-                    p_blkstate->p_buf_req_start) != p_blkstate->p_buf_req_start)
+                    p_blkstate->p_buf_req_start, 0) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
     req_hdr.opcode = OP_FWD_LBLOCK;
     if (req_hdr_put(&req_hdr, iq->p_buf_out_start,
@@ -497,9 +497,13 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
     /*modify request to indicate forwarded and send off to remote */
 
     if (req_hdr_get(&req_hdr, iq->p_buf_out_start,
-                    p_blkstate->p_buf_req_start) != p_blkstate->p_buf_req_start)
+                    p_blkstate->p_buf_req_start, iq->comdbg_flags) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
     req_hdr.opcode = OP_FWD_BLOCK;
+    if (iq->comdbg_flags & COMDBG_FLAG_FROM_LE) {
+        req_hdr.opcode = OP_FWD_BLOCK_LE;
+    }
+
     if (req_hdr_put(&req_hdr, iq->p_buf_out_start,
                     p_blkstate->p_buf_req_start) != p_blkstate->p_buf_req_start)
         return ERR_INTERNAL;
@@ -511,7 +515,7 @@ static int forward_block_to_master(struct ireq *iq, block_state_t *p_blkstate,
     /* write it and make sure we wrote the same length */
     if (p_blkstate->p_buf_req_start != iq->p_buf_out ||
         (iq->p_buf_out = block_fwd_put(&fwd, iq->p_buf_out,
-                                       iq->p_buf_out_end)) != iq->p_buf_in)
+                                       iq->p_buf_out_end, iq->comdbg_flags)) != iq->p_buf_in)
         return ERR_INTERNAL;
 
     req_len = p_blkstate->p_buf_req_end - iq->p_buf_out_start;
@@ -866,7 +870,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         case FSTBLK_RSPOK: {
             rsp.num_completed = num_reqs;
             if (!(iq->p_buf_out =
-                      block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end))) {
+                      block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end, iq->comdbg_flags))) {
                 blkseq_line = __LINE__;
                 goto replay_error;
             }
@@ -906,7 +910,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
 
             rsp.num_completed = fstblk_rsperr.num_completed;
             if (!(iq->p_buf_out =
-                      block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end))) {
+                      block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end, iq->comdbg_flags))) {
                 blkseq_line = __LINE__;
                 goto replay_error;
             }
@@ -1116,7 +1120,7 @@ replay_error:
     }
     struct block_rsp errrsp;
     errrsp.num_completed = 0;
-    iq->p_buf_out = block_rsp_put(&errrsp, iq->p_buf_out, iq->p_buf_out_end);
+    iq->p_buf_out = block_rsp_put(&errrsp, iq->p_buf_out, iq->p_buf_out_end, iq->comdbg_flags);
 
     outrc = ERR_BLOCK_FAILED;
     blkseq_replay_error_count++;
@@ -1447,7 +1451,7 @@ int tolongblock(struct ireq *iq)
 
             p_buf_op_start = (uint8_t *)iq->p_buf_in;
             if (!(iq->p_buf_in = packedreq_hdr_get(&op_hdr, iq->p_buf_in,
-                                                   blkstate.p_buf_req_end)) ||
+                                                   blkstate.p_buf_req_end, 0)) ||
                 block_state_set_next(iq, &blkstate, op_hdr.nxt))
                 break;
 
@@ -1832,7 +1836,7 @@ static int toblock_req_int(struct ireq *iq, block_state_t *p_blkstate)
     int rc;
     struct block_req req;
 
-    if (!(iq->p_buf_in = block_req_get(&req, iq->p_buf_in, iq->p_buf_in_end))) {
+    if (!(iq->p_buf_in = block_req_get(&req, iq->p_buf_in, iq->p_buf_in_end, iq->comdbg_flags))) {
         if (iq->debug)
             reqprintf(iq, "BAD BLOCK REQ");
         return ERR_BADREQ;
@@ -1868,6 +1872,13 @@ static int toblock_fwd_int(struct ireq *iq, block_state_t *p_blkstate)
             reqprintf(iq, "BAD BLOCK FWD");
         return ERR_BADREQ;
     }
+
+    if (iq->opcode == OP_FWD_BLOCK_LE) {
+        /* everything else is identical except the block inside the envelope
+         * came from a little endian client */
+        iq->comdbg_flags = COMDBG_FLAG_FROM_LE | OP_FWD_BLOCK;
+    }
+
 
     if ((rc = block_state_set_end(iq, p_blkstate, fwd.offset)))
         return rc;
@@ -1905,6 +1916,7 @@ int toblock(struct ireq *iq)
         break;
 
     case OP_FWD_BLOCK: /*forwarded block op*/
+    case OP_FWD_BLOCK_LE:
         rc = toblock_fwd_int(iq, &blkstate);
         break;
 
@@ -2466,15 +2478,19 @@ static int pack_up_response(struct ireq *iq, int have_keyless_requests,
         rsp.num_completed = opnum;
 
         if (!(iq->p_buf_out =
-                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
+                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end, iq->comdbg_flags)))
             return ERR_INTERNAL;
 
         /* rcodes */
         for (int jj = 0; jj < num_reqs; jj++) {
             int rcode;
+            int comdbg_flags = iq->comdbg_flags;
+
+            PUTFUNC
+
 
             rcode = (jj == opnum) ? rc : 0;
-            if (!(iq->p_buf_out = buf_put(&rcode, sizeof(rcode), iq->p_buf_out,
+            if (!(iq->p_buf_out = putfunc(&rcode, sizeof(rcode), iq->p_buf_out,
                                           iq->p_buf_out_end)))
                 return ERR_INTERNAL;
         }
@@ -2482,9 +2498,12 @@ static int pack_up_response(struct ireq *iq, int have_keyless_requests,
         /* rrns */
         for (int jj = 0; jj < num_reqs; jj++) {
             int rrn;
+            int comdbg_flags = iq->comdbg_flags;
+
+            PUTFUNC
 
             rrn = (jj < opnum) ? 2 : 0;
-            if (!(iq->p_buf_out = buf_put(&rrn, sizeof(rrn), iq->p_buf_out,
+            if (!(iq->p_buf_out = putfunc(&rrn, sizeof(rrn), iq->p_buf_out,
                                           iq->p_buf_out_end)))
                 return ERR_INTERNAL;
 
@@ -2651,6 +2670,8 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     int delayed = 0;
     int hascommitlock = 0;
 
+    int convert_flags = (iq->comdbg_flags & COMDBG_FLAG_FROM_LE) ? CONVERT_LITTLE_ENDIAN_CLIENT : 0;
+
     /* zero this out very high up or we can crash if we get to backout: without
      * having initialised this. */
     memset(blobs, 0, sizeof(blobs));
@@ -2681,7 +2702,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         iq->p_buf_in =
             longblock_req_hdr_get(&lhdr, iq->p_buf_in, iq->p_buf_in_end) + 4;
     else if (iq->opcode == OP_BLOCK || iq->opcode == OP_FWD_BLOCK)
-        iq->p_buf_in = block_req_get(&hdr, iq->p_buf_in, iq->p_buf_in_end);
+        iq->p_buf_in = block_req_get(&hdr, iq->p_buf_in, iq->p_buf_in_end, iq->comdbg_flags);
 
     /* backup everything we've read already (ie the header) */
     if (block_state_backup(p_blkstate, iq->p_buf_in,
@@ -2690,7 +2711,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         return ERR_INTERNAL;
 
     if (iq->opcode == OP_FWD_BLOCK || iq->opcode == OP_FWD_LBLOCK) {
-        /* this was forwarded from a slave comdb */
+        /* this was forwarded from a replicant */
         source_host = p_blkstate->source_host;
     } else {
         /* this is considered local block op */
@@ -2736,7 +2757,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             struct packedreq_hdr hdr;
 
             iq->p_buf_in = packedreq_hdr_get(&hdr, iq->p_buf_in,
-                                             p_blkstate->p_buf_req_end);
+                                             p_blkstate->p_buf_req_end, iq->comdbg_flags);
             if (iq->p_buf_in == NULL)
                 break;
             if (block_state_set_next(iq, p_blkstate, hdr.nxt))
@@ -2748,7 +2769,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             if (hdr.opcode > 0 && hdr.opcode < BLOCK_MAXOPCODE)
                 opcode_counts[gbl_blockop_count_xrefs[hdr.opcode]]++;
 
-            /* Since I am peaking into this, I adding my hacks here */
+            /* Since I am peeking into this, I adding my hacks here */
             switch (hdr.opcode) {
             case BLOCK_SEQ:
                 if (gbl_use_blkseq) {
@@ -2966,7 +2987,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
          ++opnum, block_state_next(iq, p_blkstate)) {
         struct packedreq_hdr hdr;
         if (!(iq->p_buf_in = packedreq_hdr_get(&hdr, iq->p_buf_in,
-                                               p_blkstate->p_buf_req_end)) ||
+                                               p_blkstate->p_buf_req_end, iq->comdbg_flags)) ||
             block_state_set_next(iq, p_blkstate, hdr.nxt)) {
             if (iq->debug)
                 reqprintf(iq, "%p:BAD BUFFER OFFSET OP %d", trans, opnum);
@@ -3716,7 +3737,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             ++delayed;
             if (!(iq->p_buf_in =
                       packedreq_add_get(&packedreq_add, iq->p_buf_in,
-                                        p_blkstate->p_buf_next_start))) {
+                                        p_blkstate->p_buf_next_start, iq->comdbg_flags))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK");
                 rc = ERR_BADREQ;
@@ -3782,13 +3803,17 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
 
             /* add */
+            int addflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
+            if (iq->comdbg_flags)
+                addflags |= RECFLAGS_COMDBG_FROM_LE;
+
             rc = add_record(iq, trans, p_buf_tag_name, p_buf_tag_name_end,
                             (uint8_t *)p_buf_data, p_buf_data_end, nulls,
                             NULL, /*blobs*/
                             0,    /*maxblobs*/
                             &err.errcode, &err.ixnum, &addrrn, &genid, -1ULL,
                             hdr.opcode, opnum, /*blkpos*/
-                            RECFLAGS_DYNSCHEMA_NULLS_ONLY, 0);
+                            addflags, 0);
 
             if (rc != 0) {
                 numerrs = 1;
@@ -3814,7 +3839,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_addsec_get(
-                      &addsec, iq->p_buf_in, p_blkstate->p_buf_req_end))) {
+                      &addsec, iq->p_buf_in, p_blkstate->p_buf_req_end, iq->comdbg_flags))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
@@ -3838,7 +3863,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_del_get(
-                      &delsc, iq->p_buf_in, p_blkstate->p_buf_req_end))) {
+                      &delsc, iq->p_buf_in, p_blkstate->p_buf_req_end, iq->comdbg_flags))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
@@ -3881,7 +3906,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             bzero(nulls, sizeof(nulls));
             rc = ctag_to_stag_buf(iq->usedb->tablename, ".DEFAULT_IX_0",
                                   (const char *)p_keydat, WHOLE_BUFFER, nulls,
-                                  ".ONDISK_IX_0", key, 0, NULL);
+                                  ".ONDISK_IX_0", key, convert_flags, NULL);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq, "ERR CLIENT CONVERT IX 0 RRN %d", rrn);
@@ -3905,7 +3930,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_delsec_get(
-                      &delsec, iq->p_buf_in, p_blkstate->p_buf_req_end))) {
+                      &delsec, iq->p_buf_in, p_blkstate->p_buf_req_end, iq->comdbg_flags))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
@@ -3941,10 +3966,14 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             const uint8_t *p_newdta_end;
             const uint8_t *p_buf_vdta;
             const uint8_t *p_buf_vdta_end;
+            int comdbg_flags = iq->comdbg_flags;
+
+            GETFUNC
+
 
             ++delayed;
             if (!(iq->p_buf_in = packedreq_upvrrn_get(
-                      &upvrrn, iq->p_buf_in, p_blkstate->p_buf_req_end))) {
+                      &upvrrn, iq->p_buf_in, p_blkstate->p_buf_req_end, iq->comdbg_flags))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
                 rc = ERR_BADREQ;
@@ -3967,7 +3996,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iq->p_buf_in += vlen;
             p_buf_vdta_end = iq->p_buf_in;
 
-            if (!(iq->p_buf_in = buf_get(&newlen, sizeof(newlen), iq->p_buf_in,
+            if (!(iq->p_buf_in = getfunc(&newlen, sizeof(newlen), iq->p_buf_in,
                                          p_blkstate->p_buf_req_end))) {
                 if (iq->debug)
                     reqprintf(iq, "FAILED TO UNPACK DATA");
@@ -4050,6 +4079,10 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                     GOTOBACKOUT;
                 }
             }
+
+            int updflags = RECFLAGS_DYNSCHEMA_NULLS_ONLY;
+            if (iq->comdbg_flags)
+                updflags |= RECFLAGS_COMDBG_FROM_LE;
 
             rc = upd_record(iq, trans, NULL, /*primkey - will be formed from
                                                verification data*/
@@ -5046,7 +5079,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
         rsp.num_completed = opnum;
 
         if (!(iq->p_buf_out =
-                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end)))
+                  block_rsp_put(&rsp, iq->p_buf_out, iq->p_buf_out_end, iq->comdbg_flags)))
             /* TODO can I just return here? should prob go to cleanup ? */
             return ERR_INTERNAL;
 

@@ -53,6 +53,23 @@
 #error "PROVIDE MACHINE SPECIFIC BYTE FLIPPERS"
 #endif
 
+static inline uint8_t *buf_get_func(void *dest, size_t len, const void *source, const void *end) {
+    return (uint8_t*) buf_get((void*) dest, len, (void*) source, end);
+}
+
+static inline uint8_t *buf_little_get_func(void *dest, size_t len, const void *source, const void *end) {
+    return (uint8_t*) buf_little_get((void*) dest, len, (void*) source, end);
+}
+
+static inline uint8_t *buf_put_func(const void *source, size_t len, void *dest, const void *end) {
+    return (uint8_t*) buf_put((void*) source, len, (void*) dest, end);
+}
+
+static inline uint8_t *buf_little_put_func(const void *source, size_t len, void *dest, const void *end) {
+    return (uint8_t*) buf_little_put((void*) source, len, (void*) dest, end);
+}
+
+
 static inline void *buf_no_net_get_int(void *v_dst, size_t len, void *v_src,
                                        void *v_end, void *v_chk)
 {

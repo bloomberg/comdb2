@@ -819,10 +819,11 @@ const uint8_t *tran_req_get(struct tran_req *p_tran_req, const uint8_t *p_buf,
 uint8_t *block_req_put(const struct block_req *p_block_req, uint8_t *p_buf,
                        const uint8_t *p_buf_end);
 const uint8_t *block_req_get(struct block_req *p_block_req,
-                             const uint8_t *p_buf, const uint8_t *p_buf_end);
+                             const uint8_t *p_buf, const uint8_t *p_buf_end,
+                             int comdbg_flags);
 
 uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
-                       const uint8_t *p_buf_end);
+                       const uint8_t *p_buf_end, int comdbg_flags);
 const uint8_t *block_fwd_get(struct block_fwd *p_block_fwd,
                              const uint8_t *p_buf, const uint8_t *p_buf_end);
 
@@ -832,7 +833,7 @@ const uint8_t *block_nested_get(struct block_nested *p_block_nested,
                                 const uint8_t *p_buf, const uint8_t *p_buf_end);
 
 uint8_t *block_rsp_put(const struct block_rsp *p_block_rsp, uint8_t *p_buf,
-                       const uint8_t *p_buf_end);
+                       const uint8_t *p_buf_end, int comdbg_flags);
 const uint8_t *block_rsp_get(struct block_rsp *p_block_rsp,
                              const uint8_t *p_buf, const uint8_t *p_buf_end);
 
@@ -884,19 +885,22 @@ uint8_t *packedreq_hdr_put(const struct packedreq_hdr *p_packedreq_hdr,
                            uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *packedreq_hdr_get(struct packedreq_hdr *p_packedreq_hdr,
                                  const uint8_t *p_buf,
-                                 const uint8_t *p_buf_end);
+                                 const uint8_t *p_buf_end,
+                                 int comdbg_flags);
 
 uint8_t *packedreq_add_put(const struct packedreq_add *p_packedreq_add,
                            uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *packedreq_add_get(struct packedreq_add *p_packedreq_add,
                                  const uint8_t *p_buf,
-                                 const uint8_t *p_buf_end);
+                                 const uint8_t *p_buf_end,
+                                 int comdbg_flags);
 
 uint8_t *packedreq_addsec_put(const struct packedreq_addsec *p_packedreq_addsec,
                               uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *packedreq_addsec_get(struct packedreq_addsec *p_packedreq_addsec,
                                     const uint8_t *p_buf,
-                                    const uint8_t *p_buf_end);
+                                    const uint8_t *p_buf_end,
+                                    int comdbg_flags);
 
 uint8_t *packedreq_seq_put(const struct packedreq_seq *p_packedreq_seq,
                            uint8_t *p_buf, const uint8_t *p_buf_end);
@@ -914,19 +918,22 @@ uint8_t *packedreq_del_put(const struct packedreq_del *p_packedreq_del,
                            uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *packedreq_del_get(struct packedreq_del *p_packedreq_del,
                                  const uint8_t *p_buf,
-                                 const uint8_t *p_buf_end);
+                                 const uint8_t *p_buf_end,
+                                 int comdbg_flags);
 
 uint8_t *packedreq_delsec_put(const struct packedreq_delsec *p_packedreq_delsec,
                               uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *packedreq_delsec_get(struct packedreq_delsec *p_packedreq_delsec,
                                     const uint8_t *p_buf,
-                                    const uint8_t *p_buf_end);
+                                    const uint8_t *p_buf_end,
+                                    int comdbg_flags);
 
 uint8_t *packedreq_upvrrn_put(const struct packedreq_upvrrn *p_packedreq_upvrrn,
                               uint8_t *p_buf, const uint8_t *p_buf_end);
 const uint8_t *packedreq_upvrrn_get(struct packedreq_upvrrn *p_packedreq_upvrrn,
                                     const uint8_t *p_buf,
-                                    const uint8_t *p_buf_end);
+                                    const uint8_t *p_buf_end,
+                                    int comdbg_flags);
 
 uint8_t *
 packedreq_updrrnkl_put(const struct packedreq_updrrnkl *p_packedreq_updrrnkl,

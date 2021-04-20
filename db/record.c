@@ -350,8 +350,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         }
         od_dta = allocced_memory;
 
-        if (iq->have_client_endian &&
-            TAGGED_API_LITTLE_ENDIAN == iq->client_endian) {
+        if ((iq->have_client_endian && TAGGED_API_LITTLE_ENDIAN == iq->client_endian) ||
+             (flags & RECFLAGS_COMDBG_FROM_LE)) {
             conv_flags |= CONVERT_LITTLE_ENDIAN_CLIENT;
         }
 
@@ -860,8 +860,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (vrecord)
         odv_dta = allocced_memory + od_len * 2;
 
-    if (iq->have_client_endian &&
-        TAGGED_API_LITTLE_ENDIAN == iq->client_endian) {
+    if ((iq->have_client_endian && TAGGED_API_LITTLE_ENDIAN == iq->client_endian) ||
+            (iq->comdbg_flags & COMDBG_FLAG_FROM_LE)) {
         conv_flags |= CONVERT_LITTLE_ENDIAN_CLIENT;
     }
 
