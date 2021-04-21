@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <cdb2api.h>
 #include <string.h>
+#include <inttypes.h>
 
 const char *db;
 
@@ -332,11 +333,11 @@ void test_bind_array()
             test_next_record(hndl);
             int64_t *vala = cdb2_column_value(hndl, 0);
             if (*vala != values[i]) {
-                fprintf(stderr, "%s:%d:error got:%ld expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%d\n", __func__, __LINE__, *vala, values[i]);
                 exit(1);
             }
 
-            //printf("TEST 05 RESP %ld\n", *vala);
+            //printf("TEST 05 RESP %"PRId64"\n", *vala);
         }
 
         cdb2_clearbindings(hndl);
@@ -353,11 +354,11 @@ void test_bind_array()
             test_next_record(hndl);
             int64_t *vala = cdb2_column_value(hndl, 0);
             if (*vala != values[i]) {
-                fprintf(stderr, "%s:%d:error got:%ld expected:%ld\n", __func__, __LINE__, *vala, values[i]);
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%"PRId64"\n", __func__, __LINE__, *vala, values[i]);
                 exit(1);
             }
 
-            //printf("TEST 05 RESP %ld\n", *vala);
+            //printf("TEST 05 RESP %"PRId64"\n", *vala);
         }
 
         cdb2_clearbindings(hndl);
@@ -433,9 +434,9 @@ void test_bind_array2()
         test_exec(hndl, "select a,b from t2 where a in carray(@myarray) order by a");
         for (int i = 0; i < N; i++) {
             test_next_record(hndl);
-            long long *vala = cdb2_column_value(hndl, 0);
+            int64_t *vala = cdb2_column_value(hndl, 0);
             if (*vala != values[i]) {
-                fprintf(stderr, "%s:%d:error got:%lld expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%d\n", __func__, __LINE__, *vala, values[i]);
                 exit(1);
             }
 
@@ -445,7 +446,7 @@ void test_bind_array2()
                 exit(1);
             }
 
-            //printf("TEST 06 RESP %lld %c\n", *vala, *valb);
+            //printf("TEST 06 RESP %"PRId64" %c\n", *vala, *valb);
         }
 
         cdb2_clearbindings(hndl);
@@ -470,7 +471,7 @@ void test_bind_array2()
             test_next_record(hndl);
             int64_t *vala = cdb2_column_value(hndl, 0);
             if (*vala != values[i]) {
-                fprintf(stderr, "%s:%d:error got:%ld expected:%d\n", __func__, __LINE__, *vala, values[i]);
+                fprintf(stderr, "%s:%d:error got:%"PRId64" expected:%d\n", __func__, __LINE__, *vala, values[i]);
                 exit(1);
             }
         }
