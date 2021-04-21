@@ -3020,9 +3020,8 @@ static int put_prepared_stmt_int(struct sqlthdstate *thd,
             if (requeue_stmt_entry(thd, rec->stmt_entry)) { /* put back in queue... */
                 cleanup_stmt_entry(rec->stmt_entry); /* ...and on error, cleanup */
             }
+            return 0;
         }
-
-        return 0;
     }
 
     /* this is a new stmt (never was in cache before) so create cache object */
