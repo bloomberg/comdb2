@@ -31,7 +31,6 @@
 #include <pthread.h>
 #include <poll.h>
 #include <time.h>
-#include <pthread.h>
 #include <sys/types.h>
 #include <netinet/in.h>
 #include <inttypes.h>
@@ -678,7 +677,7 @@ static void queue_stat(struct dbtable *db, int full, int walk_queue, int blockin
     if (blocking) {
         Pthread_attr_init(&attr);
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
     }
 
     rc = pthread_create(&tid, blocking ? &attr : &gbl_pthread_attr_detached,

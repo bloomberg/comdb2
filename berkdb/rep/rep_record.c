@@ -872,9 +872,7 @@ __rep_enqueue_log(dbenv, rp, rec, gen)
 	listc_abl(&log_queue, q);
 	gbl_apply_queue_memory += (sizeof(REP_CONTROL) + q->size);
 	if (apply_thd_created == 0) {
-		if ((rc = pthread_create(&apply_thd, NULL, apply_thread, dbenv)) != 0) {
-			abort();
-		}
+		Pthread_create(&apply_thd, NULL, apply_thread, dbenv);
 		apply_thd_created = 1;
 	}
 	Pthread_cond_signal(&queue_cond);
@@ -7390,11 +7388,7 @@ __truncate_repdb(dbenv)
 		Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
 		Pthread_attr_setstacksize(&attr, 1024 * 1024);
 
-		rc = pthread_create(&tid, &attr, del_thd, delr);
-		if (rc != 0) {
-			logmsg(LOGMSG_FATAL, "couldnt create del_thd\n");
-			exit(1);
-		}
+		Pthread_create(&tid, &attr, del_thd, delr);
 		Pthread_attr_destroy(&attr);
 
 		MUTEX_UNLOCK(dbenv, db_rep->db_mutexp);

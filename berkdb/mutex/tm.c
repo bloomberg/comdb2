@@ -266,12 +266,7 @@ run_locker(id)
 		exit(EXIT_FAILURE);
 	}
 	for (i = 0; i < nthreads; i++)
-		if ((errno = pthread_create(
-		    &kidsp[i], NULL, run_lthread, (void *)(id + i))) != 0) {
-			fprintf(stderr, "tm: failed spawning thread: %s\n",
-			    strerror(errno));
-			exit(EXIT_FAILURE);
-		}
+		Pthread_create(&kidsp[i], NULL, run_lthread, (void *)(id + i));
 
 	/* Wait for the threads to exit. */
 	status = EXIT_SUCCESS;
@@ -447,12 +442,7 @@ run_wakeup(id)
 	/*
 	 * Spawn off wakeup thread.
 	 */
-	if ((errno = pthread_create(
-	    &wakep, NULL, run_wthread, (void *)id)) != 0) {
-		fprintf(stderr, "tm: failed spawning wakeup thread: %s\n",
-		    strerror(errno));
-		exit(EXIT_FAILURE);
-	}
+	Pthread_create(&wakep, NULL, run_wthread, (void *)id);
 
 	/*
 	 * run_locker will create a file when the wakeup thread is no

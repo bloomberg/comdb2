@@ -453,16 +453,9 @@ int finalize_schema_change(struct ireq *iq, tran_type *trans)
         arg->iq = iq;
         arg->trans = trans;
         logmsg(LOGMSG_DEBUG, "Executing ASYNCHRONOUSLY\n");
-        rc = pthread_create(&tid, &gbl_pthread_attr_detached,
-                            finalize_schema_change_thd_tran, arg);
-        if (rc) {
-            logmsg(LOGMSG_FATAL,
-                   "start_schema_change:pthread_create rc %d %s\n", rc,
-                   strerror(errno));
-            abort();
-        } else {
-            rc = SC_ASYNC;
-        }
+        Pthread_create(&tid, &gbl_pthread_attr_detached,
+                       finalize_schema_change_thd_tran, arg);
+        rc = SC_ASYNC;
     }
 
     return rc;

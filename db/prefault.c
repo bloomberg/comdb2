@@ -66,7 +66,7 @@ static void *prefault_io_thread(void *arg);
  and the queue depth */
 int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
 {
-    int i = 0, rc = 0;
+    int i = 0;
     static int started = 0;
     pthread_attr_t attr;
 
@@ -101,12 +101,8 @@ int start_prefault_io_threads(struct dbenv *dbenv, int numthreads, int maxq)
     }
 
     for (i = 0; i < numthreads; i++) {
-        rc = pthread_create(&(dbenv->prefaultiopool.threads[i]), &attr,
+        Pthread_create(&(dbenv->prefaultiopool.threads[i]), &attr,
                             prefault_io_thread, (void *)dbenv);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "couldnt create io thread\n");
-            exit(1);
-        }
         dbenv->prefaultiopool.numthreads++;
     }
     started = 1;

@@ -268,7 +268,6 @@ static void *prefault_helper_thread(void *arg)
 int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 {
     int i;
-    int rc;
     static int started = 0;
     prefault_helper_thread_arg_type *prefault_helper_thread_arg;
     pthread_attr_t attr;
@@ -304,12 +303,8 @@ int create_prefault_helper_threads(struct dbenv *dbenv, int nthreads)
 
         MEMORY_SYNC;
 
-        rc = pthread_create(&(dbenv->prefault_helper.threads[i].tid), &attr,
-                            prefault_helper_thread, prefault_helper_thread_arg);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "couldnt create prefault_helper_thread\n");
-            exit(1);
-        }
+        Pthread_create(&(dbenv->prefault_helper.threads[i].tid), &attr,
+                       prefault_helper_thread, prefault_helper_thread_arg);
 
         /* latch the first helper threads tid as our second invalid tid */
         if (i == 0)
