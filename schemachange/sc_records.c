@@ -1522,7 +1522,7 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
 
         Pthread_attr_init(&attr);
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         /* start one thread for each stripe */
         for (ii = 0; ii < gbl_dtastripe; ++ii) {
@@ -1985,7 +1985,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
         // init pthread attributes
         Pthread_attr_init(&attr);
         Pthread_attr_setstacksize(&attr, DEFAULT_THD_STACKSZ);
-        pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
+        Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_JOINABLE);
 
         for (idx = 0; idx != gbl_dtastripe; ++idx) {
             thread_data[idx] = data;
@@ -1999,8 +1999,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
 
             if (rc) {
                 sc_errf(thread_data[idx].s,
-                        "starting thread failed for"
-                        " stripe: %d with return code: %d\n",
+                        "starting thread failed for stripe: %d with return code: %d\n",
                         thread_data[idx].stripe, rc);
 
                 outrc = -1;
@@ -2017,8 +2016,7 @@ int upgrade_all_records(struct dbtable *db, unsigned long long *sc_genids,
                 /* if join failed */
                 if (rc) {
                     sc_errf(thread_data[idx].s,
-                            "joining thread failed for"
-                            " stripe: %d with return code: %d\n",
+                            "joining thread failed for stripe: %d with return code: %d\n",
                             thread_data[idx].stripe, rc);
                     outrc = -1;
                     continue;

@@ -48,7 +48,6 @@ typedef long long tranid_t;
 
 #include <sys/types.h>
 #include <inttypes.h>
-#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <pthread.h>

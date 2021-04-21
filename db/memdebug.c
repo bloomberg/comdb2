@@ -14,7 +14,6 @@
    limitations under the License.
  */
 
-#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <errno.h>

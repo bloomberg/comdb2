@@ -17,7 +17,6 @@
 /* code needed to support various comdb2 interfaces to the sql engine */
 
 #include <poll.h>
-#include <pthread.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <strings.h>

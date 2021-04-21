@@ -23,7 +23,6 @@
    value of N will give the relative frequency/selectivity data as the entire
    table, and this
    method of scanning will be faster than a plain walk of the table. */
-#include <pthread.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>

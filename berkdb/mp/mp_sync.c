@@ -340,11 +340,7 @@ mempsync_out_of_band_init(void)
 	Pthread_mutex_init(&mempsync_lk, NULL);
 	Pthread_cond_init(&mempsync_wait, NULL);
 
-	rc = pthread_create(&mempsync_tid, NULL, mempsync_thd, gblenv);
-	if (rc) {
-		logmsg(LOGMSG_FATAL, "pthread_create rc %d %s\n", rc, strerror(rc));
-		abort();
-	}
+	Pthread_create(&mempsync_tid, NULL, mempsync_thd, gblenv);
 }
 
 // PUBLIC: int __memp_sync_out_of_band __P((DB_ENV *, DB_LSN *));

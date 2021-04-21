@@ -2908,7 +2908,6 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     netinfo_type *netinfo_ptr;
     host_node_type *host_node_ptr;
     netinfo_node_t *netinfo_node;
-    int rc;
 
     netinfo_ptr = calloc(1, sizeof(netinfo_type));
     if (!netinfo_ptr) {
@@ -2963,13 +2962,7 @@ netinfo_type *create_netinfo(char myhostname[], int myportnum, int myfd,
     }
 
     Pthread_attr_init(&(netinfo_ptr->pthread_attr_detach));
-
-    rc = pthread_attr_setdetachstate(&(netinfo_ptr->pthread_attr_detach),
-                                     PTHREAD_CREATE_DETACHED);
-    if (rc != 0) {
-        logmsg(LOGMSG_FATAL, "pthread_attr_setdetachstate failed\n");
-        exit(1);
-    }
+    Pthread_attr_setdetachstate(&(netinfo_ptr->pthread_attr_detach), PTHREAD_CREATE_DETACHED);
 
 #ifdef DEBUG
     Pthread_attr_setstacksize(&(netinfo_ptr->pthread_attr_detach), 1024 * 1024);

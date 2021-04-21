@@ -5,7 +5,6 @@
  *	Sleepycat Software.  All rights reserved.
  */
 #include "db_config.h"
-#include <pthread.h>
 
 #ifndef lint
 static const char revid[] = "$Id: log_put.c,v 11.145 2003/09/13 19:20:39 bostic Exp $";

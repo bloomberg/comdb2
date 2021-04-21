@@ -406,7 +406,7 @@ void *auto_analyze_main(void *unused)
                 pthread_t analyze;
                 // will be freed in auto_analyze_table()
                 char *tblname = strdup(tbl->tablename);
-                pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table, tblname);
+                Pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table, tblname);
             }
         } else if (save_freq > 0 && (call_counter % save_freq) == 0) {
             // save updated autoanalyze counter if there is a delta
@@ -440,5 +440,5 @@ void autoanalyze_after_fastinit(char *table)
         return;
     pthread_t analyze;
     char *tblname = strdup(table); // will be freed in auto_analyze_table()
-    pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table, tblname);
+    Pthread_create(&analyze, &gbl_pthread_attr_detached, auto_analyze_table, tblname);
 }

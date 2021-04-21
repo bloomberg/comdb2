@@ -1121,18 +1121,12 @@ __memp_init_pgcompact_routines(void)
 	Pthread_attr_setstacksize(&spgs.attrs, (PTHREAD_STACK_MIN + 0x20000));
 #endif
 
-	if (pthread_attr_setdetachstate(&spgs.attrs, PTHREAD_CREATE_DETACHED) != 0) {
-		logmsgperror("pthread_attr_setdetachstate");
-		abort();
-	}
+	Pthread_attr_setdetachstate(&spgs.attrs, PTHREAD_CREATE_DETACHED);
 
-	if (pthread_create(&spgs.tid, &spgs.attrs, __memp_send_sparse_page_thread, NULL) != 0) {
-		logmsgperror("pthread_create");
-		abort();
-	}
+	Pthread_create(&spgs.tid, &spgs.attrs, __memp_send_sparse_page_thread, NULL);
 
 	Pthread_key_create(&no_pgcompact, NULL);
-        Pthread_attr_destroy(&spgs.attrs);
+	Pthread_attr_destroy(&spgs.attrs);
 }
 /* } page compact runtines END */
 

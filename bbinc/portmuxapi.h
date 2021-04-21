@@ -92,7 +92,7 @@ typedef enum {
  * {
  *     // initialize attribute for client threads
  *     Pthread_attr_init(&attr);
- *     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+ *     Pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
  *
  *     // alright wait for client
  *     portmux_listen("comdb2", "replication", "dbtest", accept_hndl, NULL);

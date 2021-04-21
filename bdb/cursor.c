@@ -2491,12 +2491,7 @@ int bdb_gbl_pglogs_init(bdb_state_type *bdb_state)
                             &bdb_asof_current_lsn.offset);
         bdb_gbl_ltran_pglogs_hash_processed = 1;
 
-        rc = pthread_create(&thread_id, &thd_attr, pglogs_asof_thread,
-                            (void *)bdb_state);
-        if (rc != 0) {
-            logmsg(LOGMSG_FATAL, "pglogs_asof_thread pthread_create error");
-            exit(1);
-        }
+        Pthread_create(&thread_id, &thd_attr, pglogs_asof_thread, (void *)bdb_state);
     }
 
     return 0;
