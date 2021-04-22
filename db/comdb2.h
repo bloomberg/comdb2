@@ -1098,6 +1098,8 @@ struct client_query_path_component {
     int nfind;
     int nnext;
     int nwrite;
+    int nblob;
+    int unused; // 4-byte padding for cache-line alignment
     char table[32];
 #if 0
     [32+1/*.*/+31/*dbname*/];
@@ -1105,7 +1107,7 @@ struct client_query_path_component {
     int ix;
 };
 
-enum { CLIENT_QUERY_PATH_COMPONENT_LEN = 4 + 4 + 4 + (1 * 32) + 4 };
+enum { CLIENT_QUERY_PATH_COMPONENT_LEN = 4 + 4 + 4 + 4 + 4 + (1 * 32) + 4 };
 
 BB_COMPILE_TIME_ASSERT(client_query_path_component_len,
                        sizeof(struct client_query_path_component) ==
@@ -1153,7 +1155,8 @@ struct client_query_stats {
     int nlocks;
     int n_write_ios;
     int n_read_ios;
-    int reserved[16];
+    int component_has_blobs;
+    int reserved[15];
     int n_rows;
     int n_components;
     double cost;
@@ -1161,7 +1164,7 @@ struct client_query_stats {
 };
 
 enum {
-    CLIENT_QUERY_STATS_PATH_OFFSET = 4 + 4 + 4 + 4 + (4 * 16) + 4 + 4 + 8,
+    CLIENT_QUERY_STATS_PATH_OFFSET = 4 + 4 + 4 + 4 + 4 + (4 * 15) + 4 + 4 + 8,
     CLIENT_QUERY_STATS_LEN =
         CLIENT_QUERY_STATS_PATH_OFFSET + CLIENT_QUERY_PATH_COMPONENT_LEN
 };

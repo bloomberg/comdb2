@@ -1550,6 +1550,8 @@ static void print_client_query_stats(struct reqlogger *logger,
         dumpf(logger, out, "next/prev %d ", st->path_stats[ii].nnext);
         if (st->path_stats[ii].nwrite)
             dumpf(logger, out, "nwrite %d ", st->path_stats[ii].nwrite);
+        if (st->path_stats[ii].nblob)
+            dumpf(logger, out, "nblob %d ", st->path_stats[ii].nblob);
         dumpf(logger, out, "\n");
     }
 }
