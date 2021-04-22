@@ -30,12 +30,12 @@ totalmemafter=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('m
 
 
 # With the optimization, insertion should run faster.
-echo "$before < $after ?"
+echo "Time pre-optimization ($before) < post-optimization ($after) ?"
 if [ $before -ge $after ]; then
   exit 1
 fi
 # With the optimization, insertion should use less memory.
-echo "$totalmembefore < $totalmemafter ?"
+echo "Memory pre-optimization ($totalmembefore) < post-optimization ($totalmemafter) ?"
 if [ $totalmembefore -ge $totalmemafter ]; then
   exit 1
 fi
