@@ -138,6 +138,42 @@ static void thd_io_complete(void)
     UNLOCK(&lock);
 }
 
+
+#define LISTC_CLEAN(listp, lnk, dofree, type) { \
+    type *item, *tmp; \
+    /* free each item */ \
+    LISTC_FOR_EACH_SAFE(listp, item, tmp, lnk) { \
+        /* remove and potentially free item */ \
+        listc_rfl(listp, item); \
+        if (dofree) \
+            free(item); \
+    } \
+}
+
+
+void thd_cleanup()
+{
+    int counter = 0;
+    while (nthdcreates > nretire && counter++ < gbl_thd_linger)
+        sleep(1);
+
+    if (nthdcreates > nretire)
+        abort();
+
+    LISTC_CLEAN(&busy, lnk, 0, struct thd);
+    LISTC_CLEAN(&idle, lnk, 0, struct thd);
+    LISTC_CLEAN(&rq_reqs, rqlnk, 0, struct dbq_entry_t);
+    LISTC_CLEAN(&q_reqs, qlnk, 0, struct dbq_entry_t);
+    pool_clear(pq_reqs);
+    pool_clear(p_slocks);
+    pool_clear(p_bufs);
+    pool_clear(p_reqs);
+    pool_clear(p_thds);
+    Pthread_cond_destroy(&coalesce_wakeup);
+    Pthread_attr_destroy(&attr);
+    Pthread_mutex_destroy(&lock);
+}
+
 int thd_init(void)
 {
     Pthread_mutex_init(&lock, 0);
@@ -602,16 +638,19 @@ static void *thd_req(void *vthd)
                     memset(&ts, 0, sizeof(ts)); /*force failure later*/
                 }
 
-                ts.tv_sec += gbl_thd_linger;
                 rc = 0;
-                do {
+                int ii = 0;
+                do { /* wait gbl_thd_linger seconds via one second increments */
+                    ts.tv_sec += 1;
+                    ii++;
                     /*waitft thread will deposit a request in thd->iq*/
                     rc = pthread_cond_timedwait(&thd->wakeup, &lock, &ts);
-                } while (thd->iq == 0 && rc == 0);
+                } while ((thd->iq == 0 && rc == 0) ||
+                         (rc == ETIMEDOUT && ii < gbl_thd_linger && !db_is_exiting()));
+
                 if (rc != 0 && rc != ETIMEDOUT) {
-                    logmsg(LOGMSG_ERROR, "thd_req:pthread_cond_timedwait "
-                                    "failed:%s\n",
-                            strerror(rc));
+                    logmsg(LOGMSG_ERROR, "thd_req:pthread_cond_timedwait failed:%s\n",
+                           strerror(rc));
                     /* error'd out, so i still have lock: errLOCK(&lock);*/
                 }
                 if (thd->iq == 0) /*nothing to do. this thread retires.*/
@@ -1016,8 +1055,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                     if (nextrq == NULL)
                         break;
                     iq = nextrq->obj;
-                    /* remove from global list, and release link block of
-                     * reader*/
+                    /* remove from global list, and release link block of reader*/
                     listc_rfl(&q_reqs, nextrq);
                     if (add_latency > 0) {
                         poll(0, 0, rand() % add_latency);
@@ -1051,8 +1089,7 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                         break;
                     }
                 }
-                if ((thd = listc_rtl(&idle)) !=
-                    NULL) /*try to find an idle thread*/
+                if ((thd = listc_rtl(&idle)) != NULL) /*try to find an idle thread*/
                 {
 #if 0
                 printf("%s:%d: thdpool FOUND THD=%p -> newTHD=%d iq=%p\n", __func__, __LINE__, pthread_self(), thd->tid, iq);

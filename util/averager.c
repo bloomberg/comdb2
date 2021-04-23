@@ -55,7 +55,8 @@ struct averager *averager_new(int limit, int maxpoints)
     return avg;
 }
 
-void averager_clear(struct averager *avg) {
+void averager_clear(struct averager *avg)
+{
     struct tick *t;
     t = listc_rtl(&avg->ticks);
     while (t) {

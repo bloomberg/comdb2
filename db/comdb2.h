@@ -1809,6 +1809,7 @@ extern int gbl_test_io_errors;
 /* init routines */
 int appsock_init(void);
 int thd_init(void);
+void thd_cleanup();
 void sqlinit(void);
 void sqlnet_init(void);
 int clnt_stats_init(void);

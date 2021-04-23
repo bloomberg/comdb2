@@ -99,14 +99,6 @@ setup_db() {
     fi
     echo "eventlog_nkeep 0" >> ${LRL}
 
-    if [[ -f lrl ]]; then
-        cat lrl >> ${LRL}
-    fi
-    if [[ -f lrl.options ]]; then
-        # use sed to substitute in test specific variables into lrl
-        cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
-    fi
-
     echo -e "name    ${DBNAME}\ndir     ${DBDIR}\n\nsetattr MASTER_REJECT_REQUESTS 0" >> ${LRL}
     echo -e "forbid_remote_admin off" >> ${LRL}
 
@@ -144,6 +136,15 @@ setup_db() {
         echo "comdb2_config:portmuxport=${PMUXPORT}" >> $CDB2_CONFIG
         echo "portmux_port ${PMUXPORT}" >> ${LRL}
         echo "portmux_bind_path $pmux_socket" >> ${LRL}
+    fi
+
+    # let test specific lrl options take precedence
+    if [[ -f lrl ]]; then
+        cat lrl >> ${LRL}
+    fi
+    if [[ -f lrl.options ]]; then
+        # use sed to substitute in test specific variables into lrl
+        cat lrl.options | sed "s#\${TESTDIR}#${TESTDIR}#" >> ${LRL}
     fi
 
     SSH_OPT="-o StrictHostKeyChecking=no "
