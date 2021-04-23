@@ -92,12 +92,13 @@ MAX_ALLOWED_RESPONSE_DELAY=100 #ms
 
 (time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 100) | tee pmux_queries.out1
 res=$?
+cat out.txt
 if [ $res -ne 0 ] ; then
     failexit "pmux_queries returns $res"
 fi
 
 runtime=`grep real pmux_queries.out1 | sed 's/[^m]*m\([^\.]*\)\..*/\1/g'`
-if [ "$runtime" -lt 1 ] ; then
+if [ "$runtime" -eq 0 ] ; then
     time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 10000 | tee pmux_queries.out2
     res=$?
     if [ $res -ne 0 ] ; then

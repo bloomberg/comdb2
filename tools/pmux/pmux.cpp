@@ -45,6 +45,7 @@
 #include <event2/event_struct.h>
 #include <event2/listener.h>
 #include <event2/util.h>
+#include <event2/event_compat.h>
 
 #include <bb_daemon.h>
 
@@ -73,6 +74,7 @@ static std::set<int> free_ports;
 static std::unique_ptr<pmux_store> pmux_store;
 static std::vector<in_addr_t> local_addresses;
 static std::vector<std::pair<int, int>> port_ranges;
+static std::string unix_bind_path = "/tmp/portmux.socket";
 
 static int get_svc_port(const char *svc)
 {
@@ -406,6 +408,7 @@ static int run_cmd(char *cmd, connection *c)
         if (port == -1) {
             port = alloc_port(svc);
         }
+        debug_log("%s assigned %d", svc, port);
         if (port <= 0) {
             c->reply("%d\n", port);
             return 0;
@@ -460,6 +463,7 @@ static int run_cmd(char *cmd, connection *c)
         if (svc == nullptr) {
             c->reply("-1 missing service name\n");
         } else {
+            debug_log("%s dealloc", svc);
             int rc = dealloc_port(svc);
             c->reply("%d\n", rc);
         }
@@ -479,6 +483,7 @@ static int run_cmd(char *cmd, connection *c)
             } else {
                 int rc = use_port(svc, use);
                 c->reply("%d\n", rc);
+                debug_log("%s use %d", svc, use);
             }
         }
     } else if (strcmp(cmd, "stat") == 0) {
@@ -605,7 +610,7 @@ static int usage(FILE *out, int rc)
     return rc;
 }
 
-static bool init_router_mode(std::string &unix_bind_path)
+static bool unlink_bind_path()
 {
     if (unlink(unix_bind_path.c_str()) == -1 && errno != ENOENT) {
         syslog(LOG_CRIT, "error unlinking path:%s rc:%d [%s]\n", unix_bind_path.c_str(),
@@ -613,6 +618,12 @@ static bool init_router_mode(std::string &unix_bind_path)
         return false;
     }
     return true;
+}
+
+void sigint_handler(int signum, short evs, void *arg)
+{
+    if(base)
+        event_base_loopbreak(base);
 }
 
 static int init_local_names()
@@ -708,7 +719,6 @@ int main(int argc, char **argv)
         host = hostptr;
     }
 
-    std::string unix_bind_path("/tmp/portmux.socket");
     bool foreground_mode = false;
     std::string cluster("prod");
     std::string dbname("pmuxdb");
@@ -798,10 +808,6 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
-    if (!foreground_mode) {
-        bb_daemon();
-    }
-
     sighold(SIGPIPE);
     base = event_base_new();
     debug_log("Using Libevent %s with backend method %s\n",
@@ -827,7 +833,7 @@ int main(int argc, char **argv)
             return EXIT_FAILURE;
         }
     }
-    init_router_mode(unix_bind_path);
+    unlink_bind_path();
     sockaddr_un addr = {0};
     addr.sun_family = AF_UNIX;
     strcpy(addr.sun_path, unix_bind_path.c_str());
@@ -844,6 +850,14 @@ int main(int argc, char **argv)
         syslog(LOG_CRIT, "failed to listen on unix path:%s\n", unix_bind_path.c_str());
         return EXIT_FAILURE;
     }
+
+    if (!foreground_mode) {
+        bb_daemon();
+    }
+
+    struct event *trm = evsignal_new(base, SIGINT, sigint_handler, NULL);
+    evsignal_add(trm, NULL);
+
     syslog(LOG_INFO, "READY\n");
     event_base_dispatch(base);
     for (const auto& l : listeners) {
@@ -854,6 +868,7 @@ int main(int argc, char **argv)
         delete conn;
     }
     event_base_free(base);
+    unlink_bind_path();
     syslog(LOG_INFO, "GOODBYE\n");
     return EXIT_SUCCESS;
 }
