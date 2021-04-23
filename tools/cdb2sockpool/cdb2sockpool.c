@@ -30,6 +30,7 @@
 
 #include <errno.h>
 #include <pthread.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -144,7 +145,7 @@ static int pthread_create_attrs(pthread_t *tid, int detachstate,
         tid = &local_tid;
     Pthread_attr_init(&attr);
 
-    if (stacksize > 0) {
+    if (stacksize > PTHREAD_STACK_MIN) {
         Pthread_attr_setstacksize(&attr, stacksize);
     }
     rc = pthread_attr_setdetachstate(&attr, detachstate);

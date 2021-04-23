@@ -1248,9 +1248,10 @@ int bdb_del_list_free(void *list, int *bdberr)
     listc_t *list_ptr = list;
 
     /* free each item */
-    LISTC_FOR_EACH_SAFE(list_ptr, item, tmp, lnk)
-    /* remove and free item */
-    free(listc_rfl(list, item));
+    LISTC_FOR_EACH_SAFE(list_ptr, item, tmp, lnk) {
+        /* remove and free item */
+        free(listc_rfl(list, item));
+    }
 
     listc_free(list);
 

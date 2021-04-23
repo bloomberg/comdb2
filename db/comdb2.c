@@ -337,7 +337,7 @@ int gbl_meta_lite = 1;
 int gbl_context_in_key = 1;
 int gbl_ready = 0; /* gets set just before waitft is called
                       and never gets unset */
-int gbl_db_is_exiting = 0; /* Indicates this process is exiting */
+static int gbl_db_is_exiting = 0; /* Indicates this process is exiting */
 
 
 int gbl_debug_omit_dta_write;
@@ -1049,7 +1049,7 @@ int db_is_stopped(void)
 
 int db_is_exiting()
 {
-    return ATOMIC_LOAD32(gbl_db_is_exiting);
+    return ATOMIC_LOAD32(gbl_db_is_exiting) != 0;
 }
 
 void print_dbsize(void);
@@ -1567,6 +1567,7 @@ static void finish_clean()
     free_tzdir();
     tz_hash_free();
     clear_sqlhist();
+    thd_cleanup();
     if(!all_string_references_cleared())
         abort();
 }
@@ -1593,7 +1594,7 @@ static void begin_clean_exit(void)
     /* this defaults to 5 minutes */
     alarm(alarmtime);
 
-    XCHANGE32(gbl_db_is_exiting, 1);
+    XCHANGE32(gbl_db_is_exiting, comdb2_time_epoch());
 
     /* dont let any new requests come in.  we're going to go non-coherent
        here in a second, so letting new reads in would be bad. */
