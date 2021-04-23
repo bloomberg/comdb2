@@ -556,9 +556,8 @@ int stmt_cache_put_int(struct sqlthdstate *thd, struct sqlclntstate *clnt,
             if (stmt_cache_requeue_entry(thd->stmt_cache, rec->stmt_entry)) { /* put back in queue... */
                 stmt_cache_finalize_entry(rec->stmt_entry);                   /* ...and on error, cleanup */
             }
+            return 0;
         }
-
-        return 0;
     }
 
     /* this is a new stmt (never was in cache before) so create cache object */
