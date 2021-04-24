@@ -1396,6 +1396,8 @@ struct ireq {
     int osql_flags;
     uint32_t priority;
     int tranddl;
+    uint32_t written_row_count;
+    uint32_t cascaded_row_count;
 
     /* Client endian flags. */
     uint8_t client_endian;
@@ -1415,7 +1417,6 @@ struct ireq {
     bool sc_should_abort : 1;
     bool sc_closed_files : 1;
 
-    int written_row_count;
     int sc_running;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
@@ -2685,7 +2686,7 @@ enum {
     /* if the schema is not dynamic then bzero the nulls map */
     RECFLAGS_DYNSCHEMA_NULLS_ONLY = 1 << 2,
     /* called from update cascade code, affects key operations */
-    UPDFLAGS_CASCADE = 1 << 3,
+    RECFLAGS_UPD_CASCADE = 1 << 3,
     /* use .NEW..ONDISK rather than .ONDISK */
     RECFLAGS_NEW_SCHEMA = 1 << 4,
     /* use input genid if in dtastripe mode */
@@ -2703,7 +2704,8 @@ enum {
                               RECFLAGS_KEEP_GENID | RECFLAGS_NO_TRIGGERS |
                               RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NO_BLOBS |
                               1 << 9,
-    RECFLAGS_DONT_LOCK_TBL = 1 << 10,
+    RECFLAGS_IN_CASCADE = 1 << 10,
+    RECFLAGS_DONT_LOCK_TBL = 1 << 11,
     RECFLAGS_MAX = 1 << 11
 };
 

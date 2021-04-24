@@ -92,7 +92,7 @@ function runtest
     cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 101"
     x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where id = 2" 2>&1)
     if [[ "$x" != "(rows updated=1)" ]]; then
-        echo "Tunable of 100 failed to allow update cascade from 2 to 1!"
+        echo "Tunable of 101 failed to allow update cascade from 2 to 1!"
         exit 1
     fi
 
@@ -127,7 +127,7 @@ function runtest
 
     rm $fl
 
-    # Create foreign-key 
+    # Insert into dependent table t1
     cdb2sql ${CDB2_OPTIONS} $db $stage "INSERT INTO t1(id) values (100)" >/dev/null 2>&1
 
     # Try to update these (& fail)
@@ -162,8 +162,129 @@ function runtest
     fi
 }
 
+# same idea as max_wr_rows_per_txn but use max_cascaded_rows_per_txn tunable
+# which only counts the cascaded rows being updated by this txn
+function runtest_max_cascades
+{
+    [[ "$debug" == 1 ]] && set -x
+
+    # turn off max_wr_rows_per_txn
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_wr_rows_per_txn 0"
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t1"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t2"
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1" 2>&1)
+    if [[ "$x" != *"cascaded delete exceeds max writes"* ]]; then
+        echo "Tunable of 100 failed to prevent delete cascade!"
+        exit 1
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 1000"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1" 2>&1)
+    if [[ "$x" != "(rows deleted=3)" ]]; then
+        echo "Tunable of 1000 failed to allow delete cascade for 1!"
+        exit 1
+    fi
+
+
+    # Load table
+    insert_records 1 50
+    insert_records 2 100
+    insert_records 4 200
+
+    # Base-case: I should be able to update 4 to 5 .. after this i should see 200 5's in t2
+    cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 5 where id = 4" >/dev/null 2>&1
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t2 where id = 5" 2>&1)
+
+    if [[ "$x" != "(count(*)=200)" ]]; then 
+        echo "Update of 4 to 5 didn't cascade!"
+        exit 1
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t1 where id = 1"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t2 where id = 1"
+    # This should fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 10"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 1" 2>&1)
+    if [[ "$x" != *"cascaded delete exceeds max writes"* ]]; then
+        echo "Tunable of 10 failed to prevent delete cascade for 1!"
+        exit 1
+    fi
+
+    # This should also fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 49"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 1" 2>&1)
+    if [[ "$x" != *"cascaded delete exceeds max writes"* ]]; then
+        echo "Tunable of 50 failed to prevent delete cascade for 1!"
+        exit 1
+    fi
+
+    # This should succeed
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 50"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 1" 2>&1)
+    if [[ "$x" != "(rows deleted=1)" ]]; then
+        echo "Tunable of 51 failed to allow delete cascade for 1!"
+        exit 1
+    fi
+
+    # This should fail
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 99"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where id = 2" 2>&1)
+    if [[ "$x" != *"cascaded update exceeds max writes"* ]]; then
+        echo "Tunable of 99 failed to prevent update cascade from 2 to 1!"
+        exit 1
+    fi
+
+    # This should succeed
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 1 where id = 2" 2>&1)
+    if [[ "$x" != "(rows updated=1)" ]]; then
+        echo "Tunable of 100 failed to allow update cascade from 2 to 1!"
+        exit 1
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t1 where id = 1"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t2 where id = 1"
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t1 where id = 100"
+    cdb2sql ${CDB2_OPTIONS} $db $stage "select count(*) from t2 where id = 100"
+
+    # Try to update these (& fail)
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 99"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 100 where id = 1" 2>&1)
+    if [[ "$x" != *"cascaded update exceeds max writes"* ]]; then
+        echo "Tunable of 99 failed to prevent update of 100 cascading records!"
+        exit 1
+    fi
+
+    # Reset tunable to 100 & update again
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "update t1 set id = 100 where id = 1" 2>&1)
+    if [[ "$x" != "(rows updated=1)" ]]; then
+        echo "Tunable of 100 failed to allow update of 100 cascading records!"
+        exit 1
+    fi
+
+    # Set tunable to 98, attempt to delete (and fail)
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 99"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 100" 2>&1)
+    if [[ "$x" != *"cascaded delete exceeds max writes"* ]]; then
+        echo "Tunable of 99 failed to prevent delete of 100 cascading records!"
+        exit 1
+    fi
+
+    cdb2sql ${CDB2_OPTIONS} $db $stage "PUT TUNABLE max_cascaded_rows_per_txn 100"
+    x=$(cdb2sql ${CDB2_OPTIONS} $db $stage "delete from t1 where id = 100" 2>&1)
+    if [[ "$x" != "(rows deleted=1)" ]]; then
+        echo "Tunable of 100 failed to allow delete of 100 cascading records!"
+        exit 1
+    fi
+}
+
 createtables
 runtest
+runtest_max_cascades
 
 echo "Success"
-exit 0

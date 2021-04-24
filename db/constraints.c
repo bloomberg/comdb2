@@ -790,12 +790,10 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
         if (rc == -1) {
             if (iq->debug)
                 reqprintf(iq,
-                          "VERBKYCNSTRT CANT FORM TBL %s INDEX %d FROM "
-                          "%s INDEX %d KEY ",
+                          "VERBKYCNSTRT CANT FORM TBL %s INDEX %d FROM %s INDEX %d KEY ",
                           bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                      "verify key constraint cannot form table '%s' index "
-                      "%d from %s index %d key '%s",
+                      "verify key constraint cannot form table '%s' index %d from %s index %d key '%s",
                       bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum,
                       get_keynm_from_db_idx(iq->usedb, bct->sixnum));
             reqdumphex(iq, skey, bct->sixlen);
@@ -877,7 +875,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             osql_unset_index_reorder_bit(&iq->osql_flags);
 
             if (iq->usedb) {
-                rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
+                rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx, BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
@@ -950,7 +948,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                                 NULL,                                                 /*blobs*/
                                 0,                                                    /*maxblobs*/
                                 &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+                                RECFLAGS_UPD_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
@@ -1026,7 +1024,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                                 NULL,                                                 /*blobs*/
                                 0,                                                    /*maxblobs*/
                                 &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+                                RECFLAGS_UPD_CASCADE | RECFLAGS_DONT_LOCK_TBL | RECFLAGS_IN_CASCADE);
             } else {
                 rc = ERR_NO_SUCH_TABLE;
             }
