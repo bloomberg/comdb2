@@ -23,7 +23,9 @@
 #include "mem_override.h"
 #include "logmsg.h"
 
+#ifndef NDEBUG
 #define TRACK_REFERENCES
+#endif
 
 #ifdef TRACK_REFERENCES
 #include <plhash.h>
