@@ -730,7 +730,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
             if (!gbl_partial_indexes || !iq->usedb->ix_partial ||
                 ((del_keys & (1ULL << ixnum)) &&
                  (ins_keys & (1ULL << ixnum)))) {
-                do_inline = (flags & UPDFLAGS_CASCADE) ||
+                do_inline = (flags & RECFLAGS_UPD_CASCADE) ||
                             (iq->usedb->ix_dupes[ixnum] &&
                              iq->usedb->n_constraints == 0);
             } else {

@@ -84,6 +84,7 @@ void free_cached_idx(uint8_t * *cached_idx);
     } while (0);
 
 int gbl_max_wr_rows_per_txn = 0;
+int gbl_max_cascaded_rows_per_txn = 0;
 
 static inline bool is_event_from_sc(int flags)
 {
@@ -161,7 +162,14 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
-                      "Transaction exceeds max rows");
+                      "Transaction exceeds max rows limit");
+            retrc = ERR_TRAN_TOO_BIG;
+            ERR;
+        }
+        if ((flags & RECFLAGS_IN_CASCADE) && gbl_max_cascaded_rows_per_txn &&
+            ((++iq->cascaded_row_count) > gbl_max_cascaded_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max cascaded rows limit");
             retrc = ERR_TRAN_TOO_BIG;
             ERR;
         }
@@ -744,7 +752,14 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         if (gbl_max_wr_rows_per_txn &&
             ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
-                      "Transaction exceeds max rows");
+                      "Transaction exceeds max rows limit");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
+        if ((flags & RECFLAGS_IN_CASCADE) && gbl_max_cascaded_rows_per_txn &&
+            ((++iq->cascaded_row_count) > gbl_max_cascaded_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                      "Transaction exceeds max cascaded rows limit");
             retrc = ERR_TRAN_TOO_BIG;
             goto err;
         }
@@ -1596,11 +1611,17 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     if (!is_event_from_sc(flags) && gbl_max_wr_rows_per_txn &&
         ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
         reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
-                  "Transaction exceeds max rows");
+                  "Transaction exceeds max rows limit");
         retrc = ERR_TRAN_TOO_BIG;
         goto err;
     }
-
+    if ((flags & RECFLAGS_IN_CASCADE) && gbl_max_cascaded_rows_per_txn &&
+            ((++iq->cascaded_row_count) > gbl_max_cascaded_rows_per_txn)) {
+        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                "Transaction exceeds max cascaded rows limit");
+        retrc = ERR_TRAN_TOO_BIG;
+        goto err;
+    }
     if (iq->debug) {
         reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
         prefixes++;

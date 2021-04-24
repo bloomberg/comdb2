@@ -54,4 +54,4 @@
 (out='Pool [appsockpool] max threads set to 0')
 (out='Pool [appsockpool] max threads set to 102')
 (appsockpool.maxt='102')
-(count(*)=3880)
+(count(*)=3884)
