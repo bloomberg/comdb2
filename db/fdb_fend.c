@@ -46,6 +46,7 @@
 #include "fdb_fend_cache.h"
 #include "fdb_access.h"
 #include "fdb_bend.h"
+#include "fdb_systable.h"
 #include "osqlsession.h"
 #include "util.h"
 #include "logmsg.h"
@@ -201,6 +202,11 @@ struct fdb_cursor {
     char *node;     /* connected to where? */
     int need_ssl;   /* uses ssl */
 };
+
+typedef struct fdb_systable_info {
+    fdb_systable_ent_t *arr;
+    int narr;
+} fdb_systable_info_t;
 
 static fdb_cache_t fdbs;
 
@@ -613,9 +619,7 @@ enum table_status {
 };
 /**
  * Check if the table exists and has the right version
- *
- * NOTE: under exclusive lock of fdbs cache array AND under exclusive lock
- *       of fdb itself
+ * NOTE: registered as a fdb user so fdb does not get removed
  *
  */
 static int _table_exists(fdb_t *fdb, const char *table_name,
@@ -4450,15 +4454,44 @@ static int __fdb_info_ent(void *obj, void *arg)
     fdb_tbl_ent_t *ent = (fdb_tbl_ent_t *)obj;
 
     if (ent->ixnum == -1) {
-        logmsg(LOGMSG_USER, "Table \"%s\" Rootp %d Remrootp %d Version=%llx\n",
-                ent->name, ent->rootpage, ent->source_rootpage,
-                ent->tbl->version);
+        logmsg(
+            LOGMSG_USER,
+            "Db \"%s\" Class \"%s\" Table \"%s\" Rootp %d Remrootp %d "
+            "Version=%llx\n",
+            ent->tbl->fdb->dbname,
+            ent->tbl->fdb->local ? "local"
+                                 : mach_class_class2name(ent->tbl->fdb->class),
+            ent->name, ent->rootpage, ent->source_rootpage, ent->tbl->version);
     } else {
-        logmsg(LOGMSG_USER, 
-            "Index \"%s\" for table \"%s\" Rootp %d Remrootp %d Version=%llx\n",
-            ent->name, ent->tbl->name, ent->rootpage, ent->source_rootpage,
-            ent->tbl->version);
+        logmsg(LOGMSG_USER,
+               "Db \"%s\" Class \"%s\" Index \"%s\" for table \"%s\" Rootp %d "
+               "Remrootp %d Version=%llx\n",
+               ent->tbl->fdb->dbname,
+               ent->tbl->fdb->local
+                   ? "local"
+                   : mach_class_class2name(ent->tbl->fdb->class),
+               ent->name, ent->tbl->name, ent->rootpage, ent->source_rootpage,
+               ent->tbl->version);
     }
+
+    return FDB_NOERR;
+}
+
+static int __fdb_info_ent_save(void *obj, void *arg)
+{
+    fdb_tbl_ent_t *ent = (fdb_tbl_ent_t *)obj;
+    fdb_systable_info_t *info = (fdb_systable_info_t *)arg;
+    fdb_systable_ent_t *ient = &info->arr[info->narr++];
+
+    ient->dbname = strdup(ent->tbl->fdb->dbname);
+    ient->location = strdup(ent->tbl->fdb->local
+                                ? "local"
+                                : mach_class_class2name(ent->tbl->fdb->class));
+    ient->tablename = strdup(ent->ixnum == -1 ? ent->name : ent->tbl->name);
+    ient->indexname = ent->ixnum == -1 ? NULL : strdup(ent->name);
+    ient->rootpage = ent->rootpage;
+    ient->remoterootpage = ent->source_rootpage;
+    ient->version = ent->tbl->version;
 
     return FDB_NOERR;
 }
@@ -4468,10 +4501,23 @@ static int __fdb_info_ent(void *obj, void *arg)
  * If dbname == NULL, report all dbs
  *
  */
-static void fdb_info_tables(fdb_t *fdb)
+static void fdb_info_tables(fdb_t *fdb, fdb_systable_info_t *info)
 {
     __lock_wrlock_shared(fdb);
-    hash_for(fdb->h_ents_name, __fdb_info_ent, NULL);
+    if (!info) {
+        hash_for(fdb->h_ents_name, __fdb_info_ent, NULL);
+    } else {
+        int nents = fdb_num_entries(fdb);
+        info->arr = realloc(info->arr,
+                            sizeof(fdb_systable_ent_t) * (info->narr + nents));
+        if (!info->arr) {
+            logmsg(LOGMSG_ERROR,
+                   "%s: unable to allocate virtual table info fdb\n", __func__);
+            goto done;
+        }
+        hash_for(fdb->h_ents_name, __fdb_info_ent_save, info);
+    }
+done:
     Pthread_rwlock_unlock(&fdb->h_rwlock);
 }
 
@@ -4480,12 +4526,13 @@ static void fdb_info_tables(fdb_t *fdb)
  * If dbname == NULL, report all dbs
  *
  */
-static void fdb_info_db(const char *dbname)
+static void fdb_info_db(const char *dbname, fdb_systable_info_t *info)
 {
     fdb_t *fdb;
-    int i;
 
     if (!dbname) {
+        int i;
+
         Pthread_rwlock_rdlock(&fdbs.arr_lock);
         for (i = 0; i < fdbs.nused; i++) {
             fdb = fdbs.arr[i];
@@ -4495,7 +4542,7 @@ static void fdb_info_db(const char *dbname)
 
             __fdb_add_user(fdb, 1);
 
-            fdb_info_tables(fdb);
+            fdb_info_tables(fdb, info);
 
             __fdb_rem_user(fdb, 1);
         }
@@ -4510,7 +4557,7 @@ static void fdb_info_db(const char *dbname)
 
         __fdb_add_user(fdb, 1);
 
-        fdb_info_tables(fdb);
+        fdb_info_tables(fdb, info);
 
         __fdb_rem_user(fdb, 1);
     }
@@ -4611,7 +4658,7 @@ int fdb_process_message(const char *line, int lline)
         if (tokcmp(tok, ltok, "db") == 0) {
             tok = segtok((char *)line, lline, &st, &ltok);
             if (ltok == 0) {
-                fdb_info_db(NULL);
+                fdb_info_db(NULL, NULL);
             } else {
                 char *dbname = tokdup(tok, ltok);
                 if (!dbname) {
@@ -4619,7 +4666,7 @@ int fdb_process_message(const char *line, int lline)
                     return FDB_ERR_MALLOC;
                 }
 
-                fdb_info_db(dbname);
+                fdb_info_db(dbname, NULL);
 
                 free(dbname);
             }
@@ -5150,4 +5197,32 @@ int fdb_is_genid_deleted(fdb_tran_t *tran, unsigned long long genid)
         return rc;
     }
     return (rc == IX_FND);
+}
+
+/******************** SYSTABLE FDB INFO **************************/
+
+int fdb_systable_info_collect(void **data, int *npoints)
+{
+    fdb_systable_info_t info = {0};
+
+    fdb_info_db(NULL, &info);
+
+    *data = info.arr;
+    *npoints = info.narr;
+
+    return 0;
+}
+
+void fdb_systable_info_free(void *data, int npoints)
+{
+    fdb_systable_ent_t *ient = (fdb_systable_ent_t *)data;
+
+    int i;
+    for (i = 0; i < npoints; i++) {
+        free(ient[i].dbname);
+        free(ient[i].location);
+        free(ient[i].tablename);
+        free(ient[i].indexname);
+    }
+    free(ient);
 }

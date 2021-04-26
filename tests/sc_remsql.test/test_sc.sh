@@ -37,7 +37,7 @@ cdb2sql ${SRC_CDB2_OPTIONS} --host $mach $a_dbname "select * from LOCAL_${a_remd
 # get the version V2
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
 echo cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
 # schema change the remote V1->V1'
 cdb2sql $REM_CDB2_OPTIONS $a_remdbname default "alter table t { `cat t.csc2 ` }"
@@ -54,7 +54,7 @@ cdb2sql ${SRC_CDB2_OPTIONS} -cost --host $mach $a_dbname default "select * from 
 # get the new version V2'
 #comdb2sc $a_dbname send fdb info db >> $output 2>&1
 echo cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"
-cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")" >> $output 2>&1
+cdb2sql ${SRC_CDB2_OPTIONS} --tabs --host $mach $a_dbname "exec procedure sys.cmd.send(\"fdb info db\")"  2>&1 | cut -f 5- -d ' ' >> $output
 
 sed "s/DBNAME/${a_remdbname}/g" output.log > output.log.actual
 

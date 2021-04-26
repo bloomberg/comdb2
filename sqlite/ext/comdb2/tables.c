@@ -318,6 +318,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = systblTimepartPermissionsInit(db);
   if (rc == SQLITE_OK)
+    rc = systblFdbInfoInit(db);
+  if (rc == SQLITE_OK)
     rc = sqlite3_carray_init(db, 0, 0);
 #endif
   return rc;

@@ -15,3 +15,9 @@ Index "$ID_1C16AC86" for table "t2" Rootp 1073741839 Remrootp 5 Version=0
 Index "$ID_52596C31" for table "t" Rootp 1073741835 Remrootp 3 Version=0
 Table "t" Rootp 1073741834 Remrootp 2 Version=0
 Table "t2" Rootp 1073741838 Remrootp 4 Version=0
+(dbname='dorintdb', tablename='sqlite_stat1', indexname=NULL, rootpage=1073741836, remoterootpage=6, version=0)
+(dbname='dorintdb', tablename='sqlite_stat4', indexname=NULL, rootpage=1073741837, remoterootpage=7, version=0)
+(dbname='dorintdb', tablename='t2', indexname='$ID_1C16AC86', rootpage=1073741839, remoterootpage=5, version=0)
+(dbname='dorintdb', tablename='t', indexname='$ID_52596C31', rootpage=1073741835, remoterootpage=3, version=0)
+(dbname='dorintdb', tablename='t', indexname=NULL, rootpage=1073741834, remoterootpage=2, version=0)
+(dbname='dorintdb', tablename='t2', indexname=NULL, rootpage=1073741838, remoterootpage=4, version=0)

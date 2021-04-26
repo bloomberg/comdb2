@@ -51,6 +51,7 @@ add_library(sqlite
   ext/comdb2/typesamples.c
   ext/comdb2/users.c
   ext/comdb2/views.c
+  ext/comdb2/fdb.c
   ext/misc/carray.c
   ext/misc/completion.c
   ext/misc/regexp.c

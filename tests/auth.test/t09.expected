@@ -227,6 +227,7 @@
 (candidate='comdb2_constraints')
 (candidate='comdb2_cron_events')
 (candidate='comdb2_cron_schedulers')
+(candidate='comdb2_fdb_info')
 (candidate='comdb2_fingerprints')
 (candidate='comdb2_functions')
 (candidate='comdb2_index_usage')
