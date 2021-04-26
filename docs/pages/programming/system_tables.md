@@ -155,6 +155,20 @@ Information about schedulers running.
 * `description` - Details the purpose of the scheduler; for example, there is
                   a time partition scheduler, or a memory modules stat scheduler
 
+## comdb2_fdb_info
+
+The cached remote schemas used for distributed sql execution.
+
+    comdb2_fdb_info(dbname, location, tablename, indexname, rootpage, remoterootpage, version)
+
+* `dbname` - Name of the remote database that executes a subset of sql
+* `location` - Name of the remote database class, 'LOCAL', 'DEV', 'ALPHA', 'BETA', 'PROD'
+* `tablename` - Name of the remote table (NOTE: we cache schemas only for accessed tables)
+* `indexname` - Name of the index, if this is an index entry, NULL otherwise
+* `rootpage  - Value of the local rootpage sqlite uses to refer to remote table/index
+* `remoterootpage` - Value of the remote rootpage
+* `version` - Schema version of the remote table; used to pull new schema on access
+
 ## comdb2_functions
 
 The functions available to call from sql.
