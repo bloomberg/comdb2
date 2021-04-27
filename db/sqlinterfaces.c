@@ -3538,12 +3538,13 @@ static int rc_sqlite_to_client(struct sqlthdstate *thd,
     if (!irc) {
         irc = errstat_get_rc(&clnt->osql.xerr);
         if (irc) {
-            /* Do not retry on ERR_UNCOMMITABLE_TXN. */
-            if (clnt->osql.xerr.errval == ERR_UNCOMMITABLE_TXN) {
-                osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
-            }
-
             *perrstr = (char *)errstat_get_str(&clnt->osql.xerr);
+            /* Do not retry on ERR_UNCOMMITABLE_TXN. */
+            if (irc == ERR_UNCOMMITABLE_TXN) {
+                osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+            } else if ((irc == ERR_SC) && (*perrstr == NULL || (*perrstr)[0] == '\0')) {
+                *perrstr = "a schema change error occurred";
+            }
             /* convert this to a user code */
             irc = (clnt->osql.error_is_remote)
                       ? irc
@@ -6090,12 +6091,12 @@ enum {
     DB_ERR_BAD_COMM = 112,     /* 999 */
     DB_ERR_NONKLESS = 114,     /* 212 */
     /* GENERAL BLOCK TRN RCODES */
-    DB_ERR_TRN_BUF_INVALID = 200,   /* 105 */
-    DB_ERR_TRN_BUF_OVERFLOW = 201,  /* 106 */
-    DB_ERR_TRN_OPR_OVERFLOW = 202,  /* 205 */
-    DB_ERR_TRN_DB_FAIL = 204,       /* 220 */
+    DB_ERR_TRN_BUF_INVALID = 200,  /* 105 */
+    DB_ERR_TRN_BUF_OVERFLOW = 201, /* 106 */
+    DB_ERR_TRN_OPR_OVERFLOW = 202, /* 205 */
+    DB_ERR_TRN_DB_FAIL = 204,      /* 220 */
     DB_ERR_TRN_NOT_SERIAL = 230,
-    DB_ERR_TRN_SC = 240, /* should be client side code as well*/
+    DB_ERR_TRN_SC = 240,
     /* INTERNAL DB ERRORS */
     DB_ERR_INTR_GENERIC = 304,
 };

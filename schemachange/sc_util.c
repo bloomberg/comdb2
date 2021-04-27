@@ -141,11 +141,11 @@ int sc_via_ddl_only()
     return bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_VIA_DDL_ONLY);
 }
 
-static inline int validate_ixname(const char *keynm)
+static inline int validate_ixname(const char *keynm, struct ireq *iq)
 {
     logmsg(LOGMSG_DEBUG, "Checking keynm '%s' \n", keynm);
     if (keynm == NULL) {
-        logmsg(LOGMSG_ERROR, "Key name is NULL \n");
+        sc_client_error(iq->sc, "Key name cannot be NULL");
         return SC_BAD_INDEX_NAME;
     }
     const char *cptr = keynm;
@@ -154,16 +154,15 @@ static inline int validate_ixname(const char *keynm)
     }
 
     if (*cptr == ' ') {
-        logmsg(LOGMSG_ERROR, "Key '%s' contains space character\n", keynm);
+        sc_client_error(iq->sc, "Key '%s' cannot contain spaces", keynm);
         return SC_BAD_INDEX_NAME;
     }
     if (cptr - keynm < 1) {
-        logmsg(LOGMSG_ERROR, "Length of key '%s' must be > 0\n", keynm);
+        sc_client_error(iq->sc, "Key name cannot be empty");
         return SC_BAD_INDEX_NAME;
     }
     if (cptr - keynm >= MAXIDXNAMELEN) {
-        logmsg(LOGMSG_ERROR, "Length of key '%s' exceeds %d characters\n",
-               keynm, MAXIDXNAMELEN - 1);
+        sc_client_error(iq->sc, "Length of key '%s' cannot exceed %d characters", keynm, MAXIDXNAMELEN - 1);
         return SC_BAD_INDEX_NAME;
     }
     return 0;
@@ -176,7 +175,7 @@ int validate_ix_names(struct dbtable *db)
         struct schema *index = db->ixschema[i];
         int offset = get_offset_of_keyname(index->csctag);
         const char *keynm = index->csctag + offset;
-        rc = validate_ixname(keynm);
+        rc = validate_ixname(keynm, db->iq);
         if (rc) break;
     }
     return rc;

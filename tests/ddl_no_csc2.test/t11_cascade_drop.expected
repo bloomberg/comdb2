@@ -15,7 +15,7 @@ constraints
 	}
 ')
 (name='$CONSTRAINT_C6A17957')
-[DROP TABLE t1] failed with rc 240 Can't drop tables with foreign constraints
+[DROP TABLE t1] failed with rc 240 Can't drop a table referenced by a foreign key
 [ALTER TABLE t1 DROP COLUMN 'i'] failed with rc -3 Table must have at least one column.
 (csc2='schema
 	{

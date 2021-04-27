@@ -82,15 +82,9 @@ static int prepare_changes(struct schema_change_type *s, struct dbtable *db,
 
         /* these checks should be present in dryrun_int as well */
         if (changed == SC_BAD_NEW_FIELD) {
-            sc_errf(s, "cannot add new field without dbstore or null\n");
-            if (s->iq)
-                reqerrstr(s->iq, ERR_SC,
-                          "cannot add new field without dbstore or null");
+            sc_client_error(s, "cannot add new field without dbstore or null");
         } else if (changed == SC_BAD_INDEX_CHANGE) {
-            sc_errf(s, "cannot change index referenced by other tables\n");
-            if (s->iq)
-                reqerrstr(s->iq, ERR_SC,
-                          "cannot change index referenced by other tables");
+            sc_client_error(s, "cannot change index referenced by other tables");
         }
         sc_errf(s, "Failed to process schema!\n");
         return -1;
@@ -447,7 +441,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         if (local_lock)
             unlock_schema_lk();
-        sc_errf(s, "Sqlite syntax check failed\n");
         backout(newdb);
         cleanup_newdb(newdb);
         dyns_cleanup_globals();
@@ -601,11 +594,11 @@ convert_records:
     int prev_preempted = s->preempted;
 
     if (s->preempted == SC_ACTION_PAUSE) {
-        sc_errf(s, "SCHEMACHANGE PAUSED\n");
+        sc_client_error(s, "SCHEMACHANGE PAUSED");
         add_ongoing_alter(s);
         return SC_PAUSED;
     } else if (s->preempted == SC_ACTION_ABORT) {
-        sc_errf(s, "SCHEMACHANGE ABORTED\n");
+        sc_client_error(s, "SCHEMACHANGE ABORTED");
         rc = SC_ABORTED;
         goto errout;
     }
@@ -626,7 +619,7 @@ convert_records:
     remove_ongoing_alter(s);
 
     if (s->preempted != prev_preempted || rc == SC_PREEMPTED) {
-        sc_errf(s, "SCHEMACHANGE PREEMPTED\n");
+        sc_client_error(s, "SCHEMACHANGE PREEMPTED");
         return SC_PREEMPTED;
     } else if (get_stopsc(__func__, __LINE__) || rc == SC_MASTER_DOWNGRADE)
         rc = SC_MASTER_DOWNGRADE;

@@ -48,15 +48,13 @@ int do_drop_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db;
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        sc_errf(s, "Table doesn't exists\n");
-        reqerrstr(iq, ERR_SC, "Table doesn't exists");
+        sc_client_error(s, "Table doesn't exist");
         return SC_TABLE_DOESNOT_EXIST;
     }
 
     if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
-        sc_errf(s, "Can't drop tables with foreign constraints\n");
-        reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
+        sc_client_error(s, "Can't drop a table referenced by a foreign key");
         return -1;
     }
 
@@ -72,8 +70,7 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     int bdberr = 0;
 
     if (db->n_rev_constraints > 0 && !self_referenced_only(db)) {
-        sc_errf(s, "Can't drop tables with foreign constraints\n");
-        reqerrstr(iq, ERR_SC, "Can't drop tables with foreign constraints");
+        sc_client_error(s, "Can't drop a table referenced by a foreign key");
         return ERR_SC;
     }
 

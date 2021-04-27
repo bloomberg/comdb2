@@ -1078,9 +1078,7 @@ static void key_add_comn(int ix, char *tag, char *exprname,
         sprintf(macc_globals->keys[ii]->keytag, "DEFAULT_ix_%d", ix);
     }
     if (strlen(tag) >= MAXIDXNAMELEN) {
-        csc2_error(
-            "WARNING: line %3d: index name '%s' longer than %d characters!\n",
-            current_line, tag, MAXIDXNAMELEN - 1);
+        csc2_error("line %3d: index name '%s' longer than %d characters!\n", current_line, tag, MAXIDXNAMELEN - 1);
     }
     if (where && strlen(where) != 0) {
         CHECK_LEGACY_SCHEMA(1);

@@ -35,7 +35,7 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
         char *syntax_err;
         err = csc2_get_errors();
         syntax_err = csc2_get_syntax_errors();
-        if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
+        sc_client_error(s, "%s", syntax_err);
         sc_errf(s, "%s", err);
         sc_errf(s, "Failed to load schema\n");
         return SC_INTERNAL_ERROR;

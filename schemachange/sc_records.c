@@ -278,9 +278,7 @@ static inline int convert_server_record_cachedmap(
     if (rc) {
         convert_failure_reason_str(&reason, table, from->tag, to->tag, err,
                                    sizeof(err));
-        if (s->iq) reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
-        sc_errf(s, "convert_server_record_cachedmap: cannot convert data %s\n",
-                err);
+        sc_client_error(s, "cannot convert data %s", err);
         return rc;
     }
     return 0;
@@ -302,9 +300,7 @@ static int convert_server_record_blobs(const void *inbufp, const char *from_tag,
     if (rc) {
         convert_failure_reason_str(&reason, db->table, from_tag, db->tag, err,
                                    sizeof(err));
-        if (s->iq) reqerrstr(s->iq, ERR_SC, "cannot convert data %s", err);
-        sc_errf(s, "convert_server_record_blobs: cannot convert data %s\n",
-                err);
+        sc_client_error(s, "cannot convert data %s", err);
         return 1;
     }
     return 0;
@@ -637,9 +633,10 @@ static int convert_record(struct convert_record_data *data)
                     data->stripe, data->s->sc_thd_failed - 1);
         return -1;
     }
+
     if (gbl_sc_abort || data->from->sc_abort ||
         (data->s->iq && data->s->iq->sc_should_abort)) {
-        sc_errf(data->s, "Schema change aborted\n");
+        sc_client_error(data->s, "Schema change aborted");
         return -1;
     }
     if (tbl_had_writes(data)) {
@@ -1078,36 +1075,19 @@ err:
             return 1;
         }
 
-        if (data->s->iq)
-            reqerrstr(
-                data->s->iq, ERR_SC,
-                "Could not add duplicate entry in index %d rrn %d genid 0x%llx",
-                ixfailnum, rrn, genid);
-        sc_errf(data->s, "Could not add duplicate entry in index %d "
-                         "rrn %d genid 0x%llx\n",
-                ixfailnum, rrn, genid);
+        sc_client_error(data->s, "Could not add duplicate entry in index %d rrn %d genid 0x%llx", ixfailnum, rrn,
+                        genid);
         return -2;
     } else if (rc == ERR_CONSTR) {
-        if (data->s->iq)
-            reqerrstr(data->s->iq, ERR_SC, "Record violates foreign constraints rrn %d genid 0x%llx", rrn, genid);
-        sc_errf(data->s, "Record violates foreign constraints rrn %d genid 0x%llx\n", rrn, genid);
+        sc_client_error(data->s, "Record violates foreign constraints rrn %d genid 0x%llx", rrn, genid);
         return -2;
     } else if (rc == ERR_VERIFY_PI) {
-        if (data->s->iq)
-            reqerrstr(data->s->iq, ERR_SC,
-                      "Error verifying partial indexes rrn %d genid 0x%llx",
-                      rrn, genid);
-        sc_errf(data->s, "Error verifying partial indexes! rrn %d genid 0x%llx\n",
-                rrn, genid);
+        sc_client_error(data->s, "Error verifying partial indexes! rrn %d genid 0x%llx", rrn, genid);
         return -2;
     } else if (rc != 0) {
-        if (data->s->iq)
-            reqerrstr(data->s->iq, ERR_SC,
-                      "Error adding record rc %d rrn %d genid 0x%llx", rc, rrn,
-                      genid);
-        sc_errf(data->s,
-                "Error adding record rcode %d opfailcode %d ixfailnum %d rrn %d genid 0x%llx, stripe %d\n",
-                rc, opfailcode, ixfailnum, rrn, genid, data->stripe);
+        sc_client_error(data->s,
+                        "Error adding record rcode %d opfailcode %d ixfailnum %d rrn %d genid 0x%llx, stripe %d", rc,
+                        opfailcode, ixfailnum, rrn, genid, data->stripe);
         return -2;
     }
 
@@ -2529,14 +2509,10 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         if (rc) {
             if (data->s->iq) {
                 if (rc == IX_DUP)
-                    reqerrstr(data->s->iq, ERR_SC,
-                              "add key constraint duplicate key '%s' on table "
-                              "'%s' index %d",
-                              get_keynm_from_db_idx(data->to, ixfailnum),
-                              data->to->tablename, ixfailnum);
+                    sc_client_error(data->s, "add key constraint duplicate key '%s' on table '%s' index %d",
+                                    get_keynm_from_db_idx(data->to, ixfailnum), data->to->tablename, ixfailnum);
                 else
-                    reqerrstr(data->s->iq, ERR_SC,
-                              "unable to add record rc = %d", rc);
+                    sc_client_error(data->s, "unable to add record rc = %d", rc);
             }
             logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
                    __func__, __LINE__, rc,

@@ -51,8 +51,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     if ((!iq || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
         !self_referenced_only(db)) {
-        sc_errf(s, "Can't fastinit tables with foreign constraints\n");
-        reqerrstr(iq, ERR_SC, "Can't fastinit tables with foreign constraints");
+        sc_client_error(s, "Can't truncate a table referenced by a foreign key");
         return -1;
     }
 
@@ -172,9 +171,7 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
                        s->tablename, sc_pending->drop_table ? "drop " : "",
                        sc_pending->tablename);
             else {
-                sc_errf(s, "Can't fastinit tables with foreign constraints\n");
-                reqerrstr(iq, ERR_SC,
-                          "Can't fastinit tables with foreign constraints");
+                sc_client_error(s, "Can't truncate a table referenced by a foreign key");
                 return ERR_SC;
             }
         }

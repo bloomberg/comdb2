@@ -59,6 +59,7 @@
 #include "views.h"
 #include "debug_switches.h"
 #include "logmsg.h"
+#include "schemachange.h" /* sc_errf() */
 
 extern struct dbenv *thedb;
 extern pthread_mutex_t csc2_subsystem_mtx;
@@ -1604,8 +1605,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                 m->isExpr = 1;
                 m->idx = -1;
                 if (expr == NULL) {
-                    logmsg(LOGMSG_ERROR, "Indexes on expressions error: failed to"
-                                    "unescape expression string\n");
+                    sc_client_error(db->iq->sc, "unterminated string literal");
                     rc = 1;
                     goto errout;
                 }
@@ -1615,23 +1615,12 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                 case SERVER_BLOB:
                 case SERVER_VUTF8:
                 case SERVER_BLOB2:
-                    logmsg(LOGMSG_ERROR, "Indexes on expressions error: index %d "
-                                    "blob is not supported\n",
-                            ix);
-                    if (db->iq)
-                        reqerrstr(db->iq, ERR_SC,
-                                  "blob index is not supported.");
+                    sc_client_error(db->iq->sc, "blob index is not supported.");
                     rc = 1;
                     goto errout;
                 case SERVER_BCSTR:
                     if (m->len < 2) {
-                        logmsg(LOGMSG_ERROR, "Indexes on expressions error: index "
-                                        "%d string must be at least 2 bytes in "
-                                        "length\n",
-                                ix);
-                        if (db->iq)
-                            reqerrstr(db->iq, ERR_SC, "string must be at least "
-                                                      "2 bytes in in length.");
+                        sc_client_error(db->iq->sc, "string must be at least 2 bytes in in length.");
                         rc = 1;
                         goto errout;
                     }
@@ -1677,11 +1666,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                     break;
                 }
                 if (offset + m->len > MAXKEYLEN) {
-                    logmsg(LOGMSG_ERROR, 
-                           "Indexes on expressions error: index %d is too large\n",
-                           ix);
-                    if (db->iq)
-                        reqerrstr(db->iq, ERR_SC, "index %d is too large.", ix);
+                    sc_client_error(db->iq->sc, "index %d is too large.", ix);
                     rc = 1;
                     goto errout;
                 }
@@ -4925,10 +4910,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
         schema->nmembers = dyns_get_table_field_count(rtag);
         if ((gbl_morecolumns && schema->nmembers > MAXCOLUMNS) ||
             (!gbl_morecolumns && schema->nmembers > MAXDYNTAGCOLUMNS)) {
-            logmsg(LOGMSG_ERROR, "%s: tag '%s' has too many columns %d (max soft "
-                            "limit %d, hard limit %d)\n",
-                    __func__, tag, schema->nmembers, gbl_max_columns_soft_limit,
-                    MAXCOLUMNS);
+            sc_client_error(db->iq->sc, "too many columns (max: %d)", gbl_morecolumns ? MAXCOLUMNS : MAXDYNTAGCOLUMNS);
             return -1;
         }
         schema->member = calloc(schema->nmembers, sizeof(struct field));
@@ -4981,8 +4963,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 */
                 if (gbl_ready && (db->skip_error_on_ulonglong_check != 1) &&
                     !db->timepartition_name) {
-                    if (db->iq)
-                        reqerrstr(db->iq, ERR_SC, "u_longlong is not supported");
+                    sc_client_error(db->iq->sc, "u_longlong is not supported");
                     return -1;
                 }
             }
@@ -5124,6 +5105,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
+                    sc_client_error(db->iq->sc, "invalid default column value");
                     return -1;
                 }
 
@@ -5132,6 +5114,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
+                    sc_client_error(db->iq->sc, "invalid dbpad value");
                     return -1;
                 }
             }
@@ -6422,14 +6405,14 @@ int alter_table_sequences(struct ireq *iq, tran_type *tran, dbtable *olddb, dbta
             else if (olddb->schema->member[fn].in_default_type != SERVER_SEQUENCE) {
                 logmsg(LOGMSG_ERROR, "%s cannot set nextsequence for existing column %s\n", __func__, f->name);
                 if (iq) {
-                    reqerrstr(iq, ERR_SC, "cannot set sequence for existing column");
+                    sc_client_error(iq->sc, "cannot set sequence for existing column");
                 }
                 return -1;
             }
             if (!gbl_permit_small_sequences && f->len < 9) {
                 logmsg(LOGMSG_ERROR, "%s failing sc, permit-small-sequences is disabled\n", __func__);
                 if (iq) {
-                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                    sc_client_error(iq->sc, "datatype invalid for sequences");
                 }
                 return -1;
             }
@@ -6474,14 +6457,14 @@ int init_table_sequences(struct ireq *iq, tran_type *tran, dbtable *db)
             if (f->type != SERVER_BINT) {
                 logmsg(LOGMSG_ERROR, "%s sequences only supported for int types\n", __func__);
                 if (iq) {
-                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                    sc_client_error(iq->sc, "datatype invalid for sequences");
                 }
                 return -1;
             }
             if (!gbl_permit_small_sequences && f->len < 9) {
                 logmsg(LOGMSG_ERROR, "%s failing sc, permit-small-sequences is disabled\n", __func__);
                 if (iq) {
-                    reqerrstr(iq, ERR_SC, "datatype invalid for sequences");
+                    sc_client_error(iq->sc, "datatype invalid for sequences");
                 }
                 return -1;
             }

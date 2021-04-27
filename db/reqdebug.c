@@ -48,6 +48,10 @@ void reqprintf(struct ireq *iq, char *format, ...)
 void reqerrstr(struct ireq *iq, int rc, char *format, ...)
 {
     va_list ap;
+
+    if (iq == NULL)
+        return;
+
     va_start(ap, format);
 
     /* check errstr should be reported */
