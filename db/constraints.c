@@ -467,8 +467,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                               "RTNKYCNSTRT CANT FORM DST TBL %s INDEX %d (%s)",
                               iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                 reqerrstr(iq, COMDB2_CSTRT_RC_INVL_IDX,
-                          "key constraint cannot form destination table '%s' "
-                          "index %d (%s)",
+                          "key constraint cannot form destination table '%s' index %d (%s)",
                           iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                 *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                 Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
@@ -490,8 +489,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                             "RTNKYCNSTRT NEWDTA CANT FORM TBL %s INDEX %d (%s)",
                             iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                     reqerrstr(iq, COMDB2_CSTRT_RC_INVL_IDX,
-                              "key constraint: new data cannot form table '%s' "
-                              "index %d (%s)",
+                              "key constraint: new data cannot form table '%s' index %d (%s)",
                               iq->usedb->tablename, ixnum, cnstrt->keynm[j]);
                     *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
                     Pthread_mutex_unlock(&iq->usedb->rev_constraints_lk);
@@ -504,8 +502,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                    after update */
                 if (!memcmp(lkey, nkey, ixlen)) {
                     if (iq->debug)
-                        reqprintf(iq, "RTNKYCNSTRT SKIP CNSTRT CHECK DUE TO "
-                                      "SAME KEY DATA. TBL %s INDEX %d (%s)",
+                        reqprintf(iq, "RTNKYCNSTRT SKIP CNSTRT CHECK DUE TO SAME KEY DATA. TBL %s INDEX %d (%s)",
                                   iq->usedb->tablename, ixnum,
                                   cnstrt->keynm[j]);
                     continue;
@@ -548,8 +545,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                    This means that this record is not referenced..just let it
                    through!*/
                 if (iq->debug)
-                    reqprintf(iq, "RTNKYCNSTRT SRC TBL %s INDEX %d (%s). "
-                                  "SKIPPING RULE CHECK.",
+                    reqprintf(iq, "RTNKYCNSTRT SRC TBL %s INDEX %d (%s). SKIPPING RULE CHECK.",
                               cnstrt->lcltable->tablename, rixnum,
                               cnstrt->lclkeyname);
                 continue; /* just move on, there should be nothing to check */
@@ -557,8 +553,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
 
             if (skip_lookup_for_nullfkey(iq->usedb, rixnum, nulls)) {
                 if (iq->debug)
-                    reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN "
-                                  "REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
+                    reqprintf(iq, "RTNKYCNSTRT NULL COLUMN PREVENTS FOREIGN REF %s INDEX %d (%s). SKIPPING RULE CHECK.",
                               cnstrt->lcltable->tablename, rixnum,
                               cnstrt->lclkeyname);
                 continue; /* just move on, there should be nothing to check */
@@ -595,8 +590,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
                      * until verify time */
 
                     if (iq->debug)
-                        reqprintf(iq, "RTNKYCNSTRT CANT FORM NEW SRC TBL %s "
-                                      "INDEX %d (%s). PENDING RULE CHECK.",
+                        reqprintf(iq, "RTNKYCNSTRT CANT FORM NEW SRC TBL %s INDEX %d (%s). PENDING RULE CHECK.",
                                   cnstrt->lcltable->tablename, rixnum,
                                   cnstrt->lclkeyname);
                     memcpy(rnkey, nkey, ixlen);
@@ -766,13 +760,11 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
         if (bct->nonewrefs) {
             if (iq->debug)
                 reqprintf(iq,
-                          "VERBKYCNSTRT CANT FORM NEW DATA TBL %s "
-                          "INDEX %d FROM %s INDEX %d ",
+                          "VERBKYCNSTRT CANT FORM NEW DATA TBL %s INDEX %d FROM %s INDEX %d ",
                           bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum);
             reqmoref(iq, " RC %d", rc);
             reqerrstr(iq, COMDB2_CSTRT_RC_INVL_DTA,
-                      "verify key constraint cannot form new data table "
-                      "'%s' index %d from %s index %d ",
+                      "verify key constraint cannot form new data table '%s' index %d from %s index %d ",
                       bct->dstdb->tablename, bct->dixnum, bct->tablename, bct->sixnum);
             *errout = OP_FAILED_INTERNAL + ERR_FORM_KEY;
             close_constraint_table_cursor(cur);
@@ -887,8 +879,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             if (rc != 0) {
                 if (iq->debug) {
                     reqprintf(iq,
-                              "VERBKYCNSTRT CANT CASCADE DELETE "
-                              "TBL %s RRN %d RC %d ",
+                              "VERBKYCNSTRT CANT CASCADE DELETE TBL %s RRN %d RC %d ",
                               bct->tablename, rrn, rc);
                 }
                 if (rc == ERR_TRAN_TOO_BIG) {
@@ -897,8 +888,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                     *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "verify key constraint cannot cascade delete "
-                              "table '%s' rc %d",
+                              "verify key constraint cannot cascade delete table '%s' rc %d",
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                 }
@@ -961,14 +951,12 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             if (rc != 0) {
                 if (iq->debug) {
                     reqprintf(iq,
-                              "VERBKYCNSTRT CANT SET NULL ON DELETE "
-                              "TBL %s RRN %d RC %d ",
+                              "VERBKYCNSTRT CANT SET NULL ON DELETE TBL %s RRN %d RC %d ",
                               bct->tablename, rrn, rc);
                 }
                 if (rc == ERR_NULL_CONSTRAINT) {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "verify key constraint cannot set null on delete "
-                              "table '%s' rc %d",
+                              "verify key constraint cannot set null on delete table '%s' rc %d",
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_NULL_CONSTRAINT;
                 } else if (rc == ERR_TRAN_TOO_BIG) {
@@ -976,8 +964,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                     *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "verify key constraint cannot set null on delete "
-                              "table '%s' rc %d",
+                              "verify key constraint cannot set null on delete table '%s' rc %d",
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                 }
@@ -1037,8 +1024,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
             if (rc != 0) {
                 if (iq->debug) {
                     reqprintf(iq,
-                              "VERBKYCNSTRT CANT CASCADE UPDATE "
-                              "TBL %s RRN %d RC %d ",
+                              "VERBKYCNSTRT CANT CASCADE UPDATE TBL %s RRN %d RC %d ",
                               bct->tablename, rrn, rc);
                 }
                 if (rc == ERR_TRAN_TOO_BIG) {
@@ -1047,8 +1033,7 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                     *errout = OP_FAILED_INTERNAL + ERR_TRAN_TOO_BIG;
                 } else {
                     reqerrstr(iq, COMDB2_CSTRT_RC_CASCADE,
-                              "verify key constraint cannot cascade update "
-                              "table '%s' rc %d",
+                              "verify key constraint cannot cascade update table '%s' rc %d",
                               bct->tablename, rc);
                     *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                 }

@@ -5927,6 +5927,7 @@ add_blkseq:
     } else {
         iq->dbenv->txns_aborted++;
     }
+    reqlog_set_nwrites(iq->reqlogger, iq->written_row_count, iq->cascaded_row_count);
 
     /* update stats (locklessly so we may get gibberish - I know this
      * and don't care) */
