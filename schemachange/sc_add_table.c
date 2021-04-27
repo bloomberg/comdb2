@@ -119,7 +119,7 @@ int add_table_to_environment(char *table, const char *csc2,
         char *syntax_err;
         err = csc2_get_errors();
         syntax_err = csc2_get_syntax_errors();
-        if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
+        sc_client_error(s, "%s", syntax_err);
         sc_errf(s, "%s\n", err);
         sc_errf(s, "error adding new table locally\n");
         logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
@@ -228,13 +228,11 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     }
     if (is_tablename_queue(s->tablename)) {
         sc_errf(s, "bad tablename:%s\n", s->tablename);
-        logmsg(LOGMSG_ERROR, "bad tablename:%s\n", s->tablename);
         return SC_INVALID_OPTIONS;
     }
 
     if ((db = get_dbtable_by_name(s->tablename))) {
         sc_errf(s, "Table %s already exists\n", s->tablename);
-        logmsg(LOGMSG_ERROR, "Table %s already exists\n", s->tablename);
         return SC_TABLE_ALREADY_EXIST;
     }
 
@@ -293,7 +291,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
     if (thedb->num_dbs >= MAX_NUM_TABLES) {
-        sc_errf(s, "error too many tables\n");
+        sc_client_error(s, "error too many tables");
         return -1;
     }
 

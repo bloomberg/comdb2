@@ -32,19 +32,16 @@ int do_rename_table(struct ireq *iq, struct schema_change_type *s,
     struct dbtable *db, *db2;
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        sc_errf(s, "Table doesn't exists\n");
-        reqerrstr(iq, ERR_SC, "Table doesn't exists");
+        sc_client_error(s, "Table doesn't exist");
         return SC_TABLE_DOESNOT_EXIST;
     }
     if (((db2 = get_dbtable_by_name(s->newtable)) != NULL) && db != db2) {
-        sc_errf(s, "New table name exists\n");
-        reqerrstr(iq, ERR_SC, "New table name exists");
+        sc_client_error(s, "New table name exists");
         return SC_TABLE_ALREADY_EXIST;
     }
     if (db->n_rev_constraints > 0) {
         /* we could revise this later on */
-        sc_errf(s, "Can't rename tables with foreign constraints\n");
-        reqerrstr(iq, ERR_SC, "Can't rename tables with foreign constraints");
+        sc_client_error(s, "Cannot rename a table referenced by a foreign key");
         return -1;
     }
 

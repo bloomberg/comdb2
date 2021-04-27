@@ -1916,6 +1916,12 @@ void reqerrstrhdr(struct ireq *iq, char *format,
 void reqerrstrclr(struct ireq *iq);
 void reqerrstrhdrclr(struct ireq *iq); /* clear error header */
 
+#define sc_client_error(s, fmt, ...)                                                                                   \
+    do {                                                                                                               \
+        reqerrstr((s)->iq, ERR_SC, fmt, ##__VA_ARGS__); /* cdb2sql */                                                  \
+        sc_errf(s, fmt "\n", ##__VA_ARGS__);            /* comdb2sc */                                                 \
+    } while (0)
+
 /* internal request forwarding */
 int ireq_forward_to_master(struct ireq *iq, int len);
 

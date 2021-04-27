@@ -39,8 +39,8 @@
 (i=1)
 (i=1)
 [select * from c] rc 0
-[truncate m] failed with rc 240 Can't fastinit tables with foreign constraints
-[drop table m] failed with rc 240 Can't drop tables with foreign constraints
+[truncate m] failed with rc 240 Can't truncate a table referenced by a foreign key
+[drop table m] failed with rc 240 Can't drop a table referenced by a foreign key
 (i=1)
 [select * from m] rc 0
 (i=1)
@@ -68,7 +68,7 @@
 [begin] rc 0
 [truncate c] rc 0
 [drop table m] rc 0
-[commit] failed with rc 240 Can't drop tables with foreign constraints
+[commit] failed with rc 240 Can't drop a table referenced by a foreign key
 (i=1)
 [select * from m] rc 0
 (i=1)
@@ -96,7 +96,7 @@
 [begin] rc 0
 [drop table m] rc 0
 [drop table c] rc 0
-[commit] failed with rc 240 Can't drop tables with foreign constraints
+[commit] failed with rc 240 Can't drop a table referenced by a foreign key
 (1=1)
 [select 1] rc 0
 [select * from m] rc 0

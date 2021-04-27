@@ -2065,26 +2065,8 @@ static inline struct dbtable *get_newer_db(struct dbtable *db,
 static void constraint_err(struct schema_change_type *s, struct dbtable *db,
                            constraint_t *ct, int rule, const char *err)
 {
-    if (s && s->iq) {
-        reqerrstr(s->iq, ERR_SC,
-                  "constraint error for table \"%s\" key \"%s\" -> "
-                  "<\"%s\":\"%s\">: %s",
-                  db->tablename, ct->lclkeyname, ct->table[rule],
-                  ct->keynm[rule], err);
-    } else { 
-        if (s && s->sb)
-          sc_errf(s,
-                  "Constraint error for table \"%s\" key \"%s\" -> "
-                  "<\"%s\":\"%s\">: %s\n",
-                  db->tablename, ct->lclkeyname, ct->table[rule],
-                  ct->keynm[rule], err);
-
-        logmsg(LOGMSG_ERROR,
-               "Constraint error for table \"%s\" key \"%s\" -> "
-               "<\"%s\":\"%s\">: %s\n",
-               db->tablename, ct->lclkeyname, ct->table[rule], ct->keynm[rule],
-               err);
-    }
+    sc_client_error(s, "constraint error for table \"%s\" key \"%s\" -> <\"%s\":\"%s\">: %s", db->tablename,
+                    ct->lclkeyname, ct->table[rule], ct->keynm[rule], err);
 }
 
 static inline int key_has_expressions_members(struct schema *key)

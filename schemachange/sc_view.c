@@ -119,8 +119,7 @@ int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
     if ((get_dbtable_by_name(s->tablename)) ||
         (get_view_by_name(s->tablename))) {
-        sc_errf(s, "Table/view already exists\n");
-        reqerrstr(iq, ERR_SC, "Table/view already exists");
+        sc_client_error(s, "Table/view already exists");
         return ERR_SC;
     }
     return 0;
@@ -129,8 +128,7 @@ int do_add_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 int do_drop_view(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
     if (!(get_view_by_name(s->tablename))) {
-        sc_errf(s, "View doesn't exists\n");
-        reqerrstr(iq, ERR_SC, "View doesn't exists");
+        sc_client_error(s, "View doesn't exist");
         return ERR_SC;
     }
     return 0;

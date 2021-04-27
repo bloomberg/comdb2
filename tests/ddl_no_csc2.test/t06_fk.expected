@@ -415,8 +415,8 @@ constraints
 (rows updated=1)
 (i=2, j=1)
 (i=2, j=1)
-[drop table t2] failed with rc 240 Can't drop tables with foreign constraints
-[drop table t1] failed with rc 240 Can't drop tables with foreign constraints
+[drop table t2] failed with rc 240 Can't drop a table referenced by a foreign key
+[drop table t1] failed with rc 240 Can't drop a table referenced by a foreign key
 ("multi-level cascades (cycle) - part 3"='multi-level cascades (cycle) - part 3')
 (rows inserted=1)
 (rows inserted=1)
