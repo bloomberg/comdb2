@@ -6224,6 +6224,10 @@ int comdb2_is_user_op(char *user, char *password)
     return rc;
 }
 
+int comdb2_iam_master() {
+    return (thedb->master == gbl_myhostname) ? 1 : 0;
+}
+
 static int sync_state_to_protobuf(int sync) {
     switch (sync) {
         case REP_SYNC_FULL:
