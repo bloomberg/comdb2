@@ -91,6 +91,12 @@ static inline bool is_event_from_sc(int flags)
     return flags & RECFLAGS_NEW_SCHEMA;
 }
 
+static inline bool is_event_from_cascade(int flags)
+{
+    return flags & RECFLAGS_IN_CASCADE;
+}
+
+
 static inline bool has_constraint(int flags)
 {
     return !(flags & RECFLAGS_NO_CONSTRAINTS);
@@ -158,16 +164,18 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         prefixes++;
     }
 
-    if (!(flags & RECFLAGS_NEW_SCHEMA)) {
-        if (gbl_max_wr_rows_per_txn &&
-            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+    if (!is_event_from_sc(flags)) {
+        iq->written_row_count++;
+        if (gbl_max_wr_rows_per_txn && (iq->written_row_count > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows limit");
             retrc = ERR_TRAN_TOO_BIG;
             ERR;
         }
-        if ((flags & RECFLAGS_IN_CASCADE) && gbl_max_cascaded_rows_per_txn &&
-            ((++iq->cascaded_row_count) > gbl_max_cascaded_rows_per_txn)) {
+    }
+    if (is_event_from_cascade(flags)) {
+        iq->cascaded_row_count++;
+        if (gbl_max_cascaded_rows_per_txn && (iq->cascaded_row_count > gbl_max_cascaded_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max cascaded rows limit");
             retrc = ERR_TRAN_TOO_BIG;
@@ -607,6 +615,8 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_INS], 1);
         gbl_sc_last_writer_time = comdb2_time_epoch();
 
+        if (is_event_from_cascade(flags))
+            iq->usedb->casc_write_count++;
         /* For live schema change */
         retrc = live_sc_post_add(iq, trans, *genid, od_dta, ins_keys, blobs,
                                  maxblobs, flags, rrn);
@@ -749,15 +759,18 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     *ixfailnum = -1;
 
     if (!is_event_from_sc(flags)) {
-        if (gbl_max_wr_rows_per_txn &&
-            ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
+        iq->written_row_count++;
+        if (gbl_max_wr_rows_per_txn && (iq->written_row_count > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows limit");
             retrc = ERR_TRAN_TOO_BIG;
             goto err;
         }
-        if ((flags & RECFLAGS_IN_CASCADE) && gbl_max_cascaded_rows_per_txn &&
-            ((++iq->cascaded_row_count) > gbl_max_cascaded_rows_per_txn)) {
+    }
+
+    if (is_event_from_cascade(flags)) {
+        iq->cascaded_row_count++;
+        if (gbl_max_cascaded_rows_per_txn && (iq->cascaded_row_count > gbl_max_cascaded_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max cascaded rows limit");
             retrc = ERR_TRAN_TOO_BIG;
@@ -1534,6 +1547,8 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_UPD], 1);
+    if (is_event_from_cascade(flags))
+        iq->usedb->casc_write_count++;
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
     dbglog_record_db_write(iq, "update");
@@ -1608,20 +1623,25 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
-    if (!is_event_from_sc(flags) && gbl_max_wr_rows_per_txn &&
-        ((++iq->written_row_count) > gbl_max_wr_rows_per_txn)) {
-        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
-                  "Transaction exceeds max rows limit");
-        retrc = ERR_TRAN_TOO_BIG;
-        goto err;
+    if (!is_event_from_sc(flags)) {
+        iq->written_row_count++;
+        if(gbl_max_wr_rows_per_txn && (iq->written_row_count > gbl_max_wr_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                    "Transaction exceeds max rows limit");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
     }
-    if ((flags & RECFLAGS_IN_CASCADE) && gbl_max_cascaded_rows_per_txn &&
-            ((++iq->cascaded_row_count) > gbl_max_cascaded_rows_per_txn)) {
-        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
-                "Transaction exceeds max cascaded rows limit");
-        retrc = ERR_TRAN_TOO_BIG;
-        goto err;
+    if (is_event_from_cascade(flags)) {
+        iq->cascaded_row_count++;
+        if (gbl_max_cascaded_rows_per_txn && (iq->cascaded_row_count > gbl_max_cascaded_rows_per_txn)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
+                    "Transaction exceeds max cascaded rows limit");
+            retrc = ERR_TRAN_TOO_BIG;
+            goto err;
+        }
     }
+
     if (iq->debug) {
         reqpushprefixf(iq, "TBL %s ", iq->usedb->tablename);
         prefixes++;
@@ -1849,6 +1869,8 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     }
 
     ATOMIC_ADD32(iq->usedb->write_count[RECORD_WRITE_DEL], 1);
+    if (is_event_from_cascade(flags))
+        iq->usedb->casc_write_count++;
     gbl_sc_last_writer_time = comdb2_time_epoch();
 
 err:

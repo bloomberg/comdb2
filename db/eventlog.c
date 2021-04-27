@@ -537,6 +537,12 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
                             cson_value_new_string(logger->clnt->argv0, strlen(logger->clnt->argv0)));
     }
 
+    if (logger->nwrites > 0) {
+        cson_object_set(obj, "nwrites", cson_new_int(logger->nwrites));
+    }
+    if (logger->cascaded_nwrites > 0) {
+        cson_object_set(obj, "casc_nwrites", cson_new_int(logger->cascaded_nwrites));
+    }
     eventlog_context(obj, logger);
     eventlog_perfdata(obj, logger);
     eventlog_tables(obj, logger);

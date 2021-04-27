@@ -2011,8 +2011,8 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
 
     /* check for bad cstrings */
     if (logger->reqflags & REQL_BAD_CSTR_FLAG) {
-        logmsg(LOGMSG_WARN, "WARNING: THIS DATABASE IS RECEIVING NON NUL "
-                            "TERMINATED CSTRINGS\n");
+        logmsg(LOGMSG_WARN,
+               "WARNING: THIS DATABASE IS RECEIVING NON NUL TERMINATED CSTRINGS\n");
         log_header(logger, default_out, 0);
     }
 
@@ -2917,6 +2917,12 @@ inline void reqlog_set_clnt(struct reqlogger *logger, struct sqlclntstate *clnt)
 inline int reqlog_get_retries(const struct reqlogger *logger)
 {
     return logger->iq ? logger->iq->retries : 0;
+}
+
+inline void reqlog_set_nwrites(struct reqlogger *logger, int nwrites, int cascaded_nwrites)
+{
+    logger->nwrites = nwrites;
+    logger->cascaded_nwrites = cascaded_nwrites;
 }
 
 struct dump_client_sql_options  {

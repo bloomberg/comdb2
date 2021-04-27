@@ -94,4 +94,6 @@ int reqlog_get_error_code(const struct reqlogger *logger);
 void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
+void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
+void reqlog_set_nwrites(struct reqlogger *logger, int nwrites, int cascaded_nwrites);
 #endif /* !INCLUDED_COMDB2_H */
