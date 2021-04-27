@@ -190,7 +190,7 @@ extern int gbl_commit_delay_trace;
 extern int gbl_elect_priority_bias;
 extern int gbl_abort_on_reconstruct_failure;
 extern int gbl_rand_elect_timeout;
-extern int gbl_rand_elect_min_ms;
+extern uint32_t gbl_rand_elect_min_ms;
 extern int gbl_rand_elect_max_ms;
 extern int gbl_handle_buf_add_latency_ms;
 extern int gbl_osql_send_startgen;
@@ -1180,6 +1180,40 @@ int parse_int(const char *value, int *num)
 }
 
 /*
+  Parse the given buffer for an unsigned integer and store it at the specified
+  location.
+
+  @return
+    0           Success
+    1           Failure
+*/
+int parse_uint(const char *value, int32_t *num)
+{
+    char *endptr;
+
+    errno = 0;
+
+    *num = strtoul(value, &endptr, 10);
+
+    if (errno != 0) {
+        logmsg(LOGMSG_DEBUG, "parse_uint(): Invalid value '%s'.\n", value);
+        return 1;
+    }
+
+    if (value == endptr) {
+        logmsg(LOGMSG_DEBUG, "parse_uint(): No value supplied.\n");
+        return 1;
+    }
+
+    if (*endptr != '\0') {
+        logmsg(LOGMSG_DEBUG, "parse_uint(): Couldn't fully parse the number.\n");
+        return 1;
+    }
+
+    return 0;
+}
+
+/*
   Parse the given buffer for a double and store it at the specified
   location.
 
@@ -1299,24 +1333,34 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
 
         if ((t->flags & EMPTY) == 0) {
             PARSE_TOKEN;
-            if ((ret = parse_int(buf, &num))) {
-                logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
-                return TUNABLE_ERR_INVALID_VALUE;
-            }
 
             /*
               Verify the validity of the specified argument. We perform this
               check for all INTEGER types.
             */
-            if ((t->flags & SIGNED) == 0) {
+            if (t->flags & SIGNED) {
+                if ((ret = parse_int(buf, &num))) {
+                    logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                }
                 if (((t->flags & NOZERO) != 0) && (num <= 0)) {
                     logmsg(LOGMSG_ERROR,
                            "Invalid argument for '%s' (should be > 0).\n",
                            t->name);
                     return TUNABLE_ERR_INVALID_VALUE;
-                } else if (num < 0) {
+                }
+            } else {
+                if (buf[0] == '-') {
+                    logmsg(LOGMSG_ERROR, "Invalid negative value for '%s'.\n", t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                }
+                if ((ret = parse_uint(buf, &num))) {
+                    logmsg(LOGMSG_ERROR, "Invalid argument for '%s'.\n", t->name);
+                    return TUNABLE_ERR_INVALID_VALUE;
+                }
+                if (((t->flags & NOZERO) != 0) && (num == 0)) {
                     logmsg(LOGMSG_ERROR,
-                           "Invalid argument for '%s' (should be >= 0).\n",
+                           "Invalid argument for '%s' (should be > 0).\n",
                            t->name);
                     return TUNABLE_ERR_INVALID_VALUE;
                 }
@@ -1339,7 +1383,10 @@ static comdb2_tunable_err update_tunable(comdb2_tunable *t, const char *value)
             *(int *)t->var = num;
         }
 
-        logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %d\n", t->name, num);
+        if (t->flags & SIGNED)
+            logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %d\n", t->name, num);
+        else
+            logmsg(LOGMSG_DEBUG, "Tunable '%s' set to %u\n", t->name, num);
         break;
     }
     case TUNABLE_DOUBLE: {
