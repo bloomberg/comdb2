@@ -45,9 +45,11 @@
 #include <logmsg.h>
 #include "str0.h"
 
-extern int yyparse(void);
-extern int compute_key_data(void);
-extern int compute_all_data(int tidx);
+int yyparse(void);
+int compute_key_data(void);
+int compute_all_data(int tidx);
+int comdb2_iam_master();
+
 extern int gbl_ready;
 
 char *revision = "$Revision: 1.24 $";
@@ -105,7 +107,7 @@ int dyns_used_bools(void) { return used_bools; }
 
 #define CHECK_LEGACY_SCHEMA(A)                                                 \
     do {                                                                       \
-        if (gbl_legacy_schema && (A)) {                                        \
+        if (gbl_legacy_schema && comdb2_iam_master() && (A)) {                 \
             csc2_syntax_error(                                                 \
                 "ERROR: TABLE SCHEMA NOT SUPPORTED IN LEGACY MODE\n");         \
             any_errors++;                                                      \
