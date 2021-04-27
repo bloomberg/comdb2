@@ -5674,7 +5674,7 @@ static char *get_query_cost_as_string(struct sql_thread *thd,
             if (st->path_stats[ii].nwrite)
                 strbuf_appendf(out, "nwrite %d ", st->path_stats[ii].nwrite);
             if (st->path_stats[ii].nblob)
-                strbuf_appendf(out, "nblob %d ", st->path_stats[ii].nblob);
+                strbuf_appendf(out, " nblobs %d ", st->path_stats[ii].nblob);
         } else {
             if (st->path_stats[ii].ix >= 0)
                 strbuf_appendf(out, "index %d on ", st->path_stats[ii].ix);
@@ -5686,7 +5686,7 @@ static char *get_query_cost_as_string(struct sql_thread *thd,
                     strbuf_appendf(out, "[TABLE SCAN]");
             }
             if (st->path_stats[ii].nblob)
-                strbuf_appendf(out, "nblob %d ", st->path_stats[ii].nblob);
+                strbuf_appendf(out, " nblobs %d ", st->path_stats[ii].nblob);
         }
         strbuf_append(out, "\n");
     }
