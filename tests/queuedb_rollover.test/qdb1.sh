@@ -34,18 +34,23 @@ done | cdb2sql $SP_OPTIONS
 
 sleep 60
 
-if [ $SP_HOST == `hostname` ]; then
+if [ -n "$CLUSTER" ] ; then
+    if [ $SP_HOST == `hostname` ]; then
+	cp ${TESTDIR}/logs/${DBNAME}.db qdb1-log1.log
+    else
+	scp ${SP_HOST}:${TESTDIR}/${DBNAME}.db qdb1-log1.log
+    fi
+
+    master=$(cdb2sql --tabs $SP_OPTIONS "select comdb2_sysinfo('master')")
+
+    if [ $master == `hostname` ]; then
+        cp ${TESTDIR}/logs/${DBNAME}.db qdb1-master-log1.log
+    else
+        scp ${master}:${TESTDIR}/${DBNAME}.db qdb1-master-log1.log
+    fi
+else
     cp ${TESTDIR}/logs/${DBNAME}.db qdb1-log1.log
-else
-    scp ${SP_HOST}:${TESTDIR}/${DBNAME}.db qdb1-log1.log
-fi
-
-master=$(cdb2sql --tabs $SP_OPTIONS "select comdb2_sysinfo('master')")
-
-if [ $master == `hostname` ]; then
     cp ${TESTDIR}/logs/${DBNAME}.db qdb1-master-log1.log
-else
-    scp ${master}:${TESTDIR}/${DBNAME}.db qdb1-master-log1.log
 fi
 
 cdb2sql $SP_OPTIONS "select queuename, depth from comdb2_queues order by queuename;"

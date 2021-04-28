@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 TESTID=$1
-if [ -z $TESTID ] ; then
+if [ -z "${TESTID}" ] ; then
     echo "Need testid to kill all tests with this testid"
     exit 1
 fi
