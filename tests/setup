@@ -24,7 +24,7 @@ done
 vars="HOSTNAME TESTID SRCHOME TESTCASE DBNAME DBDIR BUILDDIR TESTSBUILDDIR TESTSROOTDIR TESTDIR TMPDIR CDB2_OPTIONS CDB2_CONFIG COMDB2_EXE CDB2SQL_EXE COMDB2AR_EXE PMUX_EXE pmux_port"
 for required in $vars; do
     q=${!required}
-    if [[ -z "$q" ]]; then
+    if [[ -z "${q}" ]]; then
         echo "$required not set" >&2
         exit 1
     fi
@@ -68,8 +68,8 @@ check_db_port_running_node() {
         echo "pid running on dbport: $opid"
         [ -n "$opid" ] && ps -p $opid -o comm,args
     else
-        ssh $SSH_OPT $node "netstat -na | grep $dbport" </dev/null
-        opid=`ssh $SSH_OPT $node "fuser -n tcp $dbport" </dev/null`
+        ssh -n $SSH_OPT $node "netstat -na | grep $dbport"
+        opid=`ssh -n $SSH_OPT $node "fuser -n tcp $dbport"`
         echo "pid running on dbport: $opid"
     fi
     $CDB2SQL_EXE ${CDB2_OPTIONS} --tabs --host $node:$dbport $DBNAME 'select comdb2_dbname()' 2>&1
@@ -87,11 +87,11 @@ setup_db() {
     LRL="$DBDIR/$DBNAME.lrl"
     > ${LRL}
 
-    if [[ -z "$SKIPSSL" ]] ; then
+    if [[ -z "${SKIPSSL}" ]] ; then
         echo -e "ssl_client_mode REQUIRE\nssl_cert_path $TESTDIR" >> ${LRL}
     fi
 
-    if [[ -z "$SKIPDEBUG" ]] ; then
+    if [[ -z "${SKIPDEBUG}" ]] ; then
         echo "logmsg level debug" >> ${LRL}
     fi
     if [[ -n "$RTEONLY" ]] ; then
@@ -182,7 +182,7 @@ setup_db() {
     #fi
 
     # start it
-    if [[ -z "$CLUSTER" ]]; then
+    if [[ -z "${CLUSTER}" ]]; then
 
         if [[ -n ${DEBUG_PREFIX} && ${INTERACTIVE_DEBUG} -eq 1 ]]; then
             echo -e "!$TESTCASE: Execute the following command in a separate terminal: ${TEXTCOLOR}cd $DBDIR && ${DEBUG_PREFIX} $COMDB2_EXE ${DBNAME} ${PARAMS} ${NOCOLOR}"
@@ -236,7 +236,7 @@ setup_db() {
             if [ $node == $HOSTNAME ] ; then
                 continue
             fi
-            cat $ARFILE | ssh $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $LOGDIR/${DBNAME}.${node}.copy &
+            cat $ARFILE | ssh  $SSH_OPT $node "cd ${DBDIR}; $COMDB2AR_EXE $COMDB2AR_EXOPTS $COMDB2AR_AROPTS -u 95 x $DBDIR" &> $LOGDIR/${DBNAME}.${node}.copy &
             pids[$i]=$!
             let i=i+1
         done
@@ -321,7 +321,7 @@ if [ -n "${SECONDARY_DB_PREFIX}" ] ; then
     sec_vars="SECONDARY_DBNAME SECONDARY_DBDIR SECONDARY_CDB2_OPTIONS"
     for required in $sec_vars; do
         q=${!required}
-        if [[ -z "$q" ]]; then
+        if [[ -z "${q}" ]]; then
             echo "$required not set" >&2
             exit 1
         fi

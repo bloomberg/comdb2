@@ -8,8 +8,8 @@ set -x
 [[ $COMDB2_UNITTEST == 1 ]] && exit 0
 
 echo "!$TESTCASE: stopping"
-[ -z "$TESTDIR" ] && TESTDIR=${PWD}/test_${TESTID}
-[ -z "$TMPDIR" ] && TMPDIR=${TESTDIR}/tmp
+TESTDIR=${TESTDIR:-${PWD}/test_${TESTID}}
+TMPDIR=${TMPDIR:-${TESTDIR}/tmp}
 
 #parameter $1 indicates if test is successful or not
 successful=$1
@@ -78,7 +78,7 @@ core_all_nodes() {
             continue
         fi
         pidfl=${TMPDIR}/${DBNAME}.pid
-        ssh -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 " </dev/null
+        ssh -n -o StrictHostKeyChecking=no $node "cat ${pidfl} | xargs kill -6 "
     done
 }
 
@@ -109,7 +109,7 @@ cleanup_cluster() {
         fi
         dbport=`${TESTSROOTDIR}/tools/send_msg_port.sh -h $node "get comdb2/replication/${DBNAME}" ${pmux_port}`
         echo "deregistering $DBNAME (port $dbport) from $node pmux:$pmux_port"
-        ssh -o StrictHostKeyChecking=no $node "${deregister_db_port}" < /dev/null
+        ssh -n -o StrictHostKeyChecking=no $node "${deregister_db_port}"
         if [ "x$DBDIR" == "x" ] ; then 
             continue
         fi
@@ -118,12 +118,12 @@ cleanup_cluster() {
             echo copy $node:${DBDIR} content locally to $DBDIR/$node/ for investigation
             mkdir $DBDIR/$node/
             # from the next line, scp may result in a an extra copy of the core
-            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ < /dev/null &
-            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ < /dev/null &
+            scp -r -o StrictHostKeyChecking=no $node:${DBDIR} $DBDIR/$node/ &
+            scp -r -o StrictHostKeyChecking=no $node:${TESTDIR}/var/log/cdb2/${DBNAME}* $DBDIR/$node/ &
         elif [ "$CLEANUPDBDIR" != "0" ] ; then 
-            ssh -o StrictHostKeyChecking=no $node "rm -rf ${DBDIR} $TMPDIR/${DBNAME}" < /dev/null &
+            ssh -n -o StrictHostKeyChecking=no $node "find ${DBDIR} | grep -q core || rm -rf ${DBDIR} $TMPDIR/${DBNAME}" &
             if [ "$CLEANUPDBDIR" == "2" ] ; then 
-                ssh -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${DBNAME}.db ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.* ${TESTDIR}/var/log/cdb2/${DBNAME}.*" < /dev/null &
+                ssh -n -o StrictHostKeyChecking=no $node "rm -f $TESTDIR/${DBNAME}.db ${TMPDIR}/${DBNAME}.* ${TMPDIR}/cdb2/${DBNAME}.* ${TESTDIR}/var/log/cdb2/${DBNAME}.*" &
             fi
         fi
     done
@@ -131,7 +131,7 @@ cleanup_cluster() {
 
     # the local node always has a copy of DBDIR even if not part of cluster
     if [ "$CLEANUPDBDIR" != "0" ] && [ "$successful" == "1" ] && [ "x$DBDIR" != "x" ] ; then 
-        rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
+        find ${DBDIR} | grep -q core || rm -rf ${DBDIR} ${TMPDIR}/${DBNAME}
         if [ "$CLEANUPDBDIR" == "2" ] ; then
             rm -f ${TESTDIR}/var/log/cdb2/${DBNAME}.* `find $TESTDIR/${TESTCASE}.test/* | grep -v Makefile`
             rm -f $TESTDIR/logs/${DBNAME}.{setup,init,conn,copy,arstatus} # non clustered

@@ -90,6 +90,7 @@ fi
 
 export HOSTNAME=${HOSTNAME:-`hostname`}
 export CLEANUPDBDIR=${CLEANUPDBDIR:-1}
+export VERIFY_DB_AT_FINISH=${VERIFY_DB_AT_FINISH:-$((2-CLEANUPDBDIR))} # if not specified, depend on $CLEANUPDBDIR
 source $TESTSROOTDIR/setup.common
 export PATH="${paths}/:${PATH}"
 export pmux_port=${PMUXPORT:-5105}  # assign to 5105 if it was not set as a make parameter
@@ -141,7 +142,7 @@ find_cores() {
     local LCLDBDIR=$2
     local COREAGE=${FINDCOREAGE:-60}
     local CPAT=$(< /proc/sys/kernel/core_pattern)  # like cat core_pattern
-    [[ ${CPAT:0:1} == '|' ]] && return #TODO: handle cores controled by coredumpctl
+    [[ "${CPAT:0:1}" == "|" ]] && CPAT=core  #TODO: handle cores controled by coredumpctl
     local COREDIR=$(dirname $CPAT 2>/dev/null)
     if [ "x$COREDIR" == "x" ] || [ "x$COREDIR" == "x." ] ; then  # when just 'core'
         COREDIR=$LCLDBDIR
@@ -154,9 +155,10 @@ find_cores() {
     local CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '$COREFL' 2> /dev/null"
     local PIDFL=${TMPDIR}/${LCLDBNM}.pid
 
+    eval cr=\$\(${CORECMD}\)       # or can do cr=$(eval ${CORECMD}) or cr=$(find ${COREDIR} | grep $COREFL)
 
     # always check localhost because thats where we create db
-    if [ $has_pattern -eq 1 ] ; then
+    if [[ -z "${cr}" ]] && [[ $has_pattern -eq 1 ]] ; then
         local PID=$(cat ${PIDFL} 2> /dev/null)
         COREFL=`echo $CPAT | sed "s/%e/comdb2/g; s/.%t/.[^.]*/g; s/.%u/.[^.]*/g; s/.%g/.[^.]*/; s/.%s/.[^.]*/; s/.%h/.[^.]*/; s/%p/$PID/g; s/\.\./\./;"`
         COREFL=$COREDIR/$COREFL
@@ -211,7 +213,7 @@ find_cores() {
         fi
         if [ $has_pattern -eq 1 ] ; then
             PIDFL=${TMPDIR}/${LCLDBNM}.pid
-            local PID=`ssh -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null" </dev/null`
+            local PID=`ssh -n -o StrictHostKeyChecking=no $node "cat ${PIDFL} 2> /dev/null"`
             if [ "x$PID" == "x" ] ; then
                 continue
             fi
@@ -220,15 +222,15 @@ find_cores() {
             CORECMD="find ${COREDIR} -mmin -$COREAGE -regex '${COREFL}.*' 2> /dev/null"
         fi
 
-        cr=`ssh -o StrictHostKeyChecking=no $node "$CORECMD" < /dev/null`
+        cr=`ssh -n -o StrictHostKeyChecking=no $node "$CORECMD"`
 
         if [[ -n "$cr" ]] ; then
             echo "$node:$cr" # this is the return value of the function
             local space=$(df .  | awk '{print $4}' | grep -v Available)
-            local size=$(ssh $node "ls -s $cr | cut -f1 -d' '")
+            local size=$(ssh -n -o StrictHostKeyChecking=no $node "ls -s $cr | cut -f1 -d' '")
             if [[ $size -lt $space ]] ; then # if there is space, copy locally
                 local copy_core=$LCLDBDIR/${node}.`basename $cr`
-                scp -o StrictHostKeyChecking=no $node:${cr} $copy_core < /dev/null
+                scp -o StrictHostKeyChecking=no $node:${cr} $copy_core
                 echo "Core file $node:${cr} copied to $copy_core" > $LCLDBDIR/core_stacktrace.$node.txt
                 echo 'where' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace.$node.txt
                 echo 't a a bt full' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace_long.$node.txt
@@ -255,12 +257,12 @@ call_setup() {
 
     cr=`find_cores ${DBNAME} $DBDIR`
 
-    if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+    if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
         cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
     fi
 
 
-    if [[ -n "$cr" ]] ; then
+    if [[ -n "${cr}" ]] ; then
         echo "!$TESTCASE: setup failed with core dumped ($cr)" | tee -a ${TEST_LOG}
         call_unsetup
         sleep 0.1
@@ -275,12 +277,13 @@ call_setup() {
 }
 
 
+# check if we can perform a 'select 1' query to the db
 check_db_at_finish() {
     local LCLDBNM="$1"
     local LCLCONFIG="$2"
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
-    if [[ -z "$CLUSTER" ]] ; then
+    if [[ -z "${CLUSTER}" ]] ; then
         out=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' 2>&1)
         if [ "$out" != "1" ] ; then
             timeout --kill-after=5s 1m $CDB2SQL_EXE -v ${LCLOPTIONS} --admin --tabs --host localhost $LCLDBNM 'select 1' &> ${TESTDIR}/logs/${LCLDBNM}.atfinish
@@ -299,6 +302,7 @@ check_db_at_finish() {
     done
 }
 
+# run verify on all the tables of the db
 verify_db_at_finish() {
     local LCLDBNM="$1"
     local LCLCONFIG="$2"
@@ -317,7 +321,7 @@ verify_db_at_finish() {
 }
 
 exit_if_above_max_test_failures () {
-    MAX_TEST_FAILURES=10    # stop running if more that this number of failures in test.log
+    MAX_TEST_FAILURES=100    # stop running if more that this number of failures in test.log
     F=`grep failed ${TESTDIR}/test.log | wc -l`
     if [ "$F" -ge "$MAX_TEST_FAILURES" ] ; then 
         echo "$TESTCASE: Max number of allowed test failures ($MAX_TEST_FAILURES) reached" >> ${TESTDIR}/test.log
@@ -354,7 +358,8 @@ fi
 
 cr=`find_cores ${DBNAME} $DBDIR`
 
-if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+#-z true if the length is zero
+if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 
@@ -374,15 +379,15 @@ if [ $CHECK_DB_AT_FINISH -eq 1 ] ; then
     dbdown=`check_db_at_finish ${DBNAME} $CDB2_CONFIG`
 
     # if no crashes, check secondary
-    if [[ -z "$dbdown" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
+    if [[ -z "${dbdown}" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
         dbdown=`check_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
     fi
 
-    # if no crashes, run verify
-    if [[ -z "$dbdown" ]] ; then
+    # if no crashes and $VERIFY_DB_AT_FINISH > 0 then run verify
+    if [[ -z "${dbdown}" ]] && [[ $VERIFY_DB_AT_FINISH -gt 0 ]]; then
         verify_ret=`verify_db_at_finish ${DBNAME} $CDB2_CONFIG`
         # if no issues with verify, run verify on secondary
-        if [[ -z "$verify_ret" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
+        if [[ -z "${verify_ret}" ]] && [[ -n "${SECONDARY_DBNAME}" ]]; then
             verify_ret=`verify_db_at_finish ${SECONDARY_DBNAME} $SECONDARY_CDB2_CONFIG`
         fi
     fi
@@ -436,7 +441,7 @@ call_unsetup
 # find any cores after unsetup -- ONLY works if CLEANUPDBDIR=0 because unsetup cleans up dir
 cr=`find_cores ${DBNAME} $DBDIR`
 
-if [[ -z "$cr" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
     cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
 fi
 

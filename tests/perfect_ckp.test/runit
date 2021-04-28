@@ -31,7 +31,7 @@ if [ "$tier" = "" ]; then
 fi
 
 echo Creating table
-cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "drop table t" >/dev/null
+cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "drop table if exists t" >/dev/null
 cdb2sql -s ${CDB2_OPTIONS} $dbnm $tier "create table t { schema {int i} }" >/dev/null
 
 ###### Step 2: Start background writers ######
