@@ -2424,7 +2424,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
     clnt = thd->clnt;
 
     /* If no tablescans are allowed (sqlite_stats* tables are exempt), return an error */
-    if (!clnt->limits.tablescans_ok && pCur->db && !is_sqlite_stat(pCur->db->tablename))
+    if (!clnt->limits.tablescans_ok && pCur->db && !(is_sqlite_stat(pCur->db->tablename)))
         return SQLITE_LIMIT;
 
     /* Set had_tablescans flag if we're asked to warn of tablescans. */

@@ -657,17 +657,18 @@ typedef struct dbtable {
     unsigned aa_counter_noupd; // does not include updates
 
     /* Foreign key constraints */
-    constraint_t constraints[MAXCONSTRAINTS];
-    int n_constraints;
+    constraint_t *constraints;
+    size_t n_constraints;
     /* Pointers to other table constraints that are directed at this table. */
-    constraint_t *rev_constraints[MAXCONSTRAINTS];
-    int n_rev_constraints;
+    constraint_t **rev_constraints;
+    size_t n_rev_constraints;
+    size_t cap_rev_constraints;
     pthread_mutex_t rev_constraints_lk;
 
     /* CHECK constraints */
-    check_constraint_t check_constraints[MAXCONSTRAINTS];
-    int n_check_constraints;
-    char *check_constraint_query[MAXCONSTRAINTS];
+    check_constraint_t *check_constraints;
+    size_t n_check_constraints;
+    char **check_constraint_query;
 
     /* One of the DBTYPE_ constants. */
     int dbtype;
@@ -2436,6 +2437,9 @@ int compare_all_tags(const char *table, FILE *out);
 int restore_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int backout_constraint_pointers(struct dbtable *db, struct dbtable *newdb);
 int populate_reverse_constraints(struct dbtable *db);
+void init_reverse_constraints(struct dbtable *db);
+int add_reverse_constraint(struct dbtable *db, constraint_t *cnstrt);
+int delete_reverse_constraint(struct dbtable *db, size_t idx);
 int has_index_changed(struct dbtable *db, char *keynm, int ct_check, int newkey,
                       FILE *out, int accept_type_change);
 int resume_schema_change(void);

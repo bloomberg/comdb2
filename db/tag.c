@@ -6716,9 +6716,27 @@ void freedb_int(dbtable *db, dbtable *replace)
         free(db->ixsql);
     }
 
-    for (i = 0; i < db->n_constraints; i++) {
+    if (db->rev_constraints) {
+        free(db->rev_constraints);
+        db->rev_constraints = NULL;
+    }
+
+    for (i = 0; (i < db->n_constraints); i++) {
+        if (db->constraints == NULL)
+            break;
         free(db->constraints[i].consname);
         free(db->constraints[i].lclkeyname);
+        for (int j = 0; j < db->constraints[i].nrules; ++j) {
+            free(db->constraints[i].table[j]);
+            free(db->constraints[i].keynm[j]);
+        }
+        free(db->constraints[i].table);
+        free(db->constraints[i].keynm);
+    }
+
+    if (db->constraints) {
+        free(db->constraints);
+        db->constraints = NULL;
     }
 
     for (i = 0; i < db->n_check_constraints; i++) {
