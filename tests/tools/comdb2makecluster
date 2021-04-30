@@ -209,7 +209,7 @@ for node in $CLUSTER; do
     done
 done
 
-n=$($CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'exec procedure sys.cmd.send("bdb cluster")' | grep "lsn" | wc -l)
+n=`$CDB2SQL_EXE ${CDB2_OPTIONS} --tabs $DBNAME --host $node 'select count(*) from comdb2_cluster'`
 echo "$DBNAME: Cluster is running with $n nodes. You can query it with:"
 echo "   $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME default 'select 1'"
 

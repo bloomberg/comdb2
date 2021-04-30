@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 bash -n "$0" | exit 1
 
+# here we perform a series of db creation test
+
 set -x
+
+echo $CLUSTER
 
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
@@ -57,7 +61,7 @@ echo "Check 8, bring up db and query it"
 if [[ -n "$CLUSTER" ]]; then
     echo "Use comdb2makecluster --nocreate to copy to cluster"
 
-    ${SRCHOME}/contrib/comdb2makecluster/comdb2makecluster --nocreate --dir $TSTDBDIR $DB $CLUSTER
+    ${TESTSROOTDIR}/tools/comdb2makecluster --nocreate --dir $TSTDBDIR $DB $CLUSTER
     rc=$?
     if [[ $rc -ne 0 ]] ; then
         failexit "Makecluster returned error $rc"
@@ -73,14 +77,16 @@ if [[ -n "$CLUSTER" ]]; then
         assertres $res $node
     done
 else
-    ${SRCHOME}/contrib/comdb2makecluster/comdb2makecluster --nocreate --dir $DB $TSTDBDIR
-    assertres $? 255
+    ${TESTSROOTDIR}/tools/comdb2makecluster --nocreate --dir $DB $TSTDBDIR
+    assertres $? 255   # comdb2makecluster should fail
 
     echo "comdb2_config:default_type=local" >> $CDB2_CONFIG
     ${COMDB2_EXE} $DBNAME --no-global-lrl --lrl $TSTDBDIR/${DB}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid &> $TESTDIR/logs/${DBNAME}.db &
     sleep 1
     res=`cdb2sql --tabs ${CDB2_OPTIONS} $DB default "select comdb2_host()"`
-    assertres $res $HOSTNAME
+    if [[ $res != $HOSTNAME ]] && [[ $res != `hostname --long` ]] ; then
+        failexit "comdb2_host() returned unexpected $res instead of $HOSTNAME"
+    fi
 fi
 
 COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAME}.unsetup
@@ -89,7 +95,7 @@ COMDB2_UNITTEST=0 CLEANUPDBDIR=1 $TESTSROOTDIR/unsetup 1 > $TESTDIR/logs/${DBNAM
 if [[ -n "$CLUSTER" ]]; then
     echo "Check 9, Use comdb2makecluster bring up a new db"
 
-    ${SRCHOME}/contrib/comdb2makecluster/comdb2makecluster --dir $TSTDBDIR $DB $CLUSTER
+    ${TESTSROOTDIR}/tools/comdb2makecluster --dir $TSTDBDIR $DB $CLUSTER
     rc=$?
     if [[ $rc -ne 0 ]] ; then
         failexit "Makecluster returned error $rc"
