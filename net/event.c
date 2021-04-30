@@ -1727,6 +1727,7 @@ static void enable_write(int dummyfd, short what, void *data)
     }
     e->wr_buf = evbuffer_new();
     e->wr_full = 0;
+    e->decomissioned = 0;
     Pthread_mutex_unlock(&e->wr_lk);
     event_once(rd_base, enable_read, info);
 }
