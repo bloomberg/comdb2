@@ -2431,7 +2431,9 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
     while (i < fndnumtbls)
         free(tblnames[i++]);
 
-    rc = llmeta_load_views(dbenv, tran);
+    if (rc == 0) {
+        rc = llmeta_load_views(dbenv, tran);
+    }
 
     return rc;
 }
