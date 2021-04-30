@@ -460,35 +460,35 @@ fi
 
 
 test_t1() {
-	INITNUMREC=100
+    INITNUMREC=100
 
 #table t1 was added upon init of the DB from lrl.options
-	assert_vers t1 0
-	assert_schema t1 alltypes.csc2
+    assert_vers t1 0
+    assert_schema t1 alltypes.csc2
 
-	let NEWNUMREC=$((2*INITNUMREC))
-	insert_records 1 $NEWNUMREC
-	assertcnt t1 $NEWNUMREC
+    let NEWNUMREC=$((2*INITNUMREC))
+    insert_records 1 $NEWNUMREC
+    assertcnt t1 $NEWNUMREC
     do_verify t1
 
-	update_records 1 $NEWNUMREC
-	assertcnt t1 $NEWNUMREC
+    update_records 1 $NEWNUMREC
+    assertcnt t1 $NEWNUMREC
     do_verify t1
 
-	delete_records $((INITNUMREC+1)) $NEWNUMREC
-	assertcnt t1 $INITNUMREC
+    delete_records $((INITNUMREC+1)) $NEWNUMREC
+    assertcnt t1 $INITNUMREC
     do_verify t1
 
 
-	echo "Now call task that uses cdb2api to ins/upd/del"
-	CDB2API_CALLER=${TESTSBUILDDIR}/cdb2api_caller 
+    echo "Now call task that uses cdb2api to ins/upd/del"
+    CDB2API_CALLER=${TESTSBUILDDIR}/cdb2api_caller 
     if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
         CDB2API_CALLER="${DEBUGGER} ${CDB2API_CALLER}"
     fi
     $CDB2API_CALLER $dbnm > cdb2api_caller.out
     do_verify t1
 
-	$CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" &> select_all.out
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} $dbnm default "select * from t1" &> select_all.out
 }
 
 
@@ -539,15 +539,15 @@ create table t_orig (i int)$$
 create table t_trig (i int)$$
 create procedure ins_trig version 'instrig' {
 local function main(event)
-	local tt = db:table("t_trig")	
-	local tp = event.type
-	local inew, iold
-	if tp == 'add' then
-		inew = event.new.i
-	elseif tp == 'del' then
-		iold = event.old.i
-	end
-	return tt:insert({i=inew})
+    local tt = db:table("t_trig")
+    local tp = event.type
+    local inew, iold
+    if tp == 'add' then
+        inew = event.new.i
+    elseif tp == 'del' then
+        iold = event.old.i
+    end
+    return tt:insert({i=inew})
 end}$$
 create lua trigger ins_trig on (table t_orig for insert and update and delete)
 insert into t_orig values (1)
