@@ -141,6 +141,7 @@ extern int gbl_rep_verify_always_grab_writelock;
 extern int gbl_rep_verify_will_recover_trace;
 extern uint32_t gbl_max_wr_rows_per_txn;
 extern uint32_t gbl_max_cascaded_rows_per_txn;
+extern uint32_t gbl_max_time_per_txn_ms;
 extern int gbl_force_serial_on_writelock;
 extern int gbl_processor_thd_poll;
 extern int gbl_time_rep_apply;
