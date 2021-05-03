@@ -1907,4 +1907,7 @@ REGISTER_TUNABLE("debug_mixed_ddl_dml", "Reject write schedules which mix DDL an
 REGISTER_TUNABLE("sync_osql_cancel", "Synchronous osql cancellation (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_sync_osql_cancel, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
