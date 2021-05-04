@@ -17,7 +17,6 @@
 (tablename='t1')
 (tablename='t2')
 unknown @ls sub-command foo
-(name='carray')
 (name='comdb2_active_osqls')
 (name='comdb2_appsock_handlers')
 (name='comdb2_blkseq')

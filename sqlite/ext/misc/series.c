@@ -402,7 +402,9 @@ static sqlite3_module seriesModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 #endif /* SQLITE_OMIT_VIRTUALTABLE */

@@ -2500,7 +2500,9 @@ static sqlite3_module jsonEachModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
 /* The methods of the json_tree virtual table. */
@@ -2529,7 +2531,9 @@ static sqlite3_module jsonTreeModule = {
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
   0,                         /* xShadowName */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
 
