@@ -49,12 +49,12 @@ assertcnt ()
 
 getmaster()
 {
-    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='Y'"
 }
 
 getclusternodes()
 {
-    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster"
 }
 
 sendtocluster()
