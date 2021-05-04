@@ -567,12 +567,12 @@ if [[ $DBNAME != *"rowlocksgenerated"* ]] ; then
     test_trigger
 fi
 
+# test that sql hist does not cause a crash
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("sql hist")'
-
-
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
 
+# test for comdb2_rowid
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "create table trowid(i int)"
 $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm default "insert into trowid values(12345)"
 myrowid=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_rowid from trowid"`

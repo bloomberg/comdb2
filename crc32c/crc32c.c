@@ -417,9 +417,9 @@ void timediff(const char * s) {
 
     gettimeofday(&tmp, NULL);
     int sec = (tmp.tv_sec - tv.tv_sec)*1000000;
-    int msec = (tmp.tv_usec - tv.tv_usec);
+    int usec = (tmp.tv_usec - tv.tv_usec);
     if (tv.tv_sec)
-        printf("%20.20s diff = %12.dusec\n", s, sec + msec);
+        printf("%20.20s diff = %12.dusec\n", s, sec + usec);
     tv = tmp;
 }
 

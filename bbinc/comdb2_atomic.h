@@ -13,6 +13,7 @@
   #define ATOMIC_ADD32_PTR(mem, val) atomic_add_32_nv(mem, val)
 #elif defined(_LINUX_SOURCE)
   #define CAS32(mem, oldv, newv) __atomic_compare_exchange_n(&mem, &oldv, newv, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
+  #define CAS64(mem, oldv, newv) __atomic_compare_exchange_n(&mem, &oldv, newv, 0, __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST)
   #define XCHANGE32(mem, newv) __atomic_exchange_n(&mem, newv, __ATOMIC_SEQ_CST)
   #define XCHANGE64(mem, newv) __atomic_exchange_n(&mem, newv, __ATOMIC_SEQ_CST)
   #define ATOMIC_LOAD32(mem) __atomic_load_n(&mem, __ATOMIC_SEQ_CST)
