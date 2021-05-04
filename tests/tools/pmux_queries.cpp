@@ -13,6 +13,8 @@
 #include <sstream>
 #include <iostream>
 #include <getopt.h>
+#include <sys/time.h>
+#include "comdb2_atomic.h"
 
 typedef struct {
     unsigned int thrid;
@@ -20,14 +22,23 @@ typedef struct {
     unsigned int count;
 } thr_info_t;
 
-int readtimeoutms = 20;
-int connecttimeoutms = 10;
-int speedtest = 0;
+unsigned readtimeoutms = 0;
+unsigned connecttimeoutms = 10;
+unsigned speedtest = 0;
+uint64_t worsttimeus = 0;
+
+static inline int64_t time_epochus(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (((int64_t)tv.tv_sec) * 1000000 + tv.tv_usec);
+}
 
 int timed_read(int sfd, char *buf, int len)
 {
     int rc;
     struct pollfd pol;
+    uint64_t pre = 0;
 
     if (readtimeoutms > 0) {
         do {
@@ -46,9 +57,19 @@ int timed_read(int sfd, char *buf, int len)
         }
         if ((pol.revents & POLLIN) == 0)
             return -100000 + pol.revents;
-        /*something to read*/
+        // there's something to read
+    } else { // we will time the read
+        pre = time_epochus();
     }
-    return read(sfd, buf, len);
+    rc = read(sfd, buf, len);
+    if (readtimeoutms == 0) { // save the longest read
+        uint64_t delta = time_epochus() - pre;
+        uint64_t old;
+        while ((old = ATOMIC_LOAD64(worsttimeus)) < delta && !CAS64(worsttimeus, old, delta)) {
+            // keep trying
+        }
+    }
+    return rc;
 }
 
 int send_and_read_int(int sfd, const std::string & str)
@@ -83,7 +104,7 @@ void timed_connect(int *sfd, int pmuxport)
 
     int saved_flags = fcntl(*sfd, F_GETFL, 0);
 
-    if (connecttimeoutms <= 0 || saved_flags < 0) {
+    if (connecttimeoutms == 0 || saved_flags < 0) {
         if (saved_flags < 0)
             perror("Can't get socket info:");
 
@@ -252,6 +273,6 @@ int main(int argc, char *argv[])
     for (unsigned int i = 0; i < numthreads; ++i)
         pthread_join(t[i], &r);
 
-    std::cout << "Done Main" << std::endl;
+    std::cout << "Done Main max delay (in ms)=" << (worsttimeus/1000) << std::endl;
     return 0;
 }

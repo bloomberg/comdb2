@@ -83,30 +83,40 @@ cleanup() {
 
 trap cleanup INT EXIT
 
-rng=`echo "range" | nc -W 1 localhost ${COMDB2_PMUX_PORT}`
+# nc -N would be better but not supported by older versions
+rng=`echo "range" | nc -w 1 localhost ${COMDB2_PMUX_PORT}`
 assertres "$rng" "$RANGE"
 
-(time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 100) &> out.txt
+
+MAX_ALLOWED_RESPONSE_DELAY=100 #ms
+
+(time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 100) | tee pmux_queries.out1
 res=$?
 if [ $res -ne 0 ] ; then
     failexit "pmux_queries returns $res"
 fi
 
-cat out.txt
-runtime=`grep real out.txt | sed 's/[^m]*m\([^\.]*\)\..*/\1/g'`
-    if [ "$runtime" -lt 1 ] ; then
-    time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 10000
+runtime=`grep real pmux_queries.out1 | sed 's/[^m]*m\([^\.]*\)\..*/\1/g'`
+if [ "$runtime" -lt 1 ] ; then
+    time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 10000 | tee pmux_queries.out2
     res=$?
     if [ $res -ne 0 ] ; then
         failexit "pmux_queries returns $res"
     fi
 fi
 
-time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 100000 --speedtest
+time ${TESTSBUILDDIR}/pmux_queries --pmuxport ${COMDB2_PMUX_PORT} --numthreads 10 --iterations 100000 --speedtest | tee pmux_queries.out3
 res=$?
 if [ $res -ne 0 ] ; then
     failexit "pmux_queries returns $res"
 fi
+
+for i in 1 2 3; do
+    if [[ -f pmux_queries.out${i} ]] && [[ `grep "Done Main" pmux_queries.out${i} | cut -f2 -d'='` -gt $MAX_ALLOWED_RESPONSE_DELAY ]] ; then
+        failexit "pmux_queries.out${i} max latency above MAX_ALLOWED_RESPONSE_DELAY=$MAX_ALLOWED_RESPONSE_DELAY"
+    fi
+done
+
 
 PMUXPORT=${COMDB2_PMUX_PORT} START_PORT=$STARTRANGE NUM_PORTS=100 UNIX_PATH="${TMPDIR}/pmux.${COMDB2_PMUX_PORT}" ./portmux.py --failfast --verbose
 res=$?
