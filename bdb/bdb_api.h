@@ -1126,6 +1126,7 @@ int bdb_create_stripes_tran(bdb_state_type *bdb_state, tran_type *tran,
 
 /* re-open bdb handle that has been bdb_close_only'ed
    as master/client depending on how it used to be */
+int bdb_open_foreign_bulkimport(bdb_state_type *, int *);
 int bdb_open_again(bdb_state_type *bdb_handle, int *bdberr);
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran,
                         int *bdberr);
