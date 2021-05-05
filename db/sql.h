@@ -860,6 +860,8 @@ struct sqlclntstate {
 
     // Latch last statement's cost for comdb2_last_cost to fetch
     int64_t last_cost;
+    /* 1 if client has requested flat column values. */
+    int flat_col_vals;
 };
 
 /* Query stats. */

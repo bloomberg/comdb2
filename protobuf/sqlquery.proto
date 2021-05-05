@@ -19,6 +19,8 @@ enum CDB2ClientFeatures {
     ALLOW_QUEUING        = 4;
     /* To tell the server that the client is SSL-capable. */
     SSL                  = 5;
+    /* flat column values. see sqlresponse.proto for more details. */
+    FLAT_COL_VALS   = 6;
 }
 
 message CDB2_FLAG {
