@@ -150,4 +150,13 @@ message CDB2_SQLRESPONSE {
     optional uint64 row_id   = 8; // in case of retry, this will be used to identify the rows which need to be discarded
     repeated CDB2ServerFeatures  features = 9; // This can tell client about features enabled in comdb2
     optional string info_string = 10;
+
+    /* True if return row data directly under CDB2_SQLRESPONSE, instead of using a nested `CDB2_SQLRESPONSE.column'
+       message. A nested message is more readable, but comes with an overhead: protobuf_c_message_pack_to_buffer() must
+       first pack a nested message into main memory to get its serialized size, and encode the size in the message header.
+       This means that for each column value that is being serialized, we end up using memory 2x of its size.
+       We can avoid the overhead by collapsing the nested CDB2_SQLRESPONSE.column message into its parent message. */
+    optional bool flat_col_vals = 11;
+    repeated bytes values = 12;
+    repeated bool isnulls = 13;
 }

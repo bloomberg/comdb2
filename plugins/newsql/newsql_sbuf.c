@@ -716,6 +716,13 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
 
     CDB2SQLQUERY *sql_query = query->sqlquery;
 
+    for (int ii = 0; ii < sql_query->n_features; ++ii) {
+        if (CDB2_CLIENT_FEATURES__FLAT_COL_VALS == sql_query->features[ii]) {
+            clnt.flat_col_vals = 1;
+            break;
+        }
+    }
+
     if (!clnt.admin && do_query_on_master_check(dbenv, &clnt, sql_query))
         goto done;
 

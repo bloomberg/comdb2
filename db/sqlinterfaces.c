@@ -5217,6 +5217,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     set_asof_snapshot(clnt, 0, __func__, __LINE__);
     clnt->sqltick = 0;
     clnt->rowbuffer = 1;
+    clnt->flat_col_vals = 0;
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
     }
