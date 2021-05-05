@@ -859,6 +859,8 @@ struct sqlclntstate {
     int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
                               desired */
     int8_t rowbuffer;
+    /* 1 if client has requested flat column values. */
+    int flat_col_vals;
 };
 
 /* Query stats. */

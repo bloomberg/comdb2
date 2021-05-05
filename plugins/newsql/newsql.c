@@ -612,14 +612,27 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
     if (!appdata->sqlquery->little_endian)
 #endif
         flip = 1;
+
+    /* nested column values */
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
+
+    /* flat column values */
+    ProtobufCBinaryData bd[ncols];
+    protobuf_c_boolean isnulls[ncols];
+
+    memset(&bd, 0, sizeof(ProtobufCBinaryData) * ncols);
+    memset(&isnulls, 0, sizeof(protobuf_c_boolean) * ncols);
+
     for (int i = 0; i < ncols; ++i) {
-        value[i] = &cols[i];
+        if (!clnt->flat_col_vals)
+            value[i] = &cols[i];
         cdb2__sqlresponse__column__init(&cols[i]);
         if (!sqlite3_can_get_column_type_and_data(clnt, stmt) ||
                 column_type(clnt, stmt, i) == SQLITE_NULL) {
             newsql_null(cols, i);
+            if (clnt->flat_col_vals)
+                isnulls[i] = cols[i].has_isnull ? cols[i].isnull : 0;
             continue;
         }
         int type = appdata->type[i];
@@ -688,15 +701,27 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         default:
             return -1;
         }
+
+        if (clnt->flat_col_vals)
+            bd[i] = cols[i].value;
     }
     CDB2SQLRESPONSE r = CDB2__SQLRESPONSE__INIT;
     r.response_type = RESPONSE_TYPE__COLUMN_VALUES;
-    r.n_value = ncols;
-    r.value = value;
+    if (clnt->flat_col_vals) {
+        r.has_flat_col_vals = 1;
+        r.flat_col_vals = 1;
+        r.n_values = r.n_isnulls = ncols;
+        r.values = bd;
+        r.isnulls = isnulls;
+    } else {
+        r.n_value = ncols;
+        r.value = value;
+    }
     if (clnt->num_retry) {
         r.has_row_id = 1;
         r.row_id = arg->row_id;
     }
+
     if (postpone) {
         return newsql_save_postponed_row(clnt, &r);
     } else if (arg->pingpong) {
