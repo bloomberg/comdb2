@@ -5370,6 +5370,7 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
     clnt->sqltick = 0;
+    clnt->flat_col_vals = 0;
 }
 
 void reset_clnt_flags(struct sqlclntstate *clnt)

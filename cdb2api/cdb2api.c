@@ -2871,6 +2871,9 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 #if WITH_SSL
     features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
 #endif
+    /* Request server to send back row data flat, instead of storing it in
+       a nested data structure. This helps reduce server's memory footprint. */
+    features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
 
     if (hndl) { 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
@@ -4896,23 +4899,47 @@ int cdb2_column_type(cdb2_hndl_tp *hndl, int col)
     return ret;
 }
 
+static int col_values_flattened(CDB2SQLRESPONSE *resp)
+{
+    return (resp->has_flat_col_vals && resp->flat_col_vals);
+}
+
 int cdb2_column_size(cdb2_hndl_tp *hndl, int col)
 {
-    if ((hndl->lastresponse == NULL) || (hndl->lastresponse->value == NULL))
+	CDB2SQLRESPONSE *lastresponse = hndl->lastresponse;
+    /* sanity check. just in case. */
+    if (lastresponse == NULL)
         return -1;
-    return hndl->lastresponse->value[col]->value.len;
+    /* data came back in the child column structure */
+    if (lastresponse->value != NULL)
+        return lastresponse->value[col]->value.len;
+    /* data came back in the parent CDB2SQLRESPONSE structure */
+    return (col_values_flattened(lastresponse)) ? lastresponse->values[col].len : -1;
 }
 
 void *cdb2_column_value(cdb2_hndl_tp *hndl, int col)
 {
-    if ((hndl->lastresponse == NULL) || (hndl->lastresponse->value == NULL))
+	CDB2SQLRESPONSE *lastresponse = hndl->lastresponse;
+    /* sanity check. just in case. */
+    if (lastresponse == NULL)
         return NULL;
-    if (hndl->lastresponse->value[col]->value.len == 0 &&
-        hndl->lastresponse->value[col]->has_isnull != 1 &&
-        hndl->lastresponse->value[col]->isnull != 1) {
-        return (void *)"";
+    /* data came back in the child column structure */
+    if (lastresponse->value != NULL) {
+        /* handle empty values */
+        if (lastresponse->value[col]->value.len == 0 && lastresponse->value[col]->has_isnull != 1 &&
+            lastresponse->value[col]->isnull != 1) {
+            return (void *)"";
+        }
+        return lastresponse->value[col]->value.data;
     }
-    return hndl->lastresponse->value[col]->value.data;
+    /* data came back in the parent CDB2SQLRESPONSE structure */
+    if (col_values_flattened(lastresponse)) {
+        /* handle empty values */
+        if (lastresponse->values[col].len == 0 && !lastresponse->isnulls[col])
+            return (void *)"";
+        return lastresponse->values[col].data;
+    }
+    return NULL;
 }
 
 int cdb2_bind_param(cdb2_hndl_tp *hndl, const char *varname, int type,
