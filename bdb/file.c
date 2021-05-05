@@ -135,6 +135,11 @@ static int bdb_close_only_int(bdb_state_type *bdb_state, DB_TXN *tid,
 enum {
     BDB_CLOSE_FLAGS_FLUSH = 1,
 };
+
+enum {
+    BDB_OPEN_DB_SKIP_SCHEMA_LK = 1,
+};
+
 static int bdb_close_only_flags(bdb_state_type *, DB_TXN *, int *bdberr, int flags);
 
 int bdb_rename_file(bdb_state_type *bdb_state, DB_TXN *tid, char *oldfile,
@@ -4089,7 +4094,9 @@ static int open_dbs_int(bdb_state_type *bdb_state, int iammaster, int upgrade,
     int tmp_tid;
     tran_type tran;
 
-    assert_wrlock_schema_lk();
+    if ((flags & BDB_OPEN_DB_SKIP_SCHEMA_LK) == 0) {
+        assert_wrlock_schema_lk();
+    }
 
 deadlock_again:
     tmp_tid = 0;
@@ -6961,7 +6968,7 @@ int bdb_free_and_replace(bdb_state_type *bdb_state, bdb_state_type *replace,
 }
 
 /* re-open bdb handle as master/client depending on how it used to be */
-int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
+static int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr, int flags)
 {
     int iammaster;
     int rc;
@@ -6991,7 +6998,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
     else
         iammaster = 0;
 
-    rc = open_dbs(bdb_state, iammaster, 1, 0, tid);
+    rc = open_dbs_flags(bdb_state, iammaster, 1, 0, tid, flags);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "upgrade: open_dbs as master failed\n");
         BDB_RELLOCK();
@@ -7026,7 +7033,7 @@ int bdb_open_again_tran_int(bdb_state_type *bdb_state, DB_TXN *tid, int *bdberr)
     return 0;
 }
 
-int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
+static int bdb_open_again_int(bdb_state_type *bdb_state, int *bdberr, int flags)
 {
     DB_TXN *tid;
     int rc;
@@ -7037,7 +7044,7 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
         exit(1);
     }
 
-    rc = bdb_open_again_tran_int(bdb_state, tid, bdberr);
+    rc = bdb_open_again_tran_int(bdb_state, tid, bdberr, flags);
 
     rc = tid->commit(tid, 0);
     if (rc != 0) {
@@ -7048,9 +7055,19 @@ int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
     return rc;
 }
 
+int bdb_open_again(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_open_again_int(bdb_state, bdberr, 0);
+}
+
+int bdb_open_foreign_bulkimport(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_open_again_int(bdb_state, bdberr, BDB_OPEN_DB_SKIP_SCHEMA_LK);
+}
+
 int bdb_open_again_tran(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
 {
-    return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL, bdberr);
+    return bdb_open_again_tran_int(bdb_state, tran ? tran->tid : NULL, bdberr, 0);
 }
 
 int bdb_rebuild_done(bdb_state_type *bdb_state)
