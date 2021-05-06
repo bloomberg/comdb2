@@ -3328,6 +3328,18 @@ int cdb2_get_effects(cdb2_hndl_tp *hndl, cdb2_effects_tp *effects)
     return rc;
 }
 
+int cdb2_get_info(cdb2_hndl_tp *hndl, cdb2_response_info_type tp, struct cdb2_get_info_out *out)
+{
+    if (tp == CDB2_IT_COST) {
+        out->int_component = hndl->lastresponse->stmt_info->cost;
+    } else if (tp == CDB2_IT_EXTENDED_COST && hndl->lastresponse && hndl->lastresponse->stmt_info) {
+        out->str_component = hndl->lastresponse->stmt_info->extended_cost;
+    } else
+        return 1;
+
+    return 0;
+}
+ 
 static void free_events(cdb2_hndl_tp *hndl)
 {
     cdb2_event *curre, *preve;

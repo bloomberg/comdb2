@@ -217,6 +217,14 @@ static int fill_snapinfo(struct sqlclntstate *clnt, int *file, int *offset)
         }                                                                      \
     }
 
+#define _fill_stmtinfo(clnt, sql_response, ext_cost)                            \
+    CDB2SQLRESPONSE__Stmtinfo stmt_info = CDB2__SQLRESPONSE__STMTINFO__INIT;   \
+    stmt_info.has_cost = 1;                                                    \
+    stmt_info.cost = query_cost(clnt->thd->sqlthd);                             \
+    stmt_info.extended_cost = ext_cost;                                        \
+    sql_response.stmt_info = &stmt_info;
+
+
 /* Skip spaces and tabs, requires at least one space */
 static inline char *skipws(char *str)
 {
@@ -712,7 +720,14 @@ static int newsql_row_last(struct sqlclntstate *clnt)
     _has_effects(clnt, resp);
     _has_snapshot(clnt, resp);
     _has_features(clnt, resp);
-    return newsql_response(clnt, &resp, 1);
+
+    char *ext_cost = NULL;
+    if (clnt->get_cost)
+        ext_cost = get_query_cost_as_json(clnt);
+    _fill_stmtinfo(clnt, resp, ext_cost);
+    int rc = newsql_response(clnt, &resp, 1);
+    free(ext_cost);
+    return rc;
 }
 
 static int newsql_row_last_dummy(struct sqlclntstate *clnt)

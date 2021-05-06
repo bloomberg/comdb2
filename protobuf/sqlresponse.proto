@@ -150,4 +150,9 @@ message CDB2_SQLRESPONSE {
     optional uint64 row_id   = 8; // in case of retry, this will be used to identify the rows which need to be discarded
     repeated CDB2ServerFeatures  features = 9; // This can tell client about features enabled in comdb2
     optional string info_string = 10;
+    message stmtinfo {
+        optional int64 cost = 1;
+        optional string extended_cost = 2;
+    }
+    optional stmtinfo stmt_info = 11;
 }

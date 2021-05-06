@@ -2194,6 +2194,9 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 
     rc = do_commitrollback(thd, clnt);
 
+    free(clnt->query_stats);
+    clnt->query_stats = NULL;
+
     clnt->ins_keys = 0ULL;
     clnt->del_keys = 0ULL;
 
@@ -5532,12 +5535,11 @@ static enum req_code read_req(struct sqlconn *conn)
     return rq.rq;
 }
 
-/* Called when a query is done, while all the cursors are still open.  Traverses
-   the list of cursors and saves the query path and cost. */
+/* Called when a query is done, while all the cursors are still open.
+ * Traverses the list of cursors and saves the query path and cost. */
 static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
 {
     struct client_query_path_component *stats;
-    int i;
     struct client_query_stats *query_info;
     struct query_path_component *c;
     int max_components;
@@ -5563,14 +5565,12 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
     query_info->n_read_ios = -1;
     query_info->cost = query_cost(thd);
     query_info->n_components = max_components;
-    query_info->n_rows =
-        0; /* client computes from #records read, this is only
-             useful for writes where this information doesn't come
-             back */
+    query_info->n_rows = 0; /* client computes from #records read, this is only
+                               useful for writes where this information doesn't come back */
     query_info->queryid = clnt->queryid;
     memset(query_info->reserved, 0xff, sizeof(query_info->reserved));
 
-    i = 0;
+    int i = 0;
     LISTC_FOR_EACH(&thd->query_stats, c, lnk)
     {
         if (i >= max_components) {
@@ -5583,16 +5583,17 @@ static int record_query_cost(struct sql_thread *thd, struct sqlclntstate *clnt)
             query_info->n_components--;
             continue;
         }
-        stats[i].nfind = c->nfind;
-        stats[i].nnext = c->nnext;
-        stats[i].nwrite = c->nwrite;
-        stats[i].ix = c->ix;
-        stats[i].table[0] = 0;
+        struct client_query_path_component *st = &stats[i];
+        st->nfind = c->nfind;
+        st->nnext = c->nnext;
+        st->nwrite = c->nwrite;
+        st->ix = c->ix;
+        st->table[0] = 0;
         if (c->rmt_db[0]) {
-            snprintf0(stats[i].table, sizeof(stats[i].table), "%s.%s",
+            snprintf0(st->table, sizeof(st->table), "%s.%s",
                       c->rmt_db, c->lcl_tbl_name[0] ? c->lcl_tbl_name : "NULL");
         } else if (c->lcl_tbl_name[0]) {
-            strncpy0(stats[i].table, c->lcl_tbl_name, sizeof(stats[i].table));
+            strncpy0(st->table, c->lcl_tbl_name, sizeof(st->table));
         }
         i++;
     }
@@ -5663,6 +5664,52 @@ int comdb2_get_server_port()
 {
     return thedb->sibling_port[0][NET_REPLICATION];
 }
+
+
+/* get sql query cost and return it as char *
+ * function will allocate memory for string
+ * and caller should free that memory area
+ */
+char *get_query_cost_as_json(struct sqlclntstate *clnt)
+{
+    if (!clnt->query_stats)
+        return NULL;
+
+    strbuf *out = strbuf_new();
+    struct client_query_stats *st = clnt->query_stats;
+
+    strbuf_appendf(out, "{\"Cost\":%.2lf,\"NumRows\":%d%s", st->cost, clnt->nrows,
+                   (st->n_components > 0 ? ",\n \"Components\": [" : ""));
+
+    for (int ii = 0; ii < st->n_components; ii++) {
+        struct client_query_path_component *p = &st->path_stats[ii];
+        strbuf_appendf(out, "\n   {\"Type\":");
+        if (p->table[0] == '\0') {
+            strbuf_appendf(out, "\"Temp Index Lookup\",\"NumFind\":%d", p->nfind);
+            if (p->nnext)
+                strbuf_appendf(out, ",\"NumPrevOrNext\":%d", p->nnext);
+            if (p->nwrite)
+                strbuf_appendf(out, ",\"NumWrites\":%d ", p->nwrite);
+        } else {
+            if (p->ix >= 0) {
+                strbuf_appendf(out, "\"Index Lookup\"");
+                strbuf_appendf(out, ",\"Index\":%d", p->ix);
+            } else
+                strbuf_appendf(out, "\"Table Scan\"");
+            strbuf_appendf(out, ",\"Table\":\"%s\",\"NumFind\":%d", p->table, p->nfind);
+            if (p->nnext > 0) {
+                strbuf_appendf(out, ",\"NumNextOrPrev\":%d", p->nnext);
+            }
+        }
+        strbuf_appendf(out, "}%s", (ii == st->n_components - 1) ? "\n]" : ",");
+    }
+    strbuf_appendf(out, "}");
+
+    char *str = strbuf_disown(out);
+    strbuf_free(out);
+    return str;
+}
+
 
 /* get sql query cost and return it as char *
  * function will allocate memory for string
