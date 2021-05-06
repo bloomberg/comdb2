@@ -895,18 +895,6 @@ static int page_order_table_scan_update(void *context, void *value)
     return 0;
 }
 
-static int max_query_fingerprints_check(void *context, void *value)
-{
-    if ((*(int *)value) < gbl_fingerprint_max_queries) {
-        logmsg(LOGMSG_ERROR,
-               "'max_query_fingerprints' cannot be reduced at runtime "
-               "(current: %d)\n",
-               gbl_fingerprint_max_queries);
-        return 1;
-    }
-    return 0;
-}
-
 static void *portmux_bind_path_get(void *dum)
 {
     return get_portmux_bind_path();

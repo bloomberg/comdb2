@@ -53,6 +53,4 @@
 (appsockpool.maxt=102)
 (name='allow_negative_column_size')
 (value=1000)
-[put tunable 'max_query_fingerprints' 500] failed with rc -3 Invalid tunable value
-(value=1000)
 (value=2000)
