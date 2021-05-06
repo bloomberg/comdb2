@@ -87,7 +87,7 @@ function bouncemaster
 function settunables
 {
     for node in $CLUSTER ; do
-        $CDB2SQL_EXE --admin ${CDB2_OPTIONS} $DBNAME default --host $node "PUT TUNABLE replicant_latency 1" >/dev/null 2>&1
+        ssh -o StrictHostKeyChecking=no -tt $node "$CDB2SQL_EXE --admin $DBNAME @localhost 'PUT TUNABLE replicant_latency 1'"
     done
 }
 

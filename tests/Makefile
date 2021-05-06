@@ -57,6 +57,8 @@ else
       $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
 endif
 
+export ALL_TESTS:=lostwrite
+
 # get number of TOTAL tests running: used for printing progress report of tests
 TOTAL=$(words $(MAKECMDGOALS) )
 ifeq ($(DOALL),1)
