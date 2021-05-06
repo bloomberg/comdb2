@@ -700,10 +700,10 @@ REGISTER_TUNABLE(
     "Maximum number of threads processing write requests. (Default: 8)",
     TUNABLE_INTEGER, &gbl_maxwthreads, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("max_query_fingerprints",
-                 "Minimum number of queries to be placed into the fingerprint "
+                 "Maximum number of queries to be placed into the fingerprint "
                  "hash (Default: 1000)",
                  TUNABLE_INTEGER, &gbl_fingerprint_max_queries, 0, NULL,
-                 max_query_fingerprints_check, NULL, NULL);
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("memnice", NULL, TUNABLE_INTEGER, &gbl_mem_nice,
                  READONLY | NOARG, NULL, NULL, memnice_update, NULL);
 REGISTER_TUNABLE("mempget_timeout", NULL, TUNABLE_INTEGER,
