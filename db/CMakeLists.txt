@@ -232,23 +232,25 @@ target_link_libraries(comdb2
 )
 
 configure_file(copycomdb2 copycomdb2 @ONLY)
-add_custom_command(
-  TARGET comdb2 POST_BUILD
-  COMMAND ln -f comdb2 cdb2_dump
-  COMMAND ln -f comdb2 cdb2_load
-  COMMAND ln -f comdb2 cdb2_printlog
-  COMMAND ln -f comdb2 cdb2_stat
-  COMMAND ln -f comdb2 cdb2_verify
-)
+
 install(TARGETS comdb2 RUNTIME DESTINATION bin)
+foreach(tool dump load printlog stat verify)
+  add_custom_command(
+    TARGET comdb2 POST_BUILD
+    COMMAND ln -f comdb2 cdb2_${tool}
+  )
+  install(CODE
+    "execute_process(COMMAND ln -f
+      \$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/comdb2
+      \$ENV{DESTDIR}${CMAKE_INSTALL_PREFIX}/bin/cdb2_${tool})"
+    COMPONENT comdb2
+  )
+endforeach()
+
 install(PROGRAMS
-  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_dump
-  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_load
-  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_printlog
-  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_stat
-  ${CMAKE_CURRENT_BINARY_DIR}/cdb2_verify
   ${CMAKE_CURRENT_BINARY_DIR}/copycomdb2
   ${CMAKE_CURRENT_SOURCE_DIR}/comdb2dumpcsc
   DESTINATION bin
 )
+
 install(SCRIPT ${PROJECT_SOURCE_DIR}/pkg/post_install.cmake)
