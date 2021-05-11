@@ -328,6 +328,7 @@ extern int gbl_reject_mixed_ddl_dml;
 extern int gbl_debug_mixed_ddl_dml;
 extern int gbl_sync_osql_cancel;
 extern int eventlog_nkeep;
+extern int gbl_replicant_retry_on_not_durable;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_page_order_table_scan;

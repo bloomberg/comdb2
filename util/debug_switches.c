@@ -75,6 +75,8 @@ static struct debug_switches {
     int test_ddl_backout_deadlock;
     int test_ddl_backout_blkseq;
     int test_delay_analyze_commit;
+    int all_incoherent;
+    int replicant_latency;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -129,6 +131,8 @@ int init_debug_switches(void)
     debug_switches.test_ddl_backout_deadlock = 0;
     debug_switches.test_ddl_backout_blkseq = 0;
     debug_switches.test_delay_analyze_commit = 0;
+    debug_switches.all_incoherent = 0;
+    debug_switches.replicant_latency = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -235,6 +239,8 @@ int init_debug_switches(void)
     register_int_switch("test_ddl_backout_blkseq", "Force a blkseq error in toblock.",
                         &debug_switches.test_ddl_backout_blkseq);
     register_int_switch("test_delay_analyze_commit", "Delay analyze commit", &debug_switches.test_delay_analyze_commit);
+    register_int_switch("all_incoherent", "Master pretends nodes are incoherent.", &debug_switches.all_incoherent);
+    register_int_switch("replicant_latency", "Replicant drops log records.", &debug_switches.replicant_latency);
     return 0;
 }
 
@@ -437,4 +443,12 @@ int debug_switch_test_ddl_backout_blkseq(void)
 int debug_switch_test_delay_analyze_commit(void)
 {
     return debug_switches.test_delay_analyze_commit;
+}
+int debug_switch_all_incoherent(void)
+{
+    return debug_switches.all_incoherent;
+}
+int debug_switch_replicant_latency(void)
+{
+    return debug_switches.replicant_latency;
 }
