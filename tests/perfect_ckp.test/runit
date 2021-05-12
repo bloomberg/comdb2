@@ -1,5 +1,6 @@
-#!/bin/sh
-#
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
 # Simple test to verify perfect checkpoint.
 #
 # Perfect checkpoint only flushes dirty pages whose first_dirty_lsn
@@ -10,8 +11,6 @@
 # that we did skip such pages by looking at `st_ckp_pages_skip` from
 # `bdb cachestat`. We then sigterm the database and bring it up
 # to verify recovery.
-
-bash -n "$0" | exit 1
 
 which bc
 if [ $? -ne 0 ]; then

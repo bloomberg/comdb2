@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
 
 #############################################
 # Test SSL certificate revocation list      #
 #############################################
 
-bash -n "$0" | exit 1
 dbnm=$1
 
 # Server should reject as the client certificate has been revoked.

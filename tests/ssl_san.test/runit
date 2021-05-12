@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
 
 #######################################################
 # Verify SSL hostname validation against SAN records  #
 #######################################################
 
-bash -n "$0" | exit 1
 dbnm=$1
 
 set -e
