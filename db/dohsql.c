@@ -29,6 +29,7 @@ int gbl_dohsql_verbose = 0;
 int gbl_dohsql_max_queued_kb_highwm = 10000;    /* 10 MB */
 int gbl_dohsql_full_queue_poll_msec = 10;       /* 10msec */
 int gbl_dohsql_max_threads = 8; /* do not run more than 8 threads */
+int gbl_dohsql_pool_thr_slack = 0;
 /* for now we keep this tunning "private */
 static int gbl_dohsql_track_stats = 1;
 static int gbl_dohsql_que_free_highwm = 10;
@@ -1264,6 +1265,49 @@ static void _save_params(dohsql_node_t *node, struct param_data **p, int *np)
     }
 }
 
+/*
+   make sure at least one engine runs no coordinators; this makes
+   sure that we make progress even when the pool is full, allowing at
+   least N engines to run shards/non-parallel queries
+*/
+static int parallel_load = 0;
+pthread_mutex_t parallel_load_mtx = PTHREAD_MUTEX_INITIALIZER;
+
+static int _add_parallel_load(void)
+{
+    static int alert_parallel_disabled = 0;
+    int maxt = thdpool_get_maxthds(gbl_sqlengine_thdpool);
+    int thr_slack = gbl_dohsql_pool_thr_slack ? gbl_dohsql_pool_thr_slack : 1;
+
+    Pthread_mutex_lock(&parallel_load_mtx);
+    if ((maxt - thr_slack) <= parallel_load) {
+        if (!alert_parallel_disabled) {
+            logmsg(LOGMSG_INFO,
+                   "Sql engine full, switching to non-parallel mode\n");
+            alert_parallel_disabled = 1;
+        }
+        Pthread_mutex_unlock(&parallel_load_mtx);
+        return SHARD_ERR_LOAD;
+    } else {
+        if (alert_parallel_disabled) {
+            logmsg(LOGMSG_INFO,
+                   "Sql engine load cleared, re-activating parallel mode\n");
+            alert_parallel_disabled = 0;
+        }
+    }
+    parallel_load++;
+    Pthread_mutex_unlock(&parallel_load_mtx);
+
+    return SHARD_NOERR;
+}
+
+static void _rem_parallel_load(void)
+{
+    Pthread_mutex_lock(&parallel_load_mtx);
+    parallel_load--;
+    Pthread_mutex_unlock(&parallel_load_mtx);
+}
+
 int dohsql_distribute(dohsql_node_t *node)
 {
     GET_CLNT;
@@ -1281,6 +1325,10 @@ int dohsql_distribute(dohsql_node_t *node)
     if (clnt_nparams != node->nparams) {
         return SHARD_ERR_PARAMS;
     }
+
+    rc = _add_parallel_load();
+    if (rc)
+        return rc;
 
     /* setup communication queue */
     conns = (dohsql_t *)calloc(
@@ -1313,10 +1361,19 @@ int dohsql_distribute(dohsql_node_t *node)
             return rc;
 
         if (i > 0) {
+            logmsg(LOGMSG_ERROR,
+                   "Trying to dispatch worker %d clnt %p for \"%s\" subsql "
+                   "\"%s\"\n",
+                   i, clnt->conns->conns[i].clnt, clnt->sql,
+                   clnt->conns->conns[i].clnt->sql);
+
             /* launch the new sqlite engine a the next shard */
             rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
                                  sqlcpy = strdup(node->nodes[i]->sql), flags);
+            logmsg(LOGMSG_ERROR,
+                   "Enqueue returned %d for dispatch worker %d for \"%s\"\n",
+                   rc, i, clnt->sql);
             if (rc) {
                 free(sqlcpy);
                 return SHARD_ERR_GENERIC;
@@ -1361,7 +1418,7 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
                 if (rc) {
                     logmsg(LOGMSG_ERROR, "%s: failed recover_deadlock rc=%d\n",
                             __func__, rc);
-                    return rc;
+                    goto done;
                 }
             }
             Pthread_mutex_lock(&conns->conns[i].mtx);
@@ -1426,7 +1483,12 @@ int dohsql_end_distribute(struct sqlclntstate *clnt, struct reqlogger *logger)
     clnt->conns = NULL;
     free(conns);
 
-    return SHARD_NOERR;
+    _rem_parallel_load();
+
+    rc = SHARD_NOERR;
+
+done:
+    return rc;
 }
 
 #define DOHSQL_CLIENT                                                          \
