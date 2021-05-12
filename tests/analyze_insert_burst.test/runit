@@ -1,4 +1,6 @@
-#!/bin/sh
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
 source ${TESTSROOTDIR}/tools/runit_common.sh
 
 ##################################################################
@@ -22,15 +24,15 @@ COMMIT
 EOF
 
 while true; do
-cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql > out.txt 2>&1 || failexit 'failure to insert, see out.txt'
+    cdb2sql ${CDB2_OPTIONS} $dbnm default -f in.sql > out.txt 2>&1 || failexit 'failure to insert, see out.txt'
 done &
 
 keep_inserting=$!
 
-for i in `seq 1 500`; do
-  echo iteration $i
-  cdb2sql ${CDB2_OPTIONS} $dbnm default 'truncate table t' >/dev/null || { kill -9 $keep_inserting; exit 1; }
-  cdb2sql ${CDB2_OPTIONS} $dbnm default 'analyze t' >/dev/null || { kill -9 $keep_inserting; exit 1; }
-done
+for i in {1..500}; do
+  echo iteration $i >> out2.txt
+  echo 'truncate table t'
+  echo 'analyze t'
+done | cdb2sql ${CDB2_OPTIONS} $dbnm default >> out2.txt || { kill -9 $keep_inserting; failexit "Please see out2.txt"; }
 
 kill -9 $keep_inserting || true

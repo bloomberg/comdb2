@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
 
 #########################################################################
 # Verify that comdb2ar archives and restores SSL certificates correctly #
 #########################################################################
 
-bash -n "$0" | exit 1
 dbnm=$1
 
 set -e

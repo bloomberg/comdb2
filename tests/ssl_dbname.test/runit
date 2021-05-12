@@ -1,4 +1,5 @@
-#!/bin/sh
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
 
 #############################################
 # Test dbname validation against SSL certs. #
@@ -8,7 +9,6 @@
 # So if we get in here, it means db validating client is successful.
 # We're going to test client validating database next.
 
-bash -n "$0" | exit 1
 dbnm=$1
 
 cdb2sql -s --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("stat ssl")'
