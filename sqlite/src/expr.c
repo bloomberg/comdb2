@@ -6335,6 +6335,9 @@ default_prec:
     }
     case TK_COLUMN: {
       char *name;
+      if (!pExpr->y.pTab) /* windows function? */
+        return NULL;
+
       assert(pExpr->y.pTab &&
         (pExpr->iColumn >= -3 && pExpr->y.pTab->nCol > pExpr->iColumn));
       switch(pExpr->iColumn) {
