@@ -87,6 +87,29 @@ To dump the SQL thread pool every time the queue is full:
 
 `sqlenginepool maxq dump_on_error on`
 
+### Parallel sql execution
+
+A subset of sql queries can run in parallel, using multiple sql engines and scaling up the numbers of rows per second returned to the client.
+The statements that can be run in parallel are decomposed in a set of sql statements, which run in parallel in dedicated sql engines.  
+The sql engine initiating the parallel execution becomes the coordinator, which does row aggregation and final computations before sending
+the rows back to the client.
+A trivial case is the `UNION ALL` query.  Each `SELECT` query that is part of a `UNION ALL` statement runs in parallel with the rest.  
+This feature makes possible to scale up the throughput of sql queries, proportional with the amount of allocated resources.  Additionally, this
+feature can also benefit cases where per row retrieval cost is high, either due to I/O latency or the computation required.
+
+Settings:
+
+|Option              |Default              |Description
+|--------------------|---------------------|------------
+|dohast_disable | 0 | Disable SQL decomposition phase, required to distribute the sql query (in effect, disables the parallel execution mode). 
+|dohsql_disable | 0 | Disable parallel sql execution (the SQL decomposition is still performed)
+|dohsql_verbose | 0 | Enable debug information for parallel execution phase
+|dohast_verbose | 0 | Enable debug information for parallel execution phase
+|dohsql_max_queued_kb_highwm | 10000 | Maximum shard queue size, in KB; throttles amount of cached rows by each parallel component
+|dohsql_max_threads | 8 | Allow only up to 8 parallel components. If more are required, statement runs sequential
+|dohsql_pool_thread_slack | 1 | Reserve a number of sql engines to run only non-parallel load (including parallel components).  
+
+
 ### Networks
 
 There are a few references to various "networks" in the descriptions below.  All machines specified by the 
