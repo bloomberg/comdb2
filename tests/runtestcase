@@ -102,7 +102,10 @@ echo Starting $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
 mkdir -p ${TESTDIR}/logs/
 
 call_unsetup() {
-    [[ $COMDB2_UNITTEST == 1 ]] && return
+    if [[ $COMDB2_UNITTEST == 1 ]] || [[ "$LEAVEDBRUNNING" == "1" ]] ; then 
+        return
+    fi
+
     ${TESTSROOTDIR}/unsetup $successful &> >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' | tee ${TESTDIR}/logs/${DBNAME}.unsetup | cut -c11- | grep "^!" )
 }
 

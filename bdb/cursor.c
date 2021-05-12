@@ -4435,14 +4435,14 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
     if (how != DB_FIRST && how != DB_LAST && berkdb->outoforder_get(berkdb)) {
         rc = bdb_cursor_reorder(cur, berkdb, key, keylen, how, &retrieved,
                                 bdberr);
-        if (rc < 0)
-            return rc;
-
 #if MERGE_DEBUG
         logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
                (int)pthread_self(), __FILE__, __LINE__, rc,
                *(unsigned long long *)key);
 #endif
+
+        if (rc < 0)
+            return rc;
 
         /* if we have failed to reposition the cursor and this is a relative
          * move,
@@ -4454,12 +4454,13 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
     /* do the dance */
     rc = bdb_cursor_move_and_skip_int(cur, berkdb, how, retrieved,
                                       /*update_shadows*/ 1, bdberr);
-    if (rc < 0)
-        return rc;
 #if MERGE_DEBUG
     logmsg(LOGMSG_DEBUG, "%p %s:%d bdb_cursor_move_and_skip_int rc=%d\n",
            (void*)pthread_self(), __FILE__, __LINE__, rc);
 #endif
+
+    if (rc < 0)
+        return rc;
 
     /* now update the out-of-order flag */
     if (rc == IX_FND) {
@@ -4515,13 +4516,12 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
 
         if (!retrieved) {
             rc = berkdb->move(berkdb, howcrt, bdberr);
-            if (rc < 0)
-                return rc;
-
 #if MERGE_DEBUG
             logmsg(LOGMSG_DEBUG, "%p %s:%d berkdb->move rc=%d\n",
                    (void*)pthread_self(), __FILE__, __LINE__, rc);
 #endif
+            if (rc < 0)
+                return rc;
         } else {
             /* Move the cursor for the next iteration. */
             retrieved = 0;
@@ -4561,13 +4561,13 @@ static int bdb_cursor_move_and_skip_int(bdb_cursor_impl_t *cur,
 
             unsigned long long genid = 0;
             rc = berkdb_get_genid(cur, berkdb, &genid, bdberr);
-            if (rc)
-                return rc;
-
 #if MERGE_DEBUG
         logmsg(LOGMSG_DEBUG, "%s ignored %llx\n",
                (cur->sd == berkdb) ? "shadow" : "real", genid);
 #endif
+
+            if (rc)
+                return rc;
 
             rc = bdb_tran_deltbl_isdeleted(cur->ifn, genid,
                                            (cur->sd == berkdb) ? 1 : 0, bdberr);
@@ -6186,11 +6186,8 @@ static int bdb_cursor_move_int(bdb_cursor_impl_t *cur, int how, int *bdberr)
     do {
         /* both real data and index files are ending up here */
         rc = bdb_cursor_move_merge(cur, crt_how, bdberr);
-        if (rc < 0)
+        if (rc < 0 || rc == IX_FND)
             return rc;
-
-        if (rc == IX_FND)
-            return IX_FND;
 
         if (cur->type == BDBC_IX) {
             return (rc == IX_NOTFND) ? IX_PASTEOF : rc;

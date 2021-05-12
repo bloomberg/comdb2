@@ -2435,25 +2435,19 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 
     bdberr = 0;
     rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, NULL, 0);
-    if (bdberr == BDBERR_NOT_DURABLE) {
-        return SQLITE_CLIENT_CHANGENODE;
-    }
-    if (bdberr == BDBERR_TRANTOOCOMPLEX) {
-        return SQLITE_TRANTOOCOMPLEX;
-    }
-    if (bdberr == BDBERR_TRAN_CANCELLED) {
-        return SQLITE_TRAN_CANCELLED;
-    }
-    if (bdberr == BDBERR_NO_LOG) {
-        return SQLITE_TRAN_NOLOG;
-    }
-    if (bdberr == BDBERR_DEADLOCK) {
+    switch(bdberr) {
+    case BDBERR_NOT_DURABLE: return SQLITE_CLIENT_CHANGENODE;
+    case BDBERR_TRANTOOCOMPLEX: return SQLITE_TRANTOOCOMPLEX;
+    case BDBERR_TRAN_CANCELLED: return SQLITE_TRAN_CANCELLED;
+    case BDBERR_NO_LOG: return SQLITE_TRAN_NOLOG;
+    case BDBERR_DEADLOCK:
         logmsg(LOGMSG_ERROR, "%s: too much contention, retried %d times [%llx]\n", __func__,
                gbl_move_deadlk_max_attempt, clnt->osql.rqid);
         ctrace("%s: too much contention, retried %d times [%llx]\n", __func__, gbl_move_deadlk_max_attempt,
                clnt->osql.rqid);
         return SQLITE_DEADLOCK;
     }
+
     if (rc == IX_FND || rc == IX_NOTFND) {
         void *buf;
         int sz;
@@ -2517,7 +2511,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
 
         rc = 0;
     } else if (rc == IX_ACCESS) {
-        return SQLITE_ACCESS;
+        outrc = SQLITE_ACCESS;
     } else if (rc) {
         logmsg(LOGMSG_ERROR, "%s dir %d rc %d bdberr %d\n", __func__, how, rc, bdberr);
         outrc = SQLITE_INTERNAL;
@@ -2566,30 +2560,21 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     if (how == CNEXT) {
         pCur->num_nexts++;
 
-        if (gbl_prefaulthelper_sqlreadahead)
-            if (pCur->num_nexts == gbl_sqlreadaheadthresh) {
-                pCur->num_nexts = 0;
-                readaheadpf(&iq, pCur->db, pCur->ixnum, pCur->fndkey,
-                            getkeysize(pCur->db, pCur->ixnum),
-                            gbl_sqlreadahead);
-            }
+        if (gbl_prefaulthelper_sqlreadahead && pCur->num_nexts == gbl_sqlreadaheadthresh) {
+            pCur->num_nexts = 0;
+            readaheadpf(&iq, pCur->db, pCur->ixnum, pCur->fndkey,
+                        getkeysize(pCur->db, pCur->ixnum), gbl_sqlreadahead);
+        }
     }
 
     bdberr = 0;
     rc = ddguard_bdb_cursor_move(thd, pCur, 0, &bdberr, how, &iq, 0);
-    if (bdberr == BDBERR_NOT_DURABLE) {
-        return SQLITE_CLIENT_CHANGENODE;
-    }
-    if (bdberr == BDBERR_TRANTOOCOMPLEX) {
-        return SQLITE_TRANTOOCOMPLEX;
-    }
-    if (bdberr == BDBERR_TRAN_CANCELLED) {
-        return SQLITE_TRAN_CANCELLED;
-    }
-    if (bdberr == BDBERR_NO_LOG) {
-        return SQLITE_TRAN_NOLOG;
-    }
-    if (bdberr == BDBERR_DEADLOCK) {
+    switch(bdberr) {
+    case BDBERR_NOT_DURABLE: return SQLITE_CLIENT_CHANGENODE;
+    case BDBERR_TRANTOOCOMPLEX: return SQLITE_TRANTOOCOMPLEX;
+    case BDBERR_TRAN_CANCELLED: return SQLITE_TRAN_CANCELLED;
+    case BDBERR_NO_LOG: return SQLITE_TRAN_NOLOG;
+    case BDBERR_DEADLOCK:
         logmsg(LOGMSG_ERROR, "%s too much contention, retried %d times.\n", __func__,
                 gbl_move_deadlk_max_attempt);
         ctrace("%s: too much contention, retried %d times [%llx]\n", __func__,
@@ -2598,7 +2583,9 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
                    ? thd->clnt->osql.rqid
                    : 0);
         return SQLITE_DEADLOCK;
-    } else if (rc == IX_FND || rc == IX_NOTFND) {
+    }
+
+    if (rc == IX_FND || rc == IX_NOTFND) {
         void *buf;
         int sz;
         uint8_t _;
@@ -2638,8 +2625,6 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
     if (rc == IX_EMPTY) {
         pCur->empty = 1;
         *pRes = 1;
-    } else if (rc == IX_ACCESS) {
-        return SQLITE_ACCESS;
     } else if (rc == IX_PASTEOF) {
         pCur->eof = 1;
         *pRes = 1;
@@ -2678,6 +2663,8 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
            logmsg(LOGMSG_ERROR, "%s: ondisk_to_sqlite_tz error rc = %d\n", __func__, rc);
             outrc = SQLITE_INTERNAL;
         }
+    } else if (rc == IX_ACCESS) {
+        outrc = SQLITE_ACCESS;
     } else if (rc) {
         logmsg(LOGMSG_ERROR, "%s dir %d rc %d bdberr %d\n", __func__, how, rc, bdberr);
         outrc = SQLITE_INTERNAL;
