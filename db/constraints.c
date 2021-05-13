@@ -814,8 +814,14 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 reqpushprefixf(iq, "VERBKYCNSTRT CASCADE DEL:");
             /* TODO verify we have proper schema change locks */
 
-            rc = del_record(iq, trans, NULL, rrn, genid, -1ULL, &err, &idx,
-                            BLOCK2_DELKL, RECFLAGS_DONT_LOCK_TBL);
+            rc = del_record(iq, trans, NULL, rrn, genid,
+                            /* Partial index bitmap:
+                               -1ULL implies that at this point we don't know
+                               which of the partial indices would be affected.
+                               This is determined in del_record(). */
+                            -1ULL, /* del_keys */
+                            &err, &idx, BLOCK2_DELKL,
+                            RECFLAGS_DONT_LOCK_TBL);
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
@@ -863,19 +869,34 @@ int verify_del_constraints(struct javasp_trans_state *javasp_trans_handle,
                 reqpushprefixf(iq, "VERBKYCNSTRT CASCADE UPD:");
             /* TODO verify we have proper schema change locks */
 
-            rc = upd_record(
-                iq, trans, NULL,                               /*primkey*/
-                rrn, genid, (const unsigned char *)ondisk_tag, /*.ONDISK_IX_0*/
-                (const unsigned char *)ondisk_tag + strlen(ondisk_tag),
-                (unsigned char *)bct->newkey, /*p_buf_rec*/
-                (const unsigned char *)bct->newkey + newkeylen,
-                NULL /*p_buf_vrec*/, NULL /*p_buf_vrec_end*/,
-                NULL, /*fldnullmap*/
-                NULL, /*updCols*/
-                NULL, /*blobs*/
-                0,    /*maxblobs*/
-                &newgenid, -1ULL, -1ULL, &err, &idx, BLOCK2_UPDKL, 0, /*blkpos*/
-                UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+            rc = upd_record(iq,
+                            trans,
+                            NULL, /* primkey */
+                            rrn,
+                            genid,
+                            (const unsigned char *)ondisk_tag, /* .ONDISK_IX_0 */
+                            (const unsigned char *)ondisk_tag + strlen(ondisk_tag),
+                            (unsigned char *)bct->newkey, /* p_buf_rec */
+                            (const unsigned char *)bct->newkey + newkeylen,
+                            NULL, /* p_buf_vrec */
+                            NULL, /* p_buf_vrec_end */
+                            NULL, /* fldnullmap */
+                            NULL, /* updCols */
+                            NULL, /* blobs */
+                            0,    /* maxblobs */
+                            &newgenid,
+                            /* Partial index bitmaps:
+                               -1ULL implies that at this point we don't know
+                               which of the partial indices would be affected.
+                               This is determined in upd_record(). */
+                            -1ULL, /* ins_keys */
+                            -1ULL, /* del_keys */
+                            &err,
+                            &idx,
+                            BLOCK2_UPDKL,
+                            0, /*blkpos*/
+                            UPDFLAGS_CASCADE | RECFLAGS_DONT_LOCK_TBL);
+
             if (iq->debug)
                 reqpopprefixes(iq, 1);
             iq->usedb = currdb;
