@@ -408,16 +408,14 @@ if [ -t 1 ] ; then
     NEUTRAL="\033[0m"
 fi
 
-if [[ -n "$cr" ]] ; then
-    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} with core dumped ($cr)"
-    echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
-elif [[ -n "$dbdown" ]] ; then
+if [[ -n "$dbdown" ]] ; then
+    # if this is intentional, please run test with 'CHECK_DB_AT_FINISH=0' (ex. put in test Makefile:export CHECK_DB_AT_FINISH=0)
     echo "!$TESTCASE: db was unavailable at finish ($dbdown)" | tee -a ${TEST_LOG}
 elif [[ $rc -eq 124 ]] ; then
     echo -e "!$TESTCASE: ${YELLOW}timeout${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: timeout" >> ${TEST_LOG}
     successful=-1
-elif [[ -n "$verify_ret" ]] && [[ ! $rc -eq 0 ]] ; then
+elif [[ -n "$verify_ret" ]] && [[ $rc -ne 0 ]] ; then
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} rc=$rc (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
     echo -e "!$TESTCASE: also ${RED}failed${NEUTRAL} verify ($verify_ret)"
@@ -428,6 +426,11 @@ elif [[ -f "${DBNAME}.failexit" ]] ; then
 elif [[ -n "$verify_ret" ]] ; then
     echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} verify ($verify_ret)"
     echo "!$TESTCASE: failed verify ($verify_ret)" >> ${TEST_LOG}
+elif [[ -n "$cr" ]] ; then
+    # if this is intentional, please move core before test exits
+    echo -e "!$TESTCASE: ${RED}failed${NEUTRAL} with core dumped ($cr)"
+    echo "!$TESTCASE: failed with core dumped ($cr)" >> ${TEST_LOG}
+    cr=""
 elif [[ $rc -eq 0 ]] ; then
     echo -e "!$TESTCASE: ${GREEN}success${NEUTRAL} (logs in ${TESTDIR}/logs/${DBNAME}.testcase)"
     echo "!$TESTCASE: success" >> ${TEST_LOG}
@@ -437,23 +440,28 @@ else
     echo "!$TESTCASE: failed" >> ${TEST_LOG}
 fi
 
+if [[ -n "$cr" ]] ; then
+    echo -e "!$TESTCASE: also ${RED}core${NEUTRAL} dumped ($cr)"
+    echo "!$TESTCASE: also core dumped ($cr)" >> ${TEST_LOG}
+fi
+
 trap - INT EXIT
 
 call_unsetup
 
-# find any cores after unsetup -- ONLY works if CLEANUPDBDIR=0 because unsetup cleans up dir
-cr=`find_cores ${DBNAME} $DBDIR`
+if [[ -z "$cr" ]] ; then
+    # find any cores after unsetup -- ONLY works if CLEANUPDBDIR=0 because unsetup cleans up dir
+    cr=`find_cores ${DBNAME} $DBDIR`
 
-if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
-    cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+    if [[ -z "${cr}" ]] && [[ -n "${SECONDARY_DBNAME}" ]] ; then
+        cr=`find_cores ${SECONDARY_DBNAME} ${SECONDARY_DBDIR}`
+    fi
+
+    if [[ -n "$cr" ]] ; then
+        echo "!$TESTCASE: at unsetup found core ($cr)" | tee -a ${TEST_LOG}
+        exit 1
+    fi
 fi
-
-
-if [[ -n "$cr" ]] ; then
-    echo "!$TESTCASE: at unsetup found core ($cr)" | tee -a ${TEST_LOG}
-    exit 1
-fi
-
 
 DATETIME=$(date +"%Y-%m-%d %H:%M:%S")
 echo Done $TESTCASE with id $TESTID at $DATETIME >> ${TEST_LOG}
@@ -467,8 +475,4 @@ elif [[ "${DEBUGGER}" == *"perf" ]]; then
    ls ${TESTDIR}/*.perfdata
 fi
 
-
-
-
 exit $rc
-

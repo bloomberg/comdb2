@@ -12,7 +12,5 @@ schema {
     cstring h[10] null=yes
     blob i null=yes
     datetime j null=yes
-
 }
-} $$
-
+}

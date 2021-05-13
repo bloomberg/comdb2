@@ -85,9 +85,7 @@ function update_same_record
     assertcnt $tbl $nrecs "update_same_record"
     do_verify $tbl "done with update_same_record"
     succ=`grep -c "rows updated=1" update1.out`
-    if [[ $succ -ne $((nrep*nrecs)) ]] ; then
-	    failexit "update_same_record: all $((nrep*nrecs)) should have resulted in successful update instead of $succ"
-    fi
+    assertres $succ $((nrep*nrecs)) "update_same_record: all $((nrep*nrecs)) should have resulted in successful update instead of $succ"
     echo "update_same_record: Done (update1)"
 }
 

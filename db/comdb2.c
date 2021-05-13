@@ -134,6 +134,7 @@ void berk_memp_sync_alarm_ms(int);
 #include <hostname_support.h>
 #include "string_ref.h"
 #include "sql_stmt_cache.h"
+#include "phys_rep.h"
 
 #define tokdup strndup
 
@@ -1518,6 +1519,9 @@ static void free_view_hash(hash_t *view_hash)
  */
 static void finish_clean()
 {
+    if(gbl_is_physical_replicant)
+        stop_replication();
+
     int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
