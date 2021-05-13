@@ -3794,6 +3794,9 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 		int64_t rectype, void* blob, int blob_len)
 {
 	REP_CONTROL rp;
+	if (gbl_verbose_fills) {
+		logmsg(LOGMSG_DEBUG, "%s: applying [%d:%d]\n", __func__, file, offset);
+	}
 
 	DBT rec = {0};
 	DB_LSN ret_lsnp;
@@ -3817,9 +3820,13 @@ int __dbenv_apply_log(DB_ENV* dbenv, unsigned int file, unsigned int offset,
 	rp.gen = rep->gen; 
 	rp.flags = 0;
 
-	/* call of 2 to differentiate from true master */
-	return __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
+	/* call with decoupled = 2 to differentiate from true master */
+	int ret = __rep_apply(dbenv, &rp, &rec, &ret_lsnp, &rep->gen, 2);
 
+	if (ret == 0 || ret == DB_REP_ISPERM) {
+		bdb_set_seqnum(dbenv->app_private);
+	}
+	return ret;
 }
 
 size_t __dbenv_get_log_header_size(DB_ENV* dbenv)

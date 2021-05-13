@@ -10,17 +10,18 @@ failexit()
 }
 
 
-# assert expected value in $1 is the same as target in $2
-# assertres (expected, target)
+# assert expected value in $1 is the same as target in $2, optional comment in $3
+# assertres (expected, target, comment)
 assertres ()
 {
-    if [ $# != 2 ] ; then 
-        failexit "Expecting 2 parameters but instead was passed $#"
+    if [[ $# != 2 ]] && [[ $# != 3 ]] ; then 
+        failexit "Expecting 2 (opt 3) parameters but instead was passed $#"
     fi
     local expected=$1
     local target=$2
+    local comment=${3:+"($3)"}
     if [ "$expected" != "$target" ] ; then
-        failexit "Expected is '$expected' but should be '$target'"
+        failexit "Expected is '$expected' but should be '$target' $comment"
     fi
 }
 
@@ -34,7 +35,7 @@ assertcnt ()
     fi
     local tbl=$1
     local target=$2
-    comment=$3
+    local comment=${3:+"($3)"}
     local cnt=$($CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select count(*) from $tbl")
     if [ $? -ne 0 ] ; then
         echo "assertcnt: select error"
@@ -42,19 +43,19 @@ assertcnt ()
 
     #echo "count is now $cnt"
     if [[ $cnt != $target ]] ; then
-        failexit "tbl $tbl count is now $cnt but should be $target"
+        failexit "tbl $tbl count is now $cnt but should be $target $comment"
     fi
 }
 
 
 getmaster()
 {
-    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster where is_master='Y'"
 }
 
 getclusternodes()
 {
-    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default 'exec procedure sys.cmd.send("bdb cluster")' | grep lsn | cut -f1 -d':'
+    $CDB2SQL_EXE --tabs ${CDB2_OPTIONS} ${DBNAME} default "select host from comdb2_cluster"
 }
 
 sendtocluster()
