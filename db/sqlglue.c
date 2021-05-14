@@ -2420,6 +2420,8 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         return rc;
     }
 
+    clnt = thd->clnt;
+
     /* If no tablescans are allowed (sqlite_stats* tables are exempt), return an error */
     if (!clnt->limits.tablescans_ok && pCur->db && !(is_sqlite_stat(pCur->db->tablename)))
         return SQLITE_NO_TABLESCANS;
