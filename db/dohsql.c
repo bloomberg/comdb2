@@ -29,7 +29,7 @@ int gbl_dohsql_verbose = 0;
 int gbl_dohsql_max_queued_kb_highwm = 10000;    /* 10 MB */
 int gbl_dohsql_full_queue_poll_msec = 10;       /* 10msec */
 int gbl_dohsql_max_threads = 8; /* do not run more than 8 threads */
-int gbl_dohsql_pool_thr_slack = 0;
+int gbl_dohsql_pool_thr_slack = 1;
 /* for now we keep this tunning "private */
 static int gbl_dohsql_track_stats = 1;
 static int gbl_dohsql_que_free_highwm = 10;
@@ -1277,7 +1277,7 @@ static int _add_parallel_load(void)
 {
     static int alert_parallel_disabled = 0;
     int maxt = thdpool_get_maxthds(gbl_sqlengine_thdpool);
-    int thr_slack = gbl_dohsql_pool_thr_slack ? gbl_dohsql_pool_thr_slack : 1;
+    int thr_slack = (gbl_dohsql_pool_thr_slack > 0) ? gbl_dohsql_pool_thr_slack : 1;
 
     Pthread_mutex_lock(&parallel_load_mtx);
     if ((maxt - thr_slack) <= parallel_load) {
