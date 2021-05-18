@@ -3189,9 +3189,12 @@ static int prepare_engine(struct sqlthdstate *, struct sqlclntstate *, int);
 int sqlengine_prepare_engine(struct sqlthdstate *thd,
                              struct sqlclntstate *clnt, int recreate)
 {
+    int skip_peer_chk_sav = clnt->skip_peer_chk;
+    clnt->skip_peer_chk = 1;
     clnt->no_transaction = 1;
     int rc = prepare_engine(thd, clnt, recreate);
     clnt->no_transaction = 0;
+    clnt->skip_peer_chk = skip_peer_chk_sav;
     return rc;
 }
 
