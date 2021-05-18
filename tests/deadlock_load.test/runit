@@ -49,7 +49,7 @@ function run_tests
     echo "Number of deadlocks: $deadlocks, elapsed-time: $elapsed seconds"
     if [ -n "${CLUSTER}" ] ; then
       if [[ $DBNAME == *"noreordergenerated"* ]] ; then
-        [[ $deadlocks -lt 1000 ]] && failexit $func "too few deadlocks: $deadlocks"
+        [[ $deadlocks -lt 500 ]] && failexit $func "too few deadlocks: $deadlocks"
       else
         [[ $deadlocks -gt 50 ]] && failexit $func "too many deadlocks: $deadlocks"
       fi

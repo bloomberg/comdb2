@@ -50,11 +50,16 @@ else
     DISABLED_TESTS:=" $(shell echo $(DISABLED_TESTS) | tr ' ' '\n' | sort -u) "
   endif
 
-  export DISABLED_TESTS
+  ifeq ($(INCLUDE_LONG_RUNNING),1)
+    FLG=
+  else
+    # by default exclude all tests which run longer than 1 hour
+    FLG=--skip-long-running
+  endif
 
   # This is the list of all non-disabled tests.
   export ALL_TESTS:=$(patsubst %.test, %, $(filter-out $(DISABLED_TESTS), \
-      $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh)))
+      $(shell $(TESTSROOTDIR)/tools/get_tests_inorder.sh $(FLG))))
 endif
 
 # get number of TOTAL tests running: used for printing progress report of tests
