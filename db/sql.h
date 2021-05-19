@@ -703,8 +703,6 @@ struct sqlclntstate {
     struct user current_user;
     int authgen;
 
-    int no_transaction;
-
     int have_extended_tm;
     int extended_tm;
 
@@ -799,7 +797,7 @@ struct sqlclntstate {
     uint8_t is_overlapping;
     uint32_t init_gen;
     int8_t gen_changed;
-    uint8_t skip_peer_chk;
+    uint8_t in_sqlite_init; /* clnt is in sqlite init phase when this is set */
     uint8_t queue_me;
     uint8_t fail_dispatch;
 

@@ -513,7 +513,7 @@ int peer_dropped_connection_sbuf(SBUF2 *sb)
 
 int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->skip_peer_chk) {
+    if (clnt == NULL || clnt->in_sqlite_init) {
         return 0;
     }
     return clnt->plugin.peer_check(clnt);
@@ -632,7 +632,7 @@ static int sql_tick(struct sql_thread *thd)
     if ((rc = check_recover_deadlock(clnt)))
         return rc;
 
-    if (clnt->no_transaction == 0) {
+    if (clnt->in_sqlite_init == 0) {
         if ((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) {
 
             rc = clnt_check_bdb_lock_desired(clnt);
@@ -4635,7 +4635,7 @@ int sqlite3BtreeBeginTrans(Vdbe *vdbe, Btree *pBt, int wrflag, int *pSchemaVersi
 #endif
 
     /* already have a transaction, keep using it until it commits/aborts */
-    if (clnt->intrans || clnt->no_transaction ||
+    if (clnt->intrans || clnt->in_sqlite_init ||
         (clnt->ctrl_sqlengine != SQLENG_STRT_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
         rc = SQLITE_OK;
@@ -4732,7 +4732,7 @@ int sqlite3BtreeCommit(Btree *pBt)
         fprintf(
             stderr,
             "sqlite3BtreeCommit intrans=%d sqleng=%d openeng=%d rqid=%llx %s\n",
-            clnt->intrans, clnt->ctrl_sqlengine, clnt->no_transaction,
+            clnt->intrans, clnt->ctrl_sqlengine, clnt->in_sqlite_init,
             clnt->osql.rqid, comdb2uuidstr(clnt->osql.uuid, us));
     }
 #endif
@@ -4742,8 +4742,8 @@ int sqlite3BtreeCommit(Btree *pBt)
     if (clnt->selectv_arr)
         currangearr_coalesce(clnt->selectv_arr);
 
-    if (!clnt->intrans || clnt->no_transaction ||
-        (!clnt->no_transaction && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
+    if (!clnt->intrans || clnt->in_sqlite_init ||
+        (!clnt->in_sqlite_init && clnt->ctrl_sqlengine != SQLENG_FNSH_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS &&
          clnt->ctrl_sqlengine != SQLENG_FNSH_ABORTED_STATE)) {
         rc = SQLITE_OK;
@@ -5005,7 +5005,7 @@ int sqlite3BtreeRollback(Btree *pBt, int dummy, int writeOnlyDummy)
      * clnt->ctrl_sqlengine );
      */
 
-    if (!clnt || !clnt->intrans || clnt->no_transaction ||
+    if (!clnt || !clnt->intrans || clnt->in_sqlite_init ||
         (clnt->ctrl_sqlengine != SQLENG_FNSH_RBK_STATE &&
          clnt->ctrl_sqlengine != SQLENG_NORMAL_PROCESS)) {
         rc = SQLITE_OK;
@@ -11350,7 +11350,7 @@ void stat4dump(int more, char *table, int istrace)
     if ((rc = sqlite3_open_serial("db", &db, 0)) != SQLITE_OK) {
         goto put;
     }
-    clnt.no_transaction = 1;
+    clnt.in_sqlite_init = 1;
     if ((rc = sqlite3_exec(db, clnt.sql, NULL, NULL, NULL)) != SQLITE_OK) {
         goto close;
     }

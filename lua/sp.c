@@ -1371,9 +1371,9 @@ static int new_temp_table(Lua lua)
     pthread_mutex_t *lk;
 
     SP sp = getsp(lua);
-    sp->clnt->skip_peer_chk = 1;
+    sp->clnt->in_sqlite_init = 1;
     int rc = create_temp_table(lua, &lk, &name);
-    sp->clnt->skip_peer_chk = 0;
+    sp->clnt->in_sqlite_init = 0;
     if (rc  == 0) {
         // success - create dbtable
         dbtable_t *table;
@@ -2936,9 +2936,9 @@ static int copy_tmptbl_info(dbtable_t *t, SP sp1, SP sp2)
                  "where type='table' and tbl_name='%s'",
             n2);
     mycallback_t arg = {.sp1 = sp1, .sp2 = sp2};
-    sp1->clnt->skip_peer_chk = 1;
+    sp1->clnt->in_sqlite_init = 1;
     int rc = sqlite3_exec(getdb(sp1), sql, mycallback, &arg, NULL);
-    sp1->clnt->skip_peer_chk = 0;
+    sp1->clnt->in_sqlite_init = 0;
     return rc;
 }
 
@@ -3152,7 +3152,7 @@ static void drop_temp_tables(SP sp)
     tmptbl_info_t *tbl;
     char drop_sql[128];
     struct sqlclntstate *clnt = sp->clnt;
-    clnt->skip_peer_chk = 1;
+    clnt->in_sqlite_init = 1;
     LIST_FOREACH(tbl, &sp->tmptbls, entries) {
         int rc;
         char n1[MAXTABLELEN], n2[MAXTABLELEN];
@@ -3175,7 +3175,7 @@ static void drop_temp_tables(SP sp)
             logmsg(LOGMSG_FATAL, "sqlite3_step rc:%d sql:%s\n", rc, drop_sql);
         }
     }
-    clnt->skip_peer_chk = 0;
+    clnt->in_sqlite_init = 0;
     if (expire) {
         sp->thd->dbopen_gen = -1;
     }
@@ -6566,12 +6566,12 @@ static void clone_temp_tables(SP sp)
         const char *create = tmp->sql;
         create += sizeof("CREATE TABLE");
         strbuf_appendf(sql, "CREATE TEMP TABLE %s", create);
-        sp->clnt->skip_peer_chk = 1;
+        sp->clnt->in_sqlite_init = 1;
         sqlite3_stmt *stmt;
         lua_prepare_sql_with_temp_ddl(sp, strbuf_buf(sql), &stmt);
         clone_temp_table(stmt, &tmp->tbl);
         sqlite3_finalize(stmt);
-        sp->clnt->skip_peer_chk = 0;
+        sp->clnt->in_sqlite_init = 0;
         strbuf_free(sql);
     }
 }

@@ -2530,7 +2530,7 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
-// Call with schema_lk held and no_transaction == 1
+// Call with schema_lk held and in_sqlite_init == 1
 static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
 {
     int allow_temp = flags & PREPARE_ALLOW_TEMP_DDL;
@@ -2834,9 +2834,9 @@ static int prepare_engine(struct sqlthdstate *, struct sqlclntstate *, int);
 int sqlengine_prepare_engine(struct sqlthdstate *thd,
                              struct sqlclntstate *clnt, int flags)
 {
-    clnt->no_transaction = 1;
+    clnt->in_sqlite_init = 1;
     int rc = prepare_engine(thd, clnt, flags);
-    clnt->no_transaction = 0;
+    clnt->in_sqlite_init = 0;
     return rc;
 }
 
@@ -2966,7 +2966,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
     /* If we did not get a cached stmt, need to prepare it in sql engine */
     int startPrepMs = comdb2_time_epochms(); /* start of prepare phase */
     while (rec->stmt == NULL) {
-        clnt->no_transaction = 1;
+        clnt->in_sqlite_init = 1;
         comdb2_set_authstate(thd, clnt, flags);
         rec->prepFlags = flags;
 
@@ -3065,7 +3065,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         }
 
         thd->authState.flags = 0;
-        clnt->no_transaction = 0;
+        clnt->in_sqlite_init = 0;
         if (rc == SQLITE_OK) {
             if (!prepareOnly) rc = sqlite3LockStmtTables(rec->stmt);
         } else if (rc == SQLITE_ERROR && comdb2_get_verify_remote_schemas()) {
@@ -3392,7 +3392,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
     write_response(clnt, RESPONSE_FLUSH, NULL, 0);
     sqlite3_expert_destroy(p);
     sqlite3_free(zErr);
-    clnt->no_transaction = 0;
+    clnt->in_sqlite_init = 0;
     return; /* Don't process anything else */
 }
 
@@ -4173,7 +4173,7 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return handle_sqlite_requests(thd, clnt);
 }
 
-// call with schema_lk held + no_transaction
+// call with schema_lk held + in_sqlite_init
 static int prepare_engine(struct sqlthdstate *thd, struct sqlclntstate *clnt,
                           int flags)
 {
