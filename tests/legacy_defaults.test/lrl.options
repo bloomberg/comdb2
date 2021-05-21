@@ -1,2 +1,3 @@
 noenv_messages off
 legacy_defaults on
+replicant_retry_on_not_durable off
