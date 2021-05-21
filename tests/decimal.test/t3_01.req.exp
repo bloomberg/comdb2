@@ -28,7 +28,12 @@
 [insert into t1 (id, d128) values (14, "0.000000000000000000000000000000001e-6143")] rc 0
 (rows inserted=1)
 [insert into t1 (id, d128) values (15, "-0.000000000000000000000000000000001e-6143")] rc 0
+(rows inserted=1)
+[insert into t1 (id, d128) values (16, "-inf")] rc 0
+(rows inserted=1)
+[insert into t1 (id, d128) values (17, "inf")] rc 0
 (id=10, d32=NULL, d64=NULL, d128=NULL)
+(id=16, d32=NULL, d64=NULL, d128='-Infinity')
 (id=13, d32=NULL, d64=NULL, d128='-9.999999999999999999999999999999999E+6143')
 (id=6, d32=NULL, d64=NULL, d128='-1')
 (id=15, d32=NULL, d64=NULL, d128='-1E-6176')
@@ -43,4 +48,5 @@
 (id=9, d32=NULL, d64=NULL, d128='1E+9')
 (id=11, d32=NULL, d64=NULL, d128='1.2345E+57')
 (id=12, d32=NULL, d64=NULL, d128='9.999999999999999999999999999999999E+6143')
+(id=17, d32=NULL, d64=NULL, d128='Infinity')
 [select * from t1 order by d128, id] rc 0
