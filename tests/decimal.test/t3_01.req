@@ -13,4 +13,6 @@ insert into t1 (id, d128) values (12, "9999999999999999999999999999999999e6110")
 insert into t1 (id, d128) values (13, "-9999999999999999999999999999999999e6110")
 insert into t1 (id, d128) values (14, "0.000000000000000000000000000000001e-6143")
 insert into t1 (id, d128) values (15, "-0.000000000000000000000000000000001e-6143")
+insert into t1 (id, d128) values (16, "-inf")
+insert into t1 (id, d128) values (17, "inf")
 select * from t1 order by d128, id

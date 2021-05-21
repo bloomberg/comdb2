@@ -9860,35 +9860,61 @@ static int unmake_order_decimal128(server_decimal128_t *pdec128, char *decimals,
     return 0;
 }
 
+#define DEC_1B_INF_ONDISK 0x0F8
+#define DEC_1B_INF_XOR_ONDISK 0x007
+#define DEC_2B_INF_ONDISK 0x0F800
+#define DEC_2B_INF_XOR_ONDISK 0x007FF
+
+#define DEC_1B_IS_INFINITY(pd)                                                 \
+    (((pd)->sign == 1 && (pd)->exp == DEC_1B_INF_ONDISK) ||                    \
+     ((pd)->sign == 0 && (pd)->exp == DEC_1B_INF_XOR_ONDISK))
+#define DEC_2B_IS_INFINITY(pd)                                                 \
+    (((pd)->sign == 1 && (pd)->exp == htons(DEC_2B_INF_ONDISK)) ||             \
+     ((pd)->sign == 0 && (pd)->exp == htons(DEC_2B_INF_XOR_ONDISK)))
+
+#define DEC_1B_SET_INFINITY(pd, sign)                                          \
+    do {                                                                       \
+        if (sign) {                                                            \
+            (pd)->sign = 0;                                                    \
+            (pd)->exp = DEC_1B_INF_XOR_ONDISK;                                 \
+        } else {                                                               \
+            (pd)->sign = 1;                                                    \
+            (pd)->exp = DEC_1B_INF_ONDISK;                                     \
+        }                                                                      \
+        (pd)->coef[DECSINGLE_PACKED_COEF - 1] |= 0x01;                         \
+    } while (0);
+#define DEC_2B_SET_INFINITY(pd, sign, sz)                                      \
+    do {                                                                       \
+        if (sign) {                                                            \
+            (pd)->sign = 0;                                                    \
+            (pd)->exp = htons(DEC_2B_INF_XOR_ONDISK);                          \
+        } else {                                                               \
+            (pd)->sign = 1;                                                    \
+            (pd)->exp = htons(DEC_2B_INF_ONDISK);                              \
+        }                                                                      \
+        (pd)->coef[sz - 1] |= 0x01;                                            \
+    } while (0);
+
 static void decimal32_ondisk_to_single(server_decimal32_t *pdec32,
                                        decSingle *dn)
 {
     char decimals[DECSINGLE_PACKED_COEF];
     int exponent = 0;
-    char mask;
 
-    if (pdec32->coef[DECSINGLE_PACKED_COEF - 1] & 0x0F) {
-        mask = 0x080;
-    } else {
-        mask = 0;
-    }
+    bzero(decimals, sizeof(decimals));
 
-    /* NaN */
-    if (pdec32->exp == (0x7c ^ mask) || pdec32->exp == (0x7e ^ mask)) {
-        exponent = (pdec32->exp ^ mask) << 24; /* preserve signaling bit */
-        bzero(decimals, sizeof(decimals));
-    }
-    /* Infinite? */
-    else if ((pdec32->sign == 1 && pdec32->exp == (0x78 ^ mask)) ||
-             (pdec32->sign == 0 && pdec32->exp == ((0x78 ^ mask) & 0x0FF))) {
+    if (DEC_1B_IS_INFINITY(pdec32)) {
         exponent = DECFLOAT_Inf;
-        bzero(decimals, sizeof(decimals));
 
         if (pdec32->sign) {
             decimals[sizeof(decimals) - 1] |= DECPPLUS;
         } else {
             decimals[sizeof(decimals) - 1] |= DECPMINUS;
         }
+    }
+    /* NaN */
+    else if (pdec32->exp == (0x7c ^ 0x080) || pdec32->exp == (0x7e ^ 0x080)) {
+        exponent = (pdec32->exp ^ 0x080) << 24; /* preserve signaling bit */
     } else {
         /* comdb2 normalized */
         unmake_order_decimal32(pdec32, (char *)decimals, &exponent);
@@ -9914,8 +9940,7 @@ static void decimal64_ondisk_to_double(server_decimal64_t *pdec64,
     bzero(decimals, sizeof(decimals));
 
     /* Infinite? */
-    if ((pdec64->sign == 1 && pdec64->exp == htons(0x7800)) ||
-        (pdec64->sign == 0 && pdec64->exp == (htons(0x7800) ^ 0x0FFFF))) {
+    if (DEC_2B_IS_INFINITY(pdec64)) {
         exponent = DECFLOAT_Inf;
 
         if (pdec64->sign) {
@@ -9953,8 +9978,7 @@ static void decimal128_ondisk_to_quad(server_decimal128_t *pdec128, decQuad *dn)
     bzero(decimals, sizeof(decimals));
 
     /* Infinite? */
-    if ((pdec128->sign == 1 && pdec128->exp == htons(0x7800)) ||
-        (pdec128->sign == 0 && pdec128->exp == (htons(0x7800) ^ 0x0FFFF))) {
+    if (DEC_2B_IS_INFINITY(pdec128)) {
         exponent = DECFLOAT_Inf;
 
         if (pdec128->sign) {
@@ -10696,7 +10720,6 @@ static int dfp_single_to_ondisk(decSingle *dn, server_decimal32_t *pdec32)
     decDouble doub;
     int sign;
     int rc = 0;
-    char mask;
 
     bzero(pdec32, sizeof(*pdec32));
     bset(pdec32, data_bit);
@@ -10705,25 +10728,19 @@ static int dfp_single_to_ondisk(decSingle *dn, server_decimal32_t *pdec32)
 
     sign = decDoubleIsSigned(&doub);
 
-    mask = 0x080;
+    /* Infinite? */
+    if (decDoubleIsInfinite(&doub)) {
+        DEC_1B_SET_INFINITY(pdec32, sign);
+        goto done;
+    }
 
     /* NaN */
     if (decDoubleIsNaN(&doub)) {
         pdec32->sign = 1;
         if (decDoubleIsSignaling(&doub))
-            pdec32->exp = 0x7e ^ mask;
+            pdec32->exp = 0x7e ^ 0x080;
         else
-            pdec32->exp = 0x7c ^ mask;
-    }
-    /* Infinite? */
-    else if (decDoubleIsInfinite(&doub)) {
-        pdec32->exp = 0x78 ^ mask;
-        if (sign) {
-            pdec32->sign = 0;
-            pdec32->exp ^= 0x0FF;
-        } else {
-            pdec32->sign = 1;
-        }
+            pdec32->exp = 0x7c ^ 0x080;
     } else
     /* Good one */
     {
@@ -10766,7 +10783,6 @@ static int dfp_double_to_ondisk(decDouble *dn, server_decimal64_t *pdec64)
 {
     int sign;
     int rc = 0;
-    ;
 
     bzero(pdec64, sizeof(*pdec64));
     bset(pdec64, data_bit);
@@ -10775,14 +10791,7 @@ static int dfp_double_to_ondisk(decDouble *dn, server_decimal64_t *pdec64)
 
     /* Infinite? */
     if (decDoubleIsInfinite(dn)) {
-        pdec64->exp = htons(0x7800);
-
-        if (sign) {
-            pdec64->sign = 0;
-            pdec64->exp ^= 0x0FFFF;
-        } else {
-            pdec64->sign = 1;
-        }
+        DEC_2B_SET_INFINITY(pdec64, sign, DECDOUBLE_PACKED_COEF);
         goto done;
     }
 
@@ -10793,7 +10802,6 @@ static int dfp_double_to_ondisk(decDouble *dn, server_decimal64_t *pdec64)
             pdec64->exp = htons(0x7e00);
         else
             pdec64->exp = htons(0x7c00);
-
         goto done;
     }
 
@@ -10845,14 +10853,7 @@ static int dfp_quad_to_ondisk(decQuad *dn, server_decimal128_t *pdec128)
 
     /* Infinite? */
     if (decQuadIsInfinite(dn)) {
-        pdec128->exp = htons(0x7800);
-
-        if (sign) {
-            pdec128->sign = 0;
-            pdec128->exp ^= 0x0FFFF;
-        } else {
-            pdec128->sign = 1;
-        }
+        DEC_2B_SET_INFINITY(pdec128, sign, DECQUAD_PACKED_COEF);
         goto done;
     }
 
@@ -10908,7 +10909,6 @@ static int dfp_quad_to_decimal32_ondisk(decQuad *quad, void *rec, int len)
     server_decimal32_t *pdec32;
     int sign;
     int rc = 0;
-    int mask;
 
     char dbg[1024];
 
@@ -10921,18 +10921,9 @@ static int dfp_quad_to_decimal32_ondisk(decQuad *quad, void *rec, int len)
 
     pdec32 = (server_decimal32_t *)rec;
 
-    mask = 0x080;
-
     /* Infinite? */
     if (decQuadIsInfinite(quad)) {
-        pdec32->exp = 0x78 ^ mask;
-
-        if (sign) {
-            pdec32->sign = 0;
-            pdec32->exp ^= 0x0FF;
-        } else {
-            pdec32->sign = 1;
-        }
+        DEC_1B_SET_INFINITY(pdec32, sign);
         goto done;
     }
 
@@ -10940,9 +10931,9 @@ static int dfp_quad_to_decimal32_ondisk(decQuad *quad, void *rec, int len)
     if (decQuadIsNaN(quad)) {
         pdec32->sign = 1;
         if (decQuadIsSignaling(quad))
-            pdec32->exp = 0x7e ^ mask;
+            pdec32->exp = 0x7e ^ 0x080;
         else
-            pdec32->exp = 0x7c ^ mask;
+            pdec32->exp = 0x7c ^ 0x080;
 
         goto done;
     }
@@ -11035,14 +11026,7 @@ static int dfp_quad_to_decimal64_ondisk(decQuad *quad, void *rec, int len)
 
     /* Infinite? */
     if (decQuadIsInfinite(quad)) {
-        pdec64->exp = htons(0x7800);
-
-        if (sign) {
-            pdec64->sign = 0;
-            pdec64->exp ^= 0x0FFFF;
-        } else {
-            pdec64->sign = 1;
-        }
+        DEC_2B_SET_INFINITY(pdec64, sign, DECDOUBLE_PACKED_COEF);
         goto done;
     }
 
@@ -11126,14 +11110,7 @@ static int dfp_quad_to_decimal128_ondisk(decQuad *quad, void *rec, int len)
 
     /* Infinite? */
     if (decQuadIsInfinite(quad)) {
-        pdec128->exp = htons(0x7800);
-
-        if (sign) {
-            pdec128->sign = 0;
-            pdec128->exp ^= 0x0FFFF;
-        } else {
-            pdec128->sign = 1;
-        }
+        DEC_2B_SET_INFINITY(pdec128, sign, DECQUAD_PACKED_COEF);
         goto done;
     }
 
@@ -13847,6 +13824,12 @@ short decimal_quantum_get(char *pdec, int len, int *sign)
         int is_zero = 0;
         char ret = 0;
 
+        /* note: infinity has no quantum! */
+        if (DEC_1B_IS_INFINITY(pdec32)) {
+            sret = 1; /* 0 are older decimals without quantum */
+            break;
+        }
+
         if (pdec32->sign) {
             for (i = 0; i < DECSINGLE_PACKED_COEF - 1 && pdec32->coef[i] == 0;
                  i++)
@@ -13893,6 +13876,12 @@ short decimal_quantum_get(char *pdec, int len, int *sign)
         int is_zero = 0;
         short ret;
 
+        /* note: infinity has no quantum! */
+        if (DEC_2B_IS_INFINITY(pdec64)) {
+            sret = 1; /* 0 are older decimals without quantum */
+            break;
+        }
+
         if (pdec64->sign) {
             for (i = 0; i < DECDOUBLE_PACKED_COEF - 1 && pdec64->coef[i] == 0;
                  i++)
@@ -13917,16 +13906,6 @@ short decimal_quantum_get(char *pdec, int len, int *sign)
                 *sign = (pdec64->sign) ? 1 : 0;
         } else {
             ret = _scrub_zero_decimal64(pdec64, sign);
-#if 0
-           if(pdec64->sign == 0)
-           {
-              pdec64->exp=0x0FFFF;
-           }
-           else
-           {
-              pdec64->exp=0x0;
-           }
-#endif
         }
         sret = ret;
         break;
@@ -13935,6 +13914,12 @@ short decimal_quantum_get(char *pdec, int len, int *sign)
         server_decimal128_t *pdec128 = (server_decimal128_t *)pdec;
         int is_zero = 0;
         short ret;
+
+        /* note: infinity has no quantum! */
+        if (DEC_2B_IS_INFINITY(pdec128)) {
+            sret = 1; /* 0 are older decimals without quantum */
+            break;
+        }
 
         if (pdec128->sign) {
             for (i = 0; i < DECQUAD_PACKED_COEF - 1 && pdec128->coef[i] == 0;
@@ -13960,16 +13945,6 @@ short decimal_quantum_get(char *pdec, int len, int *sign)
                 *sign = (pdec128->sign) ? 1 : 0;
         } else {
             ret = _scrub_zero_decimal128(pdec128, sign);
-#if 0
-            if(pdec128->sign == 0)
-            {
-                pdec128->exp=0x0FFFF;
-            }
-            else
-            {
-                pdec128->exp=0x0;
-            }
-#endif
         }
         sret = ret;
         break;
@@ -14005,6 +13980,11 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
             break;
         else if (pquantum != NULL && mark == 0)
             break;
+
+        /* infinity has no quantum */
+        if (DEC_1B_IS_INFINITY(pdec32)) {
+            break;
+        }
 
         pdec32->coef[DECSINGLE_PACKED_COEF - 1] &= 0x0F0;
 
@@ -14059,6 +14039,11 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
         else if (pquantum != NULL && mark == 0)
             break;
 
+        /* infinity has no quantum */
+        if (DEC_2B_IS_INFINITY(pdec64)) {
+            break;
+        }
+
         /*special handling of 0-es, exp has quantum*/
         for (i = 0; i < DECDOUBLE_PACKED_COEF - 1 && pdec64->coef[i] == 0; i++)
             ;
@@ -14108,6 +14093,11 @@ void decimal_quantum_set(char *pdec, int len, short *pquantum, int *sign)
             break;
         else if (pquantum != NULL && mark == 0)
             break;
+
+        /* infinity has no quantum */
+        if (DEC_2B_IS_INFINITY(pdec128)) {
+            break;
+        }
 
         /*special handling of 0-es, exp has quantum*/
         for (i = 0; i < DECQUAD_PACKED_COEF - 1 && pdec128->coef[i] == 0; i++)
