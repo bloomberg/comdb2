@@ -1215,7 +1215,7 @@ int sc_timepart_add_table(const char *existingTableName,
     /* save timepartition name here */
     sc.timepartition_name = db->timepartition_name;
 
-    int rc = do_schema_change_locked(&sc);
+    int rc = do_schema_change_locked(&sc, NULL);
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to add table");
@@ -1300,12 +1300,49 @@ int sc_timepart_drop_table(const char *tableName, struct errstat *xerr)
         sc.newcsc2 = schemabuf;
     }
 
-    rc = do_schema_change_locked(&sc);
+    rc = do_schema_change_locked(&sc, NULL);
     if (rc) {
         xerr->errval = SC_VIEW_ERR_SC;
         snprintf(xerr->errstr, sizeof(xerr->errstr), "failed to drop table");
     } else
         xerr->errval = SC_VIEW_NOERR;
+    return xerr->errval;
+
+error:
+    free_schema_change_type(&sc);
+    return xerr->errval;
+}
+
+int sc_timepart_truncate_table(void *tran, const char *tableName,
+                               struct errstat *xerr)
+{
+    struct schema_change_type sc = {0};
+    int rc;
+
+    init_schemachange_type(&sc);
+    strncpy0(sc.tablename, tableName, MAXTABLELEN);
+
+    sc.fastinit = 1;
+    sc.nothrevent = 1;
+    sc.same_schema = 1;
+    sc.finalize = 1;
+    sc.is_osql = 1;
+
+    rc = get_csc2_file_tran(sc.tablename, -1, &sc.newcsc2, NULL, tran);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
+               sc.tablename);
+        errstat_set_rcstrf(xerr, SC_CSC2_ERROR,
+                           "Table %s schema cannot be found", tableName);
+        goto error;
+    }
+
+    rc = do_schema_change_locked(&sc, tran);
+    if (rc) {
+        errstat_set_rcstrf(xerr, SC_VIEW_ERR_SC, "failed to truncate table");
+    } else {
+        bzero(xerr, sizeof(*xerr));
+    }
     return xerr->errval;
 
 error:

@@ -626,6 +626,7 @@
 (name='parallel_recovery', description='', type='INTEGER', value='0', read_only='Y')
 (name='parallel_sync', description='Run checkpoint/memptrickle code with parallel writes', type='BOOLEAN', value='ON', read_only='N')
 (name='participantid_bits', description='Number of bits allocated for the participant stripe ID (remaining bits are used for the update ID).', type='INTEGER', value='0', read_only='N')
+(name='partitioned_table_enabled', description='Allow syntax create table ... partitioned by ...', type='BOOLEAN', value='ON', read_only='N')
 (name='pause_moveto', description='pause_moveto', type='BOOLEAN', value='OFF', read_only='N')
 (name='pbkdf2_iterations', description='Number of iterations of PBKDF2 algorithm for password hashing.', type='INTEGER', value='4096', read_only='N')
 (name='penaltyincpercent', description='', type='INTEGER', value='20', read_only='Y')

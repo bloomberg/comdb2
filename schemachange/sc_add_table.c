@@ -391,6 +391,21 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         bdb_handle_dbp_add_hash(db->handle, gbl_init_with_bthash);
     }
 
+    /*
+     * if this is the original request for a partition table add,
+     * create partition here
+     */
+    if (s->newpartition) {
+        struct errstat err = {0};
+        rc = timepart_publish_view(tran, s->newpartition, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to create partition %s rc %d \"%s\"\n",
+                   s->timepartition_name, rc, err.errstr);
+            sc_errf(s, "timepart_publish_view failed\n");
+            return -1;
+        }
+    }
+
     sc_printf(s, "Schema change ok\n");
     return 0;
 }

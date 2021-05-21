@@ -55,6 +55,7 @@
 
 #include <autoanalyze.h>
 #include "sc_callbacks.h"
+#include "views.h"
 
 #if 0
 #define TEST_QSQL_REQ
@@ -684,9 +685,9 @@ static void osql_scdone_commit_callback(struct ireq *iq)
         struct schema_change_type *sc_next;
         iq->sc = iq->sc_pending;
         while (iq->sc != NULL) {
+            int rc = 0;
             sc_next = iq->sc->sc_next;
             if (write_scdone) {
-                int rc = 0;
                 struct schema_change_type *s = iq->sc;
                 bdb_state_type *bdb_state = 0;
                 scdone_t type = invalid;
@@ -735,6 +736,20 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                     }
                 }
             }
+
+            /* here we create the in-memory view, if any */
+            if (iq->sc->newpartition) {
+                timepart_create_inmem_view(iq->sc->newpartition);
+                rc = bdb_llog_views(thedb->bdb_env,
+                                    (char *)iq->sc->timepartition_name, 1,
+                                    &bdberr);
+                if (rc || bdberr != BDBERR_NOERROR) {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: Failed to log scdone for view %s\n", __func__,
+                           iq->sc->timepartition_name);
+                }
+            }
+
             broadcast_sc_end(iq->sc->tablename, iq->sc_seed);
             if (iq->sc->db) {
                 int rc;

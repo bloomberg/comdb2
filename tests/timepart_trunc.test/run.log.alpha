@@ -1,0 +1,186 @@
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[]
+
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+(rows inserted=3)
+(a=1)
+(a=2)
+(a=3)
+(a=10)
+(a=20)
+(a=30)
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+(a=10)
+(a=20)
+(a=30)
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t2",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_43868980",
+  },
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+(name='t2', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t2', shardname='$0_43868980')
+(name='t2', shardname='$2_CE9DB8D')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+cdb2sql -tabs ${CDB2_OPTIONS} dorintdb default exec procedure sys.cmd.send('partitions')
+[
+ {
+  "NAME"      : "t",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "<none>",
+  "ROLLOUT"   : "TRUNCATE",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_F64CD191",
+  },
+  {
+   "TABLENAME"    : "$1_A2620AE4",
+  }
+  ]
+ }
+],
+ {
+  "NAME"      : "t2",
+  "PERIOD"    : "daily",
+  "RETENTION" : 2,
+  "SHARD0NAME": "t3",
+  "TABLES"    :
+  [
+  {
+   "TABLENAME"    : "$0_43868980",
+  },
+  {
+   "TABLENAME"    : "$2_CE9DB8D",
+  }
+  ]
+ }
+]
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, period, retention, nshards, version,shard0name from comdb2_timepartitions 
+(name='t', period='daily', retention=2, nshards=2, version=0, shard0name='<none>')
+(name='t2', period='daily', retention=2, nshards=2, version=0, shard0name='t3')
+cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_timepartshards
+(name='t', shardname='$0_F64CD191')
+(name='t', shardname='$1_A2620AE4')
+(name='t2', shardname='$0_43868980')
+(name='t2', shardname='$2_CE9DB8D')
+cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
+(name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
+(name='Truncate', arg1='t', arg2=NULL, arg3=NULL)

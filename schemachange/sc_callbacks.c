@@ -702,12 +702,30 @@ static int bthash_callback(const char *table)
 }
 
 extern int gbl_assert_systable_locks;
-static int replicant_reload_views(const char *name)
+static int replicant_reload_views(bdb_state_type *bdb_state, const char *name)
 {
+    extern uint32_t gbl_rep_lockid;
+    uint32_t lid = 0;
+    void *tran = NULL;
     int rc;
+    int bdberr = 0;
 
-    rc = views_handle_replicant_reload(name);
+    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    if (tran == NULL) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
+    bdb_get_tran_lockerid(tran, &lid);
+    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
+    rc = views_handle_replicant_reload(tran, name);
+
+    bdb_set_tran_lockerid(tran, lid);
+    rc = bdb_tran_abort(bdb_state, tran, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
+        return -1;
+    }
     return rc;
 }
 
@@ -751,7 +769,7 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
     case bthash:
         return bthash_callback(table);
     case views:
-        return replicant_reload_views(table);
+        return replicant_reload_views(bdb_state, table);
     case rowlocks_on:
     case rowlocks_on_master_only:
     case rowlocks_off: return reload_rowlocks(thedb->bdb_env, type);

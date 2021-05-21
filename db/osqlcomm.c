@@ -5720,8 +5720,8 @@ static inline int is_write_request(int type)
 void free_cached_idx(uint8_t **cached_idx);
 
 int gbl_disable_tpsc_tblvers = 0;
-int start_schema_change_tran_wrapper(const char *tblname,
-                                     timepart_sc_arg_t *arg)
+static int start_schema_change_tran_wrapper(const char *tblname,
+                                            timepart_sc_arg_t *arg)
 {
     struct schema_change_type *sc = arg->s;
     struct ireq *iq = sc->iq;
@@ -5840,7 +5840,9 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     if (sc->db)
         iq->usedb = sc->db;
 
-    if (!timepart_is_timepart(sc->tablename, 1)) {
+    if (!timepart_is_timepart(sc->tablename, 1) &&
+        sc->partition.type == PARTITION_NONE) {
+        /* schema change for a regular table */
         rc = start_schema_change_tran(iq, NULL);
         if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
             sc->preempted == SC_ACTION_RESUME ||
@@ -5851,13 +5853,65 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             iq->sc_pending = iq->sc;
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         }
+    } else if (!timepart_is_timepart(sc->tablename, 1) &&
+               sc->partition.type != PARTITION_NONE) {
+        if (!sc->addonly) {
+            logmsg(LOGMSG_ERROR, "Alter table partitioning not YET supported\n");
+            return ERR_SC;
+        }
+        assert(sc->partition.type == PARTITION_TIMED);
+
+        /* create a new time partition object */
+        struct errstat err = {0};
+        sc->newpartition = timepart_new_partition(
+            sc->tablename, sc->partition.u.tpt.period,
+            sc->partition.u.tpt.retention, sc->partition.u.tpt.start, NULL,
+            TIMEPART_ROLLOUT_TRUNCATE, &sc->timepartition_name, &err);
+        /* DHTEST 1 {
+           sc->newpartition = NULL; err.errval = VIEW_ERR_PARAM;
+           snprintf(err.errstr, sizeof(err.errstr), "Test fail"); } DHTEST */
+        if (!sc->newpartition) {
+            assert(err.errval != VIEW_NOERR);
+            logmsg(LOGMSG_ERROR,
+                   "Creating a new time partition failed rc %d \"%s\"\n",
+                   err.errval, err.errstr);
+            rc = SC_UNKNOWN_ERROR;
+            goto out;
+        }
+
+        /* create shards for the partition */
+        rc = timepart_populate_shards(sc->newpartition, &err);
+        if (rc) {
+            assert(err.errval != VIEW_NOERR);
+
+            timepart_free_view(sc->newpartition);
+            logmsg(LOGMSG_ERROR,
+                   "Failed to pre-populate the shards rc %d \"%s\"n",
+                   err.errval, err.errstr);
+            rc = SC_UNKNOWN_ERROR;
+            goto out;
+        }
+
+        timepart_sc_arg_t arg = {0};
+        arg.s = sc;
+        arg.s->iq = iq;
+        rc = timepart_foreach_shard_lockless(
+            sc->newpartition, start_schema_change_tran_wrapper, &arg);
     } else {
+        if (sc->addonly) {
+            /* trying to create a duplicate time partition */
+            logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
+            rc = SC_TABLE_ALREADY_EXIST;
+            goto out;
+        }
+        /* schema change for a time partition */
         timepart_sc_arg_t arg = {0};
         arg.s = sc;
         arg.s->iq = iq;
         rc = timepart_foreach_shard(sc->tablename,
                                     start_schema_change_tran_wrapper, &arg, -1);
     }
+out:
     iq->usedb = NULL;
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)

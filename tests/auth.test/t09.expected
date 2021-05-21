@@ -137,6 +137,7 @@
 (candidate='OVER')
 (candidate='PAGEORDER')
 (candidate='PARTITION')
+(candidate='PARTITIONED')
 (candidate='PASSWORD')
 (candidate='PAUSE')
 (candidate='PENDING')

@@ -225,9 +225,15 @@ temp(A) ::= TEMP.  {A = 1;}
 temp(A) ::= .      {A = 0;}
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F). {
+create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F) partitioned. {
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
+partitioned ::= . 
+partitioned ::= PARTITIONED BY partition_options.
+partition_options ::= TIME PERIOD STRING(P) RETENTION INTEGER(R) START STRING(S). {
+  comdb2CreateTimePartition(pParse, &P, &R, &S);
+}
+
 %endif SQLITE_BUILDING_FOR_COMDB2
 %ifndef SQLITE_BUILDING_FOR_COMDB2
 create_table_args ::= LP columnlist conslist_opt(X) RP(E) table_options(F). {
@@ -317,7 +323,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   ENABLE EXEC EXECUTE FUNCTION GENID48 GET GRANT INCREMENT IPU ISC KW
   LUA LZ4 NONE
   ODH OFF OP OPTION OPTIONS
-  PAGEORDER PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
+  PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
   SCALAR SCHEMACHANGE SKIPSCAN START SUMMARIZE
   THREADS THRESHOLD TIME TRUNCATE TUNABLE TYPE

@@ -62,6 +62,29 @@ struct dest {
 /* status for schema_change_type->addonly */
 enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
 
+enum comdb2_partition_type {
+    PARTITION_NONE = 0,
+    PARTITION_REMOVE = 1,
+    PARTITION_TIMED = 2,
+    PARTITION_MERGE = 3,
+    PARTITION_COL_RANGE = 20,
+    PARTITION_COL_HASH =  40,
+};
+
+struct comdb2_partition {
+    /* Type of the partition */
+    enum comdb2_partition_type type;
+    union {
+        struct timed {
+            uint32_t period;
+            uint32_t retention;
+            uint64_t start;
+        } tpt;
+    } u;
+};
+
+struct timepart_view;
+
 struct schema_change_type {
     /*  ==========    persistent members ========== */
     unsigned long long rqid;
@@ -183,6 +206,9 @@ struct schema_change_type {
     int usedbtablevers;
     int fix_tp_badvers;
 
+    /* partition */
+    struct comdb2_partition partition;
+
     /*********************** temporary fields for in progress
      * schemachange************/
     /********************** it will change eventually (do not try to serialize)
@@ -190,6 +216,7 @@ struct schema_change_type {
 
     struct dbtable *db;
     struct dbtable *newdb;
+    struct timepart_view *newpartition;
     struct scplan plan; /**** TODO This is an abomination, i know. Yet still
                            much better than on the stack where I found it.
                              At least this datastructure lives as much as the
