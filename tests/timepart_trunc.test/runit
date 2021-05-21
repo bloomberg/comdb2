@@ -1,0 +1,198 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+source ${TESTSROOTDIR}/tools/runit_common.sh
+source ${TESTSROOTDIR}/tools/cluster_utils.sh
+
+# Test time partition new truncate rollout
+################################################################################
+
+
+# args
+# <dbname>
+dbname=$1
+
+OUT="run.log"
+
+rm $OUT 2>/dev/null
+touch $OUT
+
+cmd="cdb2sql ${CDB2_OPTIONS} $dbname default"
+cmdt="cdb2sql -tabs ${CDB2_OPTIONS} $dbname default"
+master=`$cmdt 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+cmdm="cdb2sql ${CDB2_OPTIONS} --host $master $dbname default"
+cmdmt="cdb2sql -tabs ${CDB2_OPTIONS} --host $master $dbname default"
+
+
+function timepart_stats
+{
+    # check the current partitions 
+    echo $cmdt "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    $cmdt "exec procedure sys.cmd.send('partitions')" | egrep -v "STARTTIME|LOW|HIGH|SOURCE_ID" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo $cmd "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    $cmd "select name, period, retention, nshards, version,shard0name from comdb2_timepartitions " >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+
+    echo $cmd "select name, shardname from comdb2_timepartshards" >> $OUT
+    $cmd "select name, shardname from comdb2_timepartshards" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+   
+    sleep $1
+    
+    echo cdb2sql ${CDB2_OPTIONS} --host MASTER $dbname default  "select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2" >> $OUT
+    $cmdm "select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2" >> $OUT
+    if (( $? != 0 )) ; then
+        echo "FAILURE"
+        exit 1
+    fi
+}
+
+timepart_stats 0
+
+VT="t"
+
+# TEST 1
+# create new partition in past, make sure start is in the future
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60-24*3600)'`
+echo $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
+if (( $? != 0 )) ; then
+   echo "FAILURE"
+   exit 1
+fi
+
+timepart_stats 0
+
+starttime=`$cmdmt "select e.epoch from comdb2_cron_events e,comdb2_timepartitions t on e.sourceid=t.sourceid where e.type='timepart_cron' and t.name='${VT}'"`
+now=`date "+%s"`
+
+if [[ $starttime -lt $now ]] ; then
+    echo "FAIL TEST1: Start time for the new partition is in the past $starttime < $now"
+    exit 1
+fi
+
+# TEST 2.
+# create dup partition
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
+echo $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
+if (( $? == 0 )) ; then
+    echo "FAILURE dup partition"
+    exit 1
+fi
+
+timepart_stats 0
+
+# TEST 3.
+# create partition with rollout in next minute, check partition, check events, check partition after rollout
+# (it is enough to wait for the already created "t" partition to rollout in one minute)
+echo $cmd "insert into '\$1_A2620AE4' values (1), (2), (3)"
+$cmd "insert into '\$1_A2620AE4' values (1), (2), (3)" >> $OUT
+if (( $? != 0 )) ; then
+    echo "FAILURE insert oldest shard"
+    exit 1
+fi
+echo $cmd "insert into ${VT} values (10), (20), (30)"
+$cmd "insert into ${VT} values (10), (20), (30)"
+if (( $? != 0 )) ; then
+    echo "FAILURE insert ${VT}"
+    exit 1
+fi
+
+echo $cmd "select * from t order by a"
+$cmd "select * from t order by a" >> $OUT
+
+echo "Waiting for ${VT} to rollout in 60 seconds"
+sleep 60
+
+timepart_stats 0
+
+echo $cmd "select * from t order by a"
+$cmd "select * from t order by a" >> $OUT
+
+# TEST 4.
+# create table with same name and check proper failure
+
+echo $cmd "CREATE TABLE ${VT}(a int, b int)"
+$cmd "CREATE TABLE ${VT}(a int, b int)"
+if (( $? == 0 )) ; then
+    echo "FAILURE dup table name"
+    exit 1
+fi
+
+VT="t2"
+
+# TEST 5.
+# create old tpt together 
+echo $cmd "create table t3 (b int)"
+$cmd "create table t3 (b int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE create table t3"
+   exit 1
+fi
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-2*24*3600-60)'`
+echo $cmd "CREATE TIME PARTITION ON t3 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "CREATE TIME PARTITION ON t3 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? != 0 )) ; then
+   echo "FAILURE create old stype partition"
+   exit 1
+fi
+
+# wait for the rollouts to present 
+sleep 30
+
+# need to wait to avoid racing against shard drop event
+timepart_stats 6
+
+# TEST 6.
+# create dup old time partition
+echo $cmd "create table t4 (c int)"
+$cmd "create table t4 (c int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE create table t4"
+   exit 1
+fi
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-2*24*3600-60)'`
+echo $cmd "CREATE TIME PARTITION ON t4 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "CREATE TIME PARTITION ON t4 as ${VT} PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? == 0 )) ; then
+   echo "FAILURE dup old time partition"
+   exit 1
+fi
+
+# 7.
+# restart node, check partition read and events generation
+echo "Killing master now"
+kill_restart_node $master 1
+sleep 10
+
+master=`$cmdt 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
+cmdm="cdb2sql ${CDB2_OPTIONS} --host $master $dbname default"
+cmdmt="cdb2sql -tabs ${CDB2_OPTIONS} --host $master $dbname default"
+
+timepart_stats 0
+
+# we need to scrub dbname from alpha
+sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
+
+
+difs=`diff $OUT $OUT.alpha.actual`
+if [[ ! -z "${difs}" ]] ; then
+   echo "diff $OUT $OUT.alpha.actual"
+   echo ${difs}
+   echo "FAILURE"
+   exit 1
+fi
+
+echo "SUCCESS"

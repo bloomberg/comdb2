@@ -32,6 +32,7 @@
 #include "net.h"
 #include "sql_stmt_cache.h"
 #include "sc_rename_table.h"
+#include "views.h"
 
 /* Maximum allowable size of the value of tunable. */
 #define MAX_TUNABLE_VALUE_SIZE 512

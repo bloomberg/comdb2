@@ -3480,6 +3480,8 @@ int table_version_set(tran_type *tran, const char *tablename,
 int sc_timepart_add_table(const char *existingTableName,
                           const char *newTableName, struct errstat *err);
 int sc_timepart_drop_table(const char *tableName, struct errstat *err);
+int sc_timepart_truncate_table(void *tran, const char *tableName,
+                               struct errstat *err);
 
 /* SCHEMACHANGE DECLARATIONS*/
 

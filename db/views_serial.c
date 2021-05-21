@@ -18,6 +18,7 @@
  *          "PERIOD": "daily"|"weekly"|"monthly"|"yearly|manual",
  *          "RETENTION" : n,  #here n is 4
  *          "SOURCE_ID" : "uuid string",
+ *          "ROLLOUT" : "adddrop|truncate",
  *          "TABLES":
  *             [
  *                {
@@ -60,11 +61,11 @@ static char *_concat(char *str, int *len, const char *fmt, ...);
 
 static const char *_cson_extract_str(cson_object *cson_obj, const char *param,
                                      struct errstat *err);
-static int partition_deserialize_cson_value(cson_value *cson_view,
-                                            timepart_view_t *view,
-                                            struct errstat *err);
+static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
+                                                         struct errstat *err);
 static timepart_views_t *_create_all_views(const char *views_str);
 
+/* this is used in the "ADDDROP" time partitions */
 char *build_createcmd_json(char **out, int *len, const char *name,
                            const char *tablename, uint32_t period,
                            int retention, uint64_t starttime)
@@ -72,19 +73,19 @@ char *build_createcmd_json(char **out, int *len, const char *name,
     char time[256];
     const char *period_str = period_to_name(period);
     convert_to_start_string(period, starttime, time, sizeof(time));
-    *out = _concat(NULL, len,
-                   " {\n"
-                   "  \"COMMAND\"       : \"CREATE\",\n"
-                   "  \"TYPE\"      : \"TIME BASED\",\n"
-                   "  \"NAME\"  : \"%s\",\n"
-                   "  \"SHARD0NAME\"    : \"%s\",\n"
-                   "  \"PERIOD\"    : \"%s\",\n"
-                   "  \"RETENTION\" : %d,\n"
-                   "  \"%s : \"%s\"\n"
-                   "}",
-                   name, tablename, period_str, retention,
-                   (IS_TIMEPARTITION(period)) ? "STARTTIME\"" : "START\"    ",
-                   time);
+    *out =
+        _concat(NULL, len,
+                " {\n"
+                "  \"COMMAND\"       : \"CREATE\",\n"
+                "  \"TYPE\"      : \"TIME BASED\",\n"
+                "  \"NAME\"  : \"%s\",\n"
+                "  \"SHARD0NAME\"    : \"%s\",\n"
+                "  \"PERIOD\"    : \"%s\",\n"
+                "  \"RETENTION\" : %d,\n"
+                "  \"%s : \"%s\"\n"
+                "}",
+                name, tablename, period_str, retention,
+                IS_TIMEPARTITION(period) ? "STARTTIME\"" : "START\"    ", time);
     return *out;
 }
 
@@ -132,15 +133,26 @@ int timepart_serialize_view(timepart_view_t *view, int *plen, char **out,
                   "  \"RETENTION\" : %d,\n"
                   "  \"%s : \"%s\",\n"
                   "  \"SHARD0NAME\": \"%s\",\n"
-                  "  \"SOURCE_ID\" : \"%s\",\n"
-                  "  \"TABLES\"    :\n"
-                  "  [\n",
+                  "  \"SOURCE_ID\" : \"%s\",\n",
                   view->name, period_to_name(view->period), view->retention,
                   (IS_TIMEPARTITION(view->period)) ? "STARTTIME\""
                                                    : "START\"    ",
                   convert_to_start_string(view->period, view->starttime, now,
                                           sizeof(now)),
                   view->shard0name, comdb2uuidstr(view->source_id, us));
+
+    if (!str)
+        return VIEW_ERR_MALLOC;
+
+    if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
+        str = _concat(str, &len, "  \"ROLLOUT\"   : \"TRUNCATE\",\n");
+        if (!str)
+            return VIEW_ERR_MALLOC;
+    }
+
+    str = _concat(str, &len,
+                  "  \"TABLES\"    :\n"
+                  "  [\n");
     if (!str)
         return VIEW_ERR_MALLOC;
 
@@ -167,6 +179,8 @@ int timepart_serialize_view(timepart_view_t *view, int *plen, char **out,
                                  "  }%s\n",
                       shard->tblname, lowstr, highstr,
                       (j == view->nshards - 1) ? "" : ",");
+        if (!str)
+            return VIEW_ERR_MALLOC;
     }
     str = _concat(str, &len, "  ]\n"
                              " }\n");
@@ -262,19 +276,8 @@ timepart_view_t *timepart_deserialize_view(const char *str, struct errstat *err)
         goto done;
     }
 
-    view = (timepart_view_t *)calloc(1, sizeof(timepart_view_t));
+    view = partition_deserialize_cson_value(cson_view, err);
     if (!view) {
-        snprintf(err->errstr, sizeof(err->errstr), "Malloc OOM");
-        err->errval = VIEW_ERR_MALLOC;
-        goto done;
-    }
-
-    rc = partition_deserialize_cson_value(cson_view, view, err);
-    if (rc != VIEW_NOERR) {
-        if (view) {
-            timepart_free_view(view);
-            view = NULL;
-        }
         goto done;
     }
 
@@ -339,11 +342,6 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err)
     }
 
     for (i = 0; i < len; i++) {
-        views->views[i] = (timepart_view_t *)calloc(1, sizeof(timepart_view_t));
-        if (!views->views[i]) {
-            goto oom;
-        }
-
         cson_view = cson_array_get(view_arr, i);
         if (!cson_view) {
             snprintf(err->errstr, sizeof(err->errstr),
@@ -352,8 +350,8 @@ timepart_views_t *timepart_deserialize(const char *str, struct errstat *err)
             goto error;
         }
 
-        rc = partition_deserialize_cson_value(cson_view, views->views[i], err);
-        if (rc != VIEW_NOERR) {
+        views->views[i] = partition_deserialize_cson_value(cson_view, err);
+        if (!views->views[i]) {
             goto error;
         }
     }
@@ -425,17 +423,9 @@ static int _views_do_partition_create(void *tran, timepart_views_t *views,
         goto error;
     }
 
-    view = (timepart_view_t *)calloc(1, sizeof(timepart_view_t));
-    if (!view) {
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Invalid view type for \"%s\"", name);
-        err->errval = VIEW_ERR_PARAM;
-        goto error;
-    }
-
     /* extract the time partition schedule */
-    rc = partition_deserialize_cson_value(cson, view, err);
-    if (rc != VIEW_NOERR) {
+    view = partition_deserialize_cson_value(cson, err);
+    if (!view) {
         goto error;
     }
 
@@ -1359,88 +1349,96 @@ static int _cson_extract_start_string(cson_object *cson_obj, const char *param,
 }
 
 /* this will extract all the fields and populate a provided view */
-static int partition_deserialize_cson_value(cson_value *cson_view,
-                                            timepart_view_t *view,
-                                            struct errstat *err)
+static timepart_view_t *partition_deserialize_cson_value(cson_value *cson_view,
+                                                         struct errstat *err)
 {
-    cson_object *obj;
-    cson_value *val;
-    const char *tmp_str;
+    timepart_view_t *view = NULL;
+    const char *name, *tmp_str;
+    int period, retention;
+    long long starttime;
+    uuid_t source_id;
+    enum TIMEPART_ROLLOUT_TYPE rolltype;
 
     cson_array *tbl_arr = NULL;
+    cson_object *obj;
+    cson_value *val;
     cson_object *obj_arr;
     int j;
-    int rc = VIEW_NOERR;
+    const char *errs = NULL;
 
     if (!cson_value_is_object(cson_view) ||
         (obj = cson_value_get_object(cson_view)) == NULL) {
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Expect an object for a view");
-        rc = err->errval = VIEW_ERR_PARAM;
+        errs = "Expect an object for a view";
         goto error;
     }
 
     /* NAME */
     tmp_str = _cson_extract_str(obj, "NAME", err);
     if (!tmp_str) {
-        rc = err->errval;
         goto error;
     }
-    view->name = strdup(tmp_str);
-    if (!view->name) {
-        goto oom;
-    }
+    name = tmp_str;
 
     /* PERIOD */
     tmp_str = _cson_extract_str(obj, "PERIOD", err);
     if (!tmp_str) {
-        rc = err->errval;
         goto error;
     }
-    view->period = name_to_period(tmp_str);
-    if (view->period == VIEW_PARTITION_INVALID) {
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Wrong JSON format, PERIOD value invalid");
-        rc = err->errval = VIEW_ERR_PARAM;
+    period = name_to_period(tmp_str);
+    if (period == VIEW_PARTITION_INVALID) {
+        errs = "Wrong JSON format, PERIOD value invalid";
         goto error;
     }
 
     /* RETENTION */
-    view->retention = _cson_extract_int(obj, "RETENTION", err);
-    if (view->retention < 0) {
-        rc = err->errval;
+    retention = _cson_extract_int(obj, "RETENTION", err);
+    if (retention < 0) {
         goto error;
     }
 
-    tmp_str = (IS_TIMEPARTITION(view->period)) ? "STARTTIME" : "START";
+    tmp_str = (IS_TIMEPARTITION(period)) ? "STARTTIME" : "START";
     /* check for starttime */
-    view->starttime =
-        _cson_extract_start_string(obj, tmp_str, view->period, err);
+    starttime = _cson_extract_start_string(obj, tmp_str, period, err);
 
     tmp_str = _cson_extract_str(obj, "SOURCE_ID", err);
     if(!tmp_str)
-        comdb2uuid_clear(view->source_id);
-    else
-        if(uuid_parse(tmp_str, view->source_id)) {
-            snprintf(err->errstr, sizeof(err->errstr),
-                    "Wrong JSON format, SOURCE_ID value invalid uuid");
-            rc = err->errval = VIEW_ERR_PARAM;
-            goto error;
+        comdb2uuid_clear(source_id);
+    else if (uuid_parse(tmp_str, source_id)) {
+        errs = "Wrong JSON format, SOURCE_ID value invalid uuid";
+        goto error;
         }
 
-    /* TABLES */
-    tbl_arr = _cson_extract_array(obj, "TABLES", err);
-    if (!tbl_arr) {
-        /* initial creation doesn't require a table section */
-        bzero(err, sizeof(*err));
-        goto look_for_shard0;
+        tmp_str = _cson_extract_str(obj, "ROLLOUT", err);
+        if (tmp_str) {
+            if (strncasecmp(tmp_str, "truncate", sizeof("truncate") + 1)) {
+                errs = "Wrong ROLLOUT value";
+                goto error;
+            }
+            rolltype = TIMEPART_ROLLOUT_TRUNCATE;
+        } else {
+            /* rollout is optional, it is only required to opt-in the new
+             * truncate based rollout
+             */
+            bzero(err, sizeof(*err));
+            rolltype = TIMEPART_ROLLOUT_ADDDROP;
+        }
+
+        view = timepart_new_partition(name, period, retention, starttime,
+                                      &source_id, rolltype, NULL, err);
+        if (!view)
+            goto error;
+
+        /* TABLES */
+        tbl_arr = _cson_extract_array(obj, "TABLES", err);
+        if (!tbl_arr) {
+            /* initial creation doesn't require a table section */
+            bzero(err, sizeof(*err));
+            goto look_for_shard0;
     }
 
     view->nshards = cson_array_length_get(tbl_arr);
     if (view->nshards <= 0) {
-        snprintf(err->errstr, sizeof(err->errstr),
-                 "Wrong JSON format, TABLES has no shards");
-        rc = err->errval = VIEW_ERR_PARAM;
+        errs = "Wrong JSON format, TABLES has no shards";
         goto error;
     }
 
@@ -1449,24 +1447,19 @@ static int partition_deserialize_cson_value(cson_value *cson_view,
     if (!view->shards) {
         goto oom;
     }
-
     for (j = 0; j < view->nshards; j++) {
         val = cson_array_get(tbl_arr, j);
         if (!cson_value_is_object(val) ||
             ((obj_arr = cson_value_get_object(val)) == NULL)) {
-            snprintf(err->errstr, sizeof(err->errstr),
-                     "Wrong JSON format, TABLES entry not object");
-            rc = err->errval = VIEW_ERR_PARAM;
+            errs = "Wrong JSON format, TABLES entry not object";
             goto error;
         }
 
         /* TBLNAME */
         tmp_str = _cson_extract_str(obj_arr, "TABLENAME", err);
         if (!tmp_str) {
-            rc = err->errval;
             goto error;
         }
-
         view->shards[j].tblname = strdup(tmp_str);
         if (!view->shards[j].tblname) {
             goto oom;
@@ -1474,23 +1467,23 @@ static int partition_deserialize_cson_value(cson_value *cson_view,
 
         /* LOW */
         view->shards[j].low = _cson_extract_int(obj_arr, "LOW", err);
-        if ((j == view->nshards - 1) && view->shards[j].low != INT_MIN) {
-            snprintf(
-                err->errstr, sizeof(err->errstr),
+        if (view->rolltype == TIMEPART_ROLLOUT_ADDDROP &&
+            (j == view->nshards - 1) && view->shards[j].low != INT_MIN) {
+            errstat_set_rcstrf(
+                err, VIEW_ERR_PARAM,
                 "Wrong JSON format, TABLES entry %d has wrong integer for LOW",
                 j);
-            rc = err->errval = VIEW_ERR_PARAM;
             goto error;
         }
 
         /* HIGH */
         view->shards[j].high = _cson_extract_int(obj_arr, "HIGH", err);
-        if ((j == 0) && view->shards[j].high != INT_MAX) {
-            snprintf(
-                err->errstr, sizeof(err->errstr),
+        if (view->rolltype == TIMEPART_ROLLOUT_ADDDROP && (j == 0) &&
+            view->shards[j].high != INT_MAX) {
+            errstat_set_rcstrf(
+                err, VIEW_ERR_PARAM,
                 "Wrong JSON format, TABLES entry %d has wrong integer for HIGH",
                 j);
-            rc = err->errval = VIEW_ERR_PARAM;
             goto error;
         }
     }
@@ -1500,9 +1493,8 @@ look_for_shard0:
     tmp_str = _cson_extract_str(obj, "SHARD0NAME", err);
     if (!tmp_str) {
         if (view->nshards != 1) {
-            /* this catches cases when both TABLES and SHARD0NAME are missing !
+            /* this catches cases when both TABLES and SHARD0NAME are missing!
              */
-            rc = err->errval;
             goto error;
         } else {
             /* on creation shard0name is implicit */
@@ -1532,17 +1524,21 @@ look_for_shard0:
         view->shards[0].high = INT_MAX;
     }
 
-    rc = VIEW_NOERR;
+    return view;
 
 error:
+    if (errs) {
+        errstat_set_rcstrf(err, VIEW_ERR_PARAM, errs);
+    }
     /* error "err", if any prep-ed by called functionality */
-
-    return rc;
+    if (view) {
+        timepart_free_view(view);
+    }
+    return NULL;
 
 oom:
-    snprintf(err->errstr, sizeof(err->errstr), "%s Malloc OOM", __func__);
-    err->errval = VIEW_ERR_MALLOC;
-    return VIEW_ERR_MALLOC;
+    errstat_set_rcstrf(err, VIEW_ERR_MALLOC, "%s Malloc OOM", __func__);
+    goto error;
 }
 
 
@@ -1805,7 +1801,7 @@ int timepart_apply_file(const char *filename)
     Pthread_rwlock_wrlock(&views_lk);
 
     for (i = 0; i < views->nviews; i++) {
-        rc = _view_rollout_publish(NULL, views->views[i], &err);
+        rc = _view_rollout_publish(NULL, views->views[i], 1, &err);
         if (rc != VIEW_NOERR) {
             Pthread_rwlock_unlock(&views_lk);
             goto done;

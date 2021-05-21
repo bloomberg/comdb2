@@ -148,8 +148,8 @@ char *_views_create_update_trigger_query(timepart_view_t *view,
 
     assert(view->nshards >= 1);
 
-    cols_str =
-        _describe_row(view->shards[0].tblname, NULL, VIEWS_TRIGGER_UPDATE, err);
+    cols_str = _describe_row(view->shards[view->current_shard].tblname, NULL,
+                             VIEWS_TRIGGER_UPDATE, err);
     if (!cols_str) {
         sqlite3_free(ret_str);
         return NULL;
@@ -194,18 +194,18 @@ char *_views_create_insert_trigger_query(timepart_view_t *view,
 
     assert(view->nshards >= 1);
 
-    cols_str =
-        _describe_row(view->shards[0].tblname, NULL, VIEWS_TRIGGER_INSERT, err);
+    cols_str = _describe_row(view->shards[view->current_shard].tblname, NULL,
+                             VIEWS_TRIGGER_INSERT, err);
     if (!cols_str) {
         goto oom;
     }
 
-    ret_str =
-        sqlite3_mprintf("CREATE TRIGGER \"%w_%w\" INSTEAD OF INSERT ON \"%w\" BEGIN\n"
-                        "INSERT INTO \"%w\" VALUES ( %s );\n"
-                        "END;\n",
-                        view->name, TRIGGER_SUFFIX_INS, view->name,
-                        view->shards[0].tblname, cols_str);
+    ret_str = sqlite3_mprintf(
+        "CREATE TRIGGER \"%w_%w\" INSTEAD OF INSERT ON \"%w\" BEGIN\n"
+        "INSERT INTO \"%w\" VALUES ( %s );\n"
+        "END;\n",
+        view->name, TRIGGER_SUFFIX_INS, view->name,
+        view->shards[view->current_shard].tblname, cols_str);
     if (!ret_str) {
         goto oom;
     }

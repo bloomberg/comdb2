@@ -44,6 +44,7 @@ struct schema_change_type *init_schemachange_type(struct schema_change_type *sc)
     sc->dbnum = -1; /* -1 = not changing, anything else = set value */
     sc->original_master_node[0] = 0;
     sc->timepartition_name = NULL;
+    sc->partition.type = PARTITION_NONE;
     listc_init(&sc->dests, offsetof(struct dest, lnk));
     Pthread_mutex_init(&sc->mtx, NULL);
     Pthread_mutex_init(&sc->livesc_mtx, NULL);
@@ -119,6 +120,20 @@ static size_t dests_field_packed_size(struct schema_change_type *s)
     return len;
 }
 
+static size_t _partition_packed_size(struct comdb2_partition *p)
+{
+    switch (p->type) {
+    case PARTITION_NONE:
+        return sizeof(p->type);
+    case PARTITION_TIMED:
+        return sizeof(p->type) + sizeof(p->u.tpt.period) +
+               sizeof(p->u.tpt.retention) + sizeof(p->u.tpt.start);
+    default:
+        logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
+        abort();
+    }
+}
+
 size_t schemachange_packed_size(struct schema_change_type *s)
 {
     s->tablename_len = strlen(s->tablename) + 1;
@@ -150,7 +165,8 @@ size_t schemachange_packed_size(struct schema_change_type *s)
         sizeof(s->delsp) + sizeof(s->defaultsp) + sizeof(s->is_sfunc) +
         sizeof(s->is_afunc) + sizeof(s->rename) + sizeof(s->newtable) +
         sizeof(s->usedbtablevers) + sizeof(s->add_view) + sizeof(s->drop_view) +
-        sizeof(s->add_qdb_file) + sizeof(s->del_qdb_file) + sizeof(s->qdb_file_ver);
+        sizeof(s->add_qdb_file) + sizeof(s->del_qdb_file) +
+        sizeof(s->qdb_file_ver) + _partition_packed_size(&s->partition);
 
     return s->packed_len;
 }
@@ -309,6 +325,21 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
     p_buf = buf_put(&s->add_qdb_file, sizeof(s->add_qdb_file), p_buf, p_buf_end);
     p_buf = buf_put(&s->del_qdb_file, sizeof(s->del_qdb_file), p_buf, p_buf_end);
     p_buf = buf_put(&s->qdb_file_ver, sizeof(s->qdb_file_ver), p_buf, p_buf_end);
+
+    p_buf = buf_put(&s->partition.type, sizeof(s->partition.type), p_buf,
+                    p_buf_end);
+    switch (s->partition.type) {
+    case PARTITION_TIMED: {
+        p_buf = buf_put(&s->partition.u.tpt.period,
+                        sizeof(s->partition.u.tpt.period), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.tpt.retention,
+                        sizeof(s->partition.u.tpt.retention), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.tpt.start,
+                        sizeof(s->partition.u.tpt.start), p_buf, p_buf_end);
+        break;
+    }
+    }
+
     return p_buf;
 }
 
@@ -546,6 +577,23 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                                p_buf, p_buf_end);
     p_buf = (uint8_t *)buf_get(&s->qdb_file_ver, sizeof(s->qdb_file_ver),
                                p_buf, p_buf_end);
+
+    p_buf = (uint8_t *)buf_get(&s->partition.type, sizeof(s->partition.type),
+                               p_buf, p_buf_end);
+    switch (s->partition.type) {
+    case PARTITION_TIMED: {
+        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.period,
+                                   sizeof(s->partition.u.tpt.period), p_buf,
+                                   p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.retention,
+                                   sizeof(s->partition.u.tpt.retention), p_buf,
+                                   p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.start,
+                                   sizeof(s->partition.u.tpt.start), p_buf,
+                                   p_buf_end);
+        break;
+    }
+    }
 
     return p_buf;
 }
@@ -1056,6 +1104,7 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->finalize = sc->finalize;
     newsc->finalize_only = sc->finalize_only;
     newsc->is_osql = sc->is_osql;
+    newsc->timepartition_name = sc->timepartition_name;
 
     if (!p_buf) {
         free_schema_change_type(newsc);

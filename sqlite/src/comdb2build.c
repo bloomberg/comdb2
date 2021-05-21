@@ -1226,9 +1226,57 @@ cleanup:
 
 /********************* PARTITIONS  **********************************************/
 
+static int comdb2GetTimePartitionParams(Parse* pParse, Token *period,
+                                        Token *retention, Token *start,
+                                        int32_t *oPeriod, int32_t *oRetention,
+                                        int64_t *oStart)
+{
+    char period_str[50];
+
+    assert (*period->z == '\'' || *period->z == '\"');
+    period->z++;
+    period->n -= 2;
+
+    if (period->n >= sizeof(period_str)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid period name");
+        return -1;
+    }
+    strncpy0(period_str, period->z, period->n + 1);
+    *oPeriod = name_to_period(period_str);
+    if (*oPeriod == VIEW_PARTITION_INVALID) {
+        setError(pParse, SQLITE_ERROR, "Invalid period name");
+        return -1;
+    }
+
+    char retention_str[10];
+    if (retention->n >= sizeof(retention_str)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid retention");
+        return -1;
+    }
+    strncpy0(retention_str, retention->z, retention->n + 1);
+    *oRetention = atoi(retention_str);
+
+    char start_str[200];
+    assert (*start->z == '\'' || *start->z == '\"');
+    start->z++;
+    start->n -= 2;
+    if (start->n >= sizeof(start_str)) {
+        setError(pParse, SQLITE_MISUSE, "Invalid start date");
+        return -1;    
+    }
+    strncpy0(start_str, start->z, start->n + 1);
+    *oStart = convert_from_start_string(*oPeriod, start_str);
+    if (*oStart == -1 ) {
+        setError(pParse, SQLITE_ERROR, "Invalid start date");
+        return -1;
+    }
+
+    return 0;
+}
+
 void comdb2CreatePartition(Parse* pParse, Token* table,
-                               Token* partition_name, Token* period,
-                               Token* retention, Token* start)
+                           Token* partition_name, Token* period,
+                           Token* retention, Token* start)
 {
     if (comdb2IsPrepareOnly(pParse))
         return;
@@ -1282,53 +1330,8 @@ void comdb2CreatePartition(Parse* pParse, Token* table,
     }
     strncpy0(tp->partition_name, partition_name->z, partition_name->n + 1);
 
-    char period_str[50];
-
-    assert (*period->z == '\'' || *period->z == '\"');
-    period->z++;
-    period->n -= 2;
-
-    if (period->n >= sizeof(period_str)) {
-        setError(pParse, SQLITE_MISUSE, "Invalid period name");
-        goto clean_arg;
-    }
-    strncpy0(period_str, period->z, period->n + 1);
-    tp->period = name_to_period(period_str);
-
-    if (tp->period == VIEW_PARTITION_INVALID) {
-        setError(pParse, SQLITE_ERROR, "Invalid period name");
-        goto clean_arg;
-    }
-
-    char retention_str[10];
-    if (retention->n >= sizeof(retention_str)) {
-        setError(pParse, SQLITE_MISUSE, "Invalid retention");
-        goto clean_arg;
-    }
-    strncpy0(retention_str, retention->z, retention->n + 1);
-    tp->retention = atoi(retention_str);
-#if 0    
-    if (tp->retention < 2) {
-        setError(pParse, SQLITE_MISUSE, "Retention must be at least 2");
-        goto clean_arg;
-    }
-#endif
-
-    char start_str[200];
-
-    assert (*start->z == '\'' || *start->z == '\"');
-    start->z++;
-    start->n -= 2;
-
-    if (start->n >= sizeof(start_str)) {
-        setError(pParse, SQLITE_MISUSE, "Invalid start date");
-        goto clean_arg;
-    }
-    strncpy0(start_str, start->z, start->n + 1);
-    tp->start = convert_from_start_string(tp->period, start_str);
-
-    if (tp->start == -1 ) {
-        setError(pParse, SQLITE_ERROR, "Invalid start date");
+    if (comdb2GetTimePartitionParams(pParse, period, retention, start,
+                                     &tp->period, &tp->retention, &tp->start)) {
         goto clean_arg;
     }
 
@@ -2733,6 +2736,8 @@ struct comdb2_ddl_context {
     struct comdb2_column *alter_column;
     /* Table name */
     char tablename[MAXTABLELEN];
+    /* Partitioning */
+    struct comdb2_partition *partition;
 };
 
 /* Type properties */
@@ -2831,6 +2836,10 @@ static struct comdb2_ddl_context *create_ddl_context(Parse *pParse)
 {
     struct comdb2_ddl_context *ctx;
 
+    /* allocated already ? */
+    if (pParse->comdb2_ddl_ctx)
+        return pParse->comdb2_ddl_ctx;
+
     /* Allocate struct comdb2_ddl_context. */
     ctx = calloc(1, sizeof(struct comdb2_ddl_context));
     if (ctx == NULL) {
@@ -2882,6 +2891,8 @@ static void free_ddl_context(Parse *pParse)
     if (ctx == 0)
         return;
 
+    free(ctx->partition);
+    
     comdb2ma_destroy(ctx->mem);
     free(ctx);
 
@@ -4454,6 +4465,9 @@ void comdb2AlterTableEnd(Parse *pParse)
 
     fillTableOption(sc, ctx->schema->table_options);
 
+    if (ctx->partition)
+        sc->partition = *ctx->partition;
+
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
         /* An error must have been set. */
@@ -4605,6 +4619,10 @@ void comdb2CreateTableEnd(
 
     fillTableOption(sc, comdb2Opts);
 
+    if (ctx->partition)
+        sc->partition = *ctx->partition;
+
+    /* prepare_csc2 can free the ctx, do not touch it afterwards ! */
     sc->newcsc2 = prepare_csc2(pParse, ctx);
     if (sc->newcsc2 == 0) {
         /* An error must have been set. */
@@ -6872,5 +6890,53 @@ int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
     if (!rc)
         rc = osql_bpfunc_logic(thd, &arg);
     return rc;
+}
+
+
+/**
+ * Create Time Partition v2 (schema based)
+ *
+ */
+void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
+                               Token* start)
+{
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+    
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
+        return;
+    }
+        
+
+    struct comdb2_ddl_context *ctx;
+
+    ctx = create_ddl_context(pParse);
+    if (ctx == 0)
+        goto oom;
+
+    assert(ctx->partition == NULL);
+
+    ctx->partition = calloc(1, sizeof(struct comdb2_partition));
+    if (!ctx->partition) {
+        goto oom;
+    }
+    ctx->partition->type = PARTITION_TIMED;
+
+    if (comdb2GetTimePartitionParams(pParse, period, retention, start,
+                                     (int32_t*)&ctx->partition->u.tpt.period,
+                                     (int32_t*)&ctx->partition->u.tpt.retention,
+                                     (int64_t*)&ctx->partition->u.tpt.start)) {
+        goto cleanup;
+    }
+
+    return;
+
+oom:
+    setError(pParse, SQLITE_NOMEM, "System out of memory");
+
+cleanup:
+    free_ddl_context(pParse);
+    return;
 }
 

@@ -314,7 +314,7 @@ verify_db_at_finish() {
     local LCLOPTIONS="--cdb2cfg ${LCLCONFIG}"
 
     node=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM default 'select comdb2_host()' )
-    tables=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables')
+    tables=$(timeout --kill-after=5s 1m $CDB2SQL_EXE ${LCLOPTIONS} --tabs $LCLDBNM --host $node 'select * from comdb2_tables where tablename not in (select name from comdb2_timepartitions)')
     for t in $tables ; do 
         outfl=${t}_verify.out
         timeout --kill-after=5s 3m $CDB2SQL_EXE ${LCLOPTIONS} --verbose --tabs $LCLDBNM --host $node "exec procedure sys.cmd.verify('$t', 'parallel')" &> $outfl

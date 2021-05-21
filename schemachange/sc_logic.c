@@ -756,7 +756,7 @@ int do_schema_change_tran_thd(sc_arg_t *arg)
     return rc;
 }
 
-int do_schema_change_locked(struct schema_change_type *s)
+int do_schema_change_locked(struct schema_change_type *s, void *tran)
 {
     int rc = 0;
     struct ireq *iq = NULL;
@@ -776,7 +776,7 @@ int do_schema_change_locked(struct schema_change_type *s)
     sc_arg_t *arg = malloc(sizeof(sc_arg_t));
     arg->iq = iq;
     arg->sc = s;
-    arg->trans = NULL;
+    arg->trans = tran;
     /* the only callers are lightweight timepartition events,
        which already have schema lock */
     arg->iq->sc_locked = 1;

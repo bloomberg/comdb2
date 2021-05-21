@@ -60,16 +60,30 @@ int views_read(char **pstr)
 /**
  *  Write a CSON representation of a view
  *  The view is internally saved as a parameter "viewname" for the table
- *"sys_views"
+ *  "sys_views".
+ *  "override" set to 1 allows the function to behave like an upsert (if
+ *  old view exists, it is overwritten).  Otherwise, an error is returned.
  *
  *  NOTE: writing a NULL or 0 length string deletes existing entry if any
- *
  */
-int views_write_view(void *tran, const char *viewname, const char *str)
+int views_write_view(void *tran, const char *viewname, const char *str,
+                     int override)
 {
     int rc;
 
     if (str) {
+        /* check if the table exists, and if it does, return error */
+        if (!override) {
+            char *oldstr = NULL;
+            rc = views_read_view(tran, viewname, &oldstr);
+            if (rc == VIEW_NOERR) {
+                logmsg(LOGMSG_ERROR,
+                       "View \"%s\" already exists, old string \"%s\"\n",
+                       viewname, oldstr);
+                free(oldstr);
+                return VIEW_ERR_EXIST;
+            }
+        }
         /* this is an upsert */
         rc = bdb_set_table_parameter(tran, LLMETA_TABLE_NAME, viewname, str);
     } else {
@@ -87,13 +101,13 @@ int views_write_view(void *tran, const char *viewname, const char *str)
  * Read a view CSON representation from llmeta
  *
  */
-int views_read_view(const char *name, char **pstr)
+int views_read_view(void *tran, const char *name, char **pstr)
 {
     int rc;
 
     *pstr = NULL;
 
-    rc = bdb_get_table_parameter(LLMETA_TABLE_NAME, name, pstr);
+    rc = bdb_get_table_parameter_tran(LLMETA_TABLE_NAME, name, pstr, tran);
     if (rc == 1) {
         return VIEW_ERR_EXIST;
     } else if (rc) {

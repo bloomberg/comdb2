@@ -2131,6 +2131,11 @@ REGISTER_TUNABLE("net_somaxconn",
 REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before starting a new chunk  (Default: 0)",
                  TUNABLE_INTEGER, &gbl_throttle_txn_chunks_msec, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("partitioned_table_enabled",
+                 "Allow syntax create table ... partitioned by ...",
+                 TUNABLE_BOOLEAN, &gbl_partitioned_table_enabled, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, READONLY | NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
 
