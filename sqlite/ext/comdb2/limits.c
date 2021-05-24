@@ -41,8 +41,6 @@ struct limit_t {
      MAXDYNTAGCOLUMNS},
     {"max_column_name_length", "Maximum column name length", MAXCOLNAME},
     {"max_columns", "Maximum columns per table", MAXCOLUMNS},
-    {"max_constraints", "Maximum number of constraints per table",
-     MAXCONSTRAINTS},
     {"max_consumers", "Maximum queue consumers per table", MAXCONSUMERS},
     {"max_database_name_length", "Maximum length of database name",
      MAX_DBNAME_LENGTH},

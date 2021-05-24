@@ -23,7 +23,7 @@
 #define MAXBLOBS 15                     /* Should be bdb's MAXDTAFILES - 1 */
 #define MAXCOLNAME 99                   /* not incl. \0 */
 #define MAXCOLUMNS 1024
-#define MAXCONSTRAINTS 32
+#define INITREVCONSTRAINTS 4
 #define MAXCONSUMERS 32 /* to match bdblib limit */
 #define MAXCUSTOPNAME 32
 #define MAX_DBNAME_LENGTH 64
