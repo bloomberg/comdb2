@@ -69,6 +69,13 @@ message CDB2_SQLQUERY {
       required int32 num_retries = 2; // client retry count including hops to other nodes
   }
   optional reqinfo req_info = 17; //request info
+  message IdentityBlob {
+    required string principal = 1;
+    required int64 majorVersion = 2;
+    required int64 minorVersion = 3;
+    required bytes data = 4;
+  }
+  optional IdentityBlob identity = 18;
 }
 
 

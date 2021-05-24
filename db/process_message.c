@@ -115,6 +115,7 @@ extern struct thdpool *gbl_verify_thdpool;
 void debug_bulktraverse_data(char *tbl);
 
 int gbl_track_sqlengine_states = 0;
+int gbl_reset_session = 0;
 extern pthread_t gbl_break_lua;
 
 extern void reinit_sql_hint_table();
@@ -696,6 +697,9 @@ int process_command(struct dbenv *dbenv, char *line, int lline, int st)
         Pthread_attr_setdetachstate(&thd_attr, PTHREAD_CREATE_DETACHED);
         Pthread_create(&thread_id, &thd_attr, clean_exit_thd, NULL);
         Pthread_attr_destroy(&thd_attr);
+    } else if(tokcmp(tok,ltok, "resetauthsession")==0) {
+        logmsg(LOGMSG_USER, "Resetting auth session\n");
+        gbl_reset_session = 1;
     } else if(tokcmp(tok,ltok, "partinfo")==0) {
         char opt[128];
 
