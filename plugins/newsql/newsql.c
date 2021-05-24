@@ -1809,7 +1809,24 @@ int newsql_heartbeat(struct sqlclntstate *clnt)
     return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT, state);
 }
 
+extern void * (*externGetAuthData) (void*);
+extern void * (*externalMakeAuthData) (const char *, int, int, int, void *);
+
+void * getAuthData(void * p_clnt) {
+    struct sqlclntstate *clnt = p_clnt;
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata) {
+        CDB2SQLQUERY *sql_query = appdata->sqlquery;
+        if (sql_query->identity) {
+            return externalMakeAuthData(sql_query->identity->principal, sql_query->identity->majorversion, sql_query->identity->minorversion, sql_query->identity->data.len, sql_query->identity->data.data);
+        }
+    }
+    return NULL;
+}
+
+
 void setup_newsql_clnt(struct sqlclntstate *clnt)
 {
+    externGetAuthData = getAuthData;
     plugin_set_callbacks(clnt, newsql);
 }

@@ -3012,6 +3012,10 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
+int (*externalComdb2AuthenticateUserMakeRequest)(void*) = NULL;
+extern void * (*externGetAuthData) (void*);
+
+
 /* If user password does not match this function
  * will write error response and return a non 0 rc
  */
@@ -3019,6 +3023,12 @@ static inline int check_user_password(struct sqlclntstate *clnt)
 {
     int password_rc = 0;
     int valid_user;
+
+    if(externalComdb2AuthenticateUserMakeRequest) {
+         if (!clnt->authdata && externGetAuthData)
+             clnt->authdata = externGetAuthData(clnt);
+         return externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+    }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {
         return 0;
@@ -4505,6 +4515,10 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 #   endif
         rc = check_user_password(clnt);
 
+    if(externalComdb2AuthenticateUserMakeRequest) {
+        return rc;
+    }
+       
     if (rc == 0) {
         if (thd->have_lastuser && strcmp(thd->lastuser, clnt->current_user.name) != 0)
             delete_prepared_stmts(thd);
@@ -4760,8 +4774,11 @@ static int execute_sql_query(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 
     /* access control */
     rc = check_sql_access(thd, clnt);
-    if (rc)
-        return rc;
+    if (rc) {
+        write_response(clnt, RESPONSE_ERROR,
+                       "User isn't allowed to make request on this db", CDB2ERR_ACCESS);
+        return SQLITE_ACCESS;
+    }
 
     /* is this a snapshot? special processing */
     rc = get_high_availability(clnt);
@@ -5750,6 +5767,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->want_stored_procedure_trace = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;
+    clnt->authdata = NULL;
 
     /* Reset the version, we have to set it for every run */
     clnt->spname[0] = 0;

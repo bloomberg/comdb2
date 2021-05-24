@@ -642,6 +642,7 @@ struct sqlclntstate {
                                 * variant (if applicable). */
 
     /* appsock plugin specific data */
+    void *authdata;
     void *appdata;
     struct plugin_callbacks plugin;
 
