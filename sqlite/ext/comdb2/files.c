@@ -32,6 +32,8 @@
 
 extern struct dbenv *thedb;
 
+static struct log_delete_state log_delete_state;
+
 sqlite3_module systblFilesModule = {
     .access_flag = CDB2_ALLOW_USER,
     .systable_lock = "comdb2_files",
@@ -45,6 +47,11 @@ typedef struct file_entry {
 
 static void release_files(void *data, int npoints)
 {
+    logmsg(LOGMSG_INFO, "Reenabling log file deletion\n");
+    log_delete_rem_state(thedb, &log_delete_state);
+    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+    backend_update_sync(thedb);
+
     file_entry_t *files = data;
     for (int i = 0; i < npoints; ++i) {
         free(files[i].file);
@@ -153,6 +160,14 @@ static int get_files(void **data, int *npoints)
 {
     file_entry_t *files = NULL;
     int count = 0;
+
+    log_delete_state.filenum = 0;
+    log_delete_add_state(thedb, &log_delete_state);
+    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+
+    logdelete_lock(__func__, __LINE__);
+    backend_update_sync(thedb);
+    logdelete_unlock(__func__, __LINE__);
 
     int rc = read_dir(thedb->basedir, &files, &count);
     if (rc != 0) {
