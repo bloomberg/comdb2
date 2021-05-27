@@ -6591,10 +6591,9 @@ static int commit_sp(Lua L, char **err)
 {
     SP sp = getsp(L);
     if (in_parent_trans(sp)) {
-        const char *commit_err;
-        if ((commit_err = commit_parent(L)) == NULL) return 0;
-        *err = strdup(commit_err);
-        return -8;
+        if (commit_parent(L) == NULL) return 0;
+        *err = strdup(sp->error);
+        return sp->rc;
     }
     int tmp;
     /* Don't make new parent transaction on this rollback. */
