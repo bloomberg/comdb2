@@ -1,0 +1,18 @@
+(version='a')
+[exec procedure txnins('tt1')] failed with rc -3 [tab:insert() ...]:5: bad arguments to 'insert'
+(version='b')
+[exec procedure txnins('tt1')] failed with rc -3 [return tab:insert() ...]:5: bad arguments to 'insert'
+(version='c')
+[exec procedure txnins('tt1')] failed with rc -200 table tt1 has no column named id in stmt: INSERT INTO "tt1" ("id") VALUES (?)
+(version='d')
+[exec procedure txnins('tt1')] failed with rc -200 table tt1 has no column named id in stmt: INSERT INTO "tt1" ("id") VALUES (?)
+(version='e')
+[exec procedure txnins('tt1')] failed with rc -200 incompatible values from SQL string of length 1 to bint4 field 'i' for table 'tt1'
+(version='f')
+[exec procedure txnins('tt1')] failed with rc -200 incompatible values from SQL string of length 1 to bint4 field 'i' for table 'tt1'
+(version='norm')
+(i=1)
+(version='sample')
+(rows inserted=4)
+(rows updated=2)
+(rows deleted=2)

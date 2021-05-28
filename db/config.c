@@ -423,6 +423,7 @@ static char *legacy_options[] = {
     "init_with_queue_ondisk_header off",
     "init_with_queue_compr off",
     "init_with_queue_persistent_sequence off",
+    "return_errors_for_sp_inserts off",
     "usenames",
 };
 int gbl_legacy_defaults = 0;
