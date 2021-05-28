@@ -183,9 +183,9 @@ do_execsql_test indexexpr1-250eqp {
   EXPLAIN QUERY PLAN
   SELECT id FROM t1 WHERE substr(a,b,3) IN ('and','l_t','xyz')
    ORDER BY +id;
-} {6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (~30 rows)}
-   34 0 0 {USE TEMP B-TREE FOR ORDER BY}
-}
+} [get_result_for_build [list \
+  Debug {6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (~30 rows)} 36 0 0 {USE TEMP B-TREE FOR ORDER BY}} \
+Release {6 0 0 {SEARCH TABLE t1 USING INDEX $T1ABX_BB942037 (<expr>=?) (~30 rows)} 34 0 0 {USE TEMP B-TREE FOR ORDER BY}}]]
 #{/USING INDEX t1abx/}
 
 do_execsql_test indexexpr1-260 {

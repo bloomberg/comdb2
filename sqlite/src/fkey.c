@@ -349,7 +349,7 @@ static void fkLookupParent(
     VdbeCoverage(v);
   }
   for(i=0; i<pFKey->nCol; i++){
-    int iReg = aiCol[i] + regData + 1;
+    int iReg = sqlite3TableColumnToStorage(pFKey->pFrom,aiCol[i]) + regData + 1;
     sqlite3VdbeAddOp2(v, OP_IsNull, iReg, iOk); VdbeCoverage(v);
   }
 
@@ -365,7 +365,8 @@ static void fkLookupParent(
       ** is no matching parent key. Before using MustBeInt, make a copy of
       ** the value. Otherwise, the value inserted into the child key column
       ** will have INTEGER affinity applied to it, which may not be correct.  */
-      sqlite3VdbeAddOp2(v, OP_SCopy, aiCol[0]+1+regData, regTemp);
+      sqlite3VdbeAddOp2(v, OP_SCopy, 
+        sqlite3TableColumnToStorage(pFKey->pFrom,aiCol[0])+1+regData, regTemp);
       iMustBeInt = sqlite3VdbeAddOp2(v, OP_MustBeInt, regTemp, 0);
       VdbeCoverage(v);
   
@@ -392,7 +393,9 @@ static void fkLookupParent(
       sqlite3VdbeAddOp3(v, OP_OpenRead, iCur, pIdx->tnum, iDb);
       sqlite3VdbeSetP4KeyInfo(pParse, pIdx);
       for(i=0; i<nCol; i++){
-        sqlite3VdbeAddOp2(v, OP_Copy, aiCol[i]+1+regData, regTemp+i);
+        sqlite3VdbeAddOp2(v, OP_Copy, 
+               sqlite3TableColumnToStorage(pFKey->pFrom, aiCol[i])+1+regData,
+               regTemp+i);
       }
   
       /* If the parent table is the same as the child table, and we are about
@@ -408,8 +411,11 @@ static void fkLookupParent(
       if( pTab==pFKey->pFrom && nIncr==1 ){
         int iJump = sqlite3VdbeCurrentAddr(v) + nCol + 1;
         for(i=0; i<nCol; i++){
-          int iChild = aiCol[i]+1+regData;
-          int iParent = pIdx->aiColumn[i]+1+regData;
+          int iChild = sqlite3TableColumnToStorage(pFKey->pFrom,aiCol[i])
+                              +1+regData;
+          int iParent = 1+regData;
+          iParent += sqlite3TableColumnToStorage(pIdx->pTable,
+                                                 pIdx->aiColumn[i]);
           assert( pIdx->aiColumn[i]>=0 );
           assert( aiCol[i]!=pTab->iPKey );
           if( pIdx->aiColumn[i]==pTab->iPKey ){
@@ -477,14 +483,14 @@ static Expr *exprTableRegister(
   if( pExpr ){
     if( iCol>=0 && iCol!=pTab->iPKey ){
       pCol = &pTab->aCol[iCol];
-      pExpr->iTable = regBase + iCol + 1;
-      pExpr->affinity = pCol->affinity;
+      pExpr->iTable = regBase + sqlite3TableColumnToStorage(pTab,iCol) + 1;
+      pExpr->affExpr = pCol->affinity;
       zColl = pCol->zColl;
       if( zColl==0 ) zColl = db->pDfltColl->zName;
       pExpr = sqlite3ExprAddCollateString(pParse, pExpr, zColl);
     }else{
       pExpr->iTable = regBase;
-      pExpr->affinity = SQLITE_AFF_INTEGER;
+      pExpr->affExpr = SQLITE_AFF_INTEGER;
     }
   }
   return pExpr;
@@ -591,7 +597,7 @@ static void fkScanChildren(
     zCol = pFKey->pFrom->aCol[iCol].zName;
     pRight = sqlite3Expr(db, TK_ID, zCol);
     pEq = sqlite3PExpr(pParse, TK_EQ, pLeft, pRight);
-    pWhere = sqlite3ExprAnd(db, pWhere, pEq);
+    pWhere = sqlite3ExprAnd(pParse, pWhere, pEq);
   }
 
   /* If the child table is the same as the parent table, then add terms
@@ -625,11 +631,11 @@ static void fkScanChildren(
         pLeft = exprTableRegister(pParse, pTab, regData, iCol);
         pRight = sqlite3Expr(db, TK_ID, pTab->aCol[iCol].zName);
         pEq = sqlite3PExpr(pParse, TK_IS, pLeft, pRight);
-        pAll = sqlite3ExprAnd(db, pAll, pEq);
+        pAll = sqlite3ExprAnd(pParse, pAll, pEq);
       }
       pNe = sqlite3PExpr(pParse, TK_NOT, pAll, 0);
     }
-    pWhere = sqlite3ExprAnd(db, pWhere, pNe);
+    pWhere = sqlite3ExprAnd(pParse, pWhere, pNe);
   }
 
   /* Resolve the references in the WHERE clause. */
@@ -652,7 +658,7 @@ static void fkScanChildren(
   /* Clean up the WHERE clause constructed above. */
   sqlite3ExprDelete(db, pWhere);
   if( iFkIfZero ){
-    sqlite3VdbeJumpHere(v, iFkIfZero);
+    sqlite3VdbeJumpHereOrPopInst(v, iFkIfZero);
   }
 }
 
@@ -926,7 +932,9 @@ void sqlite3FkCheck(
         Vdbe *v = sqlite3GetVdbe(pParse);
         int iJump = sqlite3VdbeCurrentAddr(v) + pFKey->nCol + 1;
         for(i=0; i<pFKey->nCol; i++){
-          int iReg = pFKey->aCol[i].iFrom + regOld + 1;
+          int iFromCol, iReg;
+          iFromCol = pFKey->aCol[i].iFrom;
+          iReg = sqlite3TableColumnToStorage(pFKey->pFrom,iFromCol) + regOld+1;
           sqlite3VdbeAddOp2(v, OP_IsNull, iReg, iJump); VdbeCoverage(v);
         }
         sqlite3VdbeAddOp2(v, OP_FkCounter, pFKey->isDeferred, -1);
@@ -1235,7 +1243,7 @@ static Trigger *fkActionTrigger(
             sqlite3ExprAlloc(db, TK_ID, &tToCol, 0)),
           sqlite3ExprAlloc(db, TK_ID, &tFromCol, 0)
       );
-      pWhere = sqlite3ExprAnd(db, pWhere, pEq);
+      pWhere = sqlite3ExprAnd(pParse, pWhere, pEq);
 
       /* For ON UPDATE, construct the next term of the WHEN clause.
       ** The final WHEN clause will be like this:
@@ -1251,7 +1259,7 @@ static Trigger *fkActionTrigger(
               sqlite3ExprAlloc(db, TK_ID, &tNew, 0),
               sqlite3ExprAlloc(db, TK_ID, &tToCol, 0))
             );
-        pWhen = sqlite3ExprAnd(db, pWhen, pEq);
+        pWhen = sqlite3ExprAnd(pParse, pWhen, pEq);
       }
   
       if( action!=OE_Restrict && (action!=OE_Cascade || pChanges) ){
@@ -1261,7 +1269,15 @@ static Trigger *fkActionTrigger(
             sqlite3ExprAlloc(db, TK_ID, &tNew, 0),
             sqlite3ExprAlloc(db, TK_ID, &tToCol, 0));
         }else if( action==OE_SetDflt ){
-          Expr *pDflt = pFKey->pFrom->aCol[iFromCol].pDflt;
+          Column *pCol = pFKey->pFrom->aCol + iFromCol;
+          Expr *pDflt;
+          if( pCol->colFlags & COLFLAG_GENERATED ){
+            testcase( pCol->colFlags & COLFLAG_VIRTUAL );
+            testcase( pCol->colFlags & COLFLAG_STORED );
+            pDflt = 0;
+          }else{
+            pDflt = pCol->pDflt;
+          }
           if( pDflt ){
             pNew = sqlite3ExprDup(db, pDflt, 0);
           }else{
@@ -1287,7 +1303,7 @@ static Trigger *fkActionTrigger(
       tFrom.n = nFrom;
       pRaise = sqlite3Expr(db, TK_RAISE, "FOREIGN KEY constraint failed");
       if( pRaise ){
-        pRaise->affinity = OE_Abort;
+        pRaise->affExpr = OE_Abort;
       }
       pSelect = sqlite3SelectNew(pParse, 
           sqlite3ExprListAppend(pParse, 0, pRaise),
@@ -1299,7 +1315,7 @@ static Trigger *fkActionTrigger(
     }
 
     /* Disable lookaside memory allocation */
-    db->lookaside.bDisable++;
+    DisableLookaside;
 
     pTrigger = (Trigger *)sqlite3DbMallocZero(db, 
         sizeof(Trigger) +         /* struct Trigger */
@@ -1321,7 +1337,7 @@ static Trigger *fkActionTrigger(
     }
 
     /* Re-enable the lookaside buffer, if it was disabled earlier. */
-    db->lookaside.bDisable--;
+    EnableLookaside;
 
     sqlite3ExprDelete(db, pWhere);
     sqlite3ExprDelete(db, pWhen);
@@ -1332,6 +1348,7 @@ static Trigger *fkActionTrigger(
       return 0;
     }
     assert( pStep!=0 );
+    assert( pTrigger!=0 );
 
     switch( action ){
       case OE_Restrict:
@@ -1342,6 +1359,7 @@ static Trigger *fkActionTrigger(
           pStep->op = TK_DELETE; 
           break; 
         }
+        /* no break */ deliberate_fall_through
       default:
         pStep->op = TK_UPDATE;
     }

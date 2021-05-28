@@ -111,10 +111,10 @@ struct series_cursor {
 */
 static int seriesConnect(
   sqlite3 *db,
-  void *pAux,
-  int argc, const char *const*argv,
+  void *pUnused,
+  int argcUnused, const char *const*argvUnused,
   sqlite3_vtab **ppVtab,
-  char **pzErr
+  char **pzErrUnused
 ){
   sqlite3_vtab *pNew;
   int rc;
@@ -125,12 +125,17 @@ static int seriesConnect(
 #define SERIES_COLUMN_STOP  2
 #define SERIES_COLUMN_STEP  3
 
+  (void)pUnused;
+  (void)argcUnused;
+  (void)argvUnused;
+  (void)pzErrUnused;
   rc = sqlite3_declare_vtab(db,
      "CREATE TABLE x(value,start hidden,stop hidden,step hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
     memset(pNew, 0, sizeof(*pNew));
+    sqlite3_vtab_config(db, SQLITE_VTAB_INNOCUOUS);
   }
   return rc;
 }
@@ -146,8 +151,9 @@ static int seriesDisconnect(sqlite3_vtab *pVtab){
 /*
 ** Constructor for a new series_cursor object.
 */
-static int seriesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+static int seriesOpen(sqlite3_vtab *pUnused, sqlite3_vtab_cursor **ppCursor){
   series_cursor *pCur;
+  (void)pUnused;
   pCur = sqlite3_malloc( sizeof(*pCur) );
   if( pCur==0 ) return SQLITE_NOMEM;
   memset(pCur, 0, sizeof(*pCur));
@@ -254,11 +260,12 @@ static int seriesEof(sqlite3_vtab_cursor *cur){
 */
 static int seriesFilter(
   sqlite3_vtab_cursor *pVtabCursor, 
-  int idxNum, const char *idxStr,
+  int idxNum, const char *idxStrUnused,
   int argc, sqlite3_value **argv
 ){
   series_cursor *pCur = (series_cursor *)pVtabCursor;
   int i = 0;
+  (void)idxStrUnused;
   if( idxNum & 1 ){
     pCur->mnValue = sqlite3_value_int64(argv[i++]);
   }else{
@@ -315,7 +322,7 @@ static int seriesFilter(
 **  (8)  output in descending order
 */
 static int seriesBestIndex(
-  sqlite3_vtab *tab,
+  sqlite3_vtab *tabUnused,
   sqlite3_index_info *pIdxInfo
 ){
   int i, j;              /* Loop over constraints */
@@ -329,6 +336,7 @@ static int seriesBestIndex(
   ** are the last three columns in the virtual table. */
   assert( SERIES_COLUMN_STOP == SERIES_COLUMN_START+1 );
   assert( SERIES_COLUMN_STEP == SERIES_COLUMN_START+2 );
+  (void)tabUnused;
   aIdx[0] = aIdx[1] = aIdx[2] = -1;
   pConstraint = pIdxInfo->aConstraint;
   for(i=0; i<pIdxInfo->nConstraint; i++, pConstraint++){
@@ -402,8 +410,14 @@ static sqlite3_module seriesModule = {
   0,                         /* xRollback */
   0,                         /* xFindMethod */
   0,                         /* xRename */
+  0,                         /* xSavepoint */
+  0,                         /* xRelease */
+  0,                         /* xRollbackTo */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  0,                         /* xShadowName */
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#else
+  0                          /* xShadowName */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

@@ -14,7 +14,7 @@
 ** SQLite was built with.
 */
 
-#ifndef SQLITE_OMIT_COMPILEOPTION_DIAGS
+#ifndef SQLITE_OMIT_COMPILEOPTION_DIAGS /* IMP: R-16824-07538 */
 
 /*
 ** Include the configuration header output by 'configure' if we're using the
@@ -193,6 +193,9 @@ static const char * const sqlite3azCompileOpt[] = {
 #if SQLITE_ENABLE_BATCH_ATOMIC_WRITE
   "ENABLE_BATCH_ATOMIC_WRITE",
 #endif
+#if SQLITE_ENABLE_BYTECODE_VTAB
+  "ENABLE_BYTECODE_VTAB",
+#endif
 #if SQLITE_ENABLE_CEROD
   "ENABLE_CEROD=" CTIMEOPT_VAL(SQLITE_ENABLE_CEROD),
 #endif
@@ -306,8 +309,6 @@ static const char * const sqlite3azCompileOpt[] = {
 #endif
 #if defined(SQLITE_ENABLE_STAT4)
   "ENABLE_STAT4",
-#elif defined(SQLITE_ENABLE_STAT3)
-  "ENABLE_STAT3",
 #endif
 #if SQLITE_ENABLE_STMTVTAB
   "ENABLE_STMTVTAB",
@@ -356,9 +357,6 @@ static const char * const sqlite3azCompileOpt[] = {
 #endif
 #if SQLITE_FTS5_NO_WITHOUT_ROWID
   "FTS5_NO_WITHOUT_ROWID",
-#endif
-#if SQLITE_HAS_CODEC
-  "HAS_CODEC",
 #endif
 #if HAVE_ISNAN || SQLITE_HAVE_ISNAN
   "HAVE_ISNAN",
@@ -515,9 +513,6 @@ static const char * const sqlite3azCompileOpt[] = {
 #endif
 #if SQLITE_OMIT_BLOB_LITERAL
   "OMIT_BLOB_LITERAL",
-#endif
-#if SQLITE_OMIT_BTREECOUNT
-  "OMIT_BTREECOUNT",
 #endif
 #if SQLITE_OMIT_CAST
   "OMIT_CAST",

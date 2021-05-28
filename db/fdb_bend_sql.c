@@ -574,9 +574,6 @@ _fdb_svc_cursor_start(BtCursor *pCur, struct sqlclntstate *clnt, char *tblname,
         return NULL;
     }
 
-    if (gbl_fdb_track)
-        logmsg(LOGMSG_ERROR, "XYXYXY: thread %p getting a curtran\n", (void *)pthread_self());
-
     /* we need a curtran for this one */
     if (!clnt->dbtran.cursor_tran) {
         if (gbl_fdb_track)

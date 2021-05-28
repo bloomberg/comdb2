@@ -99,6 +99,12 @@ static const et_info fmtinfo[] = {
   {  'r', 10, 1, etORDINAL,    0,  0 },
 };
 
+/* Floating point constants used for rounding */
+static const double arRound[] = {
+  5.0e-01, 5.0e-02, 5.0e-03, 5.0e-04, 5.0e-05,
+  5.0e-06, 5.0e-07, 5.0e-08, 5.0e-09, 5.0e-10,
+};
+
 /*
 ** If SQLITE_OMIT_FLOATING_POINT is defined, then none of the floating point
 ** conversions will work.
@@ -187,6 +193,13 @@ static char *printfTempBuf(sqlite3_str *pAccum, sqlite3_int64 n){
 # define SQLITE_PRINT_BUF_SIZE 70
 #endif
 #define etBUFSIZE SQLITE_PRINT_BUF_SIZE  /* Size of the output buffer */
+
+/*
+** Hard limit on the precision of floating-point conversions.
+*/
+#ifndef SQLITE_PRINTF_PRECISION_LIMIT
+# define SQLITE_FP_PRECISION_LIMIT 100000000
+#endif
 
 /*
 ** Render a string given by "fmt" into the StrAccum object.
@@ -388,15 +401,17 @@ void sqlite3_str_vappendf(
     **   xtype                       The class of the conversion.
     **   infop                       Pointer to the appropriate info struct.
     */
+    assert( width>=0 );
+    assert( precision>=(-1) );
     switch( xtype ){
       case etPOINTER:
         flag_long = sizeof(char*)==sizeof(i64) ? 2 :
                      sizeof(char*)==sizeof(long int) ? 1 : 0;
-        /* Fall through into the next case */
+        /* no break */ deliberate_fall_through
       case etORDINAL:
       case etRADIX:      
         cThousand = 0;
-        /* Fall through into the next case */
+        /* no break */ deliberate_fall_through
       case etDECIMAL:
         if( infop->flags & FLAG_SIGNED ){
           i64 v;
@@ -412,11 +427,10 @@ void sqlite3_str_vappendf(
             v = va_arg(ap,int);
           }
           if( v<0 ){
-            if( v==SMALLEST_INT64 ){
-              longvalue = ((u64)1)<<63;
-            }else{
-              longvalue = -v;
-            }
+            testcase( v==SMALLEST_INT64 );
+            testcase( v==(-1) );
+            longvalue = ~v;
+            longvalue++;
             prefix = '-';
           }else{
             longvalue = v;
@@ -509,6 +523,11 @@ void sqlite3_str_vappendf(
         length = 0;
 #else
         if( precision<0 ) precision = 6;         /* Set default precision */
+#ifdef SQLITE_FP_PRECISION_LIMIT
+        if( precision>SQLITE_FP_PRECISION_LIMIT ){
+          precision = SQLITE_FP_PRECISION_LIMIT;
+        }
+#endif
         if( realvalue<0.0 ){
           realvalue = -realvalue;
           prefix = '-';
@@ -517,8 +536,18 @@ void sqlite3_str_vappendf(
         }
         if( xtype==etGENERIC && precision>0 ) precision--;
         testcase( precision>0xfff );
-        for(idx=precision&0xfff, rounder=0.5; idx>0; idx--, rounder*=0.1){}
-        if( xtype==etFLOAT ) realvalue += rounder;
+        idx = precision & 0xfff;
+        rounder = arRound[idx%10];
+        while( idx>=10 ){ rounder *= 1.0e-10; idx -= 10; }
+        if( xtype==etFLOAT ){
+          double rx = (double)realvalue;
+          sqlite3_uint64 u;
+          int ex;
+          memcpy(&u, &rx, sizeof(u));
+          ex = -1023 + (int)((u>>52)&0x7ff);
+          if( precision+(ex/3) < 15 ) rounder += realvalue*3e-16;
+          realvalue += rounder;
+        }
         /* Normalize realvalue to within 10.0 > realvalue >= 1.0 */
         exp = 0;
         if( sqlite3IsNaN((double)realvalue) ){
@@ -781,7 +810,7 @@ void sqlite3_str_vappendf(
         }
         isnull = escarg==0;
         if( isnull ) escarg = (xtype==etSQLESCAPE2 ? "NULL" : "(NULL)");
-        /* For %q, %Q, and %w, the precision is the number of byte (or
+        /* For %q, %Q, and %w, the precision is the number of bytes (or
         ** characters if the ! flags is present) to use from the input.
         ** Because of the extra quoting characters inserted, the number
         ** of output characters may be larger than the precision.
@@ -926,7 +955,7 @@ static int sqlite3StrAccumEnlarge(StrAccum *p, int N){
     if( p->db ){
       zNew = sqlite3DbRealloc(p->db, zOld, p->nAlloc);
     }else{
-      zNew = sqlite3_realloc64(zOld, p->nAlloc);
+      zNew = sqlite3Realloc(zOld, p->nAlloc);
     }
     if( zNew ){
       assert( p->zText!=0 || p->nChar==0 );
@@ -1269,7 +1298,7 @@ void sqlite3_log(int iErrCode, const char *zFormat, ...){
 void sqlite3DebugPrintf(const char *zFormat, ...){
   va_list ap;
   StrAccum acc;
-  char zBuf[500];
+  char zBuf[SQLITE_PRINT_BUF_SIZE*10];
   sqlite3StrAccumInit(&acc, 0, zBuf, sizeof(zBuf), 0);
   va_start(ap,zFormat);
   sqlite3_str_vappendf(&acc, zFormat, ap);

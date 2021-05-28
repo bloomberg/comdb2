@@ -747,9 +747,9 @@ static void record_locked_vtable(struct sql_authorizer_state *pAuthState, const 
 static int comdb2_authorizer_for_sqlite(
   void *pArg,        /* IN: NOT USED */
   int code,          /* IN: NOT USED */
-  const char *zArg1, /* IN: NOT USED */
-  const char *zArg2, /* IN: NOT USED */
-  const char *zArg3, /* IN: NOT USED */
+  const char *zArg1, /* IN */
+  const char *zArg2, /* IN */
+  const char *zArg3, /* IN */
   const char *zArg4  /* IN: NOT USED */
 #ifdef SQLITE_USER_AUTHENTICATION
   ,const char *zArg5 /* IN: NOT USED */
@@ -802,8 +802,9 @@ static int comdb2_authorizer_for_sqlite(
       if (denyDdl || denyPragma) {
         return SQLITE_DENY;
       } else if (pAuthState->clnt != NULL) {
-        logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s]\n", __FILE__,
-               __LINE__, __func__, pAuthState->clnt->sql);
+        logmsg(LOGMSG_DEBUG, "%s:%d %s ALLOWING PRAGMA [%s = %s] IN DATABASE "
+               "[%s] ON BEHALF OF SQL [%s]\n", __FILE__, __LINE__, __func__,
+               zArg1, zArg2, zArg3, pAuthState->clnt->sql);
         return SQLITE_OK;
       } else {
         return SQLITE_DENY;
@@ -3385,7 +3386,7 @@ static void handle_expert_query(struct sqlthdstate *thd,
         write_response(clnt, RESPONSE_TRACE, (void *)zCand, 0);
         write_response(clnt, RESPONSE_TRACE, "---------------------------------------------\n", 0);
     } else {
-        fprintf(stderr, "Error: %s\n", zErr ? zErr : "?");
+        logmsg(LOGMSG_ERROR, "%s: EXPERT: %s\n", __func__, zErr ? zErr : "?");
         write_response(clnt, RESPONSE_TRACE, zErr, 0);
     }
     write_response(clnt, RESPONSE_ROW_LAST_DUMMY, NULL, 0);

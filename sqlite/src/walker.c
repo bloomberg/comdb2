@@ -25,9 +25,22 @@
 static int walkWindowList(Walker *pWalker, Window *pList){
   Window *pWin;
   for(pWin=pList; pWin; pWin=pWin->pNextWin){
-    if( sqlite3WalkExprList(pWalker, pWin->pOrderBy) ) return WRC_Abort;
-    if( sqlite3WalkExprList(pWalker, pWin->pPartition) ) return WRC_Abort;
-    if( sqlite3WalkExpr(pWalker, pWin->pFilter) ) return WRC_Abort;
+    int rc;
+    rc = sqlite3WalkExprList(pWalker, pWin->pOrderBy);
+    if( rc ) return WRC_Abort;
+    rc = sqlite3WalkExprList(pWalker, pWin->pPartition);
+    if( rc ) return WRC_Abort;
+    rc = sqlite3WalkExpr(pWalker, pWin->pFilter);
+    if( rc ) return WRC_Abort;
+
+    /* The next two are purely for calls to sqlite3RenameExprUnmap()
+    ** within sqlite3WindowOffsetExpr().  Because of constraints imposed
+    ** by sqlite3WindowOffsetExpr(), they can never fail.  The results do
+    ** not matter anyhow. */
+    rc = sqlite3WalkExpr(pWalker, pWin->pStart);
+    if( NEVER(rc) ) return WRC_Abort;
+    rc = sqlite3WalkExpr(pWalker, pWin->pEnd);
+    if( NEVER(rc) ) return WRC_Abort;
   }
   return WRC_Continue;
 }
@@ -60,21 +73,25 @@ static SQLITE_NOINLINE int walkExpr(Walker *pWalker, Expr *pExpr){
     rc = pWalker->xExprCallback(pWalker, pExpr);
     if( rc ) return rc & WRC_Abort;
     if( !ExprHasProperty(pExpr,(EP_TokenOnly|EP_Leaf)) ){
+      assert( pExpr->x.pList==0 || pExpr->pRight==0 );
       if( pExpr->pLeft && walkExpr(pWalker, pExpr->pLeft) ) return WRC_Abort;
-       assert( pExpr->x.pList==0 || pExpr->pRight==0 );
       if( pExpr->pRight ){
+        assert( !ExprHasProperty(pExpr, EP_WinFunc) );
         pExpr = pExpr->pRight;
         continue;
       }else if( ExprHasProperty(pExpr, EP_xIsSelect) ){
+        assert( !ExprHasProperty(pExpr, EP_WinFunc) );
         if( sqlite3WalkSelect(pWalker, pExpr->x.pSelect) ) return WRC_Abort;
-      }else if( pExpr->x.pList ){
-        if( sqlite3WalkExprList(pWalker, pExpr->x.pList) ) return WRC_Abort;
-      }
+      }else{
+        if( pExpr->x.pList ){
+          if( sqlite3WalkExprList(pWalker, pExpr->x.pList) ) return WRC_Abort;
+        }
 #ifndef SQLITE_OMIT_WINDOWFUNC
-      if( ExprHasProperty(pExpr, EP_WinFunc) ){
-        if( walkWindowList(pWalker, pExpr->y.pWin) ) return WRC_Abort;
-      }
+        if( ExprHasProperty(pExpr, EP_WinFunc) ){
+          if( walkWindowList(pWalker, pExpr->y.pWin) ) return WRC_Abort;
+        }
 #endif
+      }
     }
     break;
   }
@@ -116,8 +133,9 @@ int sqlite3WalkSelectExpr(Walker *pWalker, Select *p){
   {
     Parse *pParse = pWalker->pParse;
     if( pParse && IN_RENAME_OBJECT ){
+      /* The following may return WRC_Abort if there are unresolvable
+      ** symbols (e.g. a table that does not exist) in a window definition. */
       int rc = walkWindowList(pWalker, p->pWinDefn);
-      assert( rc==WRC_Continue );
       return rc;
     }
   }
@@ -138,15 +156,16 @@ int sqlite3WalkSelectFrom(Walker *pWalker, Select *p){
   struct SrcList_item *pItem;
 
   pSrc = p->pSrc;
-  assert( pSrc!=0 );
-  for(i=pSrc->nSrc, pItem=pSrc->a; i>0; i--, pItem++){
-    if( pItem->pSelect && sqlite3WalkSelect(pWalker, pItem->pSelect) ){
-      return WRC_Abort;
-    }
-    if( pItem->fg.isTabFunc
-     && sqlite3WalkExprList(pWalker, pItem->u1.pFuncArg)
-    ){
-      return WRC_Abort;
+  if( pSrc ){
+    for(i=pSrc->nSrc, pItem=pSrc->a; i>0; i--, pItem++){
+      if( pItem->pSelect && sqlite3WalkSelect(pWalker, pItem->pSelect) ){
+        return WRC_Abort;
+      }
+      if( pItem->fg.isTabFunc
+       && sqlite3WalkExprList(pWalker, pItem->u1.pFuncArg)
+      ){
+        return WRC_Abort;
+      }
     }
   }
   return WRC_Continue;
@@ -186,5 +205,42 @@ int sqlite3WalkSelect(Walker *pWalker, Select *p){
     }
     p = p->pPrior;
   }while( p!=0 );
+  return WRC_Continue;
+}
+
+/* Increase the walkerDepth when entering a subquery, and
+** descrease when leaving the subquery.
+*/
+int sqlite3WalkerDepthIncrease(Walker *pWalker, Select *pSelect){
+  UNUSED_PARAMETER(pSelect);
+  pWalker->walkerDepth++;
+  return WRC_Continue;
+}
+void sqlite3WalkerDepthDecrease(Walker *pWalker, Select *pSelect){
+  UNUSED_PARAMETER(pSelect);
+  pWalker->walkerDepth--;
+}
+
+
+/*
+** No-op routine for the parse-tree walker.
+**
+** When this routine is the Walker.xExprCallback then expression trees
+** are walked without any actions being taken at each node.  Presumably,
+** when this routine is used for Walker.xExprCallback then 
+** Walker.xSelectCallback is set to do something useful for every 
+** subquery in the parser tree.
+*/
+int sqlite3ExprWalkNoop(Walker *NotUsed, Expr *NotUsed2){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
+  return WRC_Continue;
+}
+
+/*
+** No-op routine for the parse-tree walker for SELECT statements.
+** subquery in the parser tree.
+*/
+int sqlite3SelectWalkNoop(Walker *NotUsed, Select *NotUsed2){
+  UNUSED_PARAMETER2(NotUsed, NotUsed2);
   return WRC_Continue;
 }
