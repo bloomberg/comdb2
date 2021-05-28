@@ -4889,7 +4889,11 @@ case OP_SeekScan: {
   assert( pC!=0 );
   assert( pC->eCurType==CURTYPE_BTREE );
   assert( !pC->isTable );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if( pC->nullRow || !sqlite3BtreeCursorIsValidNN(pC->uc.pCursor) ){
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   if( !sqlite3BtreeCursorIsValidNN(pC->uc.pCursor) ){
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_DEBUG
      if( db->flags&SQLITE_VdbeTrace ){
        printf("... cursor not valid - fall through\n");
