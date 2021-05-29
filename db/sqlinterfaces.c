@@ -2044,7 +2044,7 @@ static int do_commitrollback(struct sqlthdstate *thd, struct sqlclntstate *clnt)
                     if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                         clnt->early_retry = EARLY_ERR_GENCHANGE;
                 }
-                if (gbl_selectv_rangechk)
+                if (clnt->selectv_rangechk)
                     rc = selectv_range_commit(clnt);
                 if (rc) {
                     irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);

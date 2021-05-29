@@ -152,6 +152,7 @@ extern int gbl_notimeouts;
 extern int gbl_move_deadlk_max_attempt;
 extern int gbl_fdb_track;
 extern int gbl_selectv_rangechk;
+extern int gbl_reorder_socksql_no_deadlock;
 
 unsigned long long gbl_sql_deadlock_reconstructions = 0;
 unsigned long long gbl_sql_deadlock_failures = 0;
@@ -2696,7 +2697,7 @@ static int cursor_move_table(BtCursor *pCur, int *pRes, int how)
         if (!pCur->db->dtastripe)
             genid_hash_add(pCur, pCur->rrn, pCur->genid);
 
-        if (!gbl_selectv_rangechk) {
+        if (!clnt->selectv_rangechk) {
             if ((rc == IX_FND || rc == IX_FNDMORE) && pCur->is_recording &&
                 clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                 rc = osql_record_genid(pCur, thd, pCur->genid);
@@ -2835,7 +2836,7 @@ static int cursor_move_index(BtCursor *pCur, int *pRes, int how)
 
         pCur->empty = 0;
 
-        if (!gbl_selectv_rangechk) {
+        if (!thd->clnt->selectv_rangechk) {
             if ((rc == IX_FND || rc == IX_FNDMORE) && pCur->is_recording &&
                 thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
 
@@ -3749,9 +3750,7 @@ int sqlite3BtreeLast(BtCursor *pCur, int *pRes)
         } else if (pCur->range->islocked || pCur->range->lkey ||
                    pCur->range->rkey || pCur->range->lflag ||
                    pCur->range->rflag) {
-            if (!pCur->is_recording ||
-                (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
-                 gbl_selectv_rangechk)) {
+            if (!pCur->is_recording || (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE && clnt->selectv_rangechk)) {
                 append_to =
                     (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
@@ -4034,9 +4033,7 @@ int sqlite3BtreeFirst(BtCursor *pCur, int *pRes)
         } else if (pCur->range->islocked || pCur->range->lkey ||
                    pCur->range->rkey || pCur->range->lflag ||
                    pCur->range->rflag) {
-            if (!pCur->is_recording ||
-                (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
-                 gbl_selectv_rangechk)) {
+            if (!pCur->is_recording || (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE && clnt->selectv_rangechk)) {
                 append_to =
                     (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
@@ -4749,9 +4746,12 @@ int start_new_transaction(struct sqlclntstate *clnt, struct sql_thread *thd)
         clnt->arr = malloc(sizeof(CurRangeArr));
         currangearr_init(clnt->arr);
     }
-    if (gbl_selectv_rangechk) {
+    if (gbl_selectv_rangechk && (clnt->dbtran.mode != TRANLEVEL_SOSQL || gbl_reorder_socksql_no_deadlock)) {
+        clnt->selectv_rangechk = 1;
         clnt->selectv_arr = malloc(sizeof(CurRangeArr));
         currangearr_init(clnt->selectv_arr);
+    } else {
+        clnt->selectv_rangechk = 0;
     }
 
     get_current_lsn(clnt);
@@ -5062,7 +5062,7 @@ int sqlite3BtreeCommit(Btree *pBt)
             if (clnt->start_gen != bdb_get_rep_gen(thedb->bdb_env))
                 clnt->early_retry = EARLY_ERR_GENCHANGE;
         }
-        if (gbl_selectv_rangechk)
+        if (clnt->selectv_rangechk)
             rc = selectv_range_commit(clnt);
         if (rc) {
             irc = osql_sock_abort(clnt, OSQL_SOCK_REQ);
@@ -5905,7 +5905,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
             pCur->sqlrrnlen =
                 sqlite3PutVarint((unsigned char *)pCur->sqlrrn, pCur->rrn);
 
-            if (!gbl_selectv_rangechk) {
+            if (!thd->clnt->selectv_rangechk) {
                 if ((rc == IX_FND || rc == IX_FNDMORE) && pCur->is_recording &&
                     thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                     rc = osql_record_genid(pCur, thd, pCur->genid);
@@ -6134,7 +6134,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
                 genid_hash_add(pCur, pCur->rrn, pCur->genid);
             }
 
-            if (!gbl_selectv_rangechk) {
+            if (!thd->clnt->selectv_rangechk) {
                 if (goodrc && pCur->is_recording &&
                     thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                     rc = osql_record_genid(pCur, thd, pCur->genid);
@@ -6417,9 +6417,7 @@ int sqlite3BtreeCloseCursor(BtCursor *pCur)
         } else if (pCur->range->islocked || pCur->range->lkey ||
                    pCur->range->rkey || pCur->range->lflag ||
                    pCur->range->rflag) {
-            if (!pCur->is_recording ||
-                (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
-                 gbl_selectv_rangechk)) {
+            if (!pCur->is_recording || (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE && clnt->selectv_rangechk)) {
                 append_to =
                     (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
@@ -8510,8 +8508,7 @@ int sqlite3BtreeCursor(
                 pBt->btreeid, iTable, wrFlag & BTREE_CUR_WR,
                 cur ? cur->cursorid : -1, sqlite3ErrStr(rc));
 
-    if (cur && (clnt->dbtran.mode == TRANLEVEL_SERIAL ||
-                (cur->is_recording && gbl_selectv_rangechk))) {
+    if (cur && (clnt->dbtran.mode == TRANLEVEL_SERIAL || (cur->is_recording && clnt->selectv_rangechk))) {
         cur->range = currange_new();
         if (cur->db) {
             cur->range->tbname = strdup(cur->db->tablename);
@@ -10081,9 +10078,7 @@ static int ddguard_bdb_cursor_find(struct sql_thread *thd, BtCursor *pCur,
         } else if (pCur->range->islocked || pCur->range->lkey ||
                    pCur->range->rkey || pCur->range->lflag ||
                    pCur->range->rflag) {
-            if (!pCur->is_recording ||
-                (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
-                 gbl_selectv_rangechk)) {
+            if (!pCur->is_recording || (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE && clnt->selectv_rangechk)) {
                 append_to =
                     (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
@@ -10286,9 +10281,7 @@ static int ddguard_bdb_cursor_find_last_dup(struct sql_thread *thd,
         } else if (pCur->range->islocked || pCur->range->lkey ||
                    pCur->range->rkey || pCur->range->lflag ||
                    pCur->range->rflag) {
-            if (!pCur->is_recording ||
-                (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE &&
-                 gbl_selectv_rangechk)) {
+            if (!pCur->is_recording || (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE && clnt->selectv_rangechk)) {
                 append_to =
                     (pCur->is_recording) ? &(clnt->selectv_arr) : &(clnt->arr);
                 if (!*append_to) {
@@ -10616,7 +10609,7 @@ int sqlite3BtreeSetRecording(BtCursor *pCur, int flag)
     pCur->is_recording = flag;
 
     if (pCur->is_recording) {
-        if (gbl_selectv_rangechk) {
+        if (pCur->thd->clnt->selectv_rangechk) {
             pCur->range = currange_new();
             if (pCur->db) {
                 pCur->range->tbname = strdup(pCur->db->tablename);
@@ -10792,7 +10785,7 @@ int sqlite3BtreeCount(BtCursor *pCur, i64 *pnEntry)
         pCur->is_btree_count = 1; /* Don't do ondisk -> sqlite */
         rc = pCur->cursor_move(pCur, &res, CFIRST);
         while (rc == 0 && res == 0) {
-            if (!gbl_selectv_rangechk) {
+            if (!thd->clnt->selectv_rangechk) {
                 if (pCur->is_recording &&
                     thd->clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
                     rc = osql_record_genid(pCur, thd, pCur->genid);
