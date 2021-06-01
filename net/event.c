@@ -2494,7 +2494,7 @@ static void net_accept(netinfo_type *netinfo_ptr)
     }
     make_socket_nonblocking(fd);
     unsigned flags = LEV_OPT_LEAVE_SOCKETS_BLOCKING | LEV_OPT_CLOSE_ON_FREE;
-    n->listener = evconnlistener_new(base, do_accept, n, flags, SOMAXCONN, fd);
+    n->listener = evconnlistener_new(base, do_accept, n, flags, gbl_net_maxconn ? gbl_net_maxconn : SOMAXCONN, fd);
     logmsg(LOGMSG_INFO, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
            netinfo_ptr->service, netinfo_ptr->myport, fd);
 }

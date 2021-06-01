@@ -443,6 +443,8 @@ int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
 
 extern int gbl_libevent;
 extern int gbl_libevent_rte_only;
+extern int gbl_net_maxconn;
+
 #if 0
 void add_tcp_event(int, void(*)(int, short, void *), void *);
 void add_udp_event(int, void(*)(int, short, void *), void *);

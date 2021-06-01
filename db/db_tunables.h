@@ -2107,4 +2107,8 @@ REGISTER_TUNABLE("sc_logbytes_per_second",
                  "Throttle schema-changes to this many logbytes per second.  (Default: 10000000)",
                  TUNABLE_INTEGER, &gbl_sc_logbytes_per_second, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("net_somaxconn",
+                 "listen() backlog setting.  (Default: 0, implies system default)",
+                 TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
