@@ -60,6 +60,8 @@ static int get_sndrcv_bufsize(void)
     return retval;
 }
 
+extern int gbl_net_maxconn;
+
 static int get_somaxconn(void)
 {
     static int once = 0;
@@ -76,7 +78,7 @@ static int get_somaxconn(void)
 
         once = 1;
     }
-    return retval;
+    return gbl_net_maxconn ? gbl_net_maxconn : retval;
 }
 
 /* Closing the socket fd on failure to prevent
