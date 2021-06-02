@@ -522,4 +522,3 @@ int sqlite3_carray_init(
 #endif /* SQLITE_OMIT_VIRTUALTABLE */
   return rc;
 }
-

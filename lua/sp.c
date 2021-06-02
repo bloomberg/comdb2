@@ -774,6 +774,7 @@ again:  status = *q->status;
             if (stop_waiting(L, q)) {
                 return -1;
             }
+            bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
             setup_dbq_ts(ts);
             pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
             goto again;
@@ -792,6 +793,7 @@ again:  status = *q->status;
         if (delay <= 0) {
             return 0;
         }
+        bdb_temp_table_maybe_reset_priority_thread(thedb->bdb_env, 1);
         setup_dbq_ts(ts);
         Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
@@ -7117,6 +7119,7 @@ void *exec_trigger(trigger_reg_t *reg)
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
+    clnt.exec_lua_trigger = 1;
     clnt.dbtran.trans_has_sp = 1;
 
     thread_memcreate(128 * 1024);
@@ -7125,6 +7128,7 @@ void *exec_trigger(trigger_reg_t *reg)
     thrman_set_subtype(thd.thr_self, THRSUBTYPE_LUA_SQL);
     thd.sqlthd->clnt = &clnt;
     clnt.thd = &thd;
+    begin_dispatch_clnt(&clnt);
 
     // We're making unprotected calls to lua below.
     // luaL_error() will cause abort()
@@ -7192,6 +7196,7 @@ void *exec_trigger(trigger_reg_t *reg)
     }
     put_curtran(thedb->bdb_env, &clnt);
     close_sp(&clnt);
+    end_dispatch_clnt();
     end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);

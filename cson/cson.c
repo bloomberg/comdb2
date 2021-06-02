@@ -36,6 +36,7 @@ enum {
     SQLITE_UTF8 = 1,
 
     SQLITE_DETERMINISTIC = 0x800,
+    SQLITE_INNOCUOUS = 0x200000
 };
 
 #define i64 int64_t

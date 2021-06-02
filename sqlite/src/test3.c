@@ -65,8 +65,13 @@ static int SQLITE_TCLAPI btree_open(
   if( zFilename==0 ) return TCL_ERROR;
   memcpy(zFilename, argv[1], n+1);
   zFilename[n+1] = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  rc = sqlite3BtreeOpen(0, sDb.pVfs, zFilename, &sDb, &pBt, 0, 
+     SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB);
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   rc = sqlite3BtreeOpen(sDb.pVfs, zFilename, &sDb, &pBt, 0, 
      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_MAIN_DB);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   sqlite3_free(zFilename);
   if( rc!=SQLITE_OK ){
     Tcl_AppendResult(interp, sqlite3ErrName(rc), 0);

@@ -839,8 +839,8 @@ static int vdbeSorterCompareText(
   int n2;
   int res;
 
-  getVarint32(&p1[1], n1);
-  getVarint32(&p2[1], n2);
+  getVarint32NR(&p1[1], n1);
+  getVarint32NR(&p2[1], n2);
   res = memcmp(v1, v2, (MIN(n1, n2) - 13)/2);
   if( res==0 ){
     res = n1 - n2;
@@ -853,7 +853,8 @@ static int vdbeSorterCompareText(
       );
     }
   }else{
-    if( pTask->pSorter->pKeyInfo->aSortOrder[0] ){
+    assert( !(pTask->pSorter->pKeyInfo->aSortFlags[0]&KEYINFO_ORDER_BIGNULL) );
+    if( pTask->pSorter->pKeyInfo->aSortFlags[0] ){
       res = res * -1;
     }
   }
@@ -921,7 +922,8 @@ static int vdbeSorterCompareInt(
           pTask, pbKey2Cached, pKey1, nKey1, pKey2, nKey2
       );
     }
-  }else if( pTask->pSorter->pKeyInfo->aSortOrder[0] ){
+  }else if( pTask->pSorter->pKeyInfo->aSortFlags[0] ){
+    assert( !(pTask->pSorter->pKeyInfo->aSortFlags[0]&KEYINFO_ORDER_BIGNULL) );
     res = res * -1;
   }
 
@@ -992,19 +994,21 @@ int sqlite3VdbeSorterInit(
   if( pSorter==0 ){
     rc = SQLITE_NOMEM_BKPT;
   }else{
+    Btree *pBt = db->aDb[0].pBt;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     pSorter->nfind = 0;
     pSorter->nmove = 0;
     pSorter->nwrite = 0;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
-
     pSorter->pKeyInfo = pKeyInfo = (KeyInfo*)((u8*)pSorter + sz);
     memcpy(pKeyInfo, pCsr->pKeyInfo, szKeyInfo);
     pKeyInfo->db = 0;
     if( nField && nWorker==0 ){
       pKeyInfo->nKeyField = nField;
     }
-    pSorter->pgsz = pgsz = sqlite3BtreeGetPageSize(db->aDb[0].pBt);
+    sqlite3BtreeEnter(pBt);
+    pSorter->pgsz = pgsz = sqlite3BtreeGetPageSize(pBt);
+    sqlite3BtreeLeave(pBt);
     pSorter->nTask = nWorker + 1;
     pSorter->iPrev = (u8)(nWorker - 1);
     pSorter->bUseThreads = (pSorter->nTask>1);
@@ -1047,6 +1051,7 @@ int sqlite3VdbeSorterInit(
 
     if( pKeyInfo->nAllField<13 
      && (pKeyInfo->aColl[0]==0 || pKeyInfo->aColl[0]==db->pDfltColl)
+     && (pKeyInfo->aSortFlags[0] & KEYINFO_ORDER_BIGNULL)==0
     ){
       pSorter->typeMask = SORTER_TYPE_INTEGER | SORTER_TYPE_TEXT;
     }
@@ -1431,20 +1436,16 @@ static SorterCompare vdbeSorterGetCompare(VdbeSorter *p){
 */
 static int vdbeSorterSort(SortSubtask *pTask, SorterList *pList){
   int i;
-  SorterRecord **aSlot;
   SorterRecord *p;
   int rc;
+  SorterRecord *aSlot[64];
 
   rc = vdbeSortAllocUnpacked(pTask);
   if( rc!=SQLITE_OK ) return rc;
 
   p = pList->pList;
   pTask->xCompare = vdbeSorterGetCompare(pTask->pSorter);
-
-  aSlot = (SorterRecord **)sqlite3MallocZero(64 * sizeof(SorterRecord *));
-  if( !aSlot ){
-    return SQLITE_NOMEM_BKPT;
-  }
+  memset(aSlot, 0, sizeof(aSlot));
 
   while( p ){
     SorterRecord *pNext;
@@ -1469,13 +1470,12 @@ static int vdbeSorterSort(SortSubtask *pTask, SorterList *pList){
   }
 
   p = 0;
-  for(i=0; i<64; i++){
+  for(i=0; i<ArraySize(aSlot); i++){
     if( aSlot[i]==0 ) continue;
     p = p ? vdbeSorterMerge(pTask, p, aSlot[i]) : aSlot[i];
   }
   pList->pList = p;
 
-  sqlite3_free(aSlot);
   assert( pTask->pUnpacked->errCode==SQLITE_OK 
        || pTask->pUnpacked->errCode==SQLITE_NOMEM 
   );
@@ -1773,13 +1773,16 @@ static int vdbeSorterFlushPMA(VdbeSorter *pSorter){
       rc = vdbeSorterListToPMA(&pSorter->aTask[nWorker], &pSorter->list);
     }else{
       /* Launch a background thread for this operation */
-      u8 *aMem = pTask->list.aMemory;
-      void *pCtx = (void*)pTask;
+      u8 *aMem;
+      void *pCtx;
 
+      assert( pTask!=0 );
       assert( pTask->pThread==0 && pTask->bDone==0 );
       assert( pTask->list.pList==0 );
       assert( pTask->list.aMemory==0 || pSorter->list.aMemory!=0 );
 
+      aMem = pTask->list.aMemory;
+      pCtx = (void*)pTask;
       pSorter->iPrev = (u8)(pTask - pSorter->aTask);
       pTask->list = pSorter->list;
       pSorter->list.pList = 0;
@@ -1817,7 +1820,7 @@ int sqlite3VdbeSorterWrite(
 
   assert( pCsr->eCurType==CURTYPE_SORTER );
   pSorter = pCsr->uc.pSorter;
-  getVarint32((const u8*)&pVal->z[1], t);
+  getVarint32NR((const u8*)&pVal->z[1], t);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   if( t==10 || t==11 ){
     /* I need this for interval and datetime */

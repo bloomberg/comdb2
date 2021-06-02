@@ -85,12 +85,22 @@ static inline int isRemote(Parse *pParse, Token **t1, Token **t2)
         /* No schema name. */
         return 0;
     } else {
+        const char *zTok = (*t1)->z;
+        unsigned int nTok = (*t1)->n;
+
+        /* If necessary, skip over surrounding quote characters. */
+        if (sqlite3Isquote(zTok[0]) && sqlite3Isquote(zTok[nTok-1])) {
+            zTok++;
+            nTok -= 2;
+        }
+
         /* We must have both the tokens set. */
         assert((*t1)->n > 0 && (*t2)->n > 0);
 
         /* t1 must be a local schema name. */
-        if ((strncasecmp((*t1)->z, thedb->envname, (*t1)->n) == 0) ||
-            (strncasecmp((*t1)->z, "main", (*t1)->n) == 0)) {
+        if ((strncasecmp(zTok, thedb->envname, nTok) == 0) ||
+            (strncasecmp(zTok, "main", nTok) == 0) ||
+            (strncasecmp(zTok, "temp", nTok) == 0)) {
             /*
               Its a local schema. Let's move the table/index name in
               t2 to t1. Doing so will ease the callers by allowing
@@ -2284,7 +2294,7 @@ void comdb2getAnalyzeThreshold(Parse* pParse, Token *nm, Token *lnm)
                             (vdbeFuncArgFree)  &free, &stp);
 }
 
-int resolveTableName(sqlite3 *db, struct SrcList_item *p, const char *zDB,
+int resolveTableName(sqlite3 *db, struct SrcItem *p, const char *zDB,
                      char *tableName, size_t len)
 {
    struct sqlclntstate *clnt = get_sql_clnt();
@@ -3747,11 +3757,11 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
 
                 pList->a[i].pExpr->op = TK_ID;
                 pList->a[i].pExpr->u.zToken = child_idx_part->name;
-                pList->a[i].zName = child_idx_part->name;
+                pList->a[i].zEName = child_idx_part->name;
                 if (child_idx_part->flags & INDEX_ORDER_DESC) {
-                    pList->a[i].sortOrder = SQLITE_SO_DESC;
+                    pList->a[i].sortFlags |= KEYINFO_ORDER_DESC;
                 } else {
-                    pList->a[i].sortOrder = SQLITE_SO_ASC;
+                    pList->a[i].sortFlags &= ~KEYINFO_ORDER_DESC;
                 }
 
                 i++;
@@ -5189,7 +5199,7 @@ static void comdb2AddIndexInt(
                 goto cleanup;
             }
 
-            if (pListItem->sortOrder == SQLITE_SO_DESC) {
+            if (pListItem->sortFlags & KEYINFO_ORDER_DESC) {
                 idx_part->flags |= INDEX_ORDER_DESC;
             }
 
@@ -5715,11 +5725,11 @@ void comdb2CreateForeignKey(
             if (idx_part == 0)
                 goto oom;
 
-            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zName);
+            idx_part->name = comdb2_strdup(ctx->mem, pFromCol->a[i].zEName);
             if (idx_part->name == 0)
                 goto oom;
 
-            assert(pFromCol->a[i].sortOrder == SQLITE_SO_ASC);
+            assert((pFromCol->a[i].sortFlags & KEYINFO_ORDER_DESC)==0);
 
             /* There's no comdb2_column for foreign columns. */
             // idx_part->column = 0;
@@ -5737,11 +5747,11 @@ void comdb2CreateForeignKey(
         if (idx_part == 0)
             goto oom;
 
-        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zName);
+        idx_part->name = comdb2_strdup(ctx->mem, pToCol->a[i].zEName);
         if (idx_part->name == 0)
             goto oom;
 
-        assert(pToCol->a[i].sortOrder == SQLITE_SO_ASC);
+        assert((pToCol->a[i].sortFlags & KEYINFO_ORDER_DESC)==0);
         // idx_part->column = 0;
 
         listc_abl(&constraint->parent_idx_col_list, idx_part);
@@ -6667,7 +6677,7 @@ void comdb2AddCheckConstraint(Parse *pParse,      /* Parsing context */
 
     if (use_sqlite_impl(pParse)) {
         assert(ctx == 0);
-        sqlite3AddCheckConstraint(pParse, pCheckExpr);
+        sqlite3AddCheckConstraint(pParse, pCheckExpr, zStart, zEnd);
         return;
     }
 

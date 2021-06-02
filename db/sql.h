@@ -679,6 +679,7 @@ struct sqlclntstate {
     /* lua stored procedure */
     struct stored_proc *sp;
     int exec_lua_thread;
+    int exec_lua_trigger;
     int want_stored_procedure_trace;
     int want_stored_procedure_debug;
     char spname[MAX_SPNAME + 1];
@@ -886,6 +887,7 @@ struct temptable {
 struct Btree {
     /* for debugging */
     int btreeid;
+    int flags; /* saved by sqlite3BtreeOpen */
     struct reqlogger *reqlogger;
 
     bdb_temp_hash *genid_hash; /* rrn hash for non dtastripe support */
@@ -1068,7 +1070,8 @@ struct sql_hist {
 struct sql_thread {
     LINKC_T(struct sql_thread) lnk;
     pthread_mutex_t lk;
-    struct Btree *bt, *bttmp;
+    struct Btree *bt;
+    hash_t *bttmp_hash;
     int startms;
     int prepms;
     int stime;
@@ -1188,6 +1191,8 @@ void fdb_packedsqlite_process_sqlitemaster_row(char *row, int rowlen,
                                                int new_rootpage);
 
 int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf);
+
+int comdb2_is_temporary_sqlite_db(sqlite3 *, int);
 
 unsigned long long comdb2_table_version(const char *tablename);
 
@@ -1321,6 +1326,9 @@ void clnt_register(struct sqlclntstate *clnt);
 void clnt_unregister(struct sqlclntstate *clnt);
 
 struct sqlclntstate *get_sql_clnt(void);
+int is_sql_clnt_really_lua_thread(void);
+void begin_dispatch_clnt(struct sqlclntstate *clnt);
+void end_dispatch_clnt(void);
 
 struct client_sql_systable_data {
     char *host;

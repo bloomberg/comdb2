@@ -7,6 +7,7 @@ select * from sqlite_stat1 where tbl="t9"
 exec procedure sys.cmd.send("setsqlattr analyze_empty_tables on")
 exec procedure sys.cmd.analyze("t9")
 select * from sqlite_stat1 where tbl="t9"
+select * from sqlite_stat4 where tbl="t9"
 
 exec procedure sys.cmd.send("setsqlattr analyze_empty_tables off")
 ANALYZE t9
@@ -14,3 +15,4 @@ select * from sqlite_stat1 where tbl="t9"
 exec procedure sys.cmd.send("setsqlattr analyze_empty_tables on")
 ANALYZE t9
 select * from sqlite_stat1 where tbl="t9"
+select * from sqlite_stat4 where tbl="t9"
