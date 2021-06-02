@@ -411,6 +411,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
         int tm_recov_deadlk = comdb2_time_epochms();
         /* this call could wait for a bdb read lock; in the meantime,
            someone might try to signal us */
+        // NC: what is this for?
         if (osql_comm_check_bdb_lock(__func__, __LINE__)) {
             logmsg(LOGMSG_ERROR, "sosql: timed-out on bdb_lock_desired\n");
             rc = ERR_READONLY;
@@ -472,7 +473,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             if (entry->master == 0 || entry->master == gbl_myhostname) {
                 /* local checkup */
                 bool found =
-                    osql_repository_session_exists(entry->rqid, entry->uuid);
+                    osql_repository_session_exists(entry->rqid, entry->uuid, 0);
                 if (!found) {
                     logmsg(LOGMSG_ERROR,
                            "Local SORESE failed to find local "
@@ -519,6 +520,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
     int done = 0;
     int cnt = 0;
     uuidstr_t us;
+    int last_status;
 
     if (!checkboard)
         return 0;
@@ -546,6 +548,8 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         /* reset these time parameters */
         entry->last_checked = entry->last_updated = comdb2_time_epochms();
 
+        last_status = entry->status;
+
         // wait_till_max_wait_or_timeout() expects to be called with mtx locked
         int rc = wait_till_max_wait_or_timeout(entry, max_wait, xerr, &cnt);
         if (rc) // dont unlock entry->mtx, on nonzero rc it was already unlocked
@@ -556,12 +560,26 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         Pthread_mutex_unlock(&entry->mtx);
 
         if (max_wait > 0 && cnt >= max_wait) {
-            logmsg(LOGMSG_ERROR,
-                   "%s: timed-out waiting for master %s "
-                   "to commit id=%llu %s\n",
-                   __func__, entry->master, entry->rqid,
-                   comdb2uuidstr(entry->uuid, us));
-            return -6;
+            if (last_status < entry->status) {
+                // Let's also bump up the timeout.
+                int poke_timeout = bdb_attr_get(
+                    thedb->bdb_attr, BDB_ATTR_SOSQL_POKE_TIMEOUT_SEC);
+                max_wait += poke_timeout;
+                logmsg(LOGMSG_USER,
+                       "%s:%d transaction (commit-id: %llu %s) is still "
+                       "progressing on master %s, bumping up max_wait by %d "
+                       "seconds\n",
+                       __func__, __LINE__, entry->rqid,
+                       comdb2uuidstr(entry->uuid, us), entry->master,
+                       poke_timeout);
+            } else {
+                logmsg(LOGMSG_ERROR,
+                       "%s: timed-out waiting for master %s "
+                       "to commit id=%llu %s\n",
+                       __func__, entry->master, entry->rqid,
+                       comdb2uuidstr(entry->uuid, us));
+                return -6;
+            }
         }
 
         if (master_changed) { /* retry at higher level */

@@ -5109,7 +5109,8 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
         rqid = poke.rqid;
     }
 
-    found = osql_repository_session_exists(rqid, uuid);
+    int rows_affected = -1;
+    found = osql_repository_session_exists(rqid, uuid, &rows_affected);
 
     if (found) {
         uint8_t buf[OSQLCOMM_EXISTS_RPL_TYPE_LEN];
@@ -5123,7 +5124,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
             rpl.hd.type = OSQL_EXISTS;
             comdb2uuidcpy(rpl.hd.uuid, uuid);
-            rpl.dt.status = 0;
+            rpl.dt.status = rows_affected;
             rpl.dt.timestamp = comdb2_time_epoch();
 
             if (!osqlcomm_exists_uuid_rpl_type_put(&rpl, p_buf, p_buf_end))
@@ -5145,7 +5146,7 @@ static void net_osql_master_check(void *hndl, void *uptr, char *fromhost,
 
             rpl.hd.type = OSQL_EXISTS;
             rpl.hd.sid = rqid;
-            rpl.dt.status = 0;
+            rpl.dt.status = rows_affected;
             rpl.dt.timestamp = comdb2_time_epoch();
 
             if (!osqlcomm_exists_rpl_type_put(&rpl, p_buf, p_buf_end))
@@ -5204,7 +5205,7 @@ static void net_osql_master_checked(void *hndl, void *uptr, char *fromhost,
             return;
         }
         rqid = rpl.hd.sid;
-        status = rpl.dt.timestamp;
+        status = rpl.dt.status;
         timestamp = rpl.dt.timestamp;
     }
 
