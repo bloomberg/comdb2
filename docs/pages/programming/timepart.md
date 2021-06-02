@@ -38,7 +38,6 @@ Reading and writing a time partition (no different from regular tables):
 
 `SELECT * FROM name`; `INSERT INTO name VALUES (...)`; and so on.
 
-
 ## Granularity details
 
 It is worth mentioning that the retention precision is affected by granularity. It is always between `PERIODICITY` x (`RETENTION`-1) and `PERIODICITY` X `RETENTION`. For example, specifying a periodicity `weekly` and retention 4 will result in having data corresponding from 3 weeks to 4 weeks of activity. Every week a new shard is added to the partition, and all new inserted data goes into it. The shard that is 4 weeks old is deleted through a fast table drop operation. The amount of data immediately before the rollout is 4 weeks; after rollout is 3 weeks.
@@ -48,9 +47,9 @@ If the client would choose periodicity `daily`, and retention 31, at all time th
 
 ## Current limitations
 
-The name space for tables and partitions is the same.  Creating a partition name cannnot reuse an existing table name.  This is inconvenient and it will be addressed by future efforts.  
-Enforcing unique constraints is not possible accross shards of a time partition.  An option to allow this at the expense of commit performance will be goal of a future project.
-
+* The name space for tables and partitions is the same. Creating a partition name cannot reuse an existing table name. This is inconvenient and it will be addressed by future efforts.
+* Enforcing unique constraints is not possible across shards of a time partition.  An option to allow this at the expense of commit performance will be goal of a future project.
+* UPSERT is not supported
 
 ## Rollout implementation details
 
@@ -72,13 +71,13 @@ I.2) schema change to create a new shard with the schema and settings identical 
 
 I.3) schedule phase II
 
-Note: phase I preceeds the rollout time by a safe time window, such that by the time the partitioninig info needs to be updated, the table is available
+Note: phase I preceeds the rollout time by a safe time window, such that by the time the partitioning info needs to be updated, the table is available
 
 Rollout phase II details:
 
 II.1) update in memory shard bookkeeping, creating a new shard and identifying the separation time T between new shard and the latest one 
 
-II.2) publish the in memory new bookkeeping, which basically writes this persistently as a json objec in llmeta,  which gets replicated (upon remote sqlite engines will refresh their partition information)
+II.2) publish the in memory new bookkeeping, which basically writes this persistently as a JSON object in llmeta,  which gets replicated (upon remote sqlite engines will refresh their partition information)
 
 II.3) update the local views version that would trigger local sqlite, if any, to update their partition information
 
@@ -94,12 +93,11 @@ III.1) do a schema change `drop` table for the provided shard
 
 Recovery phase:
 
-IV.1) deserialize the views from the llmeta saved json object
+IV.1) deserialize the views from the llmeta saved JSON object
 
 IV.2) for each view, run individual view recovery
 
 IV.2.1) check if the shard exists physically 
 
 IV.2.2) check the next rollout event; if a shard needs to be evicted, schedule a phase III; if a shard was already created, schedule a phase II, otherwise schedule phase I 
-
 
