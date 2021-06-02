@@ -15,6 +15,7 @@
 #include "sqliteInt.h"
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 #include "cdb2_constants.h"
+#include "views.h" // timepart_is_timepart()
 int need_index_checks_for_upsert(Table *pTab, Upsert *pUpsert, int onError, int noConflict);
 int is_comdb2_index_unique(const char *tbl, char *idx);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -872,6 +873,14 @@ void sqlite3Insert(
               pTab->zName);
       goto insert_cleanup;
     }
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if( unlikely(timepart_is_timepart(pTab->zName, 1)) ){
+      sqlite3ErrorMsg(pParse, "UPSERT not supported on time-based partitioned table \"%s\"",
+              pTab->zName);
+      goto insert_cleanup;
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pTabList->a[0].iCursor = iDataCur;
     pUpsert->pUpsertSrc = pTabList;
     pUpsert->regData = regData;
