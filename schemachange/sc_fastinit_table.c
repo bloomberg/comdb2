@@ -111,7 +111,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     if (local_lock)
         unlock_schema_lk();
     if (rc) {
-        /* todo: clean up db */
+        cleanup_newdb(newdb);
         sc_errf(s, "failed opening new db\n");
         change_schemas_recover(s->tablename);
         return -1;

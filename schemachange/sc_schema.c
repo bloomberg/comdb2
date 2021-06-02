@@ -1192,14 +1192,11 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
 {
     int i = 0;
     /* lets deal with pointers...all tables pointing to me must be entered into
-     * my 'reverse'..simple copy should do it (together with general loop
-     * below) */
+     * my 'reverse' */
     if (copyof) {
-        if (db->n_rev_constraints > 0) {
-            memcpy(newdb->rev_constraints, db->rev_constraints,
-                   db->n_rev_constraints * sizeof(constraint_t *));
+        for (int i = 0; i < db->n_rev_constraints; i++) {
+            add_reverse_constraint(newdb, db->rev_constraints[i]);
         }
-        newdb->n_rev_constraints = db->n_rev_constraints;
     }
     /* additionally, for each table i'm pointing to in old db, must get its
      * reverse constraint array updated to get all reverse ct *'s removed */
@@ -1212,16 +1209,8 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
             if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
-                if ((j + 1) < rdb->n_rev_constraints) {
-                    memmove(&rdb->rev_constraints[j],
-                            &rdb->rev_constraints[j + 1],
-                            (rdb->n_rev_constraints - j - 1) *
-                                sizeof(constraint_t *));
-                    rdb->n_rev_constraints--;
-                    j--;
-                } else {
-                    rdb->n_rev_constraints--;
-                }
+                delete_reverse_constraint(rdb, j);
+                j--;
             }
         }
         for (int j = 0; j < newdb->n_constraints; j++) {
@@ -1237,15 +1226,7 @@ int restore_constraint_pointers_main(struct dbtable *db, struct dbtable *newdb,
                     }
                 }
                 if (dupadd) continue;
-                if (rdb->n_rev_constraints >= MAXCONSTRAINTS) {
-                    logmsg(LOGMSG_ERROR,
-                           "not enough space to store reverse constraints! "
-                           "table %s\n",
-                           rdb->tablename);
-                    return -1;
-                }
-                rdb->rev_constraints[rdb->n_rev_constraints++] =
-                    &newdb->constraints[j];
+                add_reverse_constraint(rdb, &newdb->constraints[j]);
             }
         }
     }
@@ -1392,16 +1373,8 @@ int remove_constraint_pointers(struct dbtable *db)
             constraint_t *ct = NULL;
             ct = rdb->rev_constraints[j];
             if (!strcasecmp(ct->lcltable->tablename, db->tablename)) {
-                if ((j + 1) < rdb->n_rev_constraints) {
-                    memmove(&rdb->rev_constraints[j],
-                            &rdb->rev_constraints[j + 1],
-                            (rdb->n_rev_constraints - j - 1) *
-                                sizeof(constraint_t *));
-                    rdb->n_rev_constraints--;
-                    j--;
-                } else {
-                    rdb->n_rev_constraints--;
-                }
+                delete_reverse_constraint(rdb, j);
+                j--;
             }
         }
     }
@@ -1439,7 +1412,7 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
         if (rdb->n_rev_constraints > 0) {
             for (j = 0; j < rdb->n_rev_constraints; j++) {
                 ct = rdb->rev_constraints[j];
-                for (k = 0; k < MAXCONSTRAINTS; k++) {
+                for (k = 0; k < newdb->n_constraints; k++) {
                     if (ct == &newdb->constraints[k]) {
                         rdb->rev_constraints[j] = &db->constraints[k];
                     }
@@ -1450,7 +1423,8 @@ void fix_constraint_pointers(struct dbtable *db, struct dbtable *newdb)
         if (rdb->n_constraints) {
             for (j = 0; j < rdb->n_constraints; j++) {
                 ct = &rdb->constraints[j];
-                if (ct->lcltable == newdb) ct->lcltable = db;
+                if (ct->lcltable == newdb)
+                    ct->lcltable = db;
             }
         }
     }
