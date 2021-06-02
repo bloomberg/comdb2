@@ -1921,4 +1921,8 @@ REGISTER_TUNABLE("sync_osql_cancel", "Synchronous osql cancellation (Default: on
 REGISTER_TUNABLE("replicant_retry_on_not_durable", "Replicant retries non-durable writes.  (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_replicant_retry_on_not_durable, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("net_somaxconn",
+                 "listen() backlog setting.  (Default: 0, implies system default)",
+                 TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

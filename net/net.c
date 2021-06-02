@@ -118,6 +118,8 @@ extern int gbl_net_portmux_register_interval;
 int gbl_verbose_net = 0;
 int subnet_blackout_timems = 5000;
 
+int gbl_net_maxconn = 0;
+
 #ifdef PER_THREAD_MALLOC
 #define HOST_MALLOC(h, sz) comdb2_malloc((h)->msp, (sz))
 #else
@@ -6758,7 +6760,7 @@ int net_listen(int port)
     }
 
     /* listen for connections on socket */
-    if (listen(listenfd, SOMAXCONN) < 0) {
+    if (listen(listenfd, gbl_net_maxconn ? gbl_net_maxconn : SOMAXCONN) < 0) {
         logmsg(LOGMSG_ERROR, "%s: listen rc %d %s\n", __func__, errno,
                 strerror(errno));
         return -1;
