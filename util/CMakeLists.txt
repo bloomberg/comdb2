@@ -76,4 +76,12 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/db
 )
 add_dependencies(util mem)
-set_source_files_properties(walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)
+if (COMDB2_BBCMAKE)
+  if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
+    target_link_libraries(util PUBLIC libunwind)
+  endif()
+  if(WITH_SSL)
+    target_link_libraries(util PUBLIC openssl)
+  endif()
+  configure_bb_target(util V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()

@@ -1,4 +1,4 @@
-include(${CMAKE_MODULE_PATH}/plugin.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/plugin.cmake)
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
@@ -15,11 +15,9 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/lua
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
-  ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/db
   ${PROJECT_BINARY_DIR}/mem
-  ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_BINARY_DIR}/sqlite
   ${CMAKE_CURRENT_BINARY_DIR}
   ${OPENSSL_INCLUDE_DIR}
