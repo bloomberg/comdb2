@@ -1,5 +1,4 @@
-include(${CMAKE_MODULE_PATH}/plugin.cmake)
-
+include(${PROJECT_SOURCE_DIR}/cmake/plugin.cmake)
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   ${SQLITE_FLAGS}
@@ -19,7 +18,6 @@ include_directories(
   ${PROJECT_SOURCE_DIR}/lua
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_SOURCE_DIR}/net
-  ${PROJECT_SOURCE_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_BINARY_DIR}/db
   ${PROJECT_BINARY_DIR}/mem
@@ -32,4 +30,8 @@ include_directories(
 
 set(SOURCES remsql.c fdb_comm.c)
 add_plugin(remsql STATIC "${SOURCES}")
+if (COMDB2_BBCMAKE)
+  target_link_libraries(remsql PUBLIC protobuf-c)
+  configure_bb_target(remsql V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()
 add_dependencies(remsql sqlite) # Wait for parse.h
