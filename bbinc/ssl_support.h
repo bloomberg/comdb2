@@ -141,23 +141,6 @@ typedef enum {
 } peer_ssl_mode;
 
 /*
- * Initialize SSL library.
- *
- * PARAMETERS
- * init_openssl - set to non-zero to initialize libssl
- * init_crypto  - set to non-zero to initialize libcrypto
- * locking      - set to non-zero to mutex lock the initialization
- * err          - set to NULL to print to stderr
- * n            - length of the error string buffer
- *
- * RETURN VALUES
- * 0 upon success
- */
-int SBUF2_FUNC(ssl_init)(int init_openssl, int init_crypto, int locking,
-                       char *err, size_t n);
-#define ssl_init SBUF2_FUNC(ssl_init)
-
-/*
  * Create an SSL context.
  *
  * PARAMETERS
