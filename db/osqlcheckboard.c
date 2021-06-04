@@ -58,7 +58,7 @@ static osql_checkboard_t *checkboard = NULL;
  * if caller already has rwlock, call this func with lock = false
  */
 static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
-                                                       uuid_t uuid, bool lock)
+                                                       uuid_t uuid, int lock)
 {
     osql_sqlthr_t *entry = NULL;
 
@@ -301,8 +301,8 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
  * Checks the checkboard for sql session "rqid"
  * Returns true or false depending on whether sesssion exists
  */
-bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
-                                     bool lock)
+int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid,
+                                     int lock)
 {
     if (!checkboard)
         return 0;
@@ -498,7 +498,7 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             /* try poke again */
             if (entry->master == 0 || entry->master == gbl_mynode) {
                 /* local checkup */
-                bool found =
+                int found =
                     osql_repository_session_exists(entry->rqid, entry->uuid);
                 if (!found) {
                     logmsg(LOGMSG_ERROR,
@@ -551,7 +551,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         return 0;
 
     while (!done) {
-        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
+        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 1);
 
         if (!entry) {
             logmsg(LOGMSG_ERROR,

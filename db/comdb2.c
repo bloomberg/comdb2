@@ -658,8 +658,7 @@ int gbl_reorder_socksql_no_deadlock = 1;
 
 char *gbl_recovery_options = NULL;
 
-#include <stdbool.h>
-bool gbl_rcache = true;
+int gbl_rcache = 1;
 
 int gbl_noenv_messages = 1;
 

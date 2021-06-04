@@ -15,7 +15,6 @@
  */
 
 #include <unistd.h>
-#include <stdbool.h>
 #include <poll.h>
 
 #include "schemachange.h"
@@ -118,7 +117,7 @@ static inline int print_aggregate_sc_stat(struct convert_record_data *data,
      * to print. If it failed, another thread is doing that work.
      */
 
-    bool res = CAS32(data->cmembers->total_lasttime, copy_total_lasttime, now);
+    int res = CAS32(data->cmembers->total_lasttime, copy_total_lasttime, now);
     if (!res) return 0;
 
     /* number of adds after schema cursor (by definition, all adds)
@@ -162,7 +161,7 @@ static inline void lkcounter_check(struct convert_record_data *data, int now)
      * if this thread successful in setting, it can continue
      * to adjust num threads. If it failed, another thread is doing that work.
      */
-    bool res =
+    int res =
         CAS32(data->cmembers->lkcountercheck_lasttime, copy_lasttime, now);
     if (!res) return;
 

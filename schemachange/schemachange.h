@@ -210,9 +210,9 @@ struct schema_change_type {
 
     size_t packed_len;
 
-    bool views_locked : 1;
-    bool is_osql : 1;
-    bool set_running : 1;
+    unsigned views_locked : 1;
+    unsigned is_osql : 1;
+    unsigned set_running : 1;
 };
 
 struct ireq;

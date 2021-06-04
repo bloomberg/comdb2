@@ -67,7 +67,6 @@ static const char revid[] = "$Id: bt_search.c,v 11.47 2003/06/30 17:19:35 bostic
 #include <btree/bt_pf.h>
 
 
-#include <stdbool.h>
 #include <time.h>
 #include <util.h>
 
@@ -348,7 +347,7 @@ __bam_search(dbc, root_pgno, key, flags, stop, recnop, exactp)
 	int (*func) __P((DB *, const DBT *, const DBT *));
 	void *cached_pg = NULL;
 	void *bfpool_pg = NULL;
-	bool save = false;
+	int save = 0;
 	uint16_t gen;
 	uint32_t slot;
 	unsigned int hh = 0;
@@ -399,11 +398,11 @@ try_again:
 	dbp->pg_hash_stat.n_bt_search++;
 	gettimeofday(&before, NULL);
 
-	extern bool gbl_rcache;
+	extern int gbl_rcache;
 
 	if (gbl_rcache && pg == 1 && bfpool_pg == NULL &&
 	    lock_mode == DB_LOCK_READ && LF_ISSET(S_FIND)) {
-		save = true;
+		save = 1;
 		if (rcache_find(
 		    dbp, &cached_pg, &bfpool_pg, &gen, &slot) == 0) {
 			h = cached_pg;

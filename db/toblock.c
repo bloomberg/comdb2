@@ -2642,7 +2642,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
     unsigned char nulls[MAXNULLBITS] = {0};
     unsigned long long genid = 0;
     int have_blkseq = 0;
-    bool have_keyless_requests = 0;
+    int have_keyless_requests = 0;
     int numerrs = 0;
     int check_serializability = 0;
     int force_serial_error = 0;

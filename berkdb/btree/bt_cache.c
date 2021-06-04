@@ -6,7 +6,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <stdbool.h>
 #include <signal.h>
 #include <logmsg.h>
 

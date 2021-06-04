@@ -228,7 +228,7 @@ done:
     return counter;
 }
 
-char *logical_cron_update_sql(const char *name, long long value, bool increment)
+char *logical_cron_update_sql(const char *name, long long value, int increment)
 {
     char *query;
 

@@ -66,7 +66,6 @@ extern int __berkdb_read_alarm_ms;
 #include "analyze.h"
 #include "dbdest.h"
 #include "intern_strings.h"
-#include <stdbool.h>
 #include "utilmisc.h"
 #include "sqllog.h"
 #include "views.h"
@@ -123,7 +122,6 @@ void walkback_set_warnthresh(int thresh);
 int walkback_get_warnthresh(void);
 
 extern int gbl_osql_verify_retries_max;
-extern bool gbl_rcache;
 
 static pthread_mutex_t testguard = PTHREAD_MUTEX_INITIALIZER;
 void bdb_locktest(void *);
@@ -4523,10 +4521,10 @@ clipper_usage:
         printlog(thedb->bdb_env, startfile, startoff, endfile, endoff);
 #ifdef _LINUX_SOURCE
     } else if (tokcmp(tok, ltok, "rcache") == 0) {
-        gbl_rcache = true;
+        gbl_rcache = 1;
        logmsg(LOGMSG_USER, "enabled rcache\n");
     } else if (tokcmp(tok, ltok, "norcache") == 0) {
-        gbl_rcache = false;
+        gbl_rcache = 0;
        logmsg(LOGMSG_USER, "disabled rcache\n");
 #endif
     } else if (tokcmp(tok, ltok, "swing") == 0) {
@@ -4535,7 +4533,7 @@ clipper_usage:
     } else if (tokcmp(tok, ltok, "stat4dump") == 0) {
         int more;
         segtok(line, lline, &st, &more);
-        stat4dump(more, NULL, false);
+        stat4dump(more, NULL, 0);
     } else if (tokcmp(tok, ltok, "sqllogger") == 0) {
         sqllogger_process_message(line + st, lline - st);
     } else if (tokcmp(tok, ltok, "blkseqv3") == 0) {

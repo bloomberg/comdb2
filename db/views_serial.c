@@ -756,8 +756,8 @@ err:
     return rc;
 }
 
-int timepart_delete_access(bdb_state_type *bdb_state, void *tran,
-                           const char *name, bool acquire_schema_lk)
+static int timepart_delete_access(bdb_state_type *bdb_state, void *tran,
+                           const char *name, int acquire_schema_lk)
 {
     char **users;
     int nUsers;

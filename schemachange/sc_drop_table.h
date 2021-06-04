@@ -19,8 +19,5 @@
 
 struct ireq;
 int do_drop_table(struct ireq *, struct schema_change_type *, tran_type *);
-int finalize_drop_table(struct ireq *, struct schema_change_type *,
-                        tran_type *);
-int timepart_delete_access(bdb_state_type *bdb_state, void *tran,
-                           const char *name, bool acquire_schema_lk);
+int finalize_drop_table(struct ireq *, struct schema_change_type *, tran_type *);
 #endif

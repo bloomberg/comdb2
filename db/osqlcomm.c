@@ -5522,7 +5522,7 @@ static void net_osql_poked(void *hndl, void *uptr, char *fromhost, int usertype,
                            void *dtap, int dtalen, uint8_t is_tcp)
 {
     osql_poke_t poke;
-    bool found = false;
+    int found = 0;
     int rc = 0;
     uuid_t uuid;
 
@@ -5579,7 +5579,7 @@ static void net_osql_poked_uuid(void *hndl, void *uptr, char *fromhost,
     uint8_t *p_buf = dtap;
     uint8_t *p_buf_end = p_buf + dtalen;
     osql_poke_uuid_t poke;
-    bool found = false;
+    int found = 0;
     int rc = 0;
 
     if (db_is_stopped()) {
@@ -7674,7 +7674,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
 
     osql_sess_t *sess = NULL;
     osql_req_t req;
-    bool is_reorder_on = false;
+    int is_reorder_on = 0;
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     int rc = 0;
