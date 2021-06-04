@@ -713,7 +713,7 @@ static int osql_poke_replicant(osql_sess_t *sess)
     }
 
     /* checkup local listings */
-    bool found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1);
+    int found = osql_chkboard_sqlsession_exists(sess->rqid, sess->uuid, 1);
 
     if (found || sess->xerr.errval)
         return 0;
@@ -744,7 +744,7 @@ typedef struct {
     char *tablename;
     unsigned long long genid;
     int tableversion;
-    bool get_writelock;
+    int get_writelock;
 } selectv_genid_t;
 
 int gbl_selectv_writelock_on_update = 1;
@@ -758,7 +758,7 @@ int gbl_selectv_writelock_on_update = 1;
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced, bool is_reorder_on)
+                                   int *replaced, int is_reorder_on)
 {
     osql_sess_t *sess = NULL;
     int rc = 0;

@@ -38,7 +38,7 @@ struct fdb_location {
 
     int nnodes;
     char **nodes; /* bb node numbers */
-    bool *lcl;    /* set for same datacenter nodes */
+    int *lcl;    /* set for same datacenter nodes */
 };
 
 struct fdb_affinity_elem {
@@ -98,7 +98,7 @@ static int _fdb_refresh_location(const char *dbname, fdb_location_t *loc)
         if (!loc->nodes) {
             return FDB_ERR_MALLOC;
         }
-        loc->lcl = (bool *)realloc(loc->lcl, sizeof(bool) * nnodes);
+        loc->lcl = (int *)realloc(loc->lcl, sizeof(int) * nnodes);
         if (!loc->lcl) {
             return FDB_ERR_MALLOC;
         }
@@ -144,7 +144,7 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
                 bzero(loc->nodes, loc->nnodes * sizeof(loc->nodes[0]));
                 int i;
                 for (i = 0; i < loc->nnodes; i++)
-                    loc->lcl[i] = false;
+                    loc->lcl[i] = 0;
             }
             loc->nnodes = 0;
         }
@@ -163,7 +163,7 @@ int fdb_locate(const char *dbname, enum mach_class class, int refresh,
     return rc;
 }
 
-static char *_get_node_initial(int nnodes, char **nodes, bool *lcl,
+static char *_get_node_initial(int nnodes, char **nodes, int *lcl,
                                enum fdb_location_op op, int *lcl_nnodes,
                                int *rescpu_nnodes)
 {
@@ -214,7 +214,7 @@ static char *_get_node_initial(int nnodes, char **nodes, bool *lcl,
     return node;
 }
 
-static char *_get_node_next(int nnodes, char **nodes, bool *lcl, char *arg,
+static char *_get_node_next(int nnodes, char **nodes, int *lcl, char *arg,
                             enum fdb_location_op op, int *lcl_nnodes,
                             int *rescpu_nnodes)
 {
@@ -313,7 +313,7 @@ char *fdb_select_node(fdb_location_t **ploc, enum fdb_location_op op, char *arg,
     int masked_op;
     int my_nnodes = 0;
     char **my_nodes = NULL;
-    bool *my_lcl = NULL;
+    int *my_lcl = NULL;
 
     /* if we are here, and we don't have a location already, it means this was
        local */

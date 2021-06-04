@@ -114,7 +114,7 @@ struct sqlthdstate {
     /* A flag to tell us whether we are inside the query preparer plugin. This
      * is especially needed to differentiate between fdb cursors opened by core
      * versus query preparer plugin. */
-    bool query_preparer_running;
+    int query_preparer_running;
     void *sqldbx;
 };
 
@@ -204,10 +204,10 @@ typedef struct osqlstate {
                             (i.e. already translated */
     int dirty; /* optimization to nop selectv only transactions */
     int running_ddl; /* ddl transaction */
-    bool is_reorder_on : 1;
+    unsigned is_reorder_on : 1;
 
     /* set to 1 if we have already called osql_sock_start in socksql mode */
-    bool sock_started : 1;
+    unsigned sock_started : 1;
 } osqlstate_t;
 
 enum ctrl_sqleng {
@@ -250,7 +250,7 @@ typedef struct {
 
     fdb_distributed_tran_t *
         dtran; /* remote transactions, contain each remote cluster tran */
-    bool rollbacked; /* mark this to catch out-of-order errors */
+    int rollbacked; /* mark this to catch out-of-order errors */
 
     sqlite3_stmt *pStmt; /* if sql is in progress, points at the engine */
     fdb_tbl_ent_t **lockedRemTables; /* list of fdb_tbl_ent_t* for read-locked

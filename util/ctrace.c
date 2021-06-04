@@ -37,7 +37,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <stdarg.h>
-#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -388,17 +387,17 @@ const char *ctrace_get_logfilename(void)
 /* Caller must hold g_mutex if enabled.
  * Make sure that our logfile logf is open and ok to write to.
  */
-static bool ctrace_ok_ll(void)
+static int ctrace_ok_ll(void)
 {
     if (logf == 0) {
-        return false;
+        return 0;
     } else {
         chkrollover_lk();
     }
     if (logf == 0) {
-        return false; /*failed to open log*/
+        return 0; /*failed to open log*/
     }
-    return true;
+    return 1;
 }
 
 /* Returns a NUL terminated string which contains the current date/time prefix

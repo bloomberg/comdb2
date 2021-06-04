@@ -73,7 +73,6 @@ typedef long long tranid_t;
 #include <prefault.h>
 #include <quantize.h>
 #include <dlmalloc.h>
-#include <stdbool.h>
 
 #include "sqlinterfaces.h"
 #include "errstat.h"
@@ -828,21 +827,21 @@ typedef struct dbtable {
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
 
-    bool has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
-    bool ix_partial : 1;      /* set to 1 if we have partial indexes */
-    bool ix_expr : 1;         /* set to 1 if we have indexes on expressions */
-    bool ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
+    unsigned has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
+    unsigned ix_partial : 1;      /* set to 1 if we have partial indexes */
+    unsigned ix_expr : 1;         /* set to 1 if we have indexes on expressions */
+    unsigned ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
 
-    bool sc_abort : 1;
-    bool sc_downgrading : 1;
+    unsigned sc_abort : 1;
+    unsigned sc_downgrading : 1;
 
     /* boolean value set to nonzero if table rebuild is in progress */
-    bool doing_conversion : 1;
+    unsigned doing_conversion : 1;
     /* boolean value set to nonzero if table upgrade is in progress */
-    bool doing_upgrade : 1;
+    unsigned doing_upgrade : 1;
 
-    bool disableskipscan : 1;
-    bool do_local_replication : 1;
+    unsigned disableskipscan : 1;
+    unsigned do_local_replication : 1;
 } dbtable;
 
 struct log_delete_state {
@@ -1091,7 +1090,7 @@ typedef struct sorese_info {
     int rcout;  /* store here the block proc main error */
 
     int verify_retries; /* how many times we verify retried this one */
-    bool osql_retry;    /* if this is osql transaction, once sql part
+    int osql_retry;    /* if this is osql transaction, once sql part
                           finished successful, we set this to one
                           to avoid repeating it if the transaction is reexecuted
                        */
@@ -1423,22 +1422,22 @@ struct ireq {
     /* Client endian flags. */
     uint8_t client_endian;
 
-    bool have_client_endian : 1;
-    bool is_fake : 1;
-    bool is_dumpresponse : 1;
-    bool is_fromsocket : 1;
-    bool is_socketrequest : 1;
-    bool is_block2positionmode : 1;
+    unsigned have_client_endian : 1;
+    unsigned is_fake : 1;
+    unsigned is_dumpresponse : 1;
+    unsigned is_fromsocket : 1;
+    unsigned is_socketrequest : 1;
+    unsigned is_block2positionmode : 1;
 
-    bool errstrused : 1;
-    bool vfy_genid_track : 1;
-    bool is_sorese : 1;
-    bool have_blkseq : 1;
+    unsigned errstrused : 1;
+    unsigned vfy_genid_track : 1;
+    unsigned is_sorese : 1;
+    unsigned have_blkseq : 1;
 
-    bool sc_locked : 1;
-    bool have_snap_info : 1;
-    bool sc_should_abort : 1;
-    bool sc_closed_files : 1;
+    unsigned sc_locked : 1;
+    unsigned have_snap_info : 1;
+    unsigned sc_should_abort : 1;
+    unsigned sc_closed_files : 1;
 
     int written_row_count;
     int sc_running;
@@ -3696,4 +3695,6 @@ extern int gbl_bpfunc_auth_gen;
 void dump_client_sql_data(struct reqlogger *logger, int do_snapshot);
 
 extern int gbl_queue_walk_limit;
+extern int gbl_rcache;
+
 #endif /* !INCLUDED_COMDB2_H */

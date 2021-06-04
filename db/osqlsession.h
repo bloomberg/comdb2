@@ -97,9 +97,9 @@ struct osql_sess {
     unsigned long long
         ins_seq; // remember key seq for inserts into ins tmp table
     uint16_t tbl_idx;
-    bool last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
-    bool is_reorder_on : 1;
-    bool selectv_writelock_on_update : 1;
+    unsigned last_is_ins : 1; // 1 if processing INSERT, 0 for any other oql type
+    unsigned is_reorder_on : 1;
+    unsigned selectv_writelock_on_update : 1;
     hash_t *selectv_genids;
     char *table; // intern'd usedb
     int tableversion;
@@ -262,7 +262,7 @@ int osql_session_testterminate(void *obj, void *arg);
 osql_sess_t *osql_sess_create_sock(const char *sql, int sqlen, char *tzname,
                                    int type, unsigned long long rqid,
                                    uuid_t uuid, char *fromhost, struct ireq *iq,
-                                   int *replaced, bool is_reorder_on);
+                                   int *replaced, int is_reorder_on);
 
 char *osql_sess_tag(osql_sess_t *sess);
 void *osql_sess_tagbuf(osql_sess_t *sess);

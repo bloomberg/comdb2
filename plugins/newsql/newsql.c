@@ -2483,10 +2483,8 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
         clnt.heartbeat = 1;
         ATOMIC_ADD32(gbl_nnewsql, 1);
 
-        bool isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0 ||
-                                 strncasecmp(clnt.sql, "rollback", 8) == 0)
-                                    ? true
-                                    : false;
+        int isCommitRollback = (strncasecmp(clnt.sql, "commit", 6) == 0) ||
+                               (strncasecmp(clnt.sql, "rollback", 8) == 0);
 
         if (!clnt.had_errors || isCommitRollback) {
             /* tell blobmem that I want my priority back

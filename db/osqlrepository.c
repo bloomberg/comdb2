@@ -523,7 +523,7 @@ int osql_repository_cancelled(void)
  * used by socksql poking
  *
  */
-bool osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
+int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 {
     osql_repository_t *theosql = get_theosql();
     if (theosql == NULL) {

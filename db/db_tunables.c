@@ -293,9 +293,6 @@ unsigned long long get_genid(bdb_state_type *bdb_state, unsigned int dtafile);
 void seed_genid48(bdb_state_type *bdb_state, uint64_t seed);
 extern int set_pbkdf2_iterations(int val);
 
-#include <stdbool.h>
-extern bool gbl_rcache;
-
 static char *gbl_name = NULL;
 static int ctrace_gzip;
 extern int gbl_reorder_socksql_no_deadlock;

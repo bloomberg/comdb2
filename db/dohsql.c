@@ -55,7 +55,7 @@ struct dohsql_connector {
     struct sqlclntstate *clnt;
     queue_type *que;      /* queue to caller */
     queue_type *que_free; /* de-queued rows come here to be freed */
-    bool selected;        /* true if a row from this engine is being used by
+    int selected;        /* true if a row from this engine is being used by
                              coordinator */
     pthread_mutex_t mtx;  /* mutex for queueing operations and related counts */
     char *thr_where;      /* cached where status */

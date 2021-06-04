@@ -89,7 +89,7 @@ struct blocksql_tran {
     int dowait; /* mark this when session completes to avoid loosing signal */
     int delayed;
     int rows;
-    bool iscomplete;
+    int iscomplete;
 };
 
 typedef struct oplog_key {
@@ -1266,7 +1266,7 @@ static inline int init_ins_tbl(struct reqlogger *reqlogger,
  */
 static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
                                            struct temp_cursor *dbc_ins,
-                                           bool drain_adds, char **data_p,
+                                           int drain_adds, char **data_p,
                                            int *datalen_p)
 {
     if (drain_adds) {
@@ -1284,11 +1284,11 @@ static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
  * if tbl_idx is same, return true if add_stripe < opkey->stripe
  * return false otherwise
  */
-static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
+static inline int ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
                                int add_stripe)
 {
     if (!opkey_ins)
-        return false;
+        return 0;
 
     return opkey_ins->tbl_idx < opkey->tbl_idx ||
            (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe);
@@ -1302,19 +1302,19 @@ static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
 static inline int
 get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
                     oplog_key_t **opkey, oplog_key_t **opkey_ins,
-                    bool *drain_adds_p, int *bdberr, int add_stripe)
+                    int *drain_adds_p, int *bdberr, int add_stripe)
 {
     if (*drain_adds_p) {
         int rc = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
         if (rc != 0) { // ins tbl contains no more records
-            *drain_adds_p = false;
+            *drain_adds_p = 0;
             *opkey_ins = NULL;
             return 0;
         }
 
         *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
         if (!ins_is_less(*opkey_ins, *opkey, add_stripe))
-            *drain_adds_p = false;
+            *drain_adds_p = 0;
     } else {
         int rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
         if (rc)
@@ -1324,7 +1324,7 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
         /* if cursor valid for dbc_ins, and if we changed table/stripe and
          * prev table/strip match dbc_ins table/stripe then process adds */
         if (ins_is_less(*opkey_ins, *opkey, add_stripe))
-            *drain_adds_p = true;
+            *drain_adds_p = 1;
     }
     return 0;
 }
@@ -1411,7 +1411,7 @@ static int process_this_session(
     oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
     oplog_key_t *opkey_ins = NULL;
     uint8_t add_stripe = 0;
-    bool drain_adds = false; // we always start by reading normal tmp tbl
+    int drain_adds = 0; // we always start by reading normal tmp tbl
     rc = init_ins_tbl(iq->reqlogger, dbc_ins, &opkey_ins, &add_stripe, bdberr);
     if (rc)
         return rc;

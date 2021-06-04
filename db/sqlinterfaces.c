@@ -94,7 +94,6 @@
 #include "fdb_bend_sql.h"
 #include "fdb_access.h"
 #include "sqllog.h"
-#include <stdbool.h>
 #include <quantize.h>
 #include <intern_strings.h>
 
@@ -3269,7 +3268,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int flags)
 {
-    bool normalize_sql_done = false;
+    int normalize_sql_done = 0;
     int recreate = (flags & PREPARE_RECREATE);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
@@ -3326,7 +3325,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                 /* Generate normalized sql */
                 free_normalized_sql(clnt);
                 normalize_stmt_and_store(clnt, rec);
-                normalize_sql_done = true;
+                normalize_sql_done = 1;
 
                 /* Calculate fingerprint */
                 calc_fingerprint(clnt->work.zNormSql, &unused, fingerprint);
@@ -3413,7 +3412,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         if (!normalize_sql_done) {
             free_normalized_sql(clnt);
             normalize_stmt_and_store(clnt, rec);
-            normalize_sql_done = true;
+            normalize_sql_done = 1;
         }
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
