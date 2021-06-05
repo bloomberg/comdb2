@@ -21,7 +21,7 @@ after=`cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("memstat
 
 delta=`expr $after - $before`
 if [ $delta -gt 524288 ]; then
-    echo leaky? >&2
+    echo "leaky? ($after > $before)" >&2
     exit 1
 fi
 
@@ -40,6 +40,6 @@ done
 cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("bdb temptable")'
 ntmptbls=`cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("bdb temptable")' | grep 'total objects' | awk '{print $NF}'`
 if [ $ntmptbls -gt 100 ] ; then
-    echo leaky? >&2
+    echo "leaky? ($ntmptbls > 100)" >&2
     exit 1
 fi

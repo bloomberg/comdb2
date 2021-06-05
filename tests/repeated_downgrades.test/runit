@@ -75,8 +75,11 @@ downgrade()
     done
 }
 
-for i in {0..9} ; do
+N=10
+i=0
+while [ $i -lt $N ] ; do
     cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table tt${i} (i int primary key)"
+    let i=i+1
 done
 
 echo "Downgrade continuously"
@@ -84,4 +87,4 @@ downgrade $DBNAME &> downgrade.out &
 dgpid=$!
 trap "kill $dgpid" INT EXIT
 
-${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads 10 --iterations 1000
+${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 1000

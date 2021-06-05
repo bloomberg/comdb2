@@ -102,10 +102,18 @@ osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
     sess->impl = (sess_impl_t *)(sess + 1);
     sess->sql = sql;
     sess->impl->embedded_sql = 0;
+    sess->impl->socket = 1;
 
     return _osql_sess_create(sess, tzname, type, rqid, uuid, host,
                              is_reorder_on);
 }
+
+
+static inline int is_sess_from_sockbplog(osql_sess_t *sess)
+{
+    return !!sess->impl->socket;
+}
+
 
 /**
  * Terminates an in-use osql session (for which we could potentially
@@ -113,7 +121,8 @@ osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
  * Returns 0 if success
  *
  * This function will remove from osql_repository_rem() if is_linked is set
- * then wait till there are no more clients using this sess then destroy obj
+ * and if did not come over sockbplog, then wait till there are no more clients
+ * using this sess and only then destroy obj
  *
  * NOTE:
  * - it is possible to inline clean a request on master bounce,
@@ -128,9 +137,15 @@ int osql_sess_close(osql_sess_t **psess, int is_linked)
 {
     osql_sess_t *sess = *psess;
 
-    if (is_linked) {
+    if (is_linked && !is_sess_from_sockbplog(sess)) {
         /* unlink the request so no more messages are received */
-        osql_repository_rem(sess);
+        int rc = osql_repository_rem(sess);
+        if (rc) {
+            logmsg(LOGMSG_USER,
+                   "%s: %p failed to delete from repository, already cleanedup ex. osql_sess_try_terminate\n",
+                   __func__, sess);
+            return rc;
+        }
     }
 
     while (ATOMIC_LOAD32(sess->impl->clients) > 0) {
@@ -149,13 +164,17 @@ static void _destroy_session(osql_sess_t **psess)
 {
     osql_sess_t *sess = *psess;
 
-    if (sess->snap_info)
+    if (sess->snap_info) {
         free(sess->snap_info);
+    }
 
     Pthread_mutex_destroy(&sess->impl->mtx);
     if (!sess->impl->embedded_sql)
         free((char *)sess->sql);
-    free(sess);
+#ifndef NDEBUG
+      memset(sess, 0xdb, sizeof(osql_sess_t) + sizeof(sess_impl_t));
+#endif
+    free(sess); // sess->impl is freed thru this free
 
     *psess = NULL;
 }
@@ -171,6 +190,7 @@ int osql_sess_addclient(osql_sess_t *psess)
 {
     sess_impl_t *sess = psess->impl;
     int rc = 0;
+
     Pthread_mutex_lock(&sess->mtx);
     if (sess->dispatched) {
         rc = -1;
@@ -205,13 +225,11 @@ int osql_sess_remclient(osql_sess_t *psess)
     int rc = 0;
 
     Pthread_mutex_lock(&sess->mtx);
-
+    assert(sess->clients > 0);
     sess->clients -= 1;
-
     if (sess->terminate) {
         rc = 1;
     }
-
     Pthread_mutex_unlock(&sess->mtx);
 
     return rc;
@@ -459,8 +477,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
     counter to go to zero will skip it;  we need to decrement client counter
     here so that block processor can close the session */
 
-    if (!sess->socket)
-        osql_repository_put(psess);
+    osql_repository_put(psess);
 
     /* create the buffer now */
     /* construct a block transaction */
