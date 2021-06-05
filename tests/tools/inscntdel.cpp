@@ -9,7 +9,9 @@
 #include <sstream>
 #include <iostream>
 #include <getopt.h>
+#include <signal.h>
 
+int gbl_iterations;
 static std::string quote("");
 static std::string comma(",");
 static std::string space(" ");
@@ -25,8 +27,8 @@ int runsql(cdb2_hndl_tp *h, std::string &sql)
     //printf("Here: cdb2_run_statement: %s, cnonce=%s\n", sql.c_str(), cdb2_cnonce(h));
 
     if (rc != 0) {
-        fprintf(stderr, "Error: cdb2_run_statement failed: %d %s (%s)\n", rc,
-                cdb2_errstr(h), sql.c_str());
+        fprintf(stderr, "Error: cdb2_run_statement failed: %d %s (%s) cnonce=%s\n", rc,
+                cdb2_errstr(h), sql.c_str(), cdb2_cnonce(h));
         exit(1);
     }
 
@@ -52,7 +54,7 @@ int runsql(cdb2_hndl_tp *h, std::string &sql)
     if (rc == CDB2_OK_DONE)
         rc = 0;
     else {
-        fprintf(stderr, "Error: cdb2_next_record failed: %d %s\n", rc, cdb2_errstr(h));
+        fprintf(stderr, "Error: cdb2_next_record failed: %d %s cnonce=%s\n", rc, cdb2_errstr(h), cdb2_cnonce(h));
         exit(1);
     }
     return cnt;
@@ -68,10 +70,10 @@ typedef struct {
 
 void create_tbls(int N)
 {
-    cdb2_hndl_tp *db;
-    int rc = cdb2_open(&db, dbname, "default", 0);
+    cdb2_hndl_tp *h;
+    int rc = cdb2_open(&h, dbname, "default", 0);
     if (rc != 0)
-        rc = cdb2_open(&db, dbname, "local", 0);
+        rc = cdb2_open(&h, dbname, "local", 0);
     if (rc != 0) {
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
@@ -84,25 +86,25 @@ void create_tbls(int N)
             std::ostringstream ss;
             ss << "drop table if exists tt" << i;
             std::string s = ss.str();
-            runsql(db, s);
+            runsql(h, s);
         }
         usleep(500);
         {
             std::ostringstream ss;
             ss << "create table tt" << i << "(i int )";
             std::string s = ss.str();
-            runsql(db, s);
+            runsql(h, s);
         }
     }
-    cdb2_close(db);
+    cdb2_close(h);
 }
 
 void *thr(void *arg)
 {
-    cdb2_hndl_tp *db;
-    int rc = cdb2_open(&db, dbname, "default", 0);
+    cdb2_hndl_tp *h;
+    int rc = cdb2_open(&h, dbname, "default", 0);
     if (rc != 0)
-        rc = cdb2_open(&db, dbname, "local", 0);
+        rc = cdb2_open(&h, dbname, "local", 0);
     if (rc != 0) {
         fprintf(stderr, "Error: cdb2_open failed: %d\n", rc);
         exit(1);
@@ -112,7 +114,7 @@ void *thr(void *arg)
     thr_info_t *tinfo = (thr_info_t *)arg;
     int i = tinfo->thrid;
 
-    runsql(db, sethasql);
+    runsql(h, sethasql); // this also tells cdb2api wraps the insert/delete with a begin/commit
     int N = 100;
 
     std::string ins;
@@ -136,30 +138,37 @@ void *thr(void *arg)
 
     for (unsigned int j = 0; j < tinfo->count; j++) {
         usleep(10); // slow down just a bit
-        runsql(db, ins);
-        int cnt = runsql(db, counts);
+        gbl_iterations++; // don't need absolute precision
+        runsql(h, ins);
+        int cnt = runsql(h, counts);
         if (cnt != N) {
-            fprintf(stderr, "Error: count is %d but should be %d\n", cnt, N);
+            fprintf(stderr, "Error: count is %d but should be %d cnonce=%s\n", cnt, N, cdb2_cnonce(h));
             exit(1);
         }
-        runsql(db, del);
-        cnt = runsql(db, counts);
+        runsql(h, del);
+        cnt = runsql(h, counts);
         if (cnt != 0) {
-            fprintf(stderr, "Error: count is %d but should be 0\n", cnt);
+            fprintf(stderr, "Error: count is %d but should be 0 cnonce=%s\n", cnt, cdb2_cnonce(h));
             exit(1);
         }
     }
 
-    cdb2_close(db);
+    cdb2_close(h);
     std::cout << "Done thr " << i << std::endl;
     return NULL;
 }
 
-void usage(const char *p, const char *err) {
+void usage_and_exit(const char *p, const char *err) {
     fprintf(stderr, "%s\n", err);
     fprintf(stderr, "Usage %s --dbname DBNAME --numthreads NUMTHREADS --iterations ITERATIONS \n", p);
     exit(1);
 }
+
+void int_handler(int signum)
+{
+    fprintf(stderr, "Proccessed %d Iterations\n", gbl_iterations);
+}
+
 
 int main(int argc, char *argv[])
 {
@@ -167,7 +176,7 @@ int main(int argc, char *argv[])
     int iterations = 0;
 
     if(argc < 5)
-        usage(argv[0], "Required parameters were NOT provided"); //exit too
+        usage_and_exit(argv[0], "Required parameters were NOT provided");
 
     static struct option long_options[] =
     {
@@ -196,11 +205,11 @@ int main(int argc, char *argv[])
     }
 
     if (!dbname)
-        usage(argv[0], "Parameter dbname is not set"); //exit too
+        usage_and_exit(argv[0], "Parameter dbname is not set");
     if (numthreads < 1)
-        usage(argv[0], "Parameter numthreads is not set"); //exit too
+        usage_and_exit(argv[0], "Parameter numthreads is not set");
     if (iterations < 1)
-        usage(argv[0], "Parameter iterations is not set"); //exit too
+        usage_and_exit(argv[0], "Parameter iterations is not set");
 
     //printf("%s %d %d\n", dbname, numthreads, iterations);//
 
@@ -216,6 +225,10 @@ int main(int argc, char *argv[])
     //create_tbls(numthreads);
 
     fprintf(stderr, "starting %d threads\n", numthreads);
+
+    struct sigaction sact = {0};
+    sact.sa_handler = int_handler;
+    sigaction(SIGUSR1, &sact, NULL);
 
     /* create threads */
     for (unsigned long long i = 0; i < numthreads; ++i) {

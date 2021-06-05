@@ -3272,16 +3272,15 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
                 we_used = end_time - begin_time;
 
                 /* lets make up a number for how many more ms we should wait
-                   based
-                   on how long we had to wait for one guy */
+                   based on how long we had to wait for one guy */
                 waitms = (we_used * bdb_state->attr->rep_timeout_lag) / 100;
 
                 if (waitms < bdb_state->attr->rep_timeout_minms)
                     waitms = bdb_state->attr->rep_timeout_minms;
 
                 if (bdb_state->rep_trace)
-                    logmsg(LOGMSG_USER, "fastest node to <%s> was %dms, will wait "
-                                    "another %dms for remainder\n",
+                    logmsg(LOGMSG_USER,
+                           "fastest node to <%s> was %dms, will wait another %dms for remainder\n",
                             lsn_to_str(str, &(seqnum->lsn)), we_used, waitms);
 
                 goto got_ack;

@@ -42,7 +42,7 @@ typedef struct osql_repository {
 
 static osql_repository_t *theosql = NULL;
 
-static void osql_repository_rem_unlocked(osql_sess_t *sess);
+static int osql_repository_rem_unlocked(osql_sess_t *sess);
 
 /**
  * Init repository
@@ -89,7 +89,7 @@ static char hex(unsigned char a)
     return 'a' + (a - 10);
 }
 
-/* there is no lock protection here */
+/* this function should be called with theosql->hshlck lock held */
 static osql_sess_t *_get_sess(unsigned long long rqid, uuid_t uuid)
 {
     osql_sess_t *sess = NULL;
@@ -121,21 +121,19 @@ int osql_repository_add(osql_sess_t *sess)
     /* insert it into the hash table */
     Pthread_mutex_lock(&theosql->hshlck);
 
-    /* how about we check if this session is added again due to an early replay
-     */
+    /* check if this session is added again due to an early replay */
     sess_chk = _get_sess(sess->rqid, sess->uuid);
     if (sess_chk) {
         uuidstr_t us;
 
         logmsg(LOGMSG_ERROR,
-               "%s: trying to add another session with the same rqid, "
-               "rqid=%llx uuid=%s\n",
+               "%s: trying to add another session with the same rqid, rqid=%llx uuid=%s\n",
                __func__, sess->rqid, comdb2uuidstr(sess->uuid, us));
 
-        rc = osql_sess_try_terminate(sess_chk, NULL);
-        if (!rc) {
+        int keep = osql_sess_try_terminate(sess_chk, NULL);
+        if (!keep) {
             osql_repository_rem_unlocked(sess_chk);
-            osql_sess_close(&sess_chk, 0);
+            osql_sess_close(&sess_chk, 0); /* false -- don't remove from repository again */
         } else {
             Pthread_mutex_unlock(&theosql->hshlck);
             return -2;
@@ -158,27 +156,34 @@ int osql_repository_add(osql_sess_t *sess)
     return rc;
 }
 
-static void osql_repository_rem_unlocked(osql_sess_t *sess)
+static int osql_repository_rem_unlocked(osql_sess_t *sess)
 {
+    int rc = 0;
     if (sess->rqid == OSQL_RQID_USE_UUID) {
-        hash_del(theosql->rqsuuid, sess);
+        rc = hash_del(theosql->rqsuuid, sess);
     } else {
-        hash_del(theosql->rqs, sess);
+        rc = hash_del(theosql->rqs, sess);
     }
+    if (rc) {
+        logmsg(LOGMSG_DEBUG, "%s: Unable to hash_del, session %p (not found)\n",
+               __func__, sess);
+    }
+    return rc;
 }
 
 /**
  * Remove an osql session from the repository
  * return 0 on success
  */
-void osql_repository_rem(osql_sess_t *sess)
+int osql_repository_rem(osql_sess_t *sess)
 {
     if (!theosql)
-        return;
+        return 1;
 
     Pthread_mutex_lock(&theosql->hshlck);
-    osql_repository_rem_unlocked(sess);
+    int rc = osql_repository_rem_unlocked(sess);
     Pthread_mutex_unlock(&theosql->hshlck);
+    return rc;
 }
 
 /**
@@ -217,13 +222,9 @@ osql_sess_t *osql_repository_get(unsigned long long rqid, uuid_t uuid)
 int osql_repository_put(osql_sess_t *sess)
 {
     int rc;
-
     Pthread_mutex_lock(&theosql->hshlck);
-
     rc = osql_sess_remclient(sess);
-
     Pthread_mutex_unlock(&theosql->hshlck);
-
     return rc;
 }
 
@@ -285,9 +286,10 @@ static int osql_session_testterminate(void *obj, void *arg)
     osql_sess_t *sess = (osql_sess_t *)obj;
     char *host = arg;
 
-    if (!osql_sess_try_terminate(sess, host)) {
+    int keep = osql_sess_try_terminate(sess, host);
+    if (!keep) {
         osql_repository_rem_unlocked(sess);
-        osql_sess_close(&sess, 0);
+        osql_sess_close(&sess, 0); /* false -- don't remove from repository again */
     }
     return 0;
 }

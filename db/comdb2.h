@@ -1220,9 +1220,7 @@ struct osql_sess {
     unsigned long long rqid; /* identifies the client request session */
     uuid_t uuid;
     snap_uid_t *snap_info;
-
     sess_impl_t *impl;
-
     struct ireq *iq; /* iq used by block processor thread */
 
     char tzname[DB_MAX_TZNAMEDB]; /* tzname used for this request */

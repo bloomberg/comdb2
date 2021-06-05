@@ -1121,8 +1121,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         !bdb_latest_commit_is_durable(thedb->bdb_env)) {
         if (IQ_HAS_SNAPINFO(iq)) {
             logmsg(LOGMSG_ERROR,
-                   "%u replay rc changed from %d to NOT_DURABLE "
-                   "for blkseq '%s'\n",
+                   "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
                    line, outrc, cnonce);
         }
         outrc = ERR_NOT_DURABLE;

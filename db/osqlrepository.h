@@ -34,7 +34,7 @@ int osql_repository_add(osql_sess_t *sess);
  * Removes an osql session from the repository
  * Returns 0 on success
  */
-void osql_repository_rem(osql_sess_t *sess);
+int osql_repository_rem(osql_sess_t *sess);
 
 /**
  * Retrieves a session based on rqid

@@ -90,7 +90,7 @@ err:
 err_nomsg:
     if (sess) {
         osql_sess_remclient(sess);
-        osql_sess_close(&sess, 0);
+        osql_sess_close(&sess, 0); /* false so we dont delete it from the repository */
     } else {
         free(sql);
     }

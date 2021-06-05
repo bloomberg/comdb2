@@ -239,6 +239,8 @@ find_cores() {
                 echo 't a a bt full' | gdb -q $COMDB2_EXE $copy_core &>> $LCLDBDIR/core_stacktrace_long.$node.txt
                 ln $COMDB2_EXE -t $LCLDBDIR #make a hardlink of the executable as well
                 echo "    see $LCLDBDIR/core_stacktrace.$node.txt"
+            else
+                echo "No space to copy core located at $node:${cr}"
             fi
         fi
     done

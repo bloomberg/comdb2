@@ -6774,8 +6774,7 @@ void signal_replicant_error(osql_target_t *target, unsigned long long rqid,
         uuidstr_t us;
         comdb2uuidstr(uuid, us);
         logmsg(LOGMSG_ERROR,
-               "%s: failed to signaled rqid=[%llx %s] host=%s of "
-               "error to create bplog\n",
+               "%s: failed to signaled rqid=[%llx %s] host=%s of error to create bplog\n",
                __func__, rqid, us, target->host);
     }
 }
@@ -6795,6 +6794,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int rc = 0;
     osql_uuid_req_t ureq;
     osql_req_t req;
+    int added_to_repository = 0;
 
     /* grab the request */
     uint8_t *p_req_buf = dtap;
@@ -6835,6 +6835,7 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
             send_rc = 0;
         goto done;
     }
+    added_to_repository = 1;
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG,
@@ -6850,12 +6851,12 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     }
 
 done:
-    if (!rc) {
+    if (added_to_repository) {
         /*
-           successful, let the session loose
-           It is possible that we are clearing sessions due to
-           master being rtcpu-ed, and it will wait for the session
-           clients to disappear before it will wipe out the session
+         * Add to repository was successful, let the session loose
+         * It is possible that we are clearing sessions due to
+         * master being rtcpu-ed, and it will wait for the session
+         * clients to disappear before it will wipe out the session
          */
 
         rc = osql_repository_put(sess);
@@ -6863,20 +6864,24 @@ done:
             return 0;
         /* if put noticed a termination flag, fall-through */
         send_rc = 1;
+    } else if (sess) {
+        /* Cleanup: in osql_sess_create() session is initialized with 1 client--this reader thread
+         * Here we need call osql_sess_remclient() which does not get lock
+         * (instead of osql_repository_put)
+         */
+        osql_sess_remclient(sess);
     }
 
     /* notify the sql thread there will be no response! */
     if (send_rc) {
         osql_target_t target = {0};
+        init_bplog_net(&target);
         target.host = fromhost;
-
         signal_replicant_error(&target, rqid, uuid, ERR_NOMASTER, errmsg);
     }
-    if (sess) {
-        /* session start with 1 client, this reader thread */
-        osql_sess_remclient(sess);
-        osql_sess_close(&sess, 0);
-    }
+
+    if (sess)
+        osql_sess_close(&sess, added_to_repository);
 
     return rc;
 }
