@@ -261,10 +261,17 @@ int SBUF2_FUNC(ssl_new_ctx)(SSL_CTX **pctx, ssl_mode mode, const char *dir,
     /* Make sure the obselete SSL v2 & v3 protocols are always disallowed. */
     if (mintlsver < 0)
         mintlsver = 0;
-    for (ii = 0; ii != sizeof(SSL_NO_PROTOCOLS) / sizeof(SSL_NO_PROTOCOLS[0]);
+
+    #define XMACRO_SSL_NO_PROTOCOLS(a, b, c) {a,b,c},
+    struct ssl_no_protocols ssl_no_protocols[] = {
+        SSL_NO_PROTOCOLS
+    };
+    #undef XMACRO_SSL_NO_PROTOCOLS
+
+    for (ii = 0; ii != sizeof(ssl_no_protocols) / sizeof(ssl_no_protocols[0]);
          ++ii) {
-        if (SSL_NO_PROTOCOLS[ii].tlsver < mintlsver)
-            protocols |= SSL_NO_PROTOCOLS[ii].opensslver;
+        if (ssl_no_protocols[ii].tlsver < mintlsver)
+            protocols |= ssl_no_protocols[ii].opensslver;
     }
 
     /* Disable SSL protocols to prevent POODLE attack (CVE-2014-3566). */

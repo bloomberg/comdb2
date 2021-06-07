@@ -141,20 +141,28 @@ typedef enum {
     PEER_SSL_REQUIRE
 } peer_ssl_mode;
 
-const static struct ssl_protocol {
+struct ssl_no_protocols {
     double tlsver;
     long opensslver;
     const char *name;
-} SSL_NO_PROTOCOLS[] = {{-2.0, SSL_OP_NO_SSLv2, "SSLv2"},
-                        {-1.0, SSL_OP_NO_SSLv3, "SSLv3"},
-                        {1.0, SSL_OP_NO_TLSv1, "TLSv1"},
-                        {1.1, SSL_OP_NO_TLSv1_1, "TLSv1.1"},
-                        {1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2"}
-#ifdef SSL_OP_NO_TLSv1_3
-                        ,
-                        {1.3, SSL_OP_NO_TLSv1_3, "TLSv1.3"}
-#endif
 };
+
+#ifdef SSL_OP_NO_TLSv1_3
+  #define SSL_NO_PROTOCOLS                                                     \
+    XMACRO_SSL_NO_PROTOCOLS(-2.0, SSL_OP_NO_SSLv2, "SSLv2")                    \
+    XMACRO_SSL_NO_PROTOCOLS(-1.0, SSL_OP_NO_SSLv3, "SSLv3")                    \
+    XMACRO_SSL_NO_PROTOCOLS(1.0, SSL_OP_NO_TLSv1, "TLSv1")                     \
+    XMACRO_SSL_NO_PROTOCOLS(1.1, SSL_OP_NO_TLSv1_1, "TLSv1.1")                 \
+    XMACRO_SSL_NO_PROTOCOLS(1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2")                 \
+    XMACRO_SSL_NO_PROTOCOLS(1.3, SSL_OP_NO_TLSv1_3, "TLSv1.3")
+#else
+  #define SSL_NO_PROTOCOLS                                                     \
+    XMACRO_SSL_NO_PROTOCOLS(-2.0, SSL_OP_NO_SSLv2, "SSLv2")                    \
+    XMACRO_SSL_NO_PROTOCOLS(-1.0, SSL_OP_NO_SSLv3, "SSLv3")                    \
+    XMACRO_SSL_NO_PROTOCOLS(1.0, SSL_OP_NO_TLSv1, "TLSv1")                     \
+    XMACRO_SSL_NO_PROTOCOLS(1.1, SSL_OP_NO_TLSv1_1, "TLSv1.1")                 \
+    XMACRO_SSL_NO_PROTOCOLS(1.2, SSL_OP_NO_TLSv1_2, "TLSv1.2")
+#endif
 
 /*
  * Create an SSL context.
