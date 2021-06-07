@@ -3262,7 +3262,7 @@ int osql_comm_is_done(osql_sess_t *sess, int type, char *rpl, int rpllen,
         break;
     default:
         if (sess)
-            sess->is_delayed = true;
+            sess->is_delayed = 1;
         break;
     }
     return rc;
@@ -5860,7 +5860,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
 /* get the table name part of the rpl request
  */
-const char *get_tablename_from_rpl(bool is_uuid, const uint8_t *rpl,
+const char *get_tablename_from_rpl(int is_uuid, const uint8_t *rpl,
                                    int *tableversion)
 {
     osql_usedb_t dt;
@@ -6240,7 +6240,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             gbl_goslow == 0) {
             addflags |= RECFLAGS_NO_CONSTRAINTS;
         } else {
-            iq->sorese->is_delayed = true;
+            iq->sorese->is_delayed = 1;
         }
 
         rc = add_record(iq, trans, tag_name_ondisk,
@@ -6875,7 +6875,7 @@ done:
     if (sess) {
         /* session start with 1 client, this reader thread */
         osql_sess_remclient(sess);
-        osql_sess_close(&sess, false);
+        osql_sess_close(&sess, 0);
     }
 
     return rc;

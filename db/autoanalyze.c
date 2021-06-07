@@ -20,7 +20,6 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <unistd.h>
-#include <stdbool.h>
 #include <sql.h>
 
 #include <comdb2.h>
@@ -36,7 +35,7 @@
 
 const char *aa_counter_str = "autoanalyze_counter";
 const char *aa_lastepoch_str = "autoanalyze_lastepoch";
-static volatile bool auto_analyze_running = false;
+static volatile int auto_analyze_running = 0;
 int gbl_debug_aa;
 
 /* reset autoanalyze counters to zero
@@ -125,7 +124,7 @@ void *auto_analyze_table(void *arg)
         sleep(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_CHK_AA_TIME) + 1);
     }
 
-    auto_analyze_running = false;
+    auto_analyze_running = 0;
     return NULL;
 }
 
@@ -401,7 +400,7 @@ void *auto_analyze_main(void *unused)
                 ctrace(
                     "AUTOANALYZE: Analyzing Table %s, counter (%d); last run time %s\n",
                     tbl->tablename, newautoanalyze_counter, ctime_r(&tbl->aa_lastepoch, my_buf));
-                auto_analyze_running = true; // will be reset by
+                auto_analyze_running = 1; // will be reset by
                                              // auto_analyze_table()
                 pthread_t analyze;
                 // will be freed in auto_analyze_table()

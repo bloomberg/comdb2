@@ -487,7 +487,7 @@ int fdb_svc_trans_rollback(char *tid, enum transaction_level lvl,
        but new cursors can arrive afterwards.  Mark the session rollbacked,
        so that new cursors can detect and fail gracefully
      */
-    clnt->dbtran.rollbacked = true;
+    clnt->dbtran.rollbacked = 1;
     fdb_sequence_request(clnt, clnt->dbtran.dtran->fdb_trans.top, seq);
 
     while (clnt->dbtran.dtran->fdb_trans.top->cursors.top != NULL) {

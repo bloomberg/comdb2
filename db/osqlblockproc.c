@@ -66,21 +66,21 @@ struct blocksql_tran {
     pthread_mutex_t mtx;
 
     int seq; /* counting ops saved */
-    bool is_uuid;
+    int is_uuid;
 
     /* selectv caches */
-    bool is_selectv_wl_upd;
+    int is_selectv_wl_upd;
     hash_t *selectv_genids;
     int tableversion;
 
     /* reorder */
-    bool is_reorder_on;
+    int is_reorder_on;
     char *tablename; /* remember tablename in saveop for reordering */
     uint16_t tbl_idx;
     unsigned long long last_genid; /* remember updrec/insrec genid for qblobs */
     unsigned long long
         ins_seq;      /* remember key seq for inserts into ins tmptbl */
-    bool last_is_ins; /* 1 if processing INSERT, 0 for any other oql type */
+    int last_is_ins; /* 1 if processing INSERT, 0 for any other oql type */
 
     /* prefetch */
     struct dbtable *last_db;
@@ -98,7 +98,7 @@ typedef struct {
     char *tablename;
     unsigned long long genid;
     int tableversion;
-    bool get_writelock;
+    int get_writelock;
 } selectv_genid_t;
 
 int gbl_selectv_writelock_on_update = 1;
@@ -110,7 +110,7 @@ static int apply_changes(struct ireq *iq, blocksql_tran_t *tran, void *iq_tran,
                                      blob_buffer_t blobs[MAXBLOBS], int,
                                      struct block_err *, int *));
 static int req2blockop(int reqtype);
-extern const char *get_tablename_from_rpl(bool is_uuid, const char *rpl,
+extern const char *get_tablename_from_rpl(int is_uuid, const char *rpl,
                                           int *tableversion);
 extern void live_sc_off(struct dbtable * db);
 
@@ -191,7 +191,7 @@ static int osql_bplog_instbl_key_cmp(void *usermem, int key1len,
  * Returns 0 if success.
  *
  */
-blocksql_tran_t *osql_bplog_create(bool is_uuid, bool is_reorder)
+blocksql_tran_t *osql_bplog_create(int is_uuid, int is_reorder)
 {
 
     blocksql_tran_t *tran = NULL;
@@ -621,7 +621,7 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
  */
 void osql_bplog_set_blkseq(osql_sess_t *sess, struct ireq *iq)
 {
-    iq->have_blkseq = true;
+    iq->have_blkseq = 1;
     if (sess->rqid == OSQL_RQID_USE_UUID) {
         memcpy(iq->seq, sess->uuid, sizeof(uuid_t));
         iq->seqlen = sizeof(uuid_t);
@@ -795,7 +795,7 @@ static inline int init_ins_tbl(struct reqlogger *reqlogger,
  */
 static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
                                            struct temp_cursor *dbc_ins,
-                                           bool drain_adds, char **data_p,
+                                           int drain_adds, char **data_p,
                                            int *datalen_p)
 {
     if (drain_adds) {
@@ -813,11 +813,11 @@ static inline void get_tmptbl_data_and_len(struct temp_cursor *dbc,
  * if tbl_idx is same, return true if add_stripe < opkey->stripe
  * return false otherwise
  */
-static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
+static inline int ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
                                int add_stripe)
 {
     if (!opkey_ins)
-        return false;
+        return 0;
 
     return opkey_ins->tbl_idx < opkey->tbl_idx ||
            (opkey_ins->tbl_idx == opkey->tbl_idx && add_stripe < opkey->stripe);
@@ -831,19 +831,19 @@ static inline bool ins_is_less(oplog_key_t *opkey_ins, oplog_key_t *opkey,
 static inline int
 get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
                     oplog_key_t **opkey, oplog_key_t **opkey_ins,
-                    bool *drain_adds_p, int *bdberr, int add_stripe)
+                    int *drain_adds_p, int *bdberr, int add_stripe)
 {
     if (*drain_adds_p) {
         int rc = bdb_temp_table_next(thedb->bdb_env, dbc_ins, bdberr);
         if (rc != 0) { // ins tbl contains no more records
-            *drain_adds_p = false;
+            *drain_adds_p = 0;
             *opkey_ins = NULL;
             return 0;
         }
 
         *opkey_ins = (oplog_key_t *)bdb_temp_table_key(dbc_ins);
         if (!ins_is_less(*opkey_ins, *opkey, add_stripe))
-            *drain_adds_p = false;
+            *drain_adds_p = 0;
     } else {
         int rc = bdb_temp_table_next(thedb->bdb_env, dbc, bdberr);
         if (rc)
@@ -853,7 +853,7 @@ get_next_merge_tmps(struct temp_cursor *dbc, struct temp_cursor *dbc_ins,
         /* if cursor valid for dbc_ins, and if we changed table/stripe and
          * prev table/strip match dbc_ins table/stripe then process adds */
         if (ins_is_less(*opkey_ins, *opkey, add_stripe))
-            *drain_adds_p = true;
+            *drain_adds_p = 1;
     }
     return 0;
 }
@@ -939,7 +939,7 @@ static int process_this_session(
     oplog_key_t *opkey = (oplog_key_t *)bdb_temp_table_key(dbc);
     oplog_key_t *opkey_ins = NULL;
     uint8_t add_stripe = 0;
-    bool drain_adds = false; // we always start by reading normal tmp tbl
+    int drain_adds = 0; // we always start by reading normal tmp tbl
     rc = init_ins_tbl(iq->reqlogger, dbc_ins, &opkey_ins, &add_stripe, bdberr);
     if (rc)
         return rc;

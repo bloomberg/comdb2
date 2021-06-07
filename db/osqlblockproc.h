@@ -64,7 +64,7 @@ extern int gbl_time_osql;
  * Returns 0 if success.
  *
  */
-blocksql_tran_t *osql_bplog_create(bool is_uuid, bool is_reorder);
+blocksql_tran_t *osql_bplog_create(int is_uuid, int is_reorder);
 
 /**
  * Apply all schema changes

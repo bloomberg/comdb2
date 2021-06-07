@@ -794,12 +794,12 @@ void osql_postabort_handle(struct ireq *iq)
     osql_scdone_abort_callback(iq);
 }
 
-inline bool osql_is_index_reorder_on(int osql_flags)
+int osql_is_index_reorder_on(int osql_flags)
 {
     return osql_flags & OSQL_FLAGS_REORDER_IDX_ON;
 }
 
-inline void osql_unset_index_reorder_bit(int *osql_flags)
+void osql_unset_index_reorder_bit(int *osql_flags)
 {
     (*osql_flags) &= (~OSQL_FLAGS_REORDER_IDX_ON);
 }

@@ -86,18 +86,18 @@ void free_cached_idx(uint8_t * *cached_idx);
 int gbl_max_wr_rows_per_txn = 0;
 int gbl_max_cascaded_rows_per_txn = 0;
 
-static inline bool is_event_from_sc(int flags)
+static inline int is_event_from_sc(int flags)
 {
     return flags & RECFLAGS_NEW_SCHEMA;
 }
 
-static inline bool is_event_from_cascade(int flags)
+static inline int is_event_from_cascade(int flags)
 {
     return flags & RECFLAGS_IN_CASCADE;
 }
 
 
-static inline bool has_constraint(int flags)
+static inline int has_constraint(int flags)
 {
     return !(flags & RECFLAGS_NO_CONSTRAINTS);
 }
@@ -514,7 +514,7 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
     }
 
     if (iq->usedb->nix > 0 || (iq->usedb->sc_to && iq->usedb->sc_to->nix > 0)) {
-        bool reorder =
+        int reorder =
             osql_is_index_reorder_on(iq->osql_flags) && !is_event_from_sc(flags) &&
             rec_flags == 0 && iq->usedb->sc_from != iq->usedb &&
             strcasecmp(iq->usedb->tablename, "comdb2_oplog") != 0 &&

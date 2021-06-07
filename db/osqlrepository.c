@@ -135,7 +135,7 @@ int osql_repository_add(osql_sess_t *sess)
         rc = osql_sess_try_terminate(sess_chk, NULL);
         if (!rc) {
             osql_repository_rem_unlocked(sess_chk);
-            osql_sess_close(&sess_chk, false);
+            osql_sess_close(&sess_chk, 0);
         } else {
             Pthread_mutex_unlock(&theosql->hshlck);
             return -2;
@@ -287,7 +287,7 @@ static int osql_session_testterminate(void *obj, void *arg)
 
     if (!osql_sess_try_terminate(sess, host)) {
         osql_repository_rem_unlocked(sess);
-        osql_sess_close(&sess, false);
+        osql_sess_close(&sess, 0);
     }
     return 0;
 }
@@ -339,10 +339,10 @@ int osql_repository_cancelall(void)
  * used by socksql poking
  *
  */
-bool osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
+int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid)
 {
     if (!theosql)
-        return false;
+        return 0;
 
     osql_sess_t *sess = NULL;
     int out_rc = 0;

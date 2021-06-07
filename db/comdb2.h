@@ -71,7 +71,6 @@ typedef long long tranid_t;
 #include <prefault.h>
 #include <quantize.h>
 #include <dlmalloc.h>
-#include <stdbool.h>
 
 #include "sqlinterfaces.h"
 #include "errstat.h"
@@ -763,26 +762,26 @@ typedef struct dbtable {
     /* lock for consumer list */
     pthread_rwlock_t consumer_lk;
 
-    bool has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
-    bool ix_partial : 1;      /* set to 1 if we have partial indexes */
-    bool ix_expr : 1;         /* set to 1 if we have indexes on expressions */
-    bool ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
+    unsigned has_datacopy_ix : 1; /* set to 1 if we have datacopy indexes */
+    unsigned ix_partial : 1;      /* set to 1 if we have partial indexes */
+    unsigned ix_expr : 1;         /* set to 1 if we have indexes on expressions */
+    unsigned ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
 
-    bool sc_abort : 1;
-    bool sc_downgrading : 1;
+    unsigned sc_abort : 1;
+    unsigned sc_downgrading : 1;
 
     /* boolean value set to nonzero if table rebuild is in progress */
-    bool doing_conversion : 1;
+    unsigned doing_conversion : 1;
     /* boolean value set to nonzero if table upgrade is in progress */
-    bool doing_upgrade : 1;
+    unsigned doing_upgrade : 1;
 
-    bool disableskipscan : 1;
-    bool do_local_replication : 1;
+    unsigned disableskipscan : 1;
+    unsigned do_local_replication : 1;
     /* A flag to temporarily disable check for the presence of u_longlong types
        in the (csc2) schema even when forbid_ulonglong is enabled. This allows
        certain maintenance operations on legacy tables, using forbid_ulonglong
        type, to work properly. */
-    bool skip_error_on_ulonglong_check : 1;
+    unsigned skip_error_on_ulonglong_check : 1;
 
     /* name of the timepartition, if this is a shard */
     const char *timepartition_name;
@@ -1206,7 +1205,7 @@ typedef struct sess_impl sess_impl_t;
 enum osql_target_type { OSQL_OVER_NET = 1, OSQL_OVER_SOCKET = 2 };
 struct osql_target {
     enum osql_target_type type;
-    bool is_ondisk;
+    unsigned is_ondisk;
     const char *host;
     SBUF2 *sb;
     int (*send)(struct osql_target *target, int usertype, void *data,
@@ -1239,8 +1238,8 @@ struct osql_sess {
     unsigned int tran_rows; /* number of rows that are actual ADD/UPD/DEL */
 
     int queryid;
-    bool is_reorder_on : 1;
-    bool is_delayed : 1;
+    unsigned is_reorder_on : 1;
+    unsigned is_delayed : 1;
 
     /* from sorese */
     osql_target_t target; /* replicant machine; host is NULL if local */
@@ -1406,20 +1405,20 @@ struct ireq {
     /* Client endian flags. */
     uint8_t client_endian;
 
-    bool have_client_endian : 1;
-    bool is_fake : 1;
-    bool is_dumpresponse : 1;
-    bool is_fromsocket : 1;
-    bool is_socketrequest : 1;
-    bool is_block2positionmode : 1;
+    unsigned have_client_endian : 1;
+    unsigned is_fake : 1;
+    unsigned is_dumpresponse : 1;
+    unsigned is_fromsocket : 1;
+    unsigned is_socketrequest : 1;
+    unsigned is_block2positionmode : 1;
 
-    bool errstrused : 1;
-    bool vfy_genid_track : 1;
-    bool have_blkseq : 1;
+    unsigned errstrused : 1;
+    unsigned vfy_genid_track : 1;
+    unsigned have_blkseq : 1;
 
-    bool sc_locked : 1;
-    bool sc_should_abort : 1;
-    bool sc_closed_files : 1;
+    unsigned sc_locked : 1;
+    unsigned sc_should_abort : 1;
+    unsigned sc_closed_files : 1;
 
     int sc_running;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
@@ -3588,5 +3587,7 @@ extern void global_sql_timings_print(void);
 /* User password cache */
 void init_password_cache();
 void destroy_password_cache();
+
+extern int gbl_rcache;
 
 #endif /* !INCLUDED_COMDB2_H */

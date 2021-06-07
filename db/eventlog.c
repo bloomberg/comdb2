@@ -147,7 +147,7 @@ static void eventlog_roll_cleanup()
     closedir(d);
 }
 
-static gzFile eventlog_open(char *fname, bool append)
+static gzFile eventlog_open(char *fname, int append)
 {
     gbl_eventlog_fname = fname;
     const char *mode = append ? "2a" : "2w";
@@ -182,7 +182,7 @@ void eventlog_init()
     seen_sql = hash_init_o(offsetof(struct sqltrack, fingerprint), FINGERPRINTSZ);
     listc_init(&sql_statements, offsetof(struct sqltrack, lnk));
     char *fname = eventlog_fname(thedb->envname);
-    if (eventlog_enabled) eventlog = eventlog_open(fname, false);
+    if (eventlog_enabled) eventlog = eventlog_open(fname, 0);
 }
 
 
@@ -551,7 +551,7 @@ static void populate_obj(cson_object *obj, const struct reqlogger *logger)
 
 static inline void add_to_fingerprints(const struct reqlogger *logger)
 {
-    bool isSqlErr = logger->error && logger->sql_ref;
+    int isSqlErr = logger->error && logger->sql_ref;
 
     if ((EV_SQL == logger->event_type || isSqlErr) && !hash_find(seen_sql, logger->fingerprint)) {
         eventlog_add_newsql(logger);
@@ -611,7 +611,7 @@ static void eventlog_roll(void)
     eventlog_close();
 
     char *fname = eventlog_fname(thedb->envname);
-    eventlog = eventlog_open(fname, false);
+    eventlog = eventlog_open(fname, 0);
 }
 
 // this function must be called while holding eventlog_lk
@@ -620,7 +620,7 @@ static void eventlog_usefile(const char *fname)
     eventlog_close();
 
     char *d = strdup(fname);
-    eventlog = eventlog_open(d, true); // passes responsibility to free d
+    eventlog = eventlog_open(d, 1); // passes responsibility to free d
     if (!eventlog)                     // failed to open fname, so open from default location
         eventlog_roll();
 }

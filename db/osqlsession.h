@@ -32,14 +32,14 @@ typedef struct osql_uuid_req osql_uuid_req_t;
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, bool is_reorder_on);
+                              const char *host, int is_reorder_on);
 /**
  * Same as osql_sess_create, but sql is already a malloced cstr
  *
  */
 osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
                                      unsigned long long rqid, uuid_t uuid,
-                                     const char *host, bool is_reorder_on);
+                                     const char *host, int is_reorder_on);
 
 /**
  * Terminates an in-use osql session (for which we could potentially
@@ -49,7 +49,7 @@ osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
  * NOTE: it is possible to inline clean a request on master bounce,
  * which starts by unlinking the session first, and freeing bplog afterwards
  */
-int osql_sess_close(osql_sess_t **sess, bool is_linked);
+int osql_sess_close(osql_sess_t **sess, int is_linked);
 
 /**
  * Register client
@@ -94,7 +94,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
  *
  */
 int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           bool *is_msg_done);
+                           int *is_msg_done);
 
 int osql_sess_queryid(osql_sess_t *sess);
 
