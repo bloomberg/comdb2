@@ -35,6 +35,7 @@
 #include <util.h>
 #include <segstr.h> /* tokcmp(), segtok(), tokdup() and etc. */
 #include "sql.h"    /* struct sqlclntstate */
+#include <cdb2api.h>
 
 /******************
  Helpers.
@@ -288,7 +289,7 @@ int ssl_bend_init(const char *default_certdir)
     char errmsg[512];
     ks = (gbl_cert_dir == NULL) ? default_certdir : gbl_cert_dir;
 
-    rc = ssl_init(1, 1, 1, NULL, 0);
+    rc = cdb2_init_ssl(1, 1);
     if (rc != 0)
         return rc;
 

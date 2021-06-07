@@ -4,10 +4,8 @@ set(src
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
   ${PROJECT_SOURCE_DIR}/util/hostname_support.c
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
+  ${PROJECT_SOURCE_DIR}/util/walkback.c
 )
-
-list(APPEND src ${PROJECT_SOURCE_DIR}/util/walkback.c)
-set_source_files_properties(${PROJECT_SOURCE_DIR}/util/walkback.c PROPERTIES COMPILE_FLAGS -DUSE_UNWIND)
 
 if(WITH_SSL)
   list(APPEND src ${PROJECT_SOURCE_DIR}/util/ssl_support.c)
@@ -33,9 +31,20 @@ endif()
 # common obj files for .so/.dylib and .a
 add_definitions(-DDISABLE_HOSTADDR_CACHE)
 add_definitions(-DSBUF2_SERVER=0)
+
+if (COMDB2_BBCMAKE)
+  add_library(opencdb2api STATIC ${src})
+  add_dependencies(opencdb2api  proto)
+  target_link_libraries(opencdb2api PUBLIC protobuf-c)
+  if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
+    target_link_libraries(opencdb2api PUBLIC libunwind)
+  endif()
+  configure_bb_target(opencdb2api V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+else()
+
 add_library(objlib OBJECT ${src})
 set_property(TARGET objlib PROPERTY POSITION_INDEPENDENT_CODE 1)
-add_dependencies(objlib protobuf)
+add_dependencies(objlib proto)
 
 add_library(cdb2api STATIC $<TARGET_OBJECTS:objlib>)
 configure_file(cdb2api.pc cdb2api.pc @ONLY)
@@ -59,3 +68,5 @@ if(NOT COMDB2_SKIP_CDB2API_SO)
   endif()
   install(TARGETS cdb2api_shared LIBRARY DESTINATION lib)
 endif()
+
+endif(COMDB2_BBCMAKE)

@@ -150,7 +150,6 @@ ENDIF()
 
 set_property(SOURCE comdb2.c PROPERTY COMPILE_DEFINITIONS
   COMDB2_GIT_VERSION_SHA=${COMDB2_GIT_VERSION_SHA}
-
   COMDB2_BUILD_VERSION=${COMDB2_BUILD_VERSION}
   COMDB2_CODENAME=${COMDB2_CODENAME}
   COMDB2_SEMVER=${COMDB2_SEMVER}
@@ -205,14 +204,13 @@ add_definitions(
   -DMSPACES
   ${SQLITE_FLAGS}
 )
-add_dependencies(comdb2 mem protobuf sqlite db bdb)
+add_dependencies(comdb2 mem proto sqlite db bdb)
 
-target_link_libraries(comdb2
+target_link_libraries(comdb2 PRIVATE
   ${PLUGIN_LIBRARIES}
   schemachange
   bdb
   util
-  cdb2api
   crc32c
   comdb2rle
   csc2
@@ -227,8 +225,6 @@ target_link_libraries(comdb2
   sqlite
   util
   tz
-  m
-  ${CMAKE_DL_LIBS}
   ${LZ4_LIBRARY}
   ${RDKAFKA_LIBRARY}
   ${OPENSSL_LIBRARIES}
@@ -237,8 +233,14 @@ target_link_libraries(comdb2
   ${UUID_LIBRARY}
   ${ZLIB_LIBRARIES}
   ${LIBEVENT_LIBRARIES}
-  ${COMDB2_ROBO_LINK_FLAGS}
 )
+
+if (COMDB2_BBCMAKE)
+  target_link_libraries(comdb2 PRIVATE opencdb2api uuid event_core_static event_pthreads_static)
+  configure_bb_target(comdb2 V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+else()
+  target_link_libraries(comdb2 PRIVATE cdb2api m ${CMAKE_DL_LIBS})
+endif()
 
 configure_file(copycomdb2 copycomdb2 @ONLY)
 

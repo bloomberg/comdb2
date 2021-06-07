@@ -1,4 +1,4 @@
-include(${CMAKE_MODULE_PATH}/plugin.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/plugin.cmake)
 
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
@@ -33,3 +33,7 @@ include_directories(
 set(SOURCES sockbplog.c)
 add_plugin(sockbplog STATIC "${SOURCES}")
 add_dependencies(sockbplog sqlite) # Wait for parse.h
+if (COMDB2_BBCMAKE)
+  target_link_libraries(sockbplog PUBLIC protobuf-c)
+  configure_bb_target(sockbplog V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()

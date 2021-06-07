@@ -1,5 +1,5 @@
-cmake_minimum_required (VERSION 3.1)
-project (Comdb2)
+cmake_minimum_required (VERSION 3.3)
+project (Comdb2 ${COMDB2_BBCMAKE})
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -44,7 +44,14 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
     "/usr/local/opt/readline")
 endif()
 
-set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
+if(COMDB2_BBCMAKE)
+
+  include("${COMDB2_BBLIBEVENT}/libevent.cmake")
+  find_package(ConfigureBbTarget REQUIRED)
+
+else()
+
+set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake)
 find_package(LZ4 REQUIRED)
 # Comdb2 uses libcrpyto. Hence OpenSSL is required even if WITH_SSL is off.
 find_package(OpenSSL REQUIRED)
@@ -64,6 +71,8 @@ if(WITH_RDKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_RDKAFKA)
 endif()
+
+endif(COMDB2_BBCMAKE)
 
 option(COMDB2_LEGACY_DEFAULTS "Legacy defaults without lrl override" OFF)
 

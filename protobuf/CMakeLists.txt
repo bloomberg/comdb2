@@ -14,7 +14,7 @@ foreach(p ${proto})
     COMMAND ${protoc-c} -I${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/${p} --c_out=${CMAKE_CURRENT_BINARY_DIR}
   )
 endforeach()
-add_custom_target(protobuf DEPENDS ${dot_c} ${dot_h})
+add_custom_target(proto DEPENDS ${dot_c} ${dot_h})
 
 set(module protobuf)
 set(MODULE PROTOBUF)
