@@ -91,7 +91,6 @@
 #include "fdb_bend_sql.h"
 #include "fdb_access.h"
 #include "sqllog.h"
-#include <stdbool.h>
 #include <quantize.h>
 #include <str0.h>
 
@@ -2935,7 +2934,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int flags)
 {
-    bool normalize_sql_done = false;
+    int normalize_sql_done = 0;
     int prepareOnly = (flags & PREPARE_ONLY);
     int rc = sqlengine_prepare_engine(thd, clnt, flags);
     if (thd->sqldb == NULL) {
@@ -2994,7 +2993,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                     free_normalized_sql(clnt);
                     normalize_stmt_and_store(clnt, rec, 0);
                     zNormSql = clnt->work.zNormSql;
-                    normalize_sql_done = true;
+                    normalize_sql_done = 1;
                 } else {
                     zNormSql = sqlite3_normalized_sql(rec->stmt);
                 }

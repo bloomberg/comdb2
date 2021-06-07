@@ -39,10 +39,10 @@
 struct sess_impl {
     int clients; /* number of threads using the session */
 
-    bool dispatched : 1; /* Set when session is dispatched to handle_buf */
-    bool terminate : 1;  /* Set when this session is about to be terminated */
-    bool socket : 1;     /* Set if request comes over socket instead of net */
-    bool embedded_sql : 1; /* Set if sql is part of session malloc object */
+    unsigned dispatched : 1; /* Set when session is dispatched to handle_buf */
+    unsigned terminate : 1;  /* Set when this session is about to be terminated */
+    unsigned socket : 1;     /* Set if request comes over socket instead of net */
+    unsigned embedded_sql : 1; /* Set if sql is part of session malloc object */
 
     pthread_mutex_t mtx; /* dispatched/terminate/clients protection */
 };
@@ -51,7 +51,7 @@ static void _destroy_session(osql_sess_t **psess);
 static int handle_buf_sorese(osql_sess_t *psess);
 static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
                                       unsigned long long rqid, uuid_t uuid,
-                                      const char *host, bool is_reorder_on);
+                                      const char *host, int is_reorder_on);
 
 /**
  * Creates an sock osql session
@@ -61,7 +61,7 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
  */
 osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
                               int type, unsigned long long rqid, uuid_t uuid,
-                              const char *host, bool is_reorder_on)
+                              const char *host, int is_reorder_on)
 {
     osql_sess_t *sess = NULL;
 
@@ -76,7 +76,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
     sess->impl = (sess_impl_t *)(sess + 1);
     sess->sql = (char *)(sess->impl + 1);
     strncpy0((char *)sess->sql, sql, sqlen + 1);
-    sess->impl->embedded_sql = true;
+    sess->impl->embedded_sql = 1;
 
     return _osql_sess_create(sess, tzname, type, rqid, uuid, host,
                              is_reorder_on);
@@ -88,7 +88,7 @@ osql_sess_t *osql_sess_create(const char *sql, int sqlen, char *tzname,
  */
 osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
                                      unsigned long long rqid, uuid_t uuid,
-                                     const char *host, bool is_reorder_on)
+                                     const char *host, int is_reorder_on)
 {
     osql_sess_t *sess = NULL;
 
@@ -101,7 +101,7 @@ osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
     }
     sess->impl = (sess_impl_t *)(sess + 1);
     sess->sql = sql;
-    sess->impl->embedded_sql = false;
+    sess->impl->embedded_sql = 0;
 
     return _osql_sess_create(sess, tzname, type, rqid, uuid, host,
                              is_reorder_on);
@@ -124,7 +124,7 @@ osql_sess_t *osql_sess_create_socket(const char *sql, char *tzname, int type,
  *   THE REPO LOCK ALREADY, TO PREVENT REPO_REM FROM LOCKING
  *
  */
-int osql_sess_close(osql_sess_t **psess, bool is_linked)
+int osql_sess_close(osql_sess_t **psess, int is_linked)
 {
     osql_sess_t *sess = *psess;
 
@@ -263,7 +263,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
                     int datalen, int *found)
 {
     int rc = 0;
-    bool is_msg_done = false;
+    int is_msg_done = 0;
     struct errstat *perr = NULL;
 
     /* get the session; dispatched sessions are ignored */
@@ -307,7 +307,7 @@ int osql_sess_rcvop(unsigned long long rqid, uuid_t uuid, int type, void *data,
         rc = osql_repository_put(sess);
         if (rc == 1) {
             /* session was marked terminated and not finished*/
-            osql_sess_close(&sess, true);
+            osql_sess_close(&sess, 1);
         }
         return 0;
     }
@@ -324,7 +324,7 @@ failed_stream:
     osql_repository_put(sess);
 
     logmsg(LOGMSG_DEBUG, "%s: cancelled transaction\n", __func__);
-    osql_sess_close(&sess, true);
+    osql_sess_close(&sess, 1);
 
     return rc;
 }
@@ -336,13 +336,13 @@ extern int gbl_sockbplog_debug;
  *
  */
 int osql_sess_rcvop_socket(osql_sess_t *sess, int type, void *data, int datalen,
-                           bool *is_msg_done)
+                           int *is_msg_done)
 {
     int rc = 0;
     struct errstat *perr = NULL;
 
     *is_msg_done =
-        osql_comm_is_done(sess, type, data, datalen, true, &perr, NULL) != 0;
+        osql_comm_is_done(sess, type, data, datalen, 1, &perr, NULL) != 0;
 
     /* we have received an OSQL_XERR; replicant wants to abort the transaction;
        discard the session and be done */
@@ -389,7 +389,7 @@ int osql_sess_queryid(osql_sess_t *sess)
 int osql_sess_try_terminate(osql_sess_t *psess, const char *host)
 {
     sess_impl_t *sess = psess->impl;
-    bool keep_sess = false;
+    int keep_sess = 0;
     uuidstr_t us;
 
     if (host && host != psess->target.host)
@@ -398,11 +398,11 @@ int osql_sess_try_terminate(osql_sess_t *psess, const char *host)
     Pthread_mutex_lock(&sess->mtx);
 
     if (sess->dispatched) {
-        keep_sess = true;
+        keep_sess = 1;
         goto done;
     }
 
-    sess->terminate = true;
+    sess->terminate = 1;
 
     /* NOTE: if there is at least a client, it will check the status
     before taking decrementing the client, and if "terminate" is lit
@@ -450,7 +450,7 @@ static int handle_buf_sorese(osql_sess_t *psess)
     Pthread_mutex_lock(&sess->mtx);
     /* NOTE: the session here has one client at least, so it will not be
     close; it might be terminanted but we allow to dispatch */
-    sess->dispatched = true;
+    sess->dispatched = 1;
     psess->sess_endus = comdb2_time_epochus();
     bzero(&psess->xerr, sizeof(psess->xerr));
     Pthread_mutex_unlock(&sess->mtx);
@@ -478,14 +478,14 @@ static int handle_buf_sorese(osql_sess_t *psess)
     if (rc) {
         signal_replicant_error(&psess->target, psess->rqid, psess->uuid,
                                ERR_NOMASTER, "failed tp dispatch, queue full");
-        osql_sess_close(&psess, true);
+        osql_sess_close(&psess, 1);
     }
     return rc;
 }
 
 static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
                                       unsigned long long rqid, uuid_t uuid,
-                                      const char *host, bool is_reorder_on)
+                                      const char *host, int is_reorder_on)
 {
 #ifdef TEST_QSQL_REQ
     uuidstr_t us;

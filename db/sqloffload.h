@@ -88,6 +88,6 @@ int selectv_range_commit(struct sqlclntstate *clnt);
 void osql_postcommit_handle(struct ireq *iq);
 void osql_postabort_handle(struct ireq *iq);
 
-bool osql_is_index_reorder_on(int osql_flags);
+int osql_is_index_reorder_on(int osql_flags);
 void osql_unset_index_reorder_bit(int *osql_flags);
 #endif

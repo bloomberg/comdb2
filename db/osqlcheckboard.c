@@ -56,7 +56,7 @@ static osql_checkboard_t *checkboard = NULL;
  * if caller already has mtx, call this func with lock = false
  */
 static inline osql_sqlthr_t *osql_chkboard_fetch_entry(unsigned long long rqid,
-                                                       uuid_t uuid, bool lock)
+                                                       uuid_t uuid, int lock)
 {
     osql_sqlthr_t *entry = NULL;
 
@@ -135,7 +135,7 @@ delete_from_checkerboard(osql_checkboard_t *cb, osqlstate_t *osql)
 {
     Pthread_mutex_lock(&cb->mtx);
     osql_sqlthr_t *entry =
-        osql_chkboard_fetch_entry(osql->rqid, osql->uuid, false);
+        osql_chkboard_fetch_entry(osql->rqid, osql->uuid, 0);
     if (!entry) {
         goto done;
     }
@@ -281,12 +281,12 @@ int osql_unregister_sqlthr(struct sqlclntstate *clnt)
  * Checks the checkboard for sql session "rqid"
  * Returns true or false depending on whether sesssion exists
  */
-bool osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
+int osql_chkboard_sqlsession_exists(unsigned long long rqid, uuid_t uuid)
 {
     if (!checkboard)
         return 0;
 
-    return (osql_chkboard_fetch_entry(rqid, uuid, true) != NULL);
+    return (osql_chkboard_fetch_entry(rqid, uuid, 1) != NULL);
 }
 
 int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
@@ -298,7 +298,7 @@ int osql_chkboard_sqlsession_rc(unsigned long long rqid, uuid_t uuid, int nops,
 
     Pthread_mutex_lock(&checkboard->mtx);
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
     if (!entry) {
         Pthread_mutex_unlock(&checkboard->mtx);
         /* This happens naturally for example
@@ -471,18 +471,15 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             /* try poke again */
             if (entry->master == 0 || entry->master == gbl_myhostname) {
                 /* local checkup */
-                bool found =
-                    osql_repository_session_exists(entry->rqid, entry->uuid);
+                int found = osql_repository_session_exists(entry->rqid, entry->uuid);
                 if (!found) {
                     logmsg(LOGMSG_ERROR,
-                           "Local SORESE failed to find local "
-                           "transaction %llu %s\n",
+                           "Local SORESE failed to find local transaction %llu %s\n",
                            entry->rqid, comdb2uuidstr(entry->uuid, us));
                     entry->done = 1;
                     xerr->errval = entry->err.errval = SQLHERR_MASTER_TIMEOUT;
                     snprintf(entry->err.errstr, sizeof(entry->err.errstr),
-                             "Local transaction failed, unable to locate "
-                             "entry id=%llu",
+                             "Local transaction failed, unable to locate entry id=%llu",
                              entry->rqid);
                     break;
                 }
@@ -524,7 +521,7 @@ int osql_chkboard_wait_commitrc(unsigned long long rqid, uuid_t uuid,
         return 0;
 
     while (!done) {
-        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, true);
+        osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 1);
 
         if (!entry) {
             logmsg(LOGMSG_ERROR,
@@ -595,7 +592,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
 
     Pthread_mutex_lock(&checkboard->mtx);
 
-    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, false);
+    osql_sqlthr_t *entry = osql_chkboard_fetch_entry(rqid, uuid, 0);
     if (!entry) {
         Pthread_mutex_unlock(&checkboard->mtx);
         ctrace("%s: SORESE received exists for missing session %llu %s\n",
@@ -628,7 +625,7 @@ int osql_reuse_sqlthr(struct sqlclntstate *clnt, const char *master)
     Pthread_mutex_lock(&checkboard->mtx);
 
     osql_sqlthr_t *entry =
-        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, false);
+        osql_chkboard_fetch_entry(clnt->osql.rqid, clnt->osql.uuid, 0);
     if (!entry) {
         Pthread_mutex_unlock(&checkboard->mtx);
         uuidstr_t us;

@@ -666,8 +666,7 @@ int gbl_reorder_idx_writes = 1;
 
 char *gbl_recovery_options = NULL;
 
-#include <stdbool.h>
-bool gbl_rcache = true;
+int gbl_rcache = 1;
 
 int gbl_noenv_messages = 1;
 
@@ -4608,7 +4607,7 @@ double gbl_cpupercent;
 
 
 static inline void log_tbl_item(int curr, unsigned int *prev, const char *(*type_to_str)(int), int type, char *string,
-                                int *hdr_p, struct reqlogger *statlogger, dbtable *tbl, bool first) 
+                                int *hdr_p, struct reqlogger *statlogger, dbtable *tbl, int first) 
 {
     int diff = curr - *prev;
     if (diff > 0) {

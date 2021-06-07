@@ -301,7 +301,7 @@ int add_record_indices(struct ireq *iq, void *trans, blob_buffer_t *blobs,
                        int *rrn, unsigned long long *genid,
                        unsigned long long vgenid, unsigned long long ins_keys,
                        int opcode, int blkpos, void *od_dta, size_t od_len,
-                       int flags, bool reorder)
+                       int flags, int reorder)
 {
     int rc = 0;
     char *od_dta_tail = NULL;
@@ -516,7 +516,7 @@ int upd_record_indices(struct ireq *iq, void *trans, int *opfailcode,
     void *cur = NULL;
     dtikey_t delditk = {0}; // will serve as the delete key obj
     dtikey_t ditk = {0};    // will serve as the add or upd key obj
-    bool reorder =
+    int reorder =
         osql_is_index_reorder_on(iq->osql_flags) && 
         iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */
@@ -801,7 +801,7 @@ int del_record_indices(struct ireq *iq, void *trans, int *opfailcode, int *ixfai
     int rc = 0;
     void *cur = NULL;
     dtikey_t delditk = {0};
-    bool reorder =
+    int reorder =
         osql_is_index_reorder_on(iq->osql_flags) &&
         iq->usedb->sc_from != iq->usedb &&
         iq->usedb->ix_expr == 0 && /* dont reorder if we have idx on expr */

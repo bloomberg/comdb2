@@ -330,7 +330,7 @@ int osqlcomm_bplog_socket(SBUF2 *sb, osql_sess_t *sess)
     int buflen = 0, oldbuflen = -1;
     int type;
     int rc;
-    bool is_msg_done = false;
+    int is_msg_done = 0;
 
     while (!is_msg_done) {
         GDATA(buflen);
