@@ -121,6 +121,8 @@ static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 #endif
 
 #if WITH_SSL
+#include <openssl/conf.h>
+#include <openssl/crypto.h>
 static ssl_mode cdb2_c_ssl_mode = SSL_ALLOW;
 
 static char cdb2_sslcertpath[PATH_MAX];
@@ -6028,22 +6030,127 @@ static int set_up_ssl_params(cdb2_hndl_tp *hndl)
     return 0;
 }
 
-static int cdb2_called_ssl_init = 0;
-pthread_mutex_t fend_ssl_init_lock = PTHREAD_MUTEX_INITIALIZER;
+#define my_ssl_eprintln(fmt, ...)                                              \
+    ssl_eprintln("cdb2api", "%s: " fmt, __func__, ##__VA_ARGS__)
+
+#ifndef CRYPTO_num_locks
+/* Callbacks for OpenSSL locking. OpenSSL >= 1.1.0 has its own locking.
+   CRYPTO_num_locks is a function in OpenSSL < 1.1.0 but is made a macro
+   in OpenSSL >= 1.1.0. So we assume that if CRYPTO_num_locks is not
+   defined, we still need to implement our own locking. */
+static pthread_mutex_t *ssl_locks = NULL;
+
+#ifdef OPENSSL_NO_DEPRECATED
+static void ssl_threadid(CRYPTO_THREADID *thd)
+{
+    CRYPTO_THREADID_set_numeric(thd, (intptr_t)pthread_self());
+}
+#endif /* OPENSSL_NO_DEPRECATED */
+
+/* For OpenSSL < 1.0.0. */
+static unsigned long ssl_threadid_deprecated()
+{
+    return (unsigned long)pthread_self();
+}
+
+static void ssl_lock(int mode, int type, const char *file, int line)
+{
+    int rc;
+    if (mode & CRYPTO_LOCK) {
+        if ((rc = pthread_mutex_lock(&ssl_locks[type])) != 0)
+            my_ssl_eprintln("Failed to lock pthread mutex: rc = %d.", rc);
+    } else {
+        if ((rc = pthread_mutex_unlock(&ssl_locks[type])) != 0)
+            my_ssl_eprintln("Failed to unlock pthread mutex: rc = %d.", rc);
+    }
+}
+#endif /* CRYPTO_num_locks */
+
+static int ssl_init(int init_openssl, int init_crypto)
+{
+    if (init_openssl) {
+#ifndef OPENSSL_THREADS
+        /* OpenSSL is not configured for threaded applications. */
+        ssl_sfeprint(NULL, 0, my_ssl_eprintln, "OpenSSL is not configured with thread support.");
+        return EPERM;
+#endif /* OPENSSL_THREADS */
+    }
+
+    /* Initialize OpenSSL only once. */
+#ifndef CRYPTO_num_locks
+    if (init_crypto) {
+        /* Configure SSL locking.
+           This is only required for OpenSSL < 1.1.0. */
+        int nlocks = CRYPTO_num_locks();
+        ssl_locks = malloc(sizeof(pthread_mutex_t) * nlocks);
+        if (ssl_locks == NULL) {
+            ssl_sfeprint(NULL, 0, my_ssl_eprintln, "Failed to allocate SSL locks.");
+            return ENOMEM;
+        }
+
+        int rc = 0;
+        for (int ii = 0; ii < nlocks; ++ii) {
+            if ((rc = pthread_mutex_init(&ssl_locks[ii], NULL)) != 0) {
+                /* Whoops - roll back all we have done. */
+                while (ii > 0) {
+                    --ii;
+                    pthread_mutex_destroy(&ssl_locks[ii]);
+                }
+                free(ssl_locks);
+                ssl_locks = NULL;
+                ssl_sfeprint(NULL, 0, my_ssl_eprintln, "Failed to initialize mutex: %s", strerror(rc));
+                return rc;
+            }
+        }
+#ifdef OPENSSL_NO_DEPRECATED
+        CRYPTO_THREADID_set_callback(ssl_threadid);
+#else
+        /* Use deprecated functions for OpenSSL < 1.0.0. */
+        CRYPTO_set_id_callback(ssl_threadid_deprecated);
+#endif /* OPENSSL_NO_DEPRECATED */
+        CRYPTO_set_locking_callback(ssl_lock);
+    }
+#endif /* CRYPTO_num_locks */
+
+    /* Configure the library. */
+    if (init_openssl) {
+#if OPENSSL_VERSION_NUMBER >= 0x10100000L
+        OPENSSL_init_ssl(OPENSSL_INIT_LOAD_CONFIG, NULL);
+#else
+        OPENSSL_config(NULL);
+        SSL_library_init();
+        SSL_load_error_strings();
+#endif /* OPENSSL_VERSION_NUMBER */
+    }
+
+    return 0;
+}
+
+/*
+ * Initialize SSL library.
+ *
+ * PARAMETERS
+ * init_libssl     - set to non-zero to initialize libssl
+ * init_libcrypto  - set to non-zero to initialize libcrypto
+ *
+ * RETURN VALUES
+ * 0 upon success
+ */
 int cdb2_init_ssl(int init_libssl, int init_libcrypto)
 {
+    static int called_ssl_init = 0;
+    static pthread_mutex_t ssl_init_lock = PTHREAD_MUTEX_INITIALIZER;
     int rc = 0;
-    if (cdb2_called_ssl_init == 0 &&
-        (rc = pthread_mutex_lock(&fend_ssl_init_lock)) == 0) {
-        if (cdb2_called_ssl_init == 0) {
-            rc = ssl_init(init_libssl, init_libcrypto,
-                          0, NULL, 0);
-            cdb2_called_ssl_init = 1;
+    if (called_ssl_init == 0 &&
+        (rc = pthread_mutex_lock(&ssl_init_lock)) == 0) {
+        if (called_ssl_init == 0) {
+            rc = ssl_init(init_libssl, init_libcrypto);
+            called_ssl_init = 1;
         }
         if (rc == 0)
-            rc = pthread_mutex_unlock(&fend_ssl_init_lock);
+            rc = pthread_mutex_unlock(&ssl_init_lock);
         else
-            pthread_mutex_unlock(&fend_ssl_init_lock);
+            pthread_mutex_unlock(&ssl_init_lock);
     }
     return rc;
 }
