@@ -508,7 +508,8 @@ static osql_sess_t *_osql_sess_create(osql_sess_t *sess, char *tzname, int type,
     sess->type = type;
     sess->target.host = intern(host);
     sess->sess_startus = comdb2_time_epochus();
-    sess->is_reorder_on = is_reorder_on;
+    // hi! when using bit-fields make sure assigned value is not out of range
+    sess->is_reorder_on = !!is_reorder_on; // Convert non-zero -> 1
     if (tzname)
         strncpy0(sess->tzname, tzname, sizeof(sess->tzname));
 
