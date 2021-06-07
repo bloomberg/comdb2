@@ -393,10 +393,16 @@ void ssl_stats(void)
                OBJ_nid2ln(gbl_nid_user));
 
     logmsg(LOGMSG_USER, "SSL/TLS protocols:\n");
+
+    #define XMACRO_SSL_NO_PROTOCOLS(a, b, c) {a,b,c},
+    struct ssl_no_protocols ssl_no_protocols[] = {
+        SSL_NO_PROTOCOLS
+    };
+    #undef XMACRO_SSL_NO_PROTOCOLS
     for (int ii = 0;
-         ii != sizeof(SSL_NO_PROTOCOLS) / sizeof(SSL_NO_PROTOCOLS[0]); ++ii) {
-        int enabled = (SSL_NO_PROTOCOLS[ii].tlsver >= gbl_min_tls_ver);
-        logmsg(LOGMSG_USER, "%s: %s\n", SSL_NO_PROTOCOLS[ii].name,
+         ii != sizeof(ssl_no_protocols) / sizeof(ssl_no_protocols[0]); ++ii) {
+        int enabled = (ssl_no_protocols[ii].tlsver >= gbl_min_tls_ver);
+        logmsg(LOGMSG_USER, "%s: %s\n", ssl_no_protocols[ii].name,
                enabled ? "ENABLED" : "disabled");
     }
 }
