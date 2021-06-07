@@ -17,7 +17,7 @@
 #ifndef INCLUDED_PB_ALLOC_H
 #define INCLUDED_PB_ALLOC_H
 
-#include <google/protobuf-c/protobuf-c.h>
+#include <protobuf-c/protobuf-c.h>
 extern ProtobufCAllocator pb_alloc;
 typedef void *(pb_alloc_func)(void *, size_t);
 typedef void(pb_free_func)(void *, void *);

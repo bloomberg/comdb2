@@ -1,4 +1,4 @@
-include(${CMAKE_MODULE_PATH}/plugin.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/plugin.cmake)
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(
   ${SQLITE_FLAGS}
@@ -32,3 +32,7 @@ include_directories(
 set(NEWSQL_SRCS newsql.c newsql_sbuf.c)
 add_plugin(newsql STATIC "${NEWSQL_SRCS}")
 add_dependencies(newsql sqlite) # Wait for parse.h
+if (COMDB2_BBCMAKE)
+  target_link_libraries(newsql PUBLIC protobuf-c)
+  configure_bb_target(newsql V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()

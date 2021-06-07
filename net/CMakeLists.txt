@@ -28,3 +28,6 @@ include_directories(
 )
 
 add_dependencies(net mem)
+if (COMDB2_BBCMAKE)
+  include_directories(${LIBEVENT_INCLUDE_DIRS})
+endif()

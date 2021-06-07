@@ -278,6 +278,11 @@ elseif(${CMAKE_C_COMPILER_ID} STREQUAL Clang OR ${CMAKE_C_COMPILER_ID} STREQUAL 
   set_target_properties(db PROPERTIES COMPILE_FLAGS "-Wno-knr-promoted-parameter -Wno-unused-variable -Wno-unused-const-variable -Wno-unused-label")
 endif()
 
+if (COMDB2_BBCMAKE)
+  target_link_libraries(db PUBLIC lz4 openssl)
+  configure_bb_target(db V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()
+
 option(PAGELIST_DEBUG "Enable debug logic for pagelist dumping and loading" OFF)
 mark_as_advanced(PAGELIST_DEBUG)
 if(PAGELIST_DEBUG)

@@ -110,26 +110,7 @@ struct frame {
 #elif defined(__linux__)
 
 #define UNW_LOCAL_ONLY /* only async-safe code */
-#ifdef USE_UNWIND
 #include <libunwind.h>
-#endif
-
-#elif defined(__hpux)
-
-#include <uwx.h>
-#include <uwx_self.h>
-
-#define ALLOCATOR_BUFSIZE 51200
-#define MIN_ALIGNMENT 16
-
-typedef struct {
-    size_t cursor;
-    char mem_buf[ALLOCATOR_BUFSIZE];
-} walkback_alloc_t;
-
-static void walkback_allocator_init(walkback_alloc_t *allocator);
-static void *walkback_allocate(walkback_alloc_t *allocator, size_t size);
-static void walkback_free(walkback_alloc_t *allocator, void *ptr);
 
 #elif defined(__APPLE__)
 
@@ -489,7 +470,6 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
                                                   void *handlerarg),
                                   void *handlerarg)
 {
-#ifdef USE_UNWIND
     unw_cursor_t cursor;
     unsigned int i;
     unw_word_t ip;
@@ -507,7 +487,6 @@ static int __linux_stack_walkback(ucontext_t *context, unsigned maxframes,
             break;
         }
     }
-#endif
     return 0;
 }
 #endif

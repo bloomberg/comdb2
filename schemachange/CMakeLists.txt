@@ -50,4 +50,4 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${PROTOBUF-C_INCLUDE_DIR}
 )
-add_dependencies(schemachange mem protobuf bdb)
+add_dependencies(schemachange mem proto bdb)

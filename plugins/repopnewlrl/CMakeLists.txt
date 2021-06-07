@@ -1,4 +1,4 @@
-include(${CMAKE_MODULE_PATH}/plugin.cmake)
+include(${PROJECT_SOURCE_DIR}/cmake/plugin.cmake)
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
