@@ -20,6 +20,7 @@
 
 #include <strings.h>
 #include <assert.h>
+#include <errno.h>
 
 #include "private.h"
 #include "tzfile.h"
@@ -1430,6 +1431,12 @@ char *buf;
 #define WRONG (-1)
 #endif /* !defined WRONG */
 
+#define RETURN_WRONG()          \
+    do {                        \
+        errno = EOVERFLOW;      \
+        return WRONG;           \
+    } while (0)
+
 /*
 ** Simplified normalize logic courtesy Paul Eggert.
 */
@@ -1515,28 +1522,28 @@ const int do_norm_secs;
     yourtm = *tmp;
     if (do_norm_secs) {
         if (normalize_overflow(&yourtm.tm_min, &yourtm.tm_sec, SECSPERMIN))
-            return WRONG;
+            RETURN_WRONG();
     }
     if (normalize_overflow(&yourtm.tm_hour, &yourtm.tm_min, MINSPERHOUR))
-        return WRONG;
+        RETURN_WRONG();
     if (normalize_overflow(&yourtm.tm_mday, &yourtm.tm_hour, HOURSPERDAY))
-        return WRONG;
+        RETURN_WRONG();
     y = yourtm.tm_year;
-    if (long_normalize_overflow(&y, &yourtm.tm_mon, MONSPERYEAR)) return WRONG;
+    if (long_normalize_overflow(&y, &yourtm.tm_mon, MONSPERYEAR)) RETURN_WRONG();
     /*
     ** Turn y into an actual year number for now.
     ** It is converted back to an offset from TM_YEAR_BASE later.
     */
-    if (long_increment_overflow(&y, TM_YEAR_BASE)) return WRONG;
+    if (long_increment_overflow(&y, TM_YEAR_BASE)) RETURN_WRONG();
     while (yourtm.tm_mday <= 0) {
-        if (long_increment_overflow(&y, -1)) return WRONG;
+        if (long_increment_overflow(&y, -1)) RETURN_WRONG();
         li = y + (1 < yourtm.tm_mon);
         yourtm.tm_mday += year_lengths[isleap(li)];
     }
     while (yourtm.tm_mday > DAYSPERLYEAR) {
         li = y + (1 < yourtm.tm_mon);
         yourtm.tm_mday -= year_lengths[isleap(li)];
-        if (long_increment_overflow(&y, 1)) return WRONG;
+        if (long_increment_overflow(&y, 1)) RETURN_WRONG();
     }
     for (;;) {
         i = mon_lengths[isleap(y)][yourtm.tm_mon];
@@ -1544,14 +1551,14 @@ const int do_norm_secs;
         yourtm.tm_mday -= i;
         if (++yourtm.tm_mon >= MONSPERYEAR) {
             yourtm.tm_mon = 0;
-            if (long_increment_overflow(&y, 1)) return WRONG;
+            if (long_increment_overflow(&y, 1)) RETURN_WRONG();
         }
     }
-    if (long_increment_overflow(&y, -TM_YEAR_BASE)) return WRONG;
+    if (long_increment_overflow(&y, -TM_YEAR_BASE)) RETURN_WRONG();
     yourtm.tm_year = y;
     if (! (INT_MIN <= y && y < INT_MAX))
-        return WRONG;
-    if (yourtm.tm_year != y) return WRONG;
+        RETURN_WRONG();
+    if (yourtm.tm_year != y) RETURN_WRONG();
     if (yourtm.tm_sec >= 0 && yourtm.tm_sec < SECSPERMIN)
         saved_seconds = 0;
     else if (y + TM_YEAR_BASE < EPOCH_YEAR) {
@@ -1563,7 +1570,7 @@ const int do_norm_secs;
         ** not in the same minute that a leap second was deleted from,
         ** which is a safer assumption than using 58 would be.
         */
-        if (increment_overflow(&yourtm.tm_sec, 1 - SECSPERMIN)) return WRONG;
+        if (increment_overflow(&yourtm.tm_sec, 1 - SECSPERMIN)) RETURN_WRONG();
         saved_seconds = yourtm.tm_sec;
         yourtm.tm_sec = SECSPERMIN - 1;
     } else {
@@ -1594,14 +1601,14 @@ const int do_norm_secs;
         if (dir != 0) {
             if (t == lo) {
                 ++t;
-                if (t <= lo) return WRONG;
+                if (t <= lo) RETURN_WRONG();
                 ++lo;
             } else if (t == hi) {
                 --t;
-                if (t >= hi) return WRONG;
+                if (t >= hi) RETURN_WRONG();
                 --hi;
             }
-            if (lo > hi) return WRONG;
+            if (lo > hi) RETURN_WRONG();
             if (dir > 0)
                 hi = t;
             else
@@ -1620,7 +1627,7 @@ const int do_norm_secs;
         */
         sp = (const struct state *)(funcp == localsub ? lclptr : gmtptr);
 #ifdef ALL_STATE
-        if (sp == NULL) return WRONG;
+        if (sp == NULL) RETURN_WRONG();
 #endif /* defined ALL_STATE */
         for (i = sp->typecnt - 1; i >= 0; --i) {
             if (sp->ttis[i].tt_isdst != yourtm.tm_isdst) continue;
@@ -1637,11 +1644,11 @@ const int do_norm_secs;
                 goto label;
             }
         }
-        return WRONG;
+        RETURN_WRONG();
     }
 label:
     newt = t + saved_seconds;
-    if ((newt < t) != (saved_seconds < 0)) return WRONG;
+    if ((newt < t) != (saved_seconds < 0)) RETURN_WRONG();
     t = newt;
     if ((*funcp)(&t, offset, tmp)) *okayp = TRUE;
     return t;
@@ -1700,7 +1707,7 @@ const long offset;
     */
     sp = (const struct state *)(funcp == localsub ? lclptr : gmtptr);
 #ifdef ALL_STATE
-    if (sp == NULL) return WRONG;
+    if (sp == NULL) RETURN_WRONG();
 #endif /* defined ALL_STATE */
     for (i = 0; i < sp->typecnt; ++i)
         seen[i] = FALSE;
@@ -1726,7 +1733,7 @@ const long offset;
             tmp->tm_isdst = !tmp->tm_isdst;
         }
     }
-    return WRONG;
+    RETURN_WRONG();
 }
 
 static time_t tz_mktime(tmp) struct tm *const tmp;
@@ -2531,28 +2538,28 @@ const int do_norm_secs;
     yourtm = *tmp;
     if (do_norm_secs) {
         if (normalize_overflow(&yourtm.tm_min, &yourtm.tm_sec, SECSPERMIN))
-            return WRONG;
+            RETURN_WRONG();
     }
     if (normalize_overflow(&yourtm.tm_hour, &yourtm.tm_min, MINSPERHOUR))
-        return WRONG;
+        RETURN_WRONG();
     if (normalize_overflow(&yourtm.tm_mday, &yourtm.tm_hour, HOURSPERDAY))
-        return WRONG;
+        RETURN_WRONG();
     y = yourtm.tm_year;
-    if (long_normalize_overflow(&y, &yourtm.tm_mon, MONSPERYEAR)) return WRONG;
+    if (long_normalize_overflow(&y, &yourtm.tm_mon, MONSPERYEAR)) RETURN_WRONG();
     /*
     ** Turn y into an actual year number for now.
     ** It is converted back to an offset from TM_YEAR_BASE later.
     */
-    if (long_increment_overflow(&y, TM_YEAR_BASE)) return WRONG;
+    if (long_increment_overflow(&y, TM_YEAR_BASE)) RETURN_WRONG();
     while (yourtm.tm_mday <= 0) {
-        if (long_increment_overflow(&y, -1)) return WRONG;
+        if (long_increment_overflow(&y, -1)) RETURN_WRONG();
         li = y + (1 < yourtm.tm_mon);
         yourtm.tm_mday += year_lengths[isleap(li)];
     }
     while (yourtm.tm_mday > DAYSPERLYEAR) {
         li = y + (1 < yourtm.tm_mon);
         yourtm.tm_mday -= year_lengths[isleap(li)];
-        if (long_increment_overflow(&y, 1)) return WRONG;
+        if (long_increment_overflow(&y, 1)) RETURN_WRONG();
     }
     for (;;) {
         i = mon_lengths[isleap(y)][yourtm.tm_mon];
@@ -2560,13 +2567,13 @@ const int do_norm_secs;
         yourtm.tm_mday -= i;
         if (++yourtm.tm_mon >= MONSPERYEAR) {
             yourtm.tm_mon = 0;
-            if (long_increment_overflow(&y, 1)) return WRONG;
+            if (long_increment_overflow(&y, 1)) RETURN_WRONG();
         }
     }
-    if (long_increment_overflow(&y, -TM_YEAR_BASE)) return WRONG;
+    if (long_increment_overflow(&y, -TM_YEAR_BASE)) RETURN_WRONG();
     yourtm.tm_year = y;
 	if (! (INT_MIN <= y && y <= INT_MAX))
-		return WRONG;
+		RETURN_WRONG();
     if (yourtm.tm_sec >= 0 && yourtm.tm_sec < SECSPERMIN)
         saved_seconds = 0;
     else if (y + TM_YEAR_BASE < EPOCH_YEAR) {
@@ -2578,7 +2585,7 @@ const int do_norm_secs;
         ** not in the same minute that a leap second was deleted from,
         ** which is a safer assumption than using 58 would be.
         */
-        if (increment_overflow(&yourtm.tm_sec, 1 - SECSPERMIN)) return WRONG;
+        if (increment_overflow(&yourtm.tm_sec, 1 - SECSPERMIN)) RETURN_WRONG();
         saved_seconds = yourtm.tm_sec;
         yourtm.tm_sec = SECSPERMIN - 1;
     } else {
@@ -2608,14 +2615,14 @@ const int do_norm_secs;
         if (dir != 0) {
             if (t == lo) {
                 ++t;
-                if (t <= lo) return WRONG;
+                if (t <= lo) RETURN_WRONG();
                 ++lo;
             } else if (t == hi) {
                 --t;
-                if (t >= hi) return WRONG;
+                if (t >= hi) RETURN_WRONG();
                 --hi;
             }
-            if (lo > hi) return WRONG;
+            if (lo > hi) RETURN_WRONG();
             if (dir > 0)
                 hi = t;
             else
@@ -2637,7 +2644,7 @@ const int do_norm_secs;
         (((void *) funcp == (void *) localsub) ?
         lclptr : gmtptr);*/
 #ifdef ALL_STATE
-        if (sp == NULL) return WRONG;
+        if (sp == NULL) RETURN_WRONG();
 #endif /* defined ALL_STATE */
         for (i = sp->typecnt - 1; i >= 0; --i) {
             if (sp->ttis[i].tt_isdst != yourtm.tm_isdst) continue;
@@ -2654,11 +2661,11 @@ const int do_norm_secs;
                 goto db_label;
             }
         }
-        return WRONG;
+        RETURN_WRONG();
     }
 db_label:
     newt = t + saved_seconds;
-    if ((newt < t) != (saved_seconds < 0)) return WRONG;
+    if ((newt < t) != (saved_seconds < 0)) RETURN_WRONG();
     t = newt;
     if ((*funcp)(&t, offset, tmp)) *okayp = TRUE;
     return t;
@@ -2719,7 +2726,7 @@ const long offset;
 /*sp = (const struct state *) (((void *) funcp == (void *) localsub) ?
         lclptr : gmtptr);*/
 #ifdef ALL_STATE
-    if (sp == NULL) return WRONG;
+    if (sp == NULL) RETURN_WRONG();
 #endif /* defined ALL_STATE */
     for (i = 0; i < sp->typecnt; ++i)
         seen[i] = FALSE;
@@ -2746,7 +2753,7 @@ const long offset;
         }
     }
 
-    return WRONG;
+    RETURN_WRONG();
 }
 
 /*
@@ -2757,6 +2764,7 @@ struct tm *const tmp;
 {
     db_time_t ret = -1;
 
+    errno = 0;
 
     Pthread_mutex_lock(&global_dt_mutex);
 
