@@ -3829,9 +3829,6 @@ static int init(int argc, char **argv)
 
     init_file_locations(lrlname);
 
-    /* prepare the server class ahead of time */
-    get_my_mach_class();
-
     if (gbl_create_mode && lrlname == NULL) {
        if (gbl_dbdir == NULL)
           gbl_dbdir = comdb2_location("database", "%s", dbname);
@@ -3887,6 +3884,9 @@ static int init(int argc, char **argv)
     }
     logmsg(LOGMSG_INFO, "SSL backend initialized.\n");
 #endif
+
+    /* prepare the server class ahead of time, after libssl is initialized. */
+    get_my_mach_class();
 
     if (init_blob_cache() != 0) return -1;
 
