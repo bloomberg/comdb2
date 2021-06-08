@@ -7605,7 +7605,7 @@ int datetime_check_range(long long secs, int fracs)
                                                                                \
     /* convert */                                                              \
     memcpy(&tm, &cdt.tm, sizeof(cdt.tm));                                      \
-    if ((sdt.sec = db_struct2time(actualtzname, &tm)) == -1) {                 \
+    if ((sdt.sec = db_struct2time(actualtzname, &tm)) == -1 && errno) {        \
         return -1;                                                             \
     }                                                                          \
                                                                                \
@@ -7615,7 +7615,7 @@ int datetime_check_range(long long secs, int fracs)
         memcpy(&tm, &cdt.tm, sizeof(struct tm));                               \
         tm.tm_isdst = (tm.tm_isdst) ? 0 : 1;                                   \
                                                                                \
-        if ((sdt.sec = db_struct2time(actualtzname, &tm)) == -1) {             \
+        if ((sdt.sec = db_struct2time(actualtzname, &tm)) == -1 && errno) {    \
             return -1;                                                         \
         }                                                                      \
     }                                                                          \
