@@ -860,6 +860,8 @@ struct sqlclntstate {
     int8_t rowbuffer;
     /* 1 if client has requested flat column values. */
     int flat_col_vals;
+    plugin_func *recover_ddlk;
+    replay_func *recover_ddlk_fail;
 };
 
 /* Query stats. */
@@ -1380,5 +1382,6 @@ int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
 int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
+int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
 
 #endif /* _SQL_H_ */
