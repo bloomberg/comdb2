@@ -182,6 +182,8 @@ static void lua_end_all_step(struct sqlclntstate *, SP);
 static int lua_get_prepare_flags();
 static int lua_prepare_sql(Lua, SP, const char *sql, sqlite3_stmt **);
 static int lua_prepare_sql_with_ddl(Lua, SP, const char *sql, sqlite3_stmt **);
+static int recover_ddlk_sp(struct sqlclntstate *);
+static void *recover_ddlk_fail_sp(struct sqlclntstate *, void *);
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
@@ -977,8 +979,7 @@ static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 static void free_tmptbls(SP sp)
 {
     tmptbl_info_t *tbl, *tmp;
-    LIST_FOREACH_SAFE(tbl, &sp->tmptbls, entries, tmp)
-    {
+    LIST_FOREACH_SAFE(tbl, &sp->tmptbls, entries, tmp) {
         free_tmptbl(sp, tbl);
     }
     LIST_INIT(&sp->tmptbls);
@@ -2216,8 +2217,7 @@ static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
 {
     if (sp != NULL) {
         dbstmt_t *dbstmt, *tmp;
-        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
-        {
+        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
             lua_end_step(clnt, sp, dbstmt->stmt);
         }
     }
@@ -2571,8 +2571,7 @@ static void reset_stmt(SP sp, dbstmt_t *dbstmt)
 static void reset_stmts(SP sp)
 {
     dbstmt_t *dbstmt, *tmp;
-    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
-    {
+    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
         reset_stmt(sp, dbstmt);
     }
 }
@@ -2730,6 +2729,8 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.dbtran.trans_has_sp = 1;
     clnt.queue_me = 1;
+    clnt.recover_ddlk = recover_ddlk_sp;
+    clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
     strcpy(clnt.tzname, parent_clnt->tzname);
     int rc = dispatch_sql_query(&clnt); // --> exec_thread()
     /* Done running -- wake up anyone blocked on join */
@@ -4673,6 +4674,42 @@ static int db_bootstrap(Lua L)
     return 0;
 }
 
+static int db_recover_ddlk(Lua L)
+{
+    SP sp = getsp(L);
+    int rc = recover_deadlock_flags(
+        thedb->bdb_env, sp->thd->sqlthd, NULL, 1, __func__, __LINE__,
+        RECOVER_DEADLOCK_PTRACE | RECOVER_DEADLOCK_IGNORE_DESIRED);
+    return push_and_return(L, rc);
+}
+
+static int recover_ddlk_sp(struct sqlclntstate *clnt)
+{
+    SP sp = clnt->sp;
+    if (!sp) return 0;
+    dbstmt_t *dbstmt, *tmp;
+    int rc = 0;
+    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
+        rc |= sqlite3LockStmtTablesRecover(dbstmt->stmt);
+    }
+    return rc;
+}
+
+static void *recover_ddlk_fail_sp(struct sqlclntstate *clnt, void *arg)
+{
+    SP sp = clnt->sp;
+    if (!sp) return 0;
+    dbstmt_t *dbstmt, *tmp;
+    sqlite3_mutex_enter(sqlite3_db_mutex(sp->thd->sqldb));
+    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
+        if (!dbstmt->stmt)
+            continue;
+        sqlite3VdbeError((Vdbe *)dbstmt->stmt, "%s", arg);
+    }
+    sqlite3_mutex_leave(sqlite3_db_mutex(sp->thd->sqldb));
+    return NULL;
+}
+
 static const luaL_Reg db_funcs[] = {
     {"exec", db_exec},
     {"prepare", db_prepare},
@@ -4720,6 +4757,7 @@ static const luaL_Reg db_funcs[] = {
     /************ INTERNAL **************/
     {"sleep", db_sleep},
     {"bootstrap", db_bootstrap},
+    {"recover_ddlk", db_recover_ddlk},
     {NULL, NULL}
 };
 
@@ -6777,6 +6815,8 @@ void *exec_trigger(trigger_reg_t *reg)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
+	clnt.recover_ddlk = recover_ddlk_sp;
+	clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd = {0};
@@ -6870,7 +6910,11 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)
 {
     clnt->ready_for_heartbeats = 1;
+	clnt->recover_ddlk = recover_ddlk_sp;
+	clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
     int rc = exec_procedure_int(thd, clnt, err);
+	clnt->recover_ddlk = NULL;
+	clnt->recover_ddlk_fail = NULL;
     if (clnt->sp) {
         reset_sp(clnt->sp);
     }
