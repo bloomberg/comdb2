@@ -185,6 +185,8 @@ static int db_reset(Lua);
 static SP create_sp(char **err);
 static int push_trigger_args_int(Lua, dbconsumer_t *, struct qfound *, char **);
 static void reset_sp(SP);
+static int recover_ddlk_sp(struct sqlclntstate *);
+static void *recover_ddlk_fail_sp(struct sqlclntstate *, void *);
 
 #define setup_dbq_ts(ts) do {             \
     clock_gettime(CLOCK_REALTIME, &(ts)); \
@@ -1108,8 +1110,7 @@ static void free_tmptbl(SP sp, tmptbl_info_t *tbl)
 static void free_tmptbls(SP sp)
 {
     tmptbl_info_t *tbl, *tmp;
-    LIST_FOREACH_SAFE(tbl, &sp->tmptbls, entries, tmp)
-    {
+    LIST_FOREACH_SAFE(tbl, &sp->tmptbls, entries, tmp) {
         free_tmptbl(sp, tbl);
     }
     LIST_INIT(&sp->tmptbls);
@@ -2367,8 +2368,7 @@ static void lua_end_all_step(struct sqlclntstate *clnt, SP sp)
 {
     if (sp != NULL) {
         dbstmt_t *dbstmt, *tmp;
-        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp)
-        {
+        LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
             lua_end_step(clnt, sp, dbstmt->stmt);
         }
     }
@@ -2881,6 +2881,8 @@ static void *dispatch_lua_thread(void *arg)
     clnt.exec_lua_thread = 1;
     clnt.dbtran.trans_has_sp = 1;
     clnt.queue_me = 1;
+    clnt.recover_ddlk = recover_ddlk_sp;
+    clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
     strcpy(clnt.tzname, parent_clnt->tzname);
     /* TODO: This needs to be more robust - we shouldn't enqueue into SQL thd
      * pool. Perhaps a dedicated pool for sp thds */
@@ -3940,6 +3942,41 @@ static int db_sleepms(Lua lua)
     return 0;
 }
 
+static int db_recover_ddlk(Lua L)
+{
+    SP sp = getsp(L);
+    int rc = recover_deadlock_flags(
+        thedb->bdb_env, sp->thd->sqlthd, NULL, 1, __func__, __LINE__,
+        RECOVER_DEADLOCK_PTRACE | RECOVER_DEADLOCK_IGNORE_DESIRED);
+    return push_and_return(L, rc);
+}
+
+static int recover_ddlk_sp(struct sqlclntstate *clnt)
+{
+    SP sp = clnt->sp;
+    if (!sp) return 0;
+    dbstmt_t *dbstmt, *tmp;
+    int rc = 0;
+    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
+        rc |= sqlite3LockStmtTablesRecover(dbstmt->stmt);
+    }
+    return rc;
+}
+
+static void *recover_ddlk_fail_sp(struct sqlclntstate *clnt, void *arg)
+{
+    SP sp = clnt->sp;
+    if (!sp) return 0;
+    dbstmt_t *dbstmt, *tmp;
+    sqlite3_mutex_enter(sqlite3_db_mutex(sp->thd->sqldb));
+    LIST_FOREACH_SAFE(dbstmt, &sp->dbstmts, entries, tmp) {
+        if (!dbstmt->stmt) continue;
+        sqlite3VdbeError((Vdbe *)dbstmt->stmt, "%s", arg);
+    }
+    sqlite3_mutex_leave(sqlite3_db_mutex(sp->thd->sqldb));
+    return NULL;
+}
+
 static int db_udf_error(Lua L)
 {
     luaL_checkudata(L, 1, dbtypes.db);
@@ -4947,6 +4984,7 @@ static const luaL_Reg db_funcs[] = {
     {"bootstrap", db_bootstrap},
     {"sleep", db_sleep},
     {"sleepms", db_sleepms},
+    {"recover_ddlk", db_recover_ddlk},
     {NULL, NULL}
 };
 
@@ -7118,6 +7156,8 @@ void *exec_trigger(trigger_reg_t *reg)
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.sql = sql;
     clnt.dbtran.trans_has_sp = 1;
+    clnt.recover_ddlk = recover_ddlk_sp;
+    clnt.recover_ddlk_fail = recover_ddlk_fail_sp;
 
     thread_memcreate(128 * 1024);
     struct sqlthdstate thd;
@@ -7215,7 +7255,11 @@ void exec_thread(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 int exec_procedure(struct sqlthdstate *thd, struct sqlclntstate *clnt, char **err)
 {
     clnt->ready_for_heartbeats = 1;
+    clnt->recover_ddlk = recover_ddlk_sp;
+    clnt->recover_ddlk_fail = recover_ddlk_fail_sp;
     int rc = exec_procedure_int(thd, clnt, err);
+    clnt->recover_ddlk = NULL;
+    clnt->recover_ddlk_fail = NULL;
     if (clnt->sp) {
         reset_sp(clnt->sp);
     }
