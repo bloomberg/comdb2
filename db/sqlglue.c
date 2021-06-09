@@ -535,8 +535,7 @@ void reset_calls_per_sec(void) { calls_per_second = 0; }
 static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
                                     int recover_deadlock_rcode)
 {
-    struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
-    const char *str;
+    char *str;
     int rc;
     clnt->ready_for_heartbeats = 0;
     assert(bdb_lockref() == 0);
@@ -554,11 +553,16 @@ static void handle_failed_recover_deadlock(struct sqlclntstate *clnt,
         rc = recover_deadlock_rcode;
         break;
     }
-    sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-    sqlite3VdbeError(vdbe, "%s", str);
-    sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
     errstat_set_rcstrf(&clnt->osql.xerr, rc, str);
     logmsg(LOGMSG_DEBUG, "%s %s\n", __func__, str);
+    if (clnt->recover_ddlk_fail) {
+        clnt->recover_ddlk_fail(clnt, str);
+    } else {
+        struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
+        sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
+        sqlite3VdbeError(vdbe, "%s", str);
+        sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+    }
 }
 
 static inline int check_recover_deadlock(struct sqlclntstate *clnt)
@@ -9167,7 +9171,6 @@ int get_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
                       uint32_t flags)
 {
     cursor_tran_t *curtran_out = NULL;
-    int rcode = 0;
     int retries = 0;
     uint32_t curgen;
     int bdberr = 0;
@@ -9243,22 +9246,20 @@ retry:
     assert(curtran_out != NULL);
 
     /* check if we have table locks that were dropped during recovery */
-    if (clnt->dbtran.pStmt) {
+    rc = 0;
+    if (clnt->recover_ddlk) {
+        rc = clnt->recover_ddlk(clnt);
+    } else if (clnt->dbtran.pStmt) {
         rc = sqlite3LockStmtTablesRecover(clnt->dbtran.pStmt);
-        if (!rc) {
-            /* NOTE: we need to make sure the versions are the same */
-
-        } else {
-            logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!, rc %d\n",
-                   __func__, rc);
-
-            bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
-            clnt->dbtran.cursor_tran = NULL;
-            rcode = rc;
-        }
     }
-
-    return rcode;
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s: failed to lock back tables!, rc %d\n", __func__, rc);
+        bdb_put_cursortran(bdb_state, curtran_out, curtran_flags, &bdberr);
+        clnt->dbtran.cursor_tran = NULL;
+    } else {
+        /* NOTE: we need to make sure the versions are the same */
+    }
+    return rc;
 }
 
 int get_curtran(bdb_state_type *bdb_state, struct sqlclntstate *clnt)
@@ -9288,8 +9289,7 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
             }
         }
 
-        clnt->dbtran.pStmt =
-            NULL; /* this is pointing to freed memory at this point */
+        clnt->dbtran.pStmt = NULL; /* this is pointing to freed memory at this point */
     }
 
     clnt->is_overlapping = 0;
@@ -9435,6 +9435,7 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
                                       const char *func, int line,
                                       uint32_t flags)
 {
+    int ignore_desired = flags & RECOVER_DEADLOCK_IGNORE_DESIRED;
     int ptrace = (flags & RECOVER_DEADLOCK_PTRACE);
     int force_fail = (flags & RECOVER_DEADLOCK_FORCE_FAIL);
     int fail_type = 0;
@@ -9454,14 +9455,14 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     assert(bdb_lockref() > 0);
     int new_mode = debug_switch_recover_deadlock_newmode();
 
-    if (bdb_lock_desired(thedb->bdb_env)) {
-        if (!sleepms)
+    if (ignore_desired || bdb_lock_desired(thedb->bdb_env)) {
+        if (!sleepms) {
             sleepms = 2000;
-
-        logmsg(LOGMSG_ERROR, "THD %p:recover_deadlock, and lock desired\n",
-               (void *)pthread_self());
-    } else if (ptrace)
+        }
+        logmsg(LOGMSG_ERROR, "THD %p:recover_deadlock, and lock desired\n", (void *)pthread_self());
+    } else if (ptrace) {
         logmsg(LOGMSG_INFO, "THD %p:recover_deadlock\n", (void *)pthread_self());
+    }
 
     /* increment global counter */
     gbl_sql_deadlock_reconstructions++;
@@ -9536,38 +9537,31 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
         rc = get_curtran_flags(thedb->bdb_env, clnt, curtran_flags);
 
     if (rc) {
-        struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
+        char *err;
         if (rc == SQLITE_SCHEMA || rc == SQLITE_COMDB2SCHEMA) {
-            logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n",
-                   __func__);
-            if (vdbe) {
-                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-                sqlite3VdbeError(vdbe, "Database was schema changed");
-                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-            }
-            return SQLITE_COMDB2SCHEMA;
-        }
-
-        if (clnt->gen_changed) {
+            err = "Database was schema changed";
+            rc = SQLITE_COMDB2SCHEMA;
+            logmsg(LOGMSG_ERROR, "%s: failing with SQLITE_COMDB2SCHEMA\n", __func__);
+        } else if (clnt->gen_changed) {
+            err = "New master under snapshot";
+            rc = SQLITE_CLIENT_CHANGENODE;
             logmsg(LOGMSG_ERROR, 
-                   "%s: fail to open a new curtran, rc=%d, return "
-                   "changenode\n", __func__, rc);
-            if (vdbe) {
-                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-                sqlite3VdbeError(vdbe, "New master under snapshot");
-                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-            }
-            return SQLITE_CLIENT_CHANGENODE;
-        } else {
-            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n",
+                   "%s: fail to open a new curtran, rc=%d, return changenode\n",
                    __func__, rc);
-            if (vdbe) {
-                sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
-                sqlite3VdbeError(vdbe, "Failed to reaquire locks on deadlock");
-                sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
-            }
-            return ERR_RECOVER_DEADLOCK;
+        } else {
+            err = "Failed to reaquire locks on deadlock";
+            rc = ERR_RECOVER_DEADLOCK;
+            logmsg(LOGMSG_ERROR, "%s: fail to open a new curtran, rc=%d\n", __func__, rc);
         }
+        if (clnt->recover_ddlk_fail) {
+            clnt->recover_ddlk_fail(clnt, err);
+        } else if (clnt->dbtran.pStmt) {
+            struct Vdbe *vdbe = (struct Vdbe *)clnt->dbtran.pStmt;
+            sqlite3_mutex_enter(sqlite3_db_mutex(vdbe->db));
+            sqlite3VdbeError(vdbe, err);
+            sqlite3_mutex_leave(sqlite3_db_mutex(vdbe->db));
+        }
+        return rc;
     }
 
     /* no need to mess with our shadow tran, right? */
@@ -9655,10 +9649,8 @@ int recover_deadlock_flags(bdb_state_type *bdb_state, struct sql_thread *thd,
                            bdb_cursor_ifn_t *bdbcur, int sleepms,
                            const char *func, int line, uint32_t flags)
 {
-    int rc;
-    rc = thd->clnt->recover_deadlock_rcode =
-        recover_deadlock_flags_int(bdb_state, thd, bdbcur, sleepms, func, line,
-                flags);
+    int rc = thd->clnt->recover_deadlock_rcode =
+        recover_deadlock_flags_int( bdb_state, thd, bdbcur, sleepms, func, line, flags);
     if (rc != 0) {
         put_curtran_flags(thedb->bdb_env, thd->clnt, CURTRAN_RECOVERY);
 #if INSTRUMENT_RECOVER_DEADLOCK_FAILURE

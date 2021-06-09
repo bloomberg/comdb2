@@ -862,6 +862,8 @@ struct sqlclntstate {
     int64_t last_cost;
     /* 1 if client has requested flat column values. */
     int flat_col_vals;
+    plugin_func *recover_ddlk;
+    replay_func *recover_ddlk_fail;
 };
 
 /* Query stats. */
@@ -1330,5 +1332,6 @@ void add_fingerprint_to_rawstats(struct rawnodestats *stats,
 tran_type *curtran_gettran(void);
 void curtran_puttran(tran_type *tran);
 int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
+int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
 
 #endif /* _SQL_H_ */
