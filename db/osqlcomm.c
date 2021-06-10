@@ -3391,6 +3391,9 @@ int osql_comm_is_done(int type, char *rpl, int rpllen, int hasuuid,
 
             iq->have_snap_info = !(gbl_disable_cnonce_blkseq);
             if (likely(gbl_master_sends_query_effects)) {
+                if (iq->snap_info.keylen == 0) {
+                    iq->have_snap_info = 0;
+                }
                 /* Reset 'write' query effects as master will repopulate them
                  * and report them back to the replicant.
                  */
@@ -6941,7 +6944,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
-            if (!gbl_disable_cnonce_blkseq)
+            if (!gbl_disable_cnonce_blkseq && !gbl_master_sends_query_effects)
                 assert(iq->have_snap_info == 1); // was assigned in fast pass
             snap_uid_t snap_info;
             p_buf_end = (const uint8_t *)msg + msglen;
