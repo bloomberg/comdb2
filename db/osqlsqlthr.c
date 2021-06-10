@@ -1524,18 +1524,26 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     osql->tran_ops = 0; /* reset transaction size counter*/
 
     extern int gbl_always_send_cnonce;
+    extern int gbl_master_sends_query_effects;
     if (osql->rqid == OSQL_RQID_USE_UUID && clnt->dbtran.maxchunksize == 0 &&
         !clnt->dbtran.trans_has_sp &&
-        (gbl_always_send_cnonce || has_high_availability(clnt)) &&
-        get_cnonce(clnt, &snap_info) == 0) {
+        (gbl_always_send_cnonce || has_high_availability(clnt))) {
+        // Pass to master the state of verify retry.
+        // If verify retry is ON and error is retryable, don't write to
+        // blkseq on master because replicant will retry.
 
-        /* pass to master the state of verify retry.
-         * if verify retry is on and error is retryable, don't write to
-         * blkseq on master because replicant will retry */
         snap_info.replicant_can_retry = replicant_can_retry(clnt);
         snap_info.effects = clnt->effects;
-        comdb2uuidcpy(snap_info.uuid, osql->uuid);
-        snap_info_p = &snap_info;
+
+        if (get_cnonce(clnt, &snap_info) == 0) {
+            comdb2uuidcpy(snap_info.uuid, osql->uuid);
+            snap_info_p = &snap_info;
+        } else if (gbl_master_sends_query_effects) {
+            // Add dummy snap_info to let master know that the replicant wants
+            // query effects. (comdb2api does not send cnonce)
+            snap_info.keylen = 0;
+            snap_info_p = &snap_info;
+        }
     }
 
     do {
