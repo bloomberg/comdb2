@@ -14,7 +14,6 @@ function setup
 
 function run_tests
 {
-    set -x
     master=$(getmaster)
     echo "MASTER IS $master"
     newmaster=0
@@ -29,7 +28,8 @@ function run_tests
         m=$(getmaster)
         if [[ "$m" == "$master" ]] ; then
             $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME --host $master "EXEC PROCEDURE sys.cmd.send('downgrade')"
-        else
+        elif [[ ! -z "$m" ]]; then
+            sleep 5 #give replicants time to run upgrade and get out of INCOHERENT_WAIT
             newmaster=1
             break 2
         fi
@@ -46,5 +46,4 @@ function run_tests
 # Eventually master is watchdogged - this "succeeds" but produces a core
 setup
 run_tests
-
 echo "Success!"
