@@ -8,7 +8,7 @@ ifeq ($(TESTSROOTDIR),)
   # TESTSROOTDIR is not set when make is issued from within a test directory 
   # (will check assumption few lines later)
   # needs to expand to a full path, otherwise it propagates as '../'
-  export TESTSROOTDIR=$(shell readlink -f $(PWD)/.. || realpath $(PWD)/..)
+  export TESTSROOTDIR=$(shell readlink -f $(PWD)/.. 2> /dev/null || realpath $(PWD)/..)
   export SKIPSSL=1   #force SKIPSSL for local test -- easier to debug
   export INSETUP=yes
 else
@@ -20,7 +20,7 @@ ifeq ($(wildcard ${TESTSROOTDIR}/setup),)
   $(error TESTSROOTDIR is set incorrectly to ${TESTSROOTDIR} )
 endif
 
-export SRCHOME?=$(shell readlink -f $(TESTSROOTDIR)/../ || realpath $(TESTSROOTDIR)/..)
+export SRCHOME?=$(shell readlink -f $(TESTSROOTDIR)/../ 2> /dev/null || realpath $(TESTSROOTDIR)/..)
 ifeq ($(TESTID),)
 export TESTID:=$(shell $(TESTSROOTDIR)/tools/get_random.sh)
 endif
