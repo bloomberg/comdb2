@@ -55,7 +55,7 @@
 #include "sc_global.h"
 
 
-#define MAX_CLUSTER 16
+#define MAX_CLUSTER REPMAX
 
 /**
  * NOTE: the assumption here is that there are no more comm users
@@ -2894,7 +2894,12 @@ static void net_snap_uid_rpl(void *hndl, void *uptr, char *fromhost,
                              int usertype, void *dtap, int dtalen,
                              uint8_t is_tcp);
 
-#include <net/net.h>
+static void net_osql_heartbeat(void *hndl, void *uptr, char *fromnode, int usertype, void *dtap,
+                               int dtalen, uint8_t is_tcp)
+{
+    /* NOP here, but needed for compat with 7.0 which will still send these */
+}
+
 /**
  * Initializes this node for osql communication
  * Creates the offload net.
@@ -2960,6 +2965,9 @@ int osql_comm_init(struct dbenv *dbenv)
                          "osql_recom_req", net_recom_req);
     net_register_handler(tmp->handle_sibling, NET_OSQL_RECOM_RPL,
                          "osql_recom_rpl", net_osql_rpl);
+
+    net_register_handler(tmp->handle_sibling, NET_HBEAT_SQL,
+                         "hbeat_sql", net_osql_heartbeat);
 
     net_register_handler(tmp->handle_sibling, NET_OSQL_SNAPISOL_REQ,
                          "osql_snapisol_req", net_snapisol_req);

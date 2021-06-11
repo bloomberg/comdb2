@@ -25,6 +25,7 @@
 #include <bdb_api.h>
 #include <net.h>
 #include <thread_stats.h>
+#include <net_appsock.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>
@@ -324,7 +325,7 @@ int refresh_metrics(void)
 {
     int rc;
     const struct berkdb_thread_stats *pstats;
-    extern int active_appsock_conns; int bdberr;
+    int bdberr;
 #if 0
     int min_file, min_offset;
     int32_t min_timestamp;

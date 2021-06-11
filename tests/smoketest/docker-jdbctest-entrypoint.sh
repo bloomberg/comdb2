@@ -66,6 +66,7 @@ else
 
     comdb2 --create $db >/dev/null 2>&1 &
     comdb2 --create \
+           --tunable "libevent_appsock 0" \
            --tunable "ssl_client_mode ${sslclientmode}" \
            --tunable 'ssl_dbname_field street' \
            --tunable 'ssl_cert_path /cert' \

@@ -2322,9 +2322,7 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
             close(fd);
             return -1;
         }
-        if (hndl->is_admin)
-            sbuf2printf(sb, "@");
-        sbuf2printf(sb, "newsql\n");
+        sbuf2printf(sb, hndl->is_admin ? "@newsql\n" : "newsql\n");
         sbuf2flush(sb);
     }
 

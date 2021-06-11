@@ -74,10 +74,6 @@ static int add_consumer_int(struct dbtable *db, int consumern,
                                     int checkonly);
 static int add_consumer(struct dbtable *db, int consumern, const char *method,
                          int noremove);
-static int add_consumer_int(struct dbtable *db, int consumern,
-                                    const char *method, int noremove,
-                                    int checkonly);
-
 
 int set_consumer_options(struct consumer *consumer, const char *opts);
 
