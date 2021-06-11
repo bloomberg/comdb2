@@ -1,3 +1,4 @@
+libevent_appsock 0
 table t t.csc2
 round_robin_stripes
 #ssl_allow_remsql 1

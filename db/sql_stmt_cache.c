@@ -104,6 +104,12 @@ stmt_cache_t *stmt_cache_new(stmt_cache_t *in_stmt_cache)
 static int stmt_cache_requeue_entry(stmt_cache_t *stmt_cache,
                                     stmt_cache_entry_t *entry)
 {
+    int rc = sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
+    if (rc != SQLITE_OK) {
+        /* sqlite_step -> sql_tick -> EPIPE -> sqlite_reset returns SQLITE_ABORT */
+        return -1;
+    }
+
     if (hash_find(stmt_cache->hash, entry->sql) != NULL) {
         return -1; // already there, don't add again
     }
@@ -112,12 +118,6 @@ static int stmt_cache_requeue_entry(stmt_cache_t *stmt_cache,
         return -1;
     }
 
-    int rc = sqlite3_reset(entry->stmt); // reset vdbe when adding to hash tbl
-    assert(rc == SQLITE_OK);
-    if (rc != SQLITE_OK) {
-        logmsg(LOGMSG_ERROR, "%s:%d sqlite3_reset(%p) error, rc = %d\n",
-               __func__, __LINE__, entry->stmt, rc);
-    }
     rc = sqlite3_clear_bindings(entry->stmt);
     assert(rc == SQLITE_OK);
     if (rc != SQLITE_OK) {

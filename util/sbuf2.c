@@ -47,7 +47,7 @@
 #endif /* !SBUF2_SERVER */
 
 #if SBUF2_UNGETC
-#  define SBUF2UNGETC_BUF_MAX 4
+#  define SBUF2UNGETC_BUF_MAX 8 /* see also net/net_evbuffer.c */
 #endif
 
 #if WITH_SSL

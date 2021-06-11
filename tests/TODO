@@ -80,6 +80,8 @@ netloss.test              -- does not pass most of the time; requires kernel 4.x
 sc_async_constraints.test
 async_sc_bench.test       -- benchmark for paper
 repeated_downgrades.test  -- we get lost writes from the downgrades
+rootpagememleak.test
+mem_protobuf.test
 <END>
 
 # vim: set sw=4 ts=4 et:

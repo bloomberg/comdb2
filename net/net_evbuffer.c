@@ -36,7 +36,6 @@
 #include <event2/thread.h>
 #include <event2/util.h>
 
-#include <akbufferevent.h>
 #include <akq.h>
 #include <bb_oscompat.h>
 #include <comdb2_atomic.h>
@@ -48,15 +47,18 @@
 #include <mem_net.h>
 #include <mem_override.h>
 #include <net.h>
+#include <net_appsock.h>
 #include <net_int.h>
 #include <plhash.h>
 #include <portmuxapi.h>
 
+#define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)
 #define TCP_BUFSZ MB(8)
-#define MAX_DISTRESS_COUNT 10
+#define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
+#define MAX_DISTRESS_COUNT 3
 #define hprintf_lvl LOGMSG_USER
-#define hprintf_format(a) "[%.3s %-8s fd:%-3d %18s] " a, e->service, e->host, e->fd, __func__
+#define hprintf_format(a) "[%.3s %-8s fd:%-3d %20s] " a, e->service, e->host, e->fd, __func__
 #define distress_logmsg(...)                                                   \
     do {                                                                       \
         if (e->distressed) {                                                   \
@@ -78,13 +80,13 @@
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
 int gbl_libevent = 1;
+int gbl_libevent_appsock = 1;
 int gbl_libevent_rte_only = 0;
 
 extern char *gbl_myhostname;
 extern int gbl_create_mode;
 extern int gbl_exit;
 extern int gbl_fullrecovery;
-extern int gbl_netbufsz;
 extern int gbl_pmux_route_enabled;
 
 static double resume_lvl = 0.9;
@@ -99,6 +101,7 @@ enum policy {
     POLICY_PER_EVENT
 };
 
+static int dedicated_appsock = 1;
 static int dedicated_timer = 0;
 static enum policy akq_policy = POLICY_PER_NET;
 static enum policy reader_policy = POLICY_PER_HOST;
@@ -117,6 +120,12 @@ static pthread_t base_thd;
 static struct event_base *base;
 static pthread_t timer_thd;
 static struct event_base *timer_base;
+
+pthread_t appsock_timer_thd;
+struct event_base *appsock_timer_base;
+
+pthread_t appsock_rd_thd;
+struct event_base *appsock_rd_base;
 
 #define get_akq()                                                              \
     ({                                                                         \
@@ -163,19 +172,6 @@ static struct event_base *timer_base;
 #define wr_thd ({ get_wr_policy()->wrthd; })
 #define wr_base ({ get_wr_policy()->wrbase; })
 
-#undef SKIP_CHECK_THD
-
-#ifdef SKIP_CHECK_THD
-#  define check_thd(...)
-#else
-#  define check_thd(thd)                                                       \
-    if (thd != pthread_self()) {                                               \
-        fprintf(stderr, "FATAL ERROR: %s EVENT NOT DISPATCHED on " #thd "\n",  \
-                __func__);                                                     \
-        abort();                                                               \
-    }
-#endif
-
 #define check_base_thd() check_thd(base_thd)
 #define check_timer_thd() check_thd(timer_thd)
 #define check_rd_thd() check_thd(rd_thd)
@@ -193,33 +189,21 @@ struct connect_info;
 struct event_info;
 struct net_info;
 
+static struct akq *setup_akq(char *);
 static void do_open(int, short, void *);
-static void errorcb(int, short, void *);
-static void event_info_free(struct event_info *);
-static void flushcb(int, short, void *);
-static void init_base(pthread_t *, struct event_base **, void *(*)(void *), const char *);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
-static struct akq *setup_akq(char *);
+static void resume_read(int, short, void *);
 static void unix_connect(int, short, void *);
-
-#define event_once(a, b, c)                                                    \
-    ({                                                                         \
-        int erc;                                                               \
-        if ((erc = event_base_once(a, -1, EV_TIMEOUT, b, c, NULL)) != 0) {     \
-            logmsg(LOGMSG_ERROR, "%s:%d event_base_once failed\n", __func__,   \
-                   __LINE__);                                                  \
-        }                                                                      \
-        erc;                                                                   \
-    })
 
 static struct timeval reconnect_time(int retry)
 {
-    /* Range 100ms - 999ms if not in distress mode */
     time_t sec = 0;
     suseconds_t usec = (random() % 900000) + 100000;
-    if (retry > MAX_DISTRESS_COUNT) {
-        sec = 5 + (usec % 5);
+    if (retry > 100) {
+        sec = 10 + (usec % 5);
+    } else if (retry > 10) {
+        sec = 1 + (usec % 5);
     }
     struct timeval t = {sec, usec};
     return t;
@@ -316,7 +300,16 @@ static int get_nonblocking_socket(void)
     return fd;
 }
 
-struct host_connected_info;
+static hash_t *appsock_hash;
+struct appsock_info {
+    const char *key;
+    event_callback_fn cb;
+};
+
+static struct appsock_info *get_appsock_info(const char *key)
+{
+    return hash_find_readonly(appsock_hash, &key);
+}
 
 struct host_info {
     LIST_HEAD(, event_info) event_list;
@@ -324,6 +317,8 @@ struct host_info {
     char *host;
     struct policy_info per_host;
 };
+
+struct host_connected_info;
 
 struct event_info {
     host_node_type *host_node_ptr;
@@ -349,31 +344,35 @@ struct event_info {
     int decomissioned;
     int got_hello;
 
-    struct akbufferevent *flush_buf;
+    /* akq backed */
+    int akq_gen;
+    int akq_full;
+    pthread_mutex_t akq_lk;
+    struct evbuffer *akq_buf;
+    struct evbuffer *payload_buf;
 
-    /* Write ops guarded by wr_lk */
-    pthread_mutex_t wr_lk;
-    struct evbuffer *wr_buf;
-    int wr_full;
-
-    /* Read ops happen on read base */
-    struct evbuffer *rd_evbuf;
-    struct event rd_event;
-    uint8_t *rdbuf;
-    int rdbuf_sz;
+    /* read */
+    struct evbuffer *rd_buf;
+    struct event *rd_ev;
     uint64_t need;
-    uint64_t rd_size; /* data enqueued in akq */
-    int rd_full;
     int state;
     wire_header_type hdr;
     net_send_message_header msg;
     net_ack_message_payload_type ack;
+
+    /* write */
+    pthread_mutex_t wr_lk;
+    struct evbuffer *wr_buf;
+    struct evbuffer *wrcb_buf;
+    struct evbuffer *flush_buf;
+    struct event *flush_ev;
+    int wr_full;
 };
 
 #define EVENT_HASH_KEY_SZ 128
 struct event_hash_entry {
     char key[EVENT_HASH_KEY_SZ];
-    struct event_info *event_info;
+    struct event_info *e;
 };
 static hash_t *event_hash;
 static pthread_mutex_t event_hash_lk = PTHREAD_MUTEX_INITIALIZER;
@@ -390,10 +389,9 @@ struct net_dispatch_info {
 };
 
 struct user_msg_info {
-    struct event_info *event_info;
+    int gen;
+    struct event_info *e;
     net_send_message_header msg;
-    size_t len;
-    uint8_t *buf;
 };
 
 #if 0
@@ -406,6 +404,7 @@ struct user_event_info {
 
 static LIST_HEAD(, user_event_info) user_event_list = LIST_HEAD_INITIALIZER(user_event_list);
 #endif
+
 static LIST_HEAD(, net_info) net_list = LIST_HEAD_INITIALIZER(net_list);
 static LIST_HEAD(, host_info) host_list = LIST_HEAD_INITIALIZER(host_list);
 
@@ -439,15 +438,17 @@ static void shutdown_close(int fd)
     close(fd);
 }
 
-static void nop(int dummyfd, short what, void *data)
+static void nop(int dummyfd, short what, void *arg)
 {
     /* EVLOOP_NO_EXIT_ON_EMPTY is not available in LibEvent v2.0. This keeps
      * base around even if there are no events. */
 }
 
+static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
     struct net_dispatch_info *n = arg;
+    current_base = n->base;
     struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
     struct timeval ten = {10, 0};
 
@@ -470,6 +471,17 @@ static void *net_dispatch(void *arg)
     return NULL;
 }
 
+static void init_base(pthread_t *t, struct event_base **bb, const char *who)
+{
+    struct net_dispatch_info *info;
+    info = calloc(1, sizeof(struct net_dispatch_info));
+    *bb = event_base_new();
+    info->who = who;
+    info->base = *bb;
+    Pthread_create(t, NULL, net_dispatch, info);
+    Pthread_detach(*t);
+}
+
 static struct host_info *host_info_new(char *host)
 {
     check_base_thd();
@@ -481,25 +493,12 @@ static struct host_info *host_info_new(char *host)
         h->per_host.akq = setup_akq(h->host);
     }
     if (reader_policy == POLICY_PER_HOST) {
-        init_base(&h->per_host.rdthd, &h->per_host.rdbase, net_dispatch, h->host);
+        init_base(&h->per_host.rdthd, &h->per_host.rdbase, h->host);
     }
     if (writer_policy == POLICY_PER_HOST) {
-        init_base(&h->per_host.wrthd, &h->per_host.wrbase, net_dispatch, h->host);
+        init_base(&h->per_host.wrthd, &h->per_host.wrbase, h->host);
     }
     return h;
-}
-
-static void host_info_free(struct host_info *h)
-{
-    check_base_thd();
-    LIST_REMOVE(h, entry);
-    struct event_info *e, *tmpe;
-    LIST_FOREACH_SAFE(e, &h->event_list, host_list_entry, tmpe) {
-        event_info_free(e);
-    }
-    // event_base_free(h->rd_base);
-    logmsg(LOGMSG_INFO, "%s - %s\n", __func__, h->host);
-    free(h);
 }
 
 static struct host_info *host_info_find(const char *host)
@@ -522,6 +521,7 @@ struct net_info {
     char *instance;
     char *app;
     uint64_t rd_max;
+    uint64_t wr_max;
     struct event *unix_ev;
     struct evbuffer *unix_buf;
     struct evconnlistener *listener;
@@ -537,15 +537,16 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     n->instance = strdup(netinfo_ptr->instance);
     n->app = strdup(netinfo_ptr->app);
     n->port = netinfo_ptr->myport;
-    n->rd_max = MB(512);
+    n->rd_max = MB(32);
+    n->wr_max = MB(64); /* netinfo_ptr->max_bytes; */
     if (akq_policy == POLICY_PER_NET) {
         n->per_net.akq = setup_akq(n->service);
     }
     if (reader_policy == POLICY_PER_NET) {
-        init_base(&n->per_net.rdthd, &n->per_net.rdbase, net_dispatch, n->service);
+        init_base(&n->per_net.rdthd, &n->per_net.rdbase, n->service);
     }
     if (writer_policy == POLICY_PER_NET) {
-        init_base(&n->per_net.wrthd, &n->per_net.wrbase, net_dispatch, n->service);
+        init_base(&n->per_net.wrthd, &n->per_net.wrbase, n->service);
     }
     LIST_INSERT_HEAD(&net_list, n, entry);
     LIST_INIT(&n->event_list);
@@ -632,18 +633,16 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     struct event_info *e = calloc(1, sizeof(struct event_info));
     LIST_INSERT_HEAD(&h->event_list, e, host_list_entry);
     LIST_INSERT_HEAD(&n->event_list, e, net_list_entry);
-    LIST_INIT(&e->host_connected_list);
     e->fd = -1;
     e->host = h->host;
     e->service = n->service;
     e->host_info = h;
     e->net_info = n;
-    Pthread_mutex_init(&e->wr_lk, NULL);
-    e->flush_buf = akbufferevent_new(wr_base, errorcb, flushcb, e);
+    e->payload_buf = evbuffer_new();
     setup_wire_hdrs(e);
     struct event_hash_entry *entry = malloc(sizeof(struct event_hash_entry));
     make_event_hash_key(entry->key, n->service, h->host);
-    entry->event_info = e;
+    entry->e = e;
     Pthread_mutex_lock(&event_hash_lk);
     hash_add(event_hash, entry);
     Pthread_mutex_unlock(&event_hash_lk);
@@ -651,44 +650,14 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
         e->per_event.akq = setup_akq(entry->key);
     }
     if (reader_policy == POLICY_PER_EVENT) {
-        init_base(&e->per_event.rdthd, &e->per_event.rdbase, net_dispatch, entry->key);
+        init_base(&e->per_event.rdthd, &e->per_event.rdbase, entry->key);
     }
     if (writer_policy == POLICY_PER_EVENT) {
-        init_base(&e->per_event.wrthd, &e->per_event.wrbase, net_dispatch, entry->key);
+        init_base(&e->per_event.wrthd, &e->per_event.wrbase, entry->key);
     }
+    Pthread_mutex_init(&e->akq_lk, NULL);
+    Pthread_mutex_init(&e->wr_lk, NULL);
     return e;
-}
-
-static void event_info_free(struct event_info *e)
-{
-    abort();
-#   if 0
-    check_base_thd();
-    LIST_REMOVE(e, host_list_entry);
-    LIST_REMOVE(e, net_list_entry);
-    Pthread_mutex_lock(&e->wr_lk);
-    if (!single_thread && e->rd_bev) {
-        bufferevent_free(e->rd_bev);
-    }
-    if (e->wr_buf) {
-        evbuffer_free(e->wr_buf);
-    }
-    host_node_type *host_node_ptr = HOST_NODE_PTR(e);
-    host_node_close(host_node_ptr);
-    rem_from_netinfo(e->host_node_ptr->netinfo_ptr, e->host_node_ptr);
-    for (int i = 1; i < WIRE_HEADER_MAX; ++i) {
-        printf("********         FREEING WIREHDRs         ***********\n");
-        free(e->wirehdr[i]);
-    }
-    printf("********         FREEING EVENTINFO      ***********\n");
-    Pthread_mutex_lock(&event_hash_lk);
-    hash_del(event_hash, entry);
-    Pthread_mutex_unlock(&event_hash_lk);
-    free(entry);
-    Pthread_mutex_unlock(&e->wr_lk);
-    Pthread_mutex_destroy(&e->wr_lk);
-    free(e);
-#   endif
 }
 
 struct net_msg_data {
@@ -704,7 +673,6 @@ static struct net_msg_data *net_msg_data_new(void *buf, int len, int type)
     if (data == NULL) {
         return NULL;
     }
-    memset(data, 0, sizeof(struct net_msg_data));
     data->sz = NET_SEND_MESSAGE_HEADER_LEN + len;
     data->ref = 1;
     net_send_message_header tmp = {
@@ -712,14 +680,14 @@ static struct net_msg_data *net_msg_data_new(void *buf, int len, int type)
         .datalen = len,
     };
     net_send_message_header *hdr = &data->msghdr;
-    net_send_message_header_put(&tmp, (uint8_t *)hdr, (uint8_t*)(hdr + 1));
+    net_send_message_header_put(&tmp, (uint8_t *)hdr, (uint8_t *)(hdr + 1));
     memcpy(&data->buf, buf, len);
     return data;
 }
 
-static void net_msg_data_free(const void *unused, size_t datalen, void *extra)
+static void net_msg_data_free(const void *unused0, size_t unused1, void *ptr)
 {
-    struct net_msg_data *data = extra;
+    struct net_msg_data *data = ptr;
     int ref = ATOMIC_ADD32(data->ref, -1);
     if (ref) {
         return;
@@ -732,49 +700,10 @@ static void net_msg_data_add_ref(struct net_msg_data *data)
     ATOMIC_ADD32(data->ref, 1);
 }
 
-struct net_msg {
-    int num;
-    int flags;
-    netinfo_type *netinfo_ptr;
-    struct net_msg_data *data[0];
-};
-
-static void net_msg_free(struct net_msg *msg)
-{
-    for (int i = 0; i < msg->num; ++i) {
-        struct net_msg_data *data = msg->data[i];
-        if (data) {
-            net_msg_data_free(&data->msghdr, data->sz, data);
-        }
-    }
-    free(msg);
-}
-
-static struct net_msg *net_msg_new(netinfo_type *netinfo_ptr, int n, void **buf,
-                                   int *len, int *type, int *flags)
-{
-    struct net_msg *msg;
-    msg = calloc(1, sizeof(struct net_msg) + sizeof(struct net_msg_data *) * n);
-    if (msg == NULL) {
-        return NULL;
-    }
-    msg->netinfo_ptr = netinfo_ptr;
-    msg->num = n;
-    for (int i = 0; i < n; ++i) {
-        msg->data[i] = net_msg_data_new(buf[i], len[i], type[i]);
-        if (msg->data[i] == NULL) {
-            net_msg_free(msg);
-            return NULL;
-        }
-        msg->flags |= flags[i];
-    }
-    return msg;
-}
-
 struct host_connected_info {
     LIST_ENTRY(host_connected_info) entry;
     int fd;
-    struct event_info *event_info;
+    struct event_info *e;
     int connect_msg;
 };
 
@@ -782,7 +711,7 @@ static struct host_connected_info *
 host_connected_info_new(struct event_info *e, int fd, int connect_msg)
 {
     struct host_connected_info *info = calloc(1, sizeof(struct host_connected_info));
-    info->event_info = e;
+    info->e = e;
     info->fd = fd;
     info->connect_msg = connect_msg;
     LIST_INSERT_HEAD(&e->host_connected_list, info, entry);
@@ -836,14 +765,14 @@ static void accept_info_free(struct accept_info *a)
 struct connect_info {
     int fd;
     struct evbuffer *buf;
-    struct event_info *event_info;
+    struct event_info *e;
 };
 
 static struct connect_info *connect_info_new(struct event_info *e)
 {
     struct connect_info *c = calloc(1, sizeof(struct connect_info));
     c->fd = -1;
-    c->event_info = e;
+    c->e = e;
     c->buf = evbuffer_new();
     return c;
 }
@@ -851,8 +780,6 @@ static struct connect_info *connect_info_new(struct event_info *e)
 static void connect_info_free(struct connect_info *c)
 {
     if (c->fd != -1) {
-        struct event_info *e = c->event_info;
-		hprintf("CLOSING fd:%d\n", c->fd);
         shutdown_close(c->fd);
     }
     if (c->buf) {
@@ -898,96 +825,79 @@ static void update_net_info(struct net_info *n, int fd, int port)
     n->netinfo_ptr->myport = port;
 }
 
-static void resume_read(int, short, void *);
-static void suspend_read(int, short, void *);
-
-static void akq_work_free(struct event_info *e, struct user_msg_info *info)
+static void do_disable_write(struct event_info *e)
 {
-    free(info->buf);
-    int64_t len = info->len * -1;
-    uint64_t outstanding = ATOMIC_ADD64(e->rd_size, len);
-    uint64_t max_bytes = e->net_info->rd_max;
-    if (!max_bytes) {
-        return;
+    check_wr_thd();
+    if (e->flush_ev) {
+        event_free(e->flush_ev);
+        e->flush_ev = NULL;
     }
-    if (e->rd_full) {
-        if (outstanding <= max_bytes * resume_lvl) {
-            e->rd_full = 0;
-            hprintf("RESUMING RD bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
-                    outstanding, max_bytes);
-            event_once(rd_base, resume_read, e);
-        }
-    } else {
-        if (outstanding > max_bytes) {
-            e->rd_full = 1;
-            hprintf("SUSPENDING RD bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
-                    outstanding, max_bytes);
-            event_once(rd_base, suspend_read, e);
-        }
+    if (e->flush_buf) {
+        evbuffer_free(e->flush_buf);
+        e->flush_buf = NULL;
     }
+    if (e->wrcb_buf) {
+        evbuffer_free(e->wrcb_buf);
+        e->wrcb_buf = NULL;
+    }
+    if (e->wr_buf) {
+        evbuffer_free(e->wr_buf);
+        e->wr_buf = NULL;
+    }
+    if (e->fd != -1) {
+        shutdown_close(e->fd);
+        e->fd = -1;
+    }
+    e->got_hello = 0;
 }
 
 struct disable_info {
-    struct event_info *event_info;
+    struct event_info *e;
     event_callback_fn func;
 };
 
 static void disable_write(int dummyfd, short what, void *data)
 {
-    struct disable_info *i = data;
-    struct event_info *e = i->event_info;
-    event_callback_fn func = i->func;
-    check_wr_thd();
-    free(i);
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     Pthread_mutex_lock(&e->wr_lk);
-    akbufferevent_disable(e->flush_buf);
-    if (e->wr_buf) {
-        evbuffer_free(e->wr_buf);
-        e->wr_buf = NULL;
-    }
-    e->got_hello = 0;
-
-
+    do_disable_write(e);
     if (e->fd != -1) {
         hprintf("CLOSING CONNECTION fd:%d\n", e->fd);
         shutdown_close(e->fd);
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
-    event_once(base, func, e);
+    event_once(base, d->func, e);
+    free(d);
 }
 
 static void do_disable_read(struct event_info *e)
 {
     check_rd_thd();
-    if (e->rd_evbuf) {
-        evbuffer_free(e->rd_evbuf);
-        e->rd_evbuf= NULL;
-        event_del(&e->rd_event);
+    Pthread_mutex_lock(&e->akq_lk);
+    ++e->akq_gen;
+    if (e->akq_buf) {
+        evbuffer_free(e->akq_buf);
+        e->akq_buf = NULL;
     }
-}
-
-static int truncate_func(void *work, void *arg)
-{
-    struct user_msg_info *i = work;
-    struct event_info *e = arg;
-    if (i->event_info == e) {
-        akq_work_free(e, i);
-        return 1;
+    Pthread_mutex_unlock(&e->akq_lk);
+    if (e->rd_buf) {
+        evbuffer_free(e->rd_buf);
+        e->rd_buf = NULL;
     }
-    return 0;
+    if (e->rd_ev) {
+        event_free(e->rd_ev);
+        e->rd_ev = NULL;
+    }
 }
 
 static void disable_read(int dummyfd, short what, void *data)
 {
-    struct disable_info *i = data;
-    struct event_info *e = i->event_info;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     do_disable_read(e);
-    struct akq *q = get_akq();
-    if (q) {
-        akq_truncate_if(q, truncate_func, e);
-    }
-    event_once(wr_base, disable_write, i);
+    event_once(wr_base, disable_write, d);
 }
 
 static void do_disable_heartbeats(struct event_info *e)
@@ -1005,18 +915,18 @@ static void do_disable_heartbeats(struct event_info *e)
 
 static void disable_heartbeats(int dummyfd, short what, void *data)
 {
-    struct disable_info *i = data;
-    struct event_info *e = i->event_info;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     do_disable_heartbeats(e);
-    event_once(rd_base, disable_read, i);
+    event_once(rd_base, disable_read, d);
 }
 
 static void do_host_close(int dummyfd, short what, void *data)
 {
-    struct disable_info *i = data;
-    struct event_info *e = i->event_info;
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
     host_node_close(e->host_node_ptr);
-    event_once(timer_base, disable_heartbeats, i);
+    event_once(timer_base, disable_heartbeats, d);
 }
 
 static void do_close(struct event_info *e, event_callback_fn func)
@@ -1026,7 +936,7 @@ static void do_close(struct event_info *e, event_callback_fn func)
         netinfo_ptr->hostdown_rtn(netinfo_ptr, e->host);
     }
     struct disable_info *i = malloc(sizeof(struct disable_info));
-    i->event_info = e;
+    i->e = e;
     i->func = func;
     event_once(base, do_host_close, i);
 }
@@ -1034,6 +944,7 @@ static void do_close(struct event_info *e, event_callback_fn func)
 static int skip_connect(struct event_info *e)
 {
     if (e->decomissioned) {
+        hputs("SKIPPING DECOM HOST\n");
         return 1;
     }
     return 0;
@@ -1047,6 +958,7 @@ static void do_reconnect(int dummyfd, short what, void *data)
         return;
     }
     if (e->connect_ev) {
+        hputs("HAVE PENDING RECONNECT\n");
         return;
     }
     struct timeval t = reconnect_time(e->distress_count);
@@ -1063,26 +975,78 @@ static void reconnect(struct event_info *e)
     do_close(e, do_reconnect);
 }
 
-static void errorcb(int what, short fd, void *arg)
+static void check_wr_full(struct event_info *e, size_t outstanding)
 {
-    reconnect(arg);
+    uint64_t max_bytes = e->net_info->wr_max;
+    if (e->wr_full) return;
+    if (outstanding < max_bytes) return;
+    e->wr_full = 1;
+    //hprintf("SUSPENDING WR bytes:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
 }
 
-static void flushcb(int total_flushed, short fd, void *arg)
+static ssize_t writev_evbuffer(struct evbuffer *buf, int fd)
 {
-    struct event_info *e = arg;
-    if (total_flushed > 0) {
-        e->sent_at = time(NULL);
+#   define N 256
+    struct iovec v[N];
+    int c = evbuffer_peek(buf, -1, NULL, v, N);
+    ssize_t n = writev(fd, v, c);
+    if (n > 0) {
+        evbuffer_drain(buf, n);
     }
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    uint64_t max_bytes = netinfo_ptr->max_bytes;
-    if (e->wr_full && max_bytes) {
-        size_t outstanding = akbufferevent_get_length(e->flush_buf);
-        if (outstanding <= max_bytes * resume_lvl) {
-            e->wr_full = 0;
-            hprintf("RESUMING WR bytes:%zu (max:%" PRIu64 ")\n", outstanding, max_bytes);
+    return n;
+}
+
+static int check_outstanding(struct event_info *e)
+{
+    evbuffer_add_buffer(e->wrcb_buf, e->flush_buf);
+    size_t outstanding = evbuffer_get_length(e->wrcb_buf);
+    uint64_t max_bytes = e->net_info->wr_max;
+    if (e->wr_full && outstanding < (max_bytes * resume_lvl)) {
+        e->wr_full = 0;
+        //hprintf("RESUMING WR bytes:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
+    }
+    if (!outstanding) {
+        event_del(e->flush_ev);
+    }
+    return outstanding;
+}
+
+static void writecb(int fd, short what, void *data)
+{
+    struct event_info *e = data;
+    while (1) {
+        Pthread_mutex_lock(&e->wr_lk);
+        if (fd != e->fd || !e->flush_buf || !e->wrcb_buf) abort();
+        int len = check_outstanding(e);
+        Pthread_mutex_unlock(&e->wr_lk);
+        if (!len) {
+            return;
+        }
+        //int rc = evbuffer_write(buf, e->fd);
+        ssize_t rc = writev_evbuffer(e->wrcb_buf, fd);
+        if (rc <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+            hprintf("writev rc:%zd errno:%d:%s\n", rc, errno, strerror(errno));
+            break;
+        }
+        e->sent_at = time(NULL);
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return;
         }
     }
+    Pthread_mutex_lock(&e->wr_lk);
+    do_disable_write(e);
+    Pthread_mutex_unlock(&e->wr_lk);
+    reconnect(e);
+}
+
+static void flush_evbuffer(struct event_info *e, int nodelay)
+{
+    size_t outstanding = evbuffer_get_length(e->flush_buf) + evbuffer_get_length(e->wr_buf);
+    if (nodelay) {
+        evbuffer_add_buffer(e->flush_buf, e->wr_buf);
+        event_add(e->flush_ev, NULL);
+    }
+    check_wr_full(e, outstanding);
 }
 
 static void send_decom_all(int dummyfd, short what, void *data)
@@ -1091,17 +1055,28 @@ static void send_decom_all(int dummyfd, short what, void *data)
     struct net_info *n = e->net_info;
     struct event_info *to;
     LIST_FOREACH(to, &n->event_list, net_list_entry) {
-        /*
-        if (e == to) {
-            continue;
-        }
-        */
         write_decom(n->netinfo_ptr, to->host_node_ptr, e->host, strlen(e->host), to->host);
     }
     hputs_nd("DECOMMISSIONED\n");
 }
 
-static void do_user_msg(struct event_info *e, net_send_message_header *msg, uint8_t *payload)
+static void check_rd_full(struct event_info *e, uint64_t outstanding)
+{
+    uint64_t max_bytes = e->net_info->rd_max;
+    if (e->akq_full) return;
+    if (outstanding < max_bytes) return;
+    e->akq_full = 1;
+    event_del(e->rd_ev);
+    //hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
+}
+
+static void message_done(struct event_info *e)
+{
+    e->hdr.type = 0;
+    e->need = e->wirehdr_len;
+}
+
+static void user_msg(struct event_info *e, net_send_message_header *msg, void *payload)
 {
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     NETFP *func = netinfo_ptr->userfuncs[msg->usertype].func;
@@ -1114,6 +1089,77 @@ static void do_user_msg(struct event_info *e, net_send_message_header *msg, uint
         .netinfo = netinfo_ptr,
     };
     func(&ack, usrptr, host, msg->usertype, payload, msg->datalen, 1);
+}
+
+static void user_msg_callback(void *work)
+{
+    struct user_msg_info *info = work;
+    struct event_info *e = info->e;
+    net_send_message_header *msg = &info->msg;
+    int datalen = msg->datalen;
+    int64_t outstanding = -1;
+
+    Pthread_mutex_lock(&e->akq_lk);
+    if (info->gen == e->akq_gen && e->akq_buf &&
+        evbuffer_remove_buffer(e->akq_buf, e->payload_buf, datalen) == datalen) {
+        outstanding = evbuffer_get_length(e->akq_buf);
+    }
+    Pthread_mutex_unlock(&e->akq_lk);
+    if (outstanding == -1)  {
+        return;
+    }
+    uint64_t max_bytes = e->net_info->rd_max;
+    if (e->akq_full && outstanding < (max_bytes * resume_lvl)) {
+        //hprintf("RESUMING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
+        e->akq_full = 0;
+        event_once(rd_base, resume_read, e);
+    }
+
+    user_msg(e, msg, evbuffer_pullup(e->payload_buf, datalen));
+    evbuffer_drain(e->payload_buf, datalen);
+}
+
+static int process_user_msg(struct event_info *e)
+{
+    net_send_message_header *msg = &e->msg;
+    if (e->state == 0) {
+        ++e->state;
+        net_send_message_header src;
+        evbuffer_remove(e->rd_buf, &src, sizeof(net_send_message_header));
+        net_send_message_header_get(msg, (void *)&src, (void *)(&src + 1));
+        if (msg->usertype <= USER_TYPE_MIN || msg->usertype >= USER_TYPE_MAX) {
+            hprintf("BAD USER MSG TYPE:%d (htonl:%d)\n", msg->usertype, htonl(msg->usertype));
+            return -1;
+        }
+        if (msg->datalen) {
+            e->need = msg->datalen;
+            return 0;
+        }
+    }
+    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+    NETFP *func = netinfo_ptr->userfuncs[msg->usertype].func;
+    if (func == NULL) {
+        /* Startup race without accept-on-child-net: Replication net is
+         * ready and accepts offload connection but offload callbacks have not
+         * registered yet. */
+        hprintf("NO USERFUNC FOR USERTYPE:%d\n", msg->usertype);
+        return -1;
+    }
+    int datalen = msg->datalen;
+    struct akq *q = get_akq();
+    if (q) {
+        struct user_msg_info info = {.gen = e->akq_gen, .e = e, .msg = *msg};
+        Pthread_mutex_lock(&e->akq_lk);
+        evbuffer_remove_buffer(e->rd_buf, e->akq_buf, datalen);
+        check_rd_full(e, evbuffer_get_length(e->akq_buf));
+        Pthread_mutex_unlock(&e->akq_lk);
+        akq_enqueue_work(q, &info);
+    } else {
+        user_msg(e, msg, evbuffer_pullup(e->rd_buf, datalen));
+        evbuffer_drain(e->rd_buf, datalen);
+    }
+    message_done(e);
+    return 0;
 }
 
 static void akq_start_callback(void *dummy)
@@ -1130,47 +1176,9 @@ static void akq_stop_callback(void *dummy)
     }
 }
 
-static void akq_work_callback(void *work)
-{
-    struct user_msg_info *info = work;
-    struct event_info *e = info->event_info;
-    do_user_msg(e, &info->msg, info->buf);
-    akq_work_free(e, info);
-}
-
 static struct akq *setup_akq(char *name)
 {
-    return akq_new(name, sizeof(struct user_msg_info), akq_work_callback,
-                   akq_start_callback, akq_stop_callback);
-}
-
-static void user_msg(struct event_info *e, net_send_message_header *msg,
-                     uint8_t *payload)
-{
-    check_rd_thd();
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    NETFP *func = netinfo_ptr->userfuncs[msg->usertype].func;
-    if (func == NULL) {
-        /* Startup race without accept-on-child-net: Replication net is
-         * ready and accepts offload connection but offload callbacks have not
-         * registered yet. */
-        reconnect(e);
-        return;
-    }
-    struct akq *q = get_akq();
-    if (!q) {
-        do_user_msg(e, msg, payload);
-        return;
-    }
-    struct user_msg_info info;
-    info.event_info = e;
-    info.msg = *msg;
-    info.buf = payload;
-    info.len = e->need;
-    e->rdbuf = NULL;
-    e->rdbuf_sz = 0;
-    ATOMIC_ADD64(e->rd_size, e->need);
-    akq_enqueue_work(q, &info);
+    return akq_new(name, sizeof(struct user_msg_info), user_msg_callback, akq_start_callback, akq_stop_callback);
 }
 
 static void stop_base(struct event_base *b)
@@ -1197,6 +1205,10 @@ static void exit_once_func(void)
     stop_base(base);
     if (dedicated_timer) {
         stop_base(timer_base);
+    }
+    if (gbl_libevent_appsock) {
+        stop_base(appsock_timer_base);
+        stop_base(appsock_rd_base);
     }
     switch (reader_policy) {
     case POLICY_NONE:
@@ -1286,7 +1298,7 @@ static void heartbeat_check(int dummyfd, short what, void *data)
     struct event_info *e = data;
     double diff = difftime_now(e->recv_at);
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    if (diff > netinfo_ptr->heartbeat_check_time) {
+    if (diff > netinfo_ptr->heartbeat_check_time && !e->akq_full) {
         hprintf("no data in %d seconds\n", (int)diff);
         do_disable_heartbeats(e);
         reconnect(e);
@@ -1304,132 +1316,139 @@ static void heartbeat_send(int dummyfd, short what, void *data)
     }
     write_heartbeat(netinfo_ptr, e->host_node_ptr);
     diff = difftime_now(e->sent_at);
-    if (diff < netinfo_ptr->heartbeat_send_time) {
-        return;
+    if (diff > netinfo_ptr->heartbeat_send_time && !e->wr_full) {
+        hprintf("no data in %d seconds\n", (int)diff);
+        do_disable_heartbeats(e);
+        reconnect(e);
     }
-    hprintf("no data in %d seconds\n", (int)diff);
-    do_disable_heartbeats(e);
-    reconnect(e);
 }
 
-static void message_done(struct event_info *e)
-{
-    e->hdr.type = 0;
-    e->need = e->wirehdr_len;
-}
-
-static void hello_hdr_common(struct event_info *e, uint8_t *payload)
+static void hello_hdr_common(struct event_info *e)
 {
     uint32_t n;
-    memcpy(&n, payload, sizeof(uint32_t));
+    evbuffer_remove(e->rd_buf, &n, sizeof(uint32_t));
     e->need = htonl(n) - sizeof(uint32_t);
 }
 
-static void hello_msg(struct event_info *e, uint8_t *payload)
+static int hello_msg_common(struct event_info *e)
 {
+    uint32_t hello_recv = e->need;
+    uint32_t start_sz = evbuffer_get_length(e->rd_buf);
     uint32_t n;
-    memcpy(&n, payload, sizeof(uint32_t));
+    evbuffer_remove(e->rd_buf, &n, sizeof(uint32_t));
     n = htonl(n);
     if (n > REPMAX) {
-        reconnect(e);
-        return;
+        hprintf("RECV'd BAD COUNT OF HOSTS:%u (max:%d)\n", n, REPMAX);
+        return -1;
     }
-    payload += sizeof(int);
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    char *hosts = (char *)payload;
-    uint32_t *ports = (uint32_t *)(payload + (n * HOSTNAME_LEN));
-    uint32_t *nodes = ports + n; /* in payload but ignored */
-    char *long_hosts = (char *)(nodes + n);
+    char hosts[n][HOSTNAME_LEN + 1];
     for (uint32_t i = 0; i < n; ++i) {
-        char h[HOSTNAME_LEN + 1];
-        char *host = h;
-        uint32_t port;
-        memcpy(h, hosts, HOSTNAME_LEN);
-        h[HOSTNAME_LEN] = 0;
-        hosts += HOSTNAME_LEN;
-        memcpy(&port, ports, sizeof(uint32_t));
-        port = htonl(port);
-        ++ports;
-        if (h[0] == '.') {
-            uint32_t s = atoi(h + 1);
+        evbuffer_remove(e->rd_buf, hosts[i], HOSTNAME_LEN);
+        hosts[i][HOSTNAME_LEN] = 0;
+    }
+    uint32_t ports[n];
+    for (uint32_t i = 0; i < n; ++i) {
+        evbuffer_remove(e->rd_buf, &ports[i], sizeof(uint32_t));
+        ports[i] = htonl(ports[i]);
+    }
+    /* We have no use for node numbers */
+    evbuffer_drain(e->rd_buf, n * sizeof(uint32_t));
+    for (uint32_t i = 0; i < n; ++i) {
+        char *host = hosts[i];
+        if (*host == '.') {
+            ++host;
+            uint32_t s = atoi(host);
             if (s > HOST_NAME_MAX) {
-                reconnect(e);
-                return;
+                hprintf("RECV'd BAD HOSTNAME len:%u (max:%d)\n", s, HOST_NAME_MAX);
+                return -1;
             }
             host = alloca(s + 1);
-            memcpy(host, long_hosts, s);
+            evbuffer_remove(e->rd_buf, host, s);
             host[s] = 0;
-            long_hosts += s;
+        }
+        if (strcmp(host, gbl_myhostname) == 0) {
+            continue;
+        }
+        struct host_info *hi = host_info_find(host);
+        if (hi && event_info_find(e->net_info, hi)) {
+            continue;
         }
         char *ihost = intern(host);
-        host_node_type *newhost = add_to_netinfo(netinfo_ptr, ihost, port);
+        netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
+        host_node_type *newhost = add_to_netinfo(netinfo_ptr, ihost, ports[i]);
         if (newhost) {
-            if (port) {
-                newhost->port = port;
+            if (ports[i]) {
+                newhost->port = ports[i];
             }
             add_host(newhost);
         }
     }
+    /* R6/7.0 are sloppy with accounting and send extra fluff */
+    uint32_t end_sz = evbuffer_get_length(e->rd_buf);
+    uint32_t fluff = hello_recv - (start_sz - end_sz);
+    if (fluff) {
+        hprintf("%sRECEIVED FLUFF:%d\n", e->got_hello ? "REPLY " : "", fluff);
+        evbuffer_drain(e->rd_buf, fluff);
+    }
     set_hello_message(e);
-    int count = e->distress_count;
-    /* Need to clear before we can print */
+    return 0;
+}
+
+static void check_distress(struct event_info *e)
+{
+    int distress_count = e->distress_count;
     e->distress_count = e->distressed = 0;
-    if (count >= MAX_DISTRESS_COUNT) {
-        hprintf("LEAVING DISTRESS MODE (retries:%d)\n", count);
+    if (distress_count >= MAX_DISTRESS_COUNT) {
+        hprintf("LEAVING DISTRESS MODE (retries:%d)\n", distress_count);
     }
 }
 
-static void process_hello_msg(struct event_info *e, uint8_t *payload)
+static int process_hello_msg(struct event_info *e)
 {
     if (e->state == 0) {
-        hello_hdr_common(e, payload);
-        return;
+        ++e->state;
+        hello_hdr_common(e);
+        return 0;
     }
+    check_distress(e);
     int send_reply = 0;
     if (!e->got_hello) {
         send_reply = 1;
         hputs("GOT HELLO\n");
     }
-    hello_msg(e, payload);
-    message_done(e);
+    if (hello_msg_common(e) != 0) {
+        return -1;
+    }
     if (send_reply) {
+        hputs("WRITE HELLO REPLY\n");
         write_hello_reply(e->net_info->netinfo_ptr, e->host_node_ptr);
     }
+    message_done(e);
+    return 0;
 }
 
-static void process_hello_msg_reply(struct event_info *e, uint8_t *payload)
+static int process_hello_reply(struct event_info *e)
 {
     if (e->state == 0) {
-        hello_hdr_common(e, payload);
-        return;
+        ++e->state;
+        hello_hdr_common(e);
+        return 0;
     }
-    hello_msg(e, payload);
+    check_distress(e);
+    hputs("GOT HELLO REPLY\n");
+    if (hello_msg_common(e) != 0) {
+        return -1;
+    }
     message_done(e);
+    return 0;
 }
 
-static void process_user_msg(struct event_info *e, uint8_t *payload)
+static int process_ack_no_payload(struct event_info *e)
 {
-    net_send_message_header *msg = &e->msg;
-    if (e->state == 0) {
-        net_send_message_header_get(msg, payload, payload + NET_SEND_MESSAGE_HEADER_LEN);
-        if (msg->usertype <= USER_TYPE_MIN || msg->usertype >= USER_TYPE_MAX) {
-            hprintf("bad bad usertype:%d (htonl:%d)\n", msg->usertype, htonl(msg->usertype));
-            abort();
-        }
-        if (msg->datalen) {
-            e->need = msg->datalen;
-            return;
-        }
-    }
-    user_msg(e, msg, payload);
-    message_done(e);
-}
-
-static void process_ack_no_payload(struct event_info *e, uint8_t *payload)
-{
+    net_ack_message_type src, ack = {0};
+    evbuffer_remove(e->rd_buf, &src, sizeof(src));
+    net_ack_message_type_get(&ack, (void *)&src, (void *)(&src + 1));
     host_node_type *host_node_ptr = e->host_node_ptr;
-    net_ack_message_type ack = {0};
-    net_ack_message_type_get(&ack, payload, payload + NET_ACK_MESSAGE_TYPE_LEN);
     Pthread_mutex_lock(&host_node_ptr->wait_mutex);
     seq_data *ptr = host_node_ptr->wait_list;
     while (ptr != NULL && (ptr->seqnum != ack.seqnum)) {
@@ -1442,21 +1461,23 @@ static void process_ack_no_payload(struct event_info *e, uint8_t *payload)
     }
     Pthread_mutex_unlock(&host_node_ptr->wait_mutex);
     message_done(e);
+    return 0;
 }
 
-static void process_ack_with_payload(struct event_info *e, uint8_t *payload)
+static int process_ack_with_payload(struct event_info *e)
 {
     host_node_type *host_node_ptr = e->host_node_ptr;
     net_ack_message_payload_type *ack = &e->ack;
     if (e->state == 0) {
-        uint8_t *start = payload;
-        uint8_t *end = payload + NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN;
-        net_ack_message_payload_type_get(ack, start, end);
+        ++e->state;
+        net_ack_message_payload_type src;
+        evbuffer_remove(e->rd_buf, &src, sizeof(net_ack_message_payload_type));
+        net_ack_message_payload_type_get(ack, (void *)&src, (void *)(&src + 1));
         e->need = ack->paylen;
-        return;
+        return 0;
     }
     void *p = malloc(ack->paylen);
-    memcpy(p, payload, ack->paylen);
+    evbuffer_remove(e->rd_buf, p, ack->paylen);
     Pthread_mutex_lock(&host_node_ptr->wait_mutex);
     seq_data *ptr = host_node_ptr->wait_list;
     while (ptr != NULL && (ptr->seqnum != ack->seqnum)) {
@@ -1474,36 +1495,45 @@ static void process_ack_with_payload(struct event_info *e, uint8_t *payload)
         free(p);
     }
     message_done(e);
+    return 0;
 }
 
-static void process_decom_nodenum(struct event_info *e, uint8_t *payload)
+static int process_decom_nodenum(struct event_info *e)
 {
     uint32_t n;
-    memcpy(&n, payload, sizeof(uint32_t));
+    evbuffer_remove(e->rd_buf, &n, sizeof(uint32_t));
     n = htonl(n);
-    message_done(e);
     decom(hostname(n));
+    message_done(e);
+    return 0;
 }
 
-static void process_decom_hostname(struct event_info *e, uint8_t *payload)
+static int process_decom_hostname(struct event_info *e)
 {
     if (e->state == 0) {
+        ++e->state;
         uint32_t n;
-        memcpy(&n, payload, sizeof(uint32_t));
+        evbuffer_remove(e->rd_buf, &n, sizeof(uint32_t));
         e->need = htonl(n);
-        return;
+        return 0;
     }
+    char host[e->need + 1];
+    evbuffer_remove(e->rd_buf, host, e->need);
+    host[e->need] = 0;
+    decom(host);
     message_done(e);
-    decom((char *)payload);
+    return 0;
 }
 
-static int process_hdr(struct event_info *e, uint8_t *buf)
+static int process_hdr(struct event_info *e)
 {
-    wire_header_type tmp;
-    net_wire_header_get(&tmp, buf, buf + e->need);
-    e->hdr = tmp;
+    wire_header_type src;
+    evbuffer_copyout(e->rd_buf, &src, sizeof(src));
+    /* sizeof(src) != e->wirehdr_len with long hostnames */
+    evbuffer_drain(e->rd_buf, e->wirehdr_len);
+    net_wire_header_get(&e->hdr, (void *)&src, (void *)(&src + 1));
     e->state = 0;
-    switch (tmp.type) {
+    switch (e->hdr.type) {
     case WIRE_HEADER_HEARTBEAT:
         message_done(e);
         break;
@@ -1529,75 +1559,50 @@ static int process_hdr(struct event_info *e, uint8_t *buf)
         e->need = NET_ACK_MESSAGE_PAYLOAD_TYPE_LEN;
         break;
     default:
-        hprintf("UNKNOWN HDR:%d\n", tmp.type);
-        abort();
+        hprintf("UNKNOWN HDR:%d\n", e->hdr.type);
         return -1;
     }
     return 0;
 }
 
-static int process_payload(struct event_info *e, uint8_t *payload)
+static int process_payload(struct event_info *e)
 {
     switch (e->hdr.type) {
     case WIRE_HEADER_HELLO:
-        process_hello_msg(e, payload);
-        break;
+        return process_hello_msg(e);
     case WIRE_HEADER_DECOM:
-        process_decom_nodenum(e, payload);
-        break;
+        return process_decom_nodenum(e);
     case WIRE_HEADER_USER_MSG:
-        process_user_msg(e, payload);
-        break;
+        return process_user_msg(e);
     case WIRE_HEADER_ACK:
-        process_ack_no_payload(e, payload);
-        break;
+        return process_ack_no_payload(e);
     case WIRE_HEADER_HELLO_REPLY:
-        process_hello_msg_reply(e, payload);
-        break;
+        return process_hello_reply(e);
     case WIRE_HEADER_DECOM_NAME:
-        process_decom_hostname(e, payload);
-        break;
+        return process_decom_hostname(e);
     case WIRE_HEADER_ACK_PAYLOAD:
-        process_ack_with_payload(e, payload);
-        break;
+        return process_ack_with_payload(e);
     default:
         hprintf("UNKNOWN HDR:%d\n", e->hdr.type);
-        abort();
         return -1;
     }
-    ++e->state;
-    return 0;
 }
 
-#define DISABLE_AND_RECONNECT()                                                \
-    do {                                                                       \
-        do_disable_read(e);                                                    \
-        reconnect(e);                                                          \
-        return;                                                                \
-    } while (0)
-
-static void readcb(int fd, short what, void *data)
+static ssize_t readv_evbuffer(struct evbuffer *buf, int fd)
 {
-    struct event_info *e = data;
-    check_rd_thd();
-    struct evbuffer *input = e->rd_evbuf;
-#   ifdef __linux__
-#       define RD_BUFSZ TCP_BUFSZ
-#       define NVEC 16
-#   else
-#       define RD_BUFSZ MB(2)
-#       define NVEC 4
-#   endif
+#   define NVEC 8
     struct iovec v[NVEC];
-    const int nv = evbuffer_reserve_space(input, RD_BUFSZ, v, NVEC);
-    if (nv == -1) {
-        hputs("evbuffer_reserve_space failed\n");
-        DISABLE_AND_RECONNECT();
+    const int nv = evbuffer_reserve_space(buf, MB(4), v, NVEC);
+    if (nv <= 0) {
+        errno = ENOMEM;
+        return -1;
     }
-    ssize_t n = readv(e->fd, v, nv);
-    if (n <= 0) {
-        DISABLE_AND_RECONNECT();
+    const ssize_t sz = readv(fd, v, nv);
+    if (sz <= 0) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) return 0;
+        return -1;
     }
+    ssize_t n = sz;
     for (int i = 0; i < nv; ++i) {
         if (v[i].iov_len < n) {
             n -= v[i].iov_len;
@@ -1606,33 +1611,31 @@ static void readcb(int fd, short what, void *data)
         v[i].iov_len = n;
         n = 0;
     }
-    evbuffer_commit_space(input, v, nv);
-    while (evbuffer_get_length(input) >= e->need) {
-        if (e->need > e->rdbuf_sz) {
-            if (e->rdbuf) {
-                free(e->rdbuf);
-            }
-#           define MIN_RDBUF 1024
-            e->rdbuf_sz = e->need > MIN_RDBUF ? e->need : MIN_RDBUF;
-            e->rdbuf = malloc(e->rdbuf_sz);
-            if (!e->rdbuf) {
-                abort();
-            }
-        }
-        if (evbuffer_remove(input, e->rdbuf, e->need) != e->need) {
-            hputs("evbuffer_remove failed\n");
-            DISABLE_AND_RECONNECT();
-        }
+    evbuffer_commit_space(buf, v, nv);
+    return sz;
+}
+
+static void readcb(int fd, short what, void *data)
+{
+    struct event_info *e = data;
+    check_rd_thd();
+    if (fd != e->fd) abort();
+    /* Writing my own readv wrapper; Observed max read of 4K with:
+    ssize_t n = evbuffer_read(e->rd_buf, e->fd, -1); */
+    ssize_t n = readv_evbuffer(e->rd_buf, e->fd);
+    if (n < 0) {
+        hprintf("readv rc:%zd errno:%d:%s\n", n, errno, strerror(errno));
+        reconnect:
+        do_disable_read(e);
+        reconnect(e);
+        return;
+    }
+    while (evbuffer_get_length(e->rd_buf) >= e->need) {
         e->recv_at = time(NULL);
-        int rc;
-        if (e->hdr.type == 0) {
-            rc = process_hdr(e, e->rdbuf);
-        } else {
-            rc = process_payload(e, e->rdbuf);
-        }
-        if (rc) {
-            DISABLE_AND_RECONNECT();
-        }
+        int rc = e->hdr.type == 0 ? process_hdr(e) : process_payload(e);
+        if (rc == 0) continue;
+        hprintf("process msg type:%d rc:%d\n", e->hdr.type, rc);
+        goto reconnect;
     }
 }
 
@@ -1640,21 +1643,8 @@ static void resume_read(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
     check_rd_thd();
-    if (!e->rd_evbuf) {
-        return;
-    }
-    event_assign(&e->rd_event, rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
-    event_add(&e->rd_event, NULL);
-}
-
-static void suspend_read(int dummyfd, short what, void *data)
-{
-    struct event_info *e = data;
-    check_rd_thd();
-    if (!e->rd_evbuf) {
-        return;
-    }
-    event_del(&e->rd_event);
+    if (!e->rd_ev) return;
+    event_add(e->rd_ev, NULL);
 }
 
 static void do_queued(int dummyfd, short what, void *data)
@@ -1666,11 +1656,10 @@ static void do_queued(int dummyfd, short what, void *data)
 
 static void finish_host_setup(int dummyfd, short what, void *data)
 {
-    check_base_thd();
-    struct host_connected_info *info = data;
-    struct event_info *e = info->event_info;
-    int connect_msg = info->connect_msg;
-    host_connected_info_free(info);
+	struct host_connected_info *i = data;
+    struct event_info *e = i->e;
+    int connect_msg = i->connect_msg;
+    host_connected_info_free(i);
     if (!LIST_EMPTY(&e->host_connected_list)) {
         hputs("WORKING ON QUEUED CONNECTION\n");
         do_close(e, do_queued);
@@ -1679,66 +1668,72 @@ static void finish_host_setup(int dummyfd, short what, void *data)
         netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
         write_connect_message(netinfo_ptr, e->host_node_ptr, NULL);
         write_hello(netinfo_ptr, e->host_node_ptr);
+    } else {
+        hputs("CONNECTED\n");
     }
 }
 
 static void enable_heartbeats(int dummyfd, short what, void *data)
 {
+    struct host_connected_info *i = data;
+    struct event_info *e = i->e;
     check_timer_thd();
-    struct host_connected_info *info = data;
-    struct event_info *e = info->event_info;
+    if (e->hb_send_ev || e->hb_check_ev) {
+        abort();
+    }
     e->recv_at = e->sent_at = time(NULL);
-    if (e->hb_send_ev == NULL) {
-        e->hb_send_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_send, e);
-        event_add(e->hb_send_ev, &one_sec);
-    }
-    if (e->hb_check_ev == NULL) {
-        e->hb_check_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_check, e);
-        event_add(e->hb_check_ev, &one_sec);
-    }
-    event_once(base, finish_host_setup, info);
+    e->hb_check_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_check, e);
+    e->hb_send_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_send, e);
+    event_add(e->hb_check_ev, &one_sec);
+    event_add(e->hb_send_ev, &one_sec);
+    event_once(base, finish_host_setup, i);
 }
 
 static void enable_read(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *info = data;
-    struct event_info *e = info->event_info;
+    struct host_connected_info *i = data;
+    struct event_info *e = i->e;
     check_rd_thd();
     message_done(e);
-    e->rd_full = 0;
+    e->akq_full = 0;
     e->need = e->wirehdr_len;
-    e->rd_evbuf = evbuffer_new();
-    event_assign(&e->rd_event, rd_base, info->fd, EV_READ | EV_PERSIST, readcb, e);
-    event_add(&e->rd_event, NULL);
-    event_once(timer_base, enable_heartbeats, info);
+    if (e->akq_buf || e->rd_buf || e->rd_ev) {
+        abort();
+    }
+    e->akq_buf = evbuffer_new();
+    e->rd_buf = evbuffer_new();
+    e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
+    event_add(e->rd_ev, NULL);
+    event_once(timer_base, enable_heartbeats, i);
 }
 
 static void enable_write(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *info = data;
-    struct event_info *e = info->event_info;
-    check_base_thd();
+    struct host_connected_info *i = data;
+    struct event_info *e = i->e;
+    check_wr_thd();
     Pthread_mutex_lock(&e->wr_lk);
-    update_event_fd(e, info->fd);
-    akbufferevent_enable(e->flush_buf, e->fd);
-    if (e->wr_buf) {
-        /* should be cleaned up prior i think */
+    update_event_fd(e, i->fd);
+    if (e->wr_buf || e->flush_buf || e->flush_ev) {
         abort();
     }
+    e->flush_ev = event_new(wr_base, i->fd, EV_WRITE | EV_PERSIST, writecb, e);
+    e->flush_buf = evbuffer_new();
+    e->wrcb_buf = evbuffer_new();
     e->wr_buf = evbuffer_new();
     e->wr_full = 0;
     e->decomissioned = 0;
     Pthread_mutex_unlock(&e->wr_lk);
-    event_once(rd_base, enable_read, info);
+    event_once(rd_base, enable_read, i);
 }
 
 static void do_open(int dummyfd, short what, void *data)
 {
+    struct host_connected_info *i = data;
+    struct event_info *e = i->e;
     check_base_thd();
-    struct host_connected_info *info = data;
-    struct event_info *e = info->event_info;
-    host_node_open(e->host_node_ptr, info->fd);
-    enable_write(dummyfd, what, info);
+    host_node_open(e->host_node_ptr, i->fd);
+    event_once(wr_base, enable_write, i);
 }
 
 static void host_connected(struct event_info *e, int fd, int connect_msg)
@@ -1765,18 +1760,18 @@ static void comdb2_connected(int fd, short what, void *data)
 {
     check_base_thd();
     struct connect_info *c = data;
-    struct event_info *e = c->event_info;
+    struct event_info *e = c->e;
     if (what & EV_TIMEOUT) {
+        hprintf("CONNECT TIMED OUT fd:%d\n", fd);
         pmux_reconnect(c);
         return;
     }
     if (e->fd != -1) {
-        hputs("ALREADY HAVE CONNECTION\n");
+        hputs("HAVE ACTIVE CONNECTION\n");
     } else if (!LIST_EMPTY(&e->host_connected_list)) {
-        hputs("HAVE PENDING CONNECTION\n");
-    } else if (skip_connect(e)) {
-        hputs("SKIP CONNECTION\n");
-    } else {
+        struct host_connected_info *i = LIST_FIRST(&e->host_connected_list);
+        hprintf("HAVE PENDING CONNECTION fd:%d\n", i->fd);
+    } else if (!skip_connect(e)) {
         hprintf("MADE NEW CONNECTION fd:%d\n", fd);
         host_connected(e, fd, 1);
         c->fd = -1;
@@ -1787,7 +1782,7 @@ static void comdb2_connected(int fd, short what, void *data)
 static void comdb2_connect(struct connect_info *c, int port)
 {
     check_base_thd();
-    struct event_info *e = c->event_info;
+    struct event_info *e = c->e;
     struct sockaddr_in sin = {0};
     sin.sin_family = AF_INET;
     sin.sin_port = htons(e->port);
@@ -1852,7 +1847,7 @@ static void pmux_rte_writecb(int fd, short what, void *data)
 static void pmux_rte(struct connect_info *c)
 {
     check_base_thd();
-    struct event_info *e = c->event_info;
+    struct event_info *e = c->e;
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
     evbuffer_add_printf(c->buf, "rte %s/%s/%s\n",
                         netinfo_ptr->app, netinfo_ptr->service,
@@ -1864,7 +1859,7 @@ static void pmux_get_readcb(int fd, short what, void *data)
 {
     check_base_thd();
     struct connect_info *c = data;
-    struct event_info *e = c->event_info;
+    struct event_info *e = c->e;
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
     if ((what & EV_TIMEOUT) || evbuffer_read(c->buf, fd, -1) <= 0) {
         pmux_reconnect(c);
@@ -1921,7 +1916,7 @@ static void pmux_get_writecb(int fd, short what, void *data)
 static void pmux_get(struct connect_info *c)
 {
     check_base_thd();
-    struct event_info *e = c->event_info;
+    struct event_info *e = c->e;
     netinfo_type *netinfo_ptr = pmux_netinfo(e);
     evbuffer_add_printf(c->buf, "get /echo %s/%s/%s\n", netinfo_ptr->app,
                         netinfo_ptr->service, netinfo_ptr->instance);
@@ -1931,9 +1926,10 @@ static void pmux_get(struct connect_info *c)
 static void pmux_reconnect(struct connect_info *c)
 {
     check_base_thd();
-    struct event_info *e = c->event_info;
+    struct event_info *e = c->e;
+    hprintf("FAILED CONNECTING fd:%d\n", c->fd);
     connect_info_free(c);
-    if (e->fd == -1) {
+    if (e->fd == -1 && LIST_EMPTY(&e->host_connected_list)) {
         do_reconnect(-1, 0, e);
     }
 }
@@ -1947,6 +1943,10 @@ static void pmux_connect(int dummyfd, short what, void *data)
         e->connect_ev = NULL;
     }
     if (skip_connect(e)) {
+        return;
+    }
+    if (e->fd != -1) {
+        hputs("HAVE ACTIVE CONNECTION\n");
         return;
     }
     struct connect_info *c = connect_info_new(e);
@@ -2184,29 +2184,77 @@ static void read_connect(int fd, short what, void *data)
     }
 }
 
+static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int first_byte, struct evbuffer *buf, int fd)
+{
+    int n = evbuffer_get_length(buf);
+    char req[n + 1];
+    evbuffer_copyout(buf, req, -1);
+    evbuffer_free(buf);
+    make_socket_blocking(fd);
+    SBUF2 *sb = sbuf2open(fd, 0);
+    sbuf2setbufsize(sb, netinfo_ptr->bufsz);
+    for (int i = n - 1; i > 0; --i) {
+        sbuf2ungetc(req[i], sb);
+    }
+    do_appsock(netinfo_ptr, ss, sb, first_byte);
+}
+
 static void do_read(int fd, short what, void *data)
 {
     check_base_thd();
     struct accept_info *a = data;
-    uint8_t b;
-    ssize_t n = recv(fd, &b, 1, 0);
+    struct evbuffer *buf = evbuffer_new();
+    ssize_t n = evbuffer_read(buf, fd, SBUF2UNGETC_BUF_MAX);
     if (n <= 0) {
         accept_info_free(a);
         return;
     }
-    if (b) {
-        make_socket_blocking(fd);
-        SBUF2 *sb = sbuf2open(fd, 0);
-        do_appsock(a->netinfo_ptr, &a->ss, sb, b);
-        a->fd = -1;
-        accept_info_free(a);
+    uint8_t first_byte;
+    evbuffer_copyout(buf, &first_byte, 1);
+    if (first_byte == 0) {
+        evbuffer_drain(buf, 1);
+        a->buf = buf;
+        a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
+        if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
+            accept_info_free(a);
+        }
         return;
     }
-    a->buf = evbuffer_new();
-    a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
-    if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
-        accept_info_free(a);
+    netinfo_type *netinfo_ptr = a->netinfo_ptr;
+    struct sockaddr_in ss = a->ss;
+    a->fd = -1;
+    accept_info_free(a);
+    a = NULL;
+    if (!gbl_libevent_appsock) {
+        handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
+        return;
     }
+    if (should_reject_request()) {
+        evbuffer_free(buf);
+        shutdown_close(fd);
+        return;
+    }
+    struct appsock_info *info = NULL;
+    struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
+    if (b.pos == -1) {
+        b = evbuffer_search(buf, " ", 1, NULL);
+    }
+    if (b.pos != -1) {
+        char key[b.pos + 2];
+        evbuffer_copyout(buf, key, b.pos + 1);
+        key[b.pos + 1] = 0;
+        info = get_appsock_info(key);
+    }
+    if (info) {
+        evbuffer_drain(buf, b.pos + 1);
+        struct appsock_handler_arg *arg = malloc(sizeof(*arg));
+        arg->fd = fd;
+        arg->addr = ss;
+        arg->rd_buf = buf;
+        event_once(appsock_rd_base, info->cb, arg); /* handle_newsql_request_evbuffer */
+        return;
+    }
+    handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
 static void do_accept(struct evconnlistener *listener, evutil_socket_t fd,
@@ -2249,7 +2297,7 @@ static int recvfd(int fd)
     int newfd = -1;
     char buf[sizeof("pmux") - 1];
     struct iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
-#ifdef __sun
+#   ifdef __sun
     struct msghdr msg = {.msg_iov = &iov,
                          .msg_iovlen = 1,
                          .msg_accrights = (caddr_t)&newfd,
@@ -2263,7 +2311,7 @@ static int recvfd(int fd)
     if (msg.msg_accrightslen != sizeof(newfd)) {
         return -1;
     }
-#else
+#   else
     struct cmsghdr *cmsgptr = alloca(CMSG_SPACE(sizeof(int)));
     struct msghdr msg = {.msg_iov = &iov,
                          .msg_iovlen = 1,
@@ -2286,7 +2334,7 @@ static int recvfd(int fd)
         return -1;
     }
     newfd = *(int *)CMSG_DATA(m);
-#endif
+#   endif
     if (memcmp(buf, "pmux", sizeof(buf)) != 0) {
         shutdown_close(newfd);
         logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d unexpected msg:%.*s\n", __func__,
@@ -2527,56 +2575,24 @@ static void do_add_host(int accept_fd, short what, void *data)
     /* Tell all nodes about this host */
     LIST_FOREACH(e, &n->event_list, net_list_entry) {
         if (e->got_hello) {
+            hprintf("HELLO NEW NODE:%s\n", host);
             write_hello_reply(netinfo_ptr, e->host_node_ptr);
         }
     }
 }
 
-static void init_base(pthread_t *t, struct event_base **bb,
-                          void *(*f)(void *), const char *who)
-{
-    struct net_dispatch_info *info;
-    info = calloc(1, sizeof(struct net_dispatch_info));
-    *bb = event_base_new();
-    info->who = who;
-    info->base = *bb;
-    Pthread_create(t, NULL, f, info);
-    Pthread_detach(*t);
-}
-
-static void check_wr_full(struct event_info *e)
-    /* TODO check flush buf instead */
-{
-    if (e->wr_full || e->wr_buf == NULL) {
-        return;
-    }
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    uint64_t max_bytes = netinfo_ptr->max_bytes;
-    uint64_t outstanding = evbuffer_get_length(e->wr_buf);
-    if (max_bytes && outstanding > max_bytes) {
-        e->wr_full = 1;
-        hprintf("SUSPENDING WR bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
-                outstanding, max_bytes);
-    }
-}
-
-static void flush_evbuffer(struct event_info *e)
-{
-    akbufferevent_add_buffer(e->flush_buf, e->wr_buf);
-}
-
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
 {
-    return strcmp(e->host, gbl_myhostname) == 0 || e->fd == -1 ||
-           e->decomissioned || (e->wr_full && !nodrop) ||
-           (check_hello && !e->got_hello);
+    return strcmp(e->host, gbl_myhostname) == 0
+           || e->fd == -1
+           || e->decomissioned
+           || (e->wr_full && !nodrop)
+           || (check_hello && !e->got_hello);
 }
 
+/*
 static void net_send_memcpy(struct event_info *e, int sz, int n, void **buf, int *len, int *type)
 {
-    if (!e->wr_buf) {
-        return;
-    }
     sz += n * (e->wirehdr_len + sizeof(net_send_message_header));
     struct iovec v[1];
     const int nv = evbuffer_reserve_space(e->wr_buf, sz, v, 1);
@@ -2585,23 +2601,28 @@ static void net_send_memcpy(struct event_info *e, int sz, int n, void **buf, int
     }
     uint8_t *b = v[0].iov_base;
     v[0].iov_len = sz;
-    net_send_message_header hdr = {0};
     for (int i = 0; i < n; ++i) {
-        hdr.usertype = type[i];
-        hdr.datalen = len[i];
+        net_send_message_header hdr = {
+            .usertype = type[i],
+            .datalen = len[i],
+        };
         b = memcpy(b, e->wirehdr[WIRE_HEADER_USER_MSG], e->wirehdr_len) + e->wirehdr_len;
         b = net_send_message_header_put(&hdr, b, b + sizeof(net_send_message_header));
         b = memcpy(b, buf[i], len[i]) + len[i];
     }
     evbuffer_commit_space(e->wr_buf, v, 1);
 }
+*/
+
+struct net_msg {
+    int num;
+    int flags;
+    struct net_msg_data *data[0];
+};
 
 static void net_send_addref(struct event_info *e, struct net_msg *msg)
 {
     struct evbuffer *buf = e->wr_buf;
-    if (!buf) {
-        return;
-    }
     int rc = 0;
     for (int i = 0; i < msg->num; ++i) {
         struct net_msg_data *data = msg->data[i];
@@ -2617,28 +2638,37 @@ static void net_send_addref(struct event_info *e, struct net_msg *msg)
     }
 }
 
-static void setup_base(void)
+/* All you base are belong to me.. */
+static void setup_bases(void)
 {
-    init_base(&base_thd, &base, net_dispatch, "main");
+    init_base(&base_thd, &base, "main");
     if (dedicated_timer) {
-        init_base(&timer_thd, &timer_base, net_dispatch, "timer");
+        init_base(&timer_thd, &timer_base, "timer");
     } else {
         timer_thd = base_thd;
         timer_base = base;
     }
-
+    if (gbl_libevent_appsock) {
+        if (dedicated_appsock) {
+            init_base(&appsock_rd_thd, &appsock_rd_base, "appsock_rd");
+            init_base(&appsock_timer_thd, &appsock_timer_base, "appsock_timer");
+        } else {
+            appsock_timer_base = appsock_rd_base = base;
+            appsock_timer_thd = appsock_rd_thd = base_thd;
+        }
+    }
     if (writer_policy == POLICY_NONE) {
         single.wrthd = base_thd;
         single.wrbase = base;
     } else if (writer_policy == POLICY_SINGLE) {
-        init_base(&single.wrthd, &single.wrbase, net_dispatch, "write");
+        init_base(&single.wrthd, &single.wrbase, "write");
     }
 
     if (reader_policy == POLICY_NONE) {
         single.rdthd = base_thd;
         single.rdbase = base;
     } else if (reader_policy == POLICY_SINGLE) {
-        init_base(&single.rdthd, &single.rdbase, net_dispatch, "read");
+        init_base(&single.rdthd, &single.rdbase, "read");
     }
 
     if (akq_policy == POLICY_SINGLE) {
@@ -2661,9 +2691,37 @@ static void init_event_net(netinfo_type *netinfo_ptr)
     start_stop_callback_data = netinfo_ptr->callback_data;
     start_callback = netinfo_ptr->start_thread_callback;
     stop_callback = netinfo_ptr->stop_thread_callback;
-    setup_base();
+    setup_bases();
     event_hash = hash_init_str(offsetof(struct event_hash_entry, key));
     net_stop = 0;
+}
+
+struct get_hosts_info {
+    int max_hosts;
+    int num_hosts;
+    host_node_type **hosts;
+};
+
+static void get_hosts_evbuffer_impl(void *arg)
+{
+    check_base_thd();
+    struct get_hosts_info *info = arg;
+    struct net_info *n = net_info_find("replication");
+    host_node_type *me = get_host_node_by_name_ll(n->netinfo_ptr, gbl_myhostname);
+    if (!me) {
+        abort();
+    }
+    info->hosts[0] = me;
+    int i = 1;
+    struct event_info *e;
+    LIST_FOREACH(e, &n->event_list, net_list_entry) {
+        info->hosts[i] = e->host_node_ptr;
+        ++i;
+        if (i == info->max_hosts) {
+            break;
+        }
+    }
+    info->num_hosts = i;
 }
 
 #if 0
@@ -2742,12 +2800,9 @@ void decom(char *host)
     }
     struct event_info *e;
     LIST_FOREACH(e, &h->event_list, host_list_entry) {
-        if (e->decomissioned) {
-            continue;
-        } else {
-            set_decom(e);
-            do_close(e, send_decom_all);
-        }
+        if (e->decomissioned) continue;
+        set_decom(e);
+        do_close(e, send_decom_all);
     }
 }
 
@@ -2810,20 +2865,12 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
         b = memcpy(b, iov[i].iov_base, iov[i].iov_len) + iov[i].iov_len;
     }
     evbuffer_commit_space(buf, v, nv);
+    Pthread_mutex_lock(&e->wr_lk);
     if (skip_send(e, nodrop, 0)) {
         rc = -2;
-        goto out;
-    }
-    Pthread_mutex_lock(&e->wr_lk);
-    if (e->wr_buf) {
-        rc = evbuffer_add_buffer(e->wr_buf, buf);
-        if (rc != 0) {
-            rc = -1;
-        } else {
-            if (nodelay) {
-                flush_evbuffer(e);
-            }
-            check_wr_full(e);
+    } else if (e->wr_buf) {
+        if ((rc = evbuffer_add_buffer(e->wr_buf, buf)) == 0) {
+            flush_evbuffer(e, nodelay);
         }
     } else {
         rc = -3;
@@ -2838,46 +2885,36 @@ out:if (buf) {
 int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf,
                           int *len, int *type, int *flags)
 {
-#   define ADDREF_CUTOFF 256
     if (net_stop) {
         return 0;
     }
-    int sz = 0;
     int nodrop = 0;
     int nodelay = 0;
-    struct net_msg *msg = NULL;
+    struct net_msg *msg = alloca(sizeof(struct net_msg) + sizeof(struct net_msg_data *) * n);
+    msg->num = n;
     for (int i = 0; i < n; ++i) {
-        sz += len[i];
         nodrop |= flags[i] & NET_SEND_NODROP;
         nodelay |= flags[i] & NET_SEND_NODELAY;
-    }
-    if (sz >= ADDREF_CUTOFF) {
-        msg = net_msg_new(netinfo_ptr, n, buf, len, type, flags);
-        if (msg == NULL) {
-            return NET_SEND_FAIL_MALLOC_FAIL;
+        msg->data[i] = net_msg_data_new(buf[i], len[i], type[i]);
+        msg->flags |= flags[i];
+        if (msg->data[i] != NULL) continue;
+        for (int j = 0; j < i; ++j) {
+            net_msg_data_free(0, 0, msg->data[j]);
         }
+        return NET_SEND_FAIL_MALLOC_FAIL;
     }
     struct net_info *ni = net_info_find(netinfo_ptr->service);
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
-        if (skip_send(e, nodrop, 1)) {
-            continue;
-        }
         Pthread_mutex_lock(&e->wr_lk);
-        if (e->wr_buf) {
-            if (msg) {
-                net_send_addref(e, msg);
-            } else {
-                net_send_memcpy(e, sz, n, buf, len, type);
-            }
-            if (nodelay) {
-                flush_evbuffer(e);
-            }
+        if (e->wr_buf && !skip_send(e, nodrop, 1)) {
+            net_send_addref(e, msg);
+            flush_evbuffer(e, nodelay);
         }
         Pthread_mutex_unlock(&e->wr_lk);
     }
-    if (msg) {
-        net_msg_free(msg);
+    for (int i = 0; i < n; ++i) {
+        net_msg_data_free(0, 0, msg->data[i]);
     }
     return 0;
 }
@@ -2890,7 +2927,7 @@ int net_flush_evbuffer(host_node_type *host_node_ptr)
     struct event_info *e = host_node_ptr->event_info;
     Pthread_mutex_lock(&e->wr_lk);
     if (e->wr_buf) {
-        flush_evbuffer(e);
+        flush_evbuffer(e, 1);
     }
     Pthread_mutex_unlock(&e->wr_lk);
     return 0;
@@ -2906,12 +2943,12 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     char key[EVENT_HASH_KEY_SZ];
     make_event_hash_key(key, netinfo_ptr->service, host);
     Pthread_mutex_lock(&event_hash_lk);
-    struct event_hash_entry *entry = hash_find(event_hash, key);
+    struct event_hash_entry *obj = hash_find(event_hash, key);
     Pthread_mutex_unlock(&event_hash_lk);
-    if (!entry) {
+    if (!obj) {
         return NET_SEND_FAIL_INVALIDNODE;
     }
-    struct event_info *e = entry->event_info;
+    struct event_info *e = obj->e;
     if (strcmp(e->host, gbl_myhostname) == 0) {
         return NET_SEND_FAIL_SENDTOME;
     }
@@ -2937,7 +2974,7 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
         .usertype = usertype,
         .datalen = total
     };
-    net_send_message_header_put(&tmp, (uint8_t *)&hdr, (uint8_t*)(&hdr + 1));
+    net_send_message_header_put(&tmp, (uint8_t *)&hdr, (uint8_t *)(&hdr + 1));
     iov[0].iov_base = &hdr;
     iov[0].iov_len = sizeof(hdr);
     int write_flags = flags & NET_SEND_NODROP ? WRITE_MSG_NOLIMIT : 0;
@@ -2950,4 +2987,72 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     case -3: return NET_SEND_FAIL_NOSOCK;
     default: return NET_SEND_FAIL_WRITEFAIL;
     }
+}
+
+int get_hosts_evbuffer(int max_hosts, host_node_type **hosts)
+{
+    struct get_hosts_info info = {.max_hosts = max_hosts, .hosts = hosts};
+    run_on_base(base, get_hosts_evbuffer_impl, &info);
+    return info.num_hosts;
+}
+
+int add_appsock_handler(const char *key, event_callback_fn cb)
+{
+    size_t keylen = strlen(key);
+    if (keylen > SBUF2UNGETC_BUF_MAX) {
+        /* Sanity check: If appsock type is unknown, we need to fallback to sbuf2
+         * and put data back into its ungetc buffer. */
+        logmsg(LOGMSG_ERROR, "bad appsock parameter:%s\n", key);
+        return -1;
+    }
+    if (appsock_hash == NULL) {
+        appsock_hash = hash_init_strptr(offsetof(struct appsock_info, key));
+    }
+    struct appsock_info *info = get_appsock_info(key);
+    if (info) {
+        /* Sanity check: plugins should not re-register */
+        logmsg(LOGMSG_ERROR, "attempt to re-register:%s\n", key);
+        return -1;
+    }
+    info = malloc(sizeof(struct appsock_info));
+    info->key = key;
+    info->cb = cb;
+    hash_add(appsock_hash, info);
+    return 0;
+}
+
+/* This allows waiting for async call to finish */
+struct run_base_func_info {
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    run_on_base_fn func;
+    void *arg;
+};
+
+static void run_base_func(int dummyfd, short what, void *data)
+{
+    struct run_base_func_info *info = data;
+    info->func(info->arg);
+    Pthread_mutex_lock(&info->lock);
+    Pthread_cond_signal(&info->cond);
+    Pthread_mutex_unlock(&info->lock);
+}
+
+void run_on_base(struct event_base *base, run_on_base_fn func, void *arg)
+{
+    if (base == current_base) {
+        func(arg);
+        return;
+    }
+    struct run_base_func_info info;
+    info.func = func;
+    info.arg = arg;
+    Pthread_mutex_init(&info.lock, NULL);
+    Pthread_cond_init(&info.cond, NULL);
+    Pthread_mutex_lock(&info.lock);
+    if (event_base_once(base, -1, EV_TIMEOUT, run_base_func, &info, NULL) != 0) abort();
+    Pthread_cond_wait(&info.cond, &info.lock);
+    Pthread_mutex_unlock(&info.lock);
+    Pthread_mutex_destroy(&info.lock);
+    Pthread_cond_destroy(&info.cond);
 }

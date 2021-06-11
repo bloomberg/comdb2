@@ -20,14 +20,11 @@
 #define TCPBUFSZ
 #endif
 
-
+#include <errno.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <signal.h>
 
-#ifdef __DGUX__
-#include <siginfo.h>
-#endif
 #ifdef __sun
 #include <siginfo.h>
 #endif
@@ -75,6 +72,7 @@
 #include "thrman.h"
 #include "thread_util.h"
 #include <timer_util.h>
+#include <comdb2_atomic.h>
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -436,6 +434,10 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
         }
     }
 
+    if (gbl_libevent) {
+        return;
+    }
+
     /* If we have an fd or sbuf, and no reader or writer thread, then
      * close the socket properly */
     if (host_node_ptr->have_reader_thread == 0 &&
@@ -505,8 +507,7 @@ static int write_list(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr,
                       int iovcount, int flags)
 {
     if (gbl_libevent) {
-        return write_list_evbuffer(host_node_ptr, headptr->type, iov, iovcount,
-                                   flags);
+        return write_list_evbuffer(host_node_ptr, headptr->type, iov, iovcount, flags);
     }
     write_data *insert;
     int ii;
@@ -1157,8 +1158,7 @@ static int write_message_int(netinfo_type *netinfo_ptr,
     wire_header.type = type;
 
     /* Add this message to our linked list to send. */
-    rc = write_list(netinfo_ptr, host_node_ptr, &wire_header, iov, iovcount,
-                    flags);
+    rc = write_list(netinfo_ptr, host_node_ptr, &wire_header, iov, iovcount, flags);
     if (rc < 0) {
         if (rc == -1) {
             logmsg(LOGMSG_ERROR, "%s: got reallybad failure?\n", __func__);
@@ -1259,10 +1259,8 @@ static int read_message_header(netinfo_type *netinfo_ptr,
 int write_heartbeat(netinfo_type *netinfo_ptr, host_node_type *host_node_ptr)
 {
     /* heartbeats always jump to the head */
-    return write_message_int(netinfo_ptr, host_node_ptr, WIRE_HEADER_HEARTBEAT,
-                             NULL, 0,
-                             WRITE_MSG_HEAD | WRITE_MSG_NODUPE |
-                                 WRITE_MSG_NODELAY | WRITE_MSG_NOLIMIT);
+    int flags = WRITE_MSG_HEAD | WRITE_MSG_NODUPE | WRITE_MSG_NODELAY | WRITE_MSG_NOLIMIT;
+    return write_message_int(netinfo_ptr, host_node_ptr, WIRE_HEADER_HEARTBEAT, NULL, 0, flags);
 }
 
 typedef int (hello_func)(netinfo_type *, host_node_type *, int type,
@@ -1842,12 +1840,9 @@ static int net_send_int(netinfo_type *netinfo_ptr, const char *host,
 {
     if (gbl_libevent) {
         int f = 0;
-        if (nodelay)
-            f |= NET_SEND_NODELAY;
-        if (nodrop)
-            f |= NET_SEND_NODROP;
-        return net_send_evbuffer(netinfo_ptr, host, usertype, data, datalen,
-                                    numtails, tails, taillens, f);
+        if (nodelay) f |= NET_SEND_NODELAY;
+        if (nodrop) f |= NET_SEND_NODROP;
+        return net_send_evbuffer(netinfo_ptr, host, usertype, data, datalen, numtails, tails, taillens, f);
     }
     host_node_type *host_node_ptr;
     net_send_message_header tmphd, msghd;
@@ -2283,7 +2278,6 @@ int net_register_handler(netinfo_type *netinfo_ptr, int usertype,
 {
     if (usertype <= USER_TYPE_MIN || usertype >= USER_TYPE_MAX)
         return -1;
-
     netinfo_ptr->userfuncs[usertype].func = func;
     netinfo_ptr->userfuncs[usertype].name = name;
     netinfo_ptr->userfuncs[usertype].totus = 0;
@@ -5835,6 +5829,8 @@ void net_end_appsock(SBUF2 *sb)
 
 void net_add_watch(SBUF2 *sb, int read_timeout, int write_timeout)
 {
+    if (!sb)
+        return;
     watchlist_node_type *watchlist_node;
     netinfo_type *netinfo_ptr;
 
@@ -6118,7 +6114,7 @@ int net_init(netinfo_type *netinfo_ptr)
          host_node_ptr = host_node_ptr->next) {
         add_to_sanctioned_nolock(netinfo_ptr, host_node_ptr->host,
                                  host_node_ptr->port);
-        host_node_printf(LOGMSG_USER, host_node_ptr, "adding to sanctioned\n");
+        if (!gbl_libevent) host_node_printf(LOGMSG_USER, host_node_ptr, "adding to sanctioned\n");
         add_host(host_node_ptr);
     }
     if (gbl_libevent) {

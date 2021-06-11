@@ -31,7 +31,7 @@
 #include <assert.h>
 #include <sys/ioctl.h>
 #include <sys/time.h>
-#include <inttypes.h>
+#include <cinttypes>
 
 #include <iostream>
 #include <list>
