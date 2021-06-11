@@ -238,18 +238,7 @@ int gbl_osql_net_poll = 100;
 int gbl_osql_max_queue = 10000;
 int gbl_osql_net_portmux_register_interval = 600;
 int gbl_net_portmux_register_interval = 600;
-
-int gbl_extended_tm_from_sql =
-    0; /* Keep a count of our extended-tm requests from sql. */
-
-int gbl_upgrade_blocksql_2_socksql =
-    1; /* this is set if blocksock is in any parsed lrl
-          files; if any blocksql requests will actually
-          by socksql */
-
 int gbl_serialise_sqlite3_open = 0;
-
-int gbl_nice = 0;
 
 int gbl_notimeouts = 0; /* set this if you don't need the server timeouts
                            (use this for new code testing) */
