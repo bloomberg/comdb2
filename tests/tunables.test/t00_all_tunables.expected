@@ -528,7 +528,6 @@
 (name='new_indexes', description='Let replicants send indexes values to master', type='BOOLEAN', value='OFF', read_only='N')
 (name='new_master_dummy_add_delay', description='Force a transaction after this delay, after becoming master.', type='INTEGER', value='5', read_only='N')
 (name='newqdelmode', description='Enables new queue deletion mode.', type='BOOLEAN', value='ON', read_only='N')
-(name='nice', description='If set, nice() will be called with this value to set the database nice level.', type='INTEGER', value='0', read_only='Y')
 (name='no_ack_trace', description='Disables 'ack_trace'', type='BOOLEAN', value='ON', read_only='Y')
 (name='no_compress_page_compact_log', description='Disables 'compress_page_compact_log'', type='BOOLEAN', value='OFF', read_only='Y')
 (name='no_epochms_repts', description='Disables 'epochms_repts'', type='BOOLEAN', value='ON', read_only='Y')

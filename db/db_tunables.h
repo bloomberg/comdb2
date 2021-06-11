@@ -766,9 +766,6 @@ REGISTER_TUNABLE("net_portmux_register_interval",
 REGISTER_TUNABLE("net_throttle_percent", NULL, TUNABLE_INTEGER,
                  &gbl_net_throttle_percent, READONLY, NULL, percent_verify,
                  NULL, NULL);
-REGISTER_TUNABLE("nice", "If set, nice() will be called with this "
-                         "value to set the database nice level.",
-                 TUNABLE_INTEGER, &gbl_nice, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("noblobstripe", "Disables 'blobstripe'", TUNABLE_BOOLEAN,
                  &gbl_blobstripe, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);

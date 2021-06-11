@@ -86,7 +86,6 @@ extern int gbl_netbufsz;
 extern int gbl_net_lmt_upd_incoherent_nodes;
 extern int gbl_net_max_mem;
 extern int gbl_net_throttle_percent;
-extern int gbl_nice;
 extern int gbl_notimeouts;
 extern int gbl_watchdog_disable_at_start;
 extern int gbl_osql_verify_retries_max;
@@ -972,28 +971,6 @@ static void tunable_tolower(char *str)
     }
 }
 
-/* Get the current nice value of the process. */
-static int get_nice_value()
-{
-    int ret;
-
-    ret = getpriority(PRIO_PROCESS, getpid());
-    if (ret == -1) {
-        logmsg(LOGMSG_ERROR, "%s:%d Failed to obtain the nice value "
-                             "of the process (%s)\n",
-               __FILE__, __LINE__, strerror(errno));
-        return 0;
-    }
-    return ret;
-}
-
-/* Set the default values of the tunables. */
-static int set_defaults()
-{
-    gbl_nice = get_nice_value();
-    return 0;
-}
-
 /*
   Initialize global tunables.
 
@@ -1003,14 +980,6 @@ static int set_defaults()
 */
 int init_gbl_tunables()
 {
-    /* Set the default values. */
-    if ((set_defaults())) {
-        logmsg(LOGMSG_ERROR, "%s:%d Failed to set the default values "
-                             "for the tunables.\n",
-               __FILE__, __LINE__);
-        return 1;
-    }
-
     /* Initialize dbenv::tunables. */
     if (!(gbl_tunables = calloc(1, sizeof(comdb2_tunables)))) {
         logmsg(LOGMSG_ERROR, "%s:%d Out-of-memory\n", __FILE__, __LINE__);

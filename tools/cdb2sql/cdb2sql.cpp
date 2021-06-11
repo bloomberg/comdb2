@@ -1692,7 +1692,7 @@ struct winsize win_size;
 
 static int do_repeat(char *sql)
 {
-    long long start_time_ms_tot = 0, run_time_ms_tot = 0;
+    int64_t start_time_ms_tot = 0, run_time_ms_tot = 0;
     int start_time_ms, run_time_ms;
 
     /* Trim whitespace and then ignore comments and empty lines. */
@@ -1742,8 +1742,8 @@ static int do_repeat(char *sql)
     /* Print the summary */
     if (time_mode) {
         printf("summary:\n");
-        printf("  total prep time  %lld ms\n", start_time_ms_tot);
-        printf("  total run time   %lld ms\n", run_time_ms_tot);
+        printf("  total prep time  %" PRId64 " ms\n", start_time_ms_tot);
+        printf("  total run time   %" PRId64 " ms\n", run_time_ms_tot);
     }
 
     return 0;

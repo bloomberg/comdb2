@@ -1128,11 +1128,10 @@ extern int gbl_master_swing_osql_verbose;
 /* for testing: sleep in osql_sock_restart when master swings */
 extern int gbl_master_swing_sock_restart_sleep;
 
-/* takes care of both stat1 and stat2 */
 #define is_sqlite_stat(x) (strncmp((x), "sqlite_stat", sizeof("sqlite_stat") - 1) == 0)
-#define is_stat1(x)       (strcmp((x), "sqlite_stat1") == 0)
-#define is_stat2(x)       (strcmp((x), "sqlite_stat2") == 0)
-#define is_stat4(x)       (strcmp((x), "sqlite_stat4") == 0)
+#define is_stat1(x) (strcmp((x), "sqlite_stat1") == 0)
+#define is_stat2(x) (strcmp((x), "sqlite_stat2") == 0)
+#define is_stat4(x) (strcmp((x), "sqlite_stat4") == 0)
 
 /* functions to get/put a locker id to be used for all nontransactional cursors
  */
