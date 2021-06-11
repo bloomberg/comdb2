@@ -56,11 +56,13 @@ struct stored_proc {
     SP parent;
 
     pthread_mutex_t *emit_mutex; //parent only
+    pthread_cond_t *wait_cond; //parent only
+    pthread_mutex_t *wait_lock; //parent only
     int ntypes; //parent only
     char **clntname; //parent only
     int *clnttype; //parent only
-    dbthread_type *parent_thd; //child only
-    struct sqlthdstate *parent_sqlthd; //child only
+
+    dbthread_type *dbthd; //child only
 
     LIST_HEAD(, dbstmt_t) dbstmts;
     LIST_HEAD(, tmptbl_info_t) tmptbls;
