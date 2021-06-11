@@ -6,12 +6,13 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/ddl.sh
 
 [[ $debug == "1" ]] && set -x
-
 keepalive=0
 stopfile=./stopfile.txt
 inserterlog=./inserter.txt
 failfile=./failed.txt
 checkdatadone=./checkdatadone.txt
+ssh="ssh -T -n -o StrictHostKeyChecking=no"
+pidfile="${TMPDIR}/${DBNAME}.pid"
 
 function failexit
 {
@@ -62,38 +63,33 @@ function inserter
 
 function bouncemaster
 {
-    typeset sleeptime=$1
-    typeset node=$(get_master)
-
-    PARAMS="$DBNAME --no-global-lrl"
-    if [[ ! -z "$node" ]]; then
-        REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
-        if [ "$node" == "$(hostname)" ] ; then
-            (
-            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
-            sleep $sleeptime
-            ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
-            ) &
-        else
-            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
-            sleep $sleeptime
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
-            echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
-        fi
-    fi
+    node=$(get_master)
+    while [[ -z $node ]]; do
+        echo "bouncemaster - no master - retry"
+        sleep 1
+        node=$(get_master)
+    done
+    echo "bouncemaster node:$node"
+    REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+    PARAMS="$DBNAME --no-global-lrl --lrl $DBDIR/${DBNAME}.lrl --pidfile ${pidfile}"
+    CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} "
+    $ssh $node kill -9 '$(<'${pidfile}')'
+    sleep 5
+    echo -e "\nrestarting\n" >> $TESTDIR/logs/${DBNAME}.${node}.db
+    $ssh $node ${DEBUG_PREFIX} ${CMD} >> $TESTDIR/logs/${DBNAME}.${node}.db 2>&1 &
 }
 
 function settunables
 {
+    sleep 5
     for node in $CLUSTER ; do
-        $CDB2SQL_EXE --admin ${CDB2_OPTIONS} $DBNAME default --host $node "PUT TUNABLE replicant_latency 1" >/dev/null 2>&1
+        $ssh $node "$CDB2SQL_EXE --admin $DBNAME --host $node 'PUT TUNABLE replicant_latency 1'" &
     done
 }
 
 function setup
 {
-    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE t1" 2>/dev/null
+    $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "DROP TABLE IF EXISTS t1"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE TABLE t1(t int,a int)"
     $CDB2SQL_EXE $CDB2_OPTIONS $DBNAME default "CREATE INDEX ix1 ON t1(t,a)"
 }
@@ -101,7 +97,7 @@ function setup
 function kill_cluster
 {
     for node in $CLUSTER ; do
-        kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+        $ssh $node kill -9 '$(<'${pidfile}')' &
     done
 }
 
@@ -110,9 +106,8 @@ function waitforinserters
     typeset threads=$1
     typeset donecount=0
     typeset failed=0
-
     while [[ $failed == 0 && $donecount -lt $threads ]]; do
-        sleep 2
+        sleep 1
         donecount=0
         for (( i = 0; i < $threads; i++ )) ; do
             if [[ -f $checkdatadone.$i ]]; then
@@ -124,8 +119,8 @@ function waitforinserters
 
 function run_test
 {
-    typeset bounces=40
-    typeset threads=10
+    typeset bounces=50
+    typeset threads=20
 
     rm $stopfile 2>/dev/null
     rm $failfile 2>/dev/null
@@ -140,24 +135,16 @@ function run_test
 
     for (( i = 0; i < $bounces; i++ )) ; do
         settunables
-        sleep 5
         settunables
-        sleep 5
         settunables
-        echo "MASTER IS $(get_master), BOUNCE COUNT $i"
-        bouncemaster 5
+        echo "BOUNCE COUNT $i"
+        bouncemaster
     done
-
     touch $stopfile
-    sleep 5
-    $CDB2SQL_EXE --tabs $CDB2_OPTIONS $DBNAME default "exec procedure sys.cmd.send('bdb cluster')"
-
     waitforinserters $threads
     if [[ "$keepalive" != "1" ]] ; then 
         kill_cluster
-        wait
     fi
-
     if [[ -f $failfile ]]; then
         failexit run_test "Testcase failed"
     fi
