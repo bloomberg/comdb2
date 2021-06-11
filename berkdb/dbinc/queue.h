@@ -577,6 +577,7 @@ struct {								\
 	QMD_TRACE_ELEM(&(elm)->field);					\
 } while (0)
 
+/*
 #define TAILQ_CUT(head1, head2, elm, field) do {			\
 	(head1)->tqh_first = (head2)->tqh_first;			\
 	(head2)->tqh_first = TAILQ_NEXT((elm), field);			\
@@ -585,6 +586,7 @@ struct {								\
 	(head1)->tqh_last = &TAILQ_NEXT((elm), field);			\
 	*(head1)->tqh_last = NULL;					\
 } while (0)
+*/
 
 #if defined(__cplusplus)
 }

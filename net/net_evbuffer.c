@@ -48,12 +48,15 @@
 #include <mem_net.h>
 #include <mem_override.h>
 #include <net.h>
+#include <net_appsock.h>
 #include <net_int.h>
 #include <plhash.h>
 #include <portmuxapi.h>
 
 #define MB(x) ((x) * 1024 * 1024)
 #define TCP_BUFSZ MB(8)
+#define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
+
 #define MAX_DISTRESS_COUNT 10
 #define hprintf_lvl LOGMSG_USER
 #define hprintf_format(a) "[%.3s %-8s fd:%-3d %18s] " a, e->service, e->host, e->fd, __func__
@@ -78,6 +81,7 @@
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
 int gbl_libevent = 1;
+int gbl_libevent_appsock = 1;
 int gbl_libevent_rte_only = 0;
 
 extern char *gbl_myhostname;
@@ -99,6 +103,7 @@ enum policy {
     POLICY_PER_EVENT
 };
 
+static int dedicated_appsock = 1;
 static int dedicated_timer = 0;
 static enum policy akq_policy = POLICY_PER_NET;
 static enum policy reader_policy = POLICY_PER_HOST;
@@ -117,6 +122,12 @@ static pthread_t base_thd;
 static struct event_base *base;
 static pthread_t timer_thd;
 static struct event_base *timer_base;
+
+pthread_t appsock_timer_thd;
+struct event_base *appsock_timer_base;
+
+pthread_t appsock_rd_thd;
+struct event_base *appsock_rd_base;
 
 #define get_akq()                                                              \
     ({                                                                         \
@@ -162,19 +173,6 @@ static struct event_base *timer_base;
 
 #define wr_thd ({ get_wr_policy()->wrthd; })
 #define wr_base ({ get_wr_policy()->wrbase; })
-
-#undef SKIP_CHECK_THD
-
-#ifdef SKIP_CHECK_THD
-#  define check_thd(...)
-#else
-#  define check_thd(thd)                                                       \
-    if (thd != pthread_self()) {                                               \
-        fprintf(stderr, "FATAL ERROR: %s EVENT NOT DISPATCHED on " #thd "\n",  \
-                __func__);                                                     \
-        abort();                                                               \
-    }
-#endif
 
 #define check_base_thd() check_thd(base_thd)
 #define check_timer_thd() check_thd(timer_thd)
@@ -316,6 +314,17 @@ static int get_nonblocking_socket(void)
     return fd;
 }
 
+static hash_t *appsock_hash;
+struct appsock_info {
+    const char *key;
+    event_callback_fn cb;
+};
+
+static struct appsock_info *get_appsock_info(const char *key)
+{
+    return hash_find_readonly(appsock_hash, &key);
+}
+
 struct host_connected_info;
 
 struct host_info {
@@ -445,9 +454,11 @@ static void nop(int dummyfd, short what, void *data)
      * base around even if there are no events. */
 }
 
+static __thread struct event_base *current_base;
 static void *net_dispatch(void *arg)
 {
     struct net_dispatch_info *n = arg;
+    current_base = n->base;
     struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
     struct timeval ten = {10, 0};
 
@@ -1197,6 +1208,10 @@ static void exit_once_func(void)
     stop_base(base);
     if (dedicated_timer) {
         stop_base(timer_base);
+    }
+    if (gbl_libevent_appsock && dedicated_appsock) {
+        stop_base(appsock_timer_base);
+        stop_base(appsock_rd_base);
     }
     switch (reader_policy) {
     case POLICY_NONE:
@@ -2184,29 +2199,77 @@ static void read_connect(int fd, short what, void *data)
     }
 }
 
+static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int first_byte, struct evbuffer *buf, int fd)
+{
+    int n = evbuffer_get_length(buf);
+    char req[n + 1];
+    evbuffer_copyout(buf, req, -1);
+    evbuffer_free(buf);
+    make_socket_blocking(fd);
+    SBUF2 *sb = sbuf2open(fd, 0);
+    sbuf2setbufsize(sb, netinfo_ptr->bufsz);
+    for (int i = n - 1; i > 0; --i) {
+        sbuf2ungetc(req[i], sb);
+    }
+    do_appsock(netinfo_ptr, ss, sb, first_byte);
+}
+
 static void do_read(int fd, short what, void *data)
 {
     check_base_thd();
     struct accept_info *a = data;
-    uint8_t b;
-    ssize_t n = recv(fd, &b, 1, 0);
+    struct evbuffer *buf = evbuffer_new();
+    ssize_t n = evbuffer_read(buf, fd, SBUF2UNGETC_BUF_MAX);
     if (n <= 0) {
         accept_info_free(a);
         return;
     }
-    if (b) {
-        make_socket_blocking(fd);
-        SBUF2 *sb = sbuf2open(fd, 0);
-        do_appsock(a->netinfo_ptr, &a->ss, sb, b);
-        a->fd = -1;
-        accept_info_free(a);
+    uint8_t first_byte;
+    evbuffer_copyout(buf, &first_byte, 1);
+    if (first_byte == 0) {
+        evbuffer_drain(buf, 1);
+        a->buf = buf;
+        a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
+        if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
+            accept_info_free(a);
+        }
         return;
     }
-    a->buf = evbuffer_new();
-    a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
-    if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
-        accept_info_free(a);
+    netinfo_type *netinfo_ptr = a->netinfo_ptr;
+    struct sockaddr_in ss = a->ss;
+    a->fd = -1;
+    accept_info_free(a);
+    a = NULL;
+    if (!gbl_libevent_appsock) {
+        handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
+        return;
     }
+    if (should_reject_request()) {
+        evbuffer_free(buf);
+        shutdown_close(fd);
+        return;
+    }
+    struct appsock_info *info = NULL;
+    struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
+    if (b.pos == -1) {
+        b = evbuffer_search(buf, " ", 1, NULL);
+    }
+    if (b.pos != -1) {
+        char key[b.pos + 2];
+        evbuffer_copyout(buf, key, b.pos + 1);
+        key[b.pos + 1] = 0;
+        info = get_appsock_info(key);
+    }
+    if (info) {
+        evbuffer_drain(buf, b.pos + 1);
+        struct appsock_handler_arg *arg = malloc(sizeof(*arg));
+        arg->fd = fd;
+        arg->addr = ss;
+        arg->rd_buf = buf;
+        event_once(appsock_rd_base, info->cb, arg); /* handle_newsql_request_evbuffer */
+        return;
+    }
+    handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
 static void do_accept(struct evconnlistener *listener, evutil_socket_t fd,
@@ -2617,14 +2680,26 @@ static void net_send_addref(struct event_info *e, struct net_msg *msg)
     }
 }
 
-static void setup_base(void)
+/* All you base are belong to me.. */
+static void setup_bases(void)
 {
     init_base(&base_thd, &base, net_dispatch, "main");
+
     if (dedicated_timer) {
         init_base(&timer_thd, &timer_base, net_dispatch, "timer");
     } else {
         timer_thd = base_thd;
         timer_base = base;
+    }
+
+    if (gbl_libevent_appsock) {
+        if (dedicated_appsock) {
+            init_base(&appsock_rd_thd, &appsock_rd_base, net_dispatch, "appsock_rd");
+            init_base(&appsock_timer_thd, &appsock_timer_base, net_dispatch, "appsock_timer");
+        } else {
+            appsock_timer_base = appsock_rd_base = base;
+            appsock_timer_thd = appsock_rd_thd = base_thd;
+        }
     }
 
     if (writer_policy == POLICY_NONE) {
@@ -2661,9 +2736,26 @@ static void init_event_net(netinfo_type *netinfo_ptr)
     start_stop_callback_data = netinfo_ptr->callback_data;
     start_callback = netinfo_ptr->start_thread_callback;
     stop_callback = netinfo_ptr->stop_thread_callback;
-    setup_base();
+    setup_bases();
     event_hash = hash_init_str(offsetof(struct event_hash_entry, key));
     net_stop = 0;
+}
+
+/* This allows waiting for async call to finish */
+struct run_base_func_info {
+    pthread_mutex_t lock;
+    pthread_cond_t cond;
+    run_on_base_fn func;
+    void *arg;
+};
+
+static void run_base_func(int dummyfd, short what, void *data)
+{
+    struct run_base_func_info *info = data;
+    info->func(info->arg);
+    Pthread_mutex_lock(&info->lock);
+    Pthread_cond_signal(&info->cond);
+    Pthread_mutex_unlock(&info->lock);
 }
 
 #if 0
@@ -2685,10 +2777,6 @@ static void add_event(int fd, event_callback_fn func, void *data)
     info->ev = event_new(rd_base, fd, EV_READ | EV_PERSIST, user_event_func, info);
     event_add(info->ev, NULL);
 }
-
-/********************/
-/* PUBLIC INTERFACE */
-/********************/
 
 void add_tcp_event(int fd, event_callback_fn func, void *data)
 {
@@ -2716,6 +2804,39 @@ void add_timer_event(event_callback_fn func, void *data, int ms)
     event_add(info->ev, &t);
 }
 #endif
+
+struct get_hosts_info {
+    int max_hosts;
+    int num_hosts;
+    host_node_type **hosts;
+};
+
+static void get_hosts_evbuffer_impl(void *arg)
+{
+    check_base_thd();
+    struct get_hosts_info *info = arg;
+    struct net_info *n = net_info_find("replication");
+    host_node_type *me = get_host_node_by_name_ll(n->netinfo_ptr, gbl_myhostname);
+    if (!me) {
+        abort();
+    }
+    info->hosts[0] = me;
+    int i = 1;
+    struct event_info *e;
+    LIST_FOREACH(e, &n->event_list, net_list_entry) {
+        info->hosts[i] = e->host_node_ptr;
+        ++i;
+        if (i == info->max_hosts) {
+            break;
+        }
+    }
+    info->num_hosts = i;
+}
+
+/********************/
+/* PUBLIC INTERFACE */
+/********************/
+
 
 void add_host(host_node_type *host_node_ptr)
 {
@@ -2950,4 +3071,55 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     case -3: return NET_SEND_FAIL_NOSOCK;
     default: return NET_SEND_FAIL_WRITEFAIL;
     }
+}
+
+int get_hosts_evbuffer(int max_hosts, host_node_type **hosts)
+{
+    struct get_hosts_info info = {.max_hosts = max_hosts, .hosts = hosts};
+    run_on_base(base, get_hosts_evbuffer_impl, &info);
+    return info.num_hosts;
+}
+
+int add_appsock_handler(const char *key, event_callback_fn cb)
+{
+    size_t keylen = strlen(key);
+    if (keylen > SBUF2UNGETC_BUF_MAX) {
+        /* Sanity check: If appsock type is unknown, we need to fallback to sbuf2
+         * and put data back into its ungetc buffer. */
+        logmsg(LOGMSG_ERROR, "bad appsock parameter:%s\n", key);
+        return -1;
+    }
+    if (appsock_hash == NULL) {
+        appsock_hash = hash_init_strptr(offsetof(struct appsock_info, key));
+    }
+    struct appsock_info *info = get_appsock_info(key);
+    if (info) {
+        /* Sanity check: plugins should not re-register */
+        logmsg(LOGMSG_ERROR, "attempt to re-register:%s\n", key);
+        return -1;
+    }
+    info = malloc(sizeof(struct appsock_info));
+    info->key = key;
+    info->cb = cb;
+    hash_add(appsock_hash, info);
+    return 0;
+}
+
+void run_on_base(struct event_base *base, run_on_base_fn func, void *arg)
+{
+    if (base == current_base) {
+        func(arg);
+        return;
+    }
+    struct run_base_func_info info;
+    info.func = func;
+    info.arg = arg;
+    Pthread_mutex_init(&info.lock, NULL);
+    Pthread_cond_init(&info.cond, NULL);
+    Pthread_mutex_lock(&info.lock);
+    if (event_base_once(base, -1, EV_TIMEOUT, run_base_func, &info, NULL) != 0) abort();
+    Pthread_cond_wait(&info.cond, &info.lock);
+    Pthread_mutex_unlock(&info.lock);
+    Pthread_mutex_destroy(&info.lock);
+    Pthread_cond_destroy(&info.cond);
 }

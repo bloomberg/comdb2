@@ -2065,12 +2065,13 @@ static int print_catchup_message(bdb_state_type *bdb_state, int phase,
         logmsg(LOGMSG_WARN, "\n");
     }
 
+    uint64_t behind = subtract_lsn(bdb_state, master_lsn, our_lsn);
     logmsg(LOGMSG_WARN,
            "catching up (%d):: us: %s "
-           " master : %s behind %" PRIu64 "\n",
+           " master : %s behind %" PRIu64 "mb (%" PRIu64 " bytes)\n",
            phase, lsn_to_str(our_lsn_str, our_lsn),
            lsn_to_str(master_lsn_str, master_lsn),
-           subtract_lsn(bdb_state, master_lsn, our_lsn));
+           behind / (1024 * 1024), behind);
 
     lsn_cmp.lsn.file = our_lsn->file;
     lsn_cmp.lsn.offset = our_lsn->offset;
@@ -3232,8 +3233,7 @@ done2:
                 exit(1);
             }
 
-            make_lsn(&our_lsn, log_stats->st_cur_file,
-                     log_stats->st_cur_offset);
+            make_lsn(&our_lsn, log_stats->st_cur_file, log_stats->st_cur_offset);
             free(log_stats);
 
             if (memcmp(&last_lsn, &our_lsn, sizeof(DB_LSN)) == 0)

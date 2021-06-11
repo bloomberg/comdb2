@@ -126,9 +126,7 @@ enum {
     NET_OSQL_SOCK_RPL = 124,  /* this goes only on offload net */
     NET_OSQL_RECOM_REQ = 125, /* this goes only on offload net */
     NET_OSQL_RECOM_RPL = 126, /* this goes only on offload net */
-    #if 0
     NET_HBEAT_SQL = 127,      /* this goes only on offload net */
-    #endif
     NET_FORGETMENOT = 128,    /* to remind master of an incoherent node */
     NET_USE_LLMETA = 129,  /* depricated, in this version of comdb2, * all dbs
                               must be llmeta */
