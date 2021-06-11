@@ -13,7 +13,7 @@ for required in $vars; do
     fi
 done
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO LOCAL_${SECONDARY_DBNAME}.t VALUES(1, 99)" >> output.actual 2>&1
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO LOCAL_${SECONDARY_DBNAME}.t VALUES(1, 99)" > output.actual 2>&1
 cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "INSERT INTO LOCAL_${SECONDARY_DBNAME}.t VALUES(2, 98)" >> output.actual 2>&1
 
 mach=`cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default 'select comdb2_host()'`
@@ -25,7 +25,7 @@ fi
 
 cdb2sql ${SECONDARY_CDB2_OPTIONS} --host $mach ${SECONDARY_DBNAME} "SELECT sleep(10)" &
 
-cdb2sql ${CDB2_OPTIONS} --host $mach ${DBNAME} "SELECT * FROM LOCAL_${SECONDARY_DBNAME}.t" >> output.actual 2>&1
+cdb2sql ${CDB2_OPTIONS} --host $mach ${DBNAME} "SELECT * FROM LOCAL_${SECONDARY_DBNAME}.t order by id" >> output.actual 2>&1
 
 # validate results
 testcase_output=$(cat output.actual)
