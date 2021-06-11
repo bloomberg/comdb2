@@ -4852,27 +4852,16 @@ int fdb_unlock_table(fdb_tbl_ent_t *ent)
  */
 int fdb_heartbeats(struct sqlclntstate *clnt)
 {
-    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
-    fdb_msg_t *msg;
-    fdb_tran_t *tran;
-    int rc = 0;
-    int out_rc = 0;
-
-    if (!dtran || dtran->remoted)
-        return FDB_NOERR;
-
-    msg = (fdb_msg_t *)calloc(1, fdb_msg_size());
-    if (!msg) {
-        logmsg(LOGMSG_ERROR, "calloc failure!\n");
-        return -1;
-    }
-
     Pthread_mutex_lock(&clnt->dtran_mtx);
-
-    LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk)
-    {
-        rc = fdb_send_heartbeat(msg, tran->tid, tran->isuuid, tran->sb);
-
+    fdb_distributed_tran_t *dtran = clnt->dbtran.dtran;
+    int out_rc = FDB_NOERR;
+    if (!dtran || dtran->remoted) {
+        goto out;
+    }
+    fdb_msg_t *msg = alloca(fdb_msg_size());
+    fdb_tran_t *tran;
+    LISTC_FOR_EACH(&dtran->fdb_trans, tran, lnk) {
+        int rc = fdb_send_heartbeat(msg, tran->tid, tran->isuuid, tran->sb);
         if (gbl_fdb_track) {
             if (tran->isuuid) {
                 uuidstr_t us;
@@ -4881,17 +4870,13 @@ int fdb_heartbeats(struct sqlclntstate *clnt)
                         __func__, us, tran->fdb->dbname, rc);
             } else
                 logmsg(LOGMSG_USER, "%s Send heartbeat tid=%llx db=\"%s\" rc=%d\n",
-                        __func__, *(unsigned long long *)tran->tid,
-                        tran->fdb->dbname, rc);
+                        __func__, *(unsigned long long *)tran->tid, tran->fdb->dbname, rc);
         }
-        if (!out_rc)
+        if (!out_rc) {
             out_rc = rc;
+        }
     }
-
-    Pthread_mutex_unlock(&clnt->dtran_mtx);
-
-    free(msg);
-
+out:Pthread_mutex_unlock(&clnt->dtran_mtx);
     return out_rc;
 }
 

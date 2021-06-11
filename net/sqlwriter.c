@@ -37,6 +37,7 @@ static struct timeval heartbeat_time = {.tv_sec = 0, .tv_usec = MSEC(10)};
 
 //send heartbeat if no data every (seconds)
 #define min_hb_time 1
+#define min_fdb_time 1
 
 //writer will block if outstanding data hits:
 #define max_buf MB(1)
@@ -56,6 +57,7 @@ struct sqlwriter {
     struct event *timeout_ev;
     struct event_base *wr_base;
     time_t sent_at;
+    time_t fdb_sent_at;
     sql_pack_fn *pack;
     sql_pack_fn *pack_hb;
     size_t hb_sz;
@@ -329,8 +331,13 @@ void sql_heartbeat_cb(int fd, short what, void *arg)
     struct sqlwriter *writer = arg;
     Pthread_mutex_lock(&writer->wr_lock);
     int len = evbuffer_get_length(writer->wr_buf);
-    if (len || difftime(time(NULL), writer->sent_at) >= min_hb_time) {
+    time_t now = time(NULL);
+    if (len || difftime(now, writer->sent_at) >= min_hb_time) {
         sql_enable_trickle(writer);
+    }
+    if (difftime(now, writer->fdb_sent_at) >= min_fdb_time && !writer->done) {
+        writer->fdb_sent_at = now;
+        fdb_heartbeats_evbuffer(writer->clnt);
     }
     Pthread_mutex_unlock(&writer->wr_lock);
 }

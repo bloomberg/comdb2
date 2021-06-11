@@ -6807,3 +6807,8 @@ int maxquerytime_cb(struct sqlclntstate *clnt)
     clnt->statement_timedout = 1;
     return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), SQLHERR_LIMIT);
 }
+
+void fdb_heartbeats_evbuffer(struct sqlclntstate * clnt)
+{
+    fdb_heartbeats(clnt);
+}

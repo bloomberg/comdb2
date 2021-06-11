@@ -21,6 +21,8 @@ extern struct event_base *appsock_rd_base;
 extern int active_appsock_conns;
 extern int64_t gbl_denied_appsock_connection_count;
 
+void fdb_heartbeats_evbuffer(struct sqlclntstate *);
+
 #undef SKIP_CHECK_THD
 #ifdef SKIP_CHECK_THD
 #  define check_thd(...)
