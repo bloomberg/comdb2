@@ -452,7 +452,7 @@ static void serialise_log_files(
 // completed logs (a log is complete if the next log file in the sequence
 // already exists).  Otherwise we keep going until there are no more log files.
 {
-    char logfile[16];
+    char logfile[32];
     std::string absfile, storename;
     struct stat st;
 
