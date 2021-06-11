@@ -1583,32 +1583,6 @@ static int get_remote_input(lua_State *lua, char *buffer, size_t sz)
     return rc;
 }
 
-void *read_client_socket(void *in)
-{
-    int rc;
-    struct client_info *info = in;
-    struct sqlclntstate *clnt = info->clnt;
-    rc = pthread_mutex_trylock(&lua_debug_mutex);
-    if (rc) {
-        free(info);
-        return NULL;
-    }
-    rc = read_response(clnt, RESPONSE_BYTES, info->buffer, 250);
-    if (rc && (strncmp(info->buffer, "HALT", 4) == 0)) {
-        gbl_break_lua = info->thread_id;
-        Pthread_mutex_unlock(&lua_debug_mutex);
-    } else if (rc) {
-        info->has_buffer = 1;
-        info_buf = *info;
-        Pthread_mutex_unlock(&lua_debug_mutex);
-    } else {
-        Pthread_mutex_unlock(&lua_debug_mutex);
-    }
-    /* Socket is disconnected now. */
-    free(info);
-    return NULL;
-}
-
 static void InstructionCountHook(Lua, lua_Debug *);
 static int db_debug(lua_State *lua)
 {
@@ -7231,7 +7205,6 @@ void *exec_trigger(trigger_reg_t *reg)
         force_unregister(L, reg);
     }
     put_curtran(thedb->bdb_env, &clnt);
-    close_sp(&clnt);
     end_internal_sql_clnt(&clnt);
     thd.sqlthd->clnt = NULL;
     sqlengine_thd_end(NULL, &thd);

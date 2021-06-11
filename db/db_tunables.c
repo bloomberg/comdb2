@@ -203,7 +203,6 @@ extern int gbl_random_thdpool_work_timeout;
 extern int gbl_thdpool_queue_only;
 extern int gbl_random_sql_work_delayed;
 extern int gbl_random_sql_work_rejected;
-extern int gbl_fail_client_write_lock;
 extern int gbl_instrument_dblist;
 extern int gbl_replicated_truncate_timeout;
 extern int gbl_match_on_ckp;

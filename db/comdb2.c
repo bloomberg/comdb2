@@ -135,6 +135,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "string_ref.h"
 #include "sql_stmt_cache.h"
 #include "phys_rep.h"
+#include <net_appsock.h>
 
 #define tokdup strndup
 
@@ -164,7 +165,6 @@ int gbl_trace_prepare_errors = 0;
 int gbl_trigger_timepart = 0;
 int gbl_extended_sql_debug_trace = 0;
 int gbl_perform_full_clean_exit = 1;
-extern int gbl_dump_fsql_response;
 struct ruleset *gbl_ruleset = NULL;
 
 void myctrace(const char *c) { ctrace("%s", c); }
@@ -4694,7 +4694,6 @@ void *statthd(void *p)
     int have_scon_stats = 0;
     int64_t rw_evicts;
 
-    extern int active_appsock_conns;
 
     thrman_register(THRTYPE_GENERIC);
     thread_started("statthd");
@@ -5492,8 +5491,6 @@ static void register_all_int_switches()
     register_int_switch("extended_sql_debug_trace",
                         "Print extended trace for durable sql debugging",
                         &gbl_extended_sql_debug_trace);
-    register_int_switch("dump_fsql_response", "Dump fsql out messages",
-                        &gbl_dump_fsql_response);
     register_int_switch(
         "large_str_idx_find",
         "Allow index search using out-of-range strings or bytearrays",

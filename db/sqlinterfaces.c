@@ -110,6 +110,7 @@
 #include "string_ref.h"
 
 #include "osqlsqlsocket.h"
+#include <net_appsock.h>
 
 /*
 ** WARNING: These enumeration values are not arbitrary.  They represent
@@ -171,7 +172,6 @@ extern int gbl_alternate_normalize;
 
 /* An alternate interface. */
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
-int gbl_dump_fsql_response = 0;
 extern int gbl_time_osql; /* dump timestamps for osql steps */
 extern int gbl_time_fdb;  /* dump timestamps for remote sql */
 extern int gbl_print_syntax_err;
@@ -179,8 +179,9 @@ extern int gbl_max_sqlcache;
 extern int gbl_track_sqlengine_states;
 extern int gbl_disable_sql_dlmalloc;
 extern struct ruleset *gbl_ruleset;
+extern int gbl_sql_release_locks_on_slow_reader;
+extern int gbl_sql_no_timeouts_on_release_locks;
 
-extern int active_appsock_conns;
 /* gets incremented each time a user's password is changed. */
 int gbl_bpfunc_auth_gen = 1;
 
@@ -291,11 +292,7 @@ static inline void comdb2_set_sqlite_vdbe_dtprec_int(Vdbe *p,
 
 int disable_server_sql_timeouts(void)
 {
-    extern int gbl_sql_release_locks_on_slow_reader;
-    extern int gbl_sql_no_timeouts_on_release_locks;
-
-    return (gbl_sql_release_locks_on_slow_reader &&
-            gbl_sql_no_timeouts_on_release_locks);
+    return gbl_sql_release_locks_on_slow_reader && gbl_sql_no_timeouts_on_release_locks;
 }
 
 #define XRESPONSE(x) #x,
@@ -382,6 +379,11 @@ int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 int read_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
     return clnt->plugin.read_response(clnt, R, D, I);
+}
+
+int get_fileno(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.get_fileno(clnt);
 }
 
 int column_count(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
@@ -3728,10 +3730,6 @@ static int run_stmt(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     /* whatever sqlite returns in sqlite3_step is only used to step out of the
      * loop, otherwise ignored; we are gonna get it from sqlite (or osql.xerr)
      */
-#if 0
-    logmsg(LOGMSG_ERROR, "XXX: %p Out of run_stmt rc=%d\n",
-           (clnt->plugin.state)?clnt->plugin.state:"(NA)", rc);
-#endif
 
 postprocessing:
     /* if we get this message, it means we had to stop the sqlite early
@@ -4111,7 +4109,7 @@ static int close_lru_client(int curr_conns, struct sqlclntstate *clnt, int max_i
         rc = 0;
     } else if (lru_clnt) {
         lru_clnt->statement_timedout = 1; /* disallow any new query */
-        int fd = lru_clnt->plugin.get_fileno(lru_clnt);
+        int fd = get_fileno(lru_clnt);
         shutdown(fd, SHUT_RD);
         logmsg(LOGMSG_WARN,
                "%s: Closing least recently used connection fd %d, total %d \n",
@@ -4296,10 +4294,14 @@ check_version:
 
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
-    Pthread_mutex_lock(&clnt->wait_mutex);
-    clnt->done = 1;
-    Pthread_cond_signal(&clnt->wait_cond);
-    Pthread_mutex_unlock(&clnt->wait_mutex);
+    if (clnt->done_cb) {
+        clnt->done_cb(clnt);
+    } else {
+        Pthread_mutex_lock(&clnt->wait_mutex);
+        clnt->done = 1;
+        Pthread_cond_signal(&clnt->wait_cond);
+        Pthread_mutex_unlock(&clnt->wait_mutex);
+    }
 }
 
 void thr_set_user(const char *label, int id)
@@ -4582,10 +4584,8 @@ static int can_execute_sql_query_now(
   return 1;
 }
 
-void sqlengine_work_appsock(void *thddata, void *work)
+void sqlengine_work_appsock(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 {
-    struct sqlthdstate *thd = thddata;
-    struct sqlclntstate *clnt = work;
     struct sql_thread *sqlthd = thd->sqlthd;
 
     assert(sqlthd);
@@ -4637,7 +4637,7 @@ void sqlengine_work_appsock(void *thddata, void *work)
     sql_get_query_id(sqlthd);
 
     /* actually execute the query */
-    thrman_setfd(thd->thr_self, clnt->plugin.get_fileno(clnt));
+    thrman_setfd(thd->thr_self, get_fileno(clnt));
 
     osql_shadtbl_begin_query(thedb->bdb_env, clnt);
 
@@ -4848,6 +4848,7 @@ static void mark_clnt_as_recently_used(struct sqlclntstate *clnt)
 static int wait_for_sql_query(struct sqlclntstate *clnt)
 {
     /* successful dispatch or queueing, enable heartbeats */
+    mark_clnt_as_recently_used(clnt);
     Pthread_mutex_lock(&clnt->wait_mutex);
     if (clnt->exec_lua_thread)
         clnt->ready_for_heartbeats = 0;
@@ -4969,17 +4970,24 @@ static int verify_dispatch_sql_query(struct sqlclntstate *clnt)
     return rc;
 }
 
+static int dispatch_sql_query_int(struct sqlclntstate *clnt)
+{
+    int rc = verify_dispatch_sql_query(clnt);
+    if (rc != 0) {
+        return rc;
+    }
+    return enqueue_sql_query(clnt);
+}
+
 int dispatch_sql_query(struct sqlclntstate *clnt)
 {
-    mark_clnt_as_recently_used(clnt);
+    int rc = dispatch_sql_query_int(clnt);
+    return rc ? rc : wait_for_sql_query(clnt);
+}
 
-    int rc = verify_dispatch_sql_query(clnt);
-    if (rc != 0) return rc;
-
-    rc = enqueue_sql_query(clnt);
-    if (rc != 0) return rc;
-
-    return wait_for_sql_query(clnt);
+int dispatch_sql_query_no_wait(struct sqlclntstate *clnt)
+{
+    return dispatch_sql_query_int(clnt);
 }
 
 int tdef_to_tranlevel(int tdef)
@@ -5008,22 +5016,32 @@ int tdef_to_tranlevel(int tdef)
 
 void cleanup_clnt(struct sqlclntstate *clnt)
 {
+    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+        handle_sql_intrans_unrecoverable_error(clnt);
+    }
+    if (clnt->rawnodestats) {
+        release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
+        clnt->rawnodestats = NULL;
+    }
+    close_sp(clnt);
+    osql_clean_sqlclntstate(clnt);
+    if (clnt->dbglog) {
+        sbuf2close(clnt->dbglog);
+        clnt->dbglog = NULL;
+    }
     if (clnt->argv0) {
         free(clnt->argv0);
         clnt->argv0 = NULL;
     }
-
     if (clnt->stack) {
         free(clnt->stack);
         clnt->stack = NULL;
     }
-
     if (clnt->saved_errstr) {
         free(clnt->saved_errstr);
         clnt->saved_errstr = NULL;
     }
     clnt->sqlite_errstr = NULL;
-
     if (clnt->context) {
         for (int i = 0; i < clnt->ncontext; i++) {
             free(clnt->context[i]);
@@ -5032,31 +5050,25 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->context = NULL;
         clnt->ncontext = 0;
     }
-
     if (clnt->selectv_arr) {
         currangearr_free(clnt->selectv_arr);
         clnt->selectv_arr = NULL;
     }
-
     if (clnt->arr) {
         currangearr_free(clnt->arr);
         clnt->arr = NULL;
     }
-
     if (clnt->spversion.version_str) {
         free(clnt->spversion.version_str);
         clnt->spversion.version_str = NULL;
     }
-
     if (clnt->query_stats) {
         free(clnt->query_stats);
         clnt->query_stats = NULL;
     }
-
     if (clnt->sql_ref) {
         put_ref(&clnt->sql_ref);
     }
-
     if (gbl_expressions_indexes) {
         if (clnt->idxInsert)
             free(clnt->idxInsert);
@@ -5064,7 +5076,7 @@ void cleanup_clnt(struct sqlclntstate *clnt)
             free(clnt->idxDelete);
         clnt->idxInsert = clnt->idxDelete = NULL;
     }
-
+    clnt_free_cursor_hints(clnt);
     free_normalized_sql(clnt);
     free_original_normalized_sql(clnt);
     memset(&clnt->work.rec, 0, sizeof(struct sql_state));
@@ -5233,8 +5245,10 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
 
 void reset_clnt_flags(struct sqlclntstate *clnt)
 {
-    clnt->writeTransaction = 0;
+    clnt->early_retry = 0;
     clnt->has_recording = 0;
+    clnt->statement_timedout = 0;
+    clnt->writeTransaction = 0;
 }
 
 int sbuf_is_local(SBUF2 *sb)
@@ -5247,7 +5261,7 @@ int sbuf_is_local(SBUF2 *sb)
     if (addr.sin_addr.s_addr == gbl_myaddr.s_addr)
         return 1;
 
-    if (addr.sin_addr.s_addr == INADDR_LOOPBACK)
+    if (addr.sin_addr.s_addr == htonl(INADDR_LOOPBACK))
         return 1;
 
     return 0;
@@ -5268,7 +5282,27 @@ int sbuf_set_timeout(struct sqlclntstate *clnt, SBUF2 *sb, int wr_timeout_ms)
     return 0;
 }
 
-static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
+int recover_deadlock_evbuffer(struct sqlclntstate *clnt)
+{
+    if (!gbl_sql_release_locks_on_slow_reader) {
+        return 0;
+    }
+    bdb_state_type *env = thedb->bdb_env;
+    if (!bdb_curtran_has_waiters(env, clnt->dbtran.cursor_tran) && !bdb_lock_desired(env)) {
+        return 0;
+    }
+    int flags = 0;
+    if (gbl_fail_client_write_lock && !(rand() % gbl_fail_client_write_lock)) {
+        flags = RECOVER_DEADLOCK_FORCE_FAIL;
+    }
+    struct sql_thread *thd = clnt->thd->sqlthd;
+    if (!recover_deadlock_flags(env, thd, NULL, 0, __func__, __LINE__, flags)) {
+        return -1;
+    }
+    return 0;
+}
+
+static int recover_deadlock_sbuf(struct sqlclntstate *clnt)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
     int count = 0;
@@ -5317,9 +5351,8 @@ static inline int sql_writer_recover_deadlock(struct sqlclntstate *clnt)
     return 1;
 }
 
-int sql_writer(SBUF2 *sb, const char *buf, int nbytes)
+int sql_write_sbuf(SBUF2 *sb, const char *buf, int nbytes)
 {
-    extern int gbl_sql_release_locks_on_slow_reader;
     ssize_t nwrite, written = 0;
     struct sqlclntstate *clnt = sbuf2getclnt(sb);
     int retry = -1;
@@ -5345,7 +5378,7 @@ retry:
                   bdb_curtran_has_waiters(thedb->bdb_env,
                                           clnt->dbtran.cursor_tran))) ||
                 bdb_lock_desired(thedb->bdb_env)) {
-                rc = sql_writer_recover_deadlock(clnt);
+                rc = recover_deadlock_sbuf(clnt);
                 if (rc == 0)
                     released_locks = 1;
             }
@@ -5939,7 +5972,7 @@ int sqlpool_init(void)
 }
 
 int clnt_stats_init(void) {
-    listc_init(&clntlist, offsetof(struct sqlclntstate, lnk));
+    listc_init(&clntlist, offsetof(struct sqlclntstate, u.lnk));
     return 0;
 }
 
@@ -6409,7 +6442,6 @@ void run_internal_sql(char *sql)
     struct sqlclntstate clnt;
     start_internal_sql_clnt(&clnt);
     clnt.sql = skipws(sql);
-
     int rc = dispatch_sql_query(&clnt);
     if (rc || clnt.query_rc || clnt.saved_errstr) {
         if (clnt.query_rc)
@@ -6417,14 +6449,6 @@ void run_internal_sql(char *sql)
         if (clnt.saved_errstr)
             logmsg(LOGMSG_ERROR, "%s: Error: '%s' \n", __func__, clnt.saved_errstr);
     }
-    clnt_reset_cursor_hints(&clnt);
-    osql_clean_sqlclntstate(&clnt);
-
-    if (clnt.dbglog) {
-        sbuf2close(clnt.dbglog);
-        clnt.dbglog = NULL;
-    }
-
     end_internal_sql_clnt(&clnt);
 }
 
@@ -6455,7 +6479,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
        return -1;
    }
    struct sqlclntstate *clnt;
-   LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+   LISTC_FOR_EACH(&clntlist, clnt, u.lnk) {
        c[cid].connection_id = clnt->connid;
        c[cid].pid = clnt->last_pid;
        c[cid].total_sql = clnt->total_sql;
@@ -6683,15 +6707,103 @@ int run_internal_sql_clnt(struct sqlclntstate *clnt, char *sql)
 
 void end_internal_sql_clnt(struct sqlclntstate *clnt)
 {
-    clnt_reset_cursor_hints(clnt);
-    osql_clean_sqlclntstate(clnt);
-
-    if (clnt->dbglog) {
-        sbuf2close(clnt->dbglog);
-        clnt->dbglog = NULL;
-    }
-
-    clnt->dbtran.mode = TRANLEVEL_INVALID;
     cleanup_clnt(clnt);
 }
 
+void update_col_info(struct sql_col_info *info, int ncols)
+{
+    if (info->capacity < ncols) {
+        size_t n = ncols + 32; /* Keep space for a few more than requested */
+        size_t sz = n * sizeof(info->type[0]);
+        if (!info->type) {
+            info->type = calloc(n, sizeof(info->type[0])); /* o hi, valgrind */
+        } else {
+            info->type = realloc(info->type, sz);
+        }
+        if (!info->type) {
+            logmsg(LOGMSG_FATAL, "%s realloc(%zu) errno:%d %s\n", __func__, sz,
+                   errno, strerror(errno));
+            abort();
+        }
+        info->capacity = n;
+    }
+    info->count = ncols;
+}
+
+static TAILQ_HEAD(lru_evbuffers, sqlclntstate) lru_evbuffers = TAILQ_HEAD_INITIALIZER(lru_evbuffers);
+
+void add_lru_evbuffer(struct sqlclntstate *clnt)
+{
+    check_appsock_rd_thd();
+    if (in_client_trans(clnt)) {
+        /* Point to self -> not in lru_evbuffers list */
+        TAILQ_NEXT(clnt, u.entry) = clnt;
+        return;
+    }
+    TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, u.entry);
+}
+
+void rem_lru_evbuffer(struct sqlclntstate *clnt)
+{
+    check_appsock_rd_thd();
+    if (TAILQ_NEXT(clnt, u.entry) == clnt) {
+        return;
+    }
+    TAILQ_REMOVE(&lru_evbuffers, clnt, u.entry);
+    TAILQ_NEXT(clnt, u.entry) = clnt;
+}
+
+static int close_lru_evbuffer(struct sqlclntstate *self)
+{
+    check_appsock_rd_thd();
+    struct sqlclntstate *clnt = TAILQ_LAST(&lru_evbuffers, lru_evbuffers);
+    if (clnt && clnt != self) {
+        rem_lru_evbuffer(clnt);
+        clnt->plugin.close(clnt);
+        return 0;
+    }
+    return -1;
+}
+
+int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
+{
+    check_appsock_rd_thd();
+    if (clnt->admin) {
+       return 0;
+    }
+    int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+    if (active_appsock_conns >= max && close_lru_evbuffer(clnt) != 0) {
+        return -1;
+    }
+    ++active_appsock_conns;
+    return 0;
+}
+
+void rem_appsock_connection_evbuffer(struct sqlclntstate *clnt)
+{
+    check_appsock_rd_thd();
+    if (clnt->admin) {
+        return;
+    }
+    --active_appsock_conns;
+}
+
+void exhausted_appsock_connections(struct sqlclntstate *clnt)
+{
+    write_response(clnt, RESPONSE_ERROR, "Exhausted appsock connections.", CDB2__ERROR_CODE__APPSOCK_LIMIT);
+    gbl_denied_appsock_connection_count++;
+    static time_t last = 0;
+    time_t now = time(NULL);
+    if (now != last) {
+        logmsg(LOGMSG_WARN,
+               "%s: Exhausted appsock connections, total %d connections denied-connection count=%" PRId64 "\n",
+               __func__, active_appsock_conns, gbl_denied_appsock_connection_count);
+        last = now;
+    }
+}
+
+int maxquerytime_cb(struct sqlclntstate *clnt)
+{
+    clnt->statement_timedout = 1;
+    return write_response(clnt, RESPONSE_ERROR, (char *)sqlite3ErrStr(SQLITE_TIMEDOUT), SQLHERR_LIMIT);
+}

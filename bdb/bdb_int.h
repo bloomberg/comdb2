@@ -1839,8 +1839,6 @@ int is_table_in_schema_change(const char *tbname, tran_type *tran);
 
 void bdb_temp_table_init(bdb_state_type *bdb_state);
 
-int is_incoherent(bdb_state_type *bdb_state, const char *host);
-
 int berkdb_start_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
                          DB_LSN *lsn);
 int berkdb_commit_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,

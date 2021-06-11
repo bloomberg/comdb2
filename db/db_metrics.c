@@ -25,6 +25,7 @@
 #include <bdb_api.h>
 #include <net.h>
 #include <thread_stats.h>
+#include <net_appsock.h>
 
 #include <sys/time.h>
 #include <sys/resource.h>

@@ -22,6 +22,7 @@
 
 #include <bdb_api.h>
 #include <bdb_cursor.h>
+#include <berkdb/dbinc/queue.h>
 
 #include "tag.h"
 #include "osql_srs.h"
@@ -132,6 +133,7 @@ typedef struct {
     genid_t genid;
 } shadbq_t;
 
+struct srs_tran;
 typedef struct osqlstate {
 
     /* == sql_thread == */
@@ -178,7 +180,7 @@ typedef struct osqlstate {
 
     /* verify handling */
     /* keep the log of sql strings for the current transaction */
-    srs_tran_t * history;
+    struct srs_tran *history;
     int replay;  /* set this when a session is replayed, used by sorese */
     int sent_column_data; /* set this if we've already sent the column data */
 
@@ -437,15 +439,15 @@ struct plugin_callbacks {
     plugin_func *send_intrans_response; /* newsql_send_intrans_response */
 
     /* These may change depending on underlying tranport (sbuf2 or libevent) */
-    plugin_func *close; /* newsql_close */
-    plugin_func *flush; /* newsql_flush */
-    plugin_func *get_fileno; /* newsql_get_fileno */
-    response_func *get_x509_attr; /* newsql_get_x509_attr */
-    plugin_func *has_ssl; /* newsql_has_ssl */
-    plugin_func *has_x509; /* newsql_has_x509 */
-    plugin_func *local_check; /* newsql_local_check */
-    plugin_func *peer_check; /* newsql_peer_check */
-    override_type_func *set_timeout; /* newsql_set_timeout */
+    plugin_func *close; /* newsql_close_evbuffer */
+    plugin_func *flush; /* newsql_flush_evbuffer */
+    plugin_func *get_fileno; /* newsql_get_fileno_evbuffer */
+    response_func *get_x509_attr; /* newsql_get_x509_attr_sbuf */
+    plugin_func *has_ssl; /* newsql_has_ssl_sbuf */
+    plugin_func *has_x509; /* newsql_has_x509_sbuf */
+    plugin_func *local_check; /* newsql_local_check_evbuffer */
+    plugin_func *peer_check; /* newsql_peer_check_evbuffer */
+    override_type_func *set_timeout; /* newsql_set_timeout_sbuf */
 
     /* Optional */
     void *state;
@@ -671,6 +673,7 @@ struct sqlclntstate {
     uint8_t ready_for_heartbeats;
     uint8_t no_more_heartbeats;
     uint8_t done;
+    plugin_func *done_cb; /* newsql_done_evbuffer */
     unsigned long long sqltick, sqltick_last_seen;
 
     int using_case_insensitive_like;
@@ -784,11 +787,8 @@ struct sqlclntstate {
     uint8_t **idxDelete;
 
     int8_t wrong_db;
-    int8_t is_lua_sql_thread;
-
     int8_t high_availability_flag;
     int8_t hasql_on;
-
     int8_t has_recording;
     int8_t is_retry;
     int8_t get_cost;
@@ -857,7 +857,10 @@ struct sqlclntstate {
     char* origin_host;
     int8_t sent_data_to_client;
     int8_t is_asof_snapshot;
-    LINKC_T(struct sqlclntstate) lnk;
+    union {
+        LINKC_T(struct sqlclntstate) lnk; /* appsock + sbuf */
+        TAILQ_ENTRY(sqlclntstate) entry; /* libevent */
+    } u;
     int last_sent_row_sec; /* used to delay releasing locks when bdb_lock is
                               desired */
     int8_t rowbuffer;
@@ -1148,7 +1151,8 @@ void osql_log_time_done(struct sqlclntstate *clnt);
 void clnt_to_ruleset_item_criteria(struct sqlclntstate *clnt,
                                    struct ruleset_item_criteria *context);
 
-int dispatch_sql_query(struct sqlclntstate *clnt);
+int dispatch_sql_query(struct sqlclntstate *);
+int dispatch_sql_query_no_wait(struct sqlclntstate *);
 void signal_clnt_as_done(struct sqlclntstate *clnt);
 
 int handle_sql_begin(struct sqlthdstate *thd, struct sqlclntstate *clnt,
@@ -1178,8 +1182,8 @@ int sqlite_to_ondisk(struct schema *s, const void *inp, int len, void *outp,
                      struct convert_failure *fail_reason, BtCursor *pCur);
 
 int has_sqlcache_hint(const char *sql, const char **start, const char **end);
-
-void clnt_reset_cursor_hints(struct sqlclntstate *clnt);
+void clnt_reset_cursor_hints(struct sqlclntstate *);
+void clnt_free_cursor_hints(struct sqlclntstate *);
 
 void sqlite3VdbeRecordPack(UnpackedRecord *unpacked, Mem *pOut);
 char *sql_field_default_trans(struct field *f, int is_out);
@@ -1264,7 +1268,9 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
 response_func write_response;
 response_func read_response;
-int sql_writer(SBUF2 *, const char *, int);
+plugin_func get_fileno;
+
+int sql_write_sbuf(SBUF2 *, const char *, int);
 int typestr_to_type(const char *ctype);
 int column_count(struct sqlclntstate *, sqlite3_stmt *);
 int sqlite_error(struct sqlclntstate *, sqlite3_stmt *, const char **errstr);
@@ -1378,12 +1384,27 @@ int watcher_warning_function(void *, int timeout, int gap);
 int sbuf_is_local(SBUF2 *);
 int sbuf_set_timeout(struct sqlclntstate *, SBUF2 *, int wr_timeout_ms);
 int tdef_to_tranlevel(int tdef);
-int check_active_appsock_connections(struct sqlclntstate *);
 int fdb_access_control_create(struct sqlclntstate *, char *str);
 int disable_server_sql_timeouts(void);
 int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
 int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
 int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
+
+struct sql_col_info {
+    int count;
+    int capacity;
+    int *type;
+};
+
+void add_lru_evbuffer(struct sqlclntstate *);
+void rem_lru_evbuffer(struct sqlclntstate *);
+int add_appsock_connection_evbuffer(struct sqlclntstate *);
+void rem_appsock_connection_evbuffer(struct sqlclntstate *);
+int check_active_appsock_connections(struct sqlclntstate *);
+void exhausted_appsock_connections(struct sqlclntstate *);
+void update_col_info(struct sql_col_info *info, int);
+void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);
+const char *sqlite3ErrStr(int);
 
 #endif /* _SQL_H_ */
