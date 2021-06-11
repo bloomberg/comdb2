@@ -865,10 +865,11 @@ cleanup:
         logmsg(LOGMSG_INFO, "Analyze completed, table %s\n", td->table);
     }
 
-    end_internal_sql_clnt(&clnt);
     if (sampled_table) {
         cleanup_sampled_indicies(&clnt, tbl);
     }
+
+    end_internal_sql_clnt(&clnt);
 
     return rc;
 
@@ -1354,8 +1355,8 @@ void handle_backout(SBUF2 *sb, char *table)
         sbuf2printf(sb, "FAILED\n");
     }
 
-    end_internal_sql_clnt(&clnt);
     sbuf2flush(sb);
+    end_internal_sql_clnt(&clnt);
 }
 
 /* Add stats for indices of table newname by copying from

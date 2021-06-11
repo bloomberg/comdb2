@@ -54,7 +54,8 @@ struct thdpool *gbl_appsock_thdpool = NULL;
 char appsock_unknown_old[] = "-1 #unknown command\n";
 char appsock_unknown[] = "Error: -1 #unknown command\n";
 char appsock_supported[] = "supported\n";
-int active_appsock_conns = 0;
+int32_t active_appsock_conns = 0;
+int64_t gbl_denied_appsock_connection_count = 0;
 
 pthread_mutex_t appsock_conn_lk = PTHREAD_MUTEX_INITIALIZER;
 
@@ -74,7 +75,7 @@ void close_appsock(SBUF2 *sb)
     if (sb != NULL) {
         net_end_appsock(sb);
         Pthread_mutex_lock(&appsock_conn_lk);
-        active_appsock_conns--;
+        active_appsock_conns = ATOMIC_ADD32(active_appsock_conns, -1);
         Pthread_mutex_unlock(&appsock_conn_lk);
     }
 }
@@ -85,8 +86,7 @@ int appsock_init(void)
     gbl_appsock_hash = hash_init_strcaseptr(offsetof(comdb2_appsock_t, name));
     logmsg(LOGMSG_DEBUG, "appsock handler hash initialized\n");
 
-    gbl_appsock_thdpool =
-        thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
+    gbl_appsock_thdpool = thdpool_create("appsockpool", sizeof(struct appsock_thd_state));
 
     if (!gbl_exit_on_pthread_create_fail)
         thdpool_unset_exit(gbl_appsock_thdpool);
@@ -97,7 +97,6 @@ int appsock_init(void)
     thdpool_set_delt_fn(gbl_appsock_thdpool, appsock_thd_end);
     thdpool_set_minthds(gbl_appsock_thdpool, 1);
     thdpool_set_linger(gbl_appsock_thdpool, 10);
-
     thdpool_set_mem_size(gbl_appsock_thdpool, 4 * 1024);
 
     return 0;
@@ -113,8 +112,7 @@ int destroy_appsock(void)
 void appsock_quick_stat(void)
 {
     logmsg(LOGMSG_USER, "num appsock connections %llu\n", total_appsock_conns);
-    logmsg(LOGMSG_USER, "num active appsock connections %d\n",
-           active_appsock_conns);
+    logmsg(LOGMSG_USER, "num active appsock connections %d\n", active_appsock_conns);
     logmsg(LOGMSG_USER, "num appsock commands    %llu\n", total_toks);
 }
 
@@ -126,8 +124,7 @@ void appsock_stat(void)
 
     appsock_quick_stat();
     logmsg(LOGMSG_USER, "bad appsock commands    %llu\n", num_bad_toks);
-    logmsg(LOGMSG_USER, "rejected appsock conns  %llu\n",
-           total_appsock_rejections);
+    logmsg(LOGMSG_USER, "rejected appsock conns  %llu\n", total_appsock_rejections);
 
     for (rec = hash_first(gbl_appsock_hash, &ent, &bkt); rec;
          rec = hash_next(gbl_appsock_hash, &ent, &bkt)) {
@@ -304,6 +301,11 @@ void dump_appsock_threads(void)
     thrman_dump();
 }
 
+int should_reject_request(void)
+{
+    return db_is_exiting() || gbl_exit || !gbl_ready;
+}
+
 void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 {
     /*START HANDLER THREAD*/
@@ -334,7 +336,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     }
 
     /* reject requests if we're not up, going down, or not interested */
-    if (db_is_exiting() || gbl_exit || !gbl_ready) {
+    if (should_reject_request()) {
         total_appsock_rejections++;
         net_end_appsock(sb);
         return;
@@ -365,8 +367,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
     appsock_work_args_t *work = malloc(sizeof(*work));
     work->admin = admin;
     work->sb = sb;
-    if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL,
-                        flags) != 0) {
+    if (thdpool_enqueue(gbl_appsock_thdpool, appsock_work_pp, work, 0, NULL, flags) != 0) {
         total_appsock_rejections++;
         if ((now - last_thread_dump_time) > 10) {
             logmsg(LOGMSG_WARN, "Too many concurrent SQL connections:\n");
@@ -381,8 +382,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 
     total_appsock_conns++;
     Pthread_mutex_lock(&appsock_conn_lk);
-    active_appsock_conns++;
-    curr_appsock_conns = active_appsock_conns;
+    curr_appsock_conns = active_appsock_conns = ATOMIC_ADD32(active_appsock_conns, 1);
     Pthread_mutex_unlock(&appsock_conn_lk);
 
     if (curr_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {

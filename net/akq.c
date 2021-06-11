@@ -194,6 +194,7 @@ void *akq_work_new(struct akq *q)
     return WORK_PTR(q, w);
 }
 
+/* Enqueue work previously allocated using akq_work_new */
 void akq_enqueue(struct akq *q, void *arg)
 {
     struct akq_work *w = AKQ_WORK_PTR(q, arg);

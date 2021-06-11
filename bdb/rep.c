@@ -548,7 +548,7 @@ again:
                           USER_TYPE_TRANSFERMASTER_NAME, tohost, hostlen, 1,
                           1 * 1000);
 
-    /* he didnt ack the message?  kick off an election */
+    /* didnt ack the message?  kick off an election */
     if (rc != 0) {
         bdb_state->repinfo->dont_elect_untill_time = comdb2_time_epoch();
         call_for_election(bdb_state, __func__, __LINE__);
@@ -1355,8 +1355,7 @@ static void call_for_election_int(bdb_state_type *bdb_state, int op)
     rc = pthread_create(&elect_thr, &(bdb_state->pthread_attr_detach),
                         elect_thread, (void *)elect_thread_args);
     if (rc)
-        logmsg(LOGMSG_ERROR, "call_for_election: can't create election thread: %d\n",
-                rc);
+        logmsg(LOGMSG_ERROR, "call_for_election: can't create election thread: %d\n", rc);
 }
 
 void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
@@ -1365,8 +1364,7 @@ void call_for_election(bdb_state_type *bdb_state, const char *func, int line)
     call_for_election_int(bdb_state, DONT_LOSE);
 }
 
-void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func,
-                                int line)
+void call_for_election_and_lose(bdb_state_type *bdb_state, const char *func, int line)
 {
     logmsg(LOGMSG_USER, "%s line %d called for election\n", func, line);
     call_for_election_int(bdb_state, LOSE);
@@ -1656,7 +1654,7 @@ void net_newnode_rtn(netinfo_type *netinfo_ptr, char *hostname, int portnum)
     /* get a pointer back to our bdb_state */
     bdb_state = net_get_usrptr(netinfo_ptr);
 
-    /* if we're the master, treat him as incoherent till proven wrong */
+    /* if we're the master, treat it as incoherent till proven wrong */
     if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
         Pthread_mutex_lock(&(bdb_state->coherent_state_lock));
 
@@ -1751,7 +1749,7 @@ void *hostdown_thread(void *arg)
     }
 
     /* XXX dont do this.  its nice to see what seqnum a disconnected
-       node was up to - we can gauge how long it will take him to catch
+       node was up to - we can gauge how long it will take it to catch
        up */
     /* clear his seqnum */
     /*
@@ -1796,9 +1794,9 @@ void *hostdown_thread(void *arg)
 
 /*
    see if the host that went down is marked down
-   - if so, decomission him.  if he crashed, but isnt marked down
-   yet, thats ok - we'll decom him later when we fail sending to
-   him and see that he's marked down
+   - if so, decomission it.  if it crashed, but isnt marked down
+   yet, thats ok - we'll decom it later when we fail sending to
+   it and see that he's marked down
 */
 
 #ifdef DECOM_LOGIC
@@ -2386,7 +2384,7 @@ static void got_new_seqnum_from_node(bdb_state_type *bdb_state,
         change_coherency = 1;
 
     /* if a node is incoherent_slow and we haven't seen any packets for a while,
-     * make him plain old incoherent.  Need to
+     * make it plain old incoherent.  Need to
      * give nodes a chance to dig themselves out if there's no activity (eg: if
      * they went incoherent because of a
      * read spike, but there's nomore reads or writes). */
@@ -3526,12 +3524,12 @@ int bdb_wait_for_seqnum_from_all_adaptive(bdb_state_type *bdb_state,
 /*
   these routines enable the "new coherency logic"
    - when we time out to a node, mark it bad (set "skip flag")
-     and notify him to go into reject requests mode
+     and notify it to go into reject requests mode
      (do this sync with ack, inline here).
    - each time we make it to the end of bdb_wait_for_seqnum_from_all_int(),
-     check if anyone marked skipped (we didnt wait for him) is actually
-     coherent.  if he is, tell him to get out of reject requests mode,
-     and mark him as not skipped.
+     check if anyone marked skipped (we didnt wait for it) is actually
+     coherent.  if it is, tell it to get out of reject requests mode,
+     and mark it as not skipped.
 */
 
 int bdb_wait_for_seqnum_from_all_newcoh(bdb_state_type *bdb_state,
@@ -3678,7 +3676,7 @@ void send_myseqnum_to_all(bdb_state_type *bdb_state, int nodelay)
     void *data[] = {seqnum};
     int sz[] = {BDB_SEQNUM_TYPE_LEN};
     int type[] = {USER_TYPE_BERKDB_NEWSEQ};
-    int flag[] = {nodelay};
+    int flag[] = {nodelay | NET_SEND_NODROP};
     int rc = net_send_all(bdb_state->repinfo->netinfo, 1, data, sz, type, flag);
     if (rc) {
         logmsg(LOGMSG_ERROR, "0x%p %s:%d net_send rc=%d\n", (void *)pthread_self(), __func__, __LINE__, rc);
@@ -3889,8 +3887,8 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
             break;
 
         /* if we are connected to the master, dont respond to this call
-           for election - unless he is confused and calling for
-           the election himself! */
+           for election - unless it is confused and calling for
+           the election itself! */
         if (net_is_connected(bdb_state->repinfo->netinfo,
                              bdb_state->repinfo->master_host) &&
             !master_confused)
@@ -5158,7 +5156,7 @@ int request_delaymore(void *bdb_state_in)
     bdb_state_type *bdb_state = (bdb_state_type *)bdb_state_in;
     rc = net_send_flags(bdb_state->repinfo->netinfo,
                         bdb_state->repinfo->master_host,
-                        USER_TYPE_COMMITDELAYMORE, NULL, 0, NET_SEND_NODROP);
+                        USER_TYPE_COMMITDELAYMORE, NULL, 0, NET_SEND_NODROP | NET_SEND_NODELAY);
     return rc;
 }
 
@@ -5525,11 +5523,11 @@ void *watcher_thread(void *arg)
             /*
                IF
                  there is a master      AND
-                 he is not us           AND
-                 he is marked down      AND
+                 it is not us           AND
+                 it is marked down      AND
                  we are marked up
                THEN
-                 tell him to yield.
+                 tell it to yield.
              */
 
             master_host = bdb_state->repinfo->master_host;
@@ -5628,17 +5626,12 @@ void *watcher_thread(void *arg)
                 }
             }
 
-            /* try to re-establish connections to everyone after a few failures
-             */
+            /* try to re-establish connections to everyone after a few failures */
             if (i > 10) {
                 connect_to_all(bdb_state->repinfo->netinfo);
                 i = 0;
             }
             if (!bdb_state->repinfo->in_election) {
-                print(bdb_state, "watcher_thread: calling for election\n");
-                logmsg(LOGMSG_DEBUG, "0x%p %s:%d %s: calling for election\n", (void *)pthread_self(), __FILE__,
-                       __LINE__, __func__);
-
                 call_for_election(bdb_state, __func__, __LINE__);
             }
         }
@@ -5650,11 +5643,13 @@ void *watcher_thread(void *arg)
             bdb_reopen(bdb_state, __func__, __LINE__);
         }
 
+#if 0   /* we just did this above */
         /* check if the master is db_eid_invalid and call election is so */
         if (!bdb_state->repinfo->in_election) {
             if (rep_master == db_eid_invalid)
                 call_for_election(bdb_state, __func__, __LINE__);
         }
+#endif
 
         /* check if some thread has called close_hostnode
            and got a pending_seqnum_broadcast, in which case

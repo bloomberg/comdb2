@@ -446,4 +446,8 @@ int write_hello_reply(netinfo_type *, host_node_type *);
 int write_list_evbuffer(host_node_type *, int, const struct iovec *, int, int);
 int net_send_evbuffer(netinfo_type *, const char *, int, void *, int, int, void **, int *, int);
 
+int get_hosts_evbuffer(int n, host_node_type **);
+
+int should_reject_request(void);
+
 #endif /* INCLUDED__NET_INT_H */

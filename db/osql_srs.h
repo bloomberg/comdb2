@@ -27,14 +27,6 @@ enum {
     OSQL_RETRY_HALT = 4
 };
 
-struct sqlthdstate;
-
-struct srs_tran_query;
-typedef struct srs_tran_query srs_tran_query_t;
-
-struct srs_tran;
-typedef struct srs_tran srs_tran_t;
-
 /**
  * Create a history of sql for this transaction
  * that will allow replay in the case of verify errors
@@ -69,6 +61,7 @@ int srs_tran_empty(struct sqlclntstate *clnt);
  * Replay transaction using the current history
  *
  */
-int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self);
+int srs_tran_replay(struct sqlclntstate *);
+int srs_tran_replay_inline(struct sqlclntstate *);
 
 #endif

@@ -68,6 +68,6 @@ if [[ "$testcase_output" != "$expected_output"  ]]; then
         exit 1
 fi
 
-print "Testcase passed."
+echo "Testcase passed."
 
 exit 0

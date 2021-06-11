@@ -26,11 +26,11 @@
 
 extern int gbl_osql_verify_retries_max;
 
-struct srs_tran_query {
+typedef struct srs_tran_query {
     int iscommit;
     void *stmt;
     LINKC_T(struct srs_tran_query) lnk; /* next query */
-};
+} srs_tran_query_t;
 
 static void *save_stmt(struct sqlclntstate *clnt)
 {
@@ -52,9 +52,9 @@ static char *print_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
     return clnt->plugin.print_stmt(clnt, item->stmt);
 }
 
-struct srs_tran {
+typedef struct srs_tran {
     LISTC_T(struct srs_tran_query) lst; /* list of queries up to this point */
-};
+} srs_tran_t;
 
 /**
  * Free a statement entry.
@@ -229,7 +229,7 @@ long long gbl_verify_tran_replays = 0;
  * Replay transaction using the current history
  *
  */
-int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
+static int srs_tran_replay_int(struct sqlclntstate *clnt, int(dispatch_fn)(struct sqlclntstate *))
 {
     osqlstate_t *osql = &clnt->osql;
     srs_tran_query_t *item = 0;
@@ -292,7 +292,7 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
         LISTC_FOR_EACH(&osql->history->lst, item, lnk)
         {
             restore_stmt(clnt, item);
-            if ((rc = dispatch_sql_query(clnt)) != 0)
+            if ((rc = dispatch_fn(clnt)) != 0)
                 break;
             if (!osql->history)
                 break;
@@ -349,4 +349,20 @@ int srs_tran_replay(struct sqlclntstate *clnt, struct thr_handle *thr_self)
     osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_NONE);
 
     return rc;
+}
+
+static int run_sql_query(struct sqlclntstate *clnt)
+{
+    sqlengine_work_appsock(clnt->thd, clnt);
+    return 0;
+}
+
+int srs_tran_replay_inline(struct sqlclntstate *clnt)
+{
+    return srs_tran_replay_int(clnt, run_sql_query);
+}
+
+int srs_tran_replay(struct sqlclntstate *clnt)
+{
+    return srs_tran_replay_int(clnt, dispatch_sql_query);
 }

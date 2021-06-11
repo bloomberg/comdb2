@@ -1665,7 +1665,7 @@ extern int gbl_lock_conflict_trace;
 extern int gbl_enque_flush_interval;
 extern int gbl_inflate_log;
 extern pthread_attr_t gbl_pthread_attr_detached;
-extern unsigned int gbl_nsql;
+extern uint32_t gbl_nsql;
 extern long long gbl_nsql_steps;
 
 extern unsigned int gbl_nnewsql;
@@ -3591,5 +3591,7 @@ void destroy_password_cache();
 
 extern int gbl_rcache;
 extern int gbl_throttle_txn_chunks_msec;
+extern int gbl_sql_release_locks_on_slow_reader;
+extern int gbl_fail_client_write_lock;
 
 #endif /* !INCLUDED_COMDB2_H */
