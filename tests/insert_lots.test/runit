@@ -59,32 +59,20 @@ do_verify t1
 node=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
 
 ### testing cancelling verify behavior ###
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'parallel', 'verbose')" &> verify_t1.out &
-pid=$!
-sleep 0.5
-kill -9 $pid
-sleep 2.5
-assertthdpoolcntzero $node
 
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'parallel')" &> verify_t1.out &
+declare -a args
+args+=("'t1','parallel','verbose'")
+args+=("'t1','parallel'")
+args+=("'t1','verbose'")
+args+=("'t1'")
+for arg in ${args[@]}; do
+echo cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify($arg)"
+cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify($arg)" &> verify_t1.out &
 pid=$!
-sleep 0.5
+sleep 1
 kill -9 $pid
-sleep 2.5
+sleep 3
 assertthdpoolcntzero $node
-
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1', 'verbose')" &> verify_t1.out &
-pid=$!
-sleep 0.5
-kill -9 $pid
-sleep 2.5
-assertthdpoolcntzero $node
-
-cdb2sql ${CDB2_OPTIONS} ${DBNAME} --host $node "exec procedure sys.cmd.verify('t1')" &> verify_t1.out &
-pid=$!
-sleep 0.5
-kill -9 $pid
-sleep 2.5
-assertthdpoolcntzero $node
+done
 
 echo "Success"
