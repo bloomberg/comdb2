@@ -157,8 +157,7 @@ static inline int osql_should_restart(struct sqlclntstate *clnt, int rc,
         snap_uid_t snap = {{0}};
         get_cnonce(clnt, &snap);
         logmsg(LOGMSG_USER,
-               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d "
-               "keep_rqid=%d\n",
+               "Forcing random-restart of uuid=%s cnonce=%*s after nops=%d keep_rqid=%d\n",
                comdb2uuidstr(clnt->osql.uuid, us), snap.keylen, snap.key,
                clnt->osql.replicant_numops, keep_rqid);
         return 1;
@@ -254,11 +253,8 @@ retry:
     if (rc) {
         logmsg(LOGMSG_ERROR, "recover_deadlock returned %d\n", rc);
         rc = osql_end(clnt);
-        {
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__,
-                       rc);
-            }
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "%s failed to end osql %d\n", __func__, rc);
         }
         return SQLITE_BUSY;
     }
@@ -896,12 +892,12 @@ static int osql_sock_restart(struct sqlclntstate *clnt, int maxretries,
                        rc);
                 return rc;
             }
-        } else {
-            if (gbl_master_swing_osql_verbose)
-                logmsg(LOGMSG_USER,
-                       "0x%p Restarting rqid=%llx uuid=%s against %s\n",
-                       (void*)pthread_self(), clnt->osql.rqid,
-                       comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
+        } else if (gbl_master_swing_osql_verbose) {
+            snap_uid_t snap = {{0}};
+            get_cnonce(clnt, &snap);
+            logmsg(LOGMSG_USER, "0x%p Restarting rqid=%llx uuid=%s against %s\n",
+                   (void*)pthread_self(), clnt->osql.rqid,
+                   comdb2uuidstr(clnt->osql.uuid, us), thedb->master);
         }
 
         rc = osql_sock_start(clnt,
@@ -1180,47 +1176,47 @@ err:
 done:
     osql->timings.commit_end = osql_log_time();
 
-   /* mark socksql as non-retriable if seletv are present
-      also don't retry distributed transactions
-    */
-   if (clnt->osql.xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
-           clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->dbtran.dtran) {
-       int bdberr = 0;
-       int iirc = 0;
-       iirc = osql_shadtbl_has_selectv(clnt, &bdberr);
-       if (iirc != 0) /* if error or has selectv rows */
-       {
-           if (iirc < 0) {
-               logmsg(LOGMSG_ERROR, 
-                       "%s: osql_shadtbl_has_selectv failed rc=%d bdberr=%d\n",
-                       __func__, rc, bdberr);
-           }
-           osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
-       }
-   }
+    /* mark socksql as non-retriable if seletv are present
+       also don't retry distributed transactions
+     */
+    if (clnt->osql.xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
+            clnt->dbtran.mode == TRANLEVEL_SOSQL && !clnt->dbtran.dtran) {
+        int bdberr = 0;
+        int iirc = 0;
+        iirc = osql_shadtbl_has_selectv(clnt, &bdberr);
+        if (iirc != 0) /* if error or has selectv rows */
+        {
+            if (iirc < 0) {
+                logmsg(LOGMSG_ERROR, 
+                        "%s: osql_shadtbl_has_selectv failed rc=%d bdberr=%d\n",
+                        __func__, rc, bdberr);
+            }
+            osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+        }
+    }
 
-   /* DDLs are also non-retriable */
-   if (osql->xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
-       osql->running_ddl) {
-       logmsg(LOGMSG_DEBUG, "%s: marking DDL transaction as non-retriable\n",
-              __func__);
-       osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
-   }
+    /* DDLs are also non-retriable */
+    if (osql->xerr.errval == (ERR_BLOCK_FAILED + ERR_VERIFY) &&
+            osql->running_ddl) {
+        logmsg(LOGMSG_DEBUG, "%s: marking DDL transaction as non-retriable\n",
+                __func__);
+        osql_set_replay(__FILE__, __LINE__, clnt, OSQL_RETRY_LAST);
+    }
 
-   osql_shadtbl_close(clnt);
+    osql_shadtbl_close(clnt);
 
-   if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-       /* we also need to free the tran object */
-       rc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran, &bdberr);
-       if (rc)
-           logmsg(LOGMSG_ERROR, 
-                   "%s:%d failed to abort shadow tran for socksql rc=%d\n",
-                   __FILE__, __LINE__, rc);
-   }
+    if (clnt->dbtran.mode == TRANLEVEL_SOSQL) {
+        /* we also need to free the tran object */
+        rc = trans_abort_shadow((void **)&clnt->dbtran.shadow_tran, &bdberr);
+        if (rc)
+            logmsg(LOGMSG_ERROR, 
+                    "%s:%d failed to abort shadow tran for socksql rc=%d\n",
+                    __FILE__, __LINE__, rc);
+    }
 
-   osql->sock_started = 0;
+    osql->sock_started = 0;
 
-   return rcout;
+    return rcout;
 }
 
 /**

@@ -22,7 +22,7 @@ static std::string sethasql("set hasql on");
 int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
     int rc = cdb2_run_statement(h, sql.c_str());
-    //printf("Here: cdb2_run_statement: %s\n", sql.c_str());
+    //printf("Here: cdb2_run_statement: %s, cnonce=%s\n", sql.c_str(), cdb2_cnonce(h));
 
     if (rc != 0) {
         fprintf(stderr, "Error: cdb2_run_statement failed: %d %s (%s)\n", rc,
@@ -148,7 +148,6 @@ void *thr(void *arg)
             fprintf(stderr, "Error: count is %d but should be 0\n", cnt);
             exit(1);
         }
-
     }
 
     cdb2_close(db);
