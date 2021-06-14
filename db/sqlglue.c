@@ -6282,6 +6282,11 @@ skip:
     {
         /* release the fdb cursor */
         if (pCur->fdbc) {
+            /* free memory allocated in cursor_move_remote(). */
+            if (pCur->writeTransaction)
+                free(pCur->dtabuf);
+            free(pCur->keybuf);
+
             rc = pCur->fdbc->close(pCur);
             if (rc) {
                 logmsg(LOGMSG_ERROR, "%s: failed fdb_cursor_close rc=%d\n", __func__,

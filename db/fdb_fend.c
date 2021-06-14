@@ -1104,7 +1104,7 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
     enum mach_class my_lvl = CLASS_UNKNOWN;
     enum mach_class remote_lvl = CLASS_UNKNOWN;
     const char *tmpname;
-    const char *class;
+    char *class;
 
     *local = 0;
 
@@ -1121,7 +1121,7 @@ static enum mach_class get_fdb_class(const char **p_dbname, int *local)
         } else {
             remote_lvl = mach_class_name2class(class);
         }
-
+        free(class); /* class is strndup'd */
         *p_dbname = dbname;
     } else {
         /* implicit is same class */
