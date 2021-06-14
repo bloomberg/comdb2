@@ -602,6 +602,7 @@ typedef struct dbtable {
     struct ireq *iq; /* iq used at sc time */
 
     int dbnum; /* zero unless setup as comdbg table */
+    int luxref;
     int lrl; /*dat len in bytes*/
     /*index*/
     unsigned short nix; /*number of indices*/
@@ -1294,7 +1295,6 @@ struct ireq {
     int frompid;
     int debug;
     int opcode;
-    int luxref;
     uint8_t osql_rowlocks_enable;
     uint8_t osql_genid48_enable;
 
@@ -2362,7 +2362,7 @@ void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
 void replace_db_idx(struct dbtable *p_db, int idx);
 int add_db(struct dbtable *db);
-void delete_db(char *db_name);
+int delete_db(char *db_name);
 void hash_sqlalias_db(dbtable *db, const char *newname);
 int rename_db(struct dbtable *db, const char *newname);
 int ix_find_rnum_by_recnum(struct ireq *iq, int recnum_in, int ixnum,

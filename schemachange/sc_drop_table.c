@@ -23,6 +23,7 @@
 #include "sc_schema.h"
 #include "sc_global.h"
 #include "sc_callbacks.h"
+#include "luxref.h"
 
 static int delete_table(struct dbtable *db, tran_type *tran)
 {
@@ -32,6 +33,11 @@ static int delete_table(struct dbtable *db, tran_type *tran)
     if ((rc = bdb_close_only_sc(db->handle, tran, &bdberr))) {
         fprintf(stderr, "bdb_close_only rc %d bdberr %d\n", rc, bdberr);
         return -1;
+    }
+
+    if ((db->dbnum > 0 && (rc = luxref_del(tran, db)) != 0)) {
+        logmsg(LOGMSG_ERROR, "Failed to delete luxref for %s\n", db->tablename);
+        return rc;
     }
 
     char *table = db->tablename;

@@ -341,6 +341,7 @@ int deferred_do_commands(struct dbenv *env, char *option,
                 break;
             }
         }
+
         free(tablename);
     }
 

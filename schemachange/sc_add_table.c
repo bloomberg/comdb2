@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 #include "views.h"
+#include "luxref.h"
 
 extern int gbl_is_physical_replicant;
 
@@ -316,6 +317,12 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     /* Set instant schema-change */
     db->instant_schema_change = db->odh && s->instant_sc;
+
+    rc = luxref_add(tran, db);
+    if (rc) {
+        sc_errf(s, "Failed to save table luxref in llmeta, rc %d\n", rc);
+        return rc;
+    }
 
     rc = add_db(db);
     if (rc) {
