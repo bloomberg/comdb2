@@ -48,6 +48,7 @@
 
 extern int64_t comdb2_time_epochus(void);
 
+static int gbl_print_cnonce_as_hex = 1;
 static char *gbl_eventlog_fname = NULL;
 static char *eventlog_fname(const char *dbname);
 int eventlog_nkeep = 2; // keep only last 2 event log files
@@ -464,12 +465,18 @@ static const char *ev_str[] = { "unset", "txn", "sql", "sp" };
 
 static inline void cson_snap_info_key(cson_object *obj, snap_uid_t *snap_info)
 {
-    if (obj && snap_info) {
+    if (!obj || !snap_info)
+        return;
+
+    if (gbl_print_cnonce_as_hex) {
         char cnonce[2 * snap_info->keylen + 1];
         /* util_tohex() takes care of null-terminating the resulting string. */
         util_tohex(cnonce, snap_info->key, snap_info->keylen);
         cson_object_set(obj, "cnonce",
                         cson_value_new_string(cnonce, snap_info->keylen * 2));
+    } else {
+        cson_object_set(obj, "cnonce",
+                        cson_value_new_string(snap_info->key, snap_info->keylen));
     }
 }
 

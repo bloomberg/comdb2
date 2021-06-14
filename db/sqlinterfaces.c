@@ -1263,6 +1263,8 @@ static void sql_statement_done(struct sql_thread *thd, struct reqlogger *logger,
 
     reqlog_set_rows(logger, clnt->nrows);
     reqlog_end_request(logger, stmt_rc, __func__, __LINE__);
+    if (clnt->osql.sock_started == 0)
+        comdb2uuid_clear(clnt->osql.uuid);
 
     if (have_fingerprint) {
         /*
@@ -1706,6 +1708,8 @@ static int handle_sql_wrongstate(struct sqlthdstate *thd,
     reset_clnt_flags(clnt);
 
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    if (clnt->osql.sock_started == 0)
+        comdb2uuid_clear(clnt->osql.uuid);
 
     if (srs_tran_destroy(clnt))
         logmsg(LOGMSG_ERROR, "Fail to destroy transaction replay session\n");
@@ -2323,6 +2327,8 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
 done:
     reset_clnt_flags(clnt);
     reqlog_end_request(thd->logger, -1, __func__, __LINE__);
+    if (clnt->osql.sock_started == 0)
+        comdb2uuid_clear(clnt->osql.uuid);
 
     /* if this is a retry, let the upper layer free the structure */
     if (clnt->osql.replay == OSQL_RETRY_NONE) {

@@ -1849,6 +1849,7 @@ uint64_t reqlog_current_us(struct reqlogger *logger)
 
 inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
 {
+    assert (idlen == sizeof(unsigned long long) || idlen == sizeof(uuid_t));
     if (idlen == sizeof(uuid_t))
         comdb2uuidstr(id, logger->id);
     else
