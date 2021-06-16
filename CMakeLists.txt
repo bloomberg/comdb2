@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.3)
-project (Comdb2 ${COMDB2_BBCMAKE})
+project(comdb2 ${COMDB2_BBPROJECT})
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -37,8 +37,8 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
     "/usr/local/opt/readline")
 endif()
 
-if(COMDB2_BBCMAKE)
-  find_package(ConfigureBbTarget REQUIRED)
+if (COMDB2_BBCMAKE)
+  include(${COMDB2_BBCMAKE})
 else()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
