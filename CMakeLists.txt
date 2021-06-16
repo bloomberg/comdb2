@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.3)
-project (Comdb2 ${COMDB2_BBCMAKE})
+project (Comdb2 ${COMDB2_BBPROJECT})
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -45,10 +45,7 @@ if(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
 endif()
 
 if(COMDB2_BBCMAKE)
-
-  include("${COMDB2_BBLIBEVENT}/libevent.cmake")
-  find_package(ConfigureBbTarget REQUIRED)
-
+  include(${COMDB2_BBCMAKE})
 else()
 
 set(CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake ${PROJECT_SOURCE_DIR}/cmake)
