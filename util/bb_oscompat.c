@@ -23,6 +23,7 @@
 #include <netdb.h>
 #include <limits.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 #include <bb_oscompat.h>
 #include <logmsg.h>
@@ -111,6 +112,14 @@ void comdb2_getservbyname(const char *name, const char *proto, short *port)
     if (result) {
         *port = result->s_port;
     }
+}
+
+size_t bb_dirent_size(char *path)
+{
+    long name_max = pathconf(path, _PC_NAME_MAX);
+    if (name_max == -1)
+        name_max = 4096;
+    return offsetof(struct dirent, d_name) + name_max + 1;
 }
 
 int bb_readdir(DIR *d, void *buf, struct dirent **dent) {
