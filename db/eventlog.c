@@ -111,7 +111,7 @@ static void eventlog_roll_cleanup()
 
     /* must be large enough to hold a dirent struct with the longest possible
      * filename */
-    struct dirent *buf = alloca(4096);
+    struct dirent *buf = alloca(bb_dirent_size(dname));
     struct dirent *de;
     DIR *d = opendir(dname);
     if (!d) {
