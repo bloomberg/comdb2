@@ -7608,7 +7608,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
 
     /* must be large enough to hold a dirent struct with the longest possible
      * filename */
-    buf = malloc(4096);
+    buf = malloc(bb_dirent_size(bdb_state->dir));
     if (!buf) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         *bdberr = BDBERR_MALLOC;
@@ -7822,7 +7822,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
 
     /* must be large enough to hold a dirent struct with the longest possible
      * filename */
-    buf = malloc(4096);
+    buf = malloc(bb_dirent_size(bdb_state->parent->dir));
     if (!buf) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         *bdberr = BDBERR_MALLOC;
@@ -8485,14 +8485,14 @@ int bdb_list_all_fileids_for_newsi(bdb_state_type *bdb_state,
     DIR *dirp;
     int error;
 
-    buf = malloc(4096);
+    if (bdb_state->parent)
+        bdb_state = bdb_state->parent;
+
+    buf = malloc(bb_dirent_size(bdb_state->dir));
     if (!buf) {
         logmsg(LOGMSG_ERROR, "%s: malloc failed\n", __func__);
         return -1;
     }
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
 
     dbenv = bdb_state->dbenv;
 

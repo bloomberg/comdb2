@@ -1408,18 +1408,20 @@ static int read_config_dir(struct dbenv *dbenv, char *dir)
 {
     DIR *d = NULL;
     int rc = 0;
-    struct dirent ent, *out;
+    struct dirent *ent, *out;
+
+    ent = malloc(bb_dirent_size(dir));
 
     d = opendir(dir);
     if (d == NULL) {
         rc = -1;
         goto done;
     }
-    while (bb_readdir(d, &ent, &out) == 0 && out != NULL) {
+    while (bb_readdir(d, ent, &out) == 0 && out != NULL) {
         int len;
-        len = strlen(ent.d_name);
-        if (strcmp(ent.d_name + len - 4, ".lrl") == 0) {
-            char *file = comdb2_asprintf("%s/%s", dir, ent.d_name);
+        len = strlen(ent->d_name);
+        if (strcmp(ent->d_name + len - 4, ".lrl") == 0) {
+            char *file = comdb2_asprintf("%s/%s", dir, ent->d_name);
             pre_read_lrl_file(dbenv, file);
             rc = (read_lrl_file(dbenv, file, 0) == NULL);
             if (rc) logmsg(LOGMSG_ERROR, "Error processing %s\n", file);
@@ -1430,6 +1432,7 @@ static int read_config_dir(struct dbenv *dbenv, char *dir)
 
 done:
     if (d) closedir(d);
+    free(ent);
     return rc;
 }
 

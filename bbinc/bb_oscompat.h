@@ -33,6 +33,7 @@ void set_hostbyname(hostbyname *);
 hostbyname comdb2_gethostbyname;
 void comdb2_getservbyname(const char *, const char *, short *);
 int bb_readdir(DIR *d, void *buf, struct dirent **dent);
+size_t bb_dirent_size(char *path);
 char *comdb2_realpath(const char *path, char *resolved_path);
 
 #ifdef __cplusplus
