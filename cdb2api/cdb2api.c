@@ -4044,6 +4044,17 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
             skip_len += 10;
             set_tok = strtok_r(rest, " ", &rest);
         }
+        /* special case for transaction chunk */
+        if (set_tok && strncasecmp(set_tok, "transaction", 11) == 0) {
+            char *set_tok2 = strtok_r(rest, " ", &rest);
+            if (set_tok2 && strncasecmp(set_tok2, "chunk", 5) == 0) {
+                /* skip "transaction" if chunk, set we can set
+                 * both transaction and chunk mode
+                 */
+                skip_len += 12;
+                set_tok = set_tok2;
+            }
+        }
         if (!set_tok) {
             free(dup_sql);
             return 0;

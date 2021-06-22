@@ -19,8 +19,14 @@ outlog='log.run'
 
 function check_done
 { 
-    $rtm "exec procedure sys.cmd.send('long')" | grep -A 3 "'t'" | grep DONE >> $outlog
+    $rtm "exec procedure sys.cmd.send('long')" | grep -A 4 "'t'" | grep DONE >> $outlog
 }
+
+function check_done_2
+{ 
+    $rtm "exec procedure sys.cmd.send('long')" | grep -A 3 "'t2'" | grep DONE >> $outlog
+}
+
 
 echo "Starting"
 echo "Starting" > $outlog
@@ -36,6 +42,7 @@ EOF
 echo "Inserting chunks of 99 rows"
 echo "Inserting chunks of 99 rows" >> $outlog
 $r >> $outlog << "EOF" 
+set transaction blocksql
 set transaction chunk 99 
 begin 
 insert into t select * from t2
@@ -59,6 +66,7 @@ check_done
 echo "Inserting chunks of 1 row"
 echo "Inserting chunks of 1 row" >> $outlog
 $r >> $outlog << "EOF" 
+set transaction blocksql
 set transaction chunk 1 
 begin
 insert into t select * from t2
@@ -82,6 +90,7 @@ check_done
 echo "Multiple inserts in a transaction chunks of 1"
 echo "Multiple inserts in a transaction chunks of 1" >> $outlog
 $r >> $outlog << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (1)
@@ -98,6 +107,7 @@ check_done
 echo "Failure tests"
 echo "Failure tests" >> $outlog
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (1)
@@ -107,6 +117,7 @@ EOF
 check_done
 
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (1)
@@ -119,6 +130,7 @@ check_done
 $rt "select * from t order by a limit 3" >> $outlog
 
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (1)
@@ -130,6 +142,7 @@ EOF
 check_done
 
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (1)
@@ -143,6 +156,7 @@ $rt "select * from t where a>1000" >> $outlog
 check_done
 
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (1)
@@ -161,6 +175,7 @@ $rt "select count(*) from t" >> $outlog
 check_done
 
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 1
 begin
 insert into t values (123456789)
@@ -176,6 +191,7 @@ check_done
 
 $r >> $outlog 2>&1 << "EOF"
 insert into t select value from generate_series(7, 1000)
+set transaction blocksql
 set transaction chunk 1
 begin
 delete from t where a <500
@@ -187,6 +203,7 @@ check_done
 $rt "select count(*) from t" >> $outlog
 
 $r >> $outlog 2>&1 << "EOF"
+set transaction blocksql
 set transaction chunk 10
 begin
 delete from t where 1
@@ -196,6 +213,41 @@ EOF
 check_done
 
 $rt "select count(*) from t" >> $outlog
+
+
+echo "Checking error on wrong default transaction mode" >> $outlog
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 10
+begin
+delete from t where 1
+commit
+EOF
+
+check_done
+
+echo "Checking error on setting wrong transaction mode" >> $outlog
+$r >> $outlog 2>&1 << "EOF"
+set transaction snapisol
+set transaction chunk 10
+begin
+delete from t where 1
+commit
+EOF
+
+check_done
+
+echo "Checking deduping multiple chunk sets" >> $outlog
+$r >> $outlog 2>&1 << "EOF"
+set transaction chunk 1
+set transaction blocksql
+set transaction chunk 10
+begin
+delete from t2 where 1
+commit
+EOF
+
+check_done_2
+
 
 # get testcase output
 testcase_output=$(cat $outlog)
