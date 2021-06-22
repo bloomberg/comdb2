@@ -1596,6 +1596,10 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                  "N \"%s\"",
                                  sqlstr);
                         rc = ii + 1;
+                    } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL) {
+                        snprintf(err, sizeof(err),
+                                 "transaction chunks require SOCKSQL transaction mode");
+                        rc = ii + 1;
                     } else {
                         clnt->dbtran.maxchunksize = tmp;
                         /* in chunked mode, we disable verify retries */
@@ -1627,8 +1631,13 @@ static int process_set_commands(struct dbenv *dbenv, struct sqlclntstate *clnt,
                                                  "high availability\n");
                         }
                     }
-                    if (clnt->dbtran.mode == TRANLEVEL_INVALID)
+                    if (clnt->dbtran.mode == TRANLEVEL_INVALID) {
                         rc = ii + 1;
+                    } else if (clnt->dbtran.mode != TRANLEVEL_SOSQL && clnt->dbtran.maxchunksize) {
+                        snprintf(err, sizeof(err),
+                                 "transaction chunks require SOCKSQL transaction mode");
+                        rc = ii + 1;
+                    }
                 }
             } else if (strncasecmp(sqlstr, "timeout", 7) == 0) {
                 sqlstr += 7;

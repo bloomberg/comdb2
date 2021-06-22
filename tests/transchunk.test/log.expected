@@ -40,3 +40,15 @@ Failure tests
 (count(*)=502)
 (out='    OSQL_DONE            5611')
 (count(*)=0)
+Checking error on wrong default transaction mode
+[begin] failed with rc -3 transaction chunks require SOCKSQL transaction mode
+[delete from t where 1] failed with rc -3 transaction chunks require SOCKSQL transaction mode
+[commit] failed with rc -8 Wrong sql handle state
+(out='    OSQL_DONE            5611')
+Checking error on setting wrong transaction mode
+[begin] failed with rc -3 transaction chunks require SOCKSQL transaction mode
+[delete from t where 1] failed with rc -3 transaction chunks require SOCKSQL transaction mode
+[commit] failed with rc -8 Wrong sql handle state
+(out='    OSQL_DONE            5611')
+Checking deduping multiple chunk sets
+(out='    OSQL_DONE            501')
