@@ -745,7 +745,7 @@ int copy_datadir(const char *dbname, const char *type, const char *datadir)
             snprintf(path, sizeof(path), "%s/%s", datadir, file);
         }
 
-        int fd = open(path, O_WRONLY | O_CREAT);
+        int fd = open(path, O_WRONLY | O_CREAT, 0600);
         if (fd == -1) {
             logmsg(LOGMSG_USER, "%s:%d failed to open file %s (errno: %d)\n",
                    __func__, __LINE__, path, errno);
