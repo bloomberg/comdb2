@@ -274,6 +274,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_systables", &systblSystabsModule, 0);
   if (rc == SQLITE_OK)
+    rc = sqlite3_create_module(db, "comdb2_files", &systblFilesModule, 0);
+  if (rc == SQLITE_OK)
     rc = systblTimepartInit(db);
   if (rc == SQLITE_OK)
     rc = systblCronInit(db);
@@ -321,8 +323,6 @@ int comdb2SystblInit(
     rc = systblFdbInfoInit(db);
   if (rc == SQLITE_OK)
     rc = sqlite3_carray_init(db, 0, 0);
-  if (rc == SQLITE_OK)
-    rc = systblFilesInit(db);
 #endif
   return rc;
 }

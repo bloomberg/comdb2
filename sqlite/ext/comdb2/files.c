@@ -13,8 +13,6 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-#if (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2)) &&          \
-    !defined(SQLITE_OMIT_VIRTUALTABLE)
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2) && !defined(SQLITE_CORE)
 #define SQLITE_CORE 1
@@ -34,20 +32,34 @@ extern struct dbenv *thedb;
 
 static struct log_delete_state log_delete_state;
 
-sqlite3_module systblFilesModule = {
-    .access_flag = CDB2_ALLOW_USER,
-    .systable_lock = "comdb2_files",
-};
+/* Column numbers */
+#define FILES_COLUMN_FILENAME           0
+#define FILES_COLUMN_DIR                1
+#define FILES_COLUMN_CONTENT            2
+#define FILES_COLUMN_CONTENT_COMPR_ALGO 3
+
+#define FILES_COMPR_NONE 0
+#define FILES_COMPR_ZLIB 1
+#define FILES_COMPR_LZ4  2
 
 typedef struct file_entry {
-    char *file; /* Name of the file */
-    char *dir;  /* Name of the directory */
-    systable_blobtype content;
+    char   *file; /* Name of the file */
+    char   *dir;  /* Name of the directory */
+    void   *content;
+    size_t content_sz;
 } file_entry_t;
+
+typedef struct {
+    sqlite3_vtab_cursor base;
+    sqlite3_int64       rowid;
+    file_entry_t        *entries;
+    size_t              nentries;
+    char                *content_compr_algo;
+} systbl_files_cursor;
 
 static void release_files(void *data, int npoints)
 {
-    logmsg(LOGMSG_INFO, "Reenabling log file deletion\n");
+    logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
     log_delete_rem_state(thedb, &log_delete_state);
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
     backend_update_sync(thedb);
@@ -56,7 +68,7 @@ static void release_files(void *data, int npoints)
     for (int i = 0; i < npoints; ++i) {
         free(files[i].file);
         free(files[i].dir);
-        free(files[i].content.value);
+        free(files[i].content);
     }
     free(files);
 }
@@ -143,11 +155,11 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
                 f->dir = strdup(dirname + strlen(thedb->basedir) + 1);
             }
 
-            rc = read_file(path, &f->content.value, st.st_size);
+            rc = read_file(path, &f->content, st.st_size);
             if (rc == -1) {
                 break;
             }
-            f->content.size = st.st_size;
+            f->content_sz = st.st_size;
         }
     }
 
@@ -156,7 +168,7 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
     return rc;
 }
 
-static int get_files(void **data, int *npoints)
+static int get_files(void **data, size_t *npoints)
 {
     file_entry_t *files = NULL;
     int count = 0;
@@ -164,6 +176,7 @@ static int get_files(void **data, int *npoints)
     log_delete_state.filenum = 0;
     log_delete_add_state(thedb, &log_delete_state);
     log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+    logmsg(LOGMSG_INFO, "disabling log file deletion\n");
 
     logdelete_lock(__func__, __LINE__);
     backend_update_sync(thedb);
@@ -180,17 +193,181 @@ static int get_files(void **data, int *npoints)
     return 0;
 }
 
-int systblFilesInit(sqlite3 *db)
-{
-    /* clang-format off */
-    return create_system_table(
-        db, "comdb2_files", &systblFilesModule,
-        get_files, release_files, sizeof(file_entry_t),
-        CDB2_CSTRING, "file", -1, offsetof(file_entry_t, file),
-        CDB2_CSTRING, "dir", -1, offsetof(file_entry_t, dir),
-        CDB2_BLOB, "content", -1, offsetof(file_entry_t, content),
-        SYSTABLE_END_OF_FIELDS);
-    /* clang-format on */
+static int filesConnect(
+  sqlite3 *db,
+  void *pAux,
+  int argc, const char *const*argv,
+  sqlite3_vtab **ppVtab,
+  char **pzErr
+){
+  sqlite3_vtab *pNew;
+  int rc;
+
+  rc = sqlite3_declare_vtab(db, "CREATE TABLE x(filename, dir, content, content_compr_algo hidden)");
+  if( rc==SQLITE_OK ){
+    pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
+    if( pNew==0 ) return SQLITE_NOMEM;
+    memset(pNew, 0, sizeof(*pNew));
+  }
+  return rc;
 }
-#endif /* (!defined(SQLITE_CORE) || defined(SQLITE_BUILDING_FOR_COMDB2))       \
-          && !defined(SQLITE_OMIT_VIRTUALTABLE) */
+
+static int filesDisconnect(sqlite3_vtab *pVtab){
+  sqlite3_free(pVtab);
+  return SQLITE_OK;
+}
+
+static int filesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
+  systbl_files_cursor *pCur;
+
+  pCur = sqlite3_malloc( sizeof(*pCur) );
+  if( pCur==0 )
+    return SQLITE_NOMEM;
+
+  memset(pCur, 0, sizeof(*pCur));
+
+  if (get_files((void **)&pCur->entries, &pCur->nentries))
+    return SQLITE_ERROR;
+
+  *ppCursor = &pCur->base;
+
+  return SQLITE_OK;
+}
+
+static int filesClose(sqlite3_vtab_cursor *cur){
+  systbl_files_cursor *pCur = (systbl_files_cursor*)cur;
+  release_files(pCur->entries, pCur->nentries);
+  sqlite3_free(pCur);
+  return SQLITE_OK;
+}
+
+static int filesNext(sqlite3_vtab_cursor *cur){
+  systbl_files_cursor *pCur = (systbl_files_cursor*)cur;
+  pCur->rowid++;
+  return SQLITE_OK;
+}
+
+static int filesColumn(
+  sqlite3_vtab_cursor *cur,   /* The cursor */
+  sqlite3_context *ctx,       /* First argument to sqlite3_result_...() */
+  int i                       /* Which column to return */
+)
+{
+  systbl_files_cursor *pCur = (systbl_files_cursor*)cur;
+
+  switch (i) {
+    case FILES_COLUMN_FILENAME:
+      sqlite3_result_text(ctx, pCur->entries[pCur->rowid].file, -1, NULL);
+      break;
+    case FILES_COLUMN_DIR:
+      sqlite3_result_text(ctx, pCur->entries[pCur->rowid].dir, -1, NULL);
+      break;
+    case FILES_COLUMN_CONTENT:
+      sqlite3_result_blob(ctx, pCur->entries[pCur->rowid].content,
+                          pCur->entries[pCur->rowid].content_sz, NULL);
+      break;
+    case FILES_COLUMN_CONTENT_COMPR_ALGO:
+      sqlite3_result_text(ctx, pCur->content_compr_algo, -1, NULL);
+      break;
+  }
+  return SQLITE_OK;
+}
+
+static int filesRowid(sqlite3_vtab_cursor *cur, sqlite_int64 *pRowid){
+  systbl_files_cursor *pCur = (systbl_files_cursor*)cur;
+  *pRowid = pCur->rowid;
+  return SQLITE_OK;
+}
+
+/*
+** Return TRUE if the cursor has been moved off of the last
+** row of output.
+*/
+static int filesEof(sqlite3_vtab_cursor *cur){
+  systbl_files_cursor *pCur = (systbl_files_cursor*)cur;
+  return (pCur->rowid >= pCur->nentries) ? 1 : 0;
+}
+
+static int filesFilter(
+  sqlite3_vtab_cursor *pVtabCursor, 
+  int idxNum, const char *idxStr,
+  int argc, sqlite3_value **argv
+){
+  systbl_files_cursor *pCur = (systbl_files_cursor *)pVtabCursor;
+  int i = 0;
+
+  if( idxNum & 1 ){
+    pCur->content_compr_algo = (char *)sqlite3_value_text(argv[i++]);
+  }
+
+  pCur->rowid = 0;
+  return SQLITE_OK;
+}
+
+static int filesBestIndex(
+  sqlite3_vtab *tab,
+  sqlite3_index_info *pIdxInfo
+){
+  int i;                 /* Loop over constraints */
+  int idxNum = 0;        /* The query plan bitmask */
+  int nArg = 0;          /* Number of arguments that seriesFilter() expects */
+  int comprAlgoIdx = -1; /* Index of content_compr_algo=?, or -1 if not
+                            specified */
+
+  const struct sqlite3_index_constraint *pConstraint;
+  pConstraint = pIdxInfo->aConstraint;
+  for(i=0; i<pIdxInfo->nConstraint; i++, pConstraint++){
+    if( pConstraint->usable==0 ) continue;
+    if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_EQ ) continue;
+    switch( pConstraint->iColumn ){
+        case FILES_COLUMN_CONTENT_COMPR_ALGO:
+        idxNum |= 1;
+        comprAlgoIdx = i;
+        break;
+    }
+  }
+  if( comprAlgoIdx>=0 ){
+    pIdxInfo->aConstraintUsage[comprAlgoIdx].argvIndex = ++nArg;
+    pIdxInfo->aConstraintUsage[comprAlgoIdx].omit = 1;
+  }else{
+    /* If either boundary is missing, we have to generate a huge span
+    ** of numbers.  Make this case very expensive so that the query
+    ** planner will work hard to avoid it. */
+    pIdxInfo->estimatedCost = (double)2000000000;
+  }
+  pIdxInfo->idxNum = idxNum;
+  return SQLITE_OK;
+}
+
+/*
+** This following structure defines all the methods for the 
+** generate_series virtual table.
+*/
+const sqlite3_module systblFilesModule = {
+  0,               /* iVersion */
+  0,               /* xCreate */
+  filesConnect,    /* xConnect */
+  filesBestIndex,  /* xBestIndex */
+  filesDisconnect, /* xDisconnect */
+  0,               /* xDestroy */
+  filesOpen,       /* xOpen - open a cursor */
+  filesClose,      /* xClose - close a cursor */
+  filesFilter,     /* xFilter - configure scan constraints */
+  filesNext,       /* xNext - advance a cursor */
+  filesEof,        /* xEof - check for end of scan */
+  filesColumn,     /* xColumn - read data */
+  filesRowid,      /* xRowid - read data */
+  0,               /* xUpdate */
+  0,               /* xBegin */
+  0,               /* xSync */
+  0,               /* xCommit */
+  0,               /* xRollback */
+  0,               /* xFindMethod */
+  0,               /* xRename */
+  0,               /* xSavepoint */
+  0,               /* xRelease */
+  0,               /* xRollbackTo */
+  0,               /* xShadowName */
+  .access_flag = CDB2_ALLOW_USER
+};
+
