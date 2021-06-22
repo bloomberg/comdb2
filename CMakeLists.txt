@@ -68,6 +68,7 @@ if(WITH_RDKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_RDKAFKA)
 endif()
+find_package(Archive REQUIRED)
 
 endif(COMDB2_BBCMAKE)
 

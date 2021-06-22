@@ -1,0 +1,5 @@
+find_path(ARCHIVE_INCLUDE_DIR NAMES archive.h)
+find_library(ARCHIVE_LIBRARY NAMES archive)
+
+include(FindPackageHandleStandardArgs)
+find_package_handle_standard_args(Archive DEFAULT_MSG ARCHIVE_INCLUDE_DIR ARCHIVE_LIBRARY)
