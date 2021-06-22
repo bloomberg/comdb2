@@ -6793,12 +6793,13 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int send_rc = 1;
     const char *errmsg = "";
     int rc = 0;
+    osql_uuid_req_t ureq;
+    osql_req_t req;
 
     /* grab the request */
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     if (osql_nettype_is_uuid(nettype)) {
-        osql_uuid_req_t ureq;
         sql = (char *)osqlcomm_req_uuid_type_get(&ureq, p_req_buf, p_req_buf_end);
         rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(uuid, ureq.uuid);
@@ -6806,7 +6807,6 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
         tzname = ureq.tzname;
         sqllen = ureq.sqlqlen;
     } else {
-        osql_req_t req;
         sql = (char *)osqlcomm_req_type_get(&req, p_req_buf, p_req_buf_end);
         rqid = req.rqid;
         comdb2uuid_clear(uuid);
