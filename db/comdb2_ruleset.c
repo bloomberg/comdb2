@@ -49,7 +49,7 @@ extern void re_free(void*);
 
 static uint64_t gbl_ruleset_generation = 0;
 
-static int glob_match(
+int glob_match(
   const char *zStr1,
   const char *zStr2
 ){

@@ -27,16 +27,26 @@
 #include <ezsystables.h>
 #include <bb_oscompat.h>
 #include <comdb2.h>
+#include <archive.h>
+#include <archive_entry.h>
+
+char *comdb2_get_tmp_dir(void);
+int glob_match(const char *zStr1 /* string */, const char *zStr2 /* pattern */);
 
 extern struct dbenv *thedb;
+extern char gbl_dbname[MAX_DBNAME_LENGTH];
 
 static struct log_delete_state log_delete_state;
 
 /* Column numbers */
-#define FILES_COLUMN_FILENAME           0
-#define FILES_COLUMN_DIR                1
-#define FILES_COLUMN_CONTENT            2
-#define FILES_COLUMN_CONTENT_COMPR_ALGO 3
+#define FILES_COLUMN_FILENAME    0
+#define FILES_COLUMN_DIR         1
+#define FILES_COLUMN_CONTENT     2
+#define FILES_COLUMN_ARCHIVE_FMT 3
+#define FILES_COLUMN_COMPR_ALGO  4
+
+#define FILES_ARCHIVE_NONE 0
+#define FILES_ARCHIVE_TAR  1
 
 #define FILES_COMPR_NONE 0
 #define FILES_COMPR_ZLIB 1
@@ -54,8 +64,47 @@ typedef struct {
     sqlite3_int64       rowid;
     file_entry_t        *entries;
     size_t              nentries;
-    char                *content_compr_algo;
+    int                 archive_fmt;
+    int                 compr_algo;
+    char                *file_pattern;
 } systbl_files_cursor;
+
+static int get_archive_format(const char *fmt) {
+    if (strcasecmp(fmt, "none") == 0) {
+        return FILES_ARCHIVE_NONE;
+    } else if (strcasecmp(fmt, "tar") == 0) {
+        return FILES_ARCHIVE_TAR;
+    }
+    return -1;
+}
+
+static const char *print_archive_format(int fmt) {
+    switch (fmt) {
+        case FILES_ARCHIVE_NONE: return "none";
+        case FILES_ARCHIVE_TAR: return "tar";
+    }
+    return "unknown";
+}
+
+static int get_compr_algo(const char *algo) {
+    if (strcasecmp(algo, "none") == 0) {
+        return FILES_COMPR_NONE;
+    } else if (strcasecmp(algo, "zlib") == 0) {
+        return FILES_COMPR_ZLIB;
+    } else if (strcasecmp(algo, "lz4") == 0) {
+        return FILES_COMPR_LZ4;
+    }
+    return -1;
+}
+
+static const char *print_compr_algo(int algo) {
+    switch (algo) {
+        case FILES_COMPR_NONE: return "none";
+        case FILES_COMPR_ZLIB: return "zlib";
+        case FILES_COMPR_LZ4: return "lz4";
+    }
+    return "unknown";
+}
 
 static void release_files(void *data, int npoints)
 {
@@ -103,10 +152,69 @@ err:
     return -1;
 }
 
-static int read_dir(const char *dirname, file_entry_t **files, int *count)
+static int create_archive(const char *archive_path, file_entry_t *files,
+                          int count, int archive_fmt, int compr_algo)
+{
+    struct archive *a;
+    struct archive_entry *entry;
+    struct stat st;
+    char buff[8192];
+    char path[4096];
+    char full_path[4096];
+    int len;
+    int fd;
+    int rc;
+
+    a = archive_write_new();
+    archive_write_add_filter_gzip(a);
+    archive_write_set_format_pax_restricted(a);
+    archive_write_open_filename(a, archive_path);
+
+    for (int i = 0; i < count; ++i) {
+        snprintf(path, sizeof(path), "%s/%s/%s", gbl_dbname, files[i].dir,
+                 files[i].file);
+        snprintf(full_path, sizeof(full_path), "%s/%s/%s", thedb->basedir,
+                 files[i].dir, files[i].file);
+
+        rc = stat(full_path, &st);
+        if (rc == -1) {
+            logmsg(LOGMSG_ERROR, "%s:%d couldn't stat %s (%s)\n", __func__,
+                   __LINE__, path, strerror(errno));
+            return rc;
+        }
+
+        entry = archive_entry_new();
+        archive_entry_set_pathname(entry, path);
+        archive_entry_set_size(entry, st.st_size);
+        archive_entry_set_filetype(entry, AE_IFREG);
+        archive_entry_set_perm(entry, 0600);
+        archive_write_header(a, entry);
+
+        fd = open(full_path, O_RDONLY);
+        if (fd == -1) {
+            logmsg(LOGMSG_ERROR, "%s:%d %s file:%s\n", __func__, __LINE__,
+                   strerror(errno), full_path);
+            return -1;
+        }
+        len = read(fd, buff, sizeof(buff));
+        while (len > 0) {
+            archive_write_data(a, buff, len);
+            len = read(fd, buff, sizeof(buff));
+        }
+        close(fd);
+        archive_entry_free(entry);
+    }
+    archive_write_close(a);
+    archive_write_free(a);
+    return 0;
+}
+
+static int read_dir(const char *dirname, file_entry_t **files, int *count,
+                    int archive_fmt, int compr_algo, char *file_pattern)
 {
     struct dirent buf;
     struct dirent *de;
+    struct stat st;
     int rc = 0;
 
     DIR *d = opendir(dirname);
@@ -116,8 +224,6 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
     }
 
     while (bb_readdir(d, &buf, &de) == 0 && de) {
-        struct stat st;
-
         if ((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0)) {
             continue;
         }
@@ -132,35 +238,52 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
         }
 
         if (S_ISDIR(st.st_mode)) {
-            rc = read_dir(path, files, count);
+            rc = read_dir(path, files, count, archive_fmt, compr_algo,
+                          file_pattern);
             if (rc != 0) {
                 break;
             }
-        } else {
-            file_entry_t *files_tmp =
-                realloc(*files, sizeof(file_entry_t) * (++(*count)));
-            if (!files_tmp) {
-                logmsg(LOGMSG_ERROR, "%s:%d: out-of-memory\n", __FILE__,
-                       __LINE__);
-                rc = -1;
-                break;
-            }
-            *files = files_tmp;
-            file_entry_t *f = (*files) + (*count) - 1;
-            f->file = strdup(de->d_name);
-            /* Remove the data directory prefix */
-            if (strcmp(dirname, thedb->basedir) == 0) {
-                f->dir = strdup("");
-            } else {
-                f->dir = strdup(dirname + strlen(thedb->basedir) + 1);
-            }
 
-            rc = read_file(path, &f->content, st.st_size);
-            if (rc == -1) {
-                break;
-            }
-            f->content_sz = st.st_size;
+            continue;
         }
+
+        if (file_pattern && !glob_match(de->d_name, file_pattern)) {
+          logmsg(LOGMSG_USER, "%s:%d: ignoring %s\n", __func__, __LINE__,
+                 de->d_name);
+          continue;
+        }
+
+        logmsg(LOGMSG_USER, "%s:%d: using %s\n", __func__, __LINE__,
+               de->d_name);
+
+        file_entry_t *files_tmp =
+            realloc(*files, sizeof(file_entry_t) * (++(*count)));
+        if (!files_tmp) {
+            logmsg(LOGMSG_ERROR, "%s:%d: out-of-memory\n", __FILE__, __LINE__);
+            rc = -1;
+            break;
+        }
+        *files = files_tmp;
+        file_entry_t *f = (*files) + (*count) - 1;
+        f->file = strdup(de->d_name);
+
+        // Remove the data directory prefix
+        if (strcmp(dirname, thedb->basedir) == 0) {
+            f->dir = strdup("");
+        } else {
+            f->dir = strdup(dirname + strlen(thedb->basedir) + 1);
+        }
+
+        // Do not read the file yet if we were asked to create an archive
+        if (archive_fmt != FILES_ARCHIVE_NONE) {
+            continue;
+        }
+
+        rc = read_file(path, &f->content, st.st_size);
+        if (rc == -1) {
+            break;
+        }
+        f->content_sz = st.st_size;
     }
 
     closedir(d);
@@ -168,7 +291,8 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count)
     return rc;
 }
 
-static int get_files(void **data, size_t *npoints)
+static int get_files(void **data, size_t *npoints, int archive_fmt,
+                     int compr_algo, char *file_pattern)
 {
     file_entry_t *files = NULL;
     int count = 0;
@@ -182,7 +306,8 @@ static int get_files(void **data, size_t *npoints)
     backend_update_sync(thedb);
     logdelete_unlock(__func__, __LINE__);
 
-    int rc = read_dir(thedb->basedir, &files, &count);
+    int rc = read_dir(thedb->basedir, &files, &count, archive_fmt, compr_algo,
+                      file_pattern);
     if (rc != 0) {
         *npoints = -1;
         return rc;
@@ -190,6 +315,40 @@ static int get_files(void **data, size_t *npoints)
 
     *data = files;
     *npoints = count;
+
+    if (archive_fmt != FILES_ARCHIVE_NONE) {
+        struct stat st;
+        char archive_file_name[1024];
+        char archive_path[4096];
+
+        snprintf(archive_file_name, sizeof(archive_file_name), "%s.tar.gz",
+                 gbl_dbname);
+        snprintf(archive_path, sizeof(archive_path), "%s/%s", comdb2_get_tmp_dir(),
+                 archive_file_name);
+
+        rc = create_archive(archive_path, files, count, archive_fmt, compr_algo);
+
+        free(files);
+
+        file_entry_t *files_tmp = malloc(sizeof(file_entry_t));
+        rc = stat(archive_path, &st);
+        if (rc == -1) {
+            logmsg(LOGMSG_ERROR, "%s:%d couldn't stat %s (%s)\n", __func__,
+                   __LINE__, archive_path, strerror(errno));
+            return -1;
+        }
+        rc = read_file(archive_path, &files_tmp->content, st.st_size);
+        files_tmp->content_sz = st.st_size;
+        files_tmp->file = strdup(archive_file_name);
+        files_tmp->dir = strdup("");
+
+        unlink(archive_path);
+
+        *data = files_tmp;
+        *npoints = 1;
+        return 0;
+    }
+
     return 0;
 }
 
@@ -203,7 +362,7 @@ static int filesConnect(
   sqlite3_vtab *pNew;
   int rc;
 
-  rc = sqlite3_declare_vtab(db, "CREATE TABLE x(filename, dir, content, content_compr_algo hidden)");
+  rc = sqlite3_declare_vtab(db, "CREATE TABLE x(filename, dir, content, archive_format hidden, compression_algorithm hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -225,9 +384,6 @@ static int filesOpen(sqlite3_vtab *p, sqlite3_vtab_cursor **ppCursor){
     return SQLITE_NOMEM;
 
   memset(pCur, 0, sizeof(*pCur));
-
-  if (get_files((void **)&pCur->entries, &pCur->nentries))
-    return SQLITE_ERROR;
 
   *ppCursor = &pCur->base;
 
@@ -266,8 +422,11 @@ static int filesColumn(
       sqlite3_result_blob(ctx, pCur->entries[pCur->rowid].content,
                           pCur->entries[pCur->rowid].content_sz, NULL);
       break;
-    case FILES_COLUMN_CONTENT_COMPR_ALGO:
-      sqlite3_result_text(ctx, pCur->content_compr_algo, -1, NULL);
+    case FILES_COLUMN_ARCHIVE_FMT:
+      sqlite3_result_text(ctx, print_archive_format(pCur->archive_fmt), -1, NULL);
+      break;
+    case FILES_COLUMN_COMPR_ALGO:
+      sqlite3_result_text(ctx, print_compr_algo(pCur->compr_algo), -1, NULL);
       break;
   }
   return SQLITE_OK;
@@ -293,12 +452,33 @@ static int filesFilter(
   int idxNum, const char *idxStr,
   int argc, sqlite3_value **argv
 ){
+  printf("==> %s:%d\n", __func__, __LINE__);
   systbl_files_cursor *pCur = (systbl_files_cursor *)pVtabCursor;
   int i = 0;
 
   if( idxNum & 1 ){
-    pCur->content_compr_algo = (char *)sqlite3_value_text(argv[i++]);
+    pCur->archive_fmt = get_archive_format((const char *)sqlite3_value_text(argv[i++]));
+    if (pCur->archive_fmt == -1) {
+      return SQLITE_ERROR;
+    }
   }
+
+  if( idxNum & 2 ){
+    pCur->compr_algo = get_compr_algo((const char *)sqlite3_value_text(argv[i++]));
+    if (pCur->compr_algo == -1) {
+      return SQLITE_ERROR;
+    }
+  }
+
+  if( idxNum & 4 ){
+    pCur->file_pattern = (char *)sqlite3_value_text(argv[i++]);
+  } else {
+    pCur->file_pattern = 0;
+  }
+
+  if (get_files((void **)&pCur->entries, &pCur->nentries, pCur->archive_fmt,
+                pCur->compr_algo, pCur->file_pattern))
+    return SQLITE_ERROR;
 
   pCur->rowid = 0;
   return SQLITE_OK;
@@ -308,33 +488,56 @@ static int filesBestIndex(
   sqlite3_vtab *tab,
   sqlite3_index_info *pIdxInfo
 ){
-  int i;                 /* Loop over constraints */
-  int idxNum = 0;        /* The query plan bitmask */
-  int nArg = 0;          /* Number of arguments that seriesFilter() expects */
-  int comprAlgoIdx = -1; /* Index of content_compr_algo=?, or -1 if not
-                            specified */
+  int i;                  /* Loop over constraints */
+  int idxNum = 0;         /* The query plan bitmask */
+  int nArg = 0;           /* Number of arguments that filesFilter() expects */
+  int archiveFmtIdx = -1; /* Index of archive_fmt=?, or -1 if not specified */
+  int comprAlgoIdx = -1;  /* Index of compr_algo=?, or -1 if not specified */
+  int filenameIdx = -1;
 
   const struct sqlite3_index_constraint *pConstraint;
   pConstraint = pIdxInfo->aConstraint;
   for(i=0; i<pIdxInfo->nConstraint; i++, pConstraint++){
     if( pConstraint->usable==0 ) continue;
-    if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_EQ ) continue;
     switch( pConstraint->iColumn ){
-        case FILES_COLUMN_CONTENT_COMPR_ALGO:
+      case FILES_COLUMN_ARCHIVE_FMT:
+        if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_EQ ){
+          return SQLITE_ERROR;
+        }
         idxNum |= 1;
+        archiveFmtIdx = i;
+        break;
+      case FILES_COLUMN_COMPR_ALGO:
+        if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_EQ ){
+          return SQLITE_ERROR;
+        }
+        idxNum |= 2;
         comprAlgoIdx = i;
+        break;
+      case FILES_COLUMN_FILENAME:
+        if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_LIKE ){
+          return SQLITE_ERROR;
+        }
+        idxNum |= 4;
+        filenameIdx = i;
         break;
     }
   }
+  if( archiveFmtIdx>=0 ){
+    pIdxInfo->aConstraintUsage[archiveFmtIdx].argvIndex = ++nArg;
+    pIdxInfo->aConstraintUsage[archiveFmtIdx].omit = 1;
+  }
+
   if( comprAlgoIdx>=0 ){
     pIdxInfo->aConstraintUsage[comprAlgoIdx].argvIndex = ++nArg;
     pIdxInfo->aConstraintUsage[comprAlgoIdx].omit = 1;
-  }else{
-    /* If either boundary is missing, we have to generate a huge span
-    ** of numbers.  Make this case very expensive so that the query
-    ** planner will work hard to avoid it. */
-    pIdxInfo->estimatedCost = (double)2000000000;
   }
+
+  if( filenameIdx>=0 ){
+    pIdxInfo->aConstraintUsage[filenameIdx].argvIndex = ++nArg;
+    pIdxInfo->aConstraintUsage[filenameIdx].omit = 1;
+  }
+
   pIdxInfo->idxNum = idxNum;
   return SQLITE_OK;
 }
