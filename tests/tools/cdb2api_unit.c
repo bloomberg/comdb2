@@ -219,7 +219,7 @@ void test_read_comdb2db_cfg()
 "\n\
   comdb2dbnm:a,b,c:d:e   \n\
   mydb:n1,n2,n3:n4:n5,n6 \n\
-  comdb2_config:default_type=testsuite   \n\
+  comdb2_config:default_type:testsuite   \n\
   comdb2_config:portmuxport=12345         \n\
   comdb2_config:allow_pmux_route:true       \
 ";
@@ -246,9 +246,38 @@ void test_read_comdb2db_cfg()
     assert(strcmp(db_hosts[4], "n5") == 0);
     assert(strcmp(db_hosts[5], "n6") == 0);
 
-    //TODO: this is not set: assert(strcmp(hndl.cluster, "testsuite") == 0);
-
     assert(dbnum == 0);
+    assert(12345 == CDB2_PORTMUXPORT);
+
+    // test with buf3 which provokes buffer overflow in cdb2api
+    num_hosts = 0;
+    num_db_hosts = 0;
+    const char *buf3 = "\
+  comdb2dbnm:1estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,2estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,3estsuite_longname_to_testbuffer_overflow_when_assigning_hostname   \n\
+  mydb:4estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,5estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,6estsuite_longname_to_testbuffer_overflow_when_assigning_hostname   \n\
+  comdb2_config:default_type:aestsuite_longname_to_testbuffer_overflow_when_assigning_the_default_type_testsuite_longname_to_testbuffer_overflow_when_assigning_the_default_type   \n\
+  comdb2_config:room:bestsuite_longname_to_testbuffer_overflow_when_assigning_the_room_testsuite_longname_to_testbuffer_overflow_when_assigning_the_room \n\
+  comdb2_config:comdb2dbname:cestsuite_longname_to_testbuffer_overflow_when_assigning_the_comdb2dbname \n\
+  comdb2_config:dnssuffix:destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix \n\
+";
+    read_comdb2db_cfg(NULL, s, "comdb2dbnm",
+                      buf3, comdb2db_hosts,
+                      &num_hosts, &comdb2db_num, dbname,
+                      db_hosts, &num_db_hosts,
+                      &dbnum, &stack_at_open);
+
+    assert(num_db_hosts == 3);
+    assert(num_hosts == 3);
+    assert(strcmp(comdb2db_hosts[0], "1estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(comdb2db_hosts[1], "2estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(comdb2db_hosts[2], "3estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(db_hosts[0], "4estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(db_hosts[1], "5estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(db_hosts[2], "6estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(cdb2_default_cluster, "aestsuite_longname_to_testbuffer_overflow_when_assigning_the_de") == 0);
+    assert(strcmp(cdb2_machine_room, "bestsuite_longn") == 0);
+    assert(strcmp(cdb2_comdb2dbname, "cestsuite_longname_to_testbuffe") == 0);
+    assert(strcmp(cdb2_dnssuffix, "destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow_when_assigning_the_dnssuffix_destsuite_longname_to_testbuffer_overflow") == 0);
 }
 
 

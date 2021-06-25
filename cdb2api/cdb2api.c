@@ -55,6 +55,7 @@ static char *SOCKPOOL_OTHER_NAME = NULL;
 #define COMDB2DB_NUM 32432
 #define MAX_BUFSIZE_ONSTACK 8192
 #define MAX_BIND_ARRAY 32768
+#define CDB2HOSTNAME_LEN 64
 
 #define CDB2DBCONFIG_NOBBENV_DEFAULT "/opt/bb/etc/cdb2/config/comdb2db.cfg"
 static char CDB2DBCONFIG_NOBBENV[512] = CDB2DBCONFIG_NOBBENV_DEFAULT;
@@ -1254,9 +1255,9 @@ static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
 
 static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                               const char *comdb2db_name, const char *buf,
-                              char comdb2db_hosts[][64], int *num_hosts,
+                              char comdb2db_hosts[][CDB2HOSTNAME_LEN], int *num_hosts,
                               int *comdb2db_num, const char *dbname,
-                              char db_hosts[][64], int *num_db_hosts,
+                              char db_hosts[][CDB2HOSTNAME_LEN], int *num_db_hosts,
                               int *dbnum, int *stack_at_open)
 {
     char line[PATH_MAX > 2048 ? PATH_MAX : 2048] = {0};
@@ -1276,7 +1277,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
             }
             while (tok != NULL) {
-                strcpy(comdb2db_hosts[*num_hosts], tok);
+                strncpy(comdb2db_hosts[*num_hosts], tok, CDB2HOSTNAME_LEN - 1);
                 (*num_hosts)++;
                 tok = strtok_r(NULL, " :,", &last);
             }
@@ -1287,7 +1288,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
             }
             while (tok != NULL) {
-                strcpy(db_hosts[*num_db_hosts], tok);
+                strncpy(db_hosts[*num_db_hosts], tok, CDB2HOSTNAME_LEN - 1);
                 tok = strtok_r(NULL, " :,", &last);
                 (*num_db_hosts)++;
             }
@@ -1299,15 +1300,15 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
                     if (hndl && (strcasecmp(hndl->cluster, "default") == 0)) {
-                        strcpy(hndl->cluster, tok);
+                        strncpy(hndl->cluster, tok, sizeof(cdb2_default_cluster) - 1);
                     } else if (!hndl) {
-                        strcpy(cdb2_default_cluster, tok);
+                        strncpy(cdb2_default_cluster, tok, sizeof(cdb2_default_cluster) - 1);
                     }
                 }
             } else if (strcasecmp("room", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
-                    strcpy(cdb2_machine_room, tok);
+                    strncpy(cdb2_machine_room, tok, sizeof(cdb2_machine_room) - 1);
             } else if (strcasecmp("portmuxport", tok) == 0 || strcasecmp("pmuxport", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1349,7 +1350,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
             } else if (strcasecmp("comdb2dbname", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
-                    strcpy(cdb2_comdb2dbname, tok);
+                    strncpy(cdb2_comdb2dbname, tok, sizeof(cdb2_comdb2dbname) - 1);
             } else if (strcasecmp("tcpbufsz", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
@@ -1358,7 +1359,7 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                        strcasecmp("dnssuffix", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
-                    strcpy(cdb2_dnssuffix, tok);
+                    strncpy(cdb2_dnssuffix, tok, sizeof(cdb2_dnssuffix) - 1);
             } else if (strcasecmp("stack_at_open", tok) == 0 && stack_at_open) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
@@ -5180,7 +5181,7 @@ int cdb2_clearbindings(cdb2_hndl_tp *hndl)
 
 static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
                                 int comdb2db_num, const char *host, int port,
-                                char hosts[][64], int *num_hosts,
+                                char hosts[][CDB2HOSTNAME_LEN], int *num_hosts,
                                 const char *dbname, char *cluster, int *dbnum,
                                 int *num_same_room, int num_retries)
 {
@@ -5381,7 +5382,7 @@ free_vars:
  */
 static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
                              const char *dbname, int dbnum, const char *host,
-                             char valid_hosts[][64], int *valid_ports,
+                             char valid_hosts[][CDB2HOSTNAME_LEN], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
                              int *num_valid_sameroom_hosts)
 {
@@ -5572,7 +5573,7 @@ static inline void only_read_config(cdb2_hndl_tp *hndl, int noLock,
 
 static int cdb2_get_dbhosts(cdb2_hndl_tp *hndl)
 {
-    char comdb2db_hosts[MAX_NODES][64];
+    char comdb2db_hosts[MAX_NODES][CDB2HOSTNAME_LEN];
     int comdb2db_ports[MAX_NODES];
     int num_comdb2db_hosts;
     int master = -1, rc = 0;
