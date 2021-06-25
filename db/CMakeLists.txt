@@ -38,6 +38,7 @@ set(src
   osql_srs.c
   osqlblkseq.c
   osqlblockproc.c
+  osqlbundled.c
   osqlcheckboard.c
   osqlcomm.c
   osqlrepository.c

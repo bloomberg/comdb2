@@ -40,6 +40,7 @@
 
 #include "comdb2.h"
 #include "osqlblockproc.h"
+#include "osqlbundled.h"
 #include "block_internal.h"
 #include "osqlsession.h"
 #include "osqlcomm.h"
@@ -561,8 +562,7 @@ static void _pre_process_saveop(osql_sess_t *sess, blocksql_tran_t *tran,
  * Returns 0 if success
  *
  */
-int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
-                      int rplen, int type)
+int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type, int preprocess_only)
 {
     int rc = 0;
     oplog_key_t key = {0};
@@ -576,6 +576,9 @@ int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
 #endif
 
     _pre_process_saveop(sess, tran, rpl, rplen, type);
+
+    if (preprocess_only)
+        return rc;
 
     key.seq = tran->seq;
 
@@ -940,9 +943,12 @@ static int process_this_session(
     oplog_key_t *opkey_ins = NULL;
     uint8_t add_stripe = 0;
     int drain_adds = 0; // we always start by reading normal tmp tbl
-    rc = init_ins_tbl(iq->reqlogger, dbc_ins, &opkey_ins, &add_stripe, bdberr);
-    if (rc)
-        return rc;
+    /* if bplog temptable is empty, do not create reordering temptable. */
+    if (rc != IX_EMPTY) {
+        rc = init_ins_tbl(iq->reqlogger, dbc_ins, &opkey_ins, &add_stripe, bdberr);
+        if (rc)
+            return rc;
+    }
 
     /* only reorder indices if more than one row add/upd/dels
      * NB: the idea is that single row transactions can not deadlock but
@@ -952,14 +958,27 @@ static int process_this_session(
     if (sess->tran_rows > 1 && gbl_reorder_idx_writes)
         iq->osql_flags |= OSQL_FLAGS_REORDER_IDX_ON;
 
-    while (!rc && !rc_out) {
+    if (rc == IX_EMPTY)
+        rc = IX_PASTEOF;
+
+    while ((rc == 0 || rc == IX_PASTEOF) && !rc_out) {
         char *data = NULL;
         int datalen = 0;
-        // fetch the data from the appropriate temp table -- based on drain_adds
-        get_tmptbl_data_and_len(dbc, dbc_ins, drain_adds, &data, &datalen);
-        /* Reset temp cursor data - it will be freed after the callback. */
-        bdb_temp_table_reset_datapointers(drain_adds ? dbc_ins : dbc);
-        DEBUG_PRINT_TMPBL_READ();
+        if (rc == IX_PASTEOF) { /* no more packets from the bplog temptable. */
+            /* check if we have a final packet stored in memory. if so, process it.
+               otherwise, break out of the loop. */
+            if (sess->finalop == NULL)
+                break;
+            data = sess->finalop;
+            datalen = sess->finalopsz;
+            rc = 0;
+        } else {
+            // fetch the data from the appropriate temp table -- based on drain_adds
+            get_tmptbl_data_and_len(dbc, dbc_ins, drain_adds, &data, &datalen);
+            /* Reset temp cursor data - it will be freed after the callback. */
+            bdb_temp_table_reset_datapointers(drain_adds ? dbc_ins : dbc);
+            DEBUG_PRINT_TMPBL_READ();
+        }
 
         if (bdb_lock_desired(thedb->bdb_env)) {
             logmsg(LOGMSG_ERROR, "%p %s:%d blocksql session closing early\n", (void *)pthread_self(), __FILE__,
@@ -977,7 +996,10 @@ static int process_this_session(
          * func is osql_process_packet or osql_process_schemachange */
         rc_out = func(iq, sess->rqid, sess->uuid, iq_tran, &data, datalen,
                       &flags, &updCols, blobs, step, err, &receivedrows);
-        free(data);
+
+        /* Do not free finalop. It is freed in _destroy_session(). */
+        if (data != sess->finalop)
+            free(data);
 
         if (rc_out != 0 && rc_out != OSQL_RC_DONE) {
             reqlog_set_error(iq->reqlogger, "Error processing", rc_out);
@@ -990,6 +1012,9 @@ static int process_this_session(
         }
 
         step++;
+        /* If we've just processed the last packet, we're done here. */
+        if (data != NULL && data == sess->finalop)
+            break;
         rc = get_next_merge_tmps(dbc, dbc_ins, &opkey, &opkey_ins, &drain_adds,
                                  bdberr, add_stripe);
     }

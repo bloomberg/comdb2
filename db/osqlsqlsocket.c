@@ -32,6 +32,7 @@
 #include "osqlsqlsocket.h"
 #include "osqlblockproc.h"
 #include "osqlcomm.h"
+#include "osqlbundled.h"
 
 #define BPLOG_PROTO "icdb2"
 #define BPLOG_APPSOCK "sockbplog"
@@ -45,8 +46,8 @@ int gbl_sockbplog_poll = 1000;
 int gbl_sockbplog_timeout = 60000;
 int gbl_sockbplog_sockpool = 0;
 
-static int _socket_send(osql_target_t *target, int usertype, void *data,
-                        int datalen, int nodelay, void *tail, int tailen);
+static int _socket_send(osql_target_t *target, int usertype, void *data, int datalen, int nodelay, void *tail,
+                        int tailen, int unused1, int unused2);
 static int osql_begin_socket(struct sqlclntstate *clnt, int type,
                              int keep_rqid);
 static int osql_end_socket(struct sqlclntstate *clnt);
@@ -93,6 +94,8 @@ static int osql_begin_socket(struct sqlclntstate *clnt, int type, int keep_rqid)
     clnt->osql.target.host = thedb->master;
     clnt->osql.target.send = _socket_send;
 
+    init_bplog_bundled(&clnt->osql.target);
+
     /* protect against no master */
     if (clnt->osql.target.host == NULL ||
         clnt->osql.target.host == db_eid_invalid)
@@ -136,12 +139,15 @@ static int osql_end_socket(struct sqlclntstate *clnt)
     return 0;
 }
 
-static int _socket_send(osql_target_t *target, int usertype, void *data,
-                        int datalen, int nodelay, void *tail, int tailen)
+static int _socket_send(osql_target_t *target, int usertype, void *data, int datalen, int nodelay, void *tail,
+                        int tailen, int unused1, int unused2)
 {
     SBUF2 *sb = target->sb;
     int totallen = datalen + tailen;
     int rc;
+
+    (void)unused1;
+    (void)unused2;
 
     if (gbl_sockbplog_debug) {
         logmsg(LOGMSG_ERROR, "sending %d datalen %d tailen %d nodelay %d\n",

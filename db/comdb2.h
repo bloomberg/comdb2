@@ -1202,17 +1202,40 @@ enum OSQL_REQ_TYPE {
 #define OSQL_RQID_USE_UUID 1
 typedef struct blocksql_tran blocksql_tran_t;
 typedef struct sess_impl sess_impl_t;
+typedef struct osql_sess osql_sess_t;
+typedef struct osql_target osql_target_t;
 
 enum osql_target_type { OSQL_OVER_NET = 1, OSQL_OVER_SOCKET = 2 };
+typedef int (*osql_target_send)(struct osql_target *target, int usertype, void *data, int datalen, int nodelay,
+                                void *tail, int tailen, int done, int unbundled);
+struct osql_target_bundled {
+    osql_target_send send; /* The underlying send method (i.e., net or socket). */
+
+    /* rqid of this transaction */
+    unsigned long long rqid;
+    uuid_t uuid;
+
+    /* user type of previous message */
+    int send_type;
+    /* num of total usable messages */
+    int nmsgs_alloc;
+    /* num of in-use messages */
+    int nmsgs;
+    /* length of total usable buffer */
+    int bufsz_alloc;
+    /* length of in-use buffer */
+    int bufsz;
+
+    int *hdr;  /* message lengths */
+    void *buf; /* message bodies */
+};
 struct osql_target {
     enum osql_target_type type;
-    unsigned is_ondisk;
     const char *host;
     SBUF2 *sb;
-    int (*send)(struct osql_target *target, int usertype, void *data,
-                int datalen, int nodelay, void *tail, int tailen);
+    osql_target_send send;
+    struct osql_target_bundled bundled;
 };
-typedef struct osql_target osql_target_t;
 
 struct osql_sess {
 
@@ -1251,8 +1274,11 @@ struct osql_sess {
     blocksql_tran_t *tran;
     int is_tranddl;
     int is_cancelled; /* 1 if session is cancelled */
+
+    /* The last packet of this osql session. Always NULL unless osql-bundling is enabled. */
+    void *finalop;
+    int finalopsz;
 };
-typedef struct osql_sess osql_sess_t;
 
 struct llog_scdone;
 struct ireq {

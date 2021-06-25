@@ -930,6 +930,7 @@ These options are toggle-able at runtime.
 |delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
 |sockbplog| off | Osql bplog is sent from replicants to master on their own socket
 |sockbplog_sockpool| off | Osql bplog sent over sockets is using local sockpool
+| osql_max_bundled_bytes | 4194304 | Max osql bundle size
 
 
 <!-- TODO

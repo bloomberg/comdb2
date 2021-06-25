@@ -1625,8 +1625,7 @@ static int process_local_shadtbl_usedb(struct sqlclntstate *clnt,
     int rc = 0;
     int osql_nettype = tran2netrpl(clnt->dbtran.mode);
 
-    rc = osql_send_usedb(&osql->target, osql->rqid, osql->uuid, tablename,
-                         osql_nettype, tableversion);
+    rc = osql_send_usedb(osql, tablename, osql_nettype, tableversion);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: osql_send_usedb rc=%d\n", __func__, rc);
     }
@@ -1670,11 +1669,8 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             }
 
             if (osql->is_reorder_on) {
-                rc = osql_send_delrec(&osql->target, osql->rqid, osql->uuid,
-                                      genid,
-                                      (gbl_partial_indexes && tbl->ix_partial)
-                                          ? get_del_keys(clnt, tbl, genid)
-                                          : -1ULL,
+                rc = osql_send_delrec(osql, genid,
+                                      (gbl_partial_indexes && tbl->ix_partial) ? get_del_keys(clnt, tbl, genid) : -1ULL,
                                       osql_nettype);
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
@@ -1695,11 +1691,8 @@ static int process_local_shadtbl_skp(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             }
 
             if (!osql->is_reorder_on) {
-                rc = osql_send_delrec(&osql->target, osql->rqid, osql->uuid,
-                                      genid,
-                                      (gbl_partial_indexes && tbl->ix_partial)
-                                          ? get_del_keys(clnt, tbl, genid)
-                                          : -1ULL,
+                rc = osql_send_delrec(osql, genid,
+                                      (gbl_partial_indexes && tbl->ix_partial) ? get_del_keys(clnt, tbl, genid) : -1ULL,
                                       osql_nettype);
                 if (rc) {
                     logmsg(LOGMSG_ERROR,
@@ -1776,8 +1769,7 @@ static int process_local_shadtbl_updcols(struct sqlclntstate *clnt,
         memcpy(*updcolsout, cdata, cksz);
     }
 
-    rc = osql_send_updcols(&osql->target, osql->rqid, osql->uuid, savkey,
-                           osql_nettype, &cdata[1], cdata[0]);
+    rc = osql_send_updcols(osql, savkey, osql_nettype, &cdata[1], cdata[0]);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, 
@@ -1814,8 +1806,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             idx = get_schema_blob_field_idx(tbl->tablename, ".ONDISK", i);
             ncols = updCols[0];
             if (idx >= 0 && idx < ncols && -1 == updCols[idx + 1]) {
-                rc = osql_send_qblob(&osql->target, osql->rqid, osql->uuid, i,
-                                     seq, osql_nettype, NULL, -2);
+                rc = osql_send_qblob(osql, i, seq, osql_nettype, NULL, -2);
                 osql->replicant_numops++;
                 DEBUG_PRINT_NUMOPS();
                 continue;
@@ -1845,8 +1836,7 @@ static int process_local_shadtbl_qblob(struct sqlclntstate *clnt,
             return SQLITE_INTERNAL;
         }
 
-        rc = osql_send_qblob(&osql->target, osql->rqid, osql->uuid, idx, seq,
-                             osql_nettype, data, ldata);
+        rc = osql_send_qblob(osql, idx, seq, osql_nettype, data, ldata);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, 
@@ -1902,8 +1892,7 @@ static int process_local_shadtbl_index(struct sqlclntstate *clnt,
 
         index = bdb_temp_table_data(tmp_cur);
         lindex = bdb_temp_table_datasize(tmp_cur);
-        rc = osql_send_index(&osql->target, osql->rqid, osql->uuid, seq,
-                             is_delete, i, index, lindex, osql_nettype);
+        rc = osql_send_index(osql, seq, is_delete, i, index, lindex, osql_nettype);
 
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: error writting record to master in offload mode %d!\n",
@@ -1956,12 +1945,9 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             goto next;
 
         if (osql->is_reorder_on) {
-            rc = osql_send_insrec(&osql->target, osql->rqid, osql->uuid, key,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_ins_keys(clnt, tbl, key)
-                                      : -1ULL,
-                                  data, ldata, osql_nettype,
-                                  get_rec_flags(clnt, tbl, key, 1));
+            rc = osql_send_insrec(osql, key,
+                                  (gbl_partial_indexes && tbl->ix_partial) ? get_ins_keys(clnt, tbl, key) : -1ULL, data,
+                                  ldata, osql_nettype, get_rec_flags(clnt, tbl, key, 1));
 
             if (rc) {
                 logmsg(LOGMSG_USER,
@@ -1992,12 +1978,9 @@ static int process_local_shadtbl_add(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         }
 
         if (!osql->is_reorder_on) {
-            rc = osql_send_insrec(&osql->target, osql->rqid, osql->uuid, key,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_ins_keys(clnt, tbl, key)
-                                      : -1ULL,
-                                  data, ldata, osql_nettype,
-                                  get_rec_flags(clnt, tbl, key, 1));
+            rc = osql_send_insrec(osql, key,
+                                  (gbl_partial_indexes && tbl->ix_partial) ? get_ins_keys(clnt, tbl, key) : -1ULL, data,
+                                  ldata, osql_nettype, get_rec_flags(clnt, tbl, key, 1));
 
             if (rc) {
                 logmsg(LOGMSG_USER,
@@ -2071,13 +2054,9 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
             return SQLITE_TOOBIG;
         }
         if (osql->is_reorder_on) {
-            rc = osql_send_updrec(&osql->target, osql->rqid, osql->uuid, genid,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_ins_keys(clnt, tbl, seq)
-                                      : -1ULL,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_del_keys(clnt, tbl, genid)
-                                      : -1ULL,
+            rc = osql_send_updrec(osql, genid,
+                                  (gbl_partial_indexes && tbl->ix_partial) ? get_ins_keys(clnt, tbl, seq) : -1ULL,
+                                  (gbl_partial_indexes && tbl->ix_partial) ? get_del_keys(clnt, tbl, genid) : -1ULL,
                                   data, ldata, osql_nettype);
 
             if (rc) {
@@ -2112,13 +2091,9 @@ static int process_local_shadtbl_upd(struct sqlclntstate *clnt, shad_tbl_t *tbl,
         }
 
         if (!osql->is_reorder_on) {
-            rc = osql_send_updrec(&osql->target, osql->rqid, osql->uuid, genid,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_ins_keys(clnt, tbl, seq)
-                                      : -1ULL,
-                                  (gbl_partial_indexes && tbl->ix_partial)
-                                      ? get_del_keys(clnt, tbl, genid)
-                                      : -1ULL,
+            rc = osql_send_updrec(osql, genid,
+                                  (gbl_partial_indexes && tbl->ix_partial) ? get_ins_keys(clnt, tbl, seq) : -1ULL,
+                                  (gbl_partial_indexes && tbl->ix_partial) ? get_del_keys(clnt, tbl, genid) : -1ULL,
                                   data, ldata, osql_nettype);
 
             if (rc) {
@@ -2841,13 +2816,7 @@ static int process_local_shadtbl_recgenids(struct sqlclntstate *clnt,
             strncpy0(old_tablename, key.tablename, MAXTABLELEN);
         }
 
-#if 0
-      uuidstr_t us;
-      comdb2uuidstr(osql->uuid, us);
-      printf("RECGENID SENDING %s[%d] : %llx %s\n", key.tablename, key.tableversion, key.genid, us);
-#endif
-        rc = osql_send_recordgenid(&osql->target, osql->rqid, osql->uuid,
-                                   key.genid, osql_nettype);
+        rc = osql_send_recordgenid(osql, key.genid, osql_nettype);
         if (rc) {
             logmsg(LOGMSG_ERROR, 
                     "%s: error writting record to master in offload mode!\n",
@@ -2981,8 +2950,7 @@ static int process_local_shadtbl_sc(struct sqlclntstate *clnt, int *bdberr)
             return ERR_SC;
         }
 
-        rc = osql_send_schemachange(&osql->target, osql->rqid, osql->uuid, sc,
-                                    NET_OSQL_SOCK_RPL);
+        rc = osql_send_schemachange(osql, sc, NET_OSQL_SOCK_RPL);
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: error writting record to master in offload mode!\n",
@@ -3090,8 +3058,7 @@ static int process_local_shadtbl_bpfunc(struct sqlclntstate *clnt, int *bdberr)
             return -1;
         }
 
-        rc = osql_send_bpfunc(&osql->target, osql->rqid, osql->uuid, func->arg,
-                              NET_OSQL_SOCK_RPL);
+        rc = osql_send_bpfunc(osql, func->arg, NET_OSQL_SOCK_RPL);
         free_bpfunc(func);
 
         if (rc) {

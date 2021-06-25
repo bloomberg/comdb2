@@ -90,8 +90,7 @@ void osql_bplog_close(blocksql_tran_t **ptran);
  * Returns 0 if success
  *
  */
-int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl,
-                      int rplen, int type);
+int osql_bplog_saveop(osql_sess_t *sess, blocksql_tran_t *tran, char *rpl, int rplen, int type, int preprocess_only);
 
 /**
  * Construct a blockprocessor transaction buffer containing
