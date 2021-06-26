@@ -110,6 +110,7 @@ setup_db() {
     echo "make_slow_replicants_incoherent off" >> ${LRL}
     echo "enable_temptable_clean_exit on" >> ${LRL}
     echo "exitalarmsec 10" >> ${LRL}
+    echo "setattr ENABLE_TEMPTABLE_CLEAN_EXIT 1" >> ${LRL}
 
     # If CLUSTER is defined, populate config and lrl with that info
     if [[ -n "$CLUSTER" ]]; then

@@ -1112,6 +1112,7 @@ int bdb_flush_noforce(bdb_state_type *bdb_handle, int *bdberr);
 int bdb_purge_freelist(bdb_state_type *bdb_handle, int *bdberr);
 
 /* close the underlying files used by the bdb_handle */
+int bdb_close_and_free(bdb_state_type *bdb_state, int *bdberr);
 int bdb_close_only(bdb_state_type *bdb_handle, int *bdberr);
 int bdb_close_flush(bdb_state_type *, int *bdberr);
 int bdb_close_only_sc(bdb_state_type *bdb_handle, tran_type *tran, int *bdberr);
@@ -1420,6 +1421,7 @@ void bdb_register_rtoff_callback(bdb_state_type *bdb_state, void (*func)(void));
 int bdb_get_checkpoint_time(bdb_state_type *bdb_state);
 
 int bdb_have_llmeta();
+void bdb_llmeta_close();
 int bdb_llmeta_open(char name[], char dir[], bdb_state_type *parent_bdb_handle,
                     int create_override, int *bdberr);
 int bdb_llmeta_set_tables(tran_type *input_trans, char **tblnames,

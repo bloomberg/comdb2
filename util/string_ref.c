@@ -140,7 +140,7 @@ static int print_it(void *obj, void *arg)
 
 static void print_all_string_references()
 {
-    if (gbl_creation_count > 0) {
+    if (sr_hash) {
         Pthread_mutex_lock(&srh_mtx);
         logmsg(LOGMSG_USER, "Remaining not-cleaned-up string references:\n");
         hash_for(sr_hash, print_it, NULL);
@@ -154,8 +154,18 @@ int all_string_references_cleared()
 {
     int res = (gbl_creation_count == 0);
 #ifdef TRACK_REFERENCES
-    if (!res)
+    int count = 0;
+    if (sr_hash)
+        hash_info(sr_hash, NULL, NULL, NULL, NULL, &count, NULL, NULL);
+    if (!res || count != 0) {
         print_all_string_references();
+        abort();
+    }
+    if (sr_hash) {
+        hash_clear(sr_hash);
+        hash_free(sr_hash);
+        sr_hash = NULL;
+    }
 #endif
     return res;
 }

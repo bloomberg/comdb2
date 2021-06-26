@@ -1254,6 +1254,14 @@ static const uint8_t *llmeta_tablename_alias_data_get(
 /* returns true if we have a llmeta table open else false */
 int bdb_have_llmeta() { return llmeta_bdb_state != NULL; }
 
+void bdb_llmeta_close()
+{
+    int  bdberr;
+    bdb_close_only(llmeta_bdb_state, &bdberr);
+    free(llmeta_bdb_state);
+    llmeta_bdb_state = NULL;
+}
+
 /* opens the low level meta table, if this is not called, any calls to
  * bdb_get_file_version* will return successfully but with a 0 version_number
  * any calls to bdb_new_file_version will fail */

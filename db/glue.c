@@ -4225,6 +4225,25 @@ void backend_cleanup(struct dbenv *dbenv)
     if (dbenv->nsiblings > 0) {
         osql_cleanup();
     }
+
+    int  bdberr;
+    bdb_llmeta_close(); // find correct place
+    if (dbenv->meta) {
+        bdb_close_only(dbenv->meta, &bdberr);
+        free(dbenv->meta);
+        dbenv->meta = NULL;
+    }
+
+    if (dbenv->bdb_env) {
+        bdb_close_and_free(dbenv->bdb_env, &bdberr);
+        dbenv->bdb_env = NULL;
+    }
+    for (int ii = 0; ii < dbenv->num_dbs; ii++) {
+        if (dbenv->dbs[ii]->handle) {
+            bdb_close_and_free(dbenv->dbs[ii]->handle, &bdberr);
+            dbenv->dbs[ii]->handle = NULL;
+        }
+    }
 }
 
 void backend_get_cachestats(struct dbenv *dbenv, int *cachekb, int *hits,

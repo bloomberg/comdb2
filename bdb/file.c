@@ -1621,6 +1621,8 @@ void bdb_prepare_close(bdb_state_type *bdb_state)
     osql_cleanup_netinfo();
 }
 
+#define free_and_setnull(obj) { free(obj); obj = NULL; }
+
 /* this routine is only used to CLOSE THE WHOLE DB (env) */
 static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
 {
@@ -1717,30 +1719,30 @@ static int bdb_close_int(bdb_state_type *bdb_state, int envonly)
         }
     }
 
-    free(bdb_state->origname);
-    free(bdb_state->name);
-    free(bdb_state->dir);
-    free(bdb_state->txndir);
-    free(bdb_state->tmpdir);
+    free_and_setnull(bdb_state->origname);
+    free_and_setnull(bdb_state->name);
+    free_and_setnull(bdb_state->dir);
+    free_and_setnull(bdb_state->txndir);
+    free_and_setnull(bdb_state->tmpdir);
 
-    free(bdb_state->seqnum_info->seqnums);
-    free(bdb_state->last_downgrade_time);
-    free(bdb_state->master_lease);
-    free(bdb_state->coherent_state);
-    free(bdb_state->seqnum_info->waitlist);
-    free(bdb_state->seqnum_info->trackpool);
-    free(bdb_state->seqnum_info->time_10seconds);
-    free(bdb_state->seqnum_info->time_minute);
-    free(bdb_state->seqnum_info->expected_udp_count);
-    free(bdb_state->seqnum_info->incomming_udp_count);
-    free(bdb_state->seqnum_info->udp_average_counter);
-    free(bdb_state->seqnum_info->filenum);
+    free_and_setnull(bdb_state->seqnum_info->seqnums);
+    free_and_setnull(bdb_state->last_downgrade_time);
+    free_and_setnull(bdb_state->master_lease);
+    free_and_setnull(bdb_state->coherent_state);
+    free_and_setnull(bdb_state->seqnum_info->waitlist);
+    free_and_setnull(bdb_state->seqnum_info->trackpool);
+    free_and_setnull(bdb_state->seqnum_info->time_10seconds);
+    free_and_setnull(bdb_state->seqnum_info->time_minute);
+    free_and_setnull(bdb_state->seqnum_info->expected_udp_count);
+    free_and_setnull(bdb_state->seqnum_info->incomming_udp_count);
+    free_and_setnull(bdb_state->seqnum_info->udp_average_counter);
+    free_and_setnull(bdb_state->seqnum_info->filenum);
 
-    free(bdb_state->repinfo->appseqnum);
+    free_and_setnull(bdb_state->repinfo->appseqnum);
 
-    /* We can not free bdb_state because other threads get READLOCK
+    /* We can not free bdb_state yet because other threads get READLOCK
      * and it does not work well doing so on freed memory, so don't:
-    memset(bdb_state, 0xff, sizeof(bdb_state));
+    memset(bdb_state, 0xff, sizeof(*bdb_state));
     free(bdb_state);
      */
 
@@ -4035,7 +4037,7 @@ low_headroom:
             }
         }
 
-        if (has_low_headroom(bdb_state->txndir,bdb_state->attr->lowdiskthreshold, 0)) {
+        if (has_low_headroom(bdb_state->txndir, bdb_state->attr->lowdiskthreshold, 0)) {
             low_headroom_count++;
             is_low_headroom = 1;
             free(list);
@@ -7057,6 +7059,27 @@ int bdb_close_only_sc(bdb_state_type *bdb_state, tran_type *tran, int *bdberr)
     BDB_RELLOCK();
 
     return rc;
+}
+
+int bdb_close_and_free(bdb_state_type *bdb_state, int *bdberr)
+{
+    BDB_READLOCK("bdb_close_only");
+    int rc = close_dbs_int(bdb_state, NULL, DB_NOSYNC);
+    BDB_RELLOCK();
+    if (rc)
+        return rc;
+
+    free(bdb_state->origname);
+    free(bdb_state->name);
+    free(bdb_state->dir);
+    free(bdb_state->txndir);
+    free(bdb_state->tmpdir);
+    free(bdb_state->fld_hints);
+    // free bthash
+    bdb_handle_dbp_drop_hash(bdb_state);
+    memset(bdb_state, 0xff, sizeof(bdb_state_type));
+    free(bdb_state);
+    return 0;
 }
 
 int bdb_close_only(bdb_state_type *bdb_state, int *bdberr)

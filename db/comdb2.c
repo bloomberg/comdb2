@@ -1529,18 +1529,21 @@ static void finish_clean()
 
     /* gbl_trickle_thdpool is needed up to here */
     stop_trickle_threads();
-    close_all_dbs_tran(NULL);
+    osqlpfthdpool_clean();
 
     eventlog_stop();
 
     cleanup_file_locations();
     ctrace_closelog();
 
-    backend_cleanup(thedb);
+    thd_cleanup();
     net_cleanup();
     cleanup_sqlite_master();
-
+    clear_fingerprints();
+    cleanup_time_metrics();
+    sleep(1); // udp_reader needs to exit cleanly
     free_sqlite_table(thedb);
+    backend_cleanup(thedb);
 
     if (thedb->sqlalias_hash) {
         hash_clear(thedb->sqlalias_hash);
@@ -1570,7 +1573,10 @@ static void finish_clean()
     free_tzdir();
     tz_hash_free();
     clear_sqlhist();
-    thd_cleanup();
+
+    memset(thedb, 0xff, sizeof(*thedb));
+    free(thedb);
+    thedb = NULL;
     if(!all_string_references_cleared())
         abort();
 }
@@ -1687,11 +1693,11 @@ void clean_exit(void)
         logmsg(LOGMSG_USER, "Created database %s.\n", thedb->envname);
     }
 
+    bdb_cleanup_private_blkseq(thedb->bdb_env);
     int rc = backend_close(thedb);
     if (rc != 0) {
         logmsg(LOGMSG_ERROR, "error backend_close() rc %d\n", rc);
     }
-    bdb_cleanup_private_blkseq(thedb->bdb_env);
 
     eventlog_stop();
 
@@ -5894,13 +5900,6 @@ int main(int argc, char **argv)
      * will wait for all the generic threads to exit */
     thrman_wait_type_exit(THRTYPE_CLEANEXIT);
     finish_clean();
-
-    for (int ii = 0; ii < thedb->num_dbs; ii++) {
-        struct dbtable *db = thedb->dbs[ii];
-        free(db->handle);
-    }
-    free(thedb);
-    thedb = NULL;
 
     goodbye();
     return 0;

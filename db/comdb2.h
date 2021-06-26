@@ -1815,6 +1815,7 @@ void sqlnet_init(void);
 int clnt_stats_init(void);
 int sqlpool_init(void);
 int schema_init(void);
+int osqlpfthdpool_clean(void);
 int osqlpfthdpool_init(void);
 int init_opcode_handlers();
 void toblock_init(void);
