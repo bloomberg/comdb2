@@ -4441,7 +4441,7 @@ static int bdb_cursor_move_and_skip(bdb_cursor_impl_t *cur,
 #ifdef MERGE_DEBUG
         logmsg(LOGMSG_DEBUG, "%d %s:%d reordering rc=%d %llx\n",
                (int)pthread_self(), __FILE__, __LINE__, rc,
-               *(unsigned long long *)key);
+               key ? *(unsigned long long *)key: 0);
 #endif
 
         /* if we have failed to reposition the cursor and this is a relative
