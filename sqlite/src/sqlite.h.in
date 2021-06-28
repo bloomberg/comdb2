@@ -462,6 +462,7 @@ int sqlite3_exec(
 #define SQLITE_SCHEMA_REMOTE      50 /* distributed schema has inconsistent 
                                       * local cache */
 #define SQLITE_SCHEMA_DOHSQL      51 /* see dohsql */
+#define SQLITE_EARLYSTOP_DOHSQL   52 /* see dohsql */
 #define SQLITE_DEADLOCK          200 /* deadlock happened, transaction aborted */
 #define SQLITE_ACCESS            201 /* failed permissions */
 #define SQLITE_LIMIT_DEPRECATED  202 /* SQLITE_LIMIT -- no longer used */
@@ -5029,7 +5030,11 @@ int sqlite3_create_window_function(
 ** to [sqlite3_create_function()], [sqlite3_create_function16()], or
 ** [sqlite3_create_function_v2()].
 */
-#define SQLITE_DETERMINISTIC    0x800
+#define SQLITE_DETERMINISTIC    0x000000800
+#define SQLITE_DIRECTONLY       0x000080000
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+#define SQLITE_SUBTYPE          0x000100000
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*
 ** CAPI3REF: Deprecated Functions
@@ -6507,6 +6512,7 @@ struct sqlite3_module {
   int (*xShadowName)(const char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int access_flag;
+  char *systable_lock;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 

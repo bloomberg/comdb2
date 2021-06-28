@@ -2499,9 +2499,11 @@ static sqlite3_module jsonEachModule = {
   0,                         /* xSavepoint */
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
-  0,                         /* xShadowName */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  0,                         /* xShadowName */
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  0                          /* xShadowName */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -2530,9 +2532,11 @@ static sqlite3_module jsonTreeModule = {
   0,                         /* xSavepoint */
   0,                         /* xRelease */
   0,                         /* xRollbackTo */
-  0,                         /* xShadowName */
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+  0,                         /* xShadowName */
   .access_flag = (CDB2_ALLOW_ALL|CDB2_HIDDEN),
+#else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+  0                          /* xShadowName */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 #endif /* SQLITE_OMIT_VIRTUALTABLE */

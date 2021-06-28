@@ -75,11 +75,7 @@ static int tabIsReadOnly(Parse *pParse, Table *pTab){
     return sqlite3WritableSchema(db)==0 && pParse->nested==0;
   }
   assert( pTab->tabFlags & TF_Shadow );
-  return (db->flags & SQLITE_Defensive)!=0 
-#ifndef SQLITE_OMIT_VIRTUALTABLE
-          && db->pVtabCtx==0
-#endif
-          && db->nVdbeExec==0;
+  return sqlite3ReadOnlyShadowTables(db);
 }
 
 /*
@@ -454,7 +450,7 @@ void sqlite3DeleteFrom(
   }else
 #endif /* SQLITE_OMIT_TRUNCATE_OPTIMIZATION */
   {
-    u16 wcf = WHERE_ONEPASS_DESIRED|WHERE_DUPLICATES_OK|WHERE_SEEK_TABLE;
+    u16 wcf = WHERE_ONEPASS_DESIRED|WHERE_DUPLICATES_OK;
     if( sNC.ncFlags & NC_VarSelect ) bComplex = 1;
     wcf |= (bComplex ? 0 : WHERE_ONEPASS_MULTIROW);
     if( HasRowid(pTab) ){
@@ -490,6 +486,9 @@ void sqlite3DeleteFrom(
     assert( IsVirtual(pTab)==0 || eOnePass!=ONEPASS_MULTI );
     assert( IsVirtual(pTab) || bComplex || eOnePass!=ONEPASS_OFF );
     if( eOnePass!=ONEPASS_SINGLE ) sqlite3MultiWrite(pParse);
+    if( sqlite3WhereUsesDeferredSeek(pWInfo) ){
+      sqlite3VdbeAddOp1(v, OP_FinishSeek, iTabCur);
+    }
   
     /* Keep track of the number of rows to be deleted */
     if( memCnt ){
@@ -524,6 +523,7 @@ void sqlite3DeleteFrom(
       if( aiCurOnePass[0]>=0 ) aToOpen[aiCurOnePass[0]-iTabCur] = 0;
       if( aiCurOnePass[1]>=0 ) aToOpen[aiCurOnePass[1]-iTabCur] = 0;
       if( addrEphOpen ) sqlite3VdbeChangeToNoop(v, addrEphOpen);
+      addrBypass = sqlite3VdbeMakeLabel(pParse);
     }else{
       if( pPk ){
         /* Add the PK key for this row to the temporary table */
@@ -537,13 +537,6 @@ void sqlite3DeleteFrom(
         nKey = 1;  /* OP_DeferredSeek always uses a single rowid */
         sqlite3VdbeAddOp2(v, OP_RowSetAdd, iRowSet, iKey);
       }
-    }
-  
-    /* If this DELETE cannot use the ONEPASS strategy, this is the 
-    ** end of the WHERE loop */
-    if( eOnePass!=ONEPASS_OFF ){
-      addrBypass = sqlite3VdbeMakeLabel(pParse);
-    }else{
       sqlite3WhereEnd(pWInfo);
     }
   

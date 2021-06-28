@@ -3323,6 +3323,7 @@ static int completionNext(sqlite3_vtab_cursor *cur){
         iCol = 0;
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         pCur->j = 0;
+
         eNextPhase = COMPLETION_FUNCTIONS;
 #else /* defined(SQLITE_BUILDING_FOR_COMDB2) */
         eNextPhase = COMPLETION_EOF;
@@ -3331,13 +3332,29 @@ static int completionNext(sqlite3_vtab_cursor *cur){
       }
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
       case COMPLETION_FUNCTIONS: {
+        if( pCur->pStmt==0 ){
+          sqlite3_prepare_v2(pCur->db, 
+                  "SELECT name FROM comdb2_functions", 
+                  -1, &pCur->pStmt, 0);
+        }
+        iCol = 0;
+        pCur->j = 0;
+        eNextPhase = COMPLETION_EOF;
+        break;
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+#if defined(SQLITE_BUILDING_FOR_COMDB2_EXAMPLE)
+      /* this is example on how to add a custom list to completion */
+      case COMPLETION_CUSTOM_LIST: {
         /* NOTE: Please keep this list of functions sorted. */
         static char *cfuncs[] = {
+          "comdb2_ctxinfo()",
           "comdb2_dbname()",
           "comdb2_host()",
           "comdb2_port()",
           "comdb2_prevquerycost()",
           "comdb2_starttime()",
+          "comdb2_sysinfo()",
           "comdb2_uptime()",
           "comdb2_version()",
           "partition_info()",
@@ -6590,8 +6607,8 @@ int sqlite3_sqlar_init(
 **
 *************************************************************************
 */
-
-
+#if !defined(SQLITEEXPERT_H)
+#define SQLITEEXPERT_H 1
 
 typedef struct sqlite3expert sqlite3expert;
 
@@ -6744,7 +6761,7 @@ const char *sqlite3_expert_report(sqlite3expert*, int iStmt, int eReport);
 */
 void sqlite3_expert_destroy(sqlite3expert*);
 
-
+#endif  /* !defined(SQLITEEXPERT_H) */
 
 /************************* End ../ext/expert/sqlite3expert.h ********************/
 /************************* Begin ../ext/expert/sqlite3expert.c ******************/
@@ -8585,6 +8602,21 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
     while( rc==SQLITE_OK && SQLITE_ROW==sqlite3_step(pSql) ){
       const char *zSql = (const char*)sqlite3_column_text(pSql, 0);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+      char *coll = NULL;
+      // transform all the "collate DATACOPY" instances from:
+      // create index "$I1_792AC8AF" on "t1" ("i", "b" collate DATACOPY, "c");
+      // to 
+      // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") OPTION DATACOPY;
+      // note that there is enough space because 'collate' is 1 char longer than 'OPTION'
+      if ((coll = strstr(zSql, " collate DATACOPY"))) {
+        char *end = coll + sizeof(" collate DATACOPY") - 1;
+        while(*end != ';') {
+            *coll = *end;
+            ++coll;
+            ++end;
+        }
+        strcpy(coll, " OPTION DATACOPY;");
+      }
       int newLen = strlen(zSql) + 6;
       char *newSql = sqlite3_malloc(newLen);
       snprintf(newSql,newLen, "create temp %s", zSql+7);
