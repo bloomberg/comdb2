@@ -399,6 +399,7 @@ static unsigned long long dbqueue_get_front_genid(struct dbtable *table,
     rc = dbq_get(&iq, consumer, NULL, &fnddta, &fnddtalen, &fnddtaoff, NULL, NULL, lockid);
     if (rc == 0) {
         genid = dbq_item_genid(fnddta);
+        free(fnddta);
     } else if (rc != IX_NOTFND) {
         logmsg(LOGMSG_ERROR,
                "dbq_get_front_genid: dbq_item_genid failed "
