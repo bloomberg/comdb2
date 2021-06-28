@@ -506,7 +506,7 @@ void sqlite3DeleteFrom(
       iKey = iPk;
     }else{
       iKey = ++pParse->nMem;
-      sqlite3ExprCodeGetColumnOfTable(v, pTab, iTabCur, -1, iKey);
+      //sqlite3ExprCodeGetColumnOfTable(v, pTab, iTabCur, -1, iKey);
     }
   
     if( eOnePass!=ONEPASS_OFF ){
