@@ -1776,7 +1776,7 @@ Bitmask sqlite3WhereCodeOneLoopStart(
     }else{
       op = aStartOp[(start_constraints<<2) + (startEq<<1) + bRev];
       assert( op!=0 );
-      if( (pLoop->wsFlags & WHERE_IN_SEEKSCAN)!=0 && ALWAYS(op==OP_SeekGE) ){
+      if( (pLoop->wsFlags & WHERE_IN_SEEKSCAN)!=0 && op==OP_SeekGE ){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         // NC: Patch that introduced Bignull has not been backported yet
         //assert( regBignull==0 );
