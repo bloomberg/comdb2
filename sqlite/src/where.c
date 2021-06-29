@@ -2551,7 +2551,7 @@ static int whereLoopAddBtreeIndex(
                           ** changes "x IN (?)" into "x=?". */
       }
       if( pProbe->hasStat1 && rLogSize>=10 ){
-        LogEst M, logK, safetyMargin;
+        LogEst M, logK, x;
         /* Let:
         **   N = the total number of rows in the table
         **   K = the number of entries on the RHS of the IN operator
@@ -2574,16 +2574,25 @@ static int whereLoopAddBtreeIndex(
         */
         M = pProbe->aiRowLogEst[saved_nEq];
         logK = estLog(nIn);
-        safetyMargin = 10;  /* TUNING: extra weight for indexed IN */
-        if( M + logK + safetyMargin < nIn + rLogSize ){
+        /* TUNING      v-----  10 to bias toward indexed IN */
+        x = M + logK + 10 - (nIn + rLogSize);
+        if( x>=0 ){
           WHERETRACE(0x40,
-            ("Scan preferred over IN operator on column %d of \"%s\" (%d<%d)\n",
-             saved_nEq, pProbe->zName, M+logK+10, nIn+rLogSize));
+            ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d) "
+             "prefers indexed lookup\n",
+             saved_nEq, M, logK, nIn, rLogSize, x));
+        }else if( x < -nInMul ){
+          WHERETRACE(0x40,
+            ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d"
+             " nInMul=%d) prefers skip-scan\n",
+             saved_nEq, M, logK, nIn, rLogSize, x, nInMul));
           pNew->wsFlags |= WHERE_IN_SEEKSCAN;
         }else{
           WHERETRACE(0x40,
-            ("IN operator preferred on column %d of \"%s\" (%d>=%d)\n",
-             saved_nEq, pProbe->zName, M+logK+10, nIn+rLogSize));
+            ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d"
+             " nInMul=%d) prefers normal scan\n",
+             saved_nEq, M, logK, nIn, rLogSize, x, nInMul));
+          continue;
         }
       }
       pNew->wsFlags |= WHERE_COLUMN_IN;
