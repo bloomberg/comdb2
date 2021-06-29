@@ -108,11 +108,6 @@ static const char *print_compr_algo(int algo) {
 
 static void release_files(void *data, int npoints)
 {
-    logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
-    log_delete_rem_state(thedb, &log_delete_state);
-    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
-    backend_update_sync(thedb);
-
     file_entry_t *files = data;
     for (int i = 0; i < npoints; ++i) {
         free(files[i].file);
@@ -310,7 +305,7 @@ static int get_files(void **data, size_t *npoints, int archive_fmt,
                       file_pattern);
     if (rc != 0) {
         *npoints = -1;
-        return rc;
+        goto done;
     }
 
     *data = files;
@@ -335,7 +330,7 @@ static int get_files(void **data, size_t *npoints, int archive_fmt,
         if (rc == -1) {
             logmsg(LOGMSG_ERROR, "%s:%d couldn't stat %s (%s)\n", __func__,
                    __LINE__, archive_path, strerror(errno));
-            return -1;
+            goto done;
         }
         rc = read_file(archive_path, &files_tmp->content, st.st_size);
         files_tmp->content_sz = st.st_size;
@@ -346,8 +341,13 @@ static int get_files(void **data, size_t *npoints, int archive_fmt,
 
         *data = files_tmp;
         *npoints = 1;
-        return 0;
     }
+
+done:
+    logmsg(LOGMSG_INFO, "re-enabling log file deletion\n");
+    log_delete_rem_state(thedb, &log_delete_state);
+    log_delete_counter_change(thedb, LOG_DEL_REFRESH);
+    backend_update_sync(thedb);
 
     return 0;
 }
