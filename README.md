@@ -8,9 +8,6 @@ The client library provides transparent reconnect.
 Work on Comdb2 was started at Bloomberg LP in 2004 and it has been under heavy development since.
 More information about the architecture of the project can be found in our [VLDB 2016 paper](http://www.vldb.org/pvldb/vol9/p1377-scotti.pdf) and for more information on usage please look in the [Docs](https://bloomberg.github.io/comdb2/overview_home.html).
 
-[![Build](http://comdb2.s3-website-us-east-1.amazonaws.com/master.svg)](http://comdb2.s3-website-us-east-1.amazonaws.com/tests/master/detail.txt)
-
-
 ## Documentation
 
 [Comdb2 documentation](http://bloomberg.github.io/comdb2) is included in the `docs` directory. 
@@ -57,13 +54,13 @@ On every machine in the cluster:
    On CentOS 8, enable the PowerTools repository first:
 
    ```
-   dnf config-manager --set-enabled PowerTools
+   dnf config-manager --set-enabled powertools
    ```
 
    ```
    yum install -y       \
        byacc            \
-       cmake3           \
+       cmake            \
        epel-release     \
        flex             \
        gawk             \
