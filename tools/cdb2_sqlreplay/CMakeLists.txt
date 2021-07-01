@@ -6,6 +6,9 @@ include_directories(
 set(libs
   cdb2api
   cson
+  mem
+  util
+  dlmalloc
   ${PROTOBUF-C_LIBRARY}
 )
 if(WITH_SSL)
@@ -13,6 +16,8 @@ if(WITH_SSL)
 endif()
 
 list(APPEND libs ${UNWIND_LIBRARY})
+
+include_directories(${PROJECT_SOURCE_DIR}/mem)
 
 target_link_libraries(cdb2_sqlreplay ${libs})
 if(COMDB2_BUILD_STATIC)
