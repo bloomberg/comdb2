@@ -36,6 +36,9 @@
 #include <algorithm>
 #include <unistd.h>
 
+extern "C" {
+#include "mem.h"
+}
 #include "assert.h"
 #include "cdb2api.h"
 #include "cson_amalgamation_core.h"
@@ -677,6 +680,8 @@ void process_events(cdb2_hndl_tp *db, std::istream &in) {
 int main(int argc, char **argv) {
     char *dbname;
     char *filename = nullptr;
+
+    comdb2ma_init(0, 0);
 
     init_handlers();
 
