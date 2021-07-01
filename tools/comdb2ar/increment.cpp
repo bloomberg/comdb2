@@ -1,7 +1,6 @@
 #include "comdb2ar.h"
 
 #include "increment.h"
-#include "glue.h"
 #include "db_wrap.h"
 #include "serialiseerror.h"
 #include "error.h"
@@ -81,11 +80,12 @@ std::string read_serialised_sha_file() {
 bool assert_cksum_lsn(FileInfo &file, uint8_t *new_pagep, uint8_t *old_pagep, size_t pagesize) {
     uint32_t new_lsn_file = LSN(new_pagep).file;
     uint32_t new_lsn_offs = LSN(new_pagep).offset;
-    bool verify_ret;
     uint32_t new_cksum;
     bool crypto = file.get_crypto();
     bool swapped = file.get_swapped();
-    verify_checksum(new_pagep, pagesize, crypto, swapped, &verify_ret, &new_cksum);
+
+    // TODO (NC): check return
+    (void) verify_checksum(new_pagep, pagesize, crypto, swapped, &new_cksum);
 
     uint8_t cmp_arr[12];
     for (int i = 0; i < 4; ++i){
@@ -299,12 +299,11 @@ tryagain:
         }
 
         uint32_t cksum;
-        bool cksum_verified = false;
         bool crypto = file.get_crypto();
         bool swapped = file.get_swapped();
-        verify_checksum(pagebuf, pagesize, crypto, swapped,
-                            &cksum_verified, &cksum);
-        if(!cksum_verified){
+
+        if ((verify_checksum(pagebuf, pagesize, crypto, swapped, &cksum))
+            == 0) {
             if(--retry == 0) {
                 std::ostringstream ss;
                 ss << "serialise_file:page failed checksum verification";

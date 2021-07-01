@@ -278,12 +278,11 @@ reopen:
             ssize_t n = 0;
 
             while (n < bytesread && retry) {
-                bool verify_bool = false;
                 PAGE * pagep = (PAGE *) (pagebuf + n);
                 uint32_t verify_cksum;
-                verify_checksum(pagebuf + n, pagesize, file.get_crypto(), file.get_swapped(), &verify_bool, &verify_cksum);
 
-                if(verify_bool){
+                if ((verify_checksum(pagebuf + n, pagesize, file.get_crypto(),
+                                     file.get_swapped(), &verify_cksum)) == 1) {
                     // checksum verified
                     n += pagesize;
                     retry = 5;
@@ -1123,12 +1122,13 @@ void serialise_database(
             makeabs(abspath, dbdir, filename);
 
             try {
-                DB_Wrap db(abspath);
-                size_t pagesize = db.get_pagesize();
-                bool checksums = db.get_checksums();
-                bool crypto = db.get_crypto();
-                bool sparse = db.get_sparse();
-                bool swapped = db.get_swapped();
+                dbfile_info *file = dbfile_init(abspath.c_str());
+                uint32_t pagesize = dbfile_pagesize(file);
+                bool checksums = (dbfile_is_checksummed(file)) ? true : false;
+                bool crypto = (dbfile_is_encrypted(file)) ? true : false;
+                bool sparse = (dbfile_is_sparse(file)) ? true : false;
+                bool swapped = (dbfile_is_swapped(file)) ? true : false;
+                dbfile_deinit(file);
 
                 data_files.push_back(FileInfo(FileInfo::BERKDB_FILE,
                       abspath, dbdir, pagesize, checksums, crypto, sparse, do_direct_io, swapped));
@@ -1500,8 +1500,6 @@ void serialise_database(
     }
 }
 
-extern uint32_t myflip(uint32_t in);
-
 void write_incremental_file (
         const std::string &dbdir, 
         const std::string &abspath, 
@@ -1510,9 +1508,19 @@ void write_incremental_file (
 ) 
 // Write checksum/LSN information for a database file
 {
-    DB_Wrap db(abspath);
+    dbfile_info *file = dbfile_init(abspath.c_str());
+    if (!file) {
+        std::ostringstream ss;
+        ss << "Failed to open/read " << abspath << " " << strerror(errno) << std::endl;
+        throw SerialiseError(abspath, ss.str());
+    }
+
+    uint32_t pagesize = dbfile_pagesize(file);
+    uint32_t is_encrypted = dbfile_is_encrypted(file);
+    uint32_t is_swapped = dbfile_is_swapped(file);
+    dbfile_deinit(file);
+
     int flags = O_RDONLY; 
-    size_t pagesize;
     int fd;
 
     RIIA_fd fd_guard(fd);
@@ -1525,7 +1533,6 @@ void write_incremental_file (
         throw SerialiseError(abspath, ss.str());
     }
 
-    pagesize = db.get_pagesize();
     if (pagesize == 0)
         pagesize = 4096;
     size_t bufsize = pagesize;
@@ -1578,11 +1585,12 @@ void write_incremental_file (
 
         for (off_t n = 0; n < nbytes / pagesize; n++) {
             PAGE *pagep = (PAGE *) (pagebuf + (pagesize * n));
-            bool verify_bool;
             uint32_t verify_cksum;
 
-            verify_checksum(pagebuf + (pagesize * n), pagesize, db.get_crypto(), db.get_swapped(), &verify_bool, &verify_cksum);
-            if (db.get_swapped()) {
+            // TODO (NC): check return
+            (void) verify_checksum(pagebuf + (pagesize * n), pagesize,
+                                   is_encrypted, is_swapped, &verify_cksum);
+            if (is_swapped) {
                 verify_cksum = myflip(verify_cksum);
                 pagep->lsn.file = myflip(pagep->lsn.file);
                 pagep->lsn.offset = myflip(pagep->lsn.offset);

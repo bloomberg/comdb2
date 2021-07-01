@@ -10,10 +10,9 @@
 #ifndef _DB_PAGE_H_
 #define	_DB_PAGE_H_
 
-#if defined(__cplusplus)
+#ifdef __cplusplus
 extern "C" {
 #endif
-
 /*
  * DB page formats.
  *
@@ -753,7 +752,7 @@ typedef struct _rinternal {
 #define	RINTERNAL_PSIZE							\
 	(RINTERNAL_SIZE + sizeof(db_indx_t))
 
-#if defined(__cplusplus)
+#ifdef __cplusplus
 }
 #endif
 
