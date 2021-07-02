@@ -595,7 +595,7 @@ static int is_sqlite_db_init(BtCursor *pCur)
    The query is aborted if this returns non-zero.
  */
 int gbl_debug_sleep_in_sql_tick;
-static int sql_tick(struct sql_thread *thd)
+int sql_tick(struct sql_thread *thd)
 {
     struct sqlclntstate *clnt;
     int rc;
@@ -611,6 +611,8 @@ static int sql_tick(struct sql_thread *thd)
     if (clnt == NULL)
         return 0;
 
+    Pthread_mutex_lock(&clnt->sql_tick_lk);
+
     /* Increment per-clnt sqltick */
     ++clnt->sqltick;
 
@@ -618,14 +620,22 @@ static int sql_tick(struct sql_thread *thd)
         sleep(1);
 
     /* statement cancelled? done */
-    if (clnt->stop_this_statement)
-        return SQLITE_ABORT;
+    if (clnt->stop_this_statement) {
+        rc = SQLITE_ABORT;
+        goto done;
+    }
 
-    if (clnt->statement_timedout)
-        return SQLITE_LIMIT;
+    if (clnt->statement_timedout) {
+        rc = SQLITE_LIMIT;
+        goto done;
+    }
+    if (clnt->statement_timedout) {
+        rc = SQLITE_TIMEDOUT;
+        goto done;
+    }
 
     if ((rc = check_recover_deadlock(clnt)))
-        return rc;
+        goto done;
 
     if (clnt->no_transaction == 0) {
         if (((gbl_epoch_time - clnt->last_sent_row_sec) >= gbl_delay_sql_lock_release_sec) &&
@@ -642,7 +652,7 @@ static int sql_tick(struct sql_thread *thd)
             rc = recover_deadlock(thedb->bdb_env, thd, NULL, sleepms);
 
             if ((rc = check_recover_deadlock(clnt)))
-                return rc;
+                goto done;
 
             logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
@@ -652,7 +662,7 @@ static int sql_tick(struct sql_thread *thd)
             rc = recover_deadlock(thedb->bdb_env, thd, NULL, 0);
 
             if ((rc = check_recover_deadlock(clnt)))
-                return rc;
+                goto done;
 
             logmsg(LOGMSG_DEBUG, "%s recovered deadlock\n", __func__);
 
@@ -664,15 +674,21 @@ static int sql_tick(struct sql_thread *thd)
         clnt->last_check_time = gbl_epoch_time;
         if (!gbl_notimeouts && peer_dropped_connection(clnt)) {
             logmsg(LOGMSG_INFO, "Peer dropped connection\n");
-            return SQLITE_ABORT;
+            rc = SQLITE_ABORT;
+            clnt->stop_this_statement = 1;
+            goto done;
         }
     }
 
-    if (clnt->limits.maxcost && (thd->cost > clnt->limits.maxcost))
+    if (clnt->limits.maxcost && (thd->cost > clnt->limits.maxcost)) {
         /* TODO: we need a nice way to set sqlite3_errmsg() */
-        return SQLITE_LIMIT;
+        rc = SQLITE_LIMIT;
+        goto done;
+    }
 
-    return 0;
+done:
+    Pthread_mutex_unlock(&clnt->sql_tick_lk);
+    return rc;
 }
 
 pthread_key_t query_info_key;
