@@ -8613,13 +8613,21 @@ struct count_arg {
     DB *db;
     int64_t count;
     int rc;
+    /* the sql_thread struct from parent thread. sql_tick() needs it. */
+    void *sqlthd;
 };
 
+extern pthread_key_t query_info_key;
+extern int comdb2_sql_tick();
 #define UNUSED(x) ((void)(x))
 static void *db_count(void *varg)
 {
     int rc;
     struct count_arg *arg = varg;
+
+    void *sqlthd = arg->sqlthd;
+    if (sqlthd != NULL)
+        Pthread_setspecific(query_info_key, sqlthd);
 
     DBT k = {0};
     k.data = alloca(MAXKEYSZ);
@@ -8639,6 +8647,9 @@ static void *db_count(void *varg)
     }
     int64_t count = 0;
     while ((rc = dbc->c_get(dbc, &k, &v, DB_NEXT | DB_MULTIPLE_KEY)) == 0) {
+        rc = comdb2_sql_tick();
+        if (rc != 0)
+            break;
         uint8_t *kk, *vv;
         uint32_t ks, vs;
         void *bulk;
@@ -8686,8 +8697,10 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
     for (int i = 0; i < stripes; ++i) {
         args[i].db = db[i];
         if (parallel_count) {
+            args[i].sqlthd = pthread_getspecific(query_info_key);
             pthread_create(&thds[i], &attr, db_count, &args[i]);
         } else {
+            args[i].sqlthd = NULL;
             db_count(&args[i]);
         }
     }
@@ -8697,14 +8710,15 @@ int bdb_direct_count(bdb_cursor_ifn_t *cur, int ixnum, int64_t *rcnt)
         if (parallel_count) {
             pthread_join(thds[i], &ret);
         }
+
+        if (rc != 0) /* We're just waiting for all threads to exit. */
+            continue;
+
         if (args[i].rc == DB_LOCK_DEADLOCK) {
             rc = BDBERR_DEADLOCK;
-            break;
         } else if (args[i].rc != DB_NOTFOUND) {
             rc = -1;
-            break;
         }
-        rc = 0;
         count += args[i].count;
     }
     if (parallel_count) {

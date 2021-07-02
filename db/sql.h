@@ -825,6 +825,9 @@ struct sqlclntstate {
     int translevel_changed;
     int admin;
 
+    /* Grab this mutex when calling sql_tick. This is to prevent race when
+       multiple threads are working on a single clnt (parallel-count, for instance). */
+    pthread_mutex_t sql_tick_lk;
     uint32_t start_gen;
     int emitting_flag;
     int need_recover_deadlock;
