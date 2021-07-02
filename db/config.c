@@ -419,6 +419,7 @@ static char *legacy_options[] = {
     "setattr MASTER_LEASE 0",
     "setattr NET_SEND_GBLCONTEXT 1",
     "setattr SC_DONE_SAME_TRAN 0",
+    "sqlsortermaxmmapsize 268435456",
     "unnatural_types 1",
     "init_with_queue_ondisk_header off",
     "init_with_queue_compr off",
