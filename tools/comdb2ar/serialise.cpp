@@ -12,6 +12,7 @@
 #include "increment.h"
 #include "util.h"
 #include "ssl_support.h"
+#include "cdb2_constants.h"
 
 #include <cassert>
 #include <cstring>
@@ -227,7 +228,6 @@ reopen:
 #endif
     uint8_t *pagebuf = NULL;
     off_t bytesleft = st.st_size;
-    unsigned long long pageno = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
         if(posix_memalign((void**) &pagebuf, 512, bufsize))
@@ -1092,14 +1092,15 @@ void serialise_database(
                 ++it) {
             const std::string& filename(*it);
 
-            bool is_data_file = false;
-            bool is_queue_file = false;
-            bool is_queuedb_file = false;
-            std::string table_name;
+            uint8_t is_data_file = 0;
+            uint8_t is_queue_file = 0;
+            uint8_t is_queuedb_file = 0;
+            char *table_name = (char *)alloca(MAXTABLELEN);
 
             // First see if this file relates to any of our tables or queues
-            if(recognize_data_file(filename,
-                        is_data_file, is_queue_file, is_queuedb_file, table_name)) {
+            if(recognize_data_file(filename.c_str(), &is_data_file,
+                                   &is_queue_file, &is_queuedb_file,
+                                   &table_name)) {
                 if(is_data_file &&
                         table_names.find(table_name) == table_names.end()) {
                     continue;
@@ -1561,7 +1562,6 @@ void write_incremental_file (
 
     uint8_t *pagebuf = NULL;
     off_t bytesleft = uptosize;
-    unsigned long long pageno = 0;
     off_t offset = 0;
 
 #if ! defined  ( _SUN_SOURCE ) && ! defined ( _HP_SOURCE )
@@ -1680,8 +1680,10 @@ void create_partials(
     serialise_string("fingerprint.sha", sha);
 
     for (std::list<std::string>::const_iterator it  = dbdir_files.begin();  it != dbdir_files.end(); ++it) {
-        bool is_data_file, is_queue_file, is_queuedb_file;
-        std::string table;
+        uint8_t is_data_file = 0;
+        uint8_t is_queue_file = 0;
+        uint8_t is_queuedb_file = 0;
+        char *table_name = (char *)alloca(MAXTABLELEN);
 
         std::ostringstream ss;
         ss << dbdir << "/" << *it;
@@ -1699,7 +1701,8 @@ void create_partials(
             continue;
         }
 
-        if (recognize_data_file(*it, is_data_file, is_queue_file, is_queuedb_file, table) || 
+        if (recognize_data_file((*it).c_str(), &is_data_file, &is_queue_file,
+                                &is_queuedb_file, &table_name) ||
                 *it == templ_fstblk || *it == templ_llmeta || *it == templ_metadata || 
                 *it == templ_blkseq_dta || *it == templ_blkseq_freerec || *it == templ_blkseq_ix0) {
             std::ostringstream ss;

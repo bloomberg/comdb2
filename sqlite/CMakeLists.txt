@@ -189,6 +189,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}/ext/expert
   ${PROJECT_SOURCE_DIR}
   ${PROJECT_SOURCE_DIR}/util
+  ${PROJECT_SOURCE_DIR}/dbutil
   ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
@@ -222,4 +223,5 @@ endif()
 
 target_link_libraries(sqlite
   ${ARCHIVE_LIBRARY}
+  dbutil
 )

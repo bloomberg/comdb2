@@ -52,6 +52,11 @@ int verify_checksum(uint8_t *page, size_t pagesize, uint32_t is_encrypted,
                     uint32_t is_swapped, uint32_t *verify_cksum);
 int fileid(const char *, int, DBMETA *);
 uint32_t myflip(uint32_t in);
+int recognize_data_file(const char *filename, uint8_t *is_data_file,
+                        uint8_t *is_queue_file, uint8_t *is_queuedb_file,
+                        char **out_table_name);
+typedef int(*writer)(void *, uint8_t *, size_t);
+int read_write_file(dbfile_info *file, void *writer_ctx, writer w);
 
 #ifdef __cplusplus
 }

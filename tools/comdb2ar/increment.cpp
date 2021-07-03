@@ -6,6 +6,7 @@
 #include "error.h"
 #include "tar_header.h"
 #include "riia.h"
+#include "cdb2_constants.h"
 
 #include <sys/stat.h>
 #include <fstream>
@@ -454,9 +455,9 @@ void incr_deserialise_database(
         }
 
         bool is_incr_data = false;
-        bool is_data_file = false;
-        bool is_queue_file = false;
-        bool is_queuedb_file = false;
+        uint8_t is_data_file = 0;
+        uint8_t is_queue_file = 0;
+        uint8_t is_queuedb_file = 0;
 
         if(ext == "data") {
             is_incr_data = true;
@@ -473,10 +474,11 @@ void incr_deserialise_database(
             // do that yet. This way the onus is on the serialising side to get
             // the list of files right.
             if(filename.find_first_of('/') == std::string::npos) {
-                std::string table_name;
+                char *table_name = (char *)alloca(MAXTABLELEN);
 
-                if(recognize_data_file(filename, is_data_file,
-                            is_queue_file, is_queuedb_file, table_name)) {
+                if(recognize_data_file(filename.c_str(), &is_data_file,
+                                       &is_queue_file, &is_queuedb_file,
+                                       (char **)&table_name)) {
                     if(table_set.insert(table_name).second) {
                         std::clog << "Discovered table " << table_name
                             << " from data file " << filename << std::endl;

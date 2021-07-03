@@ -69,7 +69,8 @@ uint32_t crc32c(const uint8_t* buf, uint32_t sz)
 	return crc;
 }
 
-uint32_t __ham_func4(const uint8_t *k, uint32_t len)
+/* This is berk's __ham_func4(), renamed to avoid redefinition error. */
+uint32_t comdb2_ham_func4(const uint8_t *k, uint32_t len)
 {
 	uint32_t h, loop;
 

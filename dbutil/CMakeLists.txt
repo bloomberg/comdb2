@@ -7,6 +7,7 @@ set(src
 )
 add_library(dbutil ${src})
 include_directories(
+  ${PROJECT_SOURCE_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/crc32c
 )
-add_dependencies(dbutil mem)
+add_dependencies(dbutil mem crc32c)

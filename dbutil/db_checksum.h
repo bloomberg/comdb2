@@ -19,8 +19,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+#include <stdint.h>
 uint32_t crc32c(const uint8_t* buf, uint32_t sz);
-uint32_t __ham_func4(const uint8_t *key, uint32_t len);
+uint32_t comdb2_ham_func4(const uint8_t *key, uint32_t len);
 #ifdef __cplusplus
 }
 #endif

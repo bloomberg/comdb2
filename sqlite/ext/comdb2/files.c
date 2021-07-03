@@ -29,6 +29,8 @@
 #include <comdb2.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include "db_wrap.h"
+#include "cdb2_constants.h"
 
 char *comdb2_get_tmp_dir(void);
 int glob_match(const char *zStr1 /* string */, const char *zStr2 /* pattern */);
@@ -53,10 +55,12 @@ static struct log_delete_state log_delete_state;
 #define FILES_COMPR_LZ4  2
 
 typedef struct file_entry {
-    char   *file; /* Name of the file */
-    char   *dir;  /* Name of the directory */
-    void   *content;
-    size_t content_sz;
+    char    *file; /* Name of the file */
+    char    *dir;  /* Name of the directory */
+    uint8_t *content;
+    uint8_t *write_ptr;
+    size_t  size;
+    dbfile_info *info;
 } file_entry_t;
 
 typedef struct {
@@ -117,7 +121,7 @@ static void release_files(void *data, int npoints)
     free(files);
 }
 
-static int read_file(const char *path, void **buffer, size_t sz)
+static int read_file(const char *path, uint8_t **buffer, size_t sz)
 {
     int fd;
     int rc;
@@ -147,17 +151,27 @@ err:
     return -1;
 }
 
+int memory_writer(void *ctx, uint8_t *in_buf, size_t size) {
+    file_entry_t *file = ctx;
+    memcpy(file->write_ptr, in_buf, size);
+    file->write_ptr += size;
+    return 0;
+}
+
+int archive_writer(void *ctx, uint8_t *in_buf, size_t size) {
+    struct archive *a = ctx;
+    archive_write_data(a, in_buf, size);
+    return 0;
+}
+
 static int create_archive(const char *archive_path, file_entry_t *files,
                           int count, int archive_fmt, int compr_algo)
 {
     struct archive *a;
     struct archive_entry *entry;
     struct stat st;
-    char buff[8192];
     char path[4096];
     char full_path[4096];
-    int len;
-    int fd;
     int rc;
 
     a = archive_write_new();
@@ -185,18 +199,13 @@ static int create_archive(const char *archive_path, file_entry_t *files,
         archive_entry_set_perm(entry, 0600);
         archive_write_header(a, entry);
 
-        fd = open(full_path, O_RDONLY);
-        if (fd == -1) {
-            logmsg(LOGMSG_ERROR, "%s:%d %s file:%s\n", __func__, __LINE__,
-                   strerror(errno), full_path);
+        dbfile_info file = {0};
+        file.filename = full_path;
+        rc = read_write_file(&file, &a, archive_writer);
+        if (rc != 0) {
             return -1;
         }
-        len = read(fd, buff, sizeof(buff));
-        while (len > 0) {
-            archive_write_data(a, buff, len);
-            len = read(fd, buff, sizeof(buff));
-        }
-        close(fd);
+
         archive_entry_free(entry);
     }
     archive_write_close(a);
@@ -262,6 +271,25 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
         file_entry_t *f = (*files) + (*count) - 1;
         f->file = strdup(de->d_name);
 
+        uint8_t is_data_file = 0;
+        uint8_t is_queue_file = 0;
+        uint8_t is_queuedb_file = 0;
+        char *table_name = alloca(MAXTABLELEN);
+
+        if ((recognize_data_file(f->file, &is_data_file, &is_queue_file,
+                                 &is_queuedb_file, &table_name)) == 1) {
+            f->info = dbfile_init(path);
+            if (!f->info) {
+                logmsg(LOGMSG_ERROR, "%s:%d: couldn't retrieve file info\n",
+                       __FILE__, __LINE__);
+                rc = -1;
+                break;
+            }
+        } else {
+            f->info = calloc(1, sizeof(dbfile_info));
+            f->info->filename = path;
+        }
+
         // Remove the data directory prefix
         if (strcmp(dirname, thedb->basedir) == 0) {
             f->dir = strdup("");
@@ -274,11 +302,14 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
             continue;
         }
 
-        rc = read_file(path, &f->content, st.st_size);
+        f->size = st.st_size;
+        f->content = malloc(f->size);
+        f->write_ptr = f->content;
+
+        rc = read_write_file(f->info, f, memory_writer);
         if (rc == -1) {
             break;
         }
-        f->content_sz = st.st_size;
     }
 
     closedir(d);
@@ -332,8 +363,9 @@ static int get_files(void **data, size_t *npoints, int archive_fmt,
                    __LINE__, archive_path, strerror(errno));
             goto done;
         }
+
         rc = read_file(archive_path, &files_tmp->content, st.st_size);
-        files_tmp->content_sz = st.st_size;
+        files_tmp->size = st.st_size;
         files_tmp->file = strdup(archive_file_name);
         files_tmp->dir = strdup("");
 
@@ -420,7 +452,7 @@ static int filesColumn(
       break;
     case FILES_COLUMN_CONTENT:
       sqlite3_result_blob(ctx, pCur->entries[pCur->rowid].content,
-                          pCur->entries[pCur->rowid].content_sz, NULL);
+                          pCur->entries[pCur->rowid].size, NULL);
       break;
     case FILES_COLUMN_ARCHIVE_FMT:
       sqlite3_result_text(ctx, print_archive_format(pCur->archive_fmt), -1, NULL);
@@ -452,7 +484,6 @@ static int filesFilter(
   int idxNum, const char *idxStr,
   int argc, sqlite3_value **argv
 ){
-  printf("==> %s:%d\n", __func__, __LINE__);
   systbl_files_cursor *pCur = (systbl_files_cursor *)pVtabCursor;
   int i = 0;
 
