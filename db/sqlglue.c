@@ -629,10 +629,6 @@ int sql_tick(struct sql_thread *thd)
         rc = SQLITE_LIMIT;
         goto done;
     }
-    if (clnt->statement_timedout) {
-        rc = SQLITE_TIMEDOUT;
-        goto done;
-    }
 
     if ((rc = check_recover_deadlock(clnt)))
         goto done;
