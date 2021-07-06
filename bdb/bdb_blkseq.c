@@ -360,8 +360,6 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
     Pthread_mutex_lock(&bdb_state->blkseq_lk[stripe]);
     dkey.data = key;
     dkey.size = klen;
-    ddata.data = data;
-    ddata.size = datalen;
 
     now = comdb2_time_epoch();
 
@@ -382,6 +380,10 @@ int bdb_blkseq_insert(bdb_state_type *bdb_state, tran_type *tran, void *key,
             return BDBERR_MISC; /* change this??? IX_DUP == 2 == BDBERR_MISC */
         }
     }
+
+    /* Only set `ddata' after DB->get() to avoid reallocating a stack variable. */
+    ddata.data = data;
+    ddata.size = datalen;
 
     /* not found in either tree - put it in the first */
 
