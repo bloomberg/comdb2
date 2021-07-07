@@ -1155,8 +1155,8 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         tableNamePattern = (tableNamePattern == null || "".equals(tableNamePattern)) ? "%" : tableNamePattern;
 
         StringBuilder sql = new StringBuilder();
-        sql.append("select ? as TABLE_CAT,")
-            .append("      ? as TABLE_SCHEM,")
+        sql.append("select null as TABLE_CAT,")
+            .append("      null as TABLE_SCHEM,")
             .append("      name as TABLE_NAME,")
             .append("      upper(type) as TABLE_TYPE,")
             .append("      null as REMARKS,")
@@ -1188,9 +1188,7 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         if (ps != null)
             ps.close();
         ps = conn.prepareStatement(sql.toString());
-        ps.setString(1, conn.getDatabase());
-        ps.setObject(2, null);
-        ps.setString(3, tableNamePattern);
+        ps.setString(1, tableNamePattern);
 
         return ps.executeQuery();
     }
@@ -1198,19 +1196,14 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
     public ResultSet getSchemas() throws SQLException {
         if (ps != null)
             ps.close();
-        ps = conn.prepareStatement("select ? as TABLE_SCHEM, ? as TABLE_CATALOG");
-        ps.setObject(1, null);
-        ps.setString(2, conn.getDatabase());
-
+        ps = conn.prepareStatement("select null as TABLE_SCHEM, null as TABLE_CATALOG");
         return ps.executeQuery();
     }
 
     public ResultSet getCatalogs() throws SQLException {
         if (ps != null)
             ps.close();
-        ps = conn.prepareStatement("select ? as TABLE_CAT");
-        ps.setString(1, conn.getDatabase());
-
+        ps = conn.prepareStatement("select null as TABLE_CAT");
         return ps.executeQuery();
     }
 
@@ -1379,8 +1372,8 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
                     if (allownull == null)
                         allownull = "NO";
                     lh.beginRow(); // <--- begin a new row
-                    lh.addString(conn.getDatabase());
-                    lh.addString(conn.getCluster());
+                    lh.addString(null);
+                    lh.addString(null);
                     lh.addString(name);
                     lh.addString(colname);
                     lh.addInteger(0L);
@@ -1486,8 +1479,8 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         }
 
         StringBuilder q = new StringBuilder();
-        q.append("select ? as TABLE_CAT,")
-            .append("    ? as TABLE_SCHEM,")
+        q.append("select null as TABLE_CAT,")
+            .append("    null as TABLE_SCHEM,")
             .append("    tablename as TABLE_NAME,")
             .append("    columnname as COLUMN_NAME,")
             .append("    0 as DATA_TYPE,")
@@ -1520,10 +1513,8 @@ public class Comdb2DatabaseMetaData implements DatabaseMetaData {
         if (ps != null)
             ps.close();
         ps = conn.prepareStatement(q.toString());
-        ps.setString(1, conn.getDatabase());
-        ps.setObject(2, null);
-        ps.setString(3, tableNamePattern != null ? tableNamePattern : "%");
-        ps.setString(4, columnNamePattern != null ? columnNamePattern : "%");
+        ps.setString(1, tableNamePattern != null ? tableNamePattern : "%");
+        ps.setString(2, columnNamePattern != null ? columnNamePattern : "%");
 
         return new Comdb2DatabaseMetaDataResultSet(ps.executeQuery());
     }
