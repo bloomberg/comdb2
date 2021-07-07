@@ -65,7 +65,7 @@ public class DatabaseMetaDataTest {
         String sche = rs.getString(2);
         String nm = rs.getString(3);
 
-        assertEquals(cat, db);
+        assertEquals(cat, null);
         assertEquals(sche, null);
         assertEquals(nm, "t1");
         assertFalse(rs.next());
@@ -202,7 +202,7 @@ public class DatabaseMetaDataTest {
         assertTrue(rs.next());
         String sche = rs.getString(1);
         String cat = rs.getString(2);
-        assertEquals(cat, db);
+        assertEquals(cat, null);
         assertEquals(sche, null);
         assertFalse(rs.next());
         rs.close();
@@ -212,7 +212,7 @@ public class DatabaseMetaDataTest {
         rs = dmd.getCatalogs();
         assertTrue(rs.next());
         String cat = rs.getString(1);
-        assertEquals(cat, db);
+        assertEquals(cat, null);
         assertFalse(rs.next());
         rs.close();
     }
