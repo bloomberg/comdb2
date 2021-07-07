@@ -60,6 +60,7 @@
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
 #include <bdb_queue.h>
+#include <bdb_int.h>
 
 #include <net.h>
 #include <net_types.h>
@@ -94,6 +95,8 @@
 #include "schemachange.h"
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
+
+static int mohit_counter = 1;
 
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
@@ -2879,6 +2882,13 @@ static int new_master_callback(void *bdb_handle, char *host,
     oldmaster = dbenv->master;
     oldgen = dbenv->gen;
     dbenv->master = host;
+    
+    logmsg(LOGMSG_USER, "new_master_callback with host=%s\n", host);
+
+    if (strncmp(dbenv->master, gbl_myhostname, 5) == 0) {
+        logmsg(LOGMSG_USER, "%s I am the master, I am not going to listen to anymore callbacks\n", __func__);
+        return 0;
+    }
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
@@ -2887,6 +2897,10 @@ static int new_master_callback(void *bdb_handle, char *host,
     }
 
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
+    logmsg(LOGMSG_USER,
+           "%s:%d new master node=%s, old master node=%s, rep_master=%s, old_gen=%u, gen=%u, rep_egen %u\n", __func__,
+           __LINE__, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL", oldgen, gen,
+           egen);
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
                "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
@@ -2916,7 +2930,10 @@ static int new_master_callback(void *bdb_handle, char *host,
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
-
+        logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_USER, "%s I woke up\n", __func__);
+        logmsg(LOGMSG_USER, "%s I think %s is master\n", __func__, bdb_whoismaster(bdb_handle));
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
