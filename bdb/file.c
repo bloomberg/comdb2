@@ -8807,7 +8807,7 @@ done:
     }
     if (fd != -1)
         close(fd);
-    os_free(buf);
+    free(buf);
 
     return rc;
 }

@@ -72,12 +72,14 @@
 #define COMDB2MA_NFRAMES 32
 #define COMDB2MA_OVERHEAD(d)                                                   \
     ((d) ? (sizeof(void *) * 36) : (sizeof(void *) << 1))
+#define COMDB2MA_HEAD_SIZE COMDB2MA_OVERHEAD(0)
 #define COMDB2MA_ALLOCATOR(p)                                                  \
     ((comdb2ma)((uintptr_t)(p)[COMDB2MA_ALLOC_OFS] & (uintptr_t)~1))
 #else
 #define COMDB2MA_ISDEBUG(p) 0
 #define COMDB2MA_SETDEBUG(p)
 #define COMDB2MA_OVERHEAD(d) (sizeof(void *) << 1)
+#define COMDB2MA_HEAD_SIZE COMDB2MA_OVERHEAD(d)
 #define COMDB2MA_ALLOCATOR(p) ((comdb2ma)((p)[COMDB2MA_ALLOC_OFS]))
 #endif /* COMDB2_OMIT_DEBUG */
 
@@ -939,6 +941,47 @@ void *comdb2_resize(comdb2ma cm, void *ptr, size_t n)
     return (void *)out;
 }
 
+
+int comdb2_posix_memalign(comdb2ma cm, void **mem, size_t alignment, size_t size)
+{
+    void **out = NULL;
+
+    int rc;
+    int d = debug_started;
+    char *fp;
+
+    if (size > COMDB2MA_MAX_MEM) {
+        /* force failure if integer overflow */
+        rc = errno = ENOMEM;
+    } else if ((rc = COMDB2MA_LOCK(cm)) == 0) {
+        if (!COMDB2MA_FULL(cm))
+            out = mspace_memalign_offset(cm->m, alignment, size + COMDB2MA_OVERHEAD(d), COMDB2MA_HEAD_SIZE);
+
+        if (out == NULL) {
+            rc = errno = ENOMEM;
+        } else {
+#ifdef PER_THREAD_MALLOC
+            ++cm->refs;
+#endif
+            out[0] = COMDB2MA_SENTINEL(out, cm);
+            out[1] = (void *)cm;
+            out -= COMDB2MA_SENTINEL_OFS;
+            if (d && cm->debug) {
+                COMDB2MA_SETDEBUG(out);
+                fp = (char*)out;
+                fp += COMDB2MA_ROUND8(comdb2_malloc_usable_size(out) + (sizeof(void *)));
+                get_stack_frames((void **)fp, cm->m);
+            }
+        }
+
+        COMDB2MA_UNLOCK(cm);
+    }
+
+    *mem = (void *)out;
+
+    return rc;
+}
+
 static void comdb2_free_int(comdb2ma cm, void *ptr)
 {
     void **p = (void **)ptr;
@@ -1118,6 +1161,12 @@ void *comdb2_resize_static(int indx, void *ptr, size_t n)
 {
     STATIC_RANGE_CHECK(indx, NULL);
     return comdb2_resize(get_area(indx), ptr, n);
+}
+
+int comdb2_posix_memalign_static(int indx, void **mem, size_t alignment, size_t size)
+{
+    STATIC_RANGE_CHECK(indx, NULL);
+    return comdb2_posix_memalign(get_area(indx), mem, alignment, size);
 }
 
 char *comdb2_strdup_static(int indx, const char *s)

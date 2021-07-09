@@ -373,6 +373,11 @@ void *comdb2_realloc(comdb2ma ma, void *ptr, size_t n);
 void *comdb2_resize(comdb2ma cm, void *ptr, size_t n);
 
 /*
+** Allocate aligned memory
+*/
+int comdb2_posix_memalign(comdb2ma cm, void **mem, size_t alignment, size_t size);
+
+/*
 ** Comdb2ma free.
 **
 ** comdb2_free doesn't need a comdb2ma parameter. The allocator address is kept
@@ -520,6 +525,11 @@ void *comdb2_realloc_static(int indx, void *ptr, size_t n);
 ** resize in a static allocator.
 */
 void *comdb2_resize_static(int indx, void *ptr, size_t n);
+
+/*
+** memalign in a static allocator.
+*/
+int comdb2_posix_memalign_static(int indx, void **memptr, size_t alignment, size_t size);
 
 /* Just an alias. */
 #define comdb2_free_static comdb2_free

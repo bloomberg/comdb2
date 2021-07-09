@@ -516,6 +516,11 @@ void* mspace_calloc(mspace msp, size_t n_elements, size_t elem_size);
 void* mspace_memalign(mspace msp, size_t alignment, size_t bytes);
 
 /*
+   Allocate `bytes' number of bytes, and align the `overhead'-th byte to `alignment' boundary.
+*/
+void* mspace_memalign_offset(mspace msp, size_t alignment, size_t bytes, size_t offset);
+
+/*
   mspace_independent_calloc behaves as independent_calloc, but
   operates within the given space.
 */
