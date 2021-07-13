@@ -96,8 +96,6 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
 
-static int mohit_counter = 1;
-
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
@@ -2873,6 +2871,8 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
 {
+    logmsg(LOGMSG_DEBUG, "new_master_callback: on thread %d\n", (int)pthread_self());
+
     ++gbl_master_changes;
     struct dbenv *dbenv;
     char *oldmaster, *newmaster;
@@ -2884,11 +2884,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     dbenv->master = host;
     
     logmsg(LOGMSG_USER, "new_master_callback with host=%s\n", host);
-
-    if (strncmp(dbenv->master, gbl_myhostname, 5) == 0) {
-        logmsg(LOGMSG_USER, "%s I am the master, I am not going to listen to anymore callbacks\n", __func__);
-        return 0;
-    }
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
@@ -2930,10 +2925,20 @@ static int new_master_callback(void *bdb_handle, char *host,
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
-        logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
-        sleep(30);
-        logmsg(LOGMSG_USER, "%s I woke up\n", __func__);
-        logmsg(LOGMSG_USER, "%s I think %s is master\n", __func__, bdb_whoismaster(bdb_handle));
+        char *who_master = NULL;
+        do {
+          logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
+          sleep(30);
+          logmsg(LOGMSG_USER, "%s I woke up\n", __func__);
+          bdb_get_rep_master(bdb_handle, &who_master, NULL, NULL);
+
+          logmsg(LOGMSG_USER, "%s I think %s is master\n", __func__,
+                 who_master);
+        } while ((who_master == NULL) || (who_master == gbl_myhostname));
+
+        logmsg(LOGMSG_USER, "%s Got out of the loop with %s as master \n",
+               __func__, who_master);
+
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
