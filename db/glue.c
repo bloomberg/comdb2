@@ -96,6 +96,8 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
 
+static int mohit_counter = 1;
+
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
@@ -2925,6 +2927,7 @@ static int new_master_callback(void *bdb_handle, char *host,
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
+<<<<<<< HEAD
         char *who_master = NULL;
         do {
           logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
@@ -2939,6 +2942,12 @@ static int new_master_callback(void *bdb_handle, char *host,
         logmsg(LOGMSG_USER, "%s Got out of the loop with %s as master \n",
                __func__, who_master);
 
+=======
+        logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
+        sleep(30);
+        logmsg(LOGMSG_USER, "%s I woke up\n", __func__);
+        logmsg(LOGMSG_USER, "%s I think %s is master\n", __func__, bdb_whoismaster(bdb_handle));
+>>>>>>> 1155df7693bbc5888caf906e752fc3ffeb6c53c9
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
     } else {
