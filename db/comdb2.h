@@ -824,6 +824,7 @@ struct dbenv {
 
     char *master; /*current master node, from callback*/
     int gen;      /*election generation for current master node*/
+    int egen;     /*last election generation for which I received callback */
 
     int cacheszkb;
     int cacheszkbmin;

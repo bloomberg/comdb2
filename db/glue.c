@@ -96,8 +96,6 @@
 #include "db_access.h" /* gbl_check_access_controls */
 #include "txn_properties.h"
 
-static int mohit_counter = 1;
-
 int (*comdb2_ipc_master_set)(char *host) = 0;
 
 /* ixrc != -1 is incorrect. Could be IX_PASTEOF or IX_EMPTY.
@@ -2869,12 +2867,13 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
     return -1;
 }
 
+int gbl_skip_callbacks_counter = 20;
+int gbl_skip_callbacks_delay = 30;
+
 /* callback to report new master */
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
 {
-    logmsg(LOGMSG_DEBUG, "new_master_callback: on thread %d\n", (int)pthread_self());
-
     ++gbl_master_changes;
     struct dbenv *dbenv;
     char *oldmaster, *newmaster;
@@ -2884,8 +2883,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     oldmaster = dbenv->master;
     oldgen = dbenv->gen;
     dbenv->master = host;
-    
-    logmsg(LOGMSG_USER, "new_master_callback with host=%s\n", host);
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
@@ -2898,12 +2895,31 @@ static int new_master_callback(void *bdb_handle, char *host,
            "%s:%d new master node=%s, old master node=%s, rep_master=%s, old_gen=%u, gen=%u, rep_egen %u\n", __func__,
            __LINE__, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL", oldgen, gen,
            egen);
+
+    if ((oldmaster == gbl_myhostname) && gbl_skip_callbacks_counter != 0) {
+        logmsg(LOGMSG_USER, "%s:%d skipping callback counter value is %u \n", __func__, __LINE__,
+               gbl_skip_callbacks_counter);
+        sleep(gbl_skip_callbacks_delay);
+        --gbl_skip_callbacks_counter;
+        return 0;
+    }
+
+    if (dbenv->egen >= egen) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d received %s prev callback for %d, new callback for %d. new master node=%s, old master "
+               "node=%s, rep_master=%s, old_gen=%u, gen=%u ",
+               __func__, __LINE__, dbenv->egen == egen ? "a duplicate callback" : "a callback out of order", dbenv->egen,
+               egen, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL", oldgen, gen);
+    }
+
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
                "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
                __func__, __LINE__, host ? host : "NULL",
                newmaster ? newmaster : "NULL", egen);
     dbenv->gen = gen;
+    dbenv->egen = egen;
+
     /*this is only used when handle not established yet. */
     if (host == gbl_myhostname) {
 
@@ -2927,19 +2943,19 @@ static int new_master_callback(void *bdb_handle, char *host,
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
         /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
-        char *who_master = NULL;
-        do {
-          logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
-          sleep(30);
-          logmsg(LOGMSG_USER, "%s I woke up\n", __func__);
-          bdb_get_rep_master(bdb_handle, &who_master, NULL, NULL);
-
-          logmsg(LOGMSG_USER, "%s I think %s is master\n", __func__,
-                 who_master);
-        } while ((who_master == NULL) || (who_master == gbl_myhostname));
-
-        logmsg(LOGMSG_USER, "%s Got out of the loop with %s as master \n",
-               __func__, who_master);
+//        char *who_master = NULL;
+//        do {
+//          logmsg(LOGMSG_USER, "%s I am just going to sleep\n", __func__);
+//          sleep(30);
+//          logmsg(LOGMSG_USER, "%s I woke up\n", __func__);
+//          bdb_get_rep_master(bdb_handle, &who_master, NULL, NULL);
+//
+//          logmsg(LOGMSG_USER, "%s I think %s is master\n", __func__,
+//                 who_master);
+//        } while ((who_master == NULL) || (who_master == gbl_myhostname));
+//
+//        logmsg(LOGMSG_USER, "%s Got out of the loop with %s as master \n",
+//               __func__, who_master);
 
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;
