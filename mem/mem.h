@@ -42,6 +42,7 @@ XMACRO_COMDB2MA(COMDB2MA_STATIC_DFP_DECNUMBER,  "dfp_decNumber",    0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_PROTOBUF,       "protobuf",         0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_SCHEMACHANGE,   "schemachange",     0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_STATIC_LUA,            "lua",              0, 0) \
+XMACRO_COMDB2MA(COMDB2MA_STATIC_CSON,           "cson",             0, 0) \
 XMACRO_COMDB2MA(COMDB2MA_COUNT,                 NULL,               0, 0)
 
 #define XMACRO_COMDB2MA(idx, name, size, cap) idx,
