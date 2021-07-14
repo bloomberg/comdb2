@@ -1969,8 +1969,52 @@ static int _generate_new_shard_name_wrapper(timepart_view_t *view,
     struct errstat xerr = {0};
     int rc;
 
+    /* normally, for a partition with retention 4 (for example), 
+     * which is not yet full following the creation, the shards are 
+     * in like:
+     * "original_table", or
+     * "shard1, original_table", or
+     * "shard2, shard1, original_table". 
+     * (order is from newest to oldest shard).
+     *
+     * So the next shard to be rolled in is always view->nshards (3 here)
+     *
+     * For a full partition, shards are like
+     * "shard3, shard2, shard1, original_table", or
+     * "shard4, shard3, shard2, shard1", or
+     * "shard0, shard4, shard3, shard2", or
+     * "shard1, shard0, shard4, shard3", or
+     * "shard2, shard1, shard0, shard4", or
+     * "shard3, shard2, shard1, shard0"
+     *
+     * The next shard for this is always (newest shard # + 1) % retention
+     *
+     * BUT! Corner case: if we increase the retention of a full partition, the 
+     * next shards depends on the configuration.
+     *
+     * We know that we only allow rollout in configurations:
+     * "shard3, shard2, shard1, original_table", or
+     * "shard4, shard3, shard2, shard1", or
+     * "shard3, shard2, shard1, shard0"
+     *
+     * The next shard depends of the case:
+     * "shard3, shard2, shard1, original_table" -> view->nshards!
+     * "shard4, shard3, shard2, shard1", -> (newest shard # + 1) % retention
+     * "shard3, shard2, shard1, shard0" -> (newest shard # + 1) % retention
+     *
+     * So to get the newest shard, we can check of the oldest shard is the
+     * original table (i.e. it doesn't start with '$'), and if it is next 
+     * shard is view->nshards.  Otherwise is (newest shard # + 1) % retention
+     *
+     * NOTE: test2min is special, it will not support increasing at this point
+     * so the old condition to check if partition has all shards works 
+     * (view->retention == view->nshards)
+     */
+
     /* extract the next id to be used */
-    if (view->nshards == retention) {
+    if (view->shards[view->nshards-1].tblname[0] == '$' || 
+        unlikely(view->period == VIEW_PARTITION_TEST2MIN &&
+                 view->retention == view->nshards)) {
         nextNum = _extract_shardname_index(
             view->shards[0].tblname, view->shard0name, NULL,
             view->period == VIEW_PARTITION_TEST2MIN);
@@ -2433,13 +2477,27 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
    if(view->retention < retention) 
    {
        /* increasing the retention only works if the shard configuration is in a
-          special ordering so that recovering still works */
+          special ordering so that recovering still works;
+          examples where increasing is possible (retention  =  4):
+          2, 1, orig_table
+          3, 2, 1, orig_table
+          3, 2, 1, 0
+          4, 3, 2, 1
+          examples where increasing it is not possible
+          0, 3, 2, 1
+          1, 0, 3, 2
+          2, 1, 0, 3
+          While in theory it would be possible to increase the retention in the
+          last set of examples, this would violate the assumption that the shard
+          numbers are rotating in order and that is used to proper recover when
+          master switches/crashes during a rollout sequence
+        */
        if (view->nshards == view->retention &&
            strcasecmp(view->shard0name,
                       view->shards[view->nshards - 1].tblname) != 0 &&
-           view->shards[0].tblname[0] == '$' &&
-           view->shards[0].tblname[1] != '0' &&
-           view->shards[0].tblname[1] != '1') {
+           view->shards[view->nshards-1].tblname[0] == '$' &&
+           view->shards[view->nshards-1].tblname[1] != '0' &&
+           view->shards[view->nshards-1].tblname[1] != '1') {
            errstat_set_strf(
                err, "Partition %s retention cannot be increased at this time!",
                name);
