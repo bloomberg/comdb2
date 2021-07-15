@@ -951,7 +951,8 @@ enum {
 };
 
 typedef int (*bdb_queue_stats_callback_t)(int consumern, size_t item_length,
-                                          unsigned int epoch,
+                                          unsigned int newest_epoch,
+                                          unsigned int oldest_epoch,
                                           unsigned int depth, void *userptr);
 
 int bdb_queuedb_stats(bdb_state_type *bdb_state,
@@ -962,8 +963,9 @@ typedef int (*bdb_queue_walk_callback_t)(int consumern, size_t item_length,
                                          unsigned int epoch, void *userptr);
 
 int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
-                   bdb_queue_walk_callback_t callback, tran_type *tran,
+                   bdb_queue_walk_callback_t callback, tran_type *tran, int limit,
                    void *userptr, int *bdberr);
+int bdb_queue_oldest_epoch(bdb_state_type *bdb_state, tran_type *tran, time_t *epoch, int *bdberr);
 
 /* debug aid - dump the entire queue */
 int bdb_queue_dump(bdb_state_type *bdb_state, FILE *out, int *bdberr);

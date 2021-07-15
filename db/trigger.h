@@ -14,7 +14,8 @@ struct consumer_base {
 struct consumer_stat {
     int has_stuff;
     size_t first_item_length;
-    time_t epoch;
+    time_t newest_epoch;
+    time_t oldest_epoch;
     int depth;
 };
 

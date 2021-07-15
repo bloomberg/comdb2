@@ -636,7 +636,7 @@ int bdb_queuedb_stats(bdb_state_type *bdb_state,
     DBC *dbcp2 = NULL;
     uint8_t ver = 0;
     size_t item_length = 0;
-    unsigned int epoch = 0, first_seq = 0, last_seq = 0;
+    unsigned int first_epoch = 0, last_epoch = 0, first_seq = 0, last_seq = 0;
     struct bdb_queue_found_seq qfnd_odh;
     uint8_t *p_buf, *p_buf_end;
     int consumern = 0;
@@ -698,7 +698,7 @@ chk_db_first_rc:
     p_buf_end = p_buf + dbt_data.size;
     p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
     first_seq = qfnd_odh.seq;
-    epoch = qfnd_odh.epoch;
+    first_epoch = qfnd_odh.epoch;
     item_length = dbt_data.size;
 
     rc = bdb_cget_unpack(bdb_state, dbcp2, &dbt_key, &dbt_data, &ver, DB_LAST);
@@ -732,9 +732,10 @@ chk_db_last_rc:
     p_buf_end = p_buf + dbt_data.size;
     p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
     last_seq = qfnd_odh.seq;
+    last_epoch = qfnd_odh.epoch;
 
     if (last_seq >= first_seq)
-        callback(consumern, item_length, epoch, (last_seq - first_seq) + 1,
+        callback(consumern, item_length, first_epoch, last_epoch, (last_seq - first_seq) + 1,
                  userptr);
 
 done:
@@ -774,7 +775,7 @@ done:
 
 int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                      bdb_queue_walk_callback_t callback, tran_type *tran,
-                     void *userptr, int *bdberr)
+                     int limit, void *userptr, int *bdberr)
 {
     int rc = bdb_lock_table_read(bdb_state, tran);
     if (rc == DB_LOCK_DEADLOCK) {
@@ -794,6 +795,7 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
     DBT dbt_key = {0}, dbt_data = {0};
     DBC *dbcp = NULL;
     uint8_t ver = 0;
+    int nrecs = 0;
 
     if (gbl_debug_queuedb)
         logmsg(LOGMSG_USER, ">>> bdb_queuedb_walk %s\n", bdb_state->name);
@@ -873,6 +875,10 @@ int bdb_queuedb_walk(bdb_state_type *bdb_state, int flags, void *lastitem,
                 rc = 0;
                 break;
             }
+            nrecs++;
+            if (limit && nrecs >= limit)
+                break;
+
             rc = bdb_cget_unpack(bdb_state, dbcp, &dbt_key, &dbt_data, &ver,
                                  DB_NEXT);
         }
@@ -1418,4 +1424,80 @@ int bdb_trigger_unpause(bdb_state_type *bdb_state)
 {
     DB_ENV *dbenv = bdb_state->dbenv;
     return dbenv->trigger_unpause(dbenv, bdb_state->name);
+}
+
+int bdb_queuedb_oldest_epoch(bdb_state_type *bdb_state, tran_type *tran, time_t *epoch, int *bdberr) {
+    DB *dbs[2] = {
+            BDB_QUEUEDB_GET_DBP_ZERO(bdb_state),
+            BDB_QUEUEDB_GET_DBP_ONE(bdb_state)
+    };
+    uint8_t key[QUEUEDB_KEY_LEN] = {0};
+    DBT dbt_key = {0}, dbt_data = {0};
+    DB *db = dbs[0] ? dbs[0] : dbs[1];
+    DBC *dbc = NULL;
+    uint8_t ver = 0;
+    *bdberr = BDBERR_NOERROR;
+
+    dbt_key.data = key;
+    dbt_key.ulen = QUEUEDB_KEY_LEN;
+    dbt_key.flags = DB_DBT_USERMEM;
+    dbt_data.flags = DB_DBT_MALLOC;
+
+    int rc = db->cursor(db, tran->tid, &dbc, 0);
+    if (rc) {
+        if (rc == DB_LOCK_DEADLOCK)
+            *bdberr = BDBERR_DEADLOCK;
+        else
+            *bdberr = BDBERR_MISC;
+        return -1;
+    }
+    if (bdb_state->ondisk_header)
+        rc = bdb_cget_unpack(bdb_state, dbc, &dbt_key, &dbt_data, &ver, DB_LAST);
+    else
+        rc = dbc->c_get(dbc, &dbt_key, &dbt_data, DB_LAST);
+    if (rc) {
+        if (rc == DB_LOCK_DEADLOCK)
+            *bdberr = BDBERR_DEADLOCK;
+        else if (rc == DB_NOTFOUND) {
+            *bdberr = BDBERR_DBEMPTY;
+            goto done;
+        }
+        else
+            *bdberr = BDBERR_MISC;
+        goto done;
+    }
+
+    // found last entry, decode it
+    uint8_t *p_buf = dbt_data.data, *p_buf_end = (uint8_t*) dbt_data.data + dbt_data.size;
+    if (bdb_state->ondisk_header) {
+        struct bdb_queue_found_seq qfnd_odh;
+        p_buf = (uint8_t *)queue_found_seq_get(&qfnd_odh, p_buf, p_buf_end);
+        if (p_buf)
+            *epoch = qfnd_odh.epoch;
+    } else {
+        struct bdb_queue_found qfnd;
+        p_buf = (uint8_t *) queue_found_get(&qfnd, p_buf, p_buf_end);
+        if (p_buf)
+            *epoch = qfnd.epoch;
+    }
+    if (p_buf == NULL) {
+        // failed to decode?
+        *bdberr = BDBERR_MISC;
+        goto done;
+    }
+
+done:
+    if (dbc) {
+        rc = dbc->c_close(dbc);
+        if (rc == DB_LOCK_DEADLOCK) {
+            *bdberr = BDBERR_DEADLOCK;
+        }
+        else if (rc) {
+            *bdberr = BDBERR_MISC;
+        }
+    }
+
+    free(dbt_data.data);
+
+    return *bdberr == BDBERR_NOERROR ? 0 : -1;
 }

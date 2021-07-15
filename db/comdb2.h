@@ -2524,11 +2524,14 @@ unsigned long long dbq_item_genid(const struct bdb_queue_found *dta);
 typedef int (*dbq_walk_callback_t)(int consumern, size_t item_length,
                                    unsigned int epoch, void *userptr);
 typedef int (*dbq_stats_callback_t)(int consumern, size_t item_length,
-                                    unsigned int epoch, unsigned int depth,
+                                    unsigned int newest_epoch, 
+                                    unsigned int oldest_epoch, 
+                                    unsigned int depth,
                                     void *userptr);
 
-int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback,
+int dbq_walk(struct ireq *iq, int flags, dbq_walk_callback_t callback, int limit, 
              tran_type *tran, void *userptr);
+int dbq_oldest_epoch(struct ireq *iq, tran_type *tran, time_t *epoch);
 int dbq_odh_stats(struct ireq *iq, dbq_stats_callback_t callback,
                   tran_type *tran, void *userptr);
 int dbq_dump(struct dbtable *db, FILE *out);
@@ -3589,4 +3592,6 @@ void destroy_password_cache();
 
 extern int gbl_rcache;
 
+
+extern int gbl_queue_walk_limit;
 #endif /* !INCLUDED_COMDB2_H */

@@ -2076,6 +2076,12 @@ REGISTER_TUNABLE("physrep_exit_on_invalid_logstream", "Exit physreps on invalid 
 REGISTER_TUNABLE("debug_sleep_in_sql_tick", "Sleep for a second in sql tick.  (Default: off)", TUNABLE_BOOLEAN,
                  &gbl_debug_sleep_in_sql_tick, INTERNAL | EXPERIMENTAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("queue_walk_limit",
+                 "When walking queues for metrics, stop after this many elements.  "
+                 "(Default: 10000)",
+                 TUNABLE_INTEGER, &gbl_queue_walk_limit, EXPERIMENTAL, NULL, NULL, NULL, NULL);
+
+
 REGISTER_TUNABLE("debug_consumer_lock",
                  "Enable debug-trace for consumer lock.  "
                  "(Default: off)",
@@ -2116,5 +2122,6 @@ REGISTER_TUNABLE("sc_logbytes_per_second",
 REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",
                  TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
+
 
 #endif /* _DB_TUNABLES_H */
