@@ -86,6 +86,232 @@ extern int gbl_is_physical_replicant;
  */
 
 /*
+ * __db_new_cq --
+ *  Create a new cursor queue, add it to the thread-local hashtable,
+ *  and hold its lock. __db_release_cq() must be called later to
+ *  unlock the cursor queue.
+ *
+ * PUBLIC: DB_CQ *__db_new_cq __P((DB *));
+ */
+DB_CQ *
+__db_new_cq(db)
+	DB *db;
+{
+	DB_CQ *cq;
+	DB_CQ_HASH *h = pthread_getspecific(tlcq_key);
+
+	cq = malloc(sizeof(DB_CQ));
+	cq->db = db;
+	TAILQ_INIT(&cq->aq);
+	TAILQ_INIT(&cq->fq);
+
+	/* If a thread-local hashtable does not exist, create one as well. */
+	if (h == NULL) {
+		h = malloc(sizeof(DB_CQ_HASH));
+		h->h = hash_init(sizeof(DB *));
+		Pthread_mutex_init(&h->lk, NULL);
+		Pthread_setspecific(tlcq_key, h);
+
+		Pthread_mutex_lock(&gbl_all_cursors.lk);
+		TAILQ_INSERT_TAIL(&gbl_all_cursors, h, links);
+		Pthread_mutex_unlock(&gbl_all_cursors.lk);
+	}
+
+	/* We cheat a bit here: The cursor queue's mutex is the thread-local
+	   hashtable's mutex. We don't need per-cursor-queue mutexes because
+	   cursor queues are accessed mostly from the same thread. */
+	cq->lk = &h->lk;
+
+	/* Hold onto its lock. */
+	Pthread_mutex_lock(cq->lk);
+
+	/* Do hash_add under the lock. */
+	hash_add(h->h, cq);
+	return (cq);
+}
+
+/*
+ * __db_acquire_cq --
+ *  Given a DB structure, lock and return its thread-local cursor queue.
+ *  __db_release_cq() must be called later to unlock the cursor queue.
+ *
+ * PUBLIC: DB_CQ *__db_acquire_cq __P((DB *));
+ */
+DB_CQ *
+__db_acquire_cq(db)
+	DB *db;
+{
+	DB_CQ *cq;
+	DB_CQ_HASH *h;
+
+	if ((h = pthread_getspecific(tlcq_key)) == NULL)
+		return NULL;
+
+	Pthread_mutex_lock(&h->lk);
+	if ((cq = hash_find(h->h, &db)) == NULL)
+		Pthread_mutex_unlock(&h->lk);
+
+	return (cq);
+}
+
+/*
+ * __db_release_cq --
+ *  Unlock the thread-local hashtable.
+ *
+ * PUBLIC: void __db_release_cq __P((DB_CQ *));
+ */
+void
+__db_release_cq(cq)
+	DB_CQ *cq;
+{
+	if (cq == NULL)
+		return;
+	Pthread_mutex_unlock(cq->lk);
+}
+
+/*
+ * __db_delete_cq --
+ *  Destroy all thread-local free cursors.
+ *  This is a pthread key destructor and is called
+ *  on thread exit.
+ *
+ * PUBLIC: void __db_delete_cq __P((void *));
+ */
+void
+__db_delete_cq(arg)
+	void *arg;
+{
+	DB_CQ_HASH *h = arg;
+	DB_CQ *cq;
+	DBC *dbc;
+	void *hashent;
+	unsigned int pos;
+
+	if (h == NULL)
+		return;
+
+	/* Destroy all free cursors */
+	Pthread_mutex_lock(&h->lk);
+	for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
+			cq = hash_next(h->h, &hashent, &pos)) {
+		/* Comdb2 shouldn't close dbhandles with active cursors */
+		DB_ASSERT(TAILQ_EMPTY(&cq->aq));
+		while ((dbc = TAILQ_FIRST(&cq->fq)) != NULL) {
+			TAILQ_REMOVE(&cq->fq, dbc, links);
+			(void)__db_c_destroy(dbc);
+		}
+		free(cq);
+	}
+	Pthread_mutex_unlock(&h->lk);
+
+	/* Remove the thread-local hashtable from the global list. */
+	Pthread_mutex_lock(&gbl_all_cursors.lk);
+	TAILQ_REMOVE(&gbl_all_cursors, h, links);
+	Pthread_mutex_unlock(&gbl_all_cursors.lk);
+
+	/* And now it's safe to free the plhash and its mutex. */
+	hash_free(h->h);
+	Pthread_mutex_destroy(&h->lk);
+	free(h);
+}
+
+/*
+ * __db_close_cq --
+ *  Close all free cursors matching the DB structure across all threads.
+ *
+ * PUBLIC: int __db_close_cq __P((DB *));
+ */
+int
+__db_close_cq(db)
+	DB *db;
+{
+	DBC *dbc;
+	DB_CQ *cq;
+	DB_CQ_HASH *h;
+	void *hashent;
+	unsigned int pos;
+	int ret, t_ret;
+
+	ret = 0;
+
+	Pthread_mutex_lock(&gbl_all_cursors.lk);
+	TAILQ_FOREACH(h, &gbl_all_cursors, links) {
+		Pthread_mutex_lock(&h->lk);
+		for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
+				cq = hash_next(h->h, &hashent, &pos)) {
+			if (db != cq->db)
+				continue;
+
+			/* Comdb2 shouldn't close dbhandles with active cursors */
+			DB_ASSERT(TAILQ_EMPTY(&cq->aq));
+
+			while ((dbc = TAILQ_FIRST(&cq->fq)) != NULL) {
+				TAILQ_REMOVE(&cq->fq, dbc, links);
+				if ((t_ret = __db_c_destroy(dbc)) != 0) {
+					if (ret == 0)
+						ret = t_ret;
+					break;
+				}
+			}
+		}
+		Pthread_mutex_unlock(&h->lk);
+	}
+	Pthread_mutex_unlock(&gbl_all_cursors.lk);
+	return (ret);
+}
+
+/*
+ * __db_lock_aq --
+ *  Lock active queue and return the 1st active cursor.
+ *  This handles both per-thread and per-DB queues.
+ *
+ * PUBLIC: DBC *__db_lock_aq __P((DB *, DB *, DB_CQ **));
+ */
+DBC *
+__db_lock_aq(db, ldb, cqp)
+	DB *db;
+	DB *ldb;
+	DB_CQ **cqp;
+{
+	DBC *dbc;
+	DB_ENV *dbenv;
+	DB_CQ *cq;
+	
+	dbenv = db->dbenv;
+
+	if (ldb->use_tlcq) {
+		*cqp = cq = __db_acquire_cq(ldb);
+		dbc = (cq == NULL) ? NULL : TAILQ_FIRST(&cq->aq);
+	} else {
+		MUTEX_THREAD_LOCK(dbenv, db->mutexp);
+		dbc = TAILQ_FIRST(&ldb->active_queue);
+	}
+
+	return (dbc);
+}
+
+/*
+ * __db_unlock_aq --
+ *  Unlock active queue.
+ *  This handles both per-thread and per-DB queues.
+ *
+ * PUBLIC: void __db_unlock_aq __P((DB *, DB *, DB_CQ *));
+ */
+void
+__db_unlock_aq(db, ldb, cq)
+	DB *db;
+	DB *ldb;
+	DB_CQ *cq;
+{
+	DB_ENV *dbenv = db->dbenv;
+
+	if (ldb->use_tlcq)
+		__db_release_cq(cq);
+	else
+		MUTEX_THREAD_UNLOCK(dbenv, db->mutexp);
+}
+
+/*
  * __db_master_open --
  *	Open up a handle on a master database.
  *
@@ -892,16 +1118,20 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 	    (t_ret = __db_sync(dbp)) != 0 && ret == 0)
 		ret = t_ret;
 
-	/* Comdb2 shouldn't close dbhandles with active cursors */
-	DB_ASSERT(TAILQ_FIRST(&dbp->active_queue) == NULL);
+	if (dbp->use_tlcq) {
+		if ((t_ret = __db_close_cq(dbp)) != 0 && (ret == 0))
+			ret = t_ret;
+	} else {
+		/* Comdb2 shouldn't close dbhandles with active cursors */
+		DB_ASSERT(TAILQ_FIRST(&dbp->active_queue) == NULL);
 
-	while ((dbc = TAILQ_FIRST(&dbp->free_queue)) != NULL)
-		if ((t_ret = __db_c_destroy(dbc)) != 0) {
-			if (ret == 0)
-				ret = t_ret;
-			break;
-		}
-
+		while ((dbc = TAILQ_FIRST(&dbp->free_queue)) != NULL)
+			if ((t_ret = __db_c_destroy(dbc)) != 0) {
+				if (ret == 0)
+					ret = t_ret;
+				break;
+			}
+	}
 
 	/*
 	 * Close any outstanding join cursors.  Join cursors destroy

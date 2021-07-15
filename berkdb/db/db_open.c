@@ -93,6 +93,10 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	if (F_ISSET(dbenv, DB_ENV_THREAD))
 		LF_SET(DB_THREAD);
 
+	/* Enable thread-local cursor queues for DB_THREAD. */
+	if (LF_ISSET(DB_THREAD))
+		dbp->use_tlcq = 1;
+
 	/* Convert any DB->open flags. */
 	if (LF_ISSET(DB_RDONLY))
 		F_SET(dbp, DB_AM_RDONLY);

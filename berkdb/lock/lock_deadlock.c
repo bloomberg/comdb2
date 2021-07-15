@@ -1092,6 +1092,18 @@ __dd_build(dbenv, atype, bmp, smap, nlockers, allocp, idmap, is_replicant)
 	size_t allocSz;
 	int is_first, ret;
 
+	/* dd_gen:
+	   Since we do not loop over the active locker list to reset deadlock detector (DD)
+	   ID, we need a different method to determine whether a DD ID is valid.
+	   dd_gen is introduced for this purpose: lock region and locker have their own
+	   dd genenration numbers. In each dd_build invocation, the region's DD generation
+	   number is incremented to indicate a new deadlock detection cycle, and each
+	   waiting locker is assigned a new DD ID. As the DD goes through lock waiters and
+	   holders, it skips those whose DD generation is behind the lock region's generation.
+	 */
+
+	u_int32_t dd_gen = 0;
+
 	static u_int32_t *dd_bitmap = NULL;
 	static size_t dd_bitmap_size = 0;
 	static u_int32_t *dd_tmpmap = NULL;
@@ -1167,35 +1179,38 @@ retry:	count = region->stat.st_nlockers;
 	 */
 	id = 0;
 
-	for (DB_LOCKER *lip = SH_TAILQ_FIRST(&region->lockers, __db_locker);
-		lip != NULL; lip = SH_TAILQ_NEXT(lip, ulinks, __db_locker)) {
-		if (lip->wstatus == 1) {	/*only master lockers can be in waiting status */
-			lip->dd_id = id ++;
-			locker_info *ptr_idarr = &dd_id_array[lip->dd_id];
-			ptr_idarr->id = lip->id;
+	lock_detector(region);
 
-			ptr_idarr->tid = lip->tid;
-			ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
-			ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
-			ptr_idarr->saveme = F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
-			ptr_idarr->in_abort = (F_ISSET(lip, DB_LOCKER_INABORT) != 0);
-			ptr_idarr->tracked = (F_ISSET(lip, DB_LOCKER_TRACK) != 0);
+	dd_gen = ++region->dd_gen;
+
+	/* Now go through our waiting locker list which is much
+	   shorter than the active locker list, to assign a DD ID. */
+	for (DB_LOCKER *lip = SH_TAILQ_FIRST(&region->wlockers, __db_locker);
+			lip != NULL; lip = SH_TAILQ_NEXT(lip, wlinks, __db_locker)) {
+		lip->dd_gen = dd_gen;
+		lip->dd_id = id++;
+		locker_info *ptr_idarr = &dd_id_array[lip->dd_id];
+		ptr_idarr->id = lip->id;
+
+		ptr_idarr->tid = lip->tid;
+		ptr_idarr->killme = F_ISSET(lip, DB_LOCKER_KILLME);
+		ptr_idarr->readonly = F_ISSET(lip, DB_LOCKER_READONLY);
+		ptr_idarr->saveme = F_ISSET(lip, (DB_LOCKER_LOGICAL | DB_LOCKER_IN_LOGICAL_ABORT));
+		ptr_idarr->in_abort = (F_ISSET(lip, DB_LOCKER_INABORT) != 0);
+		ptr_idarr->tracked = (F_ISSET(lip, DB_LOCKER_TRACK) != 0);
 
 #if TEST_DEADLOCKS
-			__adjust_lockerid_priority_td(dbenv, atype, lip,
+		__adjust_lockerid_priority_td(dbenv, atype, lip,
 				lip->dd_id, dd_id_array, 0);
 #else
-			__init_lockerid_priority(dbenv, atype, lip, ptr_idarr);
+		__init_lockerid_priority(dbenv, atype, lip, ptr_idarr);
 #endif
 
-			if (verbose_deadlocks &&lip->id >DB_LOCK_MAXID)
-				logmsg(LOGMSG_USER, "Added lip %p id=%x dd_id=%x count=%u\n",
-					lip, lip->id, lip->dd_id, ptr_idarr->lcount);
-
-		} else {
-			lip->dd_id = DD_INVALID_ID;
-		}
+		if (verbose_deadlocks &&lip->id >DB_LOCK_MAXID)
+			logmsg(LOGMSG_USER, "Added lip %p id=%x dd_id=%x count=%u\n", lip, lip->id, lip->dd_id, ptr_idarr->lcount);
 	}
+
+	unlock_detector(region);
 
 	count = id;
 	nentries = ALIGN(count, 32) / 32;
@@ -1266,21 +1281,28 @@ obj_loop:
 		 * First we go through and create a bit map that
 		 * represents all the holders of this object.
 		 */
-		int has_master = 0;
+
+		DB_LOCKER *master_locker = NULL;
 
 		for (lp = SH_TAILQ_FIRST(&op->holders, __db_lock);
 			lp !=NULL; lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 			lockerp = lp->holderp;
-			has_master = 0;
+			int has_master = 0;
+
+			if (lockerp->dd_gen != dd_gen)
+				lockerp->dd_id = DD_INVALID_ID;
 
 			if (lockerp->dd_id == DD_INVALID_ID) {
 				if (lockerp->master_locker == INVALID_ROFF)	//master not in waiting status
 					continue;
-				dd = ((DB_LOCKER *)R_ADDR(&lt->reginfo,
-					lockerp->master_locker))->dd_id;
+				master_locker = (DB_LOCKER *)R_ADDR(&lt->reginfo, lockerp->master_locker);
+				dd = master_locker->dd_id;
+				if (dd != DD_INVALID_ID && master_locker->dd_gen != dd_gen)
+					dd = master_locker->dd_id = DD_INVALID_ID;
 				if (dd == DD_INVALID_ID)	//locker is not in waiting status 
 					continue;
 				lockerp->dd_id = dd;
+				lockerp->dd_gen = dd_gen;
 #if TEST_DEADLOCKS
 				__adjust_lockerid_priority_td(dbenv, atype,
 					lockerp, dd, dd_id_array, 1);
@@ -1291,7 +1313,6 @@ obj_loop:
 				if (F_ISSET(lockerp, DB_LOCKER_INABORT))
 					dd_id_array[dd].in_abort = 1;
 				has_master = 1;
-
 			} else
 				dd = lockerp->dd_id;
 			dd_id_array[dd].valid = 1;
@@ -1325,6 +1346,8 @@ look_waiters:
 			is_first = 0, lp = SH_TAILQ_NEXT(lp, links, __db_lock)) {
 			lockerp = lp->holderp;
 
+			int has_master = 0;
+
 			if (lockerp == NULL)
 				continue;
 
@@ -1342,16 +1365,20 @@ look_waiters:
 			if (expire_only)
 				continue;
 
-			int has_master = 0;
+			if (lockerp->dd_gen != dd_gen)
+				lockerp->dd_id = DD_INVALID_ID;
 
 			if (lockerp->dd_id == DD_INVALID_ID) {
 				if (lockerp->master_locker == INVALID_ROFF)	//master not in waiting status
 					continue;
-				dd = ((DB_LOCKER *)R_ADDR(&lt->reginfo,
-					lockerp->master_locker))->dd_id;
+				master_locker = (DB_LOCKER *)R_ADDR(&lt->reginfo, lockerp->master_locker);
+				dd = master_locker->dd_id;
+				if (dd != DD_INVALID_ID && master_locker->dd_gen != dd_gen)
+					dd = master_locker->dd_id = DD_INVALID_ID;
 				if (dd == DD_INVALID_ID)	//locker is not in waiting status 
 					continue;
 				lockerp->dd_id = dd;
+				lockerp->dd_gen = dd_gen;
 #if TEST_DEADLOCKS
 				__adjust_lockerid_priority_td(dbenv, atype,
 					lockerp, dd, dd_id_array, 1);
@@ -1360,7 +1387,6 @@ look_waiters:
 					lockerp, &dd_id_array[dd]);
 #endif
 				has_master = 1;
-
 			} else
 				dd = lockerp->dd_id;
 			dd_id_array[dd].valid = 1;

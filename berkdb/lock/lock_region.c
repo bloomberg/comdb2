@@ -227,6 +227,7 @@ __lock_init(dbenv, lt)
 	}
 
 	region->need_dd = 0;
+	region->dd_gen = 0;
 
 	LOCK_SET_TIME_INVALID(&region->next_timeout);
 	region->detect = DB_LOCK_NORUN;
@@ -403,6 +404,7 @@ mem_err:		__db_err(dbenv,
 
 	SH_TAILQ_INIT(&region->dd_objs);
 	SH_TAILQ_INIT(&region->lockers);
+	SH_TAILQ_INIT(&region->wlockers);
 
 	Pthread_mutex_init(&region->dd_mtx.mtx, NULL);
 	bzero(region->dd_mtx.fluff, sizeof(region->dd_mtx.fluff));

@@ -172,6 +172,7 @@ __db_cursor_check(dbp)
 	DB *ldbp;
 	DBC *dbc;
 	DB_ENV *dbenv;
+	DB_CQ *cq;
 	int found;
 
 	dbenv = dbp->dbenv;
@@ -180,15 +181,14 @@ __db_cursor_check(dbp)
 	for (found = 0, ldbp = __dblist_get(dbenv, dbp->adj_fileid);
 	    ldbp != NULL && ldbp->adj_fileid == dbp->adj_fileid;
 	    ldbp = LIST_NEXT(ldbp, dblistlinks)) {
-		MUTEX_THREAD_LOCK(dbenv, dbp->mutexp);
-		for (dbc = TAILQ_FIRST(&ldbp->active_queue);
+		for (dbc = __db_lock_aq(dbp, ldbp, &cq);
 		    dbc != NULL; dbc = TAILQ_NEXT(dbc, links)) {
 			if (IS_INITIALIZED(dbc)) {
 				found = 1;
 				break;
 			}
 		}
-		MUTEX_THREAD_UNLOCK(dbenv, dbp->mutexp);
+		__db_unlock_aq(dbp, ldbp, cq);
 		if (found == 1)
 			break;
 	}
