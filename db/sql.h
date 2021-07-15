@@ -757,6 +757,7 @@ struct sqlclntstate {
     /* read-set validation */
     CurRangeArr *arr;
     CurRangeArr *selectv_arr;
+    int selectv_rangechk; /* set to 1 to enable selectv-range-commit optimization. */
     char *prev_cost_string;
 
     int num_retry;
