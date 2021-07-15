@@ -335,11 +335,14 @@ void sql_heartbeat_cb(int fd, short what, void *arg)
     if (len || difftime(now, writer->sent_at) >= min_hb_time) {
         sql_enable_trickle(writer);
     }
+    /* elegance? */
     if (difftime(now, writer->fdb_sent_at) >= min_fdb_time && !writer->done) {
         writer->fdb_sent_at = now;
+        Pthread_mutex_unlock(&writer->wr_lock);
         fdb_heartbeats_evbuffer(writer->clnt);
+    } else {
+        Pthread_mutex_unlock(&writer->wr_lock);
     }
-    Pthread_mutex_unlock(&writer->wr_lock);
 }
 
 void sql_reset(struct sqlwriter *writer)

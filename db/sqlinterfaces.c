@@ -4294,13 +4294,13 @@ check_version:
 
 void signal_clnt_as_done(struct sqlclntstate *clnt)
 {
+    /* I keep forgetting why this doesn't work - lets try again and this time - make a note here */
+    Pthread_mutex_lock(&clnt->wait_mutex);
+    clnt->done = 1;
+    Pthread_cond_signal(&clnt->wait_cond);
+    Pthread_mutex_unlock(&clnt->wait_mutex);
     if (clnt->done_cb) {
         clnt->done_cb(clnt);
-    } else {
-        Pthread_mutex_lock(&clnt->wait_mutex);
-        clnt->done = 1;
-        Pthread_cond_signal(&clnt->wait_cond);
-        Pthread_mutex_unlock(&clnt->wait_mutex);
     }
 }
 
@@ -6810,5 +6810,9 @@ int maxquerytime_cb(struct sqlclntstate *clnt)
 
 void fdb_heartbeats_evbuffer(struct sqlclntstate * clnt)
 {
-    fdb_heartbeats(clnt);
+    Pthread_mutex_lock(&clnt->wait_mutex);
+    if (!clnt->done) {
+        fdb_heartbeats(clnt);
+    }
+    Pthread_mutex_unlock(&clnt->wait_mutex);
 }
