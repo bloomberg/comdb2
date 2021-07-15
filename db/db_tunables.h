@@ -407,6 +407,9 @@ REGISTER_TUNABLE("enable_sparse_lockerid_map",
 REGISTER_TUNABLE("enable_sp_strict_assignments", NULL, TUNABLE_INTEGER,
                  &gbl_spstrictassignments, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("return_errors_for_sp_inserts", NULL, TUNABLE_INTEGER,
+                 &gbl_returnerrorsforspinserts, READONLY | NOARG, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE(
     "enable_sq_flattening_optimization",
     "Enable subquery flattening optimization for OUTER JOINS (Default: off)",

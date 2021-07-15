@@ -93,6 +93,7 @@ pthread_t gbl_break_lua;
 int gbl_break_all_lua = 0;
 char *gbl_break_spname;
 void *debug_clnt;
+int gbl_returnerrorsforspinserts = 1;
 
 pthread_mutex_t lua_debug_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t lua_debug_cond = PTHREAD_COND_INITIALIZER;
@@ -2529,7 +2530,8 @@ static int dbtable_insert(Lua lua)
     int pos = 1;
     while (lua_next(lua, 2)) {
         lua_pushinteger(lua, pos++);
-        if ((rc = stmt_bind_int(lua, stmt, 5, 4)) != 0) goto out;
+        if ((rc = stmt_bind_int(lua, stmt, 5, 4)) != 0)
+            goto out;
         lua_pop(lua, 2);
     }
     lua_pop(lua, 1); /* Keep just dbtable on stack. */
@@ -2540,7 +2542,14 @@ static int dbtable_insert(Lua lua)
     }
     lua_end_step(sp->clnt, sp, stmt);
 
-    if (rc == SQLITE_DONE) rc = 0;
+    if (rc == SQLITE_DONE) {
+        rc = 0;
+    } else if (gbl_returnerrorsforspinserts) {
+        const char *errstr = NULL;
+        sql_check_errors(sp->clnt, sp->thd->sqldb, stmt, &errstr);
+        sp->error = strdup(errstr);
+        rc = -200;
+    }
 
 out:
     sqlite3_finalize(stmt);
@@ -6664,6 +6673,7 @@ static int emit_result(Lua L, long long *sprc, char **err)
     dbtable_t *rettab = NULL;
     long long retnum = 0;
     int retargs = lua_gettop(L);
+    char buff[256];
     for (int i = 1; i <= retargs; ++i) {
         switch (luabb_dbtype(L, i)) {
         case DBTYPES_LSTRING:
@@ -6680,10 +6690,27 @@ static int emit_result(Lua L, long long *sprc, char **err)
 
     if (rettab) dbtable_emit_int(L, rettab);
 
-    if (retnum && (retnum < -299 || retnum > -200)) retnum = -200;
+    if (gbl_returnerrorsforspinserts) {
+        SP sp = getsp(L);
+        // return sp->error if it is set
+        if (sp->error) {
+            retstr = sp->error;
+            if (retnum == 0)
+                retnum = -200;
+        }
+    }
+
+    if (retnum && (retnum < -299 || retnum > -200)) {
+        if (!retstr) {
+            snprintf(buff, sizeof(buff), "Attempt to return out of range values:%lld", retnum);
+            retstr = buff;
+        }
+        retnum = -200;
+    }
     *sprc = retnum;
 
-    if (retstr) retstr = strdup(retstr);
+    if (retstr)
+        retstr = strdup(retstr);
     *err = (char *)retstr;
 
     return 0;
