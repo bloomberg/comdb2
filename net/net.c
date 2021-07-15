@@ -72,10 +72,10 @@
 #include <bdb_net.h>
 
 #include "debug_switches.h"
-#include "comdb2_atomic.h"
 #include "thrman.h"
 #include "thread_util.h"
-#include "comdb2_atomic.h"
+#include <timer_util.h>
+#include <comdb2_atomic.h>
 
 #ifdef UDP_DEBUG
 static int curr_udp_cnt = 0;
@@ -794,7 +794,7 @@ void comdb2_nanosleep(struct timespec *req)
     do {
         sched_yield();
         gettimeofday(&now, NULL);
-        timeval_diff(&before, &now, &elapsed);
+        timersub(&now, &before, &elapsed);
     } while (timeval_cmp(&elapsed, &need) < 0);
 }
 
@@ -5836,6 +5836,8 @@ void net_end_appsock(SBUF2 *sb)
 
 void net_add_watch(SBUF2 *sb, int read_timeout, int write_timeout)
 {
+    if (!sb)
+        return;
     watchlist_node_type *watchlist_node;
     netinfo_type *netinfo_ptr;
 

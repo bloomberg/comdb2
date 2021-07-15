@@ -39,21 +39,12 @@ struct timer {
 static int ntimers = 0;
 static struct timer timers[MAXTIMERS];
 
-extern int64_t starttime;
-
 static void (*timer_func)(struct timer_parm *) = NULL;
 
 void timer_init(void (*func)(struct timer_parm *))
 {
-    int rc;
-    struct timeval tv;
-    rc = gettimeofday(&tv, NULL);
-    if (rc) {
-        logmsg(LOGMSG_FATAL, "gettimeofday rc %d %s\n", rc, strerror(errno));
-        abort();
-    }
-    starttime = tv.tv_sec * 1000 + tv.tv_usec / 1000;
     timer_func = func;
+    comdb2_time_init();
 }
 
 

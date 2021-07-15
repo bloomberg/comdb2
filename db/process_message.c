@@ -73,7 +73,6 @@ extern int gbl_rowlocks_bench_logical_rectype;
 extern unsigned long long gbl_sql_deadlock_reconstructions;
 extern unsigned long long gbl_sql_deadlock_failures;
 extern int gbl_dump_sql_dispatched;
-extern int gbl_dump_fsql_response;
 extern int gbl_time_osql;
 extern int gbl_time_fdb;
 extern int gbl_enable_cache_internal_nodes;
@@ -2721,12 +2720,7 @@ clipper_usage:
         }
         dbgflag = toknum(tok, ltok);
         gbl_dump_sql_dispatched = dbgflag;
-        if (dbgflag == 2)
-            gbl_dump_fsql_response = 1;
-        else
-            gbl_dump_fsql_response = 0;
-        logmsg(LOGMSG_USER, "sqllog %s\n",
-               (gbl_dump_sql_dispatched) ? "enabled" : "disabled");
+        logmsg(LOGMSG_USER, "sqllog %s\n", gbl_dump_sql_dispatched ? "enabled" : "disabled");
     } else if (tokcmp(tok, ltok, "sqllogtime") == 0) {
         int dbgflag;
         tok = segtok(line, lline, &st, &ltok);

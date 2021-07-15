@@ -17,23 +17,27 @@
 #include <pthread.h>
 #include <stdlib.h>
 
-#include "newsql.h"
-#include "comdb2_plugin.h"
-#include "pb_alloc.h"
-#include "sp.h"
-#include "sql.h"
-#include "reqlog.h"
-#include "comdb2_appsock.h"
-#include "comdb2_atomic.h"
-#include "str0.h"
-#include "sqloffload.h"
-#include "osqlsqlsocket.h"
-#include "sqlquery.pb-c.h"
-#include "sqlresponse.pb-c.h"
+#include <comdb2_atomic.h>
+#include <osqlsqlsocket.h>
+#include <reqlog.h>
+#include <sbuf2.h>
+#include <sp.h>
+#include <sql.h>
+#include <sqloffload.h>
+#include <str0.h>
+
+#include <newsql.h>
+
+extern int gbl_allow_incoherent_sql;
+extern int gbl_disable_skip_rows;
+extern int gbl_return_long_column_names;
+
+struct newsql_appdata {
+    NEWSQL_APPDATA_COMMON
+};
 
 static int newsql_clr_snapshot(struct sqlclntstate *);
 static int newsql_has_high_availability(struct sqlclntstate *);
-static int newsql_has_parallel_sql(struct sqlclntstate *);
 
 /*                (SERVER)                                                */
 /*  Default --> (val: 1)                                                  */
@@ -310,7 +314,7 @@ static inline int newsql_to_client_type(int newsql_type)
 static int newsql_response_int(struct sqlclntstate *clnt, const CDB2SQLRESPONSE *r, int h, int flush)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->write_impl(clnt, h, 0, r, flush);
+    return appdata->write(clnt, h, 0, r, flush);
 }
 
 static int newsql_response(struct sqlclntstate *c, const CDB2SQLRESPONSE *r, int flush)
@@ -321,7 +325,7 @@ static int newsql_response(struct sqlclntstate *c, const CDB2SQLRESPONSE *r, int
 static int newsql_send_hdr(struct sqlclntstate *clnt, int h, int s)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->write_hdr_impl(clnt, h, s);
+    return appdata->write_hdr(clnt, h, s);
 }
 
 static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
@@ -347,39 +351,6 @@ static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
     return type;
 }
 
-
-struct newsql_appdata *get_newsql_appdata(struct sqlclntstate *clnt, int ncols)
-{
-    struct newsql_appdata *appdata = clnt->appdata;
-    size_t alloc_sz;
-    if (appdata == NULL) {
-        alloc_sz = sizeof(struct newsql_appdata) + ncols * sizeof(appdata->type[0]);
-        appdata = calloc(1, alloc_sz);
-        clnt->appdata = appdata;
-        if (!appdata)
-            goto oom;
-        appdata->capacity = ncols;
-        appdata->send_intrans_response = 1;
-    } else if (appdata->capacity < ncols) {
-        size_t n = ncols + APPDATA_MINCOLS;
-        alloc_sz = sizeof(struct newsql_appdata) + n * sizeof(appdata->type[0]);
-        appdata = realloc(appdata, alloc_sz);
-        clnt->appdata = appdata;
-        if (!appdata)
-            goto oom;
-        appdata->newsql_protobuf_allocator.protobuf_allocator.allocator_data = &appdata->newsql_protobuf_allocator;
-        appdata->capacity = n;
-    }
-    appdata->count = ncols;
-    return appdata;
-oom:
-    logmsg(LOGMSG_ERROR,
-           "%s:%d failed to (re)alloc %zu bytes (errno: %d, reason: %s)\n",
-           __func__, __LINE__, alloc_sz, errno, strerror(errno));
-    return NULL;
-}
-
-extern int gbl_return_long_column_names;
 #define MAX_COL_NAME_LEN 31
 #define ADJUST_LONG_COL_NAME(n, l)                                             \
     do {                                                                       \
@@ -393,7 +364,8 @@ extern int gbl_return_long_column_names;
 static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
 {
     int ncols = column_count(clnt, stmt);
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = clnt->appdata;
+    update_col_info(&appdata->col_info, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -405,7 +377,7 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;
-        cols[i].type = appdata->type[i] = get_col_type(clnt, stmt, i);
+        cols[i].type = appdata->col_info.type[i] = get_col_type(clnt, stmt, i);
     }
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
     resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
@@ -426,7 +398,8 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
     if (stmt && column_count(clnt, stmt) != ncols) {
         return -1;
     }
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = clnt->appdata;
+    update_col_info(&appdata->col_info, ncols);
     size_t n_types = appdata->sqlquery->n_types;
     if (n_types && n_types != ncols) {
         return -2;
@@ -442,7 +415,7 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = len;
         cols[i].has_type = 1;
-        cols[i].type = appdata->type[i] =
+        cols[i].type = appdata->col_info.type[i] =
             sp_column_type(arg, i, n_types, get_col_type(clnt, stmt, i));
     }
     clnt->osql.sent_column_data = 1;
@@ -456,7 +429,8 @@ static int newsql_columns_lua(struct sqlclntstate *clnt,
 static int newsql_columns_str(struct sqlclntstate *clnt, char **names,
                               int ncols)
 {
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
+    struct newsql_appdata *appdata = clnt->appdata;
+    update_col_info(&appdata->col_info, ncols);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -466,7 +440,7 @@ static int newsql_columns_str(struct sqlclntstate *clnt, char **names,
         cols[i].value.data = (uint8_t *)name;
         cols[i].value.len = strlen(name) + 1;
         cols[i].has_type = 1;
-        cols[i].type = appdata->type[i] = SQLITE_TEXT;
+        cols[i].type = appdata->col_info.type[i] = SQLITE_TEXT;
     }
     clnt->osql.sent_column_data = 1;
     CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
@@ -494,12 +468,6 @@ static int newsql_error(struct sqlclntstate *c, char *r, int e)
     return newsql_response(c, &resp, 1);
 }
 
-static int newsql_flush(struct sqlclntstate *clnt)
-{
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->flush_impl(clnt);
-}
-
 static int newsql_save_postponed_row(struct sqlclntstate *clnt,
                                      CDB2SQLRESPONSE *resp)
 {
@@ -519,7 +487,7 @@ static int newsql_save_postponed_row(struct sqlclntstate *clnt,
 static int newsql_send_postponed_row(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->write_postponed_impl(clnt);
+    return appdata->write_postponed(clnt);
 }
 
 #define newsql_null(cols, i)                                                   \
@@ -603,8 +571,9 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
         return newsql_send_postponed_row(clnt);
     }
     int ncols = column_count(clnt, stmt);
-    struct newsql_appdata *appdata = get_newsql_appdata(clnt, ncols);
-    assert(ncols == appdata->count);
+    struct newsql_appdata *appdata = clnt->appdata;
+    update_col_info(&appdata->col_info, ncols);
+    assert(ncols == appdata->col_info.count);
     int flip = 0;
 #if BYTE_ORDER == BIG_ENDIAN
     if (appdata->sqlquery->little_endian)
@@ -635,7 +604,7 @@ static int newsql_row(struct sqlclntstate *clnt, struct response_data *arg,
                 isnulls[i] = cols[i].has_isnull ? cols[i].isnull : 0;
             continue;
         }
-        int type = appdata->type[i];
+        int type = appdata->col_info.type[i];
         switch (type) {
         case SQLITE_INTEGER: {
             int64_t i64 = column_int64(clnt, stmt, i);
@@ -755,7 +724,7 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     int ncols = arg->ncols;
-    assert(ncols == appdata->count);
+    assert(ncols == appdata->col_info.count);
     int flip = 0;
 #if BYTE_ORDER == BIG_ENDIAN
     if (appdata->sqlquery->little_endian)
@@ -772,7 +741,7 @@ static int newsql_row_lua(struct sqlclntstate *clnt, struct response_data *arg)
             newsql_null(cols, i);
             continue;
         }
-        int type = appdata->type[i];
+        int type = appdata->col_info.type[i];
         switch (type) {
         case SQLITE_INTEGER: {
             int64_t i64;
@@ -880,7 +849,7 @@ static int newsql_row_str(struct sqlclntstate *clnt, char **data, int ncols)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     UNUSED_PARAMETER(appdata); /* prod build without assert */
-    assert(ncols == appdata->count);
+    assert(ncols == appdata->col_info.count);
     CDB2SQLRESPONSE__Column cols[ncols];
     CDB2SQLRESPONSE__Column *value[ncols];
     for (int i = 0; i < ncols; ++i) {
@@ -937,7 +906,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
     case RESPONSE_ERROR_REJECT:
         return newsql_error(c, a, CDB2ERR_REJECTED);
     case RESPONSE_FLUSH:
-        return newsql_flush(c);
+        return c->plugin.flush(c);
     case RESPONSE_HEARTBEAT:
         return newsql_heartbeat(c);
     case RESPONSE_ROW:
@@ -966,7 +935,7 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 static int newsql_ping_pong(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->ping_pong_impl(clnt);
+    return appdata->ping_pong(clnt);
 }
 
 static int newsql_sp_cmd(struct sqlclntstate *clnt, void *cmd, size_t sz)
@@ -999,27 +968,19 @@ static int newsql_read_response(struct sqlclntstate *c, int t, void *r, int e)
 {
     struct newsql_appdata *appdata = c->appdata;
     switch (t) {
-    case RESPONSE_PING_PONG:
-        return newsql_ping_pong(c);
-    case RESPONSE_SP_CMD:
-        return newsql_sp_cmd(c, r, e);
-    case RESPONSE_BYTES:
-        return appdata->read_impl(c, r, e, 1);
-    default:
-        abort();
+    case RESPONSE_PING_PONG: return newsql_ping_pong(c);
+    case RESPONSE_SP_CMD: return newsql_sp_cmd(c, r, e);
+    case RESPONSE_BYTES: return appdata->read(c, r, e, 1);
+    default: abort();
     }
 }
-
-struct newsql_stmt {
-    CDB2QUERY *query;
-    char tzname[CDB2_MAX_TZNAME];
-};
 
 static void *newsql_save_stmt(struct sqlclntstate *clnt, void *arg)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     struct newsql_stmt *stmt = malloc(sizeof(struct newsql_stmt));
     stmt->query = appdata->query;
+    appdata->query = NULL;
     strncpy0(stmt->tzname, clnt->tzname, sizeof(stmt->tzname));
     return stmt;
 }
@@ -1037,13 +998,7 @@ static void *newsql_restore_stmt(struct sqlclntstate *clnt, void *arg)
 
 static void *newsql_destroy_stmt(struct sqlclntstate *clnt, void *arg)
 {
-    struct newsql_stmt *stmt = arg;
-    struct newsql_appdata *appdata = clnt->appdata;
-    if (appdata->query == stmt->query) {
-        appdata->query = NULL;
-    }
-    cdb2__query__free_unpacked(stmt->query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
-    free(stmt);
+    abort();
     return NULL;
 }
 
@@ -1214,7 +1169,6 @@ static int newsql_upd_snapshot(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
-    extern int gbl_disable_skip_rows;
     /* We need to restore send_intrans_response
        on clnt even if the snapshot info has been populated.
        However, dont't attempt to restore if client overrides
@@ -1372,52 +1326,50 @@ static int newsql_send_intrans_response(struct sqlclntstate *clnt)
     return appdata->send_intrans_response;
 }
 
-static int newsql_peer_check(struct sqlclntstate *clnt)
-{
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->peer_check_impl(clnt);
-}
-
-static int newsql_local_check(struct sqlclntstate *clnt)
-{
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->local_check_impl(clnt);
-}
-
-static int newsql_get_fileno(struct sqlclntstate *clnt)
-{
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->get_fileno_impl(clnt);
-}
-
 static int newsql_close(struct sqlclntstate *clnt)
 {
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->close_impl(clnt);
+    abort();
+    return 0;
 }
-
-static int newsql_has_ssl(struct sqlclntstate *clnt)
+static int newsql_flush(struct sqlclntstate *clnt)
 {
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->has_ssl_impl(clnt);
+    abort();
+    return 0;
 }
-
-static int newsql_has_x509(struct sqlclntstate *clnt)
+static int newsql_get_fileno(struct sqlclntstate *clnt)
 {
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->has_x509_impl(clnt);
+    abort();
+    return 0;
 }
-
 static int newsql_get_x509_attr(struct sqlclntstate *clnt, int nid, void *out, int outsz)
 {
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->get_x509_attr_impl(clnt, nid, out, outsz);
+    abort();
+    return 0;
 }
-
+static int newsql_has_ssl(struct sqlclntstate *clnt)
+{
+    abort();
+    return 0;
+}
+static int newsql_has_x509(struct sqlclntstate *clnt)
+{
+    abort();
+    return 0;
+}
+static int newsql_local_check(struct sqlclntstate *clnt)
+{
+    abort();
+    return 0;
+}
+static int newsql_peer_check(struct sqlclntstate *clnt)
+{
+    abort();
+    return 0;
+}
 static int newsql_set_timeout(struct sqlclntstate *clnt, int timeout_ms)
 {
-    struct newsql_appdata *appdata = clnt->appdata;
-    return appdata->set_timeout_impl(clnt, timeout_ms);
+    abort();
+    return 0;
 }
 
 int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
@@ -1563,7 +1515,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);
                 int timeout = strtol(sqlstr, &endp, 10);
-                appdata->set_timeout_impl(clnt, timeout);
+                clnt->plugin.set_timeout(clnt, timeout);
             } else if (strncasecmp(sqlstr, "maxquerytime", 12) == 0) {
                 sqlstr += 12;
                 sqlstr = skipws(sqlstr);
@@ -1872,7 +1824,209 @@ int newsql_heartbeat(struct sqlclntstate *clnt)
     return newsql_send_hdr(clnt, RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT, state);
 }
 
-void setup_newsql_clnt(struct sqlclntstate *clnt)
+static int do_query_on_master_check(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
+    int allow_master_exec = 0;
+    int allow_master_dbinfo = 0;
+    for (int ii = 0; ii < sql_query->n_features; ii++) {
+        switch (sql_query->features[ii]) {
+        case CDB2_CLIENT_FEATURES__ALLOW_MASTER_EXEC: allow_master_exec = 1; break;
+        case CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO: allow_master_dbinfo = 1; break;
+        case CDB2_CLIENT_FEATURES__ALLOW_QUEUING: clnt->queue_me = 1; break;
+        }
+    }
+    if (thedb->nsiblings == 1 || thedb->rep_sync == REP_SYNC_NONE || clnt->plugin.local_check(clnt)) {
+        return 0;
+    }
+    if (bdb_master_should_reject(thedb->bdb_env) && allow_master_exec == 0) {
+        ATOMIC_ADD32(gbl_masterrejects, 1);
+        if (allow_master_dbinfo) {
+            struct newsql_appdata *appdata = clnt->appdata;
+            appdata->write_dbinfo(clnt);
+        }
+        logmsg(LOGMSG_DEBUG, "Rejecting query on master\n");
+        return 1;
+    }
+    return 0;
+}
+
+static int incoh_reject(int admin, bdb_state_type *bdb_state)
+{
+    /* If this isn't from an admin session and the node isn't coherent
+       and we disallow running queries on an incoherent node, reject */
+    return (!admin && !bdb_am_i_coherent(bdb_state) && !gbl_allow_incoherent_sql);
+}
+
+int is_commit_rollback(struct sqlclntstate *clnt)
+{
+    return (strncasecmp(clnt->sql, "commit", 6) == 0) ||
+           (strncasecmp(clnt->sql, "rollback", 8) == 0);
+}
+
+int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
+{
+    for (int ii = 0; ii < sql_query->n_features; ++ii) {
+        if (CDB2_CLIENT_FEATURES__FLAT_COL_VALS == sql_query->features[ii]) {
+            clnt->flat_col_vals = 1;
+            break;
+        }
+    }
+    if (sql_query->client_info) {
+        clnt->conninfo.pid = sql_query->client_info->pid;
+        clnt->last_pid = sql_query->client_info->pid;
+    } else {
+        clnt->conninfo.pid = 0;
+        clnt->last_pid = 0;
+    }
+    if (sql_query->tzname) {
+        strncpy0(clnt->tzname, sql_query->tzname, sizeof(clnt->tzname));
+    }
+    clnt->osql.count_changes = 1;
+    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+    newsql_clr_high_availability(clnt);
+    return clnt->admin ? 0 : do_query_on_master_check(clnt, sql_query);
+}
+
+int newsql_loop(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
+{
+    clnt->sql = sql_query->sql_query;
+    clnt->added_to_hist = 0;
+    if (!in_client_trans(clnt)) {
+        bzero(&clnt->effects, sizeof(clnt->effects));
+        bzero(&clnt->log_effects, sizeof(clnt->log_effects));
+        clnt->had_errors = 0;
+        clnt->ctrl_sqlengine = SQLENG_NORMAL_PROCESS;
+    }
+    if (clnt->dbtran.mode < TRANLEVEL_SOSQL) {
+        clnt->dbtran.mode = TRANLEVEL_SOSQL;
+    }
+    clnt->osql.sent_column_data = 0;
+    clnt->stop_this_statement = 0;
+    if (sql_query->dbname && thedb->envname && strcasecmp(sql_query->dbname, thedb->envname)) {
+        char errstr[64 + (2 * MAX_DBNAME_LENGTH)];
+        snprintf(errstr, sizeof(errstr),
+                 "DB name mismatch query:%s actual:%s", sql_query->dbname,
+                 thedb->envname);
+        logmsg(LOGMSG_ERROR, "%s\n", errstr);
+        write_response(clnt, RESPONSE_ERROR, errstr, CDB2__ERROR_CODE__WRONG_DB);
+        return -1;
+    }
+    if (sql_query->client_info) {
+        if (clnt->rawnodestats) {
+            release_node_stats(clnt->argv0, clnt->stack, clnt->origin);
+            clnt->rawnodestats = NULL;
+        }
+        if (clnt->conninfo.pid && clnt->conninfo.pid != sql_query->client_info->pid) {
+            /* Different pid is coming without reset. */
+            logmsg(LOGMSG_WARN,
+                   "Multiple processes using same socket PID 1 %d PID 2 %d Host %.8x\n",
+                   clnt->conninfo.pid, sql_query->client_info->pid,
+                   sql_query->client_info->host_id);
+        }
+        clnt->conninfo.pid = sql_query->client_info->pid;
+        clnt->conninfo.node = sql_query->client_info->host_id;
+        if (clnt->argv0) {
+            free(clnt->argv0);
+            clnt->argv0 = NULL;
+        }
+        if (clnt->stack) {
+            free(clnt->stack);
+            clnt->stack = NULL;
+        }
+        if (sql_query->client_info->argv0) {
+            clnt->argv0 = strdup(sql_query->client_info->argv0);
+        }
+        if (sql_query->client_info->stack) {
+            clnt->stack = strdup(sql_query->client_info->stack);
+        }
+    }
+    if (clnt->rawnodestats == NULL) {
+        clnt->rawnodestats =
+            get_raw_node_stats(clnt->argv0, clnt->stack, clnt->origin,
+                               clnt->plugin.get_fileno(clnt));
+    }
+    if (process_set_commands(clnt, sql_query)) {
+        return -1;
+    }
+    if (gbl_rowlocks && clnt->dbtran.mode != TRANLEVEL_SERIAL) {
+        clnt->dbtran.mode = TRANLEVEL_SNAPISOL;
+    }
+    /* avoid new accepting new queries/transaction on opened connections
+     if we are incoherent (and not in a transaction). */
+    if (incoh_reject(clnt->admin, thedb->bdb_env) &&
+        (clnt->ctrl_sqlengine == SQLENG_NORMAL_PROCESS)) {
+        logmsg(LOGMSG_ERROR, "%s new query on incoherent node, dropping socket\n", __func__);
+        return -1;
+    }
+    ATOMIC_ADD32(gbl_nnewsql, 1);
+    return 0;
+}
+
+int newsql_should_dispatch(struct sqlclntstate *clnt, int *commit_rollback)
+{
+    /* return 0 => shoud dispatch */
+    *commit_rollback = is_commit_rollback(clnt);
+    return clnt->had_errors && !(*commit_rollback);
+}
+
+void newsql_reset(struct sqlclntstate *clnt)
+{
+    if (clnt->ctrl_sqlengine == SQLENG_INTRANS_STATE) {
+        /* Discard the pending transaction when receiving RESET from the
+               sockpool. We reach here if
+               1) the handle is in a open transaction, and
+               2) the last statement is a SELECT, and
+               3) the client closes the handle and donates the connection
+                  to the sockpool, and then,
+               4) the client creates a new handle and reuses the connection
+                  from the sockpool. */
+        handle_sql_intrans_unrecoverable_error(clnt);
+    }
+    reset_clnt(clnt, 0);
+    clnt->tzname[0] = '\0';
+    clnt->osql.count_changes = 1;
+    clnt->heartbeat = 1;
+    clnt->dbtran.mode = tdef_to_tranlevel(gbl_sql_tranlevel_default);
+}
+
+void free_newsql_appdata(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    cleanup_clnt(clnt);
+    if (appdata->postponed) {
+        free(appdata->postponed->row);
+        free(appdata->postponed);
+        appdata->postponed = NULL;
+    }
+    free(appdata->col_info.type);
+    free(appdata);
+}
+
+void newsql_setup_clnt(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    appdata->send_intrans_response = 1;
+    update_col_info(&appdata->col_info, 32);
     plugin_set_callbacks(clnt, newsql);
+}
+
+void newsql_effects(CDB2SQLRESPONSE *r, CDB2EFFECTS *e, struct sqlclntstate *clnt)
+{
+    r->response_type = RESPONSE_TYPE__COMDB2_INFO;
+    int verify = !clnt->verifyretry_off;
+    enum transaction_level mode = clnt->dbtran.mode;
+    if (verify && mode != TRANLEVEL_SNAPISOL && mode != TRANLEVEL_SERIAL) {
+        r->error_code = -1;
+        r->error_string = "Get effects not supported in transaction with verifyretry on";
+        return;
+    }
+    set_sent_data_to_client(clnt, 1, __func__, __LINE__);
+    struct query_effects *effects = &clnt->effects;
+    effects->num_affected = effects->num_updated + effects->num_deleted + effects->num_inserted;
+    e->num_affected = effects->num_affected;
+    e->num_selected = effects->num_selected;
+    e->num_updated = effects->num_updated;
+    e->num_deleted = effects->num_deleted;
+    e->num_inserted = effects->num_inserted;
+    r->effects = e;
 }

@@ -2231,7 +2231,7 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     sbuf2flush(ss);
     res[0] = '\0';
     sbuf2gets(res, sizeof(res), ss);
-    debugprint("rte '%s' returns res='%s'\n", name, res);
+    debugprint("rte '%s' returns res=%s", name, res);
     if (res[0] != '0') { // character '0' is indication of success
         sbuf2close(ss);
         return -1;

@@ -3105,8 +3105,8 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     LOGCOPY_32(&rectype, logdta.data);
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&log_read_time, &diff, &log_read_time);
+    timersub(&after, &before, &diff);
+    timeradd(&log_read_time, &diff, &log_read_time);
     num_log_read++;
     gettimeofday(&before, NULL);
 #endif
@@ -3313,8 +3313,8 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
     }
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&log_read_time2, &diff, &log_read_time2);
+    timersub(&after, &before, &diff);
+    timeradd(&log_read_time2, &diff, &log_read_time2);
 #endif
 
     if (!skip) {
@@ -3348,8 +3348,8 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
                 rc = 0;
 #ifdef NEWSI_STAT
                 gettimeofday(&after, NULL);
-                timeval_diff(&before, &after, &diff);
-                timeval_add(&log_apply_time, &diff, &log_apply_time);
+                timersub(&after, &before, &diff);
+                timeradd(&log_apply_time, &diff, &log_apply_time);
                 num_log_applied_opt++;
 #endif
                 goto done;
@@ -3365,8 +3365,8 @@ int bdb_osql_update_shadows_with_pglogs(bdb_cursor_impl_t *cur, DB_LSN lsn,
             }
 #ifdef NEWSI_STAT
             gettimeofday(&after, NULL);
-            timeval_diff(&before, &after, &diff);
-            timeval_add(&log_apply_time, &diff, &log_apply_time);
+            timersub(&after, &before, &diff);
+            timeradd(&log_apply_time, &diff, &log_apply_time);
             num_log_applied_unopt++;
 #endif
         }

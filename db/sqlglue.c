@@ -3164,8 +3164,6 @@ void xdump(void *b, int len)
         logmsg(LOGMSG_USER, "%02x", c[i]);
 }
 
-const char *sqlite3ErrStr(int);
-
 sqlite3_int64 sqlite3BtreeMaxRecordSize(BtCursor *pCur){
     return 2147483647; /* see vdbeMemFromBtreeResize in vdbemem.c */
 }
@@ -3477,9 +3475,6 @@ done:
     return rc;
 }
 
-/* This in needs access to internals of Btree,
- * and I don't want to expose that plague-infested
- * pile of excrement outside this module. */
 int sql_set_transaction_mode(sqlite3 *db, struct sqlclntstate *clnt, int mode)
 {
     int i;
@@ -11172,8 +11167,7 @@ void clnt_reset_cursor_hints(struct sqlclntstate *clnt)
 {
     if (clnt->hinted_cursors) {
         if (clnt->hinted_cursors_alloc > 256) {
-            clnt->hinted_cursors =
-                (int *)realloc(clnt->hinted_cursors, 256 * sizeof(int));
+            clnt->hinted_cursors = realloc(clnt->hinted_cursors, 256 * sizeof(int));
             clnt->hinted_cursors_alloc = 256;
         }
         bzero(clnt->hinted_cursors, clnt->hinted_cursors_alloc);
@@ -11183,6 +11177,15 @@ void clnt_reset_cursor_hints(struct sqlclntstate *clnt)
         clnt->hinted_cursors_used = 0;
     }
 }
+
+void clnt_free_cursor_hints(struct sqlclntstate *clnt)
+{
+    if (clnt->hinted_cursors) {
+        free(clnt->hinted_cursors);
+        clnt->hinted_cursors = NULL;
+    }
+}
+
 int fdb_packedsqlite_extract_genid(char *key, int *outlen, char *outbuf)
 {
     int hdroffset = 0;
@@ -12251,20 +12254,6 @@ static int run_verify_indexes_query(char *sql, struct schema *sc, Mem *min,
 
     if (clnt.has_sqliterow)
         *exist = 1;
-
-    clnt_reset_cursor_hints(&clnt);
-    osql_clean_sqlclntstate(&clnt);
-
-    if (clnt.dbglog) {
-        sbuf2close(clnt.dbglog);
-        clnt.dbglog = NULL;
-    }
-
-    /* XXX free logical tran?  */
-
-    clnt.dbtran.mode = TRANLEVEL_INVALID;
-    if (clnt.query_stats)
-        free(clnt.query_stats);
 
     end_internal_sql_clnt(&clnt);
 

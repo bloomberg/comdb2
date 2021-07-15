@@ -766,9 +766,6 @@ REGISTER_TUNABLE("net_portmux_register_interval",
 REGISTER_TUNABLE("net_throttle_percent", NULL, TUNABLE_INTEGER,
                  &gbl_net_throttle_percent, READONLY, NULL, percent_verify,
                  NULL, NULL);
-REGISTER_TUNABLE("nice", "If set, nice() will be called with this "
-                         "value to set the database nice level.",
-                 TUNABLE_INTEGER, &gbl_nice, READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("noblobstripe", "Disables 'blobstripe'", TUNABLE_BOOLEAN,
                  &gbl_blobstripe, INVERSE_VALUE | READONLY | NOARG, NULL, NULL,
                  NULL, NULL);
@@ -1800,6 +1797,9 @@ REGISTER_TUNABLE("skip_catchup_logic",
 
 REGISTER_TUNABLE("libevent", "Use libevent in net library. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_libevent, READONLY, 0, 0, 0, 0);
+
+REGISTER_TUNABLE("libevent_appsock", "Use libevent for appsock connections. (Default: on)",
+                 TUNABLE_BOOLEAN, &gbl_libevent_appsock, READONLY, 0, 0, 0, 0);
 
 REGISTER_TUNABLE("libevent_rte_only", "Prevent listening on TCP socket. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_libevent_rte_only, READONLY, 0, 0, 0, 0);

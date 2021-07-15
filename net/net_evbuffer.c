@@ -36,7 +36,7 @@
 #include <event2/thread.h>
 #include <event2/util.h>
 
-#include <akbufferevent.h>
+#include <akbuf.h>
 #include <akq.h>
 #include <bb_oscompat.h>
 #include <comdb2_atomic.h>
@@ -48,6 +48,7 @@
 #include <mem_net.h>
 #include <mem_override.h>
 #include <net.h>
+#include <net_appsock.h>
 #include <net_int.h>
 #include <plhash.h>
 #include <portmuxapi.h>
@@ -78,6 +79,7 @@
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
 int gbl_libevent = 1;
+int gbl_libevent_appsock = 1;
 int gbl_libevent_rte_only = 0;
 
 extern char *gbl_myhostname;
@@ -117,6 +119,12 @@ static pthread_t base_thd;
 static struct event_base *base;
 static pthread_t timer_thd;
 static struct event_base *timer_base;
+
+pthread_t appsock_timer_thd;
+struct event_base *appsock_timer_base;
+
+pthread_t appsock_rd_thd;
+struct event_base *appsock_rd_base;
 
 #define get_akq()                                                              \
     ({                                                                         \
@@ -163,19 +171,6 @@ static struct event_base *timer_base;
 #define wr_thd ({ get_wr_policy()->wrthd; })
 #define wr_base ({ get_wr_policy()->wrbase; })
 
-#undef SKIP_CHECK_THD
-
-#ifdef SKIP_CHECK_THD
-#  define check_thd(...)
-#else
-#  define check_thd(thd)                                                       \
-    if (thd != pthread_self()) {                                               \
-        fprintf(stderr, "FATAL ERROR: %s EVENT NOT DISPATCHED on " #thd "\n",  \
-                __func__);                                                     \
-        abort();                                                               \
-    }
-#endif
-
 #define check_base_thd() check_thd(base_thd)
 #define check_timer_thd() check_thd(timer_thd)
 #define check_rd_thd() check_thd(rd_thd)
@@ -202,16 +197,6 @@ static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
 static struct akq *setup_akq(char *);
 static void unix_connect(int, short, void *);
-
-#define event_once(a, b, c)                                                    \
-    ({                                                                         \
-        int erc;                                                               \
-        if ((erc = event_base_once(a, -1, EV_TIMEOUT, b, c, NULL)) != 0) {     \
-            logmsg(LOGMSG_ERROR, "%s:%d event_base_once failed\n", __func__,   \
-                   __LINE__);                                                  \
-        }                                                                      \
-        erc;                                                                   \
-    })
 
 static struct timeval reconnect_time(int retry)
 {
@@ -316,6 +301,17 @@ static int get_nonblocking_socket(void)
     return fd;
 }
 
+static size_t appsock_max_keylen;
+static hash_t *appsock_hash;
+struct appsock_info {
+    const char *key;
+    appsock_cb cb;
+};
+static struct appsock_info *get_appsock_info(const char *key)
+{
+    return hash_find_readonly(appsock_hash, &key);
+}
+
 struct host_connected_info;
 
 struct host_info {
@@ -349,7 +345,7 @@ struct event_info {
     int decomissioned;
     int got_hello;
 
-    struct akbufferevent *flush_buf;
+    struct akbuf *flush_buf;
 
     /* Write ops guarded by wr_lk */
     pthread_mutex_t wr_lk;
@@ -406,6 +402,7 @@ struct user_event_info {
 
 static LIST_HEAD(, user_event_info) user_event_list = LIST_HEAD_INITIALIZER(user_event_list);
 #endif
+
 static LIST_HEAD(, net_info) net_list = LIST_HEAD_INITIALIZER(net_list);
 static LIST_HEAD(, host_info) host_list = LIST_HEAD_INITIALIZER(host_list);
 
@@ -445,7 +442,7 @@ static void nop(int dummyfd, short what, void *data)
      * base around even if there are no events. */
 }
 
-static void *net_dispatch(void *arg)
+static void *net_dispatch_int(void *arg)
 {
     struct net_dispatch_info *n = arg;
     struct event *ev = event_new(n->base, -1, EV_PERSIST, nop, n);
@@ -469,6 +466,39 @@ static void *net_dispatch(void *arg)
     Pthread_mutex_unlock(&exit_mtx);
     return NULL;
 }
+// clang-format off
+
+/* Wrapper routines to highlight in debugger/walkbacks */
+#define WRAP_NET_DISPATCH(type)                                                \
+__attribute__((noinline))                                                      \
+static void *net_dispatch_##type(void *arg)                                    \
+{                                                                              \
+    return net_dispatch_int(arg);                                              \
+}
+
+#define WRAP_NET_DISPATCH_PAIR(type)                                           \
+__attribute__((noinline))                                                      \
+static void *net_dispatch_##type##_read(void *arg)                             \
+{                                                                              \
+    return net_dispatch_int(arg);                                              \
+}                                                                              \
+__attribute__((noinline))                                                      \
+static void *net_dispatch_##type##_write(void *arg)                            \
+{                                                                              \
+    return net_dispatch_int(arg);                                              \
+}
+
+WRAP_NET_DISPATCH(main)
+WRAP_NET_DISPATCH(appsock_rd)
+WRAP_NET_DISPATCH(appsock_timer)
+WRAP_NET_DISPATCH(timer)
+WRAP_NET_DISPATCH(read)
+WRAP_NET_DISPATCH(write)
+WRAP_NET_DISPATCH_PAIR(rep_off)
+WRAP_NET_DISPATCH_PAIR(host)
+WRAP_NET_DISPATCH_PAIR(event)
+
+// clang-format on
 
 static struct host_info *host_info_new(char *host)
 {
@@ -481,10 +511,10 @@ static struct host_info *host_info_new(char *host)
         h->per_host.akq = setup_akq(h->host);
     }
     if (reader_policy == POLICY_PER_HOST) {
-        init_base(&h->per_host.rdthd, &h->per_host.rdbase, net_dispatch, h->host);
+        init_base(&h->per_host.rdthd, &h->per_host.rdbase, net_dispatch_host_read, h->host);
     }
     if (writer_policy == POLICY_PER_HOST) {
-        init_base(&h->per_host.wrthd, &h->per_host.wrbase, net_dispatch, h->host);
+        init_base(&h->per_host.wrthd, &h->per_host.wrbase, net_dispatch_host_write, h->host);
     }
     return h;
 }
@@ -542,10 +572,10 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
         n->per_net.akq = setup_akq(n->service);
     }
     if (reader_policy == POLICY_PER_NET) {
-        init_base(&n->per_net.rdthd, &n->per_net.rdbase, net_dispatch, n->service);
+        init_base(&n->per_net.rdthd, &n->per_net.rdbase, net_dispatch_rep_off_read, n->service);
     }
     if (writer_policy == POLICY_PER_NET) {
-        init_base(&n->per_net.wrthd, &n->per_net.wrbase, net_dispatch, n->service);
+        init_base(&n->per_net.wrthd, &n->per_net.wrbase, net_dispatch_rep_off_write, n->service);
     }
     LIST_INSERT_HEAD(&net_list, n, entry);
     LIST_INIT(&n->event_list);
@@ -639,7 +669,9 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     e->host_info = h;
     e->net_info = n;
     Pthread_mutex_init(&e->wr_lk, NULL);
-    e->flush_buf = akbufferevent_new(wr_base, errorcb, flushcb, e);
+    e->flush_buf = akbuf_new(wr_base, e);
+    akbuf_set_errorcb(e->flush_buf, errorcb);
+    akbuf_set_flushcb(e->flush_buf, flushcb);
     setup_wire_hdrs(e);
     struct event_hash_entry *entry = malloc(sizeof(struct event_hash_entry));
     make_event_hash_key(entry->key, n->service, h->host);
@@ -651,10 +683,10 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
         e->per_event.akq = setup_akq(entry->key);
     }
     if (reader_policy == POLICY_PER_EVENT) {
-        init_base(&e->per_event.rdthd, &e->per_event.rdbase, net_dispatch, entry->key);
+        init_base(&e->per_event.rdthd, &e->per_event.rdbase, net_dispatch_event_read, entry->key);
     }
     if (writer_policy == POLICY_PER_EVENT) {
-        init_base(&e->per_event.wrthd, &e->per_event.wrbase, net_dispatch, entry->key);
+        init_base(&e->per_event.wrthd, &e->per_event.wrbase, net_dispatch_event_write, entry->key);
     }
     return e;
 }
@@ -940,7 +972,7 @@ static void disable_write(int dummyfd, short what, void *data)
     check_wr_thd();
     free(i);
     Pthread_mutex_lock(&e->wr_lk);
-    akbufferevent_disable(e->flush_buf);
+    akbuf_disable(e->flush_buf);
     if (e->wr_buf) {
         evbuffer_free(e->wr_buf);
         e->wr_buf = NULL;
@@ -1068,16 +1100,14 @@ static void errorcb(int what, short fd, void *arg)
     reconnect(arg);
 }
 
-static void flushcb(int total_flushed, short fd, void *arg)
+static void flushcb(int fd, short what, void *arg)
 {
     struct event_info *e = arg;
-    if (total_flushed > 0) {
-        e->sent_at = time(NULL);
-    }
+    e->sent_at = time(NULL);
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
     uint64_t max_bytes = netinfo_ptr->max_bytes;
     if (e->wr_full && max_bytes) {
-        size_t outstanding = akbufferevent_get_length(e->flush_buf);
+        size_t outstanding = akbuf_get_length(e->flush_buf);
         if (outstanding <= max_bytes * resume_lvl) {
             e->wr_full = 0;
             hprintf("RESUMING WR bytes:%zu (max:%" PRIu64 ")\n", outstanding, max_bytes);
@@ -1197,6 +1227,10 @@ static void exit_once_func(void)
     stop_base(base);
     if (dedicated_timer) {
         stop_base(timer_base);
+    }
+    if (gbl_libevent_appsock) {
+        stop_base(appsock_timer_base);
+        stop_base(appsock_rd_base);
     }
     switch (reader_policy) {
     case POLICY_NONE:
@@ -1720,7 +1754,7 @@ static void enable_write(int dummyfd, short what, void *data)
     check_base_thd();
     Pthread_mutex_lock(&e->wr_lk);
     update_event_fd(e, info->fd);
-    akbufferevent_enable(e->flush_buf, e->fd);
+    akbuf_enable(e->flush_buf, e->fd);
     if (e->wr_buf) {
         /* should be cleaned up prior i think */
         abort();
@@ -2184,29 +2218,72 @@ static void read_connect(int fd, short what, void *data)
     }
 }
 
+static void handle_appsock(netinfo_type *netinfo_ptr, struct sockaddr_in *ss, int first_byte, struct evbuffer *buf, int fd)
+{
+    int n = evbuffer_get_length(buf);
+    char req[n + 1];
+    evbuffer_copyout(buf, req, -1);
+    evbuffer_free(buf);
+    make_socket_blocking(fd);
+    SBUF2 *sb = sbuf2open(fd, 0);
+    sbuf2setbufsize(sb, netinfo_ptr->bufsz);
+    for (int i = n - 1; i > 0; --i) {
+        sbuf2ungetc(req[i], sb);
+    }
+    do_appsock(netinfo_ptr, ss, sb, first_byte);
+}
+
 static void do_read(int fd, short what, void *data)
 {
     check_base_thd();
     struct accept_info *a = data;
-    uint8_t b;
-    ssize_t n = recv(fd, &b, 1, 0);
+    struct evbuffer *buf = evbuffer_new();
+    ssize_t n = evbuffer_read(buf, fd, appsock_max_keylen);
     if (n <= 0) {
         accept_info_free(a);
         return;
     }
-    if (b) {
-        make_socket_blocking(fd);
-        SBUF2 *sb = sbuf2open(fd, 0);
-        do_appsock(a->netinfo_ptr, &a->ss, sb, b);
-        a->fd = -1;
-        accept_info_free(a);
+    uint8_t first_byte;
+    evbuffer_copyout(buf, &first_byte, 1);
+    if (first_byte == 0) {
+        evbuffer_drain(buf, 1);
+        a->buf = buf;
+        a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
+        if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
+            accept_info_free(a);
+        }
         return;
     }
-    a->buf = evbuffer_new();
-    a->need = NET_CONNECT_MESSAGE_TYPE_LEN;
-    if (event_base_once(base, fd, EV_READ, read_connect, a, NULL)) {
-        accept_info_free(a);
+    netinfo_type *netinfo_ptr = a->netinfo_ptr;
+    struct sockaddr_in ss = a->ss;
+    a->fd = -1;
+    accept_info_free(a);
+    if (!gbl_libevent_appsock) {
+        handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
+        return;
     }
+    if (should_reject_request()) {
+        evbuffer_free(buf);
+        shutdown_close(fd);
+        return;
+    }
+    struct appsock_info *info = NULL;
+    struct evbuffer_ptr b = evbuffer_search(buf, "\n", 1, NULL);
+    if (b.pos == -1) {
+        b = evbuffer_search(buf, " ", 1, NULL);
+    }
+    if (b.pos != -1) {
+        char key[b.pos + 2];
+        evbuffer_copyout(buf, key, b.pos + 1);
+        key[b.pos + 1] = 0;
+        info = get_appsock_info(key);
+    }
+    if (info) {
+        evbuffer_drain(buf, b.pos + 1);
+        info->cb(buf, fd, &ss); /* handle_newsql_request_evbuffer */
+        return;
+    }
+    handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
 static void do_accept(struct evconnlistener *listener, evutil_socket_t fd,
@@ -2562,7 +2639,7 @@ static void check_wr_full(struct event_info *e)
 
 static void flush_evbuffer(struct event_info *e)
 {
-    akbufferevent_add_buffer(e->flush_buf, e->wr_buf);
+    akbuf_add_buffer(e->flush_buf, e->wr_buf);
 }
 
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
@@ -2617,28 +2694,32 @@ static void net_send_addref(struct event_info *e, struct net_msg *msg)
     }
 }
 
-static void setup_base(void)
+/* All you base are belong to me.. */
+static void setup_bases(void)
 {
-    init_base(&base_thd, &base, net_dispatch, "main");
+    init_base(&base_thd, &base, net_dispatch_main, "main");
     if (dedicated_timer) {
-        init_base(&timer_thd, &timer_base, net_dispatch, "timer");
+        init_base(&timer_thd, &timer_base, net_dispatch_timer, "timer");
     } else {
         timer_thd = base_thd;
         timer_base = base;
     }
-
+    if (gbl_libevent_appsock) {
+        init_base(&appsock_rd_thd, &appsock_rd_base, net_dispatch_appsock_rd, "appsock_rd");
+        init_base(&appsock_timer_thd, &appsock_timer_base, net_dispatch_appsock_timer, "appsock_timer");
+    }
     if (writer_policy == POLICY_NONE) {
         single.wrthd = base_thd;
         single.wrbase = base;
     } else if (writer_policy == POLICY_SINGLE) {
-        init_base(&single.wrthd, &single.wrbase, net_dispatch, "write");
+        init_base(&single.wrthd, &single.wrbase, net_dispatch_write, "write");
     }
 
     if (reader_policy == POLICY_NONE) {
         single.rdthd = base_thd;
         single.rdbase = base;
     } else if (reader_policy == POLICY_SINGLE) {
-        init_base(&single.rdthd, &single.rdbase, net_dispatch, "read");
+        init_base(&single.rdthd, &single.rdbase, net_dispatch_read, "read");
     }
 
     if (akq_policy == POLICY_SINGLE) {
@@ -2661,9 +2742,37 @@ static void init_event_net(netinfo_type *netinfo_ptr)
     start_stop_callback_data = netinfo_ptr->callback_data;
     start_callback = netinfo_ptr->start_thread_callback;
     stop_callback = netinfo_ptr->stop_thread_callback;
-    setup_base();
+    setup_bases();
     event_hash = hash_init_str(offsetof(struct event_hash_entry, key));
     net_stop = 0;
+}
+
+struct get_hosts_info {
+    int max_hosts;
+    int num_hosts;
+    host_node_type **hosts;
+};
+
+static void get_hosts_evbuffer_impl(void *arg)
+{
+    check_base_thd();
+    struct get_hosts_info *info = arg;
+    struct net_info *n = net_info_find("replication");
+    host_node_type *me = get_host_node_by_name_ll(n->netinfo_ptr, gbl_myhostname);
+    if (!me) {
+        abort();
+    }
+    info->hosts[0] = me;
+    int i = 1;
+    struct event_info *e;
+    LIST_FOREACH(e, &n->event_list, net_list_entry) {
+        info->hosts[i] = e->host_node_ptr;
+        ++i;
+        if (i == info->max_hosts) {
+            break;
+        }
+    }
+    info->num_hosts = i;
 }
 
 #if 0
@@ -2950,4 +3059,39 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     case -3: return NET_SEND_FAIL_NOSOCK;
     default: return NET_SEND_FAIL_WRITEFAIL;
     }
+}
+
+int get_hosts_evbuffer(int max_hosts, host_node_type **hosts)
+{
+    struct get_hosts_info info = {.max_hosts = max_hosts, .hosts = hosts};
+    run_on_base(base, get_hosts_evbuffer_impl, &info);
+    return info.num_hosts;
+}
+
+int add_appsock_handler(const char *key, appsock_cb cb)
+{
+    size_t keylen = strlen(key);
+    if (keylen > 8) {
+        /* Sanity check: If appsock type is unknown, we need to fallback to sbuf2
+         * and put data back into its ungetc buffer. */
+        logmsg(LOGMSG_ERROR, "bad appsock parameter:%s\n", key);
+        return -1;
+    }
+    if (keylen > appsock_max_keylen) {
+        appsock_max_keylen = keylen;
+    }
+    if (appsock_hash == NULL) {
+        appsock_hash = hash_init_strptr(offsetof(struct appsock_info, key));
+    }
+    struct appsock_info *info = get_appsock_info(key);
+    if (info) {
+        /* Sanity check: plugins should not re-register */
+        logmsg(LOGMSG_ERROR, "attempt to re-register:%s\n", key);
+        return -1;
+    }
+    info = malloc(sizeof(struct appsock_info));
+    info->key = key;
+    info->cb = cb;
+    hash_add(appsock_hash, info);
+    return 0;
 }

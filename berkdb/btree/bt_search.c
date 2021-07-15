@@ -72,6 +72,7 @@ static const char revid[] = "$Id: bt_search.c,v 11.47 2003/06/30 17:19:35 bostic
 
 #include <logmsg.h>
 #include <locks_wrap.h>
+#include <timer_util.h>
 
 /*
  * __bam_cmp --
@@ -304,17 +305,6 @@ void
 genidsetzero(void *g)
 {
 	memset(g, 0, HASH_GENID_SIZE);
-}
-
-void
-timeval_add(struct timeval *tvp, struct timeval *uvp, struct timeval *vvp)
-{
-	vvp->tv_sec = tvp->tv_sec + uvp->tv_sec;
-	vvp->tv_usec = tvp->tv_usec + uvp->tv_usec;
-	if (vvp->tv_usec >= 1000000) {
-		vvp->tv_sec++;
-		vvp->tv_usec -= 1000000;
-	}
 }
 
 /*
@@ -913,8 +903,8 @@ found:	*exactp = 1;
 	}
 	gettimeofday(&after, NULL);
 
-	timeval_diff(&before, &after, &diff);
-	timeval_add(&(dbp->pg_hash_stat.t_bt_search),
+	timersub(&after, &before, &diff);
+	timeradd(&(dbp->pg_hash_stat.t_bt_search),
 	    &diff, &(dbp->pg_hash_stat.t_bt_search));
 
 	return (0);
@@ -931,8 +921,8 @@ notfound:
 	INTERNAL_PTR_CHECK(cp == dbc->internal);
 	gettimeofday(&after, NULL);
 
-	timeval_diff(&before, &after, &diff);
-	timeval_add(&(dbp->pg_hash_stat.t_bt_search),
+	timersub(&after, &before, &diff);
+	timeradd(&(dbp->pg_hash_stat.t_bt_search),
 	    &diff, &(dbp->pg_hash_stat.t_bt_search));
 
 err:	BT_STK_POP(cp);

@@ -1411,8 +1411,8 @@ static int insert_ltran_pglog(bdb_state_type *bdb_state,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&ltran_pglog_time, &diff, &ltran_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&ltran_pglog_time, &diff, &ltran_pglog_time);
 #endif
 
     return 0;
@@ -1982,8 +1982,8 @@ int transfer_ltran_pglogs_to_gbl(bdb_state_type *bdb_state,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logfile_pglog_time, &diff, &logfile_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logfile_pglog_time, &diff, &logfile_pglog_time);
 #endif
 
     return rc;
@@ -2904,8 +2904,8 @@ int bdb_update_ltran_pglogs_hash(void *bdb_state, void *pglogs,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&ltran_pglog_time, &diff, &ltran_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&ltran_pglog_time, &diff, &ltran_pglog_time);
 #endif
 
     return 0;
@@ -3005,8 +3005,8 @@ int bdb_update_logfile_pglogs_from_queue(void *bdb_state, unsigned char *fid,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logfile_pglog_time, &diff, &logfile_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logfile_pglog_time, &diff, &logfile_pglog_time);
 #endif
 
     return 0;
@@ -3061,8 +3061,8 @@ int bdb_update_logfile_pglogs(void *bdb_state, void *pglogs, unsigned int nkeys,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logfile_pglog_time, &diff, &logfile_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logfile_pglog_time, &diff, &logfile_pglog_time);
 #endif
 
     return 0;
@@ -3312,8 +3312,8 @@ int bdb_transfer_pglogs_to_queues(void *bdb_state, void *pglogs,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&queue_pglog_time, &diff, &queue_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&queue_pglog_time, &diff, &queue_pglog_time);
 #endif
 
     return 0;
@@ -3369,8 +3369,8 @@ static int transfer_txn_pglogs_to_queues(void *bdb_state,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&queue_pglog_time, &diff, &queue_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&queue_pglog_time, &diff, &queue_pglog_time);
 #endif
 
     return 0;
@@ -3402,8 +3402,8 @@ int bdb_update_txn_pglogs(void *bdb_state, void *pglogs_hashtbl,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&txn_pglog_time, &diff, &txn_pglog_time);
+    timersub(&after, &before, &diff);
+    timeradd(&txn_pglog_time, &diff, &txn_pglog_time);
 #endif
 
     return 0;
@@ -3452,8 +3452,8 @@ int bdb_relink_logfile_pglogs(void *bdb_state, unsigned char *fileid,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logfile_relink_time, &diff, &logfile_relink_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logfile_relink_time, &diff, &logfile_relink_time);
 #endif
 
     return 0;
@@ -3484,8 +3484,8 @@ int bdb_relink_pglogs(void *bdb_state, unsigned char *fileid, db_pgno_t pgno,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&queue_relink_time, &diff, &queue_relink_time);
+    timersub(&after, &before, &diff);
+    timeradd(&queue_relink_time, &diff, &queue_relink_time);
 #endif
 
     return 0;
@@ -7580,8 +7580,8 @@ static int bdb_copy_logfile_pglogs_to_shadow_tran(bdb_state_type *bdb_state,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&client_copy_time, &diff, &client_copy_time);
+    timersub(&after, &before, &diff);
+    timeradd(&client_copy_time, &diff, &client_copy_time);
 #endif
 
     return rc;
@@ -7783,8 +7783,8 @@ static int bdb_btree_update_shadows_with_pglogs_int(bdb_cursor_impl_t *cur,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logical_undo_time, &diff, &logical_undo_time);
 #endif
 
     if (!dirty_shadow)
@@ -8012,8 +8012,8 @@ static int update_pglogs_from_global_queues_int(
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&client_copy_time, &diff, &client_copy_time);
+    timersub(&after, &before, &diff);
+    timeradd(&client_copy_time, &diff, &client_copy_time);
 #endif
 
     return 0;
@@ -8131,8 +8131,8 @@ static int bdb_btree_update_shadows(bdb_cursor_impl_t *cur, int how,
 
 #ifdef NEWSI_STAT
     gettimeofday(&after, NULL);
-    timeval_diff(&before, &after, &diff);
-    timeval_add(&logical_undo_time, &diff, &logical_undo_time);
+    timersub(&after, &before, &diff);
+    timeradd(&logical_undo_time, &diff, &logical_undo_time);
 #endif
     if (rc)
         return rc;

@@ -43,7 +43,6 @@ extern int gbl_exit;
 extern int gbl_recovery_timestamp;
 extern int gbl_recovery_lsn_file;
 extern int gbl_recovery_lsn_offset;
-extern int gbl_upgrade_blocksql_2_socksql;
 extern int gbl_rep_node_pri;
 extern int gbl_bad_lrl_fatal;
 extern int gbl_disable_new_snapshot;

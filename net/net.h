@@ -442,7 +442,9 @@ int net_get_conntime_dump_period(netinfo_type *netinfo_ptr);
 int net_send_all(netinfo_type *, int, void **, int *, int *, int *);
 
 extern int gbl_libevent;
+extern int gbl_libevent_appsock;
 extern int gbl_libevent_rte_only;
+
 extern int gbl_net_maxconn;
 
 #if 0

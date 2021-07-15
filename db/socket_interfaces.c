@@ -44,8 +44,7 @@
 
 #include <sys/time.h>
 #include <logmsg.h>
-
-extern int active_appsock_conns;
+#include <net_appsock.h>
 
 extern int sbuf2write(char *ptr, int nbytes, SBUF2 *sb);
 
