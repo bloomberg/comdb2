@@ -2882,7 +2882,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
     oldgen = dbenv->gen;
-    dbenv->master = host;
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
@@ -2903,6 +2902,8 @@ static int new_master_callback(void *bdb_handle, char *host,
         --gbl_skip_callbacks_counter;
         return 0;
     }
+
+    dbenv->master = host;
 
     if (dbenv->egen >= egen) {
         logmsg(LOGMSG_ERROR,
