@@ -167,7 +167,9 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS = 50,
     LLMETA_VIEW = 51,                 /* User defined views */
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
-    LLMETA_SEQUENCE_VALUE = 53
+    LLMETA_SEQUENCE_VALUE = 53,
+    LLMETA_TABLE_LUXREF = 54,
+    LLMETA_TABLE_MAX_LUXREF = 55,
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -10337,7 +10339,7 @@ done:
 /* View key */
 struct llmeta_view_key {
     int file_type;
-    char view_name[LLMETA_TBLLEN]; /* View name must be NULL terminated */
+    char view_name[LLMETA_TBLLEN + 1]; /* View name must be NULL terminated */
 };
 
 /* Fetch all view names */
@@ -10435,6 +10437,145 @@ int bdb_del_view(tran_type *t, const char *view_name)
     rc = kv_del(t, &u, &bdberr);
     if (rc == 0) {
         logmsg(LOGMSG_INFO, "View '%s' deleted\n", view_name);
+    }
+    return rc;
+}
+
+/* Table luxref key */
+struct llmeta_table_luxref_key
+{
+    int file_type;                      /* LLMETA_TABLE_LUXREF */
+    char table_name[LLMETA_TBLLEN + 1]; /* Table name must be NULL terminated */
+};
+
+/* Fetch luxref for a specific table */
+int bdb_get_table_luxref(tran_type *t, const char *table_name, int *luxref)
+{
+    union
+    {
+        struct llmeta_table_luxref_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = { { 0 } };
+    int rc, bdberr, num;
+    char **luxrefs;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_TABLE_LUXREF);
+    /* Table name */
+    strncpy0(u.key.table_name, table_name, sizeof(u.key.table_name));
+
+    rc = kv_get(t, &u, sizeof(u), (void ***)&luxrefs, &num, &bdberr);
+    if (rc == 0) {
+        if (num == 1) {
+            *luxref = *((int *)luxrefs[0]);
+        } else { // logical error: there can't be more that one luxref per table
+            for (int i = 0; i < num; i++) {
+                free(luxrefs[i]);
+            }
+            *luxref = -1;
+        }
+    }
+    free(luxrefs);
+    return rc;
+}
+
+/* Add luxref for the given table */
+int bdb_put_table_luxref(tran_type *t, const char *table_name, int luxref)
+{
+    union
+    {
+        struct llmeta_table_luxref_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = { { 0 } };
+    int rc, bdberr;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_TABLE_LUXREF);
+    /* Table name */
+    strncpy0(u.key.table_name, table_name, sizeof(u.key.table_name));
+
+    rc = kv_put(t, &u, &luxref, sizeof(int), &bdberr);
+    if (rc == 0) {
+        logmsg(LOGMSG_INFO, "%s: luxref for table '%s' added\n", __func__,
+               table_name);
+    }
+    return rc;
+}
+
+/* Delete luxref for the given table */
+int bdb_del_table_luxref(tran_type *t, const char *table_name)
+{
+    union
+    {
+        struct llmeta_table_luxref_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = { { 0 } };
+    int rc, bdberr;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_TABLE_LUXREF);
+    /* Table name */
+    strncpy0(u.key.table_name, table_name, sizeof(u.key.table_name));
+
+    rc = kv_del(t, &u, &bdberr);
+    if (rc == 0) {
+        logmsg(LOGMSG_INFO, "%s: luxref for table '%s' deleted\n", __func__,
+               table_name);
+    }
+    return rc;
+}
+
+/* Maximum table luxref key */
+struct llmeta_table_max_luxref_key
+{
+    int file_type;                      /* LLMETA_TABLE_MAX_LUXREF */
+};
+
+/* Fetch max value of luxref we have even seen */
+int bdb_get_table_max_luxref(tran_type *t, int *luxref)
+{
+    union
+    {
+        struct llmeta_table_max_luxref_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = { { 0 } };
+    int rc, bdberr, num;
+    char **luxrefs;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_TABLE_MAX_LUXREF);
+
+    rc = kv_get(t, &u, sizeof(u), (void ***)&luxrefs, &num, &bdberr);
+    if (rc == 0) {
+        if (num == 1) {
+            *luxref = *((int *)luxrefs[0]);
+        } else { // logical error: there can't be more that one maximum luxref
+            for (int i = 0; i < num; i++) {
+                free(luxrefs[i]);
+            }
+            *luxref = -1;
+        }
+    }
+    free(luxrefs);
+    return rc;
+}
+
+/* Store maximum luxref we have seen so far. */
+int bdb_put_table_max_luxref(tran_type *t, int luxref)
+{
+    union
+    {
+        struct llmeta_table_max_luxref_key key;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = { { 0 } };
+    int rc, bdberr;
+
+    /* Type */
+    u.key.file_type = htonl(LLMETA_TABLE_MAX_LUXREF);
+
+    rc = kv_put(t, &u, &luxref, sizeof(int), &bdberr);
+    if (rc == 0) {
+        logmsg(LOGMSG_INFO, "%s: maximum luxref %d stored\n", __func__, luxref);
     }
     return rc;
 }

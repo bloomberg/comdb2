@@ -135,6 +135,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "string_ref.h"
 #include "sql_stmt_cache.h"
 #include "phys_rep.h"
+#include "luxref.h"
 
 #define tokdup strndup
 
@@ -5857,6 +5858,12 @@ int main(int argc, char **argv)
         }
     }
 
+    // Iterate over all comdbg tables and retrieve their luxref if saved in
+    // the llmeta or assign a new one.
+    if (!gbl_create_mode && (luxref_init(NULL /* tran */))) {
+        return 1;
+    }
+
     gbl_ready = 1;
     logmsg(LOGMSG_WARN, "I AM READY.\n");
 
@@ -5922,13 +5929,21 @@ int add_db(dbtable *db)
     /* Add table to the hash. */
     _db_hash_add(db);
 
+    if (db->dbnum && (luxref_hash_add(db))) {
+        Pthread_rwlock_unlock(&thedb_lock);
+        return -1;
+    }
+
     Pthread_rwlock_unlock(&thedb_lock);
+
     return 0;
 }
 
-void delete_db(char *db_name)
+int delete_db(char *db_name)
 {
+    int rc;
     int idx;
+    struct dbtable *db;
 
     Pthread_rwlock_wrlock(&thedb_lock);
     if ((idx = getdbidxbyname_ll(db_name)) < 0) {
@@ -5936,6 +5951,8 @@ void delete_db(char *db_name)
                 db_name);
         exit(1);
     }
+
+    db = thedb->dbs[idx];
 
     /* Remove the table from hash. */
     _db_hash_del(thedb->dbs[idx]);
@@ -5947,7 +5964,16 @@ void delete_db(char *db_name)
 
     thedb->num_dbs -= 1;
     thedb->dbs[thedb->num_dbs] = NULL;
+
+    if ((rc = luxref_hash_del(db)) != 0) {
+        Pthread_rwlock_unlock(&thedb_lock);
+        logmsg(LOGMSG_ERROR, "Failed to delete luxref for %s\n", db->tablename);
+        return rc;
+    }
+
     Pthread_rwlock_unlock(&thedb_lock);
+
+    return 0;
 }
 
 static void add_sqlalias_db(dbtable *tbl, char *newname)
@@ -6122,7 +6148,7 @@ static int put_all_csc2()
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbtype == DBTYPE_TAGGED_TABLE) {
             int rc;
-            
+
             if (thedb->dbs[ii]->lrlfname)
                 rc = load_new_table_schema_file(
                     thedb, thedb->dbs[ii]->tablename, thedb->dbs[ii]->lrlfname);

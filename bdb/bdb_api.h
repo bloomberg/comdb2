@@ -1433,6 +1433,12 @@ int bdb_get_view(tran_type *t, const char *view_name, char **view_def);
 int bdb_put_view(tran_type *t, const char *view_name, char *view_def);
 int bdb_del_view(tran_type *t, const char *view_name);
 
+int bdb_get_table_luxref(tran_type *t, const char *table_name, int *luxref);
+int bdb_put_table_luxref(tran_type *t, const char *table_name, int luxref);
+int bdb_del_table_luxref(tran_type *t, const char *table_name);
+int bdb_get_table_max_luxref(tran_type *t, int *luxref);
+int bdb_put_table_max_luxref(tran_type *t, int luxref);
+
 int bdb_append_file_version(char *str_buf, size_t buflen,
                             unsigned long long version_num, int *bdberr);
 int bdb_unappend_file_version(bdb_state_type *bdb_state, int *bdberr);

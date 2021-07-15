@@ -32,6 +32,7 @@
 #include <list.h>
 #include <pool.h>
 #include <time.h>
+#include <poll.h>
 
 #include "debug_switches.h"
 #include "lockmacros.h"
@@ -45,7 +46,7 @@
 #include "osqlblockproc.h"
 #include "intern_strings.h"
 #include "logmsg.h"
-#include <poll.h>
+#include "luxref.h"
 
 #ifdef MONITOR_STACK
 #include "comdb2_pthread_create.h"
@@ -905,7 +906,6 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     iq->__limits.temptables_warn = gbl_querylimits_temptables_warn;
 
     iq->cost = 0;
-    iq->luxref = luxref;
 
     if (iq->is_fromsocket) {
         if (iq->frommach == gbl_myhostname)
@@ -931,13 +931,12 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
         }
     }
 
-    if (dbenv->num_dbs > 0 && (luxref < 0 || luxref >= dbenv->num_dbs)) {
-        logmsg(LOGMSG_ERROR, "handle_buf:luxref out of range %d max %d\n",
-               luxref, dbenv->num_dbs);
+    iq->origdb = NULL;
+    if (luxref > 0 && !(iq->origdb = luxref_find(luxref))) {
+        logmsg(LOGMSG_ERROR, "handle_buf: bad luxref %d\n", luxref);
         return ERR_REJECTED;
     }
 
-    iq->origdb = dbenv->dbs[luxref]; /*lux is one based*/
     if (dbenv->num_dbs == 0 || iq->origdb == NULL)
         iq->origdb = &thedb->static_table;
     iq->usedb = iq->origdb;

@@ -33,6 +33,7 @@ set(src
   indices.c
   localrep.c
   lrucache.c
+  luxref.c
   marshal.c
   memdebug.c
   osql_srs.c
