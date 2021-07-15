@@ -336,6 +336,7 @@ int gbl_mask_internal_tunables = 1;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
+extern int gbl_transaction_grace_period;
 
 /*
   =========================================================

@@ -1935,4 +1935,8 @@ REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, READONLY | NOARG | READEARLY,
                   NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("transaction_grace_period",
+                 "Time to wait for connections with pending transactions to go away on exit.  (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

@@ -6476,6 +6476,7 @@ int gather_connection_info(struct connection_info **info, int *num_connections) 
          c[connid].sql = NULL;
          c[connid].fingerprint = NULL;
       }
+      c[connid].in_transaction = clnt->in_client_trans;
       Pthread_mutex_unlock(&clnt->state_lk);
       connid++;
    }
@@ -6656,3 +6657,35 @@ int64_t comdb2_last_stmt_cost(void) {
    return thd->clnt ? thd->clnt->last_cost : -1;
 }
 
+int gbl_transaction_grace_period = 60;
+
+void wait_for_transactions(void) {
+    int ntrans;
+    int nwaits = 0;
+    for (nwaits = 0; nwaits < gbl_transaction_grace_period; nwaits++) {
+        struct sqlclntstate *clnt;
+        ntrans = 0;
+        Pthread_mutex_lock(&clnt_lk);
+        LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+            if (clnt->in_client_trans) {
+                ntrans++;
+                if (nwaits > 10) {
+                    if (ntrans == 1)
+                        logmsg(LOGMSG_INFO, "waiting for transactions:\n------------------------\n");
+                    logmsg(LOGMSG_INFO, "open transaction on connection from %s pid %d argv0 %s\n", clnt->origin, clnt->last_pid, clnt->argv0 ? clnt->argv0 : "???");
+                }
+            }
+        }
+        Pthread_mutex_unlock(&clnt_lk);
+        if (ntrans) {
+            if (nwaits > 10)
+                logmsg(LOGMSG_INFO, "------------------------\n");
+            sleep(1);
+            nwaits++;
+        }
+        else
+            break;
+    }
+    if (ntrans && nwaits)
+        logmsg(LOGMSG_INFO, "giving up and exiting with pending transactions\n");
+}
