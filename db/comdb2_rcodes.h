@@ -115,6 +115,7 @@ enum comdb2_cstrt_rc {
     COMDB2_CSTRT_RC_INVL_TAG = 10711,    /**< invalid tag detected */
     COMDB2_CSTRT_RC_INTL_ERR = 10712,    /**< internal error from berk */
     COMDB2_CSTRT_RC_TRN_TOO_BIG = 10713, /**< transaction too large */
+    COMDB2_CSTRT_RC_TRN_TIMEOUT = 10714, /**< transaction exceeded time limit */
 };
 
 enum comdb2_qadd_rc {

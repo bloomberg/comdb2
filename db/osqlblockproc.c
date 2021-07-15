@@ -54,8 +54,10 @@
 #include "intern_strings.h"
 #include "sc_global.h"
 #include "schemachange.h"
+#include "gettimeofday_ms.h"
 
 extern int gbl_reorder_idx_writes;
+extern uint32_t gbl_max_time_per_txn_ms;
 
 
 struct blocksql_tran {
@@ -901,6 +903,8 @@ static int process_this_session(
     int flags = 0;
 
     iq->queryid = osql_sess_queryid(sess);
+    if (gbl_max_time_per_txn_ms)
+        iq->txn_ttl_ms = gettimeofday_ms() + gbl_max_time_per_txn_ms; 
 
     if (sess->rqid != OSQL_RQID_USE_UUID)
         reqlog_set_rqid(iq->reqlogger, &sess->rqid, sizeof(unsigned long long));

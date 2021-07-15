@@ -1,2 +1,0 @@
-testname: close_old_connections
-version: r000000

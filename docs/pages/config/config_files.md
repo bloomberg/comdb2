@@ -402,6 +402,17 @@ a certain cost, or prevent it from running further.
 |querylimit maxcost off|Turn off returning errors for queries over a cost limit
 |querylimit warn maxcost off|Turn off warnings for queries over a cost limit
 
+
+### Transaction limit settings
+
+These options limit a transaction on the master node.
+
+|option|Default|Description
+|------|-------|-----------
+max_wr_rows_per_txn| 0 | Set the max written rows per transaction -- inludes all rows written by a transaction, including cascaded operations
+max_cascaded_rows_per_txn | 0 | Set the max allowed cascaded rows written (updated) per transaction
+max_time_per_txn_ms | 0 | Set the max time allowed for a transaction to complete
+
 ### Decimal rounding options
 
 The rounding policy for rounding for columns of decimal types can be controlled with the `decimal_rounding` option. 

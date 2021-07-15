@@ -325,7 +325,8 @@ enum RCODES {
     ERR_NESTED = 1001,         /* this is not master, returns actual master */
     ERR_RMTDB_NESTED = 198,    /* reserved for use by rmtdb/prox2 */
     ERR_BADREQ = 199,          /* bad request parameters */
-    ERR_TRAN_TOO_BIG = 208,
+    ERR_TRAN_TOO_BIG = 208,    /* transaction exceeded size limit */
+    ERR_TXN_EXCEEDED_TIME_LIMIT = 209,
     ERR_BLOCK_FAILED = 220,  /* block update failed */
     ERR_NOTSERIAL = 230,     /* transaction not serializable */
     ERR_SC = 240,            /* schemachange failed */
@@ -1374,6 +1375,7 @@ struct ireq {
 
     uint64_t txnsize;
     unsigned long long last_genid;
+    uint64_t txn_ttl_ms; /* txn time to live -- abort after this time */
 
     /* if we replicated then these get updated */
     int reptimems;

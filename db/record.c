@@ -51,6 +51,7 @@
 #include "indices.h"
 #include "comdb2_atomic.h"
 #include "schemachange.h"
+#include "gettimeofday_ms.h"
 
 extern int gbl_partial_indexes;
 extern int gbl_expressions_indexes;
@@ -85,6 +86,7 @@ void free_cached_idx(uint8_t * *cached_idx);
 
 int gbl_max_wr_rows_per_txn = 0;
 int gbl_max_cascaded_rows_per_txn = 0;
+uint32_t gbl_max_time_per_txn_ms = 0;
 
 static inline int is_event_from_sc(int flags)
 {
@@ -164,12 +166,32 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
         prefixes++;
     }
 
+    if (!is_event_from_sc(flags)) { // dont sleep if adding from SC
+
+        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
+        if (d_ms) {
+            if (iq->debug)
+                reqprintf(iq, "Sleeping for DELAY_WRITES_IN_RECORD_C (%dms)",
+                          d_ms);
+            int lrc = usleep(1000 * d_ms);
+            if (lrc)
+                reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
+        }
+    }
+
+
     if (!is_event_from_sc(flags)) {
         iq->written_row_count++;
         if (gbl_max_wr_rows_per_txn && (iq->written_row_count > gbl_max_wr_rows_per_txn)) {
             reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TOO_BIG,
                       "Transaction exceeds max rows limit");
             retrc = ERR_TRAN_TOO_BIG;
+            ERR;
+        }
+        if (iq->txn_ttl_ms && (gettimeofday_ms() > iq->txn_ttl_ms)) {
+            reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TIMEOUT,
+                      "Transaction exceeds max time limit");
+            retrc = ERR_TXN_EXCEEDED_TIME_LIMIT;
             ERR;
         }
     }
@@ -207,19 +229,6 @@ int add_record(struct ireq *iq, void *trans, const uint8_t *p_buf_tag_name,
                 iq->idxInsert = iq->idxDelete = NULL;
             }
             ins_keys = -1ULL;
-        }
-    }
-
-    if (!is_event_from_sc(flags)) { // dont sleep if adding from SC
-
-        int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
-        if (d_ms) {
-            if (iq->debug)
-                reqprintf(iq, "Sleeping for DELAY_WRITES_IN_RECORD_C (%dms)",
-                          d_ms);
-            int lrc = usleep(1000 * d_ms);
-            if (lrc)
-                reqprintf(iq, "usleep error rc %d errno %d\n", rc, errno);
         }
     }
 
@@ -766,6 +775,12 @@ int upd_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             retrc = ERR_TRAN_TOO_BIG;
             goto err;
         }
+    }
+    if (iq->txn_ttl_ms && (gettimeofday_ms() > iq->txn_ttl_ms)) {
+        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TIMEOUT,
+                  "Transaction exceeds max time limit");
+        retrc = ERR_TXN_EXCEEDED_TIME_LIMIT;
+        goto err;
     }
 
     if (is_event_from_cascade(flags)) {
@@ -1625,6 +1640,13 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
         goto err;
     }
 
+    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
+    if (d_ms) {
+        if (iq->debug)
+            reqprintf(iq, "Sleeping for %d ms", d_ms);
+        usleep(1000 * d_ms);
+    }
+
     if (!is_event_from_sc(flags)) {
         iq->written_row_count++;
         if(gbl_max_wr_rows_per_txn && (iq->written_row_count > gbl_max_wr_rows_per_txn)) {
@@ -1633,6 +1655,12 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
             retrc = ERR_TRAN_TOO_BIG;
             goto err;
         }
+    }
+    if (iq->txn_ttl_ms && (gettimeofday_ms() > iq->txn_ttl_ms)) {
+        reqerrstr(iq, COMDB2_CSTRT_RC_TRN_TIMEOUT,
+                  "Transaction exceeds max time limit");
+        retrc = ERR_TXN_EXCEEDED_TIME_LIMIT;
+        goto err;
     }
     if (is_event_from_cascade(flags)) {
         iq->cascaded_row_count++;
@@ -1673,13 +1701,6 @@ int del_record(struct ireq *iq, void *trans, void *primkey, int rrn,
     prefault_kill_bits(iq, -1, PFRQ_OLDDATA);
     if (iq->osql_step_ix)
         gbl_osqlpf_step[*(iq->osql_step_ix)].step += 1;
-
-    int d_ms = BDB_ATTR_GET(thedb->bdb_attr, DELAY_WRITES_IN_RECORD_C);
-    if (d_ms) {
-        if (iq->debug)
-            reqprintf(iq, "Sleeping for %d ms", d_ms);
-        usleep(1000 * d_ms);
-    }
 
     if (!(flags & RECFLAGS_DONT_LOCK_TBL)) {
         assert(!iq->sorese); // sorese codepaths will have locked it already
