@@ -5171,14 +5171,13 @@ int sqlite3BtreeCreateTable(Btree *pBt, int *piTable, int flags)
         pNewTbl->tbl = tmptbl_clone->tbl;
         pNewTbl->owner = tmptbl_clone->owner;
     } else {
-        pNewTbl->tbl = bdb_temp_table_create(thedb->bdb_env, &bdberr);
+        pNewTbl->tbl = bdb_temp_array_create(thedb->bdb_env, &bdberr);
         if (pNewTbl->tbl != NULL) ATOMIC_ADD32(gbl_sql_temptable_count, 1);
     }
     if (pNewTbl->tbl == NULL) {
         --pBt->num_temp_tables;
         free(pNewTbl);
-        logmsg(LOGMSG_ERROR, "%s: bdb_temp_table_create failed: %d\n", __func__,
-               bdberr);
+        logmsg(LOGMSG_ERROR, "%s: bdb_temp_array_create failed: %d\n", __func__, bdberr);
         rc = SQLITE_INTERNAL;
         goto done;
     }

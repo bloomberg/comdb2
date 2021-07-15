@@ -242,9 +242,8 @@ static int key_memcmp(void *usermem, int key1len, const void *key1, int key2len,
 static int temp_table_compare(DB *db, const DBT *dbt1, const DBT *dbt2);
 
 /* refactored both insert and put code paths here */
-static int bdb_temp_table_insert_put(bdb_state_type *, struct temp_table *,
-                                     void *key, int keylen, void *data,
-                                     int dtalen, int *bdberr);
+static int bdb_temp_table_insert_put(bdb_state_type *, struct temp_table *, struct temp_cursor *cur, void *key,
+                                     int keylen, void *data, int dtalen, void *unpacked, int *bdberr);
 
 void *bdb_temp_table_get_cur(struct temp_cursor *skippy) { return skippy->cur; }
 
@@ -342,6 +341,7 @@ static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
     struct temp_cursor *cur;
     arr_elem_t *elem;
     unsigned long long nents = tbl->num_mem_entries;
+    unsigned long long rowid = tbl->rowid;
 
     bzero(&dbt_key, sizeof(DBT));
     bzero(&dbt_data, sizeof(DBT));
@@ -372,6 +372,7 @@ static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
     }
     tbl->inmemsz = 0;
     tbl->num_mem_entries = nents;
+    tbl->rowid = rowid;
 
     /* its now a btree! */
     tbl->temp_table_type = TEMP_TABLE_TYPE_BTREE;
@@ -390,6 +391,8 @@ static int bdb_array_copy_to_temp_db(bdb_state_type *bdb_state,
         }
 
         /* New cursor does not point to any data */
+        free(cur->key);
+        free(cur->data);
         cur->key = cur->data = NULL;
         cur->keylen = cur->datalen = 0;
     }
@@ -903,8 +906,7 @@ int bdb_temp_table_insert(bdb_state_type *bdb_state, struct temp_cursor *cur,
     DBT dkey, ddata;
     struct temp_table *tbl = cur->tbl;
 
-    int rc = bdb_temp_table_insert_put(bdb_state, tbl, key, keylen, data,
-                                       dtalen, bdberr);
+    int rc = bdb_temp_table_insert_put(bdb_state, tbl, cur, key, keylen, data, dtalen, NULL, bdberr);
     if (rc <= 0)
         goto done;
 
@@ -1043,8 +1045,7 @@ int bdb_temp_table_put(bdb_state_type *bdb_state, struct temp_table *tbl,
 {
     DBT dkey, ddata;
 
-    int rc = bdb_temp_table_insert_put(bdb_state, tbl, key, keylen, data,
-                                       dtalen, bdberr);
+    int rc = bdb_temp_table_insert_put(bdb_state, tbl, NULL, key, keylen, data, dtalen, unpacked, bdberr);
     if (rc <= 0)
         goto done;
 
@@ -1775,6 +1776,7 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
 {
     int rc;
     arr_elem_t *elem;
+    struct temp_cursor *opencur;
 
     if (!cur->valid) {
         rc = -1;
@@ -1799,6 +1801,14 @@ int bdb_temp_table_delete(bdb_state_type *bdb_state, struct temp_cursor *cur,
         cur->tbl->inmemsz -= (elem->keylen + elem->dtalen);
         memmove(elem, elem + 1,
                 sizeof(arr_elem_t) * (cur->tbl->num_mem_entries - cur->ind));
+        /* Reposition all open cursors: if a cursor is on the right of
+           the deletion point, move it to the left by one. */
+        LISTC_FOR_EACH(&cur->tbl->cursors, opencur, lnk)
+        {
+            if (opencur != cur && opencur->ind >= cur->ind)
+                --opencur->ind;
+        }
+        --cur->ind;
         rc = 0;
         goto done;
     }
@@ -1898,35 +1908,39 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
     tmptbl_cmp cmpfn;
     arr_elem_t *elem;
     DBT dkey, ddata;
+    struct temp_table *tbl = cur->tbl;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         logmsg(LOGMSG_ERROR, 
                 "bdb_temp_table_find operation not supported for temp list.\n");
         return -1;
-    }
-    else if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+    } else if (tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         return bdb_temp_table_find_hash(cur, key, keylen);
     }
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
 
         /* Find the 1st occurrence of `key'. If `key' is not found,
            find the smallest element greater than `key' */
 
-        if (cur->tbl->num_mem_entries == 0) {
+        if (tbl->num_mem_entries == 0) {
             cur->valid = 0;
             return IX_EMPTY;
         }
 
         lo = 0;
-        hi = cur->tbl->num_mem_entries - 1;
+        hi = tbl->num_mem_entries - 1;
         found = -1;
-        cmpfn = cur->tbl->cmpfunc;
+        cmpfn = tbl->cmpfunc;
 
         while (lo <= hi) {
             mid = (lo + hi) >> 1;
-            elem = &cur->tbl->elements[mid];
-            cmp = cmpfn(NULL, elem->keylen, elem->key, keylen, key);
+            elem = &tbl->elements[mid];
+
+            if (unpacked != NULL)
+                cmp = cmpfn(NULL, elem->keylen, elem->key, -1, unpacked);
+            else
+                cmp = cmpfn(tbl->usermem, elem->keylen, elem->key, keylen, key);
 
             if (cmp < 0)
                 lo = mid + 1;
@@ -1940,9 +1954,13 @@ int bdb_temp_table_find(bdb_state_type *bdb_state, struct temp_cursor *cur,
 
         if (found != -1)
             cur->ind = found;
-        else if (lo < cur->tbl->num_mem_entries)
+        else if (lo < tbl->num_mem_entries)
             cur->ind = lo;
-        else {
+        else if (lo == tbl->num_mem_entries) {
+            /* If nothing can be found, return the last element.
+               See the btree code below. */
+            cur->ind = (lo - 1);
+        } else {
             cur->valid = 0;
             return IX_NOTFND;
         }
@@ -2053,34 +2071,35 @@ int bdb_temp_table_find_exact(bdb_state_type *bdb_state,
     int exists = 0;
     arr_elem_t *elem;
     void *keydup;
+    struct temp_table *tbl = cur->tbl;
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         logmsg(LOGMSG_ERROR, "bdb_temp_table_find_exact operation not supported for "
                         "temp list.\n");
         return -1;
     }
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_HASH) {
         return bdb_temp_table_find_exact_hash(cur, key, keylen);
     }
 
-    if (cur->tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
+    if (tbl->temp_table_type == TEMP_TABLE_TYPE_ARRAY) {
 
         /* Find the 1st occurrence of `key'. */
 
-        if (cur->tbl->num_mem_entries == 0) {
+        if (tbl->num_mem_entries == 0) {
             cur->valid = 0;
             return IX_EMPTY;
         }
 
         lo = 0;
-        hi = cur->tbl->num_mem_entries - 1;
+        hi = tbl->num_mem_entries - 1;
         found = -1;
-        cmpfn = cur->tbl->cmpfunc;
+        cmpfn = tbl->cmpfunc;
 
         while (lo <= hi) {
             mid = (lo + hi) >> 1;
-            elem = &cur->tbl->elements[mid];
+            elem = &tbl->elements[mid];
             cmp = cmpfn(NULL, elem->keylen, elem->key, keylen, key);
 
             if (cmp < 0)
@@ -2356,15 +2375,14 @@ int bdb_temp_table_maybe_reset_priority_thread(bdb_state_type *bdb_state,
     return rc;
 }
 
-static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
-                                     struct temp_table *tbl, void *key,
-                                     int keylen, void *data, int dtalen,
-                                     int *bdberr)
+static int bdb_temp_table_insert_put(bdb_state_type *bdb_state, struct temp_table *tbl, struct temp_cursor *cur,
+                                     void *key, int keylen, void *data, int dtalen, void *unpacked, int *bdberr)
 {
-    int rc, cmp, lo, hi, mid;
+    int rc, cmp, lo, hi, mid, found;
     tmptbl_cmp cmpfn;
     arr_elem_t *elem;
     uint8_t *keycopy, *dtacopy;
+    struct temp_cursor *opencur;
 
     if (tbl->temp_table_type == TEMP_TABLE_TYPE_LIST) {
         struct temp_list_node *c_node = calloc(1, sizeof(struct temp_list_node));
@@ -2423,24 +2441,53 @@ static int bdb_temp_table_insert_put(bdb_state_type *bdb_state,
         lo = 0;
         hi = tbl->num_mem_entries - 1;
         if (hi >= 0) {
+            found = -1;
             cmpfn = tbl->cmpfunc;
 
             while (lo <= hi) {
                 mid = (lo + hi) >> 1;
                 elem = &tbl->elements[mid];
-                cmp = cmpfn(NULL, elem->keylen, elem->key, keylen, key);
+                if (unpacked != NULL)
+                    cmp = cmpfn(NULL, elem->keylen, elem->key, -1, unpacked);
+                else
+                    cmp = cmpfn(tbl->usermem, elem->keylen, elem->key, keylen, key);
 
                 if (cmp < 0)
                     lo = mid + 1;
                 else if (cmp > 0)
                     hi = mid - 1;
-                else
+                else {
+                    found = mid;
                     lo = mid + 1;
+                }
             }
 
-            elem = &tbl->elements[lo];
-            memmove(elem + 1, elem,
-                    sizeof(arr_elem_t) * (tbl->num_mem_entries - lo));
+            if (found != -1) {
+                /*
+                ** We do not support duplicate items.
+                ** The existing entry will be replaced.
+                */
+                elem = &tbl->elements[found];
+                tbl->inmemsz -= (elem->keylen + elem->dtalen);
+                free(elem->key);
+                --tbl->num_mem_entries;
+                lo = found;
+            } else {
+                /* Make room for the new entry. */
+                elem = &tbl->elements[lo];
+                memmove(elem + 1, elem, sizeof(arr_elem_t) * (tbl->num_mem_entries - lo));
+
+                /* Reposition all open cursors. If a cursor is on the right of
+                   the insertion point, move it to the right by one. */
+                LISTC_FOR_EACH(&tbl->cursors, opencur, lnk)
+                {
+                    if (opencur != cur && opencur->ind >= lo)
+                        ++opencur->ind;
+                }
+
+                if (cur != NULL)
+                    cur->ind = lo;
+            }
         }
 
         elem = &tbl->elements[lo];
