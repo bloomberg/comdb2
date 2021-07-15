@@ -1114,6 +1114,7 @@ struct connection_info {
     char *sql;
     char *fingerprint;
     int64_t is_admin;
+    int64_t in_transaction;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
@@ -1386,5 +1387,7 @@ int osql_clean_sqlclntstate(struct sqlclntstate *);
 void handle_failed_dispatch(struct sqlclntstate *, char *err);
 int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
 int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
+
+void wait_for_transactions(void);
 
 #endif /* _SQL_H_ */
