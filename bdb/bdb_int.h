@@ -1032,7 +1032,7 @@ struct bdb_state_tag {
     pthread_mutex_t *blkseq_lk;
     DB_ENV **blkseq_env;
     DB **blkseq[2];
-    time_t blkseq_last_roll_time;
+    time_t *blkseq_last_roll_time;
     DB_LSN *blkseq_last_lsn[2];
     listc_t *blkseq_log_list;
     int pvt_blkseq_stripes;

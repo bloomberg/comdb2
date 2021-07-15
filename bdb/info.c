@@ -56,7 +56,8 @@ static void lock_stats(FILE *out, bdb_state_type *bdb_state);
 static void rep_stats(FILE *out, bdb_state_type *bdb_state);
 static void bdb_state_dump(FILE *out, const char *prefix,
                            bdb_state_type *bdb_state);
-static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra);
+static void cache_stats(FILE *out, DB_ENV *, int extra);
+static void blkseq_cache_stats(FILE *, bdb_state_type *);
 static void sanc_dump(FILE *out, bdb_state_type *bdb_state);
 static void netinfo_dump(FILE *out, bdb_state_type *bdb_state);
 static void test_send(bdb_state_type *bdb_state);
@@ -526,13 +527,12 @@ static void cache_info(FILE *out, bdb_state_type *bdb_state)
     bdb_state->dbenv->memp_dump_bufferpool_info(bdb_state->dbenv, out);
 }
 
-static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
+static void cache_stats(FILE *out, DB_ENV *dbenv, int extra)
 {
     DB_MPOOL_STAT *stats;
     DB_MPOOL_FSTAT **fsp, **i;
 
-    bdb_state->dbenv->memp_stat(bdb_state->dbenv, &stats, extra ? &fsp : NULL,
-                                0);
+    dbenv->memp_stat(dbenv, &stats, extra ? &fsp : NULL, 0);
 
     prn_lstat(st_gbytes);
     prn_lstat(st_bytes);
@@ -579,7 +579,7 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
     prn_lstat(st_ckp_pages_skip);
 
     if (extra) {
-        bdb_state->dbenv->memp_dump_region(bdb_state->dbenv, "A", out);
+        dbenv->memp_dump_region(dbenv, "A", out);
 
         for (i = fsp; i != NULL && *i != NULL; ++i) {
             logmsgf(LOGMSG_USER, out, "Pool file [%s]:-\n", (*i)->file_name);
@@ -640,6 +640,20 @@ static void temp_cache_stats(FILE *out, bdb_state_type *bdb_state)
     prn_lstat(st_alloc_max_pages);
 
     free(stats);
+}
+
+static void blkseq_cache_stats(FILE *out, bdb_state_type *bdb_state)
+{
+    int i, len;
+    if (!bdb_state->attr->private_blkseq_enabled)
+        return;
+
+    for (i = 0, len = bdb_state->pvt_blkseq_stripes; i != len; ++i) {
+        logmsgf(LOGMSG_USER, out, "[private blkseq stripe %d/%d]\n", i + 1, len);
+        Pthread_mutex_lock(&bdb_state->blkseq_lk[i]);
+        cache_stats(out, bdb_state->blkseq_env[i], 0);
+        Pthread_mutex_unlock(&bdb_state->blkseq_lk[i]);
+    }
 }
 
 static void sanc_dump(FILE *out, bdb_state_type *bdb_state)
@@ -1436,11 +1450,13 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     else if (tokcmp(tok, ltok, "tempcachestat") == 0)
         temp_cache_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "cachestat") == 0)
-        cache_stats(out, bdb_state, 0);
+        cache_stats(out, bdb_state->dbenv, 0);
     else if (tokcmp(tok, ltok, "cacheinfo") == 0)
         cache_info(out, bdb_state);
     else if (tokcmp(tok, ltok, "cachestatall") == 0)
-        cache_stats(out, bdb_state, 1);
+        cache_stats(out, bdb_state->dbenv, 1);
+    else if (tokcmp(tok, ltok, "blkseqcachestat") == 0)
+        blkseq_cache_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "repstat") == 0)
         rep_stats(out, bdb_state);
     else if (tokcmp(tok, ltok, "bdbstate") == 0)
@@ -1544,7 +1560,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         logmsgf(LOGMSG_USER, out, "==========[netinfo_dump]==========\n");
         netinfo_dump(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[cache_stats]==========\n");
-        cache_stats(out, bdb_state, 1);
+        cache_stats(out, bdb_state->dbenv, 1);
         logmsgf(LOGMSG_USER, out, "==========[temp_cache_stats]==========\n");
         temp_cache_stats(out, bdb_state);
         logmsgf(LOGMSG_USER, out, "==========[rep_stats]==========\n");
