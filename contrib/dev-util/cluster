@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -x
+
 export PATH=$PATH:/opt/bb/bin
 
 dir=$HOME/.local/share/comdb2-util
@@ -44,11 +46,16 @@ function container-name {
 }
 
 function sanity-checks {
-    env=$(systemctl  show --property=Environment docker | sed 's/Environment=//g')
-    if [[ -z "$env" ]]; then
-        echo "\$ systemctl  show --property=Environment docker"
-        echo "WARNING: Docker doesn't have any environment settings.  Missing proxy settings?"
+    if ! SYSTEMCTL="$(get_command systemctl)"; then
+        echo "WARNING: incomplete sanity check systemctl not available" >&2
+    else
+        env=$($SYSTEMCTL show --property=Environment docker | sed 's/Environment=//g')
+        if [[ -z "$env" ]]; then
+            echo "\$ systemctl  show --property=Environment docker"
+            echo "WARNING: Docker doesn't have any environment settings.  Missing proxy settings?"
+        fi
     fi
+
     if [[ ! -s ${dir}/proxy.conf ]]; then
         echo "WARNING: Didn't find a proxy.conf, created an empty one.  "
         echo "         Drop one into ~/.local/share/comdb2/proxy.conf and I'll use that one"
@@ -240,7 +247,7 @@ function build {
 	cat >> Dockerfile <<- EOF
 		RUN mkdir -p /opt/bb/bin /opt/bb/etc/cdb2/config.d /opt/bb/include /opt/bb/lib/cdb2 /opt/bb/lib/pkgconfig /opt/bb/lib/systemd /opt/bb/lib/systemd/system /opt/bb/log/cdb2 /opt/bb/var/cdb2 /opt/bb/var/lib/cdb2 /opt/bb/var/log/cdb2 /opt/bb/tmp
 		RUN ln -s ${HOME}/src/build/db/comdb2			/opt/bb/bin/
-		RUN ln -s ${HOME}/src/build/db/comdb2dumpcsc		/opt/bb/bin/
+		RUN ln -s ${HOME}/src/build/db/comdb3dumpcsc		/opt/bb/bin/
 		RUN ln -s ${HOME}/src/build/db/copycomdb2			/opt/bb/bin/
 		RUN ln -s ${HOME}/src/build/tools/pmux/pmux		/opt/bb/bin/
 		RUN ln -s ${HOME}/src/build/tools/comdb2ar/comdb2ar	/opt/bb/bin/
@@ -334,26 +341,38 @@ function do_docker {
 	docker $1 ${names[@]}
 }
 
+function get_command() {
+    if [ "$#" -ne 1 ]; then
+      echo "$0 no command passed"
+      return 1
+    fi
+    CMD_PATH=$(command -v $1) && echo "$CMD_PATH" || return "$?"
+}
+
 function tmux_int {
-	/usr/bin/tmux new-window
-	/usr/bin/tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
-	/usr/bin/tmux send-keys "${HOME}/bin/cluster c 1" Enter
+	$TMUX new-window
+	$TMUX send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}1" Enter
+	$TMUX send-keys "${PWD}/cluster c 1" Enter
 	n=$(get clusternum)
 	for ((i=2;i<=$n;++i)); do
-		/usr/bin/tmux split-window
-		/usr/bin/tmux send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
-		/usr/bin/tmux send-keys "$HOME/bin/cluster c ${i}" Enter
-		/usr/bin/tmux select-layout tiled
+		$TMUX split-window
+		$TMUX send-keys "printf '"'\033]2;%s\033\\'"' ${prefix}${i}" Enter
+		$TMUX send-keys "${PWD}/cluster c ${i}" Enter
+		$TMUX select-layout tiled
 	done
 }
 
 function sync_panes {
-	/usr/bin/tmux set-window-option synchronize-panes
-	/usr/bin/tmux set-option window-status-style "bg=colour124"
-	/usr/bin/tmux set-option pane-active-border-style "fg=colour124"
+	$TMUX set-window-option synchronize-panes
+	$TMUX set-option window-status-style "bg=colour124"
+	$TMUX set-option pane-active-border-style "fg=colour124"
 }
 
-function tmux {
+function tmux_main {
+    if ! TMUX="$(get_command tmux)"; then
+        echo "tmux not installed or not in path" >&2
+        exit 2
+    fi
 	tmux_int
 	sync_panes
 }
@@ -366,9 +385,8 @@ function db {
     fi
 
     if [[ -n "$TMUX" ]]; then
-        tmux_int
-        sync_panes
-        /usr/bin/tmux send-keys "comdb2 $1" Enter
+        tmux_main
+        "$TMUX" send-keys "comdb2 $1" Enter
     else
         local n=$(get clusternum)
         for ((i=1;i<=$n;++i)); do
@@ -380,9 +398,8 @@ function db {
 
 function pmux {
     if [[ -n "$TMUX" && "$1" != "-n" ]]; then
-        tmux_int
-        sync_panes
-        /usr/bin/tmux send-keys "pmux -f" Enter
+        tmux_main
+        "$TMUX" send-keys "pmux -f" Enter
     else
         local n=$(get clusternum)
         for ((i=1;i<=$n;++i)); do
@@ -436,15 +453,13 @@ function setup {
 }
 
 function gdb {
-	tmux_int
-	sync_panes
-	/usr/bin/tmux send-keys "gdb -q -ex run -args comdb2 $1" Enter
+    tmux_main
+	"$TMUX" send-keys "gdb -q -ex run -args comdb2 $1" Enter
 }
 
 function vg {
-	tmux_int
-	sync_panes
-	/usr/bin/tmux send-keys "valgrind comdb2 ${defaultdb}" Enter
+	tmux_main
+	"$TMUX" send-keys "valgrind comdb2 ${defaultdb}" Enter
 }
 
 function check-containers-ready {
@@ -584,7 +599,7 @@ elif [[ "$1" == "rm" ]] || [[ "$1" == "stop" ]] || [[ "$1" == "kill" ]] || [[ "$
     fi
 elif [[ "$1" == "tmux" ]]; then
     check-containers-ready || exit 1
-	tmux
+	tmux_main
 elif [[ "$1" == "db" ]]; then
     check-containers-ready || exit 1
 	db ${2:-${defaultdb}}
