@@ -1925,4 +1925,8 @@ REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",
                  TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("transaction_grace_period",
+                 "Time to wait for connections with pending transactions to go away on exit.  (Default: 60)",
+                 TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */

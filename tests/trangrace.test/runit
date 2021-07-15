@@ -1,0 +1,43 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+if [[ -z "$CLUSTER" ]]; then
+    echo "Skipping for non-clustered"
+    exit 0
+fi
+
+if [[ $# -ne 1 ]]; then
+    echo Usage: dbname
+    exit 1
+fi
+
+TMPDIR=${TMPDIR:-/tmp}
+dbname=$1
+
+cdb2sql -s ${CDB2_OPTIONS} $dbname default "drop table if exists t"
+
+coproc stdbuf -oL cdb2sql -tabs -s ${CDB2_OPTIONS} $dbname default - 2>/dev/null &
+
+echo "create table t(a int)\$\$" >&${COPROC[1]}
+echo "select comdb2_host()" >&${COPROC[1]}
+read -u ${COPROC[0]} host
+echo "begin" >&${COPROC[1]}
+echo "insert into t values(1)"  >&${COPROC[1]}
+myhost=$(hostname -f)
+if [[ $myhost = $host ]]; then
+    cdb2sql -s ${CDB2_OPTIONS} $dbname local "exec procedure sys.cmd.send('exit')" >/dev/null
+else
+    ssh $host "$(which cdb2sql) -s ${CDB2_OPTIONS} $dbname local \"exec procedure sys.cmd.send('exit')\"" >/dev/null
+fi
+sleep 15
+echo "insert into t values(1)"  >&${COPROC[1]}
+echo "commit" >&${COPROC[1]}
+echo "select count(*) from t"  >&${COPROC[1]}
+read -u ${COPROC[0]} count
+if [[ $count -eq 2 ]]; then
+    echo Passed
+    exit 0
+else
+    echo "Failed: count $count, expected 2"
+    exit 1
+fi
