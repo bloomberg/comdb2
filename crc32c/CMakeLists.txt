@@ -1,4 +1,4 @@
-add_library(crc32c crc32c.c)
+add_library(crc32c crc32c.c sb8.c)
 include_directories(${PROJECT_SOURCE_DIR}/util)
 
 if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL x86_64)

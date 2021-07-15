@@ -68,6 +68,7 @@ if(WITH_RDKAFKA)
   find_package(RdKafka REQUIRED)
   add_definitions(-DWITH_RDKAFKA)
 endif()
+find_package(Archive REQUIRED)
 
 endif(COMDB2_BBCMAKE)
 
@@ -226,6 +227,7 @@ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${COMMON_FLAGS}")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${COMMON_FLAGS}")
 
 add_subdirectory(util)
+add_subdirectory(dbutil)
 add_subdirectory(bdb)
 add_subdirectory(berkdb)
 add_subdirectory(cdb2api)

@@ -148,12 +148,4 @@ bool read_FileInfo(const std::string& line, FileInfo& file);
 bool read_incr_FileInfo(const std::string& line, FileInfo& file,
         std::vector<uint32_t>& incr_pages);
 
-
-bool recognize_data_file(const std::string& filename,
-        bool& is_data_file, bool& is_queue_file, bool& is_queuedb_file,
-        std::string& out_table_name);
-// Determine if the given filename looks like a table or queue file.  If it does
-// then return true and set the is_ flags appropriately, and put the name of the
-// object in out_table_name.
-
 #endif // INCLUDED_FILE_INFO
