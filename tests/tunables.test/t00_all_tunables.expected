@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=946)
+(TUNABLES_COUNT=947)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -883,6 +883,7 @@
 (name='track_replication_times', description='Track how long each replicant takes to ack all transactions.', type='BOOLEAN', value='ON', read_only='N')
 (name='track_replication_times_max_lsns', description='Track replication times for up to this many transactions.', type='INTEGER', value='50', read_only='N')
 (name='tracked_locklist_init', description='Initial allocation count for tracked locks', type='INTEGER', value='10', read_only='N')
+(name='transaction_grace_period', description='Time to wait for connections with pending transactions to go away on exit.  (Default: 60)', type='INTEGER', value='60', read_only='N')
 (name='transient_page_reallocation', description='Orphaned pages are maintained locally', type='BOOLEAN', value='OFF', read_only='N')
 (name='udp', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='udp_average_over_epochs', description='Average over these many TCP epochs.', type='INTEGER', value='4', read_only='N')

@@ -1119,6 +1119,7 @@ struct connection_info {
     char *sql;
     char *fingerprint;
     int64_t is_admin;
+    int64_t in_transaction;
 
     /* latched in sqlinterfaces, not returned */ 
     time_t connect_time_int;
@@ -1336,5 +1337,7 @@ tran_type *curtran_gettran(void);
 void curtran_puttran(tran_type *tran);
 int start_new_transaction(struct sqlclntstate *, struct sql_thread *);
 int sqlite3LockStmtTablesRecover(sqlite3_stmt *);
+
+void wait_for_transactions(void);
 
 #endif /* _SQL_H_ */
