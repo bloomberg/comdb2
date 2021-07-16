@@ -1,3 +1,0 @@
-set hasql on
-set transaction serializable
-insert into t2 values (1)
