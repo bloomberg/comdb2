@@ -1,0 +1,69 @@
+#!/usr/bin/env bash
+
+bash -n "$0" | exit 1
+
+. ${TESTSROOTDIR}/tools/write_prompt.sh
+. ${TESTSROOTDIR}/tools/cluster_utils.sh
+. ${TESTSROOTDIR}/tools/ddl.sh
+
+[[ $debug == "1" ]] && set -x
+
+keepalive=0
+stopfile=./stopfile.txt
+inserterlog=./inserter.txt
+failfile=./failed.txt
+checkdatadone=./checkdatadone.txt
+
+function failexit {
+    typeset func="failexit"
+    typeset f=$1
+    touch $failfile
+    write_prompt $func "$f failed: $2"
+    exit -1
+}
+
+function bouncemaster {
+    typeset sleeptime=$1
+    typeset node=$(get_master)
+
+    PARAMS="$DBNAME --no-global-lrl"
+    if [[ ! -z "$node" ]]; then
+        REP_ENV_VARS="${DBDIR}/replicant_env_vars"
+        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
+        if [ "$node" == "$(hostname)" ]; then
+            (
+                kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
+                sleep $sleeptime
+                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
+            ) &
+        else
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
+            sleep $sleeptime
+            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.${node}.db) &
+            echo $! >${TMPDIR}/${DBNAME}.${node}.pid
+        fi
+    fi
+}
+
+function kill_cluster {
+    typeset master=$(get_master)
+    [ -n $master ] && echo "Master not found" && exit 1
+}
+
+function run_test {
+    typeset master=$(get_master)
+    echo "Master is $master"
+    $CDB2SQL_EXE --admin ${CDB2_OPTIONS} $DBNAME default --host "$master" "PUT TUNABLE skip_master_callbacks 1" >/dev/null 2>&1
+
+    for node in $CLUSTER; do
+        if [[ $node != $master ]]; then
+            echo "killing and restarting $node"
+            kill_restart_node $node
+        fi
+    done
+
+    echo "New master is $(get_master)"
+}
+
+run_test
+echo "Success"

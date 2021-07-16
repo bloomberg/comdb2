@@ -60,6 +60,7 @@
 #include <bdb_cursor.h>
 #include <bdb_fetch.h>
 #include <bdb_queue.h>
+#include <bdb_int.h>
 
 #include <net.h>
 #include <net_types.h>
@@ -2866,6 +2867,8 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
     return -1;
 }
 
+int gbl_skip_master_callbacks_count = 0;
+int gbl_skip_master_callbacks_delay = 0;
 /* callback to report new master */
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
@@ -2878,7 +2881,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
     oldgen = dbenv->gen;
-    dbenv->master = host;
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
@@ -2887,12 +2889,44 @@ static int new_master_callback(void *bdb_handle, char *host,
     }
 
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
+
+    logmsg(LOGMSG_DEBUG, "%s:%d new_master_callback with %s switch is %d\n", __func__, __LINE__, host, debug_switch_skip_master_callbacks());
+
+    if (debug_switch_skip_master_callbacks()) {
+        logmsg(LOGMSG_DEBUG,
+               "%s:%d new master node=%s, old master node=%s, rep_master=%s, old_gen=%u, gen=%u, rep_egen %u\n",
+               __func__, __LINE__, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL",
+               oldgen, gen, egen);
+
+        if ((oldmaster == gbl_myhostname) && gbl_skip_master_callbacks_count != 0) {
+            logmsg(LOGMSG_DEBUG, "%s:%d skipping master callbacks counter value is %u \n", __func__,
+                   __LINE__, gbl_skip_master_callbacks_count);
+            sleep(gbl_skip_master_callbacks_delay);
+            --gbl_skip_master_callbacks_count;
+            return 0;
+        }
+    }
+
+    dbenv->master = host;
+
+    if (egen < dbenv->egen) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d received %s prev callback for %d, new callback for %d. new master node=%s, old master "
+               "node=%s, rep_master=%s, old_gen=%u, gen=%u ",
+               __func__, __LINE__, dbenv->egen == egen ? "a duplicate callback" : "a callback out of order",
+               dbenv->egen, egen, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL",
+               oldgen, gen);
+    } else {
+        dbenv->egen = egen;
+    }
+
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
                "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
                __func__, __LINE__, host ? host : "NULL",
                newmaster ? newmaster : "NULL", egen);
     dbenv->gen = gen;
+
     /*this is only used when handle not established yet. */
     if (host == gbl_myhostname) {
 
@@ -2915,7 +2949,6 @@ static int new_master_callback(void *bdb_handle, char *host,
             }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
-        /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
 
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;

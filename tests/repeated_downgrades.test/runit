@@ -12,7 +12,7 @@ inscript() {
 
    # need hasql and -maxretries otherwise we can get:
    # 'failed with rc -1 cdb2_run_statement_typed_int: Cannot connect to db'
-    c2s="cdb2sql ${CDB2_OPTIONS} --delim=# --maxretries=100000 ${DBNAME} default"
+    c2s="cdb2sql ${CDB2_OPTIONS} --host node1 --delim=# --maxretries=100000 ${DBNAME} default"
 
     ha_assertcnt()
     {

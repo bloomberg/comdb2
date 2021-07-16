@@ -359,6 +359,9 @@ int gbl_sqlite_sorterpenalty = 5;
 
 extern int gbl_net_maxconn;
 
+extern int gbl_skip_master_callbacks_count; 
+extern int gbl_skip_master_callbacks_delay;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need
