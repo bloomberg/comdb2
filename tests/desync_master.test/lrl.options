@@ -1,0 +1,2 @@
+skip_master_callbacks_count 10
+skip_master_callbacks_delay 30

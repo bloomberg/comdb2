@@ -2890,6 +2890,8 @@ static int new_master_callback(void *bdb_handle, char *host,
 
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
 
+    logmsg(LOGMSG_DEBUG, "%s:%d new_master_callback with %s switch is %d\n", __func__, __LINE__, host, debug_switch_skip_master_callbacks());
+
     if (debug_switch_skip_master_callbacks()) {
         logmsg(LOGMSG_DEBUG,
                "%s:%d new master node=%s, old master node=%s, rep_master=%s, old_gen=%u, gen=%u, rep_egen %u\n",
