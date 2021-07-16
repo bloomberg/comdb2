@@ -78,6 +78,7 @@ static struct debug_switches {
     int all_incoherent;
     int replicant_latency;
     int test_sync_osql_cancel;
+    int skip_master_callbacks;
 } debug_switches;
 
 int init_debug_switches(void)
@@ -135,6 +136,7 @@ int init_debug_switches(void)
     debug_switches.all_incoherent = 0;
     debug_switches.replicant_latency = 0;
     debug_switches.test_sync_osql_cancel = 0;
+    debug_switches.skip_master_callbacks = 0;
 
     register_int_switch("alternate_verify_fail", "alternate_verify_fail",
                         &debug_switches.alternate_verify_fail);
@@ -245,6 +247,10 @@ int init_debug_switches(void)
     register_int_switch("replicant_latency", "Replicant drops log records.", &debug_switches.replicant_latency);
     register_int_switch("test_sync_osql_cancel", "Force a delay in osql_sess_rcvop test synchronous osql cancel",
                         &debug_switches.test_sync_osql_cancel);
+    register_int_switch("skip_master_callbacks",
+                        "Enable skipping gbl_skip_master_callback_count number of master callbacks each with "
+                        "a delay of gbl_skip_master_callbacks_delay",
+                        &debug_switches.skip_master_callbacks);
     return 0;
 }
 
@@ -459,4 +465,9 @@ int debug_switch_replicant_latency(void)
 int debug_switch_test_sync_osql_cancel(void)
 {
     return debug_switches.test_sync_osql_cancel;
+}
+
+int debug_switch_skip_master_callbacks(void)
+{
+    return debug_switches.skip_master_callbacks;
 }

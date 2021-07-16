@@ -2116,10 +2116,10 @@ REGISTER_TUNABLE("sc_logbytes_per_second",
 REGISTER_TUNABLE("net_somaxconn", "listen() backlog setting.  (Default: 0, implies system default)", TUNABLE_INTEGER,
                  &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("skip_callbacks_counter", "Skip processing N new master callbacks. (Default: 20)", TUNABLE_INTEGER,
-                 &gbl_skip_callbacks_counter, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("skip_master_callbacks_count", "Skip processing N new master callbacks. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_skip_master_callbacks_count, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("skip_callbacks_delay", "Skip processing new master callbacks for delay. (Default: 30)", TUNABLE_INTEGER,
-                 &gbl_skip_callbacks_delay, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("skip_master_callbacks_delay", "Skip processing new master callbacks for delay. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_skip_master_callbacks_delay, EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

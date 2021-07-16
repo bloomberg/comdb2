@@ -359,8 +359,8 @@ int gbl_sqlite_sorterpenalty = 5;
 
 extern int gbl_net_maxconn;
 
-extern int gbl_skip_callbacks_counter;
-extern int gbl_skip_callbacks_delay;
+extern int gbl_skip_master_callbacks_count; 
+extern int gbl_skip_master_callbacks_delay;
 
 /*
   =========================================================
