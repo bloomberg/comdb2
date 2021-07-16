@@ -14,9 +14,19 @@ function replay_count
     echo $(cdb2sql -tabs ${CDB2_OPTIONS} $dbname --host $master default 'exec procedure sys.cmd.send("stat replay")' | egrep 'Blkseq-replay-count:' | awk '{print $2}')
 }
 
-cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("master_swing_osql_verbose")'
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t1 { schema { int a } }'
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t2 { schema { int a } keys { "a" = a } }'
+
+if [[ $DBNAME == *"snapiso"* ]] ; then
+    echo "
+set hasql on
+set transaction serializable" > insert.t1
+else
+    echo "set transaction read committed" > insert.t1
+fi
+cp insert.t1 insert.t2
+echo "insert into t1 values (1)" >> insert.t1
+echo "insert into t2 values (1)" >> insert.t2
 
 rcount=$(replay_count) ; i=0
 echo "Replay count is $rcount"
