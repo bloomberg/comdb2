@@ -8509,14 +8509,12 @@ static TYPES_INLINE int SERVER_DATETIMEUS_to_SERVER_BINT(S2S_FUNKY_ARGS)
 
 static int SERVER_DATETIME_to_SERVER_BREAL(S2S_FUNKY_ARGS)
 {
-    SERVER_DT_to_SERVER_BINT_func_body(datetime, DATETIME, 3, msec,
-                                       unsigned short);
+    SERVER_DT_to_SERVER_BREAL_func_body(datetime, DATETIME, 3, msec, unsigned short);
 }
 
 static int SERVER_DATETIMEUS_to_SERVER_BREAL(S2S_FUNKY_ARGS)
 {
-    SERVER_DT_to_SERVER_BINT_func_body(datetimeus, DATETIMEUS, 6, usec,
-                                       unsigned int);
+    SERVER_DT_to_SERVER_BREAL_func_body(datetimeus, DATETIMEUS, 6, usec, unsigned int);
 }
 
 /* interval conversions */
