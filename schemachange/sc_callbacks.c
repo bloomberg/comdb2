@@ -671,14 +671,6 @@ static int delete_table_rep(char *table, void *tran)
         return -1;
     }
 
-    /* update the delayed deleted files */
-    rc =
-        bdb_list_unused_files_tran(db->handle, tran, &bdberr, (char *)__func__);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
-               bdberr);
-    }
-
     delete_db(table);
     MEMORY_SYNC;
     delete_schema(table);
@@ -884,12 +876,6 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
 
         /* update the delayed deleted files */
         assert(db && !add_new_db);
-        rc = bdb_list_unused_files_tran(db->handle, tran, &bdberr,
-                                        (char *)__func__);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "bdb_list_unused_files rc %d bdberr %d\n", rc,
-                   bdberr);
-        }
     }
 
     if (type == add || type == drop || type == alter || type == fastinit ||
