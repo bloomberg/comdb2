@@ -4541,6 +4541,22 @@ static inline void log_tbl_item(int64_t curr, int64_t *prev, const char *(*type_
     *prev = curr;
 }
 
+static inline void log_qdb_item(int64_t curr, int64_t *prev, const char *(*type_to_str)(int), int type, char *string,
+                                int *hdr_p, struct reqlogger *statlogger, dbtable *tbl, int first)
+{
+    int diff = curr - *prev;
+    if (diff > 0) {
+        if (*hdr_p == 0) {
+            const char hdr_fmt[] = "DIFF REQUEST STATS FOR QUEUE '%s'\n";
+            reqlog_logf(statlogger, REQL_INFO, hdr_fmt, tbl->tablename);
+            *hdr_p = 1;
+        }
+        reqlog_logf(statlogger, REQL_INFO, "%s%-22s %u\n", (first ? "" : "    "),
+                    (type_to_str ? type_to_str(type) : string), diff);
+    }
+    *prev = curr;
+}
+
 void *statthd(void *p)
 {
     struct dbenv *dbenv;
@@ -4859,6 +4875,13 @@ void *statthd(void *p)
                                  NULL, 0, "cascaded upd/del rows", &hdr, statlogger, tbl, 0);
                     log_tbl_item(tbl->deadlock_count, &tbl->saved_deadlock_count,
                                  NULL, 0, "deadlock count", &hdr, statlogger, tbl, 0);
+                }
+
+                for (int i = 0; i < dbenv->num_qdbs; i++) {
+                    dbtable *qdb = dbenv->qdbs[i];
+                    int hdr = 0;
+                    log_qdb_item(bdb_get_qdb_adds(qdb->handle), &qdb->prev_qdb_adds, NULL, 0, "adds", &hdr, statlogger, qdb, 0);
+                    log_qdb_item(bdb_get_qdb_cons(qdb->handle), &qdb->prev_qdb_dels, NULL, 0, "dels", &hdr, statlogger, qdb, 0);
                 }
                 unlock_schema_lk();
 
