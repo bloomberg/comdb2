@@ -55,6 +55,10 @@ function run_test {
     echo "Master is $master"
     $CDB2SQL_EXE --admin ${CDB2_OPTIONS} $DBNAME default --host "$master" "PUT TUNABLE skip_master_callbacks 1" >/dev/null 2>&1
 
+    kill_restart_node "$master"
+
+    echo "Master is $master"
+
     for node in $CLUSTER; do
         if [[ $node != $master ]]; then
             echo "killing and restarting $node"
