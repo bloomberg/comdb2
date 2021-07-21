@@ -2870,14 +2870,15 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
     if (sqlquery.n_set_flags)
         sqlquery.set_flags = &set_commands[n_set_commands_sent];
 
+    /* hndl is NULL when we query comdb2db in comdb2db_get_dbhosts(). */
+    if (hndl) {
 #if WITH_SSL
-    features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
+        features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
 #endif
-    /* Request server to send back row data flat, instead of storing it in
-       a nested data structure. This helps reduce server's memory footprint. */
-    features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
+        /* Request server to send back row data flat, instead of storing it in
+           a nested data structure. This helps reduce server's memory footprint. */
+        features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
 
-    if (hndl) { 
         features[n_features++] = CDB2_CLIENT_FEATURES__ALLOW_MASTER_DBINFO;
         if ((hndl->flags & CDB2_DIRECT_CPU) ||
             (retries_done >= (hndl->num_hosts * 2 - 1) && hndl->master ==
