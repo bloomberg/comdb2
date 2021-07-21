@@ -8,6 +8,31 @@ if [[ -z "$dbname" ]]; then
     exit 1
 fi
 
+
+# if we have disabled cnonce, blkseq will contain uuids
+if [[ "$TESTCASE" != "blkseq_nocnonce_generated" ]] ; then
+    # verify content of comdb2_blkseq
+    N=10
+    i=0
+    while [ $i -lt $N ] ; do
+        cdb2sql ${CDB2_OPTIONS} ${DBNAME} default "create table tt${i} (i int primary key)"
+        let i=i+1
+    done
+    ${TESTSBUILDDIR}/inscntdel --dbname $DBNAME --numthreads $N --iterations 100 --printcnonce > out.txt
+    grep "insert\|delete" out.txt | cut -f 3 -d= | sort -n > cnonce.should
+    cdb2sql --tabs ${CDB2_OPTIONS} ${DBNAME} default "select id from comdb2_blkseq" | sort -n > cnonce.have
+    for i in `cat cnonce.should` ;  do
+        cnt=`grep -c $i cnonce.have`
+        if [ $cnt != 1 ] ; then
+            echo "blkseq keys (cnonces) don't match what they should (cnonce.have vs cnonce.should)"
+            exit 1
+            break;
+        fi
+    done
+
+fi
+
+
 function replay_count
 {
     master=`cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
@@ -17,7 +42,7 @@ function replay_count
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t1 { schema { int a } }'
 cdb2sql -tabs ${CDB2_OPTIONS} $dbname default 'create table t2 { schema { int a } keys { "a" = a } }'
 
-if [[ $DBNAME == *"snapiso"* ]] ; then
+if [[ $TESTCASE == "blkseq_snapiso_generated" ]] ; then
     echo "
 set hasql on
 set transaction serializable" > insert.t1
@@ -71,6 +96,7 @@ if [[ "$(replay_count)" == "$rcount" ]]; then
     echo "Didn't trip replay in table t2, failing test"
     error=1
 fi
+
 
 if [[ "$error" == 0 ]]; then
     echo "success"

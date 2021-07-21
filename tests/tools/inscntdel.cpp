@@ -12,6 +12,7 @@
 #include <signal.h>
 
 int gbl_iterations;
+int gbl_print_cnonce;
 static std::string quote("");
 static std::string comma(",");
 static std::string space(" ");
@@ -24,7 +25,8 @@ static std::string sethasql("set hasql on");
 int runsql(cdb2_hndl_tp *h, std::string &sql)
 {
     int rc = cdb2_run_statement(h, sql.c_str());
-    //printf("Here: cdb2_run_statement: %s, cnonce=%s\n", sql.c_str(), cdb2_cnonce(h));
+    if (gbl_print_cnonce)
+        printf("sql=%s, cnonce=%s\n", sql.c_str(), cdb2_cnonce(h));
 
     if (rc != 0) {
         fprintf(stderr, "Error: cdb2_run_statement failed: %d %s (%s) cnonce=%s\n", rc,
@@ -114,7 +116,7 @@ void *thr(void *arg)
     thr_info_t *tinfo = (thr_info_t *)arg;
     int i = tinfo->thrid;
 
-    runsql(h, sethasql); // this also tells cdb2api wraps the insert/delete with a begin/commit
+    runsql(h, sethasql); // this also causes cdb2api to wrap the insert/delete with a explicit begin/commit
     int N = 100;
 
     std::string ins;
@@ -184,17 +186,19 @@ int main(int argc, char *argv[])
         {"dbname", required_argument, NULL, 'd'},
         {"numthreads", required_argument, NULL, 'n'},
         {"iterations", required_argument, NULL, 'i'},
+        {"printcnonce", optional_argument, NULL, 'p'},
         {NULL, 0, NULL, 0}
     };
 
     int c;
     int index;
-    while ((c = getopt_long(argc, argv, "d:n:c:i:t:rd?", long_options, &index)) != -1) {
+    while ((c = getopt_long(argc, argv, "d:n:i:p?", long_options, &index)) != -1) {
         //printf("c '%c' %d index %d optarg '%s'\n", c, c, index, optarg);
         switch(c) {
             case 'd': dbname = strdup(optarg); break;
             case 'n': numthreads = atoi(optarg); break;
             case 'i': iterations = atoi(optarg); break;
+            case 'p': gbl_print_cnonce = 1; break;
             case '?':  break;
             default: break;
         }
