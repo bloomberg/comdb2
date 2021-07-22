@@ -680,6 +680,17 @@ static int convert_record(struct convert_record_data *data)
     data->iq.usedb = data->from;
     data->iq.timeoutms = gbl_sc_timeoutms;
 
+    /* Make sure that we do not insert random bytes (data->dta_buf is malloc'd)
+       for inline field stored offline (e.g., vutf[100] but payload is longer than 100).
+       It is technically fine to insert random bytes, since the inline portion is ignored
+       for payload longer than the inline size. However inserting uniform bytes here
+       is going to help us achieve a better compression ratio and lower disk use. */
+    memset(data->dta_buf, 0, data->from->lrl);
+
+    /* Make sure that we do not inherit inline data from previous row
+       (e.g., previous row has inline data, current row does not). See the comment above. */
+    memset(data->rec->recbuf, 0, data->rec->bufsize);
+
     if (data->scanmode == SCAN_PARALLEL || data->scanmode == SCAN_PAGEORDER) {
         if (data->scanmode == SCAN_PARALLEL) {
             rc = dtas_next(&data->iq, data->sc_genids, &genid, &data->stripe, 1,
