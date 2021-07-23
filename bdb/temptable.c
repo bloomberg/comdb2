@@ -1558,6 +1558,8 @@ int bdb_temp_table_close(bdb_state_type *bdb_state, struct temp_table *tbl,
                                         DB_STAT_CLEAR)) == 0) {
             bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
             bdb_state->temp_stats->st_bytes += tmp->st_bytes;
+            bdb_state->temp_stats->st_total_bytes += tmp->st_total_bytes;
+            bdb_state->temp_stats->st_used_bytes += tmp->st_used_bytes;
             bdb_state->temp_stats->st_ncache += tmp->st_ncache;
             bdb_state->temp_stats->st_regsize += tmp->st_regsize;
             bdb_state->temp_stats->st_map += tmp->st_map;
@@ -1654,6 +1656,8 @@ int bdb_temp_table_destroy_lru(struct temp_table *tbl,
                                     DB_STAT_CLEAR)) == 0) {
         bdb_state->temp_stats->st_gbytes += tmp->st_gbytes;
         bdb_state->temp_stats->st_bytes += tmp->st_bytes;
+        bdb_state->temp_stats->st_total_bytes += tmp->st_total_bytes;
+        bdb_state->temp_stats->st_used_bytes += tmp->st_used_bytes;
         bdb_state->temp_stats->st_ncache += tmp->st_ncache;
         bdb_state->temp_stats->st_regsize += tmp->st_regsize;
         bdb_state->temp_stats->st_map += tmp->st_map;
@@ -2502,6 +2506,8 @@ int bdb_temp_table_stat(bdb_state_type *bdb_state, DB_MPOOL_STAT **gspp)
 
     sp->st_gbytes = parent->temp_stats->st_gbytes;
     sp->st_bytes = parent->temp_stats->st_bytes;
+    sp->st_total_bytes = parent->temp_stats->st_total_bytes;
+    sp->st_used_bytes = parent->temp_stats->st_used_bytes;
     sp->st_ncache = parent->temp_stats->st_ncache;
     sp->st_regsize = parent->temp_stats->st_regsize;
     sp->st_map = parent->temp_stats->st_map;

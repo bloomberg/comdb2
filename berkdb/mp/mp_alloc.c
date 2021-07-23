@@ -165,6 +165,8 @@ static void dump_page_stats(DB_ENV *dbenv) {
 
 	logmsgf(LOGMSG_USER, out, "st_gbytes: %"PRId64"\n", mpool_stats->st_gbytes);
 	logmsgf(LOGMSG_USER, out, "st_bytes: %"PRId64"\n", mpool_stats->st_bytes);
+	logmsgf(LOGMSG_USER, out, "st_total_bytes: %"PRId64"\n", mpool_stats->st_total_bytes);
+	logmsgf(LOGMSG_USER, out, "st_used_bytes: %"PRId64"\n", mpool_stats->st_bytes);
 	logmsgf(LOGMSG_USER, out, "st_ncache: %"PRId64"\n", mpool_stats->st_ncache);
 	logmsgf(LOGMSG_USER, out, "st_regsize: %"PRId64"\n", mpool_stats->st_regsize);
 	logmsgf(LOGMSG_USER, out, "st_map: %"PRId64"\n", mpool_stats->st_map);
@@ -312,8 +314,10 @@ __memp_alloc_flags(dbmp, memreg, mfp, len, offsetp, flags, retp)
 	 * right size.  In the latter case we branch back here and try again.
 	 */
 alloc:	if ((ret = __db_shalloc(memreg->addr, len, MUTEX_ALIGN, &p)) == 0) {
-		if (mfp != NULL)
+		if (mfp != NULL) {
 			c_mp->stat.st_pages++;
+			c_mp->stat.st_used_bytes += len;
+		}
 		R_UNLOCK(dbenv, memreg);
 
 found:		if (offsetp != NULL)

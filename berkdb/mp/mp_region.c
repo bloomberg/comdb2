@@ -280,6 +280,7 @@ __mpool_init(dbenv, dbmp, reginfo_off, htab_buckets)
 	 */
 	mp->stat.st_gbytes = dbenv->mp_gbytes;
 	mp->stat.st_bytes = dbenv->mp_bytes;
+	mp->stat.st_total_bytes = dbenv->mp_gbytes * GIGABYTE + dbenv->mp_bytes;
 	return (0);
 
 mem_err:__db_err(dbenv, "Unable to allocate memory for mpool region");

@@ -536,6 +536,9 @@ static void cache_stats(FILE *out, bdb_state_type *bdb_state, int extra)
 
     prn_lstat(st_gbytes);
     prn_lstat(st_bytes);
+    prn_lstat(st_total_bytes);
+    prn_lstat(st_used_bytes);
+    logmsgf(LOGMSG_USER, out, "st_ff_pct: %d\n", (int)(stats->st_used_bytes * 100 / stats->st_total_bytes));
     prn_lstat(st_ncache);
     prn_lstat(st_regsize);
     prn_lstat(st_map);

@@ -106,6 +106,8 @@ __memp_stat(dbenv, gspp, fspp, flags)
 		c_mp = dbmp->reginfo[0].primary;
 		sp->st_gbytes = c_mp->stat.st_gbytes;
 		sp->st_bytes = c_mp->stat.st_bytes;
+		sp->st_total_bytes = c_mp->stat.st_total_bytes;
+		sp->st_used_bytes = c_mp->stat.st_used_bytes;
 		sp->st_ncache = dbmp->nreg;
 		sp->st_regsize = dbmp->reginfo[0].rp->size;
 

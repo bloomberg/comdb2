@@ -877,6 +877,8 @@ struct __db_mpoolfile {
 struct __db_mpool_stat {
 	u_int64_t st_gbytes;		/* Total cache size: GB. */
 	u_int64_t st_bytes;		/* Total cache size: B. */
+	u_int64_t st_total_bytes;	/* Total cache size: st_gbytes + st_bytes. */
+	u_int64_t st_used_bytes;	/* Total used cache size: B. */
 	u_int64_t st_ncache;		/* Number of caches. */
 	u_int64_t st_regsize;		/* Cache size. */
 	u_int64_t st_map;		/* Pages from mapped files. */
