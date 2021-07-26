@@ -251,7 +251,7 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
             continue;
         }
 
-        if (file_pattern && !glob_match(de->d_name, file_pattern)) {
+        if (file_pattern && glob_match(de->d_name, file_pattern)) {
           logmsg(LOGMSG_USER, "%s:%d: ignoring %s\n", __func__, __LINE__,
                  de->d_name);
           continue;
