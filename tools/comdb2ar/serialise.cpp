@@ -1123,13 +1123,14 @@ void serialise_database(
             makeabs(abspath, dbdir, filename);
 
             try {
-                dbfile_info *file = dbfile_init(abspath.c_str());
-                uint32_t pagesize = dbfile_pagesize(file);
-                bool checksums = (dbfile_is_checksummed(file)) ? true : false;
-                bool crypto = (dbfile_is_encrypted(file)) ? true : false;
-                bool sparse = (dbfile_is_sparse(file)) ? true : false;
-                bool swapped = (dbfile_is_swapped(file)) ? true : false;
-                dbfile_deinit(file);
+                dbfile_info file = {0};
+                (void) dbfile_init(&file, abspath.c_str());
+
+                uint32_t pagesize = dbfile_pagesize(&file);
+                bool checksums = (dbfile_is_checksummed(&file)) ? true : false;
+                bool crypto = (dbfile_is_encrypted(&file)) ? true : false;
+                bool sparse = (dbfile_is_sparse(&file)) ? true : false;
+                bool swapped = (dbfile_is_swapped(&file)) ? true : false;
 
                 data_files.push_back(FileInfo(FileInfo::BERKDB_FILE,
                       abspath, dbdir, pagesize, checksums, crypto, sparse, do_direct_io, swapped));
@@ -1509,7 +1510,7 @@ void write_incremental_file (
 ) 
 // Write checksum/LSN information for a database file
 {
-    dbfile_info *file = dbfile_init(abspath.c_str());
+    dbfile_info *file = dbfile_init(NULL, abspath.c_str());
     if (!file) {
         std::ostringstream ss;
         ss << "Failed to open/read " << abspath << " " << strerror(errno) << std::endl;

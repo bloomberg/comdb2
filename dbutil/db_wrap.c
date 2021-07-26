@@ -43,7 +43,7 @@ uint32_t myflip(uint32_t in)
     return flip_val.u32;
 }
 
-dbfile_info *dbfile_init(const char *filename)
+dbfile_info *dbfile_init(dbfile_info *file, const char *filename)
 {
     // This comes straight from pgdump - can't ask berkeley to do this
     // because db might be encrypted and we don't have passwd
@@ -53,9 +53,11 @@ dbfile_info *dbfile_init(const char *filename)
         return NULL;
     }
 
-    dbfile_info *file = malloc(sizeof(dbfile_info));
-    if (file == NULL) {
-        goto err;
+    if (!file) {
+        file = malloc(sizeof(dbfile_info));
+        if (file == NULL) {
+            goto err;
+        }
     }
 
     file->filename = filename;
@@ -248,6 +250,7 @@ int read_write_file(dbfile_info *file, void *writer_ctx, writer w)
 {
     int flags = O_RDONLY/*|O_DIRECT*/;
     int fd = -1;
+    int rc;
 
     // Ensure large file support
     assert(sizeof(off_t) == 8);
@@ -365,7 +368,10 @@ int read_write_file(dbfile_info *file, void *writer_ctx, writer w)
             }
         }
 
-        w(writer_ctx, pagebuf, bytesread);
+        rc = w(writer_ctx, pagebuf, bytesread);
+        if (rc  < 0) {
+            return 1;
+        }
         buf_ptr += bytesread;
         bytesleft -= bytesread;
     }

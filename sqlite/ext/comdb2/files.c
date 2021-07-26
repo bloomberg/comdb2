@@ -29,6 +29,7 @@
 #include <comdb2.h>
 #include <archive.h>
 #include <archive_entry.h>
+#include <errno.h>
 #include "db_wrap.h"
 #include "cdb2_constants.h"
 
@@ -160,7 +161,12 @@ int memory_writer(void *ctx, uint8_t *in_buf, size_t size) {
 
 int archive_writer(void *ctx, uint8_t *in_buf, size_t size) {
     struct archive *a = ctx;
-    archive_write_data(a, in_buf, size);
+    ssize_t rc = archive_write_data(a, in_buf, size);
+    if (rc < 0) {
+        logmsg(LOGMSG_ERROR, "%s:%d archive_write_data() failed (%s)\n",
+               __func__, __LINE__, strerror(errno));
+        return 1;
+    }
     return 0;
 }
 
@@ -199,9 +205,24 @@ static int create_archive(const char *archive_path, file_entry_t *files,
         archive_entry_set_perm(entry, 0600);
         archive_write_header(a, entry);
 
-        dbfile_info file = {0};
-        file.filename = full_path;
-        rc = read_write_file(&file, &a, archive_writer);
+        dbfile_info info = {0};
+        uint8_t is_data_file = 0;
+        uint8_t is_queue_file = 0;
+        uint8_t is_queuedb_file = 0;
+        char *table_name = alloca(MAXTABLELEN);
+
+        if ((recognize_data_file(files[i].file, &is_data_file, &is_queue_file,
+                                 &is_queuedb_file, &table_name)) == 1) {
+            if (!(dbfile_init(&info, full_path))) {
+                logmsg(LOGMSG_ERROR, "%s:%d: couldn't retrieve file info\n",
+                       __FILE__, __LINE__);
+                rc = -1;
+                break;
+            }
+        }
+        info.filename = full_path;
+
+        rc = read_write_file(&info, a, archive_writer);
         if (rc != 0) {
             return -1;
         }
@@ -278,7 +299,7 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
 
         if ((recognize_data_file(f->file, &is_data_file, &is_queue_file,
                                  &is_queuedb_file, &table_name)) == 1) {
-            f->info = dbfile_init(path);
+            f->info = dbfile_init(NULL, path);
             if (!f->info) {
                 logmsg(LOGMSG_ERROR, "%s:%d: couldn't retrieve file info\n",
                        __FILE__, __LINE__);

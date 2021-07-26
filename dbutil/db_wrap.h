@@ -39,7 +39,7 @@ typedef struct dbfile {
     uint32_t is_swapped : 1;
 } dbfile_info;
 
-dbfile_info *dbfile_init(const char *filename);
+dbfile_info *dbfile_init(dbfile_info *, const char *filename);
 void dbfile_deinit(dbfile_info *);
 const char *dbfile_filename(dbfile_info *);
 size_t dbfile_pagesize(dbfile_info *);
