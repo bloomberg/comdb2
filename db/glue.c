@@ -2873,6 +2873,8 @@ int gbl_skip_master_callbacks_delay = 0;
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
 {
+    logmsg(LOGMSG_WARN, "%s:%d got new_master_callback on thread %d\n", __func__, __LINE__, gettid());
+
     ++gbl_master_changes;
     struct dbenv *dbenv;
     char *oldmaster, *newmaster;
@@ -2890,7 +2892,8 @@ static int new_master_callback(void *bdb_handle, char *host,
 
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
 
-    logmsg(LOGMSG_DEBUG, "%s:%d new_master_callback with %s switch is %d\n", __func__, __LINE__, host, debug_switch_skip_master_callbacks());
+    logmsg(LOGMSG_DEBUG, "%s:%d new_master_callback with %s switch is %d\n", __func__, __LINE__, host,
+           debug_switch_skip_master_callbacks());
 
     if (debug_switch_skip_master_callbacks()) {
         logmsg(LOGMSG_DEBUG,

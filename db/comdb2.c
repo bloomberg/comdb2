@@ -1307,10 +1307,6 @@ static void *purge_old_files_thread(void *arg)
     while (!db_is_exiting()) {
         /* even though we only add files to be deleted on the master,
          * don't try to delete files, ever, if you're a replicant */
-        logmsg(LOGMSG_WARN,
-               "%s: thedb->master is %s and I am %s\n",
-               __func__, thedb->master, gbl_myhostname);
- 
         if (thedb->master != gbl_myhostname) {
             sleep_with_check_for_exiting(empty_pause);
             continue;

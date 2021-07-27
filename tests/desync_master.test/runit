@@ -6,7 +6,7 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/cluster_utils.sh
 . ${TESTSROOTDIR}/tools/ddl.sh
 
-set -x
+[ -n $DEBUG ] && set -x
 
 keepalive=0
 stopfile=./stopfile.txt

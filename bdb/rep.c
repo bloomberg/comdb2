@@ -3912,11 +3912,9 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
     case DB_REP_NEWMASTER:
         bdb_state->repinfo->repstats.rep_newmaster++;
 
-        logmsg(LOGMSG_WARN,
-               "process_berkdb: got NEWMASTER on thread %d\n", (int)pthread_self());
+        logmsg(LOGMSG_WARN, "process_berkdb: got NEWMASTER on thread %d\n", gettid());
 
-        if (!got_vote2lock)
-        {
+        if (!got_vote2lock) {
             logmsg(LOGMSG_WARN,
                    "process_berkdb: got NEWMASTER with no votelock2\n");
             abort();
