@@ -1361,7 +1361,7 @@ int dohsql_distribute(dohsql_node_t *node)
             return rc;
 
         if (i > 0) {
-            logmsg(LOGMSG_ERROR,
+            logmsg(LOGMSG_DEBUG,
                    "Trying to dispatch worker %d clnt %p for \"%s\" subsql "
                    "\"%s\"\n",
                    i, clnt->conns->conns[i].clnt, clnt->sql,
@@ -1371,7 +1371,7 @@ int dohsql_distribute(dohsql_node_t *node)
             rc = thdpool_enqueue(gbl_sqlengine_thdpool, sqlengine_work_shard_pp,
                                  clnt->conns->conns[i].clnt, 1,
                                  sqlcpy = strdup(node->nodes[i]->sql), flags);
-            logmsg(LOGMSG_ERROR,
+            logmsg(LOGMSG_DEBUG,
                    "Enqueue returned %d for dispatch worker %d for \"%s\"\n",
                    rc, i, clnt->sql);
             if (rc) {
