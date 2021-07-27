@@ -1,2 +1,9 @@
+# this works for local testing,
+# but i'd have to generate this dynamically
+# so that any cluster with any hostname
+# is supported. then I have to copy the 
+# dbs manually using comdb2createcluster 
+if node1 skip_master_callbacks on
+
 skip_master_callbacks_count 10
 skip_master_callbacks_delay 30

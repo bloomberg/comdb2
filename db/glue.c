@@ -2898,13 +2898,15 @@ static int new_master_callback(void *bdb_handle, char *host,
                __func__, __LINE__, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL",
                oldgen, gen, egen);
 
-        if ((oldmaster == gbl_myhostname) && gbl_skip_master_callbacks_count != 0) {
-            logmsg(LOGMSG_DEBUG, "%s:%d skipping master callbacks counter value is %u \n", __func__,
-                   __LINE__, gbl_skip_master_callbacks_count);
+        if ((oldmaster == gbl_myhostname) && (gbl_skip_master_callbacks_count != 0)) {
+            logmsg(LOGMSG_DEBUG, "%s:%d skipping master callbacks counter value is %u \n", __func__, __LINE__,
+                   gbl_skip_master_callbacks_count);
             sleep(gbl_skip_master_callbacks_delay);
             --gbl_skip_master_callbacks_count;
             return 0;
         }
+        logmsg(LOGMSG_DEBUG, "%s:%d skipping master callbacks done %u \n", __func__, __LINE__,
+               gbl_skip_master_callbacks_count);
     }
 
     dbenv->master = host;

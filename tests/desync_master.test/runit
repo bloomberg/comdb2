@@ -6,43 +6,42 @@ bash -n "$0" | exit 1
 . ${TESTSROOTDIR}/tools/cluster_utils.sh
 . ${TESTSROOTDIR}/tools/ddl.sh
 
-[[ $debug == "1" ]] && set -x
+set -x
 
 keepalive=0
 stopfile=./stopfile.txt
 inserterlog=./inserter.txt
 failfile=./failed.txt
 checkdatadone=./checkdatadone.txt
+# node that has tunable is the
+# master that i want for this test
+# this works for local testing,
+# but i'd have to generate this dynamically
+# so that any cluster with any hostname
+# is supported. then I have to copy the
+# dbs manually using comdb2createcluster
+MASTERIWANT="node1"
+MAXDOWNGRADE=10
 
-function failexit {
-    typeset func="failexit"
-    typeset f=$1
-    touch $failfile
-    write_prompt $func "$f failed: $2"
-    exit -1
+function get_tunable_val {
+    # get_tunable_val <hostname>
+    echo "$(cdb2sql -s --tabs ${CDB2_OPTIONS} $DBNAME --host "$1" "select value from comdb2_tunables where name='skip_master_callbacks'")"
 }
 
-function bouncemaster {
-    typeset sleeptime=$1
-    typeset node=$(get_master)
-
-    PARAMS="$DBNAME --no-global-lrl"
-    if [[ ! -z "$node" ]]; then
-        REP_ENV_VARS="${DBDIR}/replicant_env_vars"
-        CMD="source ${REP_ENV_VARS} ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.pid"
-        if [ "$node" == "$(hostname)" ]; then
-            (
-                kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
-                sleep $sleeptime
-                ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl --pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
-            ) &
-        else
-            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid) >/dev/null 2>&1
-            sleep $sleeptime
-            ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >>$TESTDIR/logs/${DBNAME}.${node}.db) &
-            echo $! >${TMPDIR}/${DBNAME}.${node}.pid
+function validate_switches {
+    # validate_switches <master>
+    for node in $CLUSTER; do
+        switch_val="$(get_tunable_val $node)"
+        if [ "$node" == "$1" ]; then
+            if [ $switch_val != "ON" ]; then
+                echo "Problem: master is $node and skip_master_callbacks is $switch_val "
+                return 1
+            fi
+        elif [ $switch_val != "OFF" ]; then
+            echo "skip_master_callbacks tunable for $node is OFF"
         fi
-    fi
+    done
+    return 0
 }
 
 function kill_cluster {
@@ -50,24 +49,67 @@ function kill_cluster {
     [ -n $master ] && echo "Master not found" && exit 1
 }
 
-function run_test {
+function downgraden {
+    # downgraden <tonode> <num_times>
+    fromnode="$1"
+    numtimes="${2:-1}"
+    master=""
+    for i in $(seq "$numtimes"); do
+        while [ -z $master ]; do
+            echo "waiting for new master..."
+            master=$(cdb2sql --host "$node" $DBNAME 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | awk '{print $2}')
+            sleep 0.5
+        done
+
+        cdb2sql ${CDB2_OPTIONS} --host $master $DBNAME "exec procedure sys.cmd.send('downgrade')"
+        sleep 3
+    done
+}
+
+function setup {
     typeset master=$(get_master)
     echo "Master is $master"
-    $CDB2SQL_EXE --admin ${CDB2_OPTIONS} $DBNAME default --host "$master" "PUT TUNABLE skip_master_callbacks 1" >/dev/null 2>&1
 
-    kill_restart_node "$master"
+    downcntr=0
+    while [ $downcntr -ne $MAXDOWNGRADE ] && validate_switches $master; do
+        echo "Master is $master, but I want $MASTERIWANT so downgrading"
+        downgraden $MASTERIWANT
+        downcntr=$(($downcntr + 1))
+    done
 
-    echo "Master is $master"
+    [ $downcntr -eq $MAXDOWNGRADE ] && echo "Setup error: Failed to get $MASTERIWANT as master so exiting" && exit 1
+}
 
+function checkforerrors {
+    egrep -nwI "purge_old_files_thread.*failed" $TESTDIR/logs/*.db
+}
+
+function run_test {
+    declare -a nonmaster
     for node in $CLUSTER; do
-        if [[ $node != $master ]]; then
+        if [[ $node != $MASTERIWANT ]]; then
             echo "killing and restarting $node"
+            nonmaster+=($node)
             kill_restart_node $node
         fi
     done
 
-    echo "New master is $(get_master)"
+    if [ -z "${nonmaster[0]}" ]; then
+        echo "Couldn't find a non master node ${nonmaster[@]}. Die"
+        exit 1
+    fi
+
+    while [ $(get_master) == $MASTERIWANT ]; do
+        downgraden ${nonmaster[0]}
+    done
+
+    typeset master=$(get_master)
+    echo "Master is $master"
+
+    sleep 40
 }
 
+setup
 run_test
+checkforerrors
 echo "Success"
