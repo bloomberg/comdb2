@@ -730,7 +730,9 @@ This sets the current connection's transaction level.  See
 This allows bulk data processing to be automatically split into smaller size chunks, freeing the client from 
 the responsibility of spliting up the data.  Jobs like ```INSERT INTO 't' SELECT * FROM 't2'``` are trivially handled
 as a sequence of small lock-footprint transactions.  Another common use-case is periodic data-set clean-up, replacing 
-the legacy comdb2del tool.  Currently requires a client specified ```BEGIN ... COMMIT``` transaction.
+the legacy comdb2del tool. This mode currently requires the statements to be enclosed inside a ```BEGIN ... COMMIT```
+block. Also, in this mode transactions are executed with [```VERIFYRETRY```](sql.html#set-verifyretry) implicitly
+disabled.
 
 ### SET TIMEZONE
 
