@@ -2874,6 +2874,7 @@ static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
 {
     logmsg(LOGMSG_WARN, "%s:%d got new_master_callback on thread %d\n", __func__, __LINE__, gettid());
+    cheap_stack_trace();
 
     ++gbl_master_changes;
     struct dbenv *dbenv;
