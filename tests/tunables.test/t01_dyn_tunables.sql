@@ -67,3 +67,8 @@ select c.name from comdb2_tunables c, comdb2_tunables d where c.name like '%colu
 select value from comdb2_tunables where name = 'max_query_fingerprints'
 put tunable 'max_query_fingerprints' 2000;
 select value from comdb2_tunables where name = 'max_query_fingerprints'
+
+# TEST 'no_sc_inco_chk'
+select value from comdb2_tunables where name = 'no_sc_inco_chk'
+put tunable 'no_sc_inco_chk' 0;
+select value from comdb2_tunables where name = 'no_sc_inco_chk'
