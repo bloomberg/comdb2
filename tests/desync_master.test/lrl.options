@@ -6,4 +6,4 @@
 if node1 skip_master_callbacks on
 
 skip_master_callbacks_count 5
-skip_master_callbacks_delay 30
+skip_master_callbacks_delay 120

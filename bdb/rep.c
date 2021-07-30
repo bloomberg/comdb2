@@ -25,12 +25,14 @@
 #include <unistd.h>
 #include <poll.h>
 
+#include "comdb2.h"
 #include "debug_switches.h"
 
 #include "bdb_int.h"
 #include "locks.h"
 #include "locks_wrap.h"
 #include <endian_core.h>
+#include "logmsg.h"
 #include "memory_sync.h"
 #include "ctrace.h"
 #include "nodemap.h"
@@ -3738,9 +3740,8 @@ void bdb_set_seqnum(void *in_bdb_state)
 }
 
 int gbl_online_recovery = 1;
-
-static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
-                          DBT *rec)
+int gbl_skip_master_callbacks_delay = 0;
+static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control, DBT *rec)
 {
     int rc;
     int r;
@@ -3935,7 +3936,11 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
              * abort sql threads waiting on logical locks */
             BDB_WRITELOCK_REP("upgrade");
             /* we need to upgrade */
+            logmsg(LOGMSG_WARN, "%s:%d done is %d before bdb_upgrade host %s bdb_state->repinfo->myhost %s\n", __func__,
+                   __LINE__, done, host, bdb_state->repinfo->myhost);
             rc = bdb_upgrade(bdb_state, egen, &done);
+            logmsg(LOGMSG_WARN, "%s:%d done is %d after bdb_upgrade host %s bdb_state->repinfo->myhost %s\n", __func__,
+                   __LINE__, done, host, bdb_state->repinfo->myhost);
 
             BDB_RELLOCK();
 
@@ -3948,16 +3953,31 @@ static int process_berkdb(bdb_state_type *bdb_state, char *host, DBT *control,
 
         } else {
             /* it's not us, but we were master - we need to downgrade */
+            logmsg(LOGMSG_WARN,
+                   "%s:%d done is %d before downgrade code host %s bdb_state->repinfo->myhost %s\n",
+                   __func__, __LINE__, done, host, bdb_state->repinfo->myhost);
             if (bdb_state->repinfo->master_host == bdb_state->repinfo->myhost) {
                 rc = bdb_downgrade(bdb_state, egen, &done);
             } else
                 done = 1;
+            logmsg(LOGMSG_WARN,
+                   "%s:%d done is %d before downgrade code host %s bdb_state->repinfo->myhost %s\n",
+                   __func__, __LINE__, done, host, bdb_state->repinfo->myhost);
         }
         if (!done) {
             logmsg(LOGMSG_INFO, "%s:%d DB_REP_NEWMASTER during startup, ignoring\n",
                     __FILE__, __LINE__);
-        } else
+        } else {
+            if (debug_switch_skip_master_callbacks() && (host == gbl_myhostname)) {
+                logmsg(LOGMSG_WARN,
+                       "%s:%d Going to sleep for %d s before bdb_setmaster for host %s repinfo master is %s \n",
+                       __func__, __LINE__, gbl_skip_master_callbacks_delay, host, bdb_state->repinfo->master_host);
+                sleep(gbl_skip_master_callbacks_delay);
+                logmsg(LOGMSG_WARN, "%s:%d End sleep after %d s before bdb_setmaster for host %s\n", __func__, __LINE__,
+                       gbl_skip_master_callbacks_delay, host);
+            }
             bdb_setmaster(bdb_state, host);
+        }
 
         if (gbl_dump_zero_coherency_timestamp) {
             logmsg(LOGMSG_ERROR, "%s line %d zero'ing coherency timestamp\n",

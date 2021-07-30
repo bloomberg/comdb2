@@ -2868,7 +2868,7 @@ int dat_numrrns(struct ireq *iq, int *out_numrrns)
 }
 
 int gbl_skip_master_callbacks_count = 0;
-int gbl_skip_master_callbacks_delay = 0;
+extern int gbl_skip_master_callbacks_delay;
 /* callback to report new master */
 static int new_master_callback(void *bdb_handle, char *host,
                                int assert_sc_clear)
@@ -2896,7 +2896,7 @@ static int new_master_callback(void *bdb_handle, char *host,
     logmsg(LOGMSG_DEBUG, "%s:%d new_master_callback with %s switch is %d\n", __func__, __LINE__, host,
            debug_switch_skip_master_callbacks());
 
-    if (debug_switch_skip_master_callbacks()) {
+    if (debug_switch_skip_master_callbacks() && 0) {
         logmsg(LOGMSG_DEBUG,
                "%s:%d new master node=%s, old master node=%s, rep_master=%s, old_gen=%u, gen=%u, rep_egen %u\n",
                __func__, __LINE__, host ? host : "NULL", oldmaster ? oldmaster : "NULL", newmaster ? newmaster : "NULL",
