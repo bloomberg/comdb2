@@ -126,7 +126,11 @@ int averager_min(struct averager *avg)
     return min;
 }
 
-void averager_destroy(struct averager *avg) { pool_free(avg->pool); }
+void averager_destroy(struct averager *avg)
+{
+    pool_free(avg->pool);
+    free(avg);
+}
 
 int averager_depth(struct averager *avg) { return avg->ticks.count; }
 
