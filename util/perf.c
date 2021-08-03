@@ -59,6 +59,7 @@ bad:
         free(t->name);
         if (t->avg)
             averager_destroy(t->avg);
+        free(t);
     }
     return NULL;
 }
@@ -70,6 +71,7 @@ void time_metric_free(struct time_metric *t)
     free(t->name);
     if (t->avg)
         averager_destroy(t->avg);
+    free(t);
 }
 
 void time_metric_add(struct time_metric *t, int value) {

@@ -667,9 +667,9 @@ static void *thd_req(void *vthd)
                     delete_constraint_table(thdinfo->ct_add_table);
                     delete_constraint_table(thdinfo->ct_del_table);
                     delete_constraint_table(thdinfo->ct_add_index);
-                    hash_clear(thdinfo->ct_add_table_genid_hash);
+                    hash_free(thdinfo->ct_add_table_genid_hash);
                     if (thdinfo->ct_add_table_genid_pool) {
-                        pool_clear(thdinfo->ct_add_table_genid_pool);
+                        pool_free(thdinfo->ct_add_table_genid_pool);
                     }
                     delete_defered_index_tbl();
                     backend_thread_event(dbenv, COMDB2_THR_EVENT_DONE_RDWR);
