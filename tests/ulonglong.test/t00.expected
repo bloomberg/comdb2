@@ -11,3 +11,5 @@
 (rows inserted=2)
 (u=3, i=3)
 (u=4, i=5)
+[insert into tlong values(18446744073709551615)] failed with rc 113 incompatible values from SQL real '18446744073709551616.000000' to buint8 field 'u' for table 'tlong'
+(rows inserted=1)

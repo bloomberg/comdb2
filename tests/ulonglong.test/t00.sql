@@ -32,3 +32,14 @@ select count(*) from comdb2_timepartshards;
 insert into t1_tp values(3,3), (4,5);
 select * from t1_tp order by 1;
 
+put tunable forbid_ulonglong = 'off';
+create table tlong {tag ondisk {u_longlong u}} $$
+
+# a valid unsigned long long without bind should still fail
+insert into tlong values(18446744073709551615)
+
+#cdb2sql only accepts signed long
+@bind CDB2_INTEGER a -1
+
+#this should succeed
+insert into tlong values (@a);
