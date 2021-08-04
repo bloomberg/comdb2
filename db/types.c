@@ -83,6 +83,8 @@ int gbl_forbid_datetime_truncation = 0;
 int gbl_forbid_datetime_promotion = 0;
 int gbl_forbid_datetime_ms_us_s2s = 0;
 
+extern int gbl_forbid_ulonglong;
+
 enum { BLOB_ON_DISK_LEN = 5, VUTF8_ON_DISK_LEN = BLOB_ON_DISK_LEN };
 
 BB_COMPILE_TIME_ASSERT(server_datetime_size,
@@ -5070,13 +5072,12 @@ TYPES_INLINE int CLIENT_INT_to_SERVER_UINT(
     default:
         return -1;
     }
-
     if (from_8 < 0) {
         if (inopts && inopts->flags & FLD_CONV_TRUNCATE) {
             from_8 = 0;
             hdr = 0;
             bset(&hdr, truncate_bit);
-        } else {
+        } else if (gbl_forbid_ulonglong) {
             return -1;
         }
     }
