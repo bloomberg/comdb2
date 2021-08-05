@@ -130,8 +130,8 @@ static void print_dbg_verbose(const char *name, uuid_t *source_id, const char *p
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran);
 static cron_sched_t *_get_sched_byname(enum view_partition_period period,
                                        const char *sched_name);
-static void _view_unregister_shards(timepart_views_t *views,
-                                    timepart_view_t *view);
+static void _view_unregister_shards_lkless(timepart_views_t *views,
+                                           timepart_view_t *view);
 
 enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
@@ -480,7 +480,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
 
     if (view) {
 
-        _view_unregister_shards(views, view);
+        _view_unregister_shards_lkless(views, view);
 
         rc = timepart_free_view(view);
 
@@ -628,10 +628,14 @@ alter_struct:
     /* locate the impacted view */
     for (i = 0; i < views->nviews; i++) {
         if (strcasecmp(views->views[i]->name, name) == 0) {
+        
+            if (!view) {
+                /* this is drop view, unregister shards */
+                _view_unregister_shards_lkless(views, views->views[i]);
+            }
             timepart_free_view(views->views[i]);
 
             if (view) {
-                /* rollout */
                 views->views[i] = view;
             } else {
                 /* drop view */
@@ -2248,7 +2252,8 @@ static void _shard_timepartition_name_set(timepart_view_t *view,
 }
 
 /* Register timepartition name for all its table shards */
-static int _view_register_shards(timepart_views_t *views, timepart_view_t *view,
+static int _view_register_shards(timepart_views_t *views,
+                                 timepart_view_t *view,
                                  struct errstat *err)
 {
     timepart_view_t *chk_view;
@@ -2306,8 +2311,8 @@ done:
 }
 
 /* Unregister timepartition name for all its table shards */
-static void _view_unregister_shards(timepart_views_t *views,
-                                    timepart_view_t *view)
+static void _view_unregister_shards_lkless(timepart_views_t *views,
+                                           timepart_view_t *view)
 {
     struct dbtable *db;
     int i;
