@@ -2955,7 +2955,6 @@ static int new_master_callback(void *bdb_handle, char *host,
     dbenv = bdb_get_usr_ptr(bdb_handle);
     oldmaster = dbenv->master;
     oldgen = dbenv->gen;
-    dbenv->master = host;
 
     if (assert_sc_clear) {
         bdb_assert_wrlock(bdb_handle, __func__, __LINE__);
@@ -2964,6 +2963,22 @@ static int new_master_callback(void *bdb_handle, char *host,
     }
 
     bdb_get_rep_master(bdb_handle, &newmaster, &gen, &egen);
+
+    pthread_mutex_lock(&dbenv->egen_mtx);
+    if (egen < dbenv->egen) {
+        logmsg(LOGMSG_WARN,
+               "%s:%d received an out of order callback prev callback for %d, new callback for %d. new master node=%s, "
+               "old master node=%s, rep_master=%s, old_gen=%u, gen=%u ",
+               __func__, __LINE__, dbenv->egen, egen, host ? host : "NULL", oldmaster ? oldmaster : "NULL",
+               newmaster ? newmaster : "NULL", oldgen, gen);
+        return 0;
+    } else {
+        dbenv->egen = egen;
+    }
+    pthread_mutex_unlock(&dbenv->egen_mtx);
+
+    dbenv->master = host;
+
     if (gbl_master_swing_osql_verbose)
         logmsg(LOGMSG_INFO,
                "%s:%d new master node %s, rep_master %s, rep_egen %u\n",
@@ -2992,7 +3007,6 @@ static int new_master_callback(void *bdb_handle, char *host,
             }
         }
         ctrace("I AM NEW MASTER NODE %s\n", host);
-        /*bdb_set_timeout(bdb_handle, 30000000, &bdberr);*/
 
         /* trigger old file recollect */
         gbl_master_changed_oldfiles = 1;

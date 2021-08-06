@@ -881,6 +881,8 @@ struct dbenv {
 
     char *master; /*current master node, from callback*/
     int gen;      /*election generation for current master node*/
+    int egen;     /*last election generation for which I received callback */
+    pthread_mutex_t egen_mtx;
 
     int cacheszkb;
     int cacheszkbmin;
