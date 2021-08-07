@@ -74,3 +74,6 @@ warn_slow_replicants off
 # Disable compression so I can read printlog output
 init_with_compr none
 init_with_compr_blobs none
+
+memptricklepercent 69
+cache 1 gb
