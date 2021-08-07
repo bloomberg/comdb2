@@ -1,33 +1,51 @@
 #!/usr/bin/env bash
-
 # Verify log-fills
 
-debug=1
-[[ "$debug" == 1 ]] && set -x
-needcluster=1
-db=$1
-declare -a sigstopmachs
-declare -a pidlist
-pidix=0
-stopix=0
-pstack=/home/ubuntu/bin/pstack
-write_machine=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep -v MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
-master=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | egrep lsn | head -1 | cut -f1 -d":" | tr -d '[:space:]')
-
-if [[ "$needcluster" = "1" && -z "$CLUSTER" ]]; then
+if [[ -z "$CLUSTER" ]]; then
     echo "This test is only relevant for a CLUSTERED installation."
     exit 0
 fi
 
-if [[ -z "$stage" ]]; then
-    echo "Setting stage to 'default' (set 'stage' var to override)."
-    stage="default"
-fi
+db=$1
+SSH="ssh -o StrictHostKeyChecking=no"
+TMPDIR=${TMPDIR:-/tmp}
+CDB2SQL_EXE=${CDB2SQL_EXE:-/opt/bb/bin/cdb2sql}
+TEST_TIMEOUT=${TEST_TIMEOUT:-60m}
+declare -a sigstopmachs
+declare -a clnt_pids
 
-function findstopmachs
-{
-    [[ "$debug" == 1 ]] && set -x
-    for x in $CLUSTER ; do 
+function trace {
+    #figlet "$@"
+    echo "$@"
+}
+
+function get_master {
+    local m=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='Y'")
+    while [[ -z $m ]]; do
+        m=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='Y'" 2>/dev/null)
+        sleep 1
+    done
+    echo $m
+}
+
+function get_master_count {
+    $CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default "select count(host) from comdb2_cluster where is_master='Y'" 2>/dev/null
+}
+
+function incoherent_count {
+    $CDB2SQL_EXE -tabs $db @$master "select count(host) from comdb2_cluster where is_master='N' and coherent_state!='coherent'"
+}
+
+function setup {
+    trace setup
+    write_machine=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $db default "select host from comdb2_cluster where is_master='N' order by random() limit 1")
+    master=$(get_master)
+    findstopmachs
+}
+
+function findstopmachs {
+    stopix=0
+    for x in $CLUSTER ; do
         if [ $x != $master -a $x != $write_machine ]; then
             sigstopmachs[$stopix]=$x
             let stopix=stopix+1
@@ -35,146 +53,105 @@ function findstopmachs
     done
 }
 
-function createtables
-{
-    [[ "$debug" == 1 ]] && set -x
-    $CDB2SQL_EXE ${CDB2_OPTIONS} $DBNAME $stage "create table t1 {schema{int id int val null=yes} keys{ dup \"id\" = id }}" >/dev/null 2>&1
+function createtables {
+    trace drop
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $write_machine "drop table if exists t1" >/dev/null
+    trace create
+    $CDB2SQL_EXE ${CDB2_OPTIONS} $db --host $write_machine "create table t1(id int index, val int)" > /dev/null
 }
 
-function addtopidlist
-{
-    [[ "$debug" == 1 ]] && set -x
-    pidlist[$pidix]=$1
-    let pidix=pidix+1
+function waitforcoherency {
+    trace coherency wait
+    $CDB2SQL_EXE --tabular $db @$master 'select * from comdb2_cluster'
+    $CDB2SQL_EXE --tabular $db @$master '@send bdb cluster'
+    local c=$(incoherent_count)
+    local mc=$(get_master_count)
+    master=$(get_master)
+    while [[ -z $c ]] || [[ $c -gt 0 ]] || [[ -z $mc ]] || [[ $mc -ne 1 ]] || [[ -z $master ]] ; do
+        echo -e '\n\n\n'
+        echo $(date)
+        echo "waiting for $db cluster to become coherent (incoherent-count:$c master-count:$mc master:$master)"
+        $CDB2SQL_EXE --tabular $db @$master 'select * from comdb2_cluster'
+        $CDB2SQL_EXE --tabular $db @$master '@send bdb cluster'
+        echo -e '\n\n\n'
+        sleep 5
+        master=$(get_master)
+        mc=$(get_master_count)
+        c=$(incoherent_count)
+    done
+    trace done waiting
+    echo $(date)
+    echo "done waiting for $db cluster to become coherent (incoherent-count:$c master-count:$mc master:$master)"
+    $CDB2SQL_EXE --tabular $db @$master 'select * from comdb2_cluster'
+    $CDB2SQL_EXE --tabular $db @$master '@send bdb cluster'
+    $CDB2SQL_EXE --tabular $db @$master 'select count(*) from t1'
+    sleep 5
 }
 
-function killpidlist
-{
-    [[ "$debug" == 1 ]] && set -x
-    j=0
-    while [[ $j -lt $pidix ]]; do 
-        kill -9 ${pidlist[$j]}
-        let j=j+1
+function insertforever {
+    trace insert
+    rows=$1
+    clients=$2
+    for ((i=0;i<$clients;++i)); do
+        sql="insert into t1 select 1, 1 from generate_series(1, $rows)"
+        timeout --kill-after=5s $TEST_TIMEOUT yes "$sql" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $db default - > /dev/null 2>&1 &
+        clnt_pids+=( $! )
     done
 }
 
-function errquit
-{
-    [[ "$debug" == 1 ]] && set -x
-    echo "$1"
-    killpidlist
-    exit 1
-}
-
-function waitforcoherency
-{
-    [[ "$debug" == 1 ]] && set -x
-    cnt=0
-    c=$($CDB2SQL_EXE -tabs $db @$master "exec procedure sys.cmd.send('bdb cluster')")
-    echo "$c"
-    echo "$c" | egrep COHERENT
-    r=$?
-    while [[ $r == 0 ]] ; do
-        echo "$(date) waiting for $db cluster to become coherent"
-        sleep 1
-        c=$($CDB2SQL_EXE -tabs $db @$master "exec procedure sys.cmd.send('bdb cluster')")
-        echo " "
-        $CDB2SQL_EXE $db @$master "select * from comdb2_replication_netqueue"
-        echo " "
-
-        j=0
-        # If we haven't caught up in 15 minutes find out why
-#        if [[ $cnt -gt 900 ]]; then
-#            while [[ $j -lt $1 ]]; do
-#                node=${sigstopmachs[$j]}
-#                if [ $node == $(hostname) ] ; then
-#                    pid=$(cat ${TMPDIR}/${db}.${node}.pid)
-#                    if [[ -z "$pid" ]]; then pid=$(cat ${TMPDIR}/${db}.pid) ; fi
-#                    $pstack $pid
-#                else
-#                    pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid" < /dev/null)
-#                    if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid" < /dev/null) ; fi
-#                    ssh $node "$pstack $pid" < /dev/null
-#                fi
-#            done
-#        fi
-#
-        echo "$c"
-        echo "$c" | egrep COHERENT
-        r=$?
-        let cnt=cnt+1
-    done
-}
-
-function insertforever
-{
-    sql=./sql.$$.$RANDOM.txt
-    j=0
-    echo "BEGIN" > $sql
-    while [[ $j -lt $1 ]]; do 
-        echo "INSERT INTO T1 VALUES (1,1)" >> $sql
-        let j=j+1
-    done
-    echo "COMMIT" >> $sql
-    j=0
-
-    while [[ $j -lt $2 ]]; do 
-        timeout --kill-after=5s $TEST_TIMEOUT yes "$(cat $sql)" | $CDB2SQL_EXE --host $write_machine ${CDB2_OPTIONS} $DBNAME default - > /dev/null 2>&1 &
-        addtopidlist $!
-        let j=j+1
-    done
-}
-
-function pauseandrestart
-{
-    [[ "$debug" == 1 ]] && set -x
+function pauseandrestart {
     pcount=$1
     sleeptime=$2
+
     if [ $pcount -gt $stopix ]; then
-        errquit "Cluster is too small to run test"
+        echo "Cluster is too small to run test"
+        exit 1
     fi
+
     j=0
     while [[ $j -lt $pcount ]]; do
         node=${sigstopmachs[$j]}
-        if [ $node == $(hostname) ] ; then
-            pid=$(cat ${TMPDIR}/${db}.${node}.pid)
-            if [[ -z "$pid" ]]; then pid=$(cat ${TMPDIR}/${db}.pid) ; fi
-            echo "Pausing $node pid $pid for $sleeptime seconds"
-            ( kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid ) &
-        else
-            pid=$(ssh $node "cat ${TMPDIR}/${db}.${node}.pid" < /dev/null)
-            if [[ -z "$pid" ]]; then pid=$(ssh $node "cat ${TMPDIR}/${db}.pid" < /dev/null) ; fi
-            echo "Pausing $node pid $pid for $sleeptime seconds"
-            ssh $node "kill -SIGSTOP $pid ; sleep $sleeptime ; kill -SIGCONT $pid" < /dev/null &
-        fi
-
+        pid=$(ssh $node "cat ${TMPDIR}/${db}.pid")
+        trace pause $node
+        ssh $node "kill -SIGSTOP $pid"
         let j=j+1
     done
+
+    trace sleep $sleeptime
     sleep $sleeptime
-    waitforcoherency $pcount
+
+    j=0
+    while [[ $j -lt $pcount ]]; do
+        node=${sigstopmachs[$j]}
+        pid=$(ssh $node "cat ${TMPDIR}/${db}.pid")
+        trace cont $node
+        ssh $node "kill -SIGCONT $pid"
+        let j=j+1
+    done
 }
 
-function runtestwithoptions
-{
-    [[ "$debug" == 1 ]] && set -x
-    findstopmachs
+function kill_cdb2sqls {
+    for pid in ${clnt_pids[@]}; do
+        kill -9 $pid
+    done
+}
+
+function runit {
+    trace runit
+
+    setup
+
     createtables
+
     insertforever 1000 2
+
     pauseandrestart 1 60
-#   BTDA testing is on a 3-node cluster- that only
-#   allows us to pause & restart 1 node 
-#    pauseandrestart 2 60
-    killpidlist
+
+    waitforcoherency
+
+    kill_cdb2sqls
+
+    trace Success
 }
 
-function runtest
-{
-    [[ "$debug" == 1 ]] && set -x
-    runtestwithoptions
-}
-
-createtables
-runtest
-
-echo "Success"
-exit 0
+runit
