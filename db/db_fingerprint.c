@@ -44,8 +44,10 @@ static int free_fingerprint(void *obj, void *arg)
         if (t->cachedColCount > 0) {
             for (int i = 0; i < t->cachedColCount; i++) {
                 free(t->cachedColNames[i]);
+                free(t->cachedColDeclTypes[i]);
             }
             free(t->cachedColNames);
+            free(t->cachedColDeclTypes);
         }
         free(t);
     }
@@ -148,7 +150,8 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
              * the fingerpint. */
             t->cachedColCount = stmt_cached_column_count(stmt);
             t->cachedColNames = calloc(sizeof(char *), t->cachedColCount);
-            if (t->cachedColNames == NULL) {
+            t->cachedColDeclTypes = calloc(sizeof(char *), t->cachedColCount);
+            if (t->cachedColNames == NULL || t->cachedColDeclTypes == NULL) {
                 logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__,
                        __LINE__);
                 t->cachedColCount = 0;
@@ -156,6 +159,8 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                 for (int i = 0; i < t->cachedColCount; i++) {
                     t->cachedColNames[i] =
                         strdup(stmt_cached_column_name(stmt, i));
+                    t->cachedColDeclTypes[i] =
+                        strdup(stmt_cached_column_decltype(stmt, i));
                 }
             }
 

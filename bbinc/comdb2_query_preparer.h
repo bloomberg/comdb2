@@ -19,10 +19,12 @@
 
 struct comdb2_query_preparer {
     int (*do_prepare)(struct sqlthdstate *, struct sqlclntstate *, const char *,
-                      char ***, int *);
+                      char ***, char ***, int *);
     int (*do_cleanup)(struct sqlclntstate *);
     int (*sqlitex_is_initializing)(void *);
     char *(*sqlitex_table_name)(void *);
+    int (*do_cleanup_thd)(struct sqlthdstate *);
+    void (*sqlitex_get_metrics)(int64_t *);
 };
 typedef struct comdb2_query_preparer comdb2_query_preparer_t;
 

@@ -2986,6 +2986,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             !sqlite3_stmt_isexplain(rec->stmt) &&
             (thd->authState.numDdls == 0)) {
             char **column_names;
+            char **column_decltypes;
             int column_count;
             struct fingerprint_track *t = NULL;
 
@@ -3018,9 +3019,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                         column_count = t->cachedColCount;
                         /* column_count is 0 if column names do match,
                            in which case we just set column_names to NULL */
-                        if (column_count == 0)
+                        if (column_count == 0) {
                             column_names = NULL;
-                        else {
+                            column_decltypes = NULL;
+                        } else {
                             column_names =
                                 calloc(sizeof(char *), t->cachedColCount);
                             if (column_names == NULL) {
@@ -3031,6 +3033,19 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                 for (int i = 0; i < t->cachedColCount; i++) {
                                     column_names[i] =
                                         strdup(t->cachedColNames[i]);
+                                }
+                            }
+
+                            /* Do the same for types */
+                            column_decltypes =
+                                calloc(sizeof(char *), t->cachedColCount);
+                            if (column_decltypes == NULL) {
+                                logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
+                                       __func__, __LINE__);
+                                column_count = 0;
+                            } else {
+                                for (int i = 0; i < t->cachedColCount; i++) {
+                                    column_decltypes[i] = strdup(t->cachedColDeclTypes[i]);
                                 }
                             }
                         }
@@ -3047,13 +3062,13 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
              * route of repreparing the query. */
             if (!t) {
                 rc = query_preparer_plugin->do_prepare(
-                    thd, clnt, rec->sql, &column_names, &column_count);
+                    thd, clnt, rec->sql, &column_names, &column_decltypes, &column_count);
                 if (rc)
                     return rc;
             }
 
             if (rec->stmt)
-                stmt_set_cached_columns(rec->stmt, column_names, column_count);
+                stmt_set_cached_columns(rec->stmt, column_names, column_decltypes, column_count);
         }
 
         if (rec->stmt) {
@@ -3090,7 +3105,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             free_normalized_sql(clnt);
             normalize_stmt_and_store(clnt, rec, 0);
             if (clnt->work.zNormSql) {
-                size_t nNormSql = 0; /* NOT USED */            
+                size_t nNormSql = 0; /* NOT USED */
                 calc_fingerprint(clnt->work.zNormSql, &nNormSql,
                                  clnt->work.aFingerprint);
             } else {
@@ -4206,6 +4221,12 @@ check_version:
             }
             stmt_cache_reset(thd->stmt_cache);
             sqlite3_close_serial(&thd->sqldb);
+
+            /* Force sqlitex to recreate db handle. */
+            if (gbl_old_column_names && query_preparer_plugin &&
+                query_preparer_plugin->do_cleanup_thd) {
+                query_preparer_plugin->do_cleanup_thd(thd);
+            }
         }
     }
     assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
