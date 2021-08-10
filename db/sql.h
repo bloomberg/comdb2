@@ -72,6 +72,7 @@ struct fingerprint_track {
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
     char ** cachedColNames; /* Cached column names from sqlitex */
+    char ** cachedColDeclTypes; /* Cached column types from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
 };
 
@@ -106,6 +107,7 @@ struct sqlthdstate {
      * is especially needed to differentiate between fdb cursors opened by core
      * versus query preparer plugin. */
     int query_preparer_running;
+    void *sqldbx;
 };
 
 typedef struct osqltimings {

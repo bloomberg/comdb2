@@ -28,6 +28,7 @@
 
 #include <sys/time.h>
 #include <sys/resource.h>
+#include "comdb2_query_preparer.h"
 
 struct comdb2_metrics_store {
     int64_t cache_hits;
@@ -92,7 +93,8 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_file;
     int64_t minimum_truncation_offset;
     int64_t minimum_truncation_timestamp;
-    int64_t nonsql; 
+    int64_t reprepares;
+    int64_t nonsql;
 };
 
 static struct comdb2_metrics_store stats;
@@ -251,6 +253,9 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_LATEST,
      &stats.minimum_truncation_timestamp, NULL},
 #endif
+    {"reprepares", "Number of times statements are reprepared by sqlitex",
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.reprepares,
+      NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -366,7 +371,7 @@ int refresh_metrics(void)
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
     stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
-    
+
     /* cache hit rate */
     uint64_t hits, misses;
     bdb_get_cache_stats(thedb->bdb_env, &hits, &misses, NULL, NULL, NULL, NULL);
@@ -466,6 +471,11 @@ int refresh_metrics(void)
     stats.minimum_truncation_offset = min_offset;
     stats.minimum_truncation_timestamp = min_timestamp;
 #endif
+
+    if (gbl_old_column_names && query_preparer_plugin &&
+        query_preparer_plugin->sqlitex_get_metrics) {
+        query_preparer_plugin->sqlitex_get_metrics(&stats.reprepares);
+    }
 
     tran_type *trans = curtran_gettran();
     rc = bdb_get_num_sc_done(((bdb_state_type *)thedb->bdb_env), trans, (unsigned long long *)&stats.num_sc_done,

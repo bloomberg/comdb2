@@ -4850,9 +4850,12 @@ void stmt_set_dtprec(sqlite3_stmt *, int);
 int stmt_cached_column_count(sqlite3_stmt *);
 char *stmt_cached_column_name(sqlite3_stmt *, int);
 char *stmt_column_name(sqlite3_stmt *, int);
-void stmt_set_cached_columns(sqlite3_stmt *, char **, int);
+char *stmt_column_decltype(sqlite3_stmt *pStmt, int index);
+char *stmt_cached_column_decltype(sqlite3_stmt *pStmt, int index);
+void stmt_set_cached_columns(sqlite3_stmt *, char **, char **, int);
 void stmt_set_vlock_tables(sqlite3_stmt *, char **, int);
 int stmt_do_column_names_match(sqlite3_stmt *);
+int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

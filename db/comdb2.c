@@ -135,6 +135,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "string_ref.h"
 #include "sql_stmt_cache.h"
 #include "phys_rep.h"
+#include "comdb2_query_preparer.h"
 
 #define tokdup strndup
 
@@ -1445,7 +1446,7 @@ int comdb2_tmpdir_space_low() {
     char * path = comdb2_get_tmp_dir();
     int reqfree = bdb_attr_get(thedb->bdb_attr, 
             BDB_ATTR_SQLITE_SORTER_TEMPDIR_REQFREE);
-    
+
     return has_low_headroom(path, 100 - reqfree, 1);
 }
 
@@ -2924,7 +2925,7 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
                    strerror(errno));
         }
     } 
-    
+
     /* make sure the database directory exists! */
     struct stat sb = {0};
     rc = stat(dbenv->basedir, &sb);
@@ -3758,7 +3759,7 @@ static int init(int argc, char **argv)
     if (gbl_exit) {
         gbl_local_mode = 1; /*local mode, so no connect to network*/
     }
-    
+
     if (optind >= argc) {
         fprintf(stderr, "Must provide DBNAME as first argument\n");
         exit(1);
@@ -6122,7 +6123,7 @@ static int put_all_csc2()
     for (ii = 0; ii < thedb->num_dbs; ii++) {
         if (thedb->dbs[ii]->dbtype == DBTYPE_TAGGED_TABLE) {
             int rc;
-            
+
             if (thedb->dbs[ii]->lrlfname)
                 rc = load_new_table_schema_file(
                     thedb, thedb->dbs[ii]->tablename, thedb->dbs[ii]->lrlfname);
@@ -6412,6 +6413,12 @@ retry_tran:
         thd = sqlthd->clnt->thd;
         stmt_cache_reset(thd->stmt_cache);
         sqlite3_close_serial(&thd->sqldb);
+
+        /* Also clear sqlitex's db handle */
+        if (gbl_old_column_names && query_preparer_plugin &&
+            query_preparer_plugin->do_cleanup_thd) {
+            query_preparer_plugin->do_cleanup_thd(thd);
+        }
     }
 
     create_datacopy_arrays();

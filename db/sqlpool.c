@@ -19,6 +19,7 @@
 #include <metrics.h>
 #include <logmsg.h>
 #include <util.h>
+#include "comdb2_query_preparer.h"
 
 extern int gbl_use_appsock_as_sqlthread;
 
@@ -48,6 +49,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
 
     thd->logger = thrman_get_reqlogger(thd->thr_self);
     thd->sqldb = NULL;
+    thd->sqldbx = NULL;
     thd->stmt_cache = NULL;
     thd->have_lastuser = 0;
     thd->query_preparer_running = 0;
@@ -81,6 +83,11 @@ void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
     if (thd->stmt_cache)
         stmt_cache_delete(thd->stmt_cache);
     sqlite3_close_serial(&thd->sqldb);
+
+    if (gbl_old_column_names && query_preparer_plugin &&
+        query_preparer_plugin->do_cleanup_thd) {
+        query_preparer_plugin->do_cleanup_thd(thd);
+    }
 
     /* AZ moved after the close which uses thd for rollbackall */
     done_sql_thread();

@@ -117,6 +117,31 @@ char *stmt_cached_column_name(sqlite3_stmt *pStmt, int index) {
   return column_names[index];
 }
 
+char *stmt_column_decltype(sqlite3_stmt *pStmt, int index) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  index += COLNAME_DECLTYPE * sqlite3_column_count(pStmt);
+  char *ret = (char *) sqlite3_value_text((sqlite3_value*)&vdbe->aColName[index]);
+  if (ret == NULL)
+      return "text";
+  return ret;
+}
+
+char *stmt_cached_column_decltype(sqlite3_stmt *pStmt, int index) {
+  char **column_decltypes;
+  Vdbe *vdbe = (Vdbe *)pStmt;
+
+  if (!vdbe) {
+    logmsg(LOGMSG_ERROR, "%s:%d stmt handle not set\n", __func__, __LINE__);
+    return 0;
+  }
+  column_decltypes = vdbe->oldColDeclTypes;
+  return column_decltypes[index];
+}
+
 int stmt_cached_column_count(sqlite3_stmt *pStmt) {
   Vdbe *vdbe = (Vdbe *)pStmt;
   return (vdbe) ? vdbe->oldColCount : 0;
@@ -127,6 +152,7 @@ static void stmt_free_column_names(sqlite3_stmt *pStmt) {
   int column_count;
   int i;
   char **column_names;
+  char **column_decltypes;
 
   vdbe = (Vdbe *)pStmt;
   if (!vdbe)
@@ -134,12 +160,16 @@ static void stmt_free_column_names(sqlite3_stmt *pStmt) {
 
   column_names = vdbe->oldColNames;
   column_count = vdbe->oldColCount;
+  column_decltypes = vdbe->oldColDeclTypes;
   for(i=0; i<column_count; i++) {
     free(column_names[i]);
+    free(column_decltypes[i]);
   }
   free(column_names);
+  free(column_decltypes);
 
   vdbe->oldColNames = 0;
+  vdbe->oldColDeclTypes = 0;
   vdbe->oldColCount = 0;
 }
 
@@ -157,15 +187,8 @@ static void stmt_free_vtable_locks(sqlite3_stmt *pStmt) {
   vdbe->numVTableLocks = 0;
 }
 
-void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks,
-        int numVTableLocks) {
-  Vdbe *vdbe = (Vdbe *)pStmt;
-  stmt_free_vtable_locks(pStmt);
-  vdbe->numVTableLocks = numVTableLocks;
-  vdbe->vTableLocks = vTableLocks;
-}
-
 void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
+                             char **column_decltypes,
                              int column_count) {
   Vdbe *vdbe = (Vdbe *)pStmt;
 
@@ -173,22 +196,23 @@ void stmt_set_cached_columns(sqlite3_stmt *pStmt, char **column_names,
   stmt_free_column_names(pStmt);
 
   vdbe->oldColNames = column_names;
+  vdbe->oldColDeclTypes = column_decltypes;
   vdbe->oldColCount = column_count;
 }
 
-int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
-  Vdbe *p;
-  int cached_column_count;
-  int i;
-
-  if( gbl_old_column_names==0 || (stmt_cached_column_count(pStmt)==0) ||
-      (sqlite3_column_count(pStmt)==0) ){
-    return 1;
-  }
-
-  cached_column_count = stmt_cached_column_count(pStmt);
+#define COLUMN_MATCH_COMMON(pStmt) \
+  int cached_column_count;        \
+  int i;                          \
+  if( gbl_old_column_names==0 || (stmt_cached_column_count(pStmt)==0) ||  \
+      (sqlite3_column_count(pStmt)==0) ){                                 \
+    return 1;                     \
+  }                               \
+  cached_column_count = stmt_cached_column_count(pStmt);        \
   assert(cached_column_count == sqlite3_column_count(pStmt));
 
+int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
+  COLUMN_MATCH_COMMON(pStmt);
+  Vdbe *p;
   p = (Vdbe *)pStmt;
   for(i=0; i<cached_column_count; i++){
     if( (strcmp((const char *)sqlite3_value_text((sqlite3_value*)&p->aColName[i]),
@@ -197,6 +221,24 @@ int stmt_do_column_names_match(sqlite3_stmt *pStmt) {
     }
   }
   return 1;
+}
+
+int stmt_do_column_decltypes_match(sqlite3_stmt *pStmt) {
+  COLUMN_MATCH_COMMON(pStmt);
+  for(i=0; i<cached_column_count; i++){
+    if((strcmp(stmt_column_decltype(pStmt, i), stmt_cached_column_decltype(pStmt, i)))!=0) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
+void stmt_set_vlock_tables(sqlite3_stmt *pStmt, char **vTableLocks,
+        int numVTableLocks) {
+  Vdbe *vdbe = (Vdbe *)pStmt;
+  stmt_free_vtable_locks(pStmt);
+  vdbe->numVTableLocks = numVTableLocks;
+  vdbe->vTableLocks = vTableLocks;
 }
 
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -560,7 +602,7 @@ sqlite3_value *sqlite3_value_dup(const sqlite3_value *pOrig){
 void sqlite3_value_free(sqlite3_value *pOld){
   sqlite3ValueFree(pOld);
 }
-  
+
 
 /**************************** sqlite3_result_  *******************************
 ** The following routines are used by user-defined functions to specify
@@ -1884,7 +1926,7 @@ int sqlite3_bind_zeroblob64(sqlite3_stmt *pStmt, int i, sqlite3_uint64 n){
 
 /*
 ** Return the number of wildcards that can be potentially bound to.
-** This routine is added to support DBD::SQLite.  
+** This routine is added to support DBD::SQLite.
 */
 int sqlite3_bind_parameter_count(sqlite3_stmt *pStmt){
   Vdbe *p = (Vdbe*)pStmt;
