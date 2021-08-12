@@ -14,6 +14,8 @@
    limitations under the License.
  */
 
+#include "sqlglue.h"
+
 #include "limit_fortify.h"
 #include "sqloffload.h"
 #include "analyze.h"
@@ -2138,6 +2140,12 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     rc = sqlite3_open_serial("db", &hndl, NULL);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: sqlite3_open failed\n", __func__);
+        goto done;
+    }
+
+    if ((rc = register_lua_funcs(hndl, sqlthd->clnt->thd, SQLITE_UTF8 | SQLITE_DETERMINISTIC, iq->dbenv->lua_sfuncs,
+                                 iq->dbenv->num_lua_sfuncs)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: unable to register sfuncs rc=%d\n", __func__, rc);
         goto done;
     }
 
