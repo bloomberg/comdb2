@@ -5003,7 +5003,7 @@ void comdb2DropTrigger(Parse*,int,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
 void comdb2CreateTrigger(Parse*,int dynamic,Token*,Cdb2TrigTables*);
 
-void comdb2CreateScalarFunc(Parse *, Token *);
+void comdb2CreateScalarFunc(Parse *, Token *, int iflags);
 void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);

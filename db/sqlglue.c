@@ -2143,6 +2143,8 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
         goto done;
     }
 
+    for (int i = 0; i < iq->dbenv->num_lua_sfuncs; ++i) {
+    }
     if ((rc = register_lua_funcs(hndl, sqlthd->clnt->thd, SQLITE_UTF8 | SQLITE_DETERMINISTIC, iq->dbenv->lua_sfuncs,
                                  iq->dbenv->num_lua_sfuncs)) != 0) {
         logmsg(LOGMSG_ERROR, "%s: unable to register sfuncs rc=%d\n", __func__, rc);

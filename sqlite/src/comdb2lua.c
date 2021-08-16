@@ -301,7 +301,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
                             (vdbeFuncArgFree)&free_schema_change_type);        \
     } while (0)
 
-void comdb2CreateScalarFunc(Parse *parse, Token *proc)
+void comdb2CreateScalarFunc(Parse *parse, Token *proc, int iflags)
 {
     if (comdb2IsPrepareOnly(parse))
         return;
