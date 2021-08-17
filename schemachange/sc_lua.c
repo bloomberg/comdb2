@@ -581,22 +581,20 @@ int finalize_lua_afunc()
     finalize_lua_func(a);
 }
 
-#define do_lua_func(sc, rc, pfx)                                               \
-    do {                                                                       \
-        int bdberr;                                                            \
-        if (sc->addonly) {                                                     \
-            logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__,   \
-                   sc->spname);                                                \
-            bdb_llmeta_add_lua_##pfx##func(sc->spname, &bdberr);               \
-        } else {                                                               \
-            logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, \
-                   sc->spname);                                                \
-            bdb_llmeta_del_lua_##pfx##func(sc->spname, &bdberr);               \
-        }                                                                      \
-        if (sc->finalize)                                                      \
-            rc = finalize_lua_##pfx##func();                                   \
-        else                                                                   \
-            rc = SC_COMMIT_PENDING;                                            \
+#define do_lua_func(sc, rc, pfx)                                                            \
+    do {                                                                                    \
+        int bdberr;                                                                         \
+        if (sc->addonly) {                                                                  \
+            logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__, sc->spname);   \
+            bdb_llmeta_add_lua_##pfx##func(sc->spname, &sc->sfunc_flags, &bdberr);          \
+        } else {                                                                            \
+            logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, sc->spname); \
+            bdb_llmeta_del_lua_##pfx##func(sc->spname, &bdberr);                            \
+        }                                                                                   \
+        if (sc->finalize)                                                                   \
+            rc = finalize_lua_##pfx##func();                                                \
+        else                                                                                \
+            rc = SC_COMMIT_PENDING;                                                         \
     } while (0)
 
 int do_lua_sfunc(struct schema_change_type *sc)

@@ -69,6 +69,9 @@ typedef struct bulk_dump bulk_dump;
 struct dtadump;
 typedef struct dtadump dtadump;
 
+struct lua_func_t;
+typedef struct lua_func_t lua_func_t;
+
 typedef struct bdb_cursor_ser bdb_cursor_ser_t;
 struct bdb_cursor_ser {
     uint8_t opaque[64];
@@ -2066,11 +2069,11 @@ int bdb_genid_set_format(bdb_state_type *bdb_state, int format);
 int bdb_genid_allow_original_format(bdb_state_type *bdb_state);
 int genid_contains_time(bdb_state_type *bdb_state);
 
-int bdb_llmeta_get_lua_sfuncs(char ***, int *, int *bdberr);
-int bdb_llmeta_add_lua_sfunc(char *, int *bdberr);
+int bdb_llmeta_get_lua_sfuncs(char ***, int**, int *, int *bdberr);
+int bdb_llmeta_add_lua_sfunc(char *, int*, int *bdberr);
 int bdb_llmeta_del_lua_sfunc(char *, int *bdberr);
-int bdb_llmeta_get_lua_afuncs(char ***, int *, int *bdberr);
-int bdb_llmeta_add_lua_afunc(char *, int *bdberr);
+int bdb_llmeta_get_lua_afuncs(char ***, int**, int *, int *bdberr);
+int bdb_llmeta_add_lua_afunc(char *, int *, int *bdberr);
 int bdb_llmeta_del_lua_afunc(char *, int *bdberr);
 
 /* IO smoke test */

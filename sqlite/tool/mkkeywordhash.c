@@ -342,6 +342,7 @@ static Keyword aKeywordTable[] = {
   { "DATACOPY",         "TK_DATACOPY",       ALWAYS               },
   { "DBPAD",            "TK_DBPAD",          ALWAYS               },
   { "DDL",              "TK_DDL",            ALWAYS               },
+  { "DETERMINISTIC",    "TK_DETERMINISTIC",  ALWAYS               },
   { "DISABLE",          "TK_DISABLE",        ALWAYS               },
   { "DISTRIBUTION",     "TK_DISTRIBUTION",   ALWAYS               },
   { "DRYRUN",           "TK_DRYRUN",         ALWAYS               },

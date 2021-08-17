@@ -1868,7 +1868,7 @@ char **afuncs = NULL;
         char **func = &pfx##funcs[0];                                          \
         while (*func) {                                                        \
             int bdberr;                                                        \
-            int rc = bdb_llmeta_add_lua_##pfx##func(*func, &bdberr);           \
+            int rc = bdb_llmeta_add_lua_##pfx##func(*func, NULL, &bdberr);     \
             if (rc) {                                                          \
                logmsg(LOGMSG_ERROR, "could not add sql lua " #pfx "func:%s to llmeta\n",\
                        *func);                                                 \
@@ -1884,7 +1884,8 @@ char **afuncs = NULL;
     do {                                                                       \
         int bdberr = 0;                                                        \
         int rc = bdb_llmeta_get_lua_##pfx##funcs(                              \
-            &thedb->lua_##pfx##funcs, &thedb->num_lua_##pfx##funcs, &bdberr);  \
+            &thedb->lua_##pfx##funcs, &thedb->lua_sfunc_iflags,                \
+            &thedb->num_lua_##pfx##funcs, &bdberr);                            \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_lua_" #pfx "funcs bdberr:%d\n",\
                     bdberr);                                                   \
