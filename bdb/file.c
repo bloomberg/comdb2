@@ -8351,6 +8351,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
             if (oldfile_add(munged_name, lognum, __func__, __LINE__,
                             spew_debug)) {
                 print(bdb_state, "failed to collect old file %s\n", ent->d_name);
+                break;
             } else {
                 print(bdb_state, "collected old file %s\n", ent->d_name);
             }
