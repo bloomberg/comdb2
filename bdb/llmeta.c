@@ -172,6 +172,7 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS = 50,
     LLMETA_VIEW = 51,                 /* User defined views */
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
+    LLMETA_LUA_SFUNC_FLAG = 53,
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -9216,11 +9217,13 @@ static int bdb_llmeta_get_lua_sfunc_flags(char *func, int *flags, int *bdberr)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
     int num = 0;
-    u.skey.key = htonl(LLMETA_LUA_SFUNC);
+    u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
     strncpy0(u.skey.func_name, func, sizeof(u.skey.func_name));
 
-    int **iflags;
-    return kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflags, &num, bdberr);
+    int **iflag;
+    int rc = kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflag, &num, bdberr);
+    flags = *iflag;
+    return rc;
 }
 static int bdb_llmeta_add_lua_sfunc_flag(char *name, int *flags, int *bdberr)
 {
@@ -9229,10 +9232,10 @@ static int bdb_llmeta_add_lua_sfunc_flag(char *name, int *flags, int *bdberr)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
 
-    u.skey.key = htonl(LLMETA_LUA_SFUNC);
+    u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
     strncpy0(u.skey.func_name, name, sizeof(u.skey.func_name));
 
-    return kv_put(NULL, &u, &flags, sizeof(flags), bdberr);
+    return kv_put(NULL, &u, flags, sizeof(flags), bdberr);
 }
 static int bdb_llmeta_del_lua_sfunc_flag(char *func, int *bdberr)
 {
@@ -9241,8 +9244,8 @@ static int bdb_llmeta_del_lua_sfunc_flag(char *func, int *bdberr)
         uint8_t buf[LLMETA_IXLEN];
     } u = {{0}};
 
-    u.skey.key = htonl(LLMETA_LUA_SFUNC);
-    strcpy(u.skey.func_name, func);
+    u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
+    strncpy0(u.skey.func_name, func, sizeof(u.skey.func_name));
 
     return kv_del(NULL, &u, bdberr);
 }
@@ -9251,13 +9254,10 @@ static int bdb_llmeta_del_lua_sfunc_flag(char *func, int *bdberr)
 int bdb_llmeta_get_lua_sfuncs(char ***funcs, int **flags, int *num, int *bdberr)
 {
     int rc = bdb_kv_get(LLMETA_LUA_SFUNC, funcs, num, bdberr);
-    int iflags[*num];
     for (int i = 0; i < *num; ++i) {
-        int currflag = 0;
-        bdb_llmeta_get_lua_sfunc_flags(*funcs[i], &currflag, bdberr);
-        iflags[i] = currflag;
+        bdb_llmeta_get_lua_sfunc_flags(*funcs[i], *flags, bdberr);
+        flags += 1;
     }
-    memcpy(*flags, iflags, *num);
     return rc;
 }
 int bdb_llmeta_add_lua_sfunc(char *name, int *flag, int *bdberr)
