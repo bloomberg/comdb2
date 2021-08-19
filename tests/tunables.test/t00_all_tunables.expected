@@ -896,6 +896,7 @@
 (name='test_scindex_deadlock', description='Test index on expressions schema change deadlock', type='BOOLEAN', value='OFF', read_only='Y')
 (name='test_sync_osql_cancel', description='Force a delay in osql_sess_rcvop test synchronous osql cancel', type='BOOLEAN', value='OFF', read_only='N')
 (name='thread_stats', description='Berkeley DB will keep stats on what its threads are doing', type='BOOLEAN', value='ON', read_only='N')
+(name='throttle_txn_chunks_msec', description='Wait that many milliseconds before starting a new chunk  (Default: 0)', type='INTEGER', value='0', read_only='N')
 (name='throttlesqloverlog', description='On a full queue of SQL requests, dump the current thread pool this often (in secs). (Default: 5sec)', type='INTEGER', value='5', read_only='Y')
 (name='timeout_fdb_trans_sync', description='Timeout for retrieving a foreign table transaction', type='INTEGER', value='4000', read_only='N')
 (name='timeout_server_sockpool', description='Timeout for getting a connection to another database from sockpool.', type='INTEGER', value='10', read_only='N')

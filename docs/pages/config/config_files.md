@@ -940,7 +940,9 @@ These options are toggle-able at runtime.
 |clean_exit_on_sigterm | 1 | When enabled, SIGTERM will cause database to do an orderly shutdown.  When disabled follows system SIGTERM default (terminate, no core) 
 |delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
 |sockbplog| off | Osql bplog is sent from replicants to master on their own socket
-|sockbplog_sockpool| off | Osql bplog sent over sockets is using local sockpool
+|sockbplog_sockpool | off | Osql bplog sent over sockets is using local sockpool
+|throttle_txn_chunks_msec | 0 | Wait that many milliseconds before starting a new transaction chunk
+
 
 
 <!-- TODO

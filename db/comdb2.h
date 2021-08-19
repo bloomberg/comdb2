@@ -3590,5 +3590,6 @@ void init_password_cache();
 void destroy_password_cache();
 
 extern int gbl_rcache;
+extern int gbl_throttle_txn_chunks_msec;
 
 #endif /* !INCLUDED_COMDB2_H */

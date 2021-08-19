@@ -125,6 +125,7 @@ extern int gbl_debug_tmptbl_corrupt_mem;
 static __thread struct temptable *tmptbl_clone = NULL;
 
 uint32_t gbl_sql_temptable_count;
+int gbl_throttle_txn_chunks_msec = 0;
 
 void free_cached_idx(uint8_t **cached_idx)
 {
@@ -7574,6 +7575,43 @@ static int sqlite3LockStmtTables_int(sqlite3_stmt *pStmt, int after_recovery)
             return rc;
         }
 
+        /* BIG NOTE:
+         * A sqlite engine can safely access a dbtable once it acquires the read lock
+         * for the table. This is done under schema change lock, and after that the
+         * table cannot be dropped or altered until the read lock is released.
+         * 
+         * In a normal case, for each statement, the table read locks are acquired under the 
+         * curtran locker id, and are released when the statement execution is over,
+         * just before closing the curtran.  * This protects the table for the duration 
+         * of statement's execution.  This is different in chunk transaction, as explained below.  
+         *
+         * For client transactions ("begin";write_table1;write_table2;commit"), after write_table1
+         * is done, "table1" can be altered or even dropped by a concurrent schema change.
+         * This is ok for transaction isolation modes weaker than snapshot.
+         *
+         * For snapshot and serial isolation, once a table is accessed, it become part of the
+         * snapshot.  For example, in ("begin"; write_table1_once; write_table1_twice; "commit"),
+         * if table is schema changed after "write_table1_once" finishes, the snapshot is broken
+         * and we need to fail the transaction.
+         *
+         * In transaction chunk mode, during a single statement execution we release the table locks 
+         * once the chunk is committed. This allows the table to be dropped/altered concurrently
+         * with sqlite statement execution.  In order to continue sqlite execution safely 
+         * (next chunk), we need to reacquire the table locks.  We also need to make sure the
+         * table was not changed (altered or drop&add).
+         */
+
+        /* if chunk mode, check version (see comment above) */
+        if (clnt->dbtran.maxchunksize > 0) {
+            if (db->tableversion != tab->version) {
+                logmsg(LOGMSG_ERROR,
+                       "%s table %s schema changed during chunk transaction %llu %d\n",
+                       __func__, db->tablename, db->tableversion, tab->version);
+                return SQLITE_SCHEMA;
+            }
+        }
+
+        /* in snapshot and stronger isolations, check cached table versions */
         if (clnt->dbtran.shadow_tran &&
             (clnt->dbtran.mode == TRANLEVEL_SNAPISOL ||
              clnt->dbtran.mode == TRANLEVEL_SERIAL)) {
@@ -8374,6 +8412,7 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
     BtCursor *cur = NULL;
     int rc = SQLITE_OK;
     int commit_rc = SQLITE_OK;
+    int newlocks_rc = SQLITE_OK;
     int bdberr = 0;
 
     if (clnt->dbtran.crtchunksize >= clnt->dbtran.maxchunksize) {
@@ -8412,6 +8451,10 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
              */
         }
 
+        if (gbl_throttle_txn_chunks_msec > 0) {
+            poll(NULL, 0, gbl_throttle_txn_chunks_msec);
+        }
+
         /* restart a new transaction */
         sql_set_sqlengine_state(clnt, __FILE__, __LINE__,
                                 SQLENG_PRE_STRT_STATE);
@@ -8438,6 +8481,27 @@ static int chunk_transaction(BtCursor *pCur, struct sqlclntstate *clnt,
 
             rc = SQLITE_ERROR;
             goto done;
+        }
+
+        if (!commit_rc) {
+            /* NOTE: the commit has released the curtran locks, so 
+             * the table can go away. We cannot keep the table locks here
+             * since it deadlocks on the master (the writer lock starvation
+             * prevents a new read table lock to be aquired while there is
+             * a waiting write lock for that table)
+             */
+            rdlock_schema_lk();
+            assert(pCur->vdbe == (Vdbe*)clnt->dbtran.pStmt);
+            newlocks_rc = sqlite3LockStmtTables(clnt->dbtran.pStmt);
+            unlock_schema_lk();
+
+            if (newlocks_rc) {
+                comdb2_sqlite3VdbeError(
+                        pCur->vdbe,
+                        "Failed to renew locks, table schema changed");
+                rc = SQLITE_ERROR;
+                goto done;
+            }
         }
         rc = commit_rc;
 
