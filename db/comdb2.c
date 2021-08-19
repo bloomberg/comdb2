@@ -1884,7 +1884,7 @@ char **afuncs = NULL;
     do {                                                                       \
         int bdberr = 0;                                                        \
         int rc = bdb_llmeta_get_lua_##pfx##funcs(                              \
-            &thedb->lua_##pfx##funcs, &thedb->lua_sfunc_flags,                 \
+            &thedb->lua_##pfx##funcs, &thedb->lua_##pfx##func_flags,           \
             &thedb->num_lua_##pfx##funcs, &bdberr);                            \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_lua_" #pfx "funcs bdberr:%d\n",\

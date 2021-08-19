@@ -9210,7 +9210,7 @@ struct sfunc_key {
     char func_name[LLMETA_TBLLEN];
 };
 
-static int bdb_llmeta_get_lua_sfunc_flags(char *func, int *flags, int *bdberr)
+static int bdb_llmeta_get_lua_sfunc_flags(char *func, int ***flags, int *bdberr)
 {
     union {
         struct sfunc_key skey;
@@ -9220,9 +9220,9 @@ static int bdb_llmeta_get_lua_sfunc_flags(char *func, int *flags, int *bdberr)
     u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
     strncpy0(u.skey.func_name, func, sizeof(u.skey.func_name));
 
-    int **iflag = NULL;
-    int rc = kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflag, &num, bdberr);
-    flags = *iflag;
+    int ** iflags = NULL;
+    int rc = kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflags, &num, bdberr);
+    **flags = *iflags;
     return rc;
 }
 static int bdb_llmeta_add_lua_sfunc_flag(char *name, int *flags, int *bdberr)
@@ -9254,9 +9254,13 @@ static int bdb_llmeta_del_lua_sfunc_flag(char *func, int *bdberr)
 int bdb_llmeta_get_lua_sfuncs(char ***funcs, int **flags, int *num, int *bdberr)
 {
     int rc = bdb_kv_get(LLMETA_LUA_SFUNC, funcs, num, bdberr);
-    flags = calloc(*num, sizeof(int *));
-    for (int i = 0; i < *num; ++i) {
-        bdb_llmeta_get_lua_sfunc_flags(*funcs[i], *(flags + i), bdberr);
+    if (*num > 0) {
+        flags = calloc(*num, sizeof(int *));
+
+        for (int i = 0; i < *num; ++i) {
+            int **curr = &flags[i];
+            bdb_llmeta_get_lua_sfunc_flags(*funcs[i], &curr, bdberr);
+        }
     }
     return rc;
 }
