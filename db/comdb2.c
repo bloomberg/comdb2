@@ -1895,11 +1895,11 @@ char **afuncs = NULL;
         return rc;                                                             \
     } while (0)
 
-#define get_funcs(funcs, flags, num_funcs, pfx)                           \
+#define get_funcs(funcs, flags, num_funcs, pfx)                                \
     do {                                                                       \
         *funcs = thedb->lua_##pfx##funcs;                                      \
         *num_funcs = thedb->num_lua_##pfx##funcs;                              \
-        *flags = thedb->lua_##pfx##func_flags;                            \
+        *flags = thedb->lua_##pfx##func_flags;                                 \
     } while (0)
 
 #define find_lua_func(name, pfx)                                               \
