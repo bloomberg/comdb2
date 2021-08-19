@@ -294,7 +294,8 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
         }                                                                      \
         struct schema_change_type *sc = new_schemachange_type();               \
         sc->is_##pfx##func = 1;                                                \
-		sc->sfunc_flags |= flags;                                              \
+		sc->lua_func_flags |= flags;                                           \
+		sqlite3DebugPrintf("lua_func_flags:%d", sc->lua_func_flags);           \
         sc->addonly = 1;                                                       \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \

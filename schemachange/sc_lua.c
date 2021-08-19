@@ -586,7 +586,7 @@ int finalize_lua_afunc()
         int bdberr;                                                                         \
         if (sc->addonly) {                                                                  \
             logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__, sc->spname);   \
-            bdb_llmeta_add_lua_##pfx##func(sc->spname, &sc->sfunc_flags, &bdberr);          \
+            bdb_llmeta_add_lua_##pfx##func(sc->spname, &sc->lua_func_flags, &bdberr);       \
         } else {                                                                            \
             logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, sc->spname); \
             bdb_llmeta_del_lua_##pfx##func(sc->spname, &bdberr);                            \

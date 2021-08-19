@@ -9255,8 +9255,7 @@ int bdb_llmeta_get_lua_sfuncs(char ***funcs, int **flags, int *num, int *bdberr)
 {
     int rc = bdb_kv_get(LLMETA_LUA_SFUNC, funcs, num, bdberr);
     for (int i = 0; i < *num; ++i) {
-        bdb_llmeta_get_lua_sfunc_flags(*funcs[i], *flags, bdberr);
-        flags += 1;
+        bdb_llmeta_get_lua_sfunc_flags(*funcs[i], *(flags + i), bdberr);
     }
     return rc;
 }
