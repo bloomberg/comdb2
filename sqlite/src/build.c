@@ -2685,6 +2685,15 @@ void sqlite3EndTable(
       sqlite3OomFault(db);
       return;
     }
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    /* we need to save version too; skip views */
+    if (!p->pSelect) {
+        struct dbtable *dbtable = get_dbtable_by_name(p->zName);
+        if (dbtable) {
+            p->version = (int)dbtable->tableversion;
+        }
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     pParse->pNewTable = 0;
     db->mDbFlags |= DBFLAG_SchemaChange;
 
