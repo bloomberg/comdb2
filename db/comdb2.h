@@ -943,8 +943,8 @@ struct dbenv {
     /* Special SPs */
     int num_lua_sfuncs;
     char **lua_sfuncs;
-    /* internal flags for sfuncs */ 
-    int *lua_sfunc_iflags;
+    int *lua_sfunc_flags;
+    int *lua_afunc_flags;
     int num_lua_afuncs;
     char **lua_afuncs;
 

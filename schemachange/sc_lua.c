@@ -2,6 +2,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "comdb2.h"
 #include "schemachange.h"
 #include "sc_lua.h"
 #include "translistener.h"
@@ -548,6 +549,7 @@ int finalize_default_sp(struct schema_change_type *sc)
             free(thedb->lua_##pfx##funcs[i]);                                  \
             thedb->lua_##pfx##funcs[i] = NULL;                                 \
         }                                                                      \
+        if(thedb->lua_##pfx##func_flags) free(thedb->lua_##pfx##func_flags);   \
         free(thedb->lua_##pfx##funcs);                                         \
         thedb->lua_##pfx##funcs = NULL;                                        \
         return llmeta_load_lua_##pfx##funcs();                                 \

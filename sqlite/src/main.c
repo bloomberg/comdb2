@@ -3006,11 +3006,7 @@ int sqlite3ParseUri(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 
-// Registers lua funcs as app defined functions in sqlite
-// flags is applied for all funcs currently. Seems okay for
-// existing use cases, however, if required, it can be changed
-// to an array for per function flags.
-int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, int flags, char **funcs, int num_funcs)
+int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, int * flags, char **funcs, int num_funcs)
 {
     int rc = 0;
     if (!funcs) {
@@ -3020,7 +3016,12 @@ int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, int flags, c
         lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
         arg->thd = thd;
         arg->name = funcs[i];
-        if ((rc = sqlite3_create_function_v2(db, funcs[i], -1, flags, arg, lua_func, NULL, NULL, free)) != 0) {
+        int flag = 0;
+        if (flags) {
+            flag = flags[i];
+        }
+        if ((rc = sqlite3_create_function_v2(db, funcs[i], -1, SQLITE_UTF8 | flag, arg, lua_func, NULL, NULL, free)) !=
+            0) {
             return rc;
         }
     }
@@ -3033,16 +3034,18 @@ static void register_lua_sfuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
     char **funcs;
     int num_funcs;
-    get_sfuncs(&funcs, &num_funcs);
-    register_lua_funcs(db, thd, SQLITE_UTF8 | SQLITE_DETERMINISTIC, funcs, num_funcs);
+    int *sfunc_flags;
+    get_sfuncs(&funcs, &sfunc_flags, &num_funcs);
+    register_lua_funcs(db, thd, sfunc_flags, funcs, num_funcs);
 }
 
 static void register_lua_afuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
     char **funcs;
     int num_funcs;
-    get_afuncs(&funcs, &num_funcs);
-    register_lua_funcs(db, thd, SQLITE_UTF8, funcs, num_funcs);
+    int *afunc_flags;
+    get_afuncs(&funcs, &afunc_flags, &num_funcs);
+    register_lua_funcs(db, thd, afunc_flags, funcs, num_funcs);
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

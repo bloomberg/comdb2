@@ -1884,7 +1884,7 @@ char **afuncs = NULL;
     do {                                                                       \
         int bdberr = 0;                                                        \
         int rc = bdb_llmeta_get_lua_##pfx##funcs(                              \
-            &thedb->lua_##pfx##funcs, &thedb->lua_sfunc_iflags,                \
+            &thedb->lua_##pfx##funcs, &thedb->lua_sfunc_flags,                 \
             &thedb->num_lua_##pfx##funcs, &bdberr);                            \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_lua_" #pfx "funcs bdberr:%d\n",\
@@ -1895,10 +1895,11 @@ char **afuncs = NULL;
         return rc;                                                             \
     } while (0)
 
-#define get_funcs(funcs, num_funcs, pfx)                                       \
+#define get_funcs(funcs, flags, num_funcs, pfx)                           \
     do {                                                                       \
         *funcs = thedb->lua_##pfx##funcs;                                      \
         *num_funcs = thedb->num_lua_##pfx##funcs;                              \
+        *flags = thedb->lua_##pfx##func_flags;                            \
     } while (0)
 
 #define find_lua_func(name, pfx)                                               \
@@ -1918,14 +1919,14 @@ int llmeta_load_lua_sfuncs() { llmeta_load_lua_funcs(s); }
 
 int llmeta_load_lua_afuncs() { llmeta_load_lua_funcs(a); }
 
-void get_sfuncs(char ***funcs, int *num_funcs)
+void get_sfuncs(char ***funcs, int **flags, int *num_funcs)
 {
-    get_funcs(funcs, num_funcs, s);
+    get_funcs(funcs, flags, num_funcs, s);
 }
 
-void get_afuncs(char ***funcs, int *num_funcs)
+void get_afuncs(char ***funcs, int **flags, int *num_funcs)
 {
-    get_funcs(funcs, num_funcs, a);
+    get_funcs(funcs, flags, num_funcs, a);
 }
 
 int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
