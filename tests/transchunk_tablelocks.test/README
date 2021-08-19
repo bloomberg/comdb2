@@ -1,0 +1,1 @@
+This test checks the case of altering and dropping a table while running a chunk transaction.

@@ -2120,4 +2120,8 @@ REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",
                  TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before starting a new chunk  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_throttle_txn_chunks_msec, 0, NULL, NULL, NULL, NULL);
+
+
 #endif /* _DB_TUNABLES_H */
