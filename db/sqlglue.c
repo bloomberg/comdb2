@@ -2095,8 +2095,6 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     int got_curtran = 0;
     master_entry_t *ents = NULL;
     int nents = 0;
-    int num_sfunc_flags = iq->dbenv->num_lua_sfuncs;
-    int flags[num_sfunc_flags];
 
     if (!gbl_partial_indexes)
         return -1;
@@ -2145,15 +2143,8 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
         goto done;
     }
 
-    for (int i = 0; i < num_sfunc_flags; ++i) {
-        flags[i] = SQLITE_DETERMINISTIC;
-    }
-
-    if ((rc = register_lua_funcs(hndl, sqlthd->clnt->thd, flags, iq->dbenv->lua_sfuncs,
-                                 iq->dbenv->num_lua_sfuncs)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: unable to register sfuncs rc=%d\n", __func__, rc);
-        goto done;
-    }
+    // TODO: check if the db has func flags for the sfunc we are trying
+    //       to create an index for, otherwise, we throw an error!
 
     rc = get_curtran(thedb->bdb_env, &client);
     if (rc) {

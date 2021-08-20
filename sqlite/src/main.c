@@ -3006,22 +3006,18 @@ int sqlite3ParseUri(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 
-int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, int * flags, char **funcs, int num_funcs)
+int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, void *funcs)
 {
     int rc = 0;
-    if (!funcs) {
-        return 1;
-    }
-    for (int i = 0; i < num_funcs; ++i) {
+    struct lua_func_t *func;
+    listc_t *list = funcs;
+    LISTC_FOR_EACH(list, func, lnk)
+    {
         lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
         arg->thd = thd;
-        arg->name = funcs[i];
-        int flag = 0;
-        if (flags) {
-            flag = flags[i];
-        }
-        if ((rc = sqlite3_create_function_v2(db, funcs[i], -1, SQLITE_UTF8 | flag, arg, lua_func, NULL, NULL, free)) !=
-            0) {
+        arg->name = func->name;
+        if ((rc = sqlite3_create_function_v2(db, func->name, -1, SQLITE_UTF8 | func->flags, arg, lua_func, NULL, NULL,
+                                             free)) != 0) {
             return rc;
         }
     }
@@ -3032,20 +3028,16 @@ int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, int * flags,
 //          This could turn out to be problematic. We should clearly document this.
 static void register_lua_sfuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
-    char **funcs;
-    int num_funcs;
-    int *sfunc_flags;
-    get_sfuncs(&funcs, &sfunc_flags, &num_funcs);
-    register_lua_funcs(db, thd, sfunc_flags, funcs, num_funcs);
+    listc_t funcs;
+    get_sfuncs(&funcs);
+    register_lua_funcs(db, thd, &funcs); 
 }
 
 static void register_lua_afuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
-    char **funcs;
-    int num_funcs;
-    int *afunc_flags;
-    get_afuncs(&funcs, &afunc_flags, &num_funcs);
-    register_lua_funcs(db, thd, afunc_flags, funcs, num_funcs);
+    listc_t funcs;
+    get_afuncs(&funcs);
+    register_lua_funcs(db, thd, &funcs); 
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

@@ -5,6 +5,7 @@
 #include "comdb2.h"
 #include "schemachange.h"
 #include "sc_lua.h"
+#include "sqlglue.h"
 #include "translistener.h"
 
 #include "logmsg.h"
@@ -545,13 +546,7 @@ int finalize_default_sp(struct schema_change_type *sc)
     ++gbl_dbopen_gen;                                                          \
     ++gbl_lua_version;                                                         \
     do {                                                                       \
-        for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \
-            free(thedb->lua_##pfx##funcs[i]);                                  \
-            thedb->lua_##pfx##funcs[i] = NULL;                                 \
-        }                                                                      \
-        if(thedb->lua_##pfx##func_flags) free(thedb->lua_##pfx##func_flags);   \
-        free(thedb->lua_##pfx##funcs);                                         \
-        thedb->lua_##pfx##funcs = NULL;                                        \
+        lua_func_list_free(&thedb->lua_##pfx##funcs);                          \
         return llmeta_load_lua_##pfx##funcs();                                 \
     } while (0)
 

@@ -9210,7 +9210,7 @@ struct sfunc_key {
     char func_name[LLMETA_TBLLEN];
 };
 
-static int bdb_llmeta_get_lua_sfunc_flags(char *func, int ***flags, int *bdberr)
+static int bdb_llmeta_get_lua_sfunc_flags(char *func, int **flags, int *bdberr)
 {
     union {
         struct sfunc_key skey;
@@ -9222,7 +9222,7 @@ static int bdb_llmeta_get_lua_sfunc_flags(char *func, int ***flags, int *bdberr)
 
     int ** iflags = NULL;
     int rc = kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflags, &num, bdberr);
-    **flags = *iflags;
+    *flags = *iflags;
     return rc;
 }
 static int bdb_llmeta_add_lua_sfunc_flag(char *name, int *flags, int *bdberr)
@@ -9251,16 +9251,20 @@ static int bdb_llmeta_del_lua_sfunc_flag(char *func, int *bdberr)
 }
 
 // scalar lua function names
-int bdb_llmeta_get_lua_sfuncs(char ***funcs, int **flags, int *num, int *bdberr)
+int bdb_llmeta_get_lua_sfuncs(void * sfuncs, int *bdberr)
 {
-    int rc = bdb_kv_get(LLMETA_LUA_SFUNC, funcs, num, bdberr);
-    if (*num > 0) {
-        flags = calloc(*num, sizeof(int *));
+    char ** funcs = NULL;
+    int *flags = NULL;
+    int num = 0;
+    int rc = bdb_kv_get(LLMETA_LUA_SFUNC, &funcs, &num, bdberr);
 
-        for (int i = 0; i < *num; ++i) {
-            int **curr = &flags[i];
-            bdb_llmeta_get_lua_sfunc_flags(*funcs[i], &curr, bdberr);
-        }
+    for (int i = 0; i < num; ++i) {
+        bdb_llmeta_get_lua_sfunc_flags(funcs[i], &flags, bdberr);
+        //TODO: Can turn this into a macro
+        struct lua_func_t *sfunc = malloc(sizeof(struct lua_func_t));
+        sfunc->name = funcs[i];
+        sfunc->flags = flags[i];
+        listc_atl(sfuncs, sfunc);
     }
     return rc;
 }
@@ -9277,10 +9281,23 @@ int bdb_llmeta_del_lua_sfunc(char *name, int *bdberr)
 
 // aggregate lua function names
 
-int bdb_llmeta_get_lua_afuncs(char ***funcs, int **flags, int *num, int *bdberr)
+int bdb_llmeta_get_lua_afuncs(void *afuncs, int *bdberr)
 {
-    return bdb_kv_get(LLMETA_LUA_AFUNC, funcs, num, bdberr);
+    int rc = 0;
+    char **funcs = NULL;
+    int num = 0;
+    if((rc = bdb_kv_get(LLMETA_LUA_AFUNC, &funcs, &num, bdberr) != 0)) {
+        return rc;
+    };
+    for(int i = 0; i < num; ++i) {
+        struct lua_func_t * afunc = malloc(sizeof(struct lua_func_t));
+        afunc->name = funcs[i];
+        // afunc->flags is unset as we don't store aggregate func flags
+        listc_atl(afuncs, afunc);
+    }
+    return rc;
 }
+
 int bdb_llmeta_add_lua_afunc(char *name, int *flag, int *bdberr)
 {
     return bdb_kv_put(NULL, LLMETA_LUA_AFUNC, name, strlen(name) + 1, bdberr);
