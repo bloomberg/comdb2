@@ -14,6 +14,7 @@
 (candidate='AS')
 (candidate='ASC')
 (candidate='ATTACH')
+(candidate='AUDIT')
 (candidate='AUTHENTICATION')
 (candidate='AUTOINCREMENT')
 (candidate='BEFORE')

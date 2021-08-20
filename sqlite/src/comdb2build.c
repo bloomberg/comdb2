@@ -514,6 +514,12 @@ int comdb2SqlDryrunSchemaChange(OpFunc *f)
     return f->rc;
 }
 
+static int performOsqlScheamchangeLogic(void *arg, int usedb){
+    struct sql_thread *thd = pthread_getspecific(query_info_key);
+    struct schema_change_type *s = (struct schema_change_type*)arg;
+    return osql_schemachange_logic(s, thd, usedb);
+}
+
 static int comdb2SqlSchemaChange_int(OpFunc *f, int usedb)
 {
     struct sql_thread *thd = pthread_getspecific(query_info_key);
@@ -1057,8 +1063,7 @@ void comdb2CreateProcedure(Parse* pParse, Token* nm, Token* ver, Token* proc)
     }
 #endif
 
-    if (comdb2AuthenticateUserOp(pParse))
-        return;
+    if (comdb2AuthenticateUserOp(pParse)) return;
 
     char spname[MAX_SPNAME];
     char sp_version[MAX_SPVERSION_LEN];

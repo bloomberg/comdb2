@@ -52,8 +52,9 @@
 #include <unistd.h>
 #include "osqlsqlnet.h"
 #include "osqlsqlsocket.h"
+#include "osqlscchain.h"
 #include "sc_global.h"
-
+#include <sc_logic.h>
 
 #define MAX_CLUSTER 16
 
@@ -95,7 +96,7 @@ static void osql_extract_snap_info(osql_sess_t *sess, void *rpl, int rpllen,
 
 
 const char *osql_reqtype_str(int type)
-{   
+{
     assert(0 <= type && type < MAX_OSQL_TYPES);
     return OSQL_RPL_TYPE_TO_STR(type);
 }
@@ -3044,7 +3045,7 @@ int osql_comm_init(struct dbenv *dbenv)
     /* kick the guy */
     rc = net_init(tmp->handle_sibling);
     if (rc) {
-        logmsg(LOGMSG_ERROR, 
+        logmsg(LOGMSG_ERROR,
             "You're on your own buddy, no peers (net_init failed w/ rc = %d)\n",
             rc);
         tmp->handle_sibling = NULL;
@@ -4313,7 +4314,7 @@ int osql_send_serial(osql_target_t *target, unsigned long long rqid,
         osql_serial_uuid_rpl_t serial_rpl = {{0}};
 
         serial_rpl.hd.type =
-            (type == NET_OSQL_SERIAL_RPL || 
+            (type == NET_OSQL_SERIAL_RPL ||
              type == NET_OSQL_SERIAL_RPL_UUID) ? OSQL_SERIAL : OSQL_SELECTV;
         comdb2uuidcpy(serial_rpl.hd.uuid, uuid);
         serial_rpl.dt.buf_size = cr_sz;
@@ -4701,7 +4702,7 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         ret = r_uuid_ptr;
 
         if (!r_uuid_ptr) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "create_sql: error malloc-ing for sql request, size %d\n",
                     rqlen);
             return NULL;
@@ -4728,7 +4729,7 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         ret = r_ptr;
 
         if (!r_ptr) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "create_sql: error malloc-ing for sql request, size %d\n",
                     rqlen);
             return NULL;
@@ -5818,42 +5819,67 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     else
         sc->nothrevent = 1;
     sc->finalize = 0;
-    if (sc->original_master_node[0] != 0 &&
-        strcmp(sc->original_master_node, gbl_myhostname))
-        sc->resume = 1;
 
-    iq->sc = sc;
-    sc->iq = iq;
-    sc->is_osql = 1;
-    if (sc->db == NULL) {
-        sc->db = get_dbtable_by_name(sc->tablename);
-    }
-    sc->tran = NULL;
-    if (sc->db)
-        iq->usedb = sc->db;
-
-    if (!timepart_is_timepart(sc->tablename, 1)) {
-        rc = start_schema_change_tran(iq, NULL);
-        if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
-            sc->preempted == SC_ACTION_RESUME ||
-            sc->alteronly == SC_ALTER_PENDING) {
-            iq->sc = NULL;
-        } else {
-            iq->sc->sc_next = iq->sc_pending;
-            iq->sc_pending = iq->sc;
-            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    while(sc){
+        int failed;
+        sc = populate_sc_chain(sc, &failed);
+        if (failed){
+            free_sc_chain(iq, 0, sc);
+            return ERR_SC;
         }
-    } else {
-        timepart_sc_arg_t arg = {0};
-        arg.s = sc;
-        arg.s->iq = iq;
-        rc = timepart_foreach_shard(sc->tablename,
-                                    start_schema_change_tran_wrapper, &arg, -1);
+        if (sc->original_master_node[0] != 0 &&
+            strcmp(sc->original_master_node, gbl_myhostname))
+            sc->resume = 1;
+        iq->sc = sc;
+        sc->iq = iq;
+        sc->is_osql = 1;
+        if (sc->db == NULL) {
+            sc->db = get_dbtable_by_name(sc->tablename);
+        }
+        sc->tran = NULL;
+        if (sc->db)
+            iq->usedb = sc->db;
+
+        struct schema_change_type *sc_chain_next = NULL;
+        if (!timepart_is_timepart(sc->tablename, 1)) {
+            rc = start_schema_change_tran(iq, NULL);
+            sc_chain_next = sc->sc_chain_next;
+            if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+                sc->preempted == SC_ACTION_RESUME ||
+                sc->alteronly == SC_ALTER_PENDING) {
+
+                // zTODO: maybe not do this when action_resume or on alter_pending
+                if (sc_chain_next){
+                    free_sc_chain(iq, 0, sc_chain_next);
+                }
+
+                sc_chain_next = NULL;
+                iq->sc = NULL;
+                // zTODO: it's possible this should be done in osqlblockproc
+                if (sc->nothrevent){
+                   stop_and_free_sc(iq, 0, sc, 1);
+                }
+            } else if (!sc->cancelled) {
+                iq->sc->sc_next = iq->sc_pending;
+                iq->sc_pending = iq->sc;
+                iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            } else {
+                stop_and_free_sc(iq, 0, sc, 1);
+                iq->sc = NULL;
+            }
+        } else {
+            timepart_sc_arg_t arg = {0};
+            arg.s = sc;
+            arg.s->iq = iq;
+            rc = timepart_foreach_shard(sc->tablename,
+                                        start_schema_change_tran_wrapper, &arg, -1);
+        }
+        sc = sc_chain_next;
     }
     iq->usedb = NULL;
-
-    if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)
+    if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING) {
         return 0;
+    }
 
     return ERR_SC;
 }
@@ -5925,7 +5951,6 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
     int type;
     unsigned long long id;
     char *msg = *pmsg;
-
     if (rqid == OSQL_RQID_USE_UUID) {
         osql_uuid_rpl_t rpl;
         p_buf = (const uint8_t *)msg;
@@ -6060,9 +6085,9 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
 #if 0
         Currently this flag is not set and we do not read the bytes from the buffer;
         until we review and decide to either remove or fix the clients_query_stats
-        (right now we send the wrong one), leave this in place as a reminder 
+        (right now we send the wrong one), leave this in place as a reminder
         /* p_buf is pointing at client_query_stats if there is one */
-        if (type == OSQL_DONE_STATS) { 
+        if (type == OSQL_DONE_STATS) {
             dump_client_query_stats_packed(iq->dbglog_file, p_buf);
         }
 #endif
@@ -6608,7 +6633,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         }
 
         if (blobs[dt.id].exists) {
-            logmsg(LOGMSG_ERROR, 
+            logmsg(LOGMSG_ERROR,
                     "%s received a duplicated blob id %d! (ignoring duplicates)\n",
                     __func__, dt.id);
         }
@@ -6986,7 +7011,7 @@ static void net_osql_rcv_echo_ping(void *hndl, void *uptr, char *fromhost,
     osql_echo_t msg;
     int rc = 0;
 
-#if 0 
+#if 0
    printf("%s\n", __func__);
 #endif
     if (dtalen != sizeof(osql_echo_t)) {

@@ -16,13 +16,13 @@
 
 #ifndef INCLUDE_SC_QUEUES_H
 #define INCLUDE_SC_QUEUES_H
+#include "bdb_api.h"
+#include "sc_add_table.h"
 
 int do_alter_queues_int(struct schema_change_type *);
 int consumer_change(const char *queuename, int consumern, const char *method);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
-int perform_trigger_update(struct schema_change_type *); //, char *config);
 int perform_trigger_update_replicant(const char *queue_name, scdone_t);
-int finalize_trigger(struct schema_change_type *);
 
 int reopen_qdb(const char *queue_name, uint32_t flags, tran_type *tran);
 
@@ -37,5 +37,8 @@ int do_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
 
 int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
                           tran_type *tran);
-
+int perform_trigger_update(struct schema_change_type *sc, tran_type *trans);
+int finalize_trigger(struct schema_change_type *s, tran_type *trans);
+char *get_audit_schema(struct schema *schema);
+void make_name_available(char *prefix);
 #endif

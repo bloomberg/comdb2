@@ -71,17 +71,78 @@ i.e. stored procedure will be rerun (and if it fails, it will be retried,
 possibly indefinitely). Only if the stored procedure actions complete
 successfully, will the event be consumed from the queue.
 
-Following is an example for a trigger `audit` which logs all changes to table
-`t`. Table has two int fields: `i`, `j`. Stored procedure logs data to table
-`audit`, storing type of change to `t`, time of log and the changed values.
+The `DROP LUA TRIGGER` statement will stop execution of the store procedure and
+remove the queue associated with the trigger. To delete our example trigger, we
+will run the following statement:
+
+`DROP LUA TRIGGER audit`
+
+### Audit Triggers
+
+The `CREATE LUA AUDIT TRIGGER` command will log all changes to a given table in 
+a new auto-generated table. Following is an example audit trigger, which logs all 
+changes to table `t` in an auto-generated table `$audit_t`.
+
+```
+CREATE TABLE t(i int, j int)$$
+CREATE LUA AUDIT TRIGGER audit_trigger ON (TABLE t FOR INSERT AND UPDATE AND DELETE)
+```
+
+The audit table it creates is the same table that would be created by the following statement:
+
+```
+CREATE TABLE "$audit_t"(type cstring(4), tbl cstring(64), logtime datetime, old_i int, new_i int, old_j int, new_j int)$$
+```
+
+If the table "$audit_t" already existed, the table created would have been "$audit_t$2", or replace 2 with the smallest integer (larger than 1) that creates a unique tablename.
+
+After we create this audit trigger, we can perform the following updates to `t`:
+
+```
+INSERT INTO t VALUES(1,1),(1,2),(1,3),(1,4)
+UPDATE t SET i = j WHERE j % 2 = 0
+DELETE FROM t WHERE i % 2 <> 0
+EOF
+```
+
+This should generate 8 events that the audit trigger should have logged in `$audit_t`.
+
+```
+cdb2sql testdb default "select * from audit order by logtime"
+(type='add', tbl='t', logtime="2021-08-05T123415.676 America/New_York", new_i=1, old_i=NULL, new_j=1, old_j=NULL)
+(type='add', tbl='t', logtime="2021-08-05T123415.678 America/New_York", new_i=1, old_i=NULL, new_j=2, old_j=NULL)
+(type='add', tbl='t', logtime="2021-08-05T123415.678 America/New_York", new_i=1, old_i=NULL, new_j=3, old_j=NULL)
+(type='add', tbl='t', logtime="2021-08-05T123415.679 America/New_York", new_i=1, old_i=NULL, new_j=4, old_j=NULL)
+(type='upd', tbl='t', logtime="2021-08-05T123419.211 America/New_York", new_i=2, old_i=1, new_j=2, old_j=2)
+(type='upd', tbl='t', logtime="2021-08-05T123419.211 America/New_York", new_i=4, old_i=1, new_j=4, old_j=4)
+(type='del', tbl='t', logtime="2021-08-05T123422.751 America/New_York", new_i=NULL, old_i=1, new_j=NULL, old_j=1)
+(type='del', tbl='t', logtime="2021-08-05T123422.752 America/New_York", new_i=NULL, old_i=1, new_j=NULL, old_j=3)
+```
+
+You can run `DROP LUA TRIGGER audit_trigger` on an audit trigger just like a normal one.
+
+If you find yourself altering audited tables often, you can use the `carry_alters_to_audits`.
+When turned on, any alter applied to the audited table will also do the corresponding
+alter to the audit table. Due to current limitations of trigger functionality, this feature
+is for the most part only useful for type changes, as the data of new columns will not get tracked.
+
+Note: if you already have a procedure of the same name as the audit_trigger, it works just fine as the audit_trigger creates a procedure with the version 'build-in audit'. If your procedure also has that version, the audit_trigger will overwrite your procedure.
+
+#### Current Audit Trigger Limitations
+
+* There is currently no way to create an audit table as a time partition through the audit trigger
+* You cannot audit multiple tables using one audit trigger
+* You are allowed to alter the audit table, which can cause issues with the audit trigger
+
+If you need to write a trigger similar to a `LUA AUDIT TRIGGER` but not exactly the same, the following is a more verbose way of doing almost exactly the same thing as the `LUA AUDIT TRIGGER`.
 
 ```
 cdb2sql testdb default - <<'EOF'
 CREATE TABLE t(i int, j int)$$
-CREATE TABLE audit(type cstring(4), tbl cstring(64), logtime datetime, i int, j int, old_i int, old_j int)$$
-CREATE PROCEDURE audit VERSION 'sample' {
+CREATE TABLE "audit_t"(type cstring(4), tbl cstring(64), logtime datetime, old_i int, new_i int, old_j int, new_j int)$$
+CREATE PROCEDURE audit_trigger VERSION 'sample' {
 local function main(event)
-    local audit = db:table('audit')
+    local audit = db:table('audit_t')
     local chg
     if event.new ~= nil then
         chg = event.new
@@ -100,34 +161,8 @@ local function main(event)
     return audit:insert(chg)
 end
 }$$
-CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT AND UPDATE AND DELETE)
-INSERT INTO t VALUES(1,1),(1,2),(1,3),(1,4)
-UPDATE t SET i = j WHERE j % 2 = 0
-DELETE FROM t WHERE i % 2 <> 0
-EOF
+CREATE LUA TRIGGER audit_trigger ON (TABLE t FOR INSERT AND UPDATE AND DELETE)
 ```
-
-This should generate 8 events and our sample stored procedure should have
-logged them in `audit`.
-
-```
-cdb2sql testdb default "select * from audit order by logtime"
-(type='add', tbl='t', logtime="2019-12-19T131422.330 America/New_York", i=1, j=1, old_i=NULL, old_j=NULL)
-(type='add', tbl='t', logtime="2019-12-19T131422.331 America/New_York", i=1, j=2, old_i=NULL, old_j=NULL)
-(type='add', tbl='t', logtime="2019-12-19T131422.332 America/New_York", i=1, j=3, old_i=NULL, old_j=NULL)
-(type='add', tbl='t', logtime="2019-12-19T131422.332 America/New_York", i=1, j=4, old_i=NULL, old_j=NULL)
-(type='upd', tbl='t', logtime="2019-12-19T131422.333 America/New_York", i=2, j=2, old_i=1, old_j=2)
-(type='upd', tbl='t', logtime="2019-12-19T131422.334 America/New_York", i=4, j=4, old_i=1, old_j=4)
-(type='del', tbl='t', logtime="2019-12-19T131422.334 America/New_York", i=NULL, j=NULL, old_i=1, old_j=1)
-(type='del', tbl='t', logtime="2019-12-19T131422.335 America/New_York", i=NULL, j=NULL, old_i=1, old_j=3)
-```
-
-The `DROP LUA TRIGGER` statement will stop execution of the store procedure and
-remove the queue associated with the trigger. To delete our example trigger, we
-will run the following statement:
-
-`DROP LUA TRIGGER audit`
-
 
 ## Lua Consumers
 

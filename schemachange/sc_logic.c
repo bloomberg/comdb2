@@ -40,6 +40,8 @@
 #include "comdb2_atomic.h"
 #include "sc_callbacks.h"
 #include "views.h"
+#include "translistener.h"
+#include <math.h>
 #include <debug_switches.h>
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
@@ -212,7 +214,7 @@ static void free_sc(struct schema_change_type *s)
     csc2_free_all();
 }
 
-static void stop_and_free_sc(struct ireq *iq, int rc,
+void stop_and_free_sc(struct ireq *iq, int rc,
                              struct schema_change_type *s, int do_free)
 {
     if (!s->partialuprecs) {
@@ -228,6 +230,14 @@ static void stop_and_free_sc(struct ireq *iq, int rc,
     if (do_free) {
         free_sc(s);
     }
+}
+void free_sc_chain(struct ireq *iq, int rc, struct schema_change_type *s){
+    if (s->sc_chain_next){
+        free_sc_chain(iq, rc, s->sc_chain_next);
+    }
+    iq->sc = s;
+    s->iq = iq;
+    free_sc(s);
 }
 
 static int set_original_tablename(struct schema_change_type *s)
@@ -412,12 +422,15 @@ static int do_ddl(ddl_t pre, ddl_t post, struct ireq *iq,
         set_sc_flgs(s);
 
         rc = trim_sc_history_entries(NULL, s->tablename);
-        if (rc)
+        if (rc){
             logmsg(LOGMSG_ERROR,
                    "Cant cleanup comdb2_sc_history and keep last entries\n");
+        }
     }
-    if ((rc = mark_sc_in_llmeta_tran(s, NULL))) // non-tran ??
+    if ((rc = mark_sc_in_llmeta_tran(s, NULL))){ // non-tran ??
+
         goto end;
+    }
 
     if (!s->resume && type == alter &&
         bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DETACHED)) {
@@ -532,6 +545,8 @@ int do_alter_stripes(struct schema_change_type *s)
     s->finalize = 1;
     return rc;
 }
+static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset);
+
 
 char *get_ddl_type_str(struct schema_change_type *s)
 {
@@ -627,7 +642,7 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     else if (s->showsp)
         rc = do_show_sp(s);
     else if (s->is_trigger)
-        rc = perform_trigger_update(s);
+        rc = perform_trigger_update(s, trans);
     else if (s->is_sfunc)
         rc = do_lua_sfunc(s);
     else if (s->is_afunc)
@@ -637,8 +652,9 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
     else if (s->fastinit)
         rc = do_ddl(do_fastinit, finalize_fastinit_table, iq, s, trans,
                     fastinit);
-    else if (s->addonly)
+    else if (s->addonly){
         rc = do_ddl(do_add_table, finalize_add_table, iq, s, trans, add);
+    }
     else if (s->rename)
         if (s->rename == SC_RENAME_LEGACY)
             rc = do_ddl(do_rename_table, finalize_rename_table, iq, s, trans,
@@ -800,14 +816,16 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
     }
 
     /* finalize_x_sp are placeholders */
-    if (s->addsp)
+    if (s->cancelled)
+        rc = 0;
+    else if (s->addsp)
         rc = finalize_add_sp(s);
     else if (s->delsp)
         rc = finalize_del_sp(s);
     else if (s->defaultsp)
         rc = finalize_default_sp(s);
     else if (s->is_trigger)
-        rc = finalize_trigger(s);
+        rc = finalize_trigger(s, trans);
     else if (s->is_sfunc)
         rc = finalize_lua_sfunc();
     else if (s->is_afunc)
@@ -832,7 +850,6 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         rc = do_finalize(finalize_add_view, iq, s, trans, user_view);
     else if (s->drop_view)
         rc = do_finalize(finalize_drop_view, iq, s, trans, user_view);
-
     reset_sc_thread(oldtype, s);
     Pthread_mutex_unlock(&s->mtx);
 
@@ -1596,9 +1613,10 @@ int scdone_abort_cleanup(struct ireq *iq)
     int bdberr = 0;
     struct schema_change_type *s = iq->sc;
     mark_schemachange_over(s->tablename);
-    if (s->set_running)
+    if (s->set_running){
         sc_set_running(iq, s, s->tablename, 0, gbl_myhostname, time(NULL), 0,
                        __func__, __LINE__);
+    }
     if (s->db && s->db->handle) {
         if (s->addonly) {
             delete_temp_table(iq, s->db);

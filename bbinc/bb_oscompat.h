@@ -18,6 +18,7 @@
 #define INCLUDED_BB_OSCOMPAT_H
 
 #include <dirent.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
 extern "C" {

@@ -2365,8 +2365,6 @@ int timepart_foreach_shard(const char *view_name,
         if (i == -1) {
             rc = _next_shard_exists(view, next_shard, sizeof(next_shard));
             if (rc == VIEW_ERR_EXIST) {
-                logmsg(LOGMSG_INFO, "%s Applying %p to %s (next shard)\n",
-                       __func__, func, next_shard);
                 rc = func(next_shard, arg);
             }
         } else {

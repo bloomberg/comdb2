@@ -359,6 +359,8 @@ size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
 
 extern int gbl_net_maxconn;
+extern int gbl_carry_alters_to_audits;
+extern int gbl_audit_trigger_debug;
 
 /*
   =========================================================

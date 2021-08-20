@@ -365,10 +365,7 @@ See also:
 
 Creates a new trigger or consumer to be called for specified table events.  See the [Triggers](triggers.html) 
 section for a full explanation and examples.  Briefly, triggers are run by the database when a matching table 
-event occurs.  They do not return data to the client, but may create/modify records. A common application of 
-triggers is to create an audit table that logs record changes. Consumers register with the database the 
-intent to listen for matching table changes. Consumers may then call the stored procedure with the given name 
-to block and receive matching events when they occur.
+event occurs.  They do not return data to the client, but may create/modify records. Consumers register with the database the intent to listen for matching table changes. Consumers may then call the stored procedure with the given name to block and receive matching events when they occur.
 
 Procedure-name must be a name of an existing Lua procedure created with a
 [```CREATE PROCEDURE```](#create-procedure) statement.
@@ -387,6 +384,13 @@ to be called from running SQL statements like [built-in SQL functions](#built-in
 keyword specifies that the function will return a single value given a set of arguments, eg: like the built-in
 function ```UPPER```.  The ```AGGREGATE``` keyword specifies that the function will return a single value from a
 subset of rows, like the built-in function ```SUM```.
+
+### CREATE LUA AUDIT TRIGGER
+
+![CREATE AUDIT TRIGGER](images/create-audit-trigger.gif)
+
+Generates a new table to record updates to a table, and creates a trigger to populate the new table.
+See the AUDIT TRIGGERS section of [Triggers](triggers.html) for a fuller explanation.
 
 ### DROP
 

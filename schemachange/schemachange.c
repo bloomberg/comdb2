@@ -668,7 +668,6 @@ int live_sc_post_delete(struct ireq *iq, void *trans, unsigned long long genid,
 {
     int rc = 0;
     Pthread_rwlock_rdlock(&iq->usedb->sc_live_lk);
-
     rc = live_sc_post_delete_int(iq, trans, genid, old_dta, del_keys, oldblobs);
 
     Pthread_rwlock_unlock(&iq->usedb->sc_live_lk);

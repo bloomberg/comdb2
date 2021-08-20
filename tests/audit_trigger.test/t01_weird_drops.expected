@@ -1,0 +1,6 @@
+[CREATE LUA AUDIT TRIGGER t1_audit ON (table t1 FOR INSERT AND UPDATE AND DELETE)] failed with rc -3 trigger already exists: t1_audit
+(tablename='$audit_t1')
+(tablename='$audit_t1$2')
+(tablename='sqlite_stat1')
+(tablename='sqlite_stat4')
+(tablename='t1')

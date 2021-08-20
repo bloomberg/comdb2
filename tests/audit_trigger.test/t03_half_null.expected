@@ -1,0 +1,5 @@
+(rows inserted=1)
+(rows inserted=1)
+(sleep(1)=1)
+(new_i=4, new_s=NULL)
+(new_i=5, new_s='abc')

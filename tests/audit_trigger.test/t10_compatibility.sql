@@ -1,0 +1,5 @@
+CREATE TABLE audit(i int)$$
+INSERT INTO audit VALUES(1)
+SELECT * FROM audit
+
+DROP TABLE audit

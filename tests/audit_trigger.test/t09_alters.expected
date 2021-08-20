@@ -1,0 +1,4 @@
+(rows inserted=1)
+(i=4, e=NULL)
+(new_i=4, old_i=NULL)
+[SELECT new_e FROM "$audit_t"] failed with rc -3 no such column: new_e

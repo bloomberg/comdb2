@@ -41,6 +41,7 @@ set(src
   osqlcheckboard.c
   osqlcomm.c
   osqlrepository.c
+  osqlscchain.c
   osqlsession.c
   osqlshadtbl.c
   osqlsqlthr.c
