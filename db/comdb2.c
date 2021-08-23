@@ -1896,7 +1896,7 @@ char **afuncs = NULL;
 
 #define get_funcs(funcs, pfx)                                                  \
     do {                                                                       \
-        *funcs = thedb->lua_##pfx##funcs;                                      \
+        *funcs = *(listc_t*)&thedb->lua_##pfx##funcs;                          \
     } while (0)
 
 #define find_lua_func(name, pfx)                                               \
@@ -1916,14 +1916,12 @@ int llmeta_load_lua_afuncs() { llmeta_load_lua_funcs(a); }
 
 void get_sfuncs(listc_t * funcs)
 {
-    //get_funcs(funcs, s);
-    *funcs = *(listc_t*)&thedb->lua_sfuncs;
+    get_funcs(funcs, s);
 }
 
 void get_afuncs(listc_t * funcs)
 {
-    //get_funcs(funcs, a);
-    *funcs = *(listc_t*)&thedb->lua_afuncs;
+    get_funcs(funcs, a);
 }
 
 int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
