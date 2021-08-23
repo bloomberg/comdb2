@@ -9220,6 +9220,8 @@ static int bdb_llmeta_get_lua_sfunc_flags(char *func, int **flags, int *bdberr)
     u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
     strncpy0(u.skey.func_name, func, sizeof(u.skey.func_name));
 
+    //TODO: what if iflags is not set?
+    //      shouldn't happen, but still worth thinking?
     int ** iflags = NULL;
     int rc = kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflags, &num, bdberr);
     *flags = *iflags;

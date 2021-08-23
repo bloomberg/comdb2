@@ -2143,8 +2143,13 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
         goto done;
     }
 
-    // TODO: check if the db has func flags for the sfunc we are trying
-    //       to create an index for, otherwise, we throw an error!
+    // Register lua sfuncs for the connection in case we are indexing on a func expression
+    // TODO: In case the sfunc registered doesn't have a SQL_DETERMINISTIC flag, the check
+    //       would fail with an error. Do we want to just fail here if possible?
+    if ((rc = register_lua_funcs(hndl, sqlthd->clnt->thd, (listc_t *)&iq->dbenv->lua_sfuncs)) != 0) {
+        logmsg(LOGMSG_ERROR, "%s: unable to register sfuncs rc=%d\n", __func__, rc);
+        goto done;
+    }
 
     rc = get_curtran(thedb->bdb_env, &client);
     if (rc) {
