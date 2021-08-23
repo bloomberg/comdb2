@@ -3006,12 +3006,11 @@ int sqlite3ParseUri(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 
-int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, void *funcs)
+int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, listc_t *funcs)
 {
     int rc = 0;
     struct lua_func_t *func;
-    listc_t *list = funcs;
-    LISTC_FOR_EACH(list, func, lnk)
+    LISTC_FOR_EACH(funcs, func, lnk)
     {
         lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
         arg->thd = thd;

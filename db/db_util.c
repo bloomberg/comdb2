@@ -335,7 +335,7 @@ int rewrite_lrl_remove_tables(const char *lrlname)
         int num = listc_size(&thedb->lua_##pfx##funcs);                        \
         if (num) {                                                             \
             sbuf2printf(sb_out, #pfx "funcs %d", num);                         \
-            struct lua_func_t * func;                                          \ 
+            struct lua_func_t * func;                                          \
             LISTC_FOR_EACH(&thedb->lua_##pfx##funcs, func, lnk) {              \
                 sbuf2printf(sb_out, " %s", func->name);                        \
             }                                                                  \

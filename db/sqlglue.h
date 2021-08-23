@@ -21,8 +21,8 @@ struct lua_func_t {
 };
 int lua_func_list_free(void * list);
 
-void get_sfuncs(void* funcs);
-void get_afuncs(void* funcs);
+void get_sfuncs(listc_t* funcs);
+void get_afuncs(listc_t* funcs);
 
 int find_lua_sfunc(const char *);
 int find_lua_afunc(const char *);
@@ -31,6 +31,7 @@ void lua_func(struct sqlite3_context *, int, struct sqlite3_value **);
 void lua_step(struct sqlite3_context *, int, struct sqlite3_value **);
 void lua_final(struct sqlite3_context *);
 
-int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, void * funcs); 
+//TODO: funcs argument can be a value type
+int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, listc_t * funcs); 
 
 #endif

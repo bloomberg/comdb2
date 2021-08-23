@@ -1896,7 +1896,7 @@ char **afuncs = NULL;
 
 #define get_funcs(funcs, pfx)                                                  \
     do {                                                                       \
-        funcs = &thedb->lua_##pfx##funcs;                                      \
+        *funcs = thedb->lua_##pfx##funcs;                                      \
     } while (0)
 
 #define find_lua_func(name, pfx)                                               \
@@ -1914,14 +1914,16 @@ int llmeta_load_lua_sfuncs() { llmeta_load_lua_funcs(s); }
 
 int llmeta_load_lua_afuncs() { llmeta_load_lua_funcs(a); }
 
-void get_sfuncs(void * funcs)
+void get_sfuncs(listc_t * funcs)
 {
-    get_funcs(funcs, s);
+    //get_funcs(funcs, s);
+    *funcs = *(listc_t*)&thedb->lua_sfuncs;
 }
 
-void get_afuncs(void * funcs)
+void get_afuncs(listc_t * funcs)
 {
-    get_funcs(funcs, a);
+    //get_funcs(funcs, a);
+    *funcs = *(listc_t*)&thedb->lua_afuncs;
 }
 
 int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
@@ -2633,7 +2635,6 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
 // TODO: call this remove all rather than
 // free
-// ALSO TODO: Where are lists created in dbenv free'd?
 int lua_func_list_free(void * list) {
     struct lua_func_t *item, *tmp;
     listc_t *list_ptr = list;
