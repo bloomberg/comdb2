@@ -78,7 +78,7 @@ static inline int get_db_handle(struct dbtable *newdb, void *trans)
     if (newdb->handle == NULL) {
         logmsg(LOGMSG_ERROR, "bdb_open:failed to open table %s/%s, rcode %d\n",
                thedb->basedir, newdb->tablename, bdberr);
-        return SC_BDB_ERROR;
+        return bdberr;
     }
 
     return SC_OK;
@@ -164,7 +164,17 @@ int add_table_to_environment(char *table, const char *csc2,
         goto err;
     }
 
-    if ((rc = get_db_handle(newdb, trans))) goto err;
+    if ((rc = get_db_handle(newdb, trans))) {
+        if (rc == BDBERR_EXCEEDED_BLOBS){
+            sc_errf(s, "Maximum number of vutf8/blob fields exceeded\n");
+            reqerrstr(iq, ERR_SC, "Maximum number of vutf8/blob fields exceeded\n");
+        } else if (rc == BDBERR_EXCEEDED_INDEXES){
+            sc_errf(s, "Maximum number of indexes exceeded\n");
+            reqerrstr(iq, ERR_SC, "Maximum number of indexes exceeded\n");
+        }
+        rc = SC_BDB_ERROR;
+        goto err;
+    }
 
     /* must re add the dbs if you're a physical replicant */
     if (newdb->dbenv->master != gbl_mynode || gbl_is_physical_replicant) {
