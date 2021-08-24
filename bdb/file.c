@@ -5591,8 +5591,11 @@ static bdb_state_type *bdb_open_int(
     iammaster = 0;
 
     if (numix > MAXINDEX) {
-        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
-        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR,"%s: Maximum number of indexes per table exceeded."
+                            "attempted - %d, Maximum - %d\n",__func__,
+                            numix, MAXINDEX);
+
+        *bdberr = BDBERR_EXCEEDED_INDEXES;
         return NULL;
     }
 
@@ -5627,8 +5630,10 @@ static bdb_state_type *bdb_open_int(
 
     if ((envonly && numdtafiles != 0) ||
         (!envonly && (numdtafiles > MAXDTAFILES || numdtafiles < 1))) {
-        logmsg(LOGMSG_INFO, "%s failing with bdberr_misc at line %d\n", __func__, __LINE__);
-        *bdberr = BDBERR_MISC;
+        logmsg(LOGMSG_ERROR,"%s: Maximum number of blob/vutf8 fields exceeded."
+                        "attempted - %d, Maximum - %d\n",__func__,
+                        numdtafiles,MAXDTAFILES);
+        *bdberr = BDBERR_EXCEEDED_BLOBS;
         return NULL;
     }
 
