@@ -1568,7 +1568,7 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
         if (listenfd >= 0)
             close(listenfd);
         if (tcplistenfd >= 0)
-            close(listenfd);
+            close(tcplistenfd);
         return NULL;
     }
     fds->listenfd = listenfd;
