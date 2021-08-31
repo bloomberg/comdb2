@@ -207,7 +207,7 @@ static int machine_my_class_default(void)
 {
     return machine_class_default(gbl_myhostname);
 }
-static int machine_dcs[MAXNODES];
+static int machine_dcs[MAXBBNODENUM];
 
 static int resolve_dc(const char *host)
 {

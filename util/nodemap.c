@@ -44,7 +44,7 @@ struct node_index {
 };
 
 static int numnodes;
-static struct node_index nodes[MAXNODES];
+static struct node_index nodes[MAXBBNODENUM];
 static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
 
 volatile static __thread int lnumnodes;
@@ -108,7 +108,7 @@ static int nodeix_global(const char *node)
         }
     }
     /* we get to insert it in the next available slot */
-    if (numnodes == MAXNODES) {
+    if (numnodes == MAXBBNODENUM) {
         logmsg(LOGMSG_FATAL, "too many nodes in list: %d\n", numnodes);
         /* TODO: resize, make search above happen under lock? */
         abort();
@@ -141,7 +141,7 @@ int nodeix(const char *node)
 
 const char *nodeat(int ix)
 {
-    if (ix < 0 || ix >= MAXNODES)
+    if (ix < 0 || ix >= MAXBBNODENUM)
         return 0;
     return nodes[ix].node;
 }
