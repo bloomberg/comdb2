@@ -30,7 +30,7 @@
 #define MAXDYNTAGCOLUMNS 2048
 #define MAXKEYLEN 512
 #define MAXLRL 65536
-#define MAXNODES 32768
+#define MAXNODES REPMAX
 #define MAXPLUGINS 100
 #define MAXPSTRLEN 256
 #define MAX_QUEUE_HITS_PER_TRANS 8
@@ -62,6 +62,7 @@
 #define MAX_PASSWORD_LEN 19
 #define MAX_NUM_TABLES 1024
 #define MAX_NUM_QUEUES 1024
+#define MAXBBNODENUM 32768 /* Legacy: maximum number assigned to a machine in BBENV */
 
 /*
   Print at the given offset, detect overflow and update offset

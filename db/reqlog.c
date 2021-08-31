@@ -77,13 +77,6 @@
 #include <tohex.h>
 #include "string_ref.h"
 
-/*
-** ugh - constants are variable
-** comdb2 assumption #define MAXNODES 32768
-** rtcpu.h - #define MAXMACHINES 2048
-** intgatewayconstants.h - #define MAXMACHINES 4096
-*/
-
 /* The normal case is for there to be no rules, just a long request threshold
  * which takes some default action on long requests.  If you want anything
  * different then you add rules and you have to lock around the list. */
