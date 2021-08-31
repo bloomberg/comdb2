@@ -1,0 +1,4 @@
+[INSERT INTO t values(4)] failed with rc -3 table t has 2 columns but 1 values were supplied
+(rows inserted=1)
+(sleep(1)=1)
+(new_i=5, new_s='abc')

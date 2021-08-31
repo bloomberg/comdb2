@@ -1,0 +1,2 @@
+[CREATE LUA AUDIT TRIGGER foobar ON (TABLE bx1155 FOR INSERT)] failed with rc -3 no such table:bx1155
+("done"='done')

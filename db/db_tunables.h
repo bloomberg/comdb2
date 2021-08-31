@@ -1584,7 +1584,7 @@ REGISTER_TUNABLE("abort_on_reconstruct_failure",
 
 REGISTER_TUNABLE("netconndumptime",
                  "Dump connection statistics to ctrace this often.",
-                 TUNABLE_INTEGER, NULL, 0, netconndumptime_value, NULL, 
+                 TUNABLE_INTEGER, NULL, 0, netconndumptime_value, NULL,
                  netconndumptime_update, NULL);
 
 REGISTER_TUNABLE("timeseries_metrics_maxpoints",
@@ -2119,5 +2119,10 @@ REGISTER_TUNABLE("sc_logbytes_per_second",
 REGISTER_TUNABLE("net_somaxconn",
                  "listen() backlog setting.  (Default: 0, implies system default)",
                  TUNABLE_INTEGER, &gbl_net_maxconn, READONLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("carry_alters_to_audits",
+                 "If an alter is made to a table that has an active audit trigger, attempt the corresponding alter to the audit table (Default: 0, implies system default)",
+                 TUNABLE_BOOLEAN, &gbl_carry_alters_to_audits,
+                 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

@@ -941,6 +941,8 @@ These options are toggle-able at runtime.
 |delay_sql_lock_release| 1 | Delay release locks in cursor move if bdb lock desired but client sends rows back
 |sockbplog| off | Osql bplog is sent from replicants to master on their own socket
 |sockbplog_sockpool| off | Osql bplog sent over sockets is using local sockpool
+|carry_alters_to_audits| off | If an alter is made to a table that has an active audit trigger, attempt the corresponding alter to the audit table
+
 
 
 <!-- TODO

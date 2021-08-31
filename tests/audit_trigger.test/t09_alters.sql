@@ -1,0 +1,11 @@
+CREATE TABLE t(i int)$$
+CREATE LUA AUDIT TRIGGER bloop ON (TABLE t FOR INSERT)
+INSERT INTO t VALUES(4)
+ALTER TABLE t ADD COLUMN e int$$
+SELECT * FROM t ORDER BY i
+SELECT new_i, old_i FROM "$audit_t" ORDER BY new_i, old_i
+SELECT new_e FROM "$audit_t"
+
+DROP TABLE t 
+DROP TABLE "$audit_t"
+DROP LUA TRIGGER bloop

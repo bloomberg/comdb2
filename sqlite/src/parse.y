@@ -285,7 +285,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
 // This obviates the need for the "id" nonterminal.
 //
 %fallback ID
-  ABORT ACTION AFTER ANALYZE ASC ATTACH BEFORE BEGIN BY CASCADE CAST COLUMNKW
+  ABORT ACTION AFTER ANALYZE ASC ATTACH AUDIT BEFORE BEGIN BY CASCADE CAST COLUMNKW
   CONFLICT DATABASE DEFERRED DESC DETACH DO
   EACH END EXCLUSIVE EXPLAIN FAIL FOR
   IGNORE IMMEDIATE INITIALLY INSTEAD LIKE_KW MATCH NO PLAN
@@ -2451,22 +2451,25 @@ cmd ::= createkw LUA AGGREGATE FUNCTION nm(Q). {
 	comdb2CreateAggFunc(pParse, &Q);
 }
 
-cmd ::= createkw LUA TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,0,S,&Q,T);
+%type audit_opt {int}
+audit_opt(A) ::= . {A = 1;}
+audit_opt(A) ::= AUDIT . {A = 2;}
+
+cmd ::= createkw LUA audit_opt(A) TRIGGER nm(Q) withsequence(S) ON table_trigger_event(T). {
+  comdb2CreateTrigger(pParse,0,A,S,&Q,T);
 }
 
 cmd ::= createkw LUA CONSUMER nm(Q) withsequence(S) ON table_trigger_event(T). {
-  comdb2CreateTrigger(pParse,1,S,&Q,T);
-}
-
-table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
-  A = comdb2AddTriggerTable(pParse,B,T,C);
+  comdb2CreateTrigger(pParse,1,1,S,&Q,T);
 }
 
 table_trigger_event(A) ::= LP TABLE fullname(T) FOR trigger_events(B) RP. {
   A = comdb2AddTriggerTable(pParse,0,T,B);
 }
 
+table_trigger_event(A) ::= table_trigger_event(B) COMMA LP TABLE fullname(T) FOR trigger_events(C) RP. {
+  A = comdb2AddTriggerTable(pParse,B,T,C);
+}
 %type withsequence {int}
 withsequence(A) ::= .                   { A = -1; }
 withsequence(A) ::= WITHOUT SEQUENCE.   { A = 0; }

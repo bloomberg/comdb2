@@ -20,7 +20,6 @@
 struct dbtable;
 struct dbtable *getqueuebyname(const char *);
 int bdb_get_sp_get_default_version(const char *, int *);
-
 #define COMDB2_NOT_AUTHORIZED_ERRMSG "comdb2: not authorized"
 
 int comdb2LocateSP(Parse *p, char *sp)
@@ -144,12 +143,11 @@ Cdb2TrigTables *comdb2AddTriggerTable(Parse *parse, Cdb2TrigTables *tables,
 }
 
 // dynamic -> consumer
-void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
+void comdb2CreateTrigger(Parse *parse, int dynamic, int is_trigger, int seq, Token *proc,
                          Cdb2TrigTables *tbl)
 {
     if (comdb2IsPrepareOnly(parse))
         return;
-
 #ifndef SQLITE_OMIT_AUTHORIZATION
     {
         if( sqlite3AuthCheck(parse, dynamic ? SQLITE_CREATE_LUA_CONSUMER :
@@ -177,11 +175,12 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 		return;
 	}
 
-	if (comdb2LocateSP(parse, spname) != 0) {
+	if (is_trigger != AUDIT_TRIGGER && comdb2LocateSP(parse, spname) != 0) {
 		return;
 	}
 
 	strbuf *s = strbuf_new();
+	int num_tables = 0;
 	while (tbl) {
 		Table *table = tbl->table;
 		Cdb2TrigEvents *events = tbl->events;
@@ -215,6 +214,11 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 			prev = ce;
 		}
 		free(prev);
+		num_tables++;
+	}
+	if (num_tables > 1 && is_trigger == AUDIT_TRIGGER){
+		sqlite3ErrorMsg(parse, "cannot create audit trigger on multiple tables: %s", spname);
+		return;
 	}
 
 	char method[64];
@@ -222,9 +226,10 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 
 	// trigger add table:qname dest:method
 	struct schema_change_type *sc = new_schemachange_type();
-	sc->is_trigger = 1;
+	sc->is_trigger = is_trigger;
 	sc->addonly = 1;
     sc->persistent_seq = seq;
+	sc->dont_expand = 0;
 	strcpy(sc->tablename, qname);
 	struct dest *d = malloc(sizeof(struct dest));
 	d->dest = strdup(method);
@@ -232,8 +237,10 @@ void comdb2CreateTrigger(Parse *parse, int dynamic, int seq, Token *proc,
 	sc->newcsc2 = strbuf_disown(s);
 	strbuf_free(s);
 	Vdbe *v = sqlite3GetVdbe(parse);
+
 	comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran,
 			    (vdbeFuncArgFree)&free_schema_change_type);
+								
 }
 
 void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
@@ -267,7 +274,6 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 		sqlite3ErrorMsg(parse, "no such trigger: %s", spname);
 		return;
 	}
-
 	// trigger drop table:qname
 	struct schema_change_type *sc = new_schemachange_type();
 	sc->is_trigger = 1;

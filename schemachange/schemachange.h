@@ -62,6 +62,10 @@ struct dest {
 /* status for schema_change_type->addonly */
 enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
 
+/* type for is_trigger */
+enum { NO_TRIGGER = 0, NORMAL_TRIGGER = 1, AUDIT_TRIGGER = 2 };
+
+
 struct schema_change_type {
     /*  ==========    persistent members ========== */
     unsigned long long rqid;
@@ -224,6 +228,18 @@ struct schema_change_type {
     unsigned is_osql : 1;
     unsigned set_running : 1;
     uint64_t seed;
+    char *trigger_table; /* only currently initialized for audit triggers */
+    char *audit_table; /* name of audit table if it is an audit trigger */
+    struct schema_change_type *sc_chain_next; /* chain schema changes to automatically be executed in the same transaction */
+    int is_monitered_alter; /* 1 if an alteronly scheamchange is altering an audit table in a chain, therefore monitering the subscribed trigger table */
+    int cancelled; /* indicates that a schema changes has been "cancelled" in the prep phase, but should not fail the transaction */
+    /* 
+    cancelled has been created largely to work with sc_chain.
+    If you have a bunch of schema changes, you may not want to fail the entire chain due to a specific failure of one of the schema changes. 
+    For single schema changes this is done all the time, and quite simply: one doesn't have to error out on a non-zero rc. 
+    This is the equivilant of that. 
+    */
+    int dont_expand; /* flag to stop populate_alter_chain from expanding on a schema change */
 };
 
 struct ireq;

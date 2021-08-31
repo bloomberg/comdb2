@@ -1,0 +1,1 @@
+[CREATE LUA AUDIT TRIGGER too_greedy ON (TABLE t1 FOR INSERT), (TABLE t2 FOR DELETE)] failed with rc -3 cannot create audit trigger on multiple tables: too_greedy

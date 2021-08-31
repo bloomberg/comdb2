@@ -6750,7 +6750,14 @@ void freedb_int(dbtable *db, dbtable *replace)
     }
 
     if (replace) {
+        pthread_rwlock_t lk_copy;
+        // Make a copy of original sc_live_lk
+        memcpy(&lk_copy, &db->sc_live_lk, sizeof(pthread_rwlock_t));
+
         memcpy(db, replace, sizeof(dbtable));
+
+        // Restore sc_live_lk
+        memcpy(&db->sc_live_lk, &lk_copy, sizeof(pthread_rwlock_t));
         db->dbs_idx = dbs_idx;
     } else
         free(db);
@@ -6765,70 +6772,6 @@ void freedb(dbtable *db)
 {
     freedb_int(db, NULL);
 }
-
-struct schema *create_version_schema(char *csc2, int version,
-                                     struct dbenv *dbenv)
-{
-    dbtable *ver_db;
-    char *tag;
-    int rc;
-
-    Pthread_mutex_lock(&csc2_subsystem_mtx);
-    dyns_init_globals();
-    rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
-                __LINE__);
-        goto err;
-    }
-
-    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0);
-    if (ver_db == NULL) {
-        logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
-        goto err;
-    }
-
-    rc = add_cmacc_stmt_no_side_effects(ver_db, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
-        goto err;
-    }
-
-    struct schema *s = find_tag_schema(gbl_ver_temp_table, ".ONDISK");
-    if (s == NULL) {
-        logmsg(LOGMSG_ERROR, "find_tag_schema failed %s:%d\n", __FILE__, __LINE__);
-        goto err;
-    }
-
-    tag = malloc(gbl_ondisk_ver_len);
-    if (tag == NULL) {
-        logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
-        goto err;
-    }
-    dyns_cleanup_globals();
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
-
-    sprintf(tag, gbl_ondisk_ver_fmt, version);
-    struct schema *ver_schema = clone_schema(s);
-    free(ver_schema->tag);
-    ver_schema->tag = tag;
-
-    /* get rid of temp schema */
-    del_tag_schema(ver_db->tablename, s->tag);
-    freeschema(s);
-
-    /* get rid of temp table */
-    delete_schema(ver_db->tablename);
-    freedb(ver_db);
-
-    return ver_schema;
-
-err:
-    dyns_cleanup_globals();
-    Pthread_mutex_unlock(&csc2_subsystem_mtx);
-    return NULL;
-}
-
 static void clear_existing_schemas(dbtable *db)
 {
     struct schema *schema;

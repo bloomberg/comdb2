@@ -24,5 +24,5 @@ int add_table_to_environment(char *table, const char *csc2,
 int finalize_add_table(struct ireq *, struct schema_change_type *, tran_type *);
 int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
                          char *src, int acquire_schema_lk);
-
+                   
 #endif

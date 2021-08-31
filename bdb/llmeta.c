@@ -167,7 +167,12 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS = 50,
     LLMETA_VIEW = 51,                 /* User defined views */
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
-    LLMETA_SEQUENCE_VALUE = 53
+    LLMETA_SEQUENCE_VALUE = 53,
+    // If this creats a compile error, simply change the numbers for TABLE_TO_AUDITS, AUDIT_TO_TABLE, TRIGGER_TO_AUDIT or AUDIT_TO_TRIGGER
+    LLMETA_TABLE_TO_AUDITS = TABLE_TO_AUDITS,
+    LLMETA_AUDIT_TO_TABLE = AUDIT_TO_TABLE,
+    LLMETA_TRIGGER_TO_AUDIT = TRIGGER_TO_AUDIT,
+    LLMETA_AUDIT_TO_TRIGGER = AUDIT_TO_TRIGGER
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -9183,7 +9188,8 @@ static int kv_put_int(tran_type *tran, void *k, void *v, size_t vlen,
 static int kv_put(tran_type *tran, void *k, void *v, size_t vlen, int *bdberr)
 {
     tran_type *t = tran ? tran : bdb_tran_begin(llmeta_bdb_state, NULL, bdberr);
-    int rc = kv_put_int(t, k, v, vlen, bdberr);
+    int rc = 0;
+    rc = kv_put_int(t, k, v, vlen, bdberr);
     if (tran == NULL) {
         if (rc == 0)
             rc = bdb_tran_commit(llmeta_bdb_state, t, bdberr);
@@ -9413,6 +9419,104 @@ int bdb_get_default_versioned_sp_tran(tran_type *tran, char *name, char **versio
     }
     free(versions);
     return rc;
+}
+
+// Note: right now the format of the keys for all the audit tables are the same; some work will need to be put in to change that
+// Note about table to audits table: if the audit table is deleted, the entry is deleted. If the trigger is deleted, the entry is still deleted.
+struct audit_key {
+    llmetakey_t llmetakey;
+    char tablename[MAXTABLELEN];
+};
+
+struct audit_key create_audit_key(char *tablename, enum llmeta_audit_key llmeta_audit_key){
+    struct audit_key k;
+    memset(k.tablename, 0, sizeof(k.tablename));
+    strcpy(k.tablename, tablename);
+    k.llmetakey = (llmetakey_t) llmeta_audit_key;
+    return k;
+}
+
+int bdb_get_audit_sp_tran(tran_type *tran, char *tablename, char ***audits, int *num, enum llmeta_audit_key llmeta_audit_key){
+    struct audit_key k = create_audit_key(tablename, llmeta_audit_key);
+    int rc, bdberr;
+    int size = sizeof(k);
+    if (llmeta_audit_key == TABLE_TO_AUDITS){
+        int found_dollar = 0;
+        for(int i = 1; i < strlen(k.tablename); i++){
+            if (k.tablename[i] == '$'){
+                found_dollar = 1; 
+                break;
+            }
+        }
+        if (!found_dollar){
+            strcat(k.tablename, "$");
+        }
+        size = sizeof(llmetakey_t) + strlen(tablename);
+    }
+    rc = kv_get(tran, &k, size, (void ***) audits, num, &bdberr);
+    return rc;
+}
+
+int bdb_set_audit_sp_tran(tran_type *tran, char *sub_table, char *audit_table, enum llmeta_audit_key llmeta_audit_key){
+    struct audit_key get_key = create_audit_key(sub_table, llmeta_audit_key);
+    char k[LLMETA_IXLEN] = {0};
+    memcpy(k, &get_key, sizeof(get_key)); 
+    int rc, bdberr;
+    rc = kv_put(tran, &k, audit_table, strlen(audit_table) + 1, &bdberr);
+    return rc;
+}
+
+int bdb_delete_audit_sp_tran(tran_type *tran, char *sub_table, enum llmeta_audit_key llmeta_audit_key){
+    struct audit_key get_key = create_audit_key(sub_table, llmeta_audit_key);
+    char k[LLMETA_IXLEN] = {0};
+    memcpy(k, &get_key, sizeof(get_key)); 
+    int bdberr;
+    return kv_del(tran, &k, &bdberr);
+}
+
+char *get_spec_table(char *sub_table, char *audit_table){
+    int found_dollar = 0;
+    int i = 1;
+    while(i < strlen(audit_table)){
+        if (audit_table[i] == '$'){
+            found_dollar = 1;
+        }
+        i++;
+    }
+    i--;
+    char *audit_table_num = found_dollar ? audit_table + i : "$1";
+    char *spec_sub_table = malloc(strlen(sub_table) + strlen(audit_table_num) + 1);
+    strcpy(spec_sub_table, sub_table);
+    strcat(spec_sub_table, audit_table_num);
+    return spec_sub_table;
+}
+
+int bdb_delete_audit_table_sp_tran(tran_type *tran, char *audit){
+        
+    char **sub_table;
+    int num_sub_tables;
+    int rc = bdb_get_audit_sp_tran(tran, audit, &sub_table, &num_sub_tables, AUDIT_TO_TABLE);
+    if (rc) {return rc;}
+    if (num_sub_tables == 1){
+        rc = bdb_delete_audit_sp_tran(tran, get_spec_table(sub_table[0], audit), TABLE_TO_AUDITS);
+        if (rc) {return rc;}
+    } else {
+        logmsg(LOGMSG_WARN, "In bdb_delete_audit_table_sp_tran, found no subscribed table");
+    }
+    rc = bdb_delete_audit_sp_tran(tran, audit, AUDIT_TO_TABLE);
+    if (rc) {return rc;}
+    char **trigger;
+    int num_triggers;
+    rc = bdb_get_audit_sp_tran(tran, audit, &trigger, &num_triggers, AUDIT_TO_TRIGGER);
+    if (rc) {return rc;}
+    assert(num_triggers <= 1);
+    rc = bdb_delete_audit_sp_tran(tran, audit, AUDIT_TO_TRIGGER);
+    if (rc) {return rc;}
+    if (num_triggers == 1){
+        rc = bdb_delete_audit_sp_tran(tran, trigger[0], TRIGGER_TO_AUDIT);
+        if (rc) {return rc;}
+    }
+    return 0;
 }
 
 int bdb_get_default_versioned_sp(char *name, char **version)

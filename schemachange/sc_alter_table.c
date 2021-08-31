@@ -26,7 +26,9 @@
 #include "sc_csc2.h"
 #include "sc_util.h"
 #include "sc_logic.h"
+#include "sc_queues.h"
 #include "sc_records.h"
+#include "sc_chain.h"
 #include "analyze.h"
 #include "comdb2_atomic.h"
 
@@ -353,7 +355,103 @@ static void check_for_idx_rename(struct dbtable *newdb, struct dbtable *olddb)
     }
 }
 
-int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+extern unsigned long long comdb2_table_version(const char *tablename);
+
+static struct schema_change_type *init_sc_for_alter_audit(struct schema_change_type *pre, struct schema *s, char *audit){
+
+    struct schema_change_type *sc = clone_schemachange_type(pre);
+
+    sc->is_monitered_alter = 1;
+    sc->newcsc2 = get_audit_schema(s);
+    strcpy(sc->tablename, audit);
+    sc->usedbtablevers = comdb2_table_version(sc->tablename);
+
+    return sc;
+}
+
+struct schema *create_version_schema(char *csc2, int version,
+                                     struct dbenv *dbenv)
+{
+    dbtable *ver_db;
+    char *tag;
+    int rc;
+
+    Pthread_mutex_lock(&csc2_subsystem_mtx);
+    dyns_init_globals();
+    rc = dyns_load_schema_string(csc2, dbenv->envname, gbl_ver_temp_table);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
+                __LINE__);
+        goto err;
+    }
+
+    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0);
+
+    // Bottom Bound
+    if (ver_db == NULL) {
+        logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
+        goto err;
+    }
+
+    rc = add_cmacc_stmt_no_side_effects(ver_db, 0);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
+        goto err;
+    }
+
+    struct schema *s = find_tag_schema(gbl_ver_temp_table, ".ONDISK");
+    if (s == NULL) {
+        logmsg(LOGMSG_ERROR, "find_tag_schema failed %s:%d\n", __FILE__, __LINE__);
+        goto err;
+    }
+
+    tag = malloc(gbl_ondisk_ver_len);
+    if (tag == NULL) {
+        logmsg(LOGMSG_ERROR, "malloc failed %s:%d\n", __FILE__, __LINE__);
+        goto err;
+    }
+    dyns_cleanup_globals();
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+
+    sprintf(tag, gbl_ondisk_ver_fmt, version);
+    struct schema *ver_schema = clone_schema(s);
+    free(ver_schema->tag);
+    ver_schema->tag = tag;
+
+    /* get rid of temp schema */
+    del_tag_schema(ver_db->tablename, s->tag);
+    freeschema(s);
+
+    /* get rid of temp table */
+    delete_schema(ver_db->tablename);
+    freedb(ver_db);
+
+    return ver_schema;
+
+err:
+    dyns_cleanup_globals();
+    Pthread_mutex_unlock(&csc2_subsystem_mtx);
+    return NULL;
+}
+
+
+static int populate_alter_chain(struct dbtable *db, struct schema_change_type *sc, tran_type *tran){
+    if (sc->newcsc2){
+        char **audits;
+        int num_audits = 0;
+        int rc = bdb_get_audit_sp_tran(tran, sc->tablename, &audits, &num_audits, TABLE_TO_AUDITS);
+        if (rc) {return rc;}
+        struct schema *s = create_version_schema(sc->newcsc2, -1, db->dbenv);
+        for(int i = 0; i < num_audits; i++){
+            add_next_to_chain(sc, init_sc_for_alter_audit(sc, s, audits[i]));
+        }
+    }
+    return 0;
+}
+
+int gbl_carry_alters_to_audits = 0;
+
+int do_alter_table_normal(struct ireq *iq, struct schema_change_type *s,
                    tran_type *tran)
 {
     struct dbtable *db;
@@ -380,13 +478,16 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Table not found:%s\n", s->tablename);
         return SC_TABLE_DOESNOT_EXIST;
     }
+    if (gbl_carry_alters_to_audits){
+        rc = populate_alter_chain(db, s, tran);
+        if (rc) {return rc;}
+    }
 
     if (s->resume == SC_PREEMPT_RESUME) {
         newdb = db->sc_to;
         changed = s->schema_change;
         goto convert_records;
     }
-
     set_schemachange_options_tran(s, db, &scinfo, tran);
 
     if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
@@ -671,6 +772,8 @@ errout:
         backout_constraint_pointers(newdb, db);
         delete_temp_table(iq, newdb);
         change_schemas_recover(s->tablename);
+
+
         return rc;
     }
     newdb->iq = NULL;
@@ -687,6 +790,55 @@ errout:
         sc_errf(s, "%s:%d backing out\n", __func__, __LINE__);                 \
         goto backout;                                                          \
     } while (0);
+
+// This used to be a tunable
+int fail_on_uncarryable_alter = 1;
+
+int do_alter_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran){
+    int rc = do_alter_table_normal(iq, s, tran);
+    if (s->is_monitered_alter && rc == SC_CONVERSION_FAILED && !fail_on_uncarryable_alter){
+        // The following if is for when you attempt this carried alter
+        //   and it doesn't work so it needs to be undone
+        // This feature is currently unused, and in my opinion should be
+        //   re-enabled when it becomes the default to carry alters, which
+        //   itself should happen when triggers by default start
+        //   automatically expanding to new columns
+        // With that said, if its decided that its not a useful feature,
+        //   this can be deleted
+
+        struct schema_change_type *sc_rename = new_schemachange_type();
+        sc_rename->nothrevent = 1;
+        sc_rename->live = 1;
+        sc_rename->rename = SC_RENAME_LEGACY;
+        strcpy(sc_rename->tablename, s->tablename);
+        char *prefix = "old";
+        strcpy(sc_rename->newtable, prefix);
+        strcat(sc_rename->newtable, s->tablename);
+
+        char **triggers;
+        int num_triggers;
+        rc = bdb_get_audit_sp_tran(tran, s->tablename, &triggers, &num_triggers, AUDIT_TO_TRIGGER);
+        if(rc) {return rc;}
+        assert(num_triggers == 1);
+        char *trigger = triggers[0];
+        struct schema_change_type *sc_delete_trigger = new_schemachange_type();
+        strcpy(sc_delete_trigger->tablename, trigger);
+        sc_delete_trigger->is_trigger = 1;
+        sc_delete_trigger->drop_table = 1;
+
+        sc_rename->sc_chain_next = sc_delete_trigger;
+
+        s->sc_chain_next = sc_rename;
+        s->cancelled = 1;
+
+
+        return SC_COMMIT_PENDING;
+    } else {
+        return rc;
+    }
+}
+
 
 int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
                          tran_type *transac)
@@ -856,7 +1008,6 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
 
     live_sc_off(db);
-
     /* artificial sleep to aid testing */
     if (s->commit_sleep) {
         sc_printf(s, "artificially sleeping for %d...\n", s->commit_sleep);
