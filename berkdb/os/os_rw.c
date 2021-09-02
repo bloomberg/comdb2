@@ -539,7 +539,8 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	}
 	if (*niop == (size_t) pagesize)
 		return (0);
-	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop);
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd fd:%d fname:%s\n",
+			__func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop, fhp->fd, fhp->name);
     // try to do a seek + read/write
 slow:
 #endif
@@ -1013,7 +1014,8 @@ __os_iov(dbenv, op, fhp, pgno, pagesize, bufs, nobufs, niop)
 
 	if (*niop == (size_t)(pagesize * nobufs))
 		return (0);
-	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize * nobufs, *niop);
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd fd:%d fname:%s\n",
+			__func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop, fhp->fd, fhp->name);
     // iov - we failed to write the pages as a unit, fall through and try them individually
 slow:
 #endif
