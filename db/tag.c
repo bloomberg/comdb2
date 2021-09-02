@@ -960,7 +960,11 @@ int get_size_of_schema_by_name(const char *table, const char *schema)
     return get_size_of_schema(sc);
 }
 
-static void dumpval(char *buf, int type, int len);
+enum dumpformat {
+    DUMPFORMAT_SHORT,
+    DUMPFORMAT_VERBOSE
+};
+static void dumpval(char *buf, int type, int len, strbuf *strbuf, enum dumpformat fmt);
 
 int dump_tag(const struct schema *s, void *dum)
 {
@@ -968,6 +972,8 @@ int dump_tag(const struct schema *s, void *dum)
 
     if (s->flags & SCHEMA_INDEX)
         return 0;
+
+    strbuf *strbuf = strbuf_new();
 
     logmsg(LOGMSG_USER, "%s:\n", s->tag);
     nfields = s->nmembers;
@@ -978,14 +984,14 @@ int dump_tag(const struct schema *s, void *dum)
                YESNO(!(f->flags & NO_NULL)));
         if (f->in_default) {
             logmsg(LOGMSG_USER, " in_default=");
-            dumpval(f->in_default, f->in_default_type, f->in_default_len);
+            dumpval(f->in_default, f->in_default_type, f->in_default_len, strbuf, DUMPFORMAT_VERBOSE);
         } else {
             logmsg(LOGMSG_USER, " in_default=NULL");
         }
 
         if (f->out_default) {
             logmsg(LOGMSG_USER, " out_default=");
-            dumpval(f->out_default, f->out_default_type, f->out_default_len);
+            dumpval(f->out_default, f->out_default_type, f->out_default_len, strbuf, DUMPFORMAT_VERBOSE);
         } else {
             logmsg(LOGMSG_USER, " out_default=NULL");
         }
@@ -1003,6 +1009,9 @@ int dump_tag(const struct schema *s, void *dum)
                    f->flags & INDEX_DESCEND ? " descending" : " ascending");
         }
     }
+
+    logmsg(LOGMSG_USER, "%s", strbuf_buf(strbuf));
+    strbuf_free(strbuf);
 
     return 0;
 }
@@ -1022,7 +1031,7 @@ void debug_dump_tags(const char *tblname)
     unlock_taglock();
 }
 
-static void dumpval(char *buf, int type, int len)
+static void dumpval(char *buf, int type, int len, strbuf *strbuf, enum dumpformat fmt)
 {
     int slen;
     /* variables for all possible types */
@@ -1041,9 +1050,10 @@ static void dumpval(char *buf, int type, int len)
     ieee8b bdval;
     int i;
 
-    logmsg(LOGMSG_USER, "    ");
+    if (fmt == DUMPFORMAT_VERBOSE)
+        strbuf_append(strbuf, "    ");
     if (stype_is_null(buf))
-        logmsg(LOGMSG_USER, "NULL");
+        strbuf_append(strbuf, "NULL");
     else {
         switch (type) {
         case CLIENT_UINT:
@@ -1051,20 +1061,23 @@ static void dumpval(char *buf, int type, int len)
             case 2:
                 memcpy(&usval, buf, len);
                 usval = ntohs(usval);
-                logmsg(LOGMSG_USER, "%hu", usval);
+                strbuf_appendf(strbuf, "%hu", usval);
                 break;
             case 4:
                 memcpy(&uival, buf, len);
                 uival = ntohl(uival);
-                logmsg(LOGMSG_USER, "%u", uival);
+                strbuf_appendf(strbuf, "%u", uival);
                 break;
             case 8:
                 memcpy(&ulval, buf, len);
                 ulval = flibc_ntohll(ulval);
-                logmsg(LOGMSG_USER, "%llu", ulval);
+                strbuf_appendf(strbuf, "%llu", ulval);
                 break;
             default:
-                logmsg(LOGMSG_USER, "ERROR: invalid CLIENT_UINT length\n");
+                if (fmt == DUMPFORMAT_VERBOSE)
+                    strbuf_append(strbuf, "ERROR: invalid CLIENT_UINT length\n");
+                else
+                    strbuf_append(strbuf, "?");
             }
             break;
         case CLIENT_INT:
@@ -1072,20 +1085,23 @@ static void dumpval(char *buf, int type, int len)
             case 2:
                 memcpy(&sval, buf, len);
                 sval = ntohs(sval);
-                logmsg(LOGMSG_USER, "%hd", sval);
+                strbuf_appendf(strbuf, "%hd", sval);
                 break;
             case 4:
                 memcpy(&ival, buf, len);
                 ival = ntohl(ival);
-                logmsg(LOGMSG_USER, "%d", ival);
+                strbuf_appendf(strbuf, "%d", ival);
                 break;
             case 8:
                 memcpy(&lval, buf, len);
                 lval = flibc_ntohll(lval);
-                logmsg(LOGMSG_USER, "%lld", lval);
+                strbuf_appendf(strbuf, "%lld", lval);
                 break;
             default:
-                logmsg(LOGMSG_ERROR, "ERROR: invalid CLIENT_INT length\n");
+                if (fmt == DUMPFORMAT_VERBOSE)
+                    strbuf_append(strbuf, "ERROR: invalid CLIENT_INT length\n");
+                else
+                    strbuf_append(strbuf, "???");
             }
             break;
         case CLIENT_REAL:
@@ -1093,40 +1109,47 @@ static void dumpval(char *buf, int type, int len)
             case 4:
                 memcpy(&fval, buf, len);
                 fval = flibc_ntohf(fval);
-                logmsg(LOGMSG_USER, "%f", (double)fval);
+                strbuf_appendf(strbuf, "%f", (double)fval);
                 break;
             case 8:
                 memcpy(&dval, buf, len);
                 dval = flibc_ntohd(dval);
-                logmsg(LOGMSG_USER, "%f", dval);
+                strbuf_appendf(strbuf, "%f", dval);
                 break;
             default:
-                logmsg(LOGMSG_ERROR, "ERROR: invalid CLIENT_REAL length\n");
+                if (fmt == DUMPFORMAT_VERBOSE)
+                    strbuf_append(strbuf, "ERROR: invalid CLIENT_REAL length\n");
+                else
+                    strbuf_append(strbuf, "???");
             }
             break;
         case CLIENT_CSTR:
-            logmsg(LOGMSG_USER, "\"%s\"", buf);
+            // TODO: escape newlines, quotes, etc.
+            strbuf_appendf(strbuf, "\"%s\"", buf);
             break;
         case CLIENT_PSTR:
             slen = pstrlenlim(buf, len);
-            logmsg(LOGMSG_USER, "\"%.*s\"", slen, buf);
+            strbuf_appendf(strbuf, "\"%.*s\"", slen, buf);
             break;
         case CLIENT_PSTR2:
             slen = len;
-            logmsg(LOGMSG_USER, "\"%.*s\"", slen, buf);
+            strbuf_appendf(strbuf, "\"%.*s\"", slen, buf);
             break;
         case CLIENT_BYTEARRAY:
-            logmsg(LOGMSG_USER, "0x");
+
+            strbuf_append(strbuf, "x'");
             for (i = 0; i < len; i++)
-                logmsg(LOGMSG_USER, "%2.2x", buf[i] & 0xff);
+                strbuf_appendf(strbuf, "%2.2x", buf[i] & 0xff);
+            strbuf_append(strbuf, "x'");
             break;
         case CLIENT_BLOB: {
             const struct client_blob_type *cblob =
                 (const struct client_blob_type *)buf;
-            if (cblob->notnull)
-                logmsg(LOGMSG_USER, "<blob of %u bytes>", ntohl(cblob->length));
+            if (cblob->notnull) {
+                strbuf_appendf(strbuf, "<blob of %u bytes>", ntohl(cblob->length));
+            }
             else
-                logmsg(LOGMSG_USER, "NULL");
+                strbuf_append(strbuf, "NULL");
             break;
         }
         case CLIENT_DATETIME: {
@@ -1134,7 +1157,7 @@ static void dumpval(char *buf, int type, int len)
             client_datetime_get(&dt, (uint8_t *)buf,
                                 (uint8_t *)buf +
                                     sizeof(cdb2_client_datetime_t));
-            logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s", dt.tm.tm_year,
+            strbuf_appendf(strbuf, "'%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%3.3u %s'", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.msec, dt.tzname);
             break;
@@ -1145,7 +1168,7 @@ static void dumpval(char *buf, int type, int len)
             client_datetimeus_get(&dt, (uint8_t *)buf,
                                   (uint8_t *)buf +
                                       sizeof(cdb2_client_datetimeus_t));
-            logmsg(LOGMSG_USER, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s", dt.tm.tm_year,
+            strbuf_appendf(strbuf, "%4.4u-%2.2u-%2.2uT%2.2u%2.2u%2.2u.%6.6u %s", dt.tm.tm_year,
                    dt.tm.tm_mon, dt.tm.tm_mday, dt.tm.tm_hour, dt.tm.tm_min,
                    dt.tm.tm_sec, dt.usec, dt.tzname);
             break;
@@ -1155,7 +1178,7 @@ static void dumpval(char *buf, int type, int len)
             cdb2_client_intv_ym_t ym;
             client_intv_ym_get(&ym, (uint8_t *)buf,
                                (uint8_t *)buf + sizeof(cdb2_client_intv_ym_t));
-            logmsg(LOGMSG_USER, "%s%u-%u", (ym.sign < 0) ? "- " : "", ym.years, ym.months);
+            strbuf_appendf(strbuf, "%s%u-%u", (ym.sign < 0) ? "- " : "", ym.years, ym.months);
             break;
         }
 
@@ -1163,7 +1186,7 @@ static void dumpval(char *buf, int type, int len)
             cdb2_client_intv_ds_t ds;
             client_intv_ds_get(&ds, (uint8_t *)buf,
                                (uint8_t *)buf + sizeof(cdb2_client_intv_ds_t));
-            logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%u", (ds.sign < 0) ? "- " : "", ds.days,
+            strbuf_appendf(strbuf, "%s%u %u:%u:%u.%u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.msec);
             break;
         }
@@ -1173,7 +1196,7 @@ static void dumpval(char *buf, int type, int len)
             client_intv_dsus_get(&ds, (uint8_t *)buf,
                                  (uint8_t *)buf +
                                      sizeof(cdb2_client_intv_dsus_t));
-            logmsg(LOGMSG_USER, "%s%u %u:%u:%u.%6.6u", (ds.sign < 0) ? "- " : "", ds.days,
+            strbuf_appendf(strbuf, "%s%u %u:%u:%u.%6.6u", (ds.sign < 0) ? "- " : "", ds.days,
                    ds.hours, ds.mins, ds.sec, ds.usec);
             break;
         }
@@ -1183,17 +1206,17 @@ static void dumpval(char *buf, int type, int len)
             case 3:
                 memcpy(&usval, ((char *)buf) + 1, len - 1);
                 usval = ntohs(usval);
-                logmsg(LOGMSG_USER, "%hu", usval);
+                strbuf_appendf(strbuf, "%hu", usval);
                 break;
             case 5:
                 memcpy(&uival, ((char *)buf) + 1, len - 1);
                 uival = ntohl(uival);
-                logmsg(LOGMSG_USER, "%u", uival);
+                strbuf_appendf(strbuf, "%u", uival);
                 break;
             case 9:
                 memcpy(&ulval, ((char *)buf) + 1, len - 1);
                 ulval = flibc_ntohll(ulval);
-                logmsg(LOGMSG_USER, "%llu", ulval);
+                strbuf_appendf(strbuf, "%llu", ulval);
                 break;
             default:
                 logmsg(LOGMSG_ERROR, "Invalid biased unsigned int length\n");
@@ -1206,19 +1229,19 @@ static void dumpval(char *buf, int type, int len)
                 memcpy(&bsval, ((char *)buf) + 1, len - 1);
                 bsval = ntohs(bsval);
                 int2b_to_int2(bsval, &sval);
-                logmsg(LOGMSG_USER, "%hd", sval);
+                strbuf_appendf(strbuf, "%hd", sval);
                 break;
             case 5:
                 memcpy(&bival, ((char *)buf) + 1, len - 1);
                 bival = ntohl(bival);
                 int4b_to_int4(bival, &ival);
-                logmsg(LOGMSG_USER, "%d", ival);
+                strbuf_appendf(strbuf, "%d", ival);
                 break;
             case 9:
                 memcpy(&blval, ((char *)buf) + 1, len - 1);
                 blval = flibc_ntohll(blval);
                 int8b_to_int8(blval, &lval);
-                logmsg(LOGMSG_USER, "%lld", lval);
+                strbuf_appendf(strbuf, "%lld", lval);
                 break;
             default:
                 logmsg(LOGMSG_USER, "Invalid biased int length\n");
@@ -1231,13 +1254,13 @@ static void dumpval(char *buf, int type, int len)
                 memcpy(&bfval, ((char *)buf) + 1, len - 1);
                 bfval = ntohl(bfval);
                 ieee4b_to_ieee4(bfval, &fval);
-                logmsg(LOGMSG_USER, "%f", (double)fval);
+                strbuf_appendf(strbuf, "%f", (double)fval);
                 break;
             case 9:
                 memcpy(&bdval, ((char *)buf) + 1, len - 1);
                 bdval = flibc_ntohll(bdval);
                 ieee8b_to_ieee8(bdval, &dval);
-                logmsg(LOGMSG_USER, "%f", dval);
+                strbuf_appendf(strbuf, "%f", dval);
                 break;
             default:
                 logmsg(LOGMSG_ERROR, "Invalid biased real length\n");
@@ -1245,53 +1268,54 @@ static void dumpval(char *buf, int type, int len)
             }
             break;
         case SERVER_BCSTR:
-            logmsg(LOGMSG_USER, "\"%.*s\"", len, ((char *)buf) + 1);
+            strbuf_appendf(strbuf, "\"%.*s\"", len, ((char *)buf) + 1);
             break;
         case SERVER_BYTEARRAY:
-            logmsg(LOGMSG_USER, "0x");
+            strbuf_appendf(strbuf, "x'");
             for (i = 1; i < len; i++)
-                logmsg(LOGMSG_USER, "%2.2x", buf[i] & 0xff);
+                strbuf_appendf(strbuf, "%2.2x", buf[i] & 0xff);
+            strbuf_appendf(strbuf, "'");
             break;
         case SERVER_BLOB:
-            logmsg(LOGMSG_USER, "<blob of %u bytes>", *((int *)(buf + 1)));
+            strbuf_appendf(strbuf, "<blob of %u bytes>", *((int *)(buf + 1)));
             break;
         case SERVER_DATETIME: {
             server_datetime_t dt;
             server_datetime_get(&dt, (uint8_t *)buf,
                                 (uint8_t *)buf + sizeof(server_datetime_t));
-            logmsg(LOGMSG_USER, "%llu.%hu", dt.sec, dt.msec);
+            strbuf_appendf(strbuf, "%llu.%hu", dt.sec, dt.msec);
             break;
         }
         case SERVER_DATETIMEUS: {
             server_datetimeus_t dt;
             server_datetimeus_get(&dt, (uint8_t *)buf,
                                   (uint8_t *)buf + sizeof(server_datetimeus_t));
-            logmsg(LOGMSG_USER, "%llu.%u", dt.sec, dt.usec);
+            strbuf_appendf(strbuf, "%llu.%u", dt.sec, dt.usec);
             break;
         }
         case SERVER_INTVYM: {
             server_intv_ym_t si;
             server_intv_ym_get(&si, (uint8_t *)buf,
                                (uint8_t *)buf + sizeof(server_intv_ym_t));
-            logmsg(LOGMSG_USER, "%d", si.months);
+            strbuf_appendf(strbuf, "%d", si.months);
             break;
         }
         case SERVER_INTVDS: {
             server_intv_ds_t ds;
             server_intv_ds_get(&ds, (uint8_t *)buf,
                                (uint8_t *)buf + sizeof(server_intv_ds_t));
-            logmsg(LOGMSG_USER, "%lld.%hu", ds.sec, ds.msec);
+            strbuf_appendf(strbuf, "%lld.%hu", ds.sec, ds.msec);
             break;
         }
         case SERVER_INTVDSUS: {
             server_intv_dsus_t ds;
             server_intv_dsus_get(&ds, (uint8_t *)buf,
                                  (uint8_t *)buf + sizeof(server_intv_dsus_t));
-            logmsg(LOGMSG_USER, "%lld.%u", ds.sec, ds.usec);
+            strbuf_appendf(strbuf, "%lld.%u", ds.sec, ds.usec);
             break;
         }
         case SERVER_VUTF8:
-            logmsg(LOGMSG_USER, "<vutf8 of %u bytes>", *((int *)(buf + 1)));
+            strbuf_appendf(strbuf, "<vutf8 of %u bytes>", *((int *)(buf + 1)));
             break;
         default:
             logmsg(LOGMSG_ERROR, "Invalid type %d\n", type);
@@ -1403,13 +1427,16 @@ void dump_tagged_buf_with_schema(struct schema *sc, const unsigned char *buf)
 {
     int i;
     struct field *f;
+    strbuf *strbuf = strbuf_new();
 
     for (i = 0; i < sc->nmembers; i++) {
         f = &sc->member[i];
-        logmsg(LOGMSG_USER, "   [%3d - %10s] %s: ", i, typestr(f->type, f->len), f->name);
-        dumpval((char *)buf + f->offset, f->type, f->len);
-        logmsg(LOGMSG_USER, "\n");
+        strbuf_appendf(strbuf, "   [%3d - %10s] %s: ", i, typestr(f->type, f->len), f->name);
+        dumpval((char *)buf + f->offset, f->type, f->len, strbuf, DUMPFORMAT_VERBOSE);
+        strbuf_append(strbuf, "\n");
     }
+    logmsg(LOGMSG_USER, "%s", strbuf_buf(strbuf));
+    strbuf_free(strbuf);
 }
 
 void dump_tagged_buf(const char *table, const char *tag,
@@ -1419,6 +1446,22 @@ void dump_tagged_buf(const char *table, const char *tag,
     if (sc == NULL)
         return;
     dump_tagged_buf_with_schema(sc, buf);
+}
+
+char *dump_tagged_buf_to_strbuf(struct schema *sc, char *buf) {
+    strbuf *strbuf = strbuf_new();
+    char *prefix = "";
+
+    strbuf_append(strbuf, "(");
+    for (int fld = 0; fld < sc->nmembers; fld++) {
+        struct field *f = &sc->member[fld];
+        strbuf_append(strbuf, prefix);
+        strbuf_appendf(strbuf, "%s=", f->name);
+        dumpval((char *)buf + f->offset, f->type, f->len, strbuf, DUMPFORMAT_SHORT);
+        prefix = ", ";
+    }
+    strbuf_append(strbuf, ")");
+    return strbuf_disown(strbuf);
 }
 
 /* assume schema has been added */
@@ -7476,4 +7519,9 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
 struct schema *get_schema(const struct dbtable *db, int ix)
 {
     return (ix == -1) ? db->schema : db->ixschema[ix];
+}
+
+char *make_readable_key(struct dbtable *dbtable, int ixnum, char *key) {
+    struct schema *schema = dbtable->ixschema[ixnum];
+    return dump_tagged_buf_to_strbuf(schema, key);
 }
