@@ -1379,11 +1379,17 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                     *errout = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;
                 } else {
+                    char *readable_key = NULL;
+                    if (gbl_return_error_key_values)
+                        readable_key = get_error_key(iq->usedb, doidx, od_dta);
                     reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
                               "add key constraint duplicate key '%s' on table "
-                              "'%s' index %d",
+                              "'%s' index %d%s%s",
                               get_keynm_from_db_idx(iq->usedb, doidx),
-                              iq->usedb->tablename, doidx);
+                              iq->usedb->tablename, doidx,
+                              gbl_return_error_key_values ?  ", key=" : "",
+                              gbl_return_error_key_values ? readable_key : "");
+                    free(readable_key);
                     *errout = OP_FAILED_UNIQ;
                 }
 

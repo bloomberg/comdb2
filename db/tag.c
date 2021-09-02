@@ -1219,7 +1219,10 @@ static void dumpval(char *buf, int type, int len, strbuf *strbuf, enum dumpforma
                 strbuf_appendf(strbuf, "%llu", ulval);
                 break;
             default:
-                logmsg(LOGMSG_ERROR, "Invalid biased unsigned int length\n");
+                if (fmt == DUMPFORMAT_VERBOSE)
+                    strbuf_append(strbuf, "Invalid biased unsigned int length\n");
+                else
+                    strbuf_append(strbuf, "???");
                 break;
             }
             break;
@@ -1244,7 +1247,10 @@ static void dumpval(char *buf, int type, int len, strbuf *strbuf, enum dumpforma
                 strbuf_appendf(strbuf, "%lld", lval);
                 break;
             default:
-                logmsg(LOGMSG_USER, "Invalid biased int length\n");
+                if (fmt == DUMPFORMAT_VERBOSE)
+                    strbuf_append(strbuf, "Invalid biased int length\n");
+                else
+                    strbuf_append(strbuf, "???");
                 break;
             }
             break;
@@ -1263,7 +1269,10 @@ static void dumpval(char *buf, int type, int len, strbuf *strbuf, enum dumpforma
                 strbuf_appendf(strbuf, "%f", dval);
                 break;
             default:
-                logmsg(LOGMSG_ERROR, "Invalid biased real length\n");
+                if (fmt == DUMPFORMAT_VERBOSE)
+                    strbuf_append(strbuf, "Invalid biased real length\n");
+                else
+                    strbuf_append(strbuf, "???");
                 break;
             }
             break;
@@ -1318,7 +1327,10 @@ static void dumpval(char *buf, int type, int len, strbuf *strbuf, enum dumpforma
             strbuf_appendf(strbuf, "<vutf8 of %u bytes>", *((int *)(buf + 1)));
             break;
         default:
-            logmsg(LOGMSG_ERROR, "Invalid type %d\n", type);
+            if (fmt == DUMPFORMAT_VERBOSE)
+                strbuf_appendf(strbuf, "Invalid type %d\n", type);
+            else
+                strbuf_append(strbuf, "???");
             break;
         }
     }
@@ -1429,11 +1441,10 @@ void dump_tagged_buf_with_schema(struct schema *sc, const unsigned char *buf)
     struct field *f;
     strbuf *strbuf = strbuf_new();
 
+    printf("hi\n");
     for (i = 0; i < sc->nmembers; i++) {
         f = &sc->member[i];
         strbuf_appendf(strbuf, "   [%3d - %10s] %s: ", i, typestr(f->type, f->len), f->name);
-        dumpval((char *)buf + f->offset, f->type, f->len, strbuf, DUMPFORMAT_VERBOSE);
-        strbuf_append(strbuf, "\n");
     }
     logmsg(LOGMSG_USER, "%s", strbuf_buf(strbuf));
     strbuf_free(strbuf);
@@ -1448,7 +1459,7 @@ void dump_tagged_buf(const char *table, const char *tag,
     dump_tagged_buf_with_schema(sc, buf);
 }
 
-char *dump_tagged_buf_to_strbuf(struct schema *sc, char *buf) {
+char *dump_tagged_buf_to_strbuf(struct schema *sc, void *keybuf) {
     strbuf *strbuf = strbuf_new();
     char *prefix = "";
 
@@ -1457,7 +1468,7 @@ char *dump_tagged_buf_to_strbuf(struct schema *sc, char *buf) {
         struct field *f = &sc->member[fld];
         strbuf_append(strbuf, prefix);
         strbuf_appendf(strbuf, "%s=", f->name);
-        dumpval((char *)buf + f->offset, f->type, f->len, strbuf, DUMPFORMAT_SHORT);
+        dumpval((char *)keybuf + f->offset, f->type, f->len, strbuf, DUMPFORMAT_SHORT);
         prefix = ", ";
     }
     strbuf_append(strbuf, ")");
@@ -7521,7 +7532,21 @@ struct schema *get_schema(const struct dbtable *db, int ix)
     return (ix == -1) ? db->schema : db->ixschema[ix];
 }
 
-char *make_readable_key(struct dbtable *dbtable, int ixnum, char *key) {
+char *make_readable_key(struct dbtable *dbtable, int ixnum, void *key) {
     struct schema *schema = dbtable->ixschema[ixnum];
     return dump_tagged_buf_to_strbuf(schema, key);
+}
+
+char *get_error_key(struct dbtable *dbtable, int ixnum, void *data) {
+    char key[MAXKEYLEN] = {0};
+    char *readable_key = NULL;
+    int krc = create_key_from_ondisk(dbtable, ixnum, data, key);
+    if (!krc) {
+        if (unlikely(krc)) {
+            readable_key = strdup("error forming key?");
+        } else {
+            readable_key = make_readable_key(dbtable, ixnum, key);
+        }
+    }
+    return readable_key;
 }

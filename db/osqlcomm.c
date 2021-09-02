@@ -6364,19 +6364,15 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
                     return 0;
                 } else {
                     /* this can happen if we're skipping delayed key adds */
-                    char k[MAXKEYLEN] = {0};
                     char *readable_key = NULL;
-                    int krc = create_key_from_ondisk(iq->usedb, err->ixnum, (char *) pData, k);
-                    if (unlikely(krc)) {
-                        readable_key = strdup("error forming key?");
-                    } else {
-                        readable_key = make_readable_key(iq->usedb, err->ixnum, k);
-                    }
+                    if (gbl_return_error_key_values)
+                        readable_key = get_error_key(iq->usedb, err->ixnum, pData);
                     reqerrstr(iq, COMDB2_CSTRT_RC_DUP, "add key constraint "
                                                        "duplicate key '%s' on "
-                                                       "table '%s' index %d key=%s",
+                                                       "table '%s' index %d%s%s",
                               get_keynm_from_db_idx(iq->usedb, err->ixnum),
-                              iq->usedb->tablename, err->ixnum, readable_key);
+                              iq->usedb->tablename, err->ixnum, gbl_return_error_key_values ? ", key=" : "",
+                              gbl_return_error_key_values ? readable_key : "");
                     free(readable_key);
                 }
             } else if (rc != RC_INTERNAL_RETRY) {

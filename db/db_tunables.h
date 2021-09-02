@@ -2152,4 +2152,7 @@ REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case o
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("return_error_key_values", "Return key values on dup/foreign key errors  (Default: 0)",
+                 TUNABLE_INTEGER, &gbl_return_error_key_values, 0, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
