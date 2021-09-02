@@ -6762,33 +6762,17 @@ int osql_get_replicant_numops(const char *rpl, int has_uuid)
 int osql_set_usedb(struct ireq *iq, const char *tablename, int tableversion,
                    int step, struct block_err *err)
 {
-    if (unlikely(timepart_is_timepart(tablename, 1))) {
-        char *newest_shard;
-        unsigned long long ver;
-
-        newest_shard = timepart_newest_shard(tablename, &ver);
-        if (newest_shard) {
-            free(newest_shard);
-        } else {
-            logmsg(LOGMSG_ERROR, "%s: broken time partition %s\n", __func__,
-                   tablename);
-
-            return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                     tablename, 0);
-        }
+    if (is_tablename_queue(tablename, strlen(tablename))) {
+        iq->usedb = getqueuebyname(tablename);
     } else {
-        if (is_tablename_queue(tablename, strlen(tablename))) {
-            iq->usedb = getqueuebyname(tablename);
-        } else {
-            iq->usedb = get_dbtable_by_name(tablename);
-        }
-        if (iq->usedb == NULL) {
-            iq->usedb = iq->origdb;
-            logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
-                   __func__, (int)strlen(tablename) + 1, tablename);
-            return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
-                                     tablename, 0);
-        }
+        iq->usedb = get_dbtable_by_name(tablename);
+    }
+    if (iq->usedb == NULL) {
+        iq->usedb = iq->origdb;
+        logmsg(LOGMSG_INFO, "%s: unable to get usedb for table %.*s\n",
+               __func__, (int)strlen(tablename) + 1, tablename);
+        return conv_rc_sql2blkop(iq, step, -1, ERR_NO_SUCH_TABLE, err,
+                                 tablename, 0);
     }
 
     // check usedb table version and return verify error if different
