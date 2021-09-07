@@ -887,45 +887,28 @@ static int newsql_cost(struct sqlclntstate *clnt)
 static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
 {
     switch (t) {
-    case RESPONSE_COLUMNS:
-        return newsql_columns(c, a);
-    case RESPONSE_COLUMNS_LUA:
-        return newsql_columns_lua(c, a);
-    case RESPONSE_COLUMNS_STR:
-        return newsql_columns_str(c, a, i);
-    case RESPONSE_DEBUG:
-        return newsql_debug(c, a);
-    case RESPONSE_ERROR:
-        return newsql_error(c, a, i);
-    case RESPONSE_ERROR_ACCESS:
-        return newsql_error(c, a, CDB2ERR_ACCESS);
-    case RESPONSE_ERROR_BAD_STATE:
-        return newsql_error(c, a, CDB2ERR_BADSTATE);
-    case RESPONSE_ERROR_PREPARE:
-        return newsql_error(c, a, CDB2ERR_PREPARE_ERROR);
-    case RESPONSE_ERROR_REJECT:
-        return newsql_error(c, a, CDB2ERR_REJECTED);
-    case RESPONSE_FLUSH:
-        return c->plugin.flush(c);
-    case RESPONSE_HEARTBEAT:
-        return newsql_heartbeat(c);
-    case RESPONSE_ROW:
-        return newsql_row(c, a, i);
-    case RESPONSE_ROW_LAST:
-        return newsql_row_last(c);
-    case RESPONSE_ROW_LAST_DUMMY:
-        return newsql_row_last_dummy(c);
-    case RESPONSE_ROW_LUA:
-        return newsql_row_lua(c, a);
-    case RESPONSE_ROW_STR:
-        return newsql_row_str(c, a, i);
-    case RESPONSE_TRACE:
-        return newsql_trace(c, a);
-    case RESPONSE_COST:
-        return newsql_cost(c);
+    case RESPONSE_COLUMNS: return newsql_columns(c, a);
+    case RESPONSE_COLUMNS_LUA: return newsql_columns_lua(c, a);
+    case RESPONSE_COLUMNS_STR: return newsql_columns_str(c, a, i);
+    case RESPONSE_DEBUG: return newsql_debug(c, a);
+    case RESPONSE_ERROR: return newsql_error(c, a, i);
+    case RESPONSE_ERROR_ACCESS: return newsql_error(c, a, CDB2ERR_ACCESS);
+    case RESPONSE_ERROR_BAD_STATE: return newsql_error(c, a, CDB2ERR_BADSTATE);
+    case RESPONSE_ERROR_PREPARE: return newsql_error(c, a, CDB2ERR_PREPARE_ERROR);
+    case RESPONSE_ERROR_REJECT: return newsql_error(c, a, CDB2ERR_REJECTED);
+    case RESPONSE_FLUSH: return c->plugin.flush(c);
+    case RESPONSE_HEARTBEAT: return newsql_heartbeat(c);
+    case RESPONSE_ROW: return newsql_row(c, a, i);
+    case RESPONSE_ROW_LAST: return newsql_row_last(c);
+    case RESPONSE_ROW_LAST_DUMMY: return newsql_row_last_dummy(c);
+    case RESPONSE_ROW_LUA: return newsql_row_lua(c, a);
+    case RESPONSE_ROW_STR: return newsql_row_str(c, a, i);
+    case RESPONSE_TRACE: return newsql_trace(c, a);
+    case RESPONSE_COST: return newsql_cost(c);
     /* fastsql only messages */
     case RESPONSE_EFFECTS:
     case RESPONSE_ERROR_PREPARE_RETRY:
+    case RESPONSE_QUERY_STATS:
         return 0;
     default:
         abort();
