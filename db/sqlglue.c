@@ -11497,6 +11497,11 @@ void stat4dump(int more, char *table, int istrace)
                         ctime_r(&t, ct);
                         ct[strlen(ct) - 1] = 0;
                         outFunc(ct);
+                    } else if (m.flags & MEM_Blob) { /* a byte array */
+                        outFunc("x'");
+                        for (int i = 0; i != m.n; ++i)
+                            outFunc("%02X", (unsigned char)m.z[i]);
+                        outFunc("'");
                     } else {
                         outFunc("type:%d", m.flags);
                     }
