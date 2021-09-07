@@ -346,6 +346,7 @@ enum {
     XRESPONSE(RESPONSE_ERROR_REJECT)                                           \
     XRESPONSE(RESPONSE_FLUSH)                                                  \
     XRESPONSE(RESPONSE_HEARTBEAT)                                              \
+    XRESPONSE(RESPONSE_QUERY_STATS)                                            \
     XRESPONSE(RESPONSE_ROW)                                                    \
     XRESPONSE(RESPONSE_ROW_LAST)                                               \
     XRESPONSE(RESPONSE_ROW_LAST_DUMMY)                                         \
@@ -707,9 +708,6 @@ struct sqlclntstate {
 
     struct user current_user;
     int authgen;
-
-    int have_extended_tm;
-    int extended_tm;
 
     char *origin;
     uint8_t dirty[256]; /* We can track upto 2048 tables */

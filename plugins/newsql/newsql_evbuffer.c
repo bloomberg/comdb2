@@ -33,7 +33,7 @@
 
 #include <newsql.h>
 
-static void rd_hdr(int, short, void *);
+static void rd_newsql_hdr(int, short, void *);
 
 struct newsql_appdata_evbuffer {
     NEWSQL_APPDATA_COMMON /* Must be first */
@@ -107,7 +107,7 @@ static void newsql_read_hdr(int dummyfd, short what, void *arg)
 {
     struct newsql_appdata_evbuffer *appdata = arg;
     add_lru_evbuffer(&appdata->clnt);
-    rd_hdr(-1, 0, appdata);
+    rd_newsql_hdr(-1, 0, appdata);
 }
 
 static void newsql_read_again(int dummyfd, short what, void *arg)
@@ -252,7 +252,7 @@ static void write_dbinfo(int dummyfd, short what, void *arg)
     } else if (evbuffer_get_length(wrbuf)) {
         event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, write_dbinfo, appdata, NULL);
     } else {
-        event_once(appsock_rd_base, rd_hdr, appdata);
+        event_once(appsock_rd_base, rd_newsql_hdr, appdata);
     }
 }
 
@@ -405,7 +405,7 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         break;
     case CDB2_REQUEST_TYPE__RESET:
         newsql_reset_evbuffer(appdata);
-        rd_hdr(-1, 0, appdata);
+        rd_newsql_hdr(-1, 0, appdata);
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
         /* not implemented - disable us for now */
@@ -442,7 +442,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
     }
 }
 
-static void rd_hdr(int dummyfd, short what, void *arg)
+static void rd_newsql_hdr(int dummyfd, short what, void *arg)
 {
     check_appsock_rd_thd();
     struct newsql_appdata_evbuffer *appdata = arg;
@@ -457,13 +457,14 @@ static void rd_hdr(int dummyfd, short what, void *arg)
         event_add(appdata->rd_hdr_ev, NULL);
         return;
     }
-    evbuffer_remove(appdata->rd_buf, &appdata->hdr, sizeof(struct newsqlheader));
-    appdata->hdr.type = ntohl(appdata->hdr.type);
-    appdata->hdr.compression = ntohl(appdata->hdr.compression);
-    appdata->hdr.state = ntohl(appdata->hdr.state);
-    appdata->hdr.length = ntohl(appdata->hdr.length);
+    struct newsqlheader hdr;
+    evbuffer_remove(appdata->rd_buf, &hdr, sizeof(struct newsqlheader));
+    appdata->hdr.type = ntohl(hdr.type);
+    appdata->hdr.compression = ntohl(hdr.compression);
+    appdata->hdr.state = ntohl(hdr.state);
+    appdata->hdr.length = ntohl(hdr.length);
     if (appdata->hdr.length) {
-        rd_payload(appdata->fd, 0, appdata);
+        rd_payload(-1, 0, appdata);
     } else {
         process_newsql_payload(appdata, NULL);
     }
@@ -642,7 +643,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     appdata->local = local;
     appdata->fd = arg->fd;
     appdata->rd_buf = arg->rd_buf;
-    appdata->rd_hdr_ev = event_new(appsock_rd_base, arg->fd, EV_READ, rd_hdr, appdata);
+    appdata->rd_hdr_ev = event_new(appsock_rd_base, arg->fd, EV_READ, rd_newsql_hdr, appdata);
     appdata->rd_payload_ev = event_new(appsock_rd_base, arg->fd, EV_READ, rd_payload, appdata);
 
     struct sqlwriter_arg sqlwriter_arg = {
