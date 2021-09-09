@@ -559,6 +559,19 @@ static timepart_view_t *_get_view(timepart_views_t *views, const char *name)
     return NULL;
 }
 
+static struct dbtable *_table_alias_fallback(timepart_view_t *view)
+{
+    struct dbtable *db = NULL;
+    if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
+        db = get_dbtable_by_name(view->name);
+        if (db) {
+            /* create alias alias */
+            timepart_alias_table(view, db);
+        }
+    }
+    return db;
+}
+
 /**
  * Handle views change on replicants
  * - tran has the replication gbl_rep_lockid lockerid.
@@ -567,7 +580,7 @@ static timepart_view_t *_get_view(timepart_views_t *views, const char *name)
  */
 int views_handle_replicant_reload(void *tran, const char *name)
 {
-    timepart_views_t *views = thedb->timepart_views;
+    timepart_views_t *_views = thedb->timepart_views;
     timepart_view_t *view = NULL;
     struct dbtable *db;
     int rc = VIEW_NOERR;
@@ -602,11 +615,21 @@ int views_handle_replicant_reload(void *tran, const char *name)
     for (i = 0; i < view->nshards; i++) {
         db = get_dbtable_by_name(view->shards[i].tblname);
         if (!db) {
-            logmsg(LOGMSG_ERROR, "%s: unable to locate shard %s for view %s\n",
-                    __func__, view->shards[i].tblname, view->name);
-            timepart_free_view(view);
-            view = NULL;
-            goto done;
+            struct dbtable *db2 = _table_alias_fallback(view);
+            if (!db2) {
+                logmsg(LOGMSG_ERROR,
+                       "%s: unable to locate shard %s for view %s\n", __func__,
+                       view->shards[i].tblname, view->name);
+                timepart_free_view(view);
+                view = NULL;
+                goto done;
+            }
+            db = db2;
+            /* we alias a table, we need to bump dbopen */
+            create_sqlmaster_records(tran);
+            create_sqlite_master(); /* create sql statements */
+
+            BDB_BUMP_DBOPEN_GEN(views, "alias table");
         }
         db->tableversion = table_version_select(db, NULL);
         db->timepartition_name = view->name;
@@ -620,6 +643,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
                 logmsg(LOGMSG_ERROR, "Unable to find current shard for %s\n",
                        view->name);
                 timepart_free_view(view);
+
                 view = NULL;
                 goto done;
             }
@@ -629,38 +653,38 @@ int views_handle_replicant_reload(void *tran, const char *name)
 alter_struct:
     /* we need to destroy existing view, if any */
     /* locate the impacted view */
-    for (i = 0; i < views->nviews; i++) {
-        if (strcasecmp(views->views[i]->name, name) == 0) {
-        
+    for (i = 0; i < _views->nviews; i++) {
+        if (strcasecmp(_views->views[i]->name, name) == 0) {
+
             if (!view) {
                 /* this is drop view, unregister shards */
-                _view_unregister_shards_lkless(views, views->views[i]);
+                _view_unregister_shards_lkless(_views, _views->views[i]);
             }
-            timepart_free_view(views->views[i]);
+            timepart_free_view(_views->views[i]);
 
             if (view) {
-                views->views[i] = view;
+                _views->views[i] = view;
             } else {
                 /* drop view */
-                _remove_view_entry(views, i);
+                _remove_view_entry(_views, i);
             }
 
             break;
         }
     }
-    if (i >= views->nviews && view) {
+    if (i >= _views->nviews && view) {
         /* this is really a new view */
         /* adding the view to the list */
-        views->views = (timepart_view_t **)realloc(
-            views->views, sizeof(timepart_view_t *) * (views->nviews + 1));
-        if (!views->views) {
+        _views->views = (timepart_view_t **)realloc(
+            _views->views, sizeof(timepart_view_t *) * (_views->nviews + 1));
+        if (!_views->views) {
             logmsg(LOGMSG_ERROR, "%s Malloc OOM", __func__);
-            views->nviews = 0;
+            _views->nviews = 0;
             goto done;
         }
 
-        views->views[views->nviews] = view;
-        views->nviews++;
+        _views->views[_views->nviews] = view;
+        _views->nviews++;
     }
 
     /* NOTE: this has to be done under schema change lock */
@@ -2308,21 +2332,30 @@ static int _view_register_shards(timepart_views_t *views,
     for (i = 0; i < view->nshards; i++) {
         db = get_dbtable_by_name(view->shards[i].tblname);
         if (!db) {
-            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
-                               "Partition %s shard %s doesn't exist!",
-                               view->name, view->shards[i].tblname);
-            goto done;
+            /* if this is a truncate partition, it is possible the partition
+             * was created based on an existing table; check if there is
+             * a table having the partition name, and if it is, alias it
+             */
+            struct dbtable *db2 = _table_alias_fallback(view);
+            if (!db2) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                                   "Partition %s shard %s doesn't exist!",
+                                   view->name, view->shards[i].tblname);
+                goto done;
+            }
+            db = db2;
+        } else {
+            /* _check_shard_collision prevents this, but just
+               in case that code changes, make sure we did not
+               register shard with another time partition already */
+            if (unlikely(db->timepartition_name)) {
+                errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
+                                   "Partition %s shard %s reused!", view->name,
+                                   view->shards[i].tblname);
+                goto done;
+            }
+            db->timepartition_name = view->name;
         }
-        /* _check_shard_collision prevents this, but just
-        in case that code changes, make sure we did not
-        register shard with another time partition already */
-        if (unlikely(db->timepartition_name)) {
-            errstat_set_rcstrf(err, rc = VIEW_ERR_EXIST,
-                               "Partition %s shard %s reused!", view->name,
-                               view->shards[i].tblname);
-            goto done;
-        }
-        db->timepartition_name = view->name;
     }
 
     /* also mark the next shard */
@@ -2365,7 +2398,7 @@ int timepart_foreach_shard_lockless(timepart_view_t *view,
     int rc = 0;
     int i;
     arg->nshards = view->nshards;
-    for (i = 0; i < view->nshards; i++) {
+    for (i = arg->indx; i < view->nshards; i++) {
         if (arg)
             arg->indx = i;
         logmsg(LOGMSG_INFO, "%s Applying %p to %s (existing shard)\n", __func__,
@@ -2848,7 +2881,7 @@ int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
     int i;
     char new_name[MAXTABLELEN + 1];
 
-    assert(!view->shards && view->nshards == 0);
+    assert(!view->shards && view->nshards >= 0);
 
     view->shards =
         (timepart_shard_t *)calloc(view->retention, sizeof(timepart_shard_t));
@@ -2864,7 +2897,7 @@ int timepart_populate_shards(timepart_view_t *view, struct errstat *err)
 
     /* generate shard names */
     char *old_name = view->name;
-    for (i = 0; i < view->retention; i++) {
+    for (i = view->nshards; i < view->retention; i++) {
         rc = _generate_new_shard_name(
             old_name, new_name, sizeof(new_name), i, view->retention,
             view->period == VIEW_PARTITION_TEST2MIN, err);
@@ -3131,12 +3164,20 @@ const char *timepart_view_name(int i)
     const char *name = NULL;
     Pthread_rwlock_rdlock(&views_lk);
 
-    if (i < thedb->timepart_views->nviews)
+    if (i >= 0 && i < thedb->timepart_views->nviews)
         name = thedb->timepart_views->views[i]->name;
 
     Pthread_rwlock_unlock(&views_lk);
 
     return name;
+}
+
+void timepart_alias_table(timepart_view_t *view, struct dbtable *db)
+{
+    assert(!db->sqlaliasname);
+    db->sqlaliasname = strdup(view->shards[0].tblname);
+    hash_sqlalias_db(db, db->sqlaliasname);
+    db->timepartition_name = view->name;
 }
 
 #include "views_systable.c"

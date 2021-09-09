@@ -183,6 +183,62 @@ cmdmt="cdb2sql -tabs ${CDB2_OPTIONS} --host $master $dbname default"
 
 timepart_stats 0
 
+# 8.
+# create table and alter to a partition; check inserts
+echo $cmd "create table t5 (d int)"
+$cmd "create table t5 (d int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE create table t5"
+   exit 1
+fi
+
+$cmd "insert into t5 values (100), (200), (300)"
+if (( $? != 0 )) ; then
+   echo "FAILURE insert into table t5"
+   exit 1
+fi
+
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+15)'`
+echo $cmd "ALTER TABLE t5 ADD COLUMN e int, PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "ALTER TABLE t5 ADD COLUMN e int, PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? != 0 )) ; then
+   echo "FAILURE to alter table t5 and add partion"
+   exit 1
+fi
+
+timepart_stats 0
+
+$cmd "insert into t5 values (101, 1), (201, 1), (301, 1)"
+if (( $? != 0 )) ; then
+   echo "FAILURE insert into table t5 round 2"
+   exit 1
+fi
+
+sleep 15
+
+$cmd "insert into t5 values (102, 2), (202, 2), (302, 2)"
+if (( $? != 0 )) ; then
+   echo "FAILURE insert into table t5 round 3"
+   exit 1
+fi
+
+echo $cmd "select * from '\$0_65276E68'"
+echo $cmd "select * from '\$0_65276E68'" >> $OUT
+$cmd "select * from '\$0_65276E68'" >> $OUT
+echo $cmd "select * from '\$1_DEE0E531'"
+echo $cmd "select * from '\$1_DEE0E531'" >> $OUT
+$cmd "select * from '\$1_DEE0E531'" >> $OUT
+
+# 9.
+# check attempt to alter an already partitioned table
+echo $cmd "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? == 0 )) ; then
+   echo "FAILURE to prevent duplicate partitioning"
+   exit 1
+fi
+
+
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
 

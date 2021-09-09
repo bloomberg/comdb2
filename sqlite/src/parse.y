@@ -229,7 +229,8 @@ create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_opt
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
 partitioned ::= . 
-partitioned ::= PARTITIONED BY partition_options.
+partitioned ::= partitioned_by.
+partitioned_by ::= PARTITIONED BY partition_options.
 partition_options ::= TIME PERIOD STRING(P) RETENTION INTEGER(R) START STRING(S). {
   comdb2CreateTimePartition(pParse, &P, &R, &S);
 }
@@ -1973,6 +1974,8 @@ alter_table_commit_pending ::= SET COMMIT PENDING. {
   comdb2AlterCommitPending(pParse);
 }
 
+alter_table_partitioned ::= partitioned_by.
+
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
 alter_table_action ::= alter_table_alter_column.
@@ -1985,6 +1988,7 @@ alter_table_action ::= alter_table_drop_cons.
 alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
 alter_table_action ::= alter_table_commit_pending.
+alter_table_action ::= alter_table_partitioned.
 
 alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.

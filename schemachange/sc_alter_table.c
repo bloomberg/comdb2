@@ -29,6 +29,7 @@
 #include "sc_records.h"
 #include "analyze.h"
 #include "comdb2_atomic.h"
+#include "views.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct dbtable *db, struct dbtable *newdb,
@@ -926,6 +927,21 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
         sc_printf(s, "bdb free ok\n");
 
     db->handle = old_bdb_handle;
+
+    /* if this is an alter to partition an existing table */
+    if (s->newpartition) {
+        struct errstat err = {0};
+        rc = timepart_publish_view(transac, s->newpartition, &err);
+        if (rc) {
+            logmsg(LOGMSG_ERROR, "Failed to partition table %s rc %d \"%s\"\n",
+                   s->tablename, rc, err.errstr);
+            sc_errf(s, "timepart_publish_view failed\n");
+            return -1;
+        }
+
+        /* make the in-memory alias */
+        timepart_alias_table(s->newpartition, db);
+    }
 
     /* deletion of btree files we don't need is handled in
      * osql_scdone_commit_callback and osql_scdone_abort_callback */

@@ -1320,6 +1320,8 @@ int sc_timepart_truncate_table(void *tran, const char *tableName,
     int rc;
 
     init_schemachange_type(&sc);
+    sc.onstack = 1;
+
     strncpy0(sc.tablename, tableName, MAXTABLELEN);
 
     sc.fastinit = 1;
