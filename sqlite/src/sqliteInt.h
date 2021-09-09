@@ -1571,6 +1571,7 @@ struct sqlite3 {
 #endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   u8 isExpert;                          /* Analyze using SQLite expert */
+  Hash uFunc;                           /* Functions in use by the schema */
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -1770,7 +1771,6 @@ struct FuncDestructor {
 #define SQLITE_FUNC_OFFSET   0x8000 /* Built-in sqlite_offset() function */
 #define SQLITE_FUNC_WINDOW   0x00010000 /* Built-in window-only function */
 #define SQLITE_FUNC_INTERNAL 0x00040000 /* For use by NestedParse() only */
-
 /*
 ** The following three macros, FUNCTION(), LIKEFUNC() and AGGREGATE() are
 ** used to create the initializers for the FuncDef structures.
@@ -4333,6 +4333,7 @@ Select *sqlite3SelectDup(sqlite3*,Select*,int);
 FuncDef *sqlite3FunctionSearch(int,const char*);
 void sqlite3InsertBuiltinFuncs(FuncDef*,int);
 FuncDef *sqlite3FindFunction(sqlite3*,const char*,int,u8,u8);
+FuncDef *sqlite3FindUsedFunction(sqlite3*,const char*,int,u8,u8);
 void sqlite3RegisterBuiltinFunctions(void);
 void sqlite3RegisterDateTimeFunctions(void);
 void sqlite3RegisterPerConnectionBuiltinFunctions(sqlite3*);

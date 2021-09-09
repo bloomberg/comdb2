@@ -295,7 +295,6 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
         struct schema_change_type *sc = new_schemachange_type();               \
         sc->is_##pfx##func = 1;                                                \
 		sc->lua_func_flags |= flags;                                           \
-		sqlite3DebugPrintf("lua_func_flags:%d", sc->lua_func_flags);           \
         sc->addonly = 1;                                                       \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
@@ -383,7 +382,30 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2DropFunc(parse, proc, s, scalar);
+
+    char spname[MAX_SPNAME];
+    if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
+        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        return;
+    }
+    if (find_lua_sfunc(spname) == 0) {
+        sqlite3ErrorMsg(parse, "no such lua " "sfunc:%s", spname);
+        return;
+    }
+    struct schema_change_type *sc = new_schemachange_type();
+    sc->is_sfunc = 1;
+    sc->addonly = 0;
+    strcpy(sc->spname, spname);
+    Vdbe *v = sqlite3GetVdbe(parse);
+
+    FuncDef * f  = sqlite3FindUsedFunction(parse->db, spname , -1, SQLITE_UTF8, 0);
+	if (f) {
+		sqlite3ErrorMsg(parse, "Can't drop. Function in use by the schema.");
+		return;
+	}
+    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
+
+//    comdb2DropFunc(parse, proc, s, scalar);
 }
 
 void comdb2DropAggFunc(Parse *parse, Token *proc)

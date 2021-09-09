@@ -322,7 +322,39 @@ void sqlite3InsertBuiltinFuncs(
     }
   }
 }
-  
+
+
+FuncDef *sqlite3FindUsedFunction(
+  sqlite3 *db,       /* An open database */
+  const char *zName, /* Name of the function.  zero-terminated */
+  int nArg,          /* Number of arguments.  -1 means any number */
+  u8 enc,            /* Preferred text encoding */
+  u8 createFlag      /* Create new entry if true and does not otherwise exist */
+) {
+
+  FuncDef *p;         /* Iterator variable */
+  FuncDef *pBest = 0; /* Best match found so far */
+  int bestScore = 0;  /* Score of best match */
+  int nName;          /* Length of the name */
+
+  nName = sqlite3Strlen30(zName);
+
+  p = (FuncDef*)sqlite3HashFind(&db->aFunc, zName);
+  while( p ){
+    int score = matchQuality(p, nArg, enc);
+    if( score>bestScore ){
+      pBest = p;
+      bestScore = score;
+    }
+    p = p->pNext;
+  }
+
+  if(pBest) {
+    return pBest;
+  }
+
+  return 0;
+}
   
 
 /*

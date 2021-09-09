@@ -967,6 +967,42 @@ Expr *sqlite3ExprFunction(
   Expr *pNew;
   sqlite3 *db = pParse->db;
   assert( pToken );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if (db->init.busy) {
+      FuncDef *fDef = 0;
+      FuncDef *fUsed = 0;
+      char func[256];
+
+      sprintf(func, "%.*s", pToken->n, pToken->z);
+      // Don't have enough information here to distinguish between
+      // functions with different arguments. Can distinguish between
+      // functions with different flags, though, not sure how useful
+      // that is.
+      // TODO: come back here and re-examin.
+      if ((fDef = sqlite3FindFunction(db, func, -1, SQLITE_UTF8, 0)) &&
+          ((fUsed = sqlite3DbMallocZero(db, sizeof(*fDef) + pToken->n + 1)) != 0)) {
+          FuncDef *fOther;
+          u8 *z;
+          fUsed->zName = (const char *)&fUsed[1];
+          fUsed->nArg = fDef->nArg;
+          fUsed->funcFlags = fDef->funcFlags;
+          memcpy((char *)&fUsed[1], pToken->z, pToken->n + 1);
+          for (z = (u8 *)fUsed->zName; *z; z++)
+              *z = sqlite3UpperToLower[*z];
+          fOther = (FuncDef *)sqlite3HashInsert(&db->aFunc, fUsed->zName, fUsed);
+          // if fUsed is returned, then malloc failed
+          if (fOther == fUsed) {
+              sqlite3DbFree(db, fUsed);
+              sqlite3OomFault(db);
+          } else {
+              // NULL is returned
+              // or, if old data is returned this is an existing function,
+              // albeit with a different number of arguments, so we append
+              fUsed->pNext = fOther;
+          }
+      }
+  }
+#endif
   pNew = sqlite3ExprAlloc(db, TK_FUNCTION, pToken, 1);
   if( pNew==0 ){
     sqlite3ExprListDelete(db, pList); /* Avoid memory leak when malloc fails */
