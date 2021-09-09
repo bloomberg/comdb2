@@ -438,4 +438,11 @@ int timepart_num_views(void);
  */
 const char *timepart_view_name(int i);
 
+/**
+ * Alias the existing table so we can create a partition with
+ * same name
+ *
+ */
+void timepart_alias_table(timepart_view_t *view, struct dbtable *db);
+
 #endif

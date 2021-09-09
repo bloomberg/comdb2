@@ -5855,10 +5855,6 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         }
     } else if (!timepart_is_timepart(sc->tablename, 1) &&
                sc->partition.type != PARTITION_NONE) {
-        if (!sc->addonly) {
-            logmsg(LOGMSG_ERROR, "Alter table partitioning not YET supported\n");
-            return ERR_SC;
-        }
         assert(sc->partition.type == PARTITION_TIMED);
 
         /* create a new time partition object */
@@ -5895,6 +5891,26 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         timepart_sc_arg_t arg = {0};
         arg.s = sc;
         arg.s->iq = iq;
+
+        /* is this an alter? preserve existing table as first shard */
+        if (!sc->addonly) {
+            /* we need to create a light rename for first shard,
+             * together with the original alter */
+            rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
+            if (rc) {
+                logmsg(LOGMSG_ERROR,
+                       "Failed to process alter for existing table %s while "
+                       "partitioning rc %d\n",
+                       sc->tablename, rc);
+                return ERR_SC;
+            }
+            /* we need to  generate retention-1 table adds, with schema provided
+             * by previous alter; we need to convert an alter to a add sc
+             */
+            arg.s->alteronly = 0; /* this is an add! */
+            arg.s->addonly = 1;
+            arg.indx = 1; /* first shard is already there */
+        }
         rc = timepart_foreach_shard_lockless(
             sc->newpartition, start_schema_change_tran_wrapper, &arg);
     } else {
