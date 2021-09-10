@@ -86,6 +86,9 @@ int systblTablePermissionsInit(sqlite3 *db);
 int systblSystabPermissionsInit(sqlite3 *db);
 int systblTimepartPermissionsInit(sqlite3 *db);
 int systblFdbInfoInit(sqlite3 *db);
+int systblAllInit(sqlite3 *db);
+int systblFilesInit(sqlite3 *db);
+int systblLocationsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

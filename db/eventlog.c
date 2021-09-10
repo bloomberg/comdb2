@@ -855,3 +855,71 @@ void eventlog_deadlock_cycle(locker_info *idmap, u_int32_t *deadmap,
     Pthread_mutex_unlock(&eventlog_lk);
     cson_value_free(dval);
 }
+
+int eventlog_list_files(char ***files) {
+    // List all the files with the default pattern, followed by the current file, if any, last.
+    DIR *dir = NULL;
+    int nfiles = 0;
+    int alloc = 0;
+    int err = 0;
+    char *pattern = NULL;
+    struct dirent *buf;
+    char *logdir;
+
+    *files = NULL;
+    logdir = comdb2_location("eventlog", NULL);
+    if (logdir == NULL)
+        return -1;
+    buf = malloc(bb_dirent_size(logdir));
+    if (buf == NULL) {
+        err = 1;
+        goto done;
+    }
+    struct dirent *de;
+    pattern = comdb2_asprintf("%s.events.", thedb->envname);
+    if (pattern == NULL) {
+        err = 1;
+        goto done;
+    }
+
+    dir = opendir(logdir);
+
+    while (bb_readdir(dir, buf, &de) == 0 && de) {
+        if (strstr(de->d_name, pattern) == NULL)
+            continue;
+        if (nfiles == alloc) {
+            alloc = alloc * 2 + 16;
+            char **nf = realloc(*files, alloc * sizeof(char **));
+            if (nf == NULL) {
+                logmsg(LOGMSG_ERROR, "can't get mem?\n");
+                err = 1;
+                goto done;
+            }
+            *files = nf;
+        }
+        char *fname = comdb2_location("eventlog", "%s", de->d_name);
+        if (fname == NULL) {
+            logmsg(LOGMSG_ERROR, "can't get location?\n");
+            err = 1;
+            goto done;
+        }
+        (*files)[nfiles++] = fname;
+    }
+    // current file if not part of the pattern?
+
+done:
+    free(logdir);
+    free(buf);
+    free(pattern);
+    if (dir)
+        closedir(dir);
+    if (err) {
+        if (files) {
+            for (int i = 0; i < nfiles; i++)
+                free((*files)[i]);
+        }
+        free(*files);
+        return -1;
+    }
+    return nfiles;
+}
