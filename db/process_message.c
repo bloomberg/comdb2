@@ -62,6 +62,7 @@ extern int __berkdb_read_alarm_ms;
 #include "comdb2_ruleset.h"
 #include "osqluprec.h"
 #include "schemachange.h"
+#include "luxref.h"
 
 extern struct ruleset *gbl_ruleset;
 extern int gbl_exit_alarm_sec;
@@ -4965,6 +4966,8 @@ clipper_usage:
             thdpool_print_stats(stdout, gbl_verify_thdpool);
         else
             logmsg(LOGMSG_USER, "Verify threadpool is not active\n");
+    } else if (tokcmp(tok, ltok, "dump_luxref_info") == 0) {
+        luxref_dump_info();
     } else {
         // see if any plugins know how to handle this
         struct message_handler *h;
