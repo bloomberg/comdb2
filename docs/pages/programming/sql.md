@@ -647,6 +647,7 @@ are different, for example.  Consult the table below for a list.  New functions 
 |quote(X)                          | <a id="quote"/>This routine returns a string which is the value of its argument suitable for inclusion into another SQL statement. Strings are surrounded by single-quotes with escapes on interior quotes as needed. BLOBs are encoded as hexadecimal literals. |
 |random()                          | <a id="random"/>Return a pseudo-random integer between -9223372036854775808 and +9223372036854775807. |
 |randomblob(N)                     | <a id="randomblob"/>Return an N-byte blob containing pseudo-random bytes. If N is less than 1 then a 1-byte random blob is returned. Hint: applications can generate globally unique identifiers using this function together with hex() and/or lower() like this: hex(randomblob(16)) OR: lower(hex(randomblob(16))) |
+|regexp(A,B) <br/> B regexp A      | <a id="replace"/>Returns `1` if string B matches the regular expression A. `0` is returned otherwise. |
 |replace(X,Y,Z)                    | <a id="replace"/>Return a string formed by substituting string Z for every occurrence of string Y in string X. If Y is an empty string then return X unchanged. If Z is not initially a string, it is cast to a UTF-8 string prior to processing. |
 |round(X) <br/> round(X,Y)         | <a id="round"/>Round off the number X to Y digits to the right of the decimal point. If the Y argument is omitted, 0 is assumed. |
 |rtrim(X) <br/ >rtrim(X,Y)         | <a id="rtrim"/>Return a string formed by removing any and all characters that appear in Y from the right side of X. If the Y argument is omitted, removes spaces from the right side of X. |
@@ -668,11 +669,45 @@ In any aggregate function that takes a single argument, that argument can be pre
 |Function                                | Description                                                                 |
 |----------------------------------------|-----------------------------------------------------------------------------|
 |avg(X)                                  | <a id="avg"/>Return the average value of all non-NULL X within a group. String and BLOB values that do not look like numbers are interpreted as 0. The result of avg() is always a floating point value even if all inputs are integers.|
-|count(*)                                | <a id="count"/>The first form return a count of the number of times that X is not NULL in a group. The second form (with no argument) returns the total number of rows in the group. |
+|count(X) <br/> count(*)                 | <a id="count"/>The first form return a count of the number of times that X is not NULL in a group. The second form (with no argument) returns the total number of rows in the group. |
 |max(X)                                  | <a id="max"/>Return the maximum value of all values in the group. The usual sort order is used to determine the maximum. |
 |min(X)                                  | <a id="min"/>Return the minimum non-NULL value of all values in the group. The usual sort order is used to determine the minimum. NULL is only returned if all values in the group are NULL. |
 |sum(X) <br/> total(X)                   | <a id="sum"/>Return the numeric sum of all non-NULL values in the group. If there are no non-NULL input rows then sum() returns NULL but total() returns 0.0. NULL is not normally a helpful result for the sum of no rows but the SQL standard requires it and most other SQL database engines implement sum() that way so Comdb2 does it in the same way in order to be compatible. The non-standard total() function is provided as a convenient way to work around this design problem in the SQL language.  The result of total() is always a floating point value. The result of sum() is an integer value if all non-NULL inputs are integers. If any input to sum() is neither an integer or a NULL then sum() returns a floating point value which might be an approximation to the true sum.  Sum() will throw an "integer overflow" exception if all inputs are integers or NULL and an integer overflow occurs at any point during the computation. Total() never throws an exception. |
 |group_concat(X) <br/> group_concat(X,Y) | <a id="group_concat"/> The group_concat() function returns a string which is the concatenation of all non-NULL values of X. If parameter Y is present then it is used as the separator between instances of X. A comma (",") is used as the separator if Y is omitted. The order of the concatenated elements is arbitrary. |
+
+### REGEXP function
+
+The REGEXP function in comdb2 is implemented as a [SQLite extention](https://sqlite.org/src/file?name=ext/misc/regexp.c).
+The function can be invoked either by REGEXP(A,B) or B REGEXP A, where A is the regular expression and B is the string to
+be matched. Note that the order of string and regular expression is flipped in both syntaxes.
+
+The following regular expression syntax is supported:
+```
+    X*      zero or more occurrences of X
+    X+      one or more occurrences of X
+    X?      zero or one occurrences of X
+    X{p,q}  between p and q occurrences of X
+    (X)     match X
+    X|Y     X or Y
+    ^X      X occurring at the beginning of the string
+    X$      X occurring at the end of the string
+    .       Match any single character
+    \c      Character c where c is one of \{}()[]|*+?.
+    \c      C-language escapes for c in afnrtv.  ex: \t or \n
+    \uXXXX  Where XXXX is exactly 4 hex digits, unicode value XXXX
+    \xXX    Where XX is exactly 2 hex digits, unicode value XX
+    [abc]   Any single character from the set abc
+    [^abc]  Any single character not in the set abc
+    [a-z]   Any single character in the range a-z
+    [^a-z]  Any single character not in the range a-z
+    \b      Word boundary
+    \w      Word character.  [A-Za-z0-9_]
+    \W      Non-word character
+    \d      Digit
+    \D      Non-digit
+    \s      Whitespace character
+    \S      Non-whitespace character
+```
 
 ## SET statements
 
