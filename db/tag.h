@@ -421,7 +421,7 @@ char* typestr(int type, int len);
 
 struct schema *get_schema(const struct dbtable *db, int ix);
 
-char *get_error_key(struct dbtable *dbtable, int ixnum, void *data);
-char *make_readable_key(struct dbtable *dbtable, int ixnum, void *key);
+char *get_error_key(struct dbtable *dbtable, int ixnum, void *data, const char *prefix);
+char *make_readable_key(struct dbtable *dbtable, int ixnum, void *key, const char *prefix);
 
 #endif

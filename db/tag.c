@@ -1459,8 +1459,7 @@ void dump_tagged_buf(const char *table, const char *tag,
     dump_tagged_buf_with_schema(sc, buf);
 }
 
-char *dump_tagged_buf_to_strbuf(struct schema *sc, void *keybuf) {
-    strbuf *strbuf = strbuf_new();
+void dump_tagged_buf_to_strbuf(struct schema *sc, void *keybuf, strbuf *strbuf) {
     char *prefix = "";
 
     strbuf_append(strbuf, "(");
@@ -1472,7 +1471,6 @@ char *dump_tagged_buf_to_strbuf(struct schema *sc, void *keybuf) {
         prefix = ", ";
     }
     strbuf_append(strbuf, ")");
-    return strbuf_disown(strbuf);
 }
 
 /* assume schema has been added */
@@ -7532,12 +7530,15 @@ struct schema *get_schema(const struct dbtable *db, int ix)
     return (ix == -1) ? db->schema : db->ixschema[ix];
 }
 
-char *make_readable_key(struct dbtable *dbtable, int ixnum, void *key) {
+char *make_readable_key(struct dbtable *dbtable, int ixnum, void *key, const char *prefix) {
     struct schema *schema = dbtable->ixschema[ixnum];
-    return dump_tagged_buf_to_strbuf(schema, key);
+    strbuf *strbuf = strbuf_new();
+    strbuf_append(strbuf, prefix);
+    dump_tagged_buf_to_strbuf(schema, key, strbuf);
+    return strbuf_disown(strbuf);
 }
 
-char *get_error_key(struct dbtable *dbtable, int ixnum, void *data) {
+char *get_error_key(struct dbtable *dbtable, int ixnum, void *data, const char *prefix) {
     char key[MAXKEYLEN] = {0};
     char *readable_key = NULL;
     int krc = create_key_from_ondisk(dbtable, ixnum, data, key);
@@ -7545,7 +7546,7 @@ char *get_error_key(struct dbtable *dbtable, int ixnum, void *data) {
         if (unlikely(krc)) {
             readable_key = strdup("error forming key?");
         } else {
-            readable_key = make_readable_key(dbtable, ixnum, key);
+            readable_key = make_readable_key(dbtable, ixnum, key, prefix);
         }
     }
     return readable_key;
