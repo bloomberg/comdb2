@@ -398,7 +398,7 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
     strcpy(sc->spname, spname);
     Vdbe *v = sqlite3GetVdbe(parse);
 
-    FuncDef * f  = sqlite3FindUsedFunction(parse->db, spname , -1, SQLITE_UTF8, 0);
+    FuncDef * f  = sqlite3FindUsedFunction(parse->db, spname, 0);
 	if (f) {
 		sqlite3ErrorMsg(parse, "Can't drop. Function in use by the schema.");
 		return;

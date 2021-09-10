@@ -2136,21 +2136,22 @@ int new_indexes_syntax_check(struct ireq *iq, struct dbtable *db)
     get_copy_rootpages_custom(sqlthd, ents, nents);
 
     destroy_sqlite_master(ents, nents);
-
-    rc = sqlite3_open_serial("db", &hndl, NULL);
+    
+    struct sqlthdstate thd = {0};
+    rc = sqlite3_open_serial("db", &hndl, &thd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: sqlite3_open failed\n", __func__);
         goto done;
     }
 
-    // Register lua sfuncs for the connection in case we are indexing on a func expression
-    // TODO: In case the sfunc registered doesn't have a SQL_DETERMINISTIC flag, the check
-    //       would fail with an error. Do we want to just fail here if possible?
-    if ((rc = register_lua_funcs(hndl, sqlthd->clnt->thd, (listc_t *)&iq->dbenv->lua_sfuncs)) != 0) {
-        logmsg(LOGMSG_ERROR, "%s: unable to register sfuncs rc=%d\n", __func__, rc);
-        goto done;
-    }
-
+//    // Register lua sfuncs for the connection in case we are indexing on a func expression
+//    // TODO: In case the sfunc registered doesn't have a SQL_DETERMINISTIC flag, the check
+//    //       would fail with an error. Do we want to just fail here if possible?
+//    if ((rc = register_lua_funcs(hndl, sqlthd->clnt->thd, (listc_t *)&iq->dbenv->lua_sfuncs)) != 0) {
+//        logmsg(LOGMSG_ERROR, "%s: unable to register sfuncs rc=%d\n", __func__, rc);
+//        goto done;
+//    }
+//
     rc = get_curtran(thedb->bdb_env, &client);
     if (rc) {
         logmsg(LOGMSG_ERROR,

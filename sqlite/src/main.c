@@ -1274,6 +1274,17 @@ void sqlite3LeaveMutexAndCloseZombie(sqlite3 *db){
     }while( p );
   }
   sqlite3HashClear(&db->aFunc);
+  for(i=sqliteHashFirst(&db->uFunc); i; i=sqliteHashNext(i)){
+    FuncDef *pNext, *p;
+    p = sqliteHashData(i);
+    do{
+      functionDestroy(db, p);
+      pNext = p->pNext;
+      sqlite3DbFree(db, p);
+      p = pNext;
+    }while( p );
+  }
+  sqlite3HashClear(&db->uFunc);
   for(i=sqliteHashFirst(&db->aCollSeq); i; i=sqliteHashNext(i)){
     CollSeq *pColl = (CollSeq *)sqliteHashData(i);
     /* Invoke any destructors registered for collation sequence user data. */
