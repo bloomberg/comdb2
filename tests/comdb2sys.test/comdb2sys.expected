@@ -196,6 +196,7 @@
 (name='DEFERRED', reserved='N')
 (name='DESC', reserved='N')
 (name='DETACH', reserved='N')
+(name='DETERMINISTIC', reserved='N')
 (name='DISABLE', reserved='N')
 (name='DISTRIBUTION', reserved='N')
 (name='DO', reserved='N')

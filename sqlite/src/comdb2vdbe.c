@@ -323,7 +323,7 @@ int comdb2prepareOpFunc(Vdbe* v, Parse* pParse, int int_arg, void *arg,
 
     sqlite3VdbeAddOp4(v, OP_OpFuncLoad, 0,funcreg,0,(char*) f, P4_OPFUNC); 
     sqlite3VdbeAddOp4(v, OP_OpFuncExec, funcreg,0, 0, (char*) NULL, P4_NOTUSED); 
-    
+
     //This is where the loop starts
     int i;
     int basereg = ++pParse->nMem;

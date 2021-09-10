@@ -207,6 +207,7 @@ int add_table_to_environment(char *table, const char *csc2,
     if (s)
         s->newdb = newdb;
 
+
     return SC_OK;
 
 err:
@@ -244,7 +245,6 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         sc_errf(s, "Table %s already exists\n", s->tablename);
         return SC_TABLE_ALREADY_EXIST;
     }
-
     int local_lock = 0;
     if (!iq->sc_locked) {
         wrlock_schema_lk();
@@ -254,6 +254,7 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
     dyns_init_globals();
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans,
                                   s->timepartition_name);
+
     dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
@@ -290,8 +291,8 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         return -1;
     }
 
-    if (iq && iq->tranddl > 1 &&
-        verify_constraints_exist(db, NULL, NULL, s) != 0) {
+
+    if (iq && iq->tranddl > 1 && verify_constraints_exist(db, NULL, NULL, s) != 0) {
         sc_errf(s, "error verifying constraints\n");
         return -1;
     }
@@ -390,6 +391,7 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
         }
         bdb_handle_dbp_add_hash(db->handle, gbl_init_with_bthash);
     }
+     
 
     /*
      * if this is the original request for a partition table add,

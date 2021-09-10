@@ -1,0 +1,36 @@
+(version='sptest')
+(version='sptest')
+[create table tickets {schema 
+{
+    int id
+    int status
+}
+
+keys 
+{
+    "id" = id
+    "resolved" = (int)"resolved(status)"
+}}$$] failed with rc -3 unrecognized token: "{schema 
+{
+    int id
+    int status
+}
+
+keys 
+{
+    "id" = id
+    "resolved" = (int)"resolved(status)"
+}}$$"
+(rows inserted=1)
+(rows inserted=1)
+(rows inserted=1)
+(id=1, status=2)
+(id=3, status=11)
+[drop lua scalar function resolved] failed with rc -5 
+[drop lua scalar function pending] failed with rc -5 
+[drop procedure resolved version 'sptest'] failed with rc -5 
+[drop procedure pending version 'sptest'] failed with rc -5 
+[drop lua scalar function resolved] failed with rc -5 
+[drop lua scalar function pending] failed with rc -5 
+[drop procedure resolved version 'sptest'] failed with rc -5 
+[drop procedure pending version 'sptest'] failed with rc -5 

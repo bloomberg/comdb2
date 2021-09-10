@@ -55,6 +55,7 @@
 (candidate='DELETE')
 (candidate='DESC')
 (candidate='DETACH')
+(candidate='DETERMINISTIC')
 (candidate='DISABLE')
 (candidate='DISTINCT')
 (candidate='DISTRIBUTION')

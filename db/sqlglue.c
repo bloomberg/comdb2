@@ -14,6 +14,8 @@
    limitations under the License.
  */
 
+#include "sqlglue.h"
+
 #include "sqloffload.h"
 #include "analyze.h"
 
@@ -2103,6 +2105,20 @@ struct schema_mem {
     Mem *mout;
 };
 
+/**
+** Updates comdb2 dbtable with any scalar funcs that may be
+** used by its indexes. This information is read from sqlite.
+*/
+int resolve_sfuncs_for_table(sqlite3 *db, struct dbtable *tbl)
+{
+    int rc = 0;
+    assert(tbl->lua_sfuncs == NULL);
+    rc = sqlite3_table_index_funcs(db, NULL, tbl->tablename, &tbl->lua_sfuncs, &tbl->num_lua_sfuncs);
+    if (!rc && (tbl->ix_func = (int)(tbl->num_lua_sfuncs > 0) != 0))
+        assert(tbl->lua_sfuncs);
+    return rc;
+}
+
 /* This function let's us skip the syntax check if there is no SQL
  * in the CSC2 schema.
  */
@@ -2118,10 +2134,12 @@ static int do_syntax_check(struct dbtable *tbl)
 #define INDEXES_THREAD_MEMORY 1048576
 /* Force an update on sqlite_master to perform a syntax check for
  * partial index and CHECK constraint expressions.
+ * Also, used to resolve scalar functions used by the dbtable
  */
 int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 {
     int rc = 0;
+    int resolve_rc = 0;
     sqlite3 *hndl = NULL;
     struct schema_mem sm = {0};
     const char *temp = "select 1 from sqlite_master limit 1";
@@ -2170,7 +2188,8 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
 
     destroy_sqlite_master(ents, nents);
 
-    rc = sqlite3_open_serial("db", &hndl, NULL);
+    struct sqlthdstate thd = {0};
+    rc = sqlite3_open_serial("db", &hndl, &thd);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: sqlite3_open failed\n", __func__);
         goto done;
@@ -2184,7 +2203,12 @@ int sql_syntax_check(struct ireq *iq, struct dbtable *db)
     }
     got_curtran = 1;
 
-    rc = sqlite3_exec(hndl, clnt.sql, NULL, NULL, &err);
+    if ((rc = sqlite3_exec(hndl, clnt.sql, NULL, NULL, &err)) == 0) {
+        if ((resolve_rc = resolve_sfuncs_for_table(hndl, db) != 0)) {
+            logmsg(LOGMSG_ERROR, "%s: resolve_sfuncs_for_table failed with rc=%d\n", __func__, resolve_rc);
+        }
+    }
+
 done:
     if (err) {
         logmsg(LOGMSG_ERROR, "Sqlite syntax check error: \"%s\"\n", err);
@@ -2200,6 +2224,58 @@ done:
     end_internal_sql_clnt(&clnt);
     done_sql_thread();
     sql_mem_shutdown(NULL);
+    return rc;
+}
+
+/*
+** Populates scalar functions for each db if used in index
+*/
+int resolve_sfuncs_for_db(struct dbenv* thedb)
+{
+    int rc = 0;
+    sqlite3 * hndl;
+    struct sqlclntstate clnt;
+    struct sql_thread *sqlthd;
+    struct sqlthdstate thd = {0};
+    int got_curtran = 0;
+    const char * sql = "select 1 from sqlite_master limit 1";
+
+    thread_memcreate(INDEXES_THREAD_MEMORY);
+
+    start_internal_sql_clnt(&clnt);
+    clnt.sql = (char *)sql;
+
+    sqlthd = start_sql_thread();
+    sql_get_query_id(sqlthd);
+    sqlthd->clnt = &clnt;
+
+    get_copy_rootpages(sqlthd);
+
+    if ((rc = sqlite3_open_serial("db", &hndl, &thd) != 0)) {
+        logmsg(LOGMSG_ERROR, "%s: sqlite3_open failed\n", __func__);
+        goto done;
+    }
+
+    if ((rc = get_curtran(thedb->bdb_env, &clnt) != 0)) {
+        logmsg(LOGMSG_ERROR, "%s: unable to get a CURSOR transaction, rc = %d!\n", __func__, rc);
+        goto done;
+    }
+    got_curtran = 1;
+
+    for (int tbl_idx = 0; tbl_idx < thedb->num_dbs; ++tbl_idx) {
+        struct dbtable *tbl = thedb->dbs[tbl_idx];
+        if (!is_sqlite_stat(tbl->tablename))
+            resolve_sfuncs_for_table(hndl, thedb->dbs[tbl_idx]);
+    }
+
+done:
+    if (got_curtran && put_curtran(thedb->bdb_env, &clnt))
+        logmsg(LOGMSG_ERROR, "%s: failed to close curtran\n", __func__);
+    if (hndl)
+        sqlite3_close_serial(&hndl);
+
+    end_internal_sql_clnt(&clnt);
+    done_sql_thread();
     return rc;
 }
 

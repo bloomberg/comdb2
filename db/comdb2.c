@@ -1860,6 +1860,13 @@ void cleanup_newdb(dbtable *tbl)
 
     Pthread_mutex_destroy(&tbl->rev_constraints_lk);
 
+    if (tbl->ix_func) {
+        for (int i = 0; i < tbl->num_lua_sfuncs; ++i) {
+            free(tbl->lua_sfuncs[i]);
+        }
+        free(tbl->lua_sfuncs);
+    }
+
     if (tbl->dbtype == DBTYPE_QUEUEDB)
         Pthread_rwlock_destroy(&tbl->consumer_lk);
 
@@ -2150,7 +2157,7 @@ char **afuncs = NULL;
         char **func = &pfx##funcs[0];                                          \
         while (*func) {                                                        \
             int bdberr;                                                        \
-            int rc = bdb_llmeta_add_lua_##pfx##func(*func, &bdberr);           \
+            int rc = bdb_llmeta_add_lua_##pfx##func(*func, NULL, &bdberr);     \
             if (rc) {                                                          \
                logmsg(LOGMSG_ERROR, "could not add sql lua " #pfx "func:%s to llmeta\n",\
                        *func);                                                 \
@@ -2166,47 +2173,67 @@ char **afuncs = NULL;
     do {                                                                       \
         int bdberr = 0;                                                        \
         int rc = bdb_llmeta_get_lua_##pfx##funcs(                              \
-            &thedb->lua_##pfx##funcs, &thedb->num_lua_##pfx##funcs, &bdberr);  \
+            &thedb->lua_##pfx##funcs, &bdberr);                                \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_lua_" #pfx "funcs bdberr:%d\n",\
                     bdberr);                                                   \
         }                                                                      \
         logmsg(LOGMSG_INFO, "loaded num_lua_" #pfx "funcs:%d\n",               \
-               thedb->num_lua_##pfx##funcs);                                   \
+               listc_size(&thedb->lua_##pfx##funcs));                          \
         return rc;                                                             \
     } while (0)
 
-#define get_funcs(funcs, num_funcs, pfx)                                       \
+#define get_funcs(funcs, pfx)                                                  \
     do {                                                                       \
-        *funcs = thedb->lua_##pfx##funcs;                                      \
-        *num_funcs = thedb->num_lua_##pfx##funcs;                              \
+        *funcs = *(listc_t*)&thedb->lua_##pfx##funcs;                          \
     } while (0)
 
 #define find_lua_func(name, pfx)                                               \
     do {                                                                       \
-        int i;                                                                 \
         rdlock_schema_lk();                                                    \
-        for (i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                    \
-            if (strcmp(thedb->lua_##pfx##funcs[i], name) == 0)                 \
-                break;                                                         \
-        }                                                                      \
-        i = i < thedb->num_lua_##pfx##funcs;                                   \
+        struct lua_func_t * func;                                              \
+        int found = 0;                                                         \
+        LISTC_FOR_EACH(&thedb->lua_##pfx##funcs, func, lnk)                    \
+            if (strcmp(func->name, name) == 0)                                 \
+                found = 1;                                                     \
         unlock_schema_lk();                                                    \
-        return i;                                                              \
+        return found;                                                          \
     } while (0)
 
 int llmeta_load_lua_sfuncs() { llmeta_load_lua_funcs(s); }
 
 int llmeta_load_lua_afuncs() { llmeta_load_lua_funcs(a); }
 
-void get_sfuncs(char ***funcs, int *num_funcs)
+void get_sfuncs(listc_t * funcs)
 {
-    get_funcs(funcs, num_funcs, s);
+    get_funcs(funcs, s);
 }
 
-void get_afuncs(char ***funcs, int *num_funcs)
+void get_afuncs(listc_t * funcs)
 {
-    get_funcs(funcs, num_funcs, a);
+    get_funcs(funcs, a);
+}
+
+int lua_sfunc_used(const char *func, char**tbl)
+{
+    rdlock_schema_lk();
+    struct dbtable *db = 0;
+    int used = 0;
+    struct dbtable **dbs = thedb->dbs;
+
+    for (int i = 0; i < thedb->num_dbs && used != 1; ++i) {
+        db = dbs[i];
+        if (!is_sqlite_stat(db->tablename) && db->ix_func) {
+            for (int j = 0; j < db->num_lua_sfuncs; ++j) {
+                used |= (int)(strcmp(db->lua_sfuncs[j], func) == 0);
+                if (used && tbl) {
+                    *tbl = db->tablename;
+                }
+            }
+        }
+    }
+    unlock_schema_lk();
+    return used;
 }
 
 int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
@@ -2883,6 +2910,9 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
+    listc_init(&dbenv->lua_sfuncs, offsetof(struct lua_func_t, lnk));
+    listc_init(&dbenv->lua_afuncs, offsetof(struct lua_func_t, lnk));
+
     /* Initialize the table/queue hashes. */
     dbenv->db_hash = hash_init_strcaseptr(offsetof(dbtable, tablename));
     dbenv->sqlalias_hash =
@@ -2970,6 +3000,22 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
     return dbenv;
 }
 
+// TODO: call this remove all rather than
+// free
+int lua_func_list_free(void * list) {
+    struct lua_func_t *item, *tmp;
+    listc_t *list_ptr = list;
+
+    /* free each item */
+    LISTC_FOR_EACH_SAFE(list_ptr, item, tmp, lnk)
+    /* remove and free item */
+    free(listc_rfl(list, item));
+
+    listc_init(list, offsetof(struct lua_func_t, lnk));
+    return 0;
+}
+
+
 #ifndef BERKDB_46
 extern pthread_key_t DBG_FREE_CURSOR;
 #endif
@@ -2981,47 +3027,48 @@ static int db_finalize_and_sanity_checks(struct dbenv *dbenv)
     int have_bad_schema = 0, ii, jj;
 
     for (ii = 0; ii < dbenv->num_dbs; ii++) {
-        dbenv->dbs[ii]->dtastripe = 1;
+        struct dbtable * db = dbenv->dbs[ii];
+        db->dtastripe = 1;
 
         for (jj = 0; jj < dbenv->num_dbs; jj++) {
             if (jj != ii) {
-                if (strcasecmp(dbenv->dbs[ii]->tablename,
+                if (strcasecmp(db->tablename,
                                dbenv->dbs[jj]->tablename) == 0) {
                     have_bad_schema = 1;
                     logmsg(LOGMSG_FATAL,
                            "Two tables have identical names (%s) tblnums %d "
                            "%d\n",
-                           dbenv->dbs[ii]->tablename, ii, jj);
+                           db->tablename, ii, jj);
                 }
             }
         }
 
-        if ((strcasecmp(dbenv->dbs[ii]->tablename, dbenv->envname) == 0) &&
-            (dbenv->dbs[ii]->dbnum != 0) &&
-            (dbenv->dbnum != dbenv->dbs[ii]->dbnum)) {
+        if ((strcasecmp(db->tablename, dbenv->envname) == 0) &&
+            (db->dbnum != 0) &&
+            (dbenv->dbnum != db->dbnum)) {
 
             have_bad_schema = 1;
             logmsg(LOGMSG_FATAL, "Table name and database name conflict (%s) tblnum %d\n",
                    dbenv->envname, ii);
         }
 
-        if (dbenv->dbs[ii]->nix > MAXINDEX) {
+        if (db->nix > MAXINDEX) {
             have_bad_schema = 1;
             logmsg(LOGMSG_FATAL, "Database %s has too many indexes (%d)\n",
-                   dbenv->dbs[ii]->tablename, dbenv->dbs[ii]->nix);
+                   db->tablename, db->nix);
         }
 
         /* last ditch effort to stop invalid schemas getting through */
-        for (jj = 0; jj < dbenv->dbs[ii]->nix && jj < MAXINDEX; jj++)
-            if (dbenv->dbs[ii]->ix_keylen[jj] > MAXKEYLEN) {
+        for (jj = 0; jj < db->nix && jj < MAXINDEX; jj++)
+            if (db->ix_keylen[jj] > MAXKEYLEN) {
                 have_bad_schema = 1;
                 logmsg(LOGMSG_FATAL, "Database %s index %d too large (%d)\n",
-                       dbenv->dbs[ii]->tablename, jj,
-                       dbenv->dbs[ii]->ix_keylen[jj]);
+                       db->tablename, jj,
+                       db->ix_keylen[jj]);
             }
 
         /* verify constraint names and add reverse constraints here */
-        if (populate_reverse_constraints(dbenv->dbs[ii]))
+        if (populate_reverse_constraints(db))
             have_bad_schema = 1;
     }
 
@@ -4317,6 +4364,11 @@ static int init(int argc, char **argv)
         return -1;
     }
     create_sqlite_master(); /* create sql statements */
+
+    if ((rc = resolve_sfuncs_for_db(thedb)) != 0) {
+        logmsg(LOGMSG_FATAL, "resolve_sfuncs_for_db failed rc %d\n", rc);
+        return -1;
+    };
 
     load_auto_analyze_counters(); /* on starting, need to load counters */
 

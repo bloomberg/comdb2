@@ -3035,30 +3035,31 @@ int sqlite3ParseUri(
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 static void register_lua_sfuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
-  char **funcs;
-  int num_funcs;
-  get_sfuncs(&funcs, &num_funcs);
-  for (int i = 0; i < num_funcs; ++i) {
-    lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
-    arg->thd = thd;
-    arg->name = funcs[i];
-    sqlite3_create_function_v2(db, funcs[i], -1, SQLITE_UTF8, arg, lua_func,
-                               NULL, NULL, free);
-  }
+    listc_t sfuncs;
+    get_sfuncs(&sfuncs);
+    struct lua_func_t *sfunc;
+    LISTC_FOR_EACH(&sfuncs, sfunc, lnk)
+    {
+        lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
+        arg->thd = thd;
+        arg->name = sfunc->name;
+        sqlite3_create_function_v2(db, sfunc->name, -1, SQLITE_UTF8 | sfunc->flags, arg, lua_func, NULL, NULL, free);
+    }
 }
 
 static void register_lua_afuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
-  char **funcs;
-  int num_funcs;
-  get_afuncs(&funcs, &num_funcs);
-  for (int i = 0; i < num_funcs; ++i) {
-    lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
-    arg->thd = thd;
-    arg->name = funcs[i];
-    sqlite3_create_function_v2(db, funcs[i], -1, SQLITE_UTF8, arg, NULL,
-                               lua_step, lua_final, free);
-  }
+    listc_t afuncs;
+    get_afuncs(&afuncs);
+    struct lua_func_t *afunc;
+    LISTC_FOR_EACH(&afuncs, afunc, lnk)
+    {
+        lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
+        arg->thd = thd;
+        arg->name = afunc->name;
+        // afunc->flags are purposefully ignored here.
+        sqlite3_create_function_v2(db, afunc->name, -1, SQLITE_UTF8, arg, NULL, lua_step, lua_final, free);
+    }
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
@@ -3865,6 +3866,99 @@ error_out:
   sqlite3_mutex_leave(db->mutex);
   return rc;
 }
+
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+/**
+ * Returns the information about application defined functions used in indexes
+ * by the specified table.
+ */
+// TODO: Maybe better if we create an Index -> uFuncs (used functions by the index)
+//      in sqlite3CreateIndex so that we don't have to do this dance again?
+int sqlite3_table_index_funcs(sqlite3 *db,            /* Connection handle */
+                              const char *zDbName,    /* Database name or NULL */
+                              const char *zTableName, /* Table name */
+                              char ***pzFuncs,        /* OUTPUT: The application defined functions */
+                              int *nFuncs)
+{                                  /* OUTPUT: The number of application defined functions used */
+  Table *pTab = 0;                 /* Table corresponding to zTableName*/
+  char **aNew = NULL;              /* Array of functions */
+  int nNew = 0;                    /* Number of a functions discovered*/
+  int dNew = 10;                   /* Array increment for aNew*/
+  int rc = 0;                      /* Return code */
+  int add = 0;                     /* If new function discovered */
+  const char *zFunc = 0;           /* Function used by the index */
+  char *zErrMsg = 0;               /* Error message */
+  struct ExprList_item *pListItem; /* For looping over pList */
+
+  sqlite3_mutex_enter(db->mutex);
+  sqlite3BtreeEnterAll(db);
+  rc = sqlite3Init(db, &zErrMsg);
+  if (SQLITE_OK != rc) {
+    goto error_out;
+  }
+
+  pTab = sqlite3FindTable(db, zTableName, zDbName);
+  if (!pTab || pTab->pSelect) {
+    pTab = 0;
+    goto error_out;
+  }
+
+  /*
+  ** Go over all the indexes in the table. Find the non-column expression
+  ** in aiColumn. Check if the expression corresponds to a function name.
+  ** Add the function name to aNew if we haven't already.
+  **
+  ** TODO: This isn't the most efficient. Can add something like pTab->hasFuncIdx
+  **       and skip over the tables which won't have functions in indices.
+  */
+  Index *pIndex = pTab->hasExprIdx ? pTab->pIndex : 0;
+  while (pIndex) {
+    pListItem = pIndex->aColExpr->a;
+    for (int j = 0; j < pIndex->nKeyCol; ++j, pListItem++) {
+      if (pIndex->aiColumn[j] == XN_EXPR) {
+        Expr *pExpr = sqlite3ExprSkipCollate(pListItem->pExpr);
+        if (pExpr && (pExpr->op == TK_FUNCTION)) {
+          add = 1;
+          zFunc = pExpr->u.zToken;
+          for (int i = 0; i < nNew; ++i) {
+            if (strcmp(aNew[i], zFunc) == 0) {
+              add = 0;
+            }
+          }
+          if (add) {
+            if (nNew % dNew == 0) {
+              aNew = realloc(aNew, (255) * (nNew + dNew));
+              if (!aNew) {
+                rc = SQLITE_NOMEM_BKPT;
+                goto error_out;
+              }
+            }
+            aNew[nNew++] = strndup(pExpr->u.zToken, 255);
+          }
+        }
+      }
+    }
+    pIndex = pIndex->pNext;
+  }
+
+error_out:
+  sqlite3BtreeLeaveAll(db);
+
+  if ( pzFuncs ) *pzFuncs = aNew;
+  if ( nFuncs ) *nFuncs = nNew;
+
+  if ( SQLITE_OK == rc && !pTab ) {
+    sqlite3DbFree(db, zErrMsg);
+    zErrMsg = sqlite3MPrintf(db, "no such table: %s", zTableName);
+    rc = SQLITE_ERROR;
+  }
+  sqlite3ErrorWithMsg(db, rc, (zErrMsg ? "%s" : 0), zErrMsg);
+  sqlite3DbFree(db, zErrMsg);
+  rc = sqlite3ApiExit(db, rc);
+  sqlite3_mutex_leave(db->mutex);
+  return rc;
+}
+#endif
 
 /*
 ** Sleep for a little while.  Return the amount of time slept.

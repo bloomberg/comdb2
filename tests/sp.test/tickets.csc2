@@ -1,0 +1,11 @@
+schema 
+{
+    int id
+    int status
+}
+
+keys 
+{
+    "id" = id
+    "resolved" = (int)"resolved(status)"
+}

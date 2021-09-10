@@ -768,6 +768,10 @@ typedef struct dbtable {
     unsigned ix_partial : 1;      /* set to 1 if we have partial indexes */
     unsigned ix_expr : 1;         /* set to 1 if we have indexes on expressions */
     unsigned ix_blob : 1;         /* set to 1 if blobs are involved in indexes */
+    unsigned ix_func : 1;         /* set to 1 if sfuncs are involved in indexes */
+
+    char ** lua_sfuncs;           /* The lua scalar functions used by indexes in this table*/
+    int num_lua_sfuncs;           /* The number of lua scalar functions used by indexes in this table*/
 
     unsigned sc_abort : 1;
     unsigned sc_downgrading : 1;
@@ -886,11 +890,8 @@ struct dbenv {
     /* Views */
     hash_t *view_hash;
 
-    /* Special SPs */
-    int num_lua_sfuncs;
-    char **lua_sfuncs;
-    int num_lua_afuncs;
-    char **lua_afuncs;
+    LISTC_T(struct lua_func_t) lua_sfuncs;
+    LISTC_T(struct lua_func_t) lua_afuncs;
 
     /* is sql mode enabled? */
     int sql;

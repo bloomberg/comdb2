@@ -6299,6 +6299,13 @@ SQLITE_API int sqlite3_table_column_metadata(
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 char* sqlite3_prepare_plan(sqlite3_stmt *stmt);
+int sqlite3_table_index_funcs(
+  sqlite3 *db,                  /* Connection handle */
+  const char *zDbName,          /* Database name or NULL */
+  const char *zTableName,       /* Table name */
+  char *** pzFuncs,             /* OUTPUT: The application defined functions */
+  int*nFuncs                    /* OUTPUT: The number of application defined functions used */
+);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
 /*

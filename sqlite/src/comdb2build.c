@@ -1199,6 +1199,14 @@ void comdb2DropProcedure(Parse *pParse, Token *nm, Token *ver, int str)
         return;
     }
 
+    char *tbl = 0;
+    if (lua_sfunc_used(spname, &tbl)) {
+        char *errMsg = comdb2_asprintf("Can't drop. %s is in use by %s", spname, tbl);
+        setError(pParse, SQLITE_ERROR, errMsg);
+        free(errMsg);
+        return;
+    }
+
     struct schema_change_type *sc = new_schemachange_type();
     if (sc == NULL) {
         setError(pParse, SQLITE_NOMEM, "System out of memory");

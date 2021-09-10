@@ -36,6 +36,7 @@
 
 #include "fwd_types.h"
 #include "bdb_net.h"
+#include <sqlglue.h>
 
 #include <assert.h>
 
@@ -2185,11 +2186,11 @@ int bdb_genid_set_format(bdb_state_type *bdb_state, int format);
 int bdb_genid_allow_original_format(bdb_state_type *bdb_state);
 int genid_contains_time(bdb_state_type *bdb_state);
 
-int bdb_llmeta_get_lua_sfuncs(char ***, int *, int *bdberr);
-int bdb_llmeta_add_lua_sfunc(char *, int *bdberr);
+int bdb_llmeta_get_lua_sfuncs(void *sfuncs, int *bdberr);
+int bdb_llmeta_add_lua_sfunc(char *, int *, int *bdberr);
 int bdb_llmeta_del_lua_sfunc(char *, int *bdberr);
-int bdb_llmeta_get_lua_afuncs(char ***, int *, int *bdberr);
-int bdb_llmeta_add_lua_afunc(char *, int *bdberr);
+int bdb_llmeta_get_lua_afuncs(void *afuncs, int *bdberr);
+int bdb_llmeta_add_lua_afunc(char *, int *, int *bdberr);
 int bdb_llmeta_del_lua_afunc(char *, int *bdberr);
 
 /* IO smoke test */

@@ -1771,7 +1771,6 @@ struct FuncDestructor {
 #define SQLITE_FUNC_OFFSET   0x8000 /* Built-in sqlite_offset() function */
 #define SQLITE_FUNC_WINDOW   0x00010000 /* Built-in window-only function */
 #define SQLITE_FUNC_INTERNAL 0x00040000 /* For use by NestedParse() only */
-
 /*
 ** The following three macros, FUNCTION(), LIKEFUNC() and AGGREGATE() are
 ** used to create the initializers for the FuncDef structures.
@@ -2113,8 +2112,10 @@ struct Table {
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
   int version;         /* used for cached table schema, from remote */
   int iDb;             /* iDb version */
+  // TODO: Prudent to turn the following into a bit mask?
   int hasPartIdx;
   int hasExprIdx;
+  int hasFuncIdx;      /* UNUSED: if the table has an index with uses a lua scalar func*/
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 };
 
@@ -4260,7 +4261,7 @@ Table *sqlite3FindTableByAnalysisLoad(sqlite3*,const char*, const char*);
 Table *sqlite3LocateTable(Parse*,u32 flags,const char*, const char*);
 Table *sqlite3LocateTableItem(Parse*,u32 flags,struct SrcList_item *);
 Index *sqlite3FindIndex(sqlite3*,const char*, const char*);
-void sqlite3UnlinkAndDeleteTable(sqlite3*,int,const char*);
+void sqlite3UnlinkAndDeleteTable(sqlite3 *, int, const char *);
 void sqlite3UnlinkAndDeleteIndex(sqlite3*,int,const char*);
 void sqlite3Vacuum(Parse*,Token*,Expr*);
 int sqlite3RunVacuum(char**, sqlite3*, int, sqlite3_value*);
@@ -5029,7 +5030,7 @@ void comdb2DropTrigger(Parse*,int,Token*);
 Cdb2TrigTables *comdb2AddTriggerTable(Parse*,Cdb2TrigTables*,SrcList*,Cdb2TrigEvents*);
 void comdb2CreateTrigger(Parse*,int dynamic,int seq,Token*,Cdb2TrigTables*);
 
-void comdb2CreateScalarFunc(Parse *, Token *);
+void comdb2CreateScalarFunc(Parse *, Token *, int flags);
 void comdb2DropScalarFunc(Parse *, Token *);
 void comdb2CreateAggFunc(Parse *, Token *);
 void comdb2DropAggFunc(Parse *, Token *);
