@@ -106,6 +106,9 @@ int systblSchemaVersionsInit(sqlite3 *db);
 int systblTableMetricsInit(sqlite3 *db);
 int systblApiHistoryInit(sqlite3 *db);
 int systblDbInfoInit(sqlite3 *db);
+int systblAllInit(sqlite3 *db);
+int systblFilesInit(sqlite3 *db);
+int systblLocationsInit(sqlite3 *db);
 
 /* Simple yes/no answer for booleans */
 #define YESNO(x) ((x) ? "Y" : "N")

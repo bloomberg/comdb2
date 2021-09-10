@@ -140,4 +140,8 @@ for t in ${tests[@]}; do
     fi
 done
 
+./testall $a_dbn
+rc3=$?
+[[ $rc3 -ne 0 ]] && rc=$rc3
+
 exit $rc
