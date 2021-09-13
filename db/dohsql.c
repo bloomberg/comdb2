@@ -188,6 +188,13 @@ void handle_child_error(struct sqlclntstate *clnt, int errcode)
     }
 }
 
+static void _mark_shard_done(dohsql_connector_t *conn)
+{
+    Pthread_mutex_lock (&conn->mtx);
+    conn->status = DOH_CLIENT_DONE;
+    Pthread_mutex_unlock (&conn->mtx);
+}
+
 static void sqlengine_work_shard(struct thdpool *pool, void *work,
                                  void *thddata)
 {
@@ -243,7 +250,7 @@ static void sqlengine_work_shard(struct thdpool *pool, void *work,
     /*thrman_setid(thrman_self(), "[done]");*/
 
     /* after this clnt is toast */
-    ((dohsql_connector_t *)clnt->plugin.state)->status = DOH_CLIENT_DONE;
+    _mark_shard_done(clnt->plugin.state);
 }
 
 static int inner_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
