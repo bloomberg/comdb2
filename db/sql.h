@@ -73,6 +73,9 @@ struct fingerprint_track {
     char ** cachedColNames; /* Cached column names from sqlitex */
     char ** cachedColDeclTypes; /* Cached column types from sqlitex */
     int cachedColCount;     /* Cached column count from sqlitex */
+    int haveTypes;          /* Set if we cached types, but did not necessarily do type checks */
+    int didTypeChecks;      /* Set if we already did type checks */
+    int didNameChecks;      /* Set if we already did name checks */
 };
 
 typedef int(plugin_query_data_func)(struct sqlclntstate *, void **, int *, int, int);
