@@ -325,8 +325,7 @@ if [[ -z "$CLUSTER" ]]; then
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("flush")'
     cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default 'exec procedure sys.cmd.send("reql events roll")'
 
-    zcat $logfl | grep --text -v 'sys.cmd.send' | sort -n > $slogflunziped
-
+    zcat $logfl | grep --text -v 'sys.cmd.send' | grep --text -v "comdb2_prevquerycost" | sort -n > $slogflunziped
 else
 
     for node in $CLUSTER ; do
@@ -335,7 +334,7 @@ else
         cdb2sql --tabs ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME --host $node 'exec procedure sys.cmd.send("reql events roll")'
         ssh -o StrictHostKeyChecking=no $node "zcat $logfl" | grep --text -v 'sys.cmd.send' > ${node}.events.unzipped
     done
-    sort -n *.events.unzipped > $slogflunziped
+    sort -n *.events.unzipped | grep --text -v "comdb2_prevquerycost" > $slogflunziped
 fi
 
 cdb2sql ${SECONDARY_CDB2_OPTIONS} $SECONDARY_DBNAME default "select * from t1 order by alltypes_u_short" > replayed.txt

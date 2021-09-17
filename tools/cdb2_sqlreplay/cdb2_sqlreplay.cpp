@@ -42,6 +42,8 @@
 #include "cson.h"
 
 static cdb2_hndl_tp *cdb2h = nullptr;
+char *dbname;
+int had_errors = 0;
 std::map<std::string, std::string> sqltrack;
 std::map<std::string, std::list<cson_value*>> transactions;
 
@@ -503,6 +505,7 @@ int64_t last_cost(cdb2_hndl_tp *db) {
     int rc = cdb2_run_statement(db, "select comdb2_prevquerycost()");
     if (rc) {
         fprintf(stderr, "can't get cost? run rc %d %s\n", rc, cdb2_errstr(db));
+        had_errors = 1;
         return 0;
     }
 
@@ -518,6 +521,10 @@ int64_t last_cost(cdb2_hndl_tp *db) {
             }
         }
         rc = cdb2_next_record(db);
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "last cost next rc %d %s\n", rc, cdb2_errstr(db));
+        had_errors = 1;
     }
 
     return cost;
@@ -649,7 +656,8 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
     /* TODO: have switch to print or not results */
     int ncols = cdb2_numcolumns(db);
     int64_t rows = 0;
-    while ((rc = cdb2_next_record(db)) == CDB2_OK) {
+    rc = cdb2_next_record(db);
+    while (rc == CDB2_OK) {
         rows++;
         for (int col = 0; col < ncols; col++) {
             void *val = cdb2_column_value(db, col);
@@ -667,6 +675,11 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
         }
         if (verbose)
             std::cout << std::endl;
+        rc = cdb2_next_record(db);
+    }
+    if (rc != CDB2_OK_DONE) {
+        fprintf(stderr, "%s next rc %d %s\n", sql, rc, cdb2_errstr(db));
+        return;
     }
     int64_t end_time = hrtime();
     int64_t new_cost = last_cost(db);
@@ -980,8 +993,21 @@ void process_events(cdb2_hndl_tp *db, event_queue &queue) {
         linenum++;
         cson_value *event_val = queue.get();
         const char *type = get_strprop(event_val, "type");
-        if (type != nullptr)
+        if (type != nullptr) {
             handle(cdb2h, type, event_val);
+            if (had_errors) {
+                had_errors = 0;
+                cdb2_close(cdb2h);
+                char *conf = getenv("CDB2_CONFIG");
+                if (conf) {
+                    cdb2_set_comdb2db_config(conf);
+                    rc = cdb2_open(&cdb2h, dbname, "default", 0);
+                } else { 
+                    rc = cdb2_open(&cdb2h, dbname, "local", 0);
+                }
+                db = cdb2h;
+            }
+        }
         else
             cson_free_value(event_val);
     }
@@ -990,7 +1016,6 @@ void process_events(cdb2_hndl_tp *db, event_queue &queue) {
 }
 
 int main(int argc, char **argv) {
-    char *dbname;
     char *filename = nullptr;
 
     init_handlers();
