@@ -3741,6 +3741,8 @@ oom:
     return 1;
 }
 
+extern pthread_rwlock_t views_lk;
+
 /*
   Fetch the schema definition of the table being altered.
 */
@@ -3750,14 +3752,34 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     struct dbtable *parent_table;
     struct schema *schema;
     struct dbtag *tag;
+    int views_lk_acquired = 0;
 
     assert(ctx != 0);
 
-    table = get_dbtable_by_name(ctx->schema->name);
+    Pthread_rwlock_rdlock(&views_lk);
+    views_lk_acquired = 1;
+    if (timepart_is_timepart(ctx->schema->name, 0)) {
+        unsigned long long version;
+        char *viewname;
+
+        viewname = timepart_newest_shard(ctx->schema->name, &version);
+        if (!viewname) {
+            sqlite3ErrorMsg(pParse,
+                            "Failed to retrieve shard information about '%s'",
+                            ctx->schema->name);
+            goto err;
+        }
+        table = get_dbtable_by_name(viewname);
+    } else {
+        Pthread_rwlock_unlock(&views_lk);
+        views_lk_acquired = 0;
+        table = get_dbtable_by_name(ctx->schema->name);
+    }
+
     if (table == 0) {
         pParse->rc = SQLITE_ERROR;
         sqlite3ErrorMsg(pParse, "Table '%s' not found.", ctx->schema->name);
-        return 1;
+        goto err;
     }
     schema = table->schema;
 
@@ -3766,7 +3788,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 
     /* Retrieve table columns. */
     if (retrieve_columns(pParse, ctx, schema, ctx->schema)) {
-        return 1;
+        goto err;
     }
 
     /* Populate keys list */
@@ -3925,7 +3947,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                      "FK: Local key used in the foreign "
                      "key constraint could not be "
                      "found.");
-            goto cleanup;
+            goto err;
         }
 
         /* Locate the parent key. */
@@ -3936,7 +3958,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                 pParse->rc = SQLITE_ERROR;
                 sqlite3ErrorMsg(pParse, "FK: Parent table '%s' not found.",
                                 table->constraints[i].table[j]);
-                goto cleanup;
+                goto err;
             }
 
             for (int k = 0; k < parent_table->schema->nix; k++) {
@@ -3950,7 +3972,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                          "FK: Referenced key used in the "
                          "foreign key constraint could "
                          "not be found.");
-                goto cleanup;
+                goto err;
             }
 
             constraint =
@@ -4068,7 +4090,7 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
                            offsetof(struct comdb2_column, lnk));
                 if (retrieve_columns(pParse, ctx, old_tag, new_tag)) {
                     unlock_taglock();
-                    return 1;
+                    goto err;
                 }
 
                 /* Add it to the list */
@@ -4076,6 +4098,8 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             }
         }
     }
+    if (views_lk_acquired)
+        Pthread_rwlock_unlock(&views_lk);
     unlock_taglock();
 
     return 0;
@@ -4083,7 +4107,9 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
-cleanup:
+err:
+    if (views_lk_acquired)
+        Pthread_rwlock_unlock(&views_lk);
     return 1;
 }
 
@@ -4116,7 +4142,7 @@ void comdb2AlterTableStart(
     if (ctx == 0)
         goto oom;
 
-    if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2, 1, 0,
+    if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2, 1, 1,
                                0)))
         goto cleanup;
 
