@@ -882,14 +882,14 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
 
 {
     int outrc = 0;
-    int inconsistent;
+    int inconsistent, inline_vutf8_mismatch = 0;
     client_blob_tp *blob;
     client_blob_tp tempblob;
     int bfldno = b->cblob_tag_ixs[blob_index];
+    void *serverblobptr;
 
     if (isondisk) {
         int outnull, outdtsz;
-        void *serverblobptr;
         serverblobptr = get_field_ptr_in_buf(schema, bfldno, record);
         blob = &tempblob;
         SERVER_BLOB_to_CLIENT_BLOB(
@@ -897,7 +897,7 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
             NULL /*blob*/, blob, sizeof(client_blob_tp), &outnull, &outdtsz,
             NULL /* conversion options */, NULL /*blob*/);
     } else {
-        blob = get_field_ptr_in_buf(schema, bfldno, record);
+        serverblobptr = blob = get_field_ptr_in_buf(schema, bfldno, record);
         if (blob == NULL) {
             if (iq->debug)
                 reqprintf(iq, "%s ERR GETTING BLOB FIELD PTR BLOB %d IX %d",
@@ -922,6 +922,7 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
          schema->member[bfldno].type == SERVER_BLOB2) &&
         ntohl(blob->length) <= schema->member[bfldno].len - 5 /*blob hdr*/) {
         inconsistent = b->blobptrs[cblob] != NULL;
+        inline_vutf8_mismatch = inconsistent ? (schema->member[bfldno].type == SERVER_VUTF8) : 0;
     }
     /* otherwise, fall back to regular blob checks */
     else {
@@ -995,6 +996,42 @@ static int check_one_blob(struct ireq *iq, int isondisk, const char *tag,
             b->blobptrs[cblob] = NULL;
             b->bloblens[cblob] = 0;
             b->bloboffs[cblob] = 0;
+
+            if (repair_mode)
+                outrc = -2;
+        } else if (inline_vutf8_mismatch) {
+            /* There was a bug that when an inline vutf8 record was updated to
+               something that could completely fit in the inline portion,
+               1) the off-page text of the inline record wouldn't be removed;
+               2) the text length wouldn't be updated.
+               Let's attempt to repair this too. */
+            if (debug_switch_ignore_extra_blobs())
+                return -1;
+
+            /* Drop the blob */
+            free(b->blobptrs[cblob]);
+            b->blobptrs[cblob] = NULL;
+            b->bloblens[cblob] = 0;
+            b->bloboffs[cblob] = 0;
+
+            /* Fix the length */
+            if (blob->notnull) {
+                /* Get the length of the inline text */
+                int i = 0, maxlen = schema->member[bfldno].len;
+                char *p = &((char *)serverblobptr)[5];
+                while (i < maxlen && *p != '\0') {
+                    ++i;
+                    ++p;
+                }
+
+                if (i == maxlen) /* Not nul-terminated? */
+                    return -1;
+                /* update client blob length */
+                blob->length = htonl(i + 1);
+                /* also update ondisk blob length */
+                *(int *)(&((char *)serverblobptr)[1]) = blob->length;
+            }
+
             if (repair_mode)
                 outrc = -2;
         } else
