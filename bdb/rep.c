@@ -3146,7 +3146,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
     DB_LSN nodelsn;
     uint32_t nodegen;
     int num_successfully_acked = 0;
-    int total_connected;
+    int total_commissioned;
     int lock_desired = 0;
     int fake_incoherent = 0;
 
@@ -3179,25 +3179,16 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
         numskip = 0;
         numwait = 0;
 
-        if (durable_lsns) {
-            total_connected = net_get_sanctioned_replicants(bdb_state->repinfo->netinfo, REPMAX, connlist);
-        } else {
-            total_connected = net_get_all_commissioned_nodes(bdb_state->repinfo->netinfo, connlist);
-        }
-
-        if ((debug_switch_all_incoherent() && (rand() % 2))) {
-            fake_incoherent = 1;
-        }
-
-        if (total_connected == 0) {
-            goto done_wait;
+        if ((total_commissioned = net_get_all_commissioned_nodes(
+                 bdb_state->repinfo->netinfo, connlist)) == 0) {
+          goto done_wait;
         }
 
         if (track_once && bdb_state->attr->track_replication_times) {
             track_once = 0;
 
             Pthread_mutex_lock(&(bdb_state->seqnum_info->lock));
-            for (int i = 0; i < total_connected; i++)
+            for (int i = 0; i < total_commissioned; i++)
                 bdb_track_replication_time(bdb_state, seqnum, connlist[i]);
             Pthread_mutex_unlock(&(bdb_state->seqnum_info->lock));
 
@@ -3221,7 +3212,7 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
             }
         }
 
-        for (i = 0; i < total_connected; i++) {
+        for (i = 0; i < total_commissioned; i++) {
             int wait = 0;
             /* is_incoherent returns 0 for COHERENT & INCOHERENT_WAIT */
             if (!(is_incoherent_complete(bdb_state, connlist[i], &wait))) {
@@ -3237,6 +3228,10 @@ static int bdb_wait_for_seqnum_from_all_int(bdb_state_type *bdb_state,
 
         if (numnodes == 0) {
             goto done_wait;
+        }
+
+        if ((debug_switch_all_incoherent() && (rand() % 2))) {
+            fake_incoherent = 1;
         }
 
         for (i = 0; i < numnodes; i++) {
@@ -3435,7 +3430,7 @@ done_wait:
         int istest = 0;
         int was_durable = 0;
 
-        uint32_t cluster_size = total_connected + 1;
+        uint32_t cluster_size = total_commissioned + 1;
         uint32_t number_with_this_update = num_successfully_acked + 1;
         uint32_t durable_target = (cluster_size / 2) + 1;
 
@@ -3495,7 +3490,7 @@ done_wait:
                 "durable-commit-count=%u not-durable-commit-count=%u "
                 "commit-lsn=[%d][%d] commit-gen=%u calc-durable-lsn=[%d][%d] "
                 "calc-durable-gen=%u\n",
-                was_durable ? "durable" : "not-durable", total_connected,
+                was_durable ? "durable" : "not-durable", total_commissioned,
                 num_successfully_acked, durable_count, not_durable_count,
                 seqnum->lsn.file, seqnum->lsn.offset, seqnum->generation,
                 calc_lsn.file, calc_lsn.offset, calc_gen);
