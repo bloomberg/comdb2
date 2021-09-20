@@ -539,7 +539,7 @@ __os_io(dbenv, op, fhp, pgno, pagesize, buf, niop)
 	}
 	if (*niop == (size_t) pagesize)
 		return (0);
-	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop);
+	logmsg(LOGMSG_DEBUG, "%s: failed %s io: expected %zd got %zd fd:%d name:%s\n", __func__, op == DB_IO_READ ? "read" : "write", pagesize, *niop, fhp->fd, fhp->name);
     // try to do a seek + read/write
 slow:
 #endif
