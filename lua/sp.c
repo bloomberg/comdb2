@@ -1011,7 +1011,7 @@ static int dbconsumer_next(Lua L)
     SP sp = getsp(L);
     if (in_parent_trans(sp)) {
         /* We require explicit transaction */
-        return luaL_error(L, "missing transaction for consumenext");
+        return luaL_error(L, "missing transaction for next");
     }
     int rc;
     struct sqlclntstate *clnt = sp->clnt;
