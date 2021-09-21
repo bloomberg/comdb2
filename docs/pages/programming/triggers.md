@@ -255,9 +255,15 @@ local function main()
 end
 ```
 
-If several client application runs the same consumer stored procedure, the database will ensure that only one executes. The rest of the stored procedures will block in the call to obtain `dbconsumer` handle (call to `db:consumer()` will block). When the executing application disconnects, the server will pick any one of the outstanding clients to run next.
+If several client application runs the same consumer stored procedure, the
+database will ensure that only one executes. The rest of the stored procedures
+will block in the call to obtain `dbconsumer` handle (call to `db:consumer()`
+will block). When the executing application disconnects, the server will pick
+any one of the outstanding clients to run next.
 
-The `DROP LUA CONSUMER` statement will stop execution of the store procedure and remove the queue associated with the consumer. To delete our example consumer, we will run the following statement:
+The `DROP LUA CONSUMER` statement will stop execution of the store procedure
+and remove the queue associated with the consumer. To delete our example
+consumer, we will run the following statement:
 
 `DROP LUA CONSUMER watch`
 
@@ -272,31 +278,44 @@ dbconsumer = db:consumer(x)
 
 Description:
 
-Returns a dbconsumer object associated with the stored procedure running a Lua consumer. This method blocks until registration succeeds with master node. It accepts an optional Lua table with following keys:
+Returns a dbconsumer object associated with the stored procedure running a Lua
+consumer. This method blocks until registration succeeds with master node. It
+accepts an optional Lua table with following keys:
 
 ```
 x.register_timeout = number (ms)
 ```
 
-Specify timeout (in milliseconds) to wait for registration with master. For example, `db:consumer({register_timeout = 5000})` will return `nil` if registration fails after 5 seconds.
+Specify timeout (in milliseconds) to wait for registration with master. For
+example, `db:consumer({register_timeout = 5000})` will return `nil` if
+registration fails after 5 seconds.
 
 ```
 x.with_sequence = true | false (default)
 ```
 
-When `with_sequence` is `true`, the Lua table returned by `dbconsumer:get/poll()` includes an additional property (`sequence`).  If the trigger was created with the `PERSISTENT_SEQUENCE` option enabled, then this sequence will be a monotonically increasing count of the items that have been enqueued.
+When `with_sequence` is `true`, the Lua table returned by
+`dbconsumer:get/poll()` includes an additional property (`sequence`).  If the
+trigger was created with the `PERSISTENT_SEQUENCE` option enabled, then this
+sequence will be a monotonically increasing count of the items that have been
+enqueued.
 
 ```
 x.with_epoch = true | false (default)
 ```
 
-When `with_epoch` is `true`, the Lua table returned by `dbconsumer:get/poll()` includes an additional property (`epoch`) which contains the unix time-epoch (seconds since 00:00:00 January 1, 1970 UTC) at the time when this event was enqueued.
+When `with_epoch` is `true`, the Lua table returned by `dbconsumer:get/poll()`
+includes an additional property (`epoch`) which contains the unix time-epoch
+(seconds since 00:00:00 January 1, 1970 UTC) at the time when this event was
+enqueued.
 
 ```
 x.with_tid = true | false (default)
 ```
 
-When `with_tid` is `true`, Lua table returned by `dbconsumer:get/poll()` include additional property (`tid`). This is the same `tid` returned by `db:get_event_tid()`
+When `with_tid` is `true`, Lua table returned by `dbconsumer:get/poll()`
+include additional property (`tid`). This is the same `tid` returned by
+`db:get_event_tid()`
 
 ### db:get_event_tid
 
@@ -305,7 +324,10 @@ tid = db:get_event_tid(x)
     x: Lua table returned by `dbconsumer:get/poll()` or argument passed to a `main` in Lua trigger.
 ```
 
-Returns transaction-id (`tid`) for a given event. All events belonging to same originating transaction will have the same `tid`. This can be used by application to detect transaction boundaries as tid changes. `tid`s are not unique like event's `id` and will eventually recycle.
+Returns transaction-id (`tid`) for a given event. All events belonging to same
+originating transaction will have the same `tid`. This can be used by
+application to detect transaction boundaries as tid changes. `tid`s are not
+unique like event's `id` and will eventually recycle.
 
 ### dbconsumer:get
 
@@ -315,7 +337,8 @@ lua-table = dbconsumer:get()
 
 Description:
 
-This method blocks until there an event available to consume. It returns a Lua table which contains data describing the event. It contains:
+This method blocks until there an event available to consume. It returns a Lua
+table which contains data describing the event. It contains:
 
 |Key  | Value
 |-----|--------------------------------------
@@ -333,16 +356,20 @@ lua-table = dbconsumer:poll(t)
     t: number (ms)
 ```
 
-Specify timeout (in milliseconds) to wait for event to be generated in the system. Similar to `dbconsumer:get()` otherwise. Returns `nil` if no event is avaiable after timeout.
+Specify timeout (in milliseconds) to wait for event to be generated in the
+system. Similar to `dbconsumer:get()` otherwise. Returns `nil` if no event is
+avaiable after timeout.
 
 ### dbconsumer:consume
 
 Description:
 
-Consumes the last event obtained by `dbconsumer:get/poll()`. Creates a new transaction if no explicit transaction was ongoing.
+Consumes the last event obtained by `dbconsumer:get/poll()`. Creates a new
+transaction if no explicit transaction was ongoing.
 
 ### dbconsumer:emit
 
 Description:
 
-Like `db:emit()`, except it will block until the calling client requests next row by calling `cdb2_next_record`.
+Like `db:emit()`, except it will block until the calling client requests next
+row by calling `cdb2_next_record`.
