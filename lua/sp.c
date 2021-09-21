@@ -74,6 +74,7 @@
 #include "librdkafka/rdkafka.h"  /* for Kafka driver */
 
 #endif
+#include <event2/util.h> /* missing timeradd on aix */
 
 extern int gbl_dump_sql_dispatched; /* dump all sql strings dispatched */
 extern int gbl_return_long_column_names;
@@ -188,10 +189,21 @@ static void reset_sp(SP);
 static int recover_ddlk_sp(struct sqlclntstate *);
 static void *recover_ddlk_fail_sp(struct sqlclntstate *, void *);
 
-#define setup_dbq_ts(ts) do {             \
-    clock_gettime(CLOCK_REALTIME, &(ts)); \
-    (ts).tv_sec += (dbq_delay / 1000);    \
-  } while(0);
+static const int dbq_delay_ms = 1000; // ms
+
+static struct timespec setup_dbq_ts(int delay_ms)
+{
+    struct timeval a, b, c;
+    if (delay_ms > dbq_delay_ms) {
+        delay_ms = dbq_delay_ms;
+    }
+    a.tv_sec = delay_ms / 1000;
+    a.tv_usec = (delay_ms % 1000) * 1000;
+    gettimeofday(&b, NULL);
+    evutil_timeradd(&a, &b, &c);
+    struct timespec t = {.tv_sec = c.tv_sec, .tv_nsec = c.tv_usec * 1000};
+    return t;
+}
 
 #define getdb(x) (x)->thd->sqldb
 #define dbconsumer_sz(spname)                                                  \
@@ -719,7 +731,6 @@ static int grab_qdb_table_read_lock(struct sqlclntstate *clnt,
     return rc;
 }
 
-static const int dbq_delay = 1000; // ms
 // Call with q->lock held.
 // Unlocks q->lock on return.
 // Returns  -2:stopped -1:error  0:IX_NOTFND  1:IX_FND
@@ -758,7 +769,7 @@ static int dbq_poll_int(Lua L, dbconsumer_t *q)
     return -1;
 }
 
-static int dbq_poll(Lua L, dbconsumer_t *q, int delay)
+static int dbq_poll(Lua L, dbconsumer_t *q, int delay_ms)
 {
     SP sp = getsp(L);
     while (1) {
@@ -776,7 +787,7 @@ again:  status = *q->status;
             if (stop_waiting(L, q)) {
                 return -1;
             }
-            setup_dbq_ts(ts);
+            ts = setup_dbq_ts(delay_ms);
             pthread_cond_timedwait(q->cond, q->lock, &ts); /* RC IGNORED */
             goto again;
         } else {
@@ -791,18 +802,18 @@ again:  status = *q->status;
             luabb_error(L, sp, "failed to read from:%s rc:%d", q->info.spname, rc);
             return rc;
         }
-        if (delay <= 0) {
+        if (delay_ms <= 0) {
             return 0;
         }
-        setup_dbq_ts(ts);
+        ts = setup_dbq_ts(delay_ms);
         Pthread_mutex_lock(q->lock);
         if (pthread_cond_timedwait(q->cond, q->lock, &ts) == 0) {
             // was woken up -- try getting from queue
             goto again;
         }
         Pthread_mutex_unlock(q->lock);
-        delay -= dbq_delay;
-        if (delay <= 0) {
+        delay_ms -= dbq_delay_ms;
+        if (delay_ms <= 0) {
             return 0;
         }
     }
@@ -812,7 +823,7 @@ again:  status = *q->status;
 static int dbconsumer_get_int(Lua L, dbconsumer_t *q)
 {
     int rc;
-    while ((rc = dbq_poll(L, q, dbq_delay)) == 0)
+    while ((rc = dbq_poll(L, q, dbq_delay_ms)) == 0)
         ;
     return rc;
 }
@@ -867,19 +878,12 @@ static int dbconsumer_poll(Lua L)
 {
     dbconsumer_t *q = luaL_checkudata(L, 1, dbtypes.dbconsumer);
     lua_Number arg = luaL_checknumber(L, 2);
-    lua_Integer delay; // ms
-    lua_number2integer(delay, arg);
-    if (delay >= 0) {
-        // we poll in multiples of dbq_delay
-        if (delay > dbq_delay) {
-            delay += dbq_delay - (delay % dbq_delay);
-        } else {
-            delay = dbq_delay;
-        }
-    } else {
-        delay = 0;
+    lua_Integer delay_ms; // ms
+    lua_number2integer(delay_ms, arg);
+    if (delay_ms < 0) {
+        delay_ms = 0;
     }
-    int rc = dbq_poll(L, q, delay);
+    int rc = dbq_poll(L, q, delay_ms);
     if (rc >= 0) {
         return rc;
     }
