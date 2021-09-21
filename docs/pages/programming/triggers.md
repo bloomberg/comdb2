@@ -267,6 +267,85 @@ consumer, we will run the following statement:
 
 `DROP LUA CONSUMER watch`
 
+### Batch consume from queue
+At times it is useful to consume several events atomically. This can be used to
+reduce round trips to the client application and also to reduce transaction
+overhead when consuming. This is specially useful for applications which modify
+large number of records in a transaction. Consuming in batches which match the
+size of the originating transaction helps reduce latency in processing events
+as well.
+
+Instead of calling `dbconsumer:consume()` which consumes that last event
+immediately, we can call `dbconsumer:next()` to remember to consume the last
+event fetched by `dbconsumer:get()` (or `dbconsumer:poll()`). Subsequent call
+to `get/poll` will return the next available event. Before calling
+`dbconsumer:next()` it is required that user start an explicit transaction by
+calling `db:begin()`. On calling `db:commit()`, system will consume all events
+for which `dbconsumer:next()` was called. User may choose to commit on
+transaction boundary or perhaps after every N records, etc.
+
+Here is an example stored procedure which consumes all events which belong to
+the same originating transaction. To reduce round-trips between client-server,
+it calls `db:emit()` for all events, and then emits a sentinal row using
+`dbconsumer:emit()`, which waits for client to signal that it has finished
+processing all the events.
+
+```
+local function consume_a_txn(consumer)
+        local event0 = consumer:get()
+        -- missing error handling here
+        local txn0 = db:get_event_tid(event0)
+        while true do
+                local event = consumer:poll(0)
+                -- If there are no more events, or we are at a transaction boundary:
+                -- return so we consume everything we have seen so far.
+                if event == nil then return end
+                if db:get_event_tid(event) ~= txn0 then return end
+                -- Otherwise, emit this event and move to next event
+                db:emit(event.new.data) -- Does not wait for client to ack
+                consumer:next()
+        end
+end
+local function main()
+        local consumer = db:consumer()
+        while true do
+                db:begin()
+                consume_a_txn(consumer)
+                consumer:emit('--sentinal--') -- Wait here for client to ack
+                db:commit() -- consume all events emitted so far
+        end
+end
+```
+
+Let us insert some data:
+```
+insert into t(data) values('first')
+insert into t(data) values('second'),('third')
+begin
+insert into t(data) values('fourth')
+insert into t(data) values('fifth')
+commit
+insert into t(data) select printf('row %d', value) from generate_series(6, 10)
+```
+
+The client which executes this procedure will receive:
+```
+($0='first')
+($0='--sentinal--')
+($0='second')
+($0='third')
+($0='--sentinal--')
+($0='fourth')
+($0='fifth')
+($0='--sentinal--')
+($0='row 6')
+($0='row 7')
+($0='row 8')
+($0='row 9')
+($0='row 10')
+($0='--sentinal--')
+```
+
 ## Consumer API
 
 ### db:consumer
@@ -366,6 +445,14 @@ Description:
 
 Consumes the last event obtained by `dbconsumer:get/poll()`. Creates a new
 transaction if no explicit transaction was ongoing.
+
+### dbconsumer:next
+
+Description:
+
+Adds the last event obtained by `dbconsumer:get/poll()` to list of events to
+consume by subsequent `db:commit()` call. Requires that `db:begin()` has been
+called prior.
 
 ### dbconsumer:emit
 
