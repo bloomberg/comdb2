@@ -30,6 +30,7 @@
 #include "sc_add_table.h"
 #include "sc_alter_table.h"
 #include "sc_util.h"
+#include "views.h"
 
 int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
@@ -176,6 +177,13 @@ int finalize_fastinit_table(struct ireq *iq, struct schema_change_type *s,
             }
         }
     }
+
     rc = finalize_alter_table(iq, s, tran);
+
+    /* if this is a shard, it is probably a truncation rollout */
+    if (!rc && db->timepartition_name && s->newpartition) {
+        rc = partition_truncate_callback(tran, s);
+    }
+
     return rc;
 }

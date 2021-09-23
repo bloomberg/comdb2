@@ -35,6 +35,7 @@
 #include "timepart_systable.h"
 #include "logical_cron.h"
 #include "sc_util.h"
+#include "bdb_int.h"
 
 #define VIEWS_MAX_RETENTION 1000
 
@@ -83,6 +84,8 @@ pthread_rwlock_t views_lk;
 cron_sched_t *timepart_sched;
 
 static timepart_view_t *_get_view(timepart_views_t *views, const char *name);
+static timepart_view_t *_get_view_index(timepart_views_t *views,
+                                        const char *name, int *idx);
 static int _generate_new_shard_name(const char *oldname, char *newname,
                                     int newnamelen, int nextnum, int maxshards,
                                     int testing, struct errstat *err);
@@ -116,8 +119,6 @@ static int _view_restart_new_rollout(timepart_view_t *view,
                                      struct errstat *err);
 int views_cron_restart(timepart_views_t *views);
 
-static int _view_rollout_publish(void *tran, timepart_view_t *view,
-                                 int override, struct errstat *err);
 static int _view_get_next_rollout(enum view_partition_period period,
                                   int retention, int startTime, int crtTime,
                                   int nshards, int back_in_time);
@@ -149,6 +150,9 @@ enum _check_flags {
 static timepart_view_t *_check_shard_collision(timepart_views_t *views,
                                                const char *tblname, int *indx,
                                                enum _check_flags flag);
+
+int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
+                         char *src, int acquire_schema_lk);
 
 int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
                          char *src, int acquire_schema_lk);
@@ -251,7 +255,7 @@ int timepart_add_view(void *tran, timepart_views_t *views,
 
     /* publish in llmeta and signal sqlite about it; we do have the schema_lk
        for the whole function call */
-    rc = _view_rollout_publish(tran, view, 0, err);
+    rc = partition_llmeta_write(tran, view, 0, err);
     if (rc != VIEW_NOERR) {
         return rc;
     }
@@ -501,16 +505,23 @@ int timepart_del_oldest_shard(timepart_view_t *view)
 /*
  * UNLOCKED
  */
-static timepart_view_t *_get_view(timepart_views_t *views, const char *name)
+static timepart_view_t *_get_view_index(timepart_views_t *views,
+                                        const char *name, int *idx)
 {
     int i;
 
     for (i = 0; i < views->nviews; i++) {
         if (strcasecmp(views->views[i]->name, name) == 0) {
+            if (idx)
+                *idx = i;
             return views->views[i];
         }
     }
     return NULL;
+}
+static timepart_view_t *_get_view(timepart_views_t *views, const char *name)
+{
+    return _get_view_index(views, name, NULL);
 }
 
 static struct dbtable *_table_alias_fallback(timepart_view_t *view)
@@ -585,7 +596,7 @@ int views_handle_replicant_reload(void *tran, const char *name)
 
             BDB_BUMP_DBOPEN_GEN(views, "alias table");
         }
-        db->tableversion = table_version_select(db, NULL);
+        db->tableversion = table_version_select(db, tran);
         db->timepartition_name = view->name;
 
         if (view->rolltype == TIMEPART_ROLLOUT_TRUNCATE) {
@@ -1329,6 +1340,7 @@ void comdb2_partition_info_all(const char *option)
     int i;
     char *info;
 
+    rdlock_schema_lk(); /* prevent race with partitions sc */
     Pthread_rwlock_rdlock(&views_lk);
 
     for(i=0; i<views->nviews; i++) {
@@ -1344,6 +1356,7 @@ void comdb2_partition_info_all(const char *option)
     }
 
     Pthread_rwlock_unlock(&views_lk);
+    unlock_schema_lk();
 }
 
 /**
@@ -1575,7 +1588,7 @@ static int _views_rollout_phase2(timepart_view_t *view,
     }
     view->roll_time = *timeNextRollout;
 
-    tran = bdb_tran_begin_set_prop(thedb->bdb_env, NULL, NULL, &bdberr);
+    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
     if (!tran || bdberr) {
         goto oom;
     }
@@ -1587,7 +1600,7 @@ static int _views_rollout_phase2(timepart_view_t *view,
     }
 
     /* time to make this known to the world */
-    rc = _view_rollout_publish(tran, view, 1, err);
+    rc = partition_llmeta_write(tran, view, 1, err);
     if (rc != VIEW_NOERR) {
         bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
         return err->errval;
@@ -2058,9 +2071,12 @@ static int _next_shard_exists(timepart_view_t *view, char *newShardName,
     return VIEW_NOERR;
 }
 
-/* NOTE: this is done under views_lk MUTEX ! */
-static int _view_rollout_publish(void *tran, timepart_view_t *view,
-                                 int override, struct errstat *err)
+/**
+ * Create partition llmeta entry
+ *
+ */
+int partition_llmeta_write(void *tran, timepart_view_t *view, int override,
+                           struct errstat *err)
 {
     char *view_str;
     int view_str_len;
@@ -2095,14 +2111,17 @@ done:
 }
 
 /**
- * Create partition llmeta entry, done during the finalize
- * part of schema change (used with new "TRUNCATE" rollout)
+ * Delete partition llmeta entry
  *
  */
-int timepart_publish_view(void *tran, timepart_view_t *view,
-                          struct errstat *err)
+int partition_llmeta_delete(void *tran, const char *name, struct errstat *err)
 {
-    return _view_rollout_publish(tran, view, 0, err);
+    int rc = views_write_view(tran, name, NULL, 1 /*unused*/);
+    if (rc != VIEW_NOERR) {
+        errstat_set_rcstrf(err, VIEW_ERR_LLMETA,
+                           "Unable to remove partition %s", name);
+    }
+    return rc;
 }
 
 /**
@@ -2219,15 +2238,14 @@ void views_signal(timepart_views_t *views)
 
 static void _remove_view_entry(timepart_views_t *views, int i)
 {
-    /* we don't deallocate, not a bug; realloc will turn NOP */
     if (i < views->nviews - 1) {
         memmove(&views->views[i], &views->views[i + 1],
                 (views->nviews - i - 1) * sizeof(views->views[0]));
     } else {
         assert(i == (views->nviews - 1));
-        views->views[i] = NULL;
     }
     views->nviews--;
+    views->views[views->nviews] = NULL;
 }
 
 /* Set timepartition_name for the next shard, if exist; set to NULL to
@@ -2393,6 +2411,10 @@ int timepart_foreach_shard(const char *view_name,
     if (arg) {
         arg->view_name = view_name;
         arg->nshards = view->nshards;
+        if (arg->s) {
+            /* we use pointer to view->name instead of strdup */
+            arg->s->timepartition_name = view->name;
+        }
     }
 
     if (first_shard == -1) {
@@ -2527,7 +2549,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
 
        view->retention = retention;
 
-       rc = _view_rollout_publish(tran, view, 1, err);
+       rc = partition_llmeta_write(tran, view, 1, err);
        if (rc != VIEW_NOERR) {
            goto done;
        }
@@ -2555,7 +2577,7 @@ int timepart_update_retention(void *tran, const char *name, int retention, struc
        }
        view->retention = retention;
 
-       rc = _view_rollout_publish(tran, view, 1, err);
+       rc = partition_llmeta_write(tran, view, 1, err);
        if (rc != VIEW_NOERR) {
            view->shards[view->nshards - 1].low = old_low;
            view->retention = old_retention;
@@ -2602,33 +2624,6 @@ void views_lock(void)
 void views_unlock(void)
 {
     Pthread_rwlock_unlock(&views_lk);
-}
-
-/**
- * Get the name of the newest shard
- *
- */
-char *timepart_newest_shard(const char *view_name, unsigned long long *version)
-{
-    timepart_views_t *views = thedb->timepart_views;
-    timepart_view_t *view;
-    char *ret = NULL;
-
-    Pthread_rwlock_rdlock(&views_lk);
-
-    view = _get_view(views, view_name);
-    if (view) {
-        struct dbtable *db;
-
-        ret = strdup(view->shards[view->current_shard].tblname);
-
-        if (version && (db = get_dbtable_by_name(ret)))
-            *version = db->tableversion;
-    }
-
-    Pthread_rwlock_unlock(&views_lk);
-
-    return ret;
 }
 
 static int _view_update_table_version(timepart_view_t *view, tran_type *tran)
@@ -2987,11 +2982,40 @@ static void _extract_info(timepart_view_t *view, char **name_dup, int *period,
     comdb2uuidcpy(*source_id, view->source_id);
 }
 
+/* called for a truncate rollout before finalize commits the tran */
+int partition_truncate_callback(tran_type *tran, struct schema_change_type *s)
+{
+    struct errstat err = {0};
+    int rc;
+    int bdberr = 0;
+
+    rc = partition_llmeta_write(tran, s->newpartition, 1, &err);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s Failed to write partition %s llmeta %d %s\n",
+               __func__, s->timepartition_name, err.errval, err.errstr);
+        return rc;
+    }
+
+    rc = bdb_llog_partition(thedb->bdb_env, tran, s->newpartition->name,
+                            &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_ERROR,
+               "Failed to signal replicants for %s rc %d bdberr %d\n",
+               s->newpartition->name, rc, bdberr);
+    }
+    return rc;
+}
+
+/* truncate rollout */
 void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
 {
     bdb_state_type *bdb_state = thedb->bdb_env;
     timepart_view_t *view;
     int rc = VIEW_NOERR;
+    char *name_dup;
+    int period;
+    int rolltime;
+    uuid_t source_id;
 
     char *name = (char *)event->arg1;
 
@@ -3002,11 +3026,6 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
 
     if (!gbl_exit &&
         !(thedb->master != gbl_myhostname || gbl_is_physical_replicant)) {
-
-        char *name_dup;
-        int period;
-        int rolltime;
-        uuid_t source_id;
 
         bdb_thread_event(thedb->bdb_env, BDBTHR_EVENT_START_RDWR);
         BDB_READLOCK(__func__);
@@ -3026,34 +3045,26 @@ void *_view_cron_new_rollout(struct cron_event *event, struct errstat *err)
 
             _extract_info(view, &name_dup, &period, &rolltime, &source_id);
 
-            /* here we truncate the current shard */
-            logmsg(LOGMSG_ERROR, "Truncate EVEEEEEEEEEEEEEENT!\n");
+            /* here we truncate the current shard; this will not finalize, and
+             * is not creating a long term transaction
+             */
             rc = sc_timepart_truncate_table(
-                NULL, view->shards[view->current_shard].tblname, err);
+                view->shards[view->current_shard].tblname, err, view);
             if (rc != VIEW_NOERR) {
                 logmsg(LOGMSG_ERROR,
                        "%s: failed to truncate current shard %d %s\n", __func__,
                        err->errval, err->errstr);
-            } else {
-                /* publish the new configuration */
-                rc = _view_rollout_publish(NULL, view, 1, err);
+                goto done;
             }
+
+            view->version = gbl_views_gen;
+            rc = VIEW_NOERR;
+            goto done;
         } else {
             errstat_set_rcstrf(err, rc = VIEW_ERR_BUG, "View %s missing", name);
         }
 
-        if (rc == VIEW_NOERR) {
-            int bdberr = 0;
-            rc = bdb_llog_views(thedb->bdb_env, name_dup, 1, &bdberr);
-            if (rc) {
-                logmsg(
-                    LOGMSG_ERROR,
-                    "Failed to signal replicants new view %s rc %d bdberr %d\n",
-                    name_dup, rc, bdberr);
-            }
-            view->version = gbl_views_gen;
-        }
-
+    done:
         Pthread_rwlock_unlock(&views_lk);
         if (rc != VIEW_NOERR)
             unlock_schema_lk();
@@ -3121,12 +3132,40 @@ int timepart_create_inmem_view(timepart_view_t *view)
     return rc;
 }
 
+int timepart_destroy_inmem_view(const char *name)
+{
+    timepart_view_t *view;
+    int idx;
+
+    Pthread_rwlock_wrlock(&views_lk);
+    view = _get_view_index(thedb->timepart_views, name, &idx);
+    if (!view) {
+        logmsg(LOGMSG_ERROR, "%s: unable to find partition %s\n", __func__,
+               name);
+        Pthread_rwlock_unlock(&views_lk);
+        return VIEW_ERR_EXIST;
+    }
+
+    _remove_view_entry(thedb->timepart_views, idx);
+
+    Pthread_rwlock_unlock(&views_lk);
+
+    uuid_t source_id;
+    comdb2uuidcpy(source_id, view->source_id);
+
+    timepart_free_view(view);
+
+    cron_clear_queue_for_sourceid(timepart_sched, &source_id);
+
+    return VIEW_NOERR;
+}
+
 int timepart_num_views(void)
 {
     return thedb->timepart_views ? thedb->timepart_views->nviews : 0;
 }
 
-const char *timepart_view_name(int i)
+const char *timepart_name(int i)
 {
     const char *name = NULL;
     Pthread_rwlock_rdlock(&views_lk);
@@ -3151,10 +3190,25 @@ int timepart_is_partition(const char *name)
 {
     timepart_view_t *view;
     int ret = 0;
+
     Pthread_rwlock_rdlock(&views_lk);
     view = _get_view(thedb->timepart_views, name);
     if (view)
         ret = 1;
+    Pthread_rwlock_unlock(&views_lk);
+
+    return ret;
+}
+
+int timepart_allow_drop(const char *zPartitionName)
+{
+    timepart_view_t *view;
+    int ret = -1;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    view = _get_view(thedb->timepart_views, zPartitionName);
+    if (view && view->rolltype == TIMEPART_ROLLOUT_TRUNCATE)
+        ret = 0;
     Pthread_rwlock_unlock(&views_lk);
 
     return ret;
@@ -3205,6 +3259,61 @@ char *timepart_shard_name(const char *p, int i, int aliased,
 
     return ret;
 }
+
+int partition_publish(tran_type *tran, struct schema_change_type *sc)
+{
+    int rc = VIEW_NOERR;
+    int bdberr;
+
+    if (sc->partition.type != PARTITION_NONE) {
+        char *partition_name = (char *)sc->timepartition_name;
+        switch (sc->partition.type) {
+        case PARTITION_ADD_TIMED: {
+            assert(sc->newpartition != NULL);
+            timepart_create_inmem_view(sc->newpartition);
+            break;
+        }
+        case PARTITION_REMOVE: {
+            /* preserve name to signal replicants */
+            partition_name = strdup(partition_name);
+            rc = timepart_destroy_inmem_view(sc->timepartition_name);
+            if (rc)
+                abort(); /* restart will fix this*/
+            break;
+        }
+        } /*switch */
+        rc = bdb_llog_partition(thedb->bdb_env, tran, partition_name, &bdberr);
+        if (rc || bdberr != BDBERR_NOERROR) {
+            logmsg(LOGMSG_ERROR, "%s: Failed to log scdone for partition %s\n",
+                   __func__, partition_name);
+        }
+        if (sc->partition.type == PARTITION_REMOVE)
+            free(partition_name);
+    }
+    return rc;
+}
+
+/* revert partition publish */
+void partition_unpublish(struct schema_change_type *sc)
+{
+   if (sc->partition.type != PARTITION_NONE) {
+        switch (sc->partition.type) {
+        case PARTITION_ADD_TIMED: {
+            assert(sc->newpartition != NULL);
+            timepart_destroy_inmem_view(sc->timepartition_name);
+            break;
+        }
+        case PARTITION_REMOVE: {
+            assert(sc->newpartition != NULL);
+            int rc = timepart_create_inmem_view(sc->newpartition);
+            if (rc)
+                abort(); /* restart will fix this*/
+            break;
+        }
+        }
+    }
+}
+
 
 #include "views_systable.c"
 

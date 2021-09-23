@@ -382,6 +382,25 @@ void cron_clear_queue(cron_sched_t *sched)
     cron_unlock(sched);
 }
 
+/**
+ * Clear all events for a specific source_id
+ *
+ */
+void cron_clear_queue_for_sourceid(cron_sched_t *sched, uuid_t *source_id)
+{
+    cron_event_t *event;
+
+    cron_lock(sched);
+
+    /* mop up */
+    for (event = sched->events.top; event; event = event->lnk.next) {
+        if (comdb2uuidcmp(event->source_id, *source_id) == 0)
+            _destroy_event(sched, event);
+    }
+
+    cron_unlock(sched);
+}
+
 /* Note for running event, if any, to finish */
 void cron_lock(cron_sched_t *sched)
 {

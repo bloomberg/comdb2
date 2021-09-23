@@ -348,14 +348,14 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
                                            s->tablename,
                                            s->timepartition_version);
         if (rc) {
-            sc_errf(s, "Failed to set user permissions for time partition %s\n",
+            sc_errf(s, "Failed to clone access rigghts for time partition %s\n",
                     s->timepartition_name);
             return rc;
         }
     }
-
-    if ((rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,
-                                       &bdberr)) != 0) {
+    rc = bdb_table_version_select(db->tablename, tran, &db->tableversion,
+                                  &bdberr);
+    if (rc) {
         sc_errf(s, "Failed fetching table version bdberr %d\n", bdberr);
         return rc;
     }
@@ -398,13 +398,14 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
      * if this is the original request for a partition table add,
      * create partition here
      */
-    if (s->newpartition) {
+    if (s->partition.type == PARTITION_ADD_TIMED && s->publish) {
         struct errstat err = {0};
-        rc = timepart_publish_view(tran, s->newpartition, &err);
+        assert(s->newpartition);
+        rc = partition_llmeta_write(tran, s->newpartition, 0, &err);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to create partition %s rc %d \"%s\"\n",
                    s->timepartition_name, rc, err.errstr);
-            sc_errf(s, "timepart_publish_view failed\n");
+            sc_errf(s, "partition_llmeta_write failed \"add\"\n");
             return -1;
         }
     }

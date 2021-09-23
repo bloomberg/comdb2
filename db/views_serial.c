@@ -206,6 +206,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
 
     *out = NULL;
 
+    rdlock_schema_lk(); /* prevent race with partitions sc */
     Pthread_rwlock_wrlock(&views_lk);
 
     if (views->nviews == 0) {
@@ -245,6 +246,7 @@ int timepart_serialize(timepart_views_t *views, char **out, int user_friendly)
 
 done:
     Pthread_rwlock_unlock(&views_lk);
+    unlock_schema_lk();
 
     *out = str;
 
@@ -1801,7 +1803,7 @@ int timepart_apply_file(const char *filename)
     Pthread_rwlock_wrlock(&views_lk);
 
     for (i = 0; i < views->nviews; i++) {
-        rc = _view_rollout_publish(NULL, views->views[i], 1, &err);
+        rc = partition_llmeta_write(NULL, views->views[i], 1, &err);
         if (rc != VIEW_NOERR) {
             Pthread_rwlock_unlock(&views_lk);
             goto done;

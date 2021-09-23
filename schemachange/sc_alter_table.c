@@ -929,13 +929,14 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     db->handle = old_bdb_handle;
 
     /* if this is an alter to partition an existing table */
-    if (s->newpartition) {
+    if (s->partition.type == PARTITION_ADD_TIMED && s->publish) {
         struct errstat err = {0};
-        rc = timepart_publish_view(transac, s->newpartition, &err);
+        assert(s->newpartition);
+        rc = partition_llmeta_write(transac, s->newpartition, 0, &err);
         if (rc) {
             logmsg(LOGMSG_ERROR, "Failed to partition table %s rc %d \"%s\"\n",
                    s->tablename, rc, err.errstr);
-            sc_errf(s, "timepart_publish_view failed\n");
+            sc_errf(s, "partition_llmeta_write failed \"alter\"\n");
             return -1;
         }
 

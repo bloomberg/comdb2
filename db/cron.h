@@ -108,6 +108,12 @@ void cron_signal_worker(cron_sched_t *sched);
 void cron_clear_queue(cron_sched_t *sched);
 
 /**
+ * Clear all events for a specific source_id
+ *
+ */
+void cron_clear_queue_for_sourceid(cron_sched_t *sched, uuid_t *source_id);
+
+/**
  * Lock/unlock scheduler so I can look at events
  *
  * NOTE: locking waits for the running to complete

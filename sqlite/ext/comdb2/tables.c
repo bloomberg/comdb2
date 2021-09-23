@@ -132,7 +132,7 @@ static int systblTablesColumn(
     struct dbtable *pDb = thedb->dbs[pCur->iRowid];
     x = pDb->sqlaliasname ? pDb->sqlaliasname : pDb->tablename;
   } else {
-    x = timepart_view_name(pCur->iRowid - thedb->num_dbs);
+    x = timepart_name(pCur->iRowid - thedb->num_dbs);
   }
 
   sqlite3_result_text(ctx, x, -1, NULL);
