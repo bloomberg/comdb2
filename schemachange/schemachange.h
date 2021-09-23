@@ -65,10 +65,10 @@ enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
 enum comdb2_partition_type {
     PARTITION_NONE = 0,
     PARTITION_REMOVE = 1,
-    PARTITION_TIMED = 2,
-    PARTITION_MERGE = 3,
-    PARTITION_COL_RANGE = 20,
-    PARTITION_COL_HASH =  40,
+    PARTITION_MERGE = 2,
+    PARTITION_ADD_TIMED = 20,
+    PARTITION_ADD_COL_RANGE = 40,
+    PARTITION_ADD_COL_HASH = 60,
 };
 
 struct comdb2_partition {
@@ -95,7 +95,6 @@ struct schema_change_type {
     char tablename[MAXTABLELEN];    /* name of table/queue */
     int rename;                     /* rename table? */
     char newtable[MAXTABLELEN];     /* new table name */
-    const char *timepartition_name; /* time partition name for sc, if any */
     size_t fname_len;
     char fname[256];                /* name of schema file for table schema
                                        change or client provided SP version */
@@ -208,6 +207,7 @@ struct schema_change_type {
     int fix_tp_badvers;
 
     /* partition */
+    const char *timepartition_name; /* time partition name, if any */
     unsigned long long
         timepartition_version; /* time partition tableversion, if any */
     struct comdb2_partition partition;
@@ -254,6 +254,9 @@ struct schema_change_type {
     unsigned is_osql : 1;
     unsigned set_running : 1;
     uint64_t seed;
+
+    int (*publish)(tran_type *, struct schema_change_type *);
+    void (*unpublish)(struct schema_change_type *);
 };
 
 typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);

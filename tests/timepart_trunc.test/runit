@@ -58,12 +58,20 @@ function timepart_stats
     fi
 }
 
+function header
+{
+    echo "TEST $1"
+    echo "$2"
+    echo "TEST $1" >> $OUT
+    echo "$2" >> $OUT
+}
 timepart_stats 0
 
 VT="t"
 
 # TEST 1
 # create new partition in past, make sure start is in the future
+header 1 "create new partition in past, make sure start is in the future"
 starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60-24*3600)'`
 echo $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
@@ -84,6 +92,7 @@ fi
 
 # TEST 2.
 # create dup partition
+header 2 "create dup partition"
 starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+60)'`
 echo $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "CREATE TABLE ${VT}(a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'"
@@ -95,8 +104,9 @@ fi
 timepart_stats 0
 
 # TEST 3.
-# create partition with rollout in next minute, check partition, check events, check partition after rollout
+# insert some rows in current partition, wait for rollout, insert more, check row location
 # (it is enough to wait for the already created "t" partition to rollout in one minute)
+header 3 "insert some rows in current partition, wait for rollout, insert more, check row location"
 echo $cmd "insert into '\$1_A2620AE4' values (1), (2), (3)"
 $cmd "insert into '\$1_A2620AE4' values (1), (2), (3)" >> $OUT
 if (( $? != 0 )) ; then
@@ -123,7 +133,7 @@ $cmd "select * from t order by a" >> $OUT
 
 # TEST 4.
 # create table with same name and check proper failure
-
+header 4 "create table with same name and check proper failure"
 echo $cmd "CREATE TABLE ${VT}(a int, b int)"
 $cmd "CREATE TABLE ${VT}(a int, b int)"
 if (( $? == 0 )) ; then
@@ -135,6 +145,7 @@ VT="t2"
 
 # TEST 5.
 # create old tpt together 
+header 5 "create old tpt together"
 echo $cmd "create table t3 (b int)"
 $cmd "create table t3 (b int)"
 if (( $? != 0 )) ; then
@@ -157,6 +168,7 @@ timepart_stats 6
 
 # TEST 6.
 # create dup old time partition
+header 6 "create dup old time partition"
 echo $cmd "create table t4 (c int)"
 $cmd "create table t4 (c int)"
 if (( $? != 0 )) ; then
@@ -173,9 +185,10 @@ fi
 
 # 7.
 # restart node, check partition read and events generation
+header 7 "restart node, check partition read and events generation"
 echo "Killing master now"
-kill_restart_node $master 1
-sleep 10
+#kill_restart_node $master 1
+#sleep 10
 
 master=`$cmdt 'exec procedure sys.cmd.send("bdb cluster")' | grep MASTER | cut -f1 -d":" | tr -d '[:space:]'`
 cmdm="cdb2sql ${CDB2_OPTIONS} --host $master $dbname default"
@@ -185,6 +198,7 @@ timepart_stats 0
 
 # 8.
 # create table and alter to a partition; check inserts
+header 8 "create table and alter to a partition; check inserts"
 echo $cmd "create table t5 (d int)"
 $cmd "create table t5 (d int)"
 if (( $? != 0 )) ; then
@@ -222,15 +236,16 @@ if (( $? != 0 )) ; then
    exit 1
 fi
 
-echo $cmd "select * from '\$0_65276E68'"
-echo $cmd "select * from '\$0_65276E68'" >> $OUT
-$cmd "select * from '\$0_65276E68'" >> $OUT
-echo $cmd "select * from '\$1_DEE0E531'"
-echo $cmd "select * from '\$1_DEE0E531'" >> $OUT
-$cmd "select * from '\$1_DEE0E531'" >> $OUT
+echo $cmd "select * from '\$0_65276E68' order by 1"
+echo $cmd "select * from '\$0_65276E68' order by 1" >> $OUT
+$cmd "select * from '\$0_65276E68' order by 1" >> $OUT
+echo $cmd "select * from '\$1_DEE0E531' order by 1"
+echo $cmd "select * from '\$1_DEE0E531' order by 1" >> $OUT
+$cmd "select * from '\$1_DEE0E531' order by 1" >> $OUT
 
 # 9.
-# check attempt to alter an already partitioned table
+# check attempt to partition an already partitioned table
+header 9 "check attempt to partition an already partitioned table"
 echo $cmd "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 $cmd "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
 if (( $? == 0 )) ; then
@@ -238,6 +253,110 @@ if (( $? == 0 )) ; then
    exit 1
 fi
 
+# 10. 
+# alter (drop column) for  partitioned table (alias)
+header 10 "alter (drop column) for  partitioned table (alias)"
+echo $cmd "ALTER TABLE t5 DROP COLUMN e"
+echo $cmd "ALTER TABLE t5 DROP COLUMN e" >> $OUT
+$cmd "ALTER TABLE t5 DROP COLUMN e"
+if (( $? != 0 )) ; then
+   echo "FAILURE to alter table t5 and drop column e"
+   exit 1
+fi
+
+echo $cmd "select * from t5 order by 1"
+echo $cmd "select * from t5 order by 1" >> $OUT
+$cmd "select * from t5 order by 1" >> $OUT
+
+timepart_stats 0
+
+# 11.
+# Create and drop a partitioned table
+header 11 "Create and drop a partitioned table"
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+20)'`
+echo $cmd "CREATE TABLE t6 (a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "CREATE TABLE t6 (a int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? != 0 )) ; then
+   echo "FAILURE to create partitioned table t6"
+   exit 1
+fi
+
+timepart_stats 0
+
+echo $cmd "DROP TABLE t6"
+echo $cmd "DROP TABLE t6" >> $OUT
+$cmd "DROP TABLE t6"
+if (( $? != 0 )) ; then
+   echo "FAILURE to drop table t6"
+   exit 1
+fi
+
+timepart_stats 0
+
+# 12.
+# Test version across create/alter/drop
+# Recreate a previous table, t5 partitioned by create, and drop it
+# Recreate a t5 again unpartitioned, alter it to add partition, and drop it
+header 12 "Test version across create/alter/drop"
+
+echo $cmd "DROP TABLE t5"
+echo $cmd "DROP TABLE t5" >> $OUT
+$cmd "DROP TABLE t5"
+if (( $? != 0 )) ; then
+   echo "FAILURE to drop table t5"
+   exit 1
+fi
+
+timepart_stats 0
+
+starttime=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()+120)'`
+echo $cmd "CREATE TABLE t5 (a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "CREATE TABLE t5 (a int, b int) PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? != 0 )) ; then
+   echo "FAILURE to create partitioned table t5 after drop"
+   exit 1
+fi
+
+timepart_stats 0
+
+echo $cmd "DROP TABLE t5"
+echo $cmd "DROP TABLE t5" >> $OUT
+$cmd "DROP TABLE t5"
+if (( $? != 0 )) ; then
+   echo "FAILURE to drop table t5 after recreate"
+   exit 1
+fi
+
+timepart_stats 0
+
+echo $cmd "CREATE TABLE t5(c int)"
+echo $cmd "CREATE TABLE t5(c int)" >> $OUT
+$cmd "CREATE TABLE t5(c int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to recreate unpartitioned table t5"
+   exit 1
+fi
+
+timepart_stats 0
+
+echo $cmd "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+$cmd "ALTER TABLE t5 PARTITIONED BY TIME PERIOD 'daily' RETENTION 2 START '${starttime}'" 
+if (( $? != 0 )) ; then
+   echo "FAILURE to alter-partition table t5"
+   exit 1
+fi
+
+timepart_stats 0
+
+echo $cmd "DROP TABLE t5"
+echo $cmd "DROP TABLE t5" >> $OUT
+$cmd "DROP TABLE t5"
+if (( $? != 0 )) ; then
+   echo "FAILURE to drop table t5 after alter-partition"
+   exit 1
+fi
+
+timepart_stats 0
 
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual

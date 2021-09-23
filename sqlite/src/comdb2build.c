@@ -187,8 +187,7 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
         goto cleanup;
 
     char *firstshard = timepart_shard_name(dst, 0, 0, NULL);
-    if(!firstshard)
-    {
+    if(!firstshard) {
         struct dbtable *db = get_dbtable_by_name(dst);
 
         if (table_exists) {
@@ -781,6 +780,8 @@ out:
 
 void comdb2DropTable(Parse *pParse, SrcList *pName)
 {
+    char *partition_first_shard = NULL;
+
     if (comdb2IsPrepareOnly(pParse))
         return;
 
@@ -803,30 +804,36 @@ void comdb2DropTable(Parse *pParse, SrcList *pName)
 
     Token table = {pName->a[0].zName, strlen(pName->a[0].zName)};
     if (chkAndCopyTableTokens(pParse, sc->tablename, &table, 0,
-                              ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
+                              ERROR_ON_TBL_NOT_FOUND, 1, 0,
+                              &partition_first_shard))
         goto out;
 
     sc->same_schema = 1;
     sc->drop_table = 1;
     sc->fastinit = 1;
     sc->nothrevent = 1;
+    if (partition_first_shard)
+        sc->partition.type = PARTITION_REMOVE;
 
     tran_type *tran = curtran_gettran();
-    int rc = get_csc2_file_tran(sc->tablename, -1 , &sc->newcsc2, NULL, tran);
+    int rc = get_csc2_file_tran(partition_first_shard ? partition_first_shard :
+                                sc->tablename, -1 , &sc->newcsc2, NULL, tran);
     curtran_puttran(tran);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: table schema not found: %s\n", __func__,
-               sc->tablename);
+        logmsg(LOGMSG_ERROR, "%s: %s schema not found: %s\n", __func__,
+               partition_first_shard ? "shard" : "table",
+               partition_first_shard ? partition_first_shard : sc->tablename);
         setError(pParse, SQLITE_ERROR, "Table schema cannot be found");
         goto out;
     }
-
     comdb2PrepareSC(v, pParse, 0, sc, &comdb2SqlSchemaChange_usedb,
                     (vdbeFuncArgFree)&free_schema_change_type);
+    free(partition_first_shard);
     return;
 
 out:
     free_schema_change_type(sc);
+    free(partition_first_shard);
 }
 
 static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
@@ -4156,8 +4163,6 @@ err:
     return 1;
 }
 
-extern pthread_rwlock_t views_lk;
-
 /*
   Fetch the schema definition of the table being altered.
 */
@@ -6935,7 +6940,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
     if (!ctx->partition) {
         goto oom;
     }
-    ctx->partition->type = PARTITION_TIMED;
+    ctx->partition->type = PARTITION_ADD_TIMED;
 
     if (comdb2GetTimePartitionParams(pParse, period, retention, start,
                                      (int32_t*)&ctx->partition->u.tpt.period,

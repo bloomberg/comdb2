@@ -5728,9 +5728,26 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     struct ireq *iq = sc->iq;
     int rc;
 
-    strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
+    if (arg->indx == 0) {
+        /* is first shard aliased? */
+        struct dbtable *db = get_dbtable_by_name(tblname);
+        if (!(db && db->sqlaliasname &&
+              strncasecmp(db->sqlaliasname, tblname,
+                          strlen(db->sqlaliasname)) == 0))
+            strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
+
+    } else {
+        strncpy0(sc->tablename, tblname, sizeof(sc->tablename));
+    }
     if (gbl_disable_tpsc_tblvers) {
         sc->fix_tp_badvers = 1;
+    }
+
+    if ((sc->partition.type == PARTITION_ADD_TIMED && arg->indx == 0) ||
+        (sc->partition.type == PARTITION_REMOVE &&
+         arg->nshards == arg->indx + 1)) {
+        sc->publish = partition_publish;
+        sc->unpublish = partition_unpublish;
     }
 
     rc = start_schema_change_tran(iq, sc->tran);
@@ -5856,7 +5873,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         }
     } else if (!is_partition && sc->partition.type != PARTITION_NONE) {
-        assert(sc->partition.type == PARTITION_TIMED);
+        assert(sc->partition.type == PARTITION_ADD_TIMED);
 
         /* create a new time partition object */
         struct errstat err = {0};
@@ -5902,6 +5919,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             arg.s->timepartition_version =
                 arg.s->db->tableversion + 1; /* next version */
 
+            /* launch alter for original shard */
             rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
             if (rc) {
                 logmsg(LOGMSG_ERROR,
@@ -6097,6 +6115,27 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
             if (iq->sc->fastinit && gbl_replicate_local)
                 local_replicant_write_clear(iq, trans, iq->sc->db);
             iq->sc = iq->sc->sc_next;
+        }
+
+        /* Success, need to publish results in memory */
+        iq->sc = iq->sc_pending;
+        int error = 0;
+        while (iq->sc != NULL) {
+            if (iq->sc->publish) {
+                error = iq->sc->publish(trans, iq->sc);
+                if (error)
+                    break;
+            }
+            iq->sc = iq->sc->sc_next;
+        }
+        if (error) {
+           struct schema_change_type *sc = iq->sc_pending;
+            while (sc != iq->sc) {
+                if (iq->sc->unpublish)  {
+                    sc->unpublish(sc);
+                }
+                sc = sc->sc_next;
+            }
         }
 
         /* Success: reset the table counters */

@@ -321,12 +321,6 @@ void views_lock(void);
 void views_unlock(void);
 
 /**
- * Get the name of the newest shard, and optionally its version
- *
- */
-char *timepart_newest_shard(const char *view_name, unsigned long long *version);
-
-/**
  * Dump the timepartition json configuration
  * Used for schema copy only
  * Returns: 0 - no tps; 1 - has tps
@@ -410,12 +404,17 @@ timepart_view_t *timepart_new_partition(const char *name, int period,
 int timepart_populate_shards(timepart_view_t *view, struct errstat *err);
 
 /**
- * Create partition llmeta entry, done during the finalize
- * part of schema change (used with new "TRUNCATE" rollout)
+ * Create partition llmeta entry
  *
  */
-int timepart_publish_view(void *tran, timepart_view_t *view,
-                          struct errstat *err);
+int partition_llmeta_write(void *tran, timepart_view_t *view, int override,
+                           struct errstat *err);
+
+/**
+ * Delete partition llmeta entry
+ *
+ */
+int partition_llmeta_delete(void *tran, const char *name, struct errstat *err);
 
 /**
  * Free a time partition object
@@ -424,10 +423,11 @@ int timepart_publish_view(void *tran, timepart_view_t *view,
 void timepart_free_view(timepart_view_t *view);
 
 /**
- * Create the in memory view object
+ * Link/unlink the time partition object in the global tpt repository
  *
  */
 int timepart_create_inmem_view(timepart_view_t *view);
+int timepart_destroy_inmem_view(const char *name);
 
 /**
  * Get number of partitions
@@ -439,7 +439,16 @@ int timepart_num_views(void);
  * Get name of view "i"
  *
  */
-const char *timepart_view_name(int i);
+const char *timepart_name(int i);
+
+/**
+ * Get the malloced name of shard "i" for partition "p" if exists
+ * NULL otherwise
+ * If version provided, and shard exists, return its schema version
+ *
+ */
+char *timepart_shard_name(const char *p, int i, int aliased,
+                          unsigned long long *version);
 
 /**
  * Alias the existing table so we can create a partition with
@@ -466,5 +475,20 @@ int timepart_clone_access_version(tran_type *tran,
  */
 char *timepart_shard_name(const char *p, int i, int aliased,
                           unsigned long long *version);
+
+/**
+ * Make partition visible (create in-mem structure and
+ * notify replicants)
+ */
+int partition_publish(tran_type *tran, struct schema_change_type *sc);
+
+/**
+ * Revert the results of partition publish (for cases when transaction fails
+ */
+void partition_unpublish(struct schema_change_type *sc);
+
+
+/* called for a truncate rollout before finalize commits the tran */
+int partition_truncate_callback(tran_type *tran, struct schema_change_type *s);
 
 #endif

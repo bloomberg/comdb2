@@ -40,6 +40,7 @@ int comdb2_check_parallel(Parse*);
 void comdb2_create_view(Parse *pParse, const char *view_name,
                         int view_name_len, const char *zStmt, int temp);
 void comdb2_drop_view(Parse *pParse, SrcList *pName);
+int timepart_allow_drop(const char *zPartitionName);
 
 extern int gbl_fdb_track;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
@@ -3270,8 +3271,14 @@ void sqlite3DropTable(Parse *pParse, SrcList *pName, int isView, int noErr){
     goto exit_drop_table;
   }
   if( !isView && pTab->pSelect ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    if (timepart_allow_drop(pTab->zName)) {
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     sqlite3ErrorMsg(pParse, "use DROP VIEW to delete view %s", pTab->zName);
     goto exit_drop_table;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
   }
 #endif
 

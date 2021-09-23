@@ -23,6 +23,7 @@
 #include "sc_schema.h"
 #include "sc_global.h"
 #include "sc_callbacks.h"
+#include "views.h"
 
 static int delete_table(struct dbtable *db, tran_type *tran)
 {
@@ -122,6 +123,22 @@ int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
     {
         sc_errf(s, "Failed to delete access permissions\n");
         return rc;
+    }
+
+    /* if this is a shard, remove the llmeta partition entry */
+    if (s->partition.type == PARTITION_REMOVE && s->publish) {
+        if (!db->timepartition_name) {
+            sc_errf(s,
+                    "Drop partitioned table failed, shard %s not registered\n",
+                    db->tablename);
+            return SC_INTERNAL_ERROR;
+        }
+        struct errstat err = {0};
+        rc = partition_llmeta_delete(tran, s->timepartition_name, &err);
+        if (rc) {
+            sc_errf(s, "Failed to remove partition llmeta %d\n", err.errval);
+            return SC_INTERNAL_ERROR;
+        }
     }
 
     if (s->finalize) {
