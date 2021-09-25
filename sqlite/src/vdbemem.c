@@ -875,8 +875,16 @@ int sqlite3VdbeMemNumerify(Mem *pMem){
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pMem->db==0 || sqlite3_mutex_held(pMem->db->mutex) );
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
-    /* e.g. string is NULL for cast(intervalds as string) */
-    if ( !pMem->z ){
+    /* SQLite used to bzero `Vdbe.aVar' (was named `azVar' back then) in
+       sqlite3VdbeMakeReady(). We then checked for a NULL `Mem.z' here to see
+       whether the Mem structure had a valid string representation. However it
+       is no longer applicable in newer SQLite versions. Newer versions do not
+       bzero `aVar' in MakeReady and as a result a bound parameter's `z' may
+       point to an invalid address. We fix this by checking against `Mem.flags'
+       instead. I believe the change not only fixes the bound parameter issue
+       here, but also covers other unaccounted cases where we assume a Mem
+       struct starts with all zeros. */
+    if ( (pMem->flags & (MEM_Str|MEM_Blob))==0 ){
       pMem->u.r = sqlite3VdbeRealValue(pMem);
       MemSetTypeFlag(pMem, MEM_Real);
       sqlite3VdbeIntegerAffinity(pMem);
