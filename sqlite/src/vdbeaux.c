@@ -1833,7 +1833,7 @@ static void initMemArray(Mem *p, int N, sqlite3 *db, u16 flags){
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
     p->tz = NULL;
     p->dtprec = 0;
-    p->zMalloc = NULL;
+    p->z = p->zMalloc = NULL;
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 #ifdef SQLITE_DEBUG
     p->pScopyFrom = 0;
