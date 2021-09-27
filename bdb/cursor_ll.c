@@ -80,6 +80,7 @@
 #include <stdlib.h>
 #include <alloca.h>
 #include <string.h>
+#include <strings.h>
 #include <assert.h>
 
 #include <thread_malloc.h>
@@ -212,7 +213,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
         *bdberr = BDBERR_MALLOC;
         return NULL;
     }
-    bzero(pberkdb, sizeof(bdb_berkdb_t));
+    memset(pberkdb, 0, sizeof(bdb_berkdb_t));
 
     berkdb = pberkdb->impl =
         (bdb_berkdb_impl_t *)thread_malloc(sizeof(bdb_berkdb_impl_t));
@@ -221,7 +222,7 @@ bdb_berkdb_t *bdb_berkdb_open(bdb_cursor_impl_t *cur, int type, int maxdata,
         thread_free(pberkdb);
         return NULL;
     }
-    bzero(berkdb, sizeof(bdb_berkdb_impl_t));
+    memset(berkdb, 0, sizeof(bdb_berkdb_impl_t));
 
     berkdb->bdb_state = bdb_state;
 
