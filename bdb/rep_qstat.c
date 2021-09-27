@@ -1,5 +1,6 @@
 #include <net.h>
 #include <string.h>
+#include <strings.h>
 #include <build/db.h>
 #include <dbinc/rep_types.h>
 #include "bdb_int.h"
@@ -33,9 +34,9 @@ static void net_clear_queue_stats_rtn(netinfo_type *netinfo_type, void *netstat)
     net_queue_stat_t *n = (net_queue_stat_t *)netstat;
     Pthread_mutex_lock(&n->lock);
     if (n->type_counts)
-        bzero(n->type_counts, sizeof(int) * (n->max_type + 1));
-    bzero(&n->max_lsn, sizeof(n->max_lsn));
-    bzero(&n->min_lsn, sizeof(n->min_lsn));
+        memset(n->type_counts, 0, sizeof(int) * (n->max_type + 1));
+    memset(&n->max_lsn, 0, sizeof(n->max_lsn));
+    memset(&n->min_lsn, 0, sizeof(n->min_lsn));
     n->unknown_count = n->total_count = 0;
     Pthread_mutex_unlock(&n->lock);
 }
