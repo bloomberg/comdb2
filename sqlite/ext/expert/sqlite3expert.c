@@ -17,6 +17,10 @@
 
 #ifndef SQLITE_OMIT_VIRTUALTABLE 
 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+int comdb2_is_field_indexable(const char *table_name, int fld_idx);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
+
 typedef sqlite3_int64 i64;
 typedef sqlite3_uint64 u64;
 
@@ -460,6 +464,10 @@ static int expertBestIndex(sqlite3_vtab *pVtab, sqlite3_index_info *pIdxInfo){
        && pCons->iColumn>=0 
        && p->pTab->aCol[pCons->iColumn].iPk==0
        && (pCons->op & opmask) 
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+       // Filter out columns that are not indexable
+       && (comdb2_is_field_indexable(pIdxInfo->zTable, pCons->iColumn))
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
       ){
         IdxConstraint *pNew;
         const char *zColl = sqlite3_vtab_collation(pIdxInfo, i);

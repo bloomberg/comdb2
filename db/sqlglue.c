@@ -12913,3 +12913,21 @@ int comdb2_is_idx_uniqnulls(BtCursor *pCur)
     s = pCur->db->ixschema[pCur->sc->ixnum];
     return (s->flags & SCHEMA_UNIQNULLS) ? 1 : 0;
 }
+
+int comdb2_is_field_indexable(const char *table_name, int fld_idx) {
+    struct dbtable *tbl = get_dbtable_by_name(table_name);
+    if (tbl) {
+        struct field *f = &tbl->schema->member[fld_idx];
+        switch (f->type) {
+            case SERVER_BCSTR:
+            case SERVER_BYTEARRAY:
+            case SERVER_BLOB:
+            case SERVER_VUTF8:
+            case SERVER_BLOB2:
+                return 0;
+            default:
+                return 1;
+        }
+    }
+    return 1;
+}
