@@ -1935,6 +1935,20 @@ case OP_Remainder: {           /* same as TK_REM, in1, in2, out3 */
     pOut->z = pOut->zMalloc = NULL;
   }
 
+  /* Subtraction only: If one operand is a String and the other is a Datetime,
+     attempt to promote the String operand to Datetime. */
+  if( ( pOp->opcode==OP_Subtract )&&( (pIn1->flags|pIn2->flags)&MEM_TypeMask )==(MEM_Str|MEM_Datetime) ) {
+    /* If pIn1 is a Datetime, the line below is a no-op; If pIn2 isn't
+       a valid Datetime string, the 2nd Datetimefy will fail and both
+       operands' types remain intact; If pIn1 is a String, but isn't a
+       valid Datetime string, the line below will fail. Both operands'
+       types are preserved, too. */
+    const char *implicit_tz = ( pIn1->tz!=NULL ) ?  pIn1->tz : pIn2->tz;
+    int implicit_conv_rc = sqlite3VdbeMemDatetimefyTz(pIn1, implicit_tz);
+    if ( implicit_conv_rc==0 )
+      sqlite3VdbeMemDatetimefyTz(pIn2, implicit_tz);
+  }
+
   if( (pIn1->flags & MEM_Interval) && pIn1->du.tv.type == INTV_DECIMAL_TYPE)
   {
     Mem res;
