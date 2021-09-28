@@ -3189,6 +3189,7 @@ static int whereLoopAddVirtualOne(
   pIdxInfo->estimatedRows = 25;
   pIdxInfo->idxFlags = 0;
   pIdxInfo->colUsed = (sqlite3_int64)pSrc->colUsed;
+  pIdxInfo->zTable = pSrc->pTab->zName;
 
   /* Invoke the virtual table xBestIndex() method */
   rc = vtabBestIndex(pParse, pSrc->pTab, pIdxInfo);
