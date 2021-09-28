@@ -6390,7 +6390,7 @@ default_prec:
       sql = comdb2_get_sql();
 
       /* we only need one trace */
-      logmsg(LOGMSG_ERROR, "Unsupported expression for remote cursors.");
+      logmsg(LOGMSG_ERROR, "Unsupported expression for remote cursors\n");
       logmsg(LOGMSG_ERROR, "%s; pExpr->op=%d\n", __func__, pExpr->op);
       logmsg(LOGMSG_ERROR, "query:'%s'\n", (sql)?sql:"unavailable");
 

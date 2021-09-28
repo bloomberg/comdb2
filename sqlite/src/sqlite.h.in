@@ -6641,6 +6641,9 @@ struct sqlite3_index_info {
   int idxFlags;              /* Mask of SQLITE_INDEX_SCAN_* flags */
   /* Fields below are only available in SQLite 3.10.0 and later */
   sqlite3_uint64 colUsed;    /* Input: Mask of columns used by statement */
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  char *zTable;
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
 };
 
 /*
