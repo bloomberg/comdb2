@@ -6683,9 +6683,12 @@ void freedb_int(dbtable *db, dbtable *replace)
 {
     int i;
     int dbs_idx;
+    char *sqlaliasname = db->sqlaliasname;
 
     dbs_idx = db->dbs_idx;
 
+    if (!replace) 
+        free(sqlaliasname);
     free(db->lrlfname);
     free(db->tablename);
     /* who frees schema/ixschema? */
@@ -6752,6 +6755,7 @@ void freedb_int(dbtable *db, dbtable *replace)
     if (replace) {
         memcpy(db, replace, sizeof(dbtable));
         db->dbs_idx = dbs_idx;
+        db->sqlaliasname = sqlaliasname;
     } else
         free(db);
 }

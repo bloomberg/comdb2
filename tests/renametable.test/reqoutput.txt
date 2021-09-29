@@ -87,3 +87,16 @@
 (id=111)
 (id=111)
 [select * from t order by id] rc 0
+[alter table t add column b int] rc 0
+(id=11, b=NULL)
+(id=21, b=NULL)
+(id=31, b=NULL)
+(id=41, b=NULL)
+(id=51, b=NULL)
+(id=81, b=NULL)
+(id=91, b=NULL)
+(id=101, b=NULL)
+(id=101, b=NULL)
+(id=111, b=NULL)
+(id=111, b=NULL)
+[select * from t order by id] rc 0
