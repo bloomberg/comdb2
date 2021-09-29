@@ -47,6 +47,9 @@ insert into t values (100)
 insert into t values (110)
 update t set id=id+1
 select * from t order by id
+alter table t add column b int
+\$\$
+select * from t order by id
 EOF
 
 df=`diff output.txt reqoutput.txt`
