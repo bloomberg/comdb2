@@ -63,17 +63,12 @@ static const char revid[] = "$Id: bt_open.c,v 11.87 2003/07/17 01:39:09 margo Ex
 #include "dbinc/mp.h"
 #include "dbinc/fop.h"
 
+#include <logmsg.h>
+
 static void __bam_init_meta __P((DB *, BTMETA *, db_pgno_t, DB_LSN *));
 
-/*
- * __bam_open --
- *	Open a btree.
- *
- * PUBLIC: int __bam_open __P((DB *,
- * PUBLIC:      DB_TXN *, const char *, db_pgno_t, u_int32_t));
- */
-int
-__bam_open(dbp, txn, name, base_pgno, flags)
+static int
+__bam_open_int(dbp, txn, name, base_pgno, flags)
 	DB *dbp;
 	DB_TXN *txn;
 	const char *name;
@@ -111,6 +106,65 @@ __bam_open(dbp, txn, name, base_pgno, flags)
 
 	/* Start up the tree. */
 	return (__bam_read_root(dbp, txn, base_pgno, flags));
+}
+
+/*
+ * __bam_open --
+ *	Open a btree.
+ *
+ * PUBLIC: int __bam_open __P((DB *,
+ * PUBLIC:      DB_TXN *, const char *, db_pgno_t, u_int32_t));
+ */
+int
+__bam_open(dbp, txn, fname, base_pgno, flags)
+	DB *dbp;
+	DB_TXN *txn;
+	const char *fname;
+	db_pgno_t base_pgno;
+	u_int32_t flags;
+{
+	int ret = __bam_open_int(dbp, txn, fname, base_pgno, flags);
+	if (!fname || strncmp(fname, "XXX.__q", 7)) return ret;
+	/*
+	 ** Format of valid queuedb names:
+	 ** XXX.__qfoobar_5a04ca240000006c.queuedb
+	 ** or
+	 ** XXX.__qfoobar.queuedb
+	 **
+	 ** Both styles name a queuedb: __qfoobar
+	 ** See also, is_tablename_queue @ osqlcomm.c
+	 */
+	size_t s = strlen(fname);
+	char name[s], *n = name;
+	const char *f = fname + 4; /* skip 'XXX.' */
+	while (*f != '.') /* seek up to '.queuedb' */
+		*n++ = *f++;
+	*n = 0;
+	s = n - name;
+	if (s > 17) { // possibly new style queue name
+		n = name + s - 17;
+		if (*n == '_') {
+			char *g = n + 1;
+			while (*g) {
+				char c = *g;
+				if ((c >= '0' && c <= '9') ||
+				    (c >= 'a' && c <= 'f')) {
+					++g;
+				} else {
+					break;
+				}
+			}
+			if (*g == 0) {
+				// walks like a genid
+				// quacks like a genid
+				*n = 0;
+			}
+		}
+	}
+	logmsg(LOGMSG_USER, "%s mapped %s -> %s for trigger subscription\n", __func__, fname, name);
+	dbp->trigger_subscription = __db_get_trigger_subscription(name);
+	dbp->dbenv->trigger_open(dbp->dbenv, name);
+	return ret;
 }
 
 /*
