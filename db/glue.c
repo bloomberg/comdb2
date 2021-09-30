@@ -2971,6 +2971,7 @@ static int new_master_callback(void *bdb_handle, char *host,
                "old master node=%s, rep_master=%s, old_gen=%u, gen=%u ",
                __func__, __LINE__, dbenv->egen, egen, host ? host : "NULL", oldmaster ? oldmaster : "NULL",
                newmaster ? newmaster : "NULL", oldgen, gen);
+        pthread_mutex_unlock(&dbenv->egen_mtx);
         return 0;
     } else {
         dbenv->egen = egen;
