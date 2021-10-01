@@ -514,7 +514,7 @@ int peer_dropped_connection_sbuf(SBUF2 *sb)
 
 int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->skip_peer_chk) {
+    if (clnt == NULL || clnt->skip_peer_chk || clnt->in_sqlite_init) {
         return 0;
     }
     return clnt->plugin.peer_check(clnt);
