@@ -493,7 +493,8 @@ int authenticate_cursor(BtCursor *pCur, int how)
 
 int peer_dropped_connection(struct sqlclntstate *clnt)
 {
-    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk) {
+    if (clnt == NULL || clnt->sb == NULL || clnt->skip_peer_chk ||
+        clnt->no_transaction) {
         return 0;
     }
     int rc;
