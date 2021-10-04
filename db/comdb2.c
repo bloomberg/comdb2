@@ -140,6 +140,7 @@ void berk_memp_sync_alarm_ms(int);
 
 #define tokdup strndup
 
+int gbl_thedb_stopped = 0;
 int gbl_sc_timeoutms = 1000 * 60;
 char gbl_dbname[MAX_DBNAME_LENGTH];
 int gbl_largepages;
@@ -1026,15 +1027,21 @@ enum OPENSTATES {
     OPENSTATE_SUCCESS = 3
 };
 
-void no_new_requests(struct dbenv *dbenv)
+void block_new_requests(struct dbenv *dbenv)
 {
-    thedb->stopped = 1;
+    gbl_thedb_stopped = 1;
+    MEMORY_SYNC;
+}
+
+void allow_new_requests(struct dbenv *dbenv)
+{
+    gbl_thedb_stopped = 0;
     MEMORY_SYNC;
 }
 
 int db_is_stopped(void)
 {
-    return thedb->stopped;
+    return gbl_thedb_stopped;
 }
 
 int db_is_exiting()
@@ -1591,7 +1598,7 @@ static void begin_clean_exit(void)
 
     /* dont let any new requests come in.  we're going to go non-coherent
        here in a second, so letting new reads in would be bad. */
-    no_new_requests(thedb);
+    block_new_requests(thedb);
 
     print_all_time_accounting();
     wait_for_sc_to_stop("exit", __func__, __LINE__);
@@ -1646,7 +1653,7 @@ void clean_exit(void)
 
     /* dont let any new requests come in.  we're going to go non-coherent
        here in a second, so letting new reads in would be bad. */
-    no_new_requests(thedb);
+    block_new_requests(thedb);
 
     print_all_time_accounting();
     wait_for_sc_to_stop("exit", __func__, __LINE__);

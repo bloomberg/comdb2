@@ -2851,7 +2851,8 @@ void berk_set_long_trace_func(void (*func)(const char *msg));
 void berk_init_rep_lockobj(void);
 
 long long get_unique_longlong(struct dbenv *env);
-void no_new_requests(struct dbenv *dbenv);
+void block_new_requests(struct dbenv *dbenv);
+void allow_new_requests(struct dbenv *dbenv);
 
 int get_next_seqno(void *tran, long long *seqno);
 int add_oplog_entry(struct ireq *iq, void *trans, int type, void *logrec,

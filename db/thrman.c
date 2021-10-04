@@ -544,7 +544,7 @@ void stop_threads(struct dbenv *dbenv)
     }
     UNLOCK(&stop_thds_time_lk);
 
-    dbenv->stopped = 1;
+    block_new_requests(dbenv);
     dbenv->no_more_sql_connections = 1;
 
     if (gbl_appsock_thdpool)
@@ -587,7 +587,7 @@ void resume_threads(struct dbenv *dbenv)
     resume_all_sql_pools();
     if (gbl_osqlpfault_thdpool)
         thdpool_resume(gbl_osqlpfault_thdpool);
-    dbenv->stopped = 0;
+    allow_new_requests(dbenv);
     dbenv->no_more_sql_connections = 0;
     MEMORY_SYNC;
     if (!dbenv->purge_old_blkseq_is_running ||
