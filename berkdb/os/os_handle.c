@@ -13,7 +13,7 @@ static const char revid[] = "$Id: os_handle.c,v 11.32 2003/02/16 15:54:03 bostic
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
-
+#include <sys/stat.h>
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
@@ -191,6 +191,7 @@ ___os_openhandle(dbenv, name, flags, mode, fhpp)
 		if (fhp->fd != -1) {
 
 			F_SET(fhp, DB_FH_OPENED);
+			fchmod(fhp->fd, mode);
 
 #if defined(HAVE_FCNTL_F_SETFD)
 			/* Deny file descriptor access to any child process. */

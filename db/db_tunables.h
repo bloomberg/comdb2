@@ -1452,6 +1452,11 @@ REGISTER_TUNABLE("req_all_time_threshold",
                  TUNABLE_INTEGER, &gbl_req_all_time_threshold,
                  EXPERIMENTAL | INTERNAL, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("file_permissions",
+                 "Default filesystem permissions for database files. (Default: 0660)",
+                 TUNABLE_STRING, NULL, 0, file_permissions_value, NULL,
+                 file_permissions_update, NULL);
+
 REGISTER_TUNABLE("fill_throttle",
                  "Throttle fill-reqs to once per fill-throttle ms.  "
                  "(Default: 500ms)",
