@@ -19,6 +19,7 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include "dbinc/txn.h"
 
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
@@ -30,6 +31,8 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include <pool.h>
 #include <logmsg.h>
 #include <locks_wrap.h>
+
+extern int gbl_file_permissions;
 
 typedef struct {
 	DB_MPOOL_HASH *track_hp;	/* Hash bucket. */
