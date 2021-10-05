@@ -107,6 +107,8 @@ REGISTER_TUNABLE("cachekbmin", NULL, TUNABLE_INTEGER, &db->cacheszkbmin,
                  READONLY, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("checkctags", NULL, TUNABLE_ENUM, &gbl_check_client_tags,
                  READONLY, checkctags_value, NULL, checkctags_update, NULL);
+REGISTER_TUNABLE("check_constraint_feature", "Enables support for CHECK CONSTRAINTs (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_check_constraint_feature, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("chkpoint_alarm_time",
                  "Warn if checkpoints are taking more than this many seconds. "
                  "(Default: 60 secs)",
@@ -168,6 +170,8 @@ REGISTER_TUNABLE("default_datetime_precision", NULL,
                  TUNABLE_INTEGER, &gbl_datetime_precision, READONLY, NULL, NULL,
                  NULL, NULL);
 */
+REGISTER_TUNABLE("default_function_feature", "Enables support for SQL function as default value in column definitions (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_default_function_feature, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("dir",
                  "Database directory. (Default: $COMDB2_ROOT/var/cdb2/$DBNAME)",
                  TUNABLE_STRING, &db->basedir, READONLY, NULL, NULL, NULL,
@@ -869,6 +873,8 @@ REGISTER_TUNABLE(
 REGISTER_TUNABLE("oldrangexlim", NULL, TUNABLE_BOOLEAN,
                  &gbl_honor_rangextunit_for_old_apis, READONLY, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("on_del_set_null_feature", "Enables support for ON DELETE SET NULL foreign key constraint action (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_on_del_set_null_feature, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("optimize_repdb_truncate",
                  "Enables use of optimized repdb truncate code. (Default: on)",
                  TUNABLE_BOOLEAN, &gbl_optimize_truncate_repdb,
@@ -1049,6 +1055,8 @@ REGISTER_TUNABLE("sbuftimeout", NULL, TUNABLE_INTEGER, &gbl_sbuftimeout,
 REGISTER_TUNABLE("sc_del_unused_files_threshold", NULL, TUNABLE_INTEGER,
                  &gbl_sc_del_unused_files_threshold_ms, READONLY | NOZERO, NULL,
                  NULL, NULL, NULL);
+REGISTER_TUNABLE("sequence_feature", "Enables support for SEQUENCES in column definitions (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_sequence_feature, 0, NULL, NULL, NULL, NULL);
 REGISTER_TUNABLE("simulate_rowlock_deadlock", NULL, TUNABLE_INTEGER,
                  &gbl_simulate_rowlock_deadlock_interval, 0, NULL, NULL,
                  simulate_rowlock_deadlock_update, NULL);
@@ -1417,7 +1425,7 @@ REGISTER_TUNABLE("dump_full_netqueue", "Dump net-queue on full rcode. "
 REGISTER_TUNABLE(
     "max_clientstats",
     "Max number of client stats stored in comdb2_clientstats. (Default: 10000)",
-    TUNABLE_INTEGER, &gbl_max_clientstats_cache, DYNAMIC, NULL, NULL, NULL,
+    TUNABLE_INTEGER, &gbl_max_clientstats_cache, 0, NULL, NULL, NULL,
     NULL);
 REGISTER_TUNABLE("max_logput_queue",
                  "Maximum queued log-records.  (Default: 100000)",
@@ -1692,11 +1700,11 @@ REGISTER_TUNABLE("random_fail_client_write_lock",
 
 REGISTER_TUNABLE("reorder_socksql_no_deadlock",
                  "Reorder sock sql to have no deadlocks ", TUNABLE_BOOLEAN,
-                 &gbl_reorder_socksql_no_deadlock, DYNAMIC | EXPERIMENTAL,
+                 &gbl_reorder_socksql_no_deadlock, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("reorder_idx_writes", "reorder_idx_writes (Default on)",
-                 TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, DYNAMIC | EXPERIMENTAL,
+                 TUNABLE_BOOLEAN, &gbl_reorder_idx_writes, EXPERIMENTAL,
                  NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("osql_snap_info_hashcheck",
@@ -2125,5 +2133,8 @@ REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before
 
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, READONLY | NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
+                 TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

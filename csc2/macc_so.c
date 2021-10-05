@@ -95,6 +95,10 @@ static int dyns_field_depth_comn(char *tag, int fidx, dpth_t *dpthinfo,
                                  int ndpthsinfo, int *ndpthout);
 
 int gbl_legacy_schema = 0;
+int gbl_check_constraint_feature = 1;
+int gbl_default_function_feature = 1;
+int gbl_on_del_set_null_feature = 1;
+int gbl_sequence_feature = 1;
 
 void csc2_error(const char *fmt, ...);
 void csc2_syntax_error(const char *fmt, ...);
@@ -151,8 +155,15 @@ void set_constraint_mod(int start, int op, int type)
         macc_globals->constraints[macc_globals->nconstraints].flags |= CT_UPD_CASCADE;
     else if (op == 1)
         macc_globals->constraints[macc_globals->nconstraints].flags |= CT_DEL_CASCADE;
-    else if (op == 2)
+    else if (op == 2) {
+        if (gbl_on_del_set_null_feature == 0 && comdb2_iam_master()) {
+            csc2_syntax_error("ERROR: ON DELETE SET NULL support not enabled\n");
+            any_errors++;
+            return;
+        }
+
         macc_globals->constraints[macc_globals->nconstraints].flags |= CT_DEL_SETNULL;
+    }
 }
 
 void set_constraint_name(char *name, enum ct_type type)
@@ -207,7 +218,12 @@ void add_constraint(char *tbl, char *key)
 
 void add_check_constraint(char *expr)
 {
-    CHECK_LEGACY_SCHEMA(1);
+    if (gbl_check_constraint_feature == 0 && comdb2_iam_master()) {
+        csc2_syntax_error("ERROR: CHECK CONSTRAINT support not enabled\n");
+        any_errors++;
+        return;
+    }
+
     ++macc_globals->n_check_constraints;
     /* We have to move past "where" and subsequent spaces. */
     expr += sizeof("where");
@@ -1830,6 +1846,21 @@ void add_fldopt(int opttype, int valtype, void *value)
         reset_fldopt();
         return;
     }
+
+    if (valtype == CLIENT_SEQUENCE && gbl_sequence_feature == 0 &&
+        comdb2_iam_master()) {
+        csc2_syntax_error("ERROR: SEQUENCE support not enabled\n");
+        any_errors++;
+        return;
+    }
+
+    if (valtype == CLIENT_FUNCTION && gbl_default_function_feature == 0 &&
+        comdb2_iam_master()) {
+        csc2_syntax_error("ERROR: DEFAULT FUNCTION support not enabled\n");
+        any_errors++;
+        return;
+    }
+
     if (valtype != CLIENT_INT && valtype != CLIENT_REAL && valtype != CLIENT_CSTR && valtype != CLIENT_BYTEARRAY &&
         valtype != CLIENT_SEQUENCE && valtype != CLIENT_FUNCTION) {
         csc2_error("FIELD OPTION ERROR: INVALID VALUE TYPE %d\n", valtype);
