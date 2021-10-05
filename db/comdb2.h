@@ -1533,6 +1533,7 @@ extern int gbl_penaltyincpercent;
 extern int gbl_maxwthreadpenalty;
 
 extern int gbl_uses_password;
+extern int gbl_uses_externalauth;
 extern int gbl_uses_accesscontrol_tableXnode;
 
 extern int gbl_upd_key;
