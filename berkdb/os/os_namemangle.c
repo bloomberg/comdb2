@@ -66,7 +66,7 @@ int
 __os_open(DB_ENV *dbenv, const char *name, u_int32_t flags,
     int mode, DB_FH ** fhpp)
 {
-	return ___os_open(dbenv, name, flags, 0664, fhpp);
+	return ___os_open(dbenv, name, flags, gbl_file_permissions, fhpp);
 }
 
 int ___os_open_extend(DB_ENV *dbenv, const char *name,
@@ -77,8 +77,8 @@ __os_open_extend(DB_ENV *dbenv, const char *name,
     u_int32_t log_size, u_int32_t page_size, u_int32_t flags,
     int mode, DB_FH ** fhpp)
 {
-	return ___os_open_extend(dbenv, name, log_size, page_size,
-	    flags, 0664, fhpp);
+	return ___os_open_extend(dbenv, name, log_size, page_size, flags,
+                                 gbl_file_permissions, fhpp);
 }
 
 int ___os_openhandle(DB_ENV *dbenv, const char *name, int flags,

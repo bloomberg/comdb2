@@ -355,6 +355,7 @@ int gbl_mask_internal_tunables = 1;
 
 size_t gbl_cached_output_buffer_max_bytes = 8 * 1024 * 1024; /* 8 MiB */
 int gbl_sqlite_sorterpenalty = 5;
+int gbl_file_permissions = 0660;
 
 extern int gbl_net_maxconn;
 
@@ -956,6 +957,24 @@ static int test_log_file_update(void *context, void *value)
     free(*(char **)tunable->var);
     *(char **)tunable->var = strdup(newValue);
     Pthread_mutex_unlock(&gbl_test_log_file_mtx);
+    return 0;
+}
+
+static void *file_permissions_value(void *context)
+{
+    static char val[15];
+    snprintf(val, sizeof(val), "0%o", gbl_file_permissions);
+    return val;
+}
+
+static int file_permissions_update(void *context, void *value)
+{
+    char *in = (char*) value;
+    long int val = strtol(in, NULL, 8);
+    if (val == LONG_MAX || val == LONG_MIN) {
+        return 1;
+    }
+    gbl_file_permissions = val;
     return 0;
 }
 
