@@ -46,6 +46,8 @@ static int __dbenv_config __P((DB_ENV *, const char *, u_int32_t));
 static int __dbenv_refresh __P((DB_ENV *, u_int32_t, int));
 static int __dbenv_remove_int __P((DB_ENV *, const char *, u_int32_t));
 
+extern int gbl_file_permissions;
+
 /*
  * db_version --
  *	Return version information.
@@ -1325,7 +1327,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 	pbuf = bdb_trans(fname, buf);
 
 	ret =
-	    ___os_openhandle(dbenv, pbuf, O_SYNC | O_RDWR, 0666,
+	    ___os_openhandle(dbenv, pbuf, O_SYNC | O_RDWR, gbl_file_permissions,
 	    &dbenv->checkpoint);
 	if (ret == ENOENT) {
 		DB_TXNMGR *mgr;
@@ -1338,7 +1340,7 @@ __checkpoint_open(DB_ENV *dbenv, const char *db_home)
 			__os_closehandle(dbenv, dbenv->checkpoint);
 		ret =
 		    ___os_openhandle(dbenv, pbuf,
-		    O_SYNC | O_RDWR | O_CREAT | O_EXCL, 0666,
+		    O_SYNC | O_RDWR | O_CREAT | O_EXCL, gbl_file_permissions,
 		    &dbenv->checkpoint);
 		if (ret) {
 			__db_err(dbenv, "__checkpoint_open create new rc %d\n",
