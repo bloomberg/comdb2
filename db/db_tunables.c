@@ -267,6 +267,11 @@ extern int gbl_ref_sync_iterations;
 extern int gbl_sc_pause_at_end;
 extern int gbl_sc_is_at_end;
 extern int gbl_max_password_cache_size;
+extern int gbl_check_constraint_feature;
+extern int gbl_default_function_feature;
+extern int gbl_on_del_set_null_feature;
+extern int gbl_sequence_feature;
+extern int gbl_view_feature;
 
 extern char *gbl_kafka_topic;
 extern char *gbl_kafka_brokers;

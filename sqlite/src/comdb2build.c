@@ -39,6 +39,8 @@ extern int gbl_legacy_schema;
 extern int gbl_permit_small_sequences;
 extern int gbl_lightweight_rename;
 
+int gbl_view_feature = 1;
+
 extern int sqlite3GetToken(const unsigned char *z, int *tokenType);
 extern int sqlite3ParserFallback(int iToken);
 extern int comdb2_save_ddl_context(char *name, void *ctx, comdb2ma mem);
@@ -6740,6 +6742,11 @@ cleanup:
 void comdb2_create_view(Parse *pParse, const char *view_name, int view_name_len,
                         const char *zStmt, int temp)
 {
+    if (gbl_view_feature == 0) {
+        setError(pParse, SQLITE_MISUSE, "VIEWs support not enabled");
+        return;
+    }
+
     if (comdb2IsPrepareOnly(pParse))
         return;
 
