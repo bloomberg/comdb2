@@ -72,6 +72,9 @@ void check_access_controls(struct dbenv *dbenv)
     check_tableXnode_enabled(dbenv);
 }
 
+int (*externalComdb2AuthenticateUserMakeRequest)(void *) = NULL;
+extern void *(*externGetAuthData)(void *);
+
 /* If user password does not match this function
  * will write error response and return a non 0 rc
  */
@@ -79,6 +82,12 @@ static int check_user_password(struct sqlclntstate *clnt)
 {
     int password_rc = 0;
     int valid_user;
+
+    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
+        if (!clnt->authdata && externGetAuthData)
+            clnt->authdata = externGetAuthData(clnt);
+        return externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+    }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {
         return 0;
@@ -150,6 +159,10 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 #endif
         rc = check_user_password(clnt);
 
+    if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
+        return rc;
+    }
+
     if (rc == 0) {
         if (thd->have_lastuser &&
             strcmp(thd->lastuser, clnt->current_user.name) != 0) {
@@ -165,11 +178,18 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     return rc;
 }
 
+int (*externalComdb2AuthenticateUserRead)(void *, const char *tablename) = NULL;
+int (*externalComdb2AuthenticateUserWrite)(void *,
+                                           const char *tablename) = NULL;
+extern void *(*externGetAuthData)(void *);
+
 int access_control_check_sql_write(struct BtCursor *pCur,
                                    struct sql_thread *thd)
 {
     int rc = 0;
     int bdberr = 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(
@@ -187,25 +207,42 @@ int access_control_check_sql_write(struct BtCursor *pCur,
             return SQLITE_ABORT;
         }
     }
+    const char *table_name = NULL;
+    if (pCur->db)
+        table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
+                                                  : pCur->db->tablename;
 
-    /* Check read access if its not user schema. */
-    /* Check it only if engine is open already. */
-    if (gbl_uses_password && (thd->clnt->in_sqlite_init == 0)) {
-        rc = bdb_check_user_tbl_access(
-            pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
-            pCur->db->tablename, ACCESS_WRITE, &bdberr);
-        if (rc != 0) {
+    if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
+        externalComdb2AuthenticateUserWrite) {
+        if (!clnt->authdata && externGetAuthData)
+            clnt->authdata = externGetAuthData(clnt);
+        if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name)) {
             char msg[1024];
-            snprintf(msg, sizeof(msg),
-                     "Write access denied to %s for user %s bdberr=%d",
-                     pCur->db->timepartition_name ? pCur->db->timepartition_name
-                                                  : pCur->db->tablename,
-                     thd->clnt->current_user.name, bdberr);
+            snprintf(msg, sizeof(msg), "Write access denied for table %s",
+                     table_name);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
-
             return SQLITE_ABORT;
+        }
+    } else {
+        /* Check read access if its not user schema. */
+        /* Check it only if engine is open already. */
+        if (gbl_uses_password && (thd->clnt->in_sqlite_init == 0)) {
+            rc = bdb_check_user_tbl_access(
+                pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
+                pCur->db->tablename, ACCESS_WRITE, &bdberr);
+            if (rc != 0) {
+                char msg[1024];
+                snprintf(msg, sizeof(msg),
+                         "Write access denied to %s for user %s bdberr=%d",
+                         table_name, thd->clnt->current_user.name, bdberr);
+                logmsg(LOGMSG_INFO, "%s\n", msg);
+                errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
+                errstat_set_str(&thd->clnt->osql.xerr, msg);
+
+                return SQLITE_ABORT;
+            }
         }
     }
 
@@ -216,6 +253,8 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 {
     int rc = 0;
     int bdberr = 0;
+
+    struct sqlclntstate *clnt = thd->clnt;
 
     if (pCur->cursor_class == CURSORCLASS_TEMPTABLE)
         return 0;
@@ -237,24 +276,43 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         }
     }
 
+    const char *table_name = NULL;
+
+    if (pCur->db)
+        table_name = pCur->db->timepartition_name ? pCur->db->timepartition_name
+                                                  : pCur->db->tablename;
+
     /* Check read access if its not user schema. */
     /* Check it only if engine is open already. */
-    if (gbl_uses_password && thd->clnt->in_sqlite_init == 0) {
-        rc = bdb_check_user_tbl_access(
-            pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
-            pCur->db->tablename, ACCESS_READ, &bdberr);
-        if (rc != 0) {
+    if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
+        externalComdb2AuthenticateUserRead) {
+        if (!clnt->authdata && externGetAuthData)
+            clnt->authdata = externGetAuthData(clnt);
+        if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name)) {
             char msg[1024];
-            snprintf(msg, sizeof(msg),
-                     "Read access denied to %s for user %s bdberr=%d",
-                     pCur->db->timepartition_name ? pCur->db->timepartition_name
-                                                  : pCur->db->tablename,
-                     thd->clnt->current_user.name, bdberr);
+            snprintf(msg, sizeof(msg), "Read access denied for table %s",
+                     table_name);
             logmsg(LOGMSG_INFO, "%s\n", msg);
             errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
             errstat_set_str(&thd->clnt->osql.xerr, msg);
-
             return SQLITE_ABORT;
+        }
+    } else {
+        if (gbl_uses_password && thd->clnt->in_sqlite_init == 0) {
+            rc = bdb_check_user_tbl_access(
+                pCur->db->dbenv->bdb_env, thd->clnt->current_user.name,
+                pCur->db->tablename, ACCESS_READ, &bdberr);
+            if (rc != 0) {
+                char msg[1024];
+                snprintf(msg, sizeof(msg),
+                         "Read access denied to %s for user %s bdberr=%d",
+                         table_name, thd->clnt->current_user.name, bdberr);
+                logmsg(LOGMSG_INFO, "%s\n", msg);
+                errstat_set_rc(&thd->clnt->osql.xerr, SQLITE_ACCESS);
+                errstat_set_str(&thd->clnt->osql.xerr, msg);
+
+                return SQLITE_ABORT;
+            }
         }
     }
 

@@ -2002,11 +2002,27 @@ void free_newsql_appdata(struct sqlclntstate *clnt)
     free(appdata->col_info.type);
 }
 
+extern void * (*externGetAuthData) (void*);
+extern void * (*externalMakeAuthData) (const char *, int, int, int, void *);
+
+void * getAuthData(void * p_clnt) {
+    struct sqlclntstate *clnt = p_clnt;
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata) {
+        CDB2SQLQUERY *sql_query = appdata->sqlquery;
+        if (sql_query->identity) {
+            return externalMakeAuthData(sql_query->identity->principal, sql_query->identity->majorversion, sql_query->identity->minorversion, sql_query->identity->data.len, sql_query->identity->data.data);
+        }
+    }
+    return NULL;
+}
+
 void newsql_setup_clnt(struct sqlclntstate *clnt)
 {
     struct newsql_appdata *appdata = clnt->appdata;
     appdata->send_intrans_response = 1;
     update_col_info(&appdata->col_info, 32);
+    externGetAuthData = getAuthData;
     plugin_set_callbacks(clnt, newsql);
 }
 
