@@ -72,9 +72,8 @@ struct fingerprint_track {
     int64_t rows;     /* Cumulative number of rows selected */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
-    char ** cachedColNames; /* Cached column names from sqlitex */
-    char ** cachedColDeclTypes; /* Cached column types from sqlitex */
-    int cachedColCount;     /* Cached column count from sqlitex */
+    int typeMismatch; /* Type(s) did not match when compared to sqlitex's */
+    int nameMismatch; /* Column name(s) did not match when compared to sqlitex's */
 };
 
 struct sql_authorizer_state {

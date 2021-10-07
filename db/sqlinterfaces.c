@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -2993,6 +2993,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             char **column_names;
             char **column_decltypes;
             int column_count;
+            int do_reprepare = 0;
             struct fingerprint_track *t = NULL;
 
             if (gbl_fingerprint_queries) {
@@ -3018,56 +3019,22 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                 Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
                 if (gbl_fingerprint_hash) {
                     t = hash_find(gbl_fingerprint_hash, fingerprint);
-                    if (t) {
-                        /* Create a copy of cached column names and pass it to
-                         * stmt, to be later freed when the stmt finalizes. */
-                        column_count = t->cachedColCount;
-                        /* column_count is 0 if column names do match,
-                           in which case we just set column_names to NULL */
-                        if (column_count == 0) {
-                            column_names = NULL;
-                            column_decltypes = NULL;
-                        } else {
-                            column_names =
-                                calloc(sizeof(char *), t->cachedColCount);
-                            if (column_names == NULL) {
-                                logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
-                                       __func__, __LINE__);
-                                column_count = 0;
-                            } else {
-                                for (int i = 0; i < t->cachedColCount; i++) {
-                                    column_names[i] =
-                                        strdup(t->cachedColNames[i]);
-                                }
-                            }
-
-                            /* Do the same for types */
-                            column_decltypes =
-                                calloc(sizeof(char *), t->cachedColCount);
-                            if (column_decltypes == NULL) {
-                                logmsg(LOGMSG_ERROR, "%s:%d: out of memory\n",
-                                       __func__, __LINE__);
-                                column_count = 0;
-                            } else {
-                                for (int i = 0; i < t->cachedColCount; i++) {
-                                    column_decltypes[i] = strdup(t->cachedColDeclTypes[i]);
-                                }
-                            }
-                        }
-                        logmsg(LOGMSG_DEBUG,
-                               "%s:%d: using cached column names from "
-                               "fingerprint\n",
-                               __func__, __LINE__);
+                    if (t && (t->typeMismatch || t->nameMismatch)) {
+                        do_reprepare = 1;
                     }
                 }
                 Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
             }
 
-            /* If there's no fingerprint for this query, let's take the longer
-             * route of repreparing the query. */
-            if (!t) {
-                rc = query_preparer_plugin->do_prepare(
-                    thd, clnt, rec->sql, &column_names, &column_decltypes, &column_count);
+            /* Prepare the query again with the *old sqlite version*, if
+             * - there is no fingerprint, or
+             * - it resulted in mismatching column name(s)/type(s) in past executions
+             */
+            if (!t || do_reprepare) {
+                rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql,
+                                                       &column_names,
+                                                       &column_decltypes,
+                                                       &column_count);
                 if (rc)
                     return rc;
             }
