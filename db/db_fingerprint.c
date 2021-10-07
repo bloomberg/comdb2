@@ -40,15 +40,6 @@ static int free_fingerprint(void *obj, void *arg)
     struct fingerprint_track *t = (struct fingerprint_track *)obj;
     if (t != NULL) {
         free(t->zNormSql);
-        /* Free cached column names */
-        if (t->cachedColCount > 0) {
-            for (int i = 0; i < t->cachedColCount; i++) {
-                free(t->cachedColNames[i]);
-                free(t->cachedColDeclTypes[i]);
-            }
-            free(t->cachedColNames);
-            free(t->cachedColDeclTypes);
-        }
         free(t);
     }
     return 0;
@@ -90,25 +81,14 @@ static int have_type_overrides(struct sqlclntstate *clnt) {
 }
 
 static void do_name_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct fingerprint_track *t) {
-    t->didNameChecks = 1;
-    char *namesep = "";
-
-    t->cachedColCount = stmt_cached_column_count(stmt);
-    t->cachedColNames = calloc(sizeof(char *), t->cachedColCount);
-    if (t->cachedColNames == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__,
-                __LINE__);
-        return;
-    }
-
+    int cachedColCount = stmt_cached_column_count(stmt);
+    int name_mismatches = 0;
+    /* Temporary buffers to hold list of column names for logging */
     strbuf *oldnames = strbuf_new();
     strbuf *newnames = strbuf_new();
+    char *namesep = "";
 
-    int name_mismatches = 0;
-    for (int i = 0; i < t->cachedColCount; i++) {
-        t->cachedColNames[i] =
-            strdup(stmt_cached_column_name(stmt, i));
-
+    for (int i = 0; i < cachedColCount; i++) {
         char *newname = stmt_column_name(stmt, i);
         char *oldname = stmt_cached_column_name(stmt, i);
         if (strcmp(newname, oldname) != 0) {
@@ -133,51 +113,30 @@ static void do_name_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct
                 "(https://www.sqlite.org/c3ref/column_name.html)\n",
                 fp,
                 strbuf_buf(oldnames), strbuf_buf(newnames));
+        t->nameMismatch = 1;
     }
-
 
     strbuf_free(oldnames);
     strbuf_free(newnames);
 }
 
-static void collect_types(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct fingerprint_track *t) {
-    t->haveTypes = 1;
-
-    t->cachedColCount = stmt_cached_column_count(stmt);
-    t->cachedColDeclTypes = calloc(sizeof(char *), t->cachedColCount);
-    if (t->cachedColDeclTypes == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__,
-                __LINE__);
-        t->cachedColCount = 0;
-        return;
-    }
-
-    for (int i = 0; i < t->cachedColCount; i++) {
-        t->cachedColDeclTypes[i] =
-            strdup(stmt_cached_column_decltype(stmt, i));
-    }
-}
-
 static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct fingerprint_track *t) {
-    t->didTypeChecks = 1;
-
-    /* Temporary buffers to hold list of column names logging */
-    strbuf *newtypes = strbuf_new();
-    strbuf *oldtypes = strbuf_new();
-
+    int cachedColCount = stmt_cached_column_count(stmt);
     int decltype_mismatches = 0;
+
+    /* Temporary buffers to hold list of column types for logging */
+    strbuf *oldtypes = strbuf_new();
+    strbuf *newtypes = strbuf_new();
     char *typesep = "";
 
-    for (int i = 0; i < t->cachedColCount; i++) {
-        if (clnt->plugin.needs_decltypes) {
-            char *newtype = stmt_column_decltype(stmt, i);
-            char *oldtype = stmt_cached_column_decltype(stmt, i);
-            if (strcmp(newtype, oldtype) != 0) {
-                strbuf_appendf(newtypes, "%s%s %s", typesep, stmt_column_name(stmt, i), newtype);
-                strbuf_appendf(oldtypes, "%s%s %s", typesep, stmt_cached_column_name(stmt, i), oldtype);
-                typesep = ", ";
-                decltype_mismatches++;
-            }
+    for (int i = 0; i < cachedColCount; i++) {
+        char *newtype = stmt_column_decltype(stmt, i);
+        char *oldtype = stmt_cached_column_decltype(stmt, i);
+        if (strcmp(newtype, oldtype) != 0) {
+            strbuf_appendf(newtypes, "%s%s %s", typesep, stmt_column_name(stmt, i), newtype);
+            strbuf_appendf(oldtypes, "%s%s %s", typesep, stmt_cached_column_name(stmt, i), oldtype);
+            typesep = ", ";
+            decltype_mismatches++;
         }
     }
 
@@ -191,7 +150,9 @@ static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt, struct
                 "fp:%s mismatched -- old: %s new: %s\n",
                 fp,
                 strbuf_buf(oldtypes), strbuf_buf(newtypes));
+        t->typeMismatch = 1;
     }
+
     strbuf_free(oldtypes);
     strbuf_free(newtypes);
 }
@@ -247,6 +208,12 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
             logmsg(LOGMSG_USER, "NORMALIZED [%s] {%s} ==> {%s}\n",
                    fp, zSql, t->zNormSql);
         }
+
+        if (gbl_old_column_names && stmt) {
+            do_name_checks(clnt, stmt, t);
+            if (!have_type_overrides(clnt))
+                do_type_checks(clnt, stmt, t);
+        }
     } else {
         t->count++;
         t->cost += cost;
@@ -257,15 +224,6 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt, const char *
         assert( t->zNormSql!=zNormSql );
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
-    }
-
-    if (gbl_old_column_names && t && stmt) {
-        if (!t->didNameChecks)
-            do_name_checks(clnt, stmt, t);
-        if (!t->haveTypes)
-            collect_types(clnt, stmt, t);
-        if (!t->didTypeChecks && !have_type_overrides(clnt))
-            do_type_checks(clnt, stmt, t);
     }
 
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
