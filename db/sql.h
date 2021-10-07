@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -70,12 +70,8 @@ struct fingerprint_track {
     int64_t rows;     /* Cumulative number of rows selected */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
-    char ** cachedColNames; /* Cached column names from sqlitex */
-    char ** cachedColDeclTypes; /* Cached column types from sqlitex */
-    int cachedColCount;     /* Cached column count from sqlitex */
-    int haveTypes;          /* Set if we cached types, but did not necessarily do type checks */
-    int didTypeChecks;      /* Set if we already did type checks */
-    int didNameChecks;      /* Set if we already did name checks */
+    int typeMismatch; /* Type(s) did not match when compared to sqlitex's */
+    int nameMismatch; /* Column name(s) did not match when compared to sqlitex's */
 };
 
 typedef int(plugin_query_data_func)(struct sqlclntstate *, void **, int *, int, int);
@@ -460,7 +456,6 @@ struct plugin_callbacks {
     void *state;
     int (*column_count)(struct sqlclntstate *,
                         sqlite3_stmt *); /* sqlite3_column_count */
-    plugin_func *needs_decltypes;
     int (*next_row)(struct sqlclntstate *, sqlite3_stmt *); /* sqlite3_step */
     SQLITE_CALLBACK_API(int, type);                   /* sqlite3_column_type */
     SQLITE_CALLBACK_API(sqlite_int64, int64);         /* sqlite3_column_int64*/
@@ -512,7 +507,6 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
-        make_plugin_callback(clnt, name, needs_decltypes);                     \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
         make_plugin_optional_null(clnt, int64);                                \
