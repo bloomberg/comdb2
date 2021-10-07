@@ -40,15 +40,6 @@ static int free_fingerprint(void *obj, void *arg)
     struct fingerprint_track *t = (struct fingerprint_track *)obj;
     if (t != NULL) {
         free(t->zNormSql);
-        /* Free cached column names */
-        if (t->cachedColCount > 0) {
-            for (int i = 0; i < t->cachedColCount; i++) {
-                free(t->cachedColNames[i]);
-                free(t->cachedColDeclTypes[i]);
-            }
-            free(t->cachedColNames);
-            free(t->cachedColDeclTypes);
-        }
         free(t);
     }
     return 0;
@@ -85,6 +76,91 @@ void calc_fingerprint(const char *zNormSql, size_t *pnNormSql,
     MD5Init(&ctx);
     MD5Update(&ctx, (unsigned char *)zNormSql, *pnNormSql);
     MD5Final(fingerprint, &ctx);
+}
+
+static int have_type_overrides(struct sqlclntstate *clnt) {
+    return clnt->plugin.override_count(clnt) > 0;
+}
+
+static void do_name_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                           struct fingerprint_track *t) {
+    int cachedColCount = stmt_cached_column_count(stmt);
+    int name_mismatches = 0;
+    /* Temporary buffers to hold list of column names for logging */
+    strbuf *oldnames = strbuf_new();
+    strbuf *newnames = strbuf_new();
+    char *namesep = "";
+
+    for (int i = 0; i < cachedColCount; i++) {
+        char *newname = stmt_column_name(stmt, i);
+        char *oldname = stmt_cached_column_name(stmt, i);
+        if (strcmp(newname, oldname) != 0) {
+            /* mismatched column name from new sqlite engine */
+            strbuf_appendf(newnames, "%s%s", namesep, stmt_column_name(stmt, i));
+
+            /* mismatched column name from old sqlite engine */
+            strbuf_appendf(oldnames, "%s%s", namesep, stmt_cached_column_name(stmt, i));
+            namesep = ", ";
+            name_mismatches++;
+        }
+    }
+
+    if (name_mismatches) {
+        char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+        util_tohex(fp, (const char *)t->fingerprint, FINGERPRINTSZ);
+
+        logmsg(LOGMSG_USER,
+                "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
+                "column names in the result set stable across Comdb2 versions. "
+                "fp:%s mismatched -- old: %s new: %s "
+                "(https://www.sqlite.org/c3ref/column_name.html)\n",
+                fp,
+                strbuf_buf(oldnames), strbuf_buf(newnames));
+        t->nameMismatch = 1;
+    }
+
+    strbuf_free(oldnames);
+    strbuf_free(newnames);
+}
+
+static void do_type_checks(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
+                           struct fingerprint_track *t) {
+    int cachedColCount = stmt_cached_column_count(stmt);
+    int decltype_mismatches = 0;
+
+    /* Temporary buffers to hold list of column types for logging */
+    strbuf *newtypes = strbuf_new();
+    strbuf *oldtypes = strbuf_new();
+    char *typesep = "";
+
+    for (int i = 0; i < cachedColCount; i++) {
+        char *newtype = stmt_column_decltype(stmt, i);
+        char *oldtype = stmt_cached_column_decltype(stmt, i);
+        if (strcmp(newtype, oldtype) != 0) {
+            strbuf_appendf(newtypes, "%s%s %s", typesep,
+                           stmt_column_name(stmt, i), newtype);
+            strbuf_appendf(oldtypes, "%s%s %s", typesep,
+                           stmt_cached_column_name(stmt, i), oldtype);
+            typesep = ", ";
+            decltype_mismatches++;
+        }
+    }
+
+    if (decltype_mismatches) {
+        char fp[FINGERPRINTSZ*2+1]; /* 16 ==> 33 */
+        util_tohex(fp, (const char *)t->fingerprint, FINGERPRINTSZ);
+
+        logmsg(LOGMSG_USER,
+                "TYPE MISMATCH DETECTED! Use the *typed API variant to "
+                "specify query output types and keep types stable across Comdb2 versions. "
+                "fp:%s mismatched -- old: %s new: %s\n",
+                fp,
+                strbuf_buf(oldtypes), strbuf_buf(newtypes));
+        t->typeMismatch = 1;
+    }
+
+    strbuf_free(oldtypes);
+    strbuf_free(newtypes);
 }
 
 void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
@@ -145,64 +221,10 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                    fp, zSql, t->zNormSql);
         }
 
-        if (gbl_old_column_names && stmt && !stmt_do_column_names_match(stmt)) {
-            /* Also cache the old column names, stored in the stmt, alongside
-             * the fingerpint. */
-            t->cachedColCount = stmt_cached_column_count(stmt);
-            t->cachedColNames = calloc(sizeof(char *), t->cachedColCount);
-            t->cachedColDeclTypes = calloc(sizeof(char *), t->cachedColCount);
-            if (t->cachedColNames == NULL || t->cachedColDeclTypes == NULL) {
-                logmsg(LOGMSG_ERROR, "%s:%d out of memory\n", __func__,
-                       __LINE__);
-                t->cachedColCount = 0;
-            } else {
-                for (int i = 0; i < t->cachedColCount; i++) {
-                    t->cachedColNames[i] =
-                        strdup(stmt_cached_column_name(stmt, i));
-                    t->cachedColDeclTypes[i] =
-                        strdup(stmt_cached_column_decltype(stmt, i));
-                }
-            }
-
-            /* Temporary buffers to hold list of column names for logging */
-            char buf1[1024];
-            char buf2[1024];
-            unsigned short int remaining_bytes1 = 0;
-            unsigned short int remaining_bytes2 = 0;
-            int mismatch_col_count = 0;
-
-            /* Create a list of mismatched column names returned by current
-               and old sqlite engines. */
-            for (int i = 0; i < sqlite3_column_count(stmt); i++) {
-                char *ptr1 = stmt_column_name(stmt, i);
-                char *ptr2 = stmt_cached_column_name(stmt, i);
-
-                if (strcmp(ptr1, ptr2) != 0) {
-                    mismatch_col_count++;
-
-                    /* mismatched column name from new sqlite engine */
-                    remaining_bytes1 +=
-                        snprintf(buf1 + remaining_bytes1,
-                                 sizeof(buf1) - remaining_bytes1, "%s%s",
-                                 (mismatch_col_count == 1) ? "" : ", ",
-                                 stmt_column_name(stmt, i));
-                    /* mismatched column name from old sqlite engine */
-                    remaining_bytes2 += snprintf(
-                        buf2 + remaining_bytes2,
-                        sizeof(buf2) - remaining_bytes2, "%s%s",
-                        (i == 0) ? "" : ", ", stmt_cached_column_name(stmt, i));
-                }
-            }
-
-            logmsg(LOGMSG_USER,
-                   "COLUMN NAME MISMATCH DETECTED! Use 'AS' clause to keep "
-                   "column names in the result set stable across Comdb2 "
-                   "versions. fp:%s mismatched column names (old): %s (new): "
-                   "%s (https://www.sqlite.org/c3ref/column_name.html)\n",
-                   fp, buf2, buf1);
-        } else {
-            t->cachedColNames = NULL;
-            t->cachedColCount = 0;
+        if (gbl_old_column_names && stmt) {
+            do_name_checks(clnt, stmt, t);
+            if (!have_type_overrides(clnt))
+                do_type_checks(clnt, stmt, t);
         }
     } else {
         t->count++;
@@ -215,6 +237,7 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         assert( t->nNormSql==nNormSql );
         assert( strncmp(t->zNormSql,zNormSql,t->nNormSql)==0 );
     }
+
     Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
 
     if (logger != NULL) {
