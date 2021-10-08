@@ -281,6 +281,9 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
     struct dbtable *db;
     unsigned int num_logs;
 
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    Pthread_mutex_lock(&lk);
+
     for(ndb = 0; ndb < dbenv->num_dbs; ndb++)
     {
         db = dbenv->dbs[ndb];
@@ -292,6 +295,8 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
         total += calc_table_size(db, 0);
     }
     total += bdb_logs_size(dbenv->bdb_env, &num_logs);
+
+    Pthread_mutex_unlock(&lk);
     return total;
 }
 
