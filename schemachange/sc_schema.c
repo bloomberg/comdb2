@@ -1246,13 +1246,69 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     uint64_t oldsize, newsize, diff;
     char b1[32], b2[32], b3[32], b4[32];
 
+    /* 1 if using the entire table size to estimate disk space needed.
+       0 if using the following formula:
+            disk_space_needed = index_width / table_width * table_size / In(2)
+       This assumes that the table is 100% filled and the index is randomly
+       inserted into and thus has a fill factor of In(2) (~0.693). So in reality
+       the actual disk space used should be lower than the estimate. */
+    int conservative = 0;
+    double pct = 0;
+    struct scplan *theplan = newdb->plan;
+
+    if (theplan == NULL /* if not using a plan */ || (theplan->dta_plan == -1) /* if rebuilding data */ ||
+        !theplan->plan_blobs /* if rebuilding all blobs */)
+        conservative = 1;
+    else {
+        /* if rebuilding any blobs (could be expanding inline portion in which case
+           data size increases and blob size decreases, or shrinking inline portion
+           in which case data size decreases and blob size increases), just estimate
+           disk requirement the old way. */
+        for (int iblb = 0, nblb = newdb->numblobs; iblb != nblb; ++iblb) {
+            if (theplan->blob_plan[iblb] == -1) {
+                conservative = 1;
+                break;
+            }
+        }
+
+        if (!conservative) {
+            int iix, nix, lrl;
+            struct schema *ix;
+            for (iix = 0, nix = newdb->nix, lrl = newdb->lrl; iix != nix; ++iix) {
+                if (theplan->ix_plan[iix] == -1) {
+                    ix = newdb->ixschema[iix];
+                    /* If an index has a blob field or is datacopy, the size
+                       will rise based on the blob size or data size. So still
+                       use the old way here. */
+                    if (!ix->ix_blob && !(ix->flags & SCHEMA_DATACOPY))
+                        pct += get_size_of_schema(ix) / (double)lrl;
+                }
+            }
+
+            /* Neither an instant schema change, nor rebuilding data, indexes and blobs.
+               How can this happen? */
+            if (pct == 0)
+                conservative = 1;
+        }
+    }
+
     oldsize = calc_table_size(olddb, 0);
     newsize = calc_table_size(newdb, 0);
 
-    if (newsize > oldsize)
-        diff = oldsize / 3; /* newdb already larger; assume 33% growth */
-    else
-        diff = oldsize - newsize;
+    if (conservative) {
+        if (newsize > oldsize)
+            diff = oldsize / 3; /* newdb already larger; assume 33% growth */
+        else
+            diff = oldsize - newsize;
+    } else {
+        /* In case there's a miscalculation. */
+        if (newsize > oldsize)
+            diff = oldsize / 3;
+        else
+            diff = (pct * oldsize) / 0.693 - newsize;
+    }
+
+    wanted = (diff * (uint64_t)(100 + headroom)) / 100ULL;
 
     rc = statvfs(olddb->dbenv->basedir, &st);
     if (rc == -1) {
@@ -1262,7 +1318,6 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
     }
 
     avail = (uint64_t)st.f_bavail * (uint64_t)st.f_frsize;
-    wanted = (diff * (uint64_t)(100 + headroom)) / 100ULL;
 
     sc_printf(
         s, "Table %s, old %s, new %s, reqd. %s, avail %s\n", olddb->tablename,
@@ -1271,22 +1326,10 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
 
     if (wanted > avail) {
         sc_errf(s, "DANGER low headroom for schema change\n");
-        /*
-        sc_errf(s, "Table %s is %s, %s free space on disk\n",
-                db->tablename,
-                fmt_size(b1, sizeof(b1), tablesize),
-                fmt_size(b2, sizeof(b2), avail));
-        sc_errf(s, "We want at least %s + %d%% free\n", b1, headroom);
-        */
+        sc_client_error(s, "server is running low on disk space");
         return -1;
     }
 
-    /*
-    sc_printf(s, "Table %s is %s, %s free space on disk\n",
-            db->tablename,
-            fmt_size(b1, sizeof(b1), tablesize),
-            fmt_size(b2, sizeof(b2), avail));
-    */
     return 0;
 }
 
