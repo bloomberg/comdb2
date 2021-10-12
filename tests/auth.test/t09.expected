@@ -250,6 +250,7 @@
 (candidate='comdb2_sqlpool_queue')
 (candidate='comdb2_systablepermissions')
 (candidate='comdb2_systables')
+(candidate='comdb2_table_properties')
 (candidate='comdb2_tablepermissions')
 (candidate='comdb2_tables')
 (candidate='comdb2_tablesizes')

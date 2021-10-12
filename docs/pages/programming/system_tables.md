@@ -425,6 +425,20 @@ Table of permissions for system tables in the database.
 * `WRITE` - `Y` if `username` has write access to `tablename`
 * `DDL` - `Y` if `username` can modify `tablename` schema
 
+## comdb2_table_properties
+
+This table lists miscellaneous table properties
+
+    comdb2_table_properties(table_name, odh, compress, blob_compress, 
+    in_place_updates, instant_schema_change)
+
+* `table_name` - Name of the table
+* `odh` - `Y` if on disk headers are enabled
+* `compress` - Type of compression used
+* `blob_compress` - Type of blob compression used
+* `in_place_updates` - `Y` if in-place updates are enabled
+* `instant_schema_change` - `Y` if instant schema change is enabled
+
 ## comdb2_tablepermissions
 
 Table of permissions for tables in the database.
