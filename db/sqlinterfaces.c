@@ -4197,6 +4197,7 @@ check_version:
             }
         }
     }
+    //TODO: this assert may be stale, rc can also be SQLITE_SCHEMA, and SQLITE_INTERNAL
     assert(!thd->sqldb || rc == SQLITE_OK || rc == SQLITE_SCHEMA_REMOTE);
 
     if (gbl_enable_sql_stmt_caching && (thd->stmt_cache == NULL)) {
