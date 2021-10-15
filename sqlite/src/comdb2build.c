@@ -2491,6 +2491,11 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
+    if (timepart_is_timepart(table, 1)) {
+        setError(pParse, SQLITE_MISUSE, "Time partitions cannot be renamed");
+        return;
+    }
+
     if (comdb2TokenToStr(pName, newTable, sizeof(newTable))) {
         setError(pParse, SQLITE_MISUSE, "Table name is too long");
         return;

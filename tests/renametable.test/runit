@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 
 dbnm=$1
-#cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
-cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > output.txt 2>&1
+OUT=output.txt
+
+cat <<EOF | cdb2sql ${CDB2_OPTIONS} $dbnm default - > $OUT 2>&1
 insert into t values (40)
 insert into t values (20)
 insert into t values (30)
@@ -51,6 +52,29 @@ alter table t add column b int
 \$\$
 select * from t order by id
 EOF
+
+#make sure we do not allow rename for partitions
+# create the partition
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table testtv (a int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE creating a new table tvtest"
+   exit 1
+fi
+
+starttime1=`perl -MPOSIX -le 'local $ENV{TZ}=":/usr/share/zoneinfo/UTC"; print strftime "%Y-%m-%dT%H%M%S UTC", localtime(time()-60*60*(24+1))'`
+echo cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TIME PARTITION ON testtv as tv PERIOD 'daily' RETENTION 3 START '${starttime1}'"
+cdb2sql ${CDB2_OPTIONS} $dbnm default "CREATE TIME PARTITION ON testtv as tv PERIOD 'daily' RETENTION 3 START '${starttime1}'" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE creating a time partition tv"
+   exit 1
+fi
+sleep 10
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table tv rename to tv2"
+if (( $? == 0 )) ; then
+   echo "FAILURE blocking time partition rename"
+   exit 1
+fi
 
 df=`diff output.txt reqoutput.txt`
 if [ $? -ne 0 ] ; then
