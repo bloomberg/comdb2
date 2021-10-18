@@ -1415,10 +1415,26 @@ static void newsql_add_steps(struct sqlclntstate *clnt, double steps)
     gbl_nnewsql_steps += steps;
 }
 
+extern void * (*externGetAuthData) (void*);
+extern void * (*externalMakeAuthData) (const char *, int, int, int, void *);
+
+void * getAuthData(void * p_clnt) {
+     struct sqlclntstate *clnt = p_clnt;
+     struct newsql_appdata *appdata = clnt->appdata;
+     if (appdata) {
+         CDB2SQLQUERY *sql_query = appdata->sqlquery;
+         if (sql_query->identity) {
+             return externalMakeAuthData(sql_query->identity->principal, sql_query->identity->majorversion, sql_query->identity->minorversion, sql_query->identity->data.len, sql_query->identity->data.data);
+         }
+     }
+     return NULL;
+}
+
 static void newsql_setup_client_info(struct sqlclntstate *clnt,
                                      struct sqlthdstate *thd, char *replay)
 {
     struct newsql_appdata *appdata = clnt->appdata;
+    externGetAuthData = getAuthData;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     CDB2SQLQUERY__Cinfo *cinfo = sqlquery->client_info;
     if (cinfo == NULL)

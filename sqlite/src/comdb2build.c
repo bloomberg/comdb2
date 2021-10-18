@@ -384,9 +384,23 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
     return comdb2prepareNoRows(v, pParse, int_arg, arg, func, freeFunc);
 }
 
+int (*externalComdb2AuthenticateUserDDL)(void*, const char *tablename) = NULL;
+int (*externalComdb2CheckOpAccess)(void *) = 0;
+void * (*externalMakeAuthData) (const char *, int, int, int, void *);
+void * (*externGetAuthData) (void*) = 0;
+
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
+
      struct sql_thread *thd = pthread_getspecific(query_info_key);
+     struct sqlclntstate *clnt = get_sql_clnt();
+     if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
+         if (!clnt->authdata && externGetAuthData)
+             clnt->authdata = externGetAuthData(clnt);
+         if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename))
+             return SQLITE_AUTH;
+         return SQLITE_OK;
+     }     
      bdb_state_type *bdb_state = thedb->bdb_env;
      int bdberr; 
      int authOn = bdb_authentication_get(bdb_state, NULL, &bdberr); 
@@ -407,6 +421,12 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 }
 
 static int comdb2CheckOpAccess(void) {
+    struct sqlclntstate *clnt = get_sql_clnt();
+    if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
+         if (!clnt->authdata && externGetAuthData)
+             clnt->authdata = externGetAuthData(clnt);
+         return externalComdb2CheckOpAccess(clnt->authdata);
+    }    
     if (comdb2AuthenticateUserDDL(""))
         return SQLITE_AUTH;
     return SQLITE_OK;

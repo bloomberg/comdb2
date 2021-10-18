@@ -206,6 +206,7 @@ int gbl_lock_conflict_trace = 0;
 int gbl_move_deadlk_max_attempt = 500;
 
 int gbl_uses_password;
+int gbl_uses_externalauth;
 int gbl_uses_accesscontrol_tableXnode;
 int gbl_blocksql_grace =
     10; /* how many seconds we wait for a blocksql during downgrade */

@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=944)
+(TUNABLES_COUNT=945)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -307,6 +307,7 @@
 (name='exit_on_internal_failure', description='', type='BOOLEAN', value='ON', read_only='Y')
 (name='exitalarmsec', description='', type='INTEGER', value='300', read_only='Y')
 (name='extended_sql_debug_trace', description='Print extended trace for durable sql debugging', type='BOOLEAN', value='OFF', read_only='N')
+(name='externalauth', description='', type='BOOLEAN', value='OFF', read_only='Y')
 (name='fake_sc_replication_timeout', description='Fake a replication timeout on finalize schemachange. ', type='BOOLEAN', value='OFF', read_only='N')
 (name='fdb_sqlstats_cache_lock_waittime_nsec', description='', type='INTEGER', value='1000', read_only='N')
 (name='fdbdebg', description='', type='INTEGER', value='0', read_only='N')
