@@ -2776,6 +2776,9 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
     return 0;
 }
 
+int (*externalComdb2AuthenticateUserMakeRequest)(void*) = NULL;
+extern void * (*externGetAuthData) (void*);
+
 /* If user password does not match this function
  * will write error response and return a non 0 rc
  */
@@ -2783,6 +2786,13 @@ static inline int check_user_password(struct sqlclntstate *clnt)
 {
     int password_rc = 0;
     int valid_user;
+
+    if(gbl_uses_externalauth &&
+        externalComdb2AuthenticateUserMakeRequest) {
+          if (!clnt->authdata && externGetAuthData)
+              clnt->authdata = externGetAuthData(clnt);
+          return externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+    }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {
         return 0;
@@ -4179,6 +4189,11 @@ static int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     else
 #   endif
         rc = check_user_password(clnt);
+
+    if (gbl_uses_externalauth && 
+        externalComdb2AuthenticateUserMakeRequest) {
+         return rc;
+    }
 
     if (rc == 0) {
         if (thd->lastuser[0] != '\0' &&
