@@ -3313,9 +3313,6 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             sqlite3_stmt_readonly(rec->stmt) &&
             !sqlite3_stmt_isexplain(rec->stmt) &&
             (thd->authState.numDdls == 0)) {
-            char **column_names;
-            char **column_decltypes;
-            int column_count;
             int do_reprepare = 0;
             struct fingerprint_track *t = NULL;
 
@@ -3346,16 +3343,22 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
              * - it resulted in mismatching column name(s)/type(s) in past executions
              */
             if (!t || do_reprepare) {
+                char **column_names;
+                char **column_decltypes;
+                int column_count;
+
                 rc = query_preparer_plugin->do_prepare(thd, clnt, rec->sql,
                                                        &column_names,
                                                        &column_decltypes,
                                                        &column_count);
                 if (rc)
                     return rc;
-            }
 
-            if (rec->stmt && sqlite3_column_count(rec->stmt) == column_count)
-                stmt_set_cached_columns(rec->stmt, column_names, column_decltypes, column_count);
+
+                if (rec->stmt && sqlite3_column_count(rec->stmt) == column_count)
+                    stmt_set_cached_columns(rec->stmt, column_names,
+                                            column_decltypes, column_count);
+            }
         }
 
         thd->authState.flags = 0;
