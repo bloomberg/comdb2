@@ -150,7 +150,7 @@ const char *bdb_algo2compr(int alg)
     case BDB_COMPRESS_CRLE:
         return "crle";
     case BDB_COMPRESS_LZ4:
-        return "lz4 ";
+        return "lz4";
     default:
         return "????";
     }
