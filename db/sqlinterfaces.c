@@ -3364,6 +3364,9 @@ static void handle_expert_query(struct sqlthdstate *thd,
         rc = sqlite3_expert_sql(p, clnt->sql, &zErr);
     }
 
+    if (clnt->is_fast_expert)
+        sqlite3_expert_config(p, EXPERT_CONFIG_SAMPLE, 0);
+
     if (rc == SQLITE_OK) {
         rc = sqlite3_expert_analyze(p, &zErr);
     }
@@ -5178,6 +5181,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->want_stored_procedure_trace = 0;
     clnt->verifyretry_off = 0;
     clnt->is_expert = 0;
+    clnt->is_fast_expert = 0;
     clnt->authdata = NULL;
 
     /* Reset the version, we have to set it for every run */

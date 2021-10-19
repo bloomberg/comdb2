@@ -36,3 +36,10 @@ select * from t1 where i =1;
 select * from t2 where i =1;
 
 select t1.j, t2.j from t1, t2 where t1.i = t2.i
+
+set expert fast
+select * from t1 where i =1;
+
+select * from t2 where i =1;
+
+select t1.j, t2.j from t1, t2 where t1.i = t2.i

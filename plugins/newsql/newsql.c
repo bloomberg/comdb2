@@ -1642,6 +1642,7 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     clnt->is_expert = 0;
                 } else {
                     clnt->is_expert = 1;
+                    clnt->is_fast_expert = (strncasecmp(sqlstr, "fast", 4) == 0);
                 }
             } else if (strncasecmp(sqlstr, "sptrace", 7) == 0) {
                 sqlstr += 7;
