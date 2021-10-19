@@ -284,6 +284,11 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
     static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
     Pthread_mutex_lock(&lk);
 
+    /* We grab the schema lock here to guard against
+       a scenario where the table is dropped from under us
+       Possible pain point in the future because of lock
+       inversion. Not an issue right now */
+    rdlock_schema_lk();
     for(ndb = 0; ndb < dbenv->num_dbs; ndb++)
     {
         db = dbenv->dbs[ndb];
@@ -296,6 +301,7 @@ static int64_t refresh_diskspace(struct dbenv *dbenv)
     }
     total += bdb_logs_size(dbenv->bdb_env, &num_logs);
 
+    unlock_schema_lk();
     Pthread_mutex_unlock(&lk);
     return total;
 }
