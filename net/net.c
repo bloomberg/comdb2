@@ -4356,11 +4356,10 @@ void net_set_bad_subnet(const char *subnet)
     Pthread_mutex_unlock(&subnet_mtx);
 }
 
-void net_clipper(const char *subnet, int is_disable)
+static void net_clipper_lockless(const char *subnet, int is_disable)
 {
     int i = 0;
     time_t now;
-    Pthread_mutex_lock(&subnet_mtx);
     for (i = 0; i < num_dedicated_subnets; i++) {
         if (subnet_suffices[i][0] &&
             strncmp(subnet, subnet_suffices[i], strlen(subnet) + 1) == 0) {
@@ -4383,6 +4382,12 @@ void net_clipper(const char *subnet, int is_disable)
             }
         }
     }
+}
+
+void net_clipper(const char *subnet, int is_disable)
+{
+    Pthread_mutex_lock(&subnet_mtx);
+    net_clipper_lockless(subnet, is_disable);
     Pthread_mutex_unlock(&subnet_mtx);
 }
 
@@ -4404,14 +4409,28 @@ int net_subnet_disabled(const char *subnet)
 
 int net_add_nondedicated_subnet(void *context, void *value)
 {
+    Pthread_mutex_lock(&subnet_mtx);
     // increment num_dedicated_subnets only once for non dedicated subnet
     if (0 == _non_dedicated_subnet) {
         _non_dedicated_subnet = 1;
-        Pthread_mutex_lock(&subnet_mtx);
+
+        /* Disable all subnets */
+        for (int i = 0; i != num_dedicated_subnets; ++i)
+            net_clipper_lockless(subnet_suffices[i], 1);
+
+        /* Add the non-dedicated network */
         subnet_suffices[num_dedicated_subnets] = strdup("");
         num_dedicated_subnets++;
         Pthread_mutex_unlock(&subnet_mtx);
+    } else {
+        /* Disable all subnets */
+        for (int i = 0; i != num_dedicated_subnets; ++i)
+            net_clipper_lockless(subnet_suffices[i], 1);
+
+        /* Enable the non-dedicated network */
+        net_clipper_lockless("", 0);
     }
+    Pthread_mutex_unlock(&subnet_mtx);
     return 0;
 }
 
@@ -4494,24 +4513,12 @@ int get_dedicated_conhost(host_node_type *host_node_ptr, struct in_addr *addr)
         char tmp_hostname[loc_len + 1];
         char *rephostname = tmp_hostname;
         strcpy(rephostname, host_node_ptr->host);
-        if (subnet[0]) {
-            strcat(rephostname, subnet);
-            strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
+        strcat(rephostname, subnet);
+        strncpy0(host_node_ptr->subnet, subnet, HOSTNAME_LEN);
 
 #ifdef DEBUG
-            host_node_printf(
-                LOGMSG_USER, host_node_ptr,
-                "Connecting to dedicated hostname/subnet '%s' counter=%d\n",
-                rephostname, counter);
-#endif
-
-        }
-#ifdef DEBUG
-        else
-            host_node_printf(
-                LOGMSG_USER, host_node_ptr,
-                "Connecting to NON dedicated hostname/subnet '%s' counter=%d\n",
-                rephostname, counter);
+        host_node_printf(LOGMSG_USER, host_node_ptr, "Connecting to %s dedicated hostname/subnet '%s' counter=%d\n",
+                         (subnet[0] == '\0') ? "NON" : "", rephostname, counter);
 #endif
         rc = comdb2_gethostbyname(&rephostname, addr);
         if (rc) {
