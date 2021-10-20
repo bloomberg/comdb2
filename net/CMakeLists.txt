@@ -23,3 +23,6 @@ include_directories(
 )
 
 add_dependencies(net mem)
+if (COMDB2_BBCMAKE)
+  configure_bb_target(net V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()
