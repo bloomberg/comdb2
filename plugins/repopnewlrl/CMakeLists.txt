@@ -24,3 +24,6 @@ include_directories(
 )
 
 add_plugin(repopnewlrl STATIC repopnewlrl.c)
+if (COMDB2_BBCMAKE)
+  configure_bb_target(repopnewlrl V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()

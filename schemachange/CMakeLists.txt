@@ -49,3 +49,7 @@ include_directories(
   ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_dependencies(schemachange mem proto bdb)
+
+if (COMDB2_BBCMAKE)
+  configure_bb_target(schemachange V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+endif()
