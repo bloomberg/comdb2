@@ -707,11 +707,11 @@ void replay(cdb2_hndl_tp *db, cson_value *event_val) {
         jtime = cson_object_get(obj, "tottime");
         int64_t old_time = 0;
         if (jtime != nullptr)
-            old_time = cson_value_get_integer(jtime);
+            old_time = cson_value_get_integer(jtime) / 1000;
 
         bool have_diffs = false;
 
-        int64_t new_time = end_time - start_time;
+        int64_t new_time = (end_time - start_time) / 1000;
         if (old_time && new_time && !within_threshold(new_time, old_time, threshold_percent) && new_time > old_time) {
             have_diffs = true;
         }
