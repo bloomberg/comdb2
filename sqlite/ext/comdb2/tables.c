@@ -281,6 +281,8 @@ int comdb2SystblInit(
   if (rc == SQLITE_OK)
     rc = sqlite3_create_module(db, "comdb2_systables", &systblSystabsModule, 0);
   if (rc == SQLITE_OK)
+    rc = systblPartialDatacopiesInit(db);
+  if (rc == SQLITE_OK)
     rc = systblTablePropertiesInit(db);
   if (rc == SQLITE_OK)
     rc = systblTimepartInit(db);

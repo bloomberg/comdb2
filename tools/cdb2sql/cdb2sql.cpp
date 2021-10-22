@@ -924,7 +924,7 @@ static int process_escape(const char *cmdstr)
             fprintf(out, "Keys:\n");
             snprintf(sql, sizeof(sql),
                      "select keyname, isunique, isdatacopy, isrecnum, "
-                     "condition from comdb2_keys where tablename = '%s'",
+                     "condition, ispartialdatacopy from comdb2_keys where tablename = '%s'",
                      tok);
             rc = run_statement(sql, 0, NULL, &start_time_ms, &run_time_ms);
             if (rc != 0) {

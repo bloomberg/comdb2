@@ -195,7 +195,7 @@ Describes all the components of the keys.
 Describes all of the keys in the database.
 
     comdb2_keys(tablename, keyname, keynumber, isunique, isdatacopy,
-    isrecnum, condition)
+    isrecnum, condition, ispartialdatacopy)
 
 * `tablename` - Name of the table
 * `keyname` - Name of the key
@@ -204,6 +204,7 @@ Describes all of the keys in the database.
 * `isrecnum` - `Y` if this key has recnums
 * `condition` - Where condition for this index
 * `uniqnulls` - `Y` if this key treats NULL values as unique
+* `ispartialdatacopy` - `Y` if some subset of the data is inlined with this key
 
 ## comdb2_keywords
 
@@ -291,6 +292,16 @@ Lists all opcode handlers available in Comdb2.
 
 * `opcode` - Number assigned to the opcode handler
 * `name` - Name of the opcode handler
+
+## comdb2_partial_datacopies
+
+Lists all of the partial datacopy columns for each relevant key in the database.
+
+    comdb2_partial_datacopies(tablename, keyname, columnname)
+
+* `tablename` - Name of the table with partial datacopy
+* `keyname` - Name of the key with partial datacopy
+* `columnname` - Name of the column included in partial datacopy for `keyname`
 
 ## comdb2_plugins
 

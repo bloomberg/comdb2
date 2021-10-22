@@ -34,6 +34,7 @@ typedef struct {
     bdb_state_type *bdb_state;
     struct dbtable *db_table;
     const char *tablename;
+    int (*partial_datacopy_callback)(const struct dbtable *tbl, const int pd_ix, const void *inbuf, void *outbuf);
     int (*formkey_callback)(const struct dbtable *tbl, void *dta, void *blob_parm,
                             int ix, void *keyout, int *keysz);
     int (*get_blob_sizes_callback)(const struct dbtable *tbl, void *dta, int blobs[16],

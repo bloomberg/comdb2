@@ -589,7 +589,16 @@ stack
                   {opt dup}
                   {opt uniqnulls}
               }
-              {opt datacopy}
+              {opt datacopy
+                  {opt
+                      (
+                      {loop
+                          column-name
+                          ,
+                      }
+                      )
+                  }
+              }
               {line /string-literal = }
           }
           {stack

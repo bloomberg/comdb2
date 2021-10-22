@@ -458,9 +458,18 @@ multikeyflags:	keyflags multikeyflags
 keyflags:	T_DUP		{ key_setdup(); }
                 | T_RECNUMS     { key_setrecnums(); }
                 | T_PRIMARY     { key_setprimary(); }
+                | T_DATAKEY '(' compounddatakey ')'     { key_setpartialdatakey(); }
                 | T_DATAKEY     { key_setdatakey(); }
                 | T_UNIQNULLS   { key_setuniqnulls(); }
 		;
+
+compounddatakey: datakeypiece
+    |   datakeypiece ',' compounddatakey
+    ;
+
+datakeypiece: varname {
+                                                          datakey_piece_add($1);
+                                                        };
 
 compoundkey:	keypiece
 		|		keypiece '+' compoundkey
