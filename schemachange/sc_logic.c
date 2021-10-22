@@ -1222,7 +1222,7 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
         db->handle = bdb_open_more(
             tmpname, db->dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+            db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, &bdberr);
 
@@ -1245,7 +1245,7 @@ int open_temp_db_resume(struct dbtable *db, char *prefix, int resume, int temp,
         db->handle = bdb_create_tran(
             tmpname, db->dbenv->basedir, db->lrl, db->nix,
             (short *)db->ix_keylen, db->ix_dupes, db->ix_recnums,
-            db->ix_datacopy, db->ix_collattr, db->ix_nullsallowed,
+            db->ix_datacopy, db->ix_datacopylen, db->ix_collattr, db->ix_nullsallowed,
             db->numblobs + 1, /* one main record + the blobs blobs */
             db->dbenv->bdb_env, temp, &bdberr, tran);
         if (db->handle == NULL) {

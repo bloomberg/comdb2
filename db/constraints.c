@@ -457,7 +457,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             ixlen = getkeysize(iq->usedb, ixnum);
             snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", ixnum);
             if (iq->idxDelete)
-                rc = create_key_from_ireq(iq, ixnum, 1, NULL, NULL, NULL,
+                rc = create_key_from_ireq(iq, ixnum, 1, NULL, NULL, NULL, NULL,
                                           rec_dta, 0 /* not needed */, lkey);
             else
                 rc = create_key_from_ondisk(iq->usedb, ixnum, rec_dta, lkey);
@@ -477,7 +477,7 @@ int check_update_constraints(struct ireq *iq, void *trans,
             /* this part is for update */
             if (newrec_dta != NULL) {
                 if (iq->idxInsert)
-                    rc = create_key_from_ireq(iq, ixnum, 0, NULL, NULL, NULL,
+                    rc = create_key_from_ireq(iq, ixnum, 0, NULL, NULL, NULL, NULL,
                                               newrec_dta, 0 /* not needed */,
                                               nkey);
                 else
@@ -1146,6 +1146,7 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
     char *od_dta_tail = NULL;
     int od_tail_len = 0;
     char mangled_key[MAXKEYLEN];
+    char partial_datacopy_tail[MAXRECSZ];
 
 #if DEBUG_REORDER
     logmsg(LOGMSG_DEBUG, "%s(): entering\n", __func__);
@@ -1342,11 +1343,11 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
             }
             if (iq->idxInsert)
                 rc = create_key_from_ireq(iq, doidx, 0, &od_dta_tail,
-                                          &od_tail_len, mangled_key, od_dta,
+                                          &od_tail_len, mangled_key, partial_datacopy_tail, od_dta,
                                           ondisk_size, key);
             else
-                rc = create_key_from_schema(iq->usedb, NULL, doidx, &od_dta_tail, &od_tail_len, mangled_key, od_dta,
-                                            ondisk_size, key, NULL, 0, iq->tzname);
+                rc = create_key_from_schema(iq->usedb, NULL, doidx, &od_dta_tail, &od_tail_len, mangled_key, partial_datacopy_tail,
+                                            od_dta, ondisk_size, key, NULL, 0, iq->tzname);
             if (rc == -1) {
                 if (iq->debug)
                     reqprintf(iq, "ADDKYCNSTRT CANT FORM INDEX %d", ixnum);
@@ -1635,7 +1636,7 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
 
                 snprintf(ondisk_tag, MAXTAGLEN, ".ONDISK_IX_%d", lixnum);
                 if (iq->idxInsert) {
-                    rc = create_key_from_ireq(iq, lixnum, 0, NULL, NULL, NULL,
+                    rc = create_key_from_ireq(iq, lixnum, 0, NULL, NULL, NULL, NULL,
                                               od_dta, 0 /* not needed */, lkey);
                 } else
                     rc = create_key_from_ondisk(iq->usedb, lixnum, od_dta, lkey);

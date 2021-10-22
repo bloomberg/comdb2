@@ -1010,10 +1010,10 @@ void showdbenv(struct dbenv *dbenv)
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
-                   " datacopy? %c collattr? %c uniqnulls %c\n",
+                   " datacopy? %c collattr? %c uniqnulls %c datacopylen %-3d bytes\n",
                    ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'), (usedb->ix_recnums[ii] ? 'y' : 'n'),
                    (usedb->ix_datacopy[ii] ? 'y' : 'n'), (usedb->ix_collattr[ii] ? 'y' : 'n'),
-                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'), (usedb->ix_datacopy[ii] && !usedb->ix_datacopylen[ii] ? usedb->lrl : usedb->ix_datacopylen[ii]));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {
@@ -1964,7 +1964,7 @@ dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
             return NULL;
         }
 
-        tbl->ix_datacopy[ii] = dyns_is_idx_datacopy(ii);
+        tbl->ix_datacopy[ii] = dyns_is_idx_datacopy(ii) | dyns_is_idx_partial_datacopy(ii);
         if (tbl->ix_datacopy[ii] < 0) {
             logmsg(LOGMSG_ERROR, "cant find index %d datacopy in csc schema %s\n",
                     ii, tblname);

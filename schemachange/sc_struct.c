@@ -938,7 +938,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     newdb->handle = bdb_open_more_tran(
         table, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
-        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->ix_datacopy, newdb->ix_datacopylen, newdb->ix_collattr, newdb->ix_nullsallowed,
         newdb->numblobs + 1, thedb->bdb_env, tran, 0, &bdberr);
     logmsg(LOGMSG_DEBUG, "reload_schema handle %p bdberr %d\n", newdb->handle,
            bdberr);
@@ -1029,7 +1029,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
         /* faffing with schema required. schema can change in fastinit */
         new_bdb_handle = bdb_open_more_tran(
             table, thedb->basedir, db->lrl, db->nix, (short *)db->ix_keylen,
-            db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_collattr,
+            db->ix_dupes, db->ix_recnums, db->ix_datacopy, db->ix_datacopylen, db->ix_collattr,
             db->ix_nullsallowed, db->numblobs + 1, thedb->bdb_env, tran, 0,
             &bdberr);
         logmsg(LOGMSG_DEBUG,

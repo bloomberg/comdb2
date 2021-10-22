@@ -76,6 +76,7 @@ static int systblKeysConnect(
 #define STKEY_RECNUM    5
 #define STKEY_CONDITION 6
 #define STKEY_UNIQNULLS 7
+#define STKEY_PARTIALDATACOPY 8
 
   rc = sqlite3_declare_vtab(db, "CREATE TABLE comdb2_keys(tablename,"
                                 "keyname,"
@@ -84,7 +85,8 @@ static int systblKeysConnect(
                                 "isdatacopy,"
                                 "isrecnum,"
                                 "condition,"
-                                "uniqnulls)");
+                                "uniqnulls,"
+                                "ispartialdatacopy)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -202,6 +204,11 @@ static int systblKeysColumn(
     }
     case STKEY_CONDITION: {
       sqlite3_result_text(ctx, pSchema->where, -1, SQLITE_STATIC);
+      break;
+    }
+    case STKEY_PARTIALDATACOPY: {
+      sqlite3_result_text(ctx, YESNO(pSchema->flags & SCHEMA_PARTIALDATACOPY),
+        -1, SQLITE_STATIC);
       break;
     }
   }

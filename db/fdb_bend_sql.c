@@ -172,7 +172,7 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     ixschema = db->ixschema[ixnum];
 
     /* already datacopy indexes are ok */
-    if (ixschema->flags & SCHEMA_DATACOPY) {
+    if (ixschema->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)) {
         return 0;
     }
 

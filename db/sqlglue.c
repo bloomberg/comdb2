@@ -1451,8 +1451,23 @@ void form_new_style_name(char *namebuf, int len, struct schema *schema,
     unsigned int crc;
 
     SNPRINTF(buf, sizeof(buf), current, "%s", dbname)
-    if (schema->flags & SCHEMA_DATACOPY)
+    if (schema->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)) {
         SNPRINTF(buf, sizeof(buf), current, "%s", "DATACOPY")
+
+        if (schema->flags & SCHEMA_PARTIALDATACOPY) {
+            struct schema *partial_datacopy = schema->partial_datacopy;
+
+            SNPRINTF(buf, sizeof(buf), current, "%s", "(")
+            for (fieldctr = 0; fieldctr < partial_datacopy->nmembers; fieldctr++) {
+                if (fieldctr > 0) {
+                    SNPRINTF(buf, sizeof(buf), current, "%s", ", ")
+                }
+
+                SNPRINTF(buf, sizeof(buf), current, "%s", partial_datacopy->member[fieldctr].name)
+            }
+            SNPRINTF(buf, sizeof(buf), current, "%s", ")")
+        }
+    }
 
     if (schema->flags & SCHEMA_DUP)
         SNPRINTF(buf, sizeof(buf), current, "%s", "DUP")
@@ -1717,8 +1732,10 @@ int create_datacopy_array(struct dbtable *tbl)
             return -1;
         }
 
-        if (!(schema->flags & SCHEMA_DATACOPY)) {
+        if (!(schema->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY))) {
             continue;
+        } else if (schema->flags & SCHEMA_PARTIALDATACOPY) {
+            ondisk = schema->partial_datacopy;
         }
 
         int datacopy_pos = 0;
@@ -1887,8 +1904,11 @@ static int create_sqlmaster_record(struct dbtable *tbl, void *tran)
                 strbuf_append(sql, " DESC");
         }
 
-        if (schema->flags & SCHEMA_DATACOPY) {
+        if (schema->flags & (SCHEMA_DATACOPY | SCHEMA_PARTIALDATACOPY)) {
             struct schema *ondisk = tbl->schema;
+            if (schema->flags & SCHEMA_PARTIALDATACOPY) {
+                ondisk = schema->partial_datacopy;
+            }
             int first = 1;
             /* Add all fields from ONDISK to index */
             for (int ondisk_i = 0; ondisk_i < ondisk->nmembers; ++ondisk_i) {
@@ -6583,10 +6603,15 @@ static int fetch_blob_into_sqlite_mem(BtCursor *pCur, struct schema *sc,
     int bdberr;
     int nretries = 0;
     struct sql_thread *thd = pCur->thd;
+    struct schema *pd = NULL;
+
+    if (sc->flags & SCHEMA_PARTIALDATACOPY_ACTUAL) {
+        pd = sc;
+    }
 
     if (!pCur->have_blob_descriptor) {
         gather_blob_data_byname(pCur->db->tablename, ".ONDISK",
-                                &pCur->blob_descriptor);
+                                &pCur->blob_descriptor, pd);
         pCur->have_blob_descriptor = 1;
     }
 
@@ -6643,7 +6668,7 @@ again:
     iq.usedb = pCur->db;
 
     if (check_one_blob_consistency(&iq, iq.usedb->tablename, ".ONDISK", &blobs,
-                                   dta, f->blob_index, 0)) {
+                                   dta, f->blob_index, 0, pd)) {
         free_blob_status_data(&blobs);
         nretries++;
         if (nretries >= gbl_maxblobretries) {
@@ -7138,14 +7163,18 @@ done:
 int get_datacopy(BtCursor *pCur, int fnum, Mem *m)
 {
     uint8_t *in;
+    struct schema *s;
 
+    s = pCur->db->schema;
     in = pCur->bdbcur->datacopy(pCur->bdbcur);
-    if (!is_genid_synthetic(pCur->genid)) {
+    if (s->ix[pCur->ixnum]->flags & SCHEMA_PARTIALDATACOPY) {
+        s = s->ix[pCur->ixnum]->partial_datacopy;
+    } else if (!is_genid_synthetic(pCur->genid)) {
         uint8_t ver = pCur->bdbcur->ver(pCur->bdbcur);
         vtag_to_ondisk_vermap(pCur->db, in, NULL, ver);
     }
 
-    return get_data(pCur, pCur->db->schema, in, fnum, m, 0, pCur->clnt->tzname);
+    return get_data(pCur, s, in, fnum, m, 0, pCur->clnt->tzname);
 }
 
 static int
@@ -8056,7 +8085,7 @@ sqlite3BtreeCursor_cursor(Btree *pBt,      /* The btree */
     /* check one time if we have blobs when we open the cursor,
      * so we dont need to run this code for every row if we dont even
      * have them */
-    rc = gather_blob_data_byname(cur->db->tablename, ".ONDISK", &cur->blobs);
+    rc = gather_blob_data_byname(cur->db->tablename, ".ONDISK", &cur->blobs, NULL);
     if (rc) {
        logmsg(LOGMSG_ERROR, "sqlite3BtreeCursor: gather_blob_data error rc=%d\n", rc);
         return SQLITE_INTERNAL;

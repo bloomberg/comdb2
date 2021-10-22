@@ -830,6 +830,7 @@ struct bdb_state_tag {
     short numix;        /* number of indexes */
     short ixlen[MAXINDEX];            /* size of each index */
     signed char ixdta[MAXINDEX];      /* does this index contain the dta? */
+    int ixdtalen[MAXINDEX];           /* dta len in bytes (0 if index does not contain the dta or is full datacopy) */
     signed char ixcollattr[MAXINDEX]; /* does this index contain the column
                                          attributes? */
     signed char ixnulls[MAXINDEX];    /*does this index contain any columns that

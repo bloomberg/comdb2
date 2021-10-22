@@ -4,6 +4,11 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+struct partial_datacopy {
+    char *field;
+    struct partial_datacopy *next;
+};
+
 enum fieldopttypes {
     FLDOPT_DBSTORE = 0,
     FLDOPT_DBLOAD = 1,
@@ -41,6 +46,7 @@ int dyns_is_idx_dup(int index);
 int dyns_is_idx_recnum(int index);
 int dyns_is_idx_primary(int index);
 int dyns_is_idx_datacopy(int index);
+int dyns_is_idx_partial_datacopy(int index);
 int dyns_is_idx_uniqnulls(int index);
 int dyns_get_idx_count(void);
 int dyns_get_idx_size(int index);
@@ -59,6 +65,7 @@ int dyns_field_depth(int fidx, dpth_t *dpthinfo, int ndpthsinfo, int *ndpthout);
 int dyns_field_type(int fidx);
 int dyns_is_field_array(int fidx);
 int dyns_get_field_arr_dims(int fidx, int *dims, int ndims, int *nodims);
+int dyns_get_idx_partial_datacopy(int index, struct partial_datacopy **partial_datacopy);
 int dyns_get_idx_tag(int index, char *tag, int tlen, char **where);
 
 /* calls to work with multiple tables */

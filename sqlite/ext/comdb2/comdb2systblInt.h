@@ -67,6 +67,7 @@ int systblNetUserfuncsInit(sqlite3 *db);
 int systblClusterInit(sqlite3 *db);
 int systblActiveOsqlsInit(sqlite3 *db);
 int systblBlkseqInit(sqlite3 *db);
+int systblPartialDatacopiesInit(sqlite3 *db);
 int systblTablePropertiesInit(sqlite3 *db);
 int systblTimepartInit(sqlite3*db);
 int systblCronInit(sqlite3*db);

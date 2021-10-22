@@ -2662,6 +2662,14 @@ enum {
     KEY_DELETED = 1 << 2,
     KEY_UNIQNULLS = 1 << 3,
     KEY_RECNUM = 1 << 4,
+    KEY_PARTIALDATACOPY = 1 << 5,
+};
+
+struct comdb2_partial_datacopy_field{
+    /* Field name */
+    char *name;
+    /* Link */
+    LINKC_T(struct comdb2_partial_datacopy_field) lnk;
 };
 
 struct comdb2_key {
@@ -2673,6 +2681,8 @@ struct comdb2_key {
     char *where;
     /* Key flags */
     uint8_t flags;
+    /* List of fields in partial datacopy */
+    LISTC_T(struct comdb2_partial_datacopy_field) partial_datacopy_list;
     /* List of columns */
     comdb2_index_part_lst idx_col_list;
     /* Link */
@@ -3287,8 +3297,26 @@ static char *format_csc2(struct comdb2_ddl_context *ctx)
             strbuf_append(csc2, "dup ");
         }
 
-        if ((key->flags & KEY_DATACOPY) != 0) {
+        if ((key->flags & (KEY_DATACOPY | KEY_PARTIALDATACOPY)) != 0) {
             strbuf_append(csc2, "datacopy ");
+
+            if (key->flags & KEY_PARTIALDATACOPY) {
+                int added = 0;
+                struct comdb2_partial_datacopy_field *partial_datacopy_field;
+
+                strbuf_append(csc2, "(");
+                LISTC_FOR_EACH(&key->partial_datacopy_list, partial_datacopy_field, lnk)
+                {
+                    if (added > 0) {
+                        strbuf_append(csc2, ", ");
+                    }
+
+                    strbuf_append(csc2, partial_datacopy_field->name);
+
+                    added++;
+                }
+                strbuf_append(csc2, ") ");
+            }
         }
 
         if ((key->flags & KEY_UNIQNULLS) != 0) {
@@ -3396,9 +3424,28 @@ static int gen_key_name(struct comdb2_key *key, const char *table, char *out,
     /* Table name */
     SNPRINTF(buf, sizeof(buf), pos, "%s", table)
 
-    /* DATACOPY */
-    if (key->flags & KEY_DATACOPY)
+    /* DATACOPY/PARTIALDATACOPY */
+    if (key->flags & (KEY_DATACOPY | KEY_PARTIALDATACOPY)) {
         SNPRINTF(buf, sizeof(buf), pos, "%s", "DATACOPY")
+
+        if (key->flags & KEY_PARTIALDATACOPY) {
+            int added = 0;
+            struct comdb2_partial_datacopy_field *partial_datacopy_field;
+
+            SNPRINTF(buf, sizeof(buf), pos, "%s", "(")
+            LISTC_FOR_EACH(&key->partial_datacopy_list, partial_datacopy_field, lnk)
+            {
+                if (added > 0) {
+                    SNPRINTF(buf, sizeof(buf), pos, "%s", ", ")
+                }
+
+                SNPRINTF(buf, sizeof(buf), pos, "%s", partial_datacopy_field->name)
+
+                added++;
+            }
+            SNPRINTF(buf, sizeof(buf), pos, "%s", ")")
+        }
+    }
 
     /* DUP */
     if (key->flags & KEY_DUP)
@@ -3727,6 +3774,8 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
       * Unique
       * Columns must not allow NULLs
       * Must be only one per table
+      * Check that datacopy and partial datacopy are both not set
+      * Check that partial datacopy columns are valid
     */
     int pk_count = 0;
     LISTC_FOR_EACH(&ctx->schema->key_list, key, lnk)
@@ -3761,6 +3810,27 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
                     goto cleanup;
                 }
             }
+        }
+
+        if (key->flags & KEY_PARTIALDATACOPY) {
+            /* Make sure datacopy and partial datacopy are not set */
+            if (key->flags & KEY_DATACOPY) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Cannot have datacopy and partial datacopy.");
+                goto cleanup;
+            }
+
+            /* Make sure all partial datacopy fields are valid */
+            struct comdb2_partial_datacopy_field *partial_datacopy_field;
+            LISTC_FOR_EACH(&key->partial_datacopy_list, partial_datacopy_field, lnk)
+            {
+                if (find_column_by_name(ctx, partial_datacopy_field->name) == 0) {
+                    pParse->rc = SQLITE_ERROR;
+                    sqlite3ErrorMsg(pParse, "Invalid partial datacopy field \"%s\".", partial_datacopy_field->name);
+                    goto cleanup;
+                }
+            }
+
         }
     }
 
@@ -4242,6 +4312,26 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
         }
         if (schema->ix[i]->flags & SCHEMA_UNIQNULLS) {
             key->flags |= KEY_UNIQNULLS;
+        }
+
+        listc_init(&key->partial_datacopy_list, offsetof(struct comdb2_partial_datacopy_field, lnk));
+
+        if (schema->ix[i]->flags & SCHEMA_PARTIALDATACOPY) {
+            key->flags |= KEY_PARTIALDATACOPY;
+
+            struct comdb2_partial_datacopy_field *partial_datacopy_field;
+            struct schema *partial_datacopy = schema->ix[i]->partial_datacopy;
+            for (int j = 0; j < partial_datacopy->nmembers; j++) {
+                partial_datacopy_field = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_partial_datacopy_field));
+                if (partial_datacopy_field == 0) {
+                    goto oom;
+                }
+                partial_datacopy_field->name = comdb2_strdup(ctx->mem, partial_datacopy->member[j].name);
+                if (partial_datacopy_field->name == 0) {
+                    goto oom;
+                }
+                listc_abl(&key->partial_datacopy_list, partial_datacopy_field);
+            }
         }
 
         listc_init(&key->idx_col_list, offsetof(struct comdb2_index_part, lnk));
