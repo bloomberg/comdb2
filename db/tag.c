@@ -3144,6 +3144,11 @@ void free_db_record(struct dbrecord *db)
     free(db);
 }
 
+int stag_to_stag_buf_schemas(struct schema *fromsch, struct schema *tosch, const char *inbuf, char *outbuf, const char *tzname)
+{
+    return _stag_to_stag_buf_flags_blobs(fromsch, tosch, inbuf, outbuf, 0, NULL, NULL, NULL, 0, tzname);
+}
+
 int stag_to_stag_buf_blobs(const char *table, const char *fromtag,
                            const char *inbuf, const char *totag, char *outbuf,
                            struct convert_failure *reason, blob_buffer_t *blobs,
@@ -4323,8 +4328,8 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
     int oldattr, newattr;
 
     /* First compare attributes */
-    oldattr = oldix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY | SCHEMA_UNIQNULLS);
-    newattr = newix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY | SCHEMA_UNIQNULLS);
+    oldattr = oldix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY | SCHEMA_UNIQNULLS | SCHEMA_PARTIALDATACOPY);
+    newattr = newix->flags & (SCHEMA_DUP | SCHEMA_RECNUM | SCHEMA_DATACOPY | SCHEMA_UNIQNULLS | SCHEMA_PARTIALDATACOPY);
     if (oldattr != newattr) {
         if (descr)
             snprintf(descr, descrlen, "properties have changed");
@@ -4361,6 +4366,21 @@ int cmp_index_int(struct schema *oldix, struct schema *newix, char *descr,
                              oldfld->name);
                 return 1;
             }
+        }
+
+        if (oldix->flags & newix->flags & SCHEMA_PARTIALDATACOPY) {
+            struct schema *oldpd = oldix->partial_datacopy;
+            struct schema *newpd = newix->partial_datacopy;
+            char *descr_helper = descr ? calloc(descrlen, sizeof(char)) : descr;
+            if (cmp_index_int(oldpd, newpd, descr_helper, descrlen)) {
+                if (descr) {
+                    snprintf(descr, descrlen, "%s in partial datacopy", descr_helper);
+                    free(descr_helper);
+                }
+                return 1;
+            }
+            if (descr)
+                free(descr_helper);
         }
     }
     return 0;
@@ -5310,6 +5330,14 @@ struct schema *clone_schema(struct schema *from)
         sc->datacopy = malloc(from->nmembers * sizeof(int));
         memcpy(sc->datacopy, from->datacopy, from->nmembers * sizeof(int));
     }
+    if (from->partial_datacopy) {
+        sc->partial_datacopy = calloc(1, sizeof(struct schema));
+        sc->partial_datacopy->nmembers = from->partial_datacopy->nmembers;
+        sc->partial_datacopy->member = calloc(sc->partial_datacopy->nmembers, sizeof(struct field));
+        for (i = 0; i < sc->partial_datacopy->nmembers; i++) {
+            sc->partial_datacopy->member[i].name = strdup(from->partial_datacopy->member[i].name);
+        }
+    }
     return sc;
 }
 
@@ -6003,6 +6031,10 @@ void freeschema_internals(struct schema *schema)
         free(schema->sqlitetag);
         schema->sqlitetag = NULL;
     }
+    if (schema->partial_datacopy) {
+        freeschema(schema->partial_datacopy);
+        schema->partial_datacopy = NULL;
+    }
 }
 
 void freeschema(struct schema *schema)
@@ -6233,7 +6265,7 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     newdb->handle = bdb_open_more_tran(
         db->tablename, thedb->basedir, newdb->lrl, newdb->nix,
         (short *)newdb->ix_keylen, newdb->ix_dupes, newdb->ix_recnums,
-        newdb->ix_datacopy, newdb->ix_collattr, newdb->ix_nullsallowed,
+        newdb->ix_datacopy, newdb->ix_datacopylen, newdb->ix_collattr, newdb->ix_nullsallowed,
         newdb->numblobs + 1, thedb->bdb_env, arg_tran, 0, &bdberr);
 
     if (bdberr != 0 || newdb->handle == NULL) {
@@ -6616,8 +6648,8 @@ int extract_decimal_quantum(const dbtable *db, int ix, char *inbuf,
 }
 
 int create_key_from_schema(const struct dbtable *db, struct schema *schema, int ixnum, char **tail, int *taillen,
-                           char *mangled_key, const char *inbuf, int inbuflen, char *outbuf, blob_buffer_t *inblobs,
-                           int maxblobs, const char *tzname)
+                           char *mangled_key, char *partial_datacopy_tail, const char *inbuf, int inbuflen,
+                           char *outbuf, blob_buffer_t *inblobs, int maxblobs, const char *tzname)
 {
     int rc = 0;
     struct schema *fromsch, *tosch;
@@ -6669,8 +6701,18 @@ int create_key_from_schema(const struct dbtable *db, struct schema *schema, int 
                        fromtag, totag);
                 abort();
             }
-            *tail = (char *)inbuf;
-            *taillen = inbuflen;
+            if (partial_datacopy_tail && (tosch->flags & SCHEMA_PARTIALDATACOPY)) {
+                rc = _stag_to_stag_buf_flags_blobs(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail, 0 /*flags*/, NULL, inblobs, NULL /*outblobs*/,
+                                       maxblobs, tzname);
+                if (rc)
+                    return rc;
+
+                *tail = (char *)partial_datacopy_tail;
+                *taillen = get_size_of_schema(tosch->partial_datacopy);
+            } else {
+                *tail = (char *)inbuf;
+                *taillen = inbuflen;
+            }
         }
     } else if (db->ix_collattr[ixnum]) {
         assert(db->ix_datacopy[ixnum] == 0);
@@ -6700,18 +6742,18 @@ int create_key_from_schema(const struct dbtable *db, struct schema *schema, int 
 
 int create_key_from_ondisk(const struct dbtable *db, int ixnum, const char *inbuf, char *outbuf)
 {
-    return create_key_from_schema(db, NULL, ixnum, NULL, NULL, NULL, inbuf, 0, outbuf, NULL, 0, NULL);
+    return create_key_from_schema(db, NULL, ixnum, NULL, NULL, NULL, NULL, inbuf, 0, outbuf, NULL, 0, NULL);
 }
 
 int create_key_from_schema_simple(const struct dbtable *db, struct schema *schema, int ixnum, const char *inbuf,
                                   char *outbuf, blob_buffer_t *inblobs, int maxblobs)
 {
-    return create_key_from_schema(db, schema, ixnum, NULL, NULL, NULL, inbuf, 0, outbuf, inblobs, maxblobs, NULL);
+    return create_key_from_schema(db, schema, ixnum, NULL, NULL, NULL, NULL, inbuf, 0, outbuf, inblobs, maxblobs, NULL);
 }
 
 int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
-                         int *taillen, char *mangled_key, const char *inbuf,
-                         int inbuflen, char *outbuf)
+                         int *taillen, char *mangled_key, char *partial_datacopy_tail,
+                         const char *inbuf, int inbuflen, char *outbuf)
 {
     int rc = 0;
     dbtable *db = iq->usedb;
@@ -6737,8 +6779,20 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
             }
             rc = -1; /* callers like -1 */
         } else if (tail) {
-            *tail = (char *)inbuf;
-            *taillen = inbuflen;
+            struct schema *fromsch = get_schema(db, -1);
+            struct schema *tosch = get_schema(db, ixnum);
+            if (partial_datacopy_tail && (tosch->flags & SCHEMA_PARTIALDATACOPY)) {
+                rc = _stag_to_stag_buf_flags_blobs(fromsch, tosch->partial_datacopy, inbuf, partial_datacopy_tail, 0 /*flags*/, NULL, NULL /*inblobs*/, NULL /*outblobs*/,
+                                       0 /*maxblobs*/, iq->tzname);
+                if (rc)
+                    return rc;
+
+                *tail = (char *)partial_datacopy_tail;
+                *taillen = get_size_of_schema(tosch->partial_datacopy);
+            } else {
+                *tail = (char *)inbuf;
+                *taillen = inbuflen;
+            }
         }
     } else if (db->ix_collattr[ixnum]) {
         assert(db->ix_datacopy[ixnum] == 0);

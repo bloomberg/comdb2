@@ -1011,10 +1011,10 @@ void showdbenv(struct dbenv *dbenv)
         for (ii = 0; ii < usedb->nix; ii++) {
             logmsg(LOGMSG_USER,
                    "   index %-2d keylen %-3d bytes  dupes? %c recnums? %c"
-                   " datacopy? %c collattr? %c uniqnulls %c\n",
+                   " datacopy? %c collattr? %c uniqnulls %c datacopylen %-3d bytes\n",
                    ii, usedb->ix_keylen[ii], (usedb->ix_dupes[ii] ? 'y' : 'n'), (usedb->ix_recnums[ii] ? 'y' : 'n'),
                    (usedb->ix_datacopy[ii] ? 'y' : 'n'), (usedb->ix_collattr[ii] ? 'y' : 'n'),
-                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'));
+                   (usedb->ix_nullsallowed[ii] ? 'y' : 'n'), (usedb->ix_datacopy[ii] && !usedb->ix_datacopylen[ii] ? usedb->lrl : usedb->ix_datacopylen[ii]));
         }
     }
     for (ii = 0; ii < dbenv->nsiblings; ii++) {

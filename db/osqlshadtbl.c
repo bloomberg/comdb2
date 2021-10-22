@@ -2208,8 +2208,18 @@ static int insert_record_indexes(BtCursor *pCur, struct sql_thread *thd,
         }
 
         if (pCur->db->ix_datacopy[ix]) {
-            datacopy = pCur->ondisk_buf;
-            datacopylen = getdatsize(pCur->db);
+            if (pCur->db->ix_datacopylen[ix] > 0) { // partial datacopy
+                datacopy = alloca(pCur->db->ix_datacopylen[ix]);
+                rc = stag_to_stag_buf_schemas(get_schema(pCur->db, -1), get_schema(pCur->db, ix)->partial_datacopy, pCur->ondisk_buf, datacopy, pCur->db->tablename);
+                if (rc == -1) {
+                    logmsg(LOGMSG_ERROR, "insert_record:partial datacopy conversion ix %d\n", ix);
+                    return SQLITE_INTERNAL;
+                }
+                datacopylen = pCur->db->ix_datacopylen[ix];
+            } else {
+                datacopy = pCur->ondisk_buf;
+                datacopylen = getdatsize(pCur->db);
+            }
         } else if (pCur->db->ix_collattr[ix]) {
             datacopy = alloca(4 * pCur->db->ix_collattr[ix]);
 

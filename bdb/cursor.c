@@ -631,11 +631,12 @@ bdb_cursor_ifn_t *bdb_cursor_open(
         cur->idx = ixnum;
         cur->type = BDBC_IX;
         if (bdb_state->ixdta[ixnum]) {
+            int datacopy_size = bdb_state->ixdtalen[ixnum] > 0 ? bdb_state->ixdtalen[ixnum] : bdb_state->lrl;
             cur->datacopy =
-                malloc(bdb_state->lrl + 2 * sizeof(unsigned long long));
+                malloc(datacopy_size + 2 * sizeof(unsigned long long));
             if (!cur->datacopy) {
                 logmsg(LOGMSG_ERROR, "%s: malloc %zu\n", __func__,
-                       bdb_state->lrl + 2 * sizeof(unsigned long long));
+                       datacopy_size + 2 * sizeof(unsigned long long));
                 *bdberr = BDBERR_MALLOC;
                 free(pcur_ifn);
                 return NULL;
@@ -6527,8 +6528,9 @@ static void *bdb_cursor_datacopy(bdb_cursor_ifn_t *cur)
 
     if (bdb_state->ondisk_header && bdb_state->datacopy_odh &&
         (c->type == BDBC_DT || !is_genid_synthetic(c->genid))) {
+        int datacopy_size = bdb_state->ixdtalen[c->idx] > 0 ? bdb_state->ixdtalen[c->idx] : bdb_state->lrl;
         c->unpacked_datacopy = unpack_datacopy_odh(
-            cur, c->datacopy, bdb_state->lrl, from, size, &c->ver);
+            cur, c->datacopy, datacopy_size, from, size, &c->ver);
     } else {
         c->unpacked_datacopy = from;
         c->ver = c->state->version;

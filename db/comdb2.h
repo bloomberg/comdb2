@@ -613,6 +613,7 @@ typedef struct dbtable {
     signed char ix_dupes[MAXINDEX];
     signed char ix_recnums[MAXINDEX];
     signed char ix_datacopy[MAXINDEX];
+    int ix_datacopylen[MAXINDEX]; /* datacopy len in bytes (0 if full datacopy) */
     signed char ix_collattr[MAXINDEX];
     signed char ix_nullsallowed[MAXINDEX];
 
@@ -2616,10 +2617,10 @@ int process_allow_command(char *line, int lline);
 int gather_blob_data(struct ireq *iq, const char *tag, blob_status_t *b,
                      const char *to_tag);
 int gather_blob_data_byname(const char *dbname, const char *tag,
-                            blob_status_t *b);
+                            blob_status_t *b, struct schema *pd);
 int check_one_blob_consistency(struct ireq *iq, const char *table,
                                const char *tag, blob_status_t *b, void *record,
-                               int blob_index, int cblob);
+                               int blob_index, int cblob, struct schema *pd);
 int check_blob_consistency(struct ireq *iq, const char *table, const char *tag,
                            blob_status_t *b, const void *record);
 int check_and_repair_blob_consistency(struct ireq *iq, const char *table,

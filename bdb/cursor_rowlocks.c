@@ -2668,7 +2668,8 @@ int bdb_berkdb_rowlocks_init(bdb_berkdb_t *berkdb, DB *db, int *bdberr)
             r->keylen += sizeof(unsigned long long);
         r->dtalen = sizeof(unsigned long long);
         if (bdb_state->ixdta[cur->idx]) {
-            r->dtalen += bdb_state->lrl + (bdb_state->ondisk_header ? 7 : 0);
+            int datacopy_size = bdb_state->ixdtalen[cur->idx] > 0 ? bdb_state->ixdtalen[cur->idx] : bdb_state->lrl;
+            r->dtalen += datacopy_size + (bdb_state->ondisk_header ? 7 : 0);
         }
         r->keymem = malloc(r->keylen + 1);
         r->key = r->keymem;

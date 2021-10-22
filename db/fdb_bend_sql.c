@@ -162,8 +162,8 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         return 0;
     }
 
-    /* if this is a datacopy index, do not do anything */
-    if (db->ix_datacopy[ixnum]) {
+    /* if this is a full datacopy index, do not do anything */
+    if (db->ix_datacopy[ixnum] && db->ix_datacopylen[ixnum] == 0) {
         return 0;
     }
 
@@ -171,12 +171,12 @@ int fdb_svc_alter_schema(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
     tblschema = db->schema;
     ixschema = db->ixschema[ixnum];
 
-    /* already datacopy indexes are ok */
+    /* already full datacopy indexes are ok */
     if (ixschema->flags & SCHEMA_DATACOPY) {
         return 0;
     }
 
-    /* we got a non datacopy index, export it as covered index */
+    /* we got a non full datacopy index, export it as covered index */
 
     /* get the sql create */
     pMem = &upr->aMem[4];
