@@ -1434,7 +1434,6 @@ static void newsql_setup_client_info(struct sqlclntstate *clnt,
                                      struct sqlthdstate *thd, char *replay)
 {
     struct newsql_appdata *appdata = clnt->appdata;
-    externGetAuthData = getAuthData;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery;
     CDB2SQLQUERY__Cinfo *cinfo = sqlquery->client_info;
     if (cinfo == NULL)
@@ -2319,6 +2318,7 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt_register(&clnt);
 
     get_newsql_appdata(&clnt, APPDATA_MINCOLS);
+    externGetAuthData = getAuthData;
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
