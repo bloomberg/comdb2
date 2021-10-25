@@ -2598,7 +2598,12 @@ static int whereLoopAddBtreeIndex(
             ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d) "
              "prefers indexed lookup\n",
              saved_nEq, M, logK, nIn, rLogSize, x));
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+        /* NC: Skip SEEKSCAN for remote tables */
+        }else if( nInMul<2 && pProbe->pTable->iDb <= 1 ){
+#else /* SQLITE_BUILDING_FOR_COMDB2 */
         }else if( nInMul<2 ){
+#endif /* SQLITE_BUILDING_FOR_COMDB2 */
           WHERETRACE(0x40,
             ("IN operator (N=%d M=%d logK=%d nIn=%d rLogSize=%d x=%d"
              " nInMul=%d) prefers skip-scan\n",
