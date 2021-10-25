@@ -86,7 +86,13 @@ static int check_user_password(struct sqlclntstate *clnt)
     if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
         if (!clnt->authdata && externGetAuthData)
             clnt->authdata = externGetAuthData(clnt);
-        return externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+        int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
+        if (rc) {
+            write_response(clnt, RESPONSE_ERROR,
+                           "User isn't allowed to make request on this db",
+                            CDB2ERR_ACCESS);
+         }
+         return rc;
     }
 
     if (!gbl_uses_password || clnt->current_user.bypass_auth) {
