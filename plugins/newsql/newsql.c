@@ -2010,7 +2010,7 @@ void * getAuthData(void * p_clnt) {
     struct newsql_appdata *appdata = clnt->appdata;
     if (appdata) {
         CDB2SQLQUERY *sql_query = appdata->sqlquery;
-        if (sql_query->identity) {
+        if (sql_query && sql_query->identity) {
             return externalMakeAuthData(sql_query->identity->principal, sql_query->identity->majorversion, sql_query->identity->minorversion, sql_query->identity->data.len, sql_query->identity->data.data);
         }
     }
