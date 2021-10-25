@@ -29,3 +29,6 @@ INCLUDE_DIRECTORIES(
 
 add_plugin(dbqueuedb STATIC dbqueuedb.c)
 add_dependencies(dbqueuedb sqlite) # Wait for parse.h
+if (COMDB2_BBCMAKE)
+  comdb2_bb_target(dbqueuedb)
+endif()

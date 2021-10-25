@@ -36,5 +36,5 @@ add_plugin(sockbplog STATIC "${SOURCES}")
 add_dependencies(sockbplog sqlite) # Wait for parse.h
 if (COMDB2_BBCMAKE)
   target_link_libraries(sockbplog PUBLIC protobuf-c)
-  configure_bb_target(sockbplog V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_bb_target(sockbplog)
 endif()
