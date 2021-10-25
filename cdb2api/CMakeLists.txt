@@ -39,7 +39,7 @@ if (COMDB2_BBCMAKE)
   if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
     target_link_libraries(opencdb2api PUBLIC libunwind)
   endif()
-  configure_bb_target(opencdb2api V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_bb_target(opencdb2api)
 else()
 
 add_library(objlib OBJECT ${src})
