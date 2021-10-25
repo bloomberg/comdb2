@@ -768,7 +768,7 @@ int finalize_alter_table(struct ireq *iq, struct schema_change_type *s,
     if (newdb->schema_version == 1) {
         /* newdb's version has been reset */
         bdberr =
-            bdb_reset_csc2_version(transac, db->tablename, db->schema_version);
+            bdb_reset_csc2_version(transac, db->tablename, db->schema_version, 1);
         if (bdberr != BDBERR_NOERROR)
             BACKOUT;
     }
