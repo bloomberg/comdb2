@@ -1850,7 +1850,7 @@ int bdb_lock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                        unsigned long long genid);
 int bdb_trylock_row_write(bdb_state_type *bdb_state, tran_type *tran,
                           unsigned long long genid);
-int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver);
+int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver, int start_ver);
 void bdb_set_skip(bdb_state_type *bdb_state, int node);
 unsigned long long get_id(bdb_state_type *bdb_state);
 int bdb_access_tbl_write_by_mach_get(bdb_state_type *bdb_state, tran_type *tran,
