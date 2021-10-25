@@ -451,7 +451,7 @@ int prepare_table_version_one(tran_type *tran, struct dbtable *db,
     }
 
     /* db's version has been reset */
-    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version);
+    bdberr = bdb_reset_csc2_version(tran, db->tablename, db->schema_version, 1);
     if (bdberr != BDBERR_NOERROR) return SC_BDB_ERROR;
 
     /* Add latest csc2 as version 1 */

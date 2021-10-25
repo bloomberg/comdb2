@@ -3089,7 +3089,7 @@ retry:
 }
 
 /* delete all csc2 versions from "ver" to 1 for table "dbname" */
-int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver)
+int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver, int start_ver)
 {
     int rc;
     int bdberr;
@@ -3105,7 +3105,7 @@ int bdb_reset_csc2_version(tran_type *trans, const char *dbname, int ver)
     strncpy0(vers_key.dbname, dbname, sizeof(vers_key.dbname));
     vers_key.dbname_len = strlen(vers_key.dbname) + 1;
 
-    while (ver) {
+    while (ver >= start_ver) {
         vers_key.csc2_vers = ver;
         llmeta_file_type_dbname_csc2_vers_key_put(&vers_key, p_buf_start,
                                                   p_buf_end);
