@@ -119,7 +119,6 @@ extern int gbl_partial_indexes;
 #define SQLITE3BTREE_KEY_SET_DEL(IX) (clnt->del_keys |= (1ULL << (IX)))
 extern int gbl_expressions_indexes;
 extern int gbl_debug_tmptbl_corrupt_mem;
-
 // Lua threads share temp tables.
 // Don't create new btree, use this one (tmptbl_clone)
 static __thread struct temptable *tmptbl_clone = NULL;
@@ -3700,7 +3699,6 @@ int sqlite3BtreeDelete(BtCursor *pCur, int usage)
             rc = SQLITE_OK;
             goto done;
         }
-
         if (pCur->bt == NULL || pCur->bt->is_remote == 0) {
 
             if ((queryOverlapsCursors(clnt, pCur) == 1) ||
@@ -5487,7 +5485,7 @@ int sqlite3BtreeMovetoUnpacked(BtCursor *pCur, /* The cursor to be moved */
        I need to move to check if I need to delete a partial index */
     if (likely(bdb_attr_get(thedb->bdb_attr, BDB_ATTR_ONE_PASS_DELETE)) &&
         (pCur->ixnum == -1) && (pCur->open_flags & OPFLAG_FORDELETE) &&
-        !gbl_partial_indexes) {
+        (!gbl_partial_indexes || !pCur->db->ix_partial)) {
         rc = SQLITE_OK;
         goto done;
     }
