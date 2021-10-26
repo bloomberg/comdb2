@@ -51,3 +51,6 @@ include_directories(
   ${PROTOBUF-C_INCLUDE_DIR}
 )
 add_dependencies(schemachange mem proto bdb)
+if (COMDB2_BBCMAKE)
+  comdb2_bb_target(schemachange)
+endif()
