@@ -25,5 +25,5 @@ include_directories(
 
 add_plugin(logdelete STATIC logdelete.c)
 if (COMDB2_BBCMAKE)
-  configure_bb_target(logdelete V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_bb_target(logdelete)
 endif()

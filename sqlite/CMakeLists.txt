@@ -211,5 +211,5 @@ include_directories(
 add_dependencies(sqlite mem proto bdb)
 if (COMDB2_BBCMAKE)
   target_link_libraries(sqlite PUBLIC protobuf-c uuid)
-  configure_bb_target(sqlite V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_bb_target(sqlite)
 endif()

@@ -29,5 +29,5 @@ INCLUDE_DIRECTORIES(
 add_plugin(dbqueuedb STATIC dbqueuedb.c)
 add_dependencies(dbqueuedb sqlite) # Wait for parse.h
 if (COMDB2_BBCMAKE)
-  configure_bb_target(dbqueuedb V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_bb_target(dbqueuedb)
 endif()

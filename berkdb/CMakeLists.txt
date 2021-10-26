@@ -260,7 +260,7 @@ endforeach()
 add_library(db ${BERK_C} ${GEN_C} ${GEN_EXT_H})
 if (COMDB2_BBCMAKE)
   target_link_libraries(db PUBLIC lz4 openssl)
-  configure_bb_target(db V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
+  comdb2_bb_target(db)
 endif()
 
 include_directories(
