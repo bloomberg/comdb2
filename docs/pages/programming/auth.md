@@ -98,7 +98,7 @@ grant read on t1 to 'foo_user'
 privileges can be revoked using the [revoke](sql.html#grant-and-revoke) statement
 
 ```sql
-revoke read on t1 to 'foo_user'
+revoke read on t1 from 'foo_user'
 ``` 
 
 Existing privileges can be seen by running a query on ```comdb2_tablepermissions```

@@ -34,7 +34,8 @@ set all_graphs {
          drop
          truncate
          analyze
-         grant-revoke
+         grant
+         revoke
          rebuild
          schemachange
          get
@@ -411,14 +412,23 @@ set all_graphs {
       {line SUMMARIZE /num-of-summarize-threads}
     } ,} }}
   }
-  grant-revoke {stack
-    {line {or GRANT REVOKE}}
+  grant {stack
+    {line {GRANT}}
     {line
         {or
             {line {or READ WRITE DDL} ON /table-name }
             {line OP}
         } TO /user-name}
   }
+  revoke {stack
+    {line {REVOKE}}
+    {line
+        {or
+            {line {or READ WRITE DDL} ON /table-name }
+            {line OP}
+        } FROM /user-name}
+  }
+
   rebuild {
 stack
           {line REBUILD

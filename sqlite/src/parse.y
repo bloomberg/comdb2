@@ -2266,17 +2266,17 @@ cmd ::= GRANT userschema(P) nm(U1) TO nm(U2). {
 
 /////////////////////////////////// REVOKE ////////////////////////////////////
 
-cmd ::= REVOKE sql_permission(P) ON nm(T) dbnm(Y) TO nm(U). {
+cmd ::= REVOKE sql_permission(P) ON nm(T) dbnm(Y) TO|FROM nm(U). {
     comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, &T,&Y,&U);
 }
 
-cmd ::= REVOKE op_permission(P) TO nm(U). {
+cmd ::= REVOKE op_permission(P) TO|FROM nm(U). {
     comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, NULL,NULL,&U);
 }
 
-cmd ::= REVOKE userschema(P) nm(U1) TO nm(U2). {
+cmd ::= REVOKE userschema(P) nm(U1) TO|FROM nm(U2). {
     comdb2WriteTransaction(pParse);
     comdb2grant(pParse, 1, P, &U1,NULL,&U2);
 }

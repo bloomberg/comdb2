@@ -518,7 +518,9 @@ system table.
 
 ### GRANT and REVOKE
 
-![GRANT and REVOKE](images/grant-revoke.gif)
+![GRANT](images/grant.gif)
+
+![REVOKE](images/revoke.gif)
 
 ```GRANT``` lets the named user have read or write access to the given table. ```REVOKE``` takes away that access.
 Note that the access checks aren't enforced until authentication is enabled on the database as a whole with the
