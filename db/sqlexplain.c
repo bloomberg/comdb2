@@ -1230,7 +1230,7 @@ int newsql_dump_query_plan(struct sqlclntstate *clnt, sqlite3 *hndl)
 
     //if verbose explain get costs dumped to tmpfile by setting wheretrace
     if (clnt->is_explain == 2) {
-        sqlite3WhereTrace = 0xfff;
+        sqlite3WhereTrace = clnt->where_trace_flags;
         f = tmpfile();
         if (f == NULL) {
             logmsgperror("tmpfile");
