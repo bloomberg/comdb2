@@ -1704,12 +1704,32 @@ int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
                     clnt->get_cost = 0;
                 }
             } else if (strncasecmp(sqlstr, "explain", 7) == 0) {
+                /* is_explain flag:
+                   1 - show plan
+                   2 - show plan + wheretrace */
                 sqlstr += 7;
                 sqlstr = skipws(sqlstr);
                 if (strncasecmp(sqlstr, "on", 2) == 0) {
                     clnt->is_explain = 1;
                 } else if (strncasecmp(sqlstr, "verbose", 7) == 0) {
                     clnt->is_explain = 2;
+                    sqlstr += 7;
+                    sqlstr = skipws(sqlstr);
+
+                    /*
+                       0x2    -> show headnote and footnote from the solver
+                       0x4    -> show how the best index is picked
+                       0x8    -> show how the cost of each index is calculated
+                       0x10   -> show trace for stat4
+                       0x100  -> show all where terms
+                       0x200  -> show trace for Or terms
+                       0x840  -> show trace for virtual tables
+                     */
+
+                    if (sqlstr[0] == '\0')
+                        clnt->where_trace_flags = ~0;
+                    else
+                        clnt->where_trace_flags = (int)strtol(sqlstr, NULL, 16);
                 } else {
                     clnt->is_explain = 0;
                 }

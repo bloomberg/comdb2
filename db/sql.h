@@ -803,6 +803,8 @@ struct sqlclntstate {
     uint8_t fail_dispatch;
     uint8_t in_sqlite_init; /* clnt is in sqlite init phase when this is set */
 
+    int where_trace_flags;
+
     int ncontext;
     char **context;
 
