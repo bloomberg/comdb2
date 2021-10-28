@@ -9,11 +9,11 @@ select * from t1;
 
 -- test 'lock_dba_user'
 grant op to 'dba';
-revoke op to 'dba';
+revoke op from 'dba';
 put password off for 'dba';
 grant op to 'dba';
-revoke op to 'dba';
-revoke read on 't1' to 'dba';
+revoke op from 'dba';
+revoke read on 't1' from 'dba';
 
 put password 'root' for 'root'
 grant op to 'root';
@@ -31,11 +31,11 @@ select * from comdb2_users order by username;
 select * from t1;
 -- another op user must not still not be able to change 'dba' user permissions
 grant op to 'dba';
-revoke op to 'dba';
+revoke op from 'dba';
 put password off for 'dba';
 grant op to 'dba';
-revoke op to 'dba';
-revoke read on 't1' to 'dba';
+revoke op from 'dba';
+revoke read on 't1' from 'dba';
 
 -- login using 'dba' user
 set user 'dba'
