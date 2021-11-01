@@ -43,6 +43,8 @@ static int whereLoopResize(sqlite3*, WhereLoop*, int);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_TEST) || defined(SQLITE_DEBUG) */
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+int gbl_disable_seekscan_optimization = 0;
+
 int shard_check_parallelism(int iTable);
 int comdb2_shard_table_constraints(Parse *pParse, 
         const char *zName, const char *zDatabase, Expr **pWhere);
@@ -2593,7 +2595,8 @@ static int whereLoopAddBtreeIndex(
              saved_nEq, M, logK, nIn, rLogSize, x));
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
         /* NC: Skip SEEKSCAN for remote tables */
-        }else if( nInMul<2 && pProbe->pTable->iDb <= 1 ){
+        }else if( gbl_disable_seekscan_optimization == 0 && nInMul<2 &&
+                  pProbe->pTable->iDb <= 1 ){
 #else /* SQLITE_BUILDING_FOR_COMDB2 */
         }else if( nInMul<2 ){
 #endif /* SQLITE_BUILDING_FOR_COMDB2 */
