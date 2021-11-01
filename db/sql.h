@@ -869,6 +869,7 @@ struct sqlclntstate {
     int flat_col_vals;
     plugin_func *recover_ddlk;
     replay_func *recover_ddlk_fail;
+    unsigned skip_eventlog: 1;
 };
 
 /* Query stats. */
