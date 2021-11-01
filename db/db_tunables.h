@@ -243,6 +243,10 @@ REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'",
 REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_rowlocks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("disable_seekscan_optimization",
+                 "Disables SEEKSCAN optimization", TUNABLE_BOOLEAN,
+                 &gbl_disable_seekscan_optimization, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("disable_skip_rows", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_skip_rows, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
