@@ -9589,7 +9589,9 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     uint32_t curtran_flags;
     int bdberr;
 
-    assert_no_schema_lk();
+    if (!clnt->in_sqlite_init) {
+        assert_no_schema_lk();
+    }
 
     if (clnt->recover_deadlock_rcode) {
         assert(bdb_lockref() == 0);
