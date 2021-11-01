@@ -567,7 +567,8 @@ static inline void add_to_fingerprints(const struct reqlogger *logger)
 
 void eventlog_add(const struct reqlogger *logger)
 {
-    if (eventlog == NULL || !eventlog_enabled) {
+    if (eventlog == NULL || !eventlog_enabled ||
+        (logger->clnt && logger->clnt->skip_eventlog)) {
         return;
     }
 

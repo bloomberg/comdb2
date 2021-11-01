@@ -93,6 +93,7 @@ static void watchdogsql(void)
     start_internal_sql_clnt(&clnt);
     clnt.dbtran.mode = TRANLEVEL_SOSQL;
     clnt.admin = 1;
+    clnt.skip_eventlog = 1;
     run_internal_sql_clnt(&clnt, "select 1");
     end_internal_sql_clnt(&clnt);
 }
