@@ -44,7 +44,7 @@ static int whereLoopResize(sqlite3*, WhereLoop*, int);
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 int gbl_sqlite_stat4_scan = 0;
-int gbl_disable_seekscan_optimization = 0;
+int gbl_disable_seekscan_optimization = 1;
 
 int shard_check_parallelism(int iTable);
 int comdb2_shard_table_constraints(Parse *pParse, 
