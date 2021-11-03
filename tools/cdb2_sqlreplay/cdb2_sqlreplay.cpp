@@ -51,6 +51,8 @@ bool diffs = false;
 bool verbose = false;
 int threshold_percent = 5;
 
+int64_t maxevents = 0;
+
 void replay(cdb2_hndl_tp *db, cson_value *val);
 
 static const char *usage_text =
@@ -60,6 +62,7 @@ static const char *usage_text =
     "  --diff                 Dump performance/cost diffs\n"
     "  --verbose              Lots of verbose output\n"
     "  --threshold N          Set diff threshold to N% (default 5)\n"
+    "  --stopat N             Stop after N events processed\n"
     "\n"
     ;
 
@@ -245,7 +248,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                 std::cout << "binding "<< type << " column " << name << " to NULL " << std::endl;
         }
         else if (strcmp(type, "largeint") == 0 || strcmp(type, "int") == 0 || strcmp(type, "smallint") == 0) {
-            int64_t *iv = new int64_t;
+            int64_t *iv = (int64_t*) malloc(sizeof(int64_t));
             bool succ = get_intprop(bp, "value", iv);
             if (!succ) {
                 std::cerr << "Error getting " << type << " value of bound parameter " << name << std::endl;
@@ -258,7 +261,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                 std::cout << "binding "<< type << " column " << name << " to value " << *iv << std::endl;
         } 
         else if (strcmp(type, "float") == 0 || strcmp(type, "doublefloat") == 0) {
-            double *dv = new double;
+            double *dv = (double*) malloc(sizeof(double));
             bool succ = get_doubleprop(bp, "value", dv);
             if (!succ) {
                 std::cerr << "Error getting " << type << " value of bound parameter " << name << std::endl;
@@ -305,7 +308,6 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
             varaddr = unexpanded;
             length = unexlen;
 
-            blobs_vect.push_back(unexpanded);
             if (verbose)
                 std::cout << "binding "<< type << " column " << name << " to value " << strp << std::endl;
         }
@@ -327,6 +329,7 @@ bool do_bindings(cdb2_hndl_tp *db, cson_value *event_val,
                 return false;
             }
         }
+        blobs_vect.push_back((uint8_t*) varaddr);
     }
 
     return true;
@@ -987,6 +990,7 @@ protected:
 void process_events(cdb2_hndl_tp *db, event_queue &queue) {
     std::string line;
     int linenum = 0;
+    int64_t numevents = 0;
 
     while (!queue.empty()) {
         int rc;
@@ -1007,6 +1011,9 @@ void process_events(cdb2_hndl_tp *db, event_queue &queue) {
                 }
                 db = cdb2h;
             }
+            numevents++;
+            if (maxevents && numevents >= maxevents)
+                break;
         }
         else
             cson_free_value(event_val);
@@ -1038,6 +1045,15 @@ int main(int argc, char **argv) {
                 return 1;
             }
             threshold_percent = (int) strtol(argv[0], nullptr, 10);
+        }
+        else if (strcmp(argv[0], "--stopat") == 0) {
+            argc--;
+            argv++;
+            if (argc == 0) {
+                fprintf(stderr, "--stopat expected an argument");
+                return 1;
+            }
+            maxevents = (int) strtol(argv[0], nullptr, 10);
         }
         else {
             fprintf(stderr, "Unknown option %s\n", argv[0]);
