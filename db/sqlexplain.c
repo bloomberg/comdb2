@@ -1,5 +1,5 @@
 /*
-   Copyright 2015, 2018 Bloomberg Finance L.P.
+   Copyright 2015, 2021, Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -874,6 +874,12 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
         }
         break;
     }
+    case OP_OpenDup:
+        strbuf_appendf(out,
+                       "Open a new cursor [%d] that points to the same "
+                       "ephemeral table as cursor [%d]",
+                       op->p1, op->p2);
+        break;
     case OP_OpenPseudo:
         strbuf_appendf(
             out, "Open cursor [%d] on pseudo table. Table will have single row",
@@ -882,6 +888,27 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
     case OP_Close:
         strbuf_appendf(out, "Close cursor [%d]", op->p1);
         break;
+    case OP_SeekHit:
+        strbuf_appendf(out,
+                       "Increase or decrease the SeekHit value for cursor [%d],"
+                       " so that it is somewhere in the range [%d, %d]",
+                       op->p1, op->p2, op->p3);
+        break;
+    case OP_SeekScan: {
+        Op *next_op = &v->aOp[pc+1];
+        assert(next_op->opcode == OP_SeekGE);
+        strbuf_appendf(out,
+                       "Step through the cursor between [0] and [%d] times to "
+                       "find the target from the subsequent SeekGE opcode, and "
+                       "if (a) the cursor still pointing before the target, "
+                       "then fallthrough to the SeekGE (i.e. perform a seek), "
+                       "(b) the cursor is at the target, then jump to [%d], "
+                       "bypassing the subsequent seek operation, (c) the cursor "
+                       "has moved past the target (i.e. the key does not exist), "
+                       "then jump to [%d]",
+                       op->p1, op->p2, next_op->p2);
+        break;
+    }
     case OP_SeekLT:
     case OP_SeekLE:
     case OP_SeekGE:
@@ -1053,10 +1080,11 @@ void get_one_explain_line(sqlite3 *hndl, strbuf *out, Vdbe *v, int indent,
             op->p3, op->p1, op->p2);
         break;
     case OP_RowSetTest:
-        strbuf_appendf(
-            out,
-            "If R%d == R%d jump to R%d, otherwise add R%d to boolean index",
-            op->p1, op->p3, op->p2, op->p3);
+        strbuf_appendf(out,
+                       "If R%d contains RowSet object which contains value held"
+                       " in R%d, then jump to [%d], otherwise add value in R%d"
+                       " to the RowSet",
+                       op->p1, op->p3, op->p2, op->p3);
         break;
     case OP_MemMax:
         strbuf_append(out,
