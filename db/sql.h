@@ -870,6 +870,7 @@ struct sqlclntstate {
     plugin_func *recover_ddlk;
     replay_func *recover_ddlk_fail;
     unsigned skip_eventlog: 1;
+    unsigned request_fp: 1;
 };
 
 /* Query stats. */

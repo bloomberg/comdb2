@@ -159,4 +159,7 @@ message CDB2_SQLRESPONSE {
     optional bool flat_col_vals = 11;
     repeated bytes values = 12;
     repeated bool isnulls = 13;
+
+    /* query fingerprint */
+    optional bytes fp = 14;
 }
