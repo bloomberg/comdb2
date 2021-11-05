@@ -5228,6 +5228,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->sqltick = 0;
     clnt->rowbuffer = 1;
     clnt->flat_col_vals = 0;
+    clnt->request_fp = 0;
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
     }

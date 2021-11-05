@@ -30,6 +30,12 @@ static void *my_overwrite_rc_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, 
     return (void*)(intptr_t)(-1);
 }
 
+static void *my_fp_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
+{
+    printf("FP is %s\n", (char *)argv[0]);
+    return NULL;
+}
+
 static cdb2_event *init_once_event;
 
 static void register_once(void)
@@ -199,6 +205,7 @@ static int TEST_run_stmt_next_record_events(const char *db, const char *tier)
     cdb2_event *e1, *e2;
     cdb2_open(&h, db, tier, 0);
     e1 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_arg_hook, NULL, 1, CDB2_SQL);
+    e1 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_fp_hook, NULL, 1, CDB2_FINGERPRINT);
     e2 = cdb2_register_event(h, CDB2_AT_EXIT_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
     cdb2_run_statement(h, "SELECT \"You may say I'm a dreamer, but I'm not the only one.\"");
     while ((rc = cdb2_next_record(h)) == CDB2_OK);

@@ -383,6 +383,21 @@ static int newsql_columns(struct sqlclntstate *clnt, sqlite3_stmt *stmt)
     resp.response_type = RESPONSE_TYPE__COLUMN_NAMES;
     resp.n_value = ncols;
     resp.value = value;
+    if (clnt->request_fp) {
+        /* client has requested the fingerprint. if the fingerprint is already
+           available in clnt, use it. otherwise compute its value and store
+           in clnt. */
+        uint8_t empty[FINGERPRINTSZ] = {0};
+        if (memcmp(clnt->work.aFingerprint, empty, FINGERPRINTSZ) == 0) {
+            size_t nNormSql = 0;
+            calc_fingerprint(clnt->work.zNormSql, &nNormSql,
+                    clnt->work.aFingerprint);
+        }
+        resp.has_fp = 1;
+        resp.fp.data = clnt->work.aFingerprint;
+        resp.fp.len = FINGERPRINTSZ;
+    }
+    resp.has_flat_col_vals = 1;
     return newsql_response(clnt, &resp, 0);
 }
 
@@ -1870,8 +1885,12 @@ int is_commit_rollback(struct sqlclntstate *clnt)
 int newsql_first_run(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     for (int ii = 0; ii < sql_query->n_features; ++ii) {
-        if (CDB2_CLIENT_FEATURES__FLAT_COL_VALS == sql_query->features[ii]) {
+        switch(sql_query->features[ii]) {
+        case CDB2_CLIENT_FEATURES__FLAT_COL_VALS:
             clnt->flat_col_vals = 1;
+            break;
+        case CDB2_CLIENT_FEATURES__REQUEST_FP:
+            clnt->request_fp = 1;
             break;
         }
     }

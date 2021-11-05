@@ -117,6 +117,9 @@ static int cdb2_tcpbufsz = CDB2_TCPBUFSZ_DEFAULT;
 #define CDB2CFG_OVERRIDE_DEFAULT 0
 static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 
+#define CDB2_REQUEST_FP_DEFAULT 0
+static int CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
+
 #ifndef WITH_SSL
 #  define WITH_SSL 1
 #endif
@@ -300,6 +303,7 @@ static void reset_the_configuration(void)
 
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
     cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
+    CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
 
 #if WITH_SSL
     cdb2_c_ssl_mode = SSL_ALLOW;
@@ -1043,6 +1047,7 @@ struct cdb2_hndl {
     int connect_timeout;
     int comdb2db_timeout;
     int socket_timeout;
+    int request_fp; /* 1 if requesting the fingerprint; 0 otherwise. */
     cdb2_event events;
     // Protobuf allocator data used only for row data i.e. lastresponse
     void *protobuf_data;
@@ -1476,6 +1481,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 pthread_mutex_unlock(&cdb2_sockpool_mutex);
                 only_read_config(NULL, 1, 1);
                 pthread_mutex_lock(&cdb2_sockpool_mutex);
+            } else if (strcasecmp("request_fingerprint", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    CDB2_REQUEST_FP = (strncasecmp(tok, "true", 4) == 0);
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -2917,6 +2926,8 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 #if WITH_SSL
         features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
 #endif
+        if (hndl->request_fp) /* Request server to send back query fingerprint */
+            features[n_features++] = CDB2_CLIENT_FEATURES__REQUEST_FP;
         /* Request server to send back row data flat, instead of storing it in
            a nested data structure. This helps reduce server's memory footprint. */
         features[n_features++] = CDB2_CLIENT_FEATURES__FLAT_COL_VALS;
@@ -6470,6 +6481,8 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->allocator.free = &cdb2_protobuf_free;
     hndl->allocator.allocator_data = hndl;
 
+    hndl->request_fp = CDB2_REQUEST_FP;
+
 out:
     if (log_calls) {
         fprintf(stderr, "%p> cdb2_open(dbname: \"%s\", type: \"%s\", flags: "
@@ -6661,6 +6674,19 @@ static cdb2_event *cdb2_next_callback(cdb2_hndl_tp *hndl, cdb2_event_type type,
     return e;
 }
 
+static char *stringify_fingerprint(char *dst, uint8_t *val, int len)
+{
+    int i;
+    char *ret = dst;
+    char hex[] = "0123456789abcdef";
+    for (i = 0; i != len; ++i) {
+        *(dst++) = hex[(val[i] & 0xf0) >> 4];
+        *(dst++) = hex[val[i] & 0x0f];
+    }
+    *dst = 0;
+    return ret;
+}
+
 static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
                                   ...)
 {
@@ -6673,6 +6699,7 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
     const char *sql = NULL;
     void *rc;
     int state;
+    char *fp;
 
     /* Fast return if no arguments need to be passed to the callback. */
     if (e->argc == 0)
@@ -6688,6 +6715,13 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
     }
     rc = 0;
     state = 0;
+
+    if (hndl->firstresponse == NULL || !hndl->firstresponse->has_fp)
+        fp = NULL;
+    else {
+        fp = alloca(hndl->firstresponse->fp.len * 2 + 1);
+        stringify_fingerprint(fp, hndl->firstresponse->fp.data, hndl->firstresponse->fp.len);
+    }
 
     /* If the event has specified its own arguments, use them. */
     va_start(ap, argc);
@@ -6707,6 +6741,9 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
             break;
         case CDB2_QUERY_STATE:
             state = va_arg(ap, int);
+            break;
+        case CDB2_FINGERPRINT:
+            fp = va_arg(ap, char *);
             break;
         default:
             (void)va_arg(ap, void *);
@@ -6733,6 +6770,8 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         case CDB2_QUERY_STATE:
             argv[i] = (void *)(intptr_t)state;
             break;
+        case CDB2_FINGERPRINT:
+            argv[i] = (void *)fp;
         default:
             break;
         }
