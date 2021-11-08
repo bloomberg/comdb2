@@ -174,6 +174,10 @@ insert into t1 values(10001, 'abc')
 select * from t1 where i = 10001
 EOF
 
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t2(a int)"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3(b int)"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select distinct t2.a from t2 left join t3 on t2.a = t3.b"
+
 # need to flush to get correct stmts in logfile
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "exec procedure sys.cmd.send('reql events flush')"
 
@@ -197,6 +201,14 @@ res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.* | head -2); do
     zcat $f | jq -c 'if (.type == "sql") and (.sql == "select * from t1 where i = 10001") then .id else empty end'
 done )
 assertres $res "null"
+
+echo "Test whether all tables referenced in query are present in event log even if not needed to execute query"
+echo "make sure string 'select distinct t2.a from t2 left join t3 on t2.a = t3.b' is in the last 2 eventlog files:"
+echo "make sure that 'select distinct t2.a from t2 left join t3 on t2.a = t3.b' has t2 and t3 in tables field (even though t3 isn't needed to execute this)"
+res=$(for f in $(ls -1t $TESTDIR/var/log/cdb2/$DBNAME.events.* | head -2); do
+    zcat $f | jq -c 'if (.type == "sql") and (.sql == "select distinct t2.a from t2 left join t3 on t2.a = t3.b") and (.tables | tostring == "[\"t2\",\"t3\"]") then . else empty end'
+done | wc -l)
+assertres $res 1
 
 
 echo "Test having no limit for logfiles (turning off rolling)"
