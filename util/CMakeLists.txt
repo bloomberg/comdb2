@@ -65,6 +65,7 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/dlmalloc
   ${PROJECT_SOURCE_DIR}/mem

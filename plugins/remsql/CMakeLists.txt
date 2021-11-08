@@ -6,6 +6,7 @@ add_definitions(
 include_directories(
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/bdb
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/crc32c

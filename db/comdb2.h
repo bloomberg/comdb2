@@ -3702,4 +3702,8 @@ extern int gbl_queue_walk_limit;
 extern int gbl_rcache;
 extern int gbl_throttle_txn_chunks_msec;
 
+#ifdef COMDB2_BBCMAKE
+hash_t *hash_init_strcase(int);
+#endif
+
 #endif /* !INCLUDED_COMDB2_H */

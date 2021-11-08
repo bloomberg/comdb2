@@ -86,6 +86,7 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/sqlite/src
   ${PROJECT_SOURCE_DIR}/sqlite/ext/comdb2
   ${PROJECT_SOURCE_DIR}/berkdb
