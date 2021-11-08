@@ -39,8 +39,9 @@ endif()
 
 if (COMDB2_BBCMAKE)
   include(${COMDB2_BBCMAKE})
+  add_definitions(-DCOMDB2_BBCMAKE)
 else()
-
+configure_file(bbinc/plhash.in bbinc/plhash.h COPYONLY)
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${PROJECT_SOURCE_DIR}/cmake)
 find_package(LZ4 REQUIRED)
 # Comdb2 uses libcrpyto. Hence OpenSSL is required even if WITH_SSL is off.
