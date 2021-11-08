@@ -4918,6 +4918,9 @@ static int selectExpander(Walker *pWalker, Select *p){
   Expr *pE, *pRight, *pExpr;
   u16 selFlags = p->selFlags;
   u32 elistFlags = 0;
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  Vdbe *v = sqlite3GetVdbe(pParse);
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
   p->selFlags |= SF_Expanded;
   if( db->mallocFailed  ){
@@ -4989,6 +4992,13 @@ static int selectExpander(Walker *pWalker, Select *p){
         pTab->nCol = nCol;
       }
 #endif
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if (!(IsVirtual(pTab) || pTab->pSelect)) {
+        // add all tables referenced in query even if not needed to execute query
+        sqlite3VdbeAddTable(v, pTab);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
 
     /* Locate the index named by the INDEXED BY clause, if any. */
