@@ -5263,6 +5263,8 @@ int main(int argc, char **argv)
     /* allocate initializer first */
     comdb2ma_init(0, 0);
 
+    plhash_init();
+
     /* more reliable */
 #ifdef __linux__
     char fname[PATH_MAX];

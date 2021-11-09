@@ -73,4 +73,5 @@ char *comdb2_file(char *fmt, ...);
 void init_file_locations(char *);
 void cleanup_file_locations();
 void update_file_location(char *type, const char *dir);
+void plhash_init(void);
 #endif
