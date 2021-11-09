@@ -41,32 +41,35 @@ uint8_t *block_req_put(const struct block_req *p_block_req, uint8_t *p_buf,
 }
 
 const uint8_t *block_req_get(struct block_req *p_block_req,
-                             const uint8_t *p_buf, const uint8_t *p_buf_end)
+                             const uint8_t *p_buf, const uint8_t *p_buf_end,
+                             int comdbg_flags)
 {
     if (p_buf_end < p_buf || BLOCK_REQ_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_block_req->flags), sizeof(p_block_req->flags), p_buf,
+    p_buf = getfunc(&(p_block_req->flags), sizeof(p_block_req->flags), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(p_block_req->offset), sizeof(p_block_req->offset), p_buf,
+    p_buf = getfunc(&(p_block_req->offset), sizeof(p_block_req->offset), p_buf,
                     p_buf_end);
-    p_buf = buf_get(&(p_block_req->num_reqs), sizeof(p_block_req->num_reqs),
+    p_buf = getfunc(&(p_block_req->num_reqs), sizeof(p_block_req->num_reqs),
                     p_buf, p_buf_end);
 
     return p_buf;
 }
 
 uint8_t *block_fwd_put(const struct block_fwd *p_block_fwd, uint8_t *p_buf,
-                       const uint8_t *p_buf_end)
+                       const uint8_t *p_buf_end, int comdbg_flags)
 {
     if (p_buf_end < p_buf || BLOCK_FWD_LEN > (p_buf_end - p_buf))
         return NULL;
+    PUTFUNC
 
-    p_buf = buf_put(&(p_block_fwd->source_node),
+    p_buf = putfunc(&(p_block_fwd->source_node),
                     sizeof(p_block_fwd->source_node), p_buf, p_buf_end);
-    p_buf = buf_put(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
+    p_buf = putfunc(&(p_block_fwd->offset), sizeof(p_block_fwd->offset), p_buf,
                     p_buf_end);
-    p_buf = buf_put(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
+    p_buf = putfunc(&(p_block_fwd->num_reqs), sizeof(p_block_fwd->num_reqs),
                     p_buf, p_buf_end);
 
     return p_buf;
@@ -129,12 +132,13 @@ const uint8_t *block_nested_get(struct block_nested *p_block_nested,
 }
 
 uint8_t *block_rsp_put(const struct block_rsp *p_block_rsp, uint8_t *p_buf,
-                       const uint8_t *p_buf_end)
+                       const uint8_t *p_buf_end, int comdbg_flags)
 {
     if (p_buf_end < p_buf || BLOCK_RSP_LEN > (p_buf_end - p_buf))
         return NULL;
+    PUTFUNC
 
-    p_buf = buf_put(&(p_block_rsp->num_completed),
+    p_buf = putfunc(&(p_block_rsp->num_completed),
                     sizeof(p_block_rsp->num_completed), p_buf, p_buf_end);
 
     return p_buf;
@@ -412,14 +416,16 @@ uint8_t *packedreq_hdr_put(const struct packedreq_hdr *p_packedreq_hdr,
 }
 
 const uint8_t *packedreq_hdr_get(struct packedreq_hdr *p_packedreq_hdr,
-                                 const uint8_t *p_buf, const uint8_t *p_buf_end)
+                                 const uint8_t *p_buf, const uint8_t *p_buf_end, 
+                                 int comdbg_flags)
 {
     if (p_buf_end < p_buf || PACKEDREQ_HDR_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_packedreq_hdr->opcode), sizeof(p_packedreq_hdr->opcode),
+    p_buf = getfunc(&(p_packedreq_hdr->opcode), sizeof(p_packedreq_hdr->opcode),
                     p_buf, p_buf_end);
-    p_buf = buf_get(&(p_packedreq_hdr->nxt), sizeof(p_packedreq_hdr->nxt),
+    p_buf = getfunc(&(p_packedreq_hdr->nxt), sizeof(p_packedreq_hdr->nxt),
                     p_buf, p_buf_end);
 
     return p_buf;
@@ -438,12 +444,14 @@ uint8_t *packedreq_add_put(const struct packedreq_add *p_packedreq_add,
 }
 
 const uint8_t *packedreq_add_get(struct packedreq_add *p_packedreq_add,
-                                 const uint8_t *p_buf, const uint8_t *p_buf_end)
+                                 const uint8_t *p_buf, const uint8_t *p_buf_end,
+                                 int comdbg_flags)
 {
     if (p_buf_end < p_buf || PACKEDREQ_ADD_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_packedreq_add->lrl), sizeof(p_packedreq_add->lrl),
+    p_buf = getfunc(&(p_packedreq_add->lrl), sizeof(p_packedreq_add->lrl),
                     p_buf, p_buf_end);
 
     return p_buf;
@@ -463,12 +471,14 @@ uint8_t *packedreq_addsec_put(const struct packedreq_addsec *p_packedreq_addsec,
 
 const uint8_t *packedreq_addsec_get(struct packedreq_addsec *p_packedreq_addsec,
                                     const uint8_t *p_buf,
-                                    const uint8_t *p_buf_end)
+                                    const uint8_t *p_buf_end,
+                                    int comdbg_flags)
 {
     if (p_buf_end < p_buf || PACKEDREQ_ADDSEC_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_packedreq_addsec->ixnum),
+    p_buf = getfunc(&(p_packedreq_addsec->ixnum),
                     sizeof(p_packedreq_addsec->ixnum), p_buf, p_buf_end);
 
     return p_buf;
@@ -555,14 +565,16 @@ const uint8_t *packedreq_seq2_get(struct packedreq_seq2 *p_packedreq_seq,
 }
 
 const uint8_t *packedreq_del_get(struct packedreq_del *p_packedreq_del,
-                                 const uint8_t *p_buf, const uint8_t *p_buf_end)
+                                 const uint8_t *p_buf, const uint8_t *p_buf_end,
+                                 int comdbg_flags)
 {
     if (p_buf_end < p_buf || PACKEDREQ_DEL_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_packedreq_del->lrl), sizeof(p_packedreq_del->lrl),
+    p_buf = getfunc(&(p_packedreq_del->lrl), sizeof(p_packedreq_del->lrl),
                     p_buf, p_buf_end);
-    p_buf = buf_get(&(p_packedreq_del->rrn), sizeof(p_packedreq_del->rrn),
+    p_buf = getfunc(&(p_packedreq_del->rrn), sizeof(p_packedreq_del->rrn),
                     p_buf, p_buf_end);
 
     return p_buf;
@@ -582,12 +594,14 @@ uint8_t *packedreq_delsec_put(const struct packedreq_delsec *p_packedreq_delsec,
 
 const uint8_t *packedreq_delsec_get(struct packedreq_delsec *p_packedreq_delsec,
                                     const uint8_t *p_buf,
-                                    const uint8_t *p_buf_end)
+                                    const uint8_t *p_buf_end,
+                                    int comdbg_flags)
 {
     if (p_buf_end < p_buf || PACKEDREQ_DELSEC_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_packedreq_delsec->ixnum),
+    p_buf = getfunc(&(p_packedreq_delsec->ixnum),
                     sizeof(p_packedreq_delsec->ixnum), p_buf, p_buf_end);
 
     return p_buf;
@@ -611,16 +625,18 @@ uint8_t *packedreq_upvrrn_put(const struct packedreq_upvrrn *p_packedreq_upvrrn,
 
 const uint8_t *packedreq_upvrrn_get(struct packedreq_upvrrn *p_packedreq_upvrrn,
                                     const uint8_t *p_buf,
-                                    const uint8_t *p_buf_end)
+                                    const uint8_t *p_buf_end,
+                                    int comdbg_flags)
 {
     if (p_buf_end < p_buf || PACKEDREQ_UPVRRN_LEN > (p_buf_end - p_buf))
         return NULL;
+    GETFUNC
 
-    p_buf = buf_get(&(p_packedreq_upvrrn->rrn), sizeof(p_packedreq_upvrrn->rrn),
+    p_buf = getfunc(&(p_packedreq_upvrrn->rrn), sizeof(p_packedreq_upvrrn->rrn),
                     p_buf, p_buf_end);
-    p_buf = buf_get(&(p_packedreq_upvrrn->vptr4),
+    p_buf = getfunc(&(p_packedreq_upvrrn->vptr4),
                     sizeof(p_packedreq_upvrrn->vptr4), p_buf, p_buf_end);
-    p_buf = buf_get(&(p_packedreq_upvrrn->vlen4),
+    p_buf = getfunc(&(p_packedreq_upvrrn->vlen4),
                     sizeof(p_packedreq_upvrrn->vlen4), p_buf, p_buf_end);
 
     return p_buf;

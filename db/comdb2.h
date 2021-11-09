@@ -239,10 +239,11 @@ enum OPCODES {
     OP_NOTCOHERENT2 = 129,
     OP_MAKE_NODE_INCOHERENT = 130,
     OP_CLIENT_STATS = 131,
-    OP_UPGRADE = 132 /* dummy code for online upgrade */
+    OP_FWD_BLOCK_LE = 132,
+    OP_UPGRADE = 133 /* dummy code for online upgrade */
 
     ,
-    OP_SORESE = 133 /* no blk buffers here */
+    OP_SORESE = 134 /* no blk buffers here */
     ,
 
     MAXTYPCNT = 134
@@ -995,6 +996,10 @@ struct req_hdr {
 
 enum { REQ_HDR_LEN = 4 + 2 + 1 + 1 };
 
+enum {
+    COMDBG_FLAG_FROM_LE = 1 << 16
+};
+
 BB_COMPILE_TIME_ASSERT(req_hdr_len, sizeof(struct req_hdr) == REQ_HDR_LEN);
 
 struct thread_info {
@@ -1422,6 +1427,7 @@ struct ireq {
     unsigned sc_closed_files : 1;
 
     int sc_running;
+    int comdbg_flags;
     /* REVIEW COMMENTS AT BEGINING OF STRUCT BEFORE ADDING NEW VARIABLES */
 };
 
@@ -1441,11 +1447,28 @@ BB_COMPILE_TIME_ASSERT(array_len, sizeof(struct array) == ARRAY_LEN);
 
 /* endianized array_getter for rngext */
 const uint8_t *array_get(struct array *p_array, const uint8_t *p_buf,
-                         const uint8_t *p_buf_end);
+                         const uint8_t *p_buf_end, int comdbg_flags);
 
 /* endianized array_setter for rngext */
 uint8_t *array_put(const struct array *p_array, uint8_t *p_buf,
-                   const uint8_t *p_buf_end);
+                   const uint8_t *p_buf_end, int comdbg_flags);
+
+// TODO: move to its own include
+#define GETFUNC \
+    uint8_t* (*getfunc)(void *v_dst, size_t len, const void *v_src, const void *v_end); \
+    if (comdbg_flags & COMDBG_FLAG_FROM_LE) \
+        getfunc = buf_little_get_func; \
+    else \
+        getfunc = buf_get_func;
+
+#define PUTFUNC \
+    uint8_t* (*putfunc)(const void *v_src, size_t len, void *v_dst,  const void *v_end); \
+    if (comdbg_flags & COMDBG_FLAG_FROM_LE) \
+        putfunc = buf_little_put_func; \
+    else \
+        putfunc = buf_put_func;
+
+
 
 /* rng_segment array- used for range extract calls in torngextx and torngext2 */
 struct rng_segment {
@@ -1460,7 +1483,8 @@ BB_COMPILE_TIME_ASSERT(rng_segment_len,
 
 /* retrieve a network-ordered range-extract segment descriptor */
 const uint8_t *rng_segment_get(struct rng_segment *p_segments,
-                               const uint8_t *p_buf, const uint8_t *p_buf_end);
+                               const uint8_t *p_buf, const uint8_t *p_buf_end,
+                               int comdbg_flags);
 
 /* key for historical meta db records */
 struct metahdr {
@@ -2465,7 +2489,8 @@ int ix_find_last_dup_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
                              int *fndlen, int *recnum, int maxlen);
 int ix_find_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
                     void *fndkey, int *fndrrn, unsigned long long *genid,
-                    void *fnddta, int *fndlen, int *recnum, int maxlen);
+                    void *fnddta, int *fndlen, int *recnum, int maxlen,
+                    int comdbg_flags);
 int ix_find_rnum_by_recnum_kl(struct ireq *iq, int recnum_in, int ixnum,
                               void *fndkey, int *fndrrn,
                               unsigned long long *genid, void *fnddta,
@@ -2473,7 +2498,8 @@ int ix_find_rnum_by_recnum_kl(struct ireq *iq, int recnum_in, int ixnum,
 int ix_next_rnum_kl(struct ireq *iq, int ixnum, void *key, int keylen,
                     void *last, int lastrrn, unsigned long long lastgenid,
                     void *fndkey, int *fndrrn, unsigned long long *genid,
-                    void *fnddta, int *fndlen, int *recnum, int maxlen);
+                    void *fnddta, int *fndlen, int *recnum, int maxlen,
+                    int comdbg_flags);
 int ix_find_rnum(struct ireq *iq, int ixnum, void *key, int keylen,
                  void *fndkey, int *fndrrn, unsigned long long *genid,
                  void *fnddta, int *fndlen, int *recnum, int maxlen);
@@ -2722,7 +2748,9 @@ enum {
                               1 << 9,
     RECFLAGS_IN_CASCADE = 1 << 10,
     RECFLAGS_DONT_LOCK_TBL = 1 << 11,
-    RECFLAGS_MAX = 1 << 11
+    RECFLAGS_COMDBG_FROM_LE = 1 << 12,
+
+    RECFLAGS_MAX = 1 << 12
 };
 
 /* flag codes */
@@ -3003,7 +3031,7 @@ extern int gbl_allow_mismatched_tag_size;
 uint8_t *req_hdr_put(const struct req_hdr *p_req_hdr, uint8_t *p_buf,
                      const uint8_t *p_buf_end);
 const uint8_t *req_hdr_get(struct req_hdr *p_req_hdr, const uint8_t *p_buf,
-                           const uint8_t *p_buf_end);
+                           const uint8_t *p_buf_end, int comdbg_flags);
 
 uint8_t *coherent_req_put(const struct coherent_req *p_coherent_req,
                           uint8_t *p_buf, const uint8_t *p_buf_end);

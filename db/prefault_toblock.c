@@ -413,7 +413,7 @@ int prefault_toblock(struct ireq *iq_in, void *ptr_in, int helper_thread,
         skipblock = 0;
 
         iq->p_buf_in =
-            packedreq_hdr_get(&hdr, iq->p_buf_in, p_blkstate->p_buf_req_end);
+            packedreq_hdr_get(&hdr, iq->p_buf_in, p_blkstate->p_buf_req_end, 0);
 
         if (iq->p_buf_in == NULL)
             break;
