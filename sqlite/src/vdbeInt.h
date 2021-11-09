@@ -676,7 +676,11 @@ int sqlite3VdbeMemSetDecimal(Mem*, decQuad*);
 void sqlite3VdbeMemSetPointer(Mem*, void*, const char*, void(*)(void*));
 void sqlite3VdbeMemInit(Mem*,sqlite3*,u16);
 void sqlite3VdbeMemSetNull(Mem*);
+#ifndef SQLITE_OMIT_INCRBLOB
 void sqlite3VdbeMemSetZeroBlob(Mem*,int);
+#else
+int sqlite3VdbeMemSetZeroBlob(Mem*,int);
+#endif
 #if defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG)
 int sqlite3VdbeMemIsRowSet(const Mem*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) || defined(SQLITE_DEBUG) */
