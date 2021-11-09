@@ -593,3 +593,16 @@ char *get_full_filename(char *path, int pathlen, enum dirtype type, char *name,
     return ret;
 }
 
+#ifdef COMDB2_BBCMAKE
+void hash_no_op_callback(hash_t * const restrict hash,
+                                   plhash_event_t event,
+                                   const void *event_info) {
+    /* no-op */
+}
+#endif
+
+void plhash_init(void) {
+#ifdef COMDB2_BBCMAKE
+    hash_set_global_event_callback(hash_no_op_callback);
+#endif
+}
