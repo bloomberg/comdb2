@@ -835,7 +835,7 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
                             char *frommach, int frompid, char *fromtask,
                             osql_sess_t *sorese, int qtype, void *data_hndl,
                             int luxref, unsigned long long rqid, void *p_sinfo,
-                            intptr_t curswap)
+                            intptr_t curswap, int comdbg_flags)
 {
     struct req_hdr hdr;
     uint64_t nowus;
@@ -870,8 +870,10 @@ static int init_ireq_legacy(struct dbenv *dbenv, struct ireq *iq, SBUF2 *sb,
     /* IPC stuff */
     iq->p_sinfo = p_sinfo;
     iq->curswap = curswap;
+    iq->comdbg_flags = comdbg_flags;
 
-    if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end))) {
+    /* HERE: unpack and get the proper lux - req_hdr_get_and_fixup_lux */
+    if (!(iq->p_buf_in = req_hdr_get(&hdr, iq->p_buf_in, iq->p_buf_in_end, iq->comdbg_flags))) {
         logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
         return ERR_BADREQ;
     }
@@ -954,7 +956,8 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
                      const uint8_t *p_buf_end, int debug, char *frommach,
                      int frompid, char *fromtask, osql_sess_t *sorese,
                      int qtype, void *data_hndl, int luxref,
-                     unsigned long long rqid, void *p_sinfo, intptr_t curswap)
+                     unsigned long long rqid, void *p_sinfo, intptr_t curswap,
+                     int comdbg_flags)
 {
     struct ireq *iq = NULL;
     int rc, num, ndispatch, iamwriter = 0;
@@ -995,12 +998,19 @@ int handle_buf_main2(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 
         rc = init_ireq_legacy(dbenv, iq, sb, (uint8_t *)p_buf, p_buf_end, debug,
                               frommach, frompid, fromtask, sorese, qtype,
-                              data_hndl, luxref, rqid, p_sinfo, curswap);
+                              data_hndl, luxref, rqid, p_sinfo, curswap, comdbg_flags);
         if (rc) {
             logmsg(LOGMSG_ERROR, "handle_buf:failed to unpack req header\n");
             return reterr(curswap, /*thd*/ 0, iq, rc);
         }
         iq->sorese = sorese;
+
+        if (iq->comdbg_flags == -1)
+            iq->comdbg_flags = 0;
+
+        if (p_buf && p_buf[7] == OP_FWD_BLOCK_LE)
+            iq->comdbg_flags |= COMDBG_FLAG_FROM_LE;
+
 
         Pthread_mutex_lock(&lock);
         {
@@ -1223,7 +1233,7 @@ int handle_buf_main(struct dbenv *dbenv, SBUF2 *sb, const uint8_t *p_buf,
 {
     return handle_buf_main2(dbenv, sb, p_buf, p_buf_end, debug, frommach,
                             frompid, fromtask, sorese, qtype, data_hndl, luxref,
-                            rqid, 0, 0);
+                            rqid, 0, 0, 0);
 }
 
 void destroy_ireq(struct dbenv *dbenv, struct ireq *iq)
@@ -1237,7 +1247,8 @@ static int is_req_write(int opcode)
     if (opcode == OP_FWD_LBLOCK || opcode == OP_BLOCK ||
         opcode == OP_LONGBLOCK || opcode == OP_FWD_BLOCK ||
         opcode == OP_CLEARTABLE || opcode == OP_TRAN_FINALIZE ||
-        opcode == OP_TRAN_COMMIT || opcode == OP_TRAN_ABORT)
+        opcode == OP_TRAN_COMMIT || opcode == OP_TRAN_ABORT ||
+        opcode == OP_FWD_BLOCK_LE)
         return 1;
     return 0;
 }
