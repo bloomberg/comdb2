@@ -5667,6 +5667,11 @@ struct tool tool_callbacks[] = {
    {NULL, NULL}
 };
 
+#ifdef COMDB2_BBCMAKE
+static void hash_no_op_callback(hash_t *const restrict hash, plhash_event_t event, const void *event_info)
+{ }
+#endif
+
 int main(int argc, char **argv)
 {
     int rc;
@@ -5678,6 +5683,10 @@ int main(int argc, char **argv)
 
     /* allocate initializer first */
     comdb2ma_init(0, 0);
+
+#   ifdef COMDB2_BBCMAKE
+    hash_set_global_event_callback(hash_no_op_callback);
+#   endif
 
     /* more reliable */
 #ifdef __linux__

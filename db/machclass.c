@@ -17,7 +17,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <pthread.h>
-#include "plhash.h"
+#include <plhash_glue.h>
 #include "machclass.h"
 #include "lockmacros.h"
 

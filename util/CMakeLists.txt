@@ -69,6 +69,7 @@ include_directories(
   ${PROJECT_BINARY_DIR}/mem
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/berkdb
   ${PROJECT_SOURCE_DIR}/cdb2api
   ${PROJECT_SOURCE_DIR}/db
