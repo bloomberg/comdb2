@@ -12,7 +12,11 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
   ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_BINARY_DIR}/bbinc
   ${PROJECT_SOURCE_DIR}/mem
   ${PROJECT_BINARY_DIR}/mem
 )
 add_dependencies(tz mem)
+if (COMDB2_BBCMAKE)
+  comdb2_bb_target(tz)
+endif()

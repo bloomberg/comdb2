@@ -59,7 +59,7 @@ typedef long long tranid_t;
 #include <endian_core.h>
 #include <epochlib.h>
 #include <fsnapf.h>
-#include <plhash.h>
+#include <plhash_glue.h>
 
 #include <list.h>
 #include <queue.h>

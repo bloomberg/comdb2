@@ -15,18 +15,82 @@
  */
 
 #include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
+#include <inttypes.h>
 #include <string.h>
 #include <strings.h>
-#include <inttypes.h>
+#include <plhash_glue.h>
+
+#ifndef __attribute_unused__
+#ifdef __GNUC__
+#define __attribute_unused__ __attribute__((unused))
+#else
+#define __attribute_unused__
+#endif
+#endif
+
+enum { PRIME = 8388013 };
+
+static unsigned int hash_default_strcaselen(const unsigned char *key, int len __attribute_unused__)
+{
+    unsigned hash = 0;
+    uint8_t k = *key;
+    while (k) {
+        hash = ((hash % PRIME) << 8) + tolower(k);
+        k = *(++key);
+    }
+    return hash;
+}
+
+static int hash_default_strcasecmp(const void *a, const void *b, int len __attribute_unused__)
+{
+    return strcasecmp(a, b);
+}
+
+hash_t *hash_init_strcase(int keyoff)
+{
+    return hash_init_user((hashfunc_t *)hash_default_strcaselen, (cmpfunc_t *)hash_default_strcasecmp, keyoff, 0);
+}
+
+static unsigned int hash_default_strcaseptrlen(const unsigned char **keyp, int len __attribute_unused__)
+{
+    return hash_default_strcaselen(*keyp, 0);
+}
+
+static int hash_default_strcaseptrcmp(const char **a, const char **b, int len __attribute_unused__)
+{
+    return strcasecmp(*a, *b);
+}
+
+hash_t *hash_init_strcaseptr(int keyoff)
+{
+    return hash_init_user((hashfunc_t *)hash_default_strcaseptrlen, (cmpfunc_t *)hash_default_strcaseptrcmp, keyoff, 0);
+}
+
+// simple hash for a ptr address
+// for 4 bytes ptr (32bit arch), it's just the first 4 bytes
+// for 8 bytes ptr, sum the first 4 bytes with the second 4 bytes
+static u_int ptrhashfunc(u_char *keyp, int len)
+{
+    unsigned hash = 0;
+    for (int i = 0; i < sizeof(u_char *) / sizeof(int); i++)
+        hash += ((int *)&keyp)[i];
+    return hash;
+}
+
+hash_t *hash_init_ptr(void)
+{
+    return hash_init_user((hashfunc_t *)ptrhashfunc, (cmpfunc_t *)memcmp, 0, 0);
+}
+
+#ifndef COMDB2_BBCMAKE
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 
 /* DISABLE 'restrict' keyword usage pending further testing by Systems Group */
 #define restrict
 
 #include "pool.h"
-#include "plhash.h"
 #include "compile_time_assert.h"
 #ifndef BUILDING_TOOLS
 #include "mem_util.h"
@@ -90,7 +154,6 @@ struct hash {
     enum hash_scheme scheme;
 };
 
-enum { PRIME = 8388013 };
 
 #define HASH(h, key) ((h)->hashfunc(key, (h)->keysz))
 #define CMP(h, a, b) ((h)->cmpfunc(a, b, (h)->keysz))
@@ -99,14 +162,6 @@ enum { PRIME = 8388013 };
 /* The hash find functions.  Since finding is a common operation I want these
  * to be very fast.  There are several versions with very minor changes to
  * suit different types of hash table. */
-
-#ifndef __attribute_unused__
-#ifdef __GNUC__
-#define __attribute_unused__ __attribute__((unused))
-#else
-#define __attribute_unused__
-#endif
-#endif
 
 /*
  * default and specialized hash query routines
@@ -912,32 +967,12 @@ static int hash_default_strcmp(const void *a, const void *b,
     return strcmp(a, b);
 }
 
-/* case-insensitive */
-static int hash_default_strcasecmp(const void *a, const void *b,
-                                   int len __attribute_unused__)
-{
-    return strcasecmp(a, b);
-}
-
 static unsigned int hash_default_strlen(const unsigned char *key,
                                         int len __attribute_unused__)
 {
     unsigned hash;
     for (hash = 0; *key; key++)
         hash = (((hash % PRIME) << 8) + (*key));
-    return hash;
-}
-
-static unsigned int hash_default_strcaselen(const unsigned char *key,
-                                            int len __attribute_unused__)
-{
-    unsigned hash = 0;
-    uint8_t k = *key;
-
-    while (k) {
-        hash = (((hash % PRIME) << 8) + tolower(k));
-        k = *(++key);
-    }
     return hash;
 }
 
@@ -969,18 +1004,6 @@ static unsigned int hash_default_strptrlen(const unsigned char **keyp,
     for (hash = 0; *key; key++)
         hash = ((hash % PRIME) << 8) + (*key);
     return hash;
-}
-
-static int hash_default_strcaseptrcmp(const char **a, const char **b,
-                                      int len __attribute_unused__)
-{
-    return strcasecmp(*a, *b);
-}
-
-static unsigned int hash_default_strcaseptrlen(const unsigned char **keyp,
-                                               int len __attribute_unused__)
-{
-    return hash_default_strcaselen(*keyp, 0);
 }
 
 static int hash_default_key0cmp(const void *a, const void *b, int len)
@@ -1122,23 +1145,10 @@ hash_t *hash_init_strptr(int keyoff)
                           (cmpfunc_t *)hash_default_strptrcmp, keyoff, 0);
 }
 
-hash_t *hash_init_strcaseptr(int keyoff)
-{
-    return hash_init_user((hashfunc_t *)hash_default_strcaseptrlen,
-                          (cmpfunc_t *)hash_default_strcaseptrcmp, keyoff, 0);
-}
-
 hash_t *hash_init_str(int keyoff)
 {
     return hash_init_user((hashfunc_t *)hash_default_strlen,
                           (cmpfunc_t *)hash_default_strcmp, keyoff, 0);
-}
-
-/* case-insensitive */
-hash_t *hash_init_strcase(int keyoff)
-{
-    return hash_init_user((hashfunc_t *)hash_default_strcaselen,
-                          (cmpfunc_t *)hash_default_strcasecmp, keyoff, 0);
 }
 
 hash_t *hash_init_fnvstr(int keyoff)
@@ -1183,25 +1193,6 @@ hash_t *hash_init(int keylen)
     return hash_init_user((hashfunc_t *)hash_default_fixedwidth,
                           (cmpfunc_t *)memcmp, 0, keylen);
 }
-
-// simple hash for a ptr address
-// for 4 bytes ptr (32bit arch), it's just the first 4 bytes
-// for 8 bytes ptr, sum the first 4 bytes with the second 4 bytes
-static u_int ptrhashfunc(u_char *keyp, int len)
-{
-    unsigned hash = 0;
-    for (int i = 0; i < sizeof(u_char *) / sizeof(int); i++)
-        hash += ((int *)&keyp)[i];
-    return hash;
-}
-
-/* init hash of pointers */
-hash_t *hash_init_ptr()
-{
-    return hash_init_user((hashfunc_t *)ptrhashfunc, (cmpfunc_t *)memcmp, 0, 0);
-}
-
-
 
 int hash_initsize(hash_t *h, unsigned int sz)
 {
@@ -1735,107 +1726,4 @@ void hash_info(hash_t *h, int *nhits, int *nmisses, int *nsteps, int *ntbl,
 
 int hash_get_num_entries(hash_t *h) { return h->nents; }
 
-#ifdef HASH_TEST_PROGRAM
-
-static void genkey_seed(int seed) { srand48(seed); }
-
-static void genkey(char *key, int len)
-{
-    int ii;
-    for (ii = 6; ii < len; ii++)
-        key[ii] = (lrand48() % 75) + 48;
-    key[0] = key[1] = key[2] = 0x20;
-    key[3] = key[4] = key[5] = 0x20;
-}
-
-struct obj {
-    int dat;
-    char key[16];
-} * objs, *op;
-
-static int cnt(void *obj, void *arg)
-{
-    ((int *)arg)[0]++;
-    return 0;
-}
-
-int main(int argc, char *argv[])
-{
-    enum { MAX = 5000000, ITER = 2 };
-    int ii, jj, kk, rc;
-    hash_t *h;
-    objs = (struct obj *)malloc(MAX * ITER * sizeof(struct obj));
-    if (objs == 0) {
-        perror("cant alloc mem!");
-        exit(1);
-    }
-    /*h=hash_init_o(4,16);*/
-    h = hash_init_jenkins_o(4, 16);
-    printf("ADDING TO HASH\n");
-    for (kk = 1; kk <= ITER; kk++) {
-        genkey_seed(kk);
-        jj = 0;
-        for (ii = 0; ii < MAX * kk; ii++) {
-            genkey(&objs[jj].key[0], 16);
-            objs[jj].dat = jj;
-            op = hash_find(h, (unsigned char *)objs[jj].key);
-            if (op == 0) {
-                rc = hash_add(h, (unsigned char *)(objs + jj));
-                jj++;
-            } else {
-                printf("DUP KEY ADDING %s\n", objs[jj].key);
-            }
-#ifdef VERBOSE
-            if ((ii & 0xfff) == 0)
-                printf("ADDING, ITERATION %d\n", ii);
-#endif
-        }
-        printf("DONE. ADDED %d\n", jj);
-        hash_dump(h, 0);
-        for (ii = 0; ii < jj; ii++) {
-            rc = hash_del(h, (unsigned char *)&objs[ii]);
-            if (rc == -1) {
-                printf("HASH FAILED DELETING %s\n", objs[jj].key);
-            }
-            if (objs[ii].dat != ii) {
-                printf("DATA MISMATCH! %08x %08x\n", objs[jj].dat, ii);
-            }
-#ifdef VERBOSE
-            if ((ii & 0xfff) == 0)
-                printf("DEL'D %d\n", ii);
-#endif
-        }
-    } /*1-5*/
-    printf("DONE!\n");
-
-    jj = 0;
-    for (ii = 0; ii < MAX; ii++) {
-        genkey(&objs[jj].key[0], 16);
-        objs[jj].dat = jj;
-        op = hash_find(h, (unsigned char *)objs[jj].key);
-        if (op == 0) {
-            rc = hash_add(h, (unsigned char *)(objs + jj));
-            jj++;
-        } else {
-            printf("DUP KEY ADDING %s\n", objs[jj].key);
-        }
-#ifdef VERBOSE
-        if ((ii & 0xfff) == 0)
-            printf("ADDING, ITERATION %d\n", ii);
-#endif
-    }
-    ii = 0;
-    hash_for(h, cnt, &ii);
-    printf("COUNTED %d ITEMS\n", ii);
-    printf("CLEAR\n");
-    hash_dump(h, 0);
-    hash_clear(h);
-    hash_dump(h, 0);
-    ii = 0;
-    hash_for(h, cnt, &ii);
-    printf("COUNTED %d ITEMS\n", ii);
-    printf("FREE\n");
-    hash_free(h);
-    return 0;
-}
-#endif
+#endif /*COMDB2_BBCMAKE*/

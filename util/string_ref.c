@@ -28,7 +28,7 @@
 #endif
 
 #ifdef TRACK_REFERENCES
-#include <plhash.h>
+#include <plhash_glue.h>
 
 static pthread_mutex_t srh_mtx = PTHREAD_MUTEX_INITIALIZER;
 static hash_t *sr_hash = NULL;
