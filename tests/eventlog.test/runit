@@ -187,6 +187,7 @@ cdb2sql ${CDB2_OPTIONS} $DBNAME default "insert into t1 values(10001, 'abc')"
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t2(a int)"
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "create table t3(b int)"
 cdb2sql ${CDB2_OPTIONS} $DBNAME default "select distinct t2.a from t2 left join t3 on t2.a = t3.b"
+cdb2sql ${CDB2_OPTIONS} $DBNAME default "select distinct t2.a from t2 left join comdb2_tables on t2.a = comdb2_tables.tablename"
 
 sleep 3
 
@@ -214,6 +215,11 @@ echo "Test whether all tables referenced in query are present in event log even 
 echo "make sure string 'select distinct t2.a from t2 left join t3 on t2.a = t3.b' is in the last 2 eventlog files:"
 echo "make sure that 'select distinct t2.a from t2 left join t3 on t2.a = t3.b' has t2 and t3 in tables field (even though t3 isn't needed to execute this)"
 res=$(cat lastfls.txt | xargs zgrep 'select distinct t2.a from t2 left join t3 on t2.a = t3.b' | grep '"type": "sql"' | grep -c '"tables": \["t2","t3"\]')
+assertres $res 1
+
+echo "make sure string 'select distinct t2.a from t2 left join comdb2_tables on t2.a = comdb2_tables.tablename' is in the last 2 eventlog files:"
+echo "make sure that 'select distinct t2.a from t2 left join comdb2_tables on t2.a = comdb2_tables.tablename' only has t2 in tables field (since comdb2_tables is virtual)"
+res=$(cat lastfls.txt | xargs zgrep 'select distinct t2.a from t2 left join comdb2_tables on t2.a = comdb2_tables.tablename' | grep '"type": "sql"' | grep -c '"tables": \["t2"\]')
 assertres $res 1
 
 
