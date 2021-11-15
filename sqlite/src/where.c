@@ -5097,6 +5097,13 @@ WhereInfo *sqlite3WhereBegin(
       }
       pWInfo->nLevel--;
       nTabList--;
+
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      if (!(IsVirtual(pItem->pTab) || pItem->pTab->pSelect)) {
+        // add all tables referenced in query even if not needed to execute query
+        sqlite3VdbeAddTable(v, pItem->pTab);
+      }
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     }
   }
   WHERETRACE(0xffff,("*** Optimizer Finished ***\n"));
