@@ -663,7 +663,7 @@ do_test view-21.1 {
     CREATE VIEW v32768 AS SELECT * FROM v16384 UNION SELECT * FROM v16384;
     SELECT * FROM v32768 UNION SELECT * FROM v32768;
   }
-} {1 1 {too many references to "t1": max 65535}}
+} {1 1 {too many references to "v1": max 65535}}
 #ifcapable progress {
 #  do_test view-21.2 {
 #    db progress 1000 {expr 1}
