@@ -160,6 +160,7 @@ struct schema_change_type {
     int defaultsp;
     int is_sfunc; /* lua scalar func */
     int is_afunc; /* lua agg func */
+    int lua_func_flags; /* lua func flags */
 
     /* View operations */
     int add_view;
@@ -290,6 +291,7 @@ enum schema_change_rc {
     SC_ABORTED,
     SC_PREEMPTED,
     SC_DETACHED,
+    SC_FUNC_IN_USE,
     SC_UNKNOWN_ERROR = -1,
     SC_CANT_SET_RUNNING = -99
 };

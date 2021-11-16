@@ -1,9 +1,12 @@
+#include <string.h>
 #include <unistd.h>
 #include <sys/stat.h>
 #include <fcntl.h>
 
+#include "comdb2.h"
 #include "schemachange.h"
 #include "sc_lua.h"
+#include "sqlglue.h"
 #include "translistener.h"
 
 #include "logmsg.h"
@@ -511,6 +514,12 @@ int finalize_add_sp(struct schema_change_type *sc)
 
 int do_del_sp(struct schema_change_type *sc, struct ireq *iq)
 {
+    char *tbl = 0;
+    if (lua_sfunc_used(sc->tablename, &tbl)) {
+        logmsg(LOGMSG_ERROR, "Can't drop. %s is in use by %s\n", sc->tablename, tbl);
+        sc_errf(sc, "Can't drop. %s is in use by %s\n", sc->tablename, tbl);
+        return SC_FUNC_IN_USE;
+    }
     wrlock_schema_lk();
     int rc = do_del_sp_int(sc, iq);
     ++gbl_lua_version;
@@ -544,13 +553,8 @@ int finalize_default_sp(struct schema_change_type *sc)
     BDB_BUMP_DBOPEN_GEN(type, NULL);                                           \
     ++gbl_lua_version;                                                         \
     do {                                                                       \
-        for (int i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                \
-            free(thedb->lua_##pfx##funcs[i]);                                  \
-            thedb->lua_##pfx##funcs[i] = NULL;                                 \
-        }                                                                      \
-        free(thedb->lua_##pfx##funcs);                                         \
-        thedb->lua_##pfx##funcs = NULL;                                        \
-        return llmeta_load_lua_##pfx##funcs();                                 \
+       lua_func_list_free(&thedb->lua_##pfx##funcs);                           \
+       return llmeta_load_lua_##pfx##funcs();                                  \
     } while (0)
 
 int reload_lua_sfuncs()
@@ -581,27 +585,32 @@ int finalize_lua_afunc()
     finalize_lua_func(a);
 }
 
-#define do_lua_func(sc, rc, pfx)                                               \
-    do {                                                                       \
-        int bdberr;                                                            \
-        if (sc->addonly) {                                                     \
-            logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__,   \
-                   sc->spname);                                                \
-            bdb_llmeta_add_lua_##pfx##func(sc->spname, &bdberr);               \
-        } else {                                                               \
-            logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, \
-                   sc->spname);                                                \
-            bdb_llmeta_del_lua_##pfx##func(sc->spname, &bdberr);               \
-        }                                                                      \
-        if (sc->finalize)                                                      \
-            rc = finalize_lua_##pfx##func();                                   \
-        else                                                                   \
-            rc = SC_COMMIT_PENDING;                                            \
+#define do_lua_func(sc, rc, pfx)                                                            \
+    do {                                                                                    \
+        int bdberr;                                                                         \
+        if (sc->addonly) {                                                                  \
+            logmsg(LOGMSG_DEBUG, "%s -- adding lua sql func:%s\n", __func__, sc->spname);   \
+            bdb_llmeta_add_lua_##pfx##func(sc->spname, &sc->lua_func_flags, &bdberr);       \
+        } else {                                                                            \
+            logmsg(LOGMSG_DEBUG, "%s -- dropping lua sql func:%s\n", __func__, sc->spname); \
+            bdb_llmeta_del_lua_##pfx##func(sc->spname, &bdberr);                            \
+        }                                                                                   \
+        if (sc->finalize) {                                                                 \
+            rc = finalize_lua_##pfx##func();                                                \
+        }                                                                                   \
+        else                                                                                \
+            rc = SC_COMMIT_PENDING;                                                         \
     } while (0)
 
 int do_lua_sfunc(struct schema_change_type *sc)
 {
-    int rc;
+    int rc = 0;
+    char *tbl = 0;
+    if (!sc->addonly && (lua_sfunc_used(sc->spname, &tbl))) {
+        logmsg(LOGMSG_ERROR, "Can't drop. %s is in use by %s\n", sc->spname, tbl);
+        sc_errf(sc, "Can't drop. %s is in use by %s\n", sc->tablename, tbl);
+        return SC_FUNC_IN_USE;
+    }
     wrlock_schema_lk();
     do_lua_func(sc, rc, s);
     unlock_schema_lk();

@@ -292,11 +292,12 @@ int rewrite_lrl_remove_tables(const char *lrlname)
 
 #define print_lua_funcs(pfx)                                                   \
     do {                                                                       \
-        int num = thedb->num_lua_##pfx##funcs;                                 \
+        int num = listc_size(&thedb->lua_##pfx##funcs);                        \
         if (num) {                                                             \
             sbuf2printf(sb_out, #pfx "funcs %d", num);                         \
-            for (i = 0; i < num; ++i) {                                        \
-                sbuf2printf(sb_out, " %s", thedb->lua_##pfx##funcs[i]);        \
+            struct lua_func_t * func;                                          \
+            LISTC_FOR_EACH(&thedb->lua_##pfx##funcs, func, lnk) {              \
+                sbuf2printf(sb_out, " %s", func->name);                        \
             }                                                                  \
             sbuf2printf(sb_out, "\n");                                         \
         }                                                                      \

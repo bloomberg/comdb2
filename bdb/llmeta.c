@@ -167,7 +167,8 @@ typedef enum {
     LLMETA_SCHEMACHANGE_STATUS = 50,
     LLMETA_VIEW = 51,                 /* User defined views */
     LLMETA_SCHEMACHANGE_HISTORY = 52, /* 52 + SEED[8] */
-    LLMETA_SEQUENCE_VALUE = 53
+    LLMETA_SEQUENCE_VALUE = 53,
+    LLMETA_LUA_SFUNC_FLAG = 54,
 } llmetakey_t;
 
 struct llmeta_file_type_key {
@@ -9230,34 +9231,114 @@ static int bdb_kv_del_by_value(tran_type *tran, llmetakey_t k, void *v,
     return kv_del_by_value(tran, &k, sizeof(k), v, vlen, bdberr);
 }
 
-// scalar lua function names
-int bdb_llmeta_get_lua_sfuncs(char ***funcs, int *num, int *bdberr)
+struct sfunc_key {
+    int32_t key; // LLMETA_LUA_SFUNC
+    char func_name[LLMETA_TBLLEN];
+};
+
+static int bdb_llmeta_get_lua_sfunc_flags(char *func, int **flags, int *bdberr)
 {
-    return bdb_kv_get(LLMETA_LUA_SFUNC, funcs, num, bdberr);
+    union {
+        struct sfunc_key skey;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+    int num = 0;
+    u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
+    strncpy0(u.skey.func_name, func, sizeof(u.skey.func_name));
+
+    int ** iflags = NULL;
+    int rc = kv_get(NULL, &u, LLMETA_IXLEN, (void ***)&iflags, &num, bdberr);
+    if (!rc && (num == 1) && iflags) {
+        *flags = *iflags;
+    } else {
+        rc = 1000 + rc;
+    }
+
+    return rc;
 }
-int bdb_llmeta_add_lua_sfunc(char *name, int *bdberr)
+static int bdb_llmeta_add_lua_sfunc_flag(char *name, int *flags, int *bdberr)
 {
-    return bdb_kv_put(NULL, LLMETA_LUA_SFUNC, name, strlen(name) + 1, bdberr);
+    union {
+        struct sfunc_key skey;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
+    strncpy0(u.skey.func_name, name, sizeof(u.skey.func_name));
+
+    return kv_put(NULL, &u, flags, sizeof(flags), bdberr);
+}
+static int bdb_llmeta_del_lua_sfunc_flag(char *func, int *bdberr)
+{
+    union {
+        struct sfunc_key skey;
+        uint8_t buf[LLMETA_IXLEN];
+    } u = {{0}};
+
+    u.skey.key = htonl(LLMETA_LUA_SFUNC_FLAG);
+    strncpy0(u.skey.func_name, func, sizeof(u.skey.func_name));
+
+    return kv_del(NULL, &u, bdberr);
+}
+
+// scalar lua function names
+int bdb_llmeta_get_lua_sfuncs(void *sfuncs, int *bdberr)
+{
+    char **funcs = NULL;
+    int *flags = NULL;
+    int num = 0;
+    int rc = bdb_kv_get(LLMETA_LUA_SFUNC, &funcs, &num, bdberr);
+
+    for (int i = 0; i < num; ++i) {
+        if ((rc = bdb_llmeta_get_lua_sfunc_flags(funcs[i], &flags, bdberr) != 0) || !flags) {
+            logmsg(LOGMSG_ERROR, "%s: failed fetching lua sfuncs %d\n", __func__, rc);
+            break;
+        }
+        struct lua_func_t *sfunc = malloc(sizeof(struct lua_func_t));
+        sfunc->name = funcs[i];
+        sfunc->flags = *flags;
+        listc_atl(sfuncs, sfunc);
+    }
+    return rc;
+}
+
+int bdb_llmeta_add_lua_sfunc(char *name, int *flag, int *bdberr)
+{
+    return bdb_llmeta_add_lua_sfunc_flag(name, flag, bdberr) ||
+           bdb_kv_put(NULL, LLMETA_LUA_SFUNC, name, strlen(name) + 1, bdberr);
 }
 int bdb_llmeta_del_lua_sfunc(char *name, int *bdberr)
 {
-    return bdb_kv_del_by_value(NULL, LLMETA_LUA_SFUNC, name, strlen(name) + 1,
-                               bdberr);
+    return bdb_llmeta_del_lua_sfunc_flag(name, bdberr) ||
+           bdb_kv_del_by_value(NULL, LLMETA_LUA_SFUNC, name, strlen(name) + 1, bdberr);
 }
 
 // aggregate lua function names
-int bdb_llmeta_get_lua_afuncs(char ***funcs, int *num, int *bdberr)
+
+int bdb_llmeta_get_lua_afuncs(void *afuncs, int *bdberr)
 {
-    return bdb_kv_get(LLMETA_LUA_AFUNC, funcs, num, bdberr);
+    int rc = 0;
+    char **funcs = NULL;
+    int num = 0;
+    if((rc = bdb_kv_get(LLMETA_LUA_AFUNC, &funcs, &num, bdberr) != 0)) {
+        return rc;
+    };
+    for(int i = 0; i < num; ++i) {
+        struct lua_func_t * afunc = malloc(sizeof(struct lua_func_t));
+        afunc->name = funcs[i];
+        // afunc->flags is unset as we don't store aggregate func flags
+        listc_atl(afuncs, afunc);
+    }
+    return rc;
 }
-int bdb_llmeta_add_lua_afunc(char *name, int *bdberr)
+
+int bdb_llmeta_add_lua_afunc(char *name, int *flag, int *bdberr)
 {
     return bdb_kv_put(NULL, LLMETA_LUA_AFUNC, name, strlen(name) + 1, bdberr);
 }
 int bdb_llmeta_del_lua_afunc(char *name, int *bdberr)
 {
-    return bdb_kv_del_by_value(NULL, LLMETA_LUA_AFUNC, name, strlen(name) + 1,
-                               bdberr);
+    return bdb_kv_del_by_value(NULL, LLMETA_LUA_AFUNC, name, strlen(name) + 1, bdberr);
 }
 
 /*
