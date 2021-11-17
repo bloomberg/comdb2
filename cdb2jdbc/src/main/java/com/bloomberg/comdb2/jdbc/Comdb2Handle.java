@@ -104,6 +104,7 @@ public class Comdb2Handle extends AbstractConnection {
     private String stringCnonce;
     private byte[] cnonce;
     private int maxretries = 20;
+    private int minretries = 3; /* how many times a non-hasql statement can retry */
     private boolean retryAll = false;
     private int snapshotFile;
     private int snapshotOffset;
@@ -1050,6 +1051,10 @@ public class Comdb2Handle extends AbstractConnection {
 
             /* Add wait if we have tried on all the nodes. */
             if (retry > myDbHosts.size()) {
+                if (!isHASql && retry > minretries) {
+                    driverErrStr = "Can't connect to db.";
+                    return Errors.CDB2ERR_CONNECT_ERROR;
+                }
                 try {
                     int sleepms = (100 * (retry - myDbHosts.size() + 1));
                     if (sleepms > 1000) {
@@ -1076,9 +1081,8 @@ public class Comdb2Handle extends AbstractConnection {
                 }
                 tdlog(Level.FINEST, "Connecting on retry ");
                 if (!open()) {
-                    tdlog(Level.WARNING, "Connection open error");
-                    driverErrStr = "Can't connect to db.";
-                    return Errors.CDB2ERR_CONNECT_ERROR;
+                    tdlog(Level.FINE, "Connection open error");
+                    continue;
                 }
                 tdlog(Level.FINEST, "Connected to %s", dbHostConnected);
 
