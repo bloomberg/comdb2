@@ -55,9 +55,11 @@
 
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)
+#define USER_MSG_GEN
 #define TCP_BUFSZ MB(8)
 #define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
 #define MAX_DISTRESS_COUNT 3
+
 #define hprintf_lvl LOGMSG_USER
 #define hprintf_format(a) "[%.3s %-8s fd:%-3d %20s] " a, e->service, e->host, e->fd, __func__
 #define distress_logmsg(...)                                                   \
@@ -646,6 +648,7 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     Pthread_mutex_init(&e->wr_lk, NULL);
     e->flush_buf = akbufferevent_new(wr_base, errorcb, flushcb, e);
     e->payload_buf = evbuffer_new();
+    e->akq_buf = evbuffer_new();
     setup_wire_hdrs(e);
     struct event_hash_entry *entry = malloc(sizeof(struct event_hash_entry));
     make_event_hash_key(entry->key, n->service, h->host);
@@ -911,10 +914,6 @@ static void do_disable_read(struct event_info *e)
 #   ifdef USER_MSG_GEN
     ++e->akq_gen;
 #   endif
-    if (e->akq_buf) {
-        evbuffer_free(e->akq_buf);
-        e->akq_buf = NULL;
-    }
     Pthread_mutex_unlock(&e->akq_lk);
     if (e->rd_buf) {
         evbuffer_free(e->rd_buf);
@@ -1078,29 +1077,31 @@ static void user_msg_callback(void *work)
     struct user_msg_info *info = work;
     struct event_info *e = info->e;
     net_send_message_header *msg = &info->msg;
+    uint64_t max_bytes = e->net_info->rd_max;
     int datalen = msg->datalen;
-    int64_t outstanding = -1;
+    int do_work = 1;
 
     Pthread_mutex_lock(&e->akq_lk);
-    if (e->akq_buf &&
-#       ifdef USER_MSG_GEN
-        info->gen == e->akq_gen &&
-#       endif
-        evbuffer_remove_buffer(e->akq_buf, e->payload_buf, datalen) == datalen) {
-        outstanding = evbuffer_get_length(e->akq_buf);
+#   ifdef USER_MSG_GEN
+    if (info->gen != e->akq_gen) {
+        do_work = 0;
     }
-    Pthread_mutex_unlock(&e->akq_lk);
-    if (outstanding == -1)  {
-        return;
-    }
-    uint64_t max_bytes = e->net_info->rd_max;
+#   endif
+    evbuffer_remove_buffer(e->akq_buf, e->payload_buf, datalen);
+    int outstanding = evbuffer_get_length(e->akq_buf);
     if (e->akq_full && outstanding < (max_bytes * resume_lvl)) {
         //hprintf("RESUMING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
         e->akq_full = 0;
         event_once(rd_base, resume_read, e);
     }
-
-    user_msg(e, msg, evbuffer_pullup(e->payload_buf, datalen));
+    Pthread_mutex_unlock(&e->akq_lk);
+    if (evbuffer_get_length(e->payload_buf) != datalen) {
+        hprintf("failed to read payload_buf datalen:%d outstanding:%d\n", datalen, outstanding);
+        abort();
+    }
+    if (do_work) {
+        user_msg(e, msg, evbuffer_pullup(e->payload_buf, datalen));
+    }
     evbuffer_drain(e->payload_buf, datalen);
 }
 
@@ -1657,10 +1658,9 @@ static void enable_read(int dummyfd, short what, void *data)
     message_done(e);
     e->akq_full = 0;
     e->need = e->wirehdr_len;
-    if (e->akq_buf || e->rd_buf || e->rd_ev) {
+    if (e->rd_buf || e->rd_ev) {
         abort();
     }
-    e->akq_buf = evbuffer_new();
     e->rd_buf = evbuffer_new();
     e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
     event_add(e->rd_ev, NULL);
