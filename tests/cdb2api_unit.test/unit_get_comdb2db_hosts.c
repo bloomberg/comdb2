@@ -12,8 +12,6 @@
 #include "sqlresponse.pb-c.h"
 #include "sqlquery.pb-c.h"
 
-#define WITH_SSL 1
-
 int global_state; // global 
 
 #define debugprint(fmt, args...)                                               \

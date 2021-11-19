@@ -446,10 +446,8 @@ static void close_hostnode_ll(host_node_type *host_node_ptr)
     ){
         SBUF2 *sb = host_node_ptr->sb;
         if (sb) {
-#           if WITH_SSL
             if (sslio_has_ssl(sb))
                 sslio_close(sb, 1);
-#           endif
             sbuf2close(host_node_ptr->sb);
             host_node_ptr->sb = NULL;
             if (gbl_verbose_net)
@@ -850,10 +848,8 @@ static ssize_t write_stream(netinfo_type *netinfo_ptr,
     return nwrite;
 }
 
-#if WITH_SSL
 extern ssl_mode gbl_rep_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
-#endif
 static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                                 int *portnum, netinfo_type *netinfo_ptr)
 {
@@ -939,7 +935,6 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
     strncpy(hostname, my_hostname, hostnamel);
     *portnum = connect_message.my_portnum;
 
-#if WITH_SSL
     if (connect_message.flags & CONNECT_MSG_SSL) {
         if (gbl_rep_ssl_mode < SSL_ALLOW) {
             /* Reject if mis-configured. */
@@ -963,13 +958,6 @@ static int read_connect_message(SBUF2 *sb, char hostname[], int hostnamel,
                "Replicant SSL connections are required.\n");
         return -1;
     }
-#else
-    if (connect_message.flags & CONNECT_MSG_SSL) {
-        logmsg(LOGMSG_ERROR, "Misconfiguration: Peer requested SSL, "
-                             "but I am not built with SSL.\n");
-        return -1;
-    }
-#endif
 
     return 0;
 }
@@ -1027,10 +1015,8 @@ int write_connect_message(netinfo_type *netinfo_ptr,
     connect_message.to_portnum = host_node_ptr->port;
     /* It was `to_nodenum`. */
     connect_message.flags = 0;
-#if WITH_SSL
     if (gbl_rep_ssl_mode >= SSL_REQUIRE)
         connect_message.flags |= CONNECT_MSG_SSL;
-#endif
 
     if (netinfo_ptr->myhostname_len > HOSTNAME_LEN) {
         snprintf(connect_message.my_hostname,
@@ -1111,7 +1097,6 @@ int write_connect_message(netinfo_type *netinfo_ptr,
         }
     }
 
-#if WITH_SSL
     if (gbl_rep_ssl_mode >= SSL_REQUIRE) {
         net_flush(host_node_ptr);
         if (sslio_connect(sb, gbl_ssl_ctx, gbl_rep_ssl_mode, gbl_dbname,
@@ -1122,7 +1107,6 @@ int write_connect_message(netinfo_type *netinfo_ptr,
             return 1;
         }
     }
-#endif
 
     return 0;
 }

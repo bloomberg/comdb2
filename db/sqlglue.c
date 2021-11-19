@@ -7955,11 +7955,7 @@ sqlite3BtreeCursor_remote(Btree *pBt,      /* The btree */
     if (trans)
         Pthread_mutex_lock(&clnt->dtran_mtx);
 
-#if WITH_SSL
     int usessl = clnt->plugin.has_ssl(clnt);
-#else
-    int usessl = 0;
-#endif
     cur->fdbc =
         fdb_cursor_open(clnt, cur, cur->rootpage, trans, &cur->ixnum, usessl);
     if (!cur->fdbc) {

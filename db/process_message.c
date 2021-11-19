@@ -1918,10 +1918,8 @@ clipper_usage:
             upgrade_records_stats();
         } else if (tokcmp(tok, ltok, "dohsql") == 0) {
             dohsql_stats();
-#if WITH_SSL
         } else if (tokcmp(tok, ltok, "ssl") == 0) {
             ssl_stats();
-#endif
         } else {
             int rc = 1;
             struct message_handler *h;
