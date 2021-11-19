@@ -1053,6 +1053,7 @@ void key_piece_add(char *buf,
         nk->cmp = 0;
         nk->stbl = gettable(ONDISKTAG);
         if (nk->stbl < 0) {
+            csc2_error("ERROR: TABLE with ONDISK TAG NOT FOUND.- ABORTING\n"),  
             any_errors++;
             return;
         }
@@ -2414,7 +2415,6 @@ static int dyns_load_schema_int(char *filename, char *schematxt, char *dbname,
     }
 
     if (yyparse() || any_errors || check_options()) {
-        csc2_error("FOUND ERRORS IN SCHEMA. ABORTING!\n");
         if (fhopen)
             fclose((FILE *)yyin);
         return -1;

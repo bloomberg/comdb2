@@ -30,10 +30,8 @@ int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
     int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
     if (rc != 0) {
         char *err;
-        char *syntax_err;
         err = csc2_get_errors();
-        syntax_err = csc2_get_syntax_errors();
-        if (iq) reqerrstr(iq, ERR_SC, "%s", syntax_err);
+        if (iq) reqerrstr(iq, ERR_SC, "%s", err);
         sc_errf(s, "%s", err);
         sc_errf(s, "Failed to load schema\n");
         return SC_INTERNAL_ERROR;
