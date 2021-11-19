@@ -156,7 +156,6 @@ void test_reset_the_configuration()
 
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
 
-#if WITH_SSL
     assert(cdb2_c_ssl_mode == SSL_ALLOW);
 
     assert(cdb2_sslcertpath[0] == 0);
@@ -167,7 +166,6 @@ void test_reset_the_configuration()
 
     assert(cdb2_nid_dbname == CDB2_NID_DBNAME_DEFAULT);
     assert(cdb2_cache_ssl_sess == CDB2_CACHE_SSL_SESS_DEFAULT);
-#endif
 
 }
 

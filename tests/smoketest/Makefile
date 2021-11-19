@@ -45,11 +45,3 @@ build-inst-java: build-inst-pre
 	-docker rm jinsttest
 
 build-inst: build-inst-c build-inst-java
-
-build-nossl:
-	-docker rm -f nossltest
-	docker build -t smoketest-nossl -f Dockerfile.nossl.build ../../
-	docker run -d --name nossltest smoketest-nossl /comdb2/tests/smoketest/docker-dev-entrypoint.sh db1 db2 db3 db4 db5
-	./testdbs nossltest
-	-docker kill nossltest
-	-docker rm nossltest

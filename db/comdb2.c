@@ -3920,7 +3920,6 @@ static int init(int argc, char **argv)
     if (thedb == 0)
         return -1;
 
-#if WITH_SSL
     /* Initialize SSL backend before creating any net.
        If we're exiting, don't bother. */
     if (!gbl_exit && ssl_bend_init(thedb->basedir) != 0) {
@@ -3928,7 +3927,6 @@ static int init(int argc, char **argv)
         return -1;
     }
     logmsg(LOGMSG_INFO, "SSL backend initialized.\n");
-#endif
 
     /* prepare the server class ahead of time, after libssl is initialized. */
     get_my_mach_class();

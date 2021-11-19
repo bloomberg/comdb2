@@ -29,11 +29,10 @@ set(libs
   ${PROTOBUF-C_LIBRARY}
   ${READLINE_LIBRARIES}
   ${UNWIND_LIBRARY}
+  ${OPENSSL_LIBRARIES}
+  ${ZLIB_LIBRARIES}
+  ${CMAKE_DL_LIBS}
 )
-
-if(WITH_SSL)
-  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-endif()
 
 target_link_libraries(cdb2sql ${libs})
 

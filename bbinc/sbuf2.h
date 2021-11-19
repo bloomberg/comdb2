@@ -222,15 +222,9 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *);
 int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n);
 #define sbuf2lasterror SBUF2_FUNC(sbuf2lasterror)
 
-#ifndef WITH_SSL
-#  define WITH_SSL 1
-#endif
-
 /* SSL routines. */
-#if WITH_SSL
-#  include <ssl_support.h>
-#  include <ssl_io.h>
-#endif
+#include <ssl_support.h>
+#include <ssl_io.h>
 
 #if defined __cplusplus
 }

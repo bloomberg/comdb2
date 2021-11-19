@@ -1297,13 +1297,11 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
             return 0;
         }
         DTTZ_TEXT_TO_PREC(tok, gbl_datetime_precision, 0, return 0);
-#if WITH_SSL
     } else if (tokcmp(line, strlen("ssl"), "ssl") == 0) {
         /* Let's have a separate function for ssl directives. */
         rc = ssl_process_lrl(line, len);
         if (rc != 0)
             return -1;
-#endif
     } else if (tokcmp(tok, ltok, "legacy_defaults") == 0) {
         /* Process here because can't pass to handle_lrl_tunable (where it is
          * marked as READEARLY) */

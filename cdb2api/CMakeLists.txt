@@ -5,11 +5,8 @@ set(src
   ${PROJECT_SOURCE_DIR}/util/hostname_support.c
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
   ${PROJECT_SOURCE_DIR}/util/walkback.c
+  ${PROJECT_SOURCE_DIR}/util/ssl_support.c
 )
-
-if(WITH_SSL)
-  list(APPEND src ${PROJECT_SOURCE_DIR}/util/ssl_support.c)
-endif()
 
 set_source_files_properties(
   ${PROJECT_BINARY_DIR}/protobuf/sqlquery.pb-c.c

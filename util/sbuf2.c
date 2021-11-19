@@ -50,7 +50,6 @@
 #  define SBUF2UNGETC_BUF_MAX 8 /* see also net/net_evbuffer.c */
 #endif
 
-#if WITH_SSL
 #ifdef my_ssl_println
 #undef my_ssl_println
 #endif
@@ -60,7 +59,6 @@
 #define my_ssl_println(fmt, ...) ssl_println("SBUF2", fmt, ##__VA_ARGS__)
 #define my_ssl_eprintln(fmt, ...)                                              \
     ssl_eprintln("SBUF2", "%s: " fmt, __func__, ##__VA_ARGS__)
-#endif
 
 struct sbuf2 {
     int fd;
@@ -94,13 +92,11 @@ struct sbuf2 {
     struct sqlclntstate *clnt;
 #endif
 
-#if WITH_SSL
     /* Server always supports SSL. */
     SSL *ssl;
     X509 *cert;
     int protocolerr;
     char sslerr[120];
-#endif
 };
 
 int SBUF2_FUNC(sbuf2fileno)(SBUF2 *sb)
@@ -116,11 +112,9 @@ int SBUF2_FUNC(sbuf2free)(SBUF2 *sb)
     if (sb == 0)
         return -1;
 
-#if WITH_SSL
     /* Gracefully shutdown SSL to make the
        fd re-usable. */
     sslio_close(sb, 1);
-#endif
     sb->fd = -1;
     if (sb->rbuf) {
         free(sb->rbuf);
@@ -159,11 +153,9 @@ int SBUF2_FUNC(sbuf2close)(SBUF2 *sb)
     if (!(sb->flags & SBUF2_NO_FLUSH))
         sbuf2flush(sb);
 
-#if WITH_SSL
     /* We need to send "close notify" alert
        before closing the underlying fd. */
     sslio_close(sb, (sb->flags & SBUF2_NO_CLOSE_FD));
-#endif
 
     if (!(sb->flags & SBUF2_NO_CLOSE_FD))
         close(sb->fd);
@@ -185,7 +177,7 @@ int SBUF2_FUNC(sbuf2flush)(SBUF2 *sb)
             len = sb->whd - sb->wtl;
         }
 
-#if SBUF2_SERVER && WITH_SSL
+#if SBUF2_SERVER
         void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
@@ -354,7 +346,7 @@ int SBUF2_FUNC(sbuf2getc)(SBUF2 *sb)
         /*nothing buffered*/
         sb->rtl = 0;
         sb->rhd = 0;
-#if SBUF2_SERVER && WITH_SSL
+#if SBUF2_SERVER
         void *ssl;
 ssl_downgrade:
         ssl = sb->ssl;
@@ -466,7 +458,7 @@ static int sbuf2fread_int(char *ptr, int size, int nitems,
             int rc;
             sb->rtl = 0;
             sb->rhd = 0;
-#if SBUF2_SERVER && WITH_SSL
+#if SBUF2_SERVER
             void *ssl;
 ssl_downgrade:
             ssl = sb->ssl;
@@ -561,23 +553,16 @@ static int swrite_unsecure(SBUF2 *sb, const char *cc, int len)
 static int swrite(SBUF2 *sb, const char *cc, int len)
 {
     int rc;
-#if WITH_SSL
     if (sb->ssl == NULL)
         rc = swrite_unsecure(sb, cc, len);
     else
         rc = sslio_write(sb, cc, len);
-#else /* WITH_SSL */
-    rc = swrite_unsecure(sb, cc, len);
-#endif /* !WITH_SSL */
     return rc;
 }
 
 int SBUF2_FUNC(sbuf2unbufferedwrite)(SBUF2 *sb, const char *cc, int len)
 {
     int n;
-#if !WITH_SSL
-    n = write(sb->fd, cc, len);
-#else
 ssl_downgrade:
     if (sb->ssl == NULL)
         n = write(sb->fd, cc, len);
@@ -634,7 +619,6 @@ ssl_downgrade:
             }
         }
     }
-#endif
     return n;
 }
 
@@ -663,23 +647,16 @@ static int sread_unsecure(SBUF2 *sb, char *cc, int len)
 static int sread(SBUF2 *sb, char *cc, int len)
 {
     int rc;
-#if WITH_SSL
     if (sb->ssl == NULL)
         rc = sread_unsecure(sb, cc, len);
     else
         rc = sslio_read(sb, cc, len);
-#else /* WITH_SSL */
-    rc = sread_unsecure(sb, cc, len);
-#endif /* !WITH_SSL */
     return rc;
 }
 
 int SBUF2_FUNC(sbuf2unbufferedread)(SBUF2 *sb, char *cc, int len)
 {
     int n;
-#if !WITH_SSL
-    n = read(sb->fd, cc, len);
-#else
 ssl_downgrade:
     if (sb->ssl == NULL)
         n = read(sb->fd, cc, len);
@@ -736,7 +713,6 @@ ssl_downgrade:
             }
         }
     }
-#endif
     return n;
 }
 
@@ -920,16 +896,10 @@ char *SBUF2_FUNC(get_origin_mach_by_buf)(SBUF2 *sb)
 
 int SBUF2_FUNC(sbuf2lasterror)(SBUF2 *sb, char *err, size_t n)
 {
-#if WITH_SSL
     if (err != NULL)
         strncpy(err, sb->sslerr,
                 n > sizeof(sb->sslerr) ? sizeof(sb->sslerr) : n);
     return sb->protocolerr;
-#else
-    return 0;
-#endif
 }
 
-#if WITH_SSL
-#  include "ssl_io.c"
-#endif
+#include "ssl_io.c"

@@ -26,10 +26,8 @@
 #include "logmsg.h"
 #include "comdb2_appsock.h"
 
-#if WITH_SSL
 #include "ssl_bend.h" /* for gbl_client_ssl_mode & gbl_ssl_allow_remsql */
 #include "ssl_support.h"
-#endif
 
 extern int gbl_fdb_track;
 extern int gbl_time_fdb;
@@ -1025,7 +1023,6 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             msg->co.srcname = NULL;
         }
 
-#if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             rc = sbuf2fread((char *)&msg->co.ssl, 1, sizeof(msg->co.ssl), sb);
             if (rc != sizeof(msg->co.ssl))
@@ -1048,9 +1045,6 @@ int fdb_msg_read_message(SBUF2 *sb, fdb_msg_t *msg, enum recv_flags flags)
             if (rc != 1)
                 return -1;
         }
-#else
-        msg->co.ssl = 0;
-#endif
 
         if (!fdb_is_dbname_in_whitelist(msg->co.srcname)) {
             char *data = strdup("Access Error: db not allowed to connect");
@@ -2044,7 +2038,6 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
             if (rc != msg->co.srcnamelen)
                 return FDB_ERR_WRITE_IO;
         }
-#if WITH_SSL
         if (msg->co.flags & FDB_MSG_CURSOR_OPEN_FLG_SSL) {
             /*fprintf(stderr, "Writing ssl %d size %d\n", msg->co.ssl,
              * sizeof(tmp));*/
@@ -2053,7 +2046,6 @@ static int fdb_msg_write_message(SBUF2 *sb, fdb_msg_t *msg, int flush)
             if (rc != sizeof(tmp))
                 return FDB_ERR_WRITE_IO;
         }
-#endif
 
         break;
 

@@ -153,7 +153,6 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (clnt->authgen == bpfunc_auth_gen)
         return 0;
 
-#if WITH_SSL
     /* Allow the user, if
        1) this is an SSL connection, and
        2) client sends a certificate, and
@@ -162,7 +161,6 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
     if (clnt->plugin.has_x509(clnt) && clnt->current_user.is_x509_user)
         rc = 0;
     else
-#endif
         rc = check_user_password(clnt);
 
     if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {

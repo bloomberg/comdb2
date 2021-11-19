@@ -36,13 +36,11 @@
 
 extern int gbl_sqlwrtimeoutms;
 
-#if WITH_SSL
 extern ssl_mode gbl_client_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_nid_dbname;
 void ssl_set_clnt_user(struct sqlclntstate *clnt);
-#endif
 
 int gbl_protobuf_prealloc_buffer_size = 8192;
 
@@ -238,32 +236,20 @@ static int newsql_peer_check_sbuf(struct sqlclntstate *clnt)
 
 static int newsql_has_ssl_sbuf(struct sqlclntstate *clnt)
 {
-#   if WITH_SSL
     struct newsql_appdata_sbuf *appdata = clnt->appdata;
     return sslio_has_ssl(appdata->sb);
-#   else
-    return 0;
-#   endif
 }
 
 static int newsql_has_x509_sbuf(struct sqlclntstate *clnt)
 {
-#   if WITH_SSL
     struct newsql_appdata_sbuf *appdata = clnt->appdata;
     return sslio_has_x509(appdata->sb);
-#   else
-    return 0;
-#   endif
 }
 
 static int newsql_get_x509_attr_sbuf(struct sqlclntstate *clnt, int nid, void *out, int outsz)
 {
-#   if WITH_SSL
     struct newsql_appdata_sbuf *appdata = clnt->appdata;
     return sslio_x509_attr(appdata->sb, nid, out, outsz);
-#   else
-    return -1;
-#   endif
 }
 
 static int newsql_write_dbinfo_sbuf(struct sqlclntstate *clnt)
@@ -338,7 +324,6 @@ retry_read:
     hdr.length = ntohl(hdr.length);
 
     if (hdr.type == CDB2_REQUEST_TYPE__SSLCONN) {
-#       if WITH_SSL
         if (sslio_has_ssl(sb)) {
             logmsg(LOGMSG_WARN, "The connection is already SSL encrypted.\n");
             return NULL;
@@ -365,11 +350,6 @@ retry_read:
         }
         /* Extract the user from the certificate. */
         ssl_set_clnt_user(clnt);
-#       else
-        if ((rc = sbuf2putc(sb, 'N')) < 0 || (rc = sbuf2flush(sb)) < 0) {
-            return NULL;
-        }
-#       endif
         goto retry_read;
     } else if (hdr.type == CDB2_REQUEST_TYPE__RESET) {
         struct newsql_appdata_sbuf *appdata = clnt->appdata;
@@ -486,7 +466,6 @@ retry_read:
         goto retry_read;
     }
 
-#if WITH_SSL
     /* Do security check before we return. We do it only after
        the query has been unpacked so that we know whether
        it is a new client (new clients have SSL feature).
@@ -518,7 +497,6 @@ retry_read:
         cdb2__query__free_unpacked(query, &appdata->newsql_protobuf_allocator.protobuf_allocator);
         return NULL;
     }
-#endif
     return query;
 }
 

@@ -7,10 +7,10 @@ set(libs
   cdb2api
   cson
   ${PROTOBUF-C_LIBRARY}
+  ${OPENSSL_LIBRARIES}
+  ${ZLIB_LIBRARIES}
+  ${CMAKE_DL_LIBS}
 )
-if(WITH_SSL)
-  list(APPEND libs ${OPENSSL_LIBRARIES} ${ZLIB_LIBRARIES} ${CMAKE_DL_LIBS})
-endif()
 
 list(APPEND libs ${UNWIND_LIBRARY})
 

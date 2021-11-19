@@ -41,6 +41,7 @@ set(src
   schema_lk.c
   segstring.c
   sltpck.c
+  ssl_support.c
   str0.c
   strbuf.c
   string_ref.c
@@ -56,9 +57,6 @@ set(src
   walkback.c
   xstring.c
 )
-if(WITH_SSL)
-  list(APPEND src ssl_support.c)
-endif()
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
 endif()
@@ -86,8 +84,6 @@ if (COMDB2_BBCMAKE)
   if(${CMAKE_SYSTEM_NAME} STREQUAL Linux)
     target_link_libraries(util PUBLIC libunwind)
   endif()
-  if(WITH_SSL)
-    target_link_libraries(util PUBLIC openssl)
-  endif()
+  target_link_libraries(util PUBLIC openssl)
   configure_bb_target(util V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
 endif()

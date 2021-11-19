@@ -120,11 +120,6 @@ static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 #define CDB2_REQUEST_FP_DEFAULT 0
 static int CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
 
-#ifndef WITH_SSL
-#  define WITH_SSL 1
-#endif
-
-#if WITH_SSL
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
 static ssl_mode cdb2_c_ssl_mode = SSL_ALLOW;
@@ -153,14 +148,10 @@ static double cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
 static pthread_mutex_t cdb2_ssl_sess_lock = PTHREAD_MUTEX_INITIALIZER;
 
 typedef struct cdb2_ssl_sess_list cdb2_ssl_sess_list;
-#if 0
-static void cdb2_free_ssl_sessions(cdb2_ssl_sess_list *sessions);
-#endif
 static cdb2_ssl_sess_list *cdb2_get_ssl_sessions(cdb2_hndl_tp *hndl);
 static int cdb2_set_ssl_sessions(cdb2_hndl_tp *hndl,
                                  cdb2_ssl_sess_list *sessions);
 static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl);
-#endif
 
 static pthread_mutex_t cdb2_cfg_lock = PTHREAD_MUTEX_INITIALIZER;
 
@@ -305,7 +296,6 @@ static void reset_the_configuration(void)
     cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
     CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
 
-#if WITH_SSL
     cdb2_c_ssl_mode = SSL_ALLOW;
 
     memset(cdb2_sslcertpath, 0, sizeof(cdb2_sslcertpath));
@@ -317,7 +307,6 @@ static void reset_the_configuration(void)
     cdb2_nid_dbname = CDB2_NID_DBNAME_DEFAULT;
     cdb2_cache_ssl_sess = CDB2_CACHE_SSL_SESS_DEFAULT;
     cdb2_min_tls_ver = CDB2_MIN_TLS_VER_DEFAULT;
-#endif
 
     reset_sockpool();
 }
@@ -912,7 +901,6 @@ typedef struct cdb2_query_list_item {
     struct cdb2_query_list_item *next;
 } cdb2_query_list;
 
-#if WITH_SSL
 typedef struct cdb2_ssl_sess {
     char host[64];
     SSL_SESSION *sess;
@@ -930,7 +918,6 @@ struct cdb2_ssl_sess_list {
     cdb2_ssl_sess *list;
 };
 static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
-#endif
 
 /* A cnonce is composed of
    - 32 bits of machine ID
@@ -1020,7 +1007,6 @@ struct cdb2_hndl {
     int debug_trace;
     int max_retries;
     int min_retries;
-#if WITH_SSL
     ssl_mode c_sslmode; /* client SSL mode */
     peer_ssl_mode s_sslmode; /* server SSL mode */
     int sslerr; /* 1 if unrecoverable SSL error. */
@@ -1035,7 +1021,6 @@ struct cdb2_hndl {
     int nid_dbname;
     /* 1 if it's a newly established session which needs to be cached. */
     int newsess;
-#endif
     struct context_messages context_msgs;
     char *env_tz;
     int sent_client_info;
@@ -1234,7 +1219,6 @@ int is_valid_int(const char *str)
     return 1;
 }
 
-#if WITH_SSL
 static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
 {
     if (strcasecmp(SSL_MODE_REQUIRE, s) == 0)
@@ -1254,7 +1238,6 @@ static ssl_mode ssl_string_to_mode(const char *s, int *nid_dbname)
     }
     return SSL_ALLOW;
 }
-#endif
 
 static void only_read_config(cdb2_hndl_tp *, int, int); /* FORWARD */
 
@@ -1374,7 +1357,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                         *stack_at_open = 0;
                     }
                 }
-#if WITH_SSL
             } else if (strcasecmp("ssl_mode", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok != NULL) {
@@ -1433,7 +1415,6 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     cdb2_min_tls_ver = atof(tok);
-#endif /* WITH_SSL */
             } else if (strcasecmp("allow_pmux_route", tok) == 0) {
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok) {
@@ -2095,7 +2076,6 @@ static int send_reset(SBUF2 *sb)
     return 0;
 }
 
-#if WITH_SSL
 static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
 {
     /*
@@ -2209,7 +2189,6 @@ static int try_ssl(cdb2_hndl_tp *hndl, SBUF2 *sb, int indx)
     hndl->newsess = 1;
     return 0;
 }
-#endif
 
 static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
                              const char *app, const char *service,
@@ -2337,12 +2316,10 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 
     sbuf2settimeout(sb, hndl->socket_timeout, hndl->socket_timeout);
 
-#if WITH_SSL
     if (try_ssl(hndl, sb, node_indx) != 0) {
         sbuf2close(sb);
         return -1;
     }
-#endif
 
     hndl->sb = sb;
     hndl->num_set_commands_sent = 0;
@@ -2626,10 +2603,8 @@ retry:
            An invalid client (e.g., a revoked cert) may see a successful
            handshake but encounter an error when reading data from the server.
            Catch the error here. */
-#       if WITH_SSL
         if ((hndl->sslerr = sbuf2lasterror(sb, NULL, 0)))
             sbuf2lasterror(sb, hndl->errstr, sizeof(hndl->errstr));
-#       endif
         goto after_callback;
     }
 
@@ -2923,9 +2898,7 @@ static int cdb2_send_query(cdb2_hndl_tp *hndl, cdb2_hndl_tp *event_hndl,
 
     /* hndl is NULL when we query comdb2db in comdb2db_get_dbhosts(). */
     if (hndl) {
-#if WITH_SSL
         features[n_features++] = CDB2_CLIENT_FEATURES__SSL;
-#endif
         if (hndl->request_fp) /* Request server to send back query fingerprint */
             features[n_features++] = CDB2_CLIENT_FEATURES__REQUEST_FP;
         /* Request server to send back row data flat, instead of storing it in
@@ -3153,10 +3126,8 @@ retry_next_record:
             }
             cdb2_connect_sqlhost(hndl);
             if (hndl->sb == NULL) {
-#if WITH_SSL
                 if (hndl->sslerr != 0)
                     PRINT_AND_RETURN_OK(-1);
-#endif
                 goto retry;
             }
             rc = retry_queries_and_skip(hndl, num_retry, hndl->rows_read);
@@ -3450,7 +3421,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
 
     cdb2_clearbindings(hndl);
     cdb2_free_context_msgs(hndl);
-#if WITH_SSL
     free(hndl->sslpath);
     free(hndl->cert);
     free(hndl->key);
@@ -3460,7 +3430,6 @@ int cdb2_close(cdb2_hndl_tp *hndl)
         /* This is correct - we don't have to do it under lock. */
         hndl->sess_list->ref = 0;
     }
-#endif
 
     curre = NULL;
     while ((curre = cdb2_next_callback(hndl, CDB2_AT_CLOSE, curre)) != NULL) {
@@ -3580,12 +3549,8 @@ int cdb2_run_statement(cdb2_hndl_tp *hndl, const char *sql)
 static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
                              char valid_hosts[][64], int *valid_ports,
                              int *master_node, int *num_valid_hosts,
-                             int *num_valid_sameroom_hosts, int debug_trace
-#if WITH_SSL
-                             ,
-                             peer_ssl_mode *s_mode
-#endif
-)
+                             int *num_valid_sameroom_hosts, int debug_trace,
+                             peer_ssl_mode *s_mode)
 {
     if (log_calls)
         fprintf(stderr, "td %d %s:%d\n", (uint32_t)pthread_self(), __func__,
@@ -3665,14 +3630,12 @@ static void parse_dbresponse(CDB2DBINFORESPONSE *dbinfo_response,
         (*num_valid_hosts)++;
     }
 
-#if WITH_SSL
     if (!dbinfo_response->has_require_ssl)
         *s_mode = PEER_SSL_UNSUPPORTED;
     else if (dbinfo_response->require_ssl)
         *s_mode = PEER_SSL_REQUIRE;
     else
         *s_mode = PEER_SSL_ALLOW;
-#endif
 }
 
 static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
@@ -3741,16 +3704,11 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
         parse_dbresponse(dbinfo_response, hndl->hosts, hndl->ports,
                          &hndl->master, &hndl->num_hosts,
-                         &hndl->num_hosts_sameroom, hndl->debug_trace
-#if WITH_SSL
-                         ,
-                         &hndl->s_sslmode
-#endif
-        );
+                         &hndl->num_hosts_sameroom, hndl->debug_trace,
+                         &hndl->s_sslmode);
         cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
         debugprint("type=%d returning 1\n", type);
 
-#if WITH_SSL
         /* Clear cached SSL sessions - Hosts may have changed. */
         if (hndl->sess_list != NULL) {
             cdb2_ssl_sess_list *sl = hndl->sess_list;
@@ -3759,7 +3717,6 @@ static int retry_query_list(cdb2_hndl_tp *hndl, int num_retry, int run_last)
             free(sl->list);
             sl->list = NULL;
         }
-#endif
         return 1;
     }
     if (hndl->first_buf != NULL) {
@@ -3919,7 +3876,6 @@ static void process_set_local(cdb2_hndl_tp *hndl, const char *set_command)
     }
 }
 
-#if WITH_SSL
 /*
  *  0 - Processed an SSL set
  * >0 - Failed to process an SSL set
@@ -4000,7 +3956,6 @@ static int process_ssl_set_command(cdb2_hndl_tp *hndl, const char *cmd)
 
     return rc;
 }
-#endif /* WITH_SSL */
 
 static inline void cleanup_query_list(cdb2_hndl_tp *hndl,
                                       cdb2_query_list *commit_query_list,
@@ -4038,11 +3993,9 @@ static int process_set_command(cdb2_hndl_tp *hndl, const char *sql)
         return CDB2ERR_BADREQ;
     }
 
-#if WITH_SSL
     int rc = process_ssl_set_command(hndl, sql);
     if (rc >= 0)
         return rc;
-#endif
 
     i = hndl->num_set_commands;
     if (i > 0) {
@@ -4251,10 +4204,9 @@ retry_queries:
     if (!hndl->sb && (retries_done > hndl->num_hosts)) {
         tmsec = (retries_done - hndl->num_hosts) * 100;
     }
-#if WITH_SSL
+
     if (hndl->sslerr != 0)
         PRINT_AND_RETURN(CDB2ERR_CONNECT_ERROR);
-#endif
 
     if ((retries_done > 1) && ((retries_done > hndl->max_retries) ||
                                ((time(NULL) + (tmsec / 1000)) >= max_time))) {
@@ -4412,7 +4364,6 @@ read_record:
         if (type == RESPONSE_HEADER__SQL_RESPONSE_SSL) {
             free(hndl->first_buf);
             hndl->first_buf = NULL;
-#if WITH_SSL
             hndl->s_sslmode = PEER_SSL_REQUIRE;
             /* server wants us to use ssl so turn ssl on in same connection */
             try_ssl(hndl, hndl->sb, hndl->connected_host);
@@ -4423,11 +4374,6 @@ read_record:
                over the SSL connection. */
             hndl->sent_client_info = 0;
             GOTO_RETRY_QUERIES();
-#else
-            sprintf(hndl->errstr, "%s: The database requires SSL connections.",
-                    __func__);
-            PRINT_AND_RETURN(-1);
-#endif
         } else if (type == RESPONSE_HEADER__DBINFO_RESPONSE) {
             /* Dbinfo .. go to new node */
             if (hndl->flags & CDB2_DIRECT_CPU) {
@@ -4440,19 +4386,14 @@ read_record:
                 cdb2__dbinforesponse__unpack(NULL, len, hndl->first_buf);
             parse_dbresponse(dbinfo_resp, hndl->hosts, hndl->ports,
                              &hndl->master, &hndl->num_hosts,
-                             &hndl->num_hosts_sameroom, hndl->debug_trace
-#if WITH_SSL
-                             ,
-                             &hndl->s_sslmode
-#endif
-            );
+                             &hndl->num_hosts_sameroom, hndl->debug_trace,
+                             &hndl->s_sslmode);
             cdb2__dbinforesponse__free_unpacked(dbinfo_resp, NULL);
 
             newsql_disconnect(hndl, hndl->sb, __LINE__);
             hndl->connected_host = -1;
             hndl->retry_all = 1;
 
-#if WITH_SSL
             /* Clear cached SSL sessions - Hosts may have changed. */
             if (hndl->sess_list != NULL) {
                 cdb2_ssl_sess_list *sl = hndl->sess_list;
@@ -4461,13 +4402,11 @@ read_record:
                 free(sl->list);
                 sl->list = NULL;
             }
-#endif
             free(hndl->first_buf);
             hndl->first_buf = NULL;
             GOTO_RETRY_QUERIES();
         }
 
-#if WITH_SSL
         /* We used to cache a session immediately after a handshake.
            However in TLSv1.3, a session is not established until a
            separate post-handshake message containing the session
@@ -4476,7 +4415,6 @@ read_record:
            response from the server. */
         if ((rc = cdb2_add_ssl_session(hndl)) != 0)
             PRINT_AND_RETURN(rc);
-#endif
     } else {
         if (err_val) {
             /* we get here because skip feature is off
@@ -5555,12 +5493,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
 
     parse_dbresponse(dbinfo_response, valid_hosts, valid_ports, master_node,
                      num_valid_hosts, num_valid_sameroom_hosts,
-                     hndl->debug_trace
-#if WITH_SSL
-                     ,
-                     &hndl->s_sslmode
-#endif
-    );
+                     hndl->debug_trace, &hndl->s_sslmode);
 
     cdb2__dbinforesponse__free_unpacked(dbinfo_response, NULL);
 
@@ -5953,7 +5886,6 @@ done:
     return rc;
 }
 
-#if WITH_SSL
 #include <ssl_support.h>
 static int set_up_ssl_params(cdb2_hndl_tp *hndl)
 {
@@ -6311,17 +6243,6 @@ static int cdb2_add_ssl_session(cdb2_hndl_tp *hndl)
         SSL_SESSION_free(sess);
     return 0;
 }
-#else /* WITH_SSL */
-int cdb2_init_ssl(int init_libssl, int init_libcrypto)
-{
-    return 0;
-}
-
-int cdb2_is_ssl_encrypted(cdb2_hndl_tp *hndl)
-{
-    return 0;
-}
-#endif /* !WITH_SSL */
 
 int comdb2_cheapstack_char_array(char *str, int maxln);
 
@@ -6346,12 +6267,11 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     hndl->connected_host = -1;
     hndl->send_stack = 0;
     hndl->read_intrans_results = 1;
-#if WITH_SSL
+
     /* We don't do dbinfo if DIRECT_CPU. So we'd default peer SSL mode to
        ALLOW. We will find it out later when we send SSL negotitaion packet
        to the server. */
     hndl->s_sslmode = PEER_SSL_ALLOW;
-#endif
 
     hndl->max_retries = MAX_RETRIES;
     hndl->min_retries = MIN_RETRIES;
@@ -6412,11 +6332,9 @@ int cdb2_open(cdb2_hndl_tp **handle, const char *dbname, const char *type,
     }
 
     if (rc == 0) {
-#if WITH_SSL
         rc = set_up_ssl_params(hndl);
         if (rc)
             debugprint("set_up_ssl_params returns %d\n", rc);
-#endif
         /*
          * Check and set user and password if they have been specified using
          * the environment variables.

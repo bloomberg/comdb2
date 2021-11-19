@@ -144,9 +144,7 @@ struct fdb {
     int has_sqlstat4; /* if sqlstat4 was found */
 
     int server_version; /* save the server_version */
-#if WITH_SSL
     ssl_mode ssl; /* does this server needs ssl */
-#endif
 };
 
 /* cache of foreign dbs */
@@ -1003,7 +1001,6 @@ run:
         /* maybe remote is old code, retry in unversioned mode */
         switch (rc) {
         case FDB_ERR_SSL:
-#if WITH_SSL
             /* remote needs ssl */
             fdb_cursor_close_on_open(cur, 0);
             if (gbl_client_ssl_mode >= SSL_ALLOW) {
@@ -1017,7 +1014,6 @@ run:
                 fdbc->sql_hint = NULL;
                 goto run;
             }
-#endif
             goto done;
 
         case FDB_ERR_FDB_VERSION:
@@ -2272,7 +2268,6 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
 
         if (rc == FDB_NOERR) {
             /* successfull connection */
-#if WITH_SSL
             if (use_ssl) {
                 rc = sbuf2flush(*psb);
                 if (rc != FDB_NOERR)
@@ -2297,7 +2292,6 @@ static int _fdb_send_open_retries(struct sqlclntstate *clnt, fdb_t *fdb,
                     return FDB_ERR_SSL;
                 }
             }
-#endif
             break;
         }
 
@@ -3103,7 +3097,6 @@ retry:
                         goto version_retry;
                     }
                 } else if (rc == FDB_ERR_SSL) {
-#if WITH_SSL
                     /* extract ssl config */
                     unsigned int ssl_cfg;
 
@@ -3112,7 +3105,6 @@ retry:
                     logmsg(LOGMSG_INFO, "%s: remote db %s needs ssl %d\n",
                            __func__, pCur->bt->fdb->dbname, ssl_cfg);
                     pCur->bt->fdb->ssl = ssl_cfg;
-#endif
                 } else if (rc == FDB_ERR_READ_IO &&
                            (how == CFIRST || how == CLAST) &&
                            !pCur->clnt->intrans) {
@@ -4998,7 +4990,6 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
 {
     if (fdb->server_version < FDB_VER_SSL) {
         *flags = FDB_MSG_CURSOR_OPEN_SQL_SID;
-#if WITH_SSL
         if (clnt->plugin.has_ssl(clnt)) {
             /* Client has SSL, but remote doesn't support SSL */
             clnt->fdb_state.preserve_err = 1;
@@ -5008,14 +4999,11 @@ static int _get_protocol_flags(struct sqlclntstate *clnt, fdb_t *fdb,
                      "client uses SSL but remote db does not support it");
             return -1;
         }
-#endif
     } else {
         *flags = FDB_MSG_CURSOR_OPEN_SQL_SSL;
-#if WITH_SSL
         if (clnt->plugin.has_ssl(clnt) || fdb->ssl >= SSL_REQUIRE) {
             *flags |= FDB_MSG_CURSOR_OPEN_FLG_SSL;
         }
-#endif
     }
 
     return 0;

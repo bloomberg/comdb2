@@ -77,6 +77,7 @@ set(src
   sqlpool.c
   sqlstat1.c
   sql_stmt_cache.c
+  ssl_bend.c
   tag.c
   testcompr.c
   thrman.c
@@ -108,9 +109,6 @@ set(src
   ${PROJECT_SOURCE_DIR}/tools/cdb2_stat/cdb2_stat.c
   ${PROJECT_SOURCE_DIR}/tools/cdb2_verify/cdb2_verify.c
 )
-if(WITH_SSL)
-  list(APPEND src ssl_bend.c)
-endif()
 
 option(DEBUG_TYPES "Build types.c independent of sqlglue.c" OFF)
 if(DEBUG_TYPES)
