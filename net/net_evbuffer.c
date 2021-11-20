@@ -13,7 +13,6 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
-
 #include <alloca.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -36,7 +35,6 @@
 #include <event2/thread.h>
 #include <event2/util.h>
 
-#include <akbufferevent.h>
 #include <akq.h>
 #include <bb_oscompat.h>
 #include <comdb2_atomic.h>
@@ -79,6 +77,7 @@
 #define hprintf(a, ...) distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs(a) distress_logmsg(hprintf_format(a))
 
+/* nd: ignore distressed state and print */
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
@@ -194,8 +193,6 @@ struct net_info;
 
 static struct akq *setup_akq(char *);
 static void do_open(int, short, void *);
-static void errorcb(int what, short fd, void *arg);
-static void flushcb(int total_flushed, short fd, void *arg);
 static void pmux_connect(int, short, void *);
 static void pmux_reconnect(struct connect_info *c);
 static void resume_read(int, short, void *);
@@ -349,13 +346,6 @@ struct event_info {
     int decomissioned;
     int got_hello;
 
-    struct akbufferevent *flush_buf;
-
-    /* Write ops guarded by wr_lk */
-    pthread_mutex_t wr_lk;
-    struct evbuffer *wr_buf;
-    int wr_full;
-
     /* akq backed */
 #   ifdef USER_MSG_GEN
     int akq_gen;
@@ -373,6 +363,13 @@ struct event_info {
     wire_header_type hdr;
     net_send_message_header msg;
     net_ack_message_payload_type ack;
+
+    /* write */
+    pthread_mutex_t wr_lk;
+    struct evbuffer *flush_buf;
+    struct evbuffer *wr_buf;
+    struct event *wr_ev;
+    int wr_full;
 };
 
 #define EVENT_HASH_KEY_SZ 128
@@ -529,6 +526,7 @@ struct net_info {
     char *instance;
     char *app;
     uint64_t rd_max;
+    uint64_t wr_max;
     struct event *unix_ev;
     struct evbuffer *unix_buf;
     struct evconnlistener *listener;
@@ -545,6 +543,7 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     n->app = strdup(netinfo_ptr->app);
     n->port = netinfo_ptr->myport;
     n->rd_max = MB(32);
+    n->wr_max = MB(64);
     if (akq_policy == POLICY_PER_NET) {
         n->per_net.akq = setup_akq(n->service);
     }
@@ -645,8 +644,6 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
     e->service = n->service;
     e->host_info = h;
     e->net_info = n;
-    Pthread_mutex_init(&e->wr_lk, NULL);
-    e->flush_buf = akbufferevent_new(wr_base, errorcb, flushcb, e);
     e->payload_buf = evbuffer_new();
     e->akq_buf = evbuffer_new();
     setup_wire_hdrs(e);
@@ -666,87 +663,8 @@ static struct event_info *event_info_new(struct net_info *n, struct host_info *h
         init_base(&e->per_event.wrthd, &e->per_event.wrbase, entry->key);
     }
     Pthread_mutex_init(&e->akq_lk, NULL);
+    Pthread_mutex_init(&e->wr_lk, NULL);
     return e;
-}
-
-struct net_msg_data {
-    int sz;
-    uint32_t ref;
-    net_send_message_header msghdr;
-    uint8_t buf[0];
-};
-
-static struct net_msg_data *net_msg_data_new(void *buf, int len, int type)
-{
-    struct net_msg_data *data = malloc(sizeof(struct net_msg_data) + len);
-    if (data == NULL) {
-        return NULL;
-    }
-    memset(data, 0, sizeof(struct net_msg_data));
-    data->sz = NET_SEND_MESSAGE_HEADER_LEN + len;
-    data->ref = 1;
-    net_send_message_header tmp = {
-        .usertype = type,
-        .datalen = len,
-    };
-    net_send_message_header *hdr = &data->msghdr;
-    net_send_message_header_put(&tmp, (uint8_t *)hdr, (uint8_t*)(hdr + 1));
-    memcpy(&data->buf, buf, len);
-    return data;
-}
-
-static void net_msg_data_free(const void *unused, size_t datalen, void *extra)
-{
-    struct net_msg_data *data = extra;
-    int ref = ATOMIC_ADD32(data->ref, -1);
-    if (ref) {
-        return;
-    }
-    free(data);
-}
-
-static void net_msg_data_add_ref(struct net_msg_data *data)
-{
-    ATOMIC_ADD32(data->ref, 1);
-}
-
-struct net_msg {
-    int num;
-    int flags;
-    netinfo_type *netinfo_ptr;
-    struct net_msg_data *data[0];
-};
-
-static void net_msg_free(struct net_msg *msg)
-{
-    for (int i = 0; i < msg->num; ++i) {
-        struct net_msg_data *data = msg->data[i];
-        if (data) {
-            net_msg_data_free(&data->msghdr, data->sz, data);
-        }
-    }
-    free(msg);
-}
-
-static struct net_msg *net_msg_new(netinfo_type *netinfo_ptr, int n, void **buf,
-                                   int *len, int *type, int *flags)
-{
-    struct net_msg *msg;
-    msg = calloc(1, sizeof(struct net_msg) + sizeof(struct net_msg_data *) * n);
-    if (msg == NULL) {
-        return NULL;
-    }
-    msg->netinfo_ptr = netinfo_ptr;
-    msg->num = n;
-    for (int i = 0; i < n; ++i) {
-        msg->data[i] = net_msg_data_new(buf[i], len[i], type[i]);
-        if (msg->data[i] == NULL) {
-            net_msg_free(msg);
-            return NULL;
-        }
-        msg->flags |= flags[i];
-    }
-    return msg;
 }
 
 struct host_connected_info {
@@ -881,31 +799,39 @@ struct disable_info {
     event_callback_fn func;
 };
 
-static void disable_write(int dummyfd, short what, void *data)
+static void do_disable_write(struct event_info *e)
 {
-    struct disable_info *i = data;
-    struct event_info *e = i->e;
-    event_callback_fn func = i->func;
     check_wr_thd();
-    free(i);
-    Pthread_mutex_lock(&e->wr_lk);
-    akbufferevent_disable(e->flush_buf);
+    if (e->wr_ev) {
+        event_free(e->wr_ev);
+        e->wr_ev = NULL;
+    }
+    if (e->flush_buf) {
+        evbuffer_free(e->flush_buf);
+        e->flush_buf = NULL;
+    }
     if (e->wr_buf) {
         evbuffer_free(e->wr_buf);
         e->wr_buf = NULL;
     }
     e->got_hello = 0;
+}
 
-
+static void disable_write(int dummyfd, short what, void *data)
+{
+    struct disable_info *d = data;
+    struct event_info *e = d->e;
+    Pthread_mutex_lock(&e->wr_lk);
+    do_disable_write(e);
     if (e->fd != -1) {
         hprintf("CLOSING CONNECTION fd:%d\n", e->fd);
         shutdown_close(e->fd);
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
-    event_once(base, func, e); /* func: do_queued or do_reconnect */
+    event_once(base, d->func, e);
+    free(d);
 }
-
 
 static void do_disable_read(struct event_info *e)
 {
@@ -1008,25 +934,59 @@ static void reconnect(struct event_info *e)
     do_close(e, do_reconnect);
 }
 
-static void errorcb(int what, short fd, void *arg)
+static void check_wr_full(struct event_info *e)
 {
-    reconnect(arg);
+    uint64_t max_bytes = e->net_info->wr_max;
+    size_t outstanding = evbuffer_get_length(e->wr_buf);
+    if (e->wr_full) {
+        if (outstanding < (max_bytes * resume_lvl)) {
+            e->wr_full = 0;
+            hprintf("RESUMING WR bytes:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
+        }
+    } else if (outstanding > max_bytes) {
+        e->wr_full = 1;
+        hprintf("SUSPENDING WR bytes:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
+    }
 }
 
-static void flushcb(int total_flushed, short fd, void *arg)
+static void writecb(int fd, short what, void *data)
 {
-    struct event_info *e = arg;
-    if (total_flushed > 0) {
-        e->sent_at = time(NULL);
+    struct event_info *e = data;
+    Pthread_mutex_lock(&e->wr_lk);
+    if (fd != e->fd || !e->flush_buf || !e->wr_buf) abort(); /* sanity check */
+    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
+    check_wr_full(e);
+    Pthread_mutex_unlock(&e->wr_lk);
+
+    int rc;
+    size_t len;
+    do {
+        rc = evbuffer_write(e->wr_buf, fd);
+        len = evbuffer_get_length(e->wr_buf);
+    } while (rc > 0 && len);
+    if (rc <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        hprintf("writev rc:%d errno:%d:%s\n", rc, errno, strerror(errno));
+        Pthread_mutex_lock(&e->wr_lk);
+        do_disable_write(e);
+        Pthread_mutex_unlock(&e->wr_lk);
+        reconnect(e);
+        return;
     }
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    uint64_t max_bytes = netinfo_ptr->max_bytes;
-    if (e->wr_full && max_bytes) {
-        size_t outstanding = akbufferevent_get_length(e->flush_buf);
-        if (outstanding <= max_bytes * resume_lvl) {
-            e->wr_full = 0;
-            hprintf("RESUMING WR bytes:%zu (max:%" PRIu64 ")\n", outstanding, max_bytes);
-        }
+    e->sent_at = time(NULL);
+
+    Pthread_mutex_lock(&e->wr_lk);
+    evbuffer_add_buffer(e->wr_buf, e->flush_buf);
+    check_wr_full(e);
+    if (evbuffer_get_length(e->wr_buf) == 0) {
+        event_del(e->wr_ev);
+    }
+    Pthread_mutex_unlock(&e->wr_lk);
+}
+
+static void flush_evbuffer(struct event_info *e, int nodelay)
+{
+    if (nodelay || evbuffer_get_length(e->flush_buf) > KB(512)) {
+        event_add(e->wr_ev, NULL);
     }
 }
 
@@ -1669,21 +1629,21 @@ static void enable_read(int dummyfd, short what, void *data)
 
 static void enable_write(int dummyfd, short what, void *data)
 {
-    struct host_connected_info *info = data;
-    struct event_info *e = info->e;
+    struct host_connected_info *i = data;
+    struct event_info *e = i->e;
     check_wr_thd();
     Pthread_mutex_lock(&e->wr_lk);
-    update_event_fd(e, info->fd);
-    akbufferevent_enable(e->flush_buf, e->fd);
-    if (e->wr_buf) {
-        /* should be cleaned up prior i think */
+    update_event_fd(e, i->fd);
+    if (e->flush_buf || e->wr_ev) {
         abort();
     }
+    e->wr_ev = event_new(wr_base, i->fd, EV_WRITE | EV_PERSIST, writecb, e);
+    e->flush_buf = evbuffer_new();
     e->wr_buf = evbuffer_new();
     e->wr_full = 0;
     e->decomissioned = 0;
     Pthread_mutex_unlock(&e->wr_lk);
-    event_once(rd_base, enable_read, info);
+    event_once(rd_base, enable_read, i);
 }
 
 static void do_open(int dummyfd, short what, void *data)
@@ -2534,82 +2494,98 @@ static void do_add_host(int accept_fd, short what, void *data)
     /* Tell all nodes about this host */
     LIST_FOREACH(e, &n->event_list, net_list_entry) {
         if (e->got_hello) {
+            hprintf("HELLO NEW NODE:%s\n", host);
             write_hello_reply(netinfo_ptr, e->host_node_ptr);
         }
     }
 }
 
-static void check_wr_full(struct event_info *e)
-    /* TODO check flush buf instead */
-{
-    if (e->wr_full || e->wr_buf == NULL) {
-        return;
-    }
-    netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    uint64_t max_bytes = netinfo_ptr->max_bytes;
-    uint64_t outstanding = evbuffer_get_length(e->wr_buf);
-    if (max_bytes && outstanding > max_bytes) {
-        e->wr_full = 1;
-        hprintf("SUSPENDING WR bytes:%" PRIu64 " (max:%" PRIu64 ")\n",
-                outstanding, max_bytes);
-    }
-}
-
-static void flush_evbuffer(struct event_info *e)
-{
-    akbufferevent_add_buffer(e->flush_buf, e->wr_buf);
-}
-
 static inline int skip_send(struct event_info *e, int nodrop, int check_hello)
 {
-    return strcmp(e->host, gbl_myhostname) == 0 || e->fd == -1 ||
-           e->decomissioned || (e->wr_full && !nodrop) ||
-           (check_hello && !e->got_hello);
+    return strcmp(e->host, gbl_myhostname) == 0
+           || e->fd == -1
+           || e->decomissioned
+           || (e->wr_full && !nodrop)
+           || (check_hello && !e->got_hello);
 }
 
-static void net_send_memcpy(struct event_info *e, int sz, int n, void **buf, int *len, int *type)
+struct shared_msg {
+    int sz;
+    uint32_t ref;
+    net_send_message_header hdr;
+    uint8_t buf[0];
+};
+
+static struct shared_msg *shared_msg_new(void *buf, int len, int type)
 {
-    if (!e->wr_buf) {
+    struct shared_msg *msg = malloc(sizeof(struct shared_msg) + len);
+    if (msg == NULL) {
+        return NULL;
+    }
+    msg->sz = NET_SEND_MESSAGE_HEADER_LEN + len;
+    msg->ref = 1;
+    net_send_message_header tmp = {
+        .usertype = type,
+        .datalen = len,
+    };
+    net_send_message_header *hdr = &msg->hdr;
+    net_send_message_header_put(&tmp, (uint8_t *)hdr, (uint8_t *)(hdr + 1));
+    memcpy(&msg->buf, buf, len);
+    return msg;
+}
+
+static void shared_msg_free(const void *unused0, size_t unused1, void *ptr)
+{
+    struct shared_msg *msg = ptr;
+    int ref = ATOMIC_ADD32(msg->ref, -1);
+    if (ref) {
         return;
     }
-    sz += n * (e->wirehdr_len + sizeof(net_send_message_header));
+    free(msg);
+}
+
+static void shared_msg_addref(struct shared_msg *msg)
+{
+    ATOMIC_ADD32(msg->ref, 1);
+}
+
+static int addref_evbuffer(struct evbuffer *buf, struct event_info *e, int n, struct shared_msg **msg)
+{
+    int rc = 0;
+    for (int i = 0; i < n; ++i) {
+        rc = evbuffer_add(buf, e->wirehdr[WIRE_HEADER_USER_MSG], e->wirehdr_len);
+        if (rc) break;
+        rc = evbuffer_add_reference(buf, &msg[i]->hdr, msg[i]->sz, shared_msg_free, msg[i]);
+        if (rc) break;
+        shared_msg_addref(msg[i]);
+    }
+    return rc;
+}
+
+static int memcpy_evbuffer(struct evbuffer *flush_buf, struct event_info *e, int sz, int n, void **buf, int *len, int *type)
+{
+    sz += (n * e->wirehdr_len);
     struct iovec v[1];
-    const int nv = evbuffer_reserve_space(e->wr_buf, sz, v, 1);
+    const int nv = evbuffer_reserve_space(flush_buf, sz, v, 1);
     if (nv != 1) {
-        abort();
+        return -1;
     }
     uint8_t *b = v[0].iov_base;
     v[0].iov_len = sz;
     net_send_message_header hdr = {0};
     for (int i = 0; i < n; ++i) {
+        memcpy(b, e->wirehdr[WIRE_HEADER_USER_MSG], e->wirehdr_len);
+        b += e->wirehdr_len;
+
         hdr.usertype = type[i];
         hdr.datalen = len[i];
-        b = memcpy(b, e->wirehdr[WIRE_HEADER_USER_MSG], e->wirehdr_len) + e->wirehdr_len;
         b = net_send_message_header_put(&hdr, b, b + sizeof(net_send_message_header));
-        b = memcpy(b, buf[i], len[i]) + len[i];
-    }
-    evbuffer_commit_space(e->wr_buf, v, 1);
-}
 
-static void net_send_addref(struct event_info *e, struct net_msg *msg)
-{
-    struct evbuffer *buf = e->wr_buf;
-    if (!buf) {
-        return;
+        memcpy(b, buf[i], len[i]);
+        b += len[i];
     }
-    int rc = 0;
-    for (int i = 0; i < msg->num; ++i) {
-        struct net_msg_data *data = msg->data[i];
-        rc = evbuffer_add_reference(buf, e->wirehdr[WIRE_HEADER_USER_MSG], e->wirehdr_len, NULL, NULL);
-        if (rc) break;
-        rc = evbuffer_add_reference(buf, &data->msghdr, data->sz, net_msg_data_free, data);
-        if (rc) break;
-        net_msg_data_add_ref(data);
-    }
-    if (rc != 0) {
-        hprintf("Failed to add ref #msgs:%d rc:%d\n", msg->num, rc);
-        reconnect(e);
-    }
+    evbuffer_commit_space(flush_buf, v, 1);
+    return 0;
 }
 
 /* All you base are belong to me.. */
@@ -2816,7 +2792,7 @@ int write_connect_message_evbuffer(host_node_type *host_node_ptr,
     check_base_thd();
     struct event_info *e = host_node_ptr->event_info;
     Pthread_mutex_lock(&e->wr_lk);
-    struct evbuffer *buf = e->wr_buf;
+    struct evbuffer *buf = e->flush_buf;
     if (buf) {
         for (int i = 0; i < n; ++i) {
             evbuffer_add(buf, iov[i].iov_base, iov[i].iov_len);
@@ -2841,37 +2817,22 @@ int write_list_evbuffer(host_node_type *host_node_ptr, int type,
         rc = -1;
         goto out;
     }
-    int sz = e->wirehdr_len;
-    for (int i = 0; i < n; ++i) {
-        sz += iov[i].iov_len;
-    }
-    struct iovec v[1];
-    const int nv = evbuffer_reserve_space(buf, sz, v, 1);
-    if (nv != 1) {
+    if (evbuffer_add(buf, e->wirehdr[type], e->wirehdr_len) != 0) {
         rc = -1;
         goto out;
     }
-    v[0].iov_len = sz;
-    uint8_t *b = v[0].iov_base;
-    b = memcpy(b, e->wirehdr[type], e->wirehdr_len) + e->wirehdr_len;
     for (int i = 0; i < n; ++i) {
-        b = memcpy(b, iov[i].iov_base, iov[i].iov_len) + iov[i].iov_len;
-    }
-    evbuffer_commit_space(buf, v, nv);
-    if (skip_send(e, nodrop, 0)) {
-        rc = -2;
-        goto out;
+        if (evbuffer_add(buf, iov[i].iov_base, iov[i].iov_len) != 0) {
+            rc = -1;
+            goto out;
+        }
     }
     Pthread_mutex_lock(&e->wr_lk);
-    if (e->wr_buf) {
-        rc = evbuffer_add_buffer(e->wr_buf, buf);
-        if (rc != 0) {
-            rc = -1;
-        } else {
-            if (nodelay) {
-                flush_evbuffer(e);
-            }
-            check_wr_full(e);
+    if (skip_send(e, nodrop, 0)) {
+        rc = -2;
+    } else if (e->flush_buf) {
+        if ((rc = evbuffer_add_buffer(e->flush_buf, buf)) == 0) {
+            flush_evbuffer(e, nodelay);
         }
     } else {
         rc = -3;
@@ -2883,49 +2844,51 @@ out:if (buf) {
     return rc;
 }
 
-int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf,
-                          int *len, int *type, int *flags)
+int net_send_all_evbuffer(netinfo_type *netinfo_ptr, int n, void **buf, int *len, int *type, int *flags)
 {
-#   define ADDREF_CUTOFF 256
     if (net_stop) {
         return 0;
     }
-    int sz = 0;
     int nodrop = 0;
     int nodelay = 0;
-    struct net_msg *msg = NULL;
+    int sz = (n * NET_SEND_MESSAGE_HEADER_LEN);
     for (int i = 0; i < n; ++i) {
         sz += len[i];
         nodrop |= flags[i] & NET_SEND_NODROP;
         nodelay |= flags[i] & NET_SEND_NODELAY;
     }
-    if (sz >= ADDREF_CUTOFF) {
-        msg = net_msg_new(netinfo_ptr, n, buf, len, type, flags);
-        if (msg == NULL) {
+    struct shared_msg **msg = NULL;
+    if (sz > 256) {
+        msg = alloca(sizeof(struct shared_msg *) * n);
+        int i;
+        for (i = 0; i < n; ++i) {
+            if ((msg[i] = shared_msg_new(buf[i], len[i], type[i])) == NULL) break;
+        }
+        if (i < n) {
+            for (int j = 0; j < i; ++j) {
+                shared_msg_free(0, 0, msg[j]);
+            }
             return NET_SEND_FAIL_MALLOC_FAIL;
         }
     }
     struct net_info *ni = net_info_find(netinfo_ptr->service);
     struct event_info *e;
     LIST_FOREACH(e, &ni->event_list, net_list_entry) {
-        if (skip_send(e, nodrop, 1)) {
-            continue;
-        }
         Pthread_mutex_lock(&e->wr_lk);
-        if (e->wr_buf) {
+        if (e->flush_buf && !skip_send(e, nodrop, 1)) {
             if (msg) {
-                net_send_addref(e, msg);
+                addref_evbuffer(e->flush_buf, e, n, msg);
             } else {
-                net_send_memcpy(e, sz, n, buf, len, type);
+                memcpy_evbuffer(e->flush_buf, e, sz, n, buf, len, type);
             }
-            if (nodelay) {
-                flush_evbuffer(e);
-            }
+            flush_evbuffer(e, nodelay);
         }
         Pthread_mutex_unlock(&e->wr_lk);
     }
     if (msg) {
-        net_msg_free(msg);
+        for (int i = 0; i < n; ++i) {
+            shared_msg_free(0, 0, msg[i]);
+        }
     }
     return 0;
 }
@@ -2937,8 +2900,8 @@ int net_flush_evbuffer(host_node_type *host_node_ptr)
     }
     struct event_info *e = host_node_ptr->event_info;
     Pthread_mutex_lock(&e->wr_lk);
-    if (e->wr_buf) {
-        flush_evbuffer(e);
+    if (e->flush_buf) {
+        flush_evbuffer(e, 1);
     }
     Pthread_mutex_unlock(&e->wr_lk);
     return 0;
@@ -2954,12 +2917,12 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
     char key[EVENT_HASH_KEY_SZ];
     make_event_hash_key(key, netinfo_ptr->service, host);
     Pthread_mutex_lock(&event_hash_lk);
-    struct event_hash_entry *entry = hash_find(event_hash, key);
+    struct event_hash_entry *obj = hash_find(event_hash, key);
     Pthread_mutex_unlock(&event_hash_lk);
-    if (!entry) {
+    if (!obj) {
         return NET_SEND_FAIL_INVALIDNODE;
     }
-    struct event_info *e = entry->e;
+    struct event_info *e = obj->e;
     if (strcmp(e->host, gbl_myhostname) == 0) {
         return NET_SEND_FAIL_SENDTOME;
     }
@@ -2985,7 +2948,7 @@ int net_send_evbuffer(netinfo_type *netinfo_ptr, const char *host,
         .usertype = usertype,
         .datalen = total
     };
-    net_send_message_header_put(&tmp, (uint8_t *)&hdr, (uint8_t*)(&hdr + 1));
+    net_send_message_header_put(&tmp, (uint8_t *)&hdr, (uint8_t *)(&hdr + 1));
     iov[0].iov_base = &hdr;
     iov[0].iov_len = sizeof(hdr);
     int write_flags = flags & NET_SEND_NODROP ? WRITE_MSG_NOLIMIT : 0;
