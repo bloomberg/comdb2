@@ -30,19 +30,27 @@ extern "C" {
 
 #include "db_glue.h"
 
+#define DEFAULT_PAGE_SIZE 4096
+
 typedef struct dbfile {
     const char *filename;
-    DBTYPE type;
     size_t pagesize;
+    size_t offset;
+    size_t bufsize;
+    DBTYPE type;
     uint8_t metaflags;
+    uint8_t *pagebuf;
     uint32_t is_encrypted : 1;
     uint32_t is_swapped : 1;
+    ssize_t chunk_size;
 } dbfile_info;
 
 dbfile_info *dbfile_init(dbfile_info *, const char *filename);
 void dbfile_deinit(dbfile_info *);
 const char *dbfile_filename(dbfile_info *);
 size_t dbfile_pagesize(dbfile_info *);
+ssize_t dbfile_get_chunk_size(dbfile_info *f);
+void dbfile_set_chunk_size(dbfile_info *f, ssize_t chunk_size);
 uint32_t dbfile_is_encrypted(dbfile_info *);
 uint32_t dbfile_is_swapped(dbfile_info *);
 uint32_t dbfile_is_checksummed(dbfile_info *);
@@ -55,7 +63,7 @@ uint32_t myflip(uint32_t in);
 int recognize_data_file(const char *filename, uint8_t *is_data_file,
                         uint8_t *is_queue_file, uint8_t *is_queuedb_file,
                         char **out_table_name);
-typedef int(*writer)(void *, uint8_t *, size_t);
+typedef int (*writer)(void *, uint8_t *, size_t, size_t);
 int read_write_file(dbfile_info *file, void *writer_ctx, writer w);
 
 #ifdef __cplusplus

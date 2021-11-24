@@ -42,11 +42,14 @@ extern char gbl_dbname[MAX_DBNAME_LENGTH];
 static struct log_delete_state log_delete_state;
 
 /* Column numbers */
-#define FILES_COLUMN_FILENAME    0
-#define FILES_COLUMN_DIR         1
-#define FILES_COLUMN_CONTENT     2
-#define FILES_COLUMN_ARCHIVE_FMT 3
-#define FILES_COLUMN_COMPR_ALGO  4
+#define FILES_COLUMN_FILENAME       0
+#define FILES_COLUMN_DIR            1
+#define FILES_COLUMN_CONTENT        2
+#define FILES_COLUMN_CONTENT_OFFSET 3
+#define FILES_COLUMN_CONTENT_SIZE   4
+#define FILES_COLUMN_CHUNK_SIZE     5
+#define FILES_COLUMN_ARCHIVE_FMT    6
+#define FILES_COLUMN_COMPR_ALGO     7
 
 #define FILES_ARCHIVE_NONE 0
 #define FILES_ARCHIVE_TAR  1
@@ -61,6 +64,7 @@ typedef struct file_entry {
     uint8_t *content;
     uint8_t *write_ptr;
     size_t  size;
+    size_t  offset;
     dbfile_info *info;
 } file_entry_t;
 
@@ -69,6 +73,9 @@ typedef struct {
     sqlite3_int64       rowid;
     file_entry_t        *entries;
     size_t              nentries;
+    off_t               content_offset;
+    size_t              content_size;
+    size_t              chunk_size;
     int                 archive_fmt;
     int                 compr_algo;
     char                *file_pattern;
@@ -113,6 +120,7 @@ static const char *print_compr_algo(int algo) {
 
 static void release_files(void *data, int npoints)
 {
+#if 0
     file_entry_t *files = data;
     for (int i = 0; i < npoints; ++i) {
         free(files[i].file);
@@ -120,6 +128,7 @@ static void release_files(void *data, int npoints)
         free(files[i].content);
     }
     free(files);
+#endif
 }
 
 static int read_file(const char *path, uint8_t **buffer, size_t sz)
@@ -152,14 +161,20 @@ err:
     return -1;
 }
 
-int memory_writer(void *ctx, uint8_t *in_buf, size_t size) {
+int memory_writer(void *ctx, uint8_t *in_buf, size_t size, size_t offset) {
     file_entry_t *file = ctx;
+
+    if (file->content == file->write_ptr) {
+        file->offset = offset;
+    }
     memcpy(file->write_ptr, in_buf, size);
     file->write_ptr += size;
+
+    file->size = file->write_ptr - file->content;
     return 0;
 }
 
-int archive_writer(void *ctx, uint8_t *in_buf, size_t size) {
+int archive_writer(void *ctx, uint8_t *in_buf, size_t size, size_t offset) {
     struct archive *a = ctx;
     ssize_t rc = archive_write_data(a, in_buf, size);
     if (rc < 0) {
@@ -235,7 +250,8 @@ static int create_archive(const char *archive_path, file_entry_t *files,
 }
 
 static int read_dir(const char *dirname, file_entry_t **files, int *count,
-                    int archive_fmt, int compr_algo, char *file_pattern)
+                    int archive_fmt, int compr_algo, char *file_pattern,
+                    size_t chunk_size)
 {
     struct dirent buf;
     struct dirent *de;
@@ -264,11 +280,10 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
 
         if (S_ISDIR(st.st_mode)) {
             rc = read_dir(path, files, count, archive_fmt, compr_algo,
-                          file_pattern);
+                          file_pattern, chunk_size);
             if (rc != 0) {
                 break;
             }
-
             continue;
         }
 
@@ -290,7 +305,9 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
         }
         *files = files_tmp;
         file_entry_t *f = (*files) + (*count) - 1;
+
         f->file = strdup(de->d_name);
+        f->size = st.st_size;
 
         uint8_t is_data_file = 0;
         uint8_t is_queue_file = 0;
@@ -308,28 +325,29 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
             }
         } else {
             f->info = calloc(1, sizeof(dbfile_info));
-            f->info->filename = path;
+            f->info->filename = strdup(path);
         }
+
+        size_t page_size = dbfile_pagesize(f->info);
+        if (page_size == 0) {
+            page_size = DEFAULT_PAGE_SIZE;
+        }
+        if (chunk_size > 0) {
+            if (chunk_size < page_size) {
+                chunk_size = page_size;
+            } else {
+                chunk_size /= page_size;
+                chunk_size *= page_size;
+            }
+        }
+
+        dbfile_set_chunk_size(f->info, chunk_size);
 
         // Remove the data directory prefix
         if (strcmp(dirname, thedb->basedir) == 0) {
             f->dir = strdup("");
         } else {
             f->dir = strdup(dirname + strlen(thedb->basedir) + 1);
-        }
-
-        // Do not read the file yet if we were asked to create an archive
-        if (archive_fmt != FILES_ARCHIVE_NONE) {
-            continue;
-        }
-
-        f->size = st.st_size;
-        f->content = malloc(f->size);
-        f->write_ptr = f->content;
-
-        rc = read_write_file(f->info, f, memory_writer);
-        if (rc == -1) {
-            break;
         }
     }
 
@@ -339,7 +357,7 @@ static int read_dir(const char *dirname, file_entry_t **files, int *count,
 }
 
 static int get_files(void **data, size_t *npoints, int archive_fmt,
-                     int compr_algo, char *file_pattern)
+                     int compr_algo, char *file_pattern, size_t chunk_size)
 {
     file_entry_t *files = NULL;
     int count = 0;
@@ -354,7 +372,7 @@ static int get_files(void **data, size_t *npoints, int archive_fmt,
     logdelete_unlock(__func__, __LINE__);
 
     int rc = read_dir(thedb->basedir, &files, &count, archive_fmt, compr_algo,
-                      file_pattern);
+                      file_pattern, chunk_size);
     if (rc != 0) {
         *npoints = -1;
         goto done;
@@ -415,7 +433,7 @@ static int filesConnect(
   sqlite3_vtab *pNew;
   int rc;
 
-  rc = sqlite3_declare_vtab(db, "CREATE TABLE x(filename, dir, content, archive_format hidden, compression_algorithm hidden)");
+  rc = sqlite3_declare_vtab(db, "CREATE TABLE x(filename, dir, content, offset, size, chunk_size hidden, archive_format hidden, compression_algorithm hidden)");
   if( rc==SQLITE_OK ){
     pNew = *ppVtab = sqlite3_malloc( sizeof(*pNew) );
     if( pNew==0 ) return SQLITE_NOMEM;
@@ -451,8 +469,25 @@ static int filesClose(sqlite3_vtab_cursor *cur){
 }
 
 static int filesNext(sqlite3_vtab_cursor *cur){
+  int rc;
   systbl_files_cursor *pCur = (systbl_files_cursor*)cur;
-  pCur->rowid++;
+  while (pCur->rowid < pCur->nentries) {
+      file_entry_t *f = &pCur->entries[pCur->rowid];
+      if (f->info->chunk_size > 0) {
+         f->size = f->info->chunk_size;
+      }
+
+      f->content = malloc(f->size);
+      f->write_ptr = f->content;
+
+      rc = read_write_file(f->info, f, memory_writer);
+      if (rc == 1) {
+        return SQLITE_ERROR;
+      } else if (rc == 0) {
+        break;
+      }
+      pCur->rowid ++;
+  }
   return SQLITE_OK;
 }
 
@@ -474,6 +509,15 @@ static int filesColumn(
     case FILES_COLUMN_CONTENT:
       sqlite3_result_blob(ctx, pCur->entries[pCur->rowid].content,
                           pCur->entries[pCur->rowid].size, NULL);
+      break;
+    case FILES_COLUMN_CONTENT_OFFSET:
+      sqlite3_result_int64(ctx, pCur->entries[pCur->rowid].offset);
+      break;
+    case FILES_COLUMN_CONTENT_SIZE:
+      sqlite3_result_int64(ctx, pCur->entries[pCur->rowid].size);
+      break;
+    case FILES_COLUMN_CHUNK_SIZE:
+      sqlite3_result_int64(ctx, pCur->entries[pCur->rowid].info->chunk_size);
       break;
     case FILES_COLUMN_ARCHIVE_FMT:
       sqlite3_result_text(ctx, print_archive_format(pCur->archive_fmt), -1, NULL);
@@ -507,6 +551,7 @@ static int filesFilter(
 ){
   systbl_files_cursor *pCur = (systbl_files_cursor *)pVtabCursor;
   int i = 0;
+  int rc;
 
   if( idxNum & 1 ){
     pCur->archive_fmt = get_archive_format((const char *)sqlite3_value_text(argv[i++]));
@@ -528,11 +573,37 @@ static int filesFilter(
     pCur->file_pattern = 0;
   }
 
+  if( idxNum & 8 ){
+    pCur->chunk_size = sqlite3_value_int64(argv[i++]);
+  } else {
+    pCur->chunk_size = 0;
+  }
+
   if (get_files((void **)&pCur->entries, &pCur->nentries, pCur->archive_fmt,
-                pCur->compr_algo, pCur->file_pattern))
+                pCur->compr_algo, pCur->file_pattern, pCur->chunk_size))
     return SQLITE_ERROR;
 
   pCur->rowid = 0;
+
+  while (pCur->rowid < pCur->nentries) {
+      file_entry_t *f = &pCur->entries[pCur->rowid];
+      if (f->info->chunk_size > 0) {
+         f->size = f->info->chunk_size;
+      }
+
+      f->content = malloc(f->size);
+      f->write_ptr = f->content;
+
+      rc = read_write_file(f->info, f, memory_writer);
+      if (rc == 1) {
+        return SQLITE_ERROR;
+      } else if (rc == 0) {
+        f->size = f->write_ptr - f->content;
+        break;
+      }
+      pCur->rowid ++;
+  }
+
   return SQLITE_OK;
 }
 
@@ -546,6 +617,7 @@ static int filesBestIndex(
   int archiveFmtIdx = -1; /* Index of archive_fmt=?, or -1 if not specified */
   int comprAlgoIdx = -1;  /* Index of compr_algo=?, or -1 if not specified */
   int filenameIdx = -1;
+  int chunkSizeIdx = -1;
 
   const struct sqlite3_index_constraint *pConstraint;
   pConstraint = pIdxInfo->aConstraint;
@@ -573,6 +645,13 @@ static int filesBestIndex(
         idxNum |= 4;
         filenameIdx = i;
         break;
+      case FILES_COLUMN_CHUNK_SIZE:
+        if( pConstraint->op!=SQLITE_INDEX_CONSTRAINT_EQ ){
+          return SQLITE_ERROR;
+        }
+        idxNum |= 8;
+        chunkSizeIdx = i;
+        break;
     }
   }
   if( archiveFmtIdx>=0 ){
@@ -588,6 +667,11 @@ static int filesBestIndex(
   if( filenameIdx>=0 ){
     pIdxInfo->aConstraintUsage[filenameIdx].argvIndex = ++nArg;
     pIdxInfo->aConstraintUsage[filenameIdx].omit = 1;
+  }
+
+  if( chunkSizeIdx>=0 ){
+    pIdxInfo->aConstraintUsage[chunkSizeIdx].argvIndex = ++nArg;
+    pIdxInfo->aConstraintUsage[chunkSizeIdx].omit = 1;
   }
 
   pIdxInfo->idxNum = idxNum;
