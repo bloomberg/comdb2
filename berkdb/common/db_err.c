@@ -585,12 +585,19 @@ __db_check_txn(dbp, txn, assoc_lid, read_op)
 		if (!read_op && F_ISSET(dbp, DB_AM_TXN)) {
 			__db_err(dbenv,
     "DB handle previously used in transaction, missing transaction handle");
-            abort();
+			abort();
 			return (EINVAL);
 		}
 
-		if (dbp->cur_lid >= TXN_MINIMUM)
+		if (dbp->cur_lid >= TXN_MINIMUM) {
+			/* DRQS 167730380: Fail-fast so we can be available again */
+			__db_err(dbenv,
+    "Transaction that opened the DB handle is still active");
+			logmsg(LOGMSG_FATAL, "%s dbp:%s lid:%d min:%d\n",
+    __func__, dbp->fname, dbp->cur_lid, TXN_MINIMUM);
+			abort();
 			goto open_err;
+		}
 	} else {
 		if (dbp->cur_lid >= TXN_MINIMUM && dbp->cur_lid != txn->txnid)
 			goto open_err;

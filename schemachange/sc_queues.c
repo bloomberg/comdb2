@@ -646,10 +646,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    if (sc->addonly || sc->alteronly) {
-        dbqueuedb_admin(thedb, !same_tran ? tran : ltran);
-    }
-
     if (!same_tran) {
         rc = trans_commit(&iq, tran, gbl_mynode);
         tran = NULL;
@@ -729,6 +725,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 done:
     if (ltran) bdb_tran_abort(thedb->bdb_env, ltran, &bdberr);
     else if (tran) bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+
+    dbqueuedb_admin(thedb, NULL);
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
