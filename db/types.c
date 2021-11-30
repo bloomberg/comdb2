@@ -8282,6 +8282,11 @@ static TYPES_INLINE int SERVER_DATETIMEUS_to_SERVER_DATETIME(S2S_FUNKY_ARGS)
     if (sizeof(SRV_TP(dt)) != outlen)                                          \
         return -1;                                                             \
                                                                                \
+    if (stype_is_null(in)) {                                                   \
+        set_null(out, outlen);                                                 \
+        return 0;                                                              \
+    }                                                                          \
+                                                                               \
     rc = SERVER_UINT_to_SERVER_BINT(in, inlen, inopts, inblob, out,            \
                                     sizeof(sdt->sec) + 1, outdtsz, outopts,    \
                                     outblob);                                  \
@@ -8315,6 +8320,11 @@ static TYPES_INLINE int SERVER_UINT_to_SERVER_DATETIMEUS(S2S_FUNKY_ARGS)
                                                                                \
     if (sizeof(SRV_TP(dt)) != outlen)                                          \
         return -1;                                                             \
+                                                                               \
+    if (stype_is_null(in)) {                                                   \
+        set_null(out, outlen);                                                 \
+        return 0;                                                              \
+    }                                                                          \
                                                                                \
     rc = SERVER_BINT_to_SERVER_BINT(in, inlen, inopts, inblob, out,            \
                                     sizeof(sdt->sec) + 1, outdtsz, outopts,    \
