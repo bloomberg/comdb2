@@ -4724,11 +4724,12 @@ static void *osql_create_request(const char *sql, int sqlen, int type,
         req_uuid.rqlen = rqlen;
         req_uuid.sqlqlen = sqlen;
 
+        p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
+
+        r_uuid_ptr->rqlen = rqlen;
+
         if (tzname)
             strncpy0(r_uuid_ptr->tzname, tzname, sizeof(r_uuid_ptr->tzname));
-
-        p_buf = osqlcomm_req_uuid_type_put(&req_uuid, p_buf, p_buf_end);
-        r_uuid_ptr->rqlen = rqlen;
     } else {
         osql_req_t *r_ptr;
 
