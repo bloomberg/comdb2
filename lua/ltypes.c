@@ -525,12 +525,7 @@ int luabb_tointervalds_noerr(Lua L, int idx, intv_t *ret)
     return -1;
 }
 
-/*
-** WARNING: luabb_tostring RETURNS AN EPHEMERAL STRING.
-** DON'T CALL INTO ANY lua_* FUNCTIONS WITH IT.
-** A GC-RUN CAN TRASH RETURNED MEMORY.
-*/
-const char *luabb_tostring(Lua L, int idx)
+static const char *luabb_tostring_int(Lua L, int idx, int fatal)
 {
     idx = to_positive_index(L, idx);
     const char *ret = NULL;
@@ -554,8 +549,23 @@ const char *luabb_tostring(Lua L, int idx)
             lua_pop(L, 1);
             return ret;
     }
-    luabb_type_err(L, "string", idx);
+    luabb_type_err_int(L, "string", idx, fatal);
     return NULL;
+}
+
+/*
+** WARNING: luabb_tostring RETURNS AN EPHEMERAL STRING.
+** DON'T CALL INTO ANY lua_* FUNCTIONS WITH IT.
+** A GC-RUN CAN TRASH RETURNED MEMORY.
+*/
+const char *luabb_tostring(Lua L, int idx)
+{
+    return luabb_tostring_int(L, idx, 1);
+}
+
+const char *luabb_tostring_noerr(Lua L, int idx)
+{
+    return luabb_tostring_int(L, idx, 0);
 }
 
 static int luabb_toblob_int(Lua lua, int idx, blob_t *ret)

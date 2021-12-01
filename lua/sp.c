@@ -656,7 +656,9 @@ void *sp_column_ptr(struct response_data *arg, int col, int type, size_t *len)
             *len = strlen(c);
             break;
         default:
-            c = strdup(luabb_tostring(L, idx));
+            c = (char *)luabb_tostring_noerr(L, idx);
+            if (!c) break;
+            c = strdup(c);
             *len = strlen(c);
             luabb_pushcstring_dl(L, c);
             lua_replace(L, idx);
