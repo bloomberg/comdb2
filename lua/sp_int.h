@@ -99,6 +99,7 @@ int luabb_todatetime_noerr(Lua, int index, datetime_t *);
 int luabb_tointervalym_noerr(Lua, int index, intv_t *);
 int luabb_tointervalds_noerr(Lua, int index, intv_t *);
 int luabb_toblob_noerr(Lua, int index, blob_t *);
+const char *luabb_tostring_noerr(Lua, int);
 
 void luabb_pushblob(Lua, const blob_t *);
 void luabb_pushblob_dl(Lua, const blob_t *); //dl -> dup-less
