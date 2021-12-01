@@ -2239,9 +2239,10 @@ int handle_sql_commitrollback(struct sqlthdstate *thd,
     if (rc == SQLITE_OK) {
         /* send return code */
 
+        Pthread_mutex_lock(&clnt->wait_mutex);
+
         write_response(clnt, RESPONSE_EFFECTS, 0, 0);
 
-        Pthread_mutex_lock(&clnt->wait_mutex);
         /* do not turn heartbeats if this is a chunked transaction */
         if (sideeffects != TRANS_CLNTCOMM_CHUNK)
             clnt->ready_for_heartbeats = 0;
