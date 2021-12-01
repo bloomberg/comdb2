@@ -1194,24 +1194,6 @@ hash_t *hash_init(int keylen)
                           (cmpfunc_t *)memcmp, 0, keylen);
 }
 
-// simple hash for a ptr address
-// for 4 bytes ptr (32bit arch), it's just the first 4 bytes
-// for 8 bytes ptr, sum the first 4 bytes with the second 4 bytes
-static u_int ptrhashfunc(u_char *keyp, int len)
-{
-    unsigned hash = 0;
-    for (int i = 0; i < sizeof(u_char *) / sizeof(int); i++)
-        hash += ((int *)&keyp)[i];
-    return hash;
-}
-
-/* init hash of pointers */
-hash_t *hash_init_ptr()
-{
-    return hash_init_user((hashfunc_t *)ptrhashfunc, (cmpfunc_t *)memcmp, 0, 0);
-}
-
-
 int hash_initsize(hash_t *h, unsigned int sz)
 {
     const size_t tsz = sizeof(hashtable) + sz * sizeof(hashent *);
