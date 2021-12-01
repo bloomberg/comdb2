@@ -1534,17 +1534,33 @@ comdb2_tunable_err handle_runtime_tunable(const char *name, const char *value)
     0           Success
     >0          Failure
 */
-
 comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                                       int value_len, int flags)
 {
-    comdb2_tunable *t;
+    comdb2_tunable *t = NULL;
     char buf[MAX_TUNABLE_VALUE_SIZE];
     char *tok;
+    char *ptr;
     int st = 0;
     int ltok;
     int len;
+    int clear_inverse_flag = 0;
     comdb2_tunable_err ret;
+
+#define PREFIX(A,B) {A, sizeof(A)-1, B}
+    /* Common prefixes that inverse the value of a bool tunable. */
+    struct {
+        const char *prefix;
+        int prefix_len;
+        int do_inverse;
+    } common_prefix[] = {
+        PREFIX("enable_", 0),
+        PREFIX("disable_", 1),
+        PREFIX("dont_", 1),
+        PREFIX("no_", 1),
+        PREFIX("no", 1),
+        PREFIX(NULL, 0), /* Terminator */
+    };
 
     assert(gbl_tunables);
 
@@ -1553,8 +1569,23 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     memcpy(buf, name, len);
     buf[len] = 0;
     tok = &buf[0];
+    ptr = tok;
 
-    if (!(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
+    int i = 0;
+    while (common_prefix[i].prefix != NULL) {
+        if ((strncasecmp(tok, common_prefix[i].prefix, common_prefix[i].prefix_len)) == 0) {
+            ptr += common_prefix[i].prefix_len;
+            t = hash_find_readonly(gbl_tunables->hash, &ptr);
+            if (t && common_prefix[i].do_inverse == 1) {
+                t->flags |= INVERSE_VALUE;
+                clear_inverse_flag = 1;
+            }
+            break;
+        }
+        ++i;
+    }
+
+    if (!t && !(t = hash_find_readonly(gbl_tunables->hash, &tok))) {
         /* Do not warn in READEARLY phase. */
         if ((flags & READEARLY) == 0) {
             logmsg(LOGMSG_WARN, "Non-registered tunable '%s'.\n", tok);
@@ -1565,13 +1596,15 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
     /* Bail out if we were asked to process READEARLY tunables only
      * but the matched tunable is non-READEARLY. */
     if ((flags & READEARLY) && ((t->flags & READEARLY) == 0)) {
-        return TUNABLE_ERR_OK;
+        ret = TUNABLE_ERR_OK;
+        goto done;
     }
 
     if ((flags & DYNAMIC) && ((t->flags & READONLY) != 0)) {
         logmsg(LOGMSG_ERROR, "Attempt to update a READ-ONLY tunable '%s'.\n",
                name);
-        return TUNABLE_ERR_READONLY;
+        ret = TUNABLE_ERR_READONLY;
+        goto done;
     }
 
     /* Check if we have a value specified after the name. */
@@ -1594,7 +1627,8 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
         } else {
             logmsg(LOGMSG_ERROR,
                    "An argument must be specified for tunable '%s'\n", t->name);
-            return TUNABLE_ERR_INVALID_VALUE; /* Error */
+            ret = TUNABLE_ERR_INVALID_VALUE; /* Error */
+            goto done;
         }
     } else {
         /* Remove leading space(s). */
@@ -1620,14 +1654,15 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
                 len--;
             }
 
-            return handle_lrl_tunable(buf, name_len + ltok + 1, val, len,
-                                      flags);
+            ret = handle_lrl_tunable(buf, name_len + ltok + 1, val, len, flags);
+            goto done;
         }
 
         /* Safety check. */
         if (len > sizeof(buf)) {
             logmsg(LOGMSG_ERROR, "Line too long in the lrl file.\n");
-            return TUNABLE_ERR_INVALID_VALUE;
+            ret = TUNABLE_ERR_INVALID_VALUE;
+            goto done;
         }
 
         /*
@@ -1642,6 +1677,11 @@ comdb2_tunable_err handle_lrl_tunable(char *name, int name_len, char *value,
 
     /* Reset the EMPTY flag. */
     t->flags &= ~EMPTY;
+done:
+    /* Also clear INVERSE_VALUE flag if it was temporarily set in this function. */
+    if (clear_inverse_flag == 1) {
+        t->flags &= ~INVERSE_VALUE;
+    }
 
     return ret;
 }
