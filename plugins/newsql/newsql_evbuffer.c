@@ -35,6 +35,7 @@
 #include <ssl_glue.h>
 #include <str0.h>
 #include <timer_util.h>
+#include <pb_alloc.h>
 
 #include <newsql.h>
 
@@ -184,7 +185,7 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
         srs_tran_destroy(clnt);
     } else if (appdata->query) {
         clnt->sql = NULL;
-        cdb2__query__free_unpacked(appdata->query, NULL);
+        cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         appdata->query = NULL;
     }
     if (sql_done(appdata->writer) == 0) {
@@ -472,7 +473,8 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
     if (dispatch_sql_query_no_wait(clnt) == 0) {
         return;
     }
-out:cdb2__query__free_unpacked(query, NULL);
+out:
+    cdb2__query__free_unpacked(query, &pb_alloc);
     if (do_read) {
         evtimer_once(appsock_rd_base, newsql_read_again, appdata);
     } else {
@@ -493,7 +495,7 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
     } else {
         process_dbinfo(appdata);
     }
-    cdb2__query__free_unpacked(query, NULL);
+    cdb2__query__free_unpacked(query, &pb_alloc);
 }
 
 static void add_rd_event_ssl(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *t)
@@ -706,7 +708,7 @@ payload:
     if (appdata->hdr.length) {
         int len = appdata->hdr.length;
         void *data = evbuffer_pullup(appdata->rd_buf, len);
-        if (data == NULL || (query = cdb2__query__unpack(NULL, len, data)) == NULL) {
+        if (data == NULL || (query = cdb2__query__unpack(&pb_alloc, len, data)) == NULL) {
             evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
             return;
         }
@@ -742,7 +744,7 @@ hdr:
 static void *newsql_destroy_stmt_evbuffer(struct sqlclntstate *clnt, void *arg)
 {
     struct newsql_stmt *stmt = arg;
-    cdb2__query__free_unpacked(stmt->query, NULL);
+    cdb2__query__free_unpacked(stmt->query, &pb_alloc);
     free(stmt);
     return NULL;
 }
@@ -795,10 +797,19 @@ done:
     return need / l;
 }
 
-static int newsql_pack_hb(uint8_t *out, void *arg)
+static int newsql_pack_hb(struct sqlwriter *writer, void *arg)
 {
+    size_t len = sizeof(struct newsqlheader);
     struct sqlclntstate *clnt = arg;
     int state;
+    uint8_t *out;
+    struct iovec v[1];
+
+    if (evbuffer_reserve_space(sql_wrbuf(writer), len, v, 1) == -1)
+        return -1;
+    v[0].iov_len = len;
+    out = v[0].iov_base;
+
     if (is_pingpong(clnt))
         state = 1;
     else {
@@ -809,7 +820,8 @@ static int newsql_pack_hb(uint8_t *out, void *arg)
     memset(h, 0, sizeof(struct newsqlheader));
     h->type = htonl(RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT);
     h->state = htonl(state);
-    return 0;
+
+    return evbuffer_commit_space(sql_wrbuf(writer), v, 1);
 }
 
 struct newsql_pack_arg {
@@ -817,15 +829,36 @@ struct newsql_pack_arg {
     const CDB2SQLRESPONSE *resp;
 };
 
-static int newsql_pack(uint8_t *out, void *data)
+struct pb_evbuffer_appender {
+    ProtobufCBuffer vbuf;
+    struct sqlwriter *sqlwriter;
+    int rc;
+};
+
+static void pb_evbuffer_append(ProtobufCBuffer *vbuf, size_t len, const uint8_t *data)
+{
+    struct pb_evbuffer_appender *appender = (struct pb_evbuffer_appender *)vbuf;
+    appender->rc |= sql_append_packed(appender->sqlwriter, data, len);
+}
+
+#define PB_EVBUFFER_APPENDER_INIT(x)                                                                                   \
+    {                                                                                                                  \
+        .vbuf = {.append = pb_evbuffer_append}, .sqlwriter = x, .rc = 0                                                \
+    }
+
+static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 {
     struct newsql_pack_arg *arg = data;
+    struct pb_evbuffer_appender appender = PB_EVBUFFER_APPENDER_INIT(sqlwriter);
     if (arg->hdr) {
-        memcpy(out, arg->hdr, sizeof(struct newsqlheader));
-        out += sizeof(struct newsqlheader);
+        pb_evbuffer_append(&appender.vbuf, sizeof(struct newsqlheader), (const uint8_t *)arg->hdr);
+        if (appender.rc != 0)
+            return -1;
     }
     if (arg->resp) {
-        cdb2__sqlresponse__pack(arg->resp, out);
+        cdb2__sqlresponse__pack_to_buffer(arg->resp, &appender.vbuf);
+        if (appender.rc != 0)
+            return -1;
         if (arg->resp->response_type == RESPONSE_TYPE__LAST_ROW) {
             return 1;
         }
@@ -837,9 +870,7 @@ static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
                                  const CDB2SQLRESPONSE *resp, int flush)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    int hdr_len = type ? sizeof(struct newsqlheader) : 0;
     int response_len = resp ? cdb2__sqlresponse__get_packed_size(resp) : 0;
-    int total_len = hdr_len + response_len;
     struct newsql_pack_arg arg = {0};
     struct newsqlheader hdr;
     if (type) {
@@ -850,8 +881,7 @@ static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
         arg.hdr = &hdr;
     }
     arg.resp = resp;
-    return sql_write(appdata->writer, total_len, &arg, flush);
-
+    return sql_write(appdata->writer, &arg, flush);
 }
 
 static int newsql_write_hdr_evbuffer(struct sqlclntstate *clnt, int h, int state)
@@ -931,7 +961,6 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
         .clnt = &appdata->clnt,
         .pack = newsql_pack,
         .pack_hb = newsql_pack_hb,
-        .hb_sz = sizeof(struct newsqlheader),
     };
     appdata->writer = sqlwriter_new(&sqlwriter_arg);
     disable_ssl_evbuffer(appdata);
