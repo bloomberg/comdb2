@@ -8377,6 +8377,7 @@ int sqlite3BtreeCursor(
     }
 
     cur->on_list = 0;
+    cur->permissions = 0;
 
     if (rc != SQLITE_OK && rc != SQLITE_EMPTY && rc != SQLITE_DEADLOCK) {
         /* we were leaking cursors and locks here during incoherent;

@@ -1740,11 +1740,11 @@ int bdb_set_sc_start_lsn(tran_type *tran, const char *table, void *plsn,
 int bdb_delete_sc_start_lsn(tran_type *tran, const char *table, int *bdberr);
 
 enum {
-    ACCESS_INVALID = 0,
-    ACCESS_READ = 1,
-    ACCESS_WRITE = 2,
-    ACCESS_DDL = 3,
-    ACCESS_USERSCHEMA = 4
+    ACCESS_INVALID = 1,
+    ACCESS_READ = 2,
+    ACCESS_WRITE = 4,
+    ACCESS_DDL = 8,
+    ACCESS_USERSCHEMA = 16
 };
 
 int bdb_tbl_access_write_set(bdb_state_type *bdb_state, tran_type *input_trans,

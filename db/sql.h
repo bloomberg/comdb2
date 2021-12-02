@@ -1065,6 +1065,8 @@ struct BtCursor {
     int tableversion;
 
     void *query_preparer_data;
+
+    int permissions; /* permissions for read/write access to table */
 };
 
 struct sql_hist {
