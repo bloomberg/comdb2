@@ -73,7 +73,6 @@ jepsen_register.test
 jepsen_sets_nemesis.test
 jepsen_sets.test
 killcluster.test
-mem_protobuf.test
 netloss.test              -- does not pass most of the time; requires kernel 4.x & docker 17.x
 overflowblobs.test        -- timesout
 register_linearizable.test
@@ -82,6 +81,5 @@ rootpagememleak.test
 rowlocks_blkseq.test
 sc_async_constraints.test
 sigstopcluster.test
-<END>
 
 # vim: set sw=4 ts=4 et:
