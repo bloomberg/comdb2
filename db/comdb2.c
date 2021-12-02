@@ -1869,7 +1869,7 @@ char **afuncs = NULL;
         char **func = &pfx##funcs[0];                                          \
         while (*func) {                                                        \
             int bdberr;                                                        \
-            int rc = bdb_llmeta_add_lua_##pfx##func(*func, &bdberr);           \
+            int rc = bdb_llmeta_add_lua_##pfx##func(*func, NULL, &bdberr);     \
             if (rc) {                                                          \
                logmsg(LOGMSG_ERROR, "could not add sql lua " #pfx "func:%s to llmeta\n",\
                        *func);                                                 \
@@ -1885,47 +1885,44 @@ char **afuncs = NULL;
     do {                                                                       \
         int bdberr = 0;                                                        \
         int rc = bdb_llmeta_get_lua_##pfx##funcs(                              \
-            &thedb->lua_##pfx##funcs, &thedb->num_lua_##pfx##funcs, &bdberr);  \
+            &thedb->lua_##pfx##funcs, &bdberr);                                \
         if (rc) {                                                              \
             logmsg(LOGMSG_ERROR, "bdb_llmeta_get_lua_" #pfx "funcs bdberr:%d\n",\
                     bdberr);                                                   \
         }                                                                      \
         logmsg(LOGMSG_INFO, "loaded num_lua_" #pfx "funcs:%d\n",               \
-               thedb->num_lua_##pfx##funcs);                                   \
+               listc_size(&thedb->lua_##pfx##funcs));                          \
         return rc;                                                             \
     } while (0)
 
-#define get_funcs(funcs, num_funcs, pfx)                                       \
+#define get_funcs(funcs, pfx)                                                  \
     do {                                                                       \
-        *funcs = thedb->lua_##pfx##funcs;                                      \
-        *num_funcs = thedb->num_lua_##pfx##funcs;                              \
+        *funcs = *(listc_t*)&thedb->lua_##pfx##funcs;                          \
     } while (0)
 
 #define find_lua_func(name, pfx)                                               \
     do {                                                                       \
-        int i;                                                                 \
         rdlock_schema_lk();                                                    \
-        for (i = 0; i < thedb->num_lua_##pfx##funcs; ++i) {                    \
-            if (strcmp(thedb->lua_##pfx##funcs[i], name) == 0)                 \
-                break;                                                         \
-        }                                                                      \
-        i = i < thedb->num_lua_##pfx##funcs;                                   \
+        struct lua_func_t * func;                                              \
+        LISTC_FOR_EACH(&thedb->lua_##pfx##funcs, func, lnk)                    \
+            if (strcmp(func->name, name) == 0)                                 \
+                return 1;                                                      \
         unlock_schema_lk();                                                    \
-        return i;                                                              \
+        return 0;                                                              \
     } while (0)
 
 int llmeta_load_lua_sfuncs() { llmeta_load_lua_funcs(s); }
 
 int llmeta_load_lua_afuncs() { llmeta_load_lua_funcs(a); }
 
-void get_sfuncs(char ***funcs, int *num_funcs)
+void get_sfuncs(listc_t * funcs)
 {
-    get_funcs(funcs, num_funcs, s);
+    get_funcs(funcs, s);
 }
 
-void get_afuncs(char ***funcs, int *num_funcs)
+void get_afuncs(listc_t * funcs)
 {
-    get_funcs(funcs, num_funcs, a);
+    get_funcs(funcs, a);
 }
 
 int find_lua_sfunc(const char *name) { find_lua_func(name, s); }
@@ -2544,6 +2541,9 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
                offsetof(struct managed_component, lnk));
     Pthread_mutex_init(&dbenv->incoherent_lk, NULL);
 
+    listc_init(&dbenv->lua_sfuncs, offsetof(struct lua_func_t, lnk));
+    listc_init(&dbenv->lua_afuncs, offsetof(struct lua_func_t, lnk));
+
     /* Initialize the table/queue hashes. */
     dbenv->db_hash =
         hash_init_user((hashfunc_t *)strhashfunc, (cmpfunc_t *)strcmpfunc,
@@ -2631,6 +2631,22 @@ struct dbenv *newdbenv(char *dbname, char *lrlname)
 
     return dbenv;
 }
+
+// TODO: call this remove all rather than
+// free
+int lua_func_list_free(void * list) {
+    struct lua_func_t *item, *tmp;
+    listc_t *list_ptr = list;
+
+    /* free each item */
+    LISTC_FOR_EACH_SAFE(list_ptr, item, tmp, lnk)
+    /* remove and free item */
+    free(listc_rfl(list, item));
+
+    listc_init(list, offsetof(struct lua_func_t, lnk));
+    return 0;
+}
+
 
 #ifndef BERKDB_46
 extern pthread_key_t DBG_FREE_CURSOR;

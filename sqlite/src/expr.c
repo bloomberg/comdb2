@@ -967,6 +967,18 @@ Expr *sqlite3ExprFunction(
   Expr *pNew;
   sqlite3 *db = pParse->db;
   assert( pToken );
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+  if (db->init.busy) {
+      char func[256];
+      sprintf(func, "%.*s", pToken->n, pToken->z);
+      // Don't have enough information here to distinguish between
+      // functions with different arguments. Can distinguish between
+      // functions with different flags, though, not sure how useful
+      // that is.
+      // TODO: come back here and re-examin.
+      sqlite3FindUsedFunction(db, func, 1);
+  }
+#endif
   pNew = sqlite3ExprAlloc(db, TK_FUNCTION, pToken, 1);
   if( pNew==0 ){
     sqlite3ExprListDelete(db, pList); /* Avoid memory leak when malloc fails */

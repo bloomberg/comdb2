@@ -1,0 +1,38 @@
+create procedure resolved version '1' {
+  local function resolved(status)
+      if status < 3 then
+          return 1
+      else
+          return 0
+      end
+  end
+}$$
+create lua scalar function resolved
+create table tickets {
+    schema {
+        int id
+        int status
+    }
+
+    keys {
+        "id" = id
+        "resolved" = (int)"resolved(status)"
+    }
+}$$
+create lua scalar function resolved
+drop lua scalar function resolved
+create lua scalar function resolved deterministic
+create table tickets {
+    schema {
+        int id
+        int status
+    }
+
+    keys {
+        "id" = id
+        "resolved" = (int)"resolved(status)"
+    }
+}$$
+insert into tickets values (1, 2)
+insert into tickets values (1, 4)
+select * from tickets where resolved(status)=1

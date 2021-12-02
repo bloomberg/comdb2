@@ -941,10 +941,8 @@ struct dbenv {
     hash_t *qdb_hash;
 
     /* Special SPs */
-    int num_lua_sfuncs;
-    char **lua_sfuncs;
-    int num_lua_afuncs;
-    char **lua_afuncs;
+    LISTC_T(struct lua_func_t) lua_sfuncs;
+    LISTC_T(struct lua_func_t) lua_afuncs;
 
     /* is sql mode enabled? */
     int sql;

@@ -1274,6 +1274,17 @@ void sqlite3LeaveMutexAndCloseZombie(sqlite3 *db){
     }while( p );
   }
   sqlite3HashClear(&db->aFunc);
+  for(i=sqliteHashFirst(&db->uFunc); i; i=sqliteHashNext(i)){
+    FuncDef *pNext, *p;
+    p = sqliteHashData(i);
+    do{
+      functionDestroy(db, p);
+      pNext = p->pNext;
+      sqlite3DbFree(db, p);
+      p = pNext;
+    }while( p );
+  }
+  sqlite3HashClear(&db->uFunc);
   for(i=sqliteHashFirst(&db->aCollSeq); i; i=sqliteHashNext(i)){
     CollSeq *pColl = (CollSeq *)sqliteHashData(i);
     /* Invoke any destructors registered for collation sequence user data. */
@@ -3005,32 +3016,38 @@ int sqlite3ParseUri(
 }
 
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
+
+int register_lua_funcs(struct sqlite3 *db, struct sqlthdstate *thd, listc_t *funcs)
+{
+    int rc = 0;
+    struct lua_func_t *func;
+    LISTC_FOR_EACH(funcs, func, lnk)
+    {
+        lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
+        arg->thd = thd;
+        arg->name = func->name;
+        if ((rc = sqlite3_create_function_v2(db, func->name, -1, SQLITE_UTF8 | func->flags, arg, lua_func, NULL, NULL,
+                                             free)) != 0) {
+            return rc;
+        }
+    }
+    return 0;
+}
+
+// WARNING: We are trusting the defined lua scalar functions to be deterministic
+//          This could turn out to be problematic. We should clearly document this.
 static void register_lua_sfuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
-  char **funcs;
-  int num_funcs;
-  get_sfuncs(&funcs, &num_funcs);
-  for (int i = 0; i < num_funcs; ++i) {
-    lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
-    arg->thd = thd;
-    arg->name = funcs[i];
-    sqlite3_create_function_v2(db, funcs[i], -1, SQLITE_UTF8, arg, lua_func,
-                               NULL, NULL, free);
-  }
+    listc_t funcs;
+    get_sfuncs(&funcs);
+    register_lua_funcs(db, thd, &funcs); 
 }
 
 static void register_lua_afuncs(sqlite3 *db, struct sqlthdstate *thd)
 {
-  char **funcs;
-  int num_funcs;
-  get_afuncs(&funcs, &num_funcs);
-  for (int i = 0; i < num_funcs; ++i) {
-    lua_func_arg_t *arg = malloc(sizeof(lua_func_arg_t));
-    arg->thd = thd;
-    arg->name = funcs[i];
-    sqlite3_create_function_v2(db, funcs[i], -1, SQLITE_UTF8, arg, NULL,
-                               lua_step, lua_final, free);
-  }
+    listc_t funcs;
+    get_afuncs(&funcs);
+    register_lua_funcs(db, thd, &funcs); 
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 

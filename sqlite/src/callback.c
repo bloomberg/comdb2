@@ -322,8 +322,77 @@ void sqlite3InsertBuiltinFuncs(
     }
   }
 }
+
+
+#ifdef SQLITE_BUILDING_FOR_COMDB2
+
+/**
+ * TODO: Edit the following to make it about sqlite3FindUsedFunction
+ * rather than the design decision
+ * We don't have to use the sqlite3 hash table and a simple array can
+ *  suffice, however, I am thinking of case where there are two 
+ *  scalar functions with the same name, but different number of args
+ */
+FuncDef *sqlite3FindUsedFunction(
+  sqlite3 *db,       /* An open database */
+  const char *zName, /* Name of the function.  zero-terminated */
+  u8 createFlag      /* Create new entry if true and does not otherwise exist */
+) {
+
+  u8 enc = SQLITE_UTF8; /* Used functions are Comdb2 lua scalar functions */ 
+  FuncDef *pRef = 0;
+  // Bypass: If function not present, then it can't be a used function
+  if ((pRef = sqlite3FindFunction(db, zName, -1, enc, 0)) == 0) {
+    return 0;
+  }
+
+  FuncDef *p;             /* Iterator variable */
+  FuncDef *pBest = 0;     /* Best match found so far */
+  int bestScore = 0;      /* Score of best match */
+  int nName;              /* Length of the name */
+  int nArg = pRef->nArg;  /* Find with pRef arguments */
+
+  nName = sqlite3Strlen30(zName);
+  p = (FuncDef*)sqlite3HashFind(&db->uFunc, zName);
+  while( p ){
+    int score = matchQuality(p, nArg, enc);
+    if( score>bestScore ){
+      pBest = p;
+      bestScore = score;
+    }
+    p = p->pNext;
+  }
+
+  if (createFlag && bestScore < FUNC_PERFECT_MATCH &&
+      ((pBest = sqlite3DbMallocZero(db, sizeof(*pRef) + nName + 1)) != 0)) {
+      FuncDef *pOther;
+      u8 *z;
+      pBest->zName = (const char *)&pBest[1];
+      pBest->nArg = pRef->nArg;
+      pBest->funcFlags = pRef->funcFlags;
+      memcpy((char *)&pBest[1], zName, nName + 1);
+      for (z = (u8 *)pBest->zName; *z; z++)
+          *z = sqlite3UpperToLower[*z];
+      pOther = (FuncDef *)sqlite3HashInsert(&db->uFunc, pBest->zName, pBest);
+      // if pBest is returned, then malloc failed
+      if (pOther == pBest) {
+          sqlite3DbFree(db, pBest);
+          sqlite3OomFault(db);
+      } else {
+          // NULL is returned
+          // or, if old data is returned this is an existing function,
+          // albeit with a different number of arguments, so we append
+          pBest->pNext = pOther;
+      }
+  }
   
-  
+  if (pBest) {
+      return pBest;
+  }
+
+  return 0;
+}
+#endif  
 
 /*
 ** Locate a user function given a name, a number of arguments and a flag

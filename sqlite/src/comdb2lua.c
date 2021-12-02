@@ -277,7 +277,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
 			    (vdbeFuncArgFree)&free_schema_change_type);
 }
 
-#define comdb2CreateFunc(parse, proc, pfx, type)                               \
+#define comdb2CreateFunc(parse, proc, pfx, type, flags)                        \
     do {                                                                       \
         char spname[MAX_SPNAME];                                               \
         if (comdb2TokenToStr(proc, spname, sizeof(spname))) {                  \
@@ -294,6 +294,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
         }                                                                      \
         struct schema_change_type *sc = new_schemachange_type();               \
         sc->is_##pfx##func = 1;                                                \
+		sc->lua_func_flags |= flags;                                           \
         sc->addonly = 1;                                                       \
         strcpy(sc->spname, spname);                                            \
         Vdbe *v = sqlite3GetVdbe(parse);                                       \
@@ -301,7 +302,7 @@ void comdb2DropTrigger(Parse *parse, int dynamic, Token *proc)
                             (vdbeFuncArgFree)&free_schema_change_type);        \
     } while (0)
 
-void comdb2CreateScalarFunc(Parse *parse, Token *proc)
+void comdb2CreateScalarFunc(Parse *parse, Token *proc, int flags)
 {
     if (comdb2IsPrepareOnly(parse))
         return;
@@ -319,7 +320,7 @@ void comdb2CreateScalarFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, s, scalar);
+	comdb2CreateFunc(parse, proc, s, scalar, flags);
 }
 
 void comdb2CreateAggFunc(Parse *parse, Token *proc)
@@ -340,7 +341,7 @@ void comdb2CreateAggFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2CreateFunc(parse, proc, a, aggregate);
+	comdb2CreateFunc(parse, proc, a, aggregate, 0);
 }
 
 #define comdb2DropFunc(parse, proc, pfx, type)                                 \
@@ -381,7 +382,30 @@ void comdb2DropScalarFunc(Parse *parse, Token *proc)
     if (comdb2AuthenticateUserOp(parse))
         return;
 
-	comdb2DropFunc(parse, proc, s, scalar);
+
+    char spname[MAX_SPNAME];
+    if (comdb2TokenToStr(proc, spname, sizeof(spname))) {
+        sqlite3ErrorMsg(parse, "Procedure name is too long");
+        return;
+    }
+    if (find_lua_sfunc(spname) == 0) {
+        sqlite3ErrorMsg(parse, "no such lua " "sfunc:%s", spname);
+        return;
+    }
+    struct schema_change_type *sc = new_schemachange_type();
+    sc->is_sfunc = 1;
+    sc->addonly = 0;
+    strcpy(sc->spname, spname);
+    Vdbe *v = sqlite3GetVdbe(parse);
+
+    FuncDef * f  = sqlite3FindUsedFunction(parse->db, spname, 0);
+	if (f) {
+		sqlite3ErrorMsg(parse, "Can't drop. Function in use by the schema.");
+		return;
+	}
+    comdb2prepareNoRows(v, parse, 0, sc, &comdb2SqlSchemaChange_tran, (vdbeFuncArgFree)&free_schema_change_type);
+
+//    comdb2DropFunc(parse, proc, s, scalar);
 }
 
 void comdb2DropAggFunc(Parse *parse, Token *proc)
