@@ -1304,8 +1304,10 @@ int check_sc_headroom(struct schema_change_type *s, struct dbtable *olddb,
         /* In case there's a miscalculation. */
         if (newsize > oldsize)
             diff = oldsize / 3;
-        else
+        else if ((pct * oldsize) / 0.693 > newsize)
             diff = (pct * oldsize) / 0.693 - newsize;
+        else
+            diff = oldsize - newsize;
     }
 
     wanted = (diff * (uint64_t)(100 + headroom)) / 100ULL;
