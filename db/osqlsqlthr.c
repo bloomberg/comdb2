@@ -1762,6 +1762,10 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 
     struct sqlclntstate *clnt = thd->clnt;
 
+    if (pCur->permissions & ACCESS_WRITE) {
+        return 0;
+    }
+
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_write_by_mach_get(
             pCur->db->dbenv->bdb_env, NULL, pCur->db->tablename,
@@ -1818,6 +1822,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
         }
     }
 
+    pCur->permissions |= ACCESS_WRITE;
     return 0;
 }
 
@@ -1830,6 +1835,9 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     if (pCur->cursor_class == CURSORCLASS_TEMPTABLE)
         return 0;
+    if (pCur->permissions & ACCESS_READ) {
+        return 0;
+    }
 
     if (gbl_uses_accesscontrol_tableXnode) {
         rc = bdb_access_tbl_read_by_mach_get(
@@ -1886,6 +1894,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         }
     }
 
+    pCur->permissions |= ACCESS_READ;
     return 0;
 }
 
