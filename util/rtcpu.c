@@ -133,7 +133,6 @@ static int machine_class_default(const char *host)
 
     if (my_class == CLASS_UNKNOWN) {
         char *envclass;
-        cdb2_hndl_tp *db = NULL;
 
         envclass = getenv("COMDB2_CLASS");
         if (envclass) {
@@ -142,60 +141,12 @@ static int machine_class_default(const char *host)
                 logmsg(LOGMSG_ERROR,
                        "envclass set to \"%s\", don't recognize it\n",
                        envclass);
-        } else {
-            /* Try comdb2db */
-            char *sql = "select class from machines where name=@name";
-            char *envclass;
-            int rc;
-
-            cdb2_init_ssl(0, 0);
-            rc = cdb2_open(&db, "comdb2db", "default", 0);
-            if (rc) {
-                logmsg(LOGMSG_INFO, "%s(%s) open rc %d %s!\n", __func__, host,
-                       rc, cdb2_errstr(db));
-                goto done;
-            }
-            rc = cdb2_bind_param(db, "name", CDB2_CSTRING, gbl_myhostname,
-                                 strlen(gbl_myhostname));
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host,
-                       rc, cdb2_errstr(db));
-                goto done;
-            }
-            rc = cdb2_run_statement(db, sql);
-            if (rc) {
-                logmsg(LOGMSG_ERROR, "run rc %d %s, while trying to discover "
-                                     "current machine class\n",
-                       rc, sql);
-                goto done;
-            }
-            rc = cdb2_next_record(db);
-            if (rc && rc != CDB2_OK_DONE) {
-                logmsg(LOGMSG_ERROR, "next rc %d %s, while trying to discover "
-                                     "current machine class\n",
-                       rc, sql);
-                goto done;
-            }
-            envclass = cdb2_column_value(db, 0);
-            my_class = mach_class_name2class(envclass);
-            do {
-                rc = cdb2_next_record(db);
-            } while (rc == CDB2_OK);
-            /* Shouldn't happen, so warn - but not an error. */
-            if (rc != CDB2_OK_DONE)
-                logmsg(LOGMSG_ERROR,
-                       "consume rc %d %s, while trying to discover "
-                       "current machine class\n",
-                       rc, sql);
         }
-    done:
         /* Error if can't find class? */
         if (my_class == CLASS_UNKNOWN) {
             logmsg(LOGMSG_DEBUG, "Can't find class -- assigning PROD\n");
             my_class = CLASS_PROD;
         }
-        if (db)
-            cdb2_close(db);
     }
 
     Pthread_mutex_unlock(&mtx);
@@ -211,62 +162,7 @@ static int machine_dcs[MAXBBNODENUM];
 
 static int resolve_dc(const char *host)
 {
-    int rc;
-    char *dcstr;
     int dc = 99; /* Default to something, 0 would make us do the same lookup. */
-    int types[] = {CDB2_CSTRING};
-    cdb2_hndl_tp *db = NULL;
-
-    cdb2_init_ssl(0, 0);
-    rc = cdb2_open(&db, "comdb2db", "default", 0);
-    if (rc) {
-        logmsg(LOGMSG_INFO, "%s(%s) open rc %d %s!\n", __func__, host,
-               rc, cdb2_errstr(db));
-        goto done;
-    }
-    rc = cdb2_bind_param(db, "name", CDB2_CSTRING, host, strlen(host));
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s(%s) bind rc %d %s!\n", __func__, host, rc,
-               cdb2_errstr(db));
-        goto done;
-    }
-    rc = cdb2_run_statement_typed(db,
-                                  "select room from machines where name=@name",
-                                  sizeof(types) / sizeof(types), types);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s(%s) run rc %d %s!\n", __func__, host, rc,
-               cdb2_errstr(db));
-        goto done;
-    }
-    rc = cdb2_next_record(db);
-    if (rc && rc != CDB2_OK_DONE) {
-        logmsg(LOGMSG_ERROR, "%s(%s) next rc %d %s!\n", __func__, host, rc,
-               cdb2_errstr(db));
-        goto done;
-    }
-    if (rc == 0) {
-        dcstr = (char *)cdb2_column_value(db, 0);
-        if (dcstr) {
-            if (strcmp(dcstr, "NY") == 0)
-                dc = 1;
-            else if (strcmp(dcstr, "NJ") == 0)
-                dc = 5;
-            else if (strcmp(dcstr, "ORG") == 0)
-                dc = 6;
-        }
-
-        rc = cdb2_next_record(db);
-        if (rc != CDB2_OK_DONE) {
-            logmsg(LOGMSG_ERROR, "%s(%s) next (last) rc %d %s\n!", __func__,
-                   host, rc, cdb2_errstr(db));
-            goto done;
-        }
-    }
-
-done:
-    if (db != NULL)
-        cdb2_close(db);
-    // printf("%s->%d\n",  host, dc);
     return dc;
 }
 
