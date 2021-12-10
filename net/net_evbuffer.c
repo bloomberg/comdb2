@@ -829,7 +829,7 @@ static void disable_write(int dummyfd, short what, void *data)
         e->fd = -1;
     }
     Pthread_mutex_unlock(&e->wr_lk);
-    event_once(base, d->func, e);
+    evtimer_once(base, d->func, e);
     free(d);
 }
 
@@ -856,7 +856,7 @@ static void disable_read(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     do_disable_read(e);
-    event_once(wr_base, disable_write, d);
+    evtimer_once(wr_base, disable_write, d);
 }
 
 static void do_disable_heartbeats(struct event_info *e)
@@ -877,7 +877,7 @@ static void disable_heartbeats(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     do_disable_heartbeats(e);
-    event_once(rd_base, disable_read, d);
+    evtimer_once(rd_base, disable_read, d);
 }
 
 static void do_host_close(int dummyfd, short what, void *data)
@@ -885,7 +885,7 @@ static void do_host_close(int dummyfd, short what, void *data)
     struct disable_info *d = data;
     struct event_info *e = d->e;
     host_node_close(e->host_node_ptr);
-    event_once(timer_base, disable_heartbeats, d);
+    evtimer_once(timer_base, disable_heartbeats, d);
 }
 
 static void do_close(struct event_info *e, event_callback_fn func)
@@ -897,7 +897,7 @@ static void do_close(struct event_info *e, event_callback_fn func)
     struct disable_info *i = malloc(sizeof(struct disable_info));
     i->e = e;
     i->func = func;
-    event_once(base, do_host_close, i);
+    evtimer_once(base, do_host_close, i);
 }
 
 static int skip_connect(struct event_info *e)
@@ -1052,7 +1052,7 @@ static void user_msg_callback(void *work)
     if (e->akq_full && outstanding < (max_bytes * resume_lvl)) {
         //hprintf("RESUMING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
         e->akq_full = 0;
-        event_once(rd_base, resume_read, e);
+        evtimer_once(rd_base, resume_read, e);
     }
     Pthread_mutex_unlock(&e->akq_lk);
     if (evbuffer_get_length(e->payload_buf) != datalen) {
@@ -1572,7 +1572,7 @@ static void do_queued(int dummyfd, short what, void *data)
 {
     struct event_info *e = data;
     struct host_connected_info *info = LIST_FIRST(&e->host_connected_list);
-    event_once(base, do_open, info);
+    evtimer_once(base, do_open, info);
 }
 
 static void finish_host_setup(int dummyfd, short what, void *data)
@@ -1607,7 +1607,7 @@ static void enable_heartbeats(int dummyfd, short what, void *data)
     e->hb_send_ev = event_new(timer_base, -1, EV_PERSIST, heartbeat_send, e);
     event_add(e->hb_check_ev, &one_sec);
     event_add(e->hb_send_ev, &one_sec);
-    event_once(base, finish_host_setup, i);
+    evtimer_once(base, finish_host_setup, i);
 }
 
 static void enable_read(int dummyfd, short what, void *data)
@@ -1624,7 +1624,7 @@ static void enable_read(int dummyfd, short what, void *data)
     e->rd_buf = evbuffer_new();
     e->rd_ev = event_new(rd_base, e->fd, EV_READ | EV_PERSIST, readcb, e);
     event_add(e->rd_ev, NULL);
-    event_once(timer_base, enable_heartbeats, i);
+    evtimer_once(timer_base, enable_heartbeats, i);
 }
 
 static void enable_write(int dummyfd, short what, void *data)
@@ -1643,7 +1643,7 @@ static void enable_write(int dummyfd, short what, void *data)
     e->wr_full = 0;
     e->decomissioned = 0;
     Pthread_mutex_unlock(&e->wr_lk);
-    event_once(rd_base, enable_read, i);
+    evtimer_once(rd_base, enable_read, i);
 }
 
 static void do_open(int dummyfd, short what, void *data)
@@ -1652,7 +1652,7 @@ static void do_open(int dummyfd, short what, void *data)
     struct event_info *e = i->e;
     check_base_thd();
     host_node_open(e->host_node_ptr, i->fd);
-    event_once(wr_base, enable_write, i);
+    evtimer_once(wr_base, enable_write, i);
 }
 
 static void host_connected(struct event_info *e, int fd, int connect_msg)
@@ -2170,7 +2170,7 @@ static void do_read(int fd, short what, void *data)
         arg->fd = fd;
         arg->addr = ss;
         arg->rd_buf = buf;
-        event_once(appsock_rd_base, info->cb, arg); /* handle_newsql_request_evbuffer */
+        evtimer_once(appsock_rd_base, info->cb, arg); /* handle_newsql_request_evbuffer */
         return;
     }
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
@@ -2752,7 +2752,7 @@ void add_host(host_node_type *host_node_ptr)
         return;
     }
     init_event_net(netinfo_ptr);
-    event_once(base, do_add_host, host_node_ptr);
+    evtimer_once(base, do_add_host, host_node_ptr);
 }
 
 void decom(char *host)

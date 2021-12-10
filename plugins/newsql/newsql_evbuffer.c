@@ -94,7 +94,7 @@ static void newsql_cleanup(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     sql_disable_heartbeat(appdata->writer);
     sql_disable_timeout(appdata->writer);
-    event_once(appsock_rd_base, free_newsql_appdata_evbuffer, appdata);
+    evtimer_once(appsock_rd_base, free_newsql_appdata_evbuffer, appdata);
 }
 
 static int newsql_flush_evbuffer(struct sqlclntstate *clnt)
@@ -125,7 +125,7 @@ static void newsql_read_again(int dummyfd, short what, void *arg)
             reset_clnt_flags(clnt);
         }
     }
-    event_once(appsock_rd_base, newsql_read_hdr, appdata);
+    newsql_read_hdr(-1, 0, appdata);
 }
 
 static void newsql_reset_evbuffer(struct newsql_appdata_evbuffer *appdata)
@@ -138,7 +138,7 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
     if (clnt->query_rc == CDB2ERR_IO_ERROR) { /* dispatch timed out */
-        return event_once(appsock_timer_base, newsql_cleanup, appdata);
+        return evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
     }
     if (clnt->osql.replay == OSQL_RETRY_DO) {
         clnt->done_cb = NULL;
@@ -153,9 +153,9 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
         appdata->query = NULL;
     }
     if (sql_done(appdata->writer) == 0) {
-        event_once(appsock_timer_base, newsql_read_again, appdata);
+        newsql_read_again(-1, 0, appdata);
     } else {
-        event_once(appsock_timer_base, newsql_cleanup, appdata);
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
     }
     return 0;
 }
@@ -252,7 +252,7 @@ static void write_dbinfo(int dummyfd, short what, void *arg)
     } else if (evbuffer_get_length(wrbuf)) {
         event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, write_dbinfo, appdata, NULL);
     } else {
-        event_once(appsock_rd_base, rd_newsql_hdr, appdata);
+        evtimer_once(appsock_rd_base, rd_newsql_hdr, appdata);
     }
 }
 
@@ -346,8 +346,10 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
     int do_read = 0;
     int commit_rollback;
     appdata->query = query;
-    appdata->sqlquery = query->sqlquery;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery = query->sqlquery;
     struct sqlclntstate *clnt = &appdata->clnt;
+    if (sqlquery == NULL)
+        goto out;
     if (!appdata->active) {
         if (add_appsock_connection_evbuffer(clnt) != 0) {
             add_lru_evbuffer(clnt);
@@ -357,12 +359,12 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
         appdata->active = 1;
     }
     if (appdata->initial) {
-        if (newsql_first_run(clnt, query->sqlquery) != 0) {
+        if (newsql_first_run(clnt, sqlquery) != 0) {
             goto out;
         }
         appdata->initial = 0;
     }
-    if (newsql_loop(clnt, query->sqlquery) != 0) {
+    if (newsql_loop(clnt, sqlquery) != 0) {
         goto out;
     }
     if (newsql_should_dispatch(clnt, &commit_rollback) != 0) {
@@ -378,7 +380,7 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
         return;
     }
 out:cdb2__query__free_unpacked(query, NULL);
-    event_once(appsock_timer_base, do_read ? newsql_read_again : newsql_cleanup, appdata);
+    evtimer_once(appsock_timer_base, do_read ? newsql_read_again : newsql_cleanup, appdata);
 }
 
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
@@ -410,7 +412,7 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
     case CDB2_REQUEST_TYPE__SSLCONN:
         /* not implemented - disable us for now */
         gbl_libevent_appsock = 0;
-        event_once(appsock_timer_base, newsql_cleanup, appdata);
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s bad type:%d fd:%d\n", __func__, appdata->hdr.type, appdata->fd);
@@ -423,7 +425,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     if (what & EV_READ) {
         if (evbuffer_read(appdata->rd_buf, appdata->fd, -1) <= 0) {
-            event_once(appsock_timer_base, newsql_cleanup, appdata);
+            evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
             return;
         }
     }
@@ -435,7 +437,7 @@ static void rd_payload(int dummyfd, short what, void *arg)
     int len = appdata->hdr.length;
     void *data = evbuffer_pullup(appdata->rd_buf, len);
     if (!len || (query = cdb2__query__unpack(NULL, len, data)) == NULL) {
-        event_once(appsock_timer_base, newsql_cleanup, appdata);
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
     } else {
         evbuffer_drain(appdata->rd_buf, len);
         process_newsql_payload(appdata, query);
@@ -444,11 +446,10 @@ static void rd_payload(int dummyfd, short what, void *arg)
 
 static void rd_newsql_hdr(int dummyfd, short what, void *arg)
 {
-    check_appsock_rd_thd();
     struct newsql_appdata_evbuffer *appdata = arg;
     if (what & EV_READ) {
         if (evbuffer_read(appdata->rd_buf, appdata->fd, -1) <= 0) {
-            event_once(appsock_timer_base, newsql_cleanup, appdata);
+            evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
             return;
         }
     }

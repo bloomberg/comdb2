@@ -43,14 +43,13 @@ extern int gbl_libevent_appsock;
 #define check_appsock_rd_thd() check_thd(appsock_rd_thd)
 #define check_appsock_timer_thd() check_thd(appsock_timer_thd)
 
-#define event_once(a, b, c)                                                    \
-    ({                                                                         \
-        int erc;                                                               \
-        if ((erc = event_base_once(a, -1, EV_TIMEOUT, b, c, NULL)) != 0) {     \
-            logmsg(LOGMSG_ERROR, "%s:%d event_base_once failed\n", __func__,   \
-                   __LINE__);                                                  \
-        }                                                                      \
-        erc;                                                                   \
+#define evtimer_once(a, b, c)                                                                                          \
+    ({                                                                                                                 \
+        int erc;                                                                                                       \
+        if ((erc = event_base_once(a, -1, EV_TIMEOUT, b, c, NULL)) != 0) {                                             \
+            logmsg(LOGMSG_ERROR, "%s:%d event_base_once failed\n", __func__, __LINE__);                                \
+        }                                                                                                              \
+        erc;                                                                                                           \
     })
 
 #endif
