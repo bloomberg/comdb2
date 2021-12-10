@@ -613,6 +613,8 @@ static pthread_mutex_t clnt_lk = PTHREAD_MUTEX_INITIALIZER;
 static LISTC_T(struct sqlclntstate) clntlist;
 static int64_t connid = 0;
 
+/* lru_evbuffers may be accessed by multiple sql threads, hence we need to protect it with a mutex. */
+static pthread_mutex_t lru_evbuffers_mtx = PTHREAD_MUTEX_INITIALIZER;
 static TAILQ_HEAD(lru_evbuffers, sqlclntstate) lru_evbuffers = TAILQ_HEAD_INITIALIZER(lru_evbuffers);
 static TAILQ_HEAD(sql_evbuffers, sqlclntstate) sql_evbuffers = TAILQ_HEAD_INITIALIZER(sql_evbuffers);
 
@@ -6563,29 +6565,32 @@ void rem_sql_evbuffer(struct sqlclntstate *clnt)
 
 void add_lru_evbuffer(struct sqlclntstate *clnt)
 {
-    check_appsock_rd_thd();
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
     if (in_client_trans(clnt)) {
         /* Point to self -> not in lru_evbuffers list */
         TAILQ_NEXT(clnt, lru_entry) = clnt;
-        return;
+    } else {
+        TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
     }
-    TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
 void rem_lru_evbuffer(struct sqlclntstate *clnt)
 {
-    check_appsock_rd_thd();
-    if (TAILQ_NEXT(clnt, lru_entry) == clnt) {
-        return;
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    if (TAILQ_NEXT(clnt, lru_entry) != clnt) {
+        TAILQ_REMOVE(&lru_evbuffers, clnt, lru_entry);
+        TAILQ_NEXT(clnt, lru_entry) = clnt;
     }
-    TAILQ_REMOVE(&lru_evbuffers, clnt, lru_entry);
-    TAILQ_NEXT(clnt, lru_entry) = clnt;
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
 static int close_lru_evbuffer(struct sqlclntstate *self)
 {
     check_appsock_rd_thd();
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
     struct sqlclntstate *clnt = TAILQ_LAST(&lru_evbuffers, lru_evbuffers);
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
     if (clnt && clnt != self) {
         rem_lru_evbuffer(clnt);
         clnt->plugin.close(clnt);
