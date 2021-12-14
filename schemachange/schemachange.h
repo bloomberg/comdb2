@@ -254,6 +254,8 @@ struct schema_change_type {
     uint64_t seed;
 };
 
+typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
+
 struct ireq;
 typedef struct {
     tran_type *trans;
@@ -439,5 +441,9 @@ char *get_ddl_type_str(struct schema_change_type *s);
 char *get_ddl_csc2(struct schema_change_type *s);
 
 int comdb2_is_user_op(char *user, char *password);
+
+int llog_scdone_rename_wrapper(bdb_state_type *bdb_state, scdone_t type,
+                               struct schema_change_type *s, tran_type *tran,
+                               int *bdberr);
 
 #endif

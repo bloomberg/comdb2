@@ -702,7 +702,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
     /* log for replicants to do the same */
     if (!same_tran) {
-        rc = bdb_llog_scdone(db->handle, scdone_type, 1, &bdberr);
+        rc = bdb_llog_scdone(thedb->bdb_env, scdone_type, db->tablename,
+                             strlen(db->tablename) + 1, 1, &bdberr);
         if (rc) {
             sbuf2printf(sb, "!Failed to broadcast queue %s\n", sc->drop_table ? "drop" : "add");
             logmsg(LOGMSG_ERROR, "Failed to broadcast queue %s\n", sc->drop_table ? "drop" : "add");
@@ -754,8 +755,8 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     }
 
     if (same_tran) {
-        rc = bdb_llog_scdone_tran(db->handle, scdone_type, tran, sc->tablename,
-                                  &bdberr);
+        rc = bdb_llog_scdone_tran(thedb->bdb_env, scdone_type, tran, sc->tablename,
+                                  strlen(sc->tablename) + 1, &bdberr);
         if (rc) {
             sbuf2printf(sb, "!Failed write scdone , rc=%d\n", rc);
             goto done;
@@ -1010,8 +1011,8 @@ int finalize_add_qdb_file(struct ireq *iq, struct schema_change_type *s,
         goto done;
     }
     bdberr = 0;
-    rc = bdb_llog_scdone_tran(s->db->handle, add_queue_file, sc_phys_tran,
-                              NULL, &bdberr);
+    rc = bdb_llog_scdone_tran(thedb->bdb_env, add_queue_file, sc_phys_tran,
+                              s->db->tablename, strlen(s->db->tablename) + 1, &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
                __func__, rc, bdberr);
@@ -1078,8 +1079,9 @@ int finalize_del_qdb_file(struct ireq *iq, struct schema_change_type *s,
         goto done;
     }
     bdberr = 0;
-    rc = bdb_llog_scdone_tran(s->db->handle, del_queue_file, sc_phys_tran,
-                              NULL, &bdberr);
+    rc = bdb_llog_scdone_tran(thedb->bdb_env, del_queue_file, sc_phys_tran,
+                              s->db->tablename, strlen(s->db->tablename) + 1,
+                              &bdberr);
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s: bdb_llog_scdone_tran rc %d bdberr %d\n",
                __func__, rc, bdberr);

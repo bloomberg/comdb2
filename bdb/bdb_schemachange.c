@@ -226,13 +226,13 @@ int handle_scdone(DB_ENV *dbenv, u_int32_t rectype, llog_scdone_args *scdoneop,
 }
 
 // Must be done a transaction by itself so this func creates a trans internally
-static int do_llog_int(bdb_state_type *ch_bdb_state, DBT *tbl, DBT *type,
-                       int wait, int *bdberr)
+int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t sctype, const char *tbl,
+                   int tbllen, int wait, int *bdberr)
 {
     int retries = 0;
-    bdb_state_type *p_bdb_state = ch_bdb_state;
-    if (ch_bdb_state->parent)
-        p_bdb_state = ch_bdb_state->parent;
+
+    if (bdb_state->parent)
+        abort();
 
 retry:
     *bdberr = BDBERR_NOERROR;
@@ -241,7 +241,7 @@ retry:
         return -1;
     }
 
-    tran_type *ltran = bdb_tran_begin_logical(p_bdb_state, 0, bdberr);
+    tran_type *ltran = bdb_tran_begin_logical(bdb_state, 0, bdberr);
     if (ltran == NULL) {
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
@@ -253,43 +253,38 @@ retry:
 
     int rc;
     tran_type *tran;
-    if ((rc = get_physical_transaction(p_bdb_state, ltran, &tran, 0)) != 0) {
-        if (bdb_tran_abort(p_bdb_state, ltran, bdberr) != 0)
+    if ((rc = get_physical_transaction(bdb_state, ltran, &tran, 0)) != 0) {
+        if (bdb_tran_abort(bdb_state, ltran, bdberr) != 0)
             abort();
         logmsg(LOGMSG_ERROR, "%s: get_physical_transaction: %d\n", __func__, rc);
         return -1;
     }
 
-    uint32_t sctype = ntohl(*((uint32_t *)type->data));
     if ((sctype == alter || sctype == fastinit || sctype == bulkimport) &&
-        (strncmp(ch_bdb_state->name, "sqlite_stat",
+        (strncmp(tbl, "sqlite_stat",
                  sizeof("sqlite_stat") - 1) != 0))
-        bdb_lock_table_write(ch_bdb_state, tran);
+        bdb_lock_tablename_write(bdb_state, tbl, tran);
     /* analyze does NOT need schema_lk */
     if (sctype == sc_analyze)
         ltran->get_schema_lock = 0;
 
-    if (gbl_debug_systable_locks) {
-        bdb_lock_tablename_write(p_bdb_state, "_comdb2_systables", tran);
-    }
+    rc = bdb_llog_scdone_tran(bdb_state, sctype, tran, tbl, tbllen, bdberr);
 
-    DB_LSN lsn;
-    rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, tbl, type);
     if (rc) {
-        bdb_tran_abort(p_bdb_state, tran, bdberr);
+        bdb_tran_abort(bdb_state, tran, bdberr);
         *bdberr = BDBERR_MISC;
         return -1;
     }
     uint64_t transize;
     seqnum_type seqnum;
-    rc = bdb_tran_commit_with_seqnum_size(p_bdb_state, ltran, &seqnum,
+    rc = bdb_tran_commit_with_seqnum_size(bdb_state, ltran, &seqnum,
                                           &transize, bdberr);
     if (rc || *bdberr != BDBERR_NOERROR) {
         if (*bdberr == BDBERR_DEADLOCK)
             goto retry;
     }
     if (wait) {
-        rc = bdb_wait_for_seqnum_from_all(p_bdb_state, &seqnum);
+        rc = bdb_wait_for_seqnum_from_all(bdb_state, &seqnum);
         if (rc != 0) {
             logmsg(LOGMSG_ERROR, 
                     "%s: bdb_wait_for_seqnum_from_all rc: %d bdberr:%d\n",
@@ -299,90 +294,37 @@ retry:
     return rc;
 }
 
-static int do_llog(bdb_state_type *bdb_state, scdone_t sctype, char *tbl,
-                   int wait, const char *origtable, int *bdberr)
-{
-    DBT *dtbl = NULL;
-    if (tbl) {
-        dtbl = alloca(sizeof(DBT));
-        bzero(dtbl, sizeof(DBT));
-        dtbl->data = tbl;
-        dtbl->size = strlen(tbl) + 1;
-        if (sctype == rename_table || sctype == rename_table_alias) {
-            assert(origtable);
-            int origlen = strlen(origtable) + 1;
-            int len = dtbl->size + origlen;
-            char *mashup = alloca(len);
-            memcpy(mashup, origtable, origlen);
-            memcpy(mashup + origlen, dtbl->data, dtbl->size);
-            dtbl->data = mashup;
-            dtbl->size = len;
-        }
-    }
-
-    DBT dtype = {0};
-    uint32_t type = htonl(sctype);
-    dtype.data = &type;
-    dtype.size = sizeof(type);
-
-    return do_llog_int(bdb_state, dtbl, &dtype, wait, bdberr);
-}
-
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
-                         tran_type *tran, const char *origtable, int *bdberr)
+                         tran_type *tran, const char *tbl, int tbllen, int *bdberr)
 {
     int rc = 0;
-    DBT *dtbl = NULL;
-    DBT dtype = {0};
-    uint32_t sctype = htonl(type);
-    bdb_state_type *p_bdb_state = bdb_state;
-    DB_LSN lsn;
+
+    if (bdb_state->parent)
+        abort();
 
     if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
         BDB_BUMP_DBOPEN_GEN(type, NULL);
 
-    if (bdb_state->name) {
+    DBT *dtbl = NULL;
+    if (tbl) {
         dtbl = alloca(sizeof(DBT));
         bzero(dtbl, sizeof(DBT));
-        dtbl->data = bdb_state->name;
-        dtbl->size = strlen(bdb_state->name) + 1;
-        if (type == rename_table || type == rename_table_alias) {
-            assert(origtable || type == rename_table_alias);
-            int origlen = origtable ? (strlen(origtable) + 1) : 1;
-            int len = dtbl->size + origlen;
-            char *mashup = alloca(len);
-            if (type == rename_table) {
-                memcpy(mashup, origtable, origlen);
-                memcpy(mashup + origlen, dtbl->data, dtbl->size);
-            } else {
-                memcpy(mashup, dtbl->data, dtbl->size);
-                if (origtable)
-                    memcpy(mashup + dtbl->size, origtable, origlen);
-                else
-                    mashup[dtbl->size] = '\0';
-            }
-            dtbl->data = mashup;
-            dtbl->size = len;
-        }
+        dtbl->data = (char*)tbl;
+        dtbl->size = tbllen;
     }
 
+    DBT dtype = {0};
+    uint32_t sctype = htonl(type);
     dtype.data = &sctype;
     dtype.size = sizeof(sctype);
 
-    if (bdb_state->parent) p_bdb_state = bdb_state->parent;
 
-#if 0 /* finalize_schema_change already got the write lock? */
-    if ((type == alter || type == fastinit) &&
-        (strncmp(bdb_state->name, "sqlite_stat",
-                 sizeof("sqlite_stat") - 1) != 0))
-        bdb_lock_table_write(bdb_state, tran);
-#endif
-
-    extern int gbl_debug_systable_locks;
     if (gbl_debug_systable_locks) {
-        bdb_lock_tablename_write(p_bdb_state, "_comdb2_systables", tran);
+        bdb_lock_tablename_write(bdb_state, "_comdb2_systables", tran);
     }
-    rc = llog_scdone_log(p_bdb_state->dbenv, tran->tid, &lsn, 0, dtbl, &dtype);
+
+    DB_LSN lsn;
+    rc = llog_scdone_log(bdb_state->dbenv, tran->tid, &lsn, 0, dtbl, &dtype);
     if (rc) {
         *bdberr = BDBERR_MISC;
         return -1;
@@ -390,45 +332,27 @@ int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
     return rc;
 }
 
-int bdb_llog_scdone(bdb_state_type *bdb_state, scdone_t type, int wait,
-                    int *bdberr)
-{
-    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
-        BDB_BUMP_DBOPEN_GEN(type, NULL);
-
-    return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
-}
-
-int bdb_llog_scdone_origname(bdb_state_type *bdb_state, scdone_t type, int wait,
-                             const char *origtable, int *bdberr)
-{
-    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type))
-        BDB_BUMP_DBOPEN_GEN(type, NULL);
-
-    return do_llog(bdb_state, type, bdb_state->name, wait, origtable, bdberr);
-}
-
 int bdb_llog_analyze(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
     ATOMIC_ADD32(gbl_analyze_gen, 1);
-    return do_llog(bdb_state, sc_analyze, NULL, wait, NULL, bdberr);
+    return bdb_llog_scdone(bdb_state, sc_analyze, NULL, 0, wait, bdberr);
 }
 
 int bdb_llog_views(bdb_state_type *bdb_state, char *name, int wait, int *bdberr)
 {
     ++gbl_views_gen;
-    return do_llog(bdb_state, views, name, wait, NULL, bdberr);
+    return bdb_llog_scdone(bdb_state, views, name, strlen(name) + 1, wait, bdberr);
 }
 
 int bdb_llog_luareload(bdb_state_type *bdb_state, int wait, int *bdberr)
 {
-    return do_llog(bdb_state, luareload, NULL, wait, NULL, bdberr);
+    return bdb_llog_scdone(bdb_state, luareload, NULL, 0, wait, bdberr);
 }
 
 int bdb_llog_luafunc(bdb_state_type *bdb_state, scdone_t type, int wait,
                      int *bdberr)
 {
-    return do_llog(bdb_state, type, bdb_state->name, wait, NULL, bdberr);
+    return bdb_llog_scdone(bdb_state, type, NULL, 0, wait, bdberr);
 }
 
 extern int gbl_rowlocks;
@@ -452,7 +376,7 @@ int bdb_llog_rowlocks(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
         gbl_rowlocks = 1;
     else
         gbl_rowlocks = 0;
-    rc = do_llog(bdb_state, type, NULL, 0, NULL, bdberr);
+    rc = bdb_llog_scdone(bdb_state, type, NULL, 0, 0, bdberr);
     return rc;
 }
 
@@ -475,7 +399,7 @@ int bdb_llog_genid_format(bdb_state_type *bdb_state, scdone_t type, int *bdberr)
     }
 
     bdb_genid_set_format(bdb_state, format);
-    rc = do_llog(bdb_state, type, NULL, 0, NULL, bdberr);
+    rc = bdb_llog_scdone(bdb_state, type, NULL, 0, 0, bdberr);
     return rc;
 }
 

@@ -154,7 +154,7 @@ int do_alter_stripes_int(struct schema_change_type *s)
     unlock_schema_lk();
 
     if ((rc = bdb_llog_scdone_tran(thedb->bdb_env, change_stripe, phys_tran,
-                                   NULL, &bdberr)) != 0) {
+                                   NULL, 0, &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "morestripe: couldn't write scdone record\n");
         return SC_INTERNAL_ERROR;
     }

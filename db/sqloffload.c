@@ -689,7 +689,6 @@ static void osql_scdone_commit_callback(struct ireq *iq)
             sc_next = iq->sc->sc_next;
             if (write_scdone) {
                 struct schema_change_type *s = iq->sc;
-                bdb_state_type *bdb_state = 0;
                 scdone_t type = invalid;
 
                 if (s->is_trigger || s->is_sfunc || s->is_afunc) {
@@ -709,18 +708,11 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                 else if (s->add_view || s->drop_view)
                     type = user_view;
 
-                if (type == user_view) {
-                    bdb_state = thedb->bdb_env;
-                } else if (s->db != NULL) {
-                    bdb_state = s->db->handle;
-                }
-
-                if (type == invalid || bdb_state == NULL) {
+                if (type == invalid || (type != user_view && s->db == NULL)) {
                     logmsg(LOGMSG_ERROR, "%s: Skipping scdone for table %s\n",
                            __func__, s->tablename);
                 } else {
-                    rc = bdb_llog_scdone_origname(bdb_state, type, 1,
-                                                  s->tablename, &bdberr);
+                    rc = llog_scdone_rename_wrapper(thedb->bdb_env, type, s, NULL, &bdberr);
                     if (rc || bdberr != BDBERR_NOERROR) {
                         /* We are here because we are running in R6 compatible
                          * mode. For R7 or later, use SC_DONE_SAME_TRAN.

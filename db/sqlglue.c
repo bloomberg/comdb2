@@ -11714,7 +11714,8 @@ int bt_hash_table(char *table, int szkb)
     trans_commit(&iq, tran, gbl_myhostname);
 
     // scdone log
-    rc = bdb_llog_scdone(bdb_state, bthash, 1, &bdberr);
+    rc = bdb_llog_scdone(bdb_state, bthash, bdb_state->name, 
+                         strlen(bdb_state->name) + 1, 1, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, 
                 "Failed to send logical log scdone bthash rc=%d bdberr=%d\n",
@@ -11767,7 +11768,8 @@ int del_bt_hash_table(char *table)
     trans_commit(&iq, tran, gbl_myhostname);
 
     // scdone log
-    rc = bdb_llog_scdone(bdb_state, bthash, 1, &bdberr);
+    rc = bdb_llog_scdone(bdb_state, bthash, bdb_state->name,
+                         strlen(bdb_state->name) + 1, 1, &bdberr);
     if (rc || bdberr != BDBERR_NOERROR) {
         logmsg(LOGMSG_ERROR, "Failed to send logical log scdone bthash rc=%d bdberr=%d\n",
                 rc, bdberr);

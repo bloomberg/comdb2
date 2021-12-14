@@ -280,13 +280,46 @@ static inline int replication_only_error_code(int rc)
     return 0;
 }
 
+int llog_scdone_rename_wrapper(bdb_state_type *bdb_state, scdone_t type,
+                               struct schema_change_type *s, tran_type *tran,
+                               int *bdberr)
+{
+    int rc;
+    char *mashup = NULL;
+    int oldlen = 0;
+    int newlen = 0;
+    if (s->db) {
+        mashup = s->tablename;
+        oldlen = strlen(s->tablename) + 1;
+
+        /* embed new name after old name if rename */
+        if (type == rename_table || type == rename_table_alias) {
+            char *dst;
+            if (type == rename_table_alias && s->db->sqlaliasname) {
+                dst = s->db->sqlaliasname;
+            } else {
+                dst = s->db->tablename;
+            }
+            newlen = strlen(dst) + 1;
+            mashup = alloca(oldlen + newlen);
+            memcpy(mashup, s->tablename, oldlen); /* old */
+            memcpy(mashup + oldlen, dst, newlen); /* new */
+        }
+    }
+    if (!tran)
+        rc = bdb_llog_scdone(bdb_state, type, mashup, oldlen+newlen, 1, bdberr);
+    else
+        rc = bdb_llog_scdone_tran(bdb_state, type, tran, mashup, oldlen+newlen, bdberr);
+
+    return rc;
+}
+
 static int do_finalize(ddl_t func, struct ireq *iq,
-                       struct schema_change_type *s, tran_type *input_tran,
-                       scdone_t type)
+        struct schema_change_type *s, tran_type *input_tran,
+        scdone_t type)
 {
     int rc, bdberr = 0;
     tran_type *tran = input_tran;
-    bdb_state_type *bdb_state = 0;
 
     if (tran == NULL) {
         rc = trans_start_sc(iq, NULL, &tran);
@@ -322,8 +355,6 @@ static int do_finalize(ddl_t func, struct ireq *iq,
                __func__, bdberr);
     }
 
-    bdb_state = (type == user_view) ? thedb->bdb_env : s->db->handle;
-
     if (input_tran == NULL) {
         // void all_locks(void*);
         // all_locks(thedb->bdb_env);
@@ -343,13 +374,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
             return rc;
         }
 
-        int bdberr = 0;
-        if (type == rename_table || type == rename_table_alias)
-            rc = bdb_llog_scdone_origname(bdb_state, type, 1, s->tablename,
-                                          &bdberr);
-        else
-            rc = bdb_llog_scdone(bdb_state, type, 1, &bdberr);
-
+        rc = llog_scdone_rename_wrapper(thedb->bdb_env, type, s, NULL, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
@@ -357,12 +382,7 @@ static int do_finalize(ddl_t func, struct ireq *iq,
         sc_del_unused_files(s->db);
     } else if (bdb_attr_get(thedb->bdb_attr, BDB_ATTR_SC_DONE_SAME_TRAN)) {
         int bdberr = 0;
-        if (type == rename_table_alias && s->db /* no views */)
-            rc = bdb_llog_scdone_tran(bdb_state, type, input_tran,
-                                      s->db->sqlaliasname, &bdberr);
-        else
-            rc = bdb_llog_scdone_tran(bdb_state, type, input_tran, s->tablename,
-                                      &bdberr);
+        rc = llog_scdone_rename_wrapper(thedb->bdb_env, type, s, input_tran, &bdberr);
         if (rc || bdberr != BDBERR_NOERROR) {
             sc_errf(s, "Failed to send scdone rc=%d bdberr=%d\n", rc, bdberr);
             return -1;
@@ -1451,7 +1471,8 @@ int do_setcompr(struct ireq *iq, const char *rec, const char *blob)
     tran = NULL;
 
     int bdberr = 0;
-    if ((rc = bdb_llog_scdone(db->handle, setcompr, 1, &bdberr)) != 0) {
+    if ((rc = bdb_llog_scdone(thedb->bdb_env, setcompr, db->tablename,
+                              strlen(db->tablename) + 1, 1, &bdberr)) != 0) {
         logmsg(LOGMSG_ERROR, "%s -- bdb_llog_scdone rc:%d bdberr:%d\n",
                __func__, rc, bdberr);
     }
