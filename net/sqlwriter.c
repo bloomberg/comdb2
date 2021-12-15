@@ -61,7 +61,6 @@ struct sqlwriter {
     unsigned bad : 1;
     unsigned done : 1;
     unsigned flush : 1;
-    unsigned released_locks : 1;
     unsigned do_timeout : 1;
     unsigned timed_out : 1;
     unsigned wr_continue : 1;
@@ -82,14 +81,13 @@ static void sql_disable_trickle(struct sqlwriter *writer)
 static void sql_enable_flush(struct sqlwriter *writer)
 {
     sql_disable_heartbeat(writer);
-    struct timeval timeout = {.tv_sec = 1};
-    event_add(writer->flush_ev, &timeout);
+    struct timeval recover_ddlk_timeout = {.tv_sec = 1};
+    event_add(writer->flush_ev, &recover_ddlk_timeout);
 }
 
 static void sql_disable_flush(struct sqlwriter *writer)
 {
     writer->flush = 0;
-    writer->released_locks = 0;
     writer->wr_continue = 1;
     event_del(writer->flush_ev);
 }
@@ -137,21 +135,11 @@ void sql_disable_timeout(struct sqlwriter *writer)
     }
 }
 
-static int sql_recover_deadlock(struct sqlwriter *writer)
-{
-    int rc = 0;
-    if (!writer->released_locks) {
-        rc = recover_deadlock_evbuffer(writer->clnt);
-        writer->released_locks = 1;
-    }
-    return rc;
-}
-
 static void sql_flush_cb(int fd, short what, void *arg)
 {
     struct sqlwriter *writer = arg;
     if (what & EV_TIMEOUT) {
-        sql_recover_deadlock(writer);
+        recover_deadlock_evbuffer(writer->clnt);
     }
     if (!(what & EV_WRITE)) {
         return;
@@ -348,7 +336,6 @@ void sql_reset(struct sqlwriter *writer)
     writer->bad = 0;
     writer->done = 0;
     writer->flush = 0;
-    writer->released_locks = 0;
     writer->timed_out = 0;
     writer->wr_continue = 1;
     writer->sent_at = time(NULL);
