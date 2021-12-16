@@ -6992,6 +6992,10 @@ int reload_after_bulkimport(dbtable *db, tran_type *tran)
         logmsg(LOGMSG_ERROR, "Failed to load .ONDISK.VER.nn\n");
         return 1;
     }
+    if (create_datacopy_array(db)) {
+        logmsg(LOGMSG_ERROR, "Failed to create datacopy array for %s\n", db->tablename);
+        return 1;
+    }
     db->tableversion = table_version_select(db, NULL);
     update_dbstore(db);
     create_sqlmaster_records(tran);
