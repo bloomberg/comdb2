@@ -138,7 +138,7 @@ static int use_port(const char *svc, int port)
 
     // service can tell us repeatedly that it's using the port, thats fine
     if (usedport == port) // we dont need to do anything
-        return 0;
+        return port;
 
     // service was using a different port before so remove that mapping
     if (usedport != -1) {
@@ -159,7 +159,7 @@ static int use_port(const char *svc, int port)
     }
     port_map.insert(std::make_pair(std::string(svc), port));
     pmux_store->sav_port(svc, port);
-    return 0;
+    return port;
 }
 
 static int alloc_port(const char *svc)

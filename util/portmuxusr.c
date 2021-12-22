@@ -209,6 +209,7 @@ int portmux_cmd(const char *cmd, const char *app, const char *service,
     return port;
 }
 
+/* returns port number, or -1 for error*/
 int portmux_use(const char *app, const char *service, const char *instance,
                 int port)
 {
