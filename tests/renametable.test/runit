@@ -76,6 +76,30 @@ if (( $? == 0 )) ; then
    exit 1
 fi
 
+# test alias
+cdb2sql ${CDB2_OPTIONS} $dbnm default "create table talias (a int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table talias"
+   exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "alter table talias rename to talias2"
+if (( $? != 0 )) ; then
+   echo "FAILURE to rename alias table"
+   exit 1
+fi
+
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select * from comdb2_tables" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to select from comdb2_tables"
+   exit 1
+fi
+cdb2sql ${CDB2_OPTIONS} $dbnm default "select name from sqlite_master" >> $OUT
+if (( $? != 0 )) ; then
+   echo "FAILURE to select name from sqlite_master"
+   exit 1
+fi
+
 df=`diff output.txt reqoutput.txt`
 if [ $? -ne 0 ] ; then
      echo "  ^^^^^^^^^^^^"
