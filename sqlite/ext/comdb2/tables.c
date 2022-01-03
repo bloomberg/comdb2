@@ -130,7 +130,7 @@ static int systblTablesColumn(
 
   if (pCur->iRowid < thedb->num_dbs) {
     struct dbtable *pDb = thedb->dbs[pCur->iRowid];
-    x = pDb->tablename;
+    x = pDb->sqlaliasname ? pDb->sqlaliasname : pDb->tablename;
   } else {
     x = timepart_view_name(pCur->iRowid - thedb->num_dbs);
   }
