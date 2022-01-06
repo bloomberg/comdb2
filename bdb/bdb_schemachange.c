@@ -126,24 +126,21 @@ int bdb_bump_dbopen_gen(const char *type, const char *message,
     return rc;
 }
 
-static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
+static int bdb_scdone_int(bdb_state_type *bdb_state, DB_TXN *txnid,
                           const char table[], const char *newtable,
                           int fastinit)
 {
     int rc;
-    bdb_state_type *bdb_state;
     char *db_newtable = NULL;
 
     if (newtable && newtable[0])
         db_newtable = strdup(newtable);
 
-    if (bdb_state_in == NULL)
+    if (bdb_state == NULL)
         return 0;
 
-    if (bdb_state_in->parent)
-        bdb_state = bdb_state_in->parent;
-    else
-        bdb_state = bdb_state_in;
+    /* we pass here the environment, not a table */
+    assert(!bdb_state->parent);
 
     if (!sc_ready()) {
         logmsg(LOGMSG_INFO, "Skipping bdb_scdone, files not opened yet!\n");
@@ -157,7 +154,7 @@ static int bdb_scdone_int(bdb_state_type *bdb_state_in, DB_TXN *txnid,
 
     /* TODO fail gracefully now that inline? */
     /* reload the changed table (if necesary) and update the schemas in memory*/
-    if ((rc = bdb_state->callback->scdone_rtn(bdb_state_in, table, db_newtable,
+    if ((rc = bdb_state->callback->scdone_rtn(bdb_state, table, db_newtable,
                                               fastinit))) {
         if (rc == BDBERR_DEADLOCK)
             rc = DB_LOCK_DEADLOCK;
@@ -294,6 +291,8 @@ retry:
     return rc;
 }
 
+#define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a)                              \
+    (((a) == add_queue_file) || ((a) == del_queue_file))
 int bdb_llog_scdone_tran(bdb_state_type *bdb_state, scdone_t type,
                          tran_type *tran, const char *tbl, int tbllen, int *bdberr)
 {

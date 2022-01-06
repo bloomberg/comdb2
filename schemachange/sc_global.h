@@ -72,8 +72,6 @@ void sc_status(struct dbenv *dbenv);
 void live_sc_off(struct dbtable *db);
 void sc_set_downgrading(struct schema_change_type *s);
 void reset_sc_stat();
-int reload_lua();
-int replicant_reload_analyze_stats();
 
 void sc_set_logical_redo_lwm(char *table, unsigned int file);
 unsigned int sc_get_logical_redo_lwm();

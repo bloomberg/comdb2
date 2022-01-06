@@ -22,6 +22,7 @@ extern volatile int gbl_lua_version;
 extern volatile uint32_t gbl_analyze_gen;
 extern volatile int gbl_views_gen;
 
+/* NOTE: keep this in sync with SCDONE_CALLBACKS */
 typedef enum scdone {
     invalid = -1,            // -1
     alter,                   //  0
@@ -51,9 +52,6 @@ typedef enum scdone {
     del_queue_file,          // 23
     rename_table_alias       // 24
 } scdone_t;
-
-#define IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(a) \
-    (((a) == add_queue_file) || ((a) == del_queue_file))
 
 #define BDB_BUMP_DBOPEN_GEN(type, msg) \
     bdb_bump_dbopen_gen(bdb_get_scdone_str(type), (msg), \

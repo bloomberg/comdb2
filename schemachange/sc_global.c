@@ -463,20 +463,6 @@ void sc_set_downgrading(struct schema_change_type *s)
     trans_abort(&iq, tran);
 }
 
-int reload_lua()
-{
-    ++gbl_lua_version;
-    logmsg(LOGMSG_DEBUG, "Replicant invalidating Lua machines\n");
-    return 0;
-}
-
-int replicant_reload_analyze_stats()
-{
-    ATOMIC_ADD32(gbl_analyze_gen, 1);
-    logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");
-    return 0;
-}
-
 int is_table_in_schema_change(const char *tbname, tran_type *tran)
 {
     int bdberr;
