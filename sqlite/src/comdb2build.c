@@ -413,7 +413,10 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
      if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
          if (!clnt->authdata && externGetAuthData)
              clnt->authdata = externGetAuthData(clnt);
-         if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename))
+         if (gbl_externalauth_warn && !clnt->authdata)
+            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+         else if (externalComdb2AuthenticateUserDDL(clnt->authdata, tablename))
              return SQLITE_AUTH;
          return SQLITE_OK;
      }
@@ -447,6 +450,11 @@ static int comdb2CheckOpAccess(void) {
     if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
          if (!clnt->authdata && externGetAuthData)
              clnt->authdata = externGetAuthData(clnt);
+         if (gbl_externalauth_warn && !clnt->authdata) {
+            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
+                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
+            return SQLITE_OK;
+         }
          return externalComdb2CheckOpAccess(clnt->authdata);
     }
     if (comdb2AuthenticateUserDDL(""))
