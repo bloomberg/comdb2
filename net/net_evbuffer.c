@@ -543,7 +543,7 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     n->app = strdup(netinfo_ptr->app);
     n->port = netinfo_ptr->myport;
     n->rd_max = MB(32);
-    n->wr_max = MB(64);
+    n->wr_max = netinfo_ptr->max_bytes;
     if (akq_policy == POLICY_PER_NET) {
         n->per_net.akq = setup_akq(n->service);
     }
