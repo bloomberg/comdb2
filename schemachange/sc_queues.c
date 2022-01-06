@@ -180,33 +180,20 @@ int add_queue_to_environment(char *table, int avgitemsz, int pagesize)
  * structures (db/consumer).
  * Lots of this code is in common with master, maybe call this from
  * perform_trigger_update()? */
-int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
+int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
+                                     scdone_t type)
 {
     struct dbtable *db = NULL;
     int rc;
-    void *tran = NULL;
     char *config;
     int ndests;
     int compr;
     int persist;
     char **dests;
-    uint32_t lid = 0;
-    extern uint32_t gbl_rep_lockid;
     int bdberr;
 
     /* Queue information should already be in llmeta. Fetch it and create
-     * queue/consumer handles.  Use a transaction with gbl_rep_lockid to
-     * query (see comment in scdone_callback). */
-    tran = bdb_tran_begin(thedb->bdb_env, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,
-               __LINE__, bdberr);
-        rc = bdberr;
-        goto done;
-    }
-
-    bdb_get_tran_lockerid(tran, &lid);
-    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
+     * queue/consumer handles */
 
     /* TODO: assert we are holding the write-lock on the queue */
     if (type != llmeta_queue_drop) {
@@ -348,15 +335,6 @@ int perform_trigger_update_replicant(const char *queue_name, scdone_t type)
     }
 
 done:
-    if (tran) {
-        bdb_set_tran_lockerid(tran, lid);
-        rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
-                   __FILE__, __LINE__);
-            exit(1);
-        }
-    }
     return rc;
 }
 

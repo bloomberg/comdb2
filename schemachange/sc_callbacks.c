@@ -33,14 +33,10 @@
 
 extern void free_cached_idx(uint8_t **cached_idx);
 
-static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
+static int reload_rename_table(tran_type *tran, const char *name,
                                const char *newtable)
 {
-    void *tran = NULL;
-    int rc;
     int bdberr = 0;
-    uint32_t lid = 0;
-    extern uint32_t gbl_rep_lockid;
     struct dbtable *db = get_dbtable_by_name(name);
 
     if (!db) {
@@ -54,15 +50,6 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
         return -1;
     }
 
-    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
-        return -1;
-    }
-
-    bdb_get_tran_lockerid(tran, &lid);
-    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
-
     if (bdb_table_version_select(newtable, tran, &db->tableversion, &bdberr)) {
         logmsg(LOGMSG_ERROR,
                "%s: failed to retrieve table version for new %s \n", __func__,
@@ -72,77 +59,32 @@ static int reload_rename_table(bdb_state_type *bdb_state, const char *name,
 
     set_odh_options_tran(db, tran);
     update_dbstore(db);
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    BDB_BUMP_DBOPEN_GEN(rename_table, NULL);
 
-    bdb_set_tran_lockerid(tran, lid);
-    rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-    if (rc)
-        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
-               rc);
-    return rc;
+    return 0;
 }
 
-static int reload_rename_table_alias(bdb_state_type *bdb_state,
-                                     const char *name, const char *newname)
+static int reload_rename_table_alias(tran_type *tran, const char *name,
+                                     const char *newname)
 {
-    extern uint32_t gbl_rep_lockid;
-    uint32_t lid = 0;
-    void *tran = NULL;
     struct dbtable *db = get_dbtable_by_name(name);
-    int bdberr = 0;
-    int rc;
-
     if (!db) {
         logmsg(LOGMSG_ERROR, "%s: unable to find table %s\n", __func__, name);
         return -1;
     }
 
-    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
-        return -1;
-    }
-
-    bdb_get_tran_lockerid(tran, &lid);
-    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
-
     /* newname is NULL if we remove an alias */
     hash_sqlalias_db(db, newname ? newname : db->tablename);
-
-    create_sqlmaster_records(tran);
-    create_sqlite_master();
-    BDB_BUMP_DBOPEN_GEN(rename_table_alias, NULL);
-
-    bdb_set_tran_lockerid(tran, lid);
-    rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-    if (rc)
-        logmsg(LOGMSG_FATAL, "%s failed to abort transaction rc:%d\n", __func__,
-               rc);
-    return rc;
+    return 0;
 }
 
-static int reload_stripe_info(bdb_state_type *bdb_state)
+static int reload_stripe_info(tran_type *tran, uint8_t lid)
 {
-    void *tran = NULL;
     int rc;
     int bdberr = 0;
     int stripes, blobstripe;
-    uint32_t lid = 0;
-    extern uint32_t gbl_rep_lockid;
 
     if (close_all_dbs() != 0)
         exit(1);
-
-    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
-        return -1;
-    }
-
-    bdb_get_tran_lockerid(tran, &lid);
-    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
     if (bdb_get_global_stripe_info(tran, &stripes, &blobstripe, &bdberr) != 0) {
         logmsg(LOGMSG_ERROR, "%s: failed to retrieve global stripe info\n",
@@ -157,6 +99,7 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
 
     fix_blobstripe_genids(tran);
 
+    /* we are we committing here?, every thing else aborts*/
     bdb_set_tran_lockerid(tran, lid);
     rc = bdb_tran_commit(thedb->bdb_env, tran, &bdberr);
     if (rc)
@@ -164,40 +107,6 @@ static int reload_stripe_info(bdb_state_type *bdb_state)
                __func__, rc);
 
     return 0;
-}
-
-static int set_genid_format(bdb_state_type *bdb_state, scdone_t type)
-{
-    switch (type) {
-    case (genid48_enable):
-        bdb_genid_set_format(bdb_state, LLMETA_GENID_48BIT);
-        break;
-    case (genid48_disable):
-        bdb_genid_set_format(bdb_state, LLMETA_GENID_ORIGINAL);
-        break;
-    default:
-        break;
-    }
-    return 0;
-}
-
-static int reload_rowlocks(bdb_state_type *bdb_state, scdone_t type)
-{
-    int bdberr, rc;
-    rc = bdb_reload_rowlocks(bdb_state, type, &bdberr);
-    switch (gbl_rowlocks) {
-    case 0:
-    case 1: gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved; break;
-    case 2:
-        gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
-        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
-        break;
-    }
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "%s: bdb_llog_rowlocks returns %d bdberr=%d\n",
-               __func__, rc, bdberr);
-    }
-    return rc;
 }
 
 /* if genid <= sc_genids[stripe] then schemachange has already processed up to
@@ -677,138 +586,16 @@ static int delete_table_rep(char *table, void *tran)
     return 0;
 }
 
-static int bthash_callback(const char *table)
-{
-    int bthashsz;
-    logmsg(LOGMSG_INFO, "Replicant bthashing table: %s\n", table);
-    struct dbtable *db = get_dbtable_by_name(table);
-    if (db && get_db_bthash(db, &bthashsz) == 0) {
-        if (bthashsz) {
-            logmsg(LOGMSG_INFO,
-                   "Building bthash for table %s, size %dkb per stripe\n",
-                   db->tablename, bthashsz);
-            bdb_handle_dbp_add_hash(db->handle, bthashsz);
-        } else {
-            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n",
-                   db->tablename);
-            bdb_handle_dbp_drop_hash(db->handle);
-        }
-        return 0;
-    } else {
-        logmsg(LOGMSG_ERROR, "%s: error updating bthash for %s.\n", __func__,
-               table);
-        return 1;
-    }
-}
-
 extern int gbl_assert_systable_locks;
-static int replicant_reload_views(bdb_state_type *bdb_state, const char *name)
+extern uint32_t gbl_rep_lockid;
+
+static tran_type *_tran(uint32_t *lid, int *bdberr, const char *f, int l)
 {
-    extern uint32_t gbl_rep_lockid;
-    uint32_t lid = 0;
-    void *tran = NULL;
-    int rc;
-    int bdberr = 0;
-
-    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
+    tran_type *tran = bdb_tran_begin(thedb->bdb_env, NULL, bdberr);
     if (tran == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
-        return -1;
-    }
-    bdb_get_tran_lockerid(tran, &lid);
-    bdb_set_tran_lockerid(tran, gbl_rep_lockid);
-
-    rc = views_handle_replicant_reload(tran, name);
-
-    bdb_set_tran_lockerid(tran, lid);
-    rc = bdb_tran_abort(bdb_state, tran, &bdberr);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "%s: failed to start tran\n", __func__);
-        return -1;
-    }
-    return rc;
-}
-
-extern int gbl_assert_systable_locks;
-
-/* TODO fail gracefully now that inline? */
-/* called by bdb layer through a callback as a detached thread,
- * we take ownership of table string
- * run on the replecants after the master is done so that they can reload/update
- * their copies of the modified database
- * if this fails, we panic so that we will be restarted back into a consistent
- * state */
-int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
-                    scdone_t type)
-{
-    extern uint32_t gbl_rep_lockid;
-    if (gbl_assert_systable_locks) {
-        switch (type) {
-        case llmeta_queue_add:
-        case llmeta_queue_alter:
-        case llmeta_queue_drop:
-            assert(bdb_has_tablename_locked(bdb_state, "comdb2_queues", gbl_rep_lockid, TABLENAME_LOCKED_WRITE));
-            break;
-        case user_view:
-            assert(bdb_has_tablename_locked(bdb_state, "comdb2_views", gbl_rep_lockid, TABLENAME_LOCKED_WRITE));
-            break;
-        case add: // includes fastinit
-        case drop:
-        case alter:
-            assert(bdb_has_tablename_locked(bdb_state, "comdb2_tables", gbl_rep_lockid, TABLENAME_LOCKED_WRITE));
-            break;
-        default:
-            break;
-        }
-    }
-    switch (type) {
-    case luareload:
-        return reload_lua();
-    case sc_analyze:
-        return replicant_reload_analyze_stats();
-    case bthash:
-        return bthash_callback(table);
-    case views:
-        return replicant_reload_views(bdb_state, table);
-    case rowlocks_on:
-    case rowlocks_on_master_only:
-    case rowlocks_off: return reload_rowlocks(thedb->bdb_env, type);
-    case llmeta_queue_add:
-    case llmeta_queue_alter:
-    case llmeta_queue_drop:
-        return perform_trigger_update_replicant(table, type);
-    case genid48_enable:
-    case genid48_disable: return set_genid_format(thedb->bdb_env, type);
-    case lua_sfunc: return reload_lua_sfuncs();
-    case lua_afunc: return reload_lua_afuncs();
-    case rename_table:
-        return reload_rename_table(bdb_state, table, (char *)arg);
-    case rename_table_alias:
-        return reload_rename_table_alias(bdb_state, table, (char *)arg);
-    case change_stripe:
-        return reload_stripe_info(bdb_state);
-    default:
-        break;
-    }
-
-    int add_new_db = 0;
-    int rc = 0;
-    char *csc2text = NULL;
-    char *table_copy = NULL;
-    struct dbtable *db = NULL;
-    void *tran = NULL;
-    int bdberr;
-    int highest_ver;
-    int dbnum;
-    uint32_t lid = 0;
-
-    struct dbtable *olddb = get_dbtable_by_name(table);
-    tran = bdb_tran_begin(bdb_state, NULL, &bdberr);
-    if (tran == NULL) {
-        logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", __FILE__,
-               __LINE__, bdberr);
-        rc = bdberr;
-        goto done;
+        logmsg(LOGMSG_ERROR, "%s:%d can't begin transaction rc %d\n", f, l,
+               *bdberr);
+        return NULL;
     }
 
     /* This code runs on the replicant to handle an SC_DONE message.  The
@@ -816,120 +603,200 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
      * which we need to look at in order to set up our data structures
      * correctly.  This replaces the tran's lid with replication's lid so that
      * we can query this information without self-deadlocking. */
-    bdb_get_tran_lockerid(tran, &lid);
+    bdb_get_tran_lockerid(tran, lid);
     bdb_set_tran_lockerid(tran, gbl_rep_lockid);
 
-    if (olddb) {
-        /* protect us from getting rep_handle_dead'ed to death */
-        rc = bdb_get_csc2_highest(tran, table, &highest_ver, &bdberr);
-        if (rc && bdberr == BDBERR_DEADLOCK) {
-            rc = bdberr;
-            goto done;
-        }
+    return tran;
+}
+
+static void _untran(tran_type *tran, uint32_t lid)
+{
+    int bdberr = 0;
+    int rc;
+
+    /* Replace this lid with the original lid so we don't leak it.  Because
+     * we haven't done any work with the original tran, just abort it. */
+    bdb_set_tran_lockerid(tran, lid);
+
+    rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n", __FILE__,
+               __LINE__);
+        exit(1);
+    }
+}
+
+static void _master_recs(tran_type *tran, const char table[], scdone_t type)
+{
+    if (create_sqlmaster_records(tran)) {
+        logmsg(LOGMSG_FATAL,
+               "create_sqlmaster_records: error creating sqlite master records "
+               "for %s.\n",
+               table);
+        exit(1);
+    }
+    create_sqlite_master(); /* create sql statements */
+    BDB_BUMP_DBOPEN_GEN(type, NULL);
+}
+
+/* protect us from getting rep_handle_dead'ed to death */
+static int _anti_deadlock(tran_type *tran, const char tablename[])
+{
+    int highest_ver;
+    int rc;
+    int bdberr = 0;
+
+    rc = bdb_get_csc2_highest(tran, tablename, &highest_ver, &bdberr);
+    if (rc && bdberr == BDBERR_DEADLOCK)
+        rc = bdberr;
+
+    return rc;
+}
+
+/* Fetch the correct dbnum for this table.  We need this step because db
+ * numbers aren't stored in the schema, and it's not handed to us during
+ * schema change.  But it is committed to the llmeta table, so we can fetch
+ * it from there. */
+static int _db_dbnum(tran_type *tran, struct dbtable *db, int *bdberr)
+{
+    int dbnum = llmeta_get_dbnum_tran(tran, db->tablename, bdberr);
+    if (dbnum == -1) {
+        logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
+               db->tablename);
+        return BDBERR_MISC;
+    }
+    db->dbnum = dbnum;
+    return 0;
+}
+
+static void _reload_schema(tran_type *tran, struct dbtable *db, char *tablename,
+                           char *csc2text)
+{
+    extern int gbl_broken_max_rec_sz;
+    int saved_broken_max_rec_sz = gbl_broken_max_rec_sz;
+    if (db->lrl > COMDB2_MAX_RECORD_SIZE)
+        gbl_broken_max_rec_sz = db->lrl - COMDB2_MAX_RECORD_SIZE;
+    if (reload_schema(tablename, csc2text, tran)) {
+        logmsg(LOGMSG_FATAL, "%s: error reloading schema for %s.\n", __func__,
+               tablename);
+        exit(1);
+    }
+    gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
+}
+
+static int scdone_alter(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+    struct dbtable *db = get_dbtable_by_name(tablename);
+
+    assert(db);
+
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_tables",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = _anti_deadlock(tran, tablename);
+    if (rc)
+        goto done;
+
+    char *table_copy = strdup(tablename);
+    char *csc2text = NULL;
+
+    if (get_csc2_file_tran(tablename, -1, &csc2text, NULL, tran)) {
+        logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
+               tablename);
+        exit(1);
     }
 
-    if (type != drop && type != user_view &&
-        !IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
-        if (get_csc2_file_tran(table, -1, &csc2text, NULL, tran)) {
-            logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
-                   table);
-            exit(1);
-        }
-        db = get_dbtable_by_name(table);
-        table_copy = strdup(table);
-        /* if we can't find a table with that name, we must be trying to add one
-         */
-        add_new_db = (db == NULL);
-    }
+    logmsg(LOGMSG_INFO, "Replicant altering table:%s\n", tablename);
 
-    if (type == setcompr) {
-        logmsg(LOGMSG_INFO,
-               "Replicant setting compression flags for table:%s\n", table);
-    } else if (IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
-        // TODO: How should we ideally handle failure cases here?
-        rc = reopen_qdb(table, 0, tran);
-        logmsg(LOGMSG_INFO, "Replicant %s queuedb '%s', rc %d\n",
-               (rc == 0) ? "reopened" : "failed to reopen", table, rc);
-    } else if (type == add && add_new_db) {
-        logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", table);
-        dyns_init_globals();
-        rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran,
-                                      timepart_is_next_shard(table_copy));
-        dyns_cleanup_globals();
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s: error adding table %s.\n",
-                   __func__, table);
-            exit(1);
-        }
-    } else if (type == drop) {
-        logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", table);
-        if (delete_table_rep((char *)table, tran)) {
-            logmsg(LOGMSG_FATAL, "%s: error deleting table  %s.\n",
-                   __func__, table);
-            exit(1);
-        }
-    } else if (type == user_view) {
-        rc = llmeta_load_views(thedb, tran);
-        if (rc != 0) {
-            logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
-        }
-    } else if (type == bulkimport) {
-        logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", table);
-        reload_after_bulkimport(db, tran);
-    } else {
-        assert(type == alter || type == fastinit);
+    _reload_schema(tran, db, table_copy, csc2text);
 
-        logmsg(LOGMSG_INFO, "Replicant %s table:%s\n",
-               type == alter ? "altering" : "fastinit-ing", table);
-        extern int gbl_broken_max_rec_sz;
-        int saved_broken_max_rec_sz = gbl_broken_max_rec_sz;
-        if (db->lrl > COMDB2_MAX_RECORD_SIZE)
-            gbl_broken_max_rec_sz = db->lrl - COMDB2_MAX_RECORD_SIZE;
-        if (reload_schema(table_copy, csc2text, tran)) {
-            logmsg(LOGMSG_FATAL, "%s: error reloading schema for %s.\n",
-                   __func__, table);
-            exit(1);
-        }
-        gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
-
-        /* update the delayed deleted files */
-        assert(db && !add_new_db);
-    }
-
-    if (type == add || type == drop || type == alter || type == fastinit ||
-        type == bulkimport || type == user_view) {
-        if (create_sqlmaster_records(tran)) {
-            logmsg(LOGMSG_FATAL,
-                   "create_sqlmaster_records: error creating sqlite master records for %s.\n",
-                   table);
-            exit(1);
-        }
-        create_sqlite_master(); /* create sql statements */
-        BDB_BUMP_DBOPEN_GEN(type, NULL);
-        if (type == drop || type == user_view)
-            goto done;
-    }
+    _master_recs(tran, tablename, type);
 
     free(table_copy);
     free(csc2text);
 
-    /* if we just added the table, get a pointer for it */
-    if (add_new_db) {
-        db = get_dbtable_by_name(table);
-        if (!db) {
-            logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
-                   __func__, table);
-            exit(1);
-        }
+    set_odh_options_tran(db, tran);
+    db->tableversion = table_version_select(db, tran);
+
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, tablename, 1);
+
+    if (create_datacopy_array(db)) {
+        logmsg(LOGMSG_FATAL, "create_datacopy_array failed for %s.\n",
+               tablename);
+        exit(1);
     }
 
-    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
-        set_odh_options_tran(db, tran);
-        db->tableversion = table_version_select(db, tran);
+done:
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_add(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+    struct dbtable *db = NULL;
+
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_tables",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    char *table_copy = strdup(tablename);
+    char *csc2text = NULL;
+
+    if (get_csc2_file_tran(tablename, -1, &csc2text, NULL, tran)) {
+        logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
+               tablename);
+        exit(1);
     }
 
-    /* Make sure to add a version 1 schema for instant-schema change tables */
-    if (add_new_db && db->odh && db->instant_schema_change) {
+    logmsg(LOGMSG_INFO, "Replicant adding table:%s\n", tablename);
+
+    dyns_init_globals();
+    rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran,
+                                  timepart_is_next_shard(table_copy));
+    dyns_cleanup_globals();
+    if (rc) {
+        logmsg(LOGMSG_FATAL, "%s: error adding table %s.\n", __func__,
+               tablename);
+        exit(1);
+    }
+
+    _master_recs(tran, tablename, type);
+
+    free(table_copy);
+    free(csc2text);
+
+    db = get_dbtable_by_name(tablename);
+    if (!db) {
+        logmsg(LOGMSG_FATAL, "%s: could not find newly created db: %s.\n",
+               __func__, tablename);
+        exit(1);
+    }
+
+    set_odh_options_tran(db, tran);
+    db->tableversion = table_version_select(db, tran);
+
+    if (db->odh && db->instant_schema_change) {
         struct schema *ondisk_schema;
         struct schema *ver_one;
         char tag[MAXTAGLEN];
@@ -951,48 +818,461 @@ int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
         add_tag_schema(db->tablename, ver_one);
     }
 
-    if (!IS_QUEUEDB_ROLLOVER_SCHEMA_CHANGE_TYPE(type)) {
-        llmeta_dump_mapping_tran(tran, thedb);
-        llmeta_dump_mapping_table_tran(tran, thedb, table, 1);
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, tablename, 1);
+
+    if (create_datacopy_array(db)) {
+        logmsg(LOGMSG_FATAL, "create_datacopy_array failed for %s.\n",
+               tablename);
+        exit(1);
     }
 
-    if (type == add || type == alter) {
-        if (create_datacopy_array(db)) {
-            logmsg(LOGMSG_FATAL, "create_datacopy_array failed for %s.\n", table);
-            exit(1);
-        }
+    rc = _db_dbnum(tran, db, &bdberr);
+    if (rc)
+        goto done;
+
+    fix_lrl_ixlen_tran(tran);
+
+done:
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_fastinit(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+    struct dbtable *db = get_dbtable_by_name(tablename);
+
+    assert(db);
+
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_tables",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = _anti_deadlock(tran, tablename);
+    if (rc)
+        goto done;
+
+    char *table_copy = strdup(tablename);
+    char *csc2text = NULL;
+
+    if (get_csc2_file_tran(tablename, -1, &csc2text, NULL, tran)) {
+        logmsg(LOGMSG_ERROR, "%s: error getting schema for %s.\n", __func__,
+               tablename);
+        exit(1);
     }
+
+    logmsg(LOGMSG_INFO, "Replicant fastinit-ing table:%s\n", tablename);
+
+    _reload_schema(tran, db, table_copy, csc2text);
+
+    _master_recs(tran, tablename, type);
+
+    free(table_copy);
+    free(csc2text);
+
+    set_odh_options_tran(db, tran);
+    db->tableversion = table_version_select(db, tran);
+
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, tablename, 1);
+
+    if (create_datacopy_array(db)) {
+        logmsg(LOGMSG_FATAL, "create_datacopy_array failed for %s.\n",
+               tablename);
+        exit(1);
+    }
+
+    rc = _db_dbnum(tran, db, &bdberr);
+    if (rc)
+        goto done;
+
+    fix_lrl_ixlen_tran(tran);
+
+done:
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_addandfastinit(const char tablename[], void *arg,
+                                 scdone_t type)
+{
+    struct dbtable *db = get_dbtable_by_name(tablename);
+
+    if (!db) {
+        /* this is an add */
+        return scdone_add(tablename, arg, type);
+    }
+
+    return scdone_fastinit(tablename, arg, type);
+}
+
+static int scdone_drop(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_tables",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = _anti_deadlock(tran, tablename);
+    if (rc)
+        goto done;
+
+    logmsg(LOGMSG_INFO, "Replicant dropping table:%s\n", tablename);
+    if (delete_table_rep((char *)tablename, tran)) {
+        logmsg(LOGMSG_FATAL, "%s: error deleting table  %s.\n", __func__,
+               tablename);
+        exit(1);
+    }
+
+    _master_recs(tran, tablename, type);
+
+done:
+    _untran(tran, lid);
+    return rc;
+}
+
+static int scdone_bulkimport(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+    struct dbtable *db = get_dbtable_by_name(tablename);
+
+    assert(db);
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = _anti_deadlock(tran, tablename);
+    if (rc)
+        goto done;
+
+    logmsg(LOGMSG_INFO, "Replicant bulkimporting table:%s\n", tablename);
+    reload_after_bulkimport(db, tran);
+
+    _master_recs(tran, tablename, type);
+
+    set_odh_options_tran(db, tran);
+    db->tableversion = table_version_select(db, tran);
+
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, tablename, 1);
+
+    rc = _db_dbnum(tran, db, &bdberr);
+    if (rc)
+        goto done;
+
+    fix_lrl_ixlen_tran(tran);
+
+done:
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_setcompr(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+    struct dbtable *db = get_dbtable_by_name(tablename);
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = _anti_deadlock(tran, tablename);
+    if (rc)
+        goto done;
+
+    logmsg(LOGMSG_INFO, "Replicant setting compression flags for table:%s\n",
+           tablename);
+
+    set_odh_options_tran(db, tran);
+    db->tableversion = table_version_select(db, tran);
+
+    llmeta_dump_mapping_tran(tran, thedb);
+    llmeta_dump_mapping_table_tran(tran, thedb, tablename, 1);
 
     /* Fetch the correct dbnum for this table.  We need this step because db
      * numbers aren't stored in the schema, and it's not handed to us during
      * schema change.  But it is committed to the llmeta table, so we can fetch
      * it from there. */
-    if (db != NULL) {
-        dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
-        if (dbnum == -1) {
-            logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
-                   db->tablename);
-            rc = BDBERR_MISC;
-            goto done;
-        }
-        db->dbnum = dbnum;
-
-        fix_lrl_ixlen_tran(tran);
+    int dbnum = llmeta_get_dbnum_tran(tran, db->tablename, &bdberr);
+    if (dbnum == -1) {
+        logmsg(LOGMSG_ERROR, "failed to fetch dbnum for table \"%s\"\n",
+               db->tablename);
+        rc = BDBERR_MISC;
+        goto done;
     }
+    db->dbnum = dbnum;
 
-    rc = 0;
+    fix_lrl_ixlen_tran(tran);
+
+    _master_recs(tran, tablename, type);
+
 done:
-    if (tran) {
-        bdb_set_tran_lockerid(tran, lid);
-        /* Replace this lid with the original lid so we don't leak it.  Because
-         * we haven't done any work with the original tran, just abort it. */
-        rc = bdb_tran_abort(thedb->bdb_env, tran, &bdberr);
-        if (rc) {
-            logmsg(LOGMSG_FATAL, "%s:%d failed to abort transaction\n",
-                   __FILE__, __LINE__);
-            exit(1);
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_luareload(const char tablename[], void *arg, scdone_t type)
+{
+    ++gbl_lua_version;
+    logmsg(LOGMSG_DEBUG, "Replicant invalidating Lua machines\n");
+    return 0;
+}
+
+static int scdone_sc_analyze(const char tablename[], void *arg, scdone_t type)
+{
+    ATOMIC_ADD32(gbl_analyze_gen, 1);
+    logmsg(LOGMSG_DEBUG, "Replicant invalidating SQLite stats\n");
+    return 0;
+}
+
+static int scdone_bthash(const char tablename[], void *arg, scdone_t type)
+{
+    int bthashsz;
+    logmsg(LOGMSG_INFO, "Replicant bthashing table: %s\n", tablename);
+    struct dbtable *db = get_dbtable_by_name(tablename);
+    if (db && get_db_bthash(db, &bthashsz) == 0) {
+        if (bthashsz) {
+            logmsg(LOGMSG_INFO,
+                   "Building bthash for table %s, size %dkb per stripe\n",
+                   db->tablename, bthashsz);
+            bdb_handle_dbp_add_hash(db->handle, bthashsz);
+        } else {
+            logmsg(LOGMSG_INFO, "Deleting bthash for table %s\n",
+                   db->tablename);
+            bdb_handle_dbp_drop_hash(db->handle);
         }
+        return 0;
+    } else {
+        logmsg(LOGMSG_ERROR, "%s: error updating bthash for %s.\n", __func__,
+               tablename);
+        return 1;
+    }
+}
+
+static int scdone_rowlocks(const char tablename[], void *arg, scdone_t type)
+{
+    int bdberr, rc;
+    rc = bdb_reload_rowlocks(thedb->bdb_env, type, &bdberr);
+    switch (gbl_rowlocks) {
+    case 0:
+    case 1:
+        gbl_sql_tranlevel_default = gbl_sql_tranlevel_preserved;
+        break;
+    case 2:
+        gbl_sql_tranlevel_preserved = gbl_sql_tranlevel_default;
+        gbl_sql_tranlevel_default = SQL_TDEF_SNAPISOL;
+        break;
+    }
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%s: bdb_llog_rowlocks returns %d bdberr=%d\n",
+               __func__, rc, bdberr);
+    }
+    return rc;
+}
+
+static int scdone_views(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran = NULL;
+    uint32_t lid = 0;
+    int rc;
+    int bdberr = 0;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = views_handle_replicant_reload(tran, tablename);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
     }
 
-    return rc; /* success */
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_llmeta_queue(const char table[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid = 0;
+    int rc;
+    int bdberr = 0;
+
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_queues",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = perform_trigger_update_replicant(tran, table, type);
+
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_genid48(const char tablename[], void *arg, scdone_t type)
+{
+    switch (type) {
+    case (genid48_enable):
+        bdb_genid_set_format(thedb->bdb_env, LLMETA_GENID_48BIT);
+        break;
+    case (genid48_disable):
+        bdb_genid_set_format(thedb->bdb_env, LLMETA_GENID_ORIGINAL);
+        break;
+    default:
+        break;
+    }
+    return 0;
+}
+
+static int scdone_lua_sfunc(const char tablename[], void *arg, scdone_t type)
+{
+    return reload_lua_sfuncs();
+}
+
+static int scdone_lua_afunc(const char tablename[], void *arg, scdone_t type)
+{
+    return reload_lua_afuncs();
+}
+
+static int scdone_rename_table(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    if (type == rename_table)
+        rc = reload_rename_table(tran, tablename, arg);
+    else
+        rc = reload_rename_table_alias(tran, tablename, arg);
+
+    _master_recs(tran, tablename, type);
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_change_stripe(const char tablename[], void *arg,
+                                scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    return reload_stripe_info(tran, lid);
+}
+
+static int scdone_user_view(const char tablename[], void *arg, scdone_t type)
+{
+    if (gbl_assert_systable_locks)
+        assert(bdb_has_tablename_locked(thedb->bdb_env, "comdb2_views",
+                                        gbl_rep_lockid,
+                                        TABLENAME_LOCKED_WRITE));
+
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = llmeta_load_views(thedb, tran);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "llmeta_load_views failed\n");
+    }
+
+    _master_recs(tran, tablename, type);
+    _untran(tran, lid);
+
+    return rc;
+}
+
+static int scdone_queue_file(const char tablename[], void *arg, scdone_t type)
+{
+    tran_type *tran;
+    uint32_t lid;
+    int bdberr;
+    int rc;
+
+    tran = _tran(&lid, &bdberr, __func__, __LINE__);
+    if (!tran)
+        return bdberr;
+
+    rc = reopen_qdb(tablename, 0, tran);
+    logmsg(LOGMSG_INFO, "Replicant %s queuedb '%s', rc %d\n",
+           rc ? "failed to reopen" : "reopened", tablename, rc);
+
+    _untran(tran, lid);
+
+    /* old code always succeeded here, I assume it was a bug */
+    return rc;
+}
+
+/* keep this in sync with enum scdone */
+int (*SCDONE_CALLBACKS[])(const char *, void *, scdone_t) = {
+    &scdone_alter,         &scdone_addandfastinit, /* fastinit AND add (doh) */
+    &scdone_drop,          &scdone_bulkimport,     &scdone_setcompr,
+    &scdone_luareload,     &scdone_sc_analyze,     &scdone_bthash,
+    &scdone_rowlocks,      &scdone_rowlocks,       &scdone_rowlocks,
+    &scdone_views,         &scdone_llmeta_queue,   &scdone_llmeta_queue,
+    &scdone_llmeta_queue,  &scdone_genid48,        &scdone_genid48,
+    &scdone_lua_sfunc,     &scdone_lua_afunc,      &scdone_rename_table,
+    &scdone_change_stripe, &scdone_user_view,      &scdone_queue_file,
+    &scdone_queue_file,    &scdone_rename_table};
+
+/* TODO fail gracefully now that inline? */
+/* called by bdb layer through a callback as a detached thread,
+ * we take ownership of table string
+ * run on the replecants after the master is done so that they can reload/update
+ * their copies of the modified database
+ * if this fails, we panic so that we will be restarted back into a consistent
+ * state */
+int scdone_callback(bdb_state_type *bdb_state, const char table[], void *arg,
+                    scdone_t type)
+{
+    return SCDONE_CALLBACKS[type](table, arg, type);
 }
