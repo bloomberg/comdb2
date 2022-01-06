@@ -2136,8 +2136,13 @@ REGISTER_TUNABLE("partitioned_table_enabled",
                  TUNABLE_BOOLEAN, &gbl_partitioned_table_enabled, 0, NULL, NULL,
                  NULL, NULL);
 
-REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, READONLY | NOARG | READEARLY,
+REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,
                  NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case of missing authdata",
+                 TUNABLE_BOOLEAN, &gbl_externalauth_warn, NOARG | READEARLY,
+                 NULL, NULL, NULL, NULL);
+
 
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);

@@ -215,6 +215,7 @@ int gbl_move_deadlk_max_attempt = 500;
 
 int gbl_uses_password;
 int gbl_uses_externalauth = 0;
+int gbl_externalauth_warn = 0;
 int gbl_uses_accesscontrol_tableXnode;
 int gbl_upd_key;
 unsigned long long gbl_sqltick;
