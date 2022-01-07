@@ -5056,7 +5056,7 @@ wait_for_running_transactions(dbenv)
 			pthread_cond_timedwait(&dbenv->ser_cond, &dbenv->ser_lk, &ts);
 			count++;
 			if (count > 5) {
-				logmsg(LOGMSG_ERROR, "%s: waiting for processor threads to "
+				logmsg(LOGMSG_DEBUG, "%s: waiting for processor threads to "
 						"complete\n", __func__);
 			}
 		}
