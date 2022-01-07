@@ -568,7 +568,7 @@ static int prepare_and_verify_newdb_record(struct convert_record_data *data,
     return 0;
 }
 
-int gbl_sc_logbytes_per_second = 10000000;
+int gbl_sc_logbytes_per_second = 4 * (40 * 1024 * 1024); // 4 logs/sec
 static pthread_mutex_t sc_bps_lk = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t sc_bps_cd = PTHREAD_COND_INITIALIZER;
 static u_int64_t sc_bytes_this_second;

@@ -345,12 +345,13 @@ struct event_info {
     int distressed;
     int decomissioned;
     int got_hello;
+    int got_hello_reply;
 
     /* akq backed */
 #   ifdef USER_MSG_GEN
     int akq_gen;
 #   endif
-    int akq_full;
+    time_t rd_full;
     pthread_mutex_t akq_lk;
     struct evbuffer *akq_buf;
     struct evbuffer *payload_buf;
@@ -369,7 +370,7 @@ struct event_info {
     struct evbuffer *flush_buf;
     struct evbuffer *wr_buf;
     struct event *wr_ev;
-    int wr_full;
+    time_t wr_full;
 };
 
 #define EVENT_HASH_KEY_SZ 128
@@ -542,8 +543,8 @@ static struct net_info *net_info_new(netinfo_type *netinfo_ptr)
     n->instance = strdup(netinfo_ptr->instance);
     n->app = strdup(netinfo_ptr->app);
     n->port = netinfo_ptr->myport;
-    n->rd_max = MB(32);
-    n->wr_max = netinfo_ptr->max_bytes;
+    n->rd_max = MB(128);
+    n->wr_max = MB(128);
     if (akq_policy == POLICY_PER_NET) {
         n->per_net.akq = setup_akq(n->service);
     }
@@ -815,6 +816,7 @@ static void do_disable_write(struct event_info *e)
         e->wr_buf = NULL;
     }
     e->got_hello = 0;
+    e->got_hello_reply = 0;
 }
 
 static void disable_write(int dummyfd, short what, void *data)
@@ -940,12 +942,13 @@ static void check_wr_full(struct event_info *e)
     size_t outstanding = evbuffer_get_length(e->wr_buf);
     if (e->wr_full) {
         if (outstanding < (max_bytes * resume_lvl)) {
+            hprintf("RESUMING WR outstanding:%zumb (max:%zumb) after:%ds\n", outstanding / MB(1),
+                    max_bytes / MB(1), (int)(time(NULL) - e->wr_full));
             e->wr_full = 0;
-            hprintf("RESUMING WR bytes:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
         }
     } else if (outstanding > max_bytes) {
-        e->wr_full = 1;
-        hprintf("SUSPENDING WR bytes:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
+        e->wr_full = time(NULL);
+        hprintf("SUSPENDING WR outstanding:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
     }
 }
 
@@ -1004,9 +1007,9 @@ static void send_decom_all(int dummyfd, short what, void *data)
 static void check_rd_full(struct event_info *e, uint64_t outstanding)
 {
     uint64_t max_bytes = e->net_info->rd_max;
-    if (e->akq_full) return;
+    if (e->rd_full) return;
     if (outstanding < max_bytes) return;
-    e->akq_full = 1;
+    e->rd_full = time(NULL);
     event_del(e->rd_ev);
     //hprintf("SUSPENDING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
 }
@@ -1049,9 +1052,12 @@ static void user_msg_callback(void *work)
 #   endif
     evbuffer_remove_buffer(e->akq_buf, e->payload_buf, datalen);
     int outstanding = evbuffer_get_length(e->akq_buf);
-    if (e->akq_full && outstanding < (max_bytes * resume_lvl)) {
-        //hprintf("RESUMING RD outstanding:%zumb (max:%zumb )\n", outstanding / MB(1), max_bytes / MB(1));
-        e->akq_full = 0;
+    if (e->rd_full && outstanding < (max_bytes * resume_lvl)) {
+        time_t diff = time(NULL) - e->rd_full;
+        if (diff > 5) {
+            hprintf("RESUMING RD outstanding:%dmb (max:%zumb ) after:%ds\n", outstanding / MB(1), max_bytes / MB(1), (int)diff);
+        }
+        e->rd_full = 0;
         evtimer_once(rd_base, resume_read, e);
     }
     Pthread_mutex_unlock(&e->akq_lk);
@@ -1237,19 +1243,13 @@ static void exit_once_func(void)
     Pthread_mutex_destroy(&exit_mtx);
 }
 
-static double difftime_now(time_t last)
-{
-    time_t now = time(NULL);
-    return difftime(now, last);
-}
-
 static void heartbeat_check(int dummyfd, short what, void *data)
 {
     check_timer_thd();
     struct event_info *e = data;
-    double diff = difftime_now(e->recv_at);
+    int diff = time(NULL) - e->recv_at;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    if (diff > netinfo_ptr->heartbeat_check_time && !e->akq_full) {
+    if (diff > netinfo_ptr->heartbeat_check_time && !e->rd_full) {
         hprintf("no data in %d seconds\n", (int)diff);
         do_disable_heartbeats(e);
         reconnect(e);
@@ -1261,16 +1261,14 @@ static void heartbeat_send(int dummyfd, short what, void *data)
     check_timer_thd();
     struct event_info *e = data;
     netinfo_type *netinfo_ptr = e->net_info->netinfo_ptr;
-    double diff = difftime_now(e->sent_at);
-    if (diff == 0) {
-        return;
-    }
-    write_heartbeat(netinfo_ptr, e->host_node_ptr);
-    diff = difftime_now(e->sent_at);
-    if (diff > netinfo_ptr->heartbeat_send_time && !e->wr_full) {
-        hprintf("no data in %d seconds\n", (int)diff);
-        do_disable_heartbeats(e);
-        reconnect(e);
+    int diff = time(NULL) - e->sent_at;
+    if (diff && !e->wr_full) {
+        if (diff < 5) { /* if fd not writeable, hbeat won't help */
+            write_heartbeat(netinfo_ptr, e->host_node_ptr);
+        }
+        if (diff % 10 == 0) { /* reduce spew */
+            hprintf("no data in %d seconds\n", diff);
+        }
     }
 }
 
@@ -1386,7 +1384,10 @@ static int process_hello_reply(struct event_info *e)
         return 0;
     }
     check_distress(e);
-    hputs("GOT HELLO REPLY\n");
+    if (!e->got_hello_reply) {
+        e->got_hello_reply = 1;
+        hputs("GOT HELLO REPLY\n");
+    }
     if (hello_msg_common(e) != 0) {
         return -1;
     }
@@ -1616,7 +1617,7 @@ static void enable_read(int dummyfd, short what, void *data)
     struct event_info *e = i->e;
     check_rd_thd();
     message_done(e);
-    e->akq_full = 0;
+    e->rd_full = 0;
     e->need = e->wirehdr_len;
     if (e->rd_buf || e->rd_ev) {
         abort();
