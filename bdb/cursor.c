@@ -1222,7 +1222,7 @@ static void deallocate_relink_list(struct relink_list *r)
     Pthread_mutex_unlock(&pglogs_relink_list_pool_lk);
 }
 
-static int return_pglogs_relink_key(void *obj, void *arg)
+static int return_pglogs_relink_key(void *obj, void *_)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
@@ -1244,7 +1244,7 @@ static int return_pglogs_relink_key(void *obj, void *arg)
     return 0;
 }
 
-static int return_pglogs_logical_key(void *obj, void *arg)
+static int return_pglogs_logical_key(void *obj, void *_)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
@@ -1267,7 +1267,7 @@ static int return_pglogs_logical_key(void *obj, void *arg)
     return 0;
 }
 
-static int return_pglogs_key(void *obj, void *arg)
+static int return_pglogs_key(void *obj, void *_)
 {
     char *list = (char *)obj + DB_FILE_ID_LEN * sizeof(unsigned char) +
                  sizeof(db_pgno_t);
@@ -1291,21 +1291,21 @@ static int return_pglogs_key(void *obj, void *arg)
 
 void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_pglogs_relink_key, hashtbl);
+    hash_for(hashtbl, return_pglogs_relink_key, NULL);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
 static void bdb_return_pglogs_logical_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_pglogs_logical_key, hashtbl);
+    hash_for(hashtbl, return_pglogs_logical_key, NULL);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
 void bdb_return_pglogs_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_pglogs_key, hashtbl);
+    hash_for(hashtbl, return_pglogs_key, NULL);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
