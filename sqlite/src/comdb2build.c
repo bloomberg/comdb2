@@ -119,7 +119,7 @@ static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                                   size_t name_len, enum table_chk_flags error_flag,
-                                  int check_shard, int *table_exists, int *is_partition)
+                                  int check_shard, int *table_exists, char **is_partition)
 {
     int rc = 0;
     char *table_name;
@@ -185,7 +185,8 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     if (authenticateSC(dst, pParse))
         goto cleanup;
 
-    if(!timepart_is_timepart(dst, 1))
+    char *firstshard = timepart_shard_name(dst, 0, 0, NULL);
+    if(!firstshard)
     {
         struct dbtable *db = get_dbtable_by_name(dst);
 
@@ -222,7 +223,9 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
     else
     {
         if (is_partition)
-            *is_partition = 1;
+            *is_partition = firstshard;
+        else
+            free(firstshard);
     }
 
     rc = SQLITE_OK;
@@ -280,7 +283,7 @@ static inline int copyNoSqlToken(
 static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
                                         Token *t2, enum table_chk_flags error_flag,
                                         int check_shard, int *table_exists,
-                                        int *is_partition)
+                                        char **is_partition)
 {
     int rc;
 
@@ -2506,7 +2509,7 @@ void sqlite3AlterRenameTable(Parse *pParse, Token *pSrcName, Token *pName,
         return;
     }
 
-    if (timepart_is_timepart(table, 1)) {
+    if (timepart_is_partition(table)) {
         setError(pParse, SQLITE_MISUSE, "Time partitions cannot be renamed");
         return;
     }
@@ -2750,7 +2753,7 @@ struct comdb2_ddl_context {
     char tablename[MAXTABLELEN];
     /* Partitioning */
     struct comdb2_partition *partition;
-    int is_partition;
+    char *partition_first_shardname;
 };
 
 /* Type properties */
@@ -2904,6 +2907,7 @@ static void free_ddl_context(Parse *pParse)
     if (ctx == 0)
         return;
 
+    free(ctx->partition_first_shardname);
     free(ctx->partition);
     
     comdb2ma_destroy(ctx->mem);
@@ -4157,27 +4161,12 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
     struct dbtable *table;
     struct schema *schema;
     struct dbtag *tag;
-    int views_lk_acquired = 0;
 
     assert(ctx != 0);
 
-    Pthread_rwlock_rdlock(&views_lk);
-    views_lk_acquired = 1;
-    if (timepart_is_timepart(ctx->schema->name, 0)) {
-        unsigned long long version;
-        char *viewname;
-
-        viewname = timepart_newest_shard(ctx->schema->name, &version);
-        if (!viewname) {
-            sqlite3ErrorMsg(pParse,
-                            "Failed to retrieve shard information about '%s'",
-                            ctx->schema->name);
-            goto err;
-        }
-        table = get_dbtable_by_name(viewname);
+    if (ctx->partition_first_shardname) {
+        table = get_dbtable_by_name(ctx->partition_first_shardname);
     } else {
-        Pthread_rwlock_unlock(&views_lk);
-        views_lk_acquired = 0;
         table = get_dbtable_by_name(ctx->schema->name);
     }
 
@@ -4370,8 +4359,6 @@ static int retrieve_schema(Parse *pParse, struct comdb2_ddl_context *ctx)
             }
         }
     }
-    if (views_lk_acquired)
-        Pthread_rwlock_unlock(&views_lk);
     unlock_taglock();
 
     return 0;
@@ -4380,8 +4367,6 @@ oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
 err:
-    if (views_lk_acquired)
-        Pthread_rwlock_unlock(&views_lk);
     return 1;
 }
 
@@ -4415,7 +4400,8 @@ void comdb2AlterTableStart(
         goto oom;
 
     if ((chkAndCopyTableTokens(pParse, ctx->tablename, pName1, pName2,
-                               ERROR_ON_TBL_NOT_FOUND, 1, 0, &ctx->is_partition)))
+                               ERROR_ON_TBL_NOT_FOUND, 1, 0,
+                               &ctx->partition_first_shardname)))
         goto cleanup;
 
     ctx->schema->name = comdb2_strdup(ctx->mem, ctx->tablename);
@@ -5508,7 +5494,8 @@ void comdb2CreateIndex(
     }
 
     if ((chkAndCopyTable(pParse, sc->tablename, ctx->schema->name,
-                         strlen(ctx->schema->name), ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL)))
+                         strlen(ctx->schema->name), ERROR_ON_TBL_NOT_FOUND, 1, 0,
+                         &ctx->partition_first_shardname)))
         goto cleanup;
 
     /*
@@ -6934,7 +6921,7 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
         goto cleanup;
     }
 
-    if (ctx->is_partition) {
+    if (ctx->partition_first_shardname) {
         setError(pParse, SQLITE_ERROR, "Partition already exists");
         goto cleanup;
     }

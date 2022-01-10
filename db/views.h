@@ -278,12 +278,6 @@ void comdb2_partition_info_all(const char *option);
  */
 int comdb2_partition_check_name_reuse(const char *tblname, char **partname, int *indx);
 
-/** 
- * Check if a name is a timepart
- *
- */
-int timepart_is_timepart(const char *name, int lock);
-
 /**
  * Run "func" for each shard, starting with "first_shard".
  * Callback receives the name of the shard and argument struct
@@ -374,6 +368,14 @@ int timepart_shards_revoke_access(bdb_state_type *bdb_state, void *tran, char
                                   *name, char *user, int access_type);
 
 /**
+ * Check if name is time partition
+ * NOTE: partition repository is temporary locked; answer can
+ * change afterwards
+ *
+ */
+int timepart_is_partition(const char *name);
+
+/**
  * Check if a table name is the next shard for a time partition
  * and if so, returns the pointer to the partition name
  * NOTE: this is expensive, so only use it in schema resume
@@ -418,7 +420,7 @@ int timepart_publish_view(void *tran, timepart_view_t *view,
  * Free a time partition object
  *
  */
-int timepart_free_view(timepart_view_t *view);
+void timepart_free_view(timepart_view_t *view);
 
 /**
  * Create the in memory view object
@@ -444,5 +446,14 @@ const char *timepart_view_name(int i);
  *
  */
 void timepart_alias_table(timepart_view_t *view, struct dbtable *db);
+
+/**
+ * Get the malloc-ed name of shard "i" for partition "p" if it exists
+ * NULL otherwise
+ * If version is provided, and shard exists, return its schema version
+ *
+ */
+char *timepart_shard_name(const char *p, int i, int aliased,
+                          unsigned long long *version);
 
 #endif
