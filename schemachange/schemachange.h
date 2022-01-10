@@ -208,6 +208,8 @@ struct schema_change_type {
     int fix_tp_badvers;
 
     /* partition */
+    unsigned long long
+        timepartition_version; /* time partition tableversion, if any */
     struct comdb2_partition partition;
 
     /*********************** temporary fields for in progress

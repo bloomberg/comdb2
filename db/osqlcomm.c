@@ -5896,7 +5896,12 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
         /* is this an alter? preserve existing table as first shard */
         if (!sc->addonly) {
             /* we need to create a light rename for first shard,
-             * together with the original alter */
+             * together with the original alter
+             * NOTE: we need to grab the table version first
+             */
+            arg.s->timepartition_version =
+                arg.s->db->tableversion + 1; /* next version */
+
             rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
             if (rc) {
                 logmsg(LOGMSG_ERROR,

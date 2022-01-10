@@ -146,8 +146,12 @@ enum _check_flags {
    _CHECK_ONLY_INITIAL_SHARD, _CHECK_ALL_SHARDS, _CHECK_ONLY_CURRENT_SHARDS
 };
 
-static timepart_view_t* _check_shard_collision(timepart_views_t *views, const char *tblname, 
-      int *indx, enum _check_flags flag);
+static timepart_view_t *_check_shard_collision(timepart_views_t *views,
+                                               const char *tblname, int *indx,
+                                               enum _check_flags flag);
+
+int timepart_copy_access(bdb_state_type *bdb_state, void *tran, char *dst,
+                         char *src, int acquire_schema_lk);
 
 char *timepart_describe(sched_if_t *_)
 {
@@ -2712,7 +2716,8 @@ static cron_sched_t *_get_sched_byname(enum view_partition_period period,
  * NOTE2: it grabs views repository
  *
  */
-const char *timepart_is_next_shard(const char *shardname)
+const char *timepart_is_next_shard(const char *shardname,
+                                   unsigned long long *version)
 {
     timepart_views_t *views;
     timepart_view_t *view;
@@ -2745,6 +2750,18 @@ const char *timepart_is_next_shard(const char *shardname)
                    "%s table %s is the next shard for partition %s\n", __func__,
                    shardname, view->name);
             ret_name = view->name;
+            if (version) {
+                struct dbtable *dbt =
+                    get_dbtable_by_name(view->shards[0].tblname);
+                if (dbt)
+                    *version = dbt->tableversion;
+                else {
+                    logmsg(LOGMSG_ERROR,
+                           "%s: Unable to find shard 0 %s for partition %s\n",
+                           __func__, view->shards[0].tblname, view->name);
+                    *version = 0;
+                }
+            }
             break;
         }
     }
@@ -3141,6 +3158,22 @@ int timepart_is_partition(const char *name)
     Pthread_rwlock_unlock(&views_lk);
 
     return ret;
+}
+
+int timepart_clone_access_version(tran_type *tran,
+                                  const char *timepartition_name,
+                                  const char *tablename,
+                                  unsigned long long version)
+{
+    int rc;
+    rc = timepart_copy_access(thedb->bdb_env, tran, (char *)tablename,
+                              (char *)timepartition_name, 0);
+    if (rc)
+        return rc;
+
+    rc = table_version_set(tran, tablename, version);
+
+    return rc;
 }
 
 char *timepart_shard_name(const char *p, int i, int aliased,

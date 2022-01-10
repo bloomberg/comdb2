@@ -1108,6 +1108,7 @@ clone_schemachange_type(struct schema_change_type *sc)
     newsc->finalize_only = sc->finalize_only;
     newsc->is_osql = sc->is_osql;
     newsc->timepartition_name = sc->timepartition_name;
+    newsc->timepartition_version = sc->timepartition_version;
 
     if (!p_buf) {
         free_schema_change_type(newsc);

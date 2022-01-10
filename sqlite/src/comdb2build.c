@@ -119,7 +119,8 @@ static int authenticateSC(const char *table, Parse *pParse);
 /* chkAndCopyTable expects the dst (OUT) buffer to be of MAXTABLELEN size. */
 static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
                                   size_t name_len, enum table_chk_flags error_flag,
-                                  int check_shard, int *table_exists, char **is_partition)
+                                  int check_shard, int *table_exists,
+                                  char **partition_first_shard)
 {
     int rc = 0;
     char *table_name;
@@ -217,13 +218,13 @@ static inline int chkAndCopyTable(Parse *pParse, char *dst, const char *name,
             /* use original tablename */
             strncpy0(dst, db->tablename, MAXTABLELEN);
         }
-        if (is_partition)
-            *is_partition = 0;
+        if (partition_first_shard)
+            *partition_first_shard = 0;
     }
     else
     {
-        if (is_partition)
-            *is_partition = firstshard;
+        if (partition_first_shard)
+            *partition_first_shard = firstshard;
         else
             free(firstshard);
     }
@@ -283,7 +284,7 @@ static inline int copyNoSqlToken(
 static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
                                         Token *t2, enum table_chk_flags error_flag,
                                         int check_shard, int *table_exists,
-                                        char **is_partition)
+                                        char **partition_first_shard)
 {
     int rc;
 
@@ -294,7 +295,7 @@ static inline int chkAndCopyTableTokens(Parse *pParse, char *dst, Token *t1,
         return rc;
 
     if ((rc = chkAndCopyTable(pParse, dst, t1->z, t1->n, error_flag, check_shard,
-                              table_exists, is_partition))) {
+                              table_exists, partition_first_shard))) {
         return rc;
     }
 
