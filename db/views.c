@@ -203,39 +203,6 @@ timepart_views_t *timepart_views_init(struct dbenv *dbenv)
     return dbenv->timepart_views;
 }
 
-/**
- * Check if a name is a timepart
- *
- */
-int timepart_is_timepart(const char *name, int lock)
-{
-   timepart_views_t  *views = thedb->timepart_views;
-   int               i;
-   int               rc;
-
-   rc = 0;
-
-   if (!views)
-       return 0;
-
-   if(lock)
-       Pthread_rwlock_rdlock(&views_lk);
-
-   for(i=0; i<views->nviews; i++)
-   {
-      if(!strcasecmp(name, views->views[i]->name))
-      {
-         rc = 1;
-         break;
-      }
-   }
-
-   if(lock)
-       Pthread_rwlock_unlock(&views_lk);
-
-   return rc;
-}
-
 static int _get_preemptive_rolltime(timepart_view_t *view)
 {
     if (IS_TIMEPARTITION(view->period)) {
@@ -424,7 +391,7 @@ done:
  * Free a partime view; struct in invalid upon return
  *
  */
-int timepart_free_view(timepart_view_t *view)
+void timepart_free_view(timepart_view_t *view)
 {
     int i;
 
@@ -440,8 +407,6 @@ int timepart_free_view(timepart_view_t *view)
     memset(view, 0xFF, sizeof(*view));
 
     free(view);
-
-    return VIEW_NOERR;
 }
 
 /**
@@ -471,7 +436,7 @@ int timepart_del_view(void *tran, timepart_views_t *views, const char *name)
 
         _view_unregister_shards_lkless(views, view);
 
-        rc = timepart_free_view(view);
+        timepart_free_view(view);
 
         _remove_view_entry(views, i);
 
@@ -495,44 +460,29 @@ done:
 }
 
 /* unlocked !*/
-int timepart_free_views_unlocked(timepart_views_t *views)
+static void timepart_free_views_unlocked(timepart_views_t *views)
 {
     int i;
-    int rc = VIEW_NOERR;
-    int irc;
 
     if (views->views) {
         for (i = 0; i < views->nviews; i++) {
-            irc = timepart_free_view(views->views[i]);
-            if (irc != VIEW_NOERR) {
-                if (rc == VIEW_NOERR)
-                    rc = irc;
-                logmsg(LOGMSG_ERROR, "%s error freeing view %d\n", __func__, i);
-            }
+            timepart_free_view(views->views[i]);
         }
 
         free(views->views);
     }
     bzero(views, sizeof(*views));
-
-    return rc;
 }
 
 /**
  * Free all the views
  *
  */
-int timepart_free_views(timepart_views_t *views)
+static void timepart_free_views(timepart_views_t *views)
 {
-    int rc = VIEW_NOERR;
-
     Pthread_rwlock_wrlock(&views_lk);
-
-    rc = timepart_free_views_unlocked(views);
-
+    timepart_free_views_unlocked(views);
     Pthread_rwlock_unlock(&views_lk);
-
-    return rc;
 }
 
 /**
@@ -3178,6 +3128,49 @@ void timepart_alias_table(timepart_view_t *view, struct dbtable *db)
     db->sqlaliasname = strdup(view->shards[0].tblname);
     hash_sqlalias_db(db, db->sqlaliasname);
     db->timepartition_name = view->name;
+}
+
+int timepart_is_partition(const char *name)
+{
+    timepart_view_t *view;
+    int ret = 0;
+    Pthread_rwlock_rdlock(&views_lk);
+    view = _get_view(thedb->timepart_views, name);
+    if (view)
+        ret = 1;
+    Pthread_rwlock_unlock(&views_lk);
+
+    return ret;
+}
+
+char *timepart_shard_name(const char *p, int i, int aliased,
+                          unsigned long long *version)
+{
+    char *ret = NULL;
+    timepart_view_t *view;
+
+    if (version)
+        *version = 0ULL;
+
+    if (i < 0)
+        return NULL;
+
+    Pthread_rwlock_rdlock(&views_lk);
+    view = _get_view(thedb->timepart_views, p);
+    if (view && i < view->nshards) {
+        struct dbtable *db = get_dbtable_by_name(view->shards[i].tblname);
+        if (aliased && db->sqlaliasname)
+            ret = strdup(db->sqlaliasname);
+        else
+            ret = strdup(db->tablename);
+        if (version) {
+            *version = db->tableversion;
+            fprintf(stderr, "Got %s version %llu\n", ret, *version);
+        }
+    }
+    Pthread_rwlock_unlock(&views_lk);
+
+    return ret;
 }
 
 #include "views_systable.c"

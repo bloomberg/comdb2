@@ -5840,8 +5840,9 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
     if (sc->db)
         iq->usedb = sc->db;
 
-    if (!timepart_is_timepart(sc->tablename, 1) &&
-        sc->partition.type == PARTITION_NONE) {
+    int is_partition = timepart_is_partition(sc->tablename);
+
+    if (!is_partition && sc->partition.type == PARTITION_NONE) {
         /* schema change for a regular table */
         rc = start_schema_change_tran(iq, NULL);
         if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
@@ -5853,8 +5854,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             iq->sc_pending = iq->sc;
             iq->osql_flags |= OSQL_FLAGS_SCDONE;
         }
-    } else if (!timepart_is_timepart(sc->tablename, 1) &&
-               sc->partition.type != PARTITION_NONE) {
+    } else if (!is_partition && sc->partition.type != PARTITION_NONE) {
         assert(sc->partition.type == PARTITION_TIMED);
 
         /* create a new time partition object */
