@@ -6684,6 +6684,7 @@ void freedb_int(dbtable *db, dbtable *replace)
     int i;
     int dbs_idx;
     char *sqlaliasname = db->sqlaliasname;
+    const char *timepartition_name = db->timepartition_name;
 
     dbs_idx = db->dbs_idx;
 
@@ -6756,6 +6757,7 @@ void freedb_int(dbtable *db, dbtable *replace)
         memcpy(db, replace, sizeof(dbtable));
         db->dbs_idx = dbs_idx;
         db->sqlaliasname = sqlaliasname;
+        db->timepartition_name = timepartition_name;
     } else
         free(db);
 }
