@@ -1773,13 +1773,14 @@ int osql_schemachange_logic(struct schema_change_type *sc,
     sc->usedbtablevers = comdb2_table_version(sc->tablename);
 
     if (thd->clnt->dbtran.mode == TRANLEVEL_SOSQL) {
-        if (usedb && getdbidxbyname_ll(sc->tablename) < 0) { // view
-            unsigned long long version = 0;
-            char *viewname = timepart_newest_shard(sc->tablename, &version);
-            sc->usedbtablevers = version;
-            if (viewname)
-                free(viewname);
-            else
+        if (usedb && getdbidxbyname_ll(sc->tablename) < 0) {
+            unsigned long long version;
+            char *first_shardname =
+                timepart_shard_name(sc->tablename, 0, 1, &version);
+            if (first_shardname) {
+                sc->usedbtablevers = version;
+                free(first_shardname);
+            } else /* user view */
                 usedb = 0;
         }
 

@@ -344,9 +344,10 @@ int finalize_add_table(struct ireq *iq, struct schema_change_type *s,
 
     /* Update table permissions for this new shard. */
     if (s->timepartition_name) {
-        if ((rc = timepart_copy_access(thedb->bdb_env, tran, s->tablename,
-                                       (char *)s->timepartition_name, 0)) !=
-            0) {
+        rc = timepart_clone_access_version(tran, s->timepartition_name,
+                                           s->tablename,
+                                           s->timepartition_version);
+        if (rc) {
             sc_errf(s, "Failed to set user permissions for time partition %s\n",
                     s->timepartition_name);
             return rc;

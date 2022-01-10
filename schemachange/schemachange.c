@@ -959,7 +959,8 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
         wrlock_schema_lk();
-        s->timepartition_name = timepart_is_next_shard(s->tablename);
+        s->timepartition_name =
+            timepart_is_next_shard(s->tablename, &s->timepartition_version);
         rc = do_add_table(iq, s, NULL);
         unlock_schema_lk();
         return rc;

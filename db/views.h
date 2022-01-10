@@ -385,7 +385,8 @@ int timepart_is_partition(const char *name);
  * NOTE2: it grabs views repository
  *
  */
-const char *timepart_is_next_shard(const char *shardname);
+const char *timepart_is_next_shard(const char *shardname,
+                                   unsigned long long *version);
 
 /**
  * Create a view object with the specified parameters
@@ -446,6 +447,16 @@ const char *timepart_view_name(int i);
  *
  */
 void timepart_alias_table(timepart_view_t *view, struct dbtable *db);
+
+/**
+ * Create llmeta entries for the new shard for user access rights
+ * and table version
+ *
+ */
+int timepart_clone_access_version(tran_type *tran,
+                                  const char *timepartition_name,
+                                  const char *tablename,
+                                  unsigned long long version);
 
 /**
  * Get the malloc-ed name of shard "i" for partition "p" if it exists
