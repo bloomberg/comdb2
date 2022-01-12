@@ -254,6 +254,7 @@ struct timestamp_lsn_key {
 };
 
 typedef struct pglogs_tmptbl_key {
+    uint32_t file;
     unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN commit_lsn;
@@ -261,6 +262,7 @@ typedef struct pglogs_tmptbl_key {
 } pglogs_tmptbl_key;
 
 typedef struct relinks_tmptbl_key {
+    uint32_t file;
     unsigned char fileid[DB_FILE_ID_LEN];
     db_pgno_t pgno;
     DB_LSN lsn;
@@ -270,11 +272,11 @@ typedef struct relinks_tmptbl_key {
 struct logfile_pglogs_entry {
     u_int32_t filenum;
 
-    pthread_mutex_t pglogs_lk;
+    pthread_mutex_t *pglogs_lk;
     struct temp_table *pglogs_tbl;
     struct temp_cursor *pglogs_cur;
 
-    pthread_mutex_t relinks_lk;
+    pthread_mutex_t *relinks_lk;
     struct temp_table *relinks_tbl;
     struct temp_cursor *relinks_cur;
 };

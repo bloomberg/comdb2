@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+bash -n "$0" | exit 1
+
+db=$1
+
+# Generate 50 log files
+cdb2sql --tabs ${CDB2_OPTIONS} $db default "CREATE TABLE t (b blob)"
+master=`cdb2sql --tabs ${CDB2_OPTIONS} $db default 'select host from comdb2_cluster where is_master="Y"'`
+cur=$(cdb2sql --tabs $db --host $master "exec procedure sys.cmd.send('bdb logstat')" | grep st_cur_file | awk '{print $NF}')
+target=$(( 50 + cur ))
+while [[ $cur -lt $target ]]; do
+    cdb2sql $db -tabs --host $master "INSERT INTO t VALUES (randomblob(1048576))" >/dev/null
+    sleep 1
+    cur=$(cdb2sql --tabs $db --host $master "exec procedure sys.cmd.send('bdb logstat')" | grep st_cur_file | awk '{print $NF}')
+done
+
+
+nactive=$(cdb2sql $db -tabs --host $master "exec procedure sys.cmd.send('bdb temptable')" | grep '# active' | awk '{ print $NF }')
+if [ $nactive -gt 10 ]; then
+    echo 'too many temptables'
+    exit 1
+fi
