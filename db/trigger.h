@@ -91,8 +91,9 @@ void trigger_reg_to_cpu(trigger_reg_t *);
         dest->trigger_cookie = get_id(thedb->bdb_env);                         \
         dest->qdb_locked = have_lock;                                          \
         dest->spname_len = strlen(sp_name);                                    \
-        strcpy(dest->spname, sp_name);                                         \
-        strcpy(trigger_hostname(dest), gbl_myhostname);                        \
+        memcpy(dest->spname, sp_name, dest->spname_len + 1);                   \
+        int hostname_len = strlen(gbl_myhostname);                             \
+        memcpy(trigger_hostname(dest), gbl_myhostname, hostname_len + 1);      \
     } while (0)
 
 #define Q4SP(var, spname)                                                      \

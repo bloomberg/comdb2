@@ -319,14 +319,10 @@ static void lock_stats(FILE *out, bdb_state_type *bdb_state)
     prn_lstat(st_maxnlockers);
     prn_lstat(st_nobjects);
     prn_lstat(st_maxnobjects);
-#if !defined(BERKDB_4_5) && !defined(BERKDB_46)
     prn_lstat(st_nconflicts);
-#endif
     prn_lstat(st_nrequests);
     prn_lstat(st_nreleases);
-#if !defined(BERKDB_4_5) && !defined(BERKDB_46)
     prn_lstat(st_nnowaits);
-#endif
     prn_lstat(st_ndeadlocks);
     prn_stat(st_locktimeout);
     prn_lstat(st_nlocktimeouts);
@@ -363,11 +359,7 @@ static void rep_stats(FILE *out, bdb_state_type *bdb_state)
     prn_statstr(st_env_id);
     prn_stat(st_env_priority);
     prn_stat(st_gen);
-
-#ifdef BERKDB_4_2
     prn_stat(st_in_recovery);
-#endif
-
     prn_stat(st_log_duplicated);
     prn_stat(st_log_queued);
     prn_stat(st_log_queued_max);
@@ -1321,9 +1313,6 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         " alldblist      - dump all of the entries in berkeley's dblist structure",
         " curlist        - dump berkeley's cursor list for all dbs",
         " curcount       - dump count of berkeley cursors allocated",
-#ifdef BERKDB_46
-        " printlock      - print status of all the locks",
-#endif
         " lockinfo       - old style lock information",
         " activelocks    - dump all active locks",
         " truncrepdb     - truncate repdb",
@@ -1746,14 +1735,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
         __bb_dbreg_print_all_dblist(bdb_state->dbenv, printf_wrapper, out);
     } else if (tokcmp(tok, ltok, "dbs") == 0) {
         bdb_dump_table_dbregs(bdb_state);
-    }
-#ifdef BERKDB_46
-    else if (tokcmp(tok, ltok, "printlock") == 0) {
-        bdb_state->dbenv->lock_stat_print(bdb_state->dbenv, DB_STAT_ALL);
-    }
-#endif
-
-    else if (tokcmp(tok, ltok, "curlist") == 0) {
+    } else if (tokcmp(tok, ltok, "curlist") == 0) {
         bdb_dump_cursors(bdb_state, out);
     } else if (tokcmp(tok, ltok, "attr") == 0) {
         bdb_attr_dump(out, bdb_state->attr);

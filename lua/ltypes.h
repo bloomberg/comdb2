@@ -154,14 +154,14 @@ typedef struct {
     (n)->is_typed = gbl_spstrictassignments;\
     (n)->dbtype = DBTYPE
 
-#define new_lua_t_sz(L, n, lua_t, DBTYPE, sz) \
+#define new_lua_t_sz(L, n, DBTYPE, sz) \
     n = lua_newuserdata(L, sz);\
     bzero(n, sz);\
     init_new_t(n, DBTYPE);\
     luaL_getmetatable(L, dbtypes_str[DBTYPE]);\
     lua_setmetatable(L, -2)
 
-#define new_lua_t(n, lua_t, DBTYPE) new_lua_t_sz(lua, n, lua_t, DBTYPE, sizeof(lua_t))
+#define new_lua_t(n, lua_t, DBTYPE) new_lua_t_sz(lua, n, DBTYPE, sizeof(lua_t))
 
 typedef union {
     long long in;

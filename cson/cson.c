@@ -449,9 +449,8 @@ cson_value *cson_object_value(cson_object *s)
 int cson_object_set(cson_object *obj, char const *key, cson_value *v)
 {
     size_t key_len = strlen(key) + 3;
-    struct cson_key *cson_key = malloc(key_len + sizeof(struct cson_key));
-    strcpy(cson_key->buf, "$.");
-    strcpy(cson_key->buf + 2, key);
+    struct cson_key *cson_key = malloc(sizeof(struct cson_key) + key_len);
+    sprintf(cson_key->buf, "$.%s", key);
     LIST_INSERT_HEAD(&obj->key_list, cson_key, entry);
     return cson__set(obj->value, cson_key->buf, v);
 }

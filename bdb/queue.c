@@ -1112,7 +1112,6 @@ int bdb_queue_walk(bdb_state_type *bdb_state, int flags, bbuint32_t *lastitem,
 static int bdb_queue_dump_int(bdb_state_type *bdb_state, FILE *out, int *bdberr)
 {
 
-#if defined(BERKDB_4_2)
     uint8_t hdrbuf[QUEUE_HDR_LEN];
     uint8_t *p_buf = hdrbuf, *p_buf_end = (p_buf + sizeof(hdrbuf));
     struct bdb_queue_header hdr;
@@ -1222,8 +1221,6 @@ static int bdb_queue_dump_int(bdb_state_type *bdb_state, FILE *out, int *bdberr)
     }
 
     dbcp->c_close(dbcp);
-
-#endif
 
     return 0;
 }

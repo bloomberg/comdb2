@@ -212,9 +212,13 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     q->emit_timeoutms = 60000; /* emit times-out after 1 min */
     q->consumer = consumer;
     q->info = *info;
-    // memcpy because variable size struct breaks fortify checks in strcpy.
-    memcpy(q->info.spname, info->spname, spname_len + 1);
-    strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
+    // correct size allocated by trigger_reg_sz
+    char *src = &info->spname[0];
+    char *out = &q->info.spname[0];
+    memcpy(out, src, spname_len + 1);
+    src += (spname_len + 1);
+    out += (spname_len + 1);
+    strcpy(out, src);
     return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->status);
 }
 
@@ -4822,7 +4826,7 @@ static int db_consumer(Lua L)
 
     dbconsumer_t *q;
     size_t sz = dbconsumer_sz(sp->spname);
-    new_lua_t_sz(L, q, dbconsumer_t, DBTYPES_DBCONSUMER, sz);
+    new_lua_t_sz(L, q, DBTYPES_DBCONSUMER, sz);
     if (setup_dbconsumer(q, consumer, db, t) != 0) {
         luabb_error(L, sp, "failed to register consumer with qdb");
         lua_pushnil(L);
@@ -6255,9 +6259,9 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
     if (rc != arg_end) {
         *err = malloc(64);
         if (arg.type == arg_param) {
-            snprintf(*err, 60, "Bad parameter:%s type:%d", arg.buf + 1, rc);
+            snprintf0(*err, 60, "Bad parameter:%s type:%d", arg.buf + 1, rc);
         } else {
-            if (snprintf(*err, 60, "bad argument -> %s", msg) >= 60) {
+            if (snprintf0(*err, 60, "bad argument -> %s", msg) >= 60) {
                 strcat(*err, "...");
             }
         }

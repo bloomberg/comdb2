@@ -52,10 +52,7 @@ tool_cdb2_verify_main(argc, argv)
     comdb2ma_init(0, 0);
 	if ((ret = cdb2_verify_version_check(progname)) != 0)
 		return (ret);
-
-#ifndef BERKDB_46
 	Pthread_key_create(&DBG_FREE_CURSOR, NULL);
-#endif
 
 	dbenv = NULL;
 	dbp = NULL;

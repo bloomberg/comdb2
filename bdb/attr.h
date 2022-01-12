@@ -164,16 +164,7 @@ DEF_ATTR(LOGSEGMENTS, logsegments, QUANTITY, 1,
          "segments can allow the log to be written while other segments are "
          "being flushed.")
 
-#ifdef BERKDB_4_2
 #define REPLIMIT_DEFAULT (100 * 1024 * 1024)
-#elif defined(BERKDB_4_3) || defined(BERKDB_4_5) || defined(BERKDB_46)
-#define REPLIMIT_DEFAULT (1024 * 1024)
-#else
-/* Note: no BERKDB #defines are set in the db layer, so if that layer tries to
- * use a DEF_ATTR macro that uses default parameters, this undefined word should
- * cause a syntax error */
-#define REPLIMIT_DEFAULT NOT_DEFINED_ERROR
-#endif
 
 DEF_ATTR(REPLIMIT, replimit, BYTES, REPLIMIT_DEFAULT,
          "Replication messages will be limited to this size.")

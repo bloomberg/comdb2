@@ -16,7 +16,6 @@ add_library(bdb
   bdblock.c
   berktest.c
   callback.c
-  compact.c
   compress.c
   count.c
   cursor.c
@@ -37,7 +36,6 @@ add_library(bdb
   locks.c
   locktest.c
   odh.c
-  os_namemangle.c
   phys.c
   phys_rep_lsn.c
   queue.c
@@ -116,5 +114,4 @@ if (COMDB2_BBCMAKE)
   target_link_libraries(bdb PUBLIC db lz4)
   configure_bb_target(bdb V2 NO_BUILDID NO_PLINKSTRINGS HEADER_DIRS)
 endif()
-add_definitions(-DBERKDB_4_2)
 add_dependencies(bdb db mem proto)

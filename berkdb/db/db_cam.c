@@ -795,7 +795,6 @@ __db_c_idup(dbc_orig, dbcp, flags)
 #endif
 
 	{
-#ifndef BERKDB_46
 		struct __dbg_free_cursor *p = pthread_getspecific(DBG_FREE_CURSOR);
 		if (p) {
 			p->counter++;
@@ -809,7 +808,6 @@ __db_c_idup(dbc_orig, dbcp, flags)
 				Pthread_setspecific(DBG_FREE_CURSOR, p);
 			}
 		}
-#endif
 	}
 
 
