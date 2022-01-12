@@ -62,6 +62,11 @@ endif()
 if(COMDB2_LEGACY_DEFAULTS)
   add_definitions(-DLEGACY_DEFAULTS)
 endif()
+
+if (${CMAKE_C_COMPILER_ID} STREQUAL GNU)
+  set_source_files_properties(sltpck.c PROPERTIES COMPILE_FLAGS "-Wno-return-local-addr")
+endif()
+
 add_library(util ${src})
 include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}

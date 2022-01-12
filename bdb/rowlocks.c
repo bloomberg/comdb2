@@ -2244,7 +2244,6 @@ static char *printmemarg2(void)
 }
 
 /* recovery routine for an "add" record */
-#ifndef BERKDB_46
 int handle_undo_add_dta(DB_ENV *dbenv, u_int32_t rectype,
                         llog_undo_add_dta_args *addop, DB_LSN *lsn,
                         db_recops op)
@@ -2433,8 +2432,6 @@ done:
     *lsn = addop->prev_lsn;
     return rc;
 }
-
-#endif
 
 /*
    A mostly dummy recovery routine.
@@ -2776,8 +2773,6 @@ done:
     return rc;
 }
 
-#ifndef BERKDB_46
-
 int handle_comprec(DB_ENV *dbenv, u_int32_t rectype,
                    llog_ltran_comprec_args *args, DB_LSN *lsn, db_recops op)
 {
@@ -2828,8 +2823,6 @@ done:
     *lsn = args->prev_lsn;
     return rc;
 }
-
-#endif
 
 extern int gbl_disable_rowlocks_logging;
 

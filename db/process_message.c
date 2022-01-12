@@ -231,12 +231,6 @@ static const char *HELP_SCHEMA[] = {
     "                                 or add a new table",
     "reinit <table>                 - reinitialize a table in a db",
     "count <table>                  - count the records in the given table",
-#ifdef BERKDB_46
-    "compact <table> [timeout] [-f] - compact table btree, use timeout ms for "
-    "each lock -default 2000ms-, free fs space if -f",
-    "pacecompact <time>             - after each microtransaction the loop "
-    "will sleep for \"time\" msec; -1 will stop it",
-#endif
     "stat csc2vers <table>          - get current schema version for table",
     "stat dumpcsc2 <table> #        - dump version # of schema for given table",
     "dumprecord <table> <rrn/genid> - dump record by rrn/genid",

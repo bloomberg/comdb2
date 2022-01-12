@@ -6861,8 +6861,8 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
                          int nettype)
 {
     osql_sess_t *sess = NULL;
-    unsigned long long rqid;
-    uuid_t uuid;
+    unsigned long long rqid = 0;
+    uuid_t uuid = {0};
     char *sql;
     int sqllen;
     char *tzname;
@@ -6870,22 +6870,34 @@ static int sorese_rcvreq(char *fromhost, void *dtap, int dtalen, int type,
     int send_rc = 1;
     const char *errmsg = "";
     int rc = 0;
-    osql_uuid_req_t ureq;
-    osql_req_t req;
     int added_to_repository = 0;
 
     /* grab the request */
     uint8_t *p_req_buf = dtap;
     const uint8_t *p_req_buf_end = p_req_buf + dtalen;
     if (osql_nettype_is_uuid(nettype)) {
+        osql_uuid_req_t ureq;
         sql = (char *)osqlcomm_req_uuid_type_get(&ureq, p_req_buf, p_req_buf_end);
+        if (!sql) {
+            logmsg(LOGMSG_ERROR, "%s failed osqlcomm_req_uuid_type_get\n", __func__);
+            errmsg = "unable to create new session";
+            rc = -1;
+            goto done;
+        }
         rqid = OSQL_RQID_USE_UUID;
         comdb2uuidcpy(uuid, ureq.uuid);
         flags = ureq.flags;
         tzname = ureq.tzname;
         sqllen = ureq.sqlqlen;
     } else {
+        osql_req_t req;
         sql = (char *)osqlcomm_req_type_get(&req, p_req_buf, p_req_buf_end);
+        if (!sql) {
+            logmsg(LOGMSG_ERROR, "%s failed osqlcomm_req_type_get\n", __func__);
+            errmsg = "unable to create new session";
+            rc = -1;
+            goto done;
+        }
         rqid = req.rqid;
         comdb2uuid_clear(uuid);
         flags = req.flags;

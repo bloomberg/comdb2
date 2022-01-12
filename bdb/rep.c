@@ -1280,8 +1280,6 @@ elect_again:
     /* replace now: if i was already master, rep-start wont be called */
     set_repinfo_master_host(bdb_state, master_host, __func__, __LINE__);
 
-#ifndef BERKDB_46
-
     /* Check if it's us. */
     if (rc == 0) {
 
@@ -1305,7 +1303,6 @@ elect_again:
             }
         }
     }
-#endif
 
 give_up:
     end = comdb2_time_epochms();

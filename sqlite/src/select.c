@@ -157,6 +157,9 @@ Select *sqlite3SelectNew(
   Select standin;
   pNew = sqlite3DbMallocRawNN(pParse->db, sizeof(*pNew) );
   if( pNew==0 ){
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+    return NULL;
+#endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
     assert( pParse->db->mallocFailed );
     pNew = &standin;
   }

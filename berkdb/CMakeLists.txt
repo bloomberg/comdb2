@@ -129,6 +129,7 @@ set(BERK_C
   os/os_id.c
   os/os_map.c
   os/os_method.c
+  os/os_namemangle.c
   os/os_oflags.c
   os/os_open.c
   os/os_region.c

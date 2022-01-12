@@ -178,7 +178,7 @@ static int syncmode_callback(bdb_state_type *bdb_state);
 /* How many times we became, or ceased to be, master node. */
 int gbl_master_changes = 0;
 
-void *get_bdb_handle(struct dbtable *db, int auxdb)
+static void *get_bdb_handle(struct dbtable *db, int auxdb)
 {
     void *bdb_handle;
 
@@ -5446,36 +5446,6 @@ retry:
     return rc;
 }
 
-int count_db(struct dbtable *db)
-{
-    int bdberr;
-    void *bdb_handle;
-    int numrrns;
-    int retries = 0;
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-
-retry:
-    numrrns = bdb_count(bdb_handle, &bdberr);
-    if (numrrns == -1) {
-        if (bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries) {
-                n_retries++;
-                goto retry;
-            }
-            printf("*ERROR* bdb_count too much contention %d count %d\n",
-                   bdberr, retries);
-            return -1;
-        }
-        printf("*ERROR* bdb_count return unhandled rc %d\n", bdberr);
-        return -1;
-    }
-
-    return numrrns;
-}
-
 void diagnostics_dump_dta(struct dbtable *db, int dtanum)
 {
     void *bdb_handle;
@@ -5733,45 +5703,6 @@ void debug_bulktraverse_data(char *tbl)
     }
     bdb_bulkdumpit(db->handle);
 }
-
-#ifdef BERKDB_46
-
-int bdb_compact_table(bdb_state_type *bdb_state, int *bdberr, int timeout,
-                      int freefs);
-
-int compact_db(struct dbtable *db, int timeout, int freefs)
-{
-    int bdberr;
-    void *bdb_handle;
-    int numrrns;
-    int retries = 0;
-
-    bdb_handle = get_bdb_handle(db, AUXDB_NONE);
-    if (!bdb_handle)
-        return ERR_NO_AUXDB;
-
-/* there are also retries for the mini transactions */
-retry:
-    numrrns = bdb_compact_table(bdb_handle, &bdberr, timeout, freefs);
-    if (numrrns == -1) {
-        if (bdberr == BDBERR_DEADLOCK) {
-            if (++retries < gbl_maxretries) {
-                n_retries++;
-                goto retry;
-            }
-            logmsg(LOGMSG_ERROR, 
-                   "*ERROR* bdb_compact_table too much contention %d count %d\n",
-                   bdberr, retries);
-            return -1;
-        }
-        logmsg(LOGMSG_ERROR, 
-               "*ERROR* bdb_compact_table return unhandled rc %d\n", bdberr);
-        return -1;
-    }
-
-    return numrrns;
-}
-#endif
 
 int find_record_older_than(struct ireq *iq, void *tran, int timestamp,
                            void *rec, int *reclen, int maxlen,

@@ -726,32 +726,20 @@ void bdb_bulkdumpit(bdb_state_type *bdb_state) {}
 /* Call this at the beginning of a request to reset all our per thread stats. */
 void bdb_reset_thread_stats(void)
 {
-#ifdef BERKDB_4_2
     bb_berkdb_thread_stats_reset();
-#endif
 }
 
 /* Call this at the end of a request to get our stats. */
 const struct berkdb_thread_stats *bdb_get_thread_stats(void)
 {
-#ifdef BERKDB_4_2
     return (const struct berkdb_thread_stats *)bb_berkdb_get_thread_stats();
-#else
-    static struct berkdb_thread_stats zero = {0};
-    return &zero;
-#endif
 }
 
 /* Call this any time to get process wide stats (which get updated locklessly)
  */
 const struct berkdb_thread_stats *bdb_get_process_stats(void)
 {
-#ifdef BERKDB_4_2
     return (const struct berkdb_thread_stats *)bb_berkdb_get_process_stats();
-#else
-    static struct berkdb_thread_stats zero = {0};
-    return &zero;
-#endif
 }
 
 /* Report bdb stats into the given logging function. */

@@ -41,13 +41,11 @@
 #include "bdb_int.h"
 #include "locks.h"
 
-#ifndef BERKDB_46
 #include <build/db_int.h>
 #include "llog_auto.h"
 #include "llog_ext.h"
 #include "llog_handlers.h"
 #include "dbinc/db_swap.h"
-#endif
 
 #include <ctrace.h>
 #include <logmsg.h>

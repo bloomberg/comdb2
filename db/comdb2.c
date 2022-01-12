@@ -3015,10 +3015,7 @@ int lua_func_list_free(void * list) {
     return 0;
 }
 
-
-#ifndef BERKDB_46
 extern pthread_key_t DBG_FREE_CURSOR;
-#endif
 
 /* check that we don't have name clashes, and other sanity checks, this also
  * populates some values like reverse constraints and db->dtastripe */
@@ -3835,10 +3832,7 @@ static int init(int argc, char **argv)
 
     Pthread_key_create(&comdb2_open_key, NULL);
     Pthread_key_create(&query_info_key, NULL);
-
-#ifndef BERKDB_46
     Pthread_key_create(&DBG_FREE_CURSOR, free);
-#endif
 
     if (lrlname == NULL) {
         char *lrlenv = getenv("COMDB2_CONFIG");
