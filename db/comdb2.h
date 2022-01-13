@@ -1635,7 +1635,7 @@ extern int gbl_maxqueue;     /* max number of requests to be queued up */
 extern int gbl_thd_linger;   /* number of seconds for threads to linger */
 extern char *gbl_mynode;     /* my hostname */
 extern char *gbl_machine_class; /* my machine class */
-struct in_addr gbl_myaddr;   /* my IPV4 address */
+extern struct in_addr gbl_myaddr;   /* my IPV4 address */
 extern char *gbl_myhostname; /* my hostname */
 extern int gbl_mynodeid;     /* node number, for backwards compatibility */
 extern pid_t gbl_mypid;      /* my pid */
@@ -3308,17 +3308,17 @@ extern int gbl_lowpri_snapisol_sessions;
 
 /* stats */
 /* non-sql request service times (last minute, last hour, since start) */
-struct quantize *q_min;
-struct quantize *q_hour;
-struct quantize *q_all;
+extern struct quantize *q_min;
+extern struct quantize *q_hour;
+extern struct quantize *q_all;
 /* sql query times */
-struct quantize *q_sql_min;
-struct quantize *q_sql_hour;
-struct quantize *q_sql_all;
+extern struct quantize *q_sql_min;
+extern struct quantize *q_sql_hour;
+extern struct quantize *q_sql_all;
 /* sql #steps */
-struct quantize *q_sql_steps_min;
-struct quantize *q_sql_steps_hour;
-struct quantize *q_sql_steps_all;
+extern struct quantize *q_sql_steps_min;
+extern struct quantize *q_sql_steps_hour;
+extern struct quantize *q_sql_steps_all;
 
 extern int gbl_stop_thds_time;
 extern int gbl_stop_thds_time_threshold;
@@ -3493,7 +3493,7 @@ int reload_after_bulkimport(dbtable *, tran_type *);
 int reload_db_tran(dbtable *, tran_type *);
 int debug_this_request(int until);
 
-int gbl_disable_stable_for_ipu;
+extern int gbl_disable_stable_for_ipu;
 
 extern int gbl_debug_memp_alloc_size;
 
@@ -3546,7 +3546,7 @@ int setup_net_listen_all(struct dbenv *dbenv);
 
 extern int gbl_no_env;
 
-int gbl_hostname_refresh_time;
+extern int gbl_hostname_refresh_time;
 
 extern int gbl_noenv_messages;
 
@@ -3564,8 +3564,8 @@ void stat4dump(int more, char *table, int istrace);
 int net_allow_node(struct netinfo_struct *netinfo_ptr, const char *host);
 
 extern int gbl_ctrace_dbdir;
-int gbl_private_blkseq;
-int gbl_use_blkseq;
+extern int gbl_private_blkseq;
+extern int gbl_use_blkseq;
 
 extern int gbl_sc_inco_chk;
 extern int gbl_track_queue_time;

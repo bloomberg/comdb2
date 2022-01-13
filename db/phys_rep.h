@@ -3,8 +3,8 @@
 #include <stdlib.h>
 
 // extern variable defn
-int gbl_is_physical_replicant;
-unsigned int gbl_deferred_phys_update;
+extern int gbl_is_physical_replicant;
+extern unsigned int gbl_deferred_phys_update;
 extern int gbl_deferred_phys_flag;
 
 int add_replicant_host(char *hostname, char *dbname, size_t tier);

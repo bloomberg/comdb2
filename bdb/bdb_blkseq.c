@@ -41,7 +41,7 @@ extern int blkseq_get_rcode(void *data, int datalen);
 static int bdb_blkseq_update_lsn_locked(bdb_state_type *bdb_state,
                                         int timestamp, DB_LSN lsn, int stripe);
 
-extern int gbl_is_physical_replicant;
+int gbl_is_physical_replicant;
 
 static DB *create_blkseq(bdb_state_type *bdb_state, int stripe, int num)
 {

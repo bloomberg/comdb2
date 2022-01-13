@@ -71,7 +71,7 @@ extern int gbl_replicant_latches;
 extern int gbl_print_deadlock_cycles;
 
 int gbl_berkdb_track_locks = 0;
-int gbl_lock_conflict_trace;
+extern int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
 
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;

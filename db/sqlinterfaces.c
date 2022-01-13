@@ -5064,7 +5064,7 @@ void sqlengine_thd_start(struct thdpool *pool, struct sqlthdstate *thd,
                 bdb_attr_get(thedb->bdb_attr, BDB_ATTR_RCACHE_PGSZ));
 }
 
-int gbl_abort_invalid_query_info_key;
+extern int gbl_abort_invalid_query_info_key;
 
 void sqlengine_thd_end(struct thdpool *pool, struct sqlthdstate *thd)
 {
