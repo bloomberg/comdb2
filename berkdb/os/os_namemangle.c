@@ -14,10 +14,6 @@
    limitations under the License.
  */
 
-/* This is very, very verbose even at level 1.  Default to level 0. */
-int gbl_namemangle_loglevel = 0;
-extern int gbl_file_permissions;
-
 /*
    this file overrides os_namemangle.o in the berkdb library with a version
    that intercepts all the calls dealing file filenames to call to
@@ -31,21 +27,12 @@ extern int gbl_file_permissions;
 
    */
 
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <unistd.h>
-#include <errno.h>
-#include <limits.h>
-#include <stdarg.h>
-
 #include <build/db.h>
-
 #include <ctrace.h>
+
+/* This is very, very verbose even at level 1.  Default to level 0. */
+int gbl_namemangle_loglevel = 0;
+extern int gbl_file_permissions;
 
 char *bdb_trans(const char infile[], char outfile[]);
 

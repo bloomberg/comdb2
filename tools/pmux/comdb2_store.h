@@ -1,8 +1,9 @@
 #ifndef COMDB2_STORE_H
 #define COMDB2_STORE_H
 
-#include <cdb2api.h>
+#include <stdexcept>
 #include <cstring>
+#include <cdb2api.h>
 #include "pmux_store.h"
 #include "raii.h"
 
