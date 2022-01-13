@@ -5120,7 +5120,7 @@ __rep_process_txn_concurrent_int(dbenv, rctl, rec, ltrans, ctrllsn, maxlsn,
 	uint32_t *commit_gen;
 	DB_LSN prev_commit_lsn;
 {
-	DBT data_dbt, *lock_dbt, lsn_lock_dbt;
+	DBT *lock_dbt, lsn_lock_dbt;
 	int32_t timestamp = 0;
 	DB_LOGC *logc;
 	DB_LSN prev_lsn;
@@ -5215,9 +5215,6 @@ bad_resize:	;
 
 	logc = NULL;
 	txninfo = NULL;
-	memset(&data_dbt, 0, sizeof(data_dbt));
-	if (F_ISSET(dbenv, DB_ENV_THREAD))
-		F_SET(&data_dbt, DB_DBT_REALLOC);
 
 	/*
 	 * There are two phases:  First, we have to traverse
@@ -5604,10 +5601,6 @@ bad_resize:	;
 
 	/* Dispatch to a processor thread. */
 	rp->txninfo = txninfo;
-	if (data_dbt.data) {
-		free(data_dbt.data);
-		data_dbt.data = NULL;
-	}
 	rp->commit_lsn = ctrllsn;
 	rp->has_logical_commit = 0;
 	rp->has_schema_lock = 0;
@@ -5652,15 +5645,6 @@ err:
 		__os_free(dbenv, txn_rl_args);
 	else
 		__os_free(dbenv, prep_args);
-
-	if (data_dbt.data) {
-		if (F_ISSET(&data_dbt, DB_DBT_REALLOC)) {
-			__os_ufree(dbenv, data_dbt.data);
-		} else {
-			free(data_dbt.data);
-		}
-		data_dbt.data = NULL;
-	}
 
 	reset_recovery_processor(rp);
 

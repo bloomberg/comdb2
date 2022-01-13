@@ -9136,19 +9136,18 @@ int osql_page_prefault(char *rpl, int rplen, struct dbtable **last_db,
     case OSQL_USEDB: {
         osql_usedb_t dt;
         p_buf = (uint8_t *)&((osql_usedb_rpl_t *)rpl)->dt;
-        const char *tablename;
-        struct dbtable *db;
-
-        tablename =
-            (const char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
-
-        db = get_dbtable_by_name(tablename);
-        if (db == NULL) {
-            logmsg(LOGMSG_ERROR, "%s: unable to get usedb for table %.*s\n",
-                    __func__, dt.tablenamelen, tablename);
-        } else {
-            *last_db = db;
-        }
+        char *tablename = (char *)osqlcomm_usedb_type_get(&dt, p_buf, p_buf_end);
+        if (tablename) {
+            struct dbtable *db = get_dbtable_by_name(tablename);
+            if (db == NULL) {
+                logmsg(LOGMSG_ERROR, "%s failedget_dbtable_by_name for:%.*s\n", __func__,
+                       dt.tablenamelen, tablename);
+            } else {
+                *last_db = db;
+            }
+       } else {
+           logmsg(LOGMSG_ERROR, "%s failed osqlcomm_usedb_type_get\n", __func__);
+       }
     } break;
     case OSQL_DELREC:
     case OSQL_DELETE: {

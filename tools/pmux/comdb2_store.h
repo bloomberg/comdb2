@@ -3,6 +3,7 @@
 
 #include <cdb2api.h>
 #include <cstring>
+#include <stdexcept>
 #include "pmux_store.h"
 #include "raii.h"
 

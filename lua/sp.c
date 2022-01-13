@@ -198,8 +198,12 @@ static int setup_dbconsumer(dbconsumer_t *q, struct consumer *consumer,
     q->consumer = consumer;
     q->info = *info;
     // memcpy because variable size struct breaks fortify checks in strcpy.
-    memcpy(q->info.spname, info->spname, spname_len + 1);
-    strcpy(q->info.spname + spname_len + 1, info->spname + spname_len + 1);
+    char *src = &info->spname[0];
+    char *out = &q->info.spname[0];
+    memcpy(out, src, spname_len + 1);
+    src += (spname_len + 1);
+    out += (spname_len + 1);
+    strcpy(out, src);
     return bdb_trigger_subscribe(qdb->handle, &q->cond, &q->lock, &q->open);
 }
 
@@ -5954,9 +5958,9 @@ static int push_args(const char **argstr, struct sqlclntstate *clnt, char **err,
     if (rc != arg_end) {
         *err = malloc(64);
         if (arg.type == arg_param) {
-            snprintf(*err, 60, "Bad parameter:%s type:%d", arg.buf + 1, rc);
+            snprintf0(*err, 60, "Bad parameter:%s type:%d", arg.buf + 1, rc);
         } else {
-            if (snprintf(*err, 60, "bad argument -> %s", msg) >= 60) {
+            if (snprintf0(*err, 60, "bad argument -> %s", msg) >= 60) {
                 strcat(*err, "...");
             }
         }
