@@ -1290,21 +1290,21 @@ static int return_pglogs_key(void *obj, void *arg)
 
 void bdb_return_pglogs_relink_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_pglogs_relink_key, hashtbl);
+    hash_for(hashtbl, return_pglogs_relink_key, NULL);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
 static void bdb_return_pglogs_logical_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_pglogs_logical_key, hashtbl);
+    hash_for(hashtbl, return_pglogs_logical_key, NULL);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
 
 void bdb_return_pglogs_hashtbl(hash_t *hashtbl)
 {
-    hash_for(hashtbl, return_pglogs_key, hashtbl);
+    hash_for(hashtbl, return_pglogs_key, NULL);
     hash_clear(hashtbl);
     hash_free(hashtbl);
 }
