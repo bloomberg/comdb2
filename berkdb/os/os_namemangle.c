@@ -27,6 +27,7 @@
 
    */
 
+#include <string.h>
 #include <build/db.h>
 #include <ctrace.h>
 
