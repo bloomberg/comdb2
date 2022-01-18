@@ -178,6 +178,7 @@ static osql_sqlthr_t *get_new_entry(struct sqlclntstate *clnt, int type)
     entry->type = type;
     entry->last_checked = entry->last_updated =
         comdb2_time_epochms(); /* initialize these to insert time */
+    entry->progressing = 1;
     entry->clnt = clnt;
     entry->register_time = osql_log_time();
 
@@ -386,6 +387,7 @@ void osql_checkboard_check_down_nodes(char *host)
     osql_checkboard_for_each(host, osql_checkboard_check_request_down_node);
 }
 
+extern int comdb2_sql_tick();
 /* NB: this is a helper function and waits for response from master
  * until max_wait count is reached.
  * This function is ment to be called with mutex entry->mtx in locked state
@@ -400,6 +402,9 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
     /* several conditions cause us to break out */
     while (entry->done != 1 && !entry->master_changed &&
            ((max_wait > 0 && (*cnt) < max_wait) || max_wait < 0)) {
+
+        if (entry->progressing)
+            comdb2_sql_tick();
 
         /* prepare to wait for a second */
         struct timespec tm_s;
@@ -472,8 +477,8 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
             /* try poke again */
             if (entry->master == 0 || entry->master == gbl_myhostname) {
                 /* local checkup */
-                int found = osql_repository_session_exists(entry->rqid,
-                                                           entry->uuid, 0);
+                int status;
+                int found = osql_repository_session_exists(entry->rqid, entry->uuid, &status);
                 if (!found) {
                     logmsg(LOGMSG_ERROR,
                            "Local SORESE failed to find local transaction %llu %s\n",
@@ -485,6 +490,8 @@ static int wait_till_max_wait_or_timeout(osql_sqlthr_t *entry, int max_wait,
                              entry->rqid);
                     break;
                 }
+                entry->progressing = (entry->status < status);
+                entry->status = status;
                 entry->last_updated = now;
                 continue;
             }
@@ -622,6 +629,7 @@ int osql_checkboard_update_status(unsigned long long rqid, uuid_t uuid,
     Pthread_mutex_lock(&entry->mtx);
     Pthread_mutex_unlock(&checkboard->mtx);
 
+    entry->progressing = (entry->status < status);
     entry->status = status;
     entry->timestamp = timestamp;
     entry->last_updated = comdb2_time_epochms();
