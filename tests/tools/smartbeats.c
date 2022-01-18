@@ -98,6 +98,9 @@ static int TEST_heartbeat_events()
 
     sleep(10);
 
+    pthread_cancel(t1);
+    pthread_cancel(t2);
+
     /*************************************************
      *      Testcase 3: comdb2_transaction_logs      *
      *************************************************/
@@ -105,6 +108,31 @@ static int TEST_heartbeat_events()
     cdb2_run_statement(h, "set maxquerytime 10");
     cdb2_run_statement(h, "select * from comdb2_transaction_logs where flags = 1");
     while (cdb2_next_record(h) == CDB2_OK);
+
+    /*************************************************************
+     *      Testcase 4: long running transactions on master      *
+     *************************************************************/
+
+    cdb2_run_statement(h, "set maxquerytime 0");
+
+    rc = cdb2_run_statement(h, "create table t4 (i int)");
+    if (rc != 0)
+        return rc;
+
+    /* set max commit time to 10 seconds */
+    rc = cdb2_run_statement(h, "exec procedure sys.cmd.send('bdb setattr SOSQL_MAX_COMMIT_WAIT_SEC 10')");
+    if (rc != 0)
+        return rc;
+
+    /* sleep 1 sec in each add_record invocation */
+    rc = cdb2_run_statement(h, "exec procedure sys.cmd.send('bdb setattr DELAY_WRITES_IN_RECORD_C 1000')");
+    if (rc != 0)
+        return rc;
+
+    /* insert 20 records. callback should receive good heartbeats. statement should succeed */
+    rc = cdb2_run_statement(h, "insert into t4 select * from generate_series(1, 20)");
+    if (rc != 0)
+        return rc;
 
     cdb2_unregister_event(h, e);
     cdb2_close(h);
