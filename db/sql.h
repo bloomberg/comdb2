@@ -1417,5 +1417,6 @@ void exhausted_appsock_connections(struct sqlclntstate *);
 void update_col_info(struct sql_col_info *info, int);
 void sqlengine_work_appsock(struct sqlthdstate *, struct sqlclntstate *);
 const char *sqlite3ErrStr(int);
+char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen);
 
 #endif /* _SQL_H_ */

@@ -9348,6 +9348,15 @@ void sql_dump_running_statements(void)
                    tm.tm_min, tm.tm_sec, rqid, thd->clnt->origin, thd->clnt->conninfo.pid, thd->clnt->argv0 ? thd->clnt->argv0 : "???");
             logmsg(LOGMSG_USER, "%s\n", thd->clnt->sql);
 
+            int nparams = thd->clnt->plugin.param_count(thd->clnt);
+            char param[255];
+            for (int i = 0; i < nparams; i++) {
+                char *value = param_string_value(thd->clnt, i, param, sizeof(param));
+                if (value)
+                    logmsg(LOGMSG_USER, "    %s\n", value);
+            }
+
+
             if (thd->bt) {
                 LISTC_FOR_EACH(&thd->bt->cursors, cur, lnk)
                 {

@@ -1657,66 +1657,76 @@ static void print_ds(const intv_t *tv, char *s, int n)
              ds->days, ds->hours, ds->mins, ds->sec, ds->prec, ds->frac);
 }
 
+char *param_string_value(struct sqlclntstate *clnt, int n, char *out, int outlen) {
+    struct param_data p = {0};
+
+    if (param_value(clnt, &p, n) != 0) {
+        return NULL;
+    }
+    int len;
+    char value[64];
+    char *type = CLIENT_TYPE_TO_STR(p.type);
+    if (p.null || p.type == COMDB2_NULL_TYPE) {
+        snprintf(value, sizeof(value), "null");
+    } else {
+        switch (p.type) {
+            case CLIENT_UINT:
+            case CLIENT_INT:
+                snprintf(value, sizeof(value), "%"PRId64, p.u.i);
+                break;
+            case CLIENT_REAL:
+                snprintf(value, sizeof(value), "%f", p.u.r);
+                break;
+            case CLIENT_CSTR:
+            case CLIENT_PSTR:
+            case CLIENT_PSTR2:
+            case CLIENT_VUTF8:
+                print_str(p.u.p, p.len, value, sizeof(value));
+                break;
+            case CLIENT_BYTEARRAY:
+            case CLIENT_BLOB:
+            case CLIENT_BLOB2:
+                print_blob(p.u.p, p.len, value, sizeof(value));
+                break;
+            case CLIENT_DATETIME:
+            case CLIENT_DATETIMEUS: {
+                dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
+                break; }
+            case CLIENT_INTVYM:
+                print_ym(&p.u.tv, value, sizeof(value));
+                break;
+            case CLIENT_INTVDS:
+            case CLIENT_INTVDSUS:
+                print_ds(&p.u.tv, value, sizeof(value));
+                break;
+            default:
+                value[0] = 0;
+                break;
+        }
+    }
+    if (p.pos)
+        snprintf(out, outlen,
+                "param%-3d type=%-12s len=%-3d indx=%-16d value=%s", n,
+                type, p.len, p.pos, value);
+    else
+        snprintf(out, outlen,
+                "param%-3d type=%-12s len=%-3d name=%-16s value=%s", n,
+                type, p.len, p.name, value);
+    out[outlen-1]=0;
+    return out;
+}
 
 static void log_params(struct reqlogger *logger)
 {
     struct sqlclntstate *clnt = logger->clnt;
     int n = param_count(clnt);
     if (n <= 0) return;
+    char param_out[256];
     reqlog_logf(logger, REQL_INFO, "params=%d\n", n);
-    struct param_data p = {0};
     for (int i = 0; i < n; ++i) {
-        if (param_value(clnt, &p, i) != 0) {
-            continue;
-        }
-        int len;
-        char value[64];
-        char *type = CLIENT_TYPE_TO_STR(p.type);
-        if (p.null || p.type == COMDB2_NULL_TYPE) {
-            snprintf(value, sizeof(value), "null");
-        } else
-        switch (p.type) {
-        case CLIENT_UINT:
-        case CLIENT_INT:
-            snprintf(value, sizeof(value), "%"PRId64, p.u.i);
-            break;
-        case CLIENT_REAL:
-            snprintf(value, sizeof(value), "%f", p.u.r);
-            break;
-        case CLIENT_CSTR:
-        case CLIENT_PSTR:
-        case CLIENT_PSTR2:
-        case CLIENT_VUTF8:
-            print_str(p.u.p, p.len, value, sizeof(value));
-            break;
-        case CLIENT_BYTEARRAY:
-        case CLIENT_BLOB:
-        case CLIENT_BLOB2:
-            print_blob(p.u.p, p.len, value, sizeof(value));
-            break;
-        case CLIENT_DATETIME:
-        case CLIENT_DATETIMEUS: {
-            dttz_to_str(&p.u.dt, value, sizeof(value), &len, clnt->tzname);
-            break; }
-        case CLIENT_INTVYM:
-            print_ym(&p.u.tv, value, sizeof(value));
-            break;
-        case CLIENT_INTVDS:
-        case CLIENT_INTVDSUS:
-            print_ds(&p.u.tv, value, sizeof(value));
-            break;
-        default:
-            value[0] = 0;
-            break;
-        }
-        if (p.pos)
-            reqlog_logf(logger, REQL_INFO,
-                        "param%-3d type=%-12s len=%-3d indx=%-16d value=%s", i,
-                        type, p.len, p.pos, value);
-        else
-            reqlog_logf(logger, REQL_INFO,
-                        "param%-3d type=%-12s len=%-3d name=%-16s value=%s", i,
-                        type, p.len, p.name, value);
+        char *value = param_string_value(clnt, i, param_out, sizeof(param_out));
+        if (value)
+            reqlog_logf(logger, REQL_INFO, "%s", param_out);
     }
 }
 
