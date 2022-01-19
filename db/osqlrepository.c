@@ -358,15 +358,12 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
     sess = _get_sess(rqid, uuid);
     if (sess) {
         exists = 1;
+        if (rows_affected) {
+            struct ireq *iq = sess->iq;
+            *rows_affected = IQ_SNAPINFO(iq)->effects.num_inserted + IQ_SNAPINFO(iq)->effects.num_updated +
+                             IQ_SNAPINFO(iq)->effects.num_deleted;
+        }
     }
-
-    if (rows_affected) {
-        struct ireq *iq = sess->iq;
-        *rows_affected = IQ_SNAPINFO(iq)->effects.num_inserted +
-                         IQ_SNAPINFO(iq)->effects.num_updated +
-                         IQ_SNAPINFO(iq)->effects.num_deleted;
-    }
-
     Pthread_mutex_unlock(&theosql->hshlck);
 
     return exists;
