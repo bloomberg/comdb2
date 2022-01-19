@@ -251,8 +251,8 @@ void test_read_comdb2db_cfg()
     num_hosts = 0;
     num_db_hosts = 0;
     const char *buf3 = "\
-  comdb2dbnm:1estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,2estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,3estsuite_longname_to_testbuffer_overflow_when_assigning_hostname   \n\
-  mydb:4estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,5estsuite_longname_to_testbuffer_overflow_when_assigning_hostname,6estsuite_longname_to_testbuffer_overflow_when_assigning_hostname   \n\
+  comdb2dbnm:1estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_it_longer_than_128_characters,2estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_it_longer_than_128_characters,3estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_it_longer_than_128_characters   \n\
+  mydb:4estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_it_longer_than_128_characters,5estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_it_longer_than_128_characters,6estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_it_longer_than_128_characters   \n\
   comdb2_config:default_type:aestsuite_longname_to_testbuffer_overflow_when_assigning_the_default_type_testsuite_longname_to_testbuffer_overflow_when_assigning_the_default_type   \n\
   comdb2_config:room:bestsuite_longname_to_testbuffer_overflow_when_assigning_the_room_testsuite_longname_to_testbuffer_overflow_when_assigning_the_room \n\
   comdb2_config:comdb2dbname:cestsuite_longname_to_testbuffer_overflow_when_assigning_the_comdb2dbname \n\
@@ -266,12 +266,12 @@ void test_read_comdb2db_cfg()
 
     assert(num_db_hosts == 3);
     assert(num_hosts == 3);
-    assert(strcmp(comdb2db_hosts[0], "1estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(comdb2db_hosts[1], "2estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(comdb2db_hosts[2], "3estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(db_hosts[0], "4estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(db_hosts[1], "5estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
-    assert(strcmp(db_hosts[2], "6estsuite_longname_to_testbuffer_overflow_when_assigning_hostna") == 0);
+    assert(strcmp(comdb2db_hosts[0], "1estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_i") == 0);
+    assert(strcmp(comdb2db_hosts[1], "2estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_i") == 0);
+    assert(strcmp(comdb2db_hosts[2], "3estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_i") == 0);
+    assert(strcmp(db_hosts[0], "4estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_i") == 0);
+    assert(strcmp(db_hosts[1], "5estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_i") == 0);
+    assert(strcmp(db_hosts[2], "6estsuite_longname_to_testbuffer_overflow_when_assigning_hostname_and_we_are_going_to_need_a_lot_more_characters_here_to_make_i") == 0);
     assert(strcmp(cdb2_default_cluster, "aestsuite_longname_to_testbuffer_overflow_when_assigning_the_de") == 0);
     assert(strcmp(cdb2_machine_room, "bestsuite_longn") == 0);
     assert(strcmp(cdb2_comdb2dbname, "cestsuite_longname_to_testbuffe") == 0);
