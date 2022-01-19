@@ -359,9 +359,15 @@ int osql_repository_session_exists(unsigned long long rqid, uuid_t uuid,
     if (sess) {
         exists = 1;
         if (rows_affected) {
-            struct ireq *iq = sess->iq;
-            *rows_affected = IQ_SNAPINFO(iq)->effects.num_inserted + IQ_SNAPINFO(iq)->effects.num_updated +
-                             IQ_SNAPINFO(iq)->effects.num_deleted;
+            snap_uid_t *snap_info = sess->snap_info;
+            /*
+             * If replicant pokes before master processes OSQL_DONE_SNAP,
+             * the session won't have a snap_info. Protect us from the race
+             * condition by check for NULL here.
+             */
+            if (snap_info)
+                *rows_affected = snap_info->effects.num_inserted + snap_info->effects.num_updated +
+                                 snap_info->effects.num_deleted;
         }
     }
     Pthread_mutex_unlock(&theosql->hshlck);
