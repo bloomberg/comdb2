@@ -2667,6 +2667,31 @@ static int localrep_seqno(tran_type *trans, block_state_t *p_blkstate)
     return rc;
 }
 
+#define MIXED_SQL_DYNTAGS(trans, parent_trans) \
+    { \
+        if (!trans) { \
+            if (osql_needtransaction == OSQL_BPLOG_NOTRANS) { \
+                assert(is_block2sqlmode != 0); \
+                logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n", \
+                        __FILE__, __LINE__); \
+                rc = osql_create_transaction( \
+                        javasp_trans_handle, iq, &trans, \
+                        have_blkseq ? &parent_trans : NULL, \
+                        &osql_needtransaction, __LINE__); \
+                if (rc) { \
+                    numerrs = 1; \
+                    GOTOBACKOUT; \
+                } \
+            } else { \
+                logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__, \
+                            __LINE__); \
+                abort(); \
+            } \
+        } \
+    }
+
+
+
 static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
                             struct ireq *iq, block_state_t *p_blkstate)
 {
@@ -3135,26 +3160,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iq->p_buf_in += updbykey.reclen;
             p_buf_data_end = iq->p_buf_in;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             rc = updbykey_record(
                 iq, trans, (const uint8_t *)p_buf_tag_name,
@@ -3214,27 +3220,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             iq->p_buf_in += addkl.reclen;
             p_buf_data_end = iq->p_buf_in;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, 
-                            "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3333,26 +3319,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             bzero(nulls, sizeof(nulls));
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3412,25 +3379,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             have_keyless_requests = 1;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3470,26 +3419,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             rrn = delete.rrn;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3608,26 +3538,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             have_keyless_requests = 1;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3712,26 +3623,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             p_buf_tag_name_end = p_buf_tag_name + 8 /*strlen(.DEFAULT)*/;
             bzero(nulls, sizeof(nulls));
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3810,25 +3702,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             bzero(nulls, sizeof(nulls));
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -3920,25 +3794,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             p_keydat = (const char *)iq->p_buf_in;
             iq->p_buf_in += ixkeylen;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             /* convert key */
             bzero(nulls, sizeof(nulls));
@@ -4085,26 +3941,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             bzero(nulls, sizeof(nulls));
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             {
                 int bdberr = 0;
@@ -4362,26 +4199,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
 
             have_keyless_requests = 1;
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, 
-                            "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             rc = block2_qadd(iq, p_blkstate, trans, &qadd, blobs);
             free_blob_buffers(blobs, MAXBLOBS);
@@ -4456,25 +4274,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             dtalen =
                 get_size_of_schema_by_name(iq->usedb->tablename, ".ONDISK");
 
-            if (!trans) {
-                if (osql_needtransaction == OSQL_BPLOG_NOTRANS) {
-                    assert(is_block2sqlmode != 0);
-                    logmsg(LOGMSG_ERROR, "%s:%d INCORRECT TRANSACTION MIX, SQL AND DYNTAG\n",
-                            __FILE__, __LINE__);
-                    rc = osql_create_transaction(
-                        javasp_trans_handle, iq,
-                        have_blkseq ? &parent_trans : NULL, &trans,
-                        &osql_needtransaction, __LINE__);
-                    if (rc) {
-                        numerrs = 1;
-                        GOTOBACKOUT;
-                    }
-                } else {
-                    logmsg(LOGMSG_FATAL, "%s:%d NULL TRANSACTION!\n", __FILE__,
-                            __LINE__);
-                    abort();
-                }
-            }
+            MIXED_SQL_DYNTAGS(trans, parent_trans);
 
             rec = malloc(dtalen);
             rc = find_record_older_than(iq, trans, delolder.timestamp, rec,
