@@ -666,7 +666,8 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     tran->committed_begin_record = 0;
     tran->get_schema_lock = 0;
     tran->is_about_to_commit = 0;
-    tran->micro_commit = bdb_state->attr->rowlocks_micro_commit;
+    tran->micro_commit =
+        gbl_rowlocks ? bdb_state->attr->rowlocks_micro_commit : 0;
 
     if (tranid == 0)
         tran->logical_tranid = get_id(bdb_state);
