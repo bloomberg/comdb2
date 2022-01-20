@@ -13,6 +13,7 @@
    See the License for the specific language governing permissions and
    limitations under the License.
 */
+
 #include <alloca.h>
 #include <arpa/inet.h>
 #include <fcntl.h>
@@ -51,9 +52,18 @@
 #include <plhash.h>
 #include <portmuxapi.h>
 
+#ifndef likely
+#  if defined(__GNUC__)
+#    define likely(x) __builtin_expect(!!(x), 1)
+#    define unlikely(x) __builtin_expect(!!(x), 0)
+#  else
+#    define likely(x) (x)
+#    define unlikely(x) (x)
+#  endif
+#endif
+
 #define KB(x) ((x) * 1024)
 #define MB(x) ((x) * 1024 * 1024)
-#define USER_MSG_GEN
 #define TCP_BUFSZ MB(8)
 #define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
 #define MAX_DISTRESS_COUNT 3
@@ -91,7 +101,7 @@ extern int gbl_exit;
 extern int gbl_fullrecovery;
 extern int gbl_pmux_route_enabled;
 
-static double resume_lvl = 0.9;
+static double resume_lvl = 0.7;
 static struct timeval one_sec = {1, 0};
 static struct timeval connect_timeout = {1, 0};
 
@@ -348,9 +358,7 @@ struct event_info {
     int got_hello_reply;
 
     /* akq backed */
-#   ifdef USER_MSG_GEN
     int akq_gen;
-#   endif
     time_t rd_full;
     pthread_mutex_t akq_lk;
     struct evbuffer *akq_buf;
@@ -393,9 +401,7 @@ struct net_dispatch_info {
 };
 
 struct user_msg_info {
-#   ifdef USER_MSG_GEN
     int gen;
-#   endif
     struct event_info *e;
     net_send_message_header msg;
 };
@@ -839,9 +845,7 @@ static void do_disable_read(struct event_info *e)
 {
     check_rd_thd();
     Pthread_mutex_lock(&e->akq_lk);
-#   ifdef USER_MSG_GEN
     ++e->akq_gen;
-#   endif
     Pthread_mutex_unlock(&e->akq_lk);
     if (e->rd_buf) {
         evbuffer_free(e->rd_buf);
@@ -1004,10 +1008,11 @@ static void send_decom_all(int dummyfd, short what, void *data)
     hputs_nd("DECOMMISSIONED\n");
 }
 
-static void check_rd_full(struct event_info *e, uint64_t outstanding)
+static void check_rd_full(struct event_info *e)
 {
-    uint64_t max_bytes = e->net_info->rd_max;
     if (e->rd_full) return;
+    uint64_t max_bytes = e->net_info->rd_max;
+    size_t outstanding = evbuffer_get_length(e->akq_buf) + evbuffer_get_length(e->payload_buf);
     if (outstanding < max_bytes) return;
     e->rd_full = time(NULL);
     event_del(e->rd_ev);
@@ -1040,32 +1045,27 @@ static void user_msg_callback(void *work)
     struct user_msg_info *info = work;
     struct event_info *e = info->e;
     net_send_message_header *msg = &info->msg;
-    uint64_t max_bytes = e->net_info->rd_max;
-    int datalen = msg->datalen;
-    int do_work = 1;
-
-    Pthread_mutex_lock(&e->akq_lk);
-#   ifdef USER_MSG_GEN
-    if (info->gen != e->akq_gen) {
-        do_work = 0;
+    const int datalen = msg->datalen;
+    const int payload_len = evbuffer_get_length(e->payload_buf);
+    if (unlikely(payload_len < datalen)) {
+        Pthread_mutex_lock(&e->akq_lk);
+        evbuffer_add_buffer(e->payload_buf, e->akq_buf);
+        Pthread_mutex_unlock(&e->akq_lk);
     }
-#   endif
-    evbuffer_remove_buffer(e->akq_buf, e->payload_buf, datalen);
-    int outstanding = evbuffer_get_length(e->akq_buf);
-    if (e->rd_full && outstanding < (max_bytes * resume_lvl)) {
-        time_t diff = time(NULL) - e->rd_full;
-        if (diff > 5) {
-            hprintf("RESUMING RD outstanding:%dmb (max:%zumb ) after:%ds\n", outstanding / MB(1), max_bytes / MB(1), (int)diff);
+    if (unlikely(e->rd_full)) {
+        uint64_t max_bytes = e->net_info->rd_max;
+        size_t outstanding = evbuffer_get_length(e->akq_buf) + evbuffer_get_length(e->payload_buf);
+        if (outstanding < (max_bytes * resume_lvl)) {
+            time_t diff = time(NULL) - e->rd_full;
+            if (diff > 5) {
+                hprintf("RESUMING RD outstanding:%zumb (max:%zumb ) after:%ds\n",
+                        outstanding / MB(1), max_bytes / MB(1), (int)diff);
+            }
+            e->rd_full = 0;
+            evtimer_once(rd_base, resume_read, e);
         }
-        e->rd_full = 0;
-        evtimer_once(rd_base, resume_read, e);
     }
-    Pthread_mutex_unlock(&e->akq_lk);
-    if (evbuffer_get_length(e->payload_buf) != datalen) {
-        hprintf("failed to read payload_buf datalen:%d outstanding:%d\n", datalen, outstanding);
-        abort();
-    }
-    if (do_work) {
+    if (likely(info->gen == e->akq_gen)) {
         user_msg(e, msg, evbuffer_pullup(e->payload_buf, datalen));
     }
     evbuffer_drain(e->payload_buf, datalen);
@@ -1101,14 +1101,12 @@ static int process_user_msg(struct event_info *e)
     struct akq *q = get_akq();
     if (q) {
         struct user_msg_info info;
-#       ifdef USER_MSG_GEN
         info.gen = e->akq_gen;
-#       endif
         info.e = e;
         info.msg = *msg;
         Pthread_mutex_lock(&e->akq_lk);
         evbuffer_remove_buffer(e->rd_buf, e->akq_buf, datalen);
-        check_rd_full(e, evbuffer_get_length(e->akq_buf));
+        check_rd_full(e);
         Pthread_mutex_unlock(&e->akq_lk);
         akq_enqueue_work(q, &info);
     } else {
