@@ -656,11 +656,6 @@ tran_type *bdb_tran_begin_dirty(bdb_state_type *bdb_handle,
 tran_type *bdb_tran_begin_logical(bdb_state_type *bdb_state, int trak,
                                   int *bdberr);
 
-tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
-                           unsigned long long ltranid, void *firstlsn,
-                           unsigned int flags);
-tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
-                                  unsigned long long ltranid);
 void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid);
 void bdb_get_tran_lockerid(tran_type *tran, uint32_t *lockerid);
 void *bdb_get_physical_tran(tran_type *ltran);

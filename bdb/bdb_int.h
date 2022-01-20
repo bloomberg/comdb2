@@ -1403,17 +1403,9 @@ tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
                                      unsigned long long tranid, int trak,
                                      int *bdberr);
 
-tran_type *bdb_tran_start_logical_forward_roll(bdb_state_type *bdb_state,
-                                               unsigned long long tranid,
-                                               int trak, int *bdberr);
-
 tran_type *bdb_tran_start_logical(bdb_state_type *bdb_state,
                                   unsigned long long tranid, int trak,
                                   int *bdberr);
-
-tran_type *bdb_tran_start_logical_sc(bdb_state_type *bdb_state,
-                                     unsigned long long tranid, int trak,
-                                     int *bdberr);
 
 int ll_undo_add_ix_lk(bdb_state_type *bdb_state, tran_type *tran,
                       char *table_name, int ixnum, void *key, int keylen,
@@ -1480,10 +1472,6 @@ int bdb_release_ltran_locks(bdb_state_type *bdb_state, struct tran_tag *ltran,
  */
 int bdb_update_startlsn_lk(bdb_state_type *bdb_state, struct tran_tag *intran,
                            DB_LSN *firstlsn);
-
-tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
-                                      unsigned long long tranid, int trak,
-                                      int *bdberr);
 
 tran_type *bdb_tran_begin_logical_norowlocks_int(bdb_state_type *bdb_state,
                                                  unsigned long long tranid,
