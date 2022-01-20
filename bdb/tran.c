@@ -212,30 +212,6 @@ int bdb_update_startlsn_lk(bdb_state_type *bdb_state, struct tran_tag *intran,
     return 0;
 }
 
-tran_type *bdb_start_ltran_rep_sc(bdb_state_type *bdb_state,
-                                  unsigned long long ltranid)
-{
-    tran_type *tran;
-    int bdberr = 0;
-
-    if (bdb_state->parent)
-        bdb_state = bdb_state->parent;
-
-#if DEBUG_TXN_LIST
-    LOCK(&bdb_state->translist_lk)
-    {
-
-        /* Should not be in the hash */
-        assert(NULL ==
-               hash_find(bdb_state->logical_transactions_hash, &ltranid));
-    }
-    UNLOCK(&bdb_state->translist_lk);
-#endif
-
-    tran = bdb_tran_start_logical_sc(bdb_state, ltranid, 0, &bdberr);
-    return tran;
-}
-
 /* This allows the scdone 'rep-transaction' to gather locks using gbl_rep_lockid
  */
 void bdb_set_tran_lockerid(tran_type *tran, uint32_t lockerid)
@@ -288,9 +264,8 @@ void bdb_ltran_put_schema_lock(tran_type *ltran)
 
 /* Create a txn and add to the txn list.  Called directly from the replication
  * stream.  */
-tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
-                           unsigned long long ltranid, void *firstlsn,
-                           unsigned int forward_roll)
+static tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
+                                  unsigned long long ltranid, void *firstlsn)
 {
     tran_type *tran;
     int bdberr = 0;
@@ -309,11 +284,7 @@ tran_type *bdb_start_ltran(bdb_state_type *bdb_state,
     UNLOCK(&bdb_state->translist_lk);
 #endif
 
-    if (forward_roll)
-        tran =
-            bdb_tran_start_logical_forward_roll(bdb_state, ltranid, 0, &bdberr);
-    else
-        tran = bdb_tran_start_logical(bdb_state, ltranid, 0, &bdberr);
+    tran = bdb_tran_start_logical(bdb_state, ltranid, 0, &bdberr);
 
     if (firstlsn)
         bdb_update_startlsn(tran, firstlsn);
@@ -343,7 +314,7 @@ int berkdb_start_logical(DB_ENV *dbenv, void *state, uint64_t ltranid,
     assert(!txn);
 #endif
 
-    txn = bdb_start_ltran(bdb_state, ltranid, lsn, 0);
+    txn = bdb_start_ltran(bdb_state, ltranid, lsn);
     return txn ? 0 : -1;
 }
 
@@ -639,13 +610,13 @@ int tran_allocate_rlptr(tran_type *tran, DBT **rlptr, DB_LOCK **rlock)
     return (ret);
 }
 
-tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
-                                          unsigned long long tranid, int trak,
-                                          int getlock, int reptxn,
-                                          int rep_lockid, int *bdberr)
+static tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
+                                             unsigned long long logical_tranid,
+                                             int trak, int got_bdb_lock,
+                                             int reptxn, uint32_t logical_lid,
+                                             int *bdberr)
 {
     tran_type *tran;
-    int rc = 0;
     int step;
     int ismaster;
 
@@ -668,11 +639,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     tran->is_about_to_commit = 0;
     tran->micro_commit = bdb_state->attr->rowlocks_micro_commit;
 
-    if (tranid == 0)
-        tran->logical_tranid = get_id(bdb_state);
-    else {
-        tran->logical_tranid = tranid;
-    }
+    tran->logical_tranid = logical_tranid;
 
     /* LSN_NOT_LOGGED */
     tran->last_logical_lsn.file = 0;
@@ -690,21 +657,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
 
     tran->reptxn = reptxn;
 
-    if (rep_lockid) {
-        assert(tranid != 0);
-        tran->logical_lid = 0;
-    }
-
-    else {
-        rc = bdb_state->dbenv->lock_id(bdb_state->dbenv, &tran->logical_lid);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "can't acquire a locker id, tid %016llx\n",
-                    tran->logical_tranid);
-            *bdberr = BDBERR_DEADLOCK;
-            myfree(tran);
-            return NULL;
-        }
-    }
+    tran->logical_lid = logical_lid; /* 0 for replication */
 
     tran->is_rowlocks_trans = 1;
     tran->is_about_to_commit = 0;
@@ -718,27 +671,9 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     /* Put this tran in seqnum_info->key */
     Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
-    if (getlock) {
-        BDB_READLOCK("trans_start_logical");
+    tran->got_bdb_lock = got_bdb_lock;
 
-        ismaster =
-            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
-
-        /* If we're getting the lock, this has to be the master */
-        if (!ismaster && !bdb_state->in_recovery) {
-            BDB_RELLOCK();
-            logmsg(LOGMSG_ERROR, "Master change while getting logical tran.\n");
-            bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
-            *bdberr = BDBERR_READONLY;
-            myfree(tran);
-            Pthread_setspecific(bdb_state->seqnum_info->key, NULL);
-            return NULL;
-        }
-
-        tran->got_bdb_lock = 1;
-    } else
-        ismaster =
-            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+    ismaster = (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
 
     if (ismaster) {
         step = bdb_state->attr->rllist_step > 0 ? bdb_state->attr->rllist_step
@@ -770,13 +705,7 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     return tran;
 }
 
-tran_type *bdb_tran_begin_logical_int(bdb_state_type *bdb_state,
-                                      unsigned long long tranid, int trak,
-                                      int *bdberr)
-{
-    return bdb_tran_begin_logical_int_int(bdb_state, tranid, trak, 1, 0, 0,
-                                          bdberr);
-}
+#define GET_TRANID(tranid) (tranid) ? (tranid) : get_id(bdb_state)
 
 extern int gbl_extended_sql_debug_trace;
 
@@ -788,16 +717,16 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
             *file = tran->asof_lsn.file;
             *offset = tran->asof_lsn.offset;
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d using asof lsn [%d][%d]\n", 
-                        __func__, __LINE__, *file, *offset);
+                logmsg(LOGMSG_USER, "%s line %d using asof lsn [%d][%d]\n",
+                       __func__, __LINE__, *file, *offset);
             }
             return 0;
         } else if (tran && tran->birth_lsn.file) {
             *file = tran->birth_lsn.file;
             *offset = tran->birth_lsn.offset;
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d using birth lsn [%d][%d]\n", 
-                        __func__, __LINE__, *file, *offset);
+                logmsg(LOGMSG_USER, "%s line %d using birth lsn [%d][%d]\n",
+                       __func__, __LINE__, *file, *offset);
             }
             return 0;
         } else
@@ -807,8 +736,9 @@ int bdb_tran_get_start_file_offset(bdb_state_type *bdb_state, tran_type *tran,
             *file = tran->snapy_commit_lsn.file;
             *offset = tran->snapy_commit_lsn.offset;
             if (gbl_extended_sql_debug_trace) {
-                logmsg(LOGMSG_USER, "%s line %d using snappy-commit lsn [%d][%d]\n", 
-                        __func__, __LINE__, *file, *offset);
+                logmsg(LOGMSG_USER,
+                       "%s line %d using snappy-commit lsn [%d][%d]\n",
+                       __func__, __LINE__, *file, *offset);
             }
             return 0;
         } 
@@ -1304,11 +1234,13 @@ tran_type *bdb_tran_begin_shadow_int(bdb_state_type *bdb_state, int tranclass,
     return tran;
 }
 
-static tran_type *bdb_tran_begin_logical_pp(bdb_state_type *bdb_state, int trak,
-                                            int *bdberr,
-                                            unsigned long long tranid)
+tran_type *bdb_tran_begin_logical(bdb_state_type *bdb_state, int trak,
+                                  int *bdberr)
 {
-    tran_type *tran;
+    uint32_t logical_lid = 0;
+    int tranid = 0;
+    unsigned long long logical_tranid = GET_TRANID(tranid);
+    int rc;
 
     /* Note: don't get the bdb read lock here.  The only berkeley
        resources we hold are locks */
@@ -1317,21 +1249,37 @@ static tran_type *bdb_tran_begin_logical_pp(bdb_state_type *bdb_state, int trak,
     if (bdb_state->parent)
         bdb_state = bdb_state->parent;
 
-    tran = bdb_tran_begin_logical_int(bdb_state, tranid, trak, bdberr);
-
-    /* NOTE: we don't release this lock until commit/rollback time */
-    /*
-    if(!tran)
-    {
-        BDB_RELLOCK();
+    rc = bdb_state->dbenv->lock_id(bdb_state->dbenv, &logical_lid);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "can't acquire a locker id, tid %016llx\n",
+               logical_tranid);
+        *bdberr = BDBERR_DEADLOCK;
+        return NULL;
     }
-    */
 
-    return tran;
+    BDB_READLOCK("trans_start_logical");
+
+    int ismaster =
+        (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+
+    /* If we're getting the lock, this has to be the master
+     * NOTE: we don't release this lock until commit/rollback time
+     */
+    if (!ismaster && !bdb_state->in_recovery) {
+        BDB_RELLOCK();
+        logmsg(LOGMSG_ERROR, "Master change while getting logical tran.\n");
+        bdb_state->dbenv->lock_id_free(bdb_state->dbenv, logical_lid);
+        *bdberr = BDBERR_READONLY;
+        return NULL;
+    }
+
+    return bdb_tran_begin_logical_int(bdb_state, logical_tranid, trak, 1, 0,
+                                      logical_lid, bdberr);
 }
 
 static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
-                                    tran_type *parent, struct txn_properties *prop, int *bdberr,
+                                    tran_type *parent,
+                                    struct txn_properties *prop, int *bdberr,
                                     u_int32_t flags)
 {
     tran_type *tran;
@@ -1351,39 +1299,14 @@ static tran_type *bdb_tran_begin_pp(bdb_state_type *bdb_state,
     return tran;
 }
 
-tran_type *bdb_tran_begin_logical(bdb_state_type *bdb_state, int trak,
-                                  int *bdberr)
-{
-    return bdb_tran_begin_logical_pp(bdb_state, trak, bdberr, 0);
-}
-
-tran_type *bdb_tran_start_logical_sc(bdb_state_type *bdb_state,
-                                     unsigned long long tranid, int trak,
-                                     int *bdberr)
-{
-    tran_type *tran;
-    tran = bdb_tran_begin_logical_int_int(bdb_state, tranid, trak, 0, 1, 0,
-                                          bdberr);
-    return tran;
-}
-
-tran_type *bdb_tran_start_logical_forward_roll(bdb_state_type *bdb_state,
-                                               unsigned long long tranid,
-                                               int trak, int *bdberr)
-{
-    tran_type *tran;
-    tran = bdb_tran_begin_logical_int_int(bdb_state, tranid, trak, 0, 1, 0,
-                                          bdberr);
-    return tran;
-}
-
 tran_type *bdb_tran_start_logical(bdb_state_type *bdb_state,
                                   unsigned long long tranid, int trak,
                                   int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_logical_int_int(bdb_state, tranid, trak, 0, 1, 1,
-                                          bdberr);
+    unsigned long long logical_tranid = GET_TRANID(tranid);
+    tran = bdb_tran_begin_logical_int(bdb_state, logical_tranid, trak, 0, 1, 0,
+                                      bdberr);
     return tran;
 }
 
@@ -1395,8 +1318,9 @@ tran_type *bdb_tran_continue_logical(bdb_state_type *bdb_state,
                                      int *bdberr)
 {
     tran_type *tran;
-    tran = bdb_tran_begin_logical_int_int(bdb_state, tranid, trak, 0, 0, 1,
-                                          bdberr);
+    unsigned long long logical_tranid = GET_TRANID(tranid);
+    tran = bdb_tran_begin_logical_int(bdb_state, logical_tranid, trak, 0, 0, 0,
+                                      bdberr);
     return tran;
 }
 
