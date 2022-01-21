@@ -403,16 +403,13 @@ int comdb2PrepareSC(Vdbe *v, Parse *pParse, int int_arg,
 
 int (*externalComdb2AuthenticateUserDDL)(void*, const char *tablename) = NULL;
 int (*externalComdb2CheckOpAccess)(void *) = 0;
-void * (*externalMakeAuthData) (const char *, int, int, int, void *);
-void * (*externGetAuthData) (void*) = 0;
 
 static int comdb2AuthenticateUserDDL(const char *tablename)
 {
      struct sqlclntstate *clnt = get_sql_clnt();
 
      if (gbl_uses_externalauth && externalComdb2AuthenticateUserDDL) {
-         if (!clnt->authdata && externGetAuthData)
-             clnt->authdata = externGetAuthData(clnt);
+         clnt->authdata = get_authdata(clnt);
          if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
@@ -448,8 +445,7 @@ static int comdb2AuthenticateUserDDL(const char *tablename)
 static int comdb2CheckOpAccess(void) {
     struct sqlclntstate *clnt = get_sql_clnt();
     if (gbl_uses_externalauth && externalComdb2CheckOpAccess) {
-         if (!clnt->authdata && externGetAuthData)
-             clnt->authdata = externGetAuthData(clnt);
+         clnt->authdata = get_authdata(clnt);
          if (gbl_externalauth_warn && !clnt->authdata) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);

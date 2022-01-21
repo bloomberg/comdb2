@@ -73,7 +73,6 @@ void check_access_controls(struct dbenv *dbenv)
 }
 
 int (*externalComdb2AuthenticateUserMakeRequest)(void *) = NULL;
-extern void *(*externGetAuthData)(void *);
 
 /* If user password does not match this function
  * will write error response and return a non 0 rc
@@ -84,8 +83,7 @@ static int check_user_password(struct sqlclntstate *clnt)
     int valid_user;
 
     if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
-        if (!clnt->authdata && externGetAuthData)
-            clnt->authdata = externGetAuthData(clnt);
+        clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata) {
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
@@ -190,7 +188,6 @@ int check_sql_access(struct sqlthdstate *thd, struct sqlclntstate *clnt)
 int (*externalComdb2AuthenticateUserRead)(void *, const char *tablename) = NULL;
 int (*externalComdb2AuthenticateUserWrite)(void *,
                                            const char *tablename) = NULL;
-extern void *(*externGetAuthData)(void *);
 
 int access_control_check_sql_write(struct BtCursor *pCur,
                                    struct sql_thread *thd)
@@ -227,8 +224,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
 
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserWrite) {
-        if (!clnt->authdata && externGetAuthData)
-            clnt->authdata = externGetAuthData(clnt);
+        clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
@@ -306,8 +302,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
     /* Check it only if engine is open already. */
     if (gbl_uses_externalauth && (thd->clnt->in_sqlite_init == 0) &&
         externalComdb2AuthenticateUserRead) {
-        if (!clnt->authdata && externGetAuthData)
-            clnt->authdata = externGetAuthData(clnt);
+        clnt->authdata = get_authdata(clnt);
         if (gbl_externalauth_warn && !clnt->authdata)
             logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
                    clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
