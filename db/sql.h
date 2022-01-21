@@ -394,6 +394,7 @@ typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 typedef int(override_type_func)(struct sqlclntstate *, int);
+typedef void *(auth_func)(struct sqlclntstate *);
 
 #define SQLITE_CALLBACK_API(ret, name)                                         \
     ret (*column_##name)(struct sqlclntstate *, sqlite3_stmt *, int)
@@ -449,6 +450,7 @@ struct plugin_callbacks {
     plugin_func *has_x509; /* newsql_has_x509_sbuf */
     plugin_func *local_check; /* newsql_local_check_evbuffer */
     plugin_func *peer_check; /* newsql_peer_check_evbuffer */
+    auth_func *get_authdata; /* newsql_get_authdata */
     override_type_func *set_timeout; /* newsql_set_timeout_sbuf */
 
     /* Optional */
@@ -512,6 +514,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, has_x509);                                                                    \
         make_plugin_callback(clnt, name, local_check);                                                                 \
         make_plugin_callback(clnt, name, peer_check);                                                                  \
+        make_plugin_callback(clnt, name, get_authdata);                                                                \
         make_plugin_callback(clnt, name, set_timeout);                                                                 \
         make_plugin_optional_null(clnt, count);                                                                        \
         make_plugin_optional_null(clnt, type);                                                                         \
@@ -539,6 +542,7 @@ int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
 int get_client_retries(struct sqlclntstate *);
+void *get_authdata(struct sqlclntstate *);
 
 struct clnt_ddl_context {
     /* Name of the table */

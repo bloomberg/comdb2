@@ -554,6 +554,11 @@ int get_client_retries(struct sqlclntstate *clnt)
     return clnt->plugin.get_client_retries(clnt);
 }
 
+void *get_authdata(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.get_authdata(clnt);
+}
+
 static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 {
     return clnt->plugin.skip_row(clnt, rowid);
@@ -5222,6 +5227,10 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
         free(clnt->context[i]);
     }
     free(clnt->context);
+    if (clnt->authdata) {
+        free(clnt->authdata);
+        clnt->authdata = NULL;
+    }
     clnt->context = NULL;
     clnt->ncontext = 0;
     clnt->statement_query_effects = 0;
@@ -5232,6 +5241,7 @@ void reset_clnt(struct sqlclntstate *clnt, int initial)
     clnt->rowbuffer = 1;
     clnt->flat_col_vals = 0;
     clnt->request_fp = 0;
+
     if (gbl_sockbplog) {
         init_bplog_socket(clnt);
     }
@@ -6746,6 +6756,10 @@ static int internal_send_intrans_response(struct sqlclntstate *a)
 static int internal_peer_check(struct sqlclntstate *a)
 {
     return 0;
+}
+void *internal_get_authdata(struct sqlclntstate *a)
+{
+    return NULL;
 }
 static int internal_local_check(struct sqlclntstate *a)
 {
