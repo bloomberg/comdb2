@@ -86,11 +86,6 @@ static int check_user_password(struct sqlclntstate *clnt)
     if (gbl_uses_externalauth && externalComdb2AuthenticateUserMakeRequest) {
         if (!clnt->authdata && externGetAuthData)
             clnt->authdata = externGetAuthData(clnt);
-        if (gbl_externalauth_warn && !clnt->authdata) {
-            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-            return 0;
-        }
         int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
         if (rc) {
             write_response(clnt, RESPONSE_ERROR,
@@ -229,10 +224,7 @@ int access_control_check_sql_write(struct BtCursor *pCur,
         externalComdb2AuthenticateUserWrite) {
         if (!clnt->authdata && externGetAuthData)
             clnt->authdata = externGetAuthData(clnt);
-        if (gbl_externalauth_warn && !clnt->authdata)
-            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-        else if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name)) {
+        if (externalComdb2AuthenticateUserWrite(clnt->authdata, table_name)) {
             char msg[1024];
             snprintf(msg, sizeof(msg), "Write access denied for table %s",
                      table_name);
@@ -308,10 +300,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
         externalComdb2AuthenticateUserRead) {
         if (!clnt->authdata && externGetAuthData)
             clnt->authdata = externGetAuthData(clnt);
-        if (gbl_externalauth_warn && !clnt->authdata)
-            logmsg(LOGMSG_INFO, "Client %s pid:%d mach:%d is missing authentication data\n",
-                   clnt->argv0 ? clnt->argv0 : "???", clnt->conninfo.pid, clnt->conninfo.node);
-        else if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name)) {
+        if (externalComdb2AuthenticateUserRead(clnt->authdata, table_name)) {
             char msg[1024];
             snprintf(msg, sizeof(msg), "Read access denied for table %s",
                      table_name);
