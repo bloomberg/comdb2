@@ -1437,8 +1437,10 @@ static void reqlog_setup_begin_commit_rollback(struct sqlthdstate *thd, struct s
         for (const char *s = clnt->sql; *s != '\0' && *s != ' ' && i < sizeof(stmt) - 1; s++, i++) {
             stmt[i] = (char) tolower(*s);
         }
-        calc_fingerprint(stmt, &len, fp);
-        reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
+        if (gbl_fingerprint_queries) {
+            calc_fingerprint(stmt, &len, fp);
+            reqlog_set_fingerprint(thd->logger, (const char *)fp, FINGERPRINTSZ);
+        }
     }
     log_queue_time(thd->logger, clnt);
 }
@@ -3275,6 +3277,32 @@ static void normalize_stmt_and_store(
   }
 }
 
+static struct fingerprint_track *prepare_fingerprint(struct sqlclntstate *clnt,
+                                                     struct sql_state *rec,
+                                                     unsigned char fingerprint[FINGERPRINTSZ]) {
+    struct fingerprint_track *t = NULL;
+    size_t unused;
+
+    if (!gbl_fingerprint_queries) {
+        return NULL;
+    }
+
+    /* Generate normalized sql */
+    free_normalized_sql(clnt);
+    normalize_stmt_and_store(clnt, rec);
+
+    /* Calculate fingerprint */
+    calc_fingerprint(clnt->work.zNormSql, &unused, fingerprint);
+
+    Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
+    if (gbl_fingerprint_hash) {
+        t = hash_find(gbl_fingerprint_hash, fingerprint);
+    }
+    Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
+
+    return t;
+}
+
 /**
  * Get a sqlite engine, either from cache or building a new one
  * Locks tables to prevent any schema changes for them
@@ -3285,7 +3313,9 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
                                  struct sql_state *rec, struct errstat *err,
                                  int flags)
 {
-    int normalize_sql_done = 0;
+    struct fingerprint_track *t = NULL;
+    unsigned char fingerprint[FINGERPRINTSZ];
+
     int recreate = (flags & PREPARE_RECREATE);
     int rc = sqlengine_prepare_engine(thd, clnt, recreate);
     if (thd->sqldb == NULL) {
@@ -3323,6 +3353,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
+        if (rc == SQLITE_OK) {
+            t = prepare_fingerprint(clnt, rec, fingerprint);
+        }
+
         /* Prepare the query with the query_preparer plugin. */
         if (rc == SQLITE_OK && gbl_old_column_names && rec->stmt &&
             !clnt->fdb_state.remote_sql_sb && query_preparer_plugin &&
@@ -3330,36 +3364,12 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
             sqlite3_stmt_readonly(rec->stmt) &&
             !sqlite3_stmt_isexplain(rec->stmt) &&
             (thd->authState.numDdls == 0)) {
-            int do_reprepare = 0;
-            struct fingerprint_track *t = NULL;
-
-            if (gbl_fingerprint_queries) {
-                unsigned char fingerprint[FINGERPRINTSZ];
-                size_t unused;
-
-                /* Generate normalized sql */
-                free_normalized_sql(clnt);
-                normalize_stmt_and_store(clnt, rec);
-                normalize_sql_done = 1;
-
-                /* Calculate fingerprint */
-                calc_fingerprint(clnt->work.zNormSql, &unused, fingerprint);
-
-                Pthread_mutex_lock(&gbl_fingerprint_hash_mu);
-                if (gbl_fingerprint_hash) {
-                    t = hash_find(gbl_fingerprint_hash, fingerprint);
-                    if (t && (t->typeMismatch || t->nameMismatch)) {
-                        do_reprepare = 1;
-                    }
-                }
-                Pthread_mutex_unlock(&gbl_fingerprint_hash_mu);
-            }
 
             /* Prepare the query again with the *old sqlite version*, if
              * - there is no fingerprint, or
              * - it resulted in mismatching column name(s)/type(s) in past executions
              */
-            if (!t || do_reprepare) {
+            if (!t || (t->typeMismatch || t->nameMismatch)) {
                 char **column_names;
                 char **column_decltypes;
                 int column_count;
@@ -3395,10 +3405,10 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
 
     if (rec->stmt) {
         thd->sqlthd->prepms = comdb2_time_epochms() - startPrepMs;
-        if (!normalize_sql_done) {
-            free_normalized_sql(clnt);
-            normalize_stmt_and_store(clnt, rec);
-        }
+
+        if (!t) prepare_fingerprint(clnt, rec, fingerprint);
+        reqlog_set_fingerprint(thd->logger, (const char *)fingerprint, FINGERPRINTSZ);
+
         sqlite3_resetclock(rec->stmt);
         thr_set_current_sql(rec->sql);
     } else if (rc == 0) {
