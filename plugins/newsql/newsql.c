@@ -425,6 +425,31 @@ static int newsql_response(struct sqlclntstate *c, const CDB2SQLRESPONSE *r,
     return newsql_response_int(c, r, RESPONSE_HEADER__SQL_RESPONSE, flush);
 }
 
+/* This is called with write mutex already locked */
+static int newsql_timeout(struct sqlclntstate *clnt)
+{
+    CDB2SQLRESPONSE resp = CDB2__SQLRESPONSE__INIT;
+    resp.error_code = SQLHERR_LIMIT;
+    resp.error_string = "query timed out";
+    resp.response_type = clnt->osql.sent_column_data ? RESPONSE_TYPE__COLUMN_VALUES : RESPONSE_TYPE__COLUMN_NAMES;
+    size_t len = cdb2__sqlresponse__get_packed_size(&resp);
+    struct newsqlheader hdr = {0};
+    hdr.type = ntohl(RESPONSE_HEADER__SQL_RESPONSE);
+    hdr.length = ntohl(len);
+    struct pb_sbuf_writer writer = PB_SBUF_WRITER_INIT(clnt->sb);
+    int rc;
+    if ((rc = sbuf2write((char *)&hdr, sizeof(hdr), clnt->sb)) != sizeof(hdr)) {
+        logmsg(LOGMSG_ERROR, "sbuf2write failed rc:%d\n", rc);
+        return -1;
+    }
+    cdb2__sqlresponse__pack_to_buffer(&resp, (ProtobufCBuffer *)&writer);
+    if (writer.nbytes != len) {
+        logmsg(LOGMSG_ERROR, "cdb2__sqlresponse__pack_to_buffer failed nbytes:%d\n", writer.nbytes);
+        return -1;
+    }
+    return 0;
+}
+
 static int get_col_type(struct sqlclntstate *clnt, sqlite3_stmt *stmt, int col)
 {
     struct newsql_appdata *appdata = clnt->appdata;
@@ -1068,6 +1093,8 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return newsql_columns_lua(c, a);
     case RESPONSE_COLUMNS_STR:
         return newsql_columns_str(c, a, i);
+    case RESPONSE_COST:
+        return newsql_cost(c);
     case RESPONSE_DEBUG:
         return newsql_debug(c, a);
     case RESPONSE_ERROR:
@@ -1094,10 +1121,10 @@ static int newsql_write_response(struct sqlclntstate *c, int t, void *a, int i)
         return newsql_row_lua(c, a);
     case RESPONSE_ROW_STR:
         return newsql_row_str(c, a, i);
+    case RESPONSE_TIMEOUT:
+        return newsql_timeout(c);
     case RESPONSE_TRACE:
         return newsql_trace(c, a);
-    case RESPONSE_COST:
-        return newsql_cost(c);
     /* fastsql only messages */
     case RESPONSE_EFFECTS:
     case RESPONSE_ERROR_PREPARE_RETRY:
