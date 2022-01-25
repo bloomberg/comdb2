@@ -354,8 +354,7 @@ void unlock_client_write_lock(struct sqlclntstate *clnt)
 int write_response(struct sqlclntstate *clnt, int R, void *D, int I)
 {
 #ifdef DEBUG
-    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D,
-           I);
+    logmsg(LOGMSG_DEBUG, "write_response(%s,%p,%d)\n", WriteRespString[R], D, I);
 #endif
     return clnt->plugin.write_response(clnt, R, D, I);
 }
@@ -4991,33 +4990,39 @@ int dispatch_sql_query(struct sqlclntstate *clnt)
                 goto done;
             }
             int rc;
-            rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex,
-                                        &st);
+            rc = pthread_cond_timedwait(&clnt->wait_cond, &clnt->wait_mutex, &st);
             if (clnt->done) {
                 Pthread_mutex_unlock(&clnt->wait_mutex);
                 goto done;
             }
             if (rc == ETIMEDOUT) {
                 struct timespec diff;
-                TIMESPEC_SUB(st, last, diff);
-                if (diff.tv_sec >= clnt->heartbeat) {
-                    last = st;
-                    send_heartbeat(clnt);
-                    rc = fdb_heartbeats(clnt);
-                    if (rc)
-                        return -1;
-                }
                 if (clnt->query_timeout > 0 && !clnt->statement_timedout) {
                     TIMESPEC_SUB(st, first, diff);
                     if (diff.tv_sec >= clnt->query_timeout) {
-                        clnt->statement_timedout = 1;
-                        logmsg(LOGMSG_WARN, "%s:%d Query exceeds max allowed time %d.\n",
-                                __FILE__, __LINE__, clnt->query_timeout);
+                        if (lock_client_write_trylock(clnt) == 0) {
+                            clnt->statement_timedout = 1;
+                            logmsg(LOGMSG_WARN, "%s:%d Query exceeds max allowed time %d.\n", __FILE__, __LINE__, clnt->query_timeout);
+                            write_response(clnt, RESPONSE_TIMEOUT, 0, 0);
+                            sbuf2flush(clnt->sb);
+                            int fd = sbuf2fileno(clnt->sb);
+                            shutdown(fd, SHUT_RDWR);
+                            unlock_client_write_lock(clnt);
+                        }
+                    }
+                }
+                if (!clnt->statement_timedout) {
+                    TIMESPEC_SUB(st, last, diff);
+                    if (diff.tv_sec >= clnt->heartbeat) {
+                        last = st;
+                        send_heartbeat(clnt);
+                        rc = fdb_heartbeats(clnt);
+                        if (rc)
+                            return -1;
                     }
                 }
             } else if (rc) {
-                logmsg(LOGMSG_FATAL, "%s:%d pthread_cond_timedwait rc %d", __FILE__,
-                        __LINE__, rc);
+                logmsg(LOGMSG_FATAL, "%s:%d pthread_cond_timedwait rc %d", __FILE__, __LINE__, rc);
                 exit(1);
             }
 

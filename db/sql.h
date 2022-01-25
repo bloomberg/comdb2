@@ -360,6 +360,7 @@ enum {
     XRESPONSE(RESPONSE_ROW_LAST_DUMMY)                                         \
     XRESPONSE(RESPONSE_ROW_LUA)                                                \
     XRESPONSE(RESPONSE_ROW_STR)                                                \
+    XRESPONSE(RESPONSE_TIMEOUT)                                                \
     XRESPONSE(RESPONSE_TRACE)
 
 #define XRESPONSE(x) x,

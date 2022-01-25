@@ -2,7 +2,6 @@
 bash -n "$0" | exit 1
 
 set -e
-set -x
 
 if [[ "x${DEBUGGER}" == "xvalgrind" ]] ; then
     CDB2SQL_EXE="$DEBUGGER $CDB2SQL_EXE" 
@@ -210,10 +209,52 @@ assertres ()
     fi
 }
 
+function test_max_query_time {
+#Get a host to run on
+replicant=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $dbnm default "select comdb2_host()")
 
+#reduce maxt
+default_maxt=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $dbnm --host $replicant "select value from comdb2_tunables where name='sqlenginepool.maxt'")
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $replicant "exec procedure sys.cmd.send('sqlenginepool maxt 1')" > /dev/null
+new_maxt=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $dbnm --host $replicant "select value from comdb2_tunables where name='sqlenginepool.maxt'")
+assertres $new_maxt 1
 
+#occupy the single available sql thread - wait a bit to make sure it is dispatched and picked up
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $replicant "select sleep(3)" &
+sleep 0.1
+
+#run a query which should timeout
+{
+time $CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $replicant <<EOF > /dev/null 2> query.out
+set maxquerytime 2
+select * from generate_series()
+EOF
+} 2> time.out
+
+#confirm that query was timed out
+grep 'query timed out' query.out > /dev/null
+query_rc=$?
+assertres $query_rc 0
+
+#confirm query run-time
+#real    0m2.036s -> 2
+time_taken=$(grep real time.out | cut -f 2  | cut -f 2 -d m | cut -f 1 -d . )
+assertres $time_taken 2
+
+wait
+assertres $? 0
+
+#restore maxt
+$CDB2SQL_EXE ${CDB2_OPTIONS} $dbnm --host $replicant "exec procedure sys.cmd.send('sqlenginepool maxt $default_maxt')" > /dev/null
+maxt=$($CDB2SQL_EXE -tabs ${CDB2_OPTIONS} $dbnm --host $replicant "select value from comdb2_tunables where name='sqlenginepool.maxt'")
+assertres $maxt $default_maxt
+}
 
 echo "Basic tests"
+
+set +e #query will timeout and fail
+test_max_query_time
+set -e
 
 res=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default "select 1"`
 assertres $res 1
