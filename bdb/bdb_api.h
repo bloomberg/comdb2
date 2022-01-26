@@ -2370,5 +2370,6 @@ void dispatch_waiting_clients(void);
 struct sqlclntstate;
 int release_locks_int(const char *trace, const char *func, int line, struct sqlclntstate *);
 #define release_locks(trace) release_locks_int(trace, __func__, __LINE__, NULL)
+int bdb_estimate_table_fill(bdb_state_type *bdb_state, tran_type *txn, int dtafile, int stripe, int ixnum, double *percent_free, double *percent_empty, int *bdberr);
 
 #endif

@@ -1067,3 +1067,84 @@ done:
 		free(buf);
 	return npages;
 }
+
+/*
+ * __db_estimate_fill --
+ * Look at some random pages and estimate free pages and fill factor.
+ *
+ * PUBLIC: int __db_estimate_fill __P((DB *, DB_TXN *, int, double *, double *));
+ */
+int
+__db_estimate_fill(dbp, txn, npages, percent_freelist, avg_percent_empty)
+		DB *dbp;
+        DB_TXN *txn;
+		int npages;
+		double *percent_freelist;
+		double *avg_percent_empty;
+{
+	// take 1 - just pull the pages into the buffer pool and look at them
+	int ret;
+	int nfree = 0;
+	u_int64_t freespace = 0;
+	db_pgno_t maxpages;
+	DBC *dbc = NULL;
+	DB_LOCK lk;
+	DB_MPOOLFILE *mpf = dbp->mpf;
+	PAGE *pg;
+
+	*percent_freelist = 0;
+	*avg_percent_empty = 0;
+
+	ret = __db_get_numpages(dbp, &maxpages);
+	if (ret)
+		return ret;
+
+	ret = dbp->cursor(dbp, txn, &dbc, 0);
+	if (ret)
+		return ret;
+
+	for (int i = 0; i < npages; i++) {
+		db_pgno_t pgno = 1 + rand() % (maxpages-1);
+		ret = __db_lget(dbc, LCK_ALWAYS, pgno, DB_LOCK_READ, 0, &lk);
+		if (ret)
+			goto done;
+
+		if ((ret = __memp_fget(mpf, &pgno, 0, &pg)) != 0) {
+			(void)__LPUT(dbc, lk);
+			goto done;
+		}
+
+		if (TYPE(pg) == P_INVALID) {
+			nfree++;
+		}
+		else {
+			int fs = P_FREESPACE(dbp, pg);
+			if (fs < 0 || fs > dbp->pgsize)
+				fs = dbp->pgsize;
+			freespace += fs;
+		}
+
+		ret = __memp_fput(mpf, pg, 0);
+		if (ret) {
+			(void)__LPUT(dbc, lk);
+			goto done;
+		}
+		(void)__LPUT(dbc, lk);
+	}
+
+	u_int32_t pgsize;
+	pgsize = dbp->pgsize - SIZEOF_PAGE;
+	*percent_freelist = ((double) nfree /  npages) * 100;
+	*avg_percent_empty = 100 - (((double) freespace / (npages * pgsize)) * 100);
+    if (*avg_percent_empty < 0)
+        *avg_percent_empty = 1;
+
+done:
+	if (dbc) {
+		int cret = dbc->c_close(dbc);
+		if (cret && ret == 0)
+			ret = cret;
+	}
+
+	return ret;
+}
