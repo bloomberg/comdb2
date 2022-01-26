@@ -3495,7 +3495,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     struct stat sb;
     char logname[1024];
     int low_headroom_count = 0;
-    int lowfilenum;
+    int lowfilenum;                 /* the lowest log file across the cluster */
+    int local_lowfilenum = INT_MAX; /* the lowest log file of this node */
     int lwm_lowfilenum = -1;
     char **list = NULL;
     int attrlowfilenum;
@@ -3553,13 +3554,14 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     extern int gbl_logical_live_sc;
     if (gbl_logical_live_sc) {
         unsigned int sc_logical_lwm = sc_get_logical_redo_lwm();
-        if (sc_logical_lwm && sc_logical_lwm < lowfilenum) {
-            lowfilenum = sc_logical_lwm;
-            if (bdb_state->attr->debug_log_deletion) {
-                logmsg(
-                    LOGMSG_USER,
-                    "Setting lowfilenum to %d for schema change logical redo\n",
-                    lowfilenum);
+        if (sc_logical_lwm) {
+            if (sc_logical_lwm < local_lowfilenum)
+                local_lowfilenum = sc_logical_lwm;
+            if (sc_logical_lwm < lowfilenum) {
+                lowfilenum = sc_logical_lwm;
+                if (bdb_state->attr->debug_log_deletion) {
+                    logmsg(LOGMSG_USER, "Setting lowfilenum to %d for schema change logical redo\n", lowfilenum);
+                }
             }
         }
     }
@@ -3569,8 +3571,12 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
     /* if we have a maximum filenum defined in bdb attributes which is lower,
      * use that instead. */
     attrlowfilenum = bdb_state->attr->logdeletelowfilenum;
-    if (attrlowfilenum >= 0 && attrlowfilenum < lowfilenum)
-        lowfilenum = attrlowfilenum;
+    if (attrlowfilenum >= 0) {
+        if (attrlowfilenum < lowfilenum)
+            lowfilenum = attrlowfilenum;
+        if (attrlowfilenum < local_lowfilenum)
+            local_lowfilenum = attrlowfilenum;
+    }
 
     /* get the filenum of our logical LWM. We can delete any log files
        lower than that */
@@ -3587,6 +3593,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
            can be deleted. */
         if (lwmlsn.file - 1 < lowfilenum)
             lowfilenum = lwmlsn.file - 1;
+        if (lwmlsn.file - 1 < local_lowfilenum)
+            local_lowfilenum = lwmlsn.file - 1;
         lwm_lowfilenum = (lwmlsn.file - 1);
     }
 
@@ -3595,6 +3603,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
                 "%s:%d failed to get snapisol/serializable lwm lsn number!\n",
                 __FILE__, __LINE__);
     } else {
+        if (snapylsn.file <= local_lowfilenum)
+            local_lowfilenum = snapylsn.file - 1;
         if (snapylsn.file <= lowfilenum) {
             if (bdb_state->attr->debug_log_deletion) {
                 logmsg(LOGMSG_USER,
@@ -3622,6 +3632,8 @@ static void delete_log_files_int(bdb_state_type *bdb_state)
         asoflsn = bdb_asof_current_lsn;
         Pthread_mutex_unlock(&bdb_asof_current_lsn_mutex);
 
+        if (asoflsn.file <= local_lowfilenum)
+            local_lowfilenum = asoflsn.file - 1;
         if (asoflsn.file <= lowfilenum) {
             if (bdb_state->attr->debug_log_deletion) {
                 logmsg(LOGMSG_USER,
@@ -3839,6 +3851,14 @@ low_headroom:
             if (filenum > send_filenum)
                 send_filenum = filenum;
 
+            /*
+             * As long as the file is below our own local low number, we can
+             * get rid of the new snapshot temptables. We do not need to keep those
+             * around if we're only holding log files for other replicants to recover.
+             */
+            if (filenum <= local_lowfilenum && gbl_new_snapisol_asof)
+                bdb_snapshot_asof_delete_log(bdb_state, filenum, sb.st_mtime);
+
             if ((filenum <= lowfilenum && delete_adjacent) || is_low_headroom) {
                 /* delete this file if we got this far AND it's under the
                  * replicated low number */
@@ -3863,11 +3883,6 @@ low_headroom:
 
                 if (ctrace_info) {
                     ctrace("deleting log %s %d\n", logname, filenum);
-                }
-
-                if (gbl_new_snapisol_asof) {
-                    bdb_snapshot_asof_delete_log(bdb_state, filenum,
-                                                 sb.st_mtime);
                 }
 
                 rc = unlink(logname);
