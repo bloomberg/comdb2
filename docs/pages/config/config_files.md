@@ -668,6 +668,7 @@ can be queried with the `stat autonalyze` command.
 |RLLIST_STEP | 10 | Reallocate rowlock lists in steps of this size.
 |SC_VIA_DDL_ONLY | 0 | If DDL_ONLY is set, we don't do checks needed for comdb2sc 
 |file_permissions | 0660 | Default filesystem permissions for database files.
+|FILL_ESTIMATE_SAMPLE_SIZE| 50 | How many pages per file will be examined by comdb2_space_estimate table queries
 
 #### Log configuration
 

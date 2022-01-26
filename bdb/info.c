@@ -1334,7 +1334,7 @@ void bdb_process_user_command(bdb_state_type *bdb_state, char *line, int lline,
     static char *safecmds[] = {
         "bdbstat",  "cluster",   "cachestat", "repstat",     "logstat",
         "txnstat",  "ltranstat", "sanc",      "log_archive", "help",
-        "bdbstate", "lockstat",  "attr",      "bbstat",      "bdblockdump"};
+        "bdbstate", "lockstat",  "attr",      "bbstat",      "bdblockdump", "fill"};
 
     /* if we were passed a child, find his parent */
     if (bdb_state->parent)
