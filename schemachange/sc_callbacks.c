@@ -773,7 +773,7 @@ static int scdone_add(const char tablename[], void *arg, scdone_t type)
 
     dyns_init_globals();
     rc = add_table_to_environment(table_copy, csc2text, NULL, NULL, tran,
-                                  timepart_is_next_shard(table_copy));
+                                  timepart_is_next_shard(table_copy, NULL));
     dyns_cleanup_globals();
     if (rc) {
         logmsg(LOGMSG_FATAL, "%s: error adding table %s.\n", __func__,
