@@ -2110,7 +2110,7 @@ osql_create_transaction(struct javasp_trans_state *javasp_trans_handle,
                 *trans = bdb_get_physical_tran(iq->sc_logical_tran);
                 irc = create_child_transaction(iq, *trans, &(iq->sc_tran));
                 if (irc == 0 && gbl_sc_close_txn)
-                    irc = create_child_transaction(iq, *parent_trans,
+                    irc = create_child_transaction(iq, *trans,
                                                    &(iq->sc_close_tran));
             }
         }
