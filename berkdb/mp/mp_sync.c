@@ -19,7 +19,9 @@ static const char revid[] = "$Id: mp_sync.c,v 11.80 2003/09/13 19:20:41 bostic E
 #include "dbinc/txn.h"
 
 #include <sys/types.h>
+#ifndef _AIX
 #include <sys/stat.h>
+#endif
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
