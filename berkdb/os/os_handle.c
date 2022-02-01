@@ -13,7 +13,9 @@ static const char revid[] = "$Id: os_handle.c,v 11.32 2003/02/16 15:54:03 bostic
 
 #ifndef NO_SYSTEM_INCLUDES
 #include <sys/types.h>
+#ifndef _AIX
 #include <sys/stat.h>
+#endif
 #include <fcntl.h>
 #include <string.h>
 #include <unistd.h>
