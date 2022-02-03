@@ -2552,11 +2552,29 @@ void sqlite3VdbeAddTable(
   pTbls = p->tbls;
   pTbls = sqlite3DbRealloc(p->db, pTbls, (numTables+1)*sizeof(Table*));
   if( pTbls==0 ) return;
-  memset(&pTbls[numTables], 0, (numTables+1-p->numTables)*sizeof(Table*));
   pTbls[numTables] = pTab;
   pTab->nTabRef++;
   p->tbls = pTbls;
   p->numTables++;
+}
+
+void sqlite3VdbeTransferTables(
+   Vdbe *pTo,
+   Vdbe *pFrom
+){
+  if (!pTo || !pFrom) return;
+
+  Table **pTbls = pTo->tbls;
+  int numTables = pTo->numTables;
+  assert( numTables>=0 );
+  pTbls = sqlite3DbRealloc(pTo->db, pTbls, (numTables+pFrom->numTables)*sizeof(Table*));
+  if( pTbls==0 ) return;
+  int i;
+  for(i=0; i<pFrom->numTables; i++){
+    pTbls[numTables+i] = pFrom->tbls[i];
+  }
+  pTo->tbls = pTbls;
+  pTo->numTables += pFrom->numTables;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
