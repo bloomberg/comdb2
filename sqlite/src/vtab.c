@@ -1174,6 +1174,7 @@ int sqlite3VtabEponymousTableInit(Parse *pParse, Module *pMod){
     sqlite3VtabEponymousTableClear(db, pMod);
     return 0;
   }
+  sqlite3VdbeAddTable(pParse->pVdbe, pTab);
   return 1;
 }
 
