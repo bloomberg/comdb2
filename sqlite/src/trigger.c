@@ -973,6 +973,9 @@ static TriggerPrg *codeRowTrigger(
     transferParseError(pParse, pSubParse);
     if( db->mallocFailed==0 && pParse->nErr==0 ){
       pProgram->aOp = sqlite3VdbeTakeOpArray(v, &pProgram->nOp, &pTop->nMaxArg);
+#if defined(SQLITE_BUILDING_FOR_COMDB2)
+      sqlite3VdbeTransferTables(pParse->pVdbe, pSubParse->pVdbe);
+#endif
     }
     pProgram->nMem = pSubParse->nMem;
     pProgram->nCsr = pSubParse->nTab;
