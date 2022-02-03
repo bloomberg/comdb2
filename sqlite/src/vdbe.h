@@ -264,6 +264,7 @@ VdbeOp *sqlite3VdbeAddOpList(Vdbe*, int nOp, VdbeOpList const *aOp,int iLineno);
 void sqlite3VdbeAddParseSchemaOp(Vdbe*,int,char*);
 #if defined(SQLITE_BUILDING_FOR_COMDB2)
 void sqlite3VdbeAddTable(Vdbe*,Table*);
+void sqlite3VdbeTransferTables(Vdbe*,Vdbe*);
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 void sqlite3VdbeChangeOpcode(Vdbe*, u32 addr, u8);
 void sqlite3VdbeChangeP1(Vdbe*, u32 addr, int P1);
