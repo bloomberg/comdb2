@@ -1,0 +1,4 @@
+(rows inserted=1)
+[insert into t4 (id, d32) values (1, "1.23")] rc 0
+(d32='1.23')
+[select d32 from t4 where id < 40 order by id] rc 0

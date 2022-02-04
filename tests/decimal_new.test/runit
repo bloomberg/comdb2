@@ -58,9 +58,11 @@ for schema in t datacopy_t ; do
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table if exists t1"
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table if exists t2"
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table if exists t3"
+    cdb2sql ${CDB2_OPTIONS} $a_dbn default "drop table if exists t4"
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t1 { `cat "$schema"1.csc2 ` }"
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t2 { `cat "$schema"2.csc2 ` }"
     cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t3 { `cat "$schema"3.csc2 ` }"
+    cdb2sql ${CDB2_OPTIONS} $a_dbn default "create table t4 { `cat "$schema"4.csc2 ` }"
 
     # Iterate through input files
     for testcase in $files ; do

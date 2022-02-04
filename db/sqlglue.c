@@ -7103,7 +7103,7 @@ int get_data(BtCursor *pCur, struct schema *sc, uint8_t *in, int fnum, Mem *m,
 
             in = (unsigned char *)new_in;
         } else if (pCur->ixnum >= 0 && pCur->db->ix_datacopy[pCur->ixnum]) {
-            struct field *fidx = &(pCur->db->schema->member[f->idx]);
+            struct field *fidx = f->idx >= 0 ? &(pCur->db->schema->member[f->idx]) : f;
             assert(f->len == fidx->len);
             in = pCur->bdbcur->datacopy(pCur->bdbcur) + fidx->offset;
         }

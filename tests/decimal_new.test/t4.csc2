@@ -1,0 +1,10 @@
+schema
+{
+   int         id
+   decimal32   d32
+}
+
+keys
+{
+   "ID"         = id
+}
