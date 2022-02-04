@@ -46,6 +46,9 @@ when table `t` is altered. Previous example could be written as:
 
 `CREATE LUA TRIGGER audit ON (TABLE t FOR INSERT)`
 
+Trigger can be set up so the system will assign monotonically increasing ids to events:
+`CREATE LUA TRIGGER audit WITH SEQUENCE ON (TABLE t FOR INSERT)`
+
 Statement to set up trigger on insert into multiple tables, say `t1` and `t2`
 would look like:
 
@@ -375,7 +378,7 @@ x.with_sequence = true | false (default)
 
 When `with_sequence` is `true`, the Lua table returned by
 `dbconsumer:get/poll()` includes an additional property (`sequence`).  If the
-trigger was created with the `PERSISTENT_SEQUENCE` option enabled, then this
+trigger was created `with sequence` option enabled, then this
 sequence will be a monotonically increasing count of the items that have been
 enqueued.
 
@@ -395,6 +398,26 @@ x.with_tid = true | false (default)
 When `with_tid` is `true`, Lua table returned by `dbconsumer:get/poll()`
 include additional property (`tid`). This is the same `tid` returned by
 `db:get_event_tid()`
+
+### db:get_event_epoch
+
+```
+e = db:get_event_epoch(x)
+    x: Lua table returned by `dbconsumer:get/poll()` or argument passed to a `main` in Lua trigger.
+    e: Unix time-epoch at the time when this event (x) was enqueued.
+```
+
+Returns unix time-epoch for a given event.
+
+### db:get_event_sequence
+
+```
+s = db:get_event_sequence(x)
+    x: Lua table returned by `dbconsumer:get/poll()` or argument passed to a `main` in Lua trigger.
+    s: Sequence for the event (x)
+```
+
+If the trigger (or consumer) is created `with sequence`, return the sequence for event `x`.
 
 ### db:get_event_tid
 
@@ -460,3 +483,11 @@ Description:
 
 Like `db:emit()`, except it will block until the calling client requests next
 row by calling `cdb2_next_record`.
+
+### dbconsumer:emit_timeout
+```
+dbconsumer:emit_timeout(t)
+    t: number (ms)
+```
+
+Specify timeout (in milliseconds) for a `dbconsumer:emit()` call.
