@@ -2116,8 +2116,14 @@ static int query_data_func(struct sqlclntstate *clnt, void **data, int *sz, int 
 {
     if (clnt->plugin.query_data_func)
         return clnt->plugin.query_data_func(clnt, data, sz, type, op);
-    else
-        return 0;
+    else {
+        // non-fastsql case. enforce no-op
+        if (data)
+            *data = NULL;
+        if (sz)
+            *sz = 0;
+    }
+    return 0;
 }
 
 static int finalize_stmt_hash(void *stmt_entry, void *args)
