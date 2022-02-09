@@ -421,6 +421,7 @@ struct txn_properties;
 #define DB_LOCK_ID_LOWPRI   0x001	/* Choose this as a deadlock victim */
 #define DB_LOCK_ID_TRACK    0x002	/* Track this lockid */
 #define DB_LOCK_ID_READONLY 0x004	/* Mark this as a read-only lockid */
+#define DB_LOCK_ID_TRACK_FREE   0x008
 
 /*
  * Simple R/W lock modes and for multi-granularity intention locking.
