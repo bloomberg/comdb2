@@ -1,4 +1,5 @@
 nowatch
 logmsg level info
+stack_tracked_free_lockerid on
 #setattr REP_PROCESSORS 0
 #setattr REP_WORKERS 0
