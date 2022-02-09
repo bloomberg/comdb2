@@ -5777,6 +5777,178 @@ static int start_schema_change_tran_wrapper(const char *tblname,
     return (rc == SC_ASYNC || rc == SC_COMMIT_PENDING) ? 0 : rc;
 }
 
+static int _process_single_table_sc(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    /* schema change for a regular table */
+    rc = start_schema_change_tran(iq, NULL);
+    if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
+            sc->preempted == SC_ACTION_RESUME ||
+            sc->alteronly == SC_ALTER_PENDING) {
+        iq->sc = NULL;
+    } else {
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        iq->osql_flags |= OSQL_FLAGS_SCDONE;
+    }
+    return rc;
+}
+
+static int _process_single_table_sc_merge(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    if (sc->addonly) {
+        /* created a table and move rows from a different one into it */
+        sc->finalize = 0; /* make sure */
+        sc->nothrevent = 1; /* we need do_add_table to run first */
+        rc =  start_schema_change_tran(iq, NULL);
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        if (rc != SC_COMMIT_PENDING) {
+            return ERR_SC;
+        }
+
+        /* at this point we have created the future btree, launch an alter
+         * for the to-be-merged table
+         */
+        struct schema_change_type *alter_sc = clone_schemachange_type(sc);
+        /* new target */
+        strncpy0(alter_sc->tablename, sc->partition.u.mergetable.tablename,
+                 sizeof(sc->partition.u.mergetable.tablename));
+        alter_sc->usedbtablevers = sc->partition.u.mergetable.version;
+        alter_sc->addonly = 0; /* this is an alter! */
+        alter_sc->alteronly = SC_ALTER_ONLY;
+        /* use the created file as target */
+        alter_sc->newdb = sc->newdb;
+        alter_sc->force_rebuild = 1; /* we are moving rows here */
+        /* alter only in parallel mode for live */
+        alter_sc->scanmode = SCAN_PARALLEL;
+        /* link the sc */
+        iq->sc = alter_sc;
+
+        rc =  start_schema_change_tran(iq, NULL);
+        /* link the alter */
+        iq->sc->sc_next = iq->sc_pending;
+        iq->sc_pending = iq->sc;
+        if (rc != SC_COMMIT_PENDING) {
+            iq->sc->newdb = NULL; /* lose ownership, otherwise double free */
+            return ERR_SC;
+        }
+
+    } else {
+        /* this is an alter with a table merge */
+        return -1;
+    }
+
+    return rc;
+}
+
+static int _process_single_table_sc_partitioning(struct ireq *iq) 
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    assert(sc->partition.type == PARTITION_ADD_TIMED);
+
+    /* create a new time partition object */
+    struct errstat err = {0};
+    sc->newpartition = timepart_new_partition(
+            sc->tablename, sc->partition.u.tpt.period,
+            sc->partition.u.tpt.retention, sc->partition.u.tpt.start, NULL,
+            TIMEPART_ROLLOUT_TRUNCATE, &sc->timepartition_name, &err);
+    /* DHTEST 1 {
+       sc->newpartition = NULL; err.errval = VIEW_ERR_PARAM;
+       snprintf(err.errstr, sizeof(err.errstr), "Test fail"); } DHTEST */
+    if (!sc->newpartition) {
+        assert(err.errval != VIEW_NOERR);
+        logmsg(LOGMSG_ERROR,
+                   "Creating a new time partition failed rc %d \"%s\"\n",
+                   err.errval, err.errstr);
+        rc = SC_UNKNOWN_ERROR;
+        goto out;
+    }
+
+    /* create shards for the partition */
+    rc = timepart_populate_shards(sc->newpartition, &err);
+    if (rc) {
+        assert(err.errval != VIEW_NOERR);
+
+        timepart_free_view(sc->newpartition);
+        logmsg(LOGMSG_ERROR,
+                   "Failed to pre-populate the shards rc %d \"%s\"n",
+                   err.errval, err.errstr);
+        rc = SC_UNKNOWN_ERROR;
+        goto out;
+    }
+
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+
+    /* is this an alter? preserve existing table as first shard */
+    if (!sc->addonly) {
+        /* we need to create a light rename for first shard,
+         * together with the original alter
+         * NOTE: we need to grab the table version first
+         */
+        arg.s->timepartition_version =
+            arg.s->db->tableversion + 1; /* next version */
+
+        /* launch alter for original shard */
+        rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                   "Failed to process alter for existing table %s while "
+                   "partitioning rc %d\n",
+                   sc->tablename, rc);
+            return ERR_SC;
+        }
+        /* we need to  generate retention-1 table adds, with schema provided
+         * by previous alter; we need to convert an alter to a add sc
+         */
+        arg.s->alteronly = SC_ALTER_NONE; /* this is an add! */
+        arg.s->addonly = 1;
+        arg.indx = 1; /* first shard is already there */
+    }
+    rc = timepart_foreach_shard_lockless(
+            sc->newpartition, start_schema_change_tran_wrapper, &arg);
+out:
+    return rc;
+}
+
+static int _process_partition_alter_and_drop(struct ireq *iq)
+{
+    struct schema_change_type *sc = iq->sc;
+    int rc;
+
+    if (sc->addonly) {
+        /* trying to create a duplicate time partition */
+        logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
+        rc = SC_TABLE_ALREADY_EXIST;
+        goto out;
+    }
+
+    if (sc->partition.type == PARTITION_MERGE) {
+        logmsg(LOGMSG_ERROR, "Merging a table to a partition %s not supported yet!\n", sc->tablename);
+        rc = SC_INVALID_OPTIONS;
+        goto out;
+    }
+
+    /* schema change for a time partition */
+    timepart_sc_arg_t arg = {0};
+    arg.s = sc;
+    arg.s->iq = iq;
+    rc = timepart_foreach_shard(sc->tablename,
+                                start_schema_change_tran_wrapper, &arg, -1);
+out:
+    return rc;
+}
+
+
 static const uint8_t *_get_txn_info(char *msg, unsigned long long rqid,
                                     uuid_t uuid,  int *type)
 {
@@ -5874,98 +6046,18 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
 
     int is_partition = timepart_is_partition(sc->tablename);
 
-    if (!is_partition && sc->partition.type == PARTITION_NONE) {
-        /* schema change for a regular table */
-        rc = start_schema_change_tran(iq, NULL);
-        if ((rc != SC_ASYNC && rc != SC_COMMIT_PENDING) ||
-            sc->preempted == SC_ACTION_RESUME ||
-            sc->alteronly == SC_ALTER_PENDING) {
-            iq->sc = NULL;
+    if (!is_partition) {
+        if (sc->partition.type == PARTITION_NONE) {
+            rc = _process_single_table_sc(iq);
+        } else if (sc->partition.type == PARTITION_MERGE) {
+            rc = _process_single_table_sc_merge(iq);
         } else {
-            iq->sc->sc_next = iq->sc_pending;
-            iq->sc_pending = iq->sc;
-            iq->osql_flags |= OSQL_FLAGS_SCDONE;
+            rc = _process_single_table_sc_partitioning(iq);
         }
-    } else if (!is_partition && sc->partition.type != PARTITION_NONE) {
-        assert(sc->partition.type == PARTITION_ADD_TIMED);
-
-        /* create a new time partition object */
-        struct errstat err = {0};
-        sc->newpartition = timepart_new_partition(
-            sc->tablename, sc->partition.u.tpt.period,
-            sc->partition.u.tpt.retention, sc->partition.u.tpt.start, NULL,
-            TIMEPART_ROLLOUT_TRUNCATE, &sc->timepartition_name, &err);
-        /* DHTEST 1 {
-           sc->newpartition = NULL; err.errval = VIEW_ERR_PARAM;
-           snprintf(err.errstr, sizeof(err.errstr), "Test fail"); } DHTEST */
-        if (!sc->newpartition) {
-            assert(err.errval != VIEW_NOERR);
-            logmsg(LOGMSG_ERROR,
-                   "Creating a new time partition failed rc %d \"%s\"\n",
-                   err.errval, err.errstr);
-            rc = SC_UNKNOWN_ERROR;
-            goto out;
-        }
-
-        /* create shards for the partition */
-        rc = timepart_populate_shards(sc->newpartition, &err);
-        if (rc) {
-            assert(err.errval != VIEW_NOERR);
-
-            timepart_free_view(sc->newpartition);
-            logmsg(LOGMSG_ERROR,
-                   "Failed to pre-populate the shards rc %d \"%s\"n",
-                   err.errval, err.errstr);
-            rc = SC_UNKNOWN_ERROR;
-            goto out;
-        }
-
-        timepart_sc_arg_t arg = {0};
-        arg.s = sc;
-        arg.s->iq = iq;
-
-        /* is this an alter? preserve existing table as first shard */
-        if (!sc->addonly) {
-            /* we need to create a light rename for first shard,
-             * together with the original alter
-             * NOTE: we need to grab the table version first
-             */
-            arg.s->timepartition_version =
-                arg.s->db->tableversion + 1; /* next version */
-
-            /* launch alter for original shard */
-            rc = start_schema_change_tran_wrapper(sc->tablename, &arg);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "Failed to process alter for existing table %s while "
-                       "partitioning rc %d\n",
-                       sc->tablename, rc);
-                return ERR_SC;
-            }
-            /* we need to  generate retention-1 table adds, with schema provided
-             * by previous alter; we need to convert an alter to a add sc
-             */
-            arg.s->alteronly = SC_ALTER_NONE; /* this is an add! */
-            arg.s->addonly = 1;
-            arg.indx = 1; /* first shard is already there */
-        }
-        rc = timepart_foreach_shard_lockless(
-            sc->newpartition, start_schema_change_tran_wrapper, &arg);
     } else {
-        if (sc->addonly) {
-            /* trying to create a duplicate time partition */
-            logmsg(LOGMSG_ERROR, "Duplicate partition %s!\n", sc->tablename);
-            rc = SC_TABLE_ALREADY_EXIST;
-            goto out;
-        }
-        /* schema change for a time partition */
-        timepart_sc_arg_t arg = {0};
-        arg.s = sc;
-        arg.s->iq = iq;
-        rc = timepart_foreach_shard(sc->tablename,
-                                    start_schema_change_tran_wrapper, &arg, -1);
+        rc = _process_partition_alter_and_drop(iq);
     }
-out:
+
     iq->usedb = NULL;
 
     if (!rc || rc == SC_ASYNC || rc == SC_COMMIT_PENDING)

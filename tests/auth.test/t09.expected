@@ -116,6 +116,7 @@
 (candidate='LUA')
 (candidate='LZ4')
 (candidate='MATCH')
+(candidate='MERGE')
 (candidate='NATURAL')
 (candidate='NEXTSEQUENCE')
 (candidate='NO')

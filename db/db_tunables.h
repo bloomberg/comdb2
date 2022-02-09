@@ -2153,8 +2153,13 @@ REGISTER_TUNABLE("throttle_txn_chunks_msec", "Wait that many milliseconds before
                  TUNABLE_INTEGER, &gbl_throttle_txn_chunks_msec, 0, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("partitioned_table_enabled",
-                 "Allow syntax create table ... partitioned by ...",
+                 "Allow syntax create/alter table ... partitioned by ...",
                  TUNABLE_BOOLEAN, &gbl_partitioned_table_enabled, 0, NULL, NULL,
+                 NULL, NULL);
+
+REGISTER_TUNABLE("merge_table_enabled",
+                 "Allow syntax create/alter table ... merge ...",
+                 TUNABLE_BOOLEAN, &gbl_merge_table_enabled, 0, NULL, NULL,
                  NULL, NULL);
 
 REGISTER_TUNABLE("externalauth", NULL, TUNABLE_BOOLEAN, &gbl_uses_externalauth, NOARG | READEARLY,

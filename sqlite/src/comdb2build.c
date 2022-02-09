@@ -7076,23 +7076,11 @@ int comdb2DeleteFromScHistory(char *tablename, uint64_t seed)
     return rc;
 }
 
-
-/**
- * Create Time Partition v2 (schema based)
- *
- */
-void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
-                               Token* start)
+static struct comdb2_partition *_get_partition(Parse* pParse)
 {
     if (comdb2IsPrepareOnly(pParse))
-        return;
+        return NULL;
     
-    if (!gbl_partitioned_table_enabled) {
-        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
-        return;
-    }
-        
-
     struct comdb2_ddl_context *ctx;
 
     ctx = create_ddl_context(pParse);
@@ -7113,22 +7101,78 @@ void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
     if (!ctx->partition) {
         goto oom;
     }
-    ctx->partition->type = PARTITION_ADD_TIMED;
 
-    if (comdb2GetTimePartitionParams(pParse, period, retention, start,
-                                     (int32_t*)&ctx->partition->u.tpt.period,
-                                     (int32_t*)&ctx->partition->u.tpt.retention,
-                                     (int64_t*)&ctx->partition->u.tpt.start)) {
-        goto cleanup;
-    }
-
-    return;
+    return ctx->partition;
 
 oom:
     setError(pParse, SQLITE_NOMEM, "System out of memory");
 
 cleanup:
     free_ddl_context(pParse);
-    return;
+    return NULL;
 }
 
+/**
+ * Create Time Partition v2 (schema based)
+ *
+ */
+void comdb2CreateTimePartition(Parse* pParse, Token* period, Token* retention,
+                               Token* start)
+{
+    struct comdb2_partition *partition;
+
+    if (!gbl_partitioned_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Create partitioned table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_ADD_TIMED;
+
+    if (comdb2GetTimePartitionParams(pParse, period, retention, start,
+                                     (int32_t*)&partition->u.tpt.period,
+                                     (int32_t*)&partition->u.tpt.retention,
+                                     (int64_t*)&partition->u.tpt.start)) {
+        free_ddl_context(pParse);
+    }
+}
+
+/*
+ * Save the table to be merged in
+ *
+ */
+void comdb2SaveMergeTable(Parse *pParse, Token *name, Token *database)
+{
+    struct comdb2_partition *partition;
+    char *partition_first_shardname = NULL;
+
+    if (comdb2IsPrepareOnly(pParse))
+        return;
+    
+    if (!gbl_merge_table_enabled) {
+        setError(pParse, SQLITE_ABORT, "Merge table not enabled");
+        return;
+    }
+
+    partition = _get_partition(pParse);
+    if (!partition)
+        return;
+
+    partition->type = PARTITION_MERGE;
+
+    if (chkAndCopyTableTokens(pParse, partition->u.mergetable.tablename, name, database,
+                              ERROR_ON_TBL_NOT_FOUND, 1, NULL, &partition_first_shardname)) {
+        return;                             
+    }
+
+    if (partition_first_shardname) {
+        setError(pParse, SQLITE_ABORT, "Merge partition not supported yet");
+    }
+
+    partition->u.mergetable.version = comdb2_table_version(partition->u.mergetable.tablename);
+
+    free(partition_first_shardname);
+}

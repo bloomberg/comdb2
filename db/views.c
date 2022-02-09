@@ -41,6 +41,7 @@
 
 extern int gbl_is_physical_replicant;
 int gbl_partitioned_table_enabled = 1;
+int gbl_merge_table_enabled = 1;
 
 struct timepart_shard {
     char *tblname; /* name of the table covering the shard, can be an alias */

@@ -225,7 +225,7 @@ temp(A) ::= TEMP.  {A = 1;}
 temp(A) ::= .      {A = 0;}
 
 %ifdef SQLITE_BUILDING_FOR_COMDB2
-create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F) partitioned. {
+create_table_args ::= LP columnlist conslist_opt(X) RP(E) comdb2opt(O) table_options(F) partitioned merge. {
   comdb2CreateTableEnd(pParse,&X,&E,F,O);
 }
 partitioned ::= . 
@@ -233,6 +233,11 @@ partitioned ::= partitioned_by.
 partitioned_by ::= PARTITIONED BY partition_options.
 partition_options ::= TIME PERIOD STRING(P) RETENTION INTEGER(R) START STRING(S). {
   comdb2CreateTimePartition(pParse, &P, &R, &S);
+}
+merge ::= .
+merge ::= merge_with.
+merge_with ::= MERGE nm(Y) dbnm(Z). {
+  comdb2SaveMergeTable(pParse, &Y, &Z);
 }
 
 %endif SQLITE_BUILDING_FOR_COMDB2
@@ -322,7 +327,7 @@ columnname(A) ::= nm(A) typetoken(Y). {sqlite3AddColumn(pParse,&A,&Y);}
   CHECK COMMITSLEEP CONSUMER CONVERTSLEEP COUNTER COVERAGE CRLE
   DATA DATABLOB DATACOPY DBPAD DEFERRABLE DETERMINISTIC DISABLE 
   DISTRIBUTION DRYRUN ENABLE EXEC EXECUTE FUNCTION GENID48 GET 
-  GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 NONE
+  GRANT INCLUDE INCREMENT IPU ISC KW LUA LZ4 MERGE NONE
   ODH OFF OP OPTION OPTIONS
   PAGEORDER PARTITIONED PASSWORD PAUSE PERIOD PENDING PROCEDURE PUT
   REBUILD READ READONLY REC RESERVED RESUME RETENTION REVOKE RLE ROWLOCKS
@@ -2011,6 +2016,7 @@ alter_table_commit_pending ::= SET COMMIT PENDING. {
 }
 
 alter_table_partitioned ::= partitioned_by.
+alter_table_merge ::= merge_with.
 
 alter_table_action ::= alter_table_add_column.
 alter_table_action ::= alter_table_drop_column.
@@ -2025,6 +2031,7 @@ alter_table_action ::= alter_table_add_index.
 alter_table_action ::= alter_table_drop_index.
 alter_table_action ::= alter_table_commit_pending.
 alter_table_action ::= alter_table_partitioned.
+alter_table_action ::= alter_table_merge.
 
 alter_table_action_list ::= DO NOTHING.
 alter_table_action_list ::= alter_table_action.
