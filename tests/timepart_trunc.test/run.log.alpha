@@ -842,3 +842,8 @@ cdb2sql ${CDB2_OPTIONS} dorintdb default select name, shardname from comdb2_time
 cdb2sql ${CDB2_OPTIONS} --host MASTER dorintdb default select name, arg1, arg2, arg3 from comdb2_timepartevents order by 1, 2
 (name='AddShard', arg1='t2', arg2=NULL, arg3=NULL)
 (name='Truncate', arg1='t', arg2=NULL, arg3=NULL)
+TEST 13
+Create table and merge existing table in it
+(a=1)
+(a=3)
+(a=5)

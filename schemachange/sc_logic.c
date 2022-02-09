@@ -658,6 +658,8 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
                     fastinit);
     else if (s->addonly)
         rc = do_ddl(do_add_table, finalize_add_table, iq, s, trans, add);
+    else if (s->alteronly && s->partition.type == PARTITION_MERGE)
+        rc = do_ddl(do_merge_table, finalize_merge_table, iq, s, trans, alter);
     else if (s->rename)
         if (s->rename == SC_RENAME_LEGACY)
             rc = do_ddl(do_rename_table, finalize_rename_table, iq, s, trans,
@@ -845,6 +847,8 @@ int finalize_schema_change_thd(struct ireq *iq, tran_type *trans)
         else
             rc = do_finalize(finalize_rename_table_alias, iq, s, trans,
                              rename_table_alias);
+    else if (s->alteronly && s->partition.type == PARTITION_MERGE)
+        rc = do_finalize(finalize_merge_table, iq, s, trans, drop);
     else if (s->type == DBTYPE_TAGGED_TABLE)
         rc = do_finalize(finalize_alter_table, iq, s, trans, alter);
     else if (s->fulluprecs || s->partialuprecs)

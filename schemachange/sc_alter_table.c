@@ -676,6 +676,159 @@ errout:
     return SC_OK;
 }
 
+int do_merge_table(struct ireq *iq, struct schema_change_type *s,
+                   tran_type *tran)
+{
+    struct dbtable *db;
+    struct dbtable *newdb;
+    int i;
+    int rc;
+    struct scinfo scinfo;
+
+#ifdef DEBUG_SC
+    logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
+#endif
+
+    gbl_sc_last_writer_time = 0;
+
+    db = get_dbtable_by_name(s->tablename);
+    if (db == NULL) {
+        sc_errf(s, "Table not found:%s\n", s->tablename);
+        return SC_TABLE_DOESNOT_EXIST;
+    }
+
+    newdb = s->newdb;
+
+    if (s->resume == SC_PREEMPT_RESUME) {
+        newdb = db->sc_to;
+        goto convert_records;
+    }
+
+    set_schemachange_options_tran(s, db, &scinfo, tran);
+
+    if ((rc = check_option_coherency(s, db, &scinfo))) return rc;
+
+    sc_printf(s, "starting table merge with seed %0#16llx\n",
+              flibc_ntohll(iq->sc_seed));
+
+    if ((iq == NULL || iq->tranddl <= 1) && db->n_rev_constraints > 0 &&
+        !self_referenced_only(db)) {
+        sc_client_error(s, "Cannot drop a table referenced by a foreign key");
+        return -1;
+    }
+
+    print_schemachange_info(s, db, newdb);
+
+    /* ban old settings */
+    if (db->dbnum) {
+        sc_client_error(s, "Cannot comdbg tables");
+        return -1;
+    }
+
+    /* set sc_genids, 0 them if we are starting a new schema change, or
+     * restore them to their previous values if we are resuming */
+    if (init_sc_genids(newdb, s)) {
+        sc_client_error(s, "Failed to initialize sc_genids");
+        return -1;
+    }
+
+    Pthread_rwlock_wrlock(&db->sc_live_lk);
+    db->sc_from = s->db = db;
+    db->sc_to = s->newdb = newdb;
+    db->sc_abort = 0;
+    db->sc_downgrading = 0;
+    db->doing_conversion = 1; /* live_sc_off will unset it */
+    Pthread_rwlock_unlock(&db->sc_live_lk);
+
+convert_records:
+    assert(db->sc_from == db && s->db == db);
+    assert(db->sc_to == newdb && s->newdb == newdb);
+    assert(db->doing_conversion == 1);
+    MEMORY_SYNC;
+
+    if (get_stopsc(__func__, __LINE__)) {
+        sc_errf(s, "master downgrading\n");
+        return SC_MASTER_DOWNGRADE;
+    }
+    rc = wait_to_resume(s);
+    if (rc || get_stopsc(__func__, __LINE__)) {
+        sc_errf(s, "master downgrading\n");
+        return SC_MASTER_DOWNGRADE;
+    }
+
+    struct errstat err = {0};
+    rc = populate_db_with_alt_schema(thedb, newdb, newdb->csc2_schema, &err);
+    if (rc) {
+        logmsg(LOGMSG_ERROR, "%s\ncsc2: \"%s\"\n", err.errstr,
+               newdb->csc2_schema);
+        sc_client_error(s, "%s", err.errval, err.errstr);
+        return -1;
+    }
+
+    add_ongoing_alter(s);
+
+    /* skip converting records for fastinit and planned schema change
+     * that doesn't require rebuilding anything. */
+    rc = convert_all_records(db, newdb, newdb->sc_genids, s);
+    if (rc == 1) rc = 0;
+
+    remove_ongoing_alter(s);
+
+    backout_schemas(newdb->tablename);
+
+    if (rc == SC_PREEMPTED) {
+        sc_client_error(s, "SCHEMACHANGE PREEMPTED");
+        return SC_PREEMPTED;
+    } else if (get_stopsc(__func__, __LINE__) || rc == SC_MASTER_DOWNGRADE)
+        rc = SC_MASTER_DOWNGRADE;
+    else if (rc)
+        rc = SC_CONVERSION_FAILED;
+
+    if (s->convert_sleep > 0) {
+        sc_printf(s, "[%s] Sleeping after conversion for %d...\n",
+                  db->tablename, s->convert_sleep);
+        logmsg(LOGMSG_INFO, "Sleeping after conversion for %d...\n",
+               s->convert_sleep);
+        sleep(s->convert_sleep);
+        sc_printf(s, "[%s] ...slept for %d\n", db->tablename, s->convert_sleep);
+    }
+
+    if (rc && rc != SC_MASTER_DOWNGRADE) {
+        /* For live schema change, MUST do this before trying to remove
+         * the .new tables or you get crashes */
+        if (gbl_sc_abort || db->sc_abort || iq->sc_should_abort ||
+            rc == SC_ABORTED) {
+            sc_errf(s, "convert_all_records aborted\n");
+        } else {
+            sc_errf(s, "convert_all_records failed\n");
+        }
+
+        live_sc_off(db);
+
+        for (i = 0; i < gbl_dtastripe; i++) {
+            sc_errf(s, "  > [%s] stripe %2d was at 0x%016llx\n", s->tablename,
+                    i, newdb->sc_genids[i]);
+        }
+
+        while (s->logical_livesc) {
+            usleep(200);
+        }
+
+        if (db->sc_live_logical) {
+            bdb_clear_logical_live_sc(db->handle, 1 /* lock table */);
+            db->sc_live_logical = 0;
+        }
+        return rc;
+    }
+    newdb->iq = NULL;
+
+    /* check for rename outside of taking schema lock */
+    /* handle renaming sqlite_stat1 entries for idx */
+    check_for_idx_rename(s->newdb, s->db);
+
+    return SC_OK;
+}
+
 #define BACKOUT                                                                \
     do {                                                                       \
         sc_errf(s, "%s:%d backing out\n", __func__, __LINE__);                 \
@@ -968,6 +1121,16 @@ failed:
     /* from exit msgtrap */
     clean_exit();
     return -1;
+}
+
+extern int finalize_drop_table(struct ireq *iq, struct schema_change_type *s,
+                               tran_type *tran);
+
+int finalize_merge_table(struct ireq *iq, struct schema_change_type *s,
+                         tran_type *transac)
+{
+    s->newdb = NULL; /* we not really own it*/
+    return finalize_drop_table(iq, s, transac);
 }
 
 int do_upgrade_table_int(struct schema_change_type *s)

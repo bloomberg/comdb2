@@ -358,6 +358,33 @@ fi
 
 timepart_stats 0
 
+header 13 "Create table and merge existing table in it"
+echo $cmd "CREATE TABLE t10(a int, b int)"
+$cmd "CREATE TABLE t10(a int, b int)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create table t10"
+   exit 1
+fi
+
+echo $cmd "insert into t10 values (1,2), (3,4), (5,6)"
+$cmd "insert into t10 values (1,2), (3,4), (5,6)"
+if (( $? != 0 )) ; then
+   echo "FAILURE to insert into t10"
+   exit 1
+fi
+
+echo $cmd "CREATE TABLE t11(a int) MERGE t10"
+$cmd "CREATE TABLE t11(a int) MERGE t10"
+if (( $? != 0 )) ; then
+   echo "FAILURE to create t11 merge t10"
+   exit 1
+fi
+
+echo $cmd "select * from t11 order by a"
+$cmd "select * from t11 order by a" >> $OUT
+
+
+
 # we need to scrub dbname from alpha
 sed "s/dorintdb/$dbname/g; s#\${CDB2_OPTIONS}#${CDB2_OPTIONS}#g" $OUT.alpha > $OUT.alpha.actual
 

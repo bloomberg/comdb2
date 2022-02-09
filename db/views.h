@@ -82,6 +82,7 @@ typedef struct timepart_sc_arg {
 } timepart_sc_arg_t;
 
 extern int gbl_partitioned_table_enabled;
+extern int gbl_merge_table_enabled;
 
 /**
  * Initialize the views

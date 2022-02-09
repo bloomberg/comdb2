@@ -86,6 +86,10 @@ struct comdb2_partition {
             uint32_t retention;
             uint64_t start;
         } tpt;
+        struct merge {
+            char tablename[MAXTABLELEN];
+            int version;
+        } mergetable;
     } u;
 };
 

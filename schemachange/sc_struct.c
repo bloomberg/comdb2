@@ -127,10 +127,12 @@ static size_t _partition_packed_size(struct comdb2_partition *p)
     case PARTITION_NONE:
     case PARTITION_REMOVE:
         return sizeof(p->type);
-        return sizeof(p->type);
     case PARTITION_ADD_TIMED:
         return sizeof(p->type) + sizeof(p->u.tpt.period) +
                sizeof(p->u.tpt.retention) + sizeof(p->u.tpt.start);
+    case PARTITION_MERGE:
+        return sizeof(p->type) + sizeof(p->u.mergetable.tablename) +
+               sizeof(p->u.mergetable.version);
     default:
         logmsg(LOGMSG_ERROR, "Unimplemented partition type %d\n", p->type);
         abort();
@@ -340,6 +342,13 @@ void *buf_put_schemachange(struct schema_change_type *s, void *p_buf,
                         sizeof(s->partition.u.tpt.retention), p_buf, p_buf_end);
         p_buf = buf_put(&s->partition.u.tpt.start,
                         sizeof(s->partition.u.tpt.start), p_buf, p_buf_end);
+        break;
+    }
+    case PARTITION_MERGE: {
+        p_buf = buf_no_net_put(s->partition.u.mergetable.tablename,
+                        sizeof(s->partition.u.mergetable.tablename), p_buf, p_buf_end);
+        p_buf = buf_put(&s->partition.u.mergetable.version,
+                        sizeof(s->partition.u.mergetable.version), p_buf, p_buf_end);
         break;
     }
     }
@@ -596,6 +605,15 @@ void *buf_get_schemachange(struct schema_change_type *s, void *p_buf,
                                    p_buf_end);
         p_buf = (uint8_t *)buf_get(&s->partition.u.tpt.start,
                                    sizeof(s->partition.u.tpt.start), p_buf,
+                                   p_buf_end);
+        break;
+    }
+    case PARTITION_MERGE: {
+        p_buf = (uint8_t *)buf_no_net_get(s->partition.u.mergetable.tablename,
+                                          sizeof(s->partition.u.mergetable.tablename),
+                                          p_buf, p_buf_end);
+        p_buf = (uint8_t *)buf_get(&s->partition.u.mergetable.version,
+                                   sizeof(s->partition.u.mergetable.version), p_buf,
                                    p_buf_end);
         break;
     }
