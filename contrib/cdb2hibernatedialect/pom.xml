@@ -27,7 +27,7 @@ limitations under the License. -->
     <dependency>
       <groupId>org.hibernate</groupId>
       <artifactId>hibernate-core</artifactId>
-      <version>5.2.12.Final</version>
+      <version>5.4.24.Final</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
