@@ -835,6 +835,7 @@
 (name='stack_disable', description='', type='BOOLEAN', value='OFF', read_only='N')
 (name='stack_enable', description='', type='BOOLEAN', value='ON', read_only='N')
 (name='stack_on_deadlock', description='stack_on_deadlock', type='BOOLEAN', value='OFF', read_only='N')
+(name='stack_tracked_free_lockerid', description='Print a stack of a free'd locker which tracked fre. (Default: off)', type='BOOLEAN', value='OFF', read_only='N')
 (name='stack_warn_threshold', description='', type='INTEGER', value='50', read_only='Y')
 (name='start_recovery_at_dbregs', description='Start recovery at dbregs', type='BOOLEAN', value='ON', read_only='N')
 (name='startup_sync_attempts', description='', type='INTEGER', value='5', read_only='N')

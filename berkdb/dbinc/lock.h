@@ -288,6 +288,7 @@ typedef struct __db_locker {
 #define DB_LOCKER_TRACK         	0x0100
 #define DB_LOCKER_READONLY      	0x0200
 #define DB_LOCKER_IN_LOGICAL_ABORT 	0x0800
+#define DB_LOCKER_TRACK_FREE        0x4000
 #define DB_LOCKER_TRACK_WRITELOCKS      0x8000
 	u_int8_t has_waiters;
 	u_int32_t flags;

@@ -113,7 +113,8 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 			    (adbc = TAILQ_FIRST(&dbp->active_queue)) != NULL)
 				dbc->lid = adbc->lid;
 			else {
-				if ((ret = __lock_id(dbenv, &dbc->lid)) != 0) {
+				if ((ret = __lock_id_flags(dbenv, &dbc->lid,
+                    DB_LOCK_ID_TRACK_FREE)) != 0) {
 					goto err;
 				}
 #ifdef LULU
