@@ -262,7 +262,6 @@ int do_upgrade_table(struct schema_change_type *s)
     return rc;
 }
 
-typedef int (*ddl_t)(struct ireq *, struct schema_change_type *, tran_type *);
 
 /*
 ** Start transaction if not passed in (comdb2sc.tsk)
