@@ -65,6 +65,7 @@ extern void backtrace_symbols_fd(void *const *, int, int);
 #endif
 
 extern int verbose_deadlocks;
+extern int gbl_stack_tracked_free_lockerid;
 extern int gbl_rowlocks;
 extern int gbl_page_latches;
 extern int gbl_replicant_latches;
@@ -74,6 +75,7 @@ int gbl_berkdb_track_locks = 0;
 extern int gbl_lock_conflict_trace;
 unsigned gbl_ddlk = 0;
 
+extern void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 void (*gbl_bb_log_lock_waits_fn) (const void *, size_t sz, int waitms) = NULL;
 
 static int __lock_freelock __P((DB_LOCKTAB *,
@@ -270,6 +272,9 @@ __lock_id_flags(dbenv, idp, flags)
 
 		if (LF_ISSET(DB_LOCK_ID_TRACK))
 			F_SET(lk, DB_LOCKER_TRACK);
+
+        if (LF_ISSET(DB_LOCK_ID_TRACK_FREE))
+			F_SET(lk, DB_LOCKER_TRACK_FREE);
 	}
 
 	UNLOCKREGION(dbenv, lt);
@@ -3655,6 +3660,9 @@ __lock_freelocker(lt, region, sh_locker, indx)
 	u_int32_t partition = sh_locker->partition;
 	if (F_ISSET(sh_locker, DB_LOCKER_TRACK))
 		logmsg(LOGMSG_USER, "LOCKID %u FREED\n", sh_locker->id);
+
+	if (F_ISSET(sh_locker, DB_LOCKER_TRACK_FREE) && gbl_stack_tracked_free_lockerid)
+		comdb2_cheapstack_sym(stderr, "LOCKID %u FREED", sh_locker->id);
 
 	sh_locker->has_pglk_lsn = 0;
 	sh_locker->ntrackedlocks = 0;

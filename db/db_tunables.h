@@ -591,6 +591,10 @@ REGISTER_TUNABLE("lock_conflict_trace",
                  "Dump count of lock conflicts every second. (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_lock_conflict_trace, NOARG, NULL, NULL,
                  NULL, NULL);
+REGISTER_TUNABLE("stack_tracked_free_lockerid",
+                 "Print a stack of a free'd locker which tracked fre. (Default: off)",
+                 TUNABLE_BOOLEAN, &gbl_stack_tracked_free_lockerid, NOARG, NULL, NULL,
+                 NULL, NULL);
 REGISTER_TUNABLE("lock_dba_user",
                  "When enabled, 'dba' user cannot be removed and its access "
                  "permissions cannot be modified. (Default: off)",

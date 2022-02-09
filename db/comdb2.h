@@ -1707,6 +1707,7 @@ extern int gbl_sc_report_freq;
 extern int gbl_thrman_trace;
 extern int gbl_move_deadlk_max_attempt;
 extern int gbl_lock_conflict_trace;
+extern int gbl_stack_tracked_free_lockerid;
 extern int gbl_enque_flush_interval;
 extern int gbl_inflate_log;
 extern pthread_attr_t gbl_pthread_attr_detached;

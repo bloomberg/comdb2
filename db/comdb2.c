@@ -203,6 +203,7 @@ int gbl_penaltyincpercent = 20;
 int gbl_maxwthreadpenalty;
 int gbl_spstrictassignments = 0;
 int gbl_lock_conflict_trace = 0;
+int gbl_stack_tracked_free_lockerid = 0;
 int gbl_move_deadlk_max_attempt = 500;
 
 int gbl_uses_password;
