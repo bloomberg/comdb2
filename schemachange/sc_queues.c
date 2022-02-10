@@ -435,7 +435,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
     db = getqueuebyname(sc->tablename);
 
     /* dropping/altering a queue that doesn't exist? */
-    if ((sc->drop_table || sc->alteronly) && db == NULL) {
+    if ((sc->drop_table || sc->alteronly != SC_ALTER_NONE) && db == NULL) {
         sbuf2printf(sb, "!Trigger %s doesn't exist.\n", sc->tablename);
         sbuf2printf(sb, "FAILED\n");
         rc = -1;
@@ -470,7 +470,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
 
     char **dests;
 
-    if (sc->addonly || sc->alteronly) {
+    if (sc->addonly || sc->alteronly != SC_ALTER_NONE) {
         struct dest *d;
 
         dests = malloc(sizeof(char *) * sc->dests.count);
@@ -582,7 +582,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
                    __func__, rc, bdberr);
             goto done;
         }
-    } else if (sc->alteronly) {
+    } else if (sc->alteronly != SC_ALTER_NONE) {
         rc = bdb_llmeta_alter_queue(thedb->bdb_env, tran, sc->tablename, config,
                                     sc->dests.count, dests, &bdberr);
         if (rc) {
@@ -748,7 +748,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
         }
     }
 
-    if (sc->addonly || sc->alteronly) {
+    if (sc->addonly || sc->alteronly != SC_ALTER_NONE) {
         dbqueuedb_admin(thedb);
     }
 

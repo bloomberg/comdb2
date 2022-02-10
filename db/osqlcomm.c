@@ -5913,7 +5913,7 @@ int osql_process_schemachange(struct ireq *iq, unsigned long long rqid,
             /* we need to  generate retention-1 table adds, with schema provided
              * by previous alter; we need to convert an alter to a add sc
              */
-            arg.s->alteronly = 0; /* this is an add! */
+            arg.s->alteronly = SC_ALTER_NONE; /* this is an add! */
             arg.s->addonly = 1;
             arg.indx = 1; /* first shard is already there */
         }

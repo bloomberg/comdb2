@@ -759,7 +759,7 @@ void comdb2AlterTableCSC2(
                               ERROR_ON_TBL_NOT_FOUND, 1, 0, NULL))
         goto out;
 
-    sc->alteronly = 1;
+    sc->alteronly = SC_ALTER_ONLY;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -869,7 +869,7 @@ static inline void comdb2Rebuild(Parse *pParse, Token* nm, Token* lnm, int opt)
     else
         sc->live = 1;
 
-    sc->alteronly = 1;
+    sc->alteronly = SC_ALTER_ONLY;
     sc->commit_sleep = gbl_commit_sleep;
     sc->convert_sleep = gbl_convert_sleep;
 
@@ -1047,7 +1047,7 @@ void comdb2RebuildIndex(Parse* pParse, Token* nm, Token* lnm, Token* index, int 
 
     free(indexname);
 
-    sc->alteronly = 1;
+    sc->alteronly = SC_ALTER_ONLY;
     sc->nothrevent = 1;
     sc->rebuild_index = 1;
     sc->index_to_rebuild = index_num;
@@ -5533,7 +5533,7 @@ void comdb2CreateIndex(
     if (pParse->rc)
         goto cleanup;
 
-    sc->alteronly = 1;
+    sc->alteronly = SC_ALTER_ONLY;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;
@@ -6259,7 +6259,7 @@ void comdb2DropIndex(Parse *pParse, Token *pName1, Token *pName2, int ifExists)
     if (pParse->rc)
         goto cleanup;
 
-    sc->alteronly = 1;
+    sc->alteronly = SC_ALTER_ONLY;
     sc->nothrevent = 1;
     sc->live = 1;
     sc->use_plan = 1;

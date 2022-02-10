@@ -102,8 +102,8 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
 
     /* This section looks for resumed / resuming schema changes:
      * if there is one, then we attach to it here */
-    if (!s->resume &&
-        (s->addonly || s->drop_table || s->fastinit || s->alteronly)) {
+    if (!s->resume && (s->addonly || s->drop_table || s->fastinit ||
+                       s->alteronly != SC_ALTER_NONE)) {
         struct schema_change_type *last_sc = NULL;
         struct schema_change_type *stored_sc = NULL;
 
@@ -310,7 +310,7 @@ int start_schema_change_tran(struct ireq *iq, tran_type *trans)
     arg->sc = iq->sc;
     s->started = 0;
 
-    if (s->resume && s->alteronly && !s->finalize_only) {
+    if (s->resume && s->alteronly != SC_ALTER_NONE && !s->finalize_only) {
         if (gbl_test_sc_resume_race) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
@@ -562,7 +562,7 @@ int do_dryrun(struct schema_change_type *s)
     // not sure if useful to print: sc_printf(s, "starting dryrun\n");
     db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
-        if (s->alteronly) {
+        if (s->alteronly != SC_ALTER_NONE) {
             sbuf2printf(s->sb, ">Table %s does not exists\n", s->tablename);
             rc = -1;
             goto done;

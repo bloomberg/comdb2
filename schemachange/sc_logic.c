@@ -635,7 +635,8 @@ static int do_schema_change_tran_int(sc_arg_t *arg, int no_reset)
 
     if (s->alteronly == SC_ALTER_PENDING || s->preempted == SC_ACTION_RESUME)
         detached = 1;
-    if (s->resume && s->alteronly && s->preempted == SC_ACTION_PAUSE)
+    if (s->resume && s->alteronly != SC_ALTER_NONE &&
+        s->preempted == SC_ACTION_PAUSE)
         detached = 1;
 
     if (s->addsp)
