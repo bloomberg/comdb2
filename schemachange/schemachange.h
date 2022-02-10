@@ -59,6 +59,12 @@ struct dest {
     LINKC_T(struct dest) lnk;
 };
 
+enum schema_alter_option {
+    SC_ALTER_NONE = 0,
+    SC_ALTER_ONLY = 1,
+    SC_ALTER_PENDING = 2
+};
+
 /* status for schema_change_type->addonly */
 enum { SC_NOT_ADD = 0, SC_TO_ADD = 1, SC_DONE_ADD = 2 };
 
@@ -109,7 +115,7 @@ struct schema_change_type {
     int addonly;
     int partialuprecs; /* 1 if we're doing partial-table upgrade */
     int fulluprecs;    /* 1 if we're doing full-table upgrade */
-    int alteronly;
+    enum schema_alter_option alteronly;
     int is_trigger;
     size_t newcsc2_len;
     char *newcsc2; /* malloced buffer containing the new schema */
@@ -326,12 +332,6 @@ enum schema_change_preempt {
     SC_ACTION_RESUME = 2,
     SC_ACTION_COMMIT = 3,
     SC_ACTION_ABORT = 4
-};
-
-enum schema_alter_option {
-    SC_ALTER_NONE = 0,
-    SC_ALTER_ONLY = 1,
-    SC_ALTER_PENDING = 2
 };
 
 #include <bdb_schemachange.h>

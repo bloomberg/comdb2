@@ -557,7 +557,7 @@ uint64_t sc_get_seed_table(char *table)
 
 void add_ongoing_alter(struct schema_change_type *sc)
 {
-    assert(sc->alteronly);
+    assert(sc->alteronly != SC_ALTER_NONE);
     Pthread_mutex_lock(&ongoing_alter_mtx);
     if (ongoing_alters == NULL) {
         ongoing_alters =
@@ -569,7 +569,7 @@ void add_ongoing_alter(struct schema_change_type *sc)
 
 void remove_ongoing_alter(struct schema_change_type *sc)
 {
-    assert(sc->alteronly);
+    assert(sc->alteronly != SC_ALTER_NONE);
     Pthread_mutex_lock(&ongoing_alter_mtx);
     if (ongoing_alters != NULL) {
         hash_del(ongoing_alters, sc);

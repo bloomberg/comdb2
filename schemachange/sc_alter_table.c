@@ -568,7 +568,7 @@ convert_records:
     assert(db->sc_from == db && s->db == db);
     assert(db->sc_to == newdb && s->newdb == newdb);
     assert(db->doing_conversion == 1);
-    if (s->resume && s->alteronly && !s->finalize_only) {
+    if (s->resume && s->alteronly != SC_ALTER_NONE && !s->finalize_only) {
         if (gbl_test_sc_resume_race && !get_stopsc(__func__, __LINE__)) {
             logmsg(LOGMSG_INFO, "%s:%d sleeping 5s for sc_resume test\n",
                    __func__, __LINE__);
