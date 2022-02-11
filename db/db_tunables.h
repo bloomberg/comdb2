@@ -1151,6 +1151,10 @@ REGISTER_TUNABLE("toblock_net_throttle",
 REGISTER_TUNABLE("track_berk_locks", NULL, TUNABLE_INTEGER,
                  &gbl_berkdb_track_locks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("db_lock_maxid_override", "Override berkley lock_maxid for "
+                 "testing. (Default: 0)", TUNABLE_INTEGER,
+                 &gbl_db_lock_maxid_override, EXPERIMENTAL | INTERNAL, NULL,
+                 NULL, NULL, NULL);
 REGISTER_TUNABLE("udp", NULL, TUNABLE_BOOLEAN, &gbl_udp, READONLY | NOARG, NULL,
                  NULL, NULL, NULL);
 REGISTER_TUNABLE("unnatural_types", "Same as 'surprise'", TUNABLE_BOOLEAN,

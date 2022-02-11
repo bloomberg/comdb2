@@ -40,6 +40,7 @@ static const char revid[] = "$Id: lock.c,v 11.134 2003/11/18 21:30:38 ubell Exp 
 #include <execinfo.h>
 #include <walkback.h>
 #endif
+#include "dbinc/txn.h"
 #include "logmsg.h"
 #include "util.h"
 #include "locks_wrap.h"
@@ -229,25 +230,27 @@ __lock_id_flags(dbenv, idp, flags)
 	 * Our current valid range can span the maximum valid value, so check
 	 * for it and wrap manually.
 	 */
-	if (region->stat.st_id == DB_LOCK_MAXID &&
-	    region->stat.st_cur_maxid != DB_LOCK_MAXID)
+	if (region->stat.st_id == DB_LOCK_MAXID) {
 		region->stat.st_id = DB_LOCK_INVALIDID;
-	if (region->stat.st_id == region->stat.st_cur_maxid) {
+	}
+	if ((region->stat.st_id + 1) == region->stat.st_cur_maxid) {
 		if ((ret = __os_malloc(dbenv,
-		    sizeof(u_int32_t) * region->stat.st_nlockers, &ids)) != 0) {
+			sizeof(u_int32_t) * region->stat.st_nlockers, &ids)) != 0) {
 			unlock_lockers(region);
 			return (ret);
 		}
 		nids = 0;
 		for (lk = SH_TAILQ_FIRST(&region->lockers, __db_locker);
-		    lk != NULL;
-		    lk = SH_TAILQ_NEXT(lk, ulinks, __db_locker))
-			ids[nids++] = lk->id;
+			lk != NULL;
+			lk = SH_TAILQ_NEXT(lk, ulinks, __db_locker))
+			if (lk->id < TXN_MINIMUM) {
+				ids[nids++] = lk->id;
+			}
 		region->stat.st_id = DB_LOCK_INVALIDID;
 		region->stat.st_cur_maxid = DB_LOCK_MAXID;
 		if (nids != 0)
 			__db_idspace(ids, nids,
-			    &region->stat.st_id, &region->stat.st_cur_maxid);
+				&region->stat.st_id, &region->stat.st_cur_maxid);
 		__os_free(dbenv, ids);
 	}
 	*idp = ++region->stat.st_id;
