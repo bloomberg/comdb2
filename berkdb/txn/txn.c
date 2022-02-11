@@ -579,7 +579,7 @@ __txn_begin_int_int(txn, prop, we_start_at_this_lsn, flags)
 		region->cur_maxid != TXN_MAXIMUM)
 		region->last_txnid = TXN_MINIMUM - 1;
 
-	if (region->last_txnid == region->cur_maxid) {
+	if ((region->last_txnid + 1) == region->cur_maxid) {
 		if ((ret = __os_malloc(dbenv,
 			sizeof(u_int32_t) * region->maxtxns, &ids)) != 0)
 			goto err;
