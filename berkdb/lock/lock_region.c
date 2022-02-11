@@ -69,6 +69,9 @@ static const u_int8_t db_cdb_conflicts[] = {
 	/*  IW */   0, 0, 1, 0, 1
 };
 
+int DB_LOCK_MAXID = DB_LOCK_MAXID_DEFAULT;
+int gbl_db_lock_maxid_override;
+
 /*
  * __lock_open --
  *	Internal version of lock_open: only called from DB_ENV->open.
@@ -89,6 +92,12 @@ __lock_open(dbenv)
 		return (ret);
 	lt->dbenv = dbenv;
 
+	/* override from tunable */
+	if (gbl_db_lock_maxid_override) {
+		logmsg(LOGMSG_USER, "Overriding DB_LOCK_MAXID to %u\n", gbl_db_lock_maxid_override);
+		DB_LOCK_MAXID = gbl_db_lock_maxid_override;
+	}
+
 	/* Join/create the lock region. */
 	lt->reginfo.type = REGION_TYPE_LOCK;
 	lt->reginfo.id = INVALID_REGION_ID;
@@ -107,7 +116,7 @@ __lock_open(dbenv)
 
 	/* Set the local addresses. */
 	region = lt->reginfo.primary =
-	    R_ADDR(&lt->reginfo, lt->reginfo.rp->primary);
+		R_ADDR(&lt->reginfo, lt->reginfo.rp->primary);
 
 	/* Check for incompatible automatic deadlock detection requests. */
 	if (dbenv->lk_detect != DB_LOCK_NORUN) {

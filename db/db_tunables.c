@@ -108,6 +108,7 @@ extern int gbl_test_blob_race;
 extern int gbl_test_scindex_deadlock;
 extern int gbl_test_sc_resume_race;
 extern int gbl_berkdb_track_locks;
+extern int gbl_db_lock_maxid_override;
 extern int gbl_udp;
 extern int gbl_update_delete_limit;
 extern int gbl_updategenids;
