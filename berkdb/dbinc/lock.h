@@ -26,7 +26,8 @@ extern size_t gbl_lkr_hash;
  * DB_LOCK_MAXID + 1 and go up to TXN_MAXIMUM.
  */
 #define	DB_LOCK_INVALIDID	0
-#define	DB_LOCK_MAXID		0x7fffffff
+#define DB_LOCK_MAXID_DEFAULT 0x7fffffff
+extern int DB_LOCK_MAXID;
 
 /*
  * Out of band value for a lock.  Locks contain an offset into a lock region,
