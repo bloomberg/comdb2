@@ -120,6 +120,9 @@ static int cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
 #define CDB2_REQUEST_FP_DEFAULT 0
 static int CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
 
+#define CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT 1
+static int CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
+
 #include <openssl/conf.h>
 #include <openssl/crypto.h>
 static ssl_mode cdb2_c_ssl_mode = SSL_ALLOW;
@@ -295,6 +298,7 @@ static void reset_the_configuration(void)
     cdb2_allow_pmux_route = CDB2_ALLOW_PMUX_ROUTE_DEFAULT;
     cdb2cfg_override = CDB2CFG_OVERRIDE_DEFAULT;
     CDB2_REQUEST_FP = CDB2_REQUEST_FP_DEFAULT;
+    CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD_DEFAULT;
 
     cdb2_c_ssl_mode = SSL_ALLOW;
 
@@ -958,6 +962,8 @@ struct cdb2_hndl {
     uint64_t timestampus; // client query timestamp of first try
     int ports[MAX_NODES];
     int hosts_connected[MAX_NODES];
+    char cached_host[64]; /* hostname of a sockpool connection */
+    int cached_port;      /* port of a sockpool connection */
     SBUF2 *sb;
     int dbnum;
     int num_hosts;
@@ -1075,7 +1081,7 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
     int overwrite_rc = 0;
     cdb2_event *e = NULL;
 
-    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_CONNECT, e)) != NULL) {
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_TCP_CONNECT, e)) != NULL) {
         callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host,
                                           CDB2_PORT, port);
         PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
@@ -1090,7 +1096,7 @@ static int cdb2_tcpconnecth_to(cdb2_hndl_tp *hndl, const char *host, int port,
     rc = cdb2_do_tcpconnect(in, port, myport, timeoutms);
 
 after_callback:
-    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_CONNECT, e)) != NULL) {
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_TCP_CONNECT, e)) != NULL) {
         callbackrc =
             cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT,
                                  port, CDB2_RETURN_VALUE, (intptr_t)rc);
@@ -1466,6 +1472,10 @@ static void read_comdb2db_cfg(cdb2_hndl_tp *hndl, SBUF2 *s,
                 tok = strtok_r(NULL, " :,", &last);
                 if (tok)
                     CDB2_REQUEST_FP = (strncasecmp(tok, "true", 4) == 0);
+            } else if (strcasecmp("get_hostname_from_sockpool_fd", tok) == 0) {
+                tok = strtok_r(NULL, " :,", &last);
+                if (tok)
+                    CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD = (strncasecmp(tok, "true", 4) == 0);
             }
             pthread_mutex_unlock(&cdb2_sockpool_mutex);
         }
@@ -2229,23 +2239,27 @@ static int cdb2portmux_route(cdb2_hndl_tp *hndl, const char *remote_host,
     return fd;
 }
 
-static void get_host_from_fd(cdb2_hndl_tp *hndl, int fd)
+static void get_host_and_port_from_fd(int fd, char *buf, size_t n, int *port)
 {
+    int rc;
     struct sockaddr_in addr;
+    struct hostent *hp;
     socklen_t addr_size = sizeof(struct sockaddr_in);
-    int res = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
-    if (res) {
-        debugprint("getpeername res %d %s\n", errno, strerror(errno));
-    }
-    char ip[20];
-    strcpy(ip, inet_ntoa(addr.sin_addr));
 
-    struct hostent *hp =
-        gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
-    debugprint("sockpool gave us ip '%s', host '%s'\n", ip,
-               (hp != NULL) ? hp->h_name : "");
-    // TODO: consider changing the node_indx in newsql_connect if the host which
-    // sockpool had us connect to is not the same as what we intended to connect
+    if (!CDB2_GET_HOSTNAME_FROM_SOCKPOOL_FD)
+        return;
+
+    if (fd == -1)
+        return;
+
+    rc = getpeername(fd, (struct sockaddr *)&addr, &addr_size);
+    if (rc == 0) {
+        if (port != NULL)
+            *port = addr.sin_port;
+        hp = gethostbyaddr((char *)&addr.sin_addr, sizeof(addr.sin_addr), AF_INET);
+        strncpy(buf, hp->h_name, n - 1);
+        buf[n - 1] = '\0';
+    }
 }
 
 static int cdb2portmux_get(cdb2_hndl_tp *hndl, const char *type, const char *remote_host, const char *app,
@@ -2260,13 +2274,26 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
     int port = hndl->ports[node_indx];
     debugprint("entering, host '%s:%d'\n", host, port);
     int fd = -1;
+    int rc = 0;
+    int nprinted;
     SBUF2 *sb = NULL;
-    int rc = snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr),
-                      "comdb2/%s/%s/newsql/%s", hndl->dbname, hndl->type,
-                      hndl->policy);
-    if (rc < 0) {
+    void *callbackrc;
+    int overwrite_rc = 0;
+    cdb2_event *e = NULL;
+
+    /* Handle BEFRE_NEWSQL_CONNECT callbacks */
+    while ((e = cdb2_next_callback(hndl, CDB2_BEFORE_NEWSQL_CONNECT, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 2, CDB2_HOSTNAME, host, CDB2_PORT, port);
+        PROCESS_EVENT_CTRL_BEFORE(hndl, e, rc, callbackrc, overwrite_rc);
+    }
+    if (overwrite_rc)
+        goto after_callback;
+
+    nprinted = snprintf(hndl->newsql_typestr, sizeof(hndl->newsql_typestr), "comdb2/%s/%s/newsql/%s", hndl->dbname,
+                        hndl->type, hndl->policy);
+    if (nprinted < 0) {
         debugprint("ERROR: %s:%d error in snprintf", __func__, __LINE__);
-    } else if (rc >= sizeof(hndl->newsql_typestr)) {
+    } else if (nprinted >= sizeof(hndl->newsql_typestr)) {
         debugprint("ERROR: can not fit entire string into "
                    "'comdb2/%s/%s/newsql/%s' only %s\n",
                    hndl->dbname, hndl->type, hndl->policy,
@@ -2276,12 +2303,13 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
     while (!hndl->is_admin &&
            (fd = cdb2_socket_pool_get(hndl->newsql_typestr, hndl->dbnum,
                                       NULL)) > 0) {
+        get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
-            return -1;
+            rc = -1;
+            goto after_callback;
         }
         if (send_reset(sb) == 0) {
-            get_host_from_fd(hndl, fd);
             break;      // connection is ready
         }
         sbuf2close(sb); // retry newsql connect;
@@ -2303,12 +2331,15 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
             fd = cdb2portmux_route(hndl, host, "comdb2", "replication",
                                    hndl->dbname);
         }
-        if (fd < 0)
-            return -1;
+        if (fd < 0) {
+            rc = -1;
+            goto after_callback;
+        }
 
         if ((sb = sbuf2open(fd, 0)) == 0) {
             close(fd);
-            return -1;
+            rc = -1;
+            goto after_callback;
         }
         sbuf2printf(sb, hndl->is_admin ? "@newsql\n" : "newsql\n");
         sbuf2flush(sb);
@@ -2318,7 +2349,8 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
 
     if (try_ssl(hndl, sb, node_indx) != 0) {
         sbuf2close(sb);
-        return -1;
+        rc = -1;
+        goto after_callback;
     }
 
     hndl->sb = sb;
@@ -2327,7 +2359,13 @@ static int newsql_connect(cdb2_hndl_tp *hndl, int node_indx)
     hndl->connected_host = node_indx;
     hndl->hosts_connected[hndl->connected_host] = 1;
     debugprint("connected_host=%s\n", hndl->hosts[hndl->connected_host]);
-    return 0;
+
+after_callback:
+    while ((e = cdb2_next_callback(hndl, CDB2_AFTER_NEWSQL_CONNECT, e)) != NULL) {
+        callbackrc = cdb2_invoke_callback(hndl, e, 3, CDB2_HOSTNAME, host, CDB2_PORT, port, CDB2_RETURN_VALUE, rc);
+        PROCESS_EVENT_CTRL_AFTER(hndl, e, rc, callbackrc);
+    }
+    return rc;
 }
 
 static void newsql_disconnect(cdb2_hndl_tp *hndl, SBUF2 *sb, int line)
@@ -5199,6 +5237,7 @@ static int comdb2db_get_dbhosts(cdb2_hndl_tp *hndl, const char *comdb2db_name,
     }
 
     int fd = cdb2_socket_pool_get(newsql_typestr, comdb2db_num, NULL);
+    get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     if (fd < 0) {
         if (!cdb2_allow_pmux_route) {
             fd =
@@ -5375,6 +5414,7 @@ static int cdb2_dbinfo_query(cdb2_hndl_tp *hndl, const char *type,
         goto after_callback;
     }
     int fd = cdb2_socket_pool_get(newsql_typestr, dbnum, NULL);
+    get_host_and_port_from_fd(fd, hndl->cached_host, sizeof(hndl->cached_host), &hndl->cached_port);
     debugprint("cdb2_socket_pool_get fd %d, host '%s'\n", fd, host);
     if (fd < 0) {
         if (host == NULL) {
@@ -6624,9 +6664,17 @@ static void *cdb2_invoke_callback(cdb2_hndl_tp *hndl, cdb2_event *e, int argc,
         return e->cb(hndl, e->user_arg ? e->user_arg : hndl->user_arg, 0, NULL);
 
     /* Default arguments from the handle. */
-    if (hndl == NULL || hndl->connected_host < 0) {
+    if (hndl == NULL) {
         hostname = NULL;
         port = -1;
+    } else if (hndl->connected_host < 0) {
+        if (hndl->cached_host[0] == '\0') {
+            hostname = NULL;
+            port = -1;
+        } else {
+            hostname = hndl->cached_host;
+            port = hndl->cached_port;
+        }
     } else {
         hostname = hndl->hosts[hndl->connected_host];
         port = hndl->ports[hndl->connected_host];
