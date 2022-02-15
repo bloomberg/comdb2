@@ -122,6 +122,8 @@ public class Driver implements java.sql.Driver {
                     new BooleanOption("statement_query_effects", "StatementQueryEffects"));
             options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
             options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
+            options.put("skip_rs_drain", new BooleanOption("skip_rs_drain", "SkipResultSetDrain"));
+            options.put("clear_ack", new BooleanOption("clear_ack", "ClearAck"));
         } catch (Throwable e) {
             throw new SQLException(e);
         }

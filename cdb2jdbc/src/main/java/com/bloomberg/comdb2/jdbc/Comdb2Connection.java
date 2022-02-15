@@ -19,8 +19,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.logging.*;
 
-import com.bloomberg.comdb2.jdbc.Constants.*;
-
 /**
  * @author Rivers Zhang
  * @author Mohit Khullar
@@ -273,6 +271,14 @@ public class Comdb2Connection implements Connection {
     public void setStackAtOpen(boolean sendStack) {
         hndl.hasSendStack = true;
         hndl.setSendStack(sendStack);
+    }
+
+    public void setSkipResultSetDrain(boolean skipDrain) {
+        hndl.setSkipResultSetDrain(skipDrain);
+    }
+
+    public void setClearAck(boolean clearAck) {
+        hndl.setClearAck(clearAck);
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
