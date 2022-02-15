@@ -634,7 +634,7 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
     }
 
     /* create one */
-    db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs, 0);
+    db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs);
     if (db == NULL) {
         return -1;
     }

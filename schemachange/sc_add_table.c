@@ -126,7 +126,7 @@ int add_table_to_environment(char *table, const char *csc2,
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
         return SC_CSC2_ERROR;
     }
-    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs, 0);
+    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs);
 
     if (newdb == NULL) {
         return SC_INTERNAL_ERROR;
