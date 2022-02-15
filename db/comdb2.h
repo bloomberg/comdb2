@@ -2380,7 +2380,7 @@ int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
 
 void cleanup_newdb(struct dbtable *);
 struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                             int dbnum, int dbix, int is_foreign);
+                                  int dbnum, int dbix);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
 int init_check_constraints(struct dbtable *tbl);

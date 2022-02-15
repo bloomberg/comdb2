@@ -6788,7 +6788,7 @@ struct schema *create_version_schema(char *csc2, int version,
         goto err;
     }
 
-    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0, 0);
+    ver_db = newdb_from_schema(dbenv, gbl_ver_temp_table, NULL, 0, 0);
     if (ver_db == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;
@@ -6903,8 +6903,8 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
         goto err;
     }
 
-    dbtable *newdb = newdb_from_schema(db->dbenv, db->tablename, NULL,
-                                       db->dbnum, foundix, 0);
+    dbtable *newdb =
+        newdb_from_schema(db->dbenv, db->tablename, NULL, db->dbnum, foundix);
     if (newdb == NULL) {
         logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__, __LINE__);
         goto err;

@@ -890,7 +890,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     }
 
     /* TODO remove NULL arg; pre-llmeta holdover */
-    newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix, 0);
+    newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix);
     if (newdb == NULL) {
         /* shouldn't happen */
         backout_schemas(table);

@@ -1875,7 +1875,7 @@ void cleanup_newdb(dbtable *tbl)
 }
 
 dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                           int dbnum, int dbix, int is_foreign)
+                           int dbnum, int dbix)
 {
     dbtable *tbl;
     int ii;
@@ -2463,7 +2463,7 @@ static inline int db_get_alias(void *tran, dbtable *tbl)
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
-static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
+static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
 {
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
@@ -2508,7 +2508,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
          * taskname to something not our task name causes initque
          * to fail, and the ldgblzr papers over this) */
         if (dbenv->dbnum && dbnums[i] == dbenv->dbnum &&
-            strcasecmp(dbname, tblnames[i]) != 0) {
+            strcasecmp(dbenv->envname, tblnames[i]) != 0) {
             logmsg(LOGMSG_ERROR, "Table %s has same db number as parent database but "
                    "different name\n",
                    tblnames[i]);
@@ -2534,7 +2534,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
             break;
         }
         dyns_init_globals();
-        rc = dyns_load_schema_string(csc2text, dbname, tblnames[i]);
+        rc = dyns_load_schema_string(csc2text, dbenv->envname, tblnames[i]);
         free(csc2text);
         csc2text = NULL;
         if (rc) {
@@ -2542,7 +2542,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, char *dbname, void *tran)
                     __LINE__);
             break;
         }
-        tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i, 0);
+        tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i);
         if (tbl == NULL) {
             logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
                     __LINE__);
@@ -3577,7 +3577,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
         logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
         return -1;
     }
-    tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs, 0);
+    tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs);
     if (tbl == NULL) {
         logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
         return -1;
@@ -4231,7 +4231,7 @@ static int init(int argc, char **argv)
            we don't race with a schema change from master (at this point
            environment is opened, but files are not !*/
 
-        if (llmeta_load_tables(thedb, dbname, NULL)) {
+        if (llmeta_load_tables(thedb, NULL)) {
             logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                             "table\n");
             unlock_schema_lk();
@@ -6392,7 +6392,7 @@ retry_tran:
         bdb_attr_set(thedb->bdb_attr, BDB_ATTR_BLOBSTRIPE, gbl_blobstripe);
     }
 
-    if (llmeta_load_tables(thedb, gbl_dbname, tran)) {
+    if (llmeta_load_tables(thedb, tran)) {
         logmsg(LOGMSG_FATAL, "could not load tables from the low level meta "
                              "table\n");
         abort();
