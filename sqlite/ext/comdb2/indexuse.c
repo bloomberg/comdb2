@@ -64,7 +64,6 @@ static int get_index_usage(void **recsp, int *nrecs) {
         db = thedb->dbs[dbn];
         if (strncmp(db->tablename, "sqlite_stat", strlen("sqlite_stat")) == 0)
             continue;
-        logmsg(LOGMSG_USER, "table '%s'\n", db->tablename);
         for (int ixnum = 0; ixnum < db->nix; ixnum++) {
             if (nix == allocated) {
                 allocated = allocated * 2 + 16;
