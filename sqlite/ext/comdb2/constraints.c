@@ -27,7 +27,7 @@
 #include "sql.h"
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
-
+#include <schema_lk.h>
 extern int gen_constraint_name(constraint_t * pConstraint, int parent_idx,
                                char *buf, size_t size);
 
@@ -117,6 +117,8 @@ static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
 
   pCur->iRuleid++;
 
+  // protect thedb access
+  rdlock_schema_lk();
   /* Test just in case cursor is in a bad state */
   if( pCur->iRowid < thedb->num_dbs ){
     if( pCur->iConstraintid >= thedb->dbs[pCur->iRowid]->n_constraints
@@ -133,7 +135,7 @@ static int systblConstraintsNext(sqlite3_vtab_cursor *cur){
       }
     }
   }
-
+  unlock_schema_lk();
   comdb2_next_allowed_table(&pCur->iRowid);
 
   return SQLITE_OK;
@@ -148,6 +150,9 @@ static int systblConstraintsColumn(
   int i
 ){
   systbl_constraints_cursor *pCur = (systbl_constraints_cursor*)cur;
+  int err = SQLITE_OK;
+  // protect thedb access
+  rdlock_schema_lk();
   struct dbtable *pDb = thedb->dbs[pCur->iRowid];
   constraint_t *pConstraint = &pDb->constraints[pCur->iConstraintid];
 
@@ -160,13 +165,17 @@ static int systblConstraintsColumn(
             sqlite3_result_text(ctx, constraint_name, -1, NULL);
         } else {
             constraint_name = sqlite3_malloc(MAXGENCONSLEN);
-            if (constraint_name == 0)
-                return SQLITE_NOMEM;
+            if (constraint_name == 0){
+                err = SQLITE_NOMEM;
+                goto Err;
+            }
 
             rc = gen_constraint_name(pConstraint, pCur->iRuleid,
                                      constraint_name, MAXGENCONSLEN);
-            if (rc)
-                return SQLITE_INTERNAL;
+            if (rc){
+                err = SQLITE_INTERNAL;
+                goto Err;
+            }
             sqlite3_result_text(ctx, constraint_name, -1, sqlite3_free);
         }
         break;
@@ -198,7 +207,9 @@ static int systblConstraintsColumn(
       break;
     }
   }
-  return SQLITE_OK; 
+Err:
+  unlock_schema_lk();
+  return err; 
 }
 
 /*
@@ -215,6 +226,7 @@ static int systblConstraintsRowid(
   int i;
 
   *pRowid = 0;
+  rdlock_schema_lk();
   for( i = 0; i < pCur->iRowid - 1; i++ ){
     for( int j = 0; j < thedb->dbs[i]->n_constraints - 1; j++ ){
       *pRowid += thedb->dbs[i]->constraints[j].nrules;
@@ -224,6 +236,7 @@ static int systblConstraintsRowid(
     *pRowid += thedb->dbs[i]->constraints[j].nrules;
   }
   *pRowid += pCur->iConstraintid;
+  unlock_schema_lk();
   return SQLITE_OK;
 }
 
