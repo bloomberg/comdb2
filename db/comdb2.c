@@ -2461,10 +2461,65 @@ static inline int db_get_alias(void *tran, dbtable *tbl)
     return 0;
 }
 
+struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
+                                   char *csc2, int dbnum, int indx,
+                                   struct errstat *err)
+{
+    struct dbtable *newtable = NULL;
+    int rc;
+
+    dyns_init_globals();
+
+    rc = dyns_load_schema_string(csc2, dbenv->envname, tablename);
+    if (rc) {
+        errstat_set_rcstrf(err, -1, "dyns_load_schema_string failed for %s\n",
+                           tablename);
+        goto err;
+    }
+
+    newtable = newdb_from_schema(dbenv, tablename, NULL, dbnum, indx);
+    if (!newtable) {
+        errstat_set_rcstrf(err, -1, "newdb_from_schema failed for %s\n",
+                           tablename);
+        rc = -1;
+        goto err;
+    }
+
+    rc = add_cmacc_stmt(newtable, 0);
+    if (rc) {
+        errstat_set_rcstrf(err, -1,
+                           "Failed to load schema: can't "
+                           "process schema file %s\n",
+                           newtable->tablename);
+        goto err;
+    }
+
+    rc = init_check_constraints(newtable);
+    if (rc) {
+        errstat_set_rcstrf(err, -1,
+                           "Failed to load check constraints "
+                           "for %s\n",
+                           newtable->tablename);
+        goto err;
+    }
+
+err:
+    if (rc) {
+        if (newtable) {
+            cleanup_newdb(newtable);
+            newtable = NULL;
+        }
+    }
+
+    dyns_cleanup_globals();
+    return newtable;
+}
+
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
 static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
 {
+    char *dbname = dbenv->envname;
     int rc = 0, bdberr, dbnums[MAX_NUM_TABLES], fndnumtbls, i;
     char *tblnames[MAX_NUM_TABLES];
     dbtable *tbl;
@@ -2495,6 +2550,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
 
     /* make room for dbs */
     dbenv->dbs = realloc(dbenv->dbs, fndnumtbls * sizeof(dbtable *));
+    bzero(dbenv->dbs, fndnumtbls * sizeof(dbtable *));
 
     for (i = 0; i < fndnumtbls; ++i) {
         char *csc2text = NULL;
@@ -2508,7 +2564,7 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
          * taskname to something not our task name causes initque
          * to fail, and the ldgblzr papers over this) */
         if (dbenv->dbnum && dbnums[i] == dbenv->dbnum &&
-            strcasecmp(dbenv->envname, tblnames[i]) != 0) {
+            strcasecmp(dbname, tblnames[i]) != 0) {
             logmsg(LOGMSG_ERROR, "Table %s has same db number as parent database but "
                    "different name\n",
                    tblnames[i]);
@@ -2533,22 +2589,19 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
             logmsg(LOGMSG_ERROR, "get_csc2_file failed %s:%d\n", __FILE__, __LINE__);
             break;
         }
-        dyns_init_globals();
-        rc = dyns_load_schema_string(csc2text, dbenv->envname, tblnames[i]);
+
+        struct errstat err = {0};
+        tbl = create_new_dbtable(dbenv, tblnames[i], csc2text, dbnums[i], i,
+                                 &err);
         free(csc2text);
         csc2text = NULL;
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "dyns_load_schema_string failed %s:%d\n", __FILE__,
-                    __LINE__);
-            break;
-        }
-        tbl = newdb_from_schema(dbenv, tblnames[i], NULL, dbnums[i], i);
-        if (tbl == NULL) {
-            logmsg(LOGMSG_ERROR, "newdb_from_schema failed %s:%d\n", __FILE__,
-                    __LINE__);
+        if (!tbl) {
+            logmsg(LOGMSG_ERROR, "%s (%s:%d)\n", err.errstr, __FILE__,
+                   __LINE__);
             rc = 1;
             break;
         }
+
         tbl->schema_version = ver;
 
         rc = db_get_alias(tran, tbl);
@@ -2561,52 +2614,21 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
         }
 
         /* We only want to load older schema versions for ODH databases.  ODH
-         * information
-         * is stored in the meta table (not the llmeta table), so it's not
-         * loaded yet. */
+         * information is stored in the meta table (not the llmeta table), so
+         * it's not loaded yet.
+         */
 
-        /* set tbl values and add to env */
-        tbl->dbs_idx = i;
+        /* add to env */
         dbenv->dbs[i] = tbl;
-
         /* Add table to the hash. */
         _db_hash_add(tbl);
-
-        /* just got a bunch of data. remember it so key forming
-           routines and SQL can get at it */
-        rc = add_cmacc_stmt(tbl, 0);
-        if (rc) {
-            logmsg(LOGMSG_ERROR,
-                   "Failed to load schema: can't process schema file "
-                   "%s\n",
-                   tbl->tablename);
-            ++i; /* this tblname has already been marshalled so we dont want to
-                  * free it below */
-            rc = 1;
-            break;
-        }
-
-        /* Initialize table's check constraint members. */
-        rc = init_check_constraints(tbl);
-        if (rc) {
-            logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
-                   tbl->tablename);
-            ++i;
-            rc = 1;
-            break;
-        }
-
-        /* Free the table name. */
-        free(tblnames[i]);
-        dyns_cleanup_globals();
     }
-    dyns_cleanup_globals();
 
     /* we have to do this after all the meta table lookups so that the hack in
      * get_meta_int works */
     dbenv->num_dbs = fndnumtbls;
 
-    /* if we quit early because of an error free the rest */
+    i = 0;
     while (i < fndnumtbls)
         free(tblnames[i++]);
 
@@ -3521,77 +3543,59 @@ static int init_db_dir(char *dbname, char *dir)
     return 0;
 }
 
-static int init_sqlite_table(struct dbenv *dbenv, char *table)
+static int init_sqlite_tables(struct dbenv *dbenv)
 {
-    int rc;
+    /* There's no 2 or 3.  There used to be 2.  There was never 3. */
+    const char *sqlite_stats_name[2] = {"sqlite_stat1", "sqlite_stat4"};
+    const char *sqlite_stats_csc2[2] = {
+        "tag ondisk { "
+        "    cstring tbl[64] "
+        "    cstring idx[64] null=yes "
+        "    cstring stat[4096] "
+        "} "
+        " "
+        "keys { "
+        "    \"0\" = tbl + idx "
+        "} ",
+        "tag ondisk "
+        "{ "
+        "    cstring tbl[64] "
+        "    cstring idx[64] "
+        "    int     samplelen "
+        "    byte    sample[1024] /* entire record in sqlite format */ "
+        "} "
+        " "
+        "keys "
+        "{ "
+        "    dup \"0\" = tbl + idx "
+        "} "};
     dbtable *tbl;
-
-    if (get_dbtable_by_name(table))
-        return 0;
-
-    dbenv->dbs = realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(dbtable *));
+    struct errstat err = {0};
+    int i;
 
     /* This used to just pull from installed files.  Let's just do it from memory
        so comdb2 can run standalone with no support files. */
-    const char *sqlite_stat1 = 
-"tag ondisk { "
-"    cstring tbl[64] "
-"    cstring idx[64] null=yes "
-"    cstring stat[4096] "
-"} "
-" "
-"keys { "
-"    \"0\" = tbl + idx "
-"} ";
 
-    const char *sqlite_stat4 =
-"tag ondisk "
-"{ "
-"    cstring tbl[64] "
-"    cstring idx[64] "
-"    int     samplelen "
-"    byte    sample[1024] /* entire record in sqlite format */ "
-"} "
-" "
-"keys "
-"{ "
-"    dup \"0\" = tbl + idx "
-"} ";
+    for (i = 0; i < 2; i++) {
+        if (get_dbtable_by_name(sqlite_stats_name[i]))
+            continue;
 
-    const char *schema;
+        tbl = create_new_dbtable(dbenv, (char *)sqlite_stats_name[i],
+                                 (char *)sqlite_stats_csc2[i], 0, dbenv->num_dbs,
+                                 &err);
+        if (!tbl) {
+            logmsg(LOGMSG_ERROR, "%s", err.errstr);
+            return -1;
+        }
+        tbl->csc2_schema = strdup(sqlite_stats_csc2[i]);
 
-    if (strcmp(table, "sqlite_stat1") == 0) {
-       schema = sqlite_stat1;
-    }
-    else if (strcmp(table, "sqlite_stat4") == 0) {
-       schema = sqlite_stat4;
-    }
-    else {
-       logmsg(LOGMSG_ERROR, "unknown sqlite table \"%s\"\n", table);
-       return -1;
-    }
+        /* Add table to the hash. */
+        _db_hash_add(tbl);
 
-    // dyns_init_globals() is called by the caller, cleanup as well
-    rc = dyns_load_schema_string((char*) schema, dbenv->envname, table);
-    if (rc) {
-        logmsg(LOGMSG_ERROR, "Can't parse schema for %s\n", table);
-        return -1;
-    }
-    tbl = newdb_from_schema(dbenv, table, NULL, 0, dbenv->num_dbs);
-    if (tbl == NULL) {
-        logmsg(LOGMSG_ERROR, "Can't init table %s from schema\n", table);
-        return -1;
-    }
-    tbl->dbs_idx = dbenv->num_dbs;
-    tbl->csc2_schema = strdup(schema);
-    dbenv->dbs[dbenv->num_dbs++] = tbl;
-
-    /* Add table to the hash. */
-    _db_hash_add(tbl);
-
-    if (add_cmacc_stmt(tbl, 0)) {
-        logmsg(LOGMSG_ERROR, "Can't init table structures %s from schema\n", table);
-        return -1;
+        /* Add table to thedb->dbs */
+        dbenv->dbs =
+            realloc(dbenv->dbs, (dbenv->num_dbs + 1) * sizeof(dbtable *));
+        dbenv->dbs[dbenv->num_dbs++] = tbl;
     }
     return 0;
 }
@@ -3599,6 +3603,7 @@ static int init_sqlite_table(struct dbenv *dbenv, char *table)
 static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
 {
     int i;
+
     for (i = 0; i < dbenv->num_dbs; i++) {
         dbtable *tbl = dbenv->dbs[i];
         update_dbstore(tbl);
@@ -3608,23 +3613,6 @@ static void load_dbstore_tableversion(struct dbenv *dbenv, tran_type *tran)
             logmsg(LOGMSG_ERROR, "Failed reading table version\n");
         }
     }
-}
-
-static int init_sqlite_tables(struct dbenv *dbenv)
-{
-    int rc;
-    dyns_init_globals();
-    rc = init_sqlite_table(dbenv, "sqlite_stat1");
-    dyns_cleanup_globals();
-    if (rc)
-        return rc;
-    /* There's no 2 or 3.  There used to be 2.  There was never 3. */
-    dyns_init_globals();
-    rc = init_sqlite_table(dbenv, "sqlite_stat4");
-    dyns_cleanup_globals();
-    if (rc)
-        return rc;
-    return 0;
 }
 
 static int create_db(char *dbname, char *dir) {
