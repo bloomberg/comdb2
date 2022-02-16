@@ -253,6 +253,7 @@ __dbreg_register_recover(dbenv, dbtp, lsnp, op, info)
 		 * However, if we shut down without closing a file, we may, in
 		 * fact, not have the file open, and that's OK.
 		 */
+		__ufid_close(dbenv, NULL, argp->uid.data);
 		do_rem = 0;
 		MUTEX_THREAD_LOCK(dbenv, dblp->mutexp);
 #if defined (STACK_AT_DBREG_RECOVER)
@@ -464,6 +465,7 @@ reopen:if (txn != NULL) {
 
 	ret = __dbreg_do_open(dbenv, txn, lp, argp->uid.data, argp->name.data,
 	    argp->ftype, argp->fileid, argp->meta_pgno, info, argp->id);
+	__ufid_open(dbenv, txn, argp->name.data, argp->uid.data);
 
 	return ret;
 }
