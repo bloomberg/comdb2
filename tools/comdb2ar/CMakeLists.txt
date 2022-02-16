@@ -20,6 +20,7 @@ add_executable(comdb2ar
   util.cpp
   ${PROJECT_SOURCE_DIR}/util/hostname_support.c
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
+  ${PROJECT_SOURCE_DIR}/util/ssl_glue.c
 )
 include_directories(
   ${PROJECT_SOURCE_DIR}/util

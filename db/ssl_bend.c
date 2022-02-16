@@ -340,6 +340,7 @@ static const char *ssl_mode_to_string(ssl_mode mode)
         return "UNKNOWN";
     }
 }
+
 void ssl_set_clnt_user(struct sqlclntstate *clnt)
 {
     int sz = sizeof(clnt->current_user.name);

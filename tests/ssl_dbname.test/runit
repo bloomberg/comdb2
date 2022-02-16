@@ -47,7 +47,7 @@ chmod 400 ${DBDIR}/wildcard.key
 cp $DBDIR/comdb2db.cfg $DBDIR/query3.cfg
 echo "comdb2_config:ssl_key=$DBDIR/wildcard.key
 comdb2_config:ssl_cert=$DBDIR/wildcard.crt" >>$DBDIR/query3.cfg
-expected='[SELECT "ALL-WILDCARD"] failed with rc -1 Client certificate authentication failed.'
+expected='[SELECT "ALL-WILDCARD"] failed with rc -1 Client certificate authentication failed'
 actual=`cdb2sql --tabs --cdb2cfg $DBDIR/query3.cfg $dbnm default 'SELECT "ALL-WILDCARD"' 2>&1`
 echo $actual
 if [ "$expected" != "$actual" ]; then

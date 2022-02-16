@@ -41,6 +41,7 @@ set(src
   schema_lk.c
   segstring.c
   sltpck.c
+  ssl_glue.c
   ssl_support.c
   str0.c
   strbuf.c

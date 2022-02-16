@@ -4,6 +4,9 @@
 #include <pthread.h>
 #include <event2/event.h>
 
+#define KB(x) ((x) * 1024)
+#define MB(x) ((x) * 1024 * 1024)
+
 struct sqlclntstate;
 
 struct appsock_handler_arg {
@@ -51,5 +54,10 @@ extern int gbl_libevent_appsock;
         }                                                                                                              \
         erc;                                                                                                           \
     })
+
+#ifndef container_of
+/* I'm requiring that pointer variable and struct member have the same name */
+#define container_of(ptr, type) (type *)((uint8_t *)ptr - offsetof(type, ptr))
+#endif
 
 #endif

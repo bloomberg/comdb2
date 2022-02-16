@@ -1966,8 +1966,6 @@ int calc_pagesize(int initsize, int recsize);
 int getpgsize(void *handle_);
 void bdb_show_reptimes_compact(bdb_state_type *bdb_state);
 
-void fill_dbinfo(void *dbinfo_response, bdb_state_type *bdb_state);
-
 void bdb_disable_replication_time_tracking(bdb_state_type *bdb_state);
 void bdb_set_key_compression(bdb_state_type *);
 void bdb_print_compression_flags(bdb_state_type *);
@@ -2331,5 +2329,15 @@ int bdb_iam_master(bdb_state_type *bdb_state);
 
 int32_t bdb_get_dbopen_gen(void);
 int is_incoherent(bdb_state_type *, const char *);
+
+#ifdef __APPLE__
+struct CDB2DBINFORESPONSE;
+void fill_dbinfo(struct CDB2DBINFORESPONSE *, bdb_state_type *);
+void fill_ssl_info(struct CDB2DBINFORESPONSE *);
+#else
+struct _CDB2DBINFORESPONSE;
+void fill_dbinfo(struct _CDB2DBINFORESPONSE *, bdb_state_type *);
+void fill_ssl_info(struct _CDB2DBINFORESPONSE *);
+#endif
 
 #endif

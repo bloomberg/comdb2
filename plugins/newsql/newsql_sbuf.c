@@ -29,18 +29,12 @@
 
 #include <newsql.h>
 
-#ifndef container_of
-/* I'm requiring that pointer variable and struct member have the same name */
-#define container_of(ptr, type) (type *)((uint8_t *)ptr - offsetof(type, ptr))
-#endif
-
 extern int gbl_sqlwrtimeoutms;
 
 extern ssl_mode gbl_client_ssl_mode;
 extern SSL_CTX *gbl_ssl_ctx;
 extern char gbl_dbname[MAX_DBNAME_LENGTH];
 extern int gbl_nid_dbname;
-void ssl_set_clnt_user(struct sqlclntstate *clnt);
 
 int gbl_protobuf_prealloc_buffer_size = 8192;
 
@@ -341,7 +335,7 @@ retry_read:
            send back an error to the client. */
         if (ssl_able == 'Y' &&
             sslio_accept(sb, gbl_ssl_ctx, gbl_client_ssl_mode, gbl_dbname, gbl_nid_dbname, 0) != 1) {
-            write_response(clnt, RESPONSE_ERROR, "Client certificate authentication failed.", CDB2ERR_CONNECT_ERROR);
+            write_response(clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
             /* Print the error message in the sbuf2. */
             char err[256];
             sbuf2lasterror(sb, err, sizeof(err));
