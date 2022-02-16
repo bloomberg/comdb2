@@ -15,6 +15,30 @@ function get_master
     echo "$x"
 }
 
+function bounce_node
+{
+    [[ "$debug" == 1 ]] && set -x
+    typeset func="bounce_node"
+    typeset node=${1}
+    typeset sleeptime=${2:-5}
+    write_prompt $func "Running $func"
+    $CDB2SQL_EXE $CDB2_OPTIONS --tabs $DBNAME --host $node "exec procedure sys.cmd.send(\"exit\")"
+            sleep $sleeptime
+    if [ $node == $(hostname) ] ; then
+        (
+            kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+            sleep $sleeptime
+            ${DEBUG_PREFIX} ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.${node}.pid 2>&1 | gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >$TESTDIR/logs/${DBNAME}.${node}.db 2>&1
+        ) &
+    else
+        PARAMS="$DBNAME --no-global-lrl"
+        CMD="sleep $sleeptime ; source ${TESTDIR}/replicant_vars ; ${COMDB2_EXE} ${PARAMS} --lrl $DBDIR/${DBNAME}.lrl -pidfile ${TMPDIR}/${DBNAME}.pid"
+        kill -9 $(cat ${TMPDIR}/${DBNAME}.${node}.pid)
+        ssh -o StrictHostKeyChecking=no -tt $node ${DEBUG_PREFIX} ${CMD} 2>&1 </dev/null > >(gawk '{ print strftime("%H:%M:%S>"), $0; fflush(); }' >> $TESTDIR/logs/${DBNAME}.${node}.db) &
+        echo $! > ${TMPDIR}/${DBNAME}.${node}.pid
+    fi
+}
+
 function bounce_cluster
 {
     [[ "$debug" == 1 ]] && set -x

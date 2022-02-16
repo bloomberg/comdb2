@@ -98,6 +98,10 @@ __db_ditem(dbc, pagep, indx, nbytes)
 			ASSIGN_ALIGN(db_indx_t, bklen, bk->len);
 			ldbt.size = BKEYDATA_SIZE_FLUFFLESS(bklen);
 		}
+/*
+		if (LSN(pagep).file == 0 && LSN(pagep).offset == 1)
+			abort();
+*/
 		ret = __db_addrem_log(dbp, dbc->txn,
 		    &LSN(pagep), 0, opcode, PGNO(pagep), (u_int32_t)indx,
 		    ldbt.size, &ldbt, NULL, &LSN(pagep));
@@ -237,6 +241,11 @@ __db_pitem_opcode(dbc, pagep, indx, nbytes, hdr, data, opcode)
 			M_32_SWAP(bi->nrecs);
 			binternal_swap = 1;
 		}
+
+/*
+		if (LSN(pagep).file == 0 && LSN(pagep).offset == 1)
+			abort();
+*/
 
 		ret = __db_addrem_log(dbp, dbc->txn,
 		    &LSN(pagep), 0, DB_ADD_DUP, PGNO(pagep),

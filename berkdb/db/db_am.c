@@ -30,6 +30,9 @@ static const char revid[] = "$Id: db_am.c,v 11.112 2003/09/13 19:23:42 bostic Ex
 #include <walkback.h>
 #include <pthread.h>
 #include <stdlib.h>
+#if defined (UFID_HASH_DEBUG)
+#include <logmsg.h>
+#endif
 
 static int __db_append_primary __P((DBC *, DBT *, DBT *));
 static int __db_secondary_get __P((DB *, DB_TXN *, DBT *, DBT *, u_int32_t));
@@ -799,9 +802,15 @@ __db_sync(dbp)
 
 	if (dbp->type == DB_QUEUE)
 		ret = __qam_sync(dbp);
-	else if ((t_ret = __memp_fsync(dbp->mpf)) != 0 && ret == 0) {
-		/* Flush any dirty pages from the cache to the backing file. */
-		ret = t_ret;
+	else {
+#if defined (UFID_HASH_DEBUG)
+			logmsg(LOGMSG_USER, "%s syncing %s mpf %p\n", __func__, dbp->fname ?
+					dbp->fname : "(noname)", dbp->mpf);
+#endif
+			if ((t_ret = __memp_fsync(dbp->mpf)) != 0 && ret == 0) {
+			/* Flush any dirty pages from the cache to the backing file. */
+			ret = t_ret;
+		}
 	}
 
 	return (ret);

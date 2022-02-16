@@ -150,8 +150,11 @@ __txn_regop_gen_recover(dbenv, dbtp, lsnp, op, info)
 			    info, argp->txnid->txnid,
 			    argp->opcode == TXN_ABORT ?
 			    TXN_IGNORE : argp->opcode, lsnp);
-		else if (ret != TXN_OK)
+		else if (ret != TXN_OK) {
+			__db_txnlist_update(dbenv,
+					info, argp->txnid->txnid, argp->opcode, lsnp);
 			goto err;
+		}
 		/* else ret = 0; Not necessary because TXN_OK == 0 */
 	}
 

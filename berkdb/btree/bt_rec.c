@@ -131,6 +131,13 @@ __bam_split_recover(dbenv, dbtp, lsnp, op, info)
 	if (__memp_fget(mpf, &argp->right, 0, &rp) != 0)
 		rp = NULL;
 
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s [%d:%d] %s dbp %p lp-lsn [%d:%d] rp-lsn [%d:%d]\n",
+			__func__, lsnp->file, lsnp->offset, DB_REDO(op) ? "REDO" : "UNDO",
+			file_dbp, lp ? LSN(lp).file : -1, lp ? LSN(lp).offset : -1, 
+			rp ? LSN(rp).file : -1, rp ? LSN(rp).offset: -1);
+#endif
+
 	if (DB_REDO(op)) {
 		l_update = r_update = p_update = 0;
 		/*
@@ -795,6 +802,11 @@ __bam_cdel_recover(dbenv, dbtp, lsnp, op, info)
 	cmp_p = log_compare(&LSN(pagep), &argp->lsn);
 	CHECK_LSN(op, cmp_p, &LSN(pagep), &argp->lsn, lsnp, argp->fileid,
 	    argp->pgno);
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s (%s) lsn [%d:%d] pagelsn [%d:%d]\n", __func__,
+			DB_REDO(op) ? "REDO" : "UNDO", lsnp->file, lsnp->offset,
+			LSN(pagep).file, LSN(pagep).offset);
+#endif
 	if (cmp_p == 0 && DB_REDO(op)) {
 		/* Need to redo update described. */
 		indx = argp->indx + (TYPE(pagep) == P_LBTREE ? O_INDX : 0);
@@ -876,6 +888,11 @@ __bam_repl_recover(dbenv, dbtp, lsnp, op, info)
 	cmp_p = log_compare(&LSN(pagep), &argp->lsn);
 	CHECK_LSN(op, cmp_p, &LSN(pagep), &argp->lsn, lsnp, argp->fileid,
 	    argp->pgno);
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s (%s) lsn [%d:%d] pagelsn [%d:%d]\n", __func__,
+			DB_REDO(op) ? "REDO" : "UNDO", lsnp->file, lsnp->offset,
+			LSN(pagep).file, LSN(pagep).offset);
+#endif
 	if (cmp_p == 0 && DB_REDO(op)) {
 		/*
 		 * Need to redo update described.

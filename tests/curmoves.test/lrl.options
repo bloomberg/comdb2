@@ -6,3 +6,5 @@ dtastripe 4
 #handle_buf_latency_ms 50
 appsockslimit 10
 maxappsockslimit 10
+ufid_log on
+omit_dbreg on

@@ -69,6 +69,7 @@ BEGIN {
 	    > CFILE
 
 	printf("#include \"db_config.h\"\n\n") >> CFILE
+	printf("extern int gbl_ufid_log;\n") >> CFILE
 
 	if (!dbprivate) {
 		printf("#include <errno.h>\n") >> CFILE
@@ -153,7 +154,10 @@ BEGIN {
 		has_pgdbt = 1;
 	}
 
-	if ($1 == "DB" || $1 == "ARG" || $1 == "TIME") {
+	if ($1 == "DB") {
+		sizes[nvars] = sprintf("(ufid_log ? DB_FILE_ID_LEN : sizeof(u_int32_t))");
+		is_uint = 1;
+	} else if ($1 == "ARG" || $1 == "TIME") {
 		if (types[nvars] == "u_int64_t" || types[nvars] == "genid_t") {
 		    sizes[nvars] = sprintf("sizeof(u_int64_t)");
 		    is_uint64 = 1;
@@ -200,6 +204,9 @@ BEGIN {
 			t = "u_int64_t"
 		}
 		printf("\t%s\t%s;\n", t, vars[i]) >> HFILE
+		if (modes[i] == "DB") {
+			printf("\tu_int8_t \tufid_%s[DB_FILE_ID_LEN];\n", vars[i]) >> HFILE
+		}
 	}
 	printf("} %s_args;\n\n", funcname) >> HFILE
 
@@ -416,8 +423,10 @@ function log_function() {
 	# Function body and local decls
 	printf("{\n") >> CFILE;
 	printf("\tDBT logrec;\n") >> CFILE;
-	if (has_dbp == 1)
+	if (has_dbp == 1) {
 		printf("\tDB_ENV *dbenv;\n") >> CFILE;
+		printf("\tint ufid_log = gbl_ufid_log;\n") >> CFILE;
+	}
 	if (dbprivate)
 		printf("\tDB_TXNLOGREC *lr;\n") >> CFILE;
 	printf("\tDB_LSN *lsnp, null_lsn;\n") >> CFILE;
@@ -447,7 +456,14 @@ function log_function() {
 	# Initialization
 	if (has_dbp == 1)
 		printf("\tdbenv = dbp->dbenv;\n") >> CFILE;
-	printf("\trectype = DB_%s;\n", funcname) >> CFILE;
+	if (has_dbp == 1) {
+		printf("\tif (ufid_log)\n") >> CFILE
+		printf("\t\trectype = (DB_%s + 1000);\n", funcname) >> CFILE;
+		printf("\telse\n") >> CFILE
+		printf("\t\trectype = DB_%s;\n", funcname) >> CFILE;
+	} else {
+		printf("\trectype = DB_%s;\n", funcname) >> CFILE;
+	}
 	printf("\tnpad = 0;\n\n") >> CFILE;
 
 	if (dbprivate) {
@@ -599,17 +615,22 @@ function log_function() {
 			# be able to acquire an open handle at recovery time.
 			printf("\tDB_ASSERT(dbp->log_filename != NULL);\n") \
 				>> CFILE;
-			printf("\tif (dbp->log_filename->id == ") >> CFILE;
-			printf("DB_LOGFILEID_INVALID &&\n\t    ") >> CFILE
-				printf("(ret = __dbreg_lazy_id(dbp)) != 0)\n") \
-				>> CFILE;
-			printf("\t\treturn (ret);\n\n") >> CFILE;
-
-			printf("\tuinttmp = ") >> CFILE;
+			printf("\tif (ufid_log) {\n") >> CFILE;
+			printf("\t\tmemcpy(bp, dbp->log_filename->ufid, DB_FILE_ID_LEN);\n") >> CFILE
+			printf("\t\tbp += DB_FILE_ID_LEN;\n") >> CFILE
+			printf("\t\tif (!dbp->added_to_ufid && (ret = __ufid_add_dbp(dbenv, dbp) != 0))\n") >> CFILE
+			printf("\t\t\treturn ret;\n") >> CFILE
+			printf("\t} else {\n") >> CFILE;
+			printf("\t\tif (dbp->log_filename->id == ") >> CFILE;
+			printf("DB_LOGFILEID_INVALID &&\n\t\t\t") >> CFILE
+			printf("(ret = __dbreg_lazy_id(dbp)) != 0)\n") >> CFILE;
+			printf("\t\t\treturn (ret);\n\n") >> CFILE;
+			printf("\t\tuinttmp = ") >> CFILE;
 			printf("(u_int32_t)dbp->log_filename->id;\n") >> CFILE;
-			printf("\tLOGCOPY_32(bp, &uinttmp);\n") \
+			printf("\t\tLOGCOPY_32(bp, &uinttmp);\n") \
 				>> CFILE;
-			printf("\tbp += sizeof(uinttmp);\n\n") >> CFILE;
+			printf("\t\tbp += sizeof(uinttmp);\n") >> CFILE;
+			printf("\t}\n") >> CFILE;
 		} 
 		else { # POINTER
 			printf("\tif (%s != NULL)\n", vars[i]) >> CFILE;
@@ -736,6 +757,11 @@ function print_function() {
 			#printf("\tint ch;\n") >> CFILE
 			break;
 		}
+
+    if (has_dbp == 1) {
+        printf("\tchar *tmpfname = NULL;\n") >> CFILE;
+    }
+
 	printf("\tint ret;\n\n") >> CFILE;
 
 	# Get rid of complaints about unused parameters.
@@ -812,7 +838,13 @@ function print_function() {
 				printf("(long)") >> CFILE;
 			printf("argp->%s);\n", vars[i]) >> CFILE;
 		}
-        printf("\tfflush(stdout);\n") >> CFILE;
+		if (modes[i] == "DB") {
+			printf("\t(void)printf(\"\\tufid_%s:\\n\");\n", vars[i]) >> CFILE;
+			printf("\tfsnapf(stdout, argp->ufid_%s, DB_FILE_ID_LEN);\n", vars[i]) >> CFILE;
+            printf("\tif ((__ufid_to_fname(dbenv, &tmpfname, argp->ufid_%s)) == 0)\n", vars[i]) >> CFILE;
+            printf("\t\t(void)printf(\"\\tfname_%s: %%s\\n\", tmpfname);\n", vars[i]) >> CFILE; 
+		}
+		printf("\tfflush(stdout);\n") >> CFILE;
 	}
 	printf("\t(void)printf(\"\\n\");\n") >> CFILE;
 	write_free("\t", "argp", CFILE);
@@ -909,7 +941,7 @@ function read_function_int() {
 				printf("\t\t\t(PAGE *)argp->%s.data,(size_t)argp->%s.size, 1)) != 0)\n", vars[i], vars[i]) >> CFILE;
 				printf("\t\t\t\treturn (ret);\n") >> CFILE;
 			}
-		} else if (modes[i] == "ARG" || modes[i] == "TIME" || modes[i] == "DB") {
+		} else if (modes[i] == "ARG" || modes[i] == "TIME") {
 			if (types[i] == "u_int64_t") {
 				printf("\tLOGCOPY_64(&uint64tmp, bp);\n") >> CFILE;
 				printf("\targp->%s = (%s)uint64tmp;\n", vars[i], \
@@ -925,14 +957,26 @@ function read_function_int() {
 				printf("\targp->%s = (%s)uinttmp;\n", vars[i], \
 						types[i]) >> CFILE;
 				printf("\tbp += sizeof(uinttmp);\n") >> CFILE;
-
-				if(modes[i] == "DB") {
-					printf("\tif (do_pgswp) \n") >> CFILE;
-					printf("\t\tret = __dbreg_id_to_db(\n") >> CFILE;
-					printf("\t\t\tdbenv, argp->txnid, &dbp, argp->%s, 1, NULL, 0);\n", vars[i]) >> CFILE;
-					printf("\n") >> CFILE;
-				}
 			}
+		} else if (modes[i] == "DB") {
+			printf("\tif (argp->type == (DB_%s + 1000)) {\n", funcname) >> CFILE;
+			printf("\t\tmemcpy(argp->ufid_%s, bp, DB_FILE_ID_LEN);\n", vars[i]) >> CFILE;
+			printf("\t\targp->%s = -1;\n", vars[i]) >> CFILE;
+			printf("\t\tbp += DB_FILE_ID_LEN;\n") >> CFILE;
+			printf("\t\tif (do_pgswp)\n") >> CFILE;
+			printf("\t\t\tret = __ufid_to_db(dbenv, argp->txnid, &dbp, argp->ufid_%s, NULL);\n", \
+				   vars[i]) >> CFILE;
+			printf("\t} else {\n") >> CFILE;
+			printf("\t\tLOGCOPY_32(&uinttmp, bp);\n") \
+				   >> CFILE;
+			printf("\t\tmemset(argp->ufid_%s, 0, DB_FILE_ID_LEN);\n", vars[i]) >> CFILE;
+			printf("\t\targp->%s = (%s)uinttmp;\n", vars[i], \
+				   types[i]) >> CFILE;
+			printf("\t\tbp += sizeof(uinttmp);\n") >> CFILE;
+			printf("\t\tif (do_pgswp)\n") >> CFILE;
+			printf("\t\t\tret = __dbreg_id_to_db(\n") >> CFILE;
+			printf("\t\t\t\tdbenv, argp->txnid, &dbp, argp->%s, 1, NULL, 0);\n", vars[i]) >> CFILE;
+			printf("\t}\n") >> CFILE;
 		} else { # POINTER
 			printf("\tLOGCOPY_TOLSN(&argp->%s, bp);\n",vars[i]) >> CFILE;
 			printf("\tbp += sizeof(argp->%s);\n",vars[i]) >> CFILE;
@@ -1192,8 +1236,6 @@ function write_cond_free(tab, ptr, file)
 	} else {
 		print(tab "free(" ptr ");\n") >> file
 	}
-
-
 }
 
 function write_free(tab, ptr, file)
