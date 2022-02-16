@@ -21,14 +21,14 @@
 #include <event2/buffer.h>
 #include <event2/event.h>
 
+#include <openssl/ssl.h>
+
 #include <compile_time_assert.h>
 #include <locks_wrap.h>
 #include <logmsg.h>
 #include <net_appsock.h>
 #include <sqlwriter.h>
 
-#define KB(x)   (x * 1024)
-#define MB(x)   (x * 1024 * 1024)
 #define MSEC(x) (x * 1000) /* millisecond -> microsecond */
 
 //heartbeat will tick every
@@ -64,6 +64,8 @@ struct sqlwriter {
     unsigned do_timeout : 1;
     unsigned timed_out : 1;
     unsigned wr_continue : 1;
+    SSL *ssl;
+    int (*wr_evbuffer_fn)(struct sqlwriter *, int);
 };
 
 static void sql_trickle_cb(int fd, short what, void *arg);
@@ -123,6 +125,26 @@ void sql_disable_timeout(struct sqlwriter *writer)
     }
 }
 
+static int wr_evbuffer_ssl(struct sqlwriter *writer, int fd)
+{
+    int len = evbuffer_get_length(writer->wr_buf);
+    if (len > KB(16)) len = KB(16);
+    const void *buf = evbuffer_pullup(writer->wr_buf, len);
+    int rc = SSL_write(writer->ssl, buf, len);
+    if (rc > 0) evbuffer_drain(writer->wr_buf, rc);
+    return rc;
+}
+
+static int wr_evbuffer_plaintext(struct sqlwriter *writer, int fd)
+{
+    return evbuffer_write(writer->wr_buf, fd);
+}
+
+static int wr_evbuffer(struct sqlwriter *writer, int fd)
+{
+    return writer->wr_evbuffer_fn(writer, fd);
+}
+
 static void sql_flush_cb(int fd, short what, void *arg)
 {
     struct sqlwriter *writer = arg;
@@ -142,7 +164,7 @@ static void sql_flush_cb(int fd, short what, void *arg)
     }
     const int min = (writer->done || writer->flush) ? 0 : resume_buf;
     while (1) {
-        if ((n = evbuffer_write(writer->wr_buf, fd)) <= 0) {
+        if ((n = wr_evbuffer(writer, fd)) <= 0) {
             break;
         }
         writer->sent_at = time(NULL);
@@ -269,7 +291,7 @@ static void sql_trickle_int(struct sqlwriter *writer, int fd)
             return;
         }
     }
-    const int n = evbuffer_write(writer->wr_buf, fd);
+    const int n = wr_evbuffer(writer, fd);
     if (n <= 0) {
         writer->bad = 1;
         logmsg(LOGMSG_ERROR, "%s write failed fd:%d rc:%d err:%s\n", __func__,
@@ -397,9 +419,22 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
     writer->wr_base = event_base_new_with_config(cfg);
     event_config_free(cfg);
 
+    writer->wr_evbuffer_fn = wr_evbuffer_plaintext;
     writer->flush_ev = event_new(writer->wr_base, arg->fd, EV_WRITE | EV_PERSIST, sql_flush_cb, writer);
     writer->heartbeat_ev = event_new(appsock_timer_base, arg->fd, EV_PERSIST, sql_heartbeat_cb, writer);
     writer->heartbeat_trickle_ev = event_new(appsock_timer_base, arg->fd, EV_WRITE, sql_trickle_cb, writer);
 
     return writer;
+}
+
+void sql_enable_ssl(struct sqlwriter *writer, SSL *ssl)
+{
+    writer->ssl = ssl;
+    writer->wr_evbuffer_fn = wr_evbuffer_ssl;
+}
+
+void sql_disable_ssl(struct sqlwriter *writer)
+{
+    writer->ssl = NULL;
+    writer->wr_evbuffer_fn = wr_evbuffer_plaintext;
 }

@@ -655,7 +655,7 @@ static void sanc_dump(FILE *out, bdb_state_type *bdb_state)
         logmsgf(LOGMSG_USER, out, "sanc nodes are missin\n");
 }
 
-static void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
+void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
 {
     extern ssl_mode gbl_client_ssl_mode;
     if (gbl_client_ssl_mode <= SSL_UNKNOWN)
@@ -664,9 +664,8 @@ static void fill_ssl_info(CDB2DBINFORESPONSE *dbinfo_response)
     dbinfo_response->require_ssl = (gbl_client_ssl_mode >= SSL_REQUIRE);
 }
 
-void fill_dbinfo(void *p_response, bdb_state_type *bdb_state)
+void fill_dbinfo(CDB2DBINFORESPONSE *dbinfo_response, bdb_state_type *bdb_state)
 {
-    CDB2DBINFORESPONSE *dbinfo_response = p_response;
     struct host_node_info nodes[REPMAX];
     int num_nodes = 0, i = 0;
 

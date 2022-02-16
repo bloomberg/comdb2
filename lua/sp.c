@@ -1659,12 +1659,11 @@ static int db_debug(lua_State *lua)
 
 static int db_db_debug(Lua lua)
 {
-    int i, read;
     char *replace_from = NULL;
     int finish_execute = 0;
     for (;;) {
         char buffer[250] = {0};
-        read = get_remote_input(lua, buffer, sizeof(buffer));
+        int n = get_remote_input(lua, buffer, sizeof(buffer));
         if (strncmp(buffer, "cont", 4) == 0) {
             Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "_SP.do_next = false \n if (db.emit) then "
@@ -1678,13 +1677,13 @@ static int db_db_debug(Lua lua)
         } else if (strncmp(buffer, "breakpoints", 11) == 0) {
             sprintf(buffer, " %s()", "_SP.bkps");
         } else if (strncmp(buffer, "stop at", 7) == 0) {
-            i = atoi(&buffer[7]);
+            int i = atoi(&buffer[7]);
             sprintf(buffer, " %s(%d)", "_SP.set_breakpoint", i);
         } else if (strncmp(buffer, "list", 4) == 0) {
-            i = atoi(&buffer[4]);
+            int i = atoi(&buffer[4]);
             sprintf(buffer, " %s(%d)", "_SP.list_code", i);
         } else if (strncmp(buffer, "delete at", 9) == 0) {
-            i = atoi(&buffer[9]);
+            int i = atoi(&buffer[9]);
             sprintf(buffer, " %s(%d)", "_SP.delete_breakpoint", i);
         } else if (strncmp(buffer, "print ", 6) == 0) {
             char old_buffer[sizeof(buffer)];
@@ -1707,7 +1706,7 @@ static int db_db_debug(Lua lua)
             char *arguments = replace_from + strlen("setvariable");
             snprintf0(buffer, sizeof(buffer), "_SP.set_var%s", arguments);
             replace_from = NULL;
-        } else if (read == 0) {
+        } else if (n == 0) {
             /* Debugging socket is closed, let the program continue. */
             Pthread_cond_broadcast(&lua_debug_cond);
             sprintf(buffer, " %s", "db_emit = db.emit");

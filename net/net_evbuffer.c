@@ -62,8 +62,6 @@
 #  endif
 #endif
 
-#define KB(x) ((x) * 1024)
-#define MB(x) ((x) * 1024 * 1024)
 #define TCP_BUFSZ MB(8)
 #define SBUF2UNGETC_BUF_MAX 8 /* See also, util/sbuf2.c */
 #define MAX_DISTRESS_COUNT 3

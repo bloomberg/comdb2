@@ -4,8 +4,9 @@ set(src
   ${PROJECT_BINARY_DIR}/protobuf/sqlresponse.pb-c.c
   ${PROJECT_SOURCE_DIR}/util/hostname_support.c
   ${PROJECT_SOURCE_DIR}/util/sbuf2.c
-  ${PROJECT_SOURCE_DIR}/util/walkback.c
+  ${PROJECT_SOURCE_DIR}/util/ssl_glue.c
   ${PROJECT_SOURCE_DIR}/util/ssl_support.c
+  ${PROJECT_SOURCE_DIR}/util/walkback.c
 )
 
 set_source_files_properties(
@@ -16,6 +17,7 @@ set_source_files_properties(
 
 include_directories(
   ${PROJECT_SOURCE_DIR}/bbinc
+  ${PROJECT_SOURCE_DIR}/util
   ${PROJECT_BINARY_DIR}/protobuf
   ${PROTOBUF-C_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR}
