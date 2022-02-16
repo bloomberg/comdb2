@@ -95,6 +95,10 @@ static int __db_txnlist_pgnoadd __P((DB_ENV *, DB_TXNHEAD *,
 #include "dbinc_auto/qam_auto.h"
 #include "dbinc_auto/txn_auto.h"
 
+#if defined (UFID_HASH_DEBUG)
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
+#endif
+
 static int log_event_counts[10000] = { 0 };
 
 void
@@ -263,15 +267,21 @@ optostr(int op)
 	};
 }
 
-u_int32_t
-file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype, DBT *dbt)
+int
+ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype,
+		u_int8_t *fuid, DBT *dbt)
 {
 	int off = -1;
 	u_int32_t fileid = UINT32_MAX;
+	int is_fuid = 0;
 
 	/* Skip custom log recs */
 	if (rectype < 10000) {
 		log_event_counts[rectype]++;
+		if (rectype > 1000) {
+			is_fuid = 1;
+			rectype -= 1000;
+		}
 	}
 
 	/*
@@ -390,8 +400,17 @@ file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype, DBT *dbt)
 	}
 
 	/* Get fileid out of the record */
-	if (off != -1)
-		LOGCOPY_32(&fileid, (char *)dbt->data + off);
+	if (off != -1) {
+		if (is_fuid) {
+			memcpy(fuid, (char *)dbt->data + off, DB_FILE_ID_LEN);
+		} else {
+			LOGCOPY_32(&fileid, (char *)dbt->data + off);
+			DB *dbp = NULL;
+			__dbreg_id_to_db(env, NULL, &dbp, fileid, 0, lsn, 0);
+			is_fuid = 1;
+			memcpy(fuid, (char *)dbp->fileid, DB_FILE_ID_LEN);
+		}
+	}
 
 	/*
 	 * Some records have nothing to do with files.  These always
@@ -399,7 +418,7 @@ file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn, int rectype, DBT *dbt)
 	 * (thread 0).
 	 */
 
-	return fileid;
+	return is_fuid;
 }
 
 /*
@@ -492,11 +511,16 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 		 * necessary during recovery.
 		 */
 		LOGCOPY_TOLSN(&prev_lsn, (u_int8_t *)db->data +
-		    sizeof(rectype) + sizeof(txnid));
-		if (txnid != 0 && prev_lsn.file == 0 && (ret =
-			__db_txnlist_add(dbenv, info, txnid, TXN_OK,
-			    NULL)) != 0)
+			sizeof(rectype) + sizeof(txnid));
+		if (txnid != 0 && prev_lsn.file == 0) { 
+			if ((ret = __db_txnlist_add(dbenv, info, txnid, TXN_OK,
+				NULL)) != 0)
 			 return (ret);
+#if defined (UFID_HASH_DEBUG)
+			comdb2_cheapstack_sym(stderr, "db_txnlist_add line %d for "
+					"[%d:%d]:", __LINE__, lsnp->file, lsnp->offset);
+#endif
+		}
 
 		/* FALLTHROUGH */
 	case DB_TXN_POPENFILES:
@@ -537,22 +561,35 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 			/* FALLTHROUGH */
 		default:
 			if (txnid != 0 && (ret =
-			    __db_txnlist_find(dbenv,
-			    info, txnid)) != TXN_COMMIT && ret != TXN_IGNORE) {
+				__db_txnlist_find(dbenv,
+				info, txnid)) != TXN_COMMIT && ret != TXN_IGNORE) {
 				/*
 				 * If not found then, this is an incomplete
 				 * abort.
 				 */
-				if (ret == TXN_NOTFOUND)
-					return (__db_txnlist_add(dbenv,
-					    info, txnid, TXN_IGNORE, lsnp));
+				if (ret == TXN_NOTFOUND) {
+					ret = __db_txnlist_add(dbenv,
+						info, txnid, TXN_IGNORE, lsnp);
+#if defined (UFID_HASH_DEBUG)
+					comdb2_cheapstack_sym(stderr, "db_txnlist_add line %d for "
+						"[%d:%d]:", __LINE__, lsnp->file, lsnp->offset);
+#endif
+					return ret;
+				}
 				make_call = 1;
-				if (ret == TXN_OK &&
-				    (ret = __db_txnlist_update(dbenv,
-				    info, txnid,
-				    rectype == DB___txn_xa_regop ?
-				    TXN_PREPARE : TXN_ABORT, NULL)) != 0)
-					return (ret);
+				if (ret == TXN_OK) {
+					ret = __db_txnlist_update(dbenv, info, txnid,
+							rectype == DB___txn_xa_regop ?
+							TXN_PREPARE : TXN_ABORT, NULL);
+#if defined (UFID_HASH_DEBUG)
+					comdb2_cheapstack_sym(stderr, "db_txnlist_update line %d for "
+						"[%d:%d] to %d:", __LINE__, lsnp->file, lsnp->offset,
+						rectype == DB___txn_xa_regop ?
+						TXN_PREPARE : TXN_ABORT);
+#endif
+					if (ret != 0)
+						return ret;
+				}
 			}
 		}
 		break;
@@ -669,6 +706,9 @@ __db_dispatch(dbenv, dtab, dtabsize, db, lsnp, redo, info)
 			 * the standard table, use the standard table's size
 			 * as our sanity check.
 			 */
+			if (rectype > 1000) {
+				rectype -= 1000;
+			}
 			if (rectype > dtabsize || dtab[rectype] == NULL) {
 				__db_err(dbenv,
 				    "Illegal record type %lu in log",
@@ -1013,6 +1053,12 @@ __db_txnlist_update(dbenv, listp, txnid, status, lsn)
 		return (ret);
 	elp->u.t.status = status;
 
+#if defined (UFID_HASH_DEBUG)
+	comdb2_cheapstack_sym(stderr, "%s updating txnid 0x%x status %d [%d:%d], "
+			"ret %d", __func__, txnid, status, lsn ? lsn->file : -1,
+			lsn ? lsn->offset : -1, ret);
+#endif
+
 	if (lsn != NULL && IS_ZERO_LSN(hp->maxlsn) && status == TXN_COMMIT)
 		hp->maxlsn = *lsn;
 
@@ -1269,6 +1315,39 @@ err:	__db_txnlist_end(dbenv, hp);
 }
 
 /*
+ * __db_add_limbo_fid -- add pages to the limbo list by fileid.
+ *	Get the file information and call pgnoadd for each page.
+ *
+ * PUBLIC: int __db_add_limbo_fid __P((DB_ENV *,
+ * PUBLIC:      void *, u_int8_t *, db_pgno_t, int32_t));
+ */
+int
+__db_add_limbo_fid(dbenv, info, ufid, pgno, count)
+	DB_ENV *dbenv;
+	void *info;
+	u_int8_t *ufid;
+	db_pgno_t pgno;
+	int32_t count;
+{
+	char *fname;
+	int ret;
+	if ((ret = __ufid_to_fname(dbenv, &fname, ufid)) != 0) {
+		__ufid_dump(dbenv);
+		__log_flush(dbenv, NULL);
+		abort();
+	}
+
+	do {
+		if ((ret =
+			__db_txnlist_pgnoadd(dbenv, info, -1, ufid, fname, pgno)) != 0)
+			return (ret);
+		pgno++;
+	} while (--count != 0);
+
+	return (0);
+}
+
+/*
  * __db_add_limbo -- add pages to the limbo list.
  *	Get the file information and call pgnoadd for each page.
  *
@@ -1517,10 +1596,19 @@ retry:		dbp_created = 0;
 		t = ctxn == NULL ? txn : ctxn;
 
 		/* First try to get a dbp by fileid. */
+		if (elp->u.p.fileid != -1) {
 		ret =
-		    __dbreg_id_to_db(dbenv, t, &dbp, elp->u.p.fileid, 0, NULL,
-		    0);
+			__dbreg_id_to_db(dbenv, t, &dbp, elp->u.p.fileid, 0, NULL,
+			0);
+		} else {
+			ret = __ufid_to_db(dbenv, t, &dbp, elp->u.p.uid, NULL);
+		}
 
+		DB_ASSERT(!F_ISSET((dbp), DB_AM_RECOVER));
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s dbp %p recover-flag=%x ret=%d\n", __func__, dbp,
+				F_ISSET((dbp), DB_AM_RECOVER), ret);
+#endif
 
 #if 0
 		if (ret == DB_DELETED) {
@@ -1535,8 +1623,10 @@ retry:		dbp_created = 0;
 		 * dealing with recovery of allocations.
 		 */
 		if (ret == DB_DELETED ||
-		    (ret == 0 && F_ISSET(dbp, DB_AM_DISCARD)))
+			(ret == 0 && F_ISSET(dbp, DB_AM_DISCARD))) {
+			ret = ENOENT;
 			goto next;
+		}
 
 		if (ret != 0) {
 			if ((ret = db_create(&dbp, dbenv, 0)) != 0)
@@ -1660,7 +1750,7 @@ next:
 			ret = t_ret;
 
 		if (dbp_created &&
-		    (t_ret = __db_close(dbp, txn, DB_NOSYNC)) != 0 && ret == 0)
+			(t_ret = __db_close(dbp, NULL, DB_NOSYNC)) != 0 && ret == 0)
 			ret = t_ret;
 		dbp = NULL;
 		if (state != LIMBO_PREPARE && state != LIMBO_TIMESTAMP) {
@@ -1782,9 +1872,20 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 					goto err;
 				}
 
-				if (dbc == NULL && (ret =
-				    __db_cursor(dbp, ctxn, &dbc, 0)) != 0)
+#if defined (UFID_HASH_DEBUG)
+				if (dbc == NULL) {
+					logmsg(LOGMSG_USER, "%s creating a cursor for %p "
+							"ctxn is %p\n", __func__, dbp, ctxn);
+				}
+#endif
+				if (dbc == NULL) {
+					if ((ret = __db_cursor(dbp, ctxn, &dbc, 0)) != 0)
 						goto err;
+#if defined (UFID_HASH_DEBUG)
+					logmsg(LOGMSG_USER, "%s created cursor recover=%d\n",
+							__func__, F_ISSET((dbc), DBC_RECOVER));
+#endif
+				}
 				/*
 				 * If the dbp is compensating (because we
 				 * opened it), the dbc will automatically be
@@ -1792,6 +1893,10 @@ __db_limbo_fix(dbp, txn, ctxn, elp, lastp, meta, state)
 				 * do the open, we have to mark it explicitly.
 				 */
 				F_SET(dbc, DBC_COMPENSATE);
+#if defined (UFID_HASH_DEBUG)
+				comdb2_cheapstack_sym(stderr, "%s calling __db_free for pg %d",
+						__func__, pagep->pgno);
+#endif
 				ret = __db_free(dbc, pagep);
 				put_page = 0;
 				/*

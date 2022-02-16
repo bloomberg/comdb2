@@ -1,3 +1,8 @@
 table book book.csc2
 round_robin_stripes
 enable_snapshot_isolation
+
+# Disable parallel rep (this was causing crashes)
+#setattr REP_PROCESSORS 0
+#setattr REP_WORKERS 0
+

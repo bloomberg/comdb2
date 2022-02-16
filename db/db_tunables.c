@@ -238,6 +238,9 @@ extern int gbl_lock_dba_user;
 extern int gbl_max_trigger_threads;
 extern int gbl_do_inline_poll;
 extern int gbl_fingerprint_max_queries;
+extern int gbl_ufid_log;
+extern int gbl_ufid_dbreg_test;
+
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;

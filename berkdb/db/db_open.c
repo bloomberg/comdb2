@@ -37,7 +37,7 @@ static const char revid[] = "$Id: db_open.c,v 11.236 2003/09/27 00:29:03 sue Exp
 
 #include <string.h>
 
-#if defined (STACK_AT_DB_OPEN_CLOSE)
+#if defined (STACK_AT_DB_OPEN_CLOSE) || defined(UFID_HASH_DEBUG)
 #include <tohex.h>
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
@@ -258,7 +258,7 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	 * files.
 	 */
 	if (!F_ISSET(dbp, DB_AM_RECOVER) &&
-	    fname != NULL && LOCK_ISSET(dbp->handle_lock)) {
+		fname != NULL && LOCK_ISSET(dbp->handle_lock)) {
 		if (txn != NULL) {
 			ret = __txn_lockevent(dbenv,
 			    txn, dbp, &dbp->handle_lock, dbp->lid);
@@ -269,6 +269,12 @@ __db_open(dbp, txn, fname, dname, type, flags, mode, meta_pgno)
 	}
 
 DB_TEST_RECOVERY_LABEL
+#if defined (UFID_HASH_DEBUG)
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+    if (dbp) fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "%s called on %s flags=0x%x dbp %p ret %d %s:",
+            __func__, fname ? fname : "(nil)", flags, dbp, ret, fid_str);
+#endif
 err:
 	return (ret);
 }
