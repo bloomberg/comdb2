@@ -2548,6 +2548,13 @@ static int reload_analyze(struct sqlthdstate *thd, struct sqlclntstate *clnt,
     return rc;
 }
 
+#define TRK \
+    if (gbl_fdb_track) \
+        logmsg(LOGMSG_USER, \
+               "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n", \
+               thd->dbopen_gen, bdb_get_dbopen_gen(), thd->analyze_gen, \
+               cached_analyze_gen, thd->views_gen, gbl_views_gen);
+
 // Call with schema_lk held and in_sqlite_init == 1
 static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int flags)
 {
@@ -2560,23 +2567,21 @@ static int check_thd_gen(struct sqlthdstate *thd, struct sqlclntstate *clnt, int
     /* cache analyze gen first because gbl_analyze_gen is NOT protected by
      * schema_lk */
     int cached_analyze_gen = gbl_analyze_gen;
-    if (gbl_fdb_track)
-        logmsg(LOGMSG_USER,
-               "XXX: thd dbopen=%d vs %d thd analyze %d vs %d views %d vs %d\n",
-               thd->dbopen_gen, bdb_get_dbopen_gen(), thd->analyze_gen,
-               cached_analyze_gen, thd->views_gen, gbl_views_gen);
 
     if (thd->dbopen_gen != bdb_get_dbopen_gen()) {
+        TRK;
         return SQLITE_SCHEMA;
     }
     if (thd->analyze_gen != cached_analyze_gen) {
         int ret;
+        TRK;
         stmt_cache_reset(thd->stmt_cache);
         ret = reload_analyze(thd, clnt, cached_analyze_gen);
         return ret;
     }
 
     if (thd->views_gen != gbl_views_gen) {
+        TRK;
         return SQLITE_SCHEMA_REMOTE;
     }
 

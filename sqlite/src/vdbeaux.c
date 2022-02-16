@@ -2575,6 +2575,8 @@ void sqlite3VdbeTransferTables(
   }
   pTo->tbls = pTbls;
   pTo->numTables += pFrom->numTables;
+  pFrom->numTables = 0;
+  pFrom->tbls = NULL;
 }
 #endif /* defined(SQLITE_BUILDING_FOR_COMDB2) */
 
