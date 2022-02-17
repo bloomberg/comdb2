@@ -897,14 +897,11 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
         return 1;
     }
     newdb->dbnum = db->dbnum;
-    newdb->skip_error_on_ulonglong_check = 1;
-    if ((add_cmacc_stmt(newdb, 1)) || (init_check_constraints(newdb))) {
+    if ((add_cmacc_stmt(newdb, 1, 1)) || (init_check_constraints(newdb))) {
         /* can happen if new schema has no .DEFAULT tag but needs one */
-        newdb->skip_error_on_ulonglong_check = 0;
         backout_schemas(table);
         return 1;
     }
-    newdb->skip_error_on_ulonglong_check = 0;
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 

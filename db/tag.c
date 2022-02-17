@@ -4867,7 +4867,8 @@ out:
    match cmacc).  libcmacc2 puts results into globals.
    process them here after each .csc file is read
  */
-static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
+static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
+                              int allow_ull)
 {
     /* loaded from csc2 at this point */
     int field;
@@ -4961,8 +4962,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
                    commands, like table rebuilds, truncates and time partition
                    rollouts, to succeed.
                 */
-                if (gbl_ready && (db->skip_error_on_ulonglong_check != 1) &&
-                    !db->timepartition_name) {
+                if (gbl_ready && !allow_ull && !db->timepartition_name) {
                     sc_client_error(db->iq->sc, "u_longlong is not supported");
                     return -1;
                 }
@@ -5181,13 +5181,13 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects)
     return 0;
 }
 
-int add_cmacc_stmt(dbtable *db, int alt)
+int add_cmacc_stmt(dbtable *db, int alt, int allow_ull)
 {
-    return add_cmacc_stmt_int(db, alt, 1);
+    return add_cmacc_stmt_int(db, alt, 1, allow_ull);
 }
 int add_cmacc_stmt_no_side_effects(dbtable *db, int alt)
 {
-    return add_cmacc_stmt_int(db, alt, 0);
+    return add_cmacc_stmt_int(db, alt, 0, 0);
 }
 
 /* this routine is called from comdb2 when all is well
@@ -6911,14 +6911,11 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     }
     newdb->schema_version = version;
     newdb->dbnum = db->dbnum;
-    newdb->skip_error_on_ulonglong_check = 1;
-    rc = add_cmacc_stmt(newdb, 0);
+    rc = add_cmacc_stmt(newdb, 0, 1);
     if (rc) {
         logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
-        newdb->skip_error_on_ulonglong_check = 0;
         goto err;
     }
-    newdb->skip_error_on_ulonglong_check = 0;
 
     /* Initialize table's check constraint members. */
     rc = init_check_constraints(newdb);
