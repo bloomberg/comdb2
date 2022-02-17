@@ -784,11 +784,6 @@ typedef struct dbtable {
 
     unsigned disableskipscan : 1;
     unsigned do_local_replication : 1;
-    /* A flag to temporarily disable check for the presence of u_longlong types
-       in the (csc2) schema even when forbid_ulonglong is enabled. This allows
-       certain maintenance operations on legacy tables, using forbid_ulonglong
-       type, to work properly. */
-    unsigned skip_error_on_ulonglong_check : 1;
 
     /* name of the timepartition, if this is a shard */
     const char *timepartition_name;
@@ -2378,7 +2373,7 @@ int del_bt_hash_table(char *table);
 int stat_bt_hash_table(char *table);
 int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
-int add_cmacc_stmt(struct dbtable *db, int alt);
+int add_cmacc_stmt(struct dbtable *db, int alt, int allow_ull);
 int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
 
 void cleanup_newdb(struct dbtable *);

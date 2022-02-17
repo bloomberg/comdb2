@@ -136,7 +136,7 @@ int add_table_to_environment(char *table, const char *csc2,
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
 
-    if (add_cmacc_stmt(newdb, 0)) {
+    if (add_cmacc_stmt(newdb, 0, 0)) {
         logmsg(LOGMSG_ERROR, "%s: add_cmacc_stmt failed\n", __func__);
         rc = SC_CSC2_ERROR;
         goto err;

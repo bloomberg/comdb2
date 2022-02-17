@@ -2485,7 +2485,7 @@ struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
         goto err;
     }
 
-    rc = add_cmacc_stmt(newtable, 0);
+    rc = add_cmacc_stmt(newtable, 0, 0);
     if (rc) {
         errstat_set_rcstrf(err, -1,
                            "Failed to load schema: can't "
