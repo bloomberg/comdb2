@@ -308,7 +308,7 @@ cstart:         '[' number ']' cstart
 							lastidx++;
 							if ((gbl_allow_neg_column_size == 0) &&
                                 ($2.number < 0)) {
-								csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+								csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
 									current_line);
 								any_errors++;
 							} else {
@@ -325,7 +325,7 @@ cstart:         '[' number ']' cstart
 							if (i != -1) {
 								if ((gbl_allow_neg_column_size == 0) &&
                                     (constants[i].value < 0)) {
-									csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
+									csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
 										current_line);
 									any_errors++;
 								} else {
