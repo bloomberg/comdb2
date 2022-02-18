@@ -95,7 +95,6 @@ void csc2_free_all(void);
 void *csc2_malloc(size_t sz);
 char *csc2_strdup(char *);
 char *csc2_get_errors(void);
-char *csc2_get_syntax_errors(void);
 
 /* In addition to stderr, pass any errors to user-defined callback.  Error
  * message is freed when callback returns. */
