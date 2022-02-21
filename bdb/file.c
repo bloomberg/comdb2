@@ -7494,7 +7494,7 @@ int oldfile_list_empty(void)
     return ret;
 }
 
-int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
+int bdb_get_last_logfile(bdb_state_type *bdb_state, int *bdberr)
 {
     DB_LOGC *logc;
     DBT logent;
@@ -7510,7 +7510,7 @@ int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
     }
     bzero(&logent, sizeof(DBT));
     logent.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &current_lsn, &logent, DB_FIRST);
+    rc = logc->get(logc, &current_lsn, &logent, DB_LAST);
     if (rc) {
         logc->close(logc, 0);
         logmsg(LOGMSG_ERROR, "%s: logc->get last LSN rc %d\n", __func__, rc);
@@ -7616,7 +7616,7 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     assert(bdb_state->parent == NULL);
 
     if (bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_first_logfile(bdb_state, bdberr);
+        lognum = bdb_get_last_logfile(bdb_state, bdberr);
         if (lognum == -1)
             return -1;
     }
@@ -7814,7 +7814,7 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     assert(bdb_state->parent != NULL);
 
     if (delay && bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_first_logfile(bdb_state, bdberr);
+        lognum = bdb_get_last_logfile(bdb_state, bdberr);
         if (lognum == -1)
             return -1;
     }
@@ -8090,7 +8090,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
          * or our low watermark, whichever is lower */
         lowfilenum = get_lowfilenum_sanclist(bdb_state);
 
-        ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
+        ourlowfilenum = bdb_get_last_logfile(bdb_state, bdberr);
         if (ourlowfilenum == -1) return -1;
         if (lowfilenum == 0) lowfilenum = ourlowfilenum;
 
