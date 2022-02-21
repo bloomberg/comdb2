@@ -229,7 +229,7 @@ function run_test
 {
     [[ $debug == "1" ]] && set -x
     typeset func="run_test"
-    typeset maxtime=864000
+    typeset maxtime=1200
     typeset now=$(date +%s)
     typeset endtime=$(( now + maxtime ))
 

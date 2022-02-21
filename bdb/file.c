@@ -7494,7 +7494,7 @@ int oldfile_list_empty(void)
     return ret;
 }
 
-int bdb_get_last_logfile(bdb_state_type *bdb_state, int *bdberr)
+int bdb_get_logfile(bdb_state_type *bdb_state, int *bdberr, int which)
 {
     DB_LOGC *logc;
     DBT logent;
@@ -7510,7 +7510,7 @@ int bdb_get_last_logfile(bdb_state_type *bdb_state, int *bdberr)
     }
     bzero(&logent, sizeof(DBT));
     logent.flags = DB_DBT_MALLOC;
-    rc = logc->get(logc, &current_lsn, &logent, DB_LAST);
+    rc = logc->get(logc, &current_lsn, &logent, which);
     if (rc) {
         logc->close(logc, 0);
         logmsg(LOGMSG_ERROR, "%s: logc->get last LSN rc %d\n", __func__, rc);
@@ -7524,6 +7524,16 @@ int bdb_get_last_logfile(bdb_state_type *bdb_state, int *bdberr)
     logc->close(logc, 0);
 
     return lognum;
+}
+
+int bdb_get_last_logfile(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_get_logfile(bdb_state, bdberr, DB_LAST);
+}
+
+int bdb_get_first_logfile(bdb_state_type *bdb_state, int *bdberr)
+{
+    return bdb_get_logfile(bdb_state, bdberr, DB_FIRST);
 }
 
 /* Lets check new prefix for ongoing schema changes:
@@ -8095,6 +8105,7 @@ int bdb_purge_unused_files(bdb_state_type *bdb_state, tran_type *tran,
         if (lowfilenum == 0) lowfilenum = ourlowfilenum;
 
         if (ourlowfilenum < lowfilenum) lowfilenum = ourlowfilenum;
+        lowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
     }
 
     *bdberr = 0;
