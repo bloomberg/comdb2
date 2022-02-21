@@ -247,6 +247,9 @@ extern int gbl_max_trigger_threads;
 extern int gbl_alternate_normalize;
 extern int gbl_sc_logbytes_per_second;
 extern int gbl_fingerprint_max_queries;
+extern int gbl_log_index_locks_first;
+extern int gbl_ufid_log;
+
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;

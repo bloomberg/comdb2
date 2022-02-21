@@ -1960,6 +1960,9 @@ REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_log,
+                 EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+
 REGISTER_TUNABLE("ref_sync_pollms",
                  "Set pollms for ref_sync thread.  "
                  "(Default: 250)",

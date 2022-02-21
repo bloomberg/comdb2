@@ -19,6 +19,9 @@ static const char revid[] = "$Id: os_unlink.c,v 11.26 2003/01/08 05:29:43 bostic
 #endif
 
 #include "db_int.h"
+#if defined (UFID_HASH_DEBUG)
+#include <logmsg.h>
+#endif
 
 /*
  * __os_region_unlink --
@@ -69,6 +72,10 @@ ___os_unlink(dbenv, path)
 {
 	int ret, retries;
 	int tmp_file = 0;
+
+#if defined (UFID_HASH_DEBUG)
+	logmsg(LOGMSG_USER, "%s unlinking %s\n", __func__, path);
+#endif
 
 	if (dbenv->db_tmp_dir && *dbenv->db_tmp_dir)
 		if (memcmp(dbenv->db_tmp_dir, path,
