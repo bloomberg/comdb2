@@ -2156,4 +2156,9 @@ REGISTER_TUNABLE("externalauth_warn", "Warn instead of returning error in case o
 REGISTER_TUNABLE("view_feature", "Enables support for VIEWs (Default: ON)",
                  TUNABLE_BOOLEAN, &gbl_view_feature, 0, NULL, NULL, NULL, NULL);
 
+REGISTER_TUNABLE("foreign_metadb", "Forces metadb for fdb queries to the one specified (Default:comdb2db)",
+                 TUNABLE_STRING, &gbl_foreign_metadb, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class specified (Default:prod)",
+                 TUNABLE_STRING, &gbl_foreign_metadb_class, READONLY | READEARLY, NULL, NULL, NULL, NULL);
+
 #endif /* _DB_TUNABLES_H */
