@@ -2004,7 +2004,7 @@ void log_long_running_sql_statements()
     Pthread_mutex_lock(&gbl_sql_lock);
     LISTC_FOR_EACH(&thedb->sql_threads, thd, lnk)
     {
-        if (thd->clnt != NULL) {
+        if (thd->clnt != NULL && thd->clnt->thd != NULL) {
             reqlog_log_longreq(thd->clnt->thd->logger, 0, thd->clnt->sql);
         }
     }

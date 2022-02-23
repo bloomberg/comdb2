@@ -3352,7 +3352,7 @@ static int get_prepared_stmt_int(struct sqlthdstate *thd,
         clnt->prep_rc = rc = sqlite3_prepare_v3(thd->sqldb, rec->sql, -1,
                                                 sqlPrepFlags, &rec->stmt, &tail);
 
-        if (rc == SQLITE_OK) {
+        if (rc == SQLITE_OK && rec->stmt != NULL) {
             t = prepare_fingerprint(clnt, rec, fingerprint);
         }
 
