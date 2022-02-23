@@ -167,6 +167,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL SunOS)
   add_definitions(
     -D_SUN_SOURCE
     -D_POSIX_PTHREAD_SEMANTICS
+    -D__USE_SUNOS_SOCKETS__
   )
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL Darwin)
   add_definitions(
