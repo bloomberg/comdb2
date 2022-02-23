@@ -946,13 +946,13 @@ static void check_wr_full(struct event_info *e)
     size_t outstanding = evbuffer_get_length(e->wr_buf);
     if (e->wr_full) {
         if (outstanding < (max_bytes * resume_lvl)) {
-            hprintf("RESUMING WR outstanding:%zumb (max:%zumb) after:%ds\n", outstanding / MB(1),
+            hprintf("RESUMING WR outstanding:%zumb (max:%"PRIu64"mb) after:%ds\n", outstanding / MB(1),
                     max_bytes / MB(1), (int)(time(NULL) - e->wr_full));
             e->wr_full = 0;
         }
     } else if (outstanding > max_bytes) {
         e->wr_full = time(NULL);
-        hprintf("SUSPENDING WR outstanding:%zumb (max:%zumb)\n", outstanding / MB(1), max_bytes / MB(1));
+        hprintf("SUSPENDING WR outstanding:%zumb (max:%"PRIu64"mb)\n", outstanding / MB(1), max_bytes / MB(1));
     }
 }
 
@@ -1058,7 +1058,7 @@ static void user_msg_callback(void *work)
         if (outstanding < (max_bytes * resume_lvl)) {
             time_t diff = time(NULL) - e->rd_full;
             if (diff > 5) {
-                hprintf("RESUMING RD outstanding:%zumb (max:%zumb ) after:%ds\n",
+                hprintf("RESUMING RD outstanding:%zumb (max:%"PRIu64"mb ) after:%ds\n",
                         outstanding / MB(1), max_bytes / MB(1), (int)diff);
             }
             e->rd_full = 0;
