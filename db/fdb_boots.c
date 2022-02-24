@@ -392,6 +392,8 @@ done:
     return host;
 }
 
+char* gbl_foreign_metadb = "comdb2db";
+char* gbl_foreign_metadb_class = "prod";
 static int _discover_remote_db_nodes(const char *dbname, const char *class,
                                      int maxnodes,
                                      /* out: */ char *nodes[REPMAX],
@@ -409,6 +411,11 @@ static int _discover_remote_db_nodes(const char *dbname, const char *class,
         class = "dev";
         comdb2dbname = "comdb3db";
         comdb2dbclass = "dev";
+    }
+
+    if (gbl_foreign_metadb && gbl_foreign_metadb_class) {
+        comdb2dbname = gbl_foreign_metadb;
+        comdb2dbclass = gbl_foreign_metadb_class;
     }
 
     rc = cdb2_open(&db, comdb2dbname, comdb2dbclass, 0);
