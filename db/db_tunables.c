@@ -328,7 +328,6 @@ extern int gbl_sync_osql_cancel;
 extern int eventlog_nkeep;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_disable_seekscan_optimization;
-extern int gbl_longreq_log_freq_sec;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_page_order_table_scan;
