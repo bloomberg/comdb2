@@ -2367,15 +2367,20 @@ int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
 int check_table_schema(struct dbenv *dbenv, const char *table,
                        const char *csc2file);
 
+struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
+                                   char *csc2, int dbnum, int indx,
+                                   int sc_alt_tablename, int allow_ull,
+                                   struct errstat *err);
+
 struct dbtable *find_table(const char *table);
 int bt_hash_table(char *table, int szkb);
 int del_bt_hash_table(char *table);
 int stat_bt_hash_table(char *table);
 int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
-int add_cmacc_stmt(struct dbtable *db, int alt, int allow_ull,
+int add_cmacc_stmt(struct dbtable *db, int is_sc_name, int allow_ull,
                    struct errstat *err);
-int add_cmacc_stmt_no_side_effects(struct dbtable *db, int alt);
+int add_cmacc_stmt_no_side_effects(struct dbtable *db, int is_sc_name);
 
 void cleanup_newdb(struct dbtable *);
 struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,

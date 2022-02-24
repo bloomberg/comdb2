@@ -17,9 +17,6 @@
 #ifndef INCLUDE_SC_CSC2_H
 #define INCLUDE_SC_CSC2_H
 
-int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
-                        int *foundix, struct ireq *iq);
-
 /* Given a table name, this makes sure that what we know about the schema
  * matches what is written in our meta table.  If we have nothing in our table
  * we populate it from the given file. */
