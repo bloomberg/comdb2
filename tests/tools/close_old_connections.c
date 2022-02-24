@@ -1,4 +1,5 @@
 #include <inttypes.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -57,6 +58,8 @@ static int run1(const char *sql)
 
 int main(int argc, char **argv)
 {
+    sigignore(SIGPIPE);
+
     char *cluster = getenv("CLUSTER");
     if (cluster) {
         cluster = strdup(cluster);
