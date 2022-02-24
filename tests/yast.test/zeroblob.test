@@ -342,7 +342,7 @@ do_execsql_test 13.100 {
   CREATE INDEX t1bbc ON t1(b, b+c);
   INSERT INTO t1(a,b,c) VALUES(1,zeroblob(8),3);
   SELECT a, quote(b), length(b), c FROM t1;
-} {1 (null) 1 X'0000000000000000' 8 3}
+} {1 {dyns_load_schema_string failed for t1} 1 X'0000000000000000' 8 3}
 
 # test_restore_config_pagecache
 finish_test

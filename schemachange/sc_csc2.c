@@ -25,31 +25,6 @@
 static int schema_cmp(struct dbenv *dbenv, struct dbtable *db,
                       const char *csc2cmp);
 
-int load_db_from_schema(struct schema_change_type *s, struct dbenv *thedb,
-                        int *foundix, struct ireq *iq)
-{
-    /* load schema from string or file */
-    int rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
-    if (rc != 0) {
-        char *err;
-        char *syntax_err;
-        err = csc2_get_errors();
-        syntax_err = csc2_get_syntax_errors();
-        sc_client_error(s, "%s", syntax_err);
-        sc_errf(s, "%s", err);
-        sc_errf(s, "Failed to load schema\n");
-        return SC_INTERNAL_ERROR;
-    }
-
-    /* find which db has a matching name */
-    if ((*foundix = getdbidxbyname_ll(s->tablename)) < 0) {
-        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
-        exit(1);
-    }
-
-    return SC_OK;
-}
-
 /* Given a table name, this makes sure that what we know about the schema
  * matches what is written in our meta table.  If we have nothing in our table
  * we populate it from the given file. */

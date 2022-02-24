@@ -366,8 +366,8 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     int i;
     char new_prefix[32];
     int foundix;
-
     struct scinfo scinfo;
+    struct errstat err = {0};
 
 #ifdef DEBUG_SC
     logmsg(LOGMSG_INFO, "do_alter_table() %s\n", s->resume ? "resuming" : "");
@@ -401,43 +401,33 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         local_lock = 1;
     }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
-    dyns_init_globals();
-    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
-        dyns_cleanup_globals();
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        if (local_lock)
-            unlock_schema_lk();
-        return rc;
+
+    /* find which db has a matching name */
+    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
+        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
+        exit(1);
     }
 
-    newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, -1);
+    newdb =
+        create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum, foundix,
+                           1 /* sc_alt_name */, (s->same_schema) ? 1 : 0, &err);
 
-    if (newdb == NULL) {
-        dyns_cleanup_globals();
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        sc_errf(s, "Internal error\n");
         if (local_lock)
             unlock_schema_lk();
         return SC_INTERNAL_ERROR;
     }
-    newdb->schema_version = get_csc2_version(newdb->tablename);
 
+    newdb->dtastripe = gbl_dtastripe; // we have only one setting currently
+    newdb->odh = s->headers;
+    /* don't lose precious flags like this */
+    newdb->instant_schema_change = s->headers && s->instant_sc;
+    newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->iq = iq;
 
-    struct errstat err = {0};
-    rc = add_cmacc_stmt(newdb, 1, (s->same_schema) ? 1 : 0, &err);
-    if (rc)
-        sc_client_error(s, "%s", err.errstr);
-    if (rc || (init_check_constraints(newdb))) {
-        backout(newdb);
-        cleanup_newdb(newdb);
-        dyns_cleanup_globals();
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        sc_errf(s, "Failed to process schema!\n");
-        if (local_lock)
-            unlock_schema_lk();
-        return -1;
-    }
+    newdb->schema_version = get_csc2_version(newdb->tablename);
 
     if ((rc = sql_syntax_check(iq, newdb))) {
         Pthread_mutex_unlock(&csc2_subsystem_mtx);

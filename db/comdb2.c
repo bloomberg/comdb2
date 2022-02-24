@@ -2462,6 +2462,7 @@ static inline int db_get_alias(void *tran, dbtable *tbl)
 
 struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
                                    char *csc2, int dbnum, int indx,
+                                   int sc_alt_tablename, int allow_ull,
                                    struct errstat *err)
 {
     struct dbtable *newtable = NULL;
@@ -2471,28 +2472,29 @@ struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
 
     rc = dyns_load_schema_string(csc2, dbenv->envname, tablename);
     if (rc) {
-        errstat_set_rcstrf(err, -1, "dyns_load_schema_string failed for %s\n",
+        errstat_set_rcstrf(err, -1, "dyns_load_schema_string failed for %s",
                            tablename);
         goto err;
     }
 
     newtable = newdb_from_schema(dbenv, tablename, NULL, dbnum, indx);
     if (!newtable) {
-        errstat_set_rcstrf(err, -1, "newdb_from_schema failed for %s\n",
+        errstat_set_rcstrf(err, -1, "newdb_from_schema failed for %s",
                            tablename);
         rc = -1;
         goto err;
     }
 
-    rc = add_cmacc_stmt(newtable, 0, 0, err);
-    if (rc)
+    rc = add_cmacc_stmt(newtable, sc_alt_tablename, allow_ull, err);
+    if (rc) {
         goto err;
+    }
 
     rc = init_check_constraints(newtable);
     if (rc) {
         errstat_set_rcstrf(err, -1,
                            "Failed to load check constraints "
-                           "for %s\n",
+                           "for %s",
                            newtable->tablename);
         goto err;
     }
@@ -2585,8 +2587,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
         }
 
         struct errstat err = {0};
-        tbl = create_new_dbtable(dbenv, tblnames[i], csc2text, dbnums[i], i,
-                                 &err);
+        tbl = create_new_dbtable(dbenv, tblnames[i], csc2text, dbnums[i], i, 0,
+                                 0, &err);
         free(csc2text);
         csc2text = NULL;
         if (!tbl) {
@@ -3575,10 +3577,10 @@ static int init_sqlite_tables(struct dbenv *dbenv)
             continue;
 
         tbl = create_new_dbtable(dbenv, (char *)sqlite_stats_name[i],
-                                 (char *)sqlite_stats_csc2[i], 0, dbenv->num_dbs,
-                                 &err);
+                                 (char *)sqlite_stats_csc2[i], 0,
+                                 dbenv->num_dbs, 0, 0, &err);
         if (!tbl) {
-            logmsg(LOGMSG_ERROR, "%s", err.errstr);
+            logmsg(LOGMSG_ERROR, "%s\n", err.errstr);
             return -1;
         }
         tbl->csc2_schema = strdup(sqlite_stats_csc2[i]);
