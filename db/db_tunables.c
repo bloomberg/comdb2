@@ -366,6 +366,8 @@ int gbl_file_permissions = 0660;
 
 extern int gbl_net_maxconn;
 
+int gbl_return_error_key_values = 1;
+
 /*
   =========================================================
   Value/Update/Verify functions for some tunables that need

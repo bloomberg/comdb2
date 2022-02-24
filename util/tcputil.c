@@ -317,7 +317,7 @@ static int lclconn_nb(int s, const struct sockaddr *name, int namelen)
 }
 
 static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
-                         int nb, char tos)
+                         int nb, signed char tos)
 {
     int sockfd, rc;
     int sendbuff, sndrcvbufsize;

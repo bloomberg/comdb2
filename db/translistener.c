@@ -770,7 +770,7 @@ static int sp_trigger_run(struct javasp_trans_state *javasp_trans_handle,
     {
         for (i = 0; i < s->nmembers; i++) {
             unsigned char field_name_len;
-            char field_type;
+            signed char field_type;
             unsigned char before_flag;
             unsigned char after_flag;
 

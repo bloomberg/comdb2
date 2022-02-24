@@ -1089,9 +1089,27 @@ int verify_del_constraints(struct ireq *iq, void *trans, int *errout)
                 reqmoref(iq, " RC %d", rc);
             }
 
+            static const char *errprefix = "key value is still referenced from child table";
+            int fndlen = 0;
+            char *errk = NULL;
+            void *od_dta = NULL;
+            if (gbl_return_error_key_values) {
+                od_dta = malloc(iq->usedb->lrl);
+                fsnapf(stdout, skey, bct->sixlen);
+                printf("len %d\n", bct->sixlen);
+                int ixrc = ix_find_by_key_tran(iq, skey, bct->sixlen, bct->sixnum, key, &rrn, &genid, &od_dta, &fndlen,
+                                               iq->usedb->lrl, trans);
+                if (ixrc) {
+                    errk = NULL;
+                } else {
+                    errk = get_error_key(iq->usedb, bct->sixnum, od_dta, errprefix);
+                }
+            }
             generate_fkconstraint_error(iq, bct->tablename, ondisk_tag, bct->dstdb->tablename, dondisk_tag,
-                                        "key value is still referenced from child table");
+                                        errk ? errk : errprefix);
             *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
+            free(errk);
+            free(od_dta);
             close_constraint_table_cursor(cur);
             return ERR_BADREQ;
         }
@@ -1379,11 +1397,17 @@ int delayed_key_adds(struct ireq *iq, void *trans, int *blkpos, int *ixout,
                     *errout = OP_FAILED_VERIFY;
                     rc = ERR_VERIFY;
                 } else {
+                    char *readable_key = NULL;
+                    if (gbl_return_error_key_values)
+                        readable_key = get_error_key(iq->usedb, doidx, od_dta, "");
                     reqerrstr(iq, COMDB2_CSTRT_RC_DUP,
                               "add key constraint duplicate key '%s' on table "
-                              "'%s' index %d",
+                              "'%s' index %d%s%s",
                               get_keynm_from_db_idx(iq->usedb, doidx),
-                              iq->usedb->tablename, doidx);
+                              iq->usedb->tablename, doidx,
+                              gbl_return_error_key_values ?  ", key=" : "",
+                              gbl_return_error_key_values ? readable_key : "");
+                    free(readable_key);
                     *errout = OP_FAILED_UNIQ;
                 }
 
@@ -1756,8 +1780,12 @@ int verify_add_constraints(struct ireq *iq, void *trans, int *errout)
                             reqmoref(iq, " RC %d", rc);
                         }
 
+                        static const char *errprefix = "key value does not exist in parent table ";
+                        char *errk = gbl_return_error_key_values ? get_error_key(ct->lcltable, 0, od_dta, errprefix) : NULL;
                         generate_fkconstraint_error(iq, ct->lcltable->tablename, ondisk_tag, ftable->tablename,
-                                                    fondisk_tag, "key value does not exist in parent table");
+                                                    fondisk_tag, errk ? errk : errprefix);
+                        free(errk);
+
                         *errout = OP_FAILED_INTERNAL + ERR_FIND_CONSTRAINT;
                         free_cached_delayed_indexes(iq);
                         close_constraint_table_cursor(cur);

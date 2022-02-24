@@ -201,6 +201,7 @@ extern char gbl_ondisk_ver[];
 extern const int gbl_ondisk_ver_len;
 extern char gbl_ondisk_ver_fmt[];
 extern int gbl_use_t2t;
+extern int gbl_return_error_key_values;
 
 int tag_init(void);
 void add_tag_schema(const char *table, struct schema *);
@@ -419,4 +420,8 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
 char* typestr(int type, int len);
 
 struct schema *get_schema(const struct dbtable *db, int ix);
+
+char *get_error_key(struct dbtable *dbtable, int ixnum, void *data, const char *prefix);
+char *make_readable_key(struct dbtable *dbtable, int ixnum, void *key, const char *prefix);
+
 #endif

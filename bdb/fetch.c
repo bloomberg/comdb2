@@ -52,6 +52,7 @@
 #include <ctrace.h>
 
 #include <net.h>
+#include <fsnapf.h>
 #include "bdb_int.h"
 #include "bdb_cursor.h"
 #include "locks.h"
@@ -661,6 +662,7 @@ static int bdb_fetch_int_ll(
         keycontainsgenid = bdb_keycontainsgenid(bdb_state, ixnum);
         ixrecnum = bdb_state->ixrecnum[ixnum];
         dbp = bdb_state->dbp_ix[ixnum];
+        printf("dbp %s ix %d\n", bdb_state->name, ixnum);
     }
 
     if (return_dta)
@@ -854,6 +856,7 @@ before_first_lookup:
     }
 
     dbcp = NULL;
+    printf("cur_ser %p\n", cur_ser);
 
     if (cur_ser) {
         if (CURSOR_SER_ENABLED(bdb_state) && attempt_deserializaion &&
@@ -880,6 +883,7 @@ before_first_lookup:
 
     /* if we didn't successfully deserialize the cursor */
     if (!dbcp) {
+        printf("paired? %d\n", paired_cursor);
         if (paired_cursor)
             rc =
                 dbp->paired_cursor_from_lid(dbp, lockerid, &dbcp, cursor_flags);
@@ -900,7 +904,10 @@ before_first_lookup:
        ixnum, dbt_key.ulen, dbt_key.size, dbt_data.ulen);
     */
 
+    printf("looking for key table %s flags %x ixnum %d len %d dta len %d flags %x ulen %d", bdb_state->name, flags, ixnum, dbt_key.size, dbt_data.size, dbt_data.flags, dbt_data.ulen);
+    fsnapf(stdout, dbt_key.data, (int) dbt_key.size);
     initial_rc = fetch_cget(bdb_state, ixnum, dbcp, &dbt_key, &dbt_data, flags);
+    printf("rc %d\n", initial_rc);
 
     /*fprintf(stderr, "fetch_cget rc %d\n", rc);*/
 

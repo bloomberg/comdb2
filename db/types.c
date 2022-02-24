@@ -8546,7 +8546,7 @@ enum intv_enum {
     SRV_TP(dt) cin;                                                            \
     uint8_t *p_buf = (uint8_t *)in;                                            \
     uint8_t *p_buf_end = (p_buf + sizeof(SRV_TP(dt)));                         \
-    char sign = 1;                                                             \
+    signed char sign = 1;                                                      \
     long long sec;                                                             \
     fracdt frac;                                                               \
                                                                                \
@@ -8583,7 +8583,7 @@ static int _intv_srv2string(const void *in, const enum intv_enum type,
         uint8_t *p_buf = (uint8_t *)in;
         uint8_t *p_buf_end = (p_buf + sizeof(server_intv_ym_t));
         int months = 0;
-        char sign = 1;
+        signed char sign = 1;
 
         server_intv_ym_get(&cin, p_buf, p_buf_end);
         memcpy(&months, &cin.months, sizeof(months));
