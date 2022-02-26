@@ -17,6 +17,9 @@
 #ifndef _INCLUDED_BLOB_BUFFER_H
 #define _INCLUDED_BLOB_BUFFER_H
 
+#define OSQL_BLOB_ODH_BIT (1 << 31)
+#define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
+
 /* Used for collecting blob data before a keyless add/upd/del.
  * An array of these also supplements */
 typedef struct blob_buffer {
