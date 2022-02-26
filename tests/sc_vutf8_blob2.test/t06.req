@@ -1,0 +1,2 @@
+insert into t6 values("Lorem ipsum")
+alter table t6 { tag ondisk { cstring t[4] }}$$

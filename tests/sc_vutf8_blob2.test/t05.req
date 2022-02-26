@@ -1,0 +1,10 @@
+insert into t5 values(x'FF')
+insert into t5 values(x'FFFF')
+insert into t5 values(x'FFFFFFFF')
+insert into t5 values(x'FFFFFFFFFFFFFFFF')
+insert into t5 values(x'FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF')
+select * from t5 order by b
+select size from comdb2_columns where tablename = "t5" and columnname = "b" -- 5: 1-byte header + 4-byte length
+alter table t5 { schema { blob b[4]}}$$
+select * from t5 order by b -- 9: 1-byte header + 4-byte length + 4-byte inline
+select size from comdb2_columns where tablename = "t5" and columnname = "b"
