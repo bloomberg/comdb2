@@ -1947,6 +1947,12 @@ REGISTER_TUNABLE("strict_double_quotes",
                  &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("longreq_log_freq_sec",
+                 "Log information about long running statements at this frequency"
+                 " (Default: 60sec)",
+                 TUNABLE_INTEGER, &gbl_longreq_log_freq_sec, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 

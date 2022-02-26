@@ -350,6 +350,7 @@ extern int gbl_debug_sleep_in_sql_tick;
 extern int gbl_protobuf_prealloc_buffer_size;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_internal_sql_stmt_caching;
+extern int gbl_longreq_log_freq_sec;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,
