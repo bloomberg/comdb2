@@ -1,0 +1,2 @@
+(rows inserted=1)
+[alter table t6 { tag ondisk { cstring t[4] }}] failed with rc 240 cannot convert data incompatible values to bcstring field 't' for table 't6'
