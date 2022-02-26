@@ -24,8 +24,6 @@
 #include "block_internal.h"
 #include "comdb2uuid.h"
 
-#define OSQL_BLOB_ODH_BIT (1 << 31)
-#define IS_ODH_READY(x) (!!(((x)->odhind) & OSQL_BLOB_ODH_BIT))
 #define OSQL_SEND_ERROR_WRONGMASTER (-1234)
 
 enum { OSQL_PROCESS_FLAGS_BLOB_OPTIMIZATION = 0x00000001, };

@@ -1382,8 +1382,9 @@ char *typestr(int type, int len)
     case SERVER_BCSTR:
         return "bcstring";
     case SERVER_BYTEARRAY:
-        return "bbytearray";
+        return "bytearray";
     case SERVER_BLOB:
+    case SERVER_BLOB2:
         return "blob";
     case SERVER_DATETIME:
         return "datetime";

@@ -1750,6 +1750,9 @@ int SERVER_BLOB_to_SERVER_BLOB(const void *in, int inlen,
                                int *outdtsz,
                                const struct field_conv_opts *outopts,
                                blob_buffer_t *outblob);
+int SERVER_BLOB_to_SERVER_BLOB2(const void *in, int inlen, const struct field_conv_opts *inopts, blob_buffer_t *inblob,
+                                void *out, int outlen, int *outdtsz, const struct field_conv_opts *outopts,
+                                blob_buffer_t *outblob);
 int SERVER_UINT_to_SERVER_BLOB(const void *in, int inlen,
                                const struct field_conv_opts *inopts,
                                blob_buffer_t *inblob, void *out, int outlen,
