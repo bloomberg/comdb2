@@ -1,4 +1,4 @@
-(TUNABLES_COUNT=948)
+(TUNABLES_COUNT=949)
 (name='aa_count_upd', description='Also consider updates towards the count of operations.', type='BOOLEAN', value='OFF', read_only='N')
 (name='aa_llmeta_save_freq', description='Persist change counters per table on every Nth iteration (called every CHK_AA_TIME seconds).', type='INTEGER', value='1', read_only='N')
 (name='aa_min_percent', description='Percent change above which we kick off analyze.', type='INTEGER', value='20', read_only='N')
@@ -419,6 +419,7 @@
 (name='logmsg.timestamp', description='Stamp all messages with timestamp.', type='BOOLEAN', value='ON', read_only='N')
 (name='logs_on_panic', description='logs_on_panic', type='BOOLEAN', value='ON', read_only='N')
 (name='logsegments', description='Changing this can create multiple logfile segments. Multiple segments can allow the log to be written while other segments are being flushed.', type='INTEGER', value='1', read_only='N')
+(name='longreq_log_freq_sec', description='Log information about long running statements at this frequency (Default: 60sec)', type='INTEGER', value='60', read_only='N')
 (name='lowdiskthreshold', description='Sets the low headroom threshold (percent of filesystem full) above which Comdb2 will start removing logs against set policy.', type='INTEGER', value='95', read_only='N')
 (name='lsnerr_logflush', description='Flush log on lsn error', type='BOOLEAN', value='ON', read_only='N')
 (name='lsnerr_pgdump', description='Dump page on LSN errors', type='BOOLEAN', value='ON', read_only='N')
