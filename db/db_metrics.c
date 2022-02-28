@@ -97,6 +97,7 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_timestamp;
     int64_t reprepares;
     int64_t nonsql;
+    int64_t vreplays;
 };
 
 static struct comdb2_metrics_store stats;
@@ -259,6 +260,9 @@ comdb2_metric gbl_metrics[] = {
 #endif
     {"reprepares", "Number of times statements are reprepared by sqlitex",
       STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.reprepares,
+      NULL},
+    {"verify_replays", "Number of replays on verify errors",
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.vreplays,
       NULL},
 };
 
@@ -496,6 +500,7 @@ int refresh_metrics(void)
         return 1;
     }
     stats.diskspace = refresh_diskspace(thedb, trans);
+    stats.vreplays = gbl_verify_tran_replays;
     curtran_puttran(trans);
 
     return 0;
