@@ -9524,7 +9524,8 @@ int put_curtran_flags(bdb_state_type *bdb_state, struct sqlclntstate *clnt,
     clnt->is_overlapping = 0;
 
     if (!clnt->dbtran.cursor_tran) {
-        logmsg(LOGMSG_DEBUG, "%s called without curtran\n", __func__);
+        /* this should be visible */
+        logmsg(LOGMSG_ERROR, "%s called without curtran\n", __func__);
         return 0;
     }
 
@@ -9680,6 +9681,20 @@ static int recover_deadlock_flags_int(bdb_state_type *bdb_state,
     if (clnt->recover_deadlock_rcode) {
         assert(bdb_lockref() == 0);
         return clnt->recover_deadlock_rcode;
+    }
+
+    /*
+     * BIG NOTE: if there is no cursor tran, do not get one here!
+     *
+     * Example: we call this when starting a transaction, or
+     * waiting for a transaction to provide an rc; remote tran
+     * does not have a curtran to span all transaction (instead,
+     * it allocates curtrans for individual operations, like
+     * begin&commit regular workflow)
+     *
+     */
+    if (!clnt->dbtran.cursor_tran) {
+        return 0;
     }
 
     assert(bdb_lockref() > 0);
