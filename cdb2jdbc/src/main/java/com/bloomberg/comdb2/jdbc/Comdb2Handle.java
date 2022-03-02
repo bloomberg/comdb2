@@ -1947,6 +1947,19 @@ readloop:
         }
     }
 
+    private int getRandomExclude(int min, int max, int exclude) {
+        Random rnd = new Random(System.currentTimeMillis());
+        int val = 0;
+        if (max - min < 2)
+            return min;
+        for (int i = 0; i < 10; i++) {
+            val = rnd.nextInt() % (max - min) + min;
+            if (val != exclude)
+                return val;
+        }
+        return val;
+    }
+
     private boolean reopen(boolean refresh_dbinfo_if_failed) {
         /* get the index of the preferred machine */
         if (prefIdx == -1 && prefmach != null) {
@@ -1987,13 +2000,12 @@ readloop:
             }
         }
 
-        if (myPolicy == POLICY_RANDOM && myDbHosts.size() > 0) {
-            Random rnd = new Random(System.currentTimeMillis());
-            dbHostIdx = Math.abs(rnd.nextInt()) % myDbHosts.size();
+        if (dbHostIdx == -1 && myDbHosts.size() > 0 &&
+            (myPolicy == POLICY_RANDOM || myPolicy == POLICY_RANDOMROOM && numHostsSameRoom == 0)) {
+            dbHostIdx = getRandomExclude(0, myDbHosts.size(), masterIndexInMyDbHosts);
         } else if (myPolicy == POLICY_RANDOMROOM
                 && dbHostIdx == -1 && numHostsSameRoom > 0) {
-            Random rnd = new Random(System.currentTimeMillis());
-            dbHostIdx = Math.abs(rnd.nextInt()) % numHostsSameRoom;
+            dbHostIdx = getRandomExclude(0, numHostsSameRoom, masterIndexInMyDbHosts);
             /* connect to same room once */
             for (int i = 0; i != numHostsSameRoom; ++i) {
                 int try_node = (dbHostIdx + i) % numHostsSameRoom;
@@ -2025,11 +2037,11 @@ readloop:
                     }
                 }
             }
-            dbHostIdx = (numHostsSameRoom - 1);
+            dbHostIdx = getRandomExclude(numHostsSameRoom, myDbHosts.size(), masterIndexInMyDbHosts);
         }
 
         /**
-         * First, try slave nodes.
+         * First, try replicants.
          */
 
         // last time we were at dbHostIdx, this time start from (dbHostIdx + 1)
@@ -2101,7 +2113,7 @@ readloop:
         }
 
         /**
-         * None of slave nodes works! Try master node.
+         * None of replicant works! Try master node.
          */
         if (masterIndexInMyDbHosts >= 0) {
             io = new SockIO(myDbHosts.get(masterIndexInMyDbHosts),
