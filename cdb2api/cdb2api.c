@@ -960,9 +960,9 @@ struct cdb2_hndl {
     int hosts_connected[MAX_NODES];
     SBUF2 *sb;
     int dbnum;
-    int num_hosts;
-    int num_hosts_sameroom;
-    int node_seq;
+    int num_hosts;          /* total number of hosts */
+    int num_hosts_sameroom; /* number of hosts that are in my datacenter (aka room) */
+    int node_seq;           /* fail over to the `node_seq'-th host */
     int in_trans;
     int temp_trans;
     int is_retry;
@@ -2451,11 +2451,16 @@ void cdb2_use_hint(cdb2_hndl_tp *hndl)
     }
 }
 
-/* try to connect to range from 0 to max starting with begin */
-static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int max)
+/* try to connect to range from low (inclusive) to high (exclusive) starting with begin */
+static inline int cdb2_try_connect_range(cdb2_hndl_tp *hndl, int begin, int low, int high)
 {
-    for (int j = 0; j < max; j++) {
-        int i = (begin + j) % max;
+    int max = high - low;
+    /* Starting from `begin', try up to `max' times */
+    for (int j = 0, i = begin; j < max; j++, i++) {
+        /* if we've reached the end of the range, start from the beginning */
+        if (i == high)
+            i = low;
+
         hndl->node_seq = i + 1;
         if (i == hndl->master || i == hndl->connected_host || hndl->hosts_connected[i] == 1)
             continue;
@@ -2497,14 +2502,15 @@ static int cdb2_random_int()
     return nrand48(rand_state);
 }
 
-/* Get random value from range 0 to max-1 excluding 1 value */
-static int getRandomExclude(int max, int exclude)
+/* Get random value from range min to max-1 excluding 1 value */
+static int getRandomExclude(int min, int max, int exclude)
 {
     int val = 0;
-    if (max < 2)
-        return 0;
+    /* If the range has only 1 value, return it */
+    if (max - min < 2)
+        return min;
     for (int i = 0; i < 10; i++) {
-        val = cdb2_random_int() % max;
+        val = cdb2_random_int() % (max - min) + min;
         if (val != exclude)
             return val;
     }
@@ -2527,18 +2533,18 @@ retry_connect:
     if ((hndl->node_seq == 0) &&
         ((hndl->flags & CDB2_RANDOM) || ((hndl->flags & CDB2_RANDOMROOM) &&
                                          (hndl->num_hosts_sameroom == 0)))) {
-        hndl->node_seq = getRandomExclude(hndl->num_hosts, hndl->master);
+        hndl->node_seq = getRandomExclude(0, hndl->num_hosts, hndl->master);
     } else if ((hndl->flags & CDB2_RANDOMROOM) && (hndl->node_seq == 0) &&
                (hndl->num_hosts_sameroom > 0)) {
-        hndl->node_seq =
-            getRandomExclude(hndl->num_hosts_sameroom, hndl->master);
+        hndl->node_seq = getRandomExclude(0, hndl->num_hosts_sameroom, hndl->master);
         /* First try on same room. */
-        if (0 == cdb2_try_connect_range(hndl, hndl->node_seq,
-                                        hndl->num_hosts_sameroom))
+        if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, 0, hndl->num_hosts_sameroom))
             return 0;
+        /* If we fail to connect to any of the nodes in our DC, choose a random start point from the other DC */
+        hndl->node_seq = getRandomExclude(hndl->num_hosts_sameroom, hndl->num_hosts, hndl->master);
     }
 
-    if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, hndl->num_hosts))
+    if (0 == cdb2_try_connect_range(hndl, hndl->node_seq, 0, hndl->num_hosts))
         return 0;
 
     if (hndl->sb == NULL) {
@@ -5694,6 +5700,10 @@ retry:
                 goto after_callback;
             }
         }
+
+        /* If there's another datacenter, choose a random starting point from there. */
+        if (hndl->num_hosts > hndl->num_hosts_sameroom)
+            node_seq = rand() % (hndl->num_hosts - hndl->num_hosts_sameroom) + hndl->num_hosts_sameroom;
     }
 
     /* Try everything now */
