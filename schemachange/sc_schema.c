@@ -178,9 +178,9 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             /* This key will be part of the record, no need to check */
             if (ins_keys & (1ULL << ixnum)) continue;
 
-            /* From now on, it means this record doesn't have partial index
+            /* From now on, it means this record doesn't touch the partial index
              * (ixnum). We need to check if someone else had constraints on this
-             * before */
+             * before. */
             snprintf(ondisk_tag, sizeof(ondisk_tag), ".NEW..ONDISK_IX_%d",
                      ixnum);
             /* Data -> Key : ONDISK -> .ONDISK_IX_nn */
@@ -228,9 +228,12 @@ int verify_partial_rev_constraint(struct dbtable *to_db, struct dbtable *newdb,
             ruleiq.usedb = cnstrt->lcltable;
             rc = ix_find_by_key_tran(&ruleiq, rkey, rixlen, rixnum, NULL,
                                      &fndrrn, &genid, NULL, NULL, 0, trans);
-            /* a foreign table key is relying on this */
             if (rc == IX_FND || rc == IX_FNDMORE)
+                /* A key in a child table index is referencing this key */
                 return ERR_CONSTR;
+            else if (rc == IX_PASTEOF || rc == IX_NOTFND || rc == IX_EMPTY)
+                /* No such key in the child table index */
+                continue;
             else if (rc == RC_INTERNAL_RETRY)
                 return rc;
             else {
