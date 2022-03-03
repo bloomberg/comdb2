@@ -2402,9 +2402,9 @@ static nodestats_t *add_clientstats(const char *task, const char *stack,
                 socklen_t len = sizeof(peeraddr);
                 bzero(&peeraddr, sizeof(peeraddr));
                 if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s: getpeername failed fd %d: %d %s\n", __func__,
-                           fd, errno, strerror(errno));
+                    if (errno != ENOTCONN)
+                        logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
+                               strerror(errno));
                     bzero(&(entry->addr), sizeof(struct in_addr));
                 } else {
                     memcpy(&(entry->addr), &peeraddr.sin_addr,
@@ -2467,9 +2467,9 @@ static nodestats_t *find_clientstats(unsigned checksum, int node, int fd)
                 socklen_t len = sizeof(peeraddr);
                 bzero(&peeraddr, sizeof(peeraddr));
                 if (getpeername(fd, (struct sockaddr *)&peeraddr, &len) < 0) {
-                    logmsg(LOGMSG_ERROR,
-                           "%s: getpeername failed fd %d: %d %s\n", __func__,
-                           fd, errno, strerror(errno));
+                    if (errno != ENOTCONN)
+                        logmsg(LOGMSG_ERROR, "%s: getpeername failed fd %d: %d %s\n", __func__, fd, errno,
+                               strerror(errno));
                     bzero(&(entry->addr), sizeof(struct in_addr));
                 } else {
                     memcpy(&(entry->addr), &peeraddr.sin_addr,
