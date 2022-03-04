@@ -12,7 +12,7 @@
     keys{
         "idx1" = id {WHERE id IN (0)}
     }
-}] failed with rc 240 Record violates foreign constraints rrn 2 genid 0x4f0000000000
+}] failed with rc 240 Record violates foreign constraints rrn 2 genid 0x0000
 (id=1)
 (id=1)
 (test='-- Test#3: Ensure ALTER ignores IX_PASTEOF error --')
