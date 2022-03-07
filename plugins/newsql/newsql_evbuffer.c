@@ -375,8 +375,8 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
     if (clnt->query_timeout) {
         sql_enable_timeout(appdata->writer, clnt->query_timeout);
     }
+    sql_enable_heartbeat(appdata->writer);
     if (dispatch_sql_query_no_wait(clnt) == 0) {
-        sql_enable_heartbeat(appdata->writer);
         return;
     }
 out:cdb2__query__free_unpacked(query, NULL);
