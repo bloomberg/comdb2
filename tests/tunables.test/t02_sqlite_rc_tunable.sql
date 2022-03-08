@@ -1,1 +1,0 @@
-SELECT x FROM tmp1 ORDER BY x;

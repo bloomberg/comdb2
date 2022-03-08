@@ -259,7 +259,6 @@ extern uint8_t _non_dedicated_subnet;
 extern char *gbl_crypto;
 extern char *gbl_spfile_name;
 extern char *gbl_timepart_file_name;
-extern char *gbl_exec_sql_on_new_connect;
 extern char *gbl_test_log_file;
 extern pthread_mutex_t gbl_test_log_file_mtx;
 extern char *gbl_machine_class;
