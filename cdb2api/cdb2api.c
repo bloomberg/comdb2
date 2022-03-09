@@ -928,7 +928,7 @@ static cdb2_ssl_sess_list cdb2_ssl_sess_cache;
 
    See next_cnonce() for details. */
 #define CNONCE_STR_FMT "%ld-%d-%p-"
-#define CNONCE_STR_SZ 52 /* 8 + 1 + 8 + 1 + 16 + 1 + 16 + 1 (NUL) */
+#define CNONCE_STR_SZ 61 /* 20 + 1 + 11 + 1 + 10 + 1 + 16 + 1 (NUL) */
 
 #define CNT_BITS 12
 #define TIME_MASK (-1ULL << CNT_BITS)
