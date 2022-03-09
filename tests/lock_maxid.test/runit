@@ -11,12 +11,12 @@ export STOPFILE=stopfile.txt
 
 function select_from_t
 {
-    timeout 8m yes "select * from t limit 1" | $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME>/dev/null 2>&1
+    timeout 8m yes "select * from t limit 1" | $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default>/dev/null 2>&1
 }
 
 function select_from_metrics
 {
-    timeout 8m yes "select name, type, value, collection_type from comdb2_metrics order by case when name = 'start_time' then 0 else 1 end" | $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME>/dev/null 2>&1
+    timeout 8m yes "select name, type, value, collection_type from comdb2_metrics order by case when name = 'start_time' then 0 else 1 end" | $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default>/dev/null 2>&1
 }
 
 function schema_change_loop
@@ -30,7 +30,7 @@ function schema_change_loop
 
 function run_test
 {
-    rm $STOPFILE
+    rm $STOPFILE 2>/dev/null
     create_table t
     $CDB2SQL_EXE -tabs $CDB2_OPTIONS $DBNAME default "insert into t select value from generate_series(1, 1000)"
 
