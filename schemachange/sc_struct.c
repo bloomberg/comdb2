@@ -897,7 +897,11 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
         return 1;
     }
     newdb->dbnum = db->dbnum;
-    if ((add_cmacc_stmt(newdb, 1, 1)) || (init_check_constraints(newdb))) {
+    struct errstat err = {0};
+    rc = add_cmacc_stmt(newdb, 1, 1, &err);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s\n", err.errstr);
+    if (rc || (init_check_constraints(newdb))) {
         /* can happen if new schema has no .DEFAULT tag but needs one */
         backout_schemas(table);
         return 1;

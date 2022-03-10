@@ -647,10 +647,12 @@ static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
 
     /* just got a bunch of data. remember it so key forming
        routines and SQL can get at it */
-    rc = add_cmacc_stmt(db, 0, 0);
+    struct errstat err = {0};
+    rc = add_cmacc_stmt(db, 0, 0, &err);
     if (rc) {
         logmsg(LOGMSG_ERROR,
-               "Failed to load schema: can't process schema file %s\n", tok);
+               "Failed to load schema: can't process schema file %s\n%s\n", tok,
+               err.errstr);
         return -1;
     }
 
