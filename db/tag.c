@@ -1537,7 +1537,8 @@ int clone_server_to_client_tag(const char *table, const char *fromtag,
 char *indexes_expressions_unescape(char *expr);
 extern int gbl_new_indexes;
 /* create keys for each schema */
-static int create_key_schema(dbtable *db, struct schema *schema, int alt)
+static int create_key_schema(dbtable *db, struct schema *schema, int alt,
+                             struct errstat *err)
 {
     char buf[MAXCOLNAME + 1];
     int ix;
@@ -1605,7 +1606,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                 m->isExpr = 1;
                 m->idx = -1;
                 if (expr == NULL) {
-                    sc_client_error(db->iq->sc, "unterminated string literal");
+                    errstat_set_rcstrf(err, -1, "unterminated string literal");
                     rc = 1;
                     goto errout;
                 }
@@ -1615,12 +1616,14 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                 case SERVER_BLOB:
                 case SERVER_VUTF8:
                 case SERVER_BLOB2:
-                    sc_client_error(db->iq->sc, "blob index is not supported.");
+                    errstat_set_rcstrf(err, -1, "blob index is not supported.");
                     rc = 1;
                     goto errout;
                 case SERVER_BCSTR:
                     if (m->len < 2) {
-                        sc_client_error(db->iq->sc, "string must be at least 2 bytes in in length.");
+                        errstat_set_rcstrf(
+                            err, -1,
+                            "string must be at least 2 bytes in in length.");
                         rc = 1;
                         goto errout;
                     }
@@ -1666,7 +1669,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                     break;
                 }
                 if (offset + m->len > MAXKEYLEN) {
-                    sc_client_error(db->iq->sc, "index %d is too large.", ix);
+                    errstat_set_rcstrf(err, -1, "index %d is too large.", ix);
                     rc = 1;
                     goto errout;
                 }
@@ -1675,6 +1678,8 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt)
                 m->name = strdup(buf);
                 m->idx = find_field_idx(dbname, schema->tag, m->name);
                 if (m->idx == -1) {
+                    errstat_set_rcstrf(err, -1, "field %s not found in %s\n",
+                                       m->name, schema->tag);
                     rc = -ix - 1;
                     goto errout;
                 }
@@ -4868,7 +4873,7 @@ out:
    process them here after each .csc file is read
  */
 static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
-                              int allow_ull)
+                              int allow_ull, struct errstat *err)
 {
     /* loaded from csc2 at this point */
     int field;
@@ -4911,7 +4916,8 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
         schema->nmembers = dyns_get_table_field_count(rtag);
         if ((gbl_morecolumns && schema->nmembers > MAXCOLUMNS) ||
             (!gbl_morecolumns && schema->nmembers > MAXDYNTAGCOLUMNS)) {
-            sc_client_error(db->iq->sc, "too many columns (max: %d)", gbl_morecolumns ? MAXCOLUMNS : MAXDYNTAGCOLUMNS);
+            errstat_set_rcstrf(err, -1, "too many columns (max: %d)",
+                               gbl_morecolumns ? MAXCOLUMNS : MAXDYNTAGCOLUMNS);
             return -1;
         }
         schema->member = calloc(schema->nmembers, sizeof(struct field));
@@ -4963,7 +4969,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
                    rollouts, to succeed.
                 */
                 if (gbl_ready && !allow_ull && !db->timepartition_name) {
-                    sc_client_error(db->iq->sc, "u_longlong is not supported");
+                    errstat_set_rcstrf(err, -1, "u_longlong is not supported");
                     return -1;
                 }
             }
@@ -5105,7 +5111,7 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
-                    sc_client_error(db->iq->sc, "invalid default column value");
+                    errstat_set_rcstrf(err, -1, "invalid default column value");
                     return -1;
                 }
 
@@ -5114,12 +5120,12 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
                 if (rc != 0) {
                     if (rtag)
                         free(rtag);
-                    sc_client_error(db->iq->sc, "invalid dbpad value");
+                    errstat_set_rcstrf(err, -1, "invalid dbpad value");
                     return -1;
                 }
             }
         }
-        if (create_key_schema(db, schema, alt) > 0)
+        if (create_key_schema(db, schema, alt, err) > 0)
             return -1;
         if (is_disk_schema) {
             int i, rc;
@@ -5181,13 +5187,17 @@ static int add_cmacc_stmt_int(dbtable *db, int alt, int side_effects,
     return 0;
 }
 
-int add_cmacc_stmt(dbtable *db, int alt, int allow_ull)
+int add_cmacc_stmt(dbtable *db, int alt, int allow_ull, struct errstat *err)
 {
-    return add_cmacc_stmt_int(db, alt, 1, allow_ull);
+    return add_cmacc_stmt_int(db, alt, 1, allow_ull, err);
 }
 int add_cmacc_stmt_no_side_effects(dbtable *db, int alt)
 {
-    return add_cmacc_stmt_int(db, alt, 0, 0);
+    struct errstat err = {0};
+    int rc = add_cmacc_stmt_int(db, alt, 0, 0, &err);
+    if (rc)
+        logmsg(LOGMSG_ERROR, "%s\n", err.errstr);
+    return rc;
 }
 
 /* this routine is called from comdb2 when all is well
@@ -6911,9 +6921,11 @@ static int load_new_ondisk(dbtable *db, tran_type *tran)
     }
     newdb->schema_version = version;
     newdb->dbnum = db->dbnum;
-    rc = add_cmacc_stmt(newdb, 0, 1);
+    struct errstat err = {0};
+    rc = add_cmacc_stmt(newdb, 0, 1, &err);
     if (rc) {
-        logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n", __FILE__, __LINE__);
+        logmsg(LOGMSG_ERROR, "add_cmacc_stmt failed %s:%d\n%s\n", __FILE__,
+               __LINE__, err.errstr);
         goto err;
     }
 

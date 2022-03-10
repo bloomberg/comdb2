@@ -424,8 +424,11 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
 
     newdb->iq = iq;
 
-    if ((add_cmacc_stmt(newdb, 1, (s->same_schema) ? 1 : 0)) ||
-        (init_check_constraints(newdb))) {
+    struct errstat err = {0};
+    rc = add_cmacc_stmt(newdb, 1, (s->same_schema) ? 1 : 0, &err);
+    if (rc)
+        sc_client_error(s, "%s", err.errstr);
+    if (rc || (init_check_constraints(newdb))) {
         backout(newdb);
         cleanup_newdb(newdb);
         dyns_cleanup_globals();
