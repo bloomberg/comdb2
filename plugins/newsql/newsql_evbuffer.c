@@ -609,6 +609,12 @@ static int newsql_write_dbinfo_evbuffer(struct sqlclntstate *clnt)
     return rc || sql_flush(appdata->writer);
 }
 
+static int allow_admin(int local)
+{
+    extern int gbl_forbid_remote_admin;
+    return (local || !gbl_forbid_remote_admin);
+}
+
 static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admin)
 {
     check_appsock_rd_thd();
@@ -620,7 +626,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
         local = 1;
     }
 
-    if (thedb->no_more_sql_connections || (admin && !local)) {
+    if (thedb->no_more_sql_connections || (admin && !allow_admin(local))) {
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         close(arg->fd);
