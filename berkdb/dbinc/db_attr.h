@@ -65,3 +65,8 @@ BERK_DEF_ATTR(tracked_locklist_init, "Initial allocation count for tracked locks
 BERK_DEF_ATTR(transient_page_reallocation, "Orphaned pages are maintained locally", BERK_ATTR_TYPE_BOOLEAN, 0)
 BERK_DEF_ATTR(elect_highest_committed_gen, "Bias election by the highest generation in the logfile", BERK_ATTR_TYPE_BOOLEAN, 1)
 BERK_DEF_ATTR(sync_standalone, "Force a log-sync at commit for standalone instances", BERK_ATTR_TYPE_BOOLEAN, 0)
+BERK_DEF_ATTR(trickle_heuristic, "Heuristic trickle: Estimate how many pages are needed in the near future and pre-flush cache accordingly", BERK_ATTR_TYPE_BOOLEAN, 1)
+BERK_DEF_ATTR(trickle_heuristic_factor, "A larger value makes it more smooth but may suffer from performance dip if the workload changes rapidly.", BERK_ATTR_TYPE_INTEGER, 16)
+BERK_DEF_ATTR(trickle_heuristic_multiplier, "Multiply the estimate by this number.", BERK_ATTR_TYPE_INTEGER, 1)
+BERK_DEF_ATTR(trickle_max, "An upper bound of the number of pages to be flushed so that we don't consume all I/O capacity.", BERK_ATTR_TYPE_INTEGER, 0)
+BERK_DEF_ATTR(trickle_min, "A lower bound of the number of pages to be flushed so that we will make a little progress and flush out all dirty pages after an idle period.", BERK_ATTR_TYPE_INTEGER, 1)

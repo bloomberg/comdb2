@@ -125,8 +125,7 @@ DEF_ATTR(DIRECTIO, directio, BOOLEAN, 1,
 DEF_ATTR(MEMPTRICKLEPERCENT, memptricklepercent, PERCENT, 99,
          "Try to keep at least this percentage of the buffer pool clean. Write "
          "pages periodically until that's achieved.")
-DEF_ATTR(MEMPTRICKLEMSECS, memptricklemsecs, MSECS, 1000,
-         "Pause for this many ms between runs of the cache flusher.")
+DEF_ATTR(MEMPTRICKLEMSECS, memptricklemsecs, MSECS, 250, "Pause for this many ms between runs of the cache flusher.")
 DEF_ATTR(CHECKSUMS, checksums, BOOLEAN, 1,
          "Checksum data pages. Turning this off is highly discouraged.")
 DEF_ATTR(LITTLE_ENDIAN_BTREES, little_endian_btrees, BOOLEAN, 1,

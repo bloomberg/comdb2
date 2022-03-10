@@ -2394,7 +2394,7 @@ struct __db_env {
 	int  (*memp_load) __P((DB_ENV *, SBUF2 *));
 	int  (*memp_dump_default) __P((DB_ENV *, u_int32_t));
 	int  (*memp_load_default) __P((DB_ENV *));
-	int  (*memp_trickle) __P((DB_ENV *, int, int *, int));
+	int  (*memp_trickle) __P((DB_ENV *, int, int *, int, u_int64_t *, u_int64_t *));
 
 	void *rep_handle;		/* Replication handle and methods. */
 	int  (*rep_elect) __P((DB_ENV *, int, int, u_int32_t, u_int32_t *, char **));
