@@ -7843,9 +7843,18 @@ int bdb_check_files_on_disk(bdb_state_type *bdb_state, const char *tblname,
     assert(bdb_state->parent == NULL);
 
     if (bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_first_logfile(bdb_state, bdberr);
-        if (lognum == -1)
-            return -1;
+        int ourlowfilenum;
+
+        /* if there's no cluster, use our log file, otherwise use the cluster
+         * low watermark,
+         * or our low watermark, whichever is lower */
+        lognum = get_lowfilenum_sanclist(bdb_state);
+
+        ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
+        if (ourlowfilenum == -1) return -1;
+        if (lognum == 0) lognum = ourlowfilenum;
+
+        if (ourlowfilenum < lognum) lognum = ourlowfilenum;
     }
 
     if (!bdb_state || !bdberr) {
@@ -8044,9 +8053,18 @@ static int bdb_process_unused_files(bdb_state_type *bdb_state, tran_type *tran,
     assert(bdb_state->parent != NULL);
 
     if (delay && bdb_state->attr->keep_referenced_files) {
-        lognum = bdb_get_first_logfile(bdb_state, bdberr);
-        if (lognum == -1)
-            return -1;
+        int ourlowfilenum;
+
+        /* if there's no cluster, use our log file, otherwise use the cluster
+         * low watermark,
+         * or our low watermark, whichever is lower */
+        lognum = get_lowfilenum_sanclist(bdb_state);
+
+        ourlowfilenum = bdb_get_first_logfile(bdb_state, bdberr);
+        if (ourlowfilenum == -1) return -1;
+        if (lognum == 0) lognum = ourlowfilenum;
+
+        if (ourlowfilenum < lognum) lognum = ourlowfilenum;
     }
 
     if (!bdb_state || !bdberr) {
