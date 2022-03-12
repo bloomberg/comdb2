@@ -717,14 +717,14 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
     /* Put this tran in seqnum_info->key */
     Pthread_setspecific(bdb_state->seqnum_info->key, tran);
 
-    if (getlock) {
-        BDB_READLOCK("trans_start_logical");
+    BDB_READLOCK("trans_start_logical");
+    ismaster =
+        (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
 
-        ismaster =
-            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+    if (getlock) {
 
         /* If we're getting the lock, this has to be the master */
-        if (!ismaster && !bdb_state->in_recovery) {
+        if (!ismaster) {
             BDB_RELLOCK();
             logmsg(LOGMSG_ERROR, "Master change while getting logical tran.\n");
             bdb_state->dbenv->lock_id_free(bdb_state->dbenv, tran->logical_lid);
@@ -735,9 +735,9 @@ tran_type *bdb_tran_begin_logical_int_int(bdb_state_type *bdb_state,
         }
 
         tran->got_bdb_lock = 1;
-    } else
-        ismaster =
-            (bdb_state->repinfo->myhost == bdb_state->repinfo->master_host);
+    } else {
+        BDB_RELLOCK();
+    }
 
     if (ismaster) {
         step = bdb_state->attr->rllist_step > 0 ? bdb_state->attr->rllist_step
