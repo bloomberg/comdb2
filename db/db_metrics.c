@@ -35,6 +35,7 @@ struct comdb2_metrics_store {
     int64_t commits;
     int64_t connections;
     int64_t connection_timeouts;
+    double  connection_to_sql_ratio;
     double  cpu_percent;
     int64_t deadlocks;
     int64_t locks_aborted;
@@ -120,6 +121,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_timeouts, NULL},
+    {"connection_to_sql_ratio", "Connection to SQL ratio", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_to_sql_ratio, NULL},
     {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cpu_percent, NULL},
     {"current_connections", "Number of current connections", STATISTIC_INTEGER,
@@ -382,7 +385,9 @@ int refresh_metrics(void)
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
     stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
-    
+    stats.connection_to_sql_ratio =
+        (stats.sql_count) ? (stats.connections/(double) stats.sql_count) : 0;
+
     /* cache hit rate */
     uint64_t hits, misses;
     bdb_get_cache_stats(thedb->bdb_env, &hits, &misses, NULL, NULL, NULL, NULL);
