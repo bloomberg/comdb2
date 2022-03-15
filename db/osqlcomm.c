@@ -6157,7 +6157,7 @@ int osql_process_packet(struct ireq *iq, unsigned long long rqid, uuid_t uuid,
         rc = conv_rc_sql2blkop(iq, step, -1, dt.rc, err, NULL, dt.nops);
 
         if (type == OSQL_DONE_SNAP) {
-            if (!gbl_disable_cnonce_blkseq)
+            if (!gbl_disable_cnonce_blkseq && !gbl_master_sends_query_effects)
                 assert(IQ_HAS_SNAPINFO(iq)); // was assigned in fast pass
 
             snap_uid_t snap_info;

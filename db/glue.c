@@ -721,7 +721,7 @@ static int trans_commit_int(struct ireq *iq, void *trans, char *source_host,
     rc = trans_commit_seqnum_int(bdb_handle, thedb, iq, trans, &ss, logical,
                                  blkseq, blklen, blkkey, blkkeylen);
 
-    if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO(iq)) {
+    if (gbl_extended_sql_debug_trace && IQ_HAS_SNAPINFO_KEY(iq)) {
         cn_len = IQ_SNAPINFO(iq)->keylen;
         cnonce = alloca(cn_len + 1);
         memcpy(cnonce, IQ_SNAPINFO(iq)->key, cn_len);

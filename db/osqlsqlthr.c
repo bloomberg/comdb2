@@ -1501,15 +1501,21 @@ static int osql_send_commit_logic(struct sqlclntstate *clnt, int is_retry,
     extern int gbl_always_send_cnonce;
     if (osql->rqid == OSQL_RQID_USE_UUID && clnt->dbtran.maxchunksize == 0 &&
         !clnt->dbtran.trans_has_sp &&
-        (gbl_always_send_cnonce || has_high_availability(clnt)) &&
-        get_cnonce(clnt, &snap_info) == 0) {
+        (gbl_always_send_cnonce || has_high_availability(clnt))) {
+        // Pass to master the state of verify retry.
+        // If verify retry is ON and error is retryable, don't write to
+        // blkseq on master because replicant will retry.
 
-        /* pass to master the state of verify retry.
-         * if verify retry is on and error is retryable, don't write to
-         * blkseq on master because replicant will retry */
         snap_info.replicant_is_able_to_retry = replicant_is_able_to_retry(clnt);
         snap_info.effects = clnt->effects;
-        comdb2uuidcpy(snap_info.uuid, osql->uuid);
+
+        if (get_cnonce(clnt, &snap_info) == 0) {
+            comdb2uuidcpy(snap_info.uuid, osql->uuid);
+        } else {
+            // Add dummy snap_info to let master know that the replicant wants
+            // query effects. (comdb2api does not send cnonce)
+            snap_info.keylen = 0;
+        }
         snap_info_p = &snap_info;
     }
 
