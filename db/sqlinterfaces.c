@@ -6553,45 +6553,58 @@ void rem_sql_evbuffer(struct sqlclntstate *clnt)
     TAILQ_REMOVE(&sql_evbuffers, clnt, sql_entry);
 }
 
-void add_lru_evbuffer(struct sqlclntstate *clnt)
+static void add_lru_evbuffer_int(struct sqlclntstate *clnt)
 {
-    Pthread_mutex_lock(&lru_evbuffers_mtx);
     if (in_client_trans(clnt)) {
         /* Point to self -> not in lru_evbuffers list */
         TAILQ_NEXT(clnt, lru_entry) = clnt;
     } else {
         TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
     }
+}
+
+void add_lru_evbuffer(struct sqlclntstate *clnt)
+{
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    add_lru_evbuffer_int(clnt);
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
-void rem_lru_evbuffer(struct sqlclntstate *clnt)
+static void rem_lru_evbuffer_int(struct sqlclntstate *clnt)
 {
-    Pthread_mutex_lock(&lru_evbuffers_mtx);
     if (TAILQ_NEXT(clnt, lru_entry) != clnt) {
         TAILQ_REMOVE(&lru_evbuffers, clnt, lru_entry);
         TAILQ_NEXT(clnt, lru_entry) = clnt;
     }
+}
+void rem_lru_evbuffer(struct sqlclntstate *clnt)
+{
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    rem_lru_evbuffer_int(clnt);
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
-static int close_lru_evbuffer(struct sqlclntstate *self)
+static int close_lru_evbuffer_int(struct sqlclntstate *self)
 {
-    check_appsock_rd_thd();
-    Pthread_mutex_lock(&lru_evbuffers_mtx);
     struct sqlclntstate *clnt = TAILQ_LAST(&lru_evbuffers, lru_evbuffers);
-    Pthread_mutex_unlock(&lru_evbuffers_mtx);
     if (clnt && clnt != self) {
-        rem_lru_evbuffer(clnt);
+        rem_lru_evbuffer_int(clnt);
         clnt->plugin.close(clnt);
         return 0;
     }
     return -1;
 }
 
+static int close_lru_evbuffer(struct sqlclntstate *self)
+{
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
+    int ret = close_lru_evbuffer_int(self);
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
+    return ret;
+}
+
 int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
 {
-    check_appsock_rd_thd();
     if (clnt->admin) {
        return 0;
     }
@@ -6605,7 +6618,6 @@ int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
 
 void rem_appsock_connection_evbuffer(struct sqlclntstate *clnt)
 {
-    check_appsock_rd_thd();
     if (clnt->admin) {
         return;
     }
