@@ -17,23 +17,11 @@ if(NOT yacc)
   message(FATAL_ERROR "yacc not found!")
 endif()
 
-
-if(COMDB2_BBCMAKE)
-  get_filename_component(yaccpath ${yacc} DIRECTORY)
-  cmake_path(SET yaccpath ${yaccpath})
-  cmake_path(APPEND yaccpath ".." "share" "bison")
-  add_custom_command(
-    OUTPUT maccparse.h maccparse.c
-    DEPENDS maccparse.y
-    COMMAND ${CMAKE_COMMAND} -E env BISON_PKGDATADIR=${yaccpath} ${yacc} -d -o maccparse.c ${CMAKE_CURRENT_SOURCE_DIR}/maccparse.y
-  )
-else()
-  add_custom_command(
-    OUTPUT maccparse.h maccparse.c
-    DEPENDS maccparse.y
-    COMMAND ${yacc} -d -o maccparse.c ${CMAKE_CURRENT_SOURCE_DIR}/maccparse.y
-  )
-endif()
+add_custom_command(
+  OUTPUT maccparse.h maccparse.c
+  DEPENDS maccparse.y
+  COMMAND ${yacc} -d -o maccparse.c ${CMAKE_CURRENT_SOURCE_DIR}/maccparse.y
+)
 
 find_program(lex NAMES flex lex)
 if(NOT lex)
