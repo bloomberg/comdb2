@@ -134,9 +134,7 @@ endif()
 
 option(DEBUG_ABORT_ON_RECOVERY_FAILURE "Abort recovery failure" OFF)
 mark_as_advanced(DEBUG_ABORT_ON_RECOVERY_FAILURE)
-if(DEBUG_ABORT_ON_RECOVERY_FAILURE)
-    add_definitions(-DDEBUG_ABORT_ON_RECOVERY_FAILURE)
-endif()
+add_definitions(-DDEBUG_ABORT_ON_RECOVERY_FAILURE)
 
 option(DEBUG_SC "Enable schema-change debug trace" OFF)
 mark_as_advanced(DEBUG_SC)
