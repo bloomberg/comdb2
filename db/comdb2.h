@@ -1197,9 +1197,9 @@ enum OSQL_REQ_TYPE {
     OSQL_MAX_REQ = 9,
 };
 
-#define IQ_HAS_SNAPINFO(iq) ((iq)->sorese && (iq)->sorese->snap_info)
-
 #define IQ_SNAPINFO(iq) ((iq)->sorese->snap_info)
+#define IQ_HAS_SNAPINFO(iq) ((iq)->sorese && (iq)->sorese->snap_info)
+#define IQ_HAS_SNAPINFO_KEY(iq) (IQ_HAS_SNAPINFO(iq) && IQ_SNAPINFO(iq)->keylen > 0)
 
 /* Magic rqid value that means "please use uuid instead" */
 #define OSQL_RQID_USE_UUID 1
