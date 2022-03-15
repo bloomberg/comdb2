@@ -1848,8 +1848,8 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
       // transform all the "collate DATACOPY" instances from:
       // create index "$I1_792AC8AF" on "t1" ("i", "b" collate DATACOPY, "c");
       // to 
-      // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") OPTION DATACOPY;
-      // note that there is enough space because 'collate' is 1 char longer than 'OPTION'
+      // create index "$I1_792AC8AF" on "t1" ("i", "b" , "c") INCLUDE ALL;
+      // note that there is enough space because 'INCLUDE ALL' is less characters than 'collate DATACOPY'
       if ((coll = strstr(zSql, " collate DATACOPY"))) {
         char *end = coll + sizeof(" collate DATACOPY") - 1;
         while(*end != ';') {
@@ -1857,7 +1857,7 @@ sqlite3expert *sqlite3_expert_new(sqlite3 *db, char **pzErrmsg){
             ++coll;
             ++end;
         }
-        strcpy(coll, " OPTION DATACOPY;");
+        strcpy(coll, " INCLUDE ALL;");
       }
       int newLen = strlen(zSql) + 6;
       char *newSql = sqlite3_malloc(newLen);

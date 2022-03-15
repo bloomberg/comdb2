@@ -3900,7 +3900,7 @@ static char *prepare_csc2(Parse *pParse, struct comdb2_ddl_context *ctx)
             }
 
             comdb2AddIndex(pParse, 0 /* Key name will be generated */,
-                           pList, 0, 0, 0, 0, 0, SQLITE_IDXTYPE_DUPKEY, 0);
+                           pList, 0, 0, 0, 0, 0, SQLITE_IDXTYPE_DUPKEY, 0, NULL);
             if (pParse->rc)
                 goto cleanup;
 
@@ -5151,7 +5151,8 @@ static void comdb2AddIndexInt(
     const char *zEnd,   /* End of WHERE clause token text */
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     u8 idxType,         /* The index type */
-    int withOpts        /* WITH options (DATACOPY) */
+    int withOpts,       /* WITH options (DATACOPY) */
+    ExprList *pdList    /* A list of columns in the partial datacopy */
 )
 {
     struct comdb2_ddl_context *ctx = pParse->comdb2_ddl_ctx;
@@ -5217,6 +5218,9 @@ static void comdb2AddIndexInt(
 
     /* Initialize the index column list. */
     listc_init(&key->idx_col_list, offsetof(struct comdb2_index_part, lnk));
+
+    /* Initialize the partial datacopy list. */
+    listc_init(&key->partial_datacopy_list, offsetof(struct comdb2_partial_datacopy_field, lnk));
 
     /*
       pList == 0 imples that the PRIMARY/UNIQUE/DUP key was specified in the
@@ -5348,6 +5352,78 @@ static void comdb2AddIndexInt(
         }
     }
 
+    if (pdList) { // partial datacopy
+        if (key->flags & KEY_DATACOPY) {
+            pParse->rc = SQLITE_ERROR;
+            sqlite3ErrorMsg(pParse, "Cannot have datacopy and partial datacopy.");
+            goto cleanup;
+        }
+
+        key->flags |= KEY_PARTIALDATACOPY;
+
+        struct comdb2_partial_datacopy_field *partial_datacopy_field;
+        struct ExprList_item *pListItem;
+        struct comdb2_column *column;
+        int i;
+        int duplicate;
+
+        /* Validate the partial datacopy list. */
+        sqlite3ExprListCheckLength(pParse, pdList, "partial datacopy");
+        for (i = 0, pListItem = pdList->a; i < pdList->nExpr; i++, pListItem++) {
+            column = find_column_by_name(ctx, pListItem->pExpr->u.zToken);
+            if (column == 0) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Unknown column '%s'.",
+                                pListItem->pExpr->u.zToken);
+                goto cleanup;
+            }
+
+            duplicate = 0;
+            LISTC_FOR_EACH(&key->partial_datacopy_list, partial_datacopy_field, lnk)
+            {
+                if (strcmp(column->name, partial_datacopy_field->name) == 0) {
+                    duplicate = 1;
+                    break; // just ignore duplicates
+                }
+            }
+            if (duplicate)
+                continue;
+
+            partial_datacopy_field = comdb2_calloc(ctx->mem, 1, sizeof(struct comdb2_partial_datacopy_field));
+            if (partial_datacopy_field == 0) {
+                goto oom;
+            }
+
+            // partial_datacopy_field->name = column->name; // shouldn't we strdup?
+            partial_datacopy_field->name = comdb2_strdup(ctx->mem, column->name);
+            if (partial_datacopy_field->name == 0) {
+                goto oom;
+            }
+
+            /* Add the partial datacopy column to the list. */
+            listc_abl(&key->partial_datacopy_list, partial_datacopy_field);
+        }
+
+        // check for decimal columns (currently not supported)
+        LISTC_FOR_EACH(&ctx->schema->column_list, column, lnk)
+        {
+            /* Ignore the dropped column(s). */
+            if (column->flags & COLUMN_DELETED)
+                continue;
+
+            if (column->type == SQL_TYPE_DECIMAL32 || column->type == SQL_TYPE_DECIMAL64 || column->type == SQL_TYPE_DECIMAL128) {
+                pParse->rc = SQLITE_ERROR;
+                sqlite3ErrorMsg(pParse, "Currently cannot have partial datacopy with decimal columns.");
+                goto cleanup;
+            }
+
+        }
+    } else if (withOpts == 2) {
+        pParse->rc = SQLITE_ERROR;
+        sqlite3ErrorMsg(pParse, "Expected partial datacopy columns or 'ALL' keyword after 'INCLUDE'.");
+        goto cleanup;
+    }
+
     if (pPIWhere && zStart && zEnd) {
         char *where_clause;
         size_t where_sz;
@@ -5445,7 +5521,7 @@ void comdb2AddPrimaryKey(
         goto oom;
 
     comdb2AddIndexInt(pParse, keyname, pList, onError, 0, 0, 0, sortOrder,
-                      SQLITE_IDXTYPE_PRIMARYKEY, 0);
+                      SQLITE_IDXTYPE_PRIMARYKEY, 0, NULL);
     if (pParse->rc)
         goto cleanup;
 
@@ -5480,7 +5556,8 @@ void comdb2AddIndex(
     const char *zEnd,   /* End of WHERE clause token text */
     int sortOrder,      /* Sort order of primary key when pList==NULL */
     u8 idxType,         /* The index type */
-    int withOpts        /* WITH options (DATACOPY) */
+    int withOpts,       /* WITH options (DATACOPY) */
+    ExprList *pdList    /* A list of columns in the partial datacopy */
 )
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -5518,7 +5595,7 @@ void comdb2AddIndex(
     }
 
     comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, zStart,
-                      zEnd, sortOrder, idxType, withOpts);
+                      zEnd, sortOrder, idxType, withOpts, pdList);
     if (pParse->rc)
         goto cleanup;
 
@@ -5548,6 +5625,7 @@ void comdb2CreateIndex(
     int ifNotExist,     /* Omit error if index already exists */
     u8 idxType,         /* The index type */
     int withOpts,       /* WITH options (DATACOPY) */
+    ExprList *pdList,   /* A list of columns in the partial datacopy */
     int temp)
 {
     if (comdb2IsPrepareOnly(pParse))
@@ -5629,7 +5707,7 @@ void comdb2CreateIndex(
     }
 
     comdb2AddIndexInt(pParse, keyname, pList, onError, pPIWhere, zStart,
-                      zEnd, sortOrder, idxType, withOpts);
+                      zEnd, sortOrder, idxType, withOpts, pdList);
     if (pParse->rc)
         goto cleanup;
 

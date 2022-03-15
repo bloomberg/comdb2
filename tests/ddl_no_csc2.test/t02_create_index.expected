@@ -2,7 +2,7 @@
 [CREATE UNIQUE INDEX idx1 ON t1(i)] failed with rc -3 Index 'idx1' already exists.
 [CREATE INDEX idx3 ON t2(i,j)] failed with rc -3 Index 'idx3' already exists.
 [CREATE INDEX idx3 ON t2(i)] failed with rc -3 Index 'idx3' already exists.
-[CREATE INDEX idx3 ON t3(i COLLATE DATACOPY)] failed with rc -3 Support for 'COLLATE DATACOPY' syntax has been removed; use OPTION DATACOPY.
+[CREATE INDEX idx3 ON t3(i COLLATE DATACOPY)] failed with rc -3 Support for 'COLLATE DATACOPY' syntax has been removed; use INCLUDE ALL.
 [DROP INDEX 'uniqueidxnameXXX'] failed with rc -3 Index 'uniqueidxnameXXX' not found.
 [DROP INDEX 'sameidxname'] failed with rc -3 Multiple indexes with same name 'sameidxname'.
 (tablename='t1')
@@ -15,6 +15,8 @@
 (tablename='t2', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t3', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t3', columnname='j', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
+(tablename='t3', columnname='k', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
+(tablename='t3', columnname='l', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t4', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t5', columnname='i', type='int', size=5, sqltype='int', varinlinesize=NULL, defaultvalue=NULL, dbload=NULL, isnullable='Y', lastsequence=NULL)
 (tablename='t1', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='N')
@@ -29,6 +31,12 @@
 (tablename='t2', keyname='IDX4', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='N')
 (tablename='t3', keyname='IDX1', keynumber=0, isunique='N', isdatacopy='Y', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='N')
 (tablename='t3', keyname='IDX2', keynumber=1, isunique='N', isdatacopy='Y', isrecnum='N', condition='WHERE (j > 10) ', uniqnulls='N', ispartialdatacopy='N')
+(tablename='t3', keyname='IDX4', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
+(tablename='t3', keyname='IDX5', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
+(tablename='t3', keyname='IDX4', columnname='j')
+(tablename='t3', keyname='IDX4', columnname='k')
+(tablename='t3', keyname='IDX5', columnname='i')
+(tablename='t3', keyname='IDX5', columnname='k')
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int);', csc2='schema
 	{
 		int i null = yes 
@@ -66,25 +74,31 @@ keys
 (type='index', name='$IDX1_A44A20B', tbl_name='t2', rootpage=13, sql='create index "$IDX1_A44A20B" on "t2" ("i") where ((j > 10) );', csc2=NULL)
 (type='index', name='$IDX3_E8BDFAE1', tbl_name='t2', rootpage=14, sql='create index "$IDX3_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
 (type='index', name='$IDX4_E8BDFAE1', tbl_name='t2', rootpage=15, sql='create index "$IDX4_E8BDFAE1" on "t2" ("i", "j");', csc2=NULL)
-(type='table', name='t3', tbl_name='t3', rootpage=16, sql='create table "t3"("i" int, "j" int);', csc2='schema
+(type='table', name='t3', tbl_name='t3', rootpage=16, sql='create table "t3"("i" int, "j" int, "k" int, "l" int);', csc2='schema
 	{
 		int i null = yes 
 		int j null = yes 
+		int k null = yes 
+		int l null = yes 
 	}
 keys
 	{
 		dup datacopy "IDX1" = i 
-		dup datacopy "idx2" = i { WHERE (j > 10) } 
+		dup datacopy "IDX2" = i { WHERE (j > 10) } 
+		dup datacopy (j, k) "IDX4" = i 
+		dup datacopy (i, k) "idx5" = i 
 	}
 ')
-(type='index', name='$IDX1_19767DE4', tbl_name='t3', rootpage=17, sql='create index "$IDX1_19767DE4" on "t3" ("i", "j" collate DATACOPY);', csc2=NULL)
-(type='index', name='$IDX2_19767DE4', tbl_name='t3', rootpage=18, sql='create index "$IDX2_19767DE4" on "t3" ("i", "j" collate DATACOPY) where ((j > 10) );', csc2=NULL)
-(type='table', name='t4', tbl_name='t4', rootpage=19, sql='create table "t4"("i" int);', csc2='schema
+(type='index', name='$IDX1_19767DE4', tbl_name='t3', rootpage=17, sql='create index "$IDX1_19767DE4" on "t3" ("i", "j" collate DATACOPY, "k", "l");', csc2=NULL)
+(type='index', name='$IDX2_19767DE4', tbl_name='t3', rootpage=18, sql='create index "$IDX2_19767DE4" on "t3" ("i", "j" collate DATACOPY, "k", "l") where ((j > 10) );', csc2=NULL)
+(type='index', name='$IDX4_2EFFF10B', tbl_name='t3', rootpage=19, sql='create index "$IDX4_2EFFF10B" on "t3" ("i", "j" collate DATACOPY, "k");', csc2=NULL)
+(type='index', name='$IDX5_1772CDCE', tbl_name='t3', rootpage=20, sql='create index "$IDX5_1772CDCE" on "t3" ("i", "k" collate DATACOPY);', csc2=NULL)
+(type='table', name='t4', tbl_name='t4', rootpage=21, sql='create table "t4"("i" int);', csc2='schema
 	{
 		int i null = yes 
 	}
 ')
-(type='table', name='t5', tbl_name='t5', rootpage=20, sql='create table "t5"("i" int);', csc2='schema
+(type='table', name='t5', tbl_name='t5', rootpage=22, sql='create table "t5"("i" int);', csc2='schema
 	{
 		int i null = yes 
 	}

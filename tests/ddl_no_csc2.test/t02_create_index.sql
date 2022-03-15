@@ -17,10 +17,12 @@ CREATE INDEX idx3 ON t2(i,j);
 CREATE INDEX idx3 ON t2(i);
 CREATE INDEX idx4 ON t2(i,j);
 
-CREATE TABLE t3(i INT, j INT) $$
-CREATE INDEX idx1 ON t3(i) OPTION DATACOPY;
-CREATE INDEX idx2 ON t3(i) OPTION DATACOPY WHERE (j > 10);
+CREATE TABLE t3(i INT, j INT, k INT, l INT) $$
+CREATE INDEX idx1 ON t3(i) INCLUDE ALL;
+CREATE INDEX idx2 ON t3(i) INCLUDE ALL WHERE (j > 10);
 CREATE INDEX idx3 ON t3(i COLLATE DATACOPY);
+CREATE INDEX idx4 ON t3(i) INCLUDE (j, k);
+CREATE INDEX idx5 ON t3(i) INCLUDE (i, k);
 
 CREATE TABLE t4(i INT) $$
 CREATE INDEX 'uniqueidxname' ON t4(i);
@@ -37,6 +39,7 @@ DROP INDEX IF EXISTS 'sameidxname';
 SELECT * FROM comdb2_tables WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_columns WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_keys WHERE tablename NOT LIKE 'sqlite_stat%';
+SELECT * FROM comdb2_partial_datacopies WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM comdb2_constraints WHERE tablename NOT LIKE 'sqlite_stat%';
 SELECT * FROM sqlite_master WHERE name NOT LIKE 'sqlite_stat%';
 DROP TABLE t1;

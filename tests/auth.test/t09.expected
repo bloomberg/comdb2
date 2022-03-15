@@ -93,6 +93,7 @@
 (candidate='IGNORE')
 (candidate='IMMEDIATE')
 (candidate='IN')
+(candidate='INCLUDE')
 (candidate='INCREMENT')
 (candidate='INDEX')
 (candidate='INDEXED')

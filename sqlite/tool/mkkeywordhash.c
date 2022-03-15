@@ -357,6 +357,7 @@ static Keyword aKeywordTable[] = {
   { "GENID48",          "TK_GENID48",        ALWAYS               },
   { "GET",              "TK_GET",            ALWAYS               },
   { "GRANT",            "TK_GRANT",          ALWAYS               },
+  { "INCLUDE",          "TK_INCLUDE",        ALWAYS               },
   { "INCREMENT",        "TK_INCREMENT",      ALWAYS               },
   { "IPU",              "TK_IPU",            ALWAYS               },
   { "ISC",              "TK_ISC",            ALWAYS               },
