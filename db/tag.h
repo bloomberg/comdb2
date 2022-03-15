@@ -278,7 +278,7 @@ int ctag_to_ctag_buf(const char *table, const char *ftag, void *inbufp,
 int stag_set_key_null(const char *table, const char *stag, const char *inkey, const int keylen, char *outkey);
 int set_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen);
 int upd_master_columns(struct ireq *iq, void *intrans, void *record, size_t reclen);
-void add_tag_alias(const char *table, struct schema *s, char *name);
+void add_tag_alias(const char *table, struct schema *s, char *name, int table_nmembers);
 void del_tag_schema(const char *table, const char *tagname);
 void replace_tag_schema(struct dbtable *db, struct schema *schema);
 char *sqltype(struct field *f, char *buf, int len);
@@ -402,6 +402,7 @@ void rename_schema(const char *oldname, char *newname);
 void freeschema(struct schema *schema);
 void freeschema_internals(struct schema *schema);
 
+struct schema *clone_schema_index(struct schema *from, int table_nmembers);
 struct schema *clone_schema(struct schema *from);
 
 void free_db_and_replace(struct dbtable *db, struct dbtable *newdb);

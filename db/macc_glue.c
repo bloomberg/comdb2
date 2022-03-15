@@ -342,11 +342,7 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt,
                     numMembers++;
                 }
 
-                p->tag = NULL;
-                p->datacopy = NULL;
-                p->csctag = NULL;
-                p->sqlitetag = NULL;
-                p->partial_datacopy = NULL;
+                p->tag = strdup("PARTIAL DATACOPY");
                 p->flags = SCHEMA_PARTIALDATACOPY_ACTUAL;
 
                 p->nmembers = numMembers;
@@ -531,10 +527,10 @@ static int create_key_schema(dbtable *db, struct schema *schema, int alt,
         if (rc == 0 && (strcasecmp(schema->tag, ".ONDISK") == 0 ||
                         strcasecmp(schema->tag, ".NEW..ONDISK") == 0)) {
             if (alt == 0) {
-                add_tag_alias(dbname, s, altname);
+                add_tag_alias(dbname, s, altname, schema->nmembers);
             } else {
                 snprintf(tmptagname, sizeof(tmptagname), ".NEW.%s", altname);
-                add_tag_alias(dbname, s, tmptagname);
+                add_tag_alias(dbname, s, tmptagname, schema->nmembers);
             }
             if (where) {
                 s->where = strdup(where);

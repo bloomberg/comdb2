@@ -145,8 +145,11 @@ keys
 (tablename='t1', keyname='IDX2', keynumber=1, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
 (tablename='t1', keyname='IDX3', keynumber=2, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='N')
 (tablename='t1', keyname='IDX4', keynumber=3, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='N')
-(tablename='t1', keyname='COMDB2_PK', keynumber=4, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
+(tablename='t1', keyname='IDX5', keynumber=4, isunique='N', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='N', ispartialdatacopy='Y')
+(tablename='t1', keyname='COMDB2_PK', keynumber=5, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
 (tablename='t2', keyname='IDX1', keynumber=0, isunique='Y', isdatacopy='N', isrecnum='N', condition=NULL, uniqnulls='Y', ispartialdatacopy='N')
+(tablename='t1', keyname='IDX5', columnname='j')
+(tablename='t1', keyname='IDX5', columnname='k')
 (name='$CONSTRAINT_95177019', type='FOREIGN KEY', tablename='t2', keyname='IDX1', foreigntablename='t1', foreignkeyname='IDX1', iscascadingdelete='N', iscascadingupdate='N', expr=NULL)
 (type='table', name='t1', tbl_name='t1', rootpage=4, sql='create table "t1"("i" int, "j" int, "k" int);', csc2='schema
 	{
@@ -160,6 +163,7 @@ keys
 		uniqnulls "IDX2" = i 
 		dup "IDX3" = j + i 
 		dup "IDX4" = i 
+		dup datacopy (j, k) "IDX5" = i 
 		uniqnulls "COMDB2_PK" = k 
 	}
 ')
@@ -167,8 +171,9 @@ keys
 (type='index', name='$IDX2_877B2989', tbl_name='t1', rootpage=6, sql='create index "$IDX2_877B2989" on "t1" ("i");', csc2=NULL)
 (type='index', name='$IDX3_DC0D8A36', tbl_name='t1', rootpage=7, sql='create index "$IDX3_DC0D8A36" on "t1" ("j", "i");', csc2=NULL)
 (type='index', name='$IDX4_4DE4D8DB', tbl_name='t1', rootpage=8, sql='create index "$IDX4_4DE4D8DB" on "t1" ("i");', csc2=NULL)
-(type='index', name='$COMDB2_PK_697548A5', tbl_name='t1', rootpage=9, sql='create index "$COMDB2_PK_697548A5" on "t1" ("k");', csc2=NULL)
-(type='table', name='t2', tbl_name='t2', rootpage=10, sql='create table "t2"("i" int, "j" int, "k" int);', csc2='schema
+(type='index', name='$IDX5_5A4BF7FA', tbl_name='t1', rootpage=9, sql='create index "$IDX5_5A4BF7FA" on "t1" ("i", "j" collate DATACOPY, "k");', csc2=NULL)
+(type='index', name='$COMDB2_PK_697548A5', tbl_name='t1', rootpage=10, sql='create index "$COMDB2_PK_697548A5" on "t1" ("k");', csc2=NULL)
+(type='table', name='t2', tbl_name='t2', rootpage=11, sql='create table "t2"("i" int, "j" int, "k" int);', csc2='schema
 	{
 		int i null = yes 
 		int j null = yes 
@@ -183,7 +188,7 @@ constraints
 		"IDX1" -> <"t1":"IDX1"> 
 	}
 ')
-(type='index', name='$IDX1_9C18F596', tbl_name='t2', rootpage=11, sql='create index "$IDX1_9C18F596" on "t2" ("i", "j");', csc2=NULL)
+(type='index', name='$IDX1_9C18F596', tbl_name='t2', rootpage=12, sql='create index "$IDX1_9C18F596" on "t2" ("i", "j");', csc2=NULL)
 [ALTER TABLE t2 ADD FOREIGN KEY (i,j) REFERENCES t1(i,j)] failed with rc -3 Constraint '$CONSTRAINT_95177019' already exists.
 (tablename='t1')
 (tablename='t2')
