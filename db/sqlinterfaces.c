@@ -519,6 +519,11 @@ int get_client_retries(struct sqlclntstate *clnt)
     return clnt->plugin.get_client_retries(clnt);
 }
 
+void *get_authdata(struct sqlclntstate *clnt)
+{
+    return clnt->plugin.get_authdata(clnt);
+}
+
 static int skip_row(struct sqlclntstate *clnt, uint64_t rowid)
 {
     return clnt->plugin.skip_row(clnt, rowid);
@@ -2785,7 +2790,6 @@ int release_locks_on_emit_row(struct sqlthdstate *thd,
 }
 
 int (*externalComdb2AuthenticateUserMakeRequest)(void*) = NULL;
-extern void * (*externGetAuthData) (void*);
 
 /* If user password does not match this function
  * will write error response and return a non 0 rc
@@ -2797,8 +2801,7 @@ static inline int check_user_password(struct sqlclntstate *clnt)
 
     if(gbl_uses_externalauth &&
         externalComdb2AuthenticateUserMakeRequest) {
-          if (!clnt->authdata && externGetAuthData)
-              clnt->authdata = externGetAuthData(clnt);
+          clnt->authdata = get_authdata(clnt);
           int rc = externalComdb2AuthenticateUserMakeRequest(clnt->authdata);
           if (rc) {
               write_response(clnt, RESPONSE_ERROR,
@@ -5190,6 +5193,11 @@ void cleanup_clnt(struct sqlclntstate *clnt)
         clnt->context = NULL;
         clnt->ncontext = 0;
     }
+ 
+    if (clnt->authdata) {
+        free(clnt->authdata);
+        clnt->authdata = NULL;
+    }
 
     if (clnt->selectv_arr) {
         currangearr_free(clnt->selectv_arr);
@@ -5382,6 +5390,10 @@ void reset_clnt(struct sqlclntstate *clnt, SBUF2 *sb, int initial)
     free(clnt->context);
     clnt->context = NULL;
     clnt->ncontext = 0;
+    if (clnt->authdata) {
+        free(clnt->authdata);
+        clnt->authdata = NULL;
+    }
     clnt->statement_query_effects = 0;
     clnt->wrong_db = 0;
     clnt->sqltick = 0;
@@ -6626,6 +6638,10 @@ static int internal_get_client_retries(struct sqlclntstate *a)
 static int internal_send_intrans_response(struct sqlclntstate *a)
 {
     return 1;
+}
+void *internal_get_authdata(struct sqlclntstate *a)
+{
+    return NULL;
 }
 
 void start_internal_sql_clnt(struct sqlclntstate *clnt)

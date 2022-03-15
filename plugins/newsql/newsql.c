@@ -1442,19 +1442,24 @@ static void newsql_add_steps(struct sqlclntstate *clnt, double steps)
     gbl_nnewsql_steps += steps;
 }
 
-extern void * (*externGetAuthData) (void*);
-extern void * (*externalMakeAuthData) (const char *, int, int, int, void *);
+void *(*externalMakeNewsqlAuthData)(void *, CDB2SQLQUERY__IdentityBlob *id) = NULL;
 
-void * getAuthData(void * p_clnt) {
-     struct sqlclntstate *clnt = p_clnt;
-     struct newsql_appdata *appdata = clnt->appdata;
-     if (appdata) {
-         CDB2SQLQUERY *sql_query = appdata->sqlquery;
-         if (sql_query && sql_query->identity) {
-             return externalMakeAuthData(sql_query->identity->principal, sql_query->identity->majorversion, sql_query->identity->minorversion, sql_query->identity->data.len, sql_query->identity->data.data);
-         }
-     }
-     return NULL;
+static void *newsql_get_authdata(struct sqlclntstate *clnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    if (appdata) {
+        CDB2SQLQUERY *sql_query = appdata->sqlquery;
+        if (sql_query && sql_query->identity) {
+            if (externalMakeNewsqlAuthData) {
+                return externalMakeNewsqlAuthData(clnt->authdata, sql_query->identity);
+            }
+        }
+    }
+    if (clnt->authdata) {
+        free(clnt->authdata);
+        clnt->authdata = NULL;
+    }
+    return NULL;
 }
 
 static void newsql_setup_client_info(struct sqlclntstate *clnt,
@@ -2345,7 +2350,6 @@ static int handle_newsql_request(comdb2_appsock_arg_t *arg)
     clnt_register(&clnt);
 
     get_newsql_appdata(&clnt, APPDATA_MINCOLS);
-    externGetAuthData = getAuthData;
     plugin_set_callbacks(&clnt, newsql);
     clnt.tzname[0] = '\0';
     clnt.admin = arg->admin;
