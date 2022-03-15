@@ -1136,6 +1136,11 @@ static int dohsql_send_intrans_response(struct sqlclntstate *a)
     return 0;
 }
 
+static void * dohsql_get_authdata(struct sqlclntstate *a)
+{
+    return NULL;
+}
+
 static int _shard_connect(struct sqlclntstate *clnt, dohsql_connector_t *conn,
                           const char *sql, int nparams,
                           struct param_data *params)

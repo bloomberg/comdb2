@@ -1760,7 +1760,6 @@ int osql_dbq_consume_logic(struct sqlclntstate *clnt, const char *spname,
 extern int gbl_allow_user_schema;
 int (*externalComdb2AuthenticateUserRead)(void*, const char *tablename) = NULL;
 int (*externalComdb2AuthenticateUserWrite)(void*, const char *tablename) = NULL;
-extern void * (*externGetAuthData) (void*);
 
 static int access_control_check_sql_write(struct BtCursor *pCur,
                                           struct sql_thread *thd)
@@ -1793,8 +1792,7 @@ static int access_control_check_sql_write(struct BtCursor *pCur,
 
      if (gbl_uses_externalauth && thd->clnt->no_transaction == 0 &&
         externalComdb2AuthenticateUserWrite) {
-         if (!clnt->authdata && externGetAuthData)
-             clnt->authdata = externGetAuthData(clnt);
+         clnt->authdata = get_authdata(clnt);
          if(externalComdb2AuthenticateUserWrite(clnt->authdata, pCur->db->tablename)) {
              char msg[1024];
              snprintf(msg, sizeof(msg),
@@ -1866,8 +1864,7 @@ int access_control_check_sql_read(struct BtCursor *pCur, struct sql_thread *thd)
 
     if (gbl_uses_externalauth && thd->clnt->no_transaction == 0 &&
         externalComdb2AuthenticateUserRead) {
-         if (!clnt->authdata && externGetAuthData)
-             clnt->authdata = externGetAuthData(clnt);
+         clnt->authdata = get_authdata(clnt);
          if(externalComdb2AuthenticateUserRead(clnt->authdata, pCur->db->tablename)) {
              char msg[1024];
              snprintf(msg, sizeof(msg),

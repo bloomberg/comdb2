@@ -402,6 +402,7 @@ typedef int(skip_row_func)(struct sqlclntstate *, uint64_t);
 typedef int(log_context_func)(struct sqlclntstate *, struct reqlogger *);
 typedef uint64_t(ret_uint64_func)(struct sqlclntstate *);
 typedef int(override_type_func)(struct sqlclntstate *, int);
+typedef void *(auth_func)(struct sqlclntstate *);
 
 enum query_data_ops { QUERY_DATA_SET = 1, QUERY_DATA_GET = 2, QUERY_DATA_DELETE = 3 };
 
@@ -453,6 +454,7 @@ struct plugin_callbacks {
     ret_uint64_func *get_client_starttime; /* newsql_get_client_starttime */
     plugin_func *get_client_retries;       /* newsql_get_client_retries */
     plugin_func *send_intrans_response; /* newsql_send_intrans_response */
+    auth_func *get_authdata; /* newsql_get_authdata */
     /* optional */
     void *state;
     int (*column_count)(struct sqlclntstate *,
@@ -508,6 +510,7 @@ struct plugin_callbacks {
         make_plugin_callback(clnt, name, get_client_starttime);                \
         make_plugin_callback(clnt, name, get_client_retries);                  \
         make_plugin_callback(clnt, name, send_intrans_response);               \
+        make_plugin_callback(clnt, name, get_authdata);                        \
         make_plugin_optional_null(clnt, count);                                \
         make_plugin_optional_null(clnt, type);                                 \
         make_plugin_optional_null(clnt, int64);                                \
@@ -534,6 +537,7 @@ int set_high_availability(struct sqlclntstate *);
 int clr_high_availability(struct sqlclntstate *);
 uint64_t get_client_starttime(struct sqlclntstate *);
 int get_client_retries(struct sqlclntstate *);
+void *get_authdata(struct sqlclntstate *);
 
 struct clnt_ddl_context {
     /* Name of the table */
