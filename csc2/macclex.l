@@ -60,7 +60,6 @@ void yyerror(const char *msg);
 extern void *csc2_malloc(size_t size);
 extern char *csc2_strdup(char*);
 extern void csc2_error(const char *fmt, ...);
-void csc2_syntax_error(const char *fmt, ...);
 
 /* Now we're piling on more hacks to support this "yyin is really a file 
  * descriptor nonsense, god help us all */
@@ -326,7 +325,6 @@ void yyerror(const char *msg)
 {
     parser_reset=1;
     csc2_error("ERROR at line %3d: %s: %s\n",current_line, msg, yytext);
-    csc2_syntax_error("ERROR at line %3d: %s: %s",current_line, msg, yytext);
     rectplvl = 0;
 
 #ifdef FLEX_SCANNER

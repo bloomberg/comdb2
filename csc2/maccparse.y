@@ -99,7 +99,6 @@ void yyerror(const char *msg);
 
 extern void *csc2_malloc(size_t size);
 void csc2_error(const char *fmt, ...);
-void csc2_syntax_error(const char *fmt, ...);
 
 %}
 
@@ -309,9 +308,7 @@ cstart:         '[' number ']' cstart
 							lastidx++;
 							if ((gbl_allow_neg_column_size == 0) &&
                                 ($2.number < 0)) {
-								csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
-									current_line);
-								csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
+								csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
 									current_line);
 								any_errors++;
 							} else {
@@ -328,9 +325,7 @@ cstart:         '[' number ']' cstart
 							if (i != -1) {
 								if ((gbl_allow_neg_column_size == 0) &&
                                     (constants[i].value < 0)) {
-									csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH\n",
-										current_line);
-									csc2_syntax_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
+									csc2_error("ERROR AT LINE %3d: NEGATIVE ARRAY LENGTH",
 										current_line);
 									any_errors++;
 								} else {
@@ -344,7 +339,6 @@ cstart:         '[' number ']' cstart
 								}
 							} else {
 								csc2_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT\n", current_line);
-								csc2_syntax_error("ARRAY ERROR AT LINE %3d: UNDEFINED CONSTANT", current_line);
 								any_errors++;
 							}
 						}

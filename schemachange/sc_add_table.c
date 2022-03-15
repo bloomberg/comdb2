@@ -116,11 +116,8 @@ int add_table_to_environment(char *table, const char *csc2,
 
     if (rc) {
         char *err;
-        char *syntax_err;
         err = csc2_get_errors();
-        syntax_err = csc2_get_syntax_errors();
-        sc_client_error(s, "%s", syntax_err);
-        sc_errf(s, "%s\n", err);
+        sc_client_error(s, "%s", err);
         sc_errf(s, "error adding new table locally\n");
         logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
