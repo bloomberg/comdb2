@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/socketvar.h>
 #include <sys/types.h>
@@ -709,20 +710,52 @@ struct accept_info {
     struct sockaddr_in ss;
     connect_message_type c;
     netinfo_type *netinfo_ptr;
+    struct event *ev;
+    TAILQ_ENTRY(accept_info) entry;
 };
 
-static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr,
-                                           struct sockaddr_in *addr, int fd)
+static int pending_connections; /* accepted but didn't receive first-byte */
+static int max_pending_connections = 1024;
+static TAILQ_HEAD(, accept_info) accept_list = TAILQ_HEAD_INITIALIZER(accept_list);
+static void do_read(int, short, void *);
+static void accept_info_free(struct accept_info *);
+
+static void close_oldest_pending_connection(void)
 {
+    struct accept_info *a = TAILQ_FIRST(&accept_list);
+    if (!a) {
+        logmsg(LOGMSG_FATAL, "%s no pending connections to close [count:%d]\n", __func__, pending_connections);
+        abort();
+    }
+    logmsg(LOGMSG_USER, "%s closing oldest pending connection fd:%d [count:%d]\n", __func__, a->fd, pending_connections);
+    accept_info_free(a);
+}
+
+static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd)
+{
+    check_base_thd();
+    if (pending_connections > max_pending_connections) {
+        close_oldest_pending_connection();
+    }
+    ++pending_connections;
     struct accept_info *a = calloc(1, sizeof(struct accept_info));
+    TAILQ_INSERT_TAIL(&accept_list, a, entry);
     a->netinfo_ptr = netinfo_ptr;
     a->ss = *addr;
     a->fd = fd;
+    a->ev = event_new(base, fd, EV_READ, do_read, a);
+    event_add(a->ev, NULL);
     return a;
 }
 
 static void accept_info_free(struct accept_info *a)
 {
+    check_base_thd();
+    TAILQ_REMOVE(&accept_list, a, entry);
+    --pending_connections;
+    if (a->ev) {
+        event_free(a->ev);
+    }
     if (a->fd != -1) {
         shutdown_close(a->fd);
     }
@@ -2173,18 +2206,27 @@ static void do_read(int fd, short what, void *data)
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
 }
 
-static void do_accept(struct evconnlistener *listener, evutil_socket_t fd,
+static void accept_cb(struct evconnlistener *listener, evutil_socket_t fd,
                       struct sockaddr *addr, int len, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
     netinfo_type *netinfo_ptr = n->netinfo_ptr;
     netinfo_ptr->num_accepts++;
-    struct accept_info *a;
-    a = accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd);
-    if (event_base_once(base, fd, EV_READ, do_read, a, NULL) != 0) {
-        accept_info_free(a);
+    accept_info_new(netinfo_ptr, (struct sockaddr_in *)addr, fd);
+}
+
+static void accept_error_cb(struct evconnlistener *listener, void *data)
+{
+    check_base_thd();
+    int err = EVUTIL_SOCKET_ERROR();
+    int fd = evconnlistener_get_fd(listener);
+    if (err == EMFILE) {
+        close_oldest_pending_connection();
+        return;
     }
+    logmsg(LOGMSG_FATAL, "%s fd:%d err:%d-%s\n", __func__, fd, err, evutil_socket_error_to_string(err));
+    abort();
 }
 
 static void reopen_unix(int fd, struct net_info *n)
@@ -2208,20 +2250,21 @@ static void reopen_unix(int fd, struct net_info *n)
      (m)->cmsg_level == SOL_SOCKET && (m)->cmsg_type == SCM_RIGHTS)
 #endif
 
-static int recvfd(int fd)
+static int recvfd(int pmux_fd)
 {
     int newfd = -1;
     char buf[sizeof("pmux") - 1];
     struct iovec iov = {.iov_base = buf, .iov_len = sizeof(buf)};
+    struct msghdr msg = {0};
+    msg.msg_iov = &iov;
+    msg.msg_iovlen = 1;
 #   ifdef __sun
-    struct msghdr msg = {.msg_iov = &iov,
-                         .msg_iovlen = 1,
-                         .msg_accrights = (caddr_t)&newfd,
-                         .msg_accrightslen = sizeof(newfd)};
-    ssize_t rc = recvmsg(fd, &msg, 0);
+    msg.msg_accrights = (caddr_t)&newfd;
+    msg.msg_accrightslen = sizeof(newfd);
+    ssize_t rc = recvmsg(pmux_fd, &msg, 0);
     if (rc != sizeof(buf)) {
-        logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d rc:%zd expected:%zu (%s)\n",
-               __func__, fd, rc, sizeof(buf), strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d rc:%zd expected:%zu (%s)\n",
+               __func__, pmux_fd, rc, sizeof(buf), strerror(errno));
         return -1;
     }
     if (msg.msg_accrightslen != sizeof(newfd)) {
@@ -2229,18 +2272,28 @@ static int recvfd(int fd)
     }
 #   else
     struct cmsghdr *cmsgptr = alloca(CMSG_SPACE(sizeof(int)));
-    struct msghdr msg = {.msg_iov = &iov,
-                         .msg_iovlen = 1,
-                         .msg_control = cmsgptr,
-                         .msg_controllen = CMSG_SPACE(sizeof(int))};
-    ssize_t rc = recvmsg(fd, &msg, 0);
+    msg.msg_control = cmsgptr;
+    msg.msg_controllen = CMSG_SPACE(sizeof(int));
+    ssize_t rc = recvmsg(pmux_fd, &msg, 0);
+    if (rc == -1) {
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return 0;
+        }
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d rc:%zd errno:%d [%s]\n",
+               __func__, pmux_fd, rc, errno, strerror(errno));
+        return -1;
+    }
     if (rc != sizeof(buf)) {
-        logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d rc:%zd expected:%zu (%s)\n",
-               __func__, fd, rc, sizeof(buf), strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d rc:%zd expected:%zu\n",
+               __func__, pmux_fd, rc, sizeof(buf));
         return -1;
     }
     struct cmsghdr *tmp, *m;
     m = tmp = CMSG_FIRSTHDR(&msg);
+    if (!m) {
+        logmsg(LOGMSG_ERROR, "%s:CMSG_FIRSTHDR NULL msghdr\n", __func__);
+        return -2;
+    }
     if (CMSG_NXTHDR(&msg, tmp) != NULL) {
         logmsg(LOGMSG_ERROR, "%s:CMSG_NXTHDR unexpected msghdr\n", __func__);
         return -1;
@@ -2253,27 +2306,27 @@ static int recvfd(int fd)
 #   endif
     if (memcmp(buf, "pmux", sizeof(buf)) != 0) {
         shutdown_close(newfd);
-        logmsg(LOGMSG_ERROR, "%s:recvmsg fd:%d unexpected msg:%.*s\n", __func__,
-               fd, (int)sizeof(buf), buf);
+        logmsg(LOGMSG_ERROR, "%s:recvmsg pmux_fd:%d unexpected msg:%.*s\n", __func__,
+               pmux_fd, (int)sizeof(buf), buf);
         return -1;
     }
     return newfd;
 }
 
-static void do_recvfd(int fd, short what, void *data)
+static void do_recvfd(int pmux_fd, short what, void *data)
 {
     check_base_thd();
     struct net_info *n = data;
-    int newfd = recvfd(fd);
-    if (newfd == -1) {
-        reopen_unix(fd, n);
-        return;
+    int newfd = recvfd(pmux_fd);
+    switch (newfd) {
+    case 0: return;
+    case -1: reopen_unix(pmux_fd, n); return;
+    case -2: close_oldest_pending_connection(); return;
     }
     make_socket_nonblocking(newfd);
     ssize_t rc = write(newfd, "0\n", 2);
     if (rc != 2) {
-        logmsg(LOGMSG_ERROR, "%s:write fd:%d rc:%zd (%s)\n", __func__, fd, rc,
-               strerror(errno));
+        logmsg(LOGMSG_ERROR, "%s:write pmux_fd:%d rc:%zd (%s)\n", __func__, pmux_fd, rc, strerror(errno));
         shutdown_close(newfd);
         return;
     }
@@ -2281,7 +2334,7 @@ static void do_recvfd(int fd, short what, void *data)
     struct sockaddr *addr = (struct sockaddr *)&saddr;
     socklen_t addrlen = sizeof(saddr);
     getpeername(newfd, addr, &addrlen);
-    do_accept(NULL, newfd, addr, addrlen, n);
+    accept_cb(NULL, newfd, addr, addrlen, n);
 }
 
 static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
@@ -2323,10 +2376,11 @@ static int process_reg_reply(char *res, struct net_info *n, int unix_fd)
     struct sockaddr *s  = (struct sockaddr *)&sin;
     unsigned flags;
     flags = LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE;
-    n->listener = evconnlistener_new_bind(base, do_accept, n, flags, SOMAXCONN, s, len);
+    n->listener = evconnlistener_new_bind(base, accept_cb, n, flags, SOMAXCONN, s, len);
     if (n->listener == NULL) {
         return -1;
     }
+    evconnlistener_set_error_cb(n->listener, accept_error_cb);
     int fd = evconnlistener_get_fd(n->listener);
     update_net_info(n, fd, port);
     logmsg(LOGMSG_USER, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
@@ -2457,8 +2511,9 @@ static void net_accept(netinfo_type *netinfo_ptr)
         return;
     }
     make_socket_nonblocking(fd);
-    n->listener = evconnlistener_new(base, do_accept, n, LEV_OPT_CLOSE_ON_FREE,
+    n->listener = evconnlistener_new(base, accept_cb, n, LEV_OPT_CLOSE_ON_FREE,
                                      gbl_net_maxconn ? gbl_net_maxconn : SOMAXCONN, fd);
+    evconnlistener_set_error_cb(n->listener, accept_error_cb);
     logmsg(LOGMSG_INFO, "%s svc:%s accepting on port:%d fd:%d\n", __func__,
            netinfo_ptr->service, netinfo_ptr->myport, fd);
 }
