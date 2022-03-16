@@ -583,6 +583,9 @@ static int delete_table_rep(char *table, void *tran)
     delete_db(table);
     MEMORY_SYNC;
     delete_schema(table);
+    bdb_free(db->handle, &bdberr);
+    freedb(db);
+
     return 0;
 }
 

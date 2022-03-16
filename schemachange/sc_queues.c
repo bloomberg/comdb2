@@ -311,6 +311,10 @@ int perform_trigger_update_replicant(tran_type *tran, const char *queue_name,
 
         /* close */
         rc = bdb_close_only(db->handle, &bdberr);
+
+        bdb_free(db->handle, &bdberr);
+        freedb(db);
+
         if (rc) {
             logmsg(LOGMSG_ERROR, "%s: bdb_close_only rc %d bdberr %d\n",
                    __func__, rc, bdberr);
@@ -702,6 +706,9 @@ done:
 
     if (rc) {
         logmsg(LOGMSG_ERROR, "%s rc:%d\n", __func__, rc);
+    } else if (sc->drop_table) {
+        bdb_free(db->handle, &bdberr);
+        freedb(db);
     }
     return !rc && !sc->finalize ? SC_COMMIT_PENDING : rc;
     // This function does not have the "finalize" behaviour but it needs to

@@ -325,6 +325,10 @@ int bdb_del_all_table_access(bdb_state_type *bdb_state, tran_type *tran,
         }
     }
 
+    for (int i = 0; i != nUsers; ++i)
+        free(users[i]);
+    free(users);
+
     return rc;
 }
 
