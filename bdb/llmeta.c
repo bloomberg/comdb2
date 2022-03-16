@@ -4292,7 +4292,6 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
     void **keys = NULL;
     int nkey = 0, rc = 1;
     sc_hist_row *hist = NULL;
-    void **sc_data = NULL;
 
     *num = 0;
     *hist_out = NULL;
@@ -4319,14 +4318,6 @@ int bdb_llmeta_get_sc_history(tran_type *t, sc_hist_row **hist_out, int *num,
     hist = calloc(nkey, sizeof(sc_hist_row) * nkey);
     if (hist == NULL) {
         logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-        *bdberr = BDBERR_MALLOC;
-        return -1;
-    }
-
-    sc_data = calloc(nkey, sizeof(void *));
-    if (sc_data == NULL) {
-        logmsg(LOGMSG_ERROR, "%s: failed malloc\n", __func__);
-        free(hist);
         *bdberr = BDBERR_MALLOC;
         return -1;
     }

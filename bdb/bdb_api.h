@@ -1166,6 +1166,7 @@ int bdb_list_unused_files(bdb_state_type *bdb_state, int *bdberr, char *powner);
 int bdb_list_unused_files_tran(bdb_state_type *bdb_state, tran_type *tran,
                                int *bdberr, char *powner);
 int bdb_list_dropped_files(bdb_state_type *bdb_state, int *bdberr);
+int bdb_is_delfiles_in_progress();
 
 /* make new stripes */
 int bdb_create_stripes(bdb_state_type *bdb_state, int newdtastripe,

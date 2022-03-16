@@ -718,10 +718,18 @@ static void osql_scdone_commit_callback(struct ireq *iq)
                            "%s failed to start lock_trans, rc=%d\n", __func__,
                            rc);
                 }
+
+                /* If another schemachange thread is deleting files,
+                   we can't safely free the bdb state. Let it leak. */
+                if (iq->sc->drop_table && !bdb_is_delfiles_in_progress()) {
+                    bdb_free(iq->sc->db->handle, &bdberr);
+                    freedb(iq->sc->db);
+                }
             }
             if (iq->sc->kind == SC_TRUNCATETABLE)
                 autoanalyze_after_fastinit(iq->sc->tablename);
             free_schema_change_type(iq->sc);
+
             iq->sc = sc_next;
         }
         iq->sc_pending = NULL;
