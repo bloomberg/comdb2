@@ -96,6 +96,8 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_timestamp;
     int64_t reprepares;
     int64_t nonsql;
+    double sql_per_conn;
+    int64_t verify_retries;
 };
 
 static struct comdb2_metrics_store stats;
@@ -257,6 +259,10 @@ comdb2_metric gbl_metrics[] = {
     {"reprepares", "Number of times statements are reprepared by sqlitex",
       STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.reprepares,
       NULL},
+    {"sql_per_conn", "Ratio of SQL statements to connections",
+        STATISTIC_DOUBLE, STATISTIC_COLLECTION_TYPE_LATEST, &stats.sql_per_conn, NULL},
+    {"verify_retries", "Number of times queries have been replayed due to verify error",
+        STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.verify_retries, NULL}
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -491,8 +497,11 @@ int refresh_metrics(void)
         return 1;
     }
     stats.diskspace = refresh_diskspace(thedb, trans);
-    curtran_puttran(trans);
 
+    stats.sql_per_conn = stats.connections == 0 ?  0 : ((double) stats.sql_count / (double) stats.connections);
+    stats.verify_retries = gbl_verify_tran_replays;
+
+    curtran_puttran(trans);
     return 0;
 }
 
