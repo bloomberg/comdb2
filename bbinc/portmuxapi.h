@@ -195,7 +195,8 @@ portmux_fd_t *portmux_listen_options_setup(const char *app, const char *service,
  *         expires before recovery succeed, rc will be -1
  *         and errno will be set to EAGAIN (meaning should retry).
  */
-int portmux_accept(portmux_fd_t *fds, int timeoutms);
+int portmux_accept(portmux_fd_t *fds, int timeoutms,
+                   struct sockaddr_in *);
 
 /**
  * @brief  Wait for a connection on a vector of portmux_fd.
@@ -231,7 +232,7 @@ int portmux_accept(portmux_fd_t *fds, int timeoutms);
 
 int portmux_acceptv(portmux_fd_t **fds, int nfds, int timeoutms,
                     int (*accept_hndl)(int which, int fd, void *user_data),
-                    void *user_data);
+                    void *user_data, struct sockaddr_in *);
 
 /**
  * @brief  Close and free previously attributed portmux_fd.

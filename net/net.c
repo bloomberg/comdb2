@@ -5713,7 +5713,7 @@ static void *accept_thread(void *arg)
         clilen = sizeof(cliaddr);
 
         if (portmux_fds) {
-            new_fd = portmux_accept(portmux_fds, -1);
+            new_fd = portmux_accept(portmux_fds, -1, &cliaddr);
         } else {
             new_fd = accept(listenfd, (struct sockaddr *)&cliaddr, &clilen);
         }
@@ -5732,6 +5732,7 @@ static void *accept_thread(void *arg)
         wait_alive(new_fd);
 #endif
 
+#if 0
         if(portmux_fds) {
             rc = getpeername(new_fd, (struct sockaddr *)&cliaddr, &clilen);
             if (rc) {
@@ -5742,7 +5743,7 @@ static void *accept_thread(void *arg)
                 continue;
             }
         }
-
+#endif
         if (netinfo_ptr->exiting) {
             close(new_fd);
             break;
