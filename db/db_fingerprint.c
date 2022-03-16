@@ -198,9 +198,11 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
         memcpy(t->fingerprint, fingerprint, FINGERPRINTSZ);
         t->count = 1;
         t->cost = cost;
+        t->max_cost = cost;
         t->time = time;
         t->prepTime = prepTime;
         t->rows = nrows;
+        t->curr_analyze_gen = gbl_analyze_gen;
         t->zNormSql = strdup(zNormSql);
         t->nNormSql = nNormSql;
         hash_add(gbl_fingerprint_hash, t);
@@ -227,11 +229,40 @@ void add_fingerprint(struct sqlclntstate *clnt, sqlite3_stmt *stmt,
                 do_type_checks(clnt, stmt, t);
         }
     } else {
+        /* Analyze just ran, just check if cost increased for every fingerprint or not */
+        if ((gbl_analyze_gen > t->curr_analyze_gen) && (t->check_next_queries == 0) && (t->count > CHECK_NEXT_QUERIES)) {
+            if (t->count != 0) {
+                /* rows + end of result, number of rows can be zero too. */
+                t->pre_cost_avg_per_row = t->cost/(t->rows+t->count);
+            }
+            t->curr_analyze_gen = gbl_analyze_gen;
+            t->check_next_queries = CHECK_NEXT_QUERIES;
+            t->cost_increased = 0;
+        }
         t->count++;
         t->cost += cost;
+        if (cost > t->max_cost) {
+            t->max_cost = cost;
+        }
         t->time += time;
         t->prepTime += prepTime;
         t->rows += nrows;
+
+        /* Do a check after an interval */
+        if (t->check_next_queries) {
+            t->check_next_queries--;
+            /* rows + 1 (end of result), number of rows can be zero too. */
+            nrows++;
+            int64_t avg_cost = cost/nrows;
+            if (avg_cost > (t->pre_cost_avg_per_row*1.2)) {
+                t->cost_increased++;
+            }
+            if (t->check_next_queries == 0 && (t->cost_increased > CHECK_NEXT_QUERIES/2)) {
+                logmsg(LOGMSG_WARN,
+                       "Cost %ld vs Previous Avg Cost %ld of Query %s increased after last Analyze. Backout?\n",
+                       avg_cost , t->pre_cost_avg_per_row, t->zNormSql);
+            }
+        }
         assert( memcmp(t->fingerprint,fingerprint,FINGERPRINTSZ)==0 );
         assert( t->zNormSql!=zNormSql );
         assert( t->nNormSql==nNormSql );

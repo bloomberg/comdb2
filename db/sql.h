@@ -60,6 +60,8 @@ enum transaction_level {
 
 #define FINGERPRINTSZ 16
 
+#define CHECK_NEXT_QUERIES 20
+
 /* Static rootpages numbers. */
 enum { RTPAGE_SQLITE_MASTER = 1, RTPAGE_START = 2 };
 
@@ -68,8 +70,13 @@ struct fingerprint_track {
     int64_t count;    /* Cumulative number of times executed */
     int64_t cost;     /* Cumulative cost */
     int64_t time;     /* Cumulative preparation and execution time */
+    int64_t max_cost; /* Max cost of any query */
     int64_t prepTime; /* Cumulative preparation time only */
     int64_t rows;     /* Cumulative number of rows selected */
+    int64_t curr_analyze_gen; /* If the analyze gen number is different */
+    int     check_next_queries; /* Check cost of next these many queries */
+    int     cost_increased; /* queries with cost greater than avg cost */
+    int64_t pre_cost_avg_per_row;     /* Average cost before last Analyze */
     char *zNormSql;   /* The normalized SQL query */
     size_t nNormSql;  /* Length of normalized SQL query */
     int typeMismatch; /* Type(s) did not match when compared to sqlitex's */
