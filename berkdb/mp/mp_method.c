@@ -28,6 +28,11 @@ static const char revid[] = "$Id: mp_method.c,v 11.40 2003/06/30 17:20:19 bostic
 #include "dbinc_auto/rpc_client_ext.h"
 #endif
 
+#if defined (UFID_HASH_DEBUG)
+#include <logmsg.h>
+#endif
+
+
 static int __memp_get_mp_maxwrite __P((DB_ENV *, int *, int *));
 static int __memp_set_mp_maxwrite __P((DB_ENV *, int, int));
 static int __memp_get_mp_mmapsize __P((DB_ENV *, size_t *));
@@ -446,6 +451,10 @@ fsop:
 			__os_unlink(dbenv, recp_old_path);
 	} else {
 		ret = __os_rename(dbenv, fullold, fullnew, 1);
+#if defined (UFID_HASH_DEBUG)
+		logmsg(LOGMSG_USER, "%s renamed %s to %s\n", __func__, fullold,
+				fullnew);
+#endif
 		if (recp_old_path && recp_new_path)
 			__os_rename(dbenv, recp_old_path, recp_new_path, 1);
 	}
