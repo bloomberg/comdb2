@@ -17,6 +17,7 @@
 #include "schemachange.h"
 #include "sc_util.h"
 #include "logmsg.h"
+#include "cdb2_constants.h"
 
 int close_all_dbs_tran(tran_type *tran)
 {

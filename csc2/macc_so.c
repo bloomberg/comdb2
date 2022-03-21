@@ -103,11 +103,20 @@ int gbl_sequence_feature = 1;
 void csc2_error(const char *fmt, ...);
 void csc2_syntax_error(const char *fmt, ...);
 
-void dyns_allow_bools(void) { allow_bools = 1; }
+void csc2_allow_bools(void)
+{
+    allow_bools = 1;
+}
 
-void dyns_disallow_bools(void) { allow_bools = 0; }
+void csc2_disallow_bools(void)
+{
+    allow_bools = 0;
+}
 
-int dyns_used_bools(void) { return used_bools; }
+int csc2_used_bools(void)
+{
+    return used_bools;
+}
 
 #define CHECK_LEGACY_SCHEMA(A)                                                 \
     do {                                                                       \

@@ -35,6 +35,7 @@
 #include "crc32c.h"
 #include "comdb2_atomic.h"
 #include "bdb_api.h"
+#include "macc_glue.h"
 
 const char *get_hostname_with_crc32(bdb_state_type *bdb_state,
                                     unsigned int hash);
@@ -582,22 +583,16 @@ int do_dryrun(struct schema_change_type *s)
         }
     }
 
-    dyns_init_globals();
-    if (dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename)) {
-        char *err;
-        err = csc2_get_errors();
-        sc_errf(s, "%s", err);
-        rc = -1;
-        goto done;
-    }
-
     if (db == NULL) {
         sbuf2printf(s->sb, ">Table %s will be added.\n", s->tablename);
         goto done;
     }
 
-    newdb = newdb_from_schema(thedb, s->tablename, NULL, 0, 0);
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, 0, 0, 1, 0, 0,
+                               &err);
     if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
         rc = -1;
         goto done;
     }
@@ -607,15 +602,6 @@ int do_dryrun(struct schema_change_type *s)
 
     newdb->odh = s->headers;
     newdb->instant_schema_change = newdb->odh && s->instant_sc;
-
-    struct errstat err = {0};
-    rc = add_cmacc_stmt(newdb, 1, 0, &err);
-    if (rc)
-        sc_client_error(s, "%s", err.errstr);
-    if (rc || (init_check_constraints(newdb))) {
-        rc = -1;
-        goto done;
-    }
 
     if (dryrun_int(s, db, newdb, &scinfo)) {
         rc = -1;
@@ -633,7 +619,6 @@ done:
         newdb->schema = NULL;
         freedb(newdb);
     }
-    dyns_cleanup_globals();
     return rc;
 }
 
@@ -984,28 +969,23 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
         s->header_change = s->force_dta_rebuild = s->force_blob_rebuild = 1;
     }
 
-    rc = dyns_load_schema_string(s->newcsc2, thedb->envname, s->tablename);
-    if (rc != 0) {
-        char *err;
-        err = csc2_get_errors();
-        sc_errf(s, "%s", err);
-        logmsg(LOGMSG_FATAL, "Shouldn't happen in this piece of code.\n");
-        abort();
-    }
-
     if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
         logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
         abort();
     }
 
-    if (s->dbnum != -1) db->dbnum = s->dbnum;
-
-    db->sc_to = newdb =
-        newdb_from_schema(thedb, s->tablename, NULL, db->dbnum, foundix);
-
-    if (newdb == NULL) {
-        return -1;
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2,
+                               (s->dbnum != -1) ? s->dbnum : 0, foundix, 1, 1,
+                               0, &err);
+    if (!newdb) {
+        logmsg(LOGMSG_FATAL, "Shouldn't happen in this piece of code %s:%d.\n",
+               __FILE__, __LINE__);
+        sc_client_error(s, "%s", err.errstr);
+        backout_schemas(newdb->tablename);
+        abort();
     }
+    db->sc_to = newdb;
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->odh = s->headers;
@@ -1013,15 +993,6 @@ static int add_table_for_recovery(struct ireq *iq, struct schema_change_type *s)
     newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->instant_schema_change = s->headers && s->instant_sc;
     newdb->schema_version = get_csc2_version(newdb->tablename);
-
-    struct errstat err = {0};
-    rc = add_cmacc_stmt(newdb, 1, 1, &err);
-    if (rc)
-        sc_client_error(s, "%s", err.errstr);
-    if (rc || (init_check_constraints(newdb))) {
-        backout_schemas(newdb->tablename);
-        abort();
-    }
 
     if (verify_constraints_exist(NULL, newdb, newdb, s) != 0) {
         backout_schemas(newdb->tablename);
@@ -1123,9 +1094,7 @@ int add_schema_change_tables()
             }
 
             iq.sc = s;
-            dyns_init_globals();
             rc = add_table_for_recovery(&iq, s);
-            dyns_cleanup_globals();
             iq.sc = NULL;
 
             free_schema_change_type(s);

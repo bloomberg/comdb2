@@ -52,8 +52,6 @@
 #include "thdpool.h"
 #include "ssl_bend.h"
 
-#include <dynschematypes.h>
-#include <dynschemaload.h>
 #include <cdb2api.h>
 
 #include <sys/time.h>

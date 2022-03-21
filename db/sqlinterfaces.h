@@ -39,9 +39,6 @@
 #include "types.h"
 #include "tag.h"
 
-#include <dynschematypes.h>
-#include <dynschemaload.h>
-
 #include <sqlite3.h>
 #include "comdb2uuid.h"
 

@@ -30,6 +30,7 @@
 #include "analyze.h"
 #include "comdb2_atomic.h"
 #include "views.h"
+#include "macc_glue.h"
 
 static int prepare_sc_plan(struct schema_change_type *s, int old_changed,
                            struct dbtable *db, struct dbtable *newdb,
@@ -408,9 +409,9 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
         exit(1);
     }
 
-    newdb =
-        create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum, foundix,
-                           1 /* sc_alt_name */, (s->same_schema) ? 1 : 0, &err);
+    newdb = create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum,
+                               foundix, 1 /* sc_alt_name */,
+                               (s->same_schema) ? 1 : 0, 0, &err);
 
     if (!newdb) {
         sc_client_error(s, "%s", err.errstr);
@@ -435,7 +436,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
             unlock_schema_lk();
         backout(newdb);
         cleanup_newdb(newdb);
-        dyns_cleanup_globals();
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         sc_errf(s, "Sqlite syntax check failed\n");
         return SC_CSC2_ERROR;
@@ -444,7 +444,6 @@ int do_alter_table(struct ireq *iq, struct schema_change_type *s,
     }
     newdb->ix_blob = newdb->schema->ix_blob;
 
-    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     if ((iq == NULL || iq->tranddl <= 1) &&
