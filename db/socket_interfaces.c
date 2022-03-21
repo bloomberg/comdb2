@@ -39,9 +39,6 @@
 #include "socket_interfaces.h"
 #include <endian_core.h>
 
-#include <dynschematypes.h>
-#include <dynschemaload.h>
-
 #include <sys/time.h>
 #include <logmsg.h>
 #include <net_appsock.h>

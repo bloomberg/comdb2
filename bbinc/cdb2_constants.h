@@ -62,6 +62,10 @@
 #define MAX_PASSWORD_LEN 19
 #define MAXBBNODENUM 32768 /* Legacy: maximum number assigned to a machine in BBENV */
 
+/* moved here from csc2, better place */
+/*max length of index name, its char[64] in stat1 - 10 for $_12345678*/
+#define MAXIDXNAMELEN 54
+
 /*
   Print at the given offset, detect overflow and update offset
   accordingly.

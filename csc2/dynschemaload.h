@@ -27,8 +27,6 @@ typedef struct dpthinfo {
 enum dyns_cnst {
     MAX_TAG_LEN = 32,
     MAXTBLS = 32,
-    MAXIDXNAMELEN = 54 /*max length of index name, its char[64] in stat1 - 10
-                          for $_12345678*/
 };
 
 char *dyns_field_option_text(int option);

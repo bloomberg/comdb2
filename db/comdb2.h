@@ -99,6 +99,7 @@ typedef long long tranid_t;
 #include "perf.h"
 #include "constraints.h"
 #include "osqlrpltypes.h"
+#include "macc_glue.h"
 
 /* buffer offset, given base ptr & right ptr */
 #define BUFOFF(base, right) ((int)(((char *)right) - ((char *)base)))
@@ -2364,30 +2365,16 @@ int dtas_next_pageorder(struct ireq *iq, const unsigned long long *genid_vector,
                         int stay_in_stripe, void *dta, void *trans, int dtalen,
                         int *reqdtalen, int *ver);
 
-int check_table_schema(struct dbenv *dbenv, const char *table,
-                       const char *csc2file);
-
-struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int indx,
-                                   int sc_alt_tablename, int allow_ull,
-                                   struct errstat *err);
-
 struct dbtable *find_table(const char *table);
 int bt_hash_table(char *table, int szkb);
 int del_bt_hash_table(char *table);
 int stat_bt_hash_table(char *table);
 int stat_bt_hash_table_reset(char *table);
 int fastinit_table(struct dbenv *dbenvin, char *table);
-int add_cmacc_stmt(struct dbtable *db, int is_sc_name, int allow_ull,
-                   struct errstat *err);
-int add_cmacc_stmt_no_side_effects(struct dbtable *db, int is_sc_name);
 
 void cleanup_newdb(struct dbtable *);
-struct dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                                  int dbnum, int dbix);
 struct dbtable *newqdb(struct dbenv *env, const char *name, int avgsz, int pagesize,
                   int isqueuedb);
-int init_check_constraints(struct dbtable *tbl);
 int add_queue_to_environment(char *table, int avgitemsz, int pagesize);
 void stop_threads(struct dbenv *env);
 void resume_threads(struct dbenv *env);
@@ -3629,5 +3616,12 @@ extern int gbl_rcache;
 extern int gbl_throttle_txn_chunks_msec;
 extern int gbl_sql_release_locks_on_slow_reader;
 extern int gbl_fail_client_write_lock;
+
+void csc2_free_all(void);
+
+/* hack to temporary allow bools on production stage */
+void csc2_allow_bools(void);
+void csc2_disallow_bools(void);
+int csc2_used_bools(void);
 
 #endif /* !INCLUDED_COMDB2_H */

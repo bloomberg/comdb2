@@ -31,6 +31,7 @@
 #include "sc_alter_table.h"
 #include "sc_util.h"
 #include "views.h"
+#include "macc_glue.h"
 
 extern int gbl_broken_max_rec_sz;
 
@@ -89,7 +90,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     int saved_broken_max_rec_sz = fix_broken_max_rec_sz(s->db->lrl);
     newdb = s->newdb =
         create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum, foundix,
-                           1 /* sc_alt_name */, 1 /* allow ull */, &err);
+                           1 /* sc_alt_name */, 1 /* allow ull */, 0, &err);
     gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
 
     if (!newdb) {

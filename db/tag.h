@@ -419,4 +419,11 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
 char* typestr(int type, int len);
 
 struct schema *get_schema(const struct dbtable *db, int ix);
+
+int find_field_idx(const char *table, const char *tagname, const char *field);
+
+/* used to clone ONDISK to ONDISK_CLIENT */
+int clone_server_to_client_tag(const char *table, const char *fromtag,
+                               const char *newtag);
+
 #endif
