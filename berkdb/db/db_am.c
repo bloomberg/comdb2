@@ -130,7 +130,7 @@ __db_cursor_int(dbp, txn, dbtype, root, is_opd, lockerid, dbcp, flags)
 					adbc = TAILQ_FIRST(&dbp->active_queue);
 				else {
 					cq = __db_acquire_cq(dbp);
-					adbc = TAILQ_FIRST(&cq->aq);
+					adbc = (cq == NULL) ? NULL : TAILQ_FIRST(&cq->aq);
 					__db_release_cq(cq);
 				}
 			    if (adbc != NULL)
@@ -507,8 +507,6 @@ __db_count_cursors(DB *dbp)
 	int ncur = 0;
 	DB_CQ *cq;
 	DB_CQ_HASH *h;
-	void *hashent;
-	unsigned int pos;
 
 	if (!dbp->use_tlcq) {
 		MUTEX_THREAD_LOCK(dbp->dbenv, dbp->mutexp);
@@ -520,11 +518,7 @@ __db_count_cursors(DB *dbp)
 		Pthread_mutex_lock(&gbl_all_cursors.lk);
 		TAILQ_FOREACH(h, &gbl_all_cursors, links) {
 			Pthread_mutex_lock(&h->lk);
-			for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
-					cq = hash_next(h->h, &hashent, &pos)) {
-				if (dbp != cq->db)
-					continue;
-
+			if ((cq = hash_find(h->h, &dbp)) != NULL) {
 				for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
 						dbc = TAILQ_NEXT(dbc, links))
 					ncur++;
@@ -568,8 +562,6 @@ __db_cprint(dbp)
 	int ret, t_ret;
 	DB_CQ *cq;
 	DB_CQ_HASH *h;
-	void *hashent;
-	unsigned int pos;
 
 	ret = 0;
 
@@ -584,11 +576,7 @@ __db_cprint(dbp)
 		Pthread_mutex_lock(&gbl_all_cursors.lk);
 		TAILQ_FOREACH(h, &gbl_all_cursors, links) {
 			Pthread_mutex_lock(&h->lk);
-			for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
-					cq = hash_next(h->h, &hashent, &pos)) {
-				if (dbp != cq->db)
-					continue;
-
+			if ((cq = hash_find(h->h, &dbp)) != NULL) {
 				for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
 						dbc = TAILQ_NEXT(dbc, links))
 					if ((t_ret = __db_cprint_item(dbc)) != 0 && ret == 0)
@@ -1218,8 +1206,6 @@ __db_check_all_btree_cursors(dbp, pgno)
 	DB_ENV *dbenv = dbp->dbenv;
 	DB_CQ *cq;
 	DB_CQ_HASH *h;
-	void *hashent;
-	unsigned int pos;
 	db_pgno_t tmp_pgno = 0;
 
 	if (!dbp->use_tlcq) {
@@ -1243,9 +1229,7 @@ __db_check_all_btree_cursors(dbp, pgno)
 		Pthread_mutex_lock(&gbl_all_cursors.lk);
 		TAILQ_FOREACH(h, &gbl_all_cursors, links) {
 			Pthread_mutex_lock(&h->lk);
-			for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
-				cq = hash_next(h->h, &hashent, &pos)) {
-
+			if ((cq = hash_find(h->h, &dbp)) != NULL) {
 				for (dbc = TAILQ_FIRST(&cq->aq); dbc != NULL;
 					dbc = TAILQ_NEXT(dbc, links)) {
 					if (dbc->dbtype != DB_BTREE)
