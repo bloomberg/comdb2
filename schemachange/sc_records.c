@@ -1408,18 +1408,15 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                   s->tablename);
         thdData->isThread = 1;
 
-        if (BDB_ATTR_GET(thedb->bdb_attr, SNAPISOL) == 0) {
-            /* enable logical logging for this table for the duration of the
-             * schema change */
-            rc = bdb_set_logical_live_sc(s->db->handle, 1 /* lock table */);
-            if (rc) {
-                logmsg(LOGMSG_ERROR,
-                       "%s:%d failed to set logical live sc, rc = %d\n",
-                       __func__, __LINE__, rc);
-                free(s->sc_convert_done);
-                s->sc_convert_done = NULL;
-                return -1;
-            }
+        /* enable logical logging for this table for the duration of the schema change */
+        rc = bdb_set_logical_live_sc(s->db->handle, 1 /* lock table */);
+        if (rc) {
+            logmsg(LOGMSG_ERROR,
+                    "%s:%d failed to set logical live sc, rc = %d\n",
+                    __func__, __LINE__, rc);
+            free(s->sc_convert_done);
+            s->sc_convert_done = NULL;
+            return -1;
         }
 
         s->logical_livesc = 1;

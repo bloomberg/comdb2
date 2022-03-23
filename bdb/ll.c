@@ -188,10 +188,10 @@ int add_snapisol_logging(bdb_state_type *bdb_state, tran_type *tran)
                            "%s: failed to init dirty table hash\n", __func__);
                     abort();
                 }
-                if (hash_find_readonly(tran->dirty_table_hash,
+            }
+            if (hash_find_readonly(tran->dirty_table_hash,
                                        &(bdb_state->name)) == NULL) {
-                    hash_add(tran->dirty_table_hash, bdb_state);
-                }
+                hash_add(tran->dirty_table_hash, bdb_state);
             }
         }
         return 1;
