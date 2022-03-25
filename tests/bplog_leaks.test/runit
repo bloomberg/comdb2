@@ -14,10 +14,10 @@ master=`cdb2sql --tabs ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.sen
 # 1) We leak the sql query, only in sockbplog mode
 # 2) We leak the bplog buffer, only in sockbplog mode
 # 3) We leak the osql transaction buffer in both net and sockbplog modes
-before=`cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("memstat uncategorized")' | grep total | tail -1 | awk '{print $6}'`
+before=`cdb2sql --tabs $dbnm --host $master 'SELECT SUM(used) FROM comdb2_memstats WHERE name="uncategorized"'`
 # Use a long query to make the leaks more visible
 yes "INSERT INTO t1 VALUES (x'`openssl rand -hex 16384`')" | head -1000 | cdb2sql ${CDB2_OPTIONS} $dbnm default - >/dev/null
-after=`cdb2sql --tabs $dbnm --host $master 'exec procedure sys.cmd.send("memstat uncategorized")' | grep total | tail -1 | awk '{print $6}'`
+after=`cdb2sql --tabs $dbnm --host $master 'SELECT SUM(used) FROM comdb2_memstats WHERE name="uncategorized"'`
 
 delta=`expr $after - $before`
 if [ $delta -gt 524288 ]; then

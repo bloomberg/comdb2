@@ -34,7 +34,7 @@ kill $pid
 # Get a steady memory snapshot
 sleep 2 # allow the sql engine to detect the disconnect and back out
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat berkdb')"
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat berkdb')" | grep total | tail -1 | awk '{print $6}'`
+before=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(used) FROM comdb2_memstats WHERE name='berkdb'"`
 
 sleep 5
 
@@ -46,7 +46,7 @@ kill $pid
 # Get a memory snapshot again
 sleep 2 # allow the sql engine to detect the disconnect and back out
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat berkdb')"
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat berkdb')" | grep total | tail -1 | awk '{print $6}'`
+after=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(used) FROM comdb2_memstats WHERE name='berkdb'"`
 
 # Should almost be identical
 ratio=`echo "$after/$before" | bc`
