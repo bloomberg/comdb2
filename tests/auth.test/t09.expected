@@ -238,6 +238,7 @@
 (candidate='comdb2_limits')
 (candidate='comdb2_locks')
 (candidate='comdb2_logical_operations')
+(candidate='comdb2_memstats')
 (candidate='comdb2_metrics')
 (candidate='comdb2_net_userfuncs')
 (candidate='comdb2_opcode_handlers')

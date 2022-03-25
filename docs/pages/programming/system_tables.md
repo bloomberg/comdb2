@@ -680,3 +680,15 @@ List of views in the database.
 * `name` - Name of the view
 * `definition` - View definition
 
+## comdb2_memstats
+
+Heap memory usage
+
+    comdb2_memstats(name, scope, total, used, unused, peak)
+
+* `name` - name of the allocator.
+* `scope` - thread type of the allocator.
+* `total` - total number of bytes (`used` + `unused`) in the allocator
+* `used` - number of used bytes in the allocator
+* `unused` - number of unused bytes in the allocator
+* `peak` - maximum number of bytes used by the allocator since it was created

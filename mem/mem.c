@@ -563,6 +563,41 @@ int comdb2ma_stats(char *pattern, int verbose, int hr, comdb2ma_order_by ord,
     return rc;
 }
 
+int comdb2ma_usages(comdb2ma_usage **pusages, int *n)
+{
+    int rc, unlock_rc, cnt;
+    struct mallinfo info;
+    comdb2ma_usage *usages;
+    comdb2ma curr;
+
+    rc = COMDB2MA_LOCK(&root);
+    if (rc != 0)
+        return rc;
+
+    if (root.m == NULL)
+        rc = EPERM;
+    else {
+        *n = cnt = listc_size(&(root.list));
+        *pusages = usages = comdb2_calloc_static(1, cnt, sizeof(comdb2ma_usage));
+
+        LISTC_FOR_EACH(&(root.list), curr, lnk) {
+            info = comdb2_mallinfo(curr);
+            strncpy(usages->name_str, curr->name, sizeof(usages->name_str) - 1);
+            usages->name = usages->name_str;
+            strncpy(usages->scope_str, curr->thr_type, sizeof(usages->scope_str) - 1);
+            usages->scope = usages->scope_str;
+            usages->peak = info.usmblks;
+            usages->total = info.fordblks + info.uordblks;
+            usages->used = info.uordblks;
+            usages->unused = info.fordblks;
+            ++usages;
+        }
+    }
+
+    unlock_rc = COMDB2MA_UNLOCK(&root);
+    return (rc == 0) ? unlock_rc : rc;
+}
+
 /* dlmalloc.h and malloc.h both define struct mallinfo.
    We include malloc.h in the function to avoid the conflict. */
 int comdb2ma_nice(int niceness)

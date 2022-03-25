@@ -24,7 +24,7 @@ yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s ${
 sleep 2
 
 # Get memory snapshot
-before=`cdb2sql --tabs $dbnm --host $mach "EXEC PROCEDURE sys.cmd.send('memstat bdb')" | grep total | tail -1 | awk '{print $6}'`
+before=`cdb2sql --tabs $dbnm --host $mach "SELECT SUM(used) FROM comdb2_memstats WHERE name='bdb'"`
 
 # Run the leak reproducer
 yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s ${CDB2_OPTIONS} --host $mach $dbnm ->/dev/null
@@ -33,7 +33,7 @@ yes 'select name, version from comdb2sys_procedures' | head -100 | cdb2sql -s ${
 sleep 2
 
 # Get memory snapshot again
-after=`cdb2sql --tabs $dbnm --host $mach "EXEC PROCEDURE sys.cmd.send('memstat bdb')" | grep total | tail -1 | awk '{print $6}'`
+after=`cdb2sql --tabs $dbnm --host $mach "SELECT SUM(used) FROM comdb2_memstats WHERE name='bdb'"`
 
 # Should be almost identical
 ratio=`echo "$after/$before" | bc`
