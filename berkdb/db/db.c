@@ -845,7 +845,8 @@ __db_refresh(dbp, txn, flags, deferred_closep)
 	DB_LOCKREQ lreq;
 	DB_MPOOL *dbmp;
 	int ret, t_ret;
-    int aft, bef;
+	int aft, bef;
+	struct fileid_adj_fileid *fidadj;
 
 	ret = 0;
 
@@ -1069,6 +1070,10 @@ never_opened:
         if (gbl_instrument_dblist && aft != (bef - 1))
             abort();
 		if (dbp->inadjlist) {
+			if ((fidadj = hash_find(dbenv->fidhash, dbp->fileid)) != NULL) {
+				hash_del(dbenv->fidhash, fidadj);
+				free(fidadj);
+			}
 			listc_rfl(&dbenv->dbs[dbp->adj_fileid], dbp);
 			dbp->inadjlist = 0;
             if (gbl_instrument_dblist)
