@@ -1016,6 +1016,8 @@ struct reqlogger *reqlog_alloc(void)
         return NULL;
     }
 
+    Pthread_mutex_init(&logger->mtx, NULL);
+
     return logger;
 }
 
@@ -1049,6 +1051,7 @@ static void reqlog_free_events(struct reqlogger *logger) {
         }
         free(event);
     }
+    logger->events = NULL;
 }
 
 static void reqlog_free_tables(struct reqlogger *logger) {
@@ -1064,6 +1067,7 @@ static void reqlog_free_tables(struct reqlogger *logger) {
         free(logger->sqltables[i]);
     }
     free(logger->sqltables);
+    logger->sqltables = NULL;
 }
 
 static void reqlog_free_all(struct reqlogger *logger)
@@ -1078,6 +1082,7 @@ void reqlog_free(struct reqlogger *logger)
 {
     if (logger) {
         reqlog_free_all(logger);
+        Pthread_mutex_destroy(&logger->mtx);
         free(logger);
     }
 }
@@ -1085,10 +1090,12 @@ void reqlog_free(struct reqlogger *logger)
 void reqlog_reset_logger(struct reqlogger *logger)
 {
     if (logger) {
+        Pthread_mutex_lock(&logger->mtx);
         reqlog_free_all(logger);
         bzero(&logger->start_transient,
               sizeof(struct reqlogger) -
                   offsetof(struct reqlogger, start_transient));
+        Pthread_mutex_unlock(&logger->mtx);
     }
 }
 
@@ -1099,12 +1106,14 @@ static void reqlog_append_event(struct reqlogger *logger,
     struct logevent *event = voidevent;
     event->type = type;
     event->next = NULL;
+    Pthread_mutex_lock(&logger->mtx);
     if (logger->events) {
         logger->last_event->next = event;
         logger->last_event = event;
     } else {
         logger->events = logger->last_event = event;
     }
+    Pthread_mutex_unlock(&logger->mtx);
 }
 
 /* push an output trace prefix */
@@ -1480,10 +1489,12 @@ void reqlog_new_request(struct ireq *iq)
 
 inline void reqlog_set_sql(struct reqlogger *logger, const char *sqlstmt)
 {
+    Pthread_mutex_lock(&logger->mtx);
     if (sqlstmt) {
         if (logger->stmt) free(logger->stmt);
         logger->stmt = strdup(sqlstmt);
     }
+    Pthread_mutex_unlock(&logger->mtx);
     if (logger->stmt) reqlog_logf(logger, REQL_INFO, "sql=%s", logger->stmt);
 }
 
@@ -1750,6 +1761,7 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
 {
     struct logevent *event;
 
+    Pthread_mutex_lock(&logger->mtx);
     /* now scan for all tidbits of information about the request to publish */
     for (event = logger->events; event; event = event->next) {
         if (event->type == EVENT_PRINT) {
@@ -1772,6 +1784,7 @@ static void log_all_events(struct reqlogger *logger, struct output *out)
             }
         }
     }
+    Pthread_mutex_unlock(&logger->mtx);
     flushdump(logger, out);
 }
 
@@ -1988,8 +2001,11 @@ static void reqlog_log_longreq(struct reqlogger *logger, int rc, const char *sql
             long_request_logged_count = 0;
         }
     }
+
+    Pthread_mutex_lock(&logger->mtx);
     reqlog_free_stmt(logger);
     reqlog_free_events(logger);
+    Pthread_mutex_unlock(&logger->mtx);
 }
 
 extern pthread_mutex_t clnt_lk;
