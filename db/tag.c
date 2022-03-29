@@ -7432,10 +7432,15 @@ int create_key_from_ireq(struct ireq *iq, int ixnum, int isDelete, char **tail,
     int rc = 0;
     dbtable *db = iq->usedb;
 
-    if (isDelete)
+    if (isDelete) {
+        if (iq->idxDelete[ixnum] == NULL)
+            return create_key_from_ondisk(iq->usedb, ixnum, inbuf, outbuf);
         memcpy(outbuf, iq->idxDelete[ixnum], db->ix_keylen[ixnum]);
-    else
+    } else {
+        if (iq->idxInsert[ixnum] == NULL)
+            return create_key_from_ondisk(iq->usedb, ixnum, inbuf, outbuf);
         memcpy(outbuf, iq->idxInsert[ixnum], db->ix_keylen[ixnum]);
+    }
 
     if (db->ix_datacopy[ixnum]) {
         assert(db->ix_collattr[ixnum] == 0);
