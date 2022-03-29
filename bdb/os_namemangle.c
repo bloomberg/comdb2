@@ -16,7 +16,7 @@
 
 /* This is very, very verbose even at level 1.  Default to level 0. */
 int gbl_namemangle_loglevel = 0;
-int gbl_file_permissions;
+extern int gbl_file_permissions;
 
 #ifndef COMPILING_FOR_DB_TOOLS
 
