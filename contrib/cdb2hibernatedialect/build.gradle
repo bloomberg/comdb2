@@ -4,8 +4,11 @@ plugins {
 }
 
 group = 'com.bloomberg.comdb2'
-version = '0.1.1'
+version = '0.1.2'
 
+apply plugin: 'java'
+sourceCompatibility = '1.11'
+targetCompatibility = '1.11'
 
 repositories {
     mavenCentral()
@@ -13,7 +16,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.hibernate:hibernate-core:5.4.10.Final'
+    implementation 'org.hibernate:hibernate-core:5.6.7.Final'
 }
 
 task sourceJar(type: Jar) {
