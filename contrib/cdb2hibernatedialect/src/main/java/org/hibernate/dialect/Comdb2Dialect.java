@@ -32,6 +32,7 @@ import java.sql.*;
 import java.util.*;
 
 import org.hibernate.JDBCException;
+import org.hibernate.LockOptions;
 import org.hibernate.ScrollMode;
 import org.hibernate.boot.Metadata;
 import org.hibernate.dialect.function.AbstractAnsiTrimEmulationFunction;
@@ -178,6 +179,11 @@ public class Comdb2Dialect extends Dialect {
     @Override
     public String getForUpdateString() {
         return "";
+    }
+
+    @Override
+    public String applyLocksToSql(String sql, LockOptions aliasedLockOptions, Map<String, String[]> keyColumnNames) {
+        return sql.replaceFirst("select", "selectv");
     }
 
     @Override

@@ -27,7 +27,7 @@ limitations under the License. -->
     <dependency>
       <groupId>org.hibernate</groupId>
       <artifactId>hibernate-core</artifactId>
-      <version>5.4.24.Final</version>
+      <version>5.6.7.Final</version>
     </dependency>
     <dependency>
       <groupId>junit</groupId>
@@ -86,6 +86,14 @@ limitations under the License. -->
             </configuration>
           </execution>
         </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>11</source>
+          <target>11</target>
+        </configuration>
       </plugin>
     </plugins>
   </build>
