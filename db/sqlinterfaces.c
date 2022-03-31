@@ -6462,11 +6462,6 @@ void clnt_unregister(struct sqlclntstate *clnt) {
     Pthread_mutex_unlock(&clnt_lk);
 }
 
-struct connection_info_arg {
-    int num;
-    struct connection_info *c;
-};
-
 static void gather_connection_int(struct connection_info *c, struct sqlclntstate *clnt)
 {
     c->connection_id = clnt->connid;
@@ -6494,47 +6489,43 @@ static void gather_connection_int(struct connection_info *c, struct sqlclntstate
     Pthread_mutex_unlock(&clnt->state_lk);
 }
 
-static void gather_connections_int(struct connection_info_arg *arg)
+static void gather_connections_evbuffer(struct connection_info **info, int *num_connections)
 {
     int num = 0;
     struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
         ++num;
     }
-    num += listc_size(&clntlist);
-    struct connection_info *c;
-    arg->c = c = malloc(num * sizeof(struct connection_info));
-    if (c == NULL) {
-       return;
-    }
+    *num_connections = num;
+    struct connection_info *c = *info = malloc(num * sizeof(struct connection_info));
     TAILQ_FOREACH(clnt, &sql_evbuffers, sql_entry) {
         gather_connection_int(c, clnt);
         ++c;
     }
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
+}
+
+static void gather_connections_sbuf2(struct connection_info **info, int *num_connections)
+{
+    struct sqlclntstate *clnt;
+    Pthread_mutex_lock(&clnt_lk);
+    int num = *num_connections = listc_size(&clntlist);
+    struct connection_info *c = *info = malloc(num * sizeof(struct connection_info));
     LISTC_FOR_EACH(&clntlist, clnt, lnk) {
         gather_connection_int(c, clnt);
         ++c;
     }
-    arg->num = num;
-}
-
-static void gather_connections(void *data)
-{
-    check_appsock_rd_thd();
-    Pthread_mutex_lock(&clnt_lk);
-    gather_connections_int(data);
     Pthread_mutex_unlock(&clnt_lk);
 }
 
 int gather_connection_info(struct connection_info **info, int *num_connections)
 {
-    struct connection_info_arg arg = {0};
-    if (gbl_libevent_appsock)
-        run_on_base(appsock_rd_base, gather_connections, &arg);
-    else
-        gather_connections_int(&arg);
-    *info =  arg.c;
-    *num_connections = arg.num;
+    if (gbl_libevent_appsock) {
+        gather_connections_evbuffer(info, num_connections);
+    } else {
+        gather_connections_sbuf2(info, num_connections);
+    }
     return 0;
 }
 
@@ -6551,33 +6542,34 @@ void free_connection_info(struct connection_info *info, int num_connections)
 
 void add_sql_evbuffer(struct sqlclntstate *clnt)
 {
-    check_appsock_rd_thd();
     clnt->state = CONNECTION_NEW;
     clnt->connect_time = comdb2_time_epoch();
     clnt->connid = ATOMIC_ADD64(connid, 1);
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_INSERT_TAIL(&sql_evbuffers, clnt, sql_entry);
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
 void rem_sql_evbuffer(struct sqlclntstate *clnt)
 {
-    check_appsock_rd_thd();
+    Pthread_mutex_lock(&lru_evbuffers_mtx);
     TAILQ_REMOVE(&sql_evbuffers, clnt, sql_entry);
+    Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
-static void add_lru_evbuffer_int(struct sqlclntstate *clnt)
+void init_lru_evbuffer(struct sqlclntstate *clnt)
 {
-    if (in_client_trans(clnt)) {
-        /* Point to self -> not in lru_evbuffers list */
-        TAILQ_NEXT(clnt, lru_entry) = clnt;
-    } else {
-        TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
-    }
+    TAILQ_NEXT(clnt, lru_entry) = clnt;
 }
 
 void add_lru_evbuffer(struct sqlclntstate *clnt)
 {
     Pthread_mutex_lock(&lru_evbuffers_mtx);
-    add_lru_evbuffer_int(clnt);
+    if (in_client_trans(clnt)) {
+        TAILQ_NEXT(clnt, lru_entry) = clnt; /* Point to self -> not in lru_evbuffers list */
+    } else if (TAILQ_NEXT(clnt, lru_entry) == clnt) {
+        TAILQ_INSERT_HEAD(&lru_evbuffers, clnt, lru_entry);
+    }
     Pthread_mutex_unlock(&lru_evbuffers_mtx);
 }
 
@@ -6588,6 +6580,7 @@ static void rem_lru_evbuffer_int(struct sqlclntstate *clnt)
         TAILQ_NEXT(clnt, lru_entry) = clnt;
     }
 }
+
 void rem_lru_evbuffer(struct sqlclntstate *clnt)
 {
     Pthread_mutex_lock(&lru_evbuffers_mtx);
@@ -6598,12 +6591,12 @@ void rem_lru_evbuffer(struct sqlclntstate *clnt)
 static int close_lru_evbuffer_int(struct sqlclntstate *self)
 {
     struct sqlclntstate *clnt = TAILQ_LAST(&lru_evbuffers, lru_evbuffers);
-    if (clnt && clnt != self) {
-        rem_lru_evbuffer_int(clnt);
-        clnt->plugin.close(clnt);
-        return 0;
+    if (!clnt || clnt == self) {
+        return -1;
     }
-    return -1;
+    rem_lru_evbuffer_int(clnt);
+    clnt->plugin.close(clnt); /* newsql_close_evbuffer */
+    return 0;
 }
 
 static int close_lru_evbuffer(struct sqlclntstate *self)
@@ -6620,10 +6613,21 @@ int add_appsock_connection_evbuffer(struct sqlclntstate *clnt)
        return 0;
     }
     int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
-    if (active_appsock_conns >= max && close_lru_evbuffer(clnt) != 0) {
-        return -1;
+    int warn = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_APPSOCKSLIMIT);
+    int lim = warn < max ? warn : max;
+    int current = ATOMIC_ADD32(active_appsock_conns, 1);
+    if (current > lim) {
+        static time_t last_trace = 0;
+        time_t now = time(NULL);
+        if (current > max) {
+            if (close_lru_evbuffer(clnt) != 0) {
+                return -1;
+            }
+        } else if (now - last_trace) {
+            last_trace = now;
+            logmsg(LOGMSG_WARN, "%s: SQL connection limit approaching (%d/%d)\n", __func__, current, max);
+        }
     }
-    active_appsock_conns = ATOMIC_ADD32(active_appsock_conns, 1);
     return 0;
 }
 
@@ -6632,7 +6636,7 @@ void rem_appsock_connection_evbuffer(struct sqlclntstate *clnt)
     if (clnt->admin) {
         return;
     }
-    active_appsock_conns = ATOMIC_ADD32(active_appsock_conns, -1);
+    ATOMIC_ADD32(active_appsock_conns, -1);
 }
 
 static int internal_write_response(struct sqlclntstate *a, int b, void *c, int d)
@@ -6854,7 +6858,7 @@ void exhausted_appsock_connections(struct sqlclntstate *clnt)
     static time_t last = 0;
     time_t now = time(NULL);
     if (now != last) {
-        logmsg(LOGMSG_WARN,
+        logmsg(LOGMSG_USER,
                "%s: Exhausted appsock connections, total %d connections denied-connection count=%" PRId64 "\n",
                __func__, active_appsock_conns, gbl_denied_appsock_connection_count);
         last = now;

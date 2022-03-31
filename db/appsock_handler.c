@@ -75,7 +75,7 @@ void close_appsock(SBUF2 *sb)
     if (sb != NULL) {
         net_end_appsock(sb);
         Pthread_mutex_lock(&appsock_conn_lk);
-        active_appsock_conns = ATOMIC_ADD32(active_appsock_conns, -1);
+        ATOMIC_ADD32(active_appsock_conns, -1);
         Pthread_mutex_unlock(&appsock_conn_lk);
     }
 }
@@ -382,7 +382,7 @@ void appsock_handler_start(struct dbenv *dbenv, SBUF2 *sb, int admin)
 
     total_appsock_conns++;
     Pthread_mutex_lock(&appsock_conn_lk);
-    curr_appsock_conns = active_appsock_conns = ATOMIC_ADD32(active_appsock_conns, 1);
+    curr_appsock_conns = ATOMIC_ADD32(active_appsock_conns, 1);
     Pthread_mutex_unlock(&appsock_conn_lk);
 
     if (curr_appsock_conns > bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXSOCKCACHED)) {

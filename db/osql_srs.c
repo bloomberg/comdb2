@@ -39,12 +39,12 @@ static void *save_stmt(struct sqlclntstate *clnt)
 
 static void restore_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
 {
-    clnt->plugin.restore_stmt(clnt, item->stmt);
+    clnt->plugin.restore_stmt(clnt, item->stmt); /* newsql_restore_stmt */
 }
 
 static void destroy_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)
 {
-    clnt->plugin.destroy_stmt(clnt, item->stmt);
+    clnt->plugin.destroy_stmt(clnt, item->stmt); /* newsql_destroy_stmt_evbuffer */
 }
 
 static char *print_stmt(struct sqlclntstate *clnt, srs_tran_query_t *item)

@@ -90,6 +90,7 @@
 #define hprintf_nd(a, ...) no_distress_logmsg(hprintf_format(a), __VA_ARGS__)
 #define hputs_nd(a) no_distress_logmsg(hprintf_format(a))
 
+extern int count_newsqls;
 int gbl_libevent = 1;
 int gbl_libevent_appsock = 1;
 int gbl_libevent_rte_only = 0;
@@ -132,11 +133,9 @@ static struct event_base *base;
 static pthread_t timer_thd;
 static struct event_base *timer_base;
 
-pthread_t appsock_timer_thd;
-struct event_base *appsock_timer_base;
-
-pthread_t appsock_rd_thd;
-struct event_base *appsock_rd_base;
+#define NUM_APPSOCK_RD 4
+pthread_t appsock_thd[NUM_APPSOCK_RD];
+struct event_base *appsock_base[NUM_APPSOCK_RD];
 
 #define get_akq()                                                              \
     ({                                                                         \
@@ -482,15 +481,23 @@ static void *net_dispatch(void *arg)
     return NULL;
 }
 
-static void init_base(pthread_t *t, struct event_base **bb, const char *who)
+static void init_base_priority(pthread_t *t, struct event_base **bb, const char *who, int priority)
 {
     struct net_dispatch_info *info;
     info = calloc(1, sizeof(struct net_dispatch_info));
     *bb = event_base_new();
+    if (priority) {
+        event_base_priority_init(*bb, priority);
+    }
     info->who = who;
     info->base = *bb;
     Pthread_create(t, NULL, net_dispatch, info);
     Pthread_detach(*t);
+}
+
+static void init_base(pthread_t *t, struct event_base **bb, const char *who)
+{
+    init_base_priority(t, bb, who, 0);
 }
 
 static struct host_info *host_info_new(char *host)
@@ -720,15 +727,15 @@ static TAILQ_HEAD(, accept_info) accept_list = TAILQ_HEAD_INITIALIZER(accept_lis
 static void do_read(int, short, void *);
 static void accept_info_free(struct accept_info *);
 
-static void close_oldest_pending_connection(void)
+static int close_oldest_pending_connection(void)
 {
     struct accept_info *a = TAILQ_FIRST(&accept_list);
     if (!a) {
-        logmsg(LOGMSG_FATAL, "%s no pending connections to close [count:%d]\n", __func__, pending_connections);
-        abort();
+        return -1;
     }
-    logmsg(LOGMSG_USER, "%s closing oldest pending connection fd:%d [count:%d]\n", __func__, a->fd, pending_connections);
     accept_info_free(a);
+    logmsg(LOGMSG_USER, "%s closed oldest pending connection [outstanding:%d]\n", __func__, pending_connections);
+    return 0;
 }
 
 static struct accept_info *accept_info_new(netinfo_type *netinfo_ptr, struct sockaddr_in *addr, int fd)
@@ -1193,8 +1200,9 @@ static void exit_once_func(void)
         stop_base(timer_base);
     }
     if (gbl_libevent_appsock && dedicated_appsock) {
-        stop_base(appsock_timer_base);
-        stop_base(appsock_rd_base);
+        for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
+            stop_base(appsock_base[i]);
+        }
     }
     switch (reader_policy) {
     case POLICY_NONE:
@@ -2200,7 +2208,11 @@ static void do_read(int fd, short what, void *data)
         arg->fd = fd;
         arg->addr = ss;
         arg->rd_buf = buf;
-        evtimer_once(appsock_rd_base, info->cb, arg); /* handle_newsql_request_evbuffer */
+
+        static int appsock_counter = 0;
+        arg->base = appsock_base[appsock_counter++];
+        if (appsock_counter == NUM_APPSOCK_RD) appsock_counter = 0;
+        evtimer_once(arg->base, info->cb, arg); /* handle_newsql_request_evbuffer */
         return;
     }
     handle_appsock(netinfo_ptr, &ss, first_byte, buf, fd);
@@ -2220,12 +2232,13 @@ static void accept_error_cb(struct evconnlistener *listener, void *data)
 {
     check_base_thd();
     int err = EVUTIL_SOCKET_ERROR();
-    int fd = evconnlistener_get_fd(listener);
-    if (err == EMFILE) {
-        close_oldest_pending_connection();
+    if (err == EMFILE && close_oldest_pending_connection() == 0) {
         return;
     }
-    logmsg(LOGMSG_FATAL, "%s fd:%d err:%d-%s\n", __func__, fd, err, evutil_socket_error_to_string(err));
+    logmsg(LOGMSG_FATAL,
+           "%s err:%d [%s] [outstanding fds:%d] [appsock fds:%d]\n",
+           __func__, err, evutil_socket_error_to_string(err),
+           pending_connections, ATOMIC_LOAD32(active_appsock_conns));
     abort();
 }
 
@@ -2652,11 +2665,14 @@ static void setup_bases(void)
     }
     if (gbl_libevent_appsock) {
         if (dedicated_appsock) {
-            init_base(&appsock_rd_thd, &appsock_rd_base, "appsock_rd");
-            init_base(&appsock_timer_thd, &appsock_timer_base, "appsock_timer");
+            for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
+                init_base_priority(&appsock_thd[i], &appsock_base[i], "appsock", 2);
+            }
         } else {
-            appsock_timer_base = appsock_rd_base = base;
-            appsock_timer_thd = appsock_rd_thd = base_thd;
+            for (int i = 0; i < NUM_APPSOCK_RD; ++i) {
+                appsock_base[i] = base;
+                appsock_thd[i] = base_thd;
+            }
         }
     }
     if (writer_policy == POLICY_NONE) {

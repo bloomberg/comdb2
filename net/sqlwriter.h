@@ -48,6 +48,7 @@ typedef int(sql_pack_fn)(struct sqlwriter *, void *pack_arg);
 struct sqlwriter_arg {
     int fd;
     struct sqlclntstate *clnt;
+    struct event_base *timer_base;
     sql_pack_fn *pack;
     sql_pack_fn *pack_hb;
 };
