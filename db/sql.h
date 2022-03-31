@@ -1410,6 +1410,7 @@ struct sql_col_info {
     int *type;
 };
 
+void init_lru_evbuffer(struct sqlclntstate *);
 void add_lru_evbuffer(struct sqlclntstate *);
 void rem_lru_evbuffer(struct sqlclntstate *);
 void add_sql_evbuffer(struct sqlclntstate *);

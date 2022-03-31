@@ -53,6 +53,8 @@ struct sqlwriter {
     struct event *heartbeat_ev;
     struct event *heartbeat_trickle_ev;
     struct event *timeout_ev;
+    struct event_base *timer_base;
+    pthread_t timer_thd;
     struct event_base *wr_base;
     time_t sent_at;
     sql_pack_fn *pack;
@@ -113,7 +115,7 @@ void sql_disable_heartbeat(struct sqlwriter *writer)
 void sql_enable_timeout(struct sqlwriter *writer, int timeout_sec)
 {
     if (!writer->timeout_ev) {
-        writer->timeout_ev = event_new(appsock_timer_base, -1, 0, sql_timeout_cb, writer);
+        writer->timeout_ev = event_new(writer->timer_base, -1, 0, sql_timeout_cb, writer);
     }
     struct timeval timeout = {.tv_sec = timeout_sec};
     event_add(writer->timeout_ev, &timeout);
@@ -224,7 +226,7 @@ int sql_flush(struct sqlwriter *writer)
 
 static int from_timeout_cb(struct sqlwriter *writer)
 {
-    return writer->do_timeout && pthread_equal(pthread_self(), appsock_timer_thd);
+    return writer->do_timeout && pthread_equal(pthread_self(), writer->timer_thd);
 }
 
 static int sql_pack_response(struct sqlwriter *writer, void *arg)
@@ -300,7 +302,7 @@ int sql_append_packed(struct sqlwriter *writer, const void *data, size_t len)
 
 int sql_write(struct sqlwriter *writer, void *arg, int flush)
 {
-    if (from_timeout_cb(writer)) {
+    if (from_timeout_cb(writer)) { /* TODO FIXME : I don't like this special case */
         /* We're holding wr_lock from sql_timeout_cb() */
         return sql_pack_response(writer, arg);
     }
@@ -352,7 +354,6 @@ static int sql_pack_heartbeat(struct sqlwriter *writer)
 
 static void sql_trickle_int(struct sqlwriter *writer, int fd)
 {
-    check_appsock_timer_thd();
     if (!writer->wr_continue || writer->bad || writer->done) {
         sql_disable_heartbeat(writer);
         return;
@@ -390,7 +391,6 @@ static void sql_trickle_cb(int fd, short what, void *arg)
 
 static void sql_heartbeat_cb(int fd, short what, void *arg)
 {
-    check_appsock_timer_thd();
     struct sqlwriter *writer = arg;
     if (pthread_mutex_trylock(&writer->wr_lock) == 0) {
         int len = evbuffer_get_length(writer->wr_buf);
@@ -444,7 +444,6 @@ struct evbuffer *sql_wrbuf(struct sqlwriter *writer)
 
 void sqlwriter_free(struct sqlwriter *writer)
 {
-    check_appsock_rd_thd();
     if (writer->heartbeat_ev) {
         event_free(writer->heartbeat_ev);
         writer->heartbeat_ev = NULL;
@@ -480,6 +479,8 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
     writer->clnt = arg->clnt;
     writer->pack = arg->pack;
     writer->pack_hb = arg->pack_hb;
+    writer->timer_base = arg->timer_base;
+    writer->timer_thd = pthread_self();
     writer->wr_continue = 1;
     writer->wr_buf = evbuffer_new();
 
@@ -490,8 +491,8 @@ struct sqlwriter *sqlwriter_new(struct sqlwriter_arg *arg)
 
     writer->wr_evbuffer_fn = wr_evbuffer_plaintext;
     writer->flush_ev = event_new(writer->wr_base, arg->fd, EV_WRITE | EV_PERSIST, sql_flush_cb, writer);
-    writer->heartbeat_ev = event_new(appsock_timer_base, arg->fd, EV_PERSIST, sql_heartbeat_cb, writer);
-    writer->heartbeat_trickle_ev = event_new(appsock_timer_base, arg->fd, EV_WRITE, sql_trickle_cb, writer);
+    writer->heartbeat_ev = event_new(writer->timer_base, arg->fd, EV_PERSIST, sql_heartbeat_cb, writer);
+    writer->heartbeat_trickle_ev = event_new(writer->timer_base, arg->fd, EV_WRITE, sql_trickle_cb, writer);
 
     return writer;
 }
