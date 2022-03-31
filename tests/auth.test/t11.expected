@@ -77,27 +77,27 @@
 [set user 'replicant'] rc 0
 [set password 'secret'] rc 0
 ( replicant =' cannot access following system tables ')
-[select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_cluster limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_fingerprints limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_locks limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_logical_operations limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_metrics limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_net_userfuncs limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_opcode_handlers limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_plugins limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_procedures limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_queues limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_repl_stats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_replication_netqueue limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_sqlpool_queue limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_threadpools limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartevents limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartitions limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartshards limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
+[select 1 from comdb2_appsock_handlers limit 1] failed with rc -106 Read access denied to comdb2_appsock_handlers for user replicant bdberr=15
+[select 1 from comdb2_clientstats limit 1] failed with rc -106 Read access denied to comdb2_clientstats for user replicant bdberr=15
+[select 1 from comdb2_cluster limit 1] failed with rc -106 Read access denied to comdb2_cluster for user replicant bdberr=15
+[select 1 from comdb2_fingerprints limit 1] failed with rc -106 Read access denied to comdb2_fingerprints for user replicant bdberr=15
+[select 1 from comdb2_locks limit 1] failed with rc -106 Read access denied to comdb2_locks for user replicant bdberr=15
+[select 1 from comdb2_logical_operations limit 1] failed with rc -106 Read access denied to comdb2_logical_operations for user replicant bdberr=15
+[select 1 from comdb2_metrics limit 1] failed with rc -106 Read access denied to comdb2_metrics for user replicant bdberr=15
+[select 1 from comdb2_net_userfuncs limit 1] failed with rc -106 Read access denied to comdb2_net_userfuncs for user replicant bdberr=15
+[select 1 from comdb2_opcode_handlers limit 1] failed with rc -106 Read access denied to comdb2_opcode_handlers for user replicant bdberr=15
+[select 1 from comdb2_plugins limit 1] failed with rc -106 Read access denied to comdb2_plugins for user replicant bdberr=15
+[select 1 from comdb2_procedures limit 1] failed with rc -106 Read access denied to comdb2_procedures for user replicant bdberr=15
+[select 1 from comdb2_queues limit 1] failed with rc -106 Read access denied to comdb2_queues for user replicant bdberr=15
+[select 1 from comdb2_repl_stats limit 1] failed with rc -106 Read access denied to comdb2_repl_stats for user replicant bdberr=15
+[select 1 from comdb2_replication_netqueue limit 1] failed with rc -106 Read access denied to comdb2_replication_netqueue for user replicant bdberr=15
+[select 1 from comdb2_sqlpool_queue limit 1] failed with rc -106 Read access denied to comdb2_sqlpool_queue for user replicant bdberr=15
+[select 1 from comdb2_threadpools limit 1] failed with rc -106 Read access denied to comdb2_threadpools for user replicant bdberr=15
+[select 1 from comdb2_timepartevents limit 1] failed with rc -106 Read access denied to comdb2_timepartevents for user replicant bdberr=15
+[select 1 from comdb2_timepartitions limit 1] failed with rc -106 Read access denied to comdb2_timepartitions for user replicant bdberr=15
+[select 1 from comdb2_timepartshards limit 1] failed with rc -106 Read access denied to comdb2_timepartshards for user replicant bdberr=15
+[select 1 from comdb2_timeseries limit 1] failed with rc -106 Read access denied to comdb2_timeseries for user replicant bdberr=15
+[select 1 from comdb2_tunables limit 1] failed with rc -106 Read access denied to comdb2_tunables for user replicant bdberr=15
 [select " cannot access following system tables " as " replicant "] rc 0
 ( replicant =' limited access to following system tables ')
 [select " limited access to following system tables " as " replicant "] rc 0
@@ -125,26 +125,26 @@
 [set user 'sysmon'] rc 0
 [set password 'secret'] rc 0
 ( sysmon =' cannot access following system tables ')
-[select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_cluster limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_locks limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_logical_operations limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_net_userfuncs limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_opcode_handlers limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_plugins limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_procedures limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_queues limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_repl_stats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_replication_netqueue limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_sqlpool_queue limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_threadpools limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartevents limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartitions limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartshards limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_transaction_logs limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
+[select 1 from comdb2_appsock_handlers limit 1] failed with rc -106 Read access denied to comdb2_appsock_handlers for user sysmon bdberr=15
+[select 1 from comdb2_clientstats limit 1] failed with rc -106 Read access denied to comdb2_clientstats for user sysmon bdberr=15
+[select 1 from comdb2_cluster limit 1] failed with rc -106 Read access denied to comdb2_cluster for user sysmon bdberr=15
+[select 1 from comdb2_locks limit 1] failed with rc -106 Read access denied to comdb2_locks for user sysmon bdberr=15
+[select 1 from comdb2_logical_operations limit 1] failed with rc -106 Read access denied to comdb2_logical_operations for user sysmon bdberr=15
+[select 1 from comdb2_net_userfuncs limit 1] failed with rc -106 Read access denied to comdb2_net_userfuncs for user sysmon bdberr=15
+[select 1 from comdb2_opcode_handlers limit 1] failed with rc -106 Read access denied to comdb2_opcode_handlers for user sysmon bdberr=15
+[select 1 from comdb2_plugins limit 1] failed with rc -106 Read access denied to comdb2_plugins for user sysmon bdberr=15
+[select 1 from comdb2_procedures limit 1] failed with rc -106 Read access denied to comdb2_procedures for user sysmon bdberr=15
+[select 1 from comdb2_queues limit 1] failed with rc -106 Read access denied to comdb2_queues for user sysmon bdberr=15
+[select 1 from comdb2_repl_stats limit 1] failed with rc -106 Read access denied to comdb2_repl_stats for user sysmon bdberr=15
+[select 1 from comdb2_replication_netqueue limit 1] failed with rc -106 Read access denied to comdb2_replication_netqueue for user sysmon bdberr=15
+[select 1 from comdb2_sqlpool_queue limit 1] failed with rc -106 Read access denied to comdb2_sqlpool_queue for user sysmon bdberr=15
+[select 1 from comdb2_threadpools limit 1] failed with rc -106 Read access denied to comdb2_threadpools for user sysmon bdberr=15
+[select 1 from comdb2_timepartevents limit 1] failed with rc -106 Read access denied to comdb2_timepartevents for user sysmon bdberr=15
+[select 1 from comdb2_timepartitions limit 1] failed with rc -106 Read access denied to comdb2_timepartitions for user sysmon bdberr=15
+[select 1 from comdb2_timepartshards limit 1] failed with rc -106 Read access denied to comdb2_timepartshards for user sysmon bdberr=15
+[select 1 from comdb2_timeseries limit 1] failed with rc -106 Read access denied to comdb2_timeseries for user sysmon bdberr=15
+[select 1 from comdb2_transaction_logs limit 1] failed with rc -106 Read access denied to comdb2_transaction_logs for user sysmon bdberr=15
+[select 1 from comdb2_tunables limit 1] failed with rc -106 Read access denied to comdb2_tunables for user sysmon bdberr=15
 [select " cannot access following system tables " as " sysmon "] rc 0
 ( sysmon =' limited access to following system tables ')
 [select " limited access to following system tables " as " sysmon "] rc 0
@@ -174,28 +174,28 @@
 [set user 'other'] rc 0
 [set password 'secret'] rc 0
 ( other =' cannot access following system tables ')
-[select 1 from comdb2_appsock_handlers limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_clientstats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_cluster limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_fingerprints limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_locks limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_logical_operations limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_metrics limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_net_userfuncs limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_opcode_handlers limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_plugins limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_procedures limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_queues limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_repl_stats limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_replication_netqueue limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_sqlpool_queue limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_threadpools limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartevents limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartitions limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timepartshards limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_timeseries limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_transaction_logs limit 1] failed with rc -5 authorization denied
-[select 1 from comdb2_tunables limit 1] failed with rc -5 authorization denied
+[select 1 from comdb2_appsock_handlers limit 1] failed with rc -106 Read access denied to comdb2_appsock_handlers for user other bdberr=15
+[select 1 from comdb2_clientstats limit 1] failed with rc -106 Read access denied to comdb2_clientstats for user other bdberr=15
+[select 1 from comdb2_cluster limit 1] failed with rc -106 Read access denied to comdb2_cluster for user other bdberr=15
+[select 1 from comdb2_fingerprints limit 1] failed with rc -106 Read access denied to comdb2_fingerprints for user other bdberr=15
+[select 1 from comdb2_locks limit 1] failed with rc -106 Read access denied to comdb2_locks for user other bdberr=15
+[select 1 from comdb2_logical_operations limit 1] failed with rc -106 Read access denied to comdb2_logical_operations for user other bdberr=15
+[select 1 from comdb2_metrics limit 1] failed with rc -106 Read access denied to comdb2_metrics for user other bdberr=15
+[select 1 from comdb2_net_userfuncs limit 1] failed with rc -106 Read access denied to comdb2_net_userfuncs for user other bdberr=15
+[select 1 from comdb2_opcode_handlers limit 1] failed with rc -106 Read access denied to comdb2_opcode_handlers for user other bdberr=15
+[select 1 from comdb2_plugins limit 1] failed with rc -106 Read access denied to comdb2_plugins for user other bdberr=15
+[select 1 from comdb2_procedures limit 1] failed with rc -106 Read access denied to comdb2_procedures for user other bdberr=15
+[select 1 from comdb2_queues limit 1] failed with rc -106 Read access denied to comdb2_queues for user other bdberr=15
+[select 1 from comdb2_repl_stats limit 1] failed with rc -106 Read access denied to comdb2_repl_stats for user other bdberr=15
+[select 1 from comdb2_replication_netqueue limit 1] failed with rc -106 Read access denied to comdb2_replication_netqueue for user other bdberr=15
+[select 1 from comdb2_sqlpool_queue limit 1] failed with rc -106 Read access denied to comdb2_sqlpool_queue for user other bdberr=15
+[select 1 from comdb2_threadpools limit 1] failed with rc -106 Read access denied to comdb2_threadpools for user other bdberr=15
+[select 1 from comdb2_timepartevents limit 1] failed with rc -106 Read access denied to comdb2_timepartevents for user other bdberr=15
+[select 1 from comdb2_timepartitions limit 1] failed with rc -106 Read access denied to comdb2_timepartitions for user other bdberr=15
+[select 1 from comdb2_timepartshards limit 1] failed with rc -106 Read access denied to comdb2_timepartshards for user other bdberr=15
+[select 1 from comdb2_timeseries limit 1] failed with rc -106 Read access denied to comdb2_timeseries for user other bdberr=15
+[select 1 from comdb2_transaction_logs limit 1] failed with rc -106 Read access denied to comdb2_transaction_logs for user other bdberr=15
+[select 1 from comdb2_tunables limit 1] failed with rc -106 Read access denied to comdb2_tunables for user other bdberr=15
 [select " cannot access following system tables " as " other "] rc 0
 ( other =' limited access to following system tables ')
 [select " limited access to following system tables " as " other "] rc 0
