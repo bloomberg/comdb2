@@ -2946,6 +2946,8 @@ void reqlog_set_path(struct reqlogger *logger, struct client_query_stats *path);
 void reqlog_set_context(struct reqlogger *logger, int ncontext, char **context);
 void reqlog_set_clnt(struct reqlogger *, struct sqlclntstate *);
 
+void reqlog_log_all_longreqs(void);
+
 void process_nodestats(void);
 void nodestats_report(FILE *fh, const char *prefix, int disp_rates);
 void nodestats_node_report(FILE *fh, const char *prefix, int disp_rates,

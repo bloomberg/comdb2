@@ -63,8 +63,6 @@ struct tablelist {
 struct reqlogger {
     char origin[128];
 
-    pthread_mutex_t mtx;
-
     /* Everything from here onwards is transient and can be reset
      * with a bzero. */
     int start_transient;

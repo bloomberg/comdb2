@@ -355,8 +355,7 @@ static void *watchdog_thread(void *arg)
             }
         }
 
-        int log_long_running_sql_statements();
-        log_long_running_sql_statements();
+        reqlog_log_all_longreqs();
 
         /* we use counter to downsample the run events for lower frequence
            tasks, like deadlock detector */
