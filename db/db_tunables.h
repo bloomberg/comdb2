@@ -275,7 +275,7 @@ REGISTER_TUNABLE("disallow_portmux_route", "Disables 'allow_portmux_route'",
                  NULL);
 REGISTER_TUNABLE("do_inline_poll", "Enable to allow inline poll after accept",
                  TUNABLE_BOOLEAN, &gbl_do_inline_poll, READONLY | NOARG, NULL,
-                 NULL, NULL, NULL);
+                 NULL, update_do_inline_poll, NULL);
 REGISTER_TUNABLE("dont_abort_on_in_use_rqid", "Disable 'abort_on_in_use_rqid'",
                  TUNABLE_BOOLEAN, &gbl_abort_on_clear_inuse_rqid,
                  INVERSE_VALUE | READONLY | NOARG, NULL, NULL, NULL, NULL);

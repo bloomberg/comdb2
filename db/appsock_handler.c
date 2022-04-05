@@ -102,7 +102,6 @@ int appsock_init(void)
     thdpool_set_delt_fn(gbl_appsock_thdpool, appsock_thd_end);
     thdpool_set_minthds(gbl_appsock_thdpool, 1);
     thdpool_set_linger(gbl_appsock_thdpool, 10);
-
     thdpool_set_mem_size(gbl_appsock_thdpool, 4 * 1024);
 
     return 0;
@@ -441,4 +440,14 @@ int set_rowlocks(void *trans, int enable)
     }
 
     return 0;
+}
+
+void cap_appsock_thds(void)
+{
+    extern int gbl_do_inline_poll;
+    if (gbl_do_inline_poll) return;
+    int max = bdb_attr_get(thedb->bdb_attr, BDB_ATTR_MAXAPPSOCKSLIMIT);
+    int limit = max + (max * 0.333);
+    logmsg(LOGMSG_INFO, "%s: max:%d limit:%d\n", __func__, max, limit);
+    thdpool_set_maxthds(gbl_appsock_thdpool, limit);
 }
