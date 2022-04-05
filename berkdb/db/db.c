@@ -241,11 +241,7 @@ __db_close_cq(db)
 	Pthread_mutex_lock(&gbl_all_cursors.lk);
 	TAILQ_FOREACH(h, &gbl_all_cursors, links) {
 		Pthread_mutex_lock(&h->lk);
-		for (cq = hash_first(h->h, &hashent, &pos); cq != NULL;
-				cq = hash_next(h->h, &hashent, &pos)) {
-			if (db != cq->db)
-				continue;
-
+		if ((cq = hash_find(h->h, &db)) != NULL) {
 			/* Comdb2 shouldn't close dbhandles with active cursors */
 			DB_ASSERT(TAILQ_EMPTY(&cq->aq));
 
