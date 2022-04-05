@@ -1123,6 +1123,14 @@ const char *tunable_type(comdb2_tunable_type type)
     return "???";
 }
 
+static int update_do_inline_poll(void * dum, void *val)
+{
+    gbl_do_inline_poll = *(int *)val;
+    void cap_appsock_thds(void);
+    cap_appsock_thds();
+    return 0;
+}
+
 /* Register all db tunables. */
 int register_db_tunables(struct dbenv *db)
 {

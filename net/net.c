@@ -6344,6 +6344,9 @@ int net_init(netinfo_type *netinfo_ptr)
     /* XXX just give things a chance to settle down before we return */
     usleep(10000);
 
+    void cap_appsock_thds(void);
+    cap_appsock_thds();
+
     return 0;
 }
 

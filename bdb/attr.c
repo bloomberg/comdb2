@@ -96,7 +96,13 @@ static void bdb_attr_set_int(bdb_state_type *bdb_state, bdb_attr_type *bdb_attr,
         bdb_attr->track_replication_times = value;
         if (bdb_state && value == 0)
             bdb_disable_replication_time_tracking(bdb_state);
-        break;
+        return;
+
+    case BDB_ATTR_MAXAPPSOCKSLIMIT:
+        bdb_attr->maxappsockslimit = value;
+        void cap_appsock_thds(void);
+        cap_appsock_thds();
+        return;
     }
 
 #define DEF_ATTR(NAME, name, type, dflt, desc)                                 \
