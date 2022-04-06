@@ -8,6 +8,7 @@ add_library(sqlite
   vdbecompare.c
   ext/comdb2/activelocks.c
   ext/comdb2/activeosqls.c
+  ext/comdb2/all.c
   ext/comdb2/appsock_handlers.c
   ext/comdb2/blkseq.c
   ext/comdb2/clientstats.c
@@ -17,6 +18,7 @@ add_library(sqlite
   ext/comdb2/constraints.c
   ext/comdb2/crons.c
   ext/comdb2/ezsystables.c
+  ext/comdb2/files.c
   ext/comdb2/fingerprints.c
   ext/comdb2/functions.c
   ext/comdb2/indexuse.c
@@ -125,7 +127,7 @@ add_library(sqlite
   src/wherecode.c
   src/whereexpr.c
   src/window.c
-)
+        ext/comdb2/files.c ext/comdb2/locations.c)
 include(${PROJECT_SOURCE_DIR}/sqlite/definitions.cmake)
 add_definitions(${SQLITE_FLAGS})
 target_compile_definitions(sqlite PRIVATE ${SQLITE_FLAGS})

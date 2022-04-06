@@ -148,4 +148,8 @@ rc=$?
 rc2=$?
 [[ $rc2 -ne 0 ]] && rc=$rc2
 
+./testall $a_dbn
+rc3=$?
+[[ $rc3 -ne 0 ]] && rc=$rc3
+
 exit $rc

@@ -21,4 +21,6 @@ void eventlog_add(const struct reqlogger *logger);
 void eventlog_stop(void);
 void eventlog_process_message(char *line, int llen, int *toff);
 
+int eventlog_list_files(char ***files);
+
 #endif

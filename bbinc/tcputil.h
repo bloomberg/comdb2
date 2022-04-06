@@ -50,11 +50,6 @@ extern int tcpconnect_tos(struct in_addr in, int port, int myport, char tos);
 /*OPEN CONNECTION TO in:port OPTIONAL BIND TO myport OPTIONAL connect timeout*/
 extern int tcpconnect_to(struct in_addr in, int port, int myport, int timeout);
 
-/*OPEN CONNECTION TO in:port OPTIONAL BIND TO myport OPTIONAL connect timeout
- *OPTIONAL setsockopt IP_TOS to tos parameter if not -1*/
-extern int tcpconnect_to_tos(struct in_addr in, int port, int myport,
-                             int timeoutms, char tos);
-
 /* Non-blocking version of tcpconnect.  Socket will be left in a non-blocking
  * state */
 extern int tcpconnect_nb(struct in_addr in, int port, int myport);

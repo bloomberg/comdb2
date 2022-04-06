@@ -14,8 +14,8 @@
    limitations under the License.
  */
 
-#ifndef _INCLUDED_LOCKS_H
-#define _INCLUDED_LOCKS_H
+#ifndef INCLUDED_LOCKS_WRAP_H
+#define INCLUDED_LOCKS_WRAP_H
 
 #include <inttypes.h>
 #include <string.h>
@@ -32,13 +32,13 @@
 #define LKWRAP_FIRST(...) LKWRAP_FIRST_(__VA_ARGS__, 0)
 #define WRAP_PTHREAD(FUNC, ...)                                                \
     do {                                                                       \
-        int rc;                                                                \
+        int _pthrc;                                                            \
         LKDBG_TRACE(TRY, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \
-        if ((rc = FUNC(__VA_ARGS__)) != 0) {                                   \
+        if ((_pthrc = FUNC(__VA_ARGS__)) != 0) {                               \
             logmsg(LOGMSG_FATAL,                                               \
                    "%s:%d " #FUNC "(0x%" PRIxPTR ") rc:%d (%s) thd:%p\n",      \
                    __func__, __LINE__, (uintptr_t)LKWRAP_FIRST(__VA_ARGS__),   \
-                   rc, strerror(rc), (void *)pthread_self());                  \
+                   _pthrc, strerror(_pthrc), (void *)pthread_self());          \
             abort();                                                           \
         }                                                                      \
         LKDBG_TRACE(GOT, FUNC, LKWRAP_FIRST(__VA_ARGS__));                     \

@@ -317,7 +317,7 @@ static int lclconn_nb(int s, const struct sockaddr *name, int namelen)
 }
 
 static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
-                         int nb, char tos)
+                         int nb)
 {
     int sockfd, rc;
     int sendbuff, sndrcvbufsize;
@@ -337,15 +337,6 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
         if (setsockopt(sockfd, SOL_SOCKET, SO_RCVBUF, (char *)&sndrcvbufsize,
                        sizeof(int)) != 0) {
             logmsgperror("do_tcpconnect:setsockopt: SO_RCVBUF");
-        }
-    }
-
-    /* Set type of service / differentiated services byte */
-    if (tos != -1) {
-        int itos = tos;
-
-        if (setsockopt(sockfd, IPPROTO_IP, IP_TOS, &itos, sizeof(itos)) != 0) {
-            logmsgperror("do_tcpconnect: setsockopt IP_TOS");
         }
     }
     /*
@@ -404,30 +395,19 @@ static int do_tcpconnect(struct in_addr in, int port, int myport, int timeoutms,
 
 int tcpconnect_to(struct in_addr in, int port, int myport, int timeoutms)
 {
-    return do_tcpconnect(in, port, myport, timeoutms, 0, -1 /* no tos */);
-}
-
-int tcpconnect_to_tos(struct in_addr in, int port, int myport, int timeoutms,
-                      char tos)
-{
-    return do_tcpconnect(in, port, myport, timeoutms, 0, tos);
+    return do_tcpconnect(in, port, myport, timeoutms, 0);
 }
 
 /* Non-blocking version of tcpconnect.  Socket will be left in a non-blocking
  * state */
 int tcpconnect_nb(struct in_addr in, int port, int myport)
 {
-    return do_tcpconnect(in, port, myport, 0, 1 /* nb */, -1 /* no tos */);
+    return do_tcpconnect(in, port, myport, 0, 1 /* nb */);
 }
 
 int tcpconnect(struct in_addr in, int port, int myport)
 {
     return tcpconnect_to(in, port, myport, 0);
-}
-
-int tcpconnect_tos(struct in_addr in, int port, int myport, char tos)
-{
-    return do_tcpconnect(in, port, myport, 0, 0, tos);
 }
 
 int tcpconnecth(const char *host, int port, int myport)
