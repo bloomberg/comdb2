@@ -2771,7 +2771,8 @@ int lua_func_list_free(void * list) {
     /* remove and free item */
     free(listc_rfl(list, item));
 
-    listc_init(list, offsetof(struct lua_func_t, lnk));
+    //TODO: check this?
+    listc_free(list);
     return 0;
 }
 

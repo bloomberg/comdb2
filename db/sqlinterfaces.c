@@ -6756,6 +6756,10 @@ static int internal_send_intrans_response(struct sqlclntstate *a)
 {
     return 1;
 }
+static int internal_get_set_commands(struct sqlclntstate * clnt, void***data, size_t*cnt)
+{
+    return 1;
+}
 static int internal_peer_check(struct sqlclntstate *a)
 {
     return 0;

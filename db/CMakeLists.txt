@@ -9,6 +9,7 @@ set(src
   config.c
   constraints.c
   db_access.c
+  settings.c
   db_fingerprint.c
   db_metrics.c
   db_tunables.c

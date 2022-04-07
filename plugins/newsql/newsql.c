@@ -1324,6 +1324,15 @@ static int newsql_send_intrans_response(struct sqlclntstate *clnt)
     return appdata->send_intrans_response;
 }
 
+int newsql_get_set_commands(struct sqlclntstate * clnt, void***data, size_t*cnt)
+{
+    struct newsql_appdata *appdata = clnt->appdata;
+    CDB2SQLQUERY *sqlquery = appdata->sqlquery;
+    *cnt = sqlquery->n_set_flags;
+    *data = (void**)sqlquery->set_flags;
+    return 0;
+}
+
 static int newsql_close(struct sqlclntstate *clnt)
 {
     abort();
@@ -1433,6 +1442,16 @@ int handle_set_querylimits(char *sqlstr, struct sqlclntstate *clnt)
         return 1;
 }
 
+
+/***
+
+for each setting in global settings:
+    setting->set_clnt = newsql_set_dbtrans
+
+for each setting in global settings:
+    setting->set_clnt(clnt, set command)
+
+**/
 int process_set_commands(struct sqlclntstate *clnt, CDB2SQLQUERY *sql_query)
 {
     struct newsql_appdata *appdata = clnt->appdata;
