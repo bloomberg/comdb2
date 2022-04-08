@@ -1008,6 +1008,8 @@ int upd_new_record_add2indices(struct ireq *iq, void *trans,
                                      NULL, 0, trans);
             if (rc == IX_FND && fndgenid == vgenid) {
                 return ERR_VERIFY;
+            } else if (rc == IX_FND) {
+                return ERR_INDEX_CONFLICT;
             } else if (rc == RC_INTERNAL_RETRY) {
                 return RC_INTERNAL_RETRY;
             } else if (rc != IX_FNDMORE && rc != IX_NOTFND &&

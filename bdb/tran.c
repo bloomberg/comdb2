@@ -2634,3 +2634,8 @@ unsigned long long bdb_get_current_lsn(bdb_state_type *bdb_state,
         *offset = outlsn.offset;
     return current_context;
 }
+
+void bdb_set_tran_verify_updateid(tran_type *tran)
+{
+    tran->verify_updateid = 1;
+}
