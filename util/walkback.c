@@ -924,8 +924,16 @@ static void comdb2_cheapstack_sym_valist(FILE *f, char *fmt, va_list args)
 
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...)
 {
+/* Generate non-interleaved cheapstacks */
+#if defined CHEAPSTACK_LOCK
+    static pthread_mutex_t lk = PTHREAD_MUTEX_INITIALIZER;
+    pthread_mutex_lock(&lk);
+#endif
     va_list args;
     va_start(args, fmt);
     comdb2_cheapstack_sym_valist(f, fmt, args);
     va_end(args);
+#if defined CHEAPSTACK_LOCK
+    pthread_mutex_unlock(&lk);
+#endif
 }

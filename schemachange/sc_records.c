@@ -705,6 +705,10 @@ static int convert_record(struct convert_record_data *data)
                 data->dta_buf, data->trans, data->from->lrl, &dtalen, NULL);
         }
 
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG, "(%u) %s rc=%d genid %llx (%llu)\n", (unsigned int)pthread_self(), __func__, rc, genid,
+               genid);
+#endif
         if (rc == 0) {
             dta = data->dta_buf;
             check_genid = bdb_normalise_genid(data->to->handle, genid);
@@ -1447,6 +1451,9 @@ int convert_all_records(struct dbtable *from, struct dbtable *to,
                        __func__, __LINE__, rc, bdberr);
                 return -1;
             }
+
+            /* If we aren't resuming, delete everything from this table */
+            bdb_newsc_del_all_redo_genids(NULL, s->tablename, &bdberr);
         }
         sc_set_logical_redo_lwm(s->tablename, thdData->start_lsn.file);
         thdData->stripe = -1;
@@ -2066,6 +2073,20 @@ static void clear_blob_hash(hash_t *h)
     hash_clear(h);
 }
 
+static int free_redo_genid_recs(void *obj, void *arg)
+{
+    free(obj);
+    return 0;
+}
+
+static void clear_redo_genid_hash(hash_t *h)
+{
+    if (!h)
+        return;
+    hash_for(h, free_redo_genid_recs, NULL);
+    hash_clear(h);
+}
+
 static int unpack_blob_record(struct convert_record_data *data, void *blb_buf,
                               int dtalen, blob_status_t *blb, int blbix)
 {
@@ -2377,6 +2398,93 @@ static int unpack_and_upgrade_ondisk_record(struct convert_record_data *data,
     return 0;
 }
 
+static void populate_redo_genids(struct convert_record_data *data)
+{
+    llmeta_sc_redo_data *redo_genids;
+    int num = 0, bdberr = 0, rc = 0;
+
+    if ((rc = bdb_llmeta_get_all_sc_redo_genids(NULL, data->s->tablename, &redo_genids, &num, &bdberr)) == 0) {
+        for (int i = 0; i < num; i++) {
+            struct redo_genid_lsns *r = calloc(sizeof(struct redo_genid_lsns), 1), *before_lsn;
+            r->genid = redo_genids[i].genid;
+            r->lsn.file = redo_genids[i].file;
+            r->lsn.offset = redo_genids[i].offset;
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "%s adding genid %llx [%u][%u] to redo_lsns list\n", __func__, r->genid, r->lsn.file,
+                   r->lsn.offset);
+#endif
+            hash_add(data->redo_genids, r);
+            LISTC_FOR_EACH(&data->redo_lsns, before_lsn, linkv)
+            {
+                if (log_compare(&r->lsn, &before_lsn->lsn) <= 0) {
+                    listc_add_before(&data->redo_lsns, r, before_lsn);
+                    break;
+                }
+            }
+            if (before_lsn == NULL) {
+                listc_abl(&data->redo_lsns, r);
+            }
+        }
+        free(redo_genids);
+    }
+}
+
+static void set_redo_genid(struct convert_record_data *data, unsigned long long genid, const DB_LSN *lsn)
+{
+
+    int bdberr = 0;
+    int rc = bdb_newsc_set_redo_genid(data->trans, data->s->tablename, genid, lsn->file, lsn->offset, &bdberr);
+    if (rc != 0) {
+        logmsg(LOGMSG_ERROR, "%u: Error setting redo genid, %d bdberr=%d\n", (unsigned int)pthread_self(), rc, bdberr);
+    }
+
+    struct redo_genid_lsns *r, *fnd;
+
+    if ((fnd = hash_find(data->redo_genids, &genid)) != NULL) {
+        logmsg(LOGMSG_ERROR, "%s: adding genid %llx to redo-hash twice?\n", __func__, genid);
+        abort();
+    }
+
+    r = calloc(sizeof(struct redo_genid_lsns), 1);
+    r->genid = genid;
+    r->lsn.file = lsn->file;
+    r->lsn.offset = lsn->offset;
+    listc_abl(&data->redo_lsns, r);
+    hash_add(data->redo_genids, r);
+}
+
+static int get_redo_genid(struct convert_record_data *data, unsigned long long genid, DB_LSN *lsn)
+{
+    int rc = -1;
+    struct redo_genid_lsns *r;
+
+    if ((r = hash_find(data->redo_genids, &genid)) != NULL) {
+        int rc2, bdberr;
+        if ((rc2 = bdb_newsc_del_redo_genid(data->trans, data->s->tablename, genid, &bdberr)) != 0) {
+            logmsg(LOGMSG_ERROR, "%u: %s del_redo_genid returns %d bdberr=%d\n", (unsigned int)pthread_self(), __func__,
+                   rc2, bdberr);
+        }
+        hash_del(data->redo_genids, r);
+        listc_rfl(&data->redo_lsns, r);
+        (*lsn) = r->lsn;
+        free(r);
+        rc = 0;
+    }
+
+    return rc;
+}
+
+static int get_min_redo_lsn(struct convert_record_data *data, unsigned long long *genid, DB_LSN *lsn)
+{
+    if (listc_size(&data->redo_lsns) == 0) {
+        return -1;
+    }
+    struct redo_genid_lsns *l = LISTC_TOP(&data->redo_lsns);
+    (*lsn) = l->lsn;
+    (*genid) = l->genid;
+    return 0;
+}
+
 static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
                             bdb_osql_log_rec_t *rec, DBT *logdta)
 {
@@ -2520,10 +2628,22 @@ static int live_sc_redo_add(struct convert_record_data *data, DB_LOGC *logc,
         }
         if (rc) {
             if (data->s->iq) {
-                if (rc == IX_DUP)
-                    sc_client_error(data->s, "add key constraint duplicate key '%s' on table '%s' index %d",
-                                    get_keynm_from_db_idx(data->to, ixfailnum), data->to->tablename, ixfailnum);
-                else
+                if (rc == IX_DUP) {
+                    DB_LSN current;
+                    rc = del_new_record(&data->iq, data->trans, ngenid, -1ULL, data->odh.recptr, data->wrblb, 0);
+                    if (rc && rc != ERR_VERIFY) {
+                        logmsg(LOGMSG_FATAL, "Debug assert - unexpected condition\n");
+                        abort();
+                    }
+                    bdb_get_commit_genid(thedb->bdb_env, &current);
+#ifdef LOGICAL_LIVESC_DEBUG
+                    logmsg(LOGMSG_DEBUG, "%u: setting newsc genid %llx lsn=[%u][%u] on addindex conflict\n",
+                           (unsigned int)pthread_self(), genid, current.file, current.offset);
+#endif
+                    set_redo_genid(data, ngenid, &current);
+                    rc = 0;
+                    goto done;
+                } else
                     sc_client_error(data->s, "unable to add record rc = %d", rc);
             }
             logmsg(LOGMSG_ERROR, "%s:%d failed to add new record rc=%d %s\n",
@@ -2648,8 +2768,23 @@ static int live_sc_redo_delete(struct convert_record_data *data, DB_LOGC *logc,
 #endif
 
     data->iq.usedb = data->to;
-    rc = del_new_record(&data->iq, data->trans, genid, -1ULL, data->odh.recptr,
-                        data->freeblb, 0);
+    DB_LSN redolsn;
+    if (get_redo_genid(data, genid, &redolsn) == 0) {
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s found redo-genid %llu with redolsn[%d][%d], mylsn is [%d][%d]\n", __func__, genid,
+               redolsn.file, redolsn.offset, rec->lsn.file, rec->lsn.offset);
+#endif
+
+        // FAIL SC HERE
+        if (log_compare(&redolsn, &rec->lsn) < 0) {
+            logmsg(LOGMSG_FATAL, "%s:%d genid %llx lsn %u:%u less than redo-lsn %u:%u\n", __func__, __LINE__, genid,
+                   redolsn.file, redolsn.offset, rec->lsn.file, rec->lsn.offset);
+            abort();
+        }
+        //#endif
+    } else {
+        rc = del_new_record(&data->iq, data->trans, genid, -1ULL, data->odh.recptr, data->freeblb, 0);
+    }
     if (rc == ERR_VERIFY) {
         /* not an error if we dont find it */
         rc = 0;
@@ -2819,18 +2954,118 @@ static int live_sc_redo_update(struct convert_record_data *data, DB_LOGC *logc,
         rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
                             data->oldodh.recptr, data->freeblb, 0);
     } else {
-        /* try to update the record in the new btree */
-        rc = upd_new_record(&data->iq, data->trans, oldgenid,
-                            data->oldodh.recptr, genid, data->odh.recptr, -1ULL,
-                            -1ULL, updlen, updCols, data->wrblb, 0,
-                            data->freeblb, data->wrblb, 0);
-        if (rc == ERR_VERIFY) {
+        /* Search for genid in llmeta */
+        DB_LSN current, redolsn;
+        if ((rc = get_redo_genid(data, oldgenid, &redolsn)) == 0) {
+
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "%s found redo-genid %llu with redolsn[%d][%d], mylsn is [%d][%d]\n", __func__,
+                   oldgenid, redolsn.file, redolsn.offset, rec->lsn.file, rec->lsn.offset);
+            logmsg(LOGMSG_DEBUG, "%s:%d Adding rather than updating oldgenid= %llx genid=%llx\n", __func__, __LINE__,
+                   oldgenid, genid);
+#endif
+
+            unsigned long long dirty_keys = -1ULL;
+            int dta_needs_conversion = 1;
+            int usellmeta = 0;
+            if (!data->to->plan) {
+                usellmeta = 1; /* new dta does not have old genids */
+            } else if (data->to->plan->dta_plan) {
+                usellmeta = 0; /* the genid is in new dta */
+            } else {
+                usellmeta = 1; /* dta is not being built */
+            }
+
+            if (usellmeta && data->s->rebuild_index)
+                dta_needs_conversion = 0;
+
+            rc = prepare_and_verify_newdb_record(data, data->odh.recptr, updlen, &dirty_keys, 0);
+            if (rc) {
+                logmsg(LOGMSG_ERROR, "%s:%d failed to prepare and verify new record rc=%d\n", __func__, __LINE__, rc);
+                goto done;
+            }
+
+            char *tagname = ".NEW..ONDISK";
+            uint8_t *p_tagname_buf = (uint8_t *)tagname;
+            uint8_t *p_tagname_buf_end = p_tagname_buf + 12;
+            uint8_t *p_buf_data = data->rec->recbuf;
+            uint8_t *p_buf_data_end = p_buf_data + data->rec->bufsize;
+            if (!dta_needs_conversion) {
+                p_buf_data = data->odh.recptr;
+                p_buf_data_end = p_buf_data + updlen;
+            }
+            unsigned long long ngenid = genid;
+            int opfailcode = 0, ixfailnum = 0;
+            int nrrn = 2;
+            int addflags = RECFLAGS_NO_TRIGGERS | RECFLAGS_NO_CONSTRAINTS | RECFLAGS_NEW_SCHEMA |
+                           RECFLAGS_ADD_FROM_SC_LOGICAL | RECFLAGS_KEEP_GENID | RECFLAGS_NO_BLOBS;
+
+            rc = add_record(&data->iq, data->trans, p_tagname_buf, p_tagname_buf_end, p_buf_data, p_buf_data_end, NULL,
+                            data->wrblb, MAXBLOBS, &opfailcode, &ixfailnum, &nrrn, &ngenid,
+                            (gbl_partial_indexes && data->to->ix_partial) ? dirty_keys : -1ULL, BLOCK2_ADDKL, 0,
+                            addflags, 0);
+
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "%u: add_record (%llx to %llx) returns %d opfailcode=%d ixfailnum=%d\n",
+                   (unsigned int)pthread_self(), oldgenid, genid, rc, opfailcode, ixfailnum);
+#endif
+
+            if (rc == IX_DUP) {
+                rc = ERR_INDEX_CONFLICT;
+            }
+        } else {
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "Updating record [%d][%d], updlen=%d, odhlen=%d oldodhlen=%d\n", rec->lsn.file,
+                   rec->lsn.offset, updlen, data->odh.length, data->oldodh.length);
+#endif
+            /* try to update the record in the new btree */
+            rc = upd_new_record(&data->iq, data->trans, oldgenid, data->oldodh.recptr, genid, data->odh.recptr, -1ULL,
+                                -1ULL, updlen, updCols, data->wrblb, 0, data->freeblb, data->wrblb, 0);
+            logmsg(LOGMSG_USER, "%u: Upd_new_record %llx to %llx returns %d\n", (unsigned int)pthread_self(), oldgenid,
+                   genid, rc);
+        }
+#ifdef LOGICAL_LIVESC_DEBUG
+        int saverc = rc;
+#endif
+        if (rc == ERR_VERIFY || rc == ERR_INDEX_CONFLICT) {
             /* either the oldgenid is not found or the newgenid already exists
              * -- try delete the oldgenid again.
              * TODO: differentiate the above two cases and no need to call
              * delete again for the first case */
+            if (rc == ERR_INDEX_CONFLICT) {
+#ifdef LOGICAL_LIVESC_DEBUG
+                logmsg(LOGMSG_DEBUG, "%u: Deleting new record %llx on ix conflict\n", (unsigned int)pthread_self(),
+                       genid);
+#endif
+                rc = del_new_record(&data->iq, data->trans, genid, -1ULL, data->odh.recptr, data->wrblb, 0);
+                if (rc && rc != ERR_VERIFY) {
+                    logmsg(LOGMSG_FATAL, "Debug assert - unexpected condition\n");
+                    abort();
+                }
+#ifdef LOGICAL_LIVESC_DEBUG
+                logmsg(LOGMSG_DEBUG, "%u: rc from del_new_record is %d\n", (unsigned int)pthread_self(), rc);
+                // rc from del_new_record is %d\n", (unsigned int)pthread_self(), rc);
+#endif
+                bdb_get_commit_genid(thedb->bdb_env, &current);
+#ifdef LOGICAL_LIVESC_DEBUG
+                logmsg(LOGMSG_USER, "%u: setting newsc genid to %llx lsn=[%u][%u]\n", (unsigned int)pthread_self(),
+                       genid, current.file, current.offset);
+#endif
+                set_redo_genid(data, genid, &current);
+                rc = 0;
+            }
+
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_USER, "%u: Deleting old record %llx on %d newgenid=%llx\n", (unsigned int)pthread_self(),
+                   oldgenid, saverc, genid);
+#endif
+            /* This is a race between the converter threads and the redo threads */
             rc = del_new_record(&data->iq, data->trans, oldgenid, -1ULL,
                                 data->oldodh.recptr, data->freeblb, 0);
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "%u: del_new_record oldgenid=%llx rcode=%d\n", (unsigned int)pthread_self(), oldgenid,
+                   rc);
+#endif
         }
     }
     if (rc == ERR_VERIFY) {
@@ -2880,6 +3115,8 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
                                     DB_LOGC *logc, bdb_osql_log_rec_t *rec,
                                     DBT *logdta)
 {
+    unsigned long long mingenid;
+    DB_LSN minlsn;
     int rc = 0;
 
     if (rec->dtastripe < 0 || rec->dtastripe >= gbl_dtastripe) {
@@ -2893,17 +3130,35 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         is_genid_right_of_stripe_pointer(data->to->handle, rec->genid,
                                          data->sc_genids)) {
         /* skip those still to the right of sc cursor */
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s:%d genid %llx is to the right of stripe pointer\n", __func__, __LINE__, rec->genid);
+#endif
         return 0;
     }
+
+    if (get_min_redo_lsn(data, &mingenid, &minlsn) == 0 && log_compare(&minlsn, &rec->lsn) < 0) {
+        logmsg(LOGMSG_ERROR,
+               "%s:%d conflicting genid %llx not deleted after "
+               "%u:%u, redo-lsn %u:%u\n",
+               __func__, __LINE__, mingenid, minlsn.file, minlsn.offset, rec->lsn.file, rec->lsn.offset);
+        return ERR_INDEX_CONFLICT;
+    }
+
     switch (rec->type) {
     case DB_llog_undo_add_dta:
     case DB_llog_undo_add_dta_lk:
         if (bdb_inplace_cmp_genids(data->to->handle, rec->genid,
                                    data->sc_genids[rec->dtastripe]) == 0) {
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "%s:%d skipping just-converted genid %llx\n", __func__, __LINE__, rec->genid);
+#endif
             /* small optimization to skip last record that was done by the
              * convert thread */
             return 0;
         }
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s:%d redo thread adding genid %llx\n", __func__, __LINE__, rec->genid);
+#endif
         rc = live_sc_redo_add(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -2915,6 +3170,9 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
     case DB_llog_undo_del_dta:
     case DB_llog_undo_del_dta_lk:
         rc = live_sc_redo_delete(data, logc, rec, logdta);
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s:%d redo thread deleting genid %llx\n", __func__, __LINE__, rec->genid);
+#endif
         if (rc) {
             logmsg(LOGMSG_ERROR,
                    "%s: [%s] failed to redo delete lsn[%u:%u] rc=%d\n",
@@ -2925,6 +3183,9 @@ static int live_sc_redo_logical_rec(struct convert_record_data *data,
         break;
     case DB_llog_undo_upd_dta:
     case DB_llog_undo_upd_dta_lk:
+#ifdef LOGICAL_LIVESC_DEBUG
+        logmsg(LOGMSG_DEBUG, "%s:%d redo thread updating genid %llx\n", __func__, __LINE__, rec->genid);
+#endif
         rc = live_sc_redo_update(data, logc, rec, logdta);
         if (rc) {
             logmsg(LOGMSG_ERROR,
@@ -3022,6 +3283,7 @@ again:
         rc = -2;
         goto done;
     }
+    set_tran_verify_updateid(data->trans);
     data->iq.timeoutms = gbl_sc_timeoutms;
     data->iq.debug = debug_this_request(gbl_debug_until);
     if (data->iq.debug) {
@@ -3231,6 +3493,15 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         s->iq->sc_should_abort = 1;
         goto cleanup;
     }
+
+    data->redo_genids = hash_init(sizeof(unsigned long long));
+    if (!data->redo_genids) {
+        logmsg(LOGMSG_ERROR, "%s: failed to init redo_genids hash\n", __func__);
+        s->iq->sc_should_abort = 1;
+        goto cleanup;
+    }
+
+    listc_init(&data->redo_lsns, offsetof(struct redo_genid_lsns, linkv));
     data->dta_buf = malloc(data->from->lrl + ODH_SIZE);
     data->old_dta_buf = malloc(data->from->lrl + ODH_SIZE);
     data->unpack_dta_buf = malloc(data->from->lrl + ODH_SIZE);
@@ -3261,7 +3532,20 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
     s->curLsn = &curLsn;
     Pthread_mutex_unlock(&s->livesc_mtx);
 
+    if (serial) {
+        populate_redo_genids(data);
+    }
+
     while (1) {
+        /* pause right here if we've been told to */
+        while (BDB_ATTR_GET(thedb->bdb_attr, SC_PAUSE_REDO)) {
+            sc_printf(s, "[%s] logical redo thread pausing on sc_pause_redo\n", __func__);
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "%u %s pausing on SC_PAUSE_REDO\n", (unsigned int)pthread_self(), __func__);
+#endif
+            sleep(1);
+        }
+
         /* abort schema change if we need to */
         if (gbl_sc_abort || data->from->sc_abort || s->sc_thd_failed ||
             (s->iq && s->iq->sc_should_abort)) {
@@ -3281,6 +3565,11 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         if (!serial) {
             /* Get the next lsn to redo, wait upto 10s unless all convert
              * threads have finished */
+#ifdef LOGICAL_LIVESC_DEBUG
+            if (finalizing) {
+                logmsg(LOGMSG_DEBUG, "%s final get_next_redo_lsn\n", __func__);
+            }
+#endif
             redo = get_next_redo_lsn(bdb_state, s);
         }
         if (!serial && redo == NULL) {
@@ -3296,6 +3585,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             pCur->hitLast = 1;
             if (finalizing) {
                 /* done */
+#ifdef LOGICAL_LIVESC_DEBUG
+                logmsg(LOGMSG_DEBUG, "%s %u empty redo and finalize break\n", __func__, __LINE__);
+#endif
                 break;
             }
             /* Update eofLsn to current end of log file */
@@ -3321,7 +3613,9 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                 while (nretries < 500) {
                     rc = bdb_llog_cursor_find(pCur, &(redo->lsn));
                     if (rc || (pCur->log && !pCur->hitLast)) {
-                        /* found the committed transaction */
+#ifdef LOGICAL_LIVESC_DEBUG
+                        logmsg(LOGMSG_DEBUG, "%s %u Cant find committed transaction?\n", __func__, __LINE__);
+#endif
                         break;
                     }
                     /* retry again and wait for the transaction to commit */
@@ -3332,6 +3626,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                     /* Error out if we cannot find the committed transaction */
                     sc_errf(s, "[%s] logical redo failed to find [%u:%u]\n",
                             s->tablename, redo->lsn.file, redo->lsn.offset);
+#ifdef LOGICAL_LIVESC_DEBUG
+                    logmsg(LOGMSG_DEBUG, "%s %u logical redo failed to find [%u:%u]\n", __func__, __LINE__,
+                           redo->lsn.file, redo->lsn.offset);
+#endif
                     s->iq->sc_should_abort = 1;
                     goto cleanup;
                 }
@@ -3341,6 +3639,12 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
                             "txnid %x, got %x\n",
                             s->tablename, redo->lsn.file, redo->lsn.offset,
                             redo->txnid, pCur->log->txnid);
+#ifdef LOGICAL_LIVESC_DEBUG
+                    logmsg(LOGMSG_DEBUG,
+                           "%s %u logical redo failed to find [%u:%u], "
+                           "expect txnid %x, got %x\n",
+                           __func__, __LINE__, redo->lsn.file, redo->lsn.offset, redo->txnid, pCur->log->txnid);
+#endif
                     s->iq->sc_should_abort = 1;
                     goto cleanup;
                 }
@@ -3348,6 +3652,10 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             if (rc) {
                 sc_errf(s, "[%s] logical redo failed at [%u:%u]\n",
                         s->tablename, pCur->curLsn.file, pCur->curLsn.offset);
+#ifdef LOGICAL_LIVESC_DEBUG
+                logmsg(LOGMSG_DEBUG, "%s %u logical redo failed at [%u:%u]\n", __func__, __LINE__, redo->lsn.file,
+                       redo->lsn.offset);
+#endif
                 s->iq->sc_should_abort = 1;
                 goto cleanup;
             }
@@ -3382,7 +3690,11 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         }
 
         if (finalizing && log_compare(&curLsn, &finalizeLsn) >= 0) {
-            break; // done
+#ifdef LOGICAL_LIVESC_DEBUG
+            logmsg(LOGMSG_DEBUG, "Redo breaking out of loop, curlsn=%u:%u, finalizelsn=%u:%u\n", curLsn.file,
+                   curLsn.offset, finalizeLsn.file, finalizeLsn.offset);
+#endif
+            break;
         }
         unsigned int lwm = sc_get_logical_redo_lwm_table(s->tablename);
         if (lwm != curLsn.file) {
@@ -3420,8 +3732,12 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
         if (pCur->hitLast) {
             if (s->got_tablelock) {
                 /* loop one more time after we get table lock */
-                if (finalizing)
+                if (finalizing) {
+#ifdef LOGICAL_LIVESC_DEBUG
+                    logmsg(LOGMSG_DEBUG, "%s %u Breaking out of redo loop\n", __func__, __LINE__);
+#endif
                     break;
+                }
                 finalizing = 1;
                 // get the lsn of current end of log
                 bdb_get_commit_genid(thedb->bdb_env, &finalizeLsn);
@@ -3429,6 +3745,22 @@ void *live_sc_logical_redo_thd(struct convert_record_data *data)
             poll(NULL, 0, 100);
             s->hitLastCnt++;
             continue;
+        }
+    }
+
+    if (listc_size(&data->redo_lsns) > 0) {
+        struct redo_genid_lsns *redo_lsns;
+        int bdberr;
+        sc_printf(s, "[%s] Index conflict detected from redo thread\n", s->tablename);
+        s->iq->sc_should_abort = 1;
+        if (rc == 0) {
+            rc = ERR_INDEX_CONFLICT;
+        }
+        bdb_newsc_del_all_redo_genids(NULL, data->s->tablename, &bdberr);
+        LISTC_FOR_EACH(&data->redo_lsns, redo_lsns, linkv)
+        {
+            sc_printf(s, "[%s] genid %llx -> [%u][%u]\n", s->tablename, redo_lsns->genid, redo_lsns->lsn.file,
+                      redo_lsns->lsn.offset);
         }
     }
 
@@ -3444,6 +3776,12 @@ cleanup:
 
     if (data->blob_hash)
         hash_free(data->blob_hash);
+
+    if (data->redo_genids) {
+        clear_redo_genid_hash(data->redo_genids);
+        hash_free(data->redo_genids);
+        data->redo_genids = NULL;
+    }
 
     sc_printf(s,
               "[%s] logical redo thread exiting, log cursor at [%u:%u], redid "
