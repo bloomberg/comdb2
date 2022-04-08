@@ -1961,9 +1961,9 @@ REGISTER_TUNABLE("transaction_grace_period",
                  "Time to wait for connections with pending transactions to go away on exit.  (Default: 60)",
                  TUNABLE_INTEGER, &gbl_transaction_grace_period, 0, NULL, NULL, NULL, NULL);
 
-REGISTER_TUNABLE("foreign_metadb", "Forces metadb for fdb queries to the one specified (Default:comdb2db)",
+REGISTER_TUNABLE("foreign_metadb", "Forces metadb for fdb queries to the one specified (Default:NULL)",
                  TUNABLE_STRING, &gbl_foreign_metadb, READONLY | READEARLY, NULL, NULL, NULL, NULL);
-REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class specified (Default:prod)",
+REGISTER_TUNABLE("foreign_metadb_class", "Forces metadb for fdb queries to class specified (Default:NULL)",
                  TUNABLE_STRING, &gbl_foreign_metadb_class, READONLY | READEARLY, NULL, NULL, NULL, NULL);
 
 #endif /* _DB_TUNABLES_H */

@@ -36,5 +36,7 @@ int mach_class_init(void);
 int mach_class_addclass(const char *name, int value);
 int mach_class_name2class(const char *name);
 const char *mach_class_class2name(int value);
+int mach_class_remap_fdb_tier(const char *name, const char *tier);
+const char *mach_class_class2tier(int value);
 
 #endif

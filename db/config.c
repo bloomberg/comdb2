@@ -1363,6 +1363,23 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
         logmsg(LOGMSG_USER, "Waiting for %u seconds for replication\n",
                gbl_deferred_phys_update);
         free(wait);
+    } else if (tokcmp(tok, ltok, "remap_machine_class_to_fdb_tier") == 0) {
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected argument for remap_machine_class_to_fdb_tier\n");
+            return -1;
+        }
+        const char *cls = tokdup(tok, ltok);
+        tok = segtok(line, len, &st, &ltok);
+        if (ltok == 0) {
+            logmsg(LOGMSG_ERROR, "Expected argument for remap_machine_class_to_fdb_tier\n");
+            return -1;
+        }
+        const char *tier = tokdup(tok, ltok);
+        if (mach_class_remap_fdb_tier(cls, tier) == 0)
+            logmsg(LOGMSG_USER, "Successfully remapped machine class '%s' to fdb tier '%s'\n", cls, tier);
+        else
+            logmsg(LOGMSG_USER, "Failed remapping machine class '%s' to fdb tier '%s'\n", cls, tier);
     } else {
         // see if any plugins know how to handle this
         struct lrl_handler *h;
