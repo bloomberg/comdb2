@@ -1,3 +1,2 @@
-libevent_appsock 0
 ssl_cert /tmp/san.crt
 ssl_key /tmp/san.key

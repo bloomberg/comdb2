@@ -33,6 +33,8 @@
 #include <netdb.h>
 #include <netinet/tcp.h>
 #include <signal.h>
+#include <sys/queue.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -76,8 +78,6 @@ static std::unique_ptr<pmux_store> pmux_store;
 static std::vector<in_addr_t> local_addresses;
 static std::vector<std::pair<int, int>> port_ranges;
 static std::string unix_bind_path = "/tmp/portmux.socket";
-
-static int fd_limit; /* start closing outstanding connections */
 
 static int get_svc_port(const char *svc)
 {
@@ -180,6 +180,40 @@ static void readcb(int, short, void *);
 static void routefd(int, short, void *);
 static void writecb(int, short, void *);
 
+/* accept_list is the list of accepted connections which don't "reg"ister with
+ * pmux (typically short lived "get"/"rte" only.) */
+static TAILQ_HEAD(, connection) accept_list = TAILQ_HEAD_INITIALIZER(accept_list);
+static int active_connections;
+static int max_active_connections;
+static void close_oldest_active_connection(void);
+
+static void set_max_active_connections(void)
+{
+    int max = -1;
+    struct rlimit lim = {0};
+    int rc = getrlimit(RLIMIT_NOFILE, &lim);
+    if (rc == 0) {
+        if (lim.rlim_cur < RLIM_INFINITY) {
+            max = lim.rlim_cur;
+        } else if (lim.rlim_max < RLIM_INFINITY) {
+            max = lim.rlim_max;
+        }
+    } else {
+        syslog(LOG_ERR, "%s getrlimit rc:%d errno:%d [%s]\n", __func__, rc, errno, strerror(errno));
+    }
+    if (max < 1 || max > 65536) {
+        max = 16384;
+    }
+    int less;
+    if (max <= 10240) {
+        less = max / 4;
+    } else {
+        less = max / 10;
+    }
+    max_active_connections = max - less;
+    syslog(LOG_DEBUG, "%s:%d\n", __func__, max_active_connections);
+}
+
 struct connection {
   private:
     in_addr_t addr;
@@ -198,13 +232,18 @@ struct connection {
     }
     void init()
     {
-        fd_limit = 0;
+        if (active_connections > max_active_connections) {
+            close_oldest_active_connection();
+        }
+        ++active_connections;
+        TAILQ_INSERT_TAIL(&accept_list, this, entry);
         enable_read();
     }
   public:
     int fd;
     int is_unix;
     std::string svc;
+    TAILQ_ENTRY(connection) entry;
     connection(int f)
         : addr{0}, rdbuf{evbuffer_new()}, wrbuf{evbuffer_new()}, fd{f}, is_unix{1}
     {
@@ -218,10 +257,13 @@ struct connection {
     ~connection()
     {
         debug_log("%s fd:%d\n", __func__, fd);
+        --active_connections;
         const auto& c = connection_map.find(svc);
         if (c != connection_map.end() && c->second == this) {
             debug_log("%s removing from active connections:%s fd:%d\n", __func__, svc.c_str(), fd);
             connection_map.erase(c);
+        } else {
+            TAILQ_REMOVE(&accept_list, this, entry);
         }
         event_del(&ev);
         if (rdbuf) evbuffer_free(rdbuf);
@@ -317,6 +359,19 @@ struct connection {
     }
 };
 
+static void close_oldest_active_connection(void)
+{
+    connection *c = TAILQ_FIRST(&accept_list);
+    if (!c) {
+        syslog(LOG_CRIT, "%s no active connection to close [count:%d]\n", __func__, active_connections);
+        event_base_loopbreak(base);
+        return;
+    }
+    syslog(LOG_WARNING, "%s closing oldest active connection fd:%d [count:%d]\n", __func__, c->fd, active_connections);
+    delete c;
+}
+
+
 static int get_fd(const char *key)
 {
     const auto &c = connection_map.find(key);
@@ -352,10 +407,6 @@ static void make_socket_blocking(int fd)
 static void routefd(int serverfd, short what, void *arg)
 {
     connection *c = (connection *)(arg);
-    if ((what & EV_TIMEOUT) && fd_limit) {
-       delete c;
-       return;
-    }
     int clientfd = c->fd;
     make_socket_blocking(clientfd);
     debug_log("%s send fd:%d to fd:%d\n", __func__, clientfd, serverfd);
@@ -431,6 +482,7 @@ static int run_cmd(char *cmd, connection *c)
         if (c->is_unix) {
             c->svc = svc;
             connection_map.insert(std::make_pair(svc, c));
+            TAILQ_REMOVE(&accept_list, c, entry);
         }
         c->reply("%d\n", port);
     } else if (strcmp(cmd, "get") == 0) {
@@ -582,17 +634,17 @@ static void unix_cb(evconnlistener *listener, evutil_socket_t fd,
     connection *c = new connection(fd);
 }
 
-static void accept_errorcb(evconnlistener *listener, void *data)
+static void accept_error_cb(evconnlistener *listener, void *data)
 {
     int err = EVUTIL_SOCKET_ERROR();
     int fd = evconnlistener_get_fd(listener);
     const char *errstr = evutil_socket_error_to_string(err);
-    syslog(LOG_CRIT, "%s fd:%d err:%d-%s\n", __func__, fd, err, errstr);
-    if (err == EMFILE || err == ENFILE) {
-        fd_limit = 1;
-    } else {
+    syslog(LOG_CRIT, "%s fd:%d errno:%d [%s]\n", __func__, fd, err, errstr);
+    if (err != EMFILE && err != ENFILE) {
         event_base_loopbreak(base);
+        return;
     }
+    close_oldest_active_connection();
 }
 
 static int make_port_range(char *s, std::pair<int, int> &range)
@@ -847,7 +899,7 @@ int main(int argc, char **argv)
             base, tcp_cb, NULL, LEV_OPT_REUSEABLE | LEV_OPT_CLOSE_ON_FREE,
             SOMAXCONN, (sockaddr *)&addr, len);
         if (listener) {
-            evconnlistener_set_error_cb(listener, accept_errorcb);
+            evconnlistener_set_error_cb(listener, accept_error_cb);
             listeners.push_back(listener);
             debug_log("accept on port:%d fd:%d\n", port,
                       evconnlistener_get_fd(listener));
@@ -866,7 +918,7 @@ int main(int argc, char **argv)
             base, unix_cb, NULL, LEV_OPT_CLOSE_ON_FREE, SOMAXCONN,
             (sockaddr *)&addr, len);
     if (listener) {
-        evconnlistener_set_error_cb(listener, accept_errorcb);
+        evconnlistener_set_error_cb(listener, accept_error_cb);
         listeners.push_back(listener);
         debug_log("accept on path:%s fd:%d\n", unix_bind_path.c_str(),
                   evconnlistener_get_fd(listener));
@@ -878,6 +930,8 @@ int main(int argc, char **argv)
     if (!foreground_mode) {
         bb_daemon();
     }
+
+    set_max_active_connections();
 
     struct event *trm = evsignal_new(base, SIGINT, sigint_handler, NULL);
     evsignal_add(trm, NULL);

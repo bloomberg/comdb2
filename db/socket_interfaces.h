@@ -38,9 +38,6 @@
 #include "types.h"
 #include "tag.h"
 
-#include <dynschematypes.h>
-#include <dynschemaload.h>
-
 enum sockreq_types {
     SOCKREQ_BLKLONGBEGIN = 100,
     SOCKREQ_SETTIMEOUT = 101,

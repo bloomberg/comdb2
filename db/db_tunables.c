@@ -247,6 +247,9 @@ extern int gbl_max_trigger_threads;
 extern int gbl_alternate_normalize;
 extern int gbl_sc_logbytes_per_second;
 extern int gbl_fingerprint_max_queries;
+extern int gbl_ufid_log;
+extern int gbl_ufid_dbreg_test;
+
 extern long long sampling_threshold;
 
 extern size_t gbl_lk_hash;
@@ -350,6 +353,8 @@ extern int gbl_debug_sleep_in_sql_tick;
 extern int gbl_protobuf_prealloc_buffer_size;
 extern int gbl_replicant_retry_on_not_durable;
 extern int gbl_enable_internal_sql_stmt_caching;
+extern int gbl_longreq_log_freq_sec;
+extern int gbl_disable_seekscan_optimization;
 
 int gbl_debug_tmptbl_corrupt_mem;
 int gbl_group_concat_mem_limit; /* 0 implies allow upto SQLITE_MAX_LENGTH,

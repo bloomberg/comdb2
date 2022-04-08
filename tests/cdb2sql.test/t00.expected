@@ -38,6 +38,7 @@ unknown @ls sub-command foo
 (name='comdb2_limits')
 (name='comdb2_locks')
 (name='comdb2_logical_operations')
+(name='comdb2_memstats')
 (name='comdb2_metrics')
 (name='comdb2_net_userfuncs')
 (name='comdb2_opcode_handlers')

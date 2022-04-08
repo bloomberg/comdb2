@@ -36,6 +36,14 @@ static void *my_fp_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **arg
     return NULL;
 }
 
+static void *my_hostname_hook(cdb2_hndl_tp *hndl, void *user_arg, int argc, void **argv)
+{
+    /* If there's no hostname, abort */
+    if (argv[0] == NULL || ((char *)argv[0])[0] == '\0')
+        abort();
+    return NULL;
+}
+
 static cdb2_event *init_once_event;
 
 static void register_once(void)
@@ -202,15 +210,18 @@ static int TEST_run_stmt_next_record_events(const char *db, const char *tier)
 {
     int rc;
     cdb2_hndl_tp *h;
-    cdb2_event *e1, *e2;
+    cdb2_event *e1, *e2, *e3, *e4;
     cdb2_open(&h, db, tier, 0);
     e1 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_arg_hook, NULL, 1, CDB2_SQL);
-    e1 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_fp_hook, NULL, 1, CDB2_FINGERPRINT);
-    e2 = cdb2_register_event(h, CDB2_AT_EXIT_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
+    e2 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_fp_hook, NULL, 1, CDB2_FINGERPRINT);
+    e3 = cdb2_register_event(h, CDB2_AT_EXIT_NEXT_RECORD, 0, my_rc_hook, NULL, 1, CDB2_RETURN_VALUE);
+    e4 = cdb2_register_event(h, CDB2_AT_EXIT_RUN_STATEMENT, 0, my_hostname_hook, NULL, 1, CDB2_HOSTNAME);
     cdb2_run_statement(h, "SELECT \"You may say I'm a dreamer, but I'm not the only one.\"");
     while ((rc = cdb2_next_record(h)) == CDB2_OK);
     cdb2_unregister_event(h, e1);
     cdb2_unregister_event(h, e2);
+    cdb2_unregister_event(h, e3);
+    cdb2_unregister_event(h, e4);
     cdb2_close(h);
     return 0;
 }

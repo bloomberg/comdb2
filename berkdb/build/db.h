@@ -32,6 +32,7 @@
 #include <mem_berkdb.h>
 #include <sys/time.h>
 #include <sbuf2.h>
+#include <locks_wrap.h>
 
 #ifndef COMDB2AR
 #include <mem_override.h>
@@ -1391,6 +1392,87 @@ struct fileid_adj_fileid
 	int adj_fileid;
 };
 
+/* Thread-local cursor queue definitions
+
+   +-------------------------------------------+
+   | gbl_all_cursors (linkedlist)              |
+   |                                           |
+   |        +----------------------------+     |
+   |        | Thread N                   |     |
+   |      +----------------------------+ |     |
+   |      | Thread (N - 1)             | |     |
+   |     //////////////////////////////| |     |
+   |    +----------------------------+/| |     |
+   |    | Thread 2                   |/| |     |
+   |  +----------------------------+ |/| |     |
+   |  | Thread 1                   | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB_CQ_HASH (hashtable)     | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | Key  | Value               | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB * | DB_CQ (linkedlist)  | |/| |     |
+   |  |      | DBC <-> ... <-> DBC | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB * | DB_CQ (linkedlist)  | |/| |     |
+   |  |      | DBC <-> ... <-> DBC | |/| |     |
+   |  |----------------------------| |/| |     |
+   |  ~ .......................... ~ |/| |     |
+   |  ~ .......................... ~ |/| |     |
+   |  ~ .......................... ~ |/| |     |
+   |  |----------------------------| |/| |     |
+   |  | DB * | DB_CQ (linkedlist)  | |/|-+     |
+   |  |      | DBC <-> ... <-> DBC | |/+       |
+   |  |----------------------------| |/        |
+   |  | DB * | DB_CQ (linkedlist)  |-+         |
+   |  |      | DBC <-> ... <-> DBC |           |
+   |  +----------------------------+           |
+   |                                           |
+   +-------------------------------------------+
+ */
+
+/* Cursor queue */
+typedef struct __db_cq {
+	/* The DB structure the cursors use. It's also the hash key. */
+	DB *db;
+	/* This points to DB_CQ_HASH.lk */
+	pthread_mutex_t *lk;
+	/* Active queue */
+	struct {
+		DBC *tqh_first;
+		DBC **tqh_last;
+	} aq;
+	/* Free queue */
+	struct {
+		DBC *tqh_first;
+		DBC **tqh_last;
+	} fq;
+} DB_CQ;
+
+/* Thread-local hashtable of cursor queues */
+typedef struct __db_cq_hash {
+	/* plhash */
+	hash_t *h;
+	/* Although the structure is mostly single-threaded, cursors may be
+	   modified by another thread of control (e.g., a schema change
+	   invalidates all free cursors). So guard the structure with a lock. */
+	pthread_mutex_t lk;
+	struct {
+		struct __db_cq_hash *tqe_next;
+		struct __db_cq_hash **tqe_prev;
+	} links;
+} DB_CQ_HASH;
+
+/* List of thread-local hashtables of cursor queues */
+typedef struct __db_cq_hash_list {
+	DB_CQ_HASH *tqh_first;
+	DB_CQ_HASH **tqh_last;
+	pthread_mutex_t lk;
+} DB_CQ_HASH_LIST;
+
+extern DB_CQ_HASH_LIST gbl_all_cursors;
+extern pthread_key_t tlcq_key;
+
 /* Database handle. */
 struct __db {
 	/*******************************************************
@@ -1426,6 +1508,7 @@ struct __db {
 
 #define	DB_LOGFILEID_INVALID	-1
 	FNAME *log_filename;		/* File's naming info for logging. */
+	int added_to_ufid;
 
 	db_pgno_t meta_pgno;		/* Meta page number */
 	u_int32_t lid;			/* Locker id for handle locking. */
@@ -1471,6 +1554,9 @@ struct __db {
 		struct __db *le_next;
 		struct __db **le_prev;
 	} dblistlinks;
+
+	/* 1 if using thread-local cursor queues. */
+	int use_tlcq;
 
 	/*
 	 * Cursor queues.
@@ -2093,6 +2179,12 @@ struct __lc_cache {
 	pthread_mutex_t lk;
 };
 
+struct __ufid_to_db_t {
+	u_int8_t ufid[DB_FILE_ID_LEN];
+	char *fname;
+	DB *dbp;
+};
+
 typedef int (*collect_locks_f)(void *args, int64_t threadid, int32_t lockerid,
 		const char *mode, const char *status, const char *table,
 		int64_t page, const char *rectype);
@@ -2519,6 +2611,10 @@ struct __db_env {
 	pthread_mutex_t ltrans_hash_lk;
 	pthread_mutex_t ltrans_inactive_lk;
 	pthread_mutex_t ltrans_active_lk;
+
+	/* ufid to dbp hash */
+	hash_t *ufid_to_db_hash;
+	pthread_mutex_t ufid_to_db_lk;
 
 	/* Parallel recovery.  These are only valid on replicants. */
 	DB_LSN prev_commit_lsn;
@@ -2951,8 +3047,8 @@ int __checkpoint_ok_to_delete_log(DB_ENV *dbenv, int logfile);
 int berkdb_verify_lsn_written_to_disk(DB_ENV *dbenv, DB_LSN *lsn,
 	int check_checkpoint);
 
-u_int32_t file_id_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
-	int rectype, DBT *dbt);
+int ufid_for_recovery_record(DB_ENV *env, DB_LSN *lsn,
+	int rectype, u_int8_t *ufid, DBT *dbt);
 
 int __rep_get_master(DB_ENV *dbenv, char **master, u_int32_t *gen, u_int32_t *egen);
 int __rep_get_eid(DB_ENV *dbenv,char **eid);

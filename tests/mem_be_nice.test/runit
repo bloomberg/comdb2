@@ -13,7 +13,7 @@ for i in `seq 1 8`; do
   cdb2sql -s --host $mach ${CDB2_OPTIONS} -f stmts.sql $dbnm default >/dev/null &
 done
 
-appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c sqlite`
+appsockcnt=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm default 'SELECT COUNT(*) FROM comdb2_memstats WHERE name="sqlite"'`
 echo "# sqlite allocators: $appsockcnt"
 if [[ $appsockcnt -gt 5 ]]; then
   echo "Expecting <= 5 (4 for per-thread and 1 for main thread) sqlite allocators."
@@ -21,7 +21,7 @@ if [[ $appsockcnt -gt 5 ]]; then
   exit 1
 fi
 
-appsockcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c lua`
+appsockcnt=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm default 'SELECT COUNT(*) FROM comdb2_memstats WHERE name="lua"'`
 echo "# lua allocators: $appsockcnt"
 if [[ $appsockcnt -gt 5 ]]; then
   echo "Expecting <= 5 (4 for per-thread and 1 for main thread) lua allocators."
@@ -32,7 +32,7 @@ fi
 # Give the database a bit time to dispatch all queries.
 sleep 2
 
-sqlengcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c SQLITE`
+sqlengcnt=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm default 'SELECT COUNT(*) FROM comdb2_memstats WHERE name="SQLITE"'`
 echo "# SQLITE allocators: $sqlengcnt"
 if [[ $sqlengcnt -lt 9 ]]; then
   echo "Expecting >= 9 (8 open connections and myself) SQLITE allocators."
@@ -40,10 +40,12 @@ if [[ $sqlengcnt -lt 9 ]]; then
   exit 1
 fi
 
-sqlengcnt=`cdb2sql --host $mach ${CDB2_OPTIONS} $dbnm default 'exec procedure sys.cmd.send("memstat")' | grep -c LUA`
+sqlengcnt=`cdb2sql --tabs --host $mach ${CDB2_OPTIONS} $dbnm default 'SELECT COUNT(*) FROM comdb2_memstats WHERE name="LUA"'`
 echo "# LUA allocators: $sqlengcnt"
-if [[ $sqlengcnt -lt 9 ]]; then
-  echo "Expecting >= 9 (8 open connections and myself) LUA allocators."
+# There used to be 9 here as we used sys.cmd.send("memstat") which counted as 1 more LUA allocator.
+# With the new system table we do not need the extra allocator.
+if [[ $sqlengcnt -lt 8 ]]; then
+  echo "Expecting >= 8 (8 open connections) LUA allocators."
   echo "Failed."
   exit 1
 fi

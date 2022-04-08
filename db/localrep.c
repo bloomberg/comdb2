@@ -23,6 +23,7 @@
 #include "endian_core.h"
 #include <flibc.h>
 #include "str0.h"
+#include "dynschematypes.h"
 
 typedef struct {
     char name[32];    /* name of field as a \0 terminated string */

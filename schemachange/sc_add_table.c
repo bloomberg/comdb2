@@ -25,6 +25,7 @@
 #include "sc_logic.h"
 #include "sc_csc2.h"
 #include "views.h"
+#include "macc_glue.h"
 
 extern int gbl_is_physical_replicant;
 
@@ -112,42 +113,23 @@ int add_table_to_environment(char *table, const char *csc2,
         return -1;
     }
 
-    rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
-
-    if (rc) {
-        char *err;
-        char *syntax_err;
-        err = csc2_get_errors();
-        syntax_err = csc2_get_syntax_errors();
-        sc_client_error(s, "%s", syntax_err);
-        sc_errf(s, "%s\n", err);
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, 0 /*dbnum*/,
+                               thedb->num_dbs, 0 /*no altname*/,
+                               timepartition_name ? 1 : 0 /* allow null if tpt rollout */, 
+                               0 /* side effects */, &err);
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
         sc_errf(s, "error adding new table locally\n");
         logmsg(LOGMSG_INFO, "Failed to load schema for table %s\n", table);
         logmsg(LOGMSG_INFO, "Dumping schema for reference: '%s'\n", csc2);
-        return SC_CSC2_ERROR;
-    }
-    newdb = newdb_from_schema(thedb, table, NULL, 0, thedb->num_dbs);
 
-    if (newdb == NULL) {
-        return SC_INTERNAL_ERROR;
+        return SC_CSC2_ERROR;
     }
 
     newdb->dtastripe = gbl_dtastripe;
     newdb->iq = iq;
     newdb->timepartition_name = timepartition_name;
-
-    if (add_cmacc_stmt(newdb, 0, 0)) {
-        logmsg(LOGMSG_ERROR, "%s: add_cmacc_stmt failed\n", __func__);
-        rc = SC_CSC2_ERROR;
-        goto err;
-    }
-
-    if (init_check_constraints(newdb)) {
-        logmsg(LOGMSG_ERROR, "%s: failed to initialize check constraint(s)\n",
-               __func__);
-        rc = SC_CSC2_ERROR;
-        goto err;
-    }
 
     if ((iq == NULL || iq->tranddl <= 1) &&
         verify_constraints_exist(newdb, NULL, NULL, s) != 0) {
@@ -251,11 +233,9 @@ int do_add_table(struct ireq *iq, struct schema_change_type *s,
         local_lock = 1;
     }
     Pthread_mutex_lock(&csc2_subsystem_mtx);
-    dyns_init_globals();
     rc = add_table_to_environment(s->tablename, s->newcsc2, s, iq, trans,
                                   s->timepartition_name);
 
-    dyns_cleanup_globals();
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
     if (rc) {
         sc_errf(s, "error adding new table locally\n");

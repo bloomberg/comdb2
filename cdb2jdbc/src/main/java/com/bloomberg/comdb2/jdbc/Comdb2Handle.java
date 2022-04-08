@@ -96,6 +96,8 @@ public class Comdb2Handle extends AbstractConnection {
     private List<String> sets;
 
     private boolean ack = false;
+    private boolean skipDrain = false;
+    private boolean clearAckOnClose = true;
 
     private boolean isRead;
     private String lastSql;
@@ -382,6 +384,14 @@ public class Comdb2Handle extends AbstractConnection {
         }
 
         stmteffects = val;
+    }
+
+    public void setSkipResultSetDrain(boolean val){
+        this.skipDrain = val;
+    }
+
+    public void setClearAck(boolean val){
+        this.clearAckOnClose = val;
     }
 
     public ArrayList<String> getDbHosts() throws NoDbHostFoundException{
@@ -829,8 +839,8 @@ public class Comdb2Handle extends AbstractConnection {
 
     @Override
     public void clearResult() {
-        while (next_int() == Errors.CDB2_OK)
-            ;
+        while (!skipDrain && next_int() == Errors.CDB2_OK) {
+        }
         clearResp();
     }
 
@@ -2116,7 +2126,9 @@ readloop:
         if (opened == true) {
             synchronized (lock) {
                 if (opened == true) {
-                    if (ack) ack();
+                    if (ack && clearAckOnClose) {
+                        ack();
+                    }
 
                     opened = false;
                     dbHostConnected = -1;

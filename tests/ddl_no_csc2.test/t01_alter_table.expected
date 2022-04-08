@@ -456,7 +456,7 @@ tag "tag2"
 		u_longlong j 
 	}
 ')
-[ALTER TABLE t1 DROP COLUMN j] failed with rc 240 (null)
+[ALTER TABLE t1 DROP COLUMN j] failed with rc 240 dyns_load_schema_string failed for t1
 (csc2='schema
 	{
 		int i null = yes 

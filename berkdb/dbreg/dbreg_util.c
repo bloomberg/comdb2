@@ -28,6 +28,11 @@ static const char revid[] = "$Id: dbreg_util.c,v 11.39 2003/11/10 17:42:34 sue E
 #include "printformats.h"
 #include "logmsg.h"
 #include "comdb2_atomic.h"
+#include "locks_wrap.h"
+#include <fsnapf.h>
+#if defined (UFID_HASH_DEBUG)
+#include <limits.h>
+#endif
 
 static int __dbreg_check_master __P((DB_ENV *, u_int8_t *, char *));
 
@@ -73,6 +78,10 @@ __dbreg_add_dbentry(dbenv, dblp, dbp, ndx)
 
 	DB_ASSERT(dblp->dbentry[ndx].dbp == NULL);
 	dblp->dbentry[ndx].deleted = dbp == NULL;
+
+	if (dbp != NULL) {
+		__ufid_add_dbp(dbenv, dbp);
+	}
 
 	dblp->dbentry[ndx].dbp = dbp;
 
@@ -132,6 +141,11 @@ __ufid_sanity_check(dbenv, fnp)
 #if defined (DEBUG_STACK_AT_DBREG_LOG)
 void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #include <tohex.h>
+#endif
+
+#if defined (UFID_HASH_DEBUG)
+#include <tohex.h>
+void comdb2_cheapstack_sym(FILE *f, char *fmt, ...);
 #endif
 
 /*
@@ -328,6 +342,202 @@ __dbreg_close_files(dbenv)
 	return (ret);
 }
 
+// PUBLIC: int __ufid_clear_dbp __P(( DB_ENV *, DB *));
+int
+__ufid_clear_dbp(dbenv, dbp)
+	DB_ENV *dbenv;
+	DB *dbp;
+{
+	struct __ufid_to_db_t *ufid;
+	dbp->added_to_ufid = 0;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
+		if (ufid->dbp) {
+			ufid->dbp->added_to_ufid = 0;
+		}
+		ufid->dbp = NULL;
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+#if defined (UFID_HASH_DEBUG)
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+    if (dbp) fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "td %p %s removing %p %s\n", pthread_self(), __func__,
+        dbp, fid_str);
+#endif
+	return 0;
+}
+
+static int dump_ufid(void *obj, void *arg)
+{
+	struct __ufid_to_db_t *ufid = (struct __ufid_to_db_t *)obj;
+	FILE *f = (FILE *)arg;
+	fsnapf(f, ufid, DB_FILE_ID_LEN);
+	fprintf(f, "%s\n-\n", ufid->fname);
+	return 0;
+}
+
+// PUBLIC: void __ufid_dump __P(( DB_ENV *));
+void
+__ufid_dump(dbenv)
+	DB_ENV *dbenv;
+{
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	hash_for(dbenv->ufid_to_db_hash, dump_ufid, stderr);
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+}
+
+// PUBLIC: int __ufid_add_dbp __P(( DB_ENV *, DB *));
+int
+__ufid_add_dbp(dbenv, dbp)
+	DB_ENV *dbenv;
+	DB *dbp;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = 0;
+
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, dbp->fileid))) {
+		if (ufid->dbp != NULL) {
+			DB_ASSERT(ufid->dbp == dbp);
+		}
+	} else {
+		if ((ret = __os_malloc(dbenv, sizeof(*ufid), &ufid)) != 0) {
+			abort();
+		}
+		memcpy(ufid->ufid, dbp->fileid, DB_FILE_ID_LEN);
+		if (dbp->fname)
+			ufid->fname = strdup(dbp->fname);
+		else
+			ufid->fname = NULL;
+		hash_add(dbenv->ufid_to_db_hash, ufid);
+	}
+
+#if defined (UFID_HASH_DEBUG)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	if (dbp) fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "td %p %s adding %p %s\n", pthread_self(), __func__, dbp, fid_str);
+#endif
+
+	ufid->dbp = dbp;
+	ufid->dbp->added_to_ufid = 1;
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return ret;
+}
+
+static int
+__ufid_open(dbenv, txn, dbpp, inufid, name, lsnp)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB **dbpp;
+	u_int8_t *inufid;
+	char *name;
+	DB_LSN *lsnp;
+{
+	DB_LOG *dblp;
+	DB *dbp;
+	int ret;
+	dblp = dbenv->lg_handle;
+
+	if ((ret = db_create(&dbp, dbenv, 0)) != 0) {
+		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error creating db\n");
+		abort();
+	}
+	F_SET(dbp, DB_AM_RECOVER);
+
+	if ((ret = __db_open(dbp, txn, name, NULL,
+		DB_UNKNOWN, DB_ODDFILESIZE, __db_omode("rw----"), 0)) != 0) {
+		logmsg(LOGMSG_FATAL,"__dbreg_fid_to_fname error opening db\n");
+		abort();
+	}
+	(*dbpp) = dbp;
+	return 0;
+}
+
+static int
+__ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, create)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB **dbpp;
+	u_int8_t *inufid;
+	DB_LSN *lsnp;
+	int create;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = 0;
+	DB *close_dbp = NULL;
+	(*dbpp) = NULL;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+		if (ufid->dbp == NULL && create) {
+			DB *dbp = NULL;
+			Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+			ret = __ufid_open(dbenv, txn, &dbp, inufid, ufid->fname, lsnp);
+			Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+			if (dbp != NULL && ufid->dbp == NULL) {
+				ufid->dbp = dbp;
+			} else {
+				close_dbp = dbp;
+			}
+		}
+		(*dbpp) = ufid->dbp;
+	} else {
+		abort();
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	if (close_dbp) {
+		__db_close(close_dbp, txn, 0);
+	}
+#if defined (UFID_HASH_DEBUG)
+	char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+	if ((*dbpp)) fileid_str((*dbpp)->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "[%d][%d] td %p %s returning %p %s\n",
+		lsnp ? lsnp->file : 0, lsnp ? lsnp->offset : 0, pthread_self(), __func__, (*dbpp), fid_str);
+#endif
+	return ret ? ret : ((*dbpp) == NULL);
+}
+
+// PUBLIC: int __ufid_to_db __P(( DB_ENV *, DB_TXN *, DB **, u_int8_t *, DB_LSN *));
+int
+__ufid_to_db(dbenv, txn, dbpp, inufid, lsnp)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB **dbpp;
+	u_int8_t *inufid;
+	DB_LSN *lsnp;
+{
+	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, 1);
+}
+
+// PUBLIC: int __ufid_find_db __P(( DB_ENV *, DB_TXN *, DB **, u_int8_t *, DB_LSN *));
+int
+__ufid_find_db(dbenv, txn, dbpp, inufid, lsnp)
+	DB_ENV *dbenv;
+	DB_TXN *txn;
+	DB **dbpp;
+	u_int8_t *inufid;
+	DB_LSN *lsnp;
+{
+	return __ufid_to_db_int(dbenv, txn, dbpp, inufid, lsnp, 0);
+}
+
+// PUBLIC: int __ufid_to_fname __P(( DB_ENV *, char **, u_int8_t *));
+int
+__ufid_to_fname(dbenv, fname, inufid)
+	DB_ENV *dbenv;
+	char **fname;
+	u_int8_t *inufid;
+{
+	struct __ufid_to_db_t *ufid;
+	int ret = -1;
+	(*fname) = NULL;
+	Pthread_mutex_lock(&dbenv->ufid_to_db_lk);
+	if ((ufid = hash_find(dbenv->ufid_to_db_hash, inufid)) != NULL) {
+		(*fname) = ufid->fname;
+		ret = 0;
+	}
+	Pthread_mutex_unlock(&dbenv->ufid_to_db_lk);
+	return ret;
+}
 
 // PUBLIC: int __dbreg_id_to_db __P(( DB_ENV *, DB_TXN *, DB **, int32_t, int, DB_LSN *, int));
 int
@@ -355,6 +565,12 @@ __dbreg_id_to_db(dbenv, txn, dbpp, ndx, inc, lsnp, in_recovery_verify)
       /*__db_panic(dbenv, rc);*/
 	}
 
+#if defined (UFID_HASH_DEBUG)
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+    if ((*dbpp)) fileid_str((*dbpp)->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "[%d][%d] td %p %s returning %p %s\n",
+        lsnp ? lsnp->file : 0, lsnp ? lsnp->offset : 0, pthread_self(), __func__, (*dbpp), fid_str);
+#endif
 	return rc;
 }
 
@@ -533,9 +749,16 @@ __dbreg_id_to_db_int_int(dbenv, txn, dbpp, ndx, inc, tryopen, lsnp,
 
 		__ufid_sanity_check(dbenv, fname);
 
-		if ((ret = __dbreg_do_open(dbenv, txn, dblp,
-		    fname->ufid, name, fname->s_type,
-		    ndx, fname->meta_pgno, NULL, 0)) != 0)
+		extern int gbl_ufid_log;
+		extern int gbl_ufid_dbreg_test;
+
+		if ((gbl_ufid_log || gbl_ufid_dbreg_test) &&
+			(ret = __ufid_find_db(dbenv, txn, dbpp, fname->ufid, lsnp)) == 0) {
+			__dbreg_assign_id((*dbpp), ndx);
+			dblp->dbentry[ndx].dbp = (*dbpp);
+		} else if ((ret = __dbreg_do_open(dbenv, txn, dblp,
+			fname->ufid, name, fname->s_type,
+			ndx, fname->meta_pgno, NULL, 0)) != 0)
 			return (ret);
 
 		*dbpp = dblp->dbentry[ndx].dbp;
@@ -783,6 +1006,13 @@ __dbreg_do_open(dbenv,
 		memcpy(dbp->fileid, uid, DB_FILE_ID_LEN);
 		dbp->meta_pgno = meta_pgno;
 	}
+
+#if defined (UFID_HASH_DEBUG)
+    char fid_str[(DB_FILE_ID_LEN * 2) + 1] = {0};
+    if (dbp) fileid_str(dbp->fileid, fid_str);
+	comdb2_cheapstack_sym(stderr, "td %p %s opening %p %s\n", pthread_self(), __func__, dbp, fid_str);
+#endif
+
 	if ((ret = __db_open(dbp, txn, name, NULL,
 	    ftype, DB_ODDFILESIZE, __db_omode("rw----"), meta_pgno)) == 0) {
 
@@ -802,6 +1032,7 @@ __dbreg_do_open(dbenv,
 		if (ret != 0)
 			goto err;
 
+		__ufid_add_dbp(dbenv, dbp);
 		/*
 		 * If we successfully opened this file, then we need to
 		 * convey that information to the txnlist so that we

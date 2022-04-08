@@ -84,7 +84,6 @@ void berk_memp_sync_alarm_ms(int);
 #include "types.h"
 #include "timer.h"
 #include <plhash.h>
-#include <dynschemaload.h>
 #include "verify.h"
 #include "ssl_bend.h"
 #include "switches.h"
@@ -137,6 +136,7 @@ void berk_memp_sync_alarm_ms(int);
 #include "phys_rep.h"
 #include "comdb2_query_preparer.h"
 #include <net_appsock.h>
+#include "sc_csc2.h"
 
 #define tokdup strndup
 
@@ -1873,216 +1873,6 @@ void cleanup_newdb(dbtable *tbl)
     free(tbl);
 }
 
-dbtable *newdb_from_schema(struct dbenv *env, char *tblname, char *fname,
-                           int dbnum, int dbix)
-{
-    dbtable *tbl;
-    int ii;
-    int tmpidxsz;
-    int rc;
-
-    tbl = calloc(1, sizeof(dbtable));
-    if (tbl == NULL) {
-        logmsg(LOGMSG_FATAL, "%s: Memory allocation error\n", __func__);
-        return NULL;
-    }
-
-    tbl->dbs_idx = dbix;
-
-    tbl->dbtype = DBTYPE_TAGGED_TABLE;
-    if (fname)
-        tbl->lrlfname = strdup(fname);
-    tbl->tablename = strdup(tblname);
-    tbl->dbenv = env;
-    tbl->dbnum = dbnum;
-    tbl->lrl = dyns_get_db_table_size(); /* this gets adjusted later */
-    Pthread_rwlock_init(&tbl->sc_live_lk, NULL);
-    Pthread_mutex_init(&tbl->rev_constraints_lk, NULL);
-    if (dbnum == 0) {
-        /* if no dbnumber then no default tag is required ergo lrl can be 0 */
-        if (tbl->lrl < 0)
-            tbl->lrl = 0;
-        else if (tbl->lrl > MAXLRL) {
-            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", tbl->lrl,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-    } else {
-        /* this table must have a default tag */
-        int ntags, itag;
-        ntags = dyns_get_table_count();
-        for (itag = 0; itag < ntags; itag++) {
-            if (strcasecmp(dyns_get_table_tag(itag), ".DEFAULT") == 0)
-                break;
-        }
-        if (ntags == itag) {
-            logmsg(LOGMSG_ERROR, "csc schema %s requires comdbg compatibility but "
-                            "has no default tag\n",
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-
-        if (tbl->lrl < 1 || tbl->lrl > MAXLRL) {
-            logmsg(LOGMSG_ERROR, "bad data lrl %d in csc schema %s\n", tbl->lrl,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-    }
-    tbl->nix = dyns_get_idx_count();
-    if (tbl->nix > MAXINDEX) {
-        logmsg(LOGMSG_ERROR, "too many indices %d in csc schema %s\n", tbl->nix,
-                tblname);
-        cleanup_newdb(tbl);
-        return NULL;
-    }
-    for (ii = 0; ii < tbl->nix; ii++) {
-        tmpidxsz = dyns_get_idx_size(ii);
-        if (tmpidxsz < 1 || tmpidxsz > MAXKEYLEN) {
-            logmsg(LOGMSG_ERROR, "index %d bad keylen %d in csc schema %s\n", ii,
-                    tmpidxsz, tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-        tbl->ix_keylen[ii] = tmpidxsz; /* ix lengths are adjusted later */
-
-        tbl->ix_dupes[ii] = dyns_is_idx_dup(ii);
-        if (tbl->ix_dupes[ii] < 0) {
-            logmsg(LOGMSG_ERROR, "cant find index %d dupes in csc schema %s\n", ii,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-
-        tbl->ix_recnums[ii] = dyns_is_idx_recnum(ii);
-        if (tbl->ix_recnums[ii] < 0) {
-            logmsg(LOGMSG_ERROR, "cant find index %d recnums in csc schema %s\n", ii,
-                    tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        }
-
-        tbl->ix_datacopy[ii] = dyns_is_idx_datacopy(ii);
-        if (tbl->ix_datacopy[ii] < 0) {
-            logmsg(LOGMSG_ERROR, "cant find index %d datacopy in csc schema %s\n",
-                    ii, tblname);
-            cleanup_newdb(tbl);
-            return NULL;
-        } else if (tbl->ix_datacopy[ii]) {
-            tbl->has_datacopy_ix = 1;
-        }
-
-        tbl->ix_nullsallowed[ii] = dyns_is_idx_uniqnulls(ii);
-        if (tbl->ix_nullsallowed[ii] < 0) {
-          logmsg(LOGMSG_ERROR, "cant find index %d uniqnulls in csc schema %s\n",
-                  ii, tblname);
-          cleanup_newdb(tbl);
-          return NULL;
-        }
-    }
-
-    init_reverse_constraints(tbl);
-
-    tbl->n_constraints = dyns_get_constraint_count();
-    if (tbl->n_constraints > 0) {
-        char *consname = NULL;
-        char *keyname = NULL;
-        int rulecnt = 0, flags = 0;
-        tbl->constraints = calloc(tbl->n_constraints, sizeof(constraint_t));
-        for (ii = 0; ii < tbl->n_constraints; ii++) {
-            rc = dyns_get_constraint_at(ii, &consname, &keyname, &rulecnt, &flags);
-            if (rc != 0) {
-                logmsg(LOGMSG_ERROR, "Cannot get constraint at %d (cnt=%zu)!\n", ii, tbl->n_constraints);
-                cleanup_newdb(tbl);
-                return NULL;
-            }
-            tbl->constraints[ii].flags = flags;
-            tbl->constraints[ii].lcltable = tbl;
-            tbl->constraints[ii].consname = consname ? strdup(consname) : 0;
-            tbl->constraints[ii].lclkeyname = (keyname) ? strdup(keyname) : 0;
-            tbl->constraints[ii].nrules = rulecnt;
-
-            tbl->constraints[ii].table = calloc(tbl->constraints[ii].nrules, MAXTABLELEN * sizeof(char *));
-            tbl->constraints[ii].keynm = calloc(tbl->constraints[ii].nrules, MAXKEYLEN * sizeof(char *));
-
-            if (tbl->constraints[ii].nrules > 0) {
-                int jj = 0;
-                for (jj = 0; jj < tbl->constraints[ii].nrules; jj++) {
-                    char *tblnm = NULL;
-                    rc = dyns_get_constraint_rule(ii, jj, &tblnm, &keyname);
-                    if (rc != 0) {
-                        logmsg(LOGMSG_ERROR, "cannot get constraint rule %d table %s:%s\n",
-                                jj, tblname, keyname);
-                        cleanup_newdb(tbl);
-                        return NULL;
-                    }
-                    tbl->constraints[ii].table[jj] = strdup(tblnm);
-                    tbl->constraints[ii].keynm[jj] = strdup(keyname);
-                }
-            }
-        } /* for (ii...) */
-    }     /* if (n_constraints > 0) */
-    tbl->ixuse = calloc(tbl->nix, sizeof(unsigned long long));
-    tbl->sqlixuse = calloc(tbl->nix, sizeof(unsigned long long));
-    return tbl;
-}
-
-int init_check_constraints(dbtable *tbl)
-{
-    char *consname = NULL;
-    char *check_expr = NULL;
-    strbuf *sql;
-    int rc;
-
-    tbl->n_check_constraints = dyns_get_check_constraint_count();
-    if (tbl->n_check_constraints == 0) {
-        return 0;
-    }
-
-    tbl->check_constraints = calloc(tbl->n_check_constraints, sizeof(check_constraint_t));
-    tbl->check_constraint_query = calloc(tbl->n_check_constraints, sizeof(char *));
-    if ((tbl->check_constraints == NULL) || (tbl->check_constraint_query == NULL)) {
-        logmsg(LOGMSG_ERROR, "%s:%d failed to allocate memory\n", __func__, __LINE__);
-        return 1;
-    }
-
-    sql = strbuf_new();
-
-    for (int i = 0; i < tbl->n_check_constraints; i++) {
-        rc = dyns_get_check_constraint_at(i, &consname, &check_expr);
-        if (rc == -1)
-            abort();
-        tbl->check_constraints[i].consname = consname ? strdup(consname) : 0;
-        tbl->check_constraints[i].expr = check_expr ? strdup(check_expr) : 0;
-
-        strbuf_clear(sql);
-
-        strbuf_appendf(sql, "WITH \"%s\" (\"%s\"", tbl->tablename,
-                       tbl->schema->member[0].name);
-        for (int j = 1; j < tbl->schema->nmembers; ++j) {
-            strbuf_appendf(sql, ", %s", tbl->schema->member[j].name);
-        }
-        strbuf_appendf(sql, ") AS (SELECT @%s", tbl->schema->member[0].name);
-        for (int j = 1; j < tbl->schema->nmembers; ++j) {
-            strbuf_appendf(sql, ", @%s", tbl->schema->member[j].name);
-        }
-        strbuf_appendf(sql, ") SELECT (%s) FROM \"%s\"",
-                       tbl->check_constraints[i].expr, tbl->tablename);
-        tbl->check_constraint_query[i] = strdup(strbuf_buf(sql));
-        if (tbl->check_constraint_query[i] == NULL) {
-            logmsg(LOGMSG_ERROR, "%s:%d failed to allocate memory\n", __func__,
-                   __LINE__);
-            cleanup_newdb(tbl);
-            strbuf_free(sql);
-            return 1;
-        }
-    }
-    strbuf_free(sql);
-    return 0;
-}
-
 static int resize_reverse_constraints(struct dbtable *db, size_t newsize)
 {
     constraint_t **temp = realloc(db->rev_constraints, newsize * sizeof(constraint_t *));
@@ -2460,59 +2250,6 @@ static inline int db_get_alias(void *tran, dbtable *tbl)
     return 0;
 }
 
-struct dbtable *create_new_dbtable(struct dbenv *dbenv, char *tablename,
-                                   char *csc2, int dbnum, int indx,
-                                   struct errstat *err)
-{
-    struct dbtable *newtable = NULL;
-    int rc;
-
-    dyns_init_globals();
-
-    rc = dyns_load_schema_string(csc2, dbenv->envname, tablename);
-    if (rc) {
-        errstat_set_rcstrf(err, -1, "dyns_load_schema_string failed for %s\n",
-                           tablename);
-        goto err;
-    }
-
-    newtable = newdb_from_schema(dbenv, tablename, NULL, dbnum, indx);
-    if (!newtable) {
-        errstat_set_rcstrf(err, -1, "newdb_from_schema failed for %s\n",
-                           tablename);
-        rc = -1;
-        goto err;
-    }
-
-    rc = add_cmacc_stmt(newtable, 0, 0);
-    if (rc) {
-        errstat_set_rcstrf(err, -1,
-                           "Failed to load schema: can't "
-                           "process schema file %s\n",
-                           newtable->tablename);
-        goto err;
-    }
-
-    rc = init_check_constraints(newtable);
-    if (rc) {
-        errstat_set_rcstrf(err, -1,
-                           "Failed to load check constraints "
-                           "for %s\n",
-                           newtable->tablename);
-        goto err;
-    }
-
-err:
-    if (rc) {
-        if (newtable) {
-            cleanup_newdb(newtable);
-            newtable = NULL;
-        }
-    }
-
-    dyns_cleanup_globals();
-    return newtable;
-}
 
 /* gets the table names and dbnums from the low level meta table and sets up the
  * dbenv accordingly.  returns 0 on success and anything else otherwise */
@@ -2590,8 +2327,8 @@ static int llmeta_load_tables(struct dbenv *dbenv, void *tran)
         }
 
         struct errstat err = {0};
-        tbl = create_new_dbtable(dbenv, tblnames[i], csc2text, dbnums[i], i,
-                                 &err);
+        tbl = create_new_dbtable(dbenv, tblnames[i], csc2text, dbnums[i], i, 0,
+                                 0, 0, &err);
         free(csc2text);
         csc2text = NULL;
         if (!tbl) {
@@ -3580,10 +3317,10 @@ static int init_sqlite_tables(struct dbenv *dbenv)
             continue;
 
         tbl = create_new_dbtable(dbenv, (char *)sqlite_stats_name[i],
-                                 (char *)sqlite_stats_csc2[i], 0, dbenv->num_dbs,
-                                 &err);
+                                 (char *)sqlite_stats_csc2[i], 0,
+                                 dbenv->num_dbs, 0, 0, 0, &err);
         if (!tbl) {
-            logmsg(LOGMSG_ERROR, "%s", err.errstr);
+            logmsg(LOGMSG_ERROR, "%s\n", err.errstr);
             return -1;
         }
         tbl->csc2_schema = strdup(sqlite_stats_csc2[i]);
@@ -3716,7 +3453,7 @@ static int init(int argc, char **argv)
         print_usage_and_exit(1);
     }
 
-    dyns_allow_bools();
+    csc2_allow_bools();
 
     rc = bdb_osql_log_repo_init(&bdberr);
     if (rc) {
@@ -4087,12 +3824,12 @@ static int init(int argc, char **argv)
      * Still alow bools for people who want to copy/test prod dbs
      * that use them.  Don't allow new databases to have bools. */
     if ((get_my_mach_class() == CLASS_TEST) && gbl_create_mode) {
-        if (dyns_used_bools()) {
+        if (csc2_used_bools()) {
             logmsg(LOGMSG_FATAL, "bools in schema.  This is now deprecated.\n");
             logmsg(LOGMSG_FATAL, "Exiting since this is a test machine.\n");
             exit(1);
         }
-        dyns_disallow_bools();
+        csc2_disallow_bools();
     }
 
     /* Now process all the directives we saved up from the lrl file. */

@@ -239,6 +239,10 @@ REGISTER_TUNABLE("disable_replicant_latches", "Disables 'replicant_latches'",
 REGISTER_TUNABLE("disable_rowlock_locking", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_rowlocks, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
+REGISTER_TUNABLE("disable_seekscan_optimization",
+                 "Disables SEEKSCAN optimization", TUNABLE_BOOLEAN,
+                 &gbl_disable_seekscan_optimization, NOARG, NULL, NULL, NULL,
+                 NULL);
 REGISTER_TUNABLE("disable_skip_rows", NULL, TUNABLE_BOOLEAN,
                  &gbl_disable_skip_rows, READONLY | NOARG, NULL, NULL, NULL,
                  NULL);
@@ -1947,6 +1951,12 @@ REGISTER_TUNABLE("strict_double_quotes",
                  &gbl_strict_dbl_quotes, EXPERIMENTAL | INTERNAL, NULL, NULL,
                  NULL, NULL);
 
+REGISTER_TUNABLE("longreq_log_freq_sec",
+                 "Log information about long running statements at this frequency"
+                 " (Default: 60sec)",
+                 TUNABLE_INTEGER, &gbl_longreq_log_freq_sec, 0, NULL, NULL,
+                 NULL, NULL);
+
 REGISTER_TUNABLE("eventlog_nkeep", "Keep this many eventlog files (Default: 2)",
                  TUNABLE_INTEGER, &eventlog_nkeep, 0, NULL, NULL, NULL, NULL);
 
@@ -1959,6 +1969,12 @@ REGISTER_TUNABLE("waitalive_iterations",
 REGISTER_TUNABLE("disable_ckp", "Disable checkpoints to debug.  (Default: off)",
                  TUNABLE_BOOLEAN, &gbl_disable_ckp, EXPERIMENTAL | INTERNAL,
                  NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ufid_log", "Generate ufid logs.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_log,
+                 EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
+
+REGISTER_TUNABLE("ufid_dbreg_test", "Enable ufid-dbreg test.  (Default: off)", TUNABLE_BOOLEAN, &gbl_ufid_dbreg_test,
+                 EXPERIMENTAL | INTERNAL | READONLY, NULL, NULL, NULL, NULL);
 
 REGISTER_TUNABLE("ref_sync_pollms",
                  "Set pollms for ref_sync thread.  "

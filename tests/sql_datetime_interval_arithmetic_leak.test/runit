@@ -26,7 +26,7 @@ kill $pid
 # Get a steady memory snapshot
 sleep 2 # allow the sql engine to detect the disconnect and back out
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+before=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(used) FROM comdb2_memstats WHERE lower(name) = 'sqlite'"`
 
 sleep 5
 
@@ -38,7 +38,7 @@ kill $pid
 # Get a memory snapshot again
 sleep 2 # allow the sql engine to detect the disconnect and back out
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')"
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat sqlite')" | grep total | tail -1 | awk '{print $6}'`
+after=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(used) FROM comdb2_memstats WHERE lower(name) = 'sqlite'"`
 
 # Should be almost identical
 ratio=`echo "$after/$before" | bc`

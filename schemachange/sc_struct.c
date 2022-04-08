@@ -19,6 +19,7 @@
 #include "logmsg.h"
 #include "sc_csc2.h"
 #include "sc_schema.h"
+#include "macc_glue.h"
 
 /************ SCHEMACHANGE TO BUF UTILITY FUNCTIONS
  * *****************************/
@@ -877,11 +878,7 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
     void *old_bdb_handle, *new_bdb_handle;
     struct dbtable *newdb;
     int changed = 0;
-
-    int rc = dyns_load_schema_string((char *)csc2, thedb->envname, table);
-    if (rc != 0) {
-        return rc;
-    }
+    int rc;
 
     int foundix = getdbidxbyname_ll(table);
     if (foundix == -1) {
@@ -889,19 +886,18 @@ static int reload_csc2_schema(struct dbtable *db, tran_type *tran,
         exit(1);
     }
 
-    /* TODO remove NULL arg; pre-llmeta holdover */
-    newdb = newdb_from_schema(thedb, table, NULL, db->dbnum, foundix);
+    struct errstat err = {0};
+    newdb = create_new_dbtable(thedb, table, (char *)csc2, db->dbnum, foundix,
+                               1, 1, 0, &err);
+
     if (newdb == NULL) {
         /* shouldn't happen */
+        logmsg(LOGMSG_ERROR, "%s (%s:%d)\n", err.errstr, __FILE__, __LINE__);
         backout_schemas(table);
         return 1;
     }
+
     newdb->dbnum = db->dbnum;
-    if ((add_cmacc_stmt(newdb, 1, 1)) || (init_check_constraints(newdb))) {
-        /* can happen if new schema has no .DEFAULT tag but needs one */
-        backout_schemas(table);
-        return 1;
-    }
     newdb->meta = db->meta;
     newdb->dtastripe = gbl_dtastripe;
 
@@ -1005,9 +1001,7 @@ int reload_schema(char *table, const char *csc2, tran_type *tran)
 
     if (csc2) {
         /* genuine schema change. */
-        dyns_init_globals();
         int rc = reload_csc2_schema(db, tran, csc2, table);
-        dyns_cleanup_globals();
         if (rc)
             return rc;
     } else {

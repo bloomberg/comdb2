@@ -1106,7 +1106,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     }
 
     char *cnonce = NULL;
-    if (IQ_HAS_SNAPINFO(iq)) {
+    if (IQ_HAS_SNAPINFO_KEY(iq)) {
         cnonce = alloca(IQ_SNAPINFO(iq)->keylen + 1);
         memcpy(cnonce, IQ_SNAPINFO(iq)->key, IQ_SNAPINFO(iq)->keylen);
         cnonce[IQ_SNAPINFO(iq)->keylen] = '\0';
@@ -1123,7 +1123,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
     extern int gbl_replicant_retry_on_not_durable;
     if ((bdb_attr_get(thedb->bdb_attr, BDB_ATTR_DURABLE_LSNS) || gbl_replicant_retry_on_not_durable) &&
         !bdb_latest_commit_is_durable(thedb->bdb_env)) {
-        if (IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO_KEY(iq)) {
             logmsg(LOGMSG_ERROR,
                    "%u replay rc changed from %d to NOT_DURABLE for blkseq '%s'\n",
                    line, outrc, cnonce);
@@ -1131,7 +1131,7 @@ static int do_replay_case(struct ireq *iq, void *fstseqnum, int seqlen,
         outrc = ERR_NOT_DURABLE;
     }
 
-    if (gbl_dump_blkseq && IQ_HAS_SNAPINFO(iq)) {
+    if (gbl_dump_blkseq && IQ_HAS_SNAPINFO_KEY(iq)) {
         logmsg(LOGMSG_USER,
                "Replay case for '%s' rc=%d, errval=%d errstr='%s' rcout=%d\n",
                cnonce, outrc, iq->errstat.errval, iq->errstat.errstr,
@@ -2889,7 +2889,7 @@ static int toblock_main_int(struct javasp_trans_state *javasp_trans_handle,
             }
         }
 
-        if (got_osql && IQ_HAS_SNAPINFO(iq)) {
+        if (got_osql && IQ_HAS_SNAPINFO_KEY(iq)) {
             if (gbl_osql_snap_info_hashcheck) {
                 // the goal here is to stall until the original transaction
                 // has finished that way we can retrieve the outcome from blkseq
@@ -5417,7 +5417,7 @@ add_blkseq:
         void *bskey;
         int bskeylen;
         /* Snap_info is our blkseq key */
-        if (IQ_HAS_SNAPINFO(iq)) {
+        if (IQ_HAS_SNAPINFO_KEY(iq)) {
             bskey = IQ_SNAPINFO(iq)->key;
             bskeylen = IQ_SNAPINFO(iq)->keylen;
         } else {
@@ -5510,7 +5510,7 @@ add_blkseq:
                     Pthread_rwlock_unlock(&commit_lock);
                     hascommitlock = 0;
                 }
-                if (gbl_dump_blkseq && IQ_HAS_SNAPINFO(iq)) {
+                if (gbl_dump_blkseq && IQ_HAS_SNAPINFO_KEY(iq)) {
                     char *bskey = alloca(IQ_SNAPINFO(iq)->keylen + 1);
                     memcpy(bskey, IQ_SNAPINFO(iq)->key,
                            IQ_SNAPINFO(iq)->keylen);

@@ -38,6 +38,7 @@ struct comdb2_metrics_store {
     int64_t commits;
     int64_t connections;
     int64_t connection_timeouts;
+    double  connection_to_sql_ratio;
     double  cpu_percent;
     int64_t deadlocks;
     int64_t locks_aborted;
@@ -96,6 +97,7 @@ struct comdb2_metrics_store {
     int64_t minimum_truncation_timestamp;
     int64_t reprepares;
     int64_t nonsql;
+    int64_t vreplays;
 };
 
 static struct comdb2_metrics_store stats;
@@ -123,6 +125,8 @@ comdb2_metric gbl_metrics[] = {
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connections, NULL},
     {"connection_timeouts", "Timed out connection attempts", STATISTIC_INTEGER,
      STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_timeouts, NULL},
+    {"connection_to_sql_ratio", "Connection to SQL ratio", STATISTIC_DOUBLE,
+     STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.connection_to_sql_ratio, NULL},
     {"cpu_percent", "Database CPU time over last 5 seconds", STATISTIC_DOUBLE,
      STATISTIC_COLLECTION_TYPE_LATEST, &stats.cpu_percent, NULL},
     {"current_connections", "Number of current connections", STATISTIC_INTEGER,
@@ -257,6 +261,9 @@ comdb2_metric gbl_metrics[] = {
     {"reprepares", "Number of times statements are reprepared by sqlitex",
       STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.reprepares,
       NULL},
+    {"verify_replays", "Number of replays on verify errors",
+      STATISTIC_INTEGER, STATISTIC_COLLECTION_TYPE_CUMULATIVE, &stats.vreplays,
+      NULL},
 };
 
 const char *metric_collection_type_string(comdb2_collection_type t) {
@@ -377,6 +384,8 @@ int refresh_metrics(void)
     /* connections stats */
     stats.connections = net_get_num_accepts(thedb->handle_sibling);
     stats.connection_timeouts = net_get_num_accept_timeouts(thedb->handle_sibling);
+    stats.connection_to_sql_ratio =
+        (stats.sql_count) ? (stats.connections/(double) stats.sql_count) : 0;
 
     /* cache hit rate */
     uint64_t hits, misses;
@@ -491,6 +500,7 @@ int refresh_metrics(void)
         return 1;
     }
     stats.diskspace = refresh_diskspace(thedb, trans);
+    stats.vreplays = gbl_verify_tran_replays;
     curtran_puttran(trans);
 
     return 0;

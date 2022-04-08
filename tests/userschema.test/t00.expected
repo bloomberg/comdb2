@@ -25,6 +25,7 @@
 (tablename='comdb2_limits', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_locks', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_logical_operations', username='mohit', READ='Y', WRITE='Y', DDL='Y')
+(tablename='comdb2_memstats', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_metrics', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_net_userfuncs', username='mohit', READ='Y', WRITE='Y', DDL='Y')
 (tablename='comdb2_opcode_handlers', username='mohit', READ='Y', WRITE='Y', DDL='Y')

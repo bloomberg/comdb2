@@ -25,7 +25,6 @@
 #include "comdb2systbl.h"
 #include "comdb2systblInt.h"
 #include "cdb2_constants.h"
-#include "csc2/dynschemaload.h" //MAXIDXNAMELEN
 #include "sqliteLimit.h"
 
 struct limit_t {

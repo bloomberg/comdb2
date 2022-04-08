@@ -21,6 +21,9 @@
 #include <event2/buffer.h>
 #include <event2/event.h>
 
+#include <openssl/err.h>
+#include <openssl/ssl.h>
+
 #include <bdb_api.h>
 #include <hostname_support.h>
 #include <intern_strings.h>
@@ -29,11 +32,27 @@
 #include <rtcpu.h>
 #include <sql.h>
 #include <sqlwriter.h>
+#include <ssl_glue.h>
 #include <str0.h>
+#include <timer_util.h>
+#include <pb_alloc.h>
 
 #include <newsql.h>
 
-static void rd_newsql_hdr(int, short, void *);
+extern int gbl_nid_dbname;
+extern SSL_CTX *gbl_ssl_ctx;
+extern ssl_mode gbl_client_ssl_mode;
+
+struct ping_pong {
+    int status;
+    struct event *ev;
+    struct timeval start;
+};
+
+struct ssl_data {
+    SSL *ssl;
+    X509 *cert;
+};
 
 struct newsql_appdata_evbuffer {
     NEWSQL_APPDATA_COMMON /* Must be first */
@@ -41,18 +60,30 @@ struct newsql_appdata_evbuffer {
     int fd;
     struct sqlclntstate clnt;
     struct newsqlheader hdr;
-    struct event *ping_ev;
-    int ping_status;
+    struct ping_pong *ping;
 
     struct evbuffer *rd_buf;
     struct event *rd_hdr_ev;
     struct event *rd_payload_ev;
+
     unsigned active : 1; /* We count against MAXAPPSOCKSLIMIT */
     unsigned initial : 1; /* New connection or called newsql_reset */
     unsigned local : 1;
 
     struct sqlwriter *writer;
+    struct ssl_data *ssl_data;
+
+    void (*add_rd_event_fn)(struct newsql_appdata_evbuffer *, struct event *, struct timeval *);
+    int (*rd_evbuffer_fn)(struct newsql_appdata_evbuffer *);
+    void (*wr_dbinfo_fn)(struct newsql_appdata_evbuffer *);
 };
+
+static void add_rd_event(struct newsql_appdata_evbuffer *, struct event *, struct timeval *);
+static void rd_hdr(int, short, void *);
+static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *);
+static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *);
+static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *);
+static int newsql_write_hdr_evbuffer(struct sqlclntstate *, int, int);
 
 static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
 {
@@ -60,9 +91,10 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     struct newsql_appdata_evbuffer *appdata = arg;
     int fd = appdata->fd;
     struct sqlclntstate *clnt = &appdata->clnt;
-    if (appdata->ping_ev) {
-        event_free(appdata->ping_ev);
-        appdata->ping_ev = NULL;
+    if (appdata->ping) {
+        event_free(appdata->ping->ev);
+        free(appdata->ping);
+        appdata->ping = NULL;
     }
     if (appdata->rd_hdr_ev) {
         event_free(appdata->rd_hdr_ev);
@@ -80,6 +112,10 @@ static void free_newsql_appdata_evbuffer(int dummyfd, short what, void *arg)
     rem_lru_evbuffer(clnt);
     if (appdata->active) {
         rem_appsock_connection_evbuffer(clnt);
+    }
+    if (appdata->ssl_data) {
+        disable_ssl_evbuffer(appdata);
+        free(appdata->ssl_data);
     }
     sqlwriter_free(appdata->writer);
     free_newsql_appdata(clnt);
@@ -107,7 +143,7 @@ static void newsql_read_hdr(int dummyfd, short what, void *arg)
 {
     struct newsql_appdata_evbuffer *appdata = arg;
     add_lru_evbuffer(&appdata->clnt);
-    rd_newsql_hdr(-1, 0, appdata);
+    rd_hdr(-1, 0, appdata);
 }
 
 static void newsql_read_again(int dummyfd, short what, void *arg)
@@ -149,7 +185,7 @@ static int newsql_done_cb(struct sqlclntstate *clnt)
         srs_tran_destroy(clnt);
     } else if (appdata->query) {
         clnt->sql = NULL;
-        cdb2__query__free_unpacked(appdata->query, NULL);
+        cdb2__query__free_unpacked(appdata->query, &pb_alloc);
         appdata->query = NULL;
     }
     if (sql_done(appdata->writer) == 0) {
@@ -168,17 +204,22 @@ static int newsql_get_fileno_evbuffer(struct sqlclntstate *clnt)
 
 static int newsql_get_x509_attr_evbuffer(struct sqlclntstate *clnt, int nid, void *out, int outsz)
 {
-    abort();
-    return -1;
+    struct newsql_appdata_evbuffer *appdata = clnt->appdata;
+    if (!appdata->ssl_data || !appdata->ssl_data->cert) return EINVAL;
+    return ssl_x509_get_attr(appdata->ssl_data->cert, nid, out, outsz);
 }
 
 static int newsql_has_ssl_evbuffer(struct sqlclntstate *clnt)
 {
+    struct newsql_appdata_evbuffer *appdata = clnt->appdata;
+    if (appdata->ssl_data && appdata->ssl_data->ssl) return 1;
     return 0;
 }
 
 static int newsql_has_x509_evbuffer(struct sqlclntstate *clnt)
 {
+    struct newsql_appdata_evbuffer *appdata = clnt->appdata;
+    if (appdata->ssl_data && appdata->ssl_data->cert) return 1;
     return 0;
 }
 
@@ -196,67 +237,111 @@ static int newsql_peer_check_evbuffer(struct sqlclntstate *clnt)
 
 static int newsql_set_timeout_evbuffer(struct sqlclntstate *clnt, int timeout_ms)
 {
-    /* nop */
-    return 0;
+    return 0; /* nop */
 }
 
-static void pong(int fd, short what, void *arg)
+static int rd_evbuffer(struct newsql_appdata_evbuffer *appdata)
+{
+    return appdata->rd_evbuffer_fn(appdata); /* rd_evbuffer_plaintext */
+}
+
+static void ping_pong_cb(int fd, short what, void *arg)
 {
     struct newsql_appdata_evbuffer *appdata = arg;
+    struct ping_pong *ping = appdata->ping;
     struct event_base *wrbase = sql_wrbase(appdata->writer);
-    if (what & EV_TIMEOUT) {
-        event_base_loopbreak(wrbase);
-        return;
-    }
-    if (evbuffer_read(appdata->rd_buf, appdata->fd, -1) <= 0) {
-        appdata->ping_status = -2;
+    int n = rd_evbuffer(appdata);
+    if (n <= 0 && (what & EV_READ)) {
+        ping->status = -2;
         event_base_loopbreak(wrbase);
         return;
     }
     struct newsqlheader hdr;
     if (evbuffer_get_length(appdata->rd_buf) < sizeof(hdr)) {
+        struct timeval now;
+        gettimeofday(&now, NULL);
+        struct timeval timeout;
+        timersub(&now, &ping->start, &timeout);
+        if (timeout.tv_sec) {
+            event_base_loopbreak(wrbase);
+        } else {
+            add_rd_event(appdata, ping->ev, &timeout);
+        }
         return;
     }
     evbuffer_remove(appdata->rd_buf, &hdr, sizeof(hdr));
     if (ntohl(hdr.type) == RESPONSE_HEADER__SQL_RESPONSE_PONG) {
-        appdata->ping_status = 0;
+        ping->status = 0;
     } else {
-        appdata->ping_status = -3;
+        ping->status = -3;
     }
     event_base_loopbreak(wrbase);
 }
 
+/**
+ * Called by `recv_ping_response()` in lua/sp.c
+ * @retval  0: Received response
+ * @retval -1: Timeout (1 second)
+ * @retval -2: Read error
+ * @retval -3: Unexpected respnose
+ */
 static int newsql_ping_pong_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
     struct event_base *wrbase = sql_wrbase(appdata->writer);
-    if (!appdata->ping_ev) {
-        int flags = EV_READ | EV_PERSIST | EV_TIMEOUT;
-        appdata->ping_ev = event_new(wrbase, appdata->fd, flags, pong, appdata);
+    if (!appdata->ping) {
+        appdata->ping = malloc(sizeof(struct ping_pong));
+        int flags = EV_READ | EV_TIMEOUT;
+        appdata->ping->ev = event_new(wrbase, appdata->fd, flags, ping_pong_cb, appdata);
     }
-    appdata->ping_status = -1;
+    struct ping_pong *ping = appdata->ping;
+    ping->status = -1;
+    gettimeofday(&ping->start, NULL);
     struct timeval onesec = {.tv_sec = 1};
-    event_add(appdata->ping_ev, &onesec);
+    add_rd_event(appdata, ping->ev, &onesec);
     event_base_dispatch(wrbase);
-    event_del(appdata->ping_ev);
-    return appdata->ping_status;
+    return ping->status;
 }
 
-static void write_dbinfo(int dummyfd, short what, void *arg)
+static void wr_dbinfo(int fd, short what, void *arg)
 {
-    check_appsock_timer_thd();
     struct newsql_appdata_evbuffer *appdata = arg;
-    struct evbuffer *wrbuf = sql_wrbuf(appdata->writer);
-    if (evbuffer_write(wrbuf, appdata->fd) <= 0) {
-        newsql_cleanup(-1, 0, appdata);
-    } else if (evbuffer_get_length(wrbuf)) {
-        event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, write_dbinfo, appdata, NULL);
-    } else {
-        evtimer_once(appsock_rd_base, rd_newsql_hdr, appdata);
-    }
+    appdata->wr_dbinfo_fn(appdata); /* wr_dbinfo_plaintext */
 }
 
-static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct evbuffer *wrbuf)
+static void wr_dbinfo_int(struct newsql_appdata_evbuffer *appdata, int write_result)
+{
+    if (write_result <= 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
+        return;
+    }
+    struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
+    if (evbuffer_get_length(wr_buf) == 0) {
+        newsql_read_hdr(-1, 0, appdata);
+        return;
+    }
+    event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
+}
+
+static void wr_dbinfo_ssl(struct newsql_appdata_evbuffer *appdata)
+{
+    struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
+    int len = evbuffer_get_length(wr_buf);
+    if (len > KB(16)) len = KB(16);
+    const void *buf = evbuffer_pullup(wr_buf, len);
+    int rc = SSL_write(appdata->ssl_data->ssl, buf, len);
+    if (rc > 0) evbuffer_drain(wr_buf, rc);
+    wr_dbinfo_int(appdata, rc);
+}
+
+static void wr_dbinfo_plaintext(struct newsql_appdata_evbuffer *appdata)
+{
+    struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
+    int rc = evbuffer_write(wr_buf, appdata->fd);
+    wr_dbinfo_int(appdata, rc);
+}
+
+static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct evbuffer *buf)
 {
     CDB2DBINFORESPONSE__Nodeinfo *master = NULL;
     CDB2DBINFORESPONSE__Nodeinfo *nodes[REPMAX];
@@ -291,32 +376,26 @@ static void process_dbinfo_int(struct newsql_appdata_evbuffer *appdata, struct e
         nodes[j] = &diff_dc[i];
         nodes[j]->number = j;
     }
-    /* TODO: fill_sslinfo */
-
     CDB2DBINFORESPONSE response = CDB2__DBINFORESPONSE__INIT;
+    fill_ssl_info(&response);
     response.n_nodes = num_hosts;
     response.master = master;
     response.nodes = nodes;
 
     int len = cdb2__dbinforesponse__get_packed_size(&response);
-    size_t sz = sizeof(struct newsqlheader) + len;
-    struct iovec v[1];
-    evbuffer_reserve_space(wrbuf, sz, v, 1);
-    uint8_t *b = v[0].iov_base;
-    struct newsqlheader *hdr = (struct newsqlheader *)b;
-    memset(hdr, 0, sizeof(struct newsqlheader));
-    hdr->type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
-    hdr->length = htonl(len);
-    b += sizeof(struct newsqlheader);
-    cdb2__dbinforesponse__pack(&response, b);
-    v[0].iov_len = sz;
-    evbuffer_commit_space(wrbuf, v, 1);
+    struct newsqlheader hdr = {0};
+    hdr.type = htonl(RESPONSE_HEADER__DBINFO_RESPONSE);
+    hdr.length = htonl(len);
+    uint8_t out[len];
+    cdb2__dbinforesponse__pack(&response, out);
+    evbuffer_add(buf, &hdr, sizeof(hdr));
+    evbuffer_add(buf, out, len);
 }
 
 static void process_dbinfo(struct newsql_appdata_evbuffer *appdata)
 {
     process_dbinfo_int(appdata, sql_wrbuf(appdata->writer));
-    event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, write_dbinfo, appdata, NULL);
+    event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
 }
 
 static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
@@ -324,27 +403,42 @@ static void process_get_effects(struct newsql_appdata_evbuffer *appdata)
     CDB2EFFECTS effects = CDB2__EFFECTS__INIT;
     CDB2SQLRESPONSE response = CDB2__SQLRESPONSE__INIT;
     newsql_effects(&response, &effects, &appdata->clnt);
-
     int len = cdb2__sqlresponse__get_packed_size(&response);
-    size_t sz = sizeof(struct newsqlheader) + len;
-    struct iovec v[1];
-    struct evbuffer *wrbuf = sql_wrbuf(appdata->writer);
-    evbuffer_reserve_space(wrbuf, sz, v, 1);
-    uint8_t *b = v[0].iov_base;
-    struct newsqlheader *hdr = (struct newsqlheader *)b;
-    hdr->type = htonl(RESPONSE_HEADER__SQL_EFFECTS);
-    hdr->length = htonl(len);
-    b += sizeof(struct newsqlheader);
-    cdb2__sqlresponse__pack(&response, b);
-    v[0].iov_len = sz;
-    evbuffer_commit_space(wrbuf, v, 1);
-    event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, write_dbinfo, appdata, NULL);
+    struct newsqlheader hdr = {0};
+    hdr.type = htonl(RESPONSE_HEADER__SQL_EFFECTS);
+    hdr.length = htonl(len);
+    uint8_t out[len];
+    cdb2__sqlresponse__pack(&response, out);
+    struct evbuffer *wr_buf = sql_wrbuf(appdata->writer);
+    evbuffer_add(wr_buf, &hdr, sizeof(hdr));
+    evbuffer_add(wr_buf, out, len);
+    event_base_once(appsock_timer_base, appdata->fd, EV_WRITE, wr_dbinfo, appdata, NULL);
+}
+
+static int ssl_check(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
+{
+    if (appdata->ssl_data && appdata->ssl_data->ssl) return 0;
+    for (int i = 0; i < query->sqlquery->n_features; ++i) {
+        if (CDB2_CLIENT_FEATURES__SSL == query->sqlquery->features[i]) {
+            newsql_write_hdr_evbuffer(&appdata->clnt, RESPONSE_HEADER__SQL_RESPONSE_SSL, 0);
+            return 1;
+        }
+    }
+    write_response(&appdata->clnt, RESPONSE_ERROR, "database requires SSL connections", CDB2ERR_CONNECT_ERROR);
+    return -1;
 }
 
 static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
 {
     int do_read = 0;
     int commit_rollback;
+    if (gbl_client_ssl_mode >= SSL_REQUIRE) {
+        switch (ssl_check(appdata, query)) {
+        case 0: break;
+        case 1: do_read = 1; // fallthrough
+        default: goto out;
+        }
+    }
     appdata->query = query;
     CDB2SQLQUERY *sqlquery = appdata->sqlquery = query->sqlquery;
     struct sqlclntstate *clnt = &appdata->clnt;
@@ -379,8 +473,13 @@ static void process_query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *qu
     if (dispatch_sql_query_no_wait(clnt) == 0) {
         return;
     }
-out:cdb2__query__free_unpacked(query, NULL);
-    evtimer_once(appsock_timer_base, do_read ? newsql_read_again : newsql_cleanup, appdata);
+out:
+    cdb2__query__free_unpacked(query, &pb_alloc);
+    if (do_read) {
+        evtimer_once(appsock_rd_base, newsql_read_again, appdata);
+    } else {
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
+    }
 }
 
 static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
@@ -396,7 +495,178 @@ static void process_cdb2query(struct newsql_appdata_evbuffer *appdata, CDB2QUERY
     } else {
         process_dbinfo(appdata);
     }
-    cdb2__query__free_unpacked(query, NULL);
+    cdb2__query__free_unpacked(query, &pb_alloc);
+}
+
+static void add_rd_event_ssl(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *t)
+{
+    if (SSL_pending(appdata->ssl_data->ssl)) {
+        evtimer_once(event_get_base(ev), event_get_callback(ev), event_get_callback_arg(ev));
+    } else {
+        event_add(ev, t);
+    }
+}
+
+static void add_rd_event_plaintext(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *t)
+{
+    event_add(ev, t);
+}
+
+static void add_rd_event(struct newsql_appdata_evbuffer *appdata, struct event *ev, struct timeval *timeout)
+{
+    appdata->add_rd_event_fn(appdata, ev, timeout); /* add_rd_event_plaintext */
+}
+
+static int verify_dbname(X509 *cert)
+{
+    return cert ? ssl_verify_dbname(cert, gbl_dbname, gbl_nid_dbname) : -1;
+}
+
+static int verify_hostname(struct newsql_appdata_evbuffer *appdata, X509 *cert)
+{
+    return cert ? ssl_verify_hostname(cert, appdata->fd) : -1;
+}
+
+static int verify_ssl(struct newsql_appdata_evbuffer *appdata)
+{
+    X509 *cert = appdata->ssl_data->cert = SSL_get_peer_certificate(appdata->ssl_data->ssl);
+    switch (gbl_client_ssl_mode) {
+    case SSL_VERIFY_DBNAME: if (verify_dbname(cert) != 0) return -1; // fallthrough
+    case SSL_VERIFY_HOSTNAME: if (verify_hostname(appdata, cert) != 0) return -1; // fallthrough
+    case SSL_VERIFY_CA: if (!cert) return -1; // fallthrough
+    default: return 0;
+    }
+}
+
+static int enable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
+{
+    int rc = verify_ssl(appdata);
+    /* Enable SSL even if verification failed so we can return error */
+    appdata->wr_dbinfo_fn = wr_dbinfo_ssl;
+    appdata->rd_evbuffer_fn = rd_evbuffer_ssl;
+    appdata->add_rd_event_fn = add_rd_event_ssl;
+    sql_enable_ssl(appdata->writer, appdata->ssl_data->ssl);
+    ssl_set_clnt_user(&appdata->clnt);
+    return rc;
+}
+
+static void disable_ssl_evbuffer(struct newsql_appdata_evbuffer *appdata)
+{
+    appdata->wr_dbinfo_fn = wr_dbinfo_plaintext;
+    appdata->rd_evbuffer_fn = rd_evbuffer_plaintext;
+    appdata->add_rd_event_fn = add_rd_event_plaintext;
+    sql_disable_ssl(appdata->writer);
+    SSL *ssl = appdata->ssl_data ? appdata->ssl_data->ssl : NULL;
+    if (!ssl) return;
+    appdata->ssl_data->ssl = NULL;
+    X509 *cert = appdata->ssl_data->cert;
+    appdata->ssl_data->cert = NULL;
+    SSL_shutdown(ssl);
+    SSL_free(ssl);
+    X509_free(cert);
+}
+
+static void ssl_accept_evbuffer(int fd, short what, void *arg)
+{
+    struct newsql_appdata_evbuffer *appdata = arg;
+    SSL *ssl = appdata->ssl_data->ssl;
+    int rc = SSL_do_handshake(ssl);
+    if (rc == 1) {
+        if (enable_ssl_evbuffer(appdata) == 0) {
+            rd_hdr(-1, 0, appdata);
+            return;
+        }
+        goto error;
+    }
+    int err = SSL_get_error(ssl, rc);
+    switch (err) {
+    case SSL_ERROR_WANT_READ:
+        event_base_once(appsock_rd_base, fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
+        return;
+    case SSL_ERROR_WANT_WRITE:
+        event_base_once(appsock_rd_base, fd, EV_READ, ssl_accept_evbuffer, appdata, NULL);
+        return;
+    case SSL_ERROR_SYSCALL:
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d errno:%d [%s]\n",
+               __func__, __LINE__, rc, err, errno, strerror(errno));
+        break;
+    default:
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_do_handshake rc:%d err:%d [%s]\n",
+               __func__, __LINE__, rc, err, ERR_error_string(err, NULL));
+        break;
+    }
+error:
+    write_response(&appdata->clnt, RESPONSE_ERROR, "Client certificate authentication failed", CDB2ERR_CONNECT_ERROR);
+    evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
+}
+
+static int rd_evbuffer_ssl(struct newsql_appdata_evbuffer *appdata)
+{
+    SSL *ssl = appdata->ssl_data->ssl;
+    int len = KB(16);
+    struct iovec v = {0};
+    if (evbuffer_reserve_space(appdata->rd_buf, len, &v, 1) == -1) {
+        return -1;
+    }
+    int rc = SSL_read(ssl, v.iov_base, len);
+    if (rc > 0) {
+        v.iov_len = rc;
+        evbuffer_commit_space(appdata->rd_buf, &v, 1);
+        return rc;
+    }
+    int err = SSL_get_error(ssl, rc);
+    switch (err) {
+    case SSL_ERROR_ZERO_RETURN: disable_ssl_evbuffer(appdata); // fallthrough
+    case SSL_ERROR_WANT_READ: return 1;
+    case SSL_ERROR_SYSCALL:
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d errno:%d [%s]\n",
+               __func__, __LINE__, rc, err, errno, strerror(errno));
+        break;
+    default:
+        logmsg(LOGMSG_ERROR, "%s:%d SSL_read rc:%d err:%d [%s]\n",
+               __func__, __LINE__, rc, err, ERR_error_string(err, NULL));
+        break;
+    }
+    return rc;
+}
+
+static int rd_evbuffer_plaintext(struct newsql_appdata_evbuffer *appdata)
+{
+    return evbuffer_read(appdata->rd_buf, appdata->fd, -1);
+}
+
+static void process_ssl_request(struct newsql_appdata_evbuffer *appdata)
+{
+    if (appdata->ssl_data && appdata->ssl_data->ssl) {
+        struct sqlclntstate *clnt = &appdata->clnt;
+        logmsg(LOGMSG_ERROR,
+               "%s fd:%d already have ssl clnt:%s pid:%d host:%d\n", __func__,
+               appdata->fd, clnt->argv0, clnt->conninfo.pid,
+               clnt->conninfo.node);
+        goto cleanup;
+    }
+    int rc;
+    char ssl_response = (gbl_client_ssl_mode >= SSL_ALLOW) ? 'Y' : 'N';
+    if ((rc = write(appdata->fd, &ssl_response, 1)) != 1) {
+        logmsg(LOGMSG_ERROR, "%s write fd:%d ssl_response:%c rc:%d err:%s\n",
+               __func__, appdata->fd, ssl_response, rc, strerror(errno));
+        goto cleanup;
+    }
+    if (ssl_response != 'Y') {
+        goto cleanup;
+    }
+    if (!appdata->ssl_data) {
+        appdata->ssl_data = calloc(1, sizeof(struct ssl_data));
+    }
+    SSL *ssl = appdata->ssl_data->ssl = SSL_new(gbl_ssl_ctx);
+    SSL_set_mode(ssl, SSL_MODE_ENABLE_PARTIAL_WRITE);
+    SSL_set_fd(ssl, appdata->fd);
+    SSL_set_accept_state(ssl);
+    ssl_accept_evbuffer(appdata->fd, EV_READ, appdata);
+    return;
+
+cleanup:
+    evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
 }
 
 static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2QUERY *query)
@@ -407,74 +677,74 @@ static void process_newsql_payload(struct newsql_appdata_evbuffer *appdata, CDB2
         break;
     case CDB2_REQUEST_TYPE__RESET:
         newsql_reset_evbuffer(appdata);
-        rd_newsql_hdr(-1, 0, appdata);
+        rd_hdr(-1, 0, appdata);
         break;
     case CDB2_REQUEST_TYPE__SSLCONN:
-        /* not implemented - disable us for now */
-        gbl_libevent_appsock = 0;
-        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
+        process_ssl_request(appdata);
         break;
     default:
         logmsg(LOGMSG_ERROR, "%s bad type:%d fd:%d\n", __func__, appdata->hdr.type, appdata->fd);
-        abort();
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
+        break;
     }
 }
 
 static void rd_payload(int dummyfd, short what, void *arg)
 {
+    CDB2QUERY *query = NULL;
     struct newsql_appdata_evbuffer *appdata = arg;
-    if (what & EV_READ) {
-        if (evbuffer_read(appdata->rd_buf, appdata->fd, -1) <= 0) {
-            evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
-            return;
-        }
+    if (evbuffer_get_length(appdata->rd_buf) >= appdata->hdr.length) {
+        goto payload;
+    }
+    if (rd_evbuffer(appdata) <= 0 && (what & EV_READ)) {
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
+        return;
     }
     if (evbuffer_get_length(appdata->rd_buf) < appdata->hdr.length) {
-        event_add(appdata->rd_payload_ev, NULL);
+        add_rd_event(appdata, appdata->rd_payload_ev, NULL);
         return;
     }
-    CDB2QUERY *query = NULL;
-    int len = appdata->hdr.length;
-    void *data = evbuffer_pullup(appdata->rd_buf, len);
-    if (!len || (query = cdb2__query__unpack(NULL, len, data)) == NULL) {
-        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
-    } else {
-        evbuffer_drain(appdata->rd_buf, len);
-        process_newsql_payload(appdata, query);
-    }
-}
-
-static void rd_newsql_hdr(int dummyfd, short what, void *arg)
-{
-    struct newsql_appdata_evbuffer *appdata = arg;
-    if (what & EV_READ) {
-        if (evbuffer_read(appdata->rd_buf, appdata->fd, -1) <= 0) {
+payload:
+    if (appdata->hdr.length) {
+        int len = appdata->hdr.length;
+        void *data = evbuffer_pullup(appdata->rd_buf, len);
+        if (data == NULL || (query = cdb2__query__unpack(&pb_alloc, len, data)) == NULL) {
             evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
             return;
         }
+        evbuffer_drain(appdata->rd_buf, len);
     }
-    size_t len = evbuffer_get_length(appdata->rd_buf);
-    if (len < sizeof(struct newsqlheader)) {
-        event_add(appdata->rd_hdr_ev, NULL);
+    process_newsql_payload(appdata, query);
+}
+
+static void rd_hdr(int dummyfd, short what, void *arg)
+{
+    struct newsqlheader hdr;
+    struct newsql_appdata_evbuffer *appdata = arg;
+    if (evbuffer_get_length(appdata->rd_buf) >= sizeof(struct newsqlheader)) {
+        goto hdr;
+    }
+    if (rd_evbuffer(appdata) <= 0 && (what & EV_READ)) {
+        evtimer_once(appsock_timer_base, newsql_cleanup, appdata);
         return;
     }
-    struct newsqlheader hdr;
+    if (evbuffer_get_length(appdata->rd_buf) < sizeof(struct newsqlheader)) {
+        add_rd_event(appdata, appdata->rd_hdr_ev, NULL);
+        return;
+    }
+hdr:
     evbuffer_remove(appdata->rd_buf, &hdr, sizeof(struct newsqlheader));
     appdata->hdr.type = ntohl(hdr.type);
     appdata->hdr.compression = ntohl(hdr.compression);
     appdata->hdr.state = ntohl(hdr.state);
     appdata->hdr.length = ntohl(hdr.length);
-    if (appdata->hdr.length) {
-        rd_payload(-1, 0, appdata);
-    } else {
-        process_newsql_payload(appdata, NULL);
-    }
+    rd_payload(-1, 0, appdata);
 }
 
 static void *newsql_destroy_stmt_evbuffer(struct sqlclntstate *clnt, void *arg)
 {
     struct newsql_stmt *stmt = arg;
-    cdb2__query__free_unpacked(stmt->query, NULL);
+    cdb2__query__free_unpacked(stmt->query, &pb_alloc);
     free(stmt);
     return NULL;
 }
@@ -486,19 +756,20 @@ static int newsql_close_evbuffer(struct sqlclntstate *clnt)
 }
 
 struct debug_cmd {
-    struct event_base *base;
-    struct evbuffer *buf;
+    struct newsql_appdata_evbuffer *appdata;
+    struct event *ev;
     int need;
 };
 
-static void debug_cmd(int fd, short what, void *arg)
+static void debug_cmd_cb(int fd, short what, void *arg)
 {
     struct debug_cmd *cmd = arg;
-    if ((what & EV_READ) == 0 ||
-        evbuffer_read(cmd->buf, fd, cmd->need) <= 0 ||
-        evbuffer_get_length(cmd->buf) == cmd->need
-    ){
-        event_base_loopbreak(cmd->base);
+    struct newsql_appdata_evbuffer *appdata = cmd->appdata;
+    int rc = rd_evbuffer(appdata);
+    if (rc <= 0 || evbuffer_get_length(appdata->rd_buf) >= cmd->need) {
+        event_base_loopbreak(event_get_base(cmd->ev));
+    } else {
+        add_rd_event(appdata, cmd->ev, NULL);
     }
 }
 
@@ -506,25 +777,39 @@ static void debug_cmd(int fd, short what, void *arg)
 static int newsql_read_evbuffer(struct sqlclntstate *clnt, void *b, int l, int n)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
+    int need = l * n;
+    int have = evbuffer_get_length(appdata->rd_buf);
+    if (have >= need) goto done;
     struct event_base *wrbase = sql_wrbase(appdata->writer);
     struct debug_cmd cmd;
-    cmd.buf = evbuffer_new();
-    cmd.need = l * n;
-    cmd.base = wrbase;
-    struct event *ev = event_new(wrbase, appdata->fd, EV_READ | EV_PERSIST, debug_cmd, &cmd);
-    event_add(ev, NULL);
+    cmd.appdata = appdata;
+    cmd.need = need;
+    cmd.ev = event_new(wrbase, appdata->fd, EV_READ, debug_cmd_cb, &cmd);
+    add_rd_event(appdata, cmd.ev, NULL);
     event_base_dispatch(wrbase);
-    int have = evbuffer_get_length(cmd.buf);
-    evbuffer_copyout(cmd.buf, b, -1);
-    evbuffer_free(cmd.buf);
-    event_free(ev);
-    return have / l;
+    event_free(cmd.ev);
+    have = evbuffer_get_length(appdata->rd_buf);
+    if (need > have) {
+        need = 0;
+    }
+done:
+    evbuffer_remove(appdata->rd_buf, b, need);
+    return need / l;
 }
 
-static int newsql_pack_hb(uint8_t *out, void *arg)
+static int newsql_pack_hb(struct sqlwriter *writer, void *arg)
 {
+    size_t len = sizeof(struct newsqlheader);
     struct sqlclntstate *clnt = arg;
     int state;
+    uint8_t *out;
+    struct iovec v[1];
+
+    if (evbuffer_reserve_space(sql_wrbuf(writer), len, v, 1) == -1)
+        return -1;
+    v[0].iov_len = len;
+    out = v[0].iov_base;
+
     if (is_pingpong(clnt))
         state = 1;
     else {
@@ -535,7 +820,8 @@ static int newsql_pack_hb(uint8_t *out, void *arg)
     memset(h, 0, sizeof(struct newsqlheader));
     h->type = htonl(RESPONSE_HEADER__SQL_RESPONSE_HEARTBEAT);
     h->state = htonl(state);
-    return 0;
+
+    return evbuffer_commit_space(sql_wrbuf(writer), v, 1);
 }
 
 struct newsql_pack_arg {
@@ -543,15 +829,36 @@ struct newsql_pack_arg {
     const CDB2SQLRESPONSE *resp;
 };
 
-static int newsql_pack(uint8_t *out, void *data)
+struct pb_evbuffer_appender {
+    ProtobufCBuffer vbuf;
+    struct sqlwriter *sqlwriter;
+    int rc;
+};
+
+static void pb_evbuffer_append(ProtobufCBuffer *vbuf, size_t len, const uint8_t *data)
+{
+    struct pb_evbuffer_appender *appender = (struct pb_evbuffer_appender *)vbuf;
+    appender->rc |= sql_append_packed(appender->sqlwriter, data, len);
+}
+
+#define PB_EVBUFFER_APPENDER_INIT(x)                                                                                   \
+    {                                                                                                                  \
+        .vbuf = {.append = pb_evbuffer_append}, .sqlwriter = x, .rc = 0                                                \
+    }
+
+static int newsql_pack(struct sqlwriter *sqlwriter, void *data)
 {
     struct newsql_pack_arg *arg = data;
+    struct pb_evbuffer_appender appender = PB_EVBUFFER_APPENDER_INIT(sqlwriter);
     if (arg->hdr) {
-        memcpy(out, arg->hdr, sizeof(struct newsqlheader));
-        out += sizeof(struct newsqlheader);
+        pb_evbuffer_append(&appender.vbuf, sizeof(struct newsqlheader), (const uint8_t *)arg->hdr);
+        if (appender.rc != 0)
+            return -1;
     }
     if (arg->resp) {
-        cdb2__sqlresponse__pack(arg->resp, out);
+        cdb2__sqlresponse__pack_to_buffer(arg->resp, &appender.vbuf);
+        if (appender.rc != 0)
+            return -1;
         if (arg->resp->response_type == RESPONSE_TYPE__LAST_ROW) {
             return 1;
         }
@@ -563,9 +870,7 @@ static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
                                  const CDB2SQLRESPONSE *resp, int flush)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    int hdr_len = type ? sizeof(struct newsqlheader) : 0;
     int response_len = resp ? cdb2__sqlresponse__get_packed_size(resp) : 0;
-    int total_len = hdr_len + response_len;
     struct newsql_pack_arg arg = {0};
     struct newsqlheader hdr;
     if (type) {
@@ -576,8 +881,7 @@ static int newsql_write_evbuffer(struct sqlclntstate *clnt, int type, int state,
         arg.hdr = &hdr;
     }
     arg.resp = resp;
-    return sql_write(appdata->writer, total_len, &arg, flush);
-
+    return sql_write(appdata->writer, &arg, flush);
 }
 
 static int newsql_write_hdr_evbuffer(struct sqlclntstate *clnt, int h, int state)
@@ -602,11 +906,17 @@ static int newsql_write_postponed_evbuffer(struct sqlclntstate *clnt)
 static int newsql_write_dbinfo_evbuffer(struct sqlclntstate *clnt)
 {
     struct newsql_appdata_evbuffer *appdata = clnt->appdata;
-    struct evbuffer *wrbuf = evbuffer_new();
-    process_dbinfo_int(appdata, wrbuf);
-    int rc = sql_write_buffer(appdata->writer, wrbuf);
-    evbuffer_free(wrbuf);
+    struct evbuffer *buf = evbuffer_new();
+    process_dbinfo_int(appdata, buf);
+    int rc = sql_write_buffer(appdata->writer, buf);
+    evbuffer_free(buf);
     return rc || sql_flush(appdata->writer);
+}
+
+static int allow_admin(int local)
+{
+    extern int gbl_forbid_remote_admin;
+    return (local || !gbl_forbid_remote_admin);
 }
 
 static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admin)
@@ -620,7 +930,7 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
         local = 1;
     }
 
-    if (thedb->no_more_sql_connections || (admin && !local)) {
+    if (thedb->no_more_sql_connections || (admin && !allow_admin(local))) {
         evbuffer_free(arg->rd_buf);
         shutdown(arg->fd, SHUT_RDWR);
         close(arg->fd);
@@ -644,17 +954,16 @@ static void newsql_setup_clnt_evbuffer(struct appsock_handler_arg *arg, int admi
     appdata->local = local;
     appdata->fd = arg->fd;
     appdata->rd_buf = arg->rd_buf;
-    appdata->rd_hdr_ev = event_new(appsock_rd_base, arg->fd, EV_READ, rd_newsql_hdr, appdata);
+    appdata->rd_hdr_ev = event_new(appsock_rd_base, arg->fd, EV_READ, rd_hdr, appdata);
     appdata->rd_payload_ev = event_new(appsock_rd_base, arg->fd, EV_READ, rd_payload, appdata);
-
     struct sqlwriter_arg sqlwriter_arg = {
         .fd = arg->fd,
         .clnt = &appdata->clnt,
         .pack = newsql_pack,
         .pack_hb = newsql_pack_hb,
-        .hb_sz = sizeof(struct newsqlheader),
     };
     appdata->writer = sqlwriter_new(&sqlwriter_arg);
+    disable_ssl_evbuffer(appdata);
 
     add_sql_evbuffer(&appdata->clnt);
     newsql_read_hdr(-1, 0, appdata);

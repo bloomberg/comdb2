@@ -371,7 +371,7 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
      * 3) stop/start threads for consumers, as needed
      * 4) send scdone, like any other sc
      */
-    struct dbtable *db;
+    struct dbtable *db = NULL;
     tran_type *tran = NULL, *ltran = NULL;
     int rc = 0;
     int bdberr = 0;
@@ -564,8 +564,6 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             goto done;
         }
 
-        add_to_qdbs(db);
-
         /* create a consumer for this guy */
         /* TODO: needs locking */
         rc = dbqueuedb_add_consumer(
@@ -746,6 +744,10 @@ static int perform_trigger_update_int(struct schema_change_type *sc)
             sbuf2printf(sb, "!Failed to commit transaction, rc=%d\n", rc);
             goto done;
         }
+    }
+
+    if (sc->addonly && db && rc == 0) {
+        add_to_qdbs(db);
     }
 
     if (sc->addonly || sc->alteronly != SC_ALTER_NONE) {

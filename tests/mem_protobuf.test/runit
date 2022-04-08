@@ -6,4 +6,4 @@ set -e
 
 dbnm=$1
 host=`cdb2sql ${CDB2_OPTIONS} -s --tabs $dbnm default 'SELECT comdb2_host()'`
-cdb2sql $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat")' | grep 'protobuf.*appsockpool'
+cdb2sql $dbnm --host $host 'EXEC PROCEDURE sys.cmd.send("memstat")' | grep protobuf | grep 'appsockpool\|appsock_rd'

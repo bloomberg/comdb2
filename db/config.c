@@ -36,6 +36,7 @@
 #include "rtcpu.h"
 #include "config.h"
 #include "phys_rep.h"
+#include "macc_glue.h"
 
 extern int gbl_create_mode;
 extern int gbl_fullrecovery;
@@ -386,7 +387,6 @@ static char *legacy_options[] = {
     "dont_superset_foreign_keys",
     "enable_sql_stmt_caching none",
     "enable_tagged_api",
-    "env_messages",
     "init_with_time_based_genids",
     "legacy_schema on",
     "logmsg level info",
@@ -394,7 +394,6 @@ static char *legacy_options[] = {
     "logmsg skiplevel",
     "logput window 1",
     "mask_internal_tunables 0",
-    "master_sends_query_effects 0",
     "noblobstripe",
     "nochecksums",
     "nocrc32c",
@@ -625,41 +624,31 @@ static int lrltokignore(char *tok, int ltok)
 static int new_table_from_schema(struct dbenv *dbenv, char *tblname,
                                  char *fname, int dbnum, char *tok)
 {
-    int rc;
     struct dbtable *db;
-    rc = dyns_load_schema(fname, (char *)gbl_dbname, tblname);
-    if (rc != 0) {
-        logmsg(LOGMSG_ERROR, "Error loading %s schema.\n", tok);
+    char *csc2;
+
+    csc2 = load_text_file(fname);
+    if (!csc2) {
+        logmsg(LOGMSG_ERROR, "Error loading text from file %s\n", fname);
         return -1;
     }
 
-    /* create one */
-    db = newdb_from_schema(dbenv, tblname, fname, dbnum, dbenv->num_dbs);
-    if (db == NULL) {
+    struct errstat err = {0};
+    db = create_new_dbtable(dbenv, tblname, csc2, dbnum, dbenv->num_dbs, 0, 0,
+                            0, &err);
+    if (!db) {
+        logmsg(LOGMSG_ERROR, "%s\ncsc2:\"%s\"\n", err.errstr, csc2);
+        free(csc2);
         return -1;
     }
 
+    db->csc2_schema = csc2;
     db->dbs_idx = dbenv->num_dbs;
     dbenv->dbs[dbenv->num_dbs++] = db;
 
     /* Add table to the hash. */
     hash_add(dbenv->db_hash, db);
 
-    /* just got a bunch of data. remember it so key forming
-       routines and SQL can get at it */
-    rc = add_cmacc_stmt(db, 0, 0);
-    if (rc) {
-        logmsg(LOGMSG_ERROR,
-               "Failed to load schema: can't process schema file %s\n", tok);
-        return -1;
-    }
-
-    /* Initialize table's check constraint members. */
-    if (init_check_constraints(db)) {
-        logmsg(LOGMSG_ERROR, "Failed to load check constraints for %s\n",
-               db->tablename);
-        return -1;
-    }
     return 0;
 }
 
@@ -1059,9 +1048,7 @@ static int read_lrl_option(struct dbenv *dbenv, char *line,
                 }
             }
 
-            dyns_init_globals();
             rc = new_table_from_schema(dbenv, tblname, fname, dbnum, tok);
-            dyns_cleanup_globals();
             if (rc)
                 return rc;
 

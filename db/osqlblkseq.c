@@ -191,7 +191,7 @@ int osql_blkseq_unregister(struct ireq *iq)
     Pthread_mutex_lock(&hmtx);
 
     hash_del(hiqs, iq);
-    if (IQ_HAS_SNAPINFO(iq)) {
+    if (IQ_HAS_SNAPINFO_KEY(iq)) {
 #ifdef DEBUG_BLKSEQ
         int rc = osql_blkseq_unregister_cnonce(iq);
 #else
@@ -201,7 +201,7 @@ int osql_blkseq_unregister(struct ireq *iq)
 
     Pthread_mutex_unlock(&hmtx);
 #ifdef DEBUG_BLKSEQ
-    if (IQ_HAS_SNAPINFO(iq))
+    if (IQ_HAS_SNAPINFO_KEY(iq))
         logmsg(LOGMSG_DEBUG, "Removed from blkseq %*s, rc=%d\n",
                IQ_SNAPINFO(iq)->keylen - 3, IQ_SNAPINFO(iq)->key, rc);
     else

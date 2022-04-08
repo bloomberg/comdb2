@@ -1,3 +1,2 @@
-libevent_appsock 0
 ssl_client_mode VERIFY_CA
 ssl_cipher_suites ECDH

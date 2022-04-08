@@ -122,6 +122,8 @@ public class Driver implements java.sql.Driver {
                     new BooleanOption("statement_query_effects", "StatementQueryEffects"));
             options.put("verify_retry", new BooleanOption("verify_retry", "VerifyRetry"));
             options.put("stack_at_open", new BooleanOption("stack_at_open", "StackAtOpen"));
+            options.put("skip_rs_drain", new BooleanOption("skip_rs_drain", "SkipResultSetDrain"));
+            options.put("clear_ack", new BooleanOption("clear_ack", "ClearAck"));
         } catch (Throwable e) {
             throw new SQLException(e);
         }
@@ -169,14 +171,15 @@ public class Driver implements java.sql.Driver {
 
         String[] tokens = url.split("\\/\\s*|\\s+");
 
-        Comdb2Connection ret = null;
-        String clusterStr = null;
-        String dbStr = null;
+        Comdb2Connection ret;
+        String clusterStr;
+        String dbStr;
         String port = null;
         String attributes = null;
 
-        ArrayList<String> hosts = new ArrayList<String>();
-        ArrayList<Integer> ports = new ArrayList<Integer>();
+        List<String> hosts = new ArrayList<String>();
+        List<Integer> ports = new ArrayList<Integer>();
+        Set<String> processedOptions = new HashSet<String>();
 
         if (tokens.length < 4) { /* Use legacy format */
             tokens = url.split(":\\s*|\\s+");
@@ -264,7 +267,25 @@ public class Driver implements java.sql.Driver {
                     Option opt = options.get(keyval[0]);
                     if (opt != null) {
                         opt.process(ret, keyval[1], info);
+                        processedOptions.add(opt.opt);
                     }
+                }
+            }
+        } catch (Throwable t) {
+            ret.close();
+            throw new SQLException(t);
+        }
+
+        try {
+            for (Object prop : info.keySet()) {
+                String propertyName = prop.toString();
+                if (processedOptions.contains(propertyName)) {
+                    continue;
+                }
+                Option opt = options.get(propertyName);
+                if (opt != null) {
+                    opt.process(ret, info.getProperty(propertyName), info);
+                    processedOptions.add(propertyName);
                 }
             }
         } catch (Throwable t) {

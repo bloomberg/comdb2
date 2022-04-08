@@ -31,6 +31,25 @@
 #include "sc_alter_table.h"
 #include "sc_util.h"
 #include "views.h"
+#include "macc_glue.h"
+
+extern int gbl_broken_max_rec_sz;
+
+/* return old value */
+int fix_broken_max_rec_sz(int lrl)
+{
+    int ret = gbl_broken_max_rec_sz;
+
+    if (lrl > COMDB2_MAX_RECORD_SIZE) {
+        /* NOTE: this algebra seems funny, shouldn't we
+         * set lrl to COMDB2_MAX_RECORD_SIZE here?
+         */
+        // we want to allow fastiniting this tbl
+        gbl_broken_max_rec_sz = lrl - COMDB2_MAX_RECORD_SIZE;
+    }
+
+    return ret;
+}
 
 int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 {
@@ -42,6 +61,7 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
     char new_prefix[32];
     int foundix;
     struct scinfo scinfo;
+    struct errstat err = {0};
 
     iq->usedb = db = s->db = get_dbtable_by_name(s->tablename);
     if (db == NULL) {
@@ -58,43 +78,37 @@ int do_fastinit(struct ireq *iq, struct schema_change_type *s, tran_type *tran)
 
     set_schemachange_options_tran(s, db, &scinfo, tran);
 
-    extern int gbl_broken_max_rec_sz;
-    int saved_broken_max_rec_sz = gbl_broken_max_rec_sz;
-
-    if (s->db->lrl > COMDB2_MAX_RECORD_SIZE) {
-        // we want to allow fastiniting this tbl
-        gbl_broken_max_rec_sz = s->db->lrl - COMDB2_MAX_RECORD_SIZE;
-    }
 
     Pthread_mutex_lock(&csc2_subsystem_mtx);
-    dyns_init_globals();
-    if ((rc = load_db_from_schema(s, thedb, &foundix, iq))) {
-        dyns_cleanup_globals();
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        return rc;
+
+    /* find which db has a matching name */
+    if ((foundix = getdbidxbyname_ll(s->tablename)) < 0) {
+        logmsg(LOGMSG_FATAL, "couldnt find table <%s>\n", s->tablename);
+        exit(1);
     }
 
+    int saved_broken_max_rec_sz = fix_broken_max_rec_sz(s->db->lrl);
+    newdb = s->newdb =
+        create_new_dbtable(thedb, s->tablename, s->newcsc2, db->dbnum, foundix,
+                           1 /* sc_alt_name */, 1 /* allow ull */, 0, &err);
     gbl_broken_max_rec_sz = saved_broken_max_rec_sz;
 
-    newdb = s->newdb = create_db_from_schema(thedb, s, db->dbnum, foundix, 1);
-    if (newdb == NULL) {
-        sc_errf(s, "Internal error\n");
-        dyns_cleanup_globals();
+    if (!newdb) {
+        sc_client_error(s, "%s", err.errstr);
         Pthread_mutex_unlock(&csc2_subsystem_mtx);
         return SC_INTERNAL_ERROR;
     }
 
+    newdb->dtastripe = gbl_dtastripe; // we have only one setting currently
+    newdb->odh = s->headers;
+    /* don't lose precious flags like this */
+    newdb->instant_schema_change = s->headers && s->instant_sc;
+    newdb->inplace_updates = s->headers && s->ip_updates;
     newdb->iq = iq;
 
-    if ((add_cmacc_stmt(newdb, 1, 1)) || (init_check_constraints(newdb))) {
-        backout_schemas(newdb->tablename);
-        cleanup_newdb(newdb);
-        sc_errf(s, "Failed to process schema!\n");
-        dyns_cleanup_globals();
-        Pthread_mutex_unlock(&csc2_subsystem_mtx);
-        return -1;
-    }
-    dyns_cleanup_globals();
+    /* reset csc2? */
+    newdb->schema_version = 1;
+
     Pthread_mutex_unlock(&csc2_subsystem_mtx);
 
     /* create temporary tables.  to try to avoid strange issues always

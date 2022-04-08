@@ -20,7 +20,7 @@ cdb2sql $dbnm --host $host 'insert into p values(1)' >/dev/null 2>&1
 cdb2sql $dbnm --host $host 'insert into c values(1)' >/dev/null 2>&1
 
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat bdb')"
-before=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat bdb')" | grep total | tail -1 | awk '{print $6}'`
+before=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(used) FROM comdb2_memstats WHERE name='bdb'"`
 
 yes "insert into c values(1)" | cdb2sql $dbnm --host $host - >/dev/null 2>&1 &
 pid=$!
@@ -28,7 +28,7 @@ sleep 120
 kill $pid
 
 cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat bdb')"
-after=`cdb2sql --tabs $dbnm --host $host "EXEC PROCEDURE sys.cmd.send('memstat bdb')" | grep total | tail -1 | awk '{print $6}'`
+after=`cdb2sql --tabs $dbnm --host $host "SELECT SUM(used) FROM comdb2_memstats WHERE name='bdb'"`
 
 # Should be almost identical
 ratio=`echo "$after/$before" | bc`

@@ -542,8 +542,10 @@ Otherwise, the event will be registered locally to the handle, thus will be visi
 |---|---|
 |Network| `CDB2_BEFORE_DISCOVERY` | The callback is invoked before database destination discovery. |
 |Network| `CDB2_AFTER_DISCOVERY` | The callback is invoked after database destination discovery. |
-|Network| `CDB2_BEFORE_CONNECT` | The callback is invoked before the API starts connecting to a host. |
-|Network| `CDB2_AFTER_CONNECT` | The callback is invoked after the attempt to connect. |
+|Network| `CDB2_BEFORE_NEWSQL_CONNECT` | The callback is invoked before client attempts to connect to server. |
+|Network| `CDB2_AFTER_NEWSQL_CONNECT` | The callback is invoked after client attempts to connect to server. |
+|Network| `CDB2_BEFORE_TCP_CONNECT` | The callback is invoked before client attempts to establish a TCP connection to server. If the connection is obtained from sockpool, the callback will not be invoked. |
+|Network| `CDB2_AFTER_TCP_CONNECT` | The callback is invoked after client attempts to establish a TCP connection to server. If the connection is obtained from sockpool, the callback will not be invoked. |
 |Network| `CDB2_BEFORE_PMUX` | The callback is invoked before the API starts querying for the database port from `pmux`. |
 |Network| `CDB2_AFTER_PMUX` | The callback is invoked after the pmux attempt. |
 |Network| `CDB2_BEFORE_DBINFO` | The callback is invoked before the API starts retrieving the dbinfo. |

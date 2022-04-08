@@ -12,6 +12,7 @@ find_program(yacc NAMES bison yacc)
 if(NOT yacc)
   message(FATAL_ERROR "yacc not found!")
 endif()
+
 add_custom_command(
   OUTPUT maccparse.h maccparse.c
   DEPENDS maccparse.y

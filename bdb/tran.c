@@ -1266,7 +1266,7 @@ tran_type *bdb_tran_begin_logical(bdb_state_type *bdb_state, int trak,
     /* If we're getting the lock, this has to be the master
      * NOTE: we don't release this lock until commit/rollback time
      */
-    if (!ismaster && !bdb_state->in_recovery) {
+    if (!ismaster) {
         BDB_RELLOCK();
         logmsg(LOGMSG_ERROR, "Master change while getting logical tran.\n");
         bdb_state->dbenv->lock_id_free(bdb_state->dbenv, logical_lid);

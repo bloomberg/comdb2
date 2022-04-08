@@ -1,5 +1,5 @@
 /*
-   Copyright 2015 Bloomberg Finance L.P.
+   Copyright 2015, 2022 Bloomberg Finance L.P.
 
    Licensed under the Apache License, Version 2.0 (the "License");
    you may not use this file except in compliance with the License.
@@ -87,11 +87,6 @@ static LISTC_T(struct logrule) rules;
 static LISTC_T(struct output) outputs;
 
 static int reqlog_init_off = 0;
-static int long_request_count = 0;
-static int last_long_request_epoch = 0;
-static int longest_long_request_ms = 0;
-static int shortest_long_request_ms = -1;
-
 static struct output *default_out;
 
 int diffstat_thresh = 60; /* every sixty seconds */
@@ -117,6 +112,9 @@ static int norm_reqs = 0;
 
 /* for the sqldbgtrace message trap */
 int sqldbgflag = 0;
+
+/* Log long running requests this frequently (in seconds) */
+int gbl_longreq_log_freq_sec = 60;
 
 static void log_all_events(struct reqlogger *logger, struct output *out);
 
@@ -1016,19 +1014,17 @@ struct reqlogger *reqlog_alloc(void)
     return logger;
 }
 
-static void reqlog_free_all(struct reqlogger *logger)
-{
-    struct logevent *event;
-    struct print_event *pevent;
-    struct push_prefix_event *pushevent;
-    struct tablelist *table;
-    int i, len;
-
+static void reqlog_free_error(struct reqlogger *logger) {
     if (logger->error) {
         free(logger->error);
         logger->error = NULL;
     }
-    put_ref(&logger->sql_ref);
+}
+
+static void reqlog_free_events(struct reqlogger *logger) {
+    struct logevent *event;
+    struct print_event *pevent;
+    struct push_prefix_event *pushevent;
 
     while ((event = logger->events) != NULL) {
         logger->events = event->next;
@@ -1041,7 +1037,10 @@ static void reqlog_free_all(struct reqlogger *logger)
         }
         free(event);
     }
-    assert(logger->events == NULL);
+}
+
+static void reqlog_free_tables(struct reqlogger *logger) {
+    struct tablelist *table;
 
     while ((table = logger->tables) != NULL) {
         logger->tables = table->next;
@@ -1049,10 +1048,19 @@ static void reqlog_free_all(struct reqlogger *logger)
     }
     assert(logger->tables == NULL);
 
-    for (i = 0, len = logger->ntables; i != len; ++i) {
+    for (int i = 0; i < logger->ntables; ++i) {
         free(logger->sqltables[i]);
     }
     free(logger->sqltables);
+}
+
+static void reqlog_free_all(struct reqlogger *logger)
+{
+    reqlog_free_error(logger);
+    reqlog_free_events(logger);
+    reqlog_free_tables(logger);
+
+    put_ref(&logger->sql_ref);
 }
 
 void reqlog_free(struct reqlogger *logger)
@@ -1549,7 +1557,8 @@ static void print_client_query_stats(struct reqlogger *logger,
 }
 
 /* print the request header for the request. */
-static void log_header_ll(struct reqlogger *logger, struct output *out)
+static void log_header_ll(struct reqlogger *logger, struct output *out,
+                          int is_running)
 {
     const struct berkdb_thread_stats *thread_stats = bdb_get_thread_stats();
     struct reqlog_print_callback_args args;
@@ -1576,8 +1585,14 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
               clnt->conninfo.pid, clnt->argv0 ? clnt->argv0 : "???");
     }
 
-    dumpf(logger, out, " rqid %s from %s rc %d\n", logger->id,
+    dumpf(logger, out, " rqid %s from %s rc %d", logger->id,
           reqorigin(logger), logger->rc);
+
+    if (out == long_request_out && is_running) {
+        dumpf(logger, out, " **running**\n");
+    } else {
+        dumpf(logger, out, "\n");
+    }
 
     if (logger->iq) {
         struct ireq *iq = logger->iq;
@@ -1606,11 +1621,11 @@ static void log_header_ll(struct reqlogger *logger, struct output *out)
 }
 
 static void log_header(struct reqlogger *logger, struct output *out,
-                       int is_long)
+                       int is_running)
 {
     Pthread_mutex_lock(&rules_mutex);
     Pthread_mutex_lock(&out->mutex);
-    log_header_ll(logger, out);
+    log_header_ll(logger, out, is_running);
     Pthread_mutex_unlock(&out->mutex);
     Pthread_mutex_unlock(&rules_mutex);
 }
@@ -1766,7 +1781,7 @@ static void log_rule(struct reqlogger *logger, struct output *out,
 
     Pthread_mutex_lock(&out->mutex);
     prefix_init(&logger->prefix);
-    log_header_ll(logger, out);
+    log_header_ll(logger, out, 0);
     if (event_mask == 0) {
         Pthread_mutex_unlock(&out->mutex);
         return;
@@ -1860,10 +1875,172 @@ inline void reqlog_set_rqid(struct reqlogger *logger, void *id, int idlen)
     logger->have_id = 1;
 }
 
+static int current_long_request_count = 0;
+static int current_long_request_duration_ms = 0;
+static int current_longest_long_request_ms = 0;
+static int current_shortest_long_request_ms = INT_MAX;
+static int last_current_long_request_epoch = 0;
+
+static void reqlog_log_longreq(struct reqlogger *logger, int rc, struct string_ref *sql)
+{
+
+    static int long_request_logged_count = 0;
+    static int last_long_request_logged_epoch = 0;
+
+    int long_request_thresh;
+
+    if (!logger)
+        return;
+
+    logger->durationus =
+        (comdb2_time_epochus() - logger->startprcsus) + logger->queuetimeus;
+
+    int duration_ms = U2M(logger->durationus);
+
+    if (logger->opcode == OP_SQL && !logger->iq) {
+        long_request_thresh = gbl_sql_time_threshold;
+    } else {
+        long_request_thresh = long_request_ms;
+    }
+
+    if (duration_ms < long_request_thresh) {
+        return;
+    }
+
+    current_long_request_duration_ms = duration_ms;
+
+    if (duration_ms > current_longest_long_request_ms) {
+        current_longest_long_request_ms = duration_ms;
+    }
+
+    if (duration_ms < current_shortest_long_request_ms) {
+        current_shortest_long_request_ms = duration_ms;
+    }
+
+    ++ current_long_request_count;
+
+    if (((duration_ms - long_request_thresh) / 1000 % gbl_longreq_log_freq_sec) != 0) {
+        return;
+    }
+
+    if (logger->clnt) {
+        log_params(logger);
+    }
+    if (logger->sqlrows > 0) {
+        reqlog_logf(logger, REQL_INFO, "rowcount=%d", logger->sqlrows);
+    }
+    if (logger->sqlcost > 0) {
+        reqlog_logf(logger, REQL_INFO, "cost=%f", logger->sqlcost);
+    }
+    if (logger->vreplays) {
+        reqlog_logf(logger, REQL_INFO, "verify replays=%d", logger->vreplays);
+    }
+
+    logger->rc = rc;
+
+    reqlog_set_sql(logger, sql);
+
+    flushdump(logger, NULL);
+
+    log_header(logger, long_request_out, 1);
+
+    if (duration_ms >= long_request_thresh &&
+        (duration_ms < (long_request_thresh + (gbl_longreq_log_freq_sec * 1000)))) {
+        long_request_logged_count++;
+        if (last_long_request_logged_epoch != comdb2_time_epoch()) {
+            last_long_request_logged_epoch = comdb2_time_epoch();
+
+            if (long_request_out != default_out) {
+                char *sqlinfo;
+
+                if (logger->iq) {
+                    sqlinfo = osql_sess_info(logger->iq->sorese);
+                } else {
+                    sqlinfo = NULL;
+                }
+                if (sqlinfo) {
+                    if (long_request_logged_count == 1) {
+                        logmsg(LOGMSG_USER,
+                               "LONG SQL REQUEST (%d ms) running [%s] (see %s for details)\n",
+                               U2M(logger->durationus), sqlinfo,
+                               long_request_out->filename);
+                    } else {
+                        logmsg(LOGMSG_USER,
+                               "%d LONG SQL REQUESTS running [last %s] (see %s for details)\n",
+                               long_request_logged_count, sqlinfo,
+                               long_request_out->filename);
+                    }
+                    free(sqlinfo);
+                } else {
+                    if (long_request_logged_count == 1) {
+                        logmsg(LOGMSG_USER,
+                               "LONG SQL REQUEST (%d ms) running (see %s for details)\n",
+                               U2M(logger->durationus),
+                               long_request_out->filename);
+                    } else {
+                        logmsg(LOGMSG_USER,
+                               "%d LONG SQL REQUESTS running (see %s for details)\n",
+                               long_request_logged_count,
+                               long_request_out->filename);
+                    }
+                }
+            }
+            long_request_logged_count = 0;
+        }
+    }
+    reqlog_free_events(logger);
+    put_ref(&logger->sql_ref);
+}
+
+extern pthread_mutex_t clnt_lk;
+extern LISTC_T(struct sqlclntstate) clntlist;
+
+void log_long_running_sql_statements()
+{
+    struct sqlclntstate *clnt;
+    current_long_request_count = 0;
+    current_long_request_duration_ms = 0;
+    current_longest_long_request_ms = 0;
+    current_shortest_long_request_ms = INT_MAX;
+
+    Pthread_mutex_lock(&clnt_lk);
+    LISTC_FOR_EACH(&clntlist, clnt, lnk) {
+        if (!clnt->done && clnt->thd != NULL && clnt->sql) {
+            reqlog_log_longreq(clnt->thd->logger, 0, clnt->sql_ref);
+        }
+    }
+    Pthread_mutex_unlock(&clnt_lk);
+
+    if (((comdb2_time_epoch() - last_current_long_request_epoch) % gbl_longreq_log_freq_sec) == 0) {
+        if ((current_long_request_count > 0) &&
+            (long_request_out != default_out)) {
+          if (current_long_request_count == 1) {
+              logmsg(LOGMSG_USER, "LONG SQL REQUEST (%d ms) still running (see %s for details)\n",
+                     current_long_request_duration_ms,
+                     long_request_out->filename);
+          } else {
+              logmsg(LOGMSG_USER, "%d LONG SQL REQUESTS (%d ms - %d ms) still running (see %s for details)\n",
+                     current_long_request_count,
+                     current_shortest_long_request_ms,
+                     current_longest_long_request_ms,
+                     long_request_out->filename);
+          }
+        }
+        last_current_long_request_epoch = comdb2_time_epoch();
+    }
+}
+
+pthread_mutex_t reqlog_longreq_log_mtx = PTHREAD_MUTEX_INITIALIZER;
+
 /* End of a request. */
 void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
                         int line)
 {
+    static int long_request_count = 0;
+    static int last_long_request_epoch = 0;
+    static int longest_long_request_ms = 0;
+    static int shortest_long_request_ms = INT_MAX;
+
     struct logruleuse {
         struct logruleuse *next;
         struct output *out;
@@ -2032,58 +2209,63 @@ void reqlog_end_request(struct reqlogger *logger, int rc, const char *callfunc,
             log_params(logger);
         }
 
-        log_header(logger, long_request_out, 1);
+        log_header(logger, long_request_out, 0);
         long_reqs++;
 
-        if (logger->durationus > M2U(longest_long_request_ms)) {
-            longest_long_request_ms = U2M(logger->durationus);
-        }
-        if (shortest_long_request_ms == -1 ||
-            logger->durationus < M2U(shortest_long_request_ms)) {
-            shortest_long_request_ms = U2M(logger->durationus);
-        }
-        long_request_count++;
-        if (last_long_request_epoch != comdb2_time_epoch()) {
-            last_long_request_epoch = comdb2_time_epoch();
+        Pthread_mutex_lock(&reqlog_longreq_log_mtx);
+        {
+            if (logger->durationus > M2U(longest_long_request_ms)) {
+                longest_long_request_ms = U2M(logger->durationus);
+            }
+            if (shortest_long_request_ms == -1 ||
+                logger->durationus < M2U(shortest_long_request_ms)) {
+                shortest_long_request_ms = U2M(logger->durationus);
+            }
+            long_request_count++;
+            if (last_long_request_epoch != comdb2_time_epoch()) {
+                last_long_request_epoch = comdb2_time_epoch();
 
-            if (long_request_out != default_out) {
+                if (long_request_out != default_out) {
 
-                if (logger->iq && logger->iq->sorese) {
-                    char *sqlinfo = osql_sess_info(logger->iq->sorese);
-                    if (long_request_count == 1) {
-                        logmsg(LOGMSG_USER,
-                               "LONG REQUEST %d MS logged in %s [%s time %d]\n",
-                               U2M(logger->durationus),
-                               long_request_out->filename, sqlinfo,
-                               U2M(logger->iq->sorese->sess_endus -
-                                   logger->iq->sorese->sess_startus));
+                    if (logger->iq && logger->iq->sorese) {
+                        char *sqlinfo = osql_sess_info(logger->iq->sorese);
+                        if (long_request_count == 1) {
+                            logmsg(LOGMSG_USER,
+                                   "LONG REQUEST (%d ms) finished [%s time %d] (see %s for details)\n",
+                                   U2M(logger->durationus),
+                                   sqlinfo,
+                                   U2M(logger->iq->sorese->sess_endus - logger->iq->sorese->sess_startus),
+                                   long_request_out->filename);
+                        } else {
+                            logmsg(LOGMSG_USER,
+                                   "%d LONG REQUESTS (%d ms - %d ms) finished [last %s] (see %s for details)\n",
+                                   long_request_count,
+                                   shortest_long_request_ms,
+                                   longest_long_request_ms,
+                                   sqlinfo,
+                                   long_request_out->filename);
+                        }
+                        free(sqlinfo);
                     } else {
-                        logmsg(LOGMSG_USER,
-                               "%d LONG REQUESTS %d MS - %d MS logged "
-                               "in %s [last %s]\n",
-                               long_request_count, shortest_long_request_ms,
-                               longest_long_request_ms,
-                               long_request_out->filename, sqlinfo);
-                    }
-                    free(sqlinfo);
-                } else {
-                    if (long_request_count == 1) {
-                        logmsg(LOGMSG_USER, "LONG REQUEST %d MS logged in %s\n",
-                               U2M(logger->durationus),
-                               long_request_out->filename);
-                    } else {
-                        logmsg(LOGMSG_USER,
-                               "%d LONG REQUESTS %d MS - %d MS logged in %s\n",
-                               long_request_count, shortest_long_request_ms,
-                               longest_long_request_ms,
-                               long_request_out->filename);
+                        if (long_request_count == 1) {
+                            logmsg(LOGMSG_USER, "LONG REQUEST (%d ms) finished (see %s for details)\n",
+                                   U2M(logger->durationus),
+                                   long_request_out->filename);
+                        } else {
+                            logmsg(LOGMSG_USER,
+                                   "%d LONG REQUESTS (%d ms - %d ms) finished (see %s for details)\n",
+                                   long_request_count, shortest_long_request_ms,
+                                   longest_long_request_ms,
+                                   long_request_out->filename);
+                        }
                     }
                 }
+                long_request_count = 0;
+                longest_long_request_ms = 0;
+                shortest_long_request_ms = -1;
             }
-            long_request_count = 0;
-            longest_long_request_ms = 0;
-            shortest_long_request_ms = -1;
         }
+        Pthread_mutex_unlock(&reqlog_longreq_log_mtx);
     } else {
         norm_reqs++;
     }
@@ -2143,6 +2325,7 @@ inline void reqlog_set_truncate(int val)
 /* Client Stats LRU Hash */
 hash_t *clientstats = NULL;
 static LISTC_T(struct nodestats) clntlru;
+
 pthread_rwlock_t clientstats_lk = PTHREAD_RWLOCK_INITIALIZER;
 pthread_mutex_t clntlru_mtx = PTHREAD_MUTEX_INITIALIZER;
 
