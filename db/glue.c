@@ -247,6 +247,11 @@ void init_fake_ireq(struct dbenv *dbenv, struct ireq *iq)
     iq->helper_thread = -1;
 }
 
+void set_tran_verify_updateid(tran_type *tran)
+{
+    bdb_set_tran_verify_updateid(tran);
+}
+
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/
 /*        TRANSACTIONAL STUFF        */
 /*~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~*/

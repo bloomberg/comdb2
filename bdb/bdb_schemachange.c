@@ -482,8 +482,9 @@ int bdb_clear_logical_live_sc(bdb_state_type *bdb_state, int lock)
         return -1;
     }
 
-    if (bdb_state->logical_live_sc == 0)
+    if (bdb_state->logical_live_sc == 0) {
         return 0;
+    }
 
     if (lock) {
         trans = bdb_tran_begin(bdb_state, NULL, &bdberr);
