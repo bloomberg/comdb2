@@ -43,6 +43,8 @@ static machine_class_t default_classes[] = {
     {"prod", 5},    /* CLASS_PROD == 5 */
 };
 
+static char *fdb_tiers[sizeof(default_classes) / sizeof(default_classes[0])];
+
 int is_default = 0;
 
 static int _mach_class_add(machine_class_t *class, int *added);
@@ -146,4 +148,48 @@ const char *mach_class_class2name(int value)
     Pthread_mutex_unlock(&mach_mtx);
 
     return name;
+}
+
+int mach_class_remap_fdb_tier(const char *name, const char *tier)
+{
+    machine_class_t *class;
+    int rc = 0;
+
+    Pthread_mutex_lock(&mach_mtx);
+
+    class = hash_find(classes, &name);
+    if (class == NULL) {
+        logmsg(LOGMSG_ERROR, "machine class '%s' does not exist", name);
+        rc = -1;
+    } else if (class->value >= sizeof(fdb_tiers) / sizeof(fdb_tiers[0])) {
+        logmsg(LOGMSG_ERROR, "machine class '%s' is out of bound", name);
+        rc = -1;
+    } else {
+        free(fdb_tiers[class->value]);
+        fdb_tiers[class->value] = strdup(tier);
+    }
+
+    Pthread_mutex_unlock(&mach_mtx);
+
+    return rc;
+}
+
+const char *mach_class_class2tier(int value)
+{
+    machine_class_t *class;
+    const char *ret = NULL;
+
+    Pthread_mutex_lock(&mach_mtx);
+
+    if (fdb_tiers[value] != NULL)
+        ret = fdb_tiers[value];
+    else {
+        class = hash_find(class_names, &value);
+        if (class)
+            ret = class->name;
+    }
+
+    Pthread_mutex_unlock(&mach_mtx);
+
+    return ret;
 }
